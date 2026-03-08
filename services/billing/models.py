@@ -2,7 +2,7 @@
 
 from datetime import datetime
 from decimal import Decimal
-from enum import Enum
+from enum import StrEnum
 
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -11,7 +11,7 @@ from pydantic import BaseModel, ConfigDict, Field
 # ---------------------------------------------------------------------------
 
 
-class PaymentStatus(str, Enum):
+class PaymentStatus(StrEnum):
     unpaid = "unpaid"
     partially_paid = "partially_paid"
     paid = "paid"
@@ -20,7 +20,7 @@ class PaymentStatus(str, Enum):
     released_with_outstanding = "released_with_outstanding"
 
 
-class CBMDisputeStatus(str, Enum):
+class CBMDisputeStatus(StrEnum):
     submitted = "submitted"
     acknowledged = "acknowledged"
     investigating = "investigating"

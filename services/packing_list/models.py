@@ -2,7 +2,7 @@
 
 from datetime import date, datetime
 from decimal import Decimal
-from enum import Enum
+from enum import StrEnum
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
@@ -11,7 +11,7 @@ from pydantic import BaseModel, ConfigDict, Field, model_validator
 # ---------------------------------------------------------------------------
 
 
-class PackingListStatus(str, Enum):
+class PackingListStatus(StrEnum):
     draft = "draft"
     pending_approval = "pending_approval"
     approved = "approved"

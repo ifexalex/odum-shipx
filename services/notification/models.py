@@ -1,6 +1,6 @@
 """Pydantic models for the Notification service."""
 
-from enum import Enum
+from enum import StrEnum
 from typing import Any
 
 from pydantic import BaseModel, Field
@@ -10,13 +10,13 @@ from pydantic import BaseModel, Field
 # ---------------------------------------------------------------------------
 
 
-class NotificationChannel(str, Enum):
+class NotificationChannel(StrEnum):
     sms = "sms"
     whatsapp = "whatsapp"
     email = "email"
 
 
-class NotificationEvent(str, Enum):
+class NotificationEvent(StrEnum):
     shipment_update = "shipment_update"
     payment_due = "payment_due"
     release_note_generated = "release_note_generated"

@@ -2,7 +2,7 @@
 
 from datetime import datetime
 from decimal import Decimal
-from enum import Enum
+from enum import StrEnum
 
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -11,13 +11,13 @@ from pydantic import BaseModel, ConfigDict, Field
 # ---------------------------------------------------------------------------
 
 
-class RefundType(str, Enum):
+class RefundType(StrEnum):
     overpayment = "overpayment"
     cbm_correction = "cbm_correction"
     damage_or_loss = "damage_or_loss"
 
 
-class RefundStatus(str, Enum):
+class RefundStatus(StrEnum):
     pending_review = "pending_review"
     accounts_reviewed = "accounts_reviewed"
     pending_approval = "pending_approval"
@@ -27,7 +27,7 @@ class RefundStatus(str, Enum):
     applied_as_credit = "applied_as_credit"
 
 
-class CustomerChoice(str, Enum):
+class CustomerChoice(StrEnum):
     immediate_refund = "immediate_refund"
     credit_next_shipment = "credit_next_shipment"
 

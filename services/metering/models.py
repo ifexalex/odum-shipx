@@ -1,7 +1,7 @@
 """Pydantic models for the Metering service."""
 
 from datetime import datetime
-from enum import Enum
+from enum import StrEnum
 
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -10,7 +10,7 @@ from pydantic import BaseModel, ConfigDict, Field
 # ---------------------------------------------------------------------------
 
 
-class MetricType(str, Enum):
+class MetricType(StrEnum):
     api_calls = "api_calls"
     containers_processed = "containers_processed"
     storage_bytes = "storage_bytes"

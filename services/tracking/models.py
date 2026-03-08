@@ -1,7 +1,7 @@
 """Pydantic models for the Tracking service."""
 
 from datetime import date, datetime
-from enum import Enum
+from enum import StrEnum
 
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -10,7 +10,7 @@ from pydantic import BaseModel, ConfigDict, Field
 # ---------------------------------------------------------------------------
 
 
-class TrackingStage(str, Enum):
+class TrackingStage(StrEnum):
     received_china = "received_china"
     packed = "packed"
     in_transit = "in_transit"

@@ -1,10 +1,10 @@
 """Pydantic request/response models for the Excel import/export service."""
-from enum import Enum
+from enum import StrEnum
 
 from pydantic import BaseModel
 
 
-class ExportFormat(str, Enum):
+class ExportFormat(StrEnum):
     xlsx = "xlsx"
     csv = "csv"
     pdf = "pdf"

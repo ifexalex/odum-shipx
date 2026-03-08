@@ -1,10 +1,10 @@
 """Tenant context extraction and validation."""
 
 from dataclasses import dataclass, field
-from enum import Enum
+from enum import StrEnum
 
 
-class UserRole(str, Enum):
+class UserRole(StrEnum):
     PLATFORM_ADMIN = "platform_admin"
     TENANT_ADMIN = "tenant_admin"
     CHINA_OFFICE_STAFF = "china_office_staff"

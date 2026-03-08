@@ -2,7 +2,7 @@
 
 from datetime import datetime
 from decimal import Decimal
-from enum import Enum
+from enum import StrEnum
 from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field
@@ -12,7 +12,7 @@ from pydantic import BaseModel, ConfigDict, Field
 # ---------------------------------------------------------------------------
 
 
-class VerificationStatus(str, Enum):
+class VerificationStatus(StrEnum):
     pending = "pending"
     verified = "verified"
     discrepancies_found = "discrepancies_found"

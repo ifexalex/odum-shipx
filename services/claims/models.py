@@ -2,7 +2,7 @@
 
 from datetime import datetime
 from decimal import Decimal
-from enum import Enum
+from enum import StrEnum
 
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -11,7 +11,7 @@ from pydantic import BaseModel, ConfigDict, Field
 # ---------------------------------------------------------------------------
 
 
-class DamageClaimStatus(str, Enum):
+class DamageClaimStatus(StrEnum):
     filed = "filed"
     under_inspection = "under_inspection"
     inspection_complete = "inspection_complete"
@@ -20,25 +20,25 @@ class DamageClaimStatus(str, Enum):
     closed = "closed"
 
 
-class InspectionMethod(str, Enum):
+class InspectionMethod(StrEnum):
     delegate_visit = "delegate_visit"
     customer_evidence = "customer_evidence"
 
 
-class ResolutionType(str, Enum):
+class ResolutionType(StrEnum):
     refund = "refund"
     discount = "discount"
     no_action = "no_action"
     compensation = "compensation"
 
 
-class ApprovalLevel(str, Enum):
+class ApprovalLevel(StrEnum):
     nigeria_staff = "nigeria_staff"
     tenant_admin = "tenant_admin"
     head_of_finance = "head_of_finance"
 
 
-class MissingItemStatus(str, Enum):
+class MissingItemStatus(StrEnum):
     reported = "reported"
     investigating = "investigating"
     found_and_shipping = "found_and_shipping"
@@ -46,7 +46,7 @@ class MissingItemStatus(str, Enum):
     resolved = "resolved"
 
 
-class SeizedItemStatus(str, Enum):
+class SeizedItemStatus(StrEnum):
     seized = "seized"
     recovery_in_progress = "recovery_in_progress"
     recovered = "recovered"

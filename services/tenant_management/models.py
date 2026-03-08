@@ -2,7 +2,7 @@
 
 from datetime import datetime
 from decimal import Decimal
-from enum import Enum
+from enum import StrEnum
 from typing import Any
 
 from pydantic import BaseModel, ConfigDict, Field
@@ -12,19 +12,19 @@ from pydantic import BaseModel, ConfigDict, Field
 # ---------------------------------------------------------------------------
 
 
-class SubscriptionTier(str, Enum):
+class SubscriptionTier(StrEnum):
     starter = "starter"
     business = "business"
     enterprise = "enterprise"
 
 
-class TenantStatus(str, Enum):
+class TenantStatus(StrEnum):
     active = "active"
     suspended = "suspended"
     offboarded = "offboarded"
 
 
-class TenantUserRole(str, Enum):
+class TenantUserRole(StrEnum):
     tenant_admin = "tenant_admin"
     china_office_staff = "china_office_staff"
     nigeria_office_staff = "nigeria_office_staff"
@@ -32,7 +32,7 @@ class TenantUserRole(str, Enum):
     customer = "customer"
 
 
-class TenantUserStatus(str, Enum):
+class TenantUserStatus(StrEnum):
     active = "active"
     deactivated = "deactivated"
 

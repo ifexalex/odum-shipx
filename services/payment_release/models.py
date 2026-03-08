@@ -2,7 +2,7 @@
 
 from datetime import date, datetime
 from decimal import Decimal
-from enum import Enum
+from enum import StrEnum
 
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -11,14 +11,14 @@ from pydantic import BaseModel, ConfigDict, Field
 # ---------------------------------------------------------------------------
 
 
-class ReleaseNoteStatus(str, Enum):
+class ReleaseNoteStatus(StrEnum):
     active = "active"
     picked_up = "picked_up"
     expired = "expired"
     cancelled = "cancelled"
 
 
-class DelegateIdType(str, Enum):
+class DelegateIdType(StrEnum):
     national_id = "national_id"
     drivers_license = "drivers_license"
     passport = "passport"
