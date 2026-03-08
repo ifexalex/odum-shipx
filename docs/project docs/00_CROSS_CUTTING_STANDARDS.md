@@ -1,0 +1,493 @@
+# Cross-Cutting Engineering Standards
+
+> **Read this first.** Every task file in this project MUST conform to these standards. This document captures conventions derived from the API Architect and DevOps Engineer instruction sets that apply across all tasks.
+
+---
+
+## 1. Request/Response Conventions
+
+### 1.1 Correlation & Traceability
+
+Every Lambda handler MUST:
+- Generate a `request_id` (UUID v4) at the start of every invocation
+- Propagate it through all service/repository calls and into EventBridge events
+- Return it in the `X-Request-Id` response header
+- Include it in every structured log line
+
+```python
+import uuid
+
+def lambda_handler(event, context):
+    request_id = event.get("requestContext", {}).get("requestId", str(uuid.uuid4()))
+    # Pass request_id into service calls and log context
+```
+
+### 1.2 Idempotency for Mutating Operations
+
+All `POST` endpoints that create resources MUST support an optional `Idempotency-Key` header:
+- Extract from `event["headers"].get("idempotency-key")`
+- If present, check a short-lived cache or DB table before processing
+- If the key was seen within the last 24 hours, return the original response (HTTP 200, not 201)
+- Store: `idempotency_key VARCHAR(100), response_body JSONB, created_at TIMESTAMPTZ` in a lightweight table
+- This prevents duplicate tenant creation, duplicate payments, duplicate claims, etc.
+
+Implementation goes in `shared/idempotency.py` (Task 06).
+
+### 1.3 Standard HTTP Status Codes
+
+| Operation | Success Code | Notes |
+|---|---|---|
+| GET (single) | 200 | |
+| GET (list) | 200 | With pagination meta |
+| POST (create) | 201 | Include `Location` header with resource URI |
+| PUT (full replace) | 200 | |
+| PATCH (partial update) | 200 | |
+| PATCH (state transition) | 200 | |
+| DELETE | 204 | No body |
+| Validation failure | 422 | RFC 7807 with field errors |
+| Auth missing | 401 | |
+| Auth insufficient | 403 | |
+| Not found | 404 | Do NOT return 403 for wrong-tenant — always 404 (prevents enumeration) |
+| Illegal state transition | 409 | |
+| Rate limit | 429 | Include `Retry-After` header |
+| Tier limit exceeded | 429 | |
+| Server error | 500 | |
+
+### 1.4 Standard Response Headers
+
+Every response MUST include:
+```
+Content-Type: application/json
+X-Request-Id: {request_id}
+X-Content-Type-Options: nosniff
+Strict-Transport-Security: max-age=31536000; includeSubDomains
+Cache-Control: no-store
+```
+
+CORS headers (set at API Gateway level, but also safe to include):
+```
+Access-Control-Allow-Origin: {configured_origins}
+Access-Control-Allow-Methods: GET, POST, PUT, PATCH, DELETE, OPTIONS
+Access-Control-Allow-Headers: Content-Type, Authorization, Idempotency-Key
+Access-Control-Expose-Headers: X-Request-Id
+Access-Control-Max-Age: 86400
+```
+
+### 1.5 Standard Error Catalog
+
+Every error code used across all services:
+
+| Error Code | HTTP | Used By |
+|---|---|---|
+| `AUTHENTICATION_REQUIRED` | 401 | shared/auth.py |
+| `TENANT_SUSPENDED` | 403 | shared/auth.py |
+| `TENANT_OFFBOARDED` | 410 | shared/auth.py (tenant closed, data erasure scheduled) |
+| `INSUFFICIENT_PERMISSIONS` | 403 | shared/auth.py, all services |
+| `RESOURCE_NOT_FOUND` | 404 | all services |
+| `ILLEGAL_TRANSITION` | 409 | packing_list, tracking, billing, claims, refunds |
+| `DUPLICATE_RESOURCE` | 409 | tenant_management, packing_list |
+| `IDEMPOTENCY_CONFLICT` | 409 | shared/idempotency.py |
+| `BUSINESS_RULE_VIOLATION` | 422 | all services |
+| `VALIDATION_ERROR` | 422 | all services |
+| `PAYMENT_REQUIRED` | 422 | payment_release |
+| `SELF_APPROVAL_FORBIDDEN` | 422 | packing_list |
+| `APPROVAL_THRESHOLD_EXCEEDED` | 403 | claims, refunds |
+| `USAGE_LIMIT_EXCEEDED` | 429 | metering |
+| `RATE_LIMIT_EXCEEDED` | 429 | API Gateway |
+| `INTERNAL_ERROR` | 500 | global handler |
+| `EXTERNAL_SERVICE_ERROR` | 502 | notifications (Africa's Talking, Meta, SES) |
+
+---
+
+## 2. Input Validation Standards
+
+### 2.1 Field-Level Constraints
+
+All Pydantic models MUST enforce:
+
+| Field Type | Constraint |
+|---|---|
+| `company_name` | `min_length=2, max_length=255` |
+| `email` | Pydantic `EmailStr`, max_length=255 |
+| `phone` | `pattern=r"^\+?[1-9]\d{6,14}$"`, max_length=20 |
+| `description` | `min_length=1, max_length=2000` |
+| `notes` | `max_length=5000` |
+| `container_number` | `pattern=r"^[A-Z]{4}\d{7}$"`, max_length=11 |
+| `carton_tag` | `max_length=100` |
+| `tracking_code` | `max_length=100` |
+| `reference_number` | `max_length=100` |
+| All monetary Decimal | `ge=0, decimal_places=2` |
+| All weight Decimal | `ge=0, decimal_places=3` |
+| All dimension Decimal | `ge=0, decimal_places=2` |
+| CBM Decimal | `ge=0, decimal_places=6` |
+| UUID string fields | `pattern=r"^[0-9a-f]{8}-[0-9a-f]{4}-..."` or use Pydantic `UUID4` |
+| List fields | `max_length=500` (prevent unbounded payloads) |
+| JSONB config | `max_length=65536` (64KB max for branding, notification prefs) |
+
+### 2.2 SQL Injection Prevention (Defense in Depth)
+
+Even though RLS and parameterized queries are the primary defense:
+- NEVER use f-strings or string concatenation for SQL
+- Always use `%s` placeholders with psycopg2
+- Validate all sort/filter column names against an allowlist
+- Sanitize any user input used in S3 key construction
+
+```python
+ALLOWED_SORT_FIELDS = {"created_at", "updated_at", "name", "status"}
+
+def validate_sort_field(field: str) -> str:
+    clean = field.lstrip("-")
+    if clean not in ALLOWED_SORT_FIELDS:
+        raise ValidationError(f"Invalid sort field: {clean}")
+    return field
+```
+
+---
+
+## 3. Structured Logging Standard
+
+All Lambda functions MUST use JSON structured logging:
+
+```python
+import logging
+import json
+import os
+
+class StructuredFormatter(logging.Formatter):
+    def format(self, record):
+        log_entry = {
+            "timestamp": self.formatTime(record),
+            "level": record.levelname,
+            "service": os.environ.get("SERVICE_NAME", "unknown"),
+            "environment": os.environ.get("ENVIRONMENT", "unknown"),
+            "request_id": getattr(record, "request_id", None),
+            "tenant_id": getattr(record, "tenant_id", None),
+            "message": record.getMessage(),
+            "logger": record.name,
+        }
+        if record.exc_info:
+            log_entry["exception"] = self.formatException(record.exc_info)
+        return json.dumps(log_entry, default=str)
+```
+
+**Required log events:**
+- `INFO` — every request entry (method, path, tenant_id, user_role)
+- `INFO` — every request exit (status_code, duration_ms)
+- `INFO` — every state transition (entity, from_state, to_state)
+- `INFO` — every event published (event_type, detail_type)
+- `WARNING` — business rule violations, authorization failures
+- `ERROR` — unhandled exceptions, external service failures
+- `DEBUG` — SQL queries (only in dev, never in prod)
+
+---
+
+## 4. Caching Strategy
+
+### 4.1 Tenant Status Cache — Distributed (Redis)
+- **Tenant status** (`active` / `suspended` / `offboarded`) is cached in **ElastiCache Redis** (`cache.t4g.micro`) with a 60-second TTL.
+- Implementation: `shared/distributed_cache.py` — `DistributedCache` class; same interface as `shared/cache.py`.
+- Key format: `tenant_status:{tenant_id}` — explicit prefix to avoid collisions.
+- **Why distributed, not in-memory:** Lambda scales horizontally. An in-memory dict is per-instance only — a suspended tenant could still transact on all other warm instances until their individual TTL expires. Redis ensures all instances see the same status within the TTL window.
+- **Explicit invalidation on status change:** `suspend_tenant`, `offboard_tenant`, `activate_tenant`, and `reactivate_tenant` all call `_tenant_status_cache.delete(tenant_id)` immediately after the DB write, eliminating the TTL lag for the critical path.
+- **Fail-soft:** Redis errors are logged as warnings; `get()` returns `None`, which causes a DB fallback. Redis is an optimisation layer, not a hard dependency.
+- **Local dev:** Redis 7 Alpine container on port 6379 (`shipx_redis` in `docker-compose.local.yml`). `REDIS_HOST=localhost` in `.env.local`.
+- **Production:** ElastiCache cluster endpoint injected as `REDIS_HOST` Lambda env var via Terraform.
+
+### 4.2 Tenant Configuration Cache — In-memory
+- Tenant config (dollar_rate, cbm_rate, storage_fee settings) is still cached **in-memory** per Lambda instance (`shared/cache.py`) with 60-second TTL.
+- These are read-heavy, write-rare values. Eventual consistency across instances is acceptable — the worst case is one extra DB read.
+
+### 4.3 No Cache on Transactional Data
+- NEVER cache: billing, payments, packing lists, claims, refunds
+- These must always read from DB for consistency
+
+---
+
+## 5. Circuit Breaker for External Services
+
+Notification Lambdas calling external APIs (Africa's Talking, Meta WhatsApp) MUST implement a circuit breaker:
+
+```python
+# shared/circuit_breaker.py
+import time
+from enum import Enum
+
+class CircuitState(Enum):
+    CLOSED = "closed"       # Normal operation
+    OPEN = "open"           # Failing, reject requests
+    HALF_OPEN = "half_open" # Testing recovery
+
+class CircuitBreaker:
+    def __init__(self, failure_threshold: int = 5, recovery_timeout: int = 60):
+        self.failure_threshold = failure_threshold
+        self.recovery_timeout = recovery_timeout
+        self.failure_count = 0
+        self.state = CircuitState.CLOSED
+        self.last_failure_time = 0
+
+    def call(self, func, *args, **kwargs):
+        if self.state == CircuitState.OPEN:
+            if time.time() - self.last_failure_time > self.recovery_timeout:
+                self.state = CircuitState.HALF_OPEN
+            else:
+                raise ExternalServiceError("Circuit breaker open")
+        try:
+            result = func(*args, **kwargs)
+            self._on_success()
+            return result
+        except Exception as e:
+            self._on_failure()
+            raise
+
+    def _on_success(self):
+        self.failure_count = 0
+        self.state = CircuitState.CLOSED
+
+    def _on_failure(self):
+        self.failure_count += 1
+        self.last_failure_time = time.time()
+        if self.failure_count >= self.failure_threshold:
+            self.state = CircuitState.OPEN
+```
+
+---
+
+## 6. Terraform Standards (All Modules)
+
+### 6.1 Required Provider Block (every module's `versions.tf`)
+```hcl
+terraform {
+  required_version = ">= 1.7.0"
+  required_providers {
+    aws = {
+      source  = "hashicorp/aws"
+      version = "~> 5.40"
+    }
+  }
+}
+```
+
+### 6.2 Remote State Backend (`infrastructure/backend.tf`)
+```hcl
+terraform {
+  backend "s3" {
+    bucket         = "logistics-terraform-state-{account_id}"
+    key            = "logistics/{environment}/terraform.tfstate"
+    region         = "eu-west-1"
+    dynamodb_table = "logistics-terraform-locks"
+    encrypt        = true
+  }
+}
+```
+
+### 6.3 Default Tags (all resources)
+```hcl
+locals {
+  common_tags = {
+    Project     = var.project_name
+    Environment = var.environment
+    ManagedBy   = "terraform"
+    CostCenter  = "logistics-platform"
+    Owner       = "platform-engineering"
+  }
+}
+
+provider "aws" {
+  region = var.aws_region
+  default_tags {
+    tags = local.common_tags
+  }
+}
+```
+
+### 6.4 Security Group Lifecycle
+```hcl
+resource "aws_security_group" "example" {
+  # ...
+  lifecycle {
+    create_before_destroy = true
+  }
+}
+```
+
+### 6.5 Naming Convention
+All resources: `{project}-{component}-{environment}`
+Examples: `logistics-aurora-prod`, `logistics-lambda-billing-dev`, `logistics-sqs-sms-staging`
+
+---
+
+## 7. Observability Standards
+
+### 7.1 AWS X-Ray Tracing
+All Lambda functions MUST have X-Ray tracing enabled:
+```hcl
+resource "aws_lambda_function" "example" {
+  tracing_config {
+    mode = "Active"
+  }
+}
+```
+
+Application code should use `aws-xray-sdk`:
+```python
+from aws_xray_sdk.core import xray_recorder, patch_all
+patch_all()  # Patches boto3, psycopg2, requests automatically
+```
+
+### 7.2 CloudWatch Custom Metrics
+Each service should emit:
+- `RequestCount` — per endpoint
+- `RequestDuration` — per endpoint (milliseconds)
+- `ErrorCount` — per error_code
+- `StateTransitionCount` — per entity type and transition
+
+Use CloudWatch Embedded Metrics Format for zero-cost metric emission from logs.
+
+### 7.3 Health Check Contract
+`GET /v1/health` returns:
+```json
+{
+  "status": "healthy",
+  "version": "1.0.0",
+  "environment": "prod",
+  "timestamp": "2026-02-22T10:30:00Z",
+  "checks": {
+    "database": "healthy",
+    "event_bus": "healthy"
+  }
+}
+```
+
+---
+
+## 8. Security Standards
+
+### 8.1 Secrets Management
+- All secrets stored in AWS Secrets Manager
+- Lambda retrieves secrets at cold start, caches in memory
+- Secrets rotation: automatic 90-day rotation for DB passwords
+- Never log secrets, tokens, or passwords
+
+### 8.2 Encryption
+- Data at rest: AES-256 (S3, Aurora, SQS SSE)
+- Data in transit: TLS 1.2+ (API Gateway enforces HTTPS)
+- Secrets Manager: AWS-managed KMS key
+
+### 8.3 Least Privilege IAM
+- Each Lambda has its own IAM role
+- Permissions scoped to specific resources (not `*`)
+- Example: Claims Lambda gets `s3:PutObject` only on `arn:aws:s3:::logistics-assets-*/*/claims/*`
+
+---
+
+## 9. Disaster Recovery
+
+### 9.1 Aurora Backups
+- Automated backups: 7-day retention (prod), 1-day (dev)
+- Point-in-time recovery enabled
+- Weekly manual snapshots exported to S3 (cross-region: eu-central-1)
+- Backup window: 03:00–04:00 UTC (low traffic)
+- Maintenance window: Sun 05:00–06:00 UTC
+
+### 9.2 S3 Versioning
+- Enabled on all buckets
+- Lifecycle: previous versions expire after 30 days
+- Cross-region replication for prod (eu-central-1)
+
+### 9.3 Recovery Targets
+- RTO (Recovery Time Objective): 1 hour
+- RPO (Recovery Point Objective): 5 minutes (Aurora continuous backup)
+
+---
+
+## 10. Cost Optimization
+
+### 10.1 Lambda Right-Sizing
+- Start with specified memory, monitor with Lambda Power Tuning
+- Use ARM64 (Graviton2) for 20% cost reduction: `architectures = ["arm64"]`
+
+### 10.2 Aurora Auto-Pause
+- Dev/staging: auto-pause after 10 minutes idle
+- Prod: NO auto-pause (cold start is 25-30 seconds)
+
+### 10.3 Cost Allocation Tags
+All resources tagged with `CostCenter = "logistics-platform"` for billing reports.
+
+---
+
+## 11. GDPR & Privacy Standards
+
+### 11.1 GDPR Fields (migration 012)
+
+The following columns were added to support GDPR compliance:
+
+| Table | Column | Purpose |
+|---|---|---|
+| `customer` | `anonymised_at TIMESTAMPTZ` | Set when customer record is anonymised (Art. 17 erasure) |
+| `customer` | `consent_given_at TIMESTAMPTZ` | Timestamp of explicit consent |
+| `customer` | `notification_consent TEXT[]` | Channels consented to: `'sms'`, `'whatsapp'`, `'email'` |
+| `tenant_user` | `consent_given_at TIMESTAMPTZ` | Timestamp of staff explicit consent |
+| `tenant_user` | `marketing_consent BOOLEAN` | Whether staff opted into marketing |
+
+### 11.2 Right to Erasure (Art. 17)
+
+`DELETE /v1/customers/{id}` (tenant_admin only) anonymises the customer record — it does NOT hard-delete, because FK constraints from billing/shipment_tracking/damage_claim would be violated. The following fields are nulled:
+
+```
+name → 'Anonymised'
+email, phone, whatsapp, address, contract_details, user_id → NULL
+anonymised_at → NOW()
+```
+
+The UUID shell is retained for FK integrity. All API reads still return the anonymised record with PII stripped.
+
+### 11.3 Data Portability (Art. 20)
+
+`GET /v1/customers/{id}/export` (tenant_admin or the customer themselves) returns a JSON bundle with the customer's full data: billing summary, shipments, claims, and exported_at timestamp.
+
+### 11.4 Audit Log PII Masking
+
+`shared/audit.py` masks sensitive fields in `before_state` / `after_state` snapshots. Masked fields:
+
+```python
+_AUDIT_SENSITIVE_FIELDS = frozenset({
+    "id_number",       # passport / national ID
+    "account_number",  # bank account
+    "account_name",
+    "bank_name",
+    "delegate_phone",
+    "collected_by_phone",
+})
+```
+
+### 11.5 Notification PII in Logs
+
+Handlers MUST NOT log PII in CloudWatch. Specifically prohibited in log `extra` dicts:
+- `email`, `phone`, `whatsapp` — use only `tenant_id`, `request_id`
+
+---
+
+## 12. Application-Level Field Encryption
+
+Sensitive PII fields are encrypted at the application layer using AWS KMS + Fernet (AES-256). Implemented in `shared/encryption.py` (migration 013 documents which columns are encrypted).
+
+### 12.1 Encrypted Columns
+
+| Table | Column | Reason |
+|---|---|---|
+| `pickup_record` | `id_number` | Passport / national ID number |
+| `refund_request` | `account_number` | Bank account number |
+| `refund_request` | `account_name` | Bank account name |
+
+### 12.2 Encryption Scheme
+
+```
+plaintext → KMS GenerateDataKey (AES-256) → Fernet encrypt
+→ base64(encrypted_key_blob + "||" + ciphertext) → stored in DB column
+```
+
+Decryption calls `KMS Decrypt` to recover the data key, then Fernet decrypts the ciphertext. No plaintext key material is ever stored in the database.
+
+### 12.3 Required Environment Variable
+
+`ENCRYPTION_KMS_KEY_ID` — ARN of the KMS key used for field encryption. Must be set in all Lambda environments that read/write the encrypted columns (payment_release and refunds services).

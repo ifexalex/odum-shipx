@@ -1,0 +1,31 @@
+[project]
+name = "logistics-system"
+version = "1.0.0"
+description = "Multi-tenant Logistics & Cargo Management System"
+requires-python = ">=3.12"
+
+[tool.ruff]
+target-version = "py312"
+line-length = 120
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "N", "W", "UP", "B", "SIM", "S"]  # S = bandit rules
+
+[tool.mypy]
+python_version = "3.12"
+strict = true
+plugins = ["pydantic.mypy"]
+warn_return_any = true
+warn_unused_configs = true
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+python_files = ["test_*.py"]
+python_functions = ["test_*"]
+addopts = "-v --tb=short --strict-markers"
+markers = [
+    "unit: Unit tests (no external dependencies)",
+    "integration: Integration tests (requires database)",
+    "isolation: Tenant isolation tests (requires database)",
+    "load: Load/performance tests",
+]

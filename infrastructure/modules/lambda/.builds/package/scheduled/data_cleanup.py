@@ -1,0 +1,240 @@
+"""Tenant Data Cleanup — runs daily at 02:00 UTC.
+
+For each tenant with status = 'offboarded':
+  If (NOW() - offboarded_at) > 90 days:
+    1. Delete all tenant data in FK-safe order.
+    2. Delete tenant S3 prefix (TENANT_DATA_BUCKET / tenant_id/).
+    3. Delete Cognito users for this tenant (COGNITO_USER_POOL_ID).
+    4. Delete the tenant record itself.
+    5. Log in audit_log (platform scope).
+"""
+
+import logging
+import os
+from datetime import datetime, timedelta, timezone
+
+import boto3
+
+from aws_xray_sdk.core import patch_all
+
+from shared.audit import log_audit
+from shared.db import execute_with_tenant, execute_write_with_tenant
+from shared.logging_config import setup_logging
+from shared.tenant_context import PLATFORM_TENANT_ID
+
+setup_logging()
+patch_all()
+
+logger = logging.getLogger(__name__)
+
+_RETENTION_DAYS = 90
+_SYSTEM_ACTOR = "system"
+_SYSTEM_ROLE = "scheduler"
+
+# Tables deleted in FK-safe leaf-first order
+_DELETE_ORDER = [
+    "storage_fee_log",
+    "pickup_record",
+    "release_note",
+    "payment_record",
+    "carryover_ledger",
+    "damage_claim_evidence",
+    "refund_request",
+    "damage_claim",
+    "cbm_dispute",
+    "audit_log",
+    "usage_record",
+    "shipment_tracking",
+    "packing_list_item",
+    "packing_list",
+    "billing",
+    "container",
+    "customer",
+    "tenant_user",
+    "tenant_config",
+]
+
+# Module-level boto3 clients
+_s3_client = None
+_cognito_client = None
+
+
+def _get_s3():
+    global _s3_client
+    if _s3_client is None:
+        _s3_client = boto3.client(
+            "s3", region_name=os.environ.get("AWS_REGION", "eu-west-1")
+        )
+    return _s3_client
+
+
+def _get_cognito():
+    global _cognito_client
+    if _cognito_client is None:
+        _cognito_client = boto3.client(
+            "cognito-idp",
+            region_name=os.environ.get("AWS_REGION", "eu-west-1"),
+        )
+    return _cognito_client
+
+
+# ---------------------------------------------------------------------------
+# Lambda entry point
+# ---------------------------------------------------------------------------
+
+
+def lambda_handler(event: dict, context) -> dict:
+    now = datetime.now(timezone.utc)
+    cutoff = now - timedelta(days=_RETENTION_DAYS)
+
+    tenants = _get_offboarded_tenants(cutoff)
+    deleted = errors = 0
+
+    for tenant in tenants:
+        tenant_id = str(tenant["id"])
+        try:
+            _delete_tenant(tenant_id, tenant)
+            deleted += 1
+            logger.info("Tenant data deleted: %s", tenant_id)
+        except Exception:
+            logger.exception(
+                "Data cleanup failed for tenant %s", tenant_id
+            )
+            errors += 1
+
+    logger.info(
+        "Data cleanup job done: deleted=%d errors=%d",
+        deleted, errors,
+    )
+    return {"deleted": deleted, "errors": errors}
+
+
+# ---------------------------------------------------------------------------
+# Tenant deletion
+# ---------------------------------------------------------------------------
+
+
+def _delete_tenant(tenant_id: str, tenant: dict) -> None:
+    # 1. Delete all relational data in FK-safe order
+    for table in _DELETE_ORDER:
+        try:
+            execute_write_with_tenant(
+                PLATFORM_TENANT_ID,
+                f"DELETE FROM {table} WHERE tenant_id = %(tenant_id)s",  # noqa: S608
+                {"tenant_id": tenant_id},
+            )
+        except Exception:
+            logger.exception(
+                "Failed to delete %s rows for tenant %s", table, tenant_id
+            )
+            raise
+
+    # 2. Delete S3 prefix
+    _delete_s3_prefix(tenant_id)
+
+    # 3. Delete Cognito users
+    _delete_cognito_users(tenant_id)
+
+    # 4. Delete tenant record
+    execute_write_with_tenant(
+        PLATFORM_TENANT_ID,
+        "DELETE FROM tenant WHERE id = %(tenant_id)s",
+        {"tenant_id": tenant_id},
+    )
+
+    # 5. Log in audit_log (platform scope)
+    log_audit(
+        tenant_id=PLATFORM_TENANT_ID,
+        entity_type="tenant",
+        entity_id=tenant_id,
+        action="DELETE",
+        actor_id=_SYSTEM_ACTOR,
+        actor_role=_SYSTEM_ROLE,
+        before_state={
+            "tenant_id":    tenant_id,
+            "offboarded_at": str(tenant.get("offboarded_at")),
+        },
+    )
+
+
+def _delete_s3_prefix(tenant_id: str) -> None:
+    bucket = os.environ.get("TENANT_DATA_BUCKET", "")
+    if not bucket:
+        logger.warning("TENANT_DATA_BUCKET not set — S3 cleanup skipped for %s", tenant_id)
+        return
+
+    prefix = f"{tenant_id}/"
+    s3 = _get_s3()
+    paginator = s3.get_paginator("list_objects_v2")
+
+    try:
+        for page in paginator.paginate(Bucket=bucket, Prefix=prefix):
+            objects = page.get("Contents", [])
+            if not objects:
+                continue
+            s3.delete_objects(
+                Bucket=bucket,
+                Delete={"Objects": [{"Key": obj["Key"]} for obj in objects]},
+            )
+            logger.info(
+                "Deleted %d S3 objects for tenant %s", len(objects), tenant_id
+            )
+    except Exception:
+        logger.exception("S3 cleanup failed for tenant %s", tenant_id)
+        # Non-fatal — continue with Cognito + DB deletion
+
+
+def _delete_cognito_users(tenant_id: str) -> None:
+    pool_id = os.environ.get("COGNITO_USER_POOL_ID", "")
+    if not pool_id:
+        logger.warning(
+            "COGNITO_USER_POOL_ID not set — Cognito cleanup skipped for %s",
+            tenant_id,
+        )
+        return
+
+    cognito = _get_cognito()
+    paginator = cognito.get_paginator("list_users")
+
+    try:
+        for page in paginator.paginate(
+            UserPoolId=pool_id,
+            Filter=f'custom:tenant_id = "{tenant_id}"',
+        ):
+            for user in page.get("Users", []):
+                username = user["Username"]
+                try:
+                    cognito.admin_delete_user(
+                        UserPoolId=pool_id, Username=username
+                    )
+                    logger.info(
+                        "Deleted Cognito user %s for tenant %s",
+                        username, tenant_id,
+                    )
+                except Exception:
+                    logger.exception(
+                        "Failed to delete Cognito user %s", username
+                    )
+    except Exception:
+        logger.exception("Cognito cleanup failed for tenant %s", tenant_id)
+        # Non-fatal
+
+
+# ---------------------------------------------------------------------------
+# Helpers
+# ---------------------------------------------------------------------------
+
+
+def _get_offboarded_tenants(cutoff: datetime) -> list[dict]:
+    return execute_with_tenant(
+        PLATFORM_TENANT_ID,
+        """
+        SELECT id, offboarded_at
+        FROM tenant
+        WHERE status = 'offboarded'
+          AND offboarded_at IS NOT NULL
+          AND offboarded_at < %s
+        ORDER BY offboarded_at ASC
+        """,
+        (cutoff,),
+    )

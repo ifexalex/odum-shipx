@@ -1,0 +1,4512 @@
+{
+  "info": {
+    "_postman_id": "shipx-local-v1",
+    "name": "ShipX Logistics API \u2014 Local",
+    "description": "Local development Postman collection for ShipX Logistics Platform.\n\n## Setup\n1. Start local services + bootstrap + migrate + seed: `make stack`\n2. Start API server: `make dev`\n3. Import this collection into Postman\n\n## Auth\nAuth is simulated via request headers (no JWT needed locally):\n- `X-Tenant-ID`: tenant UUID\n- `X-Role`: role name\n- `X-User-ID`: user UUID\n\n## Available Roles\n- `nigeria_office_staff` \u2014 back-office staff (default)\n- `tenant_admin` \u2014 tenant administrator\n- `warehouse_attendant` \u2014 warehouse staff\n- `customer` \u2014 customer\n- `china_office_staff` \u2014 China-side staff\n- `platform_admin` \u2014 platform superadmin\n\n## Workflow\n1. Create a Customer\n2. Create a Container\n3. Create a Packing List for the customer + container\n4. Submit \u2192 Approve packing list (manifest auto-created)\n5. Verify manifest\n6. Generate billing \u2192 Confirm payment\n7. Generate release note \u2192 Record pickup",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    {
+      "key": "platform_tenant_id",
+      "value": "PLATFORM",
+      "type": "string"
+    },
+    {
+      "key": "base_url",
+      "value": "http://localhost:3000",
+      "type": "string"
+    },
+    {
+      "key": "tenant_id",
+      "value": "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa",
+      "type": "string"
+    },
+    {
+      "key": "role",
+      "value": "nigeria_office_staff",
+      "type": "string"
+    },
+    {
+      "key": "user_id",
+      "value": "bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb",
+      "type": "string"
+    },
+    {
+      "key": "container_id",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "customer_id",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "billing_id",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "packing_list_id",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "manifest_id",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "claim_id",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "refund_id",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "release_note_id",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "dispute_id",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "carryover_id",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "charge_id",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "missing_item_id",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "seized_item_id",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "charge_type_id",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "user_mgmt_id",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "tracking_code",
+      "value": "SHX-00001",
+      "type": "string"
+    }
+  ],
+  "item": [
+    {
+      "name": "Health Check",
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": {
+          "raw": "{{base_url}}/health",
+          "host": [
+            "{{base_url}}"
+          ],
+          "path": [
+            "health"
+          ]
+        }
+      }
+    },
+    {
+      "name": "1. Platform Admin",
+      "description": "Super-admin routes for managing tenants and platform settings.\nSet X-Role to `platform_admin` for these endpoints.",
+      "item": [
+        {
+          "name": "Get Dashboard",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "X-Tenant-ID",
+                "value": "{{platform_tenant_id}}"
+              },
+              {
+                "key": "X-Role",
+                "value": "platform_admin"
+              },
+              {
+                "key": "X-User-ID",
+                "value": "{{user_id}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/v1/platform/dashboard",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "v1",
+                "platform",
+                "dashboard"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Get Audit Log",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "X-Tenant-ID",
+                "value": "{{platform_tenant_id}}"
+              },
+              {
+                "key": "X-Role",
+                "value": "platform_admin"
+              },
+              {
+                "key": "X-User-ID",
+                "value": "{{user_id}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/v1/platform/audit-log?limit=50&tenant_id=&action=&cursor=",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "v1",
+                "platform",
+                "audit-log"
+              ],
+              "query": [
+                {
+                  "key": "limit",
+                  "value": "50"
+                },
+                {
+                  "key": "tenant_id",
+                  "value": "",
+                  "description": "Filter by target tenant UUID (optional)",
+                  "disabled": true
+                },
+                {
+                  "key": "action",
+                  "value": "",
+                  "description": "Filter by action e.g. TENANT_UPDATED, TENANT_CREATED (optional)",
+                  "disabled": true
+                },
+                {
+                  "key": "cursor",
+                  "value": "",
+                  "description": "Pagination cursor from previous response (optional)",
+                  "disabled": true
+                }
+              ]
+            }
+          }
+        },
+        {
+          "name": "Get Platform Settings",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "X-Tenant-ID",
+                "value": "{{platform_tenant_id}}"
+              },
+              {
+                "key": "X-Role",
+                "value": "platform_admin"
+              },
+              {
+                "key": "X-User-ID",
+                "value": "{{user_id}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/v1/platform/settings",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "v1",
+                "platform",
+                "settings"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Update Platform Settings",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "X-Tenant-ID",
+                "value": "{{platform_tenant_id}}"
+              },
+              {
+                "key": "X-Role",
+                "value": "platform_admin"
+              },
+              {
+                "key": "X-User-ID",
+                "value": "{{user_id}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"maintenance_mode\": false,\n  \"default_subscription_tier\": \"starter\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/v1/platform/settings",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "v1",
+                "platform",
+                "settings"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Create Tenant",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "X-Tenant-ID",
+                "value": "{{platform_tenant_id}}"
+              },
+              {
+                "key": "X-Role",
+                "value": "platform_admin"
+              },
+              {
+                "key": "X-User-ID",
+                "value": "{{user_id}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"company_name\": \"Acme Logistics Ltd\",\n  \"primary_contact_email\": \"admin@acme.com\",\n  \"primary_contact_phone\": \"+2348012345678\",\n  \"origin_country\": \"China\",\n  \"destination_country\": \"Nigeria\",\n  \"subscription_tier\": \"starter\",\n  \"initial_admin\": {\n    \"email\": \"admin@acme.com\",\n    \"full_name\": \"Acme Admin\"\n  }\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/v1/platform/tenants",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "v1",
+                "platform",
+                "tenants"
+              ]
+            }
+          }
+        },
+        {
+          "name": "List Tenants",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "X-Tenant-ID",
+                "value": "{{platform_tenant_id}}"
+              },
+              {
+                "key": "X-Role",
+                "value": "platform_admin"
+              },
+              {
+                "key": "X-User-ID",
+                "value": "{{user_id}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/v1/platform/tenants?limit=20",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "v1",
+                "platform",
+                "tenants"
+              ],
+              "query": [
+                {
+                  "key": "limit",
+                  "value": "20"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "name": "Get Tenant",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "X-Tenant-ID",
+                "value": "{{platform_tenant_id}}"
+              },
+              {
+                "key": "X-Role",
+                "value": "platform_admin"
+              },
+              {
+                "key": "X-User-ID",
+                "value": "{{user_id}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/v1/platform/tenants/{{tenant_id}}",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "v1",
+                "platform",
+                "tenants",
+                "{{tenant_id}}"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Update Tenant",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "X-Tenant-ID",
+                "value": "{{platform_tenant_id}}"
+              },
+              {
+                "key": "X-Role",
+                "value": "platform_admin"
+              },
+              {
+                "key": "X-User-ID",
+                "value": "{{user_id}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"company_name\": \"Acme Logistics Ltd (Updated)\",\n  \"subscription_tier\": \"business\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/v1/platform/tenants/{{tenant_id}}",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "v1",
+                "platform",
+                "tenants",
+                "{{tenant_id}}"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Suspend Tenant",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "X-Tenant-ID",
+                "value": "{{platform_tenant_id}}"
+              },
+              {
+                "key": "X-Role",
+                "value": "platform_admin"
+              },
+              {
+                "key": "X-User-ID",
+                "value": "{{user_id}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"reason\": \"Non-payment of subscription fees\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/v1/platform/tenants/{{tenant_id}}/suspend",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "v1",
+                "platform",
+                "tenants",
+                "{{tenant_id}}",
+                "suspend"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Activate Tenant",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "X-Tenant-ID",
+                "value": "{{platform_tenant_id}}"
+              },
+              {
+                "key": "X-Role",
+                "value": "platform_admin"
+              },
+              {
+                "key": "X-User-ID",
+                "value": "{{user_id}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/v1/platform/tenants/{{tenant_id}}/activate",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "v1",
+                "platform",
+                "tenants",
+                "{{tenant_id}}",
+                "activate"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Reactivate Tenant",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "X-Tenant-ID",
+                "value": "{{platform_tenant_id}}"
+              },
+              {
+                "key": "X-Role",
+                "value": "platform_admin"
+              },
+              {
+                "key": "X-User-ID",
+                "value": "{{user_id}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/v1/platform/tenants/{{tenant_id}}/reactivate",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "v1",
+                "platform",
+                "tenants",
+                "{{tenant_id}}",
+                "reactivate"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Offboard Tenant",
+          "request": {
+            "method": "DELETE",
+            "header": [
+              {
+                "key": "X-Tenant-ID",
+                "value": "{{platform_tenant_id}}"
+              },
+              {
+                "key": "X-Role",
+                "value": "platform_admin"
+              },
+              {
+                "key": "X-User-ID",
+                "value": "{{user_id}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/v1/platform/tenants/{{tenant_id}}",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "v1",
+                "platform",
+                "tenants",
+                "{{tenant_id}}"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Get Tenant Usage",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "X-Tenant-ID",
+                "value": "{{platform_tenant_id}}"
+              },
+              {
+                "key": "X-Role",
+                "value": "platform_admin"
+              },
+              {
+                "key": "X-User-ID",
+                "value": "{{user_id}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/v1/platform/tenants/{{tenant_id}}/usage",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "v1",
+                "platform",
+                "tenants",
+                "{{tenant_id}}",
+                "usage"
+              ]
+            },
+            "description": "GET /v1/platform/tenants/{id}/usage \u2014 per-tenant API usage breakdown (platform_admin)"
+          }
+        }
+      ]
+    },
+    {
+      "name": "2. Tenant Admin",
+      "description": "Tenant configuration, users, charge types, and dollar rate.\nSet X-Role to `tenant_admin` for these endpoints.",
+      "item": [
+        {
+          "name": "Get Tenant Reports",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "X-Tenant-ID",
+                "value": "{{tenant_id}}"
+              },
+              {
+                "key": "X-Role",
+                "value": "tenant_admin"
+              },
+              {
+                "key": "X-User-ID",
+                "value": "{{user_id}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/v1/tenant/reports",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "v1",
+                "tenant",
+                "reports"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Get Tenant Config",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "X-Tenant-ID",
+                "value": "{{tenant_id}}"
+              },
+              {
+                "key": "X-Role",
+                "value": "tenant_admin"
+              },
+              {
+                "key": "X-User-ID",
+                "value": "{{user_id}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/v1/tenant/config",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "v1",
+                "tenant",
+                "config"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Update Tenant Config",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "X-Tenant-ID",
+                "value": "{{tenant_id}}"
+              },
+              {
+                "key": "X-Role",
+                "value": "tenant_admin"
+              },
+              {
+                "key": "X-User-ID",
+                "value": "{{user_id}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"branding\": {\n    \"primary_color\": \"#1E40AF\",\n    \"company_logo_url\": \"https://example.com/logo.png\"\n  },\n  \"notification_preferences\": {\n    \"email_on_billing\": true,\n    \"sms_on_pickup\": true\n  }\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/v1/tenant/config",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "v1",
+                "tenant",
+                "config"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Get Dollar Rate",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "X-Tenant-ID",
+                "value": "{{tenant_id}}"
+              },
+              {
+                "key": "X-Role",
+                "value": "tenant_admin"
+              },
+              {
+                "key": "X-User-ID",
+                "value": "{{user_id}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/v1/tenant/dollar-rate",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "v1",
+                "tenant",
+                "dollar-rate"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Update Dollar Rate",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "X-Tenant-ID",
+                "value": "{{tenant_id}}"
+              },
+              {
+                "key": "X-Role",
+                "value": "tenant_admin"
+              },
+              {
+                "key": "X-User-ID",
+                "value": "{{user_id}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"rate\": 1650.00,\n  \"currency_pair\": \"USD_NGN\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/v1/tenant/dollar-rate",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "v1",
+                "tenant",
+                "dollar-rate"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Create User",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "X-Tenant-ID",
+                "value": "{{tenant_id}}"
+              },
+              {
+                "key": "X-Role",
+                "value": "tenant_admin"
+              },
+              {
+                "key": "X-User-ID",
+                "value": "{{user_id}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Idempotency-Key",
+                "value": "create-user-001"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"staff@company.com\",\n  \"full_name\": \"John Doe\",\n  \"role\": \"nigeria_office_staff\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/v1/tenant/users",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "v1",
+                "tenant",
+                "users"
+              ]
+            }
+          }
+        },
+        {
+          "name": "List Users",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "X-Tenant-ID",
+                "value": "{{tenant_id}}"
+              },
+              {
+                "key": "X-Role",
+                "value": "tenant_admin"
+              },
+              {
+                "key": "X-User-ID",
+                "value": "{{user_id}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/v1/tenant/users",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "v1",
+                "tenant",
+                "users"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Get User",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "X-Tenant-ID",
+                "value": "{{tenant_id}}"
+              },
+              {
+                "key": "X-Role",
+                "value": "tenant_admin"
+              },
+              {
+                "key": "X-User-ID",
+                "value": "{{user_id}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/v1/tenant/users/{{user_mgmt_id}}",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "v1",
+                "tenant",
+                "users",
+                "{{user_mgmt_id}}"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Update User",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "X-Tenant-ID",
+                "value": "{{tenant_id}}"
+              },
+              {
+                "key": "X-Role",
+                "value": "tenant_admin"
+              },
+              {
+                "key": "X-User-ID",
+                "value": "{{user_id}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"full_name\": \"John Updated Doe\",\n  \"role\": \"nigeria_office_staff\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/v1/tenant/users/{{user_mgmt_id}}",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "v1",
+                "tenant",
+                "users",
+                "{{user_mgmt_id}}"
+              ]
+            },
+            "description": "Update a tenant user's full_name and/or role.\n\nSupported fields:\n- `full_name` (string): display name \u2014 synced to Cognito `name` attribute\n- `role` (string): new role \u2014 synced to Cognito `custom:role` attribute\n\nEmail cannot be changed (Cognito login username is immutable)."
+          }
+        },
+        {
+          "name": "Deactivate User",
+          "request": {
+            "method": "DELETE",
+            "header": [
+              {
+                "key": "X-Tenant-ID",
+                "value": "{{tenant_id}}"
+              },
+              {
+                "key": "X-Role",
+                "value": "tenant_admin"
+              },
+              {
+                "key": "X-User-ID",
+                "value": "{{user_id}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/v1/tenant/users/{{user_mgmt_id}}",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "v1",
+                "tenant",
+                "users",
+                "{{user_mgmt_id}}"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Create Charge Type",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "X-Tenant-ID",
+                "value": "{{tenant_id}}"
+              },
+              {
+                "key": "X-Role",
+                "value": "tenant_admin"
+              },
+              {
+                "key": "X-User-ID",
+                "value": "{{user_id}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Customs Examination Fee\",\n  \"unit\": \"per_shipment\",\n  \"default_amount_ngn\": 5000.00,\n  \"is_taxable\": false\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/v1/tenant/charge-types",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "v1",
+                "tenant",
+                "charge-types"
+              ]
+            }
+          }
+        },
+        {
+          "name": "List Charge Types",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "X-Tenant-ID",
+                "value": "{{tenant_id}}"
+              },
+              {
+                "key": "X-Role",
+                "value": "{{role}}"
+              },
+              {
+                "key": "X-User-ID",
+                "value": "{{user_id}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/v1/tenant/charge-types",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "v1",
+                "tenant",
+                "charge-types"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Update Charge Type",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "X-Tenant-ID",
+                "value": "{{tenant_id}}"
+              },
+              {
+                "key": "X-Role",
+                "value": "tenant_admin"
+              },
+              {
+                "key": "X-User-ID",
+                "value": "{{user_id}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Customs Examination Fee (Updated)\",\n  \"default_amount_ngn\": 6000.00\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/v1/tenant/charge-types/{{charge_type_id}}",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "v1",
+                "tenant",
+                "charge-types",
+                "{{charge_type_id}}"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Deactivate Charge Type",
+          "request": {
+            "method": "DELETE",
+            "header": [
+              {
+                "key": "X-Tenant-ID",
+                "value": "{{tenant_id}}"
+              },
+              {
+                "key": "X-Role",
+                "value": "tenant_admin"
+              },
+              {
+                "key": "X-User-ID",
+                "value": "{{user_id}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/v1/tenant/charge-types/{{charge_type_id}}",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "v1",
+                "tenant",
+                "charge-types",
+                "{{charge_type_id}}"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Update Charge Type",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "X-Tenant-ID",
+                "value": "{{tenant_id}}"
+              },
+              {
+                "key": "X-Role",
+                "value": "tenant_admin"
+              },
+              {
+                "key": "X-User-ID",
+                "value": "{{user_id}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Handling Fee Updated\",\n  \"description\": \"Port handling (revised)\",\n  \"default_amount_ngn\": 6000\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{base_url}}/v1/tenant/charge-types/{{charge_type_id}}",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "v1",
+                "tenant",
+                "charge-types",
+                "{{charge_type_id}}"
+              ]
+            },
+            "description": "PUT /v1/tenant/charge-types/{id} \u2014 update a charge type (tenant_admin)"
+          }
+        },
+        {
+          "name": "Deactivate Charge Type",
+          "request": {
+            "method": "DELETE",
+            "header": [
+              {
+                "key": "X-Tenant-ID",
+                "value": "{{tenant_id}}"
+              },
+              {
+                "key": "X-Role",
+                "value": "tenant_admin"
+              },
+              {
+                "key": "X-User-ID",
+                "value": "{{user_id}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/v1/tenant/charge-types/{{charge_type_id}}",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "v1",
+                "tenant",
+                "charge-types",
+                "{{charge_type_id}}"
+              ]
+            },
+            "description": "DELETE /v1/tenant/charge-types/{id} \u2014 deactivate a charge type; returns 204 (tenant_admin)"
+          }
+        },
+        {
+          "name": "Deactivate User",
+          "request": {
+            "method": "DELETE",
+            "header": [
+              {
+                "key": "X-Tenant-ID",
+                "value": "{{tenant_id}}"
+              },
+              {
+                "key": "X-Role",
+                "value": "tenant_admin"
+              },
+              {
+                "key": "X-User-ID",
+                "value": "{{user_id}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/v1/tenant/users/{{staff_user_id}}",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "v1",
+                "tenant",
+                "users",
+                "{{staff_user_id}}"
+              ]
+            },
+            "description": "DELETE /v1/tenant/users/{id} \u2014 deactivate a tenant user; returns 204 (tenant_admin)"
+          }
+        }
+      ]
+    },
+    {
+      "name": "3. Customers",
+      "description": "Customer management. Staff can create/update; customers can only read.",
+      "item": [
+        {
+          "name": "Create Customer",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "X-Tenant-ID",
+                "value": "{{tenant_id}}"
+              },
+              {
+                "key": "X-Role",
+                "value": "{{role}}"
+              },
+              {
+                "key": "X-User-ID",
+                "value": "{{user_id}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"full_name\": \"Emeka Okafor\",\n  \"email\": \"emeka@example.com\",\n  \"phone\": \"+2348098765432\",\n  \"address\": \"12 Aba Road, Port Harcourt, Rivers State\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/v1/customers",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "v1",
+                "customers"
+              ]
+            }
+          }
+        },
+        {
+          "name": "List Customers",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "X-Tenant-ID",
+                "value": "{{tenant_id}}"
+              },
+              {
+                "key": "X-Role",
+                "value": "{{role}}"
+              },
+              {
+                "key": "X-User-ID",
+                "value": "{{user_id}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/v1/customers?limit=20",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "v1",
+                "customers"
+              ],
+              "query": [
+                {
+                  "key": "q",
+                  "value": "",
+                  "disabled": true
+                },
+                {
+                  "key": "limit",
+                  "value": "20"
+                },
+                {
+                  "key": "cursor",
+                  "value": "",
+                  "disabled": true
+                }
+              ]
+            }
+          }
+        },
+        {
+          "name": "Get Customer",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "X-Tenant-ID",
+                "value": "{{tenant_id}}"
+              },
+              {
+                "key": "X-Role",
+                "value": "{{role}}"
+              },
+              {
+                "key": "X-User-ID",
+                "value": "{{user_id}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/v1/customers/{{customer_id}}",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "v1",
+                "customers",
+                "{{customer_id}}"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Update Customer",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "X-Tenant-ID",
+                "value": "{{tenant_id}}"
+              },
+              {
+                "key": "X-Role",
+                "value": "{{role}}"
+              },
+              {
+                "key": "X-User-ID",
+                "value": "{{user_id}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"phone\": \"+2348099999999\",\n  \"address\": \"15 New Street, Lagos\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/v1/customers/{{customer_id}}",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "v1",
+                "customers",
+                "{{customer_id}}"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Anonymise Customer (GDPR Erasure)",
+          "request": {
+            "method": "DELETE",
+            "header": [
+              {
+                "key": "X-Tenant-ID",
+                "value": "{{tenant_id}}"
+              },
+              {
+                "key": "X-Role",
+                "value": "tenant_admin"
+              },
+              {
+                "key": "X-User-ID",
+                "value": "{{user_id}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/v1/customers/{{customer_id}}",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "v1",
+                "customers",
+                "{{customer_id}}"
+              ]
+            },
+            "description": "Anonymise a customer record (GDPR Art. 17 \u2014 Right to Erasure).\n\nNulls all PII fields (name, email, phone, whatsapp, address, contract_details) and sets `anonymised_at`. The UUID shell is kept for FK integrity.\n\nRequires: `tenant_admin` role."
+          },
+          "response": []
+        },
+        {
+          "name": "Export Customer Data (GDPR Portability)",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "X-Tenant-ID",
+                "value": "{{tenant_id}}"
+              },
+              {
+                "key": "X-Role",
+                "value": "tenant_admin"
+              },
+              {
+                "key": "X-User-ID",
+                "value": "{{user_id}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/v1/customers/{{customer_id}}/export",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "v1",
+                "customers",
+                "{{customer_id}}",
+                "export"
+              ]
+            },
+            "description": "Export all personal data held for a customer (GDPR Art. 20 \u2014 Right to Portability).\n\nReturns a machine-readable JSON object containing:\n- `customer`: profile data\n- `billing_summary`: invoice history\n- `shipments`: shipment tracking records\n- `claims`: damage/missing/seized item claims\n- `exported_at`: ISO timestamp\n\nRequires: `tenant_admin` role."
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "4. Containers & Tracking",
+      "description": "Container lifecycle and shipment tracking.",
+      "item": [
+        {
+          "name": "Create Container",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "X-Tenant-ID",
+                "value": "{{tenant_id}}"
+              },
+              {
+                "key": "X-Role",
+                "value": "{{role}}"
+              },
+              {
+                "key": "X-User-ID",
+                "value": "{{user_id}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"container_number\": \"MSCU1234567\",\n  \"vessel_name\": \"MSC Altair\",\n  \"origin_port\": \"Guangzhou\",\n  \"destination_port\": \"Apapa\",\n  \"expected_arrival_date\": \"2026-03-15\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/v1/containers",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "v1",
+                "containers"
+              ]
+            }
+          }
+        },
+        {
+          "name": "List Containers",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "X-Tenant-ID",
+                "value": "{{tenant_id}}"
+              },
+              {
+                "key": "X-Role",
+                "value": "{{role}}"
+              },
+              {
+                "key": "X-User-ID",
+                "value": "{{user_id}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/v1/containers?limit=20",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "v1",
+                "containers"
+              ],
+              "query": [
+                {
+                  "key": "status",
+                  "value": "",
+                  "disabled": true
+                },
+                {
+                  "key": "q",
+                  "value": "",
+                  "disabled": true
+                },
+                {
+                  "key": "limit",
+                  "value": "20"
+                },
+                {
+                  "key": "cursor",
+                  "value": "",
+                  "disabled": true
+                }
+              ]
+            }
+          }
+        },
+        {
+          "name": "Get Container",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "X-Tenant-ID",
+                "value": "{{tenant_id}}"
+              },
+              {
+                "key": "X-Role",
+                "value": "{{role}}"
+              },
+              {
+                "key": "X-User-ID",
+                "value": "{{user_id}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/v1/containers/{{container_id}}",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "v1",
+                "containers",
+                "{{container_id}}"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Update Container Status",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "X-Tenant-ID",
+                "value": "{{tenant_id}}"
+              },
+              {
+                "key": "X-Role",
+                "value": "{{role}}"
+              },
+              {
+                "key": "X-User-ID",
+                "value": "{{user_id}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"new_status\": \"in_transit\",\n  \"ship_date\": \"2026-02-28\",\n  \"notes\": \"Container loaded and departed Guangzhou port\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/v1/containers/{{container_id}}/status",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "v1",
+                "containers",
+                "{{container_id}}",
+                "status"
+              ]
+            }
+          }
+        },
+        {
+          "name": "List Shipments",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "X-Tenant-ID",
+                "value": "{{tenant_id}}"
+              },
+              {
+                "key": "X-Role",
+                "value": "{{role}}"
+              },
+              {
+                "key": "X-User-ID",
+                "value": "{{user_id}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/v1/shipments?limit=20",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "v1",
+                "shipments"
+              ],
+              "query": [
+                {
+                  "key": "status",
+                  "value": "",
+                  "disabled": true
+                },
+                {
+                  "key": "tracking_code",
+                  "value": "",
+                  "disabled": true
+                },
+                {
+                  "key": "limit",
+                  "value": "20"
+                },
+                {
+                  "key": "cursor",
+                  "value": "",
+                  "disabled": true
+                }
+              ]
+            }
+          }
+        },
+        {
+          "name": "Public \u2014 Track Shipment",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/v1/shipments/{{tracking_code}}?phone=08012345678",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "v1",
+                "shipments",
+                "{{tracking_code}}"
+              ],
+              "query": [
+                {
+                  "key": "phone",
+                  "value": "08012345678"
+                }
+              ]
+            },
+            "description": "Public endpoint \u2014 no auth required. Customer looks up shipment by tracking code + phone number."
+          }
+        }
+      ]
+    },
+    {
+      "name": "5. Packing Lists",
+      "description": "Packing list lifecycle: draft \u2192 submitted \u2192 approved/rejected \u2192 manifest auto-created on approval.",
+      "item": [
+        {
+          "name": "Create Packing List",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "X-Tenant-ID",
+                "value": "{{tenant_id}}"
+              },
+              {
+                "key": "X-Role",
+                "value": "{{role}}"
+              },
+              {
+                "key": "X-User-ID",
+                "value": "{{user_id}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Idempotency-Key",
+                "value": "pl-create-001"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"container_id\": \"{{container_id}}\",\n  \"customer_id\": \"{{customer_id}}\",\n  \"items\": [\n    {\n      \"description\": \"Electronics - Phone Cases\",\n      \"weight_dispatch_kg\": 12.5,\n      \"weight_actual_kg\": 12.3,\n      \"length_cm\": 60,\n      \"width_cm\": 40,\n      \"height_cm\": 30,\n      \"received_date\": \"2026-02-20\"\n    },\n    {\n      \"description\": \"Clothing - T-Shirts\",\n      \"weight_dispatch_kg\": 8.0,\n      \"weight_actual_kg\": 7.8,\n      \"length_cm\": 50,\n      \"width_cm\": 35,\n      \"height_cm\": 25,\n      \"received_date\": \"2026-02-20\"\n    }\n  ]\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/v1/packing-lists",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "v1",
+                "packing-lists"
+              ]
+            }
+          }
+        },
+        {
+          "name": "List Packing Lists",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "X-Tenant-ID",
+                "value": "{{tenant_id}}"
+              },
+              {
+                "key": "X-Role",
+                "value": "{{role}}"
+              },
+              {
+                "key": "X-User-ID",
+                "value": "{{user_id}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/v1/packing-lists?limit=20",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "v1",
+                "packing-lists"
+              ],
+              "query": [
+                {
+                  "key": "status",
+                  "value": "pending_approval",
+                  "disabled": true
+                },
+                {
+                  "key": "container_id",
+                  "value": "{{container_id}}",
+                  "disabled": true
+                },
+                {
+                  "key": "customer_id",
+                  "value": "{{customer_id}}",
+                  "disabled": true
+                },
+                {
+                  "key": "created_after",
+                  "value": "2026-01-01",
+                  "disabled": true
+                },
+                {
+                  "key": "created_before",
+                  "value": "2026-12-31",
+                  "disabled": true
+                },
+                {
+                  "key": "limit",
+                  "value": "20"
+                },
+                {
+                  "key": "cursor",
+                  "value": "",
+                  "disabled": true
+                }
+              ]
+            }
+          }
+        },
+        {
+          "name": "Get Packing List",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "X-Tenant-ID",
+                "value": "{{tenant_id}}"
+              },
+              {
+                "key": "X-Role",
+                "value": "{{role}}"
+              },
+              {
+                "key": "X-User-ID",
+                "value": "{{user_id}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/v1/packing-lists/{{packing_list_id}}",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "v1",
+                "packing-lists",
+                "{{packing_list_id}}"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Update Packing List (draft/rejected only)",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "X-Tenant-ID",
+                "value": "{{tenant_id}}"
+              },
+              {
+                "key": "X-Role",
+                "value": "{{role}}"
+              },
+              {
+                "key": "X-User-ID",
+                "value": "{{user_id}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"items\": [\n    {\n      \"description\": \"Electronics - Phone Cases (Updated)\",\n      \"weight_dispatch_kg\": 12.5,\n      \"weight_actual_kg\": 12.3,\n      \"length_cm\": 60,\n      \"width_cm\": 40,\n      \"height_cm\": 30,\n      \"received_date\": \"2026-02-20\"\n    }\n  ]\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/v1/packing-lists/{{packing_list_id}}",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "v1",
+                "packing-lists",
+                "{{packing_list_id}}"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Submit Packing List",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "X-Tenant-ID",
+                "value": "{{tenant_id}}"
+              },
+              {
+                "key": "X-Role",
+                "value": "{{role}}"
+              },
+              {
+                "key": "X-User-ID",
+                "value": "{{user_id}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/v1/packing-lists/{{packing_list_id}}/submit",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "v1",
+                "packing-lists",
+                "{{packing_list_id}}",
+                "submit"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Approve Packing List",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "X-Tenant-ID",
+                "value": "{{tenant_id}}"
+              },
+              {
+                "key": "X-Role",
+                "value": "{{role}}"
+              },
+              {
+                "key": "X-User-ID",
+                "value": "{{user_id}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"comments\": \"Packing list verified and approved\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/v1/packing-lists/{{packing_list_id}}/approve",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "v1",
+                "packing-lists",
+                "{{packing_list_id}}",
+                "approve"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Reject Packing List",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "X-Tenant-ID",
+                "value": "{{tenant_id}}"
+              },
+              {
+                "key": "X-Role",
+                "value": "{{role}}"
+              },
+              {
+                "key": "X-User-ID",
+                "value": "{{user_id}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"comments\": \"CBM measurements do not match warehouse records\",\n  \"item_rejections\": [\n    {\n      \"item_id\": \"ITEM_UUID_HERE\",\n      \"reason\": \"Weight mismatch: declared 12.5kg, actual 15.2kg\"\n    }\n  ]\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/v1/packing-lists/{{packing_list_id}}/reject",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "v1",
+                "packing-lists",
+                "{{packing_list_id}}",
+                "reject"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Reject Packing List",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "X-Tenant-ID",
+                "value": "{{tenant_id}}"
+              },
+              {
+                "key": "X-Role",
+                "value": "tenant_admin"
+              },
+              {
+                "key": "X-User-ID",
+                "value": "{{user_id}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"comments\": \"Items do not match dispatch records\",\n  \"item_rejections\": []\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{base_url}}/v1/packing-lists/{{packing_list_id}}/reject",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "v1",
+                "packing-lists",
+                "{{packing_list_id}}",
+                "reject"
+              ]
+            },
+            "description": "PATCH /v1/packing-lists/{id}/reject \u2014 reject a submitted packing list (tenant_admin); status \u2192 rejected"
+          }
+        }
+      ]
+    },
+    {
+      "name": "6. Manifests",
+      "description": "Manifests are auto-created when a packing list is approved. Use verify to confirm cargo against physical arrival.",
+      "item": [
+        {
+          "name": "List Manifests",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "X-Tenant-ID",
+                "value": "{{tenant_id}}"
+              },
+              {
+                "key": "X-Role",
+                "value": "{{role}}"
+              },
+              {
+                "key": "X-User-ID",
+                "value": "{{user_id}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/v1/manifests?limit=20",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "v1",
+                "manifests"
+              ],
+              "query": [
+                {
+                  "key": "verification_status",
+                  "value": "pending",
+                  "disabled": true
+                },
+                {
+                  "key": "container_id",
+                  "value": "{{container_id}}",
+                  "disabled": true
+                },
+                {
+                  "key": "limit",
+                  "value": "20"
+                },
+                {
+                  "key": "cursor",
+                  "value": "",
+                  "disabled": true
+                }
+              ]
+            }
+          }
+        },
+        {
+          "name": "Get Manifest",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "X-Tenant-ID",
+                "value": "{{tenant_id}}"
+              },
+              {
+                "key": "X-Role",
+                "value": "{{role}}"
+              },
+              {
+                "key": "X-User-ID",
+                "value": "{{user_id}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/v1/manifests/{{manifest_id}}",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "v1",
+                "manifests",
+                "{{manifest_id}}"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Verify Manifest",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "X-Tenant-ID",
+                "value": "{{tenant_id}}"
+              },
+              {
+                "key": "X-Role",
+                "value": "{{role}}"
+              },
+              {
+                "key": "X-User-ID",
+                "value": "{{user_id}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"verification_status\": \"verified\",\n  \"discrepancies\": null\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/v1/manifests/{{manifest_id}}/verify",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "v1",
+                "manifests",
+                "{{manifest_id}}",
+                "verify"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Verify Manifest \u2014 With Discrepancies",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "X-Tenant-ID",
+                "value": "{{tenant_id}}"
+              },
+              {
+                "key": "X-Role",
+                "value": "{{role}}"
+              },
+              {
+                "key": "X-User-ID",
+                "value": "{{user_id}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"verification_status\": \"discrepancies_found\",\n  \"discrepancies\": [\n    {\n      \"customer_id\": \"{{customer_id}}\",\n      \"carton_tags\": [\"SHX-00001\", \"SHX-00002\"],\n      \"type\": \"missing\",\n      \"notes\": \"2 cartons not found in container unloading\"\n    },\n    {\n      \"customer_id\": \"{{customer_id}}\",\n      \"carton_tags\": [\"SHX-00005\"],\n      \"type\": \"damaged\",\n      \"notes\": \"Water damage visible on outer packaging\"\n    }\n  ]\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/v1/manifests/{{manifest_id}}/verify",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "v1",
+                "manifests",
+                "{{manifest_id}}",
+                "verify"
+              ]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "7. Billing",
+      "description": "Billing records, charges, storage fees, disputes, and carryovers.",
+      "item": [
+        {
+          "name": "List Billing Records",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "X-Tenant-ID",
+                "value": "{{tenant_id}}"
+              },
+              {
+                "key": "X-Role",
+                "value": "{{role}}"
+              },
+              {
+                "key": "X-User-ID",
+                "value": "{{user_id}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/v1/billing?limit=20",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "v1",
+                "billing"
+              ],
+              "query": [
+                {
+                  "key": "status",
+                  "value": "unpaid",
+                  "disabled": true
+                },
+                {
+                  "key": "customer_id",
+                  "value": "{{customer_id}}",
+                  "disabled": true
+                },
+                {
+                  "key": "limit",
+                  "value": "20"
+                },
+                {
+                  "key": "cursor",
+                  "value": "",
+                  "disabled": true
+                }
+              ]
+            }
+          }
+        },
+        {
+          "name": "Generate Billing",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "X-Tenant-ID",
+                "value": "{{tenant_id}}"
+              },
+              {
+                "key": "X-Role",
+                "value": "{{role}}"
+              },
+              {
+                "key": "X-User-ID",
+                "value": "{{user_id}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"customer_id\": \"{{customer_id}}\",\n  \"container_id\": \"{{container_id}}\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/v1/billing",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "v1",
+                "billing"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Get Billing for Customer",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "X-Tenant-ID",
+                "value": "{{tenant_id}}"
+              },
+              {
+                "key": "X-Role",
+                "value": "{{role}}"
+              },
+              {
+                "key": "X-User-ID",
+                "value": "{{user_id}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/v1/billing/{{customer_id}}?container_id={{container_id}}",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "v1",
+                "billing",
+                "{{customer_id}}"
+              ],
+              "query": [
+                {
+                  "key": "container_id",
+                  "value": "{{container_id}}",
+                  "disabled": true
+                }
+              ]
+            }
+          }
+        },
+        {
+          "name": "Add Misc Charge",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "X-Tenant-ID",
+                "value": "{{tenant_id}}"
+              },
+              {
+                "key": "X-Role",
+                "value": "{{role}}"
+              },
+              {
+                "key": "X-User-ID",
+                "value": "{{user_id}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"charge_type_id\": \"{{charge_type_id}}\",\n  \"amount_ngn\": 5000.00,\n  \"description\": \"Customs examination fee applied\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/v1/billing/{{billing_id}}/charges",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "v1",
+                "billing",
+                "{{billing_id}}",
+                "charges"
+              ]
+            }
+          }
+        },
+        {
+          "name": "List Charges",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "X-Tenant-ID",
+                "value": "{{tenant_id}}"
+              },
+              {
+                "key": "X-Role",
+                "value": "{{role}}"
+              },
+              {
+                "key": "X-User-ID",
+                "value": "{{user_id}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/v1/billing/{{billing_id}}/charges",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "v1",
+                "billing",
+                "{{billing_id}}",
+                "charges"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Delete Charge",
+          "request": {
+            "method": "DELETE",
+            "header": [
+              {
+                "key": "X-Tenant-ID",
+                "value": "{{tenant_id}}"
+              },
+              {
+                "key": "X-Role",
+                "value": "{{role}}"
+              },
+              {
+                "key": "X-User-ID",
+                "value": "{{user_id}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/v1/billing/{{billing_id}}/charges/{{charge_id}}",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "v1",
+                "billing",
+                "{{billing_id}}",
+                "charges",
+                "{{charge_id}}"
+              ]
+            }
+          }
+        },
+        {
+          "name": "List Storage Fees",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "X-Tenant-ID",
+                "value": "{{tenant_id}}"
+              },
+              {
+                "key": "X-Role",
+                "value": "{{role}}"
+              },
+              {
+                "key": "X-User-ID",
+                "value": "{{user_id}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/v1/billing/{{billing_id}}/storage-fees",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "v1",
+                "billing",
+                "{{billing_id}}",
+                "storage-fees"
+              ]
+            }
+          }
+        },
+        {
+          "name": "File CBM Dispute (via billing)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "X-Tenant-ID",
+                "value": "{{tenant_id}}"
+              },
+              {
+                "key": "X-Role",
+                "value": "{{role}}"
+              },
+              {
+                "key": "X-User-ID",
+                "value": "{{user_id}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"reason\": \"CBM measurement in warehouse differs from supplier invoice\",\n  \"customer_measured_cbm\": 0.28\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/v1/billing/{{billing_id}}/dispute",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "v1",
+                "billing",
+                "{{billing_id}}",
+                "dispute"
+              ]
+            }
+          }
+        },
+        {
+          "name": "List Billing Disputes",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "X-Tenant-ID",
+                "value": "{{tenant_id}}"
+              },
+              {
+                "key": "X-Role",
+                "value": "{{role}}"
+              },
+              {
+                "key": "X-User-ID",
+                "value": "{{user_id}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/v1/billing/{{billing_id}}/disputes",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "v1",
+                "billing",
+                "{{billing_id}}",
+                "disputes"
+              ]
+            }
+          }
+        },
+        {
+          "name": "List Carryovers",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "X-Tenant-ID",
+                "value": "{{tenant_id}}"
+              },
+              {
+                "key": "X-Role",
+                "value": "{{role}}"
+              },
+              {
+                "key": "X-User-ID",
+                "value": "{{user_id}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/v1/billing/carryovers?limit=20",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "v1",
+                "billing",
+                "carryovers"
+              ],
+              "query": [
+                {
+                  "key": "customer_id",
+                  "value": "{{customer_id}}",
+                  "disabled": true
+                },
+                {
+                  "key": "status",
+                  "value": "outstanding",
+                  "disabled": true
+                },
+                {
+                  "key": "limit",
+                  "value": "20"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "name": "Exempt Carryover",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "X-Tenant-ID",
+                "value": "{{tenant_id}}"
+              },
+              {
+                "key": "X-Role",
+                "value": "{{role}}"
+              },
+              {
+                "key": "X-User-ID",
+                "value": "{{user_id}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"notes\": \"Exempted due to pricing error in previous billing cycle\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/v1/billing/carryovers/{{carryover_id}}/exempt",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "v1",
+                "billing",
+                "carryovers",
+                "{{carryover_id}}",
+                "exempt"
+              ]
+            }
+          }
+        },
+        {
+          "name": "List All Disputes",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "X-Tenant-ID",
+                "value": "{{tenant_id}}"
+              },
+              {
+                "key": "X-Role",
+                "value": "{{role}}"
+              },
+              {
+                "key": "X-User-ID",
+                "value": "{{user_id}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/v1/billing/disputes?limit=20",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "v1",
+                "billing",
+                "disputes"
+              ],
+              "query": [
+                {
+                  "key": "status",
+                  "value": "submitted",
+                  "disabled": true
+                },
+                {
+                  "key": "customer_id",
+                  "value": "{{customer_id}}",
+                  "disabled": true
+                },
+                {
+                  "key": "limit",
+                  "value": "20"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "name": "Create CBM Dispute",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "X-Tenant-ID",
+                "value": "{{tenant_id}}"
+              },
+              {
+                "key": "X-Role",
+                "value": "{{role}}"
+              },
+              {
+                "key": "X-User-ID",
+                "value": "{{user_id}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"billing_id\": \"{{billing_id}}\",\n  \"reason\": \"Customer measured CBM differs from warehouse measurement\",\n  \"customer_measured_cbm\": 0.28\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/v1/billing/disputes",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "v1",
+                "billing",
+                "disputes"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Acknowledge Dispute",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "X-Tenant-ID",
+                "value": "{{tenant_id}}"
+              },
+              {
+                "key": "X-Role",
+                "value": "{{role}}"
+              },
+              {
+                "key": "X-User-ID",
+                "value": "{{user_id}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/v1/billing/disputes/{{dispute_id}}/acknowledge",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "v1",
+                "billing",
+                "disputes",
+                "{{dispute_id}}",
+                "acknowledge"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Resolve Dispute",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "X-Tenant-ID",
+                "value": "{{tenant_id}}"
+              },
+              {
+                "key": "X-Role",
+                "value": "{{role}}"
+              },
+              {
+                "key": "X-User-ID",
+                "value": "{{user_id}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"status\": \"resolved_adjusted\",\n  \"corrected_cbm\": 0.28,\n  \"resolution_notes\": \"Confirmed customer's measurement. Billing adjusted to 0.28 CBM.\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/v1/billing/disputes/{{dispute_id}}/resolve",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "v1",
+                "billing",
+                "disputes",
+                "{{dispute_id}}",
+                "resolve"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Reject Dispute",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "X-Tenant-ID",
+                "value": "{{tenant_id}}"
+              },
+              {
+                "key": "X-Role",
+                "value": "{{role}}"
+              },
+              {
+                "key": "X-User-ID",
+                "value": "{{user_id}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"reason\": \"Measurements verified by two independent staff members. Original CBM stands.\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/v1/billing/disputes/{{dispute_id}}/reject",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "v1",
+                "billing",
+                "disputes",
+                "{{dispute_id}}",
+                "reject"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Exempt Carryover",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "X-Tenant-ID",
+                "value": "{{tenant_id}}"
+              },
+              {
+                "key": "X-Role",
+                "value": "tenant_admin"
+              },
+              {
+                "key": "X-User-ID",
+                "value": "{{user_id}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"notes\": \"Exempted as goodwill gesture\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{base_url}}/v1/billing/carryovers/{{carryover_id}}/exempt",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "v1",
+                "billing",
+                "carryovers",
+                "{{carryover_id}}",
+                "exempt"
+              ]
+            },
+            "description": "PATCH /v1/billing/carryovers/{id}/exempt \u2014 mark a carryover as exempted (tenant_admin)"
+          }
+        },
+        {
+          "name": "Create Dispute (Staff)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "X-Tenant-ID",
+                "value": "{{tenant_id}}"
+              },
+              {
+                "key": "X-Role",
+                "value": "nigeria_office_staff"
+              },
+              {
+                "key": "X-User-ID",
+                "value": "{{user_id}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"billing_id\": \"{{billing_id}}\",\n  \"reason\": \"CBM measurement discrepancy \u2014 re-measured at warehouse\",\n  \"customer_measured_cbm\": 0.45\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{base_url}}/v1/billing/disputes",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "v1",
+                "billing",
+                "disputes"
+              ]
+            },
+            "description": "POST /v1/billing/disputes \u2014 staff-created CBM dispute (billing_id in body; tenant_admin or nigeria_office_staff)"
+          }
+        },
+        {
+          "name": "Reject Dispute",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "X-Tenant-ID",
+                "value": "{{tenant_id}}"
+              },
+              {
+                "key": "X-Role",
+                "value": "tenant_admin"
+              },
+              {
+                "key": "X-User-ID",
+                "value": "{{user_id}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"reason\": \"Original CBM measurement verified and confirmed correct\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{base_url}}/v1/billing/disputes/{{dispute_id}}/reject",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "v1",
+                "billing",
+                "disputes",
+                "{{dispute_id}}",
+                "reject"
+              ]
+            },
+            "description": "PATCH /v1/billing/disputes/{id}/reject \u2014 reject a CBM dispute with a reason (tenant_admin or nigeria_office_staff)"
+          }
+        }
+      ]
+    },
+    {
+      "name": "8. Claims",
+      "description": "Damage claims, missing items, and seized items. Use presigned URL to upload evidence photos.",
+      "item": [
+        {
+          "name": "File Damage Claim",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "X-Tenant-ID",
+                "value": "{{tenant_id}}"
+              },
+              {
+                "key": "X-Role",
+                "value": "{{role}}"
+              },
+              {
+                "key": "X-User-ID",
+                "value": "{{user_id}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Idempotency-Key",
+                "value": "claim-001"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"container_id\": \"{{container_id}}\",\n  \"cartons_affected\": [\"SHX-00001\", \"SHX-00002\"],\n  \"description\": \"Both cartons arrived with visible water damage. Outer cardboard soaked through and inner electronics may be affected.\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/v1/claims",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "v1",
+                "claims"
+              ]
+            }
+          }
+        },
+        {
+          "name": "List Claims",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "X-Tenant-ID",
+                "value": "{{tenant_id}}"
+              },
+              {
+                "key": "X-Role",
+                "value": "{{role}}"
+              },
+              {
+                "key": "X-User-ID",
+                "value": "{{user_id}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/v1/claims?limit=20",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "v1",
+                "claims"
+              ],
+              "query": [
+                {
+                  "key": "status",
+                  "value": "filed",
+                  "disabled": true
+                },
+                {
+                  "key": "limit",
+                  "value": "20"
+                },
+                {
+                  "key": "cursor",
+                  "value": "",
+                  "disabled": true
+                }
+              ]
+            }
+          }
+        },
+        {
+          "name": "Get Claim",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "X-Tenant-ID",
+                "value": "{{tenant_id}}"
+              },
+              {
+                "key": "X-Role",
+                "value": "{{role}}"
+              },
+              {
+                "key": "X-User-ID",
+                "value": "{{user_id}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/v1/claims/{{claim_id}}",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "v1",
+                "claims",
+                "{{claim_id}}"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Start Inspection",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "X-Tenant-ID",
+                "value": "{{tenant_id}}"
+              },
+              {
+                "key": "X-Role",
+                "value": "{{role}}"
+              },
+              {
+                "key": "X-User-ID",
+                "value": "{{user_id}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"inspection_method\": \"delegate_visit\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/v1/claims/{{claim_id}}/inspect",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "v1",
+                "claims",
+                "{{claim_id}}",
+                "inspect"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Resolve Claim",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "X-Tenant-ID",
+                "value": "{{tenant_id}}"
+              },
+              {
+                "key": "X-Role",
+                "value": "{{role}}"
+              },
+              {
+                "key": "X-User-ID",
+                "value": "{{user_id}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"resolution_type\": \"refund\",\n  \"amount_usd\": 80.00,\n  \"amount_ngn\": 132000.00,\n  \"reason\": \"Water damage confirmed during inspection. Partial refund for value of damaged goods.\",\n  \"notes\": \"Customer accepted refund offer\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/v1/claims/{{claim_id}}/resolve",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "v1",
+                "claims",
+                "{{claim_id}}",
+                "resolve"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Get Presigned Upload URL",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "X-Tenant-ID",
+                "value": "{{tenant_id}}"
+              },
+              {
+                "key": "X-Role",
+                "value": "{{role}}"
+              },
+              {
+                "key": "X-User-ID",
+                "value": "{{user_id}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"claim_id\": \"{{claim_id}}\",\n  \"filename\": \"damage_photo_01.jpg\",\n  \"content_type\": \"image/jpeg\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/v1/uploads/presigned-url",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "v1",
+                "uploads",
+                "presigned-url"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Missing Items \u2014 List",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "X-Tenant-ID",
+                "value": "{{tenant_id}}"
+              },
+              {
+                "key": "X-Role",
+                "value": "{{role}}"
+              },
+              {
+                "key": "X-User-ID",
+                "value": "{{user_id}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/v1/claims/missing-items?limit=20",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "v1",
+                "claims",
+                "missing-items"
+              ],
+              "query": [
+                {
+                  "key": "container_id",
+                  "value": "{{container_id}}",
+                  "disabled": true
+                },
+                {
+                  "key": "customer_id",
+                  "value": "{{customer_id}}",
+                  "disabled": true
+                },
+                {
+                  "key": "status",
+                  "value": "reported",
+                  "disabled": true
+                },
+                {
+                  "key": "limit",
+                  "value": "20"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "name": "Missing Items \u2014 Log",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "X-Tenant-ID",
+                "value": "{{tenant_id}}"
+              },
+              {
+                "key": "X-Role",
+                "value": "{{role}}"
+              },
+              {
+                "key": "X-User-ID",
+                "value": "{{user_id}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"manifest_id\": \"{{manifest_id}}\",\n  \"customer_id\": \"{{customer_id}}\",\n  \"carton_tags\": [\"SHX-00003\", \"SHX-00004\"],\n  \"description\": \"Two cartons not found during container offloading. Last seen in Guangzhou warehouse.\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/v1/claims/missing-items",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "v1",
+                "claims",
+                "missing-items"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Missing Items \u2014 Get",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "X-Tenant-ID",
+                "value": "{{tenant_id}}"
+              },
+              {
+                "key": "X-Role",
+                "value": "{{role}}"
+              },
+              {
+                "key": "X-User-ID",
+                "value": "{{user_id}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/v1/claims/missing-items/{{missing_item_id}}",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "v1",
+                "claims",
+                "missing-items",
+                "{{missing_item_id}}"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Missing Items \u2014 Update",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "X-Tenant-ID",
+                "value": "{{tenant_id}}"
+              },
+              {
+                "key": "X-Role",
+                "value": "{{role}}"
+              },
+              {
+                "key": "X-User-ID",
+                "value": "{{user_id}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"status\": \"investigating\",\n  \"notes\": \"Contacted Guangzhou warehouse. Awaiting CCTV review.\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/v1/claims/missing-items/{{missing_item_id}}",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "v1",
+                "claims",
+                "missing-items",
+                "{{missing_item_id}}"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Seized Items \u2014 List",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "X-Tenant-ID",
+                "value": "{{tenant_id}}"
+              },
+              {
+                "key": "X-Role",
+                "value": "{{role}}"
+              },
+              {
+                "key": "X-User-ID",
+                "value": "{{user_id}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/v1/claims/seized-items?limit=20",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "v1",
+                "claims",
+                "seized-items"
+              ],
+              "query": [
+                {
+                  "key": "container_id",
+                  "value": "{{container_id}}",
+                  "disabled": true
+                },
+                {
+                  "key": "customer_id",
+                  "value": "{{customer_id}}",
+                  "disabled": true
+                },
+                {
+                  "key": "status",
+                  "value": "seized",
+                  "disabled": true
+                },
+                {
+                  "key": "limit",
+                  "value": "20"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "name": "Seized Items \u2014 Log",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "X-Tenant-ID",
+                "value": "{{tenant_id}}"
+              },
+              {
+                "key": "X-Role",
+                "value": "{{role}}"
+              },
+              {
+                "key": "X-User-ID",
+                "value": "{{user_id}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"container_id\": \"{{container_id}}\",\n  \"customer_id\": \"{{customer_id}}\",\n  \"carton_tags\": [\"SHX-00007\"],\n  \"reason\": \"Customs inspection flagged item for prohibited goods. Nafdac confiscated carton.\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/v1/claims/seized-items",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "v1",
+                "claims",
+                "seized-items"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Seized Items \u2014 Get",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "X-Tenant-ID",
+                "value": "{{tenant_id}}"
+              },
+              {
+                "key": "X-Role",
+                "value": "{{role}}"
+              },
+              {
+                "key": "X-User-ID",
+                "value": "{{user_id}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/v1/claims/seized-items/{{seized_item_id}}",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "v1",
+                "claims",
+                "seized-items",
+                "{{seized_item_id}}"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Seized Items \u2014 Update",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "X-Tenant-ID",
+                "value": "{{tenant_id}}"
+              },
+              {
+                "key": "X-Role",
+                "value": "{{role}}"
+              },
+              {
+                "key": "X-User-ID",
+                "value": "{{user_id}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"recovery_status\": \"recovery_in_progress\",\n  \"notes\": \"Legal team engaged. Customs duty payment being processed.\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/v1/claims/seized-items/{{seized_item_id}}",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "v1",
+                "claims",
+                "seized-items",
+                "{{seized_item_id}}"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Get Presigned Upload URL (Evidence)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "X-Tenant-ID",
+                "value": "{{tenant_id}}"
+              },
+              {
+                "key": "X-Role",
+                "value": "nigeria_office_staff"
+              },
+              {
+                "key": "X-User-ID",
+                "value": "{{user_id}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"claim_id\": \"{{claim_id}}\",\n  \"filename\": \"damage_photo.jpg\",\n  \"content_type\": \"image/jpeg\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{base_url}}/v1/uploads/presigned-url",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "v1",
+                "uploads",
+                "presigned-url"
+              ]
+            },
+            "description": "POST /v1/uploads/presigned-url \u2014 generate an S3 presigned PUT URL for uploading claim evidence photos"
+          }
+        }
+      ]
+    },
+    {
+      "name": "9. Payment & Release",
+      "description": "Confirm customer payments, generate release notes for pickup, and record actual pickups.",
+      "item": [
+        {
+          "name": "Confirm Payment",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "X-Tenant-ID",
+                "value": "{{tenant_id}}"
+              },
+              {
+                "key": "X-Role",
+                "value": "{{role}}"
+              },
+              {
+                "key": "X-User-ID",
+                "value": "{{user_id}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"amount_ngn\": 250000.00,\n  \"payment_method\": \"bank_transfer\",\n  \"payment_reference\": \"TRF-2026-02-28-001\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/v1/payments/{{billing_id}}/confirm",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "v1",
+                "payments",
+                "{{billing_id}}",
+                "confirm"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Generate Release Note",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "X-Tenant-ID",
+                "value": "{{tenant_id}}"
+              },
+              {
+                "key": "X-Role",
+                "value": "{{role}}"
+              },
+              {
+                "key": "X-User-ID",
+                "value": "{{user_id}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"billing_id\": \"{{billing_id}}\",\n  \"carton_tags\": [\"SHX-00001\", \"SHX-00002\"],\n  \"release_with_outstanding\": false,\n  \"approval_notes\": null\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/v1/release-notes",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "v1",
+                "release-notes"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Generate Release Note \u2014 Partial (with outstanding)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "X-Tenant-ID",
+                "value": "{{tenant_id}}"
+              },
+              {
+                "key": "X-Role",
+                "value": "{{role}}"
+              },
+              {
+                "key": "X-User-ID",
+                "value": "{{user_id}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"billing_id\": \"{{billing_id}}\",\n  \"carton_tags\": [\"SHX-00001\"],\n  \"release_with_outstanding\": true,\n  \"approval_notes\": \"Approved by manager \u2014 customer to pay balance within 7 days\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/v1/release-notes",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "v1",
+                "release-notes"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Get Release Note",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "X-Tenant-ID",
+                "value": "{{tenant_id}}"
+              },
+              {
+                "key": "X-Role",
+                "value": "{{role}}"
+              },
+              {
+                "key": "X-User-ID",
+                "value": "{{user_id}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/v1/release-notes/{{release_note_id}}",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "v1",
+                "release-notes",
+                "{{release_note_id}}"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Record Pickup",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "X-Tenant-ID",
+                "value": "{{tenant_id}}"
+              },
+              {
+                "key": "X-Role",
+                "value": "{{role}}"
+              },
+              {
+                "key": "X-User-ID",
+                "value": "{{user_id}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"cartons_released\": 2,\n  \"is_delegate\": false,\n  \"notes\": \"Customer picked up in person\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/v1/release-notes/{{release_note_id}}/release",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "v1",
+                "release-notes",
+                "{{release_note_id}}",
+                "release"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Record Pickup \u2014 By Delegate",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "X-Tenant-ID",
+                "value": "{{tenant_id}}"
+              },
+              {
+                "key": "X-Role",
+                "value": "{{role}}"
+              },
+              {
+                "key": "X-User-ID",
+                "value": "{{user_id}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"cartons_released\": 2,\n  \"is_delegate\": true,\n  \"delegate_name\": \"Chukwuemeka Nwosu\",\n  \"delegate_phone\": \"+2348056789012\",\n  \"delegate_id_type\": \"national_id\",\n  \"delegate_id_number\": \"NIN-987654321\",\n  \"notes\": \"Delegate presented valid authorization letter\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/v1/release-notes/{{release_note_id}}/release",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "v1",
+                "release-notes",
+                "{{release_note_id}}",
+                "release"
+              ]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "10. Refunds",
+      "description": "Refund request workflow: create \u2192 accounts review \u2192 approve/reject.\nTypes: overpayment | cbm_correction | damage_or_loss",
+      "item": [
+        {
+          "name": "Create Refund Request",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "X-Tenant-ID",
+                "value": "{{tenant_id}}"
+              },
+              {
+                "key": "X-Role",
+                "value": "{{role}}"
+              },
+              {
+                "key": "X-User-ID",
+                "value": "{{user_id}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"customer_id\": \"{{customer_id}}\",\n  \"billing_id\": \"{{billing_id}}\",\n  \"refund_type\": \"overpayment\",\n  \"amount_requested_ngn\": 15000.00,\n  \"customer_choice\": \"credit_next_shipment\",\n  \"notes\": \"Customer paid \u20a6265,000 but billing total was \u20a6250,000\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/v1/refunds",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "v1",
+                "refunds"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Create Refund \u2014 Damage/Loss Claim",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "X-Tenant-ID",
+                "value": "{{tenant_id}}"
+              },
+              {
+                "key": "X-Role",
+                "value": "{{role}}"
+              },
+              {
+                "key": "X-User-ID",
+                "value": "{{user_id}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"customer_id\": \"{{customer_id}}\",\n  \"damage_claim_id\": \"{{claim_id}}\",\n  \"refund_type\": \"damage_or_loss\",\n  \"amount_requested_ngn\": 132000.00,\n  \"customer_choice\": \"immediate_refund\",\n  \"notes\": \"Refund for water-damaged electronics per resolved claim\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/v1/refunds",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "v1",
+                "refunds"
+              ]
+            }
+          }
+        },
+        {
+          "name": "List Refunds",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "X-Tenant-ID",
+                "value": "{{tenant_id}}"
+              },
+              {
+                "key": "X-Role",
+                "value": "{{role}}"
+              },
+              {
+                "key": "X-User-ID",
+                "value": "{{user_id}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/v1/refunds?limit=20",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "v1",
+                "refunds"
+              ],
+              "query": [
+                {
+                  "key": "status",
+                  "value": "pending_review",
+                  "disabled": true
+                },
+                {
+                  "key": "customer_id",
+                  "value": "{{customer_id}}",
+                  "disabled": true
+                },
+                {
+                  "key": "limit",
+                  "value": "20"
+                },
+                {
+                  "key": "cursor",
+                  "value": "",
+                  "disabled": true
+                }
+              ]
+            }
+          }
+        },
+        {
+          "name": "Get Refund",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "X-Tenant-ID",
+                "value": "{{tenant_id}}"
+              },
+              {
+                "key": "X-Role",
+                "value": "{{role}}"
+              },
+              {
+                "key": "X-User-ID",
+                "value": "{{user_id}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/v1/refunds/{{refund_id}}",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "v1",
+                "refunds",
+                "{{refund_id}}"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Accounts Review (debt check)",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "X-Tenant-ID",
+                "value": "{{tenant_id}}"
+              },
+              {
+                "key": "X-Role",
+                "value": "{{role}}"
+              },
+              {
+                "key": "X-User-ID",
+                "value": "{{user_id}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"debt_check_passed\": true,\n  \"debt_check_notes\": \"No outstanding carryovers or unpaid billing found for this customer\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/v1/refunds/{{refund_id}}/review",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "v1",
+                "refunds",
+                "{{refund_id}}",
+                "review"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Accounts Review \u2014 Rejected (has debt)",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "X-Tenant-ID",
+                "value": "{{tenant_id}}"
+              },
+              {
+                "key": "X-Role",
+                "value": "{{role}}"
+              },
+              {
+                "key": "X-User-ID",
+                "value": "{{user_id}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"debt_check_passed\": false,\n  \"debt_check_notes\": \"Customer has \u20a645,000 outstanding carryover from container MSCU9876543\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/v1/refunds/{{refund_id}}/review",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "v1",
+                "refunds",
+                "{{refund_id}}",
+                "review"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Approve Refund",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "X-Tenant-ID",
+                "value": "{{tenant_id}}"
+              },
+              {
+                "key": "X-Role",
+                "value": "{{role}}"
+              },
+              {
+                "key": "X-User-ID",
+                "value": "{{user_id}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"amount_approved_ngn\": 15000.00,\n  \"approval_level\": \"manager\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/v1/refunds/{{refund_id}}/approve",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "v1",
+                "refunds",
+                "{{refund_id}}",
+                "approve"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Approve Refund \u2014 Head of Finance (CBM/large damage)",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "X-Tenant-ID",
+                "value": "{{tenant_id}}"
+              },
+              {
+                "key": "X-Role",
+                "value": "tenant_admin"
+              },
+              {
+                "key": "X-User-ID",
+                "value": "{{user_id}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"amount_approved_ngn\": 132000.00,\n  \"approval_level\": \"head_of_finance\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/v1/refunds/{{refund_id}}/approve",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "v1",
+                "refunds",
+                "{{refund_id}}",
+                "approve"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Reject Refund",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "X-Tenant-ID",
+                "value": "{{tenant_id}}"
+              },
+              {
+                "key": "X-Role",
+                "value": "{{role}}"
+              },
+              {
+                "key": "X-User-ID",
+                "value": "{{user_id}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"reason\": \"Refund request does not meet policy criteria. Overpayment was offset against previous carryover balance.\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/v1/refunds/{{refund_id}}/reject",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "v1",
+                "refunds",
+                "{{refund_id}}",
+                "reject"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Reject Refund",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "X-Tenant-ID",
+                "value": "{{tenant_id}}"
+              },
+              {
+                "key": "X-Role",
+                "value": "tenant_admin"
+              },
+              {
+                "key": "X-User-ID",
+                "value": "{{user_id}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"reason\": \"Payment amount verified as correct \u2014 no overpayment found\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{base_url}}/v1/refunds/{{refund_id}}/reject",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "v1",
+                "refunds",
+                "{{refund_id}}",
+                "reject"
+              ]
+            },
+            "description": "PATCH /v1/refunds/{id}/reject \u2014 reject a pending_review or pending_approval refund (tenant_admin or nigeria_office_staff)"
+          }
+        }
+      ]
+    },
+    {
+      "name": "11. Excel Exports & Import",
+      "item": [
+        {
+          "name": "Export Packing List (XLSX)",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "X-Tenant-ID",
+                "value": "{{tenant_id}}"
+              },
+              {
+                "key": "X-Role",
+                "value": "china_office_staff"
+              },
+              {
+                "key": "X-User-ID",
+                "value": "{{user_id}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/v1/packing-lists/{{packing_list_id}}/export",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "v1",
+                "packing-lists",
+                "{{packing_list_id}}",
+                "export"
+              ]
+            },
+            "description": "GET /v1/packing-lists/{id}/export \u2014 generate presigned S3 download URL for packing list XLSX"
+          }
+        },
+        {
+          "name": "Export Manifest (XLSX)",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "X-Tenant-ID",
+                "value": "{{tenant_id}}"
+              },
+              {
+                "key": "X-Role",
+                "value": "nigeria_office_staff"
+              },
+              {
+                "key": "X-User-ID",
+                "value": "{{user_id}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/v1/manifests/{{manifest_id}}/export",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "v1",
+                "manifests",
+                "{{manifest_id}}",
+                "export"
+              ]
+            },
+            "description": "GET /v1/manifests/{id}/export \u2014 generate presigned S3 download URL for manifest XLSX"
+          }
+        },
+        {
+          "name": "Export Billing Record (XLSX)",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "X-Tenant-ID",
+                "value": "{{tenant_id}}"
+              },
+              {
+                "key": "X-Role",
+                "value": "nigeria_office_staff"
+              },
+              {
+                "key": "X-User-ID",
+                "value": "{{user_id}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/v1/billing/{{billing_id}}/export",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "v1",
+                "billing",
+                "{{billing_id}}",
+                "export"
+              ]
+            },
+            "description": "GET /v1/billing/{id}/export \u2014 generate presigned S3 download URL for billing record XLSX"
+          }
+        },
+        {
+          "name": "Export Container Billing (XLSX)",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "X-Tenant-ID",
+                "value": "{{tenant_id}}"
+              },
+              {
+                "key": "X-Role",
+                "value": "nigeria_office_staff"
+              },
+              {
+                "key": "X-User-ID",
+                "value": "{{user_id}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/v1/containers/{{container_id}}/billing/export",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "v1",
+                "containers",
+                "{{container_id}}",
+                "billing",
+                "export"
+              ]
+            },
+            "description": "GET /v1/containers/{id}/billing/export \u2014 export all billing records for a container as XLSX"
+          }
+        },
+        {
+          "name": "Import Packing List from XLSX",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "X-Tenant-ID",
+                "value": "{{tenant_id}}"
+              },
+              {
+                "key": "X-Role",
+                "value": "china_office_staff"
+              },
+              {
+                "key": "X-User-ID",
+                "value": "{{user_id}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"container_id\": \"{{container_id}}\",\n  \"file_key\": \"{{tenant_id}}/imports/packing_list_template.xlsx\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{base_url}}/v1/packing-lists/import",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "v1",
+                "packing-lists",
+                "import"
+              ]
+            },
+            "description": "POST /v1/packing-lists/import \u2014 import packing list items from a pre-uploaded S3 XLSX file (china_office_staff)"
+          }
+        }
+      ]
+    },
+    {
+      "name": "12. Notifications (Webhooks)",
+      "item": [
+        {
+          "name": "WhatsApp Webhook Verify (GET)",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "X-Tenant-ID",
+                "value": "{{tenant_id}}"
+              },
+              {
+                "key": "X-Role",
+                "value": "customer"
+              },
+              {
+                "key": "X-User-ID",
+                "value": "{{user_id}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/v1/webhooks/whatsapp?hub.mode=subscribe&hub.verify_token={{whatsapp_verify_token}}&hub.challenge=challenge_string",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "v1",
+                "webhooks",
+                "whatsapp"
+              ],
+              "query": [
+                {
+                  "key": "hub.mode",
+                  "value": "subscribe"
+                },
+                {
+                  "key": "hub.verify_token",
+                  "value": "{{whatsapp_verify_token}}"
+                },
+                {
+                  "key": "hub.challenge",
+                  "value": "challenge_string"
+                }
+              ]
+            },
+            "description": "GET /v1/webhooks/whatsapp \u2014 Meta webhook verification challenge. Returns hub.challenge on success (200 text/plain)."
+          }
+        },
+        {
+          "name": "WhatsApp Webhook Delivery Status (POST)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "X-Tenant-ID",
+                "value": "{{tenant_id}}"
+              },
+              {
+                "key": "X-Role",
+                "value": "customer"
+              },
+              {
+                "key": "X-User-ID",
+                "value": "{{user_id}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"object\": \"whatsapp_business_account\",\n  \"entry\": [{\n    \"changes\": [{\n      \"value\": {\n        \"statuses\": [{\n          \"id\": \"wamid.example\",\n          \"status\": \"delivered\",\n          \"timestamp\": \"1700000000\",\n          \"recipient_id\": \"+2348011111111\"\n        }]\n      }\n    }]\n  }]\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{base_url}}/v1/webhooks/whatsapp",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "v1",
+                "webhooks",
+                "whatsapp"
+              ]
+            },
+            "description": "POST /v1/webhooks/whatsapp \u2014 Incoming Meta delivery status webhook. Logs status; always returns 200."
+          }
+        }
+      ]
+    }
+  ]
+}
