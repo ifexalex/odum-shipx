@@ -1,12 +1,6 @@
 # Copyright (c) 2010-2024 openpyxl
 
-from openpyxl.descriptors import (
-    Bool,
-    Integer,
-    String,
-    Set,
-    Sequence
-)
+from openpyxl.descriptors import Bool, Integer, Sequence, Set, String
 from openpyxl.descriptors.serialisable import Serialisable
 
 

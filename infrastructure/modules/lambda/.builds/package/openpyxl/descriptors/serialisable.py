@@ -2,21 +2,21 @@
 
 from copy import copy
 from keyword import kwlist
-KEYWORDS = frozenset(kwlist)
 
-from . import Descriptor
-from . import MetaSerialisable
-from .sequence import (
-    Sequence,
-    NestedSequence,
-    MultiSequencePart,
-)
-from .namespace import namespaced
+KEYWORDS = frozenset(kwlist)
 
 from openpyxl.compat import safe_string
 from openpyxl.xml.functions import (
     Element,
     localname,
+)
+
+from . import Descriptor, MetaSerialisable
+from .namespace import namespaced
+from .sequence import (
+    MultiSequencePart,
+    NestedSequence,
+    Sequence,
 )
 
 seq_types = (list, tuple)
@@ -123,7 +123,7 @@ class Serialisable(metaclass=MetaSerialisable):
 
         el = Element(tagname, attrs)
         if "attr_text" in self.__attrs__:
-            el.text = safe_string(getattr(self, "attr_text"))
+            el.text = safe_string(self.attr_text)
 
         for child_tag in self.__elements__:
             desc = getattr(self.__class__, child_tag, None)
@@ -171,9 +171,7 @@ class Serialisable(metaclass=MetaSerialisable):
 
 
     def __eq__(self, other):
-        if not self.__class__ == other.__class__:
-            return False
-        elif not dict(self) == dict(other):
+        if not self.__class__ == other.__class__ or not dict(self) == dict(other):
             return False
         for el in self.__elements__:
             if getattr(self, el) != getattr(other, el):
@@ -186,19 +184,16 @@ class Serialisable(metaclass=MetaSerialisable):
 
 
     def __repr__(self):
-        s = u"<{0}.{1} object>\nParameters:".format(
-            self.__module__,
-            self.__class__.__name__
-        )
+        s = f"<{self.__module__}.{self.__class__.__name__} object>\nParameters:"
         args = []
         for k in self.__attrs__ + self.__elements__:
             v = getattr(self, k)
             if isinstance(v, Descriptor):
                 v = None
-            args.append(u"{0}={1}".format(k, repr(v)))
-        args = u", ".join(args)
+            args.append(f"{k}={repr(v)}")
+        args = ", ".join(args)
 
-        return u"\n".join([s, args])
+        return "\n".join([s, args])
 
 
     def __hash__(self):

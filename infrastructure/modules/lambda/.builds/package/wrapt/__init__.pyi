@@ -1,11 +1,11 @@
 import sys
 
 if sys.version_info >= (3, 10):
+    from collections.abc import Callable
     from inspect import FullArgSpec
     from types import ModuleType, TracebackType
     from typing import (
         Any,
-        Callable,
         Concatenate,
         Generic,
         ParamSpec,

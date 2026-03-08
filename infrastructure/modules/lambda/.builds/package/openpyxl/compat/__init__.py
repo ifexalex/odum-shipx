@@ -1,11 +1,9 @@
 # Copyright (c) 2010-2024 openpyxl
 
-from .numbers import NUMERIC_TYPES
-from .strings import safe_string
 
+import inspect
 import warnings
 from functools import wraps
-import inspect
 
 
 class DummyCode:
@@ -15,7 +13,7 @@ class DummyCode:
 
 # from https://github.com/tantale/deprecated/blob/master/deprecated/__init__.py
 # with an enhancement to update docstrings of deprecated functions
-string_types = (type(b''), type(u''))
+string_types = (bytes, str)
 def deprecated(reason):
 
     if isinstance(reason, string_types):

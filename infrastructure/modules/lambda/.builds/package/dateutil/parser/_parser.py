@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """
 This module offers a generic date/time string parser which is able to parse
 most known formats to represent a date and/or time.
@@ -28,26 +27,21 @@ Additional resources about date/time string formats can be found below:
 - `Java SimpleDateFormat Class
   <https://docs.oracle.com/javase/6/docs/api/java/text/SimpleDateFormat.html>`_
 """
-from __future__ import unicode_literals
 
 import datetime
 import re
 import string
 import time
 import warnings
-
 from calendar import monthrange
+from decimal import Decimal
 from io import StringIO
+from warnings import warn
 
 import six
 from six import integer_types, text_type
 
-from decimal import Decimal
-
-from warnings import warn
-
-from .. import relativedelta
-from .. import tz
+from .. import relativedelta, tz
 
 __all__ = ["parse", "parserinfo", "ParserError"]
 
@@ -55,7 +49,7 @@ __all__ = ["parse", "parserinfo", "ParserError"]
 # TODO: pandas.core.tools.datetimes imports this explicitly.  Might be worth
 # making public and/or figuring out if there is something we can
 # take off their plate.
-class _timelex(object):
+class _timelex:
     # Fractional seconds are sometimes split by a comma
     _split_decimal = re.compile("([.,])")
 
@@ -67,7 +61,7 @@ class _timelex(object):
             instream = StringIO(instream)
         elif getattr(instream, 'read', None) is None:
             raise TypeError('Parser must be a string or character stream, not '
-                            '{itype}'.format(itype=instream.__class__.__name__))
+                            f'{instream.__class__.__name__}')
 
         self.instream = instream
         self.charstack = []
@@ -216,7 +210,7 @@ class _timelex(object):
         return nextchar.isspace()
 
 
-class _resultbase(object):
+class _resultbase:
 
     def __init__(self):
         for attr in self.__slots__:
@@ -238,7 +232,7 @@ class _resultbase(object):
         return self._repr(self.__class__.__name__)
 
 
-class parserinfo(object):
+class parserinfo:
     """
     Class which handles what inputs are accepted. Subclass this to customize
     the language and acceptable values for each parameter.
@@ -565,7 +559,7 @@ class _ymd(list):
         return year, month, day
 
 
-class parser(object):
+class parser:
     def __init__(self, info=None):
         self.info = info or parserinfo()
 
@@ -835,7 +829,7 @@ class parser(object):
                     if (i + 5 < len_l and
                             info.jump(l[i + 2]) and l[i + 3] == '(' and
                             l[i + 5] == ')' and
-                            3 <= len(l[i + 4]) and
+                            len(l[i + 4]) >= 3 and
                             self._could_be_tzname(res.hour, res.tzname,
                                                   None, l[i + 4])):
                         # -0300 (BRST)
@@ -1204,11 +1198,11 @@ class parser(object):
         elif res.tzname:
             # tz-like string was parsed but we don't know what to do
             # with it
-            warnings.warn("tzname {tzname} identified but not understood.  "
+            warnings.warn(f"tzname {res.tzname} identified but not understood.  "
                           "Pass `tzinfos` argument in order to correctly "
                           "return a timezone-aware datetime.  In a future "
                           "version, this will raise an "
-                          "exception.".format(tzname=res.tzname),
+                          "exception.",
                           category=UnknownTimezoneWarning)
             aware = naive
 
@@ -1368,7 +1362,7 @@ def parse(timestr, parserinfo=None, **kwargs):
         return DEFAULTPARSER.parse(timestr, **kwargs)
 
 
-class _tzparser(object):
+class _tzparser:
 
     class _result(_resultbase):
 

@@ -2,10 +2,9 @@ import re
 import types
 from urllib.parse import urlparse, uses_netloc
 
-from sqlalchemy.engine.base import Connection
-
 from aws_xray_sdk.core import xray_recorder
 from aws_xray_sdk.ext.util import strip_url
+from sqlalchemy.engine.base import Connection
 
 
 def decorate_all_functions(function_decorator):
@@ -107,11 +106,11 @@ def parse_bind(bind):
         else:
             # Strip password from URL
             host_info = u.netloc.rpartition('@')[-1]
-            parts = u._replace(netloc='{}@{}'.format(u.username, host_info))
+            parts = u._replace(netloc=f'{u.username}@{host_info}')
             safe_url = parts.geturl()
         sql = {}
         sql['database_type'] = u.scheme
         sql['url'] = safe_url
         if u.username is not None:
-            sql['user'] = "{}".format(u.username)
+            sql['user'] = f"{u.username}"
     return sql

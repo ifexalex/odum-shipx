@@ -14,6 +14,7 @@ Notes:
 """
 
 import logging
+from decimal import Decimal
 
 from shared.db import execute_with_tenant, execute_write_with_tenant
 from shared.pagination import build_paginated_query, extract_page
@@ -47,9 +48,8 @@ def get_customer_by_user_id(tenant_id: str, user_id: str) -> dict | None:
     return rows[0] if rows else None
 
 
-def get_dollar_rate(tenant_id: str) -> "Decimal":
+def get_dollar_rate(tenant_id: str) -> Decimal:
     """Return the current USD→NGN exchange rate from tenant_config."""
-    from decimal import Decimal as _Decimal
     rows = execute_with_tenant(
         tenant_id,
         """
@@ -59,11 +59,11 @@ def get_dollar_rate(tenant_id: str) -> "Decimal":
         (tenant_id,),
     )
     if not rows:
-        return _Decimal("1550")
+        return Decimal("1550")
     val = rows[0]["config_value"]
     if isinstance(val, dict):
-        return _Decimal(str(val.get("rate", "1550")))
-    return _Decimal(str(val))
+        return Decimal(str(val.get("rate", "1550")))
+    return Decimal(str(val))
 
 
 def get_billing_by_id(tenant_id: str, billing_id: str) -> dict | None:

@@ -7,7 +7,7 @@ missing/seized items.
 
 import logging
 import os
-from datetime import date, timezone, datetime
+from datetime import UTC, date, datetime
 from decimal import Decimal
 
 import boto3
@@ -277,7 +277,7 @@ def resolve_claim(
     )
 
     # Update claim status
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     updated = repo.update_claim_status(
         tenant_id,
         claim_id,
@@ -358,7 +358,7 @@ def _resolve_claim_new_style(
         )
         refund_request_id = str(refund_row["id"]) if refund_row else None
 
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     updated = repo.update_claim_status(
         tenant_id, claim_id, "resolved",
         extra={"reviewed_by": actor_id, "reviewed_at": now},

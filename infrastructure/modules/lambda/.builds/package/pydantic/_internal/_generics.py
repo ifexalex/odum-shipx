@@ -4,10 +4,11 @@ import sys
 import types
 import typing
 from collections import ChainMap
+from collections.abc import Iterator, Mapping, MutableMapping
 from contextlib import contextmanager
 from contextvars import ContextVar
 from types import prepare_class
-from typing import TYPE_CHECKING, Any, Iterator, List, Mapping, MutableMapping, Tuple, TypeVar
+from typing import TYPE_CHECKING, Any, TypeVar
 from weakref import WeakValueDictionary
 
 import typing_extensions
@@ -23,7 +24,7 @@ if sys.version_info >= (3, 10):
 if TYPE_CHECKING:
     from ..main import BaseModel
 
-GenericTypesCacheKey = Tuple[Any, Any, Tuple[Any, ...]]
+GenericTypesCacheKey = tuple[Any, Any, tuple[Any, ...]]
 
 # Note: We want to remove LimitedDict, but to do this, we'd need to improve the handling of generics caching.
 #   Right now, to handle recursive generics, we some types must remain cached for brief periods without references.
@@ -232,7 +233,7 @@ def get_standard_typevars_map(cls: type[Any]) -> dict[TypeVarType, Any] | None:
     # So it is safe to access cls.__args__ and origin.__parameters__
     args: tuple[Any, ...] = cls.__args__  # type: ignore
     parameters: tuple[TypeVarType, ...] = origin.__parameters__
-    return dict(zip(parameters, args))
+    return dict(zip(parameters, args, strict=False))
 
 
 def get_model_typevars_map(cls: type[BaseModel]) -> dict[TypeVarType, Any] | None:
@@ -247,7 +248,7 @@ def get_model_typevars_map(cls: type[BaseModel]) -> dict[TypeVarType, Any] | Non
     generic_metadata = cls.__pydantic_generic_metadata__
     origin = generic_metadata['origin']
     args = generic_metadata['args']
-    return dict(zip(iter_contained_typevars(origin), args))
+    return dict(zip(iter_contained_typevars(origin), args, strict=False))
 
 
 def replace_types(type_: Any, type_map: Mapping[Any, Any] | None) -> Any:
@@ -324,7 +325,7 @@ def replace_types(type_: Any, type_map: Mapping[Any, Any] | None) -> Any:
 
     # Handle special case for typehints that can have lists as arguments.
     # `typing.Callable[[int, str], int]` is an example for this.
-    if isinstance(type_, (List, list)):
+    if isinstance(type_, (list, list)):
         resolved_list = list(replace_types(element, type_map) for element in type_)
         if all_identical(type_, resolved_list):
             return type_
@@ -356,7 +357,7 @@ def has_instance_in_type(type_: Any, isinstance_target: Any) -> bool:
 
     # Handle special case for typehints that can have lists as arguments.
     # `typing.Callable[[int, str], int]` is an example for this.
-    if isinstance(type_, (List, list)) and not isinstance(type_, typing_extensions.ParamSpec):
+    if isinstance(type_, (list, list)) and not isinstance(type_, typing_extensions.ParamSpec):
         if any(has_instance_in_type(element, isinstance_target) for element in type_):
             return True
 

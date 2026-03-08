@@ -1,23 +1,14 @@
 # Copyright (c) 2010-2024 openpyxl
 
-from openpyxl.descriptors.serialisable import Serialisable
-from openpyxl.descriptors import (
-    Typed,
-    String,
-    Alias
-)
+from openpyxl.descriptors import Alias, String, Typed
 from openpyxl.descriptors.excel import ExtensionList
-from openpyxl.descriptors.nested import (
-    NestedBool,
-    NestedInteger,
-    NestedFloat,
-    NestedSet
-)
+from openpyxl.descriptors.nested import NestedBool, NestedFloat, NestedInteger, NestedSet
+from openpyxl.descriptors.serialisable import Serialisable
 
 from .data_source import NumFmt
+from .layout import Layout
 from .shapes import GraphicalProperties
 from .text import RichText, Text
-from .layout import Layout
 
 
 class TrendlineLabel(Serialisable):

@@ -1,9 +1,6 @@
 # Copyright (c) 2010-2024 openpyxl
 
-from openpyxl.descriptors import (
-    Integer,
-    Alias
-)
+from openpyxl.descriptors import Alias, Integer
 from openpyxl.descriptors.excel import Relation
 from openpyxl.descriptors.serialisable import Serialisable
 

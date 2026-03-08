@@ -2,17 +2,15 @@
 
 from array import array
 
-from openpyxl.descriptors.serialisable import Serialisable
 from openpyxl.descriptors import (
-    Typed,
-    Float,
     Bool,
     Integer,
     Sequence,
+    Typed,
 )
 from openpyxl.descriptors.excel import ExtensionList
+from openpyxl.descriptors.serialisable import Serialisable
 from openpyxl.utils.indexed_list import IndexedList
-
 
 from .alignment import Alignment
 from .protection import Protection
@@ -58,11 +56,11 @@ class StyleArray(array):
 
 
     def __copy__(self):
-        return StyleArray((self))
+        return StyleArray(self)
 
 
     def __deepcopy__(self, memo):
-        return StyleArray((self))
+        return StyleArray(self)
 
 
 class CellStyle(Serialisable):
@@ -185,7 +183,7 @@ class CellStyleList(Serialisable):
         try:
             return self.xf[idx]
         except IndexError:
-            print((f"{idx} is out of range"))
+            print(f"{idx} is out of range")
         return self.xf[idx]
 
 

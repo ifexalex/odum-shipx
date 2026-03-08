@@ -7,4 +7,3 @@ __license__ = 'MIT'
 __version__ = ''
 
 
-from . import exceptions

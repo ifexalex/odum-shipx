@@ -1,5 +1,5 @@
 """Unit tests for services.tracking.service — container state machine, shipment tracking."""
-from unittest.mock import MagicMock, patch
+from unittest.mock import patch
 
 import pytest
 
@@ -368,9 +368,9 @@ class TestGetShipmentByCodeAndPhone:
                 service.get_shipment_by_code_and_phone("UNKNOWN-CODE", "+2348012345678")
 
     def test_returns_stage_history(self):
-        from services.tracking import service
-
         from datetime import datetime
+
+        from services.tracking import service
         row = {
             "id": "ship-001",
             "tracking_code": "TK-001",

@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """
 This module offers timezone implementations subclassing the abstract
 :py:class:`datetime.tzinfo` type. There are classes to handle tzfile format
@@ -7,31 +6,28 @@ etc), TZ environment string (in all known formats), given ranges (with help
 from relative deltas), local machine timezone, fixed offset timezone, and UTC
 timezone.
 """
-import datetime
-import struct
-import time
-import sys
-import os
 import bisect
+import datetime
+import os
+import struct
+import sys
+import time
 import weakref
 from collections import OrderedDict
 
 import six
 from six import string_types
 from six.moves import _thread
-from ._common import tzname_in_python2, _tzinfo
-from ._common import tzrangebase, enfold
-from ._common import _validate_fromutc_inputs
 
-from ._factories import _TzSingleton, _TzOffsetFactory
-from ._factories import _TzStrFactory
+from ._common import _tzinfo, _validate_fromutc_inputs, enfold, tzname_in_python2, tzrangebase
+from ._factories import _TzOffsetFactory, _TzSingleton, _TzStrFactory
+
 try:
     from .win import tzwin, tzwinlocal
 except ImportError:
     tzwin = tzwinlocal = None
 
 # For warning about rounding tzinfo
-from warnings import warn
 
 ZERO = datetime.timedelta(0)
 EPOCH = datetime.datetime(1970, 1, 1, 0, 0)
@@ -325,7 +321,7 @@ class tzlocal(_tzinfo):
     __reduce__ = object.__reduce__
 
 
-class _ttinfo(object):
+class _ttinfo:
     __slots__ = ["offset", "delta", "isdst", "abbr",
                  "isstd", "isgmt", "dstoffset"]
 
@@ -370,7 +366,7 @@ class _ttinfo(object):
                 setattr(self, name, state[name])
 
 
-class _tzfile(object):
+class _tzfile:
     """
     Lightweight class for holding the relevant transition and time zone
     information read from binary tzfiles.
@@ -1153,7 +1149,7 @@ class tzstr(tzrange):
         return "%s(%s)" % (self.__class__.__name__, repr(self._s))
 
 
-class _tzicalvtzcomp(object):
+class _tzicalvtzcomp:
     def __init__(self, tzoffsetfrom, tzoffsetto, isdst,
                  tzname=None, rrule=None):
         self.tzoffsetfrom = datetime.timedelta(seconds=tzoffsetfrom)
@@ -1250,7 +1246,7 @@ class _tzicalvtz(_tzinfo):
     __reduce__ = object.__reduce__
 
 
-class tzical(object):
+class tzical:
     """
     This object is designed to parse an iCalendar-style ``VTIMEZONE`` structure
     as set out in `RFC 5545`_ Section 4.6.5 into one or more `tzinfo` objects.
@@ -1268,7 +1264,7 @@ class tzical(object):
         if isinstance(fileobj, string_types):
             self._s = fileobj
             # ical should be encoded in UTF-8 with CRLF
-            fileobj = open(fileobj, 'r')
+            fileobj = open(fileobj)
         else:
             self._s = getattr(fileobj, 'name', repr(fileobj))
             fileobj = _nullcontext(fileobj)
@@ -1472,7 +1468,7 @@ def __get_gettz():
     if tzwinlocal is not None:
         tzlocal_classes += (tzwinlocal,)
 
-    class GettzFunc(object):
+    class GettzFunc:
         """
         Retrieve a time zone object from a string representation
 
@@ -1610,7 +1606,7 @@ def __get_gettz():
                         try:
                             tz = tzfile(filepath)
                             break
-                        except (IOError, OSError, ValueError):
+                        except (OSError, ValueError):
                             pass
                 else:
                     tz = tzlocal()
@@ -1639,14 +1635,14 @@ def __get_gettz():
                         try:
                             tz = tzfile(filepath)
                             break
-                        except (IOError, OSError, ValueError):
+                        except (OSError, ValueError):
                             pass
                     else:
                         tz = None
                         if tzwin is not None:
                             try:
                                 tz = tzwin(name)
-                            except (WindowsError, UnicodeEncodeError):
+                            except (OSError, UnicodeEncodeError):
                                 # UnicodeEncodeError is for Python 2.7 compat
                                 tz = None
 
@@ -1832,7 +1828,7 @@ try:
     # Python 3.7 feature
     from contextlib import nullcontext as _nullcontext
 except ImportError:
-    class _nullcontext(object):
+    class _nullcontext:
         """
         Class for wrapping contexts so that they are passed through in a
         with statement.

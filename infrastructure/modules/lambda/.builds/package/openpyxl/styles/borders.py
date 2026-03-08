@@ -2,17 +2,14 @@
 
 from openpyxl.compat import safe_string
 from openpyxl.descriptors import (
+    Alias,
+    Bool,
     NoneSet,
     Typed,
-    Bool,
-    Alias,
-    Sequence,
-    Integer,
 )
 from openpyxl.descriptors.serialisable import Serialisable
 
 from .colors import ColorDescriptor
-
 
 BORDER_NONE = None
 BORDER_DASHDOT = 'dashDot'
@@ -95,9 +92,7 @@ class Border(Serialisable):
     def __iter__(self):
         for attr in self.__attrs__:
             value = getattr(self, attr)
-            if value and attr != "outline":
-                yield attr, safe_string(value)
-            elif attr == "outline" and not value:
+            if value and attr != "outline" or attr == "outline" and not value:
                 yield attr, safe_string(value)
 
 DEFAULT_BORDER = Border(left=Side(), right=Side(), top=Side(), bottom=Side(), diagonal=Side())

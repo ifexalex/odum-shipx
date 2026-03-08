@@ -1,7 +1,7 @@
 SQS_XRAY_HEADER = "AWSTraceHeader"
 class SqsMessageHelper:
-    
-    @staticmethod 
+
+    @staticmethod
     def isSampled(sqs_message):
         attributes = sqs_message['attributes']
 

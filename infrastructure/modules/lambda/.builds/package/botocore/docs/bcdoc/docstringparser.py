@@ -206,7 +206,7 @@ class TagNode(StemNode):
             self.rstrip()
         # Collapse whitespace in situations like ``</b> <i> foo</i>`` into
         # ``</b><i> foo</i>``.
-        for prev, cur in zip(self.children[:-1], self.children[1:]):
+        for prev, cur in zip(self.children[:-1], self.children[1:], strict=False):
             if (
                 isinstance(prev, DataNode)
                 and prev.endswith_whitespace()
@@ -214,7 +214,7 @@ class TagNode(StemNode):
             ):
                 cur.lstrip()
         # Same logic, but for situations like ``<b>bar </b> <i>``:
-        for cur, nxt in zip(self.children[:-1], self.children[1:]):
+        for cur, nxt in zip(self.children[:-1], self.children[1:], strict=False):
             if (
                 isinstance(nxt, DataNode)
                 and cur.endswith_whitespace()

@@ -1,7 +1,6 @@
-import copy
-import os
 import binascii
 import logging
+import os
 
 log = logging.getLogger(__name__)
 
@@ -42,20 +41,20 @@ class Throwable:
             log.warning("can not parse stack trace string, ignore stack field.")
 
         if exception:
-            setattr(exception, '_recorded', True)
-            setattr(exception, '_cause_id', self.id)
-			
-    def to_dict(self):  
+            exception._recorded = True
+            exception._cause_id = self.id
+
+    def to_dict(self):
         """
         Convert Throwable object to dict with required properties that
         have non-empty values. 
-        """  
+        """
         throwable_dict = {}
-        
-        for key, value in vars(self).items():  
+
+        for key, value in vars(self).items():
             if isinstance(value, bool) or value:
-                throwable_dict[key] = value       
-        
+                throwable_dict[key] = value
+
         return throwable_dict
 
     def _normalize_stack_trace(self, stack):

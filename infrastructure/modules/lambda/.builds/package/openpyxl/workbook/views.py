@@ -1,20 +1,17 @@
 # Copyright (c) 2010-2024 openpyxl
 
-from openpyxl.descriptors.serialisable import Serialisable
 from openpyxl.descriptors import (
-    Typed,
-    Sequence,
-    String,
-    Float,
-    Integer,
     Bool,
+    Integer,
     NoneSet,
-    Set,
+    String,
+    Typed,
 )
 from openpyxl.descriptors.excel import (
     ExtensionList,
     Guid,
 )
+from openpyxl.descriptors.serialisable import Serialisable
 
 
 class BookView(Serialisable):

@@ -1,13 +1,8 @@
-import hashlib
 
-from openpyxl.descriptors import (Bool, Integer, String)
+from openpyxl.descriptors import Bool, Integer, String
 from openpyxl.descriptors.excel import Base64Binary
 from openpyxl.descriptors.serialisable import Serialisable
-
-from openpyxl.worksheet.protection import (
-    hash_password,
-    _Protected
-)
+from openpyxl.worksheet.protection import _Protected
 
 
 class ChartsheetProtection(Serialisable, _Protected):

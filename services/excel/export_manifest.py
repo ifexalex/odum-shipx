@@ -1,5 +1,5 @@
 """Generate manifest .xlsx (2-sheet workbook) per spec §7.2."""
-from datetime import datetime
+import contextlib
 from io import BytesIO
 
 import openpyxl
@@ -12,11 +12,9 @@ def _autosize_columns(ws) -> None:
         max_length = 0
         col_letter = get_column_letter(col[0].column)
         for cell in col:
-            try:
+            with contextlib.suppress(Exception):
                 if cell.value is not None:
                     max_length = max(max_length, len(str(cell.value)))
-            except Exception:
-                pass
         ws.column_dimensions[col_letter].width = min(max_length + 2, 40)
 
 

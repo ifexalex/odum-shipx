@@ -6,10 +6,42 @@ requires-python = ">=3.12"
 
 [tool.ruff]
 target-version = "py312"
-line-length = 120
+line-length = 130
+exclude = [
+    ".builds",
+    "**/.builds",
+    "infrastructure/modules/lambda/.builds",
+    ".venv",
+    "venv",
+    "__pycache__",
+]
 
 [tool.ruff.lint]
 select = ["E", "F", "I", "N", "W", "UP", "B", "SIM", "S"]  # S = bandit rules
+ignore = [
+    "S101",   # assert — tests use it legitimately
+    "N818",   # Exception name suffix — some intentionally don't end in Error
+    "S608",   # SQL injection via string — false positive; all dynamic SQL uses allowlists
+    "E402",   # Module import not at top — needed after sys.path manipulation in scripts
+    "SIM117", # Nested with — auto-fix not always safe with unittest.mock.patch context managers
+    "SIM108", # Ternary rewrite — often hurts readability in error message construction
+    "S310",   # URL open — all urlopen calls target known external APIs (Africa's Talking, Meta)
+]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/**/*.py" = [
+    "S311",  # random in load/unit tests — not used for crypto
+    "S310",  # URL open — test helpers calling local endpoints
+    "E501",  # long lines in test assertions are acceptable
+    "N806",  # uppercase variable in test helpers
+]
+"scripts/**/*.py" = [
+    "S603",  # subprocess in internal scripts
+    "S110",  # try-except-pass in e2e scripts
+    "E501",  # long lines in scripts
+    "N806",  # uppercase constant inside function body in scripts
+    "S311",  # random in seed/test scripts
+]
 
 [tool.mypy]
 python_version = "3.12"

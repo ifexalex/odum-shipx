@@ -8,6 +8,7 @@ import re
 import sys
 import typing
 import warnings
+from collections.abc import Callable, Iterable, Iterator, Mapping
 from contextlib import contextmanager
 from copy import copy, deepcopy
 from enum import Enum
@@ -18,24 +19,24 @@ from operator import attrgetter
 from types import FunctionType, LambdaType, MethodType
 from typing import (
     TYPE_CHECKING,
+    Annotated,
     Any,
-    Callable,
-    Dict,
     Final,
     ForwardRef,
-    Iterable,
-    Iterator,
-    Mapping,
-    Type,
+    Literal,
+    TypeAliasType,
     TypeVar,
     Union,
     cast,
+    get_args,
+    get_origin,
+    is_typeddict,
     overload,
 )
 from warnings import warn
 
 from pydantic_core import CoreSchema, PydanticUndefined, core_schema, to_jsonable_python
-from typing_extensions import Annotated, Literal, TypeAliasType, TypedDict, get_args, get_origin, is_typeddict
+from typing_extensions import TypedDict
 
 from ..aliases import AliasGenerator
 from ..annotated_handlers import GetCoreSchemaHandler, GetJsonSchemaHandler
@@ -105,11 +106,11 @@ ModifyCoreSchemaWrapHandler = GetCoreSchemaHandler
 GetCoreSchemaFunction = Callable[[Any, ModifyCoreSchemaWrapHandler], core_schema.CoreSchema]
 
 
-TUPLE_TYPES: list[type] = [tuple, typing.Tuple]
-LIST_TYPES: list[type] = [list, typing.List, collections.abc.MutableSequence]
-SET_TYPES: list[type] = [set, typing.Set, collections.abc.MutableSet]
-FROZEN_SET_TYPES: list[type] = [frozenset, typing.FrozenSet, collections.abc.Set]
-DICT_TYPES: list[type] = [dict, typing.Dict, collections.abc.MutableMapping, collections.abc.Mapping]
+TUPLE_TYPES: list[type] = [tuple, tuple]
+LIST_TYPES: list[type] = [list, list, collections.abc.MutableSequence]
+SET_TYPES: list[type] = [set, set, collections.abc.MutableSet]
+FROZEN_SET_TYPES: list[type] = [frozenset, frozenset, collections.abc.Set]
+DICT_TYPES: list[type] = [dict, dict, collections.abc.MutableMapping, collections.abc.Mapping]
 
 
 def check_validator_fields_against_field_name(
@@ -235,7 +236,7 @@ def modify_model_json_schema(
     return json_schema
 
 
-JsonEncoders = Dict[Type[Any], JsonEncoder]
+JsonEncoders = dict[type[Any], JsonEncoder]
 
 
 def _add_custom_serialization_from_json_encoders(
@@ -272,7 +273,7 @@ def _add_custom_serialization_from_json_encoders(
     return schema
 
 
-TypesNamespace = Union[Dict[str, Any], None]
+TypesNamespace = Union[dict[str, Any], None]
 
 
 class TypesNamespaceStack:
@@ -541,7 +542,7 @@ class GenerateSchema:
                     extras_annotation = cls.__annotations__.get('__pydantic_extra__', None)
                     if extras_annotation is not None:
                         tp = get_origin(extras_annotation)
-                        if tp not in (Dict, dict):
+                        if tp not in (dict, dict):
                             raise PydanticSchemaGenerationError(
                                 'The type annotation for `__pydantic_extra__` must be `Dict[str, ...]`'
                             )
@@ -883,7 +884,7 @@ class GenerateSchema:
             return self._dict_schema(obj, *self._get_first_two_args_or_any(obj))
         elif is_typeddict(origin):
             return self._typed_dict_schema(obj, origin)
-        elif origin in (typing.Type, type):
+        elif origin in (type, type):
             return self._subclass_schema(obj)
         elif origin in {typing.Sequence, collections.abc.Sequence}:
             return self._sequence_schema(obj)
@@ -1362,7 +1363,7 @@ class GenerateSchema:
     def _union_is_subclass_schema(self, union_type: Any) -> core_schema.CoreSchema:
         """Generate schema for `Type[Union[X, ...]]`."""
         args = self._get_args_resolving_forward_refs(union_type, required=True)
-        return core_schema.union_schema([self.generate_schema(typing.Type[args]) for args in args])
+        return core_schema.union_schema([self.generate_schema(type[args]) for args in args])
 
     def _subclass_schema(self, type_: Any) -> core_schema.CoreSchema:
         """Generate schema for a Type, e.g. `Type[int]`."""
@@ -1376,7 +1377,7 @@ class GenerateSchema:
                 return core_schema.is_subclass_schema(type_param.__bound__)
             elif type_param.__constraints__:
                 return core_schema.union_schema(
-                    [self.generate_schema(typing.Type[c]) for c in type_param.__constraints__]
+                    [self.generate_schema(type[c]) for c in type_param.__constraints__]
                 )
             else:
                 return self._type_schema()

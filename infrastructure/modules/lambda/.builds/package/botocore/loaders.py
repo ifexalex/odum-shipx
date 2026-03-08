@@ -483,9 +483,7 @@ class Loader:
                 if not must_exist:
                     yield full_path
                 else:
-                    if is_dir and os.path.isdir(full_path):
-                        yield full_path
-                    elif os.path.exists(full_path):
+                    if is_dir and os.path.isdir(full_path) or os.path.exists(full_path):
                         yield full_path
 
     def is_builtin_path(self, path):

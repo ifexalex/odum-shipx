@@ -1,28 +1,25 @@
 # Copyright (c) 2010-2024 openpyxl
 
-from openpyxl.descriptors.serialisable import Serialisable
 from openpyxl.descriptors import (
-    Typed,
     Alias,
+    Typed,
 )
-
-from openpyxl.descriptors.excel import(
+from openpyxl.descriptors.excel import (
     ExtensionList,
     _explicit_none,
 )
-
 from openpyxl.descriptors.nested import (
     NestedBool,
     NestedInteger,
     NestedMinMax,
     NestedNoneSet,
 )
+from openpyxl.descriptors.serialisable import Serialisable
 
-from .layout import Layout
+from .error_bar import *
 from .picture import PictureOptions
 from .shapes import *
 from .text import *
-from .error_bar import *
 
 
 class Marker(Serialisable):

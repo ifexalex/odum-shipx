@@ -1,8 +1,7 @@
 import httpx
-
 from aws_xray_sdk.core import xray_recorder
 from aws_xray_sdk.core.models import http
-from aws_xray_sdk.ext.util import inject_trace_header, get_hostname
+from aws_xray_sdk.ext.util import get_hostname, inject_trace_header
 
 
 def patch():

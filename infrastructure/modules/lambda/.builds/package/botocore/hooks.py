@@ -589,7 +589,7 @@ class _PrefixTrie:
                     node_list.first + node_list.middle + node_list.last
                 )
                 collected.extendleft(reversed(complete_order))
-            if not index == key_parts_len:
+            if index != key_parts_len:
                 children = current_node['children']
                 directs = children.get(key_parts[index])
                 wildcard = children.get('*')

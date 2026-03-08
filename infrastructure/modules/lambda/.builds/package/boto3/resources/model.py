@@ -374,9 +374,7 @@ class ResourceModel:
                 # This isn't good, let's raise instead of trying to keep
                 # renaming this value.
                 raise ValueError(
-                    'Problem renaming {} {} to {}!'.format(
-                        self.name, category, name
-                    )
+                    f'Problem renaming {self.name} {category} to {name}!'
                 )
 
         names.add(name)
@@ -576,9 +574,7 @@ class ResourceModel:
                     data_required = True
                     break
 
-            if subresources and not data_required:
-                resources.append(action)
-            elif not subresources and data_required:
+            if subresources and not data_required or not subresources and data_required:
                 resources.append(action)
 
         return resources

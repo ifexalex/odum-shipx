@@ -1,15 +1,13 @@
 """Unit tests for services.scheduled — storage fee, escalation, expiry logic."""
-from datetime import date, datetime, timedelta, timezone
+from datetime import UTC, date, datetime, timedelta
 from decimal import Decimal
-from unittest.mock import MagicMock, patch
-
-import pytest
+from unittest.mock import patch
 
 TENANT_ID = "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa"
 _GRACE_PERIOD = 14
 _DAILY_RATE = Decimal("500")
 TODAY = date(2026, 2, 15)
-NOW = datetime(2026, 2, 15, tzinfo=timezone.utc)
+NOW = datetime(2026, 2, 15, tzinfo=UTC)
 
 
 # ---------------------------------------------------------------------------
@@ -21,11 +19,11 @@ class TestStorageFeeAccrual:
     """Test the core fee-per-note logic in isolation."""
 
     def _note(self, created_days_ago: int, total_cartons: int = 10) -> dict:
-        created_at = datetime(2026, 1, 1, tzinfo=timezone.utc) + timedelta(
+        created_at = datetime(2026, 1, 1, tzinfo=UTC) + timedelta(
             days=max(0, (TODAY - date(2026, 1, 1)).days - created_days_ago)
         )
         # Simpler: created_at = NOW - timedelta(days=created_days_ago)
-        created_at = datetime.now(timezone.utc) - timedelta(days=created_days_ago)
+        created_at = datetime.now(UTC) - timedelta(days=created_days_ago)
         return {
             "id": "note-001",
             "billing_id": "billing-001",
@@ -227,7 +225,7 @@ class TestReleaseExpiry:
 class TestStorageReminders:
     def _note(self, days_old: int) -> dict:
         # Use real "now" so that (date.today() - created_at.date()).days == days_old
-        created_at = datetime.now(timezone.utc) - timedelta(days=days_old)
+        created_at = datetime.now(UTC) - timedelta(days=days_old)
         return {
             "id": "note-001",
             "customer_id": "customer-001",

@@ -1,11 +1,11 @@
-import threading
 import logging
 import os
+import threading
+
+from aws_xray_sdk import global_sdk_config
 
 from .exceptions.exceptions import SegmentNotFoundException
 from .models.dummy_entities import DummySegment
-from aws_xray_sdk import global_sdk_config
-
 
 log = logging.getLogger(__name__)
 
@@ -38,7 +38,7 @@ class Context:
         Store the segment created by ``xray_recorder`` to the context.
         It overrides the current segment if there is already one.
         """
-        setattr(self._local, 'entities', [segment])
+        self._local.entities = [segment]
 
     def end_segment(self, end_time=None):
         """
@@ -107,7 +107,7 @@ class Context:
         Store the input trace_entity to local context. It will overwrite all
         existing ones if there is any.
         """
-        setattr(self._local, 'entities', [trace_entity])
+        self._local.entities = [trace_entity]
 
     def clear_trace_entities(self):
         """

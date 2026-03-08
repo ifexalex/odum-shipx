@@ -1,4 +1,6 @@
 """Unit tests for shared.pagination — cursor encode/decode, query building, page extraction."""
+from datetime import UTC
+
 import pytest
 
 from shared.exceptions import ValidationError
@@ -28,8 +30,8 @@ class TestEncodeDecode:
         assert decode_cursor(bad) is None
 
     def test_encode_handles_datetime_default(self):
-        from datetime import datetime, timezone
-        data = {"sort_value": datetime(2024, 1, 1, tzinfo=timezone.utc), "id": "u"}
+        from datetime import datetime
+        data = {"sort_value": datetime(2024, 1, 1, tzinfo=UTC), "id": "u"}
         cursor = encode_cursor(data)
         assert isinstance(cursor, str)
         decoded = decode_cursor(cursor)

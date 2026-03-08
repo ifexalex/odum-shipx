@@ -1,21 +1,19 @@
 # Copyright (c) 2010-2024 openpyxl
 
-from openpyxl.descriptors.serialisable import Serialisable
 from openpyxl.descriptors import (
-    Typed,
+    Alias,
+    Bool,
     Float,
     Integer,
-    Bool,
     MinMax,
-    Set,
     NoneSet,
+    Set,
     String,
-    Alias,
+    Typed,
 )
 from openpyxl.descriptors.excel import Coordinate, Percentage
 from openpyxl.descriptors.excel import ExtensionList as OfficeArtExtensionList
-from .line import LineProperties
-
+from openpyxl.descriptors.serialisable import Serialisable
 from openpyxl.styles.colors import Color
 from openpyxl.xml.constants import DRAWING_NS
 

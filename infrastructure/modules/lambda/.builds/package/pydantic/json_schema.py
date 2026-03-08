@@ -15,32 +15,29 @@ import inspect
 import math
 import re
 import warnings
-from collections import defaultdict
+from collections import Counter, defaultdict
+from collections.abc import Callable, Hashable, Iterable, Sequence
 from copy import deepcopy
 from dataclasses import is_dataclass
 from enum import Enum
 from typing import (
     TYPE_CHECKING,
+    Annotated,
     Any,
-    Callable,
-    Counter,
-    Dict,
-    Hashable,
-    Iterable,
+    Literal,
     NewType,
-    Sequence,
-    Tuple,
+    TypeAlias,
     TypeVar,
-    Union,
+    assert_never,
     cast,
+    final,
 )
 
 import pydantic_core
+from pydantic.warnings import PydanticDeprecatedSince26
 from pydantic_core import CoreSchema, PydanticOmit, core_schema, to_jsonable_python
 from pydantic_core.core_schema import ComputedField
-from typing_extensions import Annotated, Literal, TypeAlias, assert_never, deprecated, final
-
-from pydantic.warnings import PydanticDeprecatedSince26
+from typing_extensions import deprecated
 
 from ._internal import (
     _config,
@@ -71,7 +68,7 @@ A type alias for defined schema types that represents a union of
 `core_schema.CoreSchemaFieldType`.
 """
 
-JsonSchemaValue = Dict[str, Any]
+JsonSchemaValue = dict[str, Any]
 """
 A type alias for a JSON schema value. This is a dictionary of string keys to arbitrary JSON values.
 """
@@ -138,7 +135,7 @@ DefsRef = NewType('DefsRef', str)
 #       * By default, these look like "#/$defs/MyModel", as in {"$ref": "#/$defs/MyModel"}
 JsonRef = NewType('JsonRef', str)
 
-CoreModeRef = Tuple[CoreRef, JsonSchemaMode]
+CoreModeRef = tuple[CoreRef, JsonSchemaMode]
 JsonSchemaKeyT = TypeVar('JsonSchemaKeyT', bound=Hashable)
 
 
@@ -2226,9 +2223,7 @@ def models_json_schema(
 # ##### End JSON Schema Generation Functions #####
 
 
-_HashableJsonValue: TypeAlias = Union[
-    int, float, str, bool, None, Tuple['_HashableJsonValue', ...], Tuple[Tuple[str, '_HashableJsonValue'], ...]
-]
+_HashableJsonValue: TypeAlias = int | float | str | bool | None | tuple['_HashableJsonValue', ...] | tuple[tuple[str, '_HashableJsonValue'], ...]
 
 
 def _deduplicate_schemas(schemas: Iterable[JsonDict]) -> list[JsonDict]:

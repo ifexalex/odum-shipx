@@ -2,38 +2,38 @@
 
 from warnings import warn
 
-from openpyxl.descriptors.serialisable import Serialisable
 from openpyxl.descriptors import (
     Typed,
 )
-from openpyxl.descriptors.sequence import NestedSequence
 from openpyxl.descriptors.excel import ExtensionList
+from openpyxl.descriptors.sequence import NestedSequence
+from openpyxl.descriptors.serialisable import Serialisable
 from openpyxl.utils.indexed_list import IndexedList
 from openpyxl.xml.constants import ARC_STYLE, SHEET_MAIN_NS
 from openpyxl.xml.functions import fromstring
 
+from .borders import Border
 from .builtins import styles
+from .cell_style import CellStyle, CellStyleList
 from .colors import ColorList
 from .differential import DifferentialStyle
-from .table import TableStyleList
-from .borders import Border
 from .fills import Fill
 from .fonts import Font
+from .named_styles import (
+    NamedStyle,
+    NamedStyleList,
+    _NamedCellStyleList,
+)
 from .numbers import (
-    NumberFormatList,
     BUILTIN_FORMATS,
     BUILTIN_FORMATS_MAX_SIZE,
     BUILTIN_FORMATS_REVERSE,
+    NumberFormatList,
+    builtin_format_code,
     is_date_format,
     is_timedelta_format,
-    builtin_format_code
 )
-from .named_styles import (
-    _NamedCellStyleList,
-    NamedStyleList,
-    NamedStyle,
-)
-from .cell_style import CellStyle, CellStyleList
+from .table import TableStyleList
 
 
 class Stylesheet(Serialisable):

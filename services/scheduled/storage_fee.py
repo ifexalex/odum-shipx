@@ -10,7 +10,7 @@ BR-SF-001 / BR-SF-002 / BR-SF-003:
 """
 
 import logging
-from datetime import date, datetime, timezone
+from datetime import date
 from decimal import Decimal
 
 from aws_xray_sdk.core import patch_all
@@ -103,10 +103,7 @@ def _accrue_for_note(
     Returns True if a fee was inserted, False otherwise.
     """
     created_at = note["created_at"]
-    if hasattr(created_at, "date"):
-        created_date = created_at.date()
-    else:
-        created_date = created_at
+    created_date = created_at.date() if hasattr(created_at, "date") else created_at
 
     days_since = (today - created_date).days
     if days_since <= grace_period:

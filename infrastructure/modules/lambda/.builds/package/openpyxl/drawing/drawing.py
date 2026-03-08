@@ -72,10 +72,7 @@ class Drawing:
 
     @property
     def anchor(self):
-        from .spreadsheet_drawing import (
-            OneCellAnchor,
-            TwoCellAnchor,
-            AbsoluteAnchor)
+        from .spreadsheet_drawing import AbsoluteAnchor, OneCellAnchor
         if self.anchortype == "absolute":
             anchor = AbsoluteAnchor()
             anchor.pos.x = pixels_to_EMU(self.left)

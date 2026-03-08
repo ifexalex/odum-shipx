@@ -1,9 +1,10 @@
 from builtins import super
+
+from aws_xray_sdk.ext.sqlalchemy.query import XRayQuery, XRaySession
+from aws_xray_sdk.ext.sqlalchemy.util.decorators import decorate_all_functions, xray_on_call
+from flask_sqlalchemy import BaseQuery, SQLAlchemy, _SessionSignalEvents, get_state
 from flask_sqlalchemy.model import Model
 from sqlalchemy.orm.session import sessionmaker
-from flask_sqlalchemy import SQLAlchemy, BaseQuery, _SessionSignalEvents, get_state
-from aws_xray_sdk.ext.sqlalchemy.query import XRaySession, XRayQuery
-from aws_xray_sdk.ext.sqlalchemy.util.decorators import xray_on_call, decorate_all_functions
 
 
 @decorate_all_functions(xray_on_call)

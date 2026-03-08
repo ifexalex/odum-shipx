@@ -1,40 +1,29 @@
 # Copyright (c) 2010-2024 openpyxl
 
-from openpyxl.descriptors.serialisable import Serialisable
 from openpyxl.descriptors import (
-    Typed,
-    Float,
-    NoneSet,
-    Bool,
-    Integer,
-    MinMax,
-    NoneSet,
-    Set,
-    String,
     Alias,
+    Typed,
 )
-
 from openpyxl.descriptors.excel import (
     ExtensionList,
-    Percentage,
     _explicit_none,
 )
 from openpyxl.descriptors.nested import (
-    NestedValue,
-    NestedSet,
     NestedBool,
-    NestedNoneSet,
     NestedFloat,
     NestedInteger,
     NestedMinMax,
+    NestedNoneSet,
+    NestedSet,
 )
+from openpyxl.descriptors.serialisable import Serialisable
 from openpyxl.xml.constants import CHART_NS
 
 from .descriptors import NumberFormatDescriptor
 from .layout import Layout
-from .text import Text, RichText
 from .shapes import GraphicalProperties
-from .title import Title, TitleDescriptor
+from .text import RichText, Text
+from .title import TitleDescriptor
 
 
 class ChartLines(Serialisable):

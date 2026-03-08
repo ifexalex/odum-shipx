@@ -1,9 +1,9 @@
 """Pytest configuration and shared fixtures for all test suites."""
 import json
 import sys
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from decimal import Decimal
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock
 
 import pytest
 
@@ -238,8 +238,8 @@ def sample_billing_row():
         "amount_paid_ngn": Decimal("0.00"),
         "balance_ngn": Decimal("166310.00"),
         "status": "unpaid",
-        "created_at": datetime(2026, 1, 15, tzinfo=timezone.utc),
-        "updated_at": datetime(2026, 1, 15, tzinfo=timezone.utc),
+        "created_at": datetime(2026, 1, 15, tzinfo=UTC),
+        "updated_at": datetime(2026, 1, 15, tzinfo=UTC),
     }
 
 
@@ -258,8 +258,8 @@ def sample_refund_row():
         "customer_choice": "immediate_refund",
         "reason": "",
         "requested_by": "user-a-nigeria",
-        "created_at": datetime(2026, 2, 1, tzinfo=timezone.utc),
-        "updated_at": datetime(2026, 2, 1, tzinfo=timezone.utc),
+        "created_at": datetime(2026, 2, 1, tzinfo=UTC),
+        "updated_at": datetime(2026, 2, 1, tzinfo=UTC),
     }
 
 
@@ -275,6 +275,6 @@ def sample_release_note_row():
         "total_cartons": 10,
         "status": "active",
         "valid_until": None,
-        "created_at": datetime(2026, 2, 1, tzinfo=timezone.utc),
-        "updated_at": datetime(2026, 2, 1, tzinfo=timezone.utc),
+        "created_at": datetime(2026, 2, 1, tzinfo=UTC),
+        "updated_at": datetime(2026, 2, 1, tzinfo=UTC),
     }

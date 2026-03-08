@@ -1,6 +1,5 @@
 import inspect
 import operator
-import sys
 
 
 def with_metaclass(meta, *bases):
@@ -234,11 +233,7 @@ class ObjectProxy(with_metaclass(_ObjectProxyMetaType)):  # type: ignore[misc]
             if __wrapped_setattr_fixups__ is not None:
                 __wrapped_setattr_fixups__()
 
-        elif name == "__qualname__":
-            setattr(self.__wrapped__, name, value)
-            object.__setattr__(self, name, value)
-
-        elif name == "__annotations__":
+        elif name == "__qualname__" or name == "__annotations__":
             setattr(self.__wrapped__, name, value)
             object.__setattr__(self, name, value)
 

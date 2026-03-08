@@ -1,8 +1,7 @@
-import wrapt
 import botocore.client
-
+import wrapt
 from aws_xray_sdk.core import xray_recorder
-from aws_xray_sdk.ext.boto_utils import inject_header, aws_meta_processor
+from aws_xray_sdk.ext.boto_utils import aws_meta_processor, inject_header
 
 
 def patch():
@@ -12,7 +11,7 @@ def patch():
     """
     if hasattr(botocore.client, '_xray_enabled'):
         return
-    setattr(botocore.client, '_xray_enabled', True)
+    botocore.client._xray_enabled = True
 
     wrapt.wrap_function_wrapper(
         'botocore.client',

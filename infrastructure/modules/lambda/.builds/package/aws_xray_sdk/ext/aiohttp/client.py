@@ -1,14 +1,13 @@
 """
 AioHttp Client tracing, only compatible with Aiohttp 3.X versions
 """
-import aiohttp
-
 from types import SimpleNamespace
 
+import aiohttp
 from aws_xray_sdk.core import xray_recorder
 from aws_xray_sdk.core.models import http
 from aws_xray_sdk.core.utils import stacktrace
-from aws_xray_sdk.ext.util import inject_trace_header, strip_url, get_hostname
+from aws_xray_sdk.ext.util import get_hostname, inject_trace_header, strip_url
 
 # All aiohttp calls will entail outgoing HTTP requests, only in some ad-hoc
 # exceptions the namespace will be flip back to local.

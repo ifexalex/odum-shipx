@@ -14,13 +14,12 @@
 import copy
 import os
 
-import botocore.session
-from botocore.client import Config
-from botocore.exceptions import DataNotFoundError, UnknownServiceError
-
 import boto3
 import boto3.utils
+import botocore.session
 from boto3.exceptions import ResourceNotExistsError, UnknownAPIVersionError
+from botocore.client import Config
+from botocore.exceptions import DataNotFoundError, UnknownServiceError
 
 from .resources.factory import ResourceFactory
 
@@ -63,9 +62,7 @@ class Session:
 
         # Setup custom user-agent string if it isn't already customized
         if self._session.user_agent_name == 'Botocore':
-            botocore_info = 'Botocore/{}'.format(
-                self._session.user_agent_version
-            )
+            botocore_info = f'Botocore/{self._session.user_agent_version}'
             if self._session.user_agent_extra:
                 self._session.user_agent_extra += ' ' + botocore_info
             else:

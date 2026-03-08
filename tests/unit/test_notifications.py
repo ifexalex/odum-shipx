@@ -1,5 +1,4 @@
 """Unit tests for services.notification — template rendering."""
-import pytest
 
 from services.notification.tenant_branding import (
     extract_branding,
@@ -160,7 +159,7 @@ class TestWhatsAppComponents:
         assert "arrived" in texts
 
     def test_build_components_capped_at_max_params(self):
-        from services.notification.service import build_wa_components, _WA_MAX_PARAMS
+        from services.notification.service import _WA_MAX_PARAMS, build_wa_components
 
         branding = {"company_name": "X"}
         # Provide more params than allowed
@@ -169,8 +168,8 @@ class TestWhatsAppComponents:
         assert len(components[0]["parameters"]) <= _WA_MAX_PARAMS
 
     def test_wa_template_map_covers_all_event_types(self):
-        from services.notification.service import WA_TEMPLATE_MAP
         from services.notification.models import NotificationEvent
+        from services.notification.service import WA_TEMPLATE_MAP
 
         for event in NotificationEvent:
             assert event.value in WA_TEMPLATE_MAP, (

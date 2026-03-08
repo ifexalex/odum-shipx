@@ -24,8 +24,10 @@ from email.utils import formatdate
 from hashlib import sha1, sha256
 from operator import itemgetter
 
+# Imports for backwards compatibility
 from botocore.compat import (
     HAS_CRT,
+    MD5_AVAILABLE,  # noqa
     HTTPHeaders,
     encodebytes,
     ensure_unicode,
@@ -41,10 +43,6 @@ from botocore.utils import (
     normalize_url_path,
     percent_encode_sequence,
 )
-
-# Imports for backwards compatibility
-from botocore.compat import MD5_AVAILABLE  # noqa
-
 
 logger = logging.getLogger(__name__)
 

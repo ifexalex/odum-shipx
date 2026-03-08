@@ -35,16 +35,16 @@ from .warnings import PydanticDeprecatedSince20
 if typing.TYPE_CHECKING:
     from inspect import Signature
     from pathlib import Path
+    from typing import Literal, Unpack
 
     from pydantic_core import CoreSchema, SchemaSerializer, SchemaValidator
-    from typing_extensions import Literal, Unpack
 
     from ._internal._utils import AbstractSetIntStr, MappingIntStrAny
     from .deprecated.parse import Protocol as DeprecatedParseProtocol
     from .fields import ComputedFieldInfo, FieldInfo, ModelPrivateAttr
     from .fields import Field as _Field
 
-    TupleGenerator = typing.Generator[typing.Tuple[str, Any], None, None]
+    TupleGenerator = typing.Generator[tuple[str, Any], None, None]
     Model = typing.TypeVar('Model', bound='BaseModel')
     # should be `set[int] | set[str] | dict[int, IncEx] | dict[str, IncEx] | None`, but mypy can't cope
     IncEx: typing_extensions.TypeAlias = 'set[int] | set[str] | dict[int, Any] | dict[str, Any] | None'
@@ -647,10 +647,10 @@ class BaseModel(metaclass=_model_construction.ModelMetaclass):
 
         # Build map from generic typevars to passed params
         typevars_map: dict[_typing_extra.TypeVarType, type[Any]] = dict(
-            zip(cls.__pydantic_generic_metadata__['parameters'], typevar_values)
+            zip(cls.__pydantic_generic_metadata__['parameters'], typevar_values, strict=False)
         )
 
-        if _utils.all_identical(typevars_map.keys(), typevars_map.values()) and typevars_map:
+        if typevars_map.items() and typevars_map:
             submodel = cls  # if arguments are equal to parameters it's the same object
             _generics.set_cached_generic_type(cls, typevar_values, submodel)
         else:
@@ -1443,7 +1443,7 @@ def create_model(  # noqa: C901
         if not isinstance(__base__, tuple):
             __base__ = (__base__,)
     else:
-        __base__ = (typing.cast(typing.Type['Model'], BaseModel),)
+        __base__ = (typing.cast(type['Model'], BaseModel),)
 
     __cls_kwargs__ = __cls_kwargs__ or {}
 

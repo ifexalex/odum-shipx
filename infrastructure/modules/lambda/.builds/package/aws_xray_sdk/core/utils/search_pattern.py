@@ -27,15 +27,7 @@ def wildcard_match(pattern, text, case_insensitive=True):
     iStar = len(text)
     pStar = 0
     while i < len(text):
-        if p < len(pattern) and text[i] == pattern[p]:
-            i = i + 1
-            p = p + 1
-
-        elif p < len(pattern) and case_insensitive and text[i].lower() == pattern[p].lower():
-            i = i + 1
-            p = p + 1
-
-        elif p < len(pattern) and pattern[p] == '?':
+        if p < len(pattern) and text[i] == pattern[p] or p < len(pattern) and case_insensitive and text[i].lower() == pattern[p].lower() or p < len(pattern) and pattern[p] == '?':
             i = i + 1
             p = p + 1
 

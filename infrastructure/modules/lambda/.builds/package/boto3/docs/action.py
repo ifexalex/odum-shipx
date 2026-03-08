@@ -12,6 +12,13 @@
 # language governing permissions and limitations under the License.
 import os
 
+from boto3.docs.base import NestedDocumenter
+from boto3.docs.method import document_model_driven_resource_method
+from boto3.docs.utils import (
+    add_resource_type_overview,
+    get_resource_ignore_params,
+    get_resource_public_actions,
+)
 from botocore import xform_name
 from botocore.docs.bcdoc.restdoc import DocumentStructure
 from botocore.docs.method import (
@@ -20,14 +27,6 @@ from botocore.docs.method import (
 )
 from botocore.model import OperationModel
 from botocore.utils import get_service_module_name
-
-from boto3.docs.base import NestedDocumenter
-from boto3.docs.method import document_model_driven_resource_method
-from boto3.docs.utils import (
-    add_resource_type_overview,
-    get_resource_ignore_params,
-    get_resource_public_actions,
-)
 
 PUT_DATA_WARNING_MESSAGE = """
 .. warning::
@@ -147,9 +146,7 @@ def document_action(
     example_resource_name = xform_name(resource_name)
     if service_model.service_name == resource_name:
         example_resource_name = resource_name
-    example_prefix = '{} = {}.{}'.format(
-        example_return_value, example_resource_name, action_model.name
-    )
+    example_prefix = f'{example_return_value} = {example_resource_name}.{action_model.name}'
     full_action_name = (
         f"{section.context.get('qualifier', '')}{action_model.name}"
     )

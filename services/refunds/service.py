@@ -6,12 +6,11 @@ and credit application to future billing.
 """
 
 import logging
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from decimal import Decimal
 
 from shared.events import publish_event
 from shared.exceptions import (
-    BusinessRuleViolationError,
     IllegalTransitionError,
     InsufficientPermissionsError,
     ResourceNotFoundError,
@@ -230,10 +229,7 @@ def approve_refund(
 
     # Determine final status based on customer_choice
     customer_choice = refund.get("customer_choice") or ""
-    if customer_choice == "credit_next_shipment":
-        final_status = "applied_as_credit"
-    else:
-        final_status = "processed"
+    final_status = "applied_as_credit" if customer_choice == "credit_next_shipment" else "processed"
 
     # On immediate refund: adjust billing total if billing_id exists
     if final_status == "processed" and refund.get("billing_id"):
@@ -256,7 +252,7 @@ def approve_refund(
                 },
             )
 
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     updated = repo.update_refund_status(
         tenant_id,
         refund_id,

@@ -11,10 +11,9 @@ For each tenant with status = 'offboarded':
 
 import logging
 import os
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 
 import boto3
-
 from aws_xray_sdk.core import patch_all
 
 from shared.audit import log_audit
@@ -84,7 +83,7 @@ def _get_cognito():
 
 
 def lambda_handler(event: dict, context) -> dict:
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     cutoff = now - timedelta(days=_RETENTION_DAYS)
 
     tenants = _get_offboarded_tenants(cutoff)

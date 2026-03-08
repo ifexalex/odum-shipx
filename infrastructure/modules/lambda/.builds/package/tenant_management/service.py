@@ -7,7 +7,7 @@ events, and metering utilities. Raises typed exceptions from shared.exceptions
 
 import json
 import logging
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from typing import Any
 
 from shared.audit import log_audit
@@ -21,6 +21,7 @@ from shared.exceptions import (
 from shared.metering import record_usage
 from shared.tenant_context import PLATFORM_TENANT_ID
 
+from . import repository as repo
 from .cognito_client import get_cognito_client
 from .models import (
     CreateTenantRequest,
@@ -29,7 +30,6 @@ from .models import (
     UpdateTenantConfigRequest,
     UpdateTenantRequest,
 )
-from . import repository as repo
 
 logger = logging.getLogger(__name__)
 
@@ -118,7 +118,7 @@ def create_tenant(
     })
 
     # 4. Upsert default configs
-    today = datetime.now(timezone.utc).isoformat()
+    today = datetime.now(UTC).isoformat()
     default_dollar_rate = {**DEFAULT_CONFIGS["dollar_rate"], "effective_from": today}
     configs_to_insert = {**DEFAULT_CONFIGS, "dollar_rate": default_dollar_rate}
     for key, value in configs_to_insert.items():
@@ -352,7 +352,7 @@ def update_dollar_rate(
     new_value = {
         "rate": float(req.rate),
         "currency_pair": req.currency_pair,
-        "effective_from": datetime.now(timezone.utc).isoformat(),
+        "effective_from": datetime.now(UTC).isoformat(),
     }
     repo.upsert_config(tenant_id, "dollar_rate", new_value, updated_by=actor_id)
 

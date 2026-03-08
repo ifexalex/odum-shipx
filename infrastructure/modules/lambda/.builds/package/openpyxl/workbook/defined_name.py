@@ -1,18 +1,18 @@
 # Copyright (c) 2010-2024 openpyxl
 
-from collections import defaultdict
 import re
+from collections import defaultdict
 
-from openpyxl.descriptors.serialisable import Serialisable
+from openpyxl.compat import safe_string
 from openpyxl.descriptors import (
     Alias,
-    String,
-    Integer,
     Bool,
-    Sequence,
     Descriptor,
+    Integer,
+    Sequence,
+    String,
 )
-from openpyxl.compat import safe_string
+from openpyxl.descriptors.serialisable import Serialisable
 from openpyxl.formula import Tokenizer
 from openpyxl.utils.cell import SHEETRANGE_RE
 
@@ -21,7 +21,7 @@ RESERVED = frozenset(["Print_Area", "Print_Titles", "Criteria",
                       "Sheet_Title"])
 
 _names = "|".join(RESERVED)
-RESERVED_REGEX = re.compile(r"^_xlnm\.(?P<name>{0})".format(_names))
+RESERVED_REGEX = re.compile(rf"^_xlnm\.(?P<name>{_names})")
 
 
 class DefinedName(Serialisable):

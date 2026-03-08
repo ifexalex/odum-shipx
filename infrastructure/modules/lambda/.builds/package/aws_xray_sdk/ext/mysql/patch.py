@@ -1,8 +1,6 @@
-import wrapt
 import mysql.connector
-
+import wrapt
 from aws_xray_sdk.ext.dbapi2 import XRayTracedConn
-
 
 MYSQL_ATTR = {
     '_host': 'name',
@@ -33,7 +31,7 @@ def _xray_traced_connect(wrapped, instance, args, kwargs):
             meta[key] = getattr(conn, attr)
 
     if hasattr(conn, '_server_version'):
-        version = sanitize_db_ver(getattr(conn, '_server_version'))
+        version = sanitize_db_ver(conn._server_version)
         if version:
             meta['database_version'] = version
 

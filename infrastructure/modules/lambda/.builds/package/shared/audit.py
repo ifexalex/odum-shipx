@@ -7,7 +7,7 @@ business operations.
 
 import logging
 import uuid
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from typing import Any
 
 logger = logging.getLogger(__name__)
@@ -47,7 +47,7 @@ def log_audit(
         from shared.tenant_context import PLATFORM_TENANT_ID
 
         audit_id = str(uuid.uuid4())
-        created_at = datetime.now(timezone.utc).isoformat()
+        created_at = datetime.now(UTC).isoformat()
 
         query = """
             INSERT INTO audit_log (

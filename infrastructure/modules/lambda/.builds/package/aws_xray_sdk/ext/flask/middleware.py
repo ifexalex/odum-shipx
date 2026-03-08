@@ -1,11 +1,14 @@
 import flask.templating
-from flask import request
-
+from aws_xray_sdk.core.lambda_launcher import LambdaContext, check_in_lambda
 from aws_xray_sdk.core.models import http
 from aws_xray_sdk.core.utils import stacktrace
-from aws_xray_sdk.ext.util import calculate_sampling_decision, \
-    calculate_segment_name, construct_xray_header, prepare_response_header
-from aws_xray_sdk.core.lambda_launcher import check_in_lambda, LambdaContext
+from aws_xray_sdk.ext.util import (
+    calculate_sampling_decision,
+    calculate_segment_name,
+    construct_xray_header,
+    prepare_response_header,
+)
+from flask import request
 
 
 class XRayMiddleware:

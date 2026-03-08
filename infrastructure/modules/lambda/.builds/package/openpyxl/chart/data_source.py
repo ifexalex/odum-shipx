@@ -2,21 +2,20 @@
 Collection of utility primitives for charts.
 """
 
-from openpyxl.descriptors.serialisable import Serialisable
 from openpyxl.descriptors import (
-    Bool,
-    Typed,
     Alias,
-    String,
+    Bool,
     Integer,
     Sequence,
+    String,
+    Typed,
 )
 from openpyxl.descriptors.excel import ExtensionList
 from openpyxl.descriptors.nested import (
-    NestedString,
-    NestedText,
     NestedInteger,
+    NestedText,
 )
+from openpyxl.descriptors.serialisable import Serialisable
 
 
 class NumFmt(Serialisable):

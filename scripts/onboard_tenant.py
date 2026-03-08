@@ -29,7 +29,6 @@ import boto3
 import psycopg2
 import psycopg2.extras
 
-
 # ---------------------------------------------------------------------------
 # Connection helpers
 # ---------------------------------------------------------------------------
@@ -130,7 +129,7 @@ def step_create_cognito_user(
 
 def step_create_tenant_user(cur, tenant_id: str, cognito_sub: str,
                              email: str, admin_name: str) -> dict:
-    print(f"[3/5] Creating tenant_user record...")
+    print("[3/5] Creating tenant_user record...")
     return _one(
         cur,
         """
@@ -220,7 +219,7 @@ def main() -> None:
         print(f"  Would create tenant: '{args.company_name}' ({args.tier})")
         print(f"  Would create Cognito user: {args.email}")
         print(f"  Would create tenant_user record for: {args.admin_name}")
-        print(f"  Would insert 7 default tenant_config rows")
+        print("  Would insert 7 default tenant_config rows")
         print(f"  Generated temp password: {temp_password}")
         return
 

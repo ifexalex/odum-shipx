@@ -12,10 +12,8 @@ Usage:
 
 import os
 import sys
-import uuid
 from datetime import date, timedelta
 from decimal import Decimal
-from pathlib import Path
 
 import psycopg2
 import psycopg2.extras
@@ -246,8 +244,8 @@ def seed_tenant_a(cur) -> dict:
     china_staff = create_user(cur, tid, "china@acmeshipping.com", "Li Wei", "china_office_staff", admin["id"])
     ng_staff = create_user(cur, tid, "lagos@acmeshipping.com", "Emeka Eze", "nigeria_office_staff", admin["id"])
     warehouse = create_user(cur, tid, "warehouse@acmeshipping.com", "Tunde Bello", "warehouse_attendant", admin["id"])
-    cust_user1 = create_user(cur, tid, "customer1@example.com", "Ngozi Adeyemi", "customer", admin["id"])
-    cust_user2 = create_user(cur, tid, "customer2@example.com", "Ibrahim Musa", "customer", admin["id"])
+    create_user(cur, tid, "customer1@example.com", "Ngozi Adeyemi", "customer", admin["id"])
+    create_user(cur, tid, "customer2@example.com", "Ibrahim Musa", "customer", admin["id"])
     print(f"  users: {admin['id']} (admin), {china_staff['id']} (china), {ng_staff['id']} (ng), {warehouse['id']} (wh)")
 
     # Configs
@@ -342,7 +340,7 @@ def seed_tenant_b(cur) -> dict:
     admin = create_user(cur, tid, "admin@globalcargo.com", "Aisha Suleiman", "tenant_admin")
     china1 = create_user(cur, tid, "china1@globalcargo.com", "Zhang Wei", "china_office_staff", admin["id"])
     china2 = create_user(cur, tid, "china2@globalcargo.com", "Wang Fang", "china_office_staff", admin["id"])
-    cust_user = create_user(cur, tid, "customer@globalcargo.com", "Olumide Adebayo", "customer", admin["id"])
+    create_user(cur, tid, "customer@globalcargo.com", "Olumide Adebayo", "customer", admin["id"])
     print(f"  users: {admin['id']} (admin), {china1['id']}, {china2['id']} (china)")
 
     # Configs — higher rate, storage fee disabled
@@ -373,7 +371,7 @@ def seed_tenant_b(cur) -> dict:
     create_shipment_tracking(cur, tid, str(item1c["id"]), "TRK003003", "in_transit")
 
     # Billing — sent (awaiting payment)
-    b1 = create_billing(cur, tid, str(cust1["id"]), str(con1["id"]), str(pl1["id"]),
+    create_billing(cur, tid, str(cust1["id"]), str(con1["id"]), str(pl1["id"]),
                         "INV-B-001", 3, 4.0, 50.0, 1580.0, "unpaid",
                         str(admin["id"]), due_date=eta + timedelta(days=7))
 

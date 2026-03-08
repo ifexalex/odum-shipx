@@ -1,6 +1,6 @@
-import wrapt
 import sqlite3
 
+import wrapt
 from aws_xray_sdk.ext.dbapi2 import XRayTracedConn
 
 

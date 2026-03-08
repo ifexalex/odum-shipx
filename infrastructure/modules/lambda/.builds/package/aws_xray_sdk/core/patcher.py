@@ -5,9 +5,10 @@ import os
 import pkgutil
 import re
 import sys
-import wrapt
 
+import wrapt
 from aws_xray_sdk import global_sdk_config
+
 from .utils.compat import is_classmethod, is_instance_method
 
 log = logging.getLogger(__name__)
@@ -69,10 +70,10 @@ def _is_valid_import(module):
     module = module.replace('.', '/')
     realpath = os.path.realpath(module)
     is_module = os.path.isdir(realpath) and (
-        os.path.isfile('{}/__init__.py'.format(module)) or os.path.isfile('{}/__init__.pyc'.format(module))
+        os.path.isfile(f'{module}/__init__.py') or os.path.isfile(f'{module}/__init__.pyc')
     )
     is_file = not is_module and (
-            os.path.isfile('{}.py'.format(module)) or os.path.isfile('{}.pyc'.format(module))
+            os.path.isfile(f'{module}.py') or os.path.isfile(f'{module}.pyc')
     )
     return is_module or is_file
 
@@ -158,7 +159,7 @@ def _patch_func(parent, func_name, func, modifier=lambda x: x):
 
     capture_name = func_name
     if func_name.startswith('__') and func_name.endswith('__'):
-        capture_name = '{}.{}'.format(parent.__name__, capture_name)
+        capture_name = f'{parent.__name__}.{capture_name}'
     setattr(parent, func_name, modifier(xray_recorder.capture(name=capture_name)(func)))
 
 
@@ -202,7 +203,7 @@ def _on_import(module):
 
 def _external_module_patch(module, ignore_module_patterns):
     if module.startswith('.'):
-        raise Exception('relative packages not supported for patching: {}'.format(module))
+        raise Exception(f'relative packages not supported for patching: {module}')
 
     if module in _PATCHED_MODULES:
         log.debug('%s already patched', module)

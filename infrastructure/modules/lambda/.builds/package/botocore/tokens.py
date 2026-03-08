@@ -15,11 +15,9 @@ import logging
 import os
 import threading
 from datetime import datetime, timedelta
-from typing import NamedTuple, Optional
+from typing import NamedTuple
 
 import dateutil.parser
-from dateutil.tz import tzutc
-
 from botocore import UNSIGNED
 from botocore.compat import total_seconds
 from botocore.config import Config
@@ -29,6 +27,7 @@ from botocore.exceptions import (
     TokenRetrievalError,
 )
 from botocore.utils import CachedProperty, JSONFileCache, SSOTokenLoader
+from dateutil.tz import tzutc
 
 logger = logging.getLogger(__name__)
 
@@ -56,7 +55,7 @@ def _sso_json_dumps(obj):
 
 class FrozenAuthToken(NamedTuple):
     token: str
-    expiration: Optional[datetime] = None
+    expiration: datetime | None = None
 
 
 class DeferredRefreshableToken:

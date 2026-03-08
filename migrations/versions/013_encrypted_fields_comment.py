@@ -34,7 +34,6 @@ Revises: 012
 Create Date: 2026-03-01 00:00:00
 """
 
-from alembic import op
 
 revision = "013"
 down_revision = "012"

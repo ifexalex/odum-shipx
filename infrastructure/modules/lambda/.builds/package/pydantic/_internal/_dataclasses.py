@@ -4,8 +4,9 @@ from __future__ import annotations as _annotations
 import dataclasses
 import typing
 import warnings
+from collections.abc import Callable
 from functools import partial, wraps
-from typing import Any, Callable, ClassVar
+from typing import Any, ClassVar, TypeGuard
 
 from pydantic_core import (
     ArgsKwargs,
@@ -13,7 +14,6 @@ from pydantic_core import (
     SchemaValidator,
     core_schema,
 )
-from typing_extensions import TypeGuard
 
 from ..errors import PydanticUndefinedAnnotation
 from ..fields import FieldInfo

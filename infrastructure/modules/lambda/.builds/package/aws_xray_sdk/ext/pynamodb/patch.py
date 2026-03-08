@@ -1,7 +1,7 @@
 import json
-import wrapt
-import pynamodb
 
+import pynamodb
+import wrapt
 from aws_xray_sdk.core import xray_recorder
 from aws_xray_sdk.core.models import http
 from aws_xray_sdk.ext.boto_utils import _extract_whitelisted_params
@@ -20,14 +20,14 @@ def patch():
     if PYNAMODB4:
         if hasattr(botocore.httpsession, '_xray_enabled'):
             return
-        setattr(botocore.httpsession, '_xray_enabled', True)
+        botocore.httpsession._xray_enabled = True
 
         module = 'botocore.httpsession'
         name = 'URLLib3Session.send'
     else:
         if hasattr(botocore.vendored.requests.sessions, '_xray_enabled'):
             return
-        setattr(botocore.vendored.requests.sessions, '_xray_enabled', True)
+        botocore.vendored.requests.sessions._xray_enabled = True
 
         module = 'botocore.vendored.requests.sessions'
         name = 'Session.send'

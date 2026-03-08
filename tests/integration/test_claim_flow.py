@@ -3,8 +3,6 @@ import json
 from decimal import Decimal
 from unittest.mock import MagicMock, patch
 
-import pytest
-
 from shared.tenant_context import TenantContext, UserRole
 
 TENANT_ID = "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa"
@@ -122,7 +120,6 @@ class TestClaimResolutionCreatesRefund:
 
     def test_refund_resolution_type_creates_refund_request(self):
         from services.claims import service
-        from shared.tenant_context import TenantContext, UserRole
 
         claim = {
             "id": "claim-001",

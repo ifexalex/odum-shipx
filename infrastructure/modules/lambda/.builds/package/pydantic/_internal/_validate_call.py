@@ -1,8 +1,9 @@
 from __future__ import annotations as _annotations
 
 import inspect
+from collections.abc import Awaitable, Callable
 from functools import partial
-from typing import Any, Awaitable, Callable
+from typing import Any
 
 import pydantic_core
 

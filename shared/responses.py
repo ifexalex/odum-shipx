@@ -111,7 +111,7 @@ def error_response(
         detail  — human-readable explanation
         instance — URI reference of the specific occurrence (optional)
     """
-    env = os.environ.get("ENVIRONMENT", "unknown")
+    os.environ.get("ENVIRONMENT", "unknown")
     problem: dict[str, Any] = {
         "type": f"https://errors.logistics-api.com/{error.error_code.lower().replace('_', '-')}",
         "title": _title_from_code(error.error_code),

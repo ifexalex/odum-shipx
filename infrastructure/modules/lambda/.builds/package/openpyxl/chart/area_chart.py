@@ -1,25 +1,19 @@
 # Copyright (c) 2010-2024 openpyxl
 
-from openpyxl.descriptors.serialisable import Serialisable
 from openpyxl.descriptors import (
-    Typed,
-    Set,
-    Bool,
-    Integer,
-    Sequence,
     Alias,
+    Sequence,
+    Typed,
 )
-
 from openpyxl.descriptors.excel import ExtensionList
 from openpyxl.descriptors.nested import (
-    NestedMinMax,
-    NestedSet,
     NestedBool,
+    NestedSet,
 )
 
 from ._chart import ChartBase
+from .axis import ChartLines, NumericAxis, SeriesAxis, TextAxis
 from .descriptors import NestedGapAmount
-from .axis import TextAxis, NumericAxis, SeriesAxis, ChartLines
 from .label import DataLabelList
 from .series import Series
 

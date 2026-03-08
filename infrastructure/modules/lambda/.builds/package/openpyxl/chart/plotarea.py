@@ -1,41 +1,40 @@
 # Copyright (c) 2010-2024 openpyxl
 
-from openpyxl.descriptors.serialisable import Serialisable
 from openpyxl.descriptors import (
-    Typed,
     Alias,
+    Typed,
 )
 from openpyxl.descriptors.excel import (
     ExtensionList,
+)
+from openpyxl.descriptors.nested import (
+    NestedBool,
 )
 from openpyxl.descriptors.sequence import (
     MultiSequence,
     MultiSequencePart,
 )
-from openpyxl.descriptors.nested import (
-    NestedBool,
-)
+from openpyxl.descriptors.serialisable import Serialisable
 
 from ._3d import _3DBase
 from .area_chart import AreaChart, AreaChart3D
+from .axis import (
+    DateAxis,
+    NumericAxis,
+    SeriesAxis,
+    TextAxis,
+)
 from .bar_chart import BarChart, BarChart3D
 from .bubble_chart import BubbleChart
+from .layout import Layout
 from .line_chart import LineChart, LineChart3D
-from .pie_chart import PieChart, PieChart3D, ProjectedPieChart, DoughnutChart
+from .pie_chart import DoughnutChart, PieChart, PieChart3D, ProjectedPieChart
 from .radar_chart import RadarChart
 from .scatter_chart import ScatterChart
+from .shapes import GraphicalProperties
 from .stock_chart import StockChart
 from .surface_chart import SurfaceChart, SurfaceChart3D
-from .layout import Layout
-from .shapes import GraphicalProperties
 from .text import RichText
-
-from .axis import (
-    NumericAxis,
-    TextAxis,
-    SeriesAxis,
-    DateAxis,
-)
 
 
 class DataTable(Serialisable):

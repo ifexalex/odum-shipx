@@ -1,24 +1,22 @@
 # Copyright (c) 2010-2024 openpyxl
 
-from openpyxl.descriptors.serialisable import Serialisable
 from openpyxl.descriptors import (
-    Typed,
-    Integer,
-    Bool,
     Alias,
     Sequence,
+    Typed,
 )
 from openpyxl.descriptors.excel import ExtensionList
 from openpyxl.descriptors.nested import (
-    NestedInteger,
     NestedBool,
+    NestedInteger,
 )
+from openpyxl.descriptors.serialisable import Serialisable
 
-from ._chart import ChartBase
 from ._3d import _3DBase
-from .axis import TextAxis, NumericAxis, SeriesAxis
-from .shapes import GraphicalProperties
+from ._chart import ChartBase
+from .axis import NumericAxis, SeriesAxis, TextAxis
 from .series import Series
+from .shapes import GraphicalProperties
 
 
 class BandFormat(Serialisable):

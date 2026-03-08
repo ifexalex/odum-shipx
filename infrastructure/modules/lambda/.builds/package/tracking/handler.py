@@ -160,7 +160,7 @@ def _handle_health_check(request_id: str) -> dict:
         "body": __import__("json").dumps({
             "status":    "healthy",
             "version":   "1.0.0",
-            "timestamp": datetime.datetime.now(datetime.timezone.utc).isoformat(),
+            "timestamp": datetime.datetime.now(datetime.UTC).isoformat(),
         }),
     }
 

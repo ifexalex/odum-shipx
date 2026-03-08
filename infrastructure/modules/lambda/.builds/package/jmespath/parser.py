@@ -25,14 +25,11 @@ A few notes on the implementation.
   consuming from the token iterator one token at a time.
 
 """
-from jmespath import lexer
+from jmespath import ast, exceptions, lexer, visitor
 from jmespath.compat import with_repr_method
-from jmespath import ast
-from jmespath import exceptions
-from jmespath import visitor
 
 
-class Parser(object):
+class Parser:
     BINDING_POWER = {
         'eof': 0,
         'unquoted_identifier': 0,
@@ -120,7 +117,7 @@ class Parser(object):
         self._tokens = list(self.tokenizer)
         self._index = 0
         parsed = self._expression(binding_power=0)
-        if not self._current_token() == 'eof':
+        if self._current_token() != 'eof':
             t = self._lookahead_token(0)
             raise exceptions.ParseError(t['start'], t['value'], t['type'],
                                         "Unexpected token: %s" % t['value'])
@@ -230,7 +227,7 @@ class Parser(object):
         parts = [None, None, None]
         index = 0
         current_token = self._current_token()
-        while not current_token == 'rbracket' and index < 3:
+        while current_token != 'rbracket' and index < 3:
             if current_token == 'colon':
                 index += 1
                 if index == 3:
@@ -255,7 +252,7 @@ class Parser(object):
         return ast.expref(expression)
 
     def _token_led_dot(self, left):
-        if not self._current_token() == 'star':
+        if self._current_token() != 'star':
             right = self._parse_dot_rhs(self.BINDING_POWER['dot'])
             if left['type'] == 'subexpression':
                 left['children'].append(right)
@@ -292,7 +289,7 @@ class Parser(object):
                 "Invalid function name '%s'" % prev_t['value'])
         name = left['value']
         args = []
-        while not self._current_token() == 'rparen':
+        while self._current_token() != 'rparen':
             expression = self._expression()
             if self._current_token() == 'comma':
                 self._match('comma')
@@ -404,9 +401,7 @@ class Parser(object):
         if self.BINDING_POWER[self._current_token()] < self._PROJECTION_STOP:
             # BP of 10 are all the tokens that stop a projection.
             right = ast.identity()
-        elif self._current_token() == 'lbracket':
-            right = self._expression(binding_power)
-        elif self._current_token() == 'filter':
+        elif self._current_token() == 'lbracket' or self._current_token() == 'filter':
             right = self._expression(binding_power)
         elif self._current_token() == 'dot':
             self._match('dot')
@@ -506,7 +501,7 @@ class Parser(object):
 
 
 @with_repr_method
-class ParsedResult(object):
+class ParsedResult:
     def __init__(self, expression, parsed):
         self.expression = expression
         self.parsed = parsed

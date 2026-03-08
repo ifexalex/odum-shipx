@@ -1,22 +1,17 @@
 # Copyright (c) 2010-2024 openpyxl
 
-from openpyxl.descriptors.serialisable import Serialisable
 from openpyxl.descriptors import (
+    Alias,
     Sequence,
     Typed,
-    Alias,
 )
 from openpyxl.descriptors.excel import ExtensionList
-from openpyxl.descriptors.nested import (
-    NestedBool,
-    NestedInteger,
-    NestedSet
-)
+from openpyxl.descriptors.nested import NestedBool, NestedSet
 
 from ._chart import ChartBase
-from .axis import TextAxis, NumericAxis
-from .series import Series
+from .axis import NumericAxis, TextAxis
 from .label import DataLabelList
+from .series import Series
 
 
 class RadarChart(ChartBase):

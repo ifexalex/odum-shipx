@@ -1,10 +1,9 @@
 # Copyright (c) 2010-2024 openpyxl
 
-from openpyxl.descriptors.serialisable import Serialisable
 from openpyxl.descriptors import Typed
 from openpyxl.descriptors.excel import ExtensionList
+from openpyxl.descriptors.serialisable import Serialisable
 
-from .shapes import GraphicalProperties
 from .axis import ChartLines
 from .descriptors import NestedGapAmount
 

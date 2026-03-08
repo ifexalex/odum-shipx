@@ -5,8 +5,8 @@ carryover/credit application, and billing recalculation on dispute resolution.
 """
 
 import logging
-from datetime import date, timezone, datetime
-from decimal import Decimal, ROUND_HALF_UP
+from datetime import UTC, date, datetime
+from decimal import ROUND_HALF_UP, Decimal
 
 from shared.audit import log_audit
 from shared.events import publish_event
@@ -110,7 +110,7 @@ def handle_payment_due(
     invoice_number = f"{tenant_short}-INV-{today_str}-{seq:04d}"
 
     # 8. Persist billing record
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     billing = repo.create_billing(
         tenant_id,
         {
@@ -768,7 +768,7 @@ def resolve_dispute(
     if is_terminal:
         extra["resolution_notes"] = req.resolution_notes
         extra["resolved_by"] = actor_id
-        extra["resolved_at"] = datetime.now(timezone.utc)
+        extra["resolved_at"] = datetime.now(UTC)
 
     updated = repo.set_dispute_status(tenant_id, dispute_id, target, extra)
 

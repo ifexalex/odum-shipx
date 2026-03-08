@@ -2,7 +2,6 @@ import re
 from urllib.parse import urlparse
 
 import wrapt
-
 from aws_xray_sdk.core.models import http
 from aws_xray_sdk.core.models.trace_header import TraceHeader
 

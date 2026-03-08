@@ -1,11 +1,8 @@
 # Copyright (c) 2010-2024 openpyxl
 
 
+from openpyxl.descriptors import Alias, Sequence
 from openpyxl.descriptors.serialisable import Serialisable
-from openpyxl.descriptors import (
-    Sequence,
-    Alias
-)
 
 
 class AuthorList(Serialisable):

@@ -1,17 +1,18 @@
 import math
 import sys
 import types
+from collections.abc import Callable, Iterator
 from dataclasses import dataclass
 from datetime import tzinfo
-from typing import TYPE_CHECKING, Any, Callable, Iterator, Optional, SupportsFloat, SupportsIndex, TypeVar, Union
+from typing import TYPE_CHECKING, Any, SupportsFloat, SupportsIndex, TypeVar
 
 if sys.version_info < (3, 8):
-    from typing_extensions import Protocol, runtime_checkable
+    from typing import Protocol, runtime_checkable
 else:
     from typing import Protocol, runtime_checkable
 
 if sys.version_info < (3, 9):
-    from typing_extensions import Annotated, Literal
+    from typing import Annotated, Literal
 else:
     from typing import Annotated, Literal
 
@@ -209,10 +210,10 @@ class Interval(GroupedMetadata):
     are interpreted the same way as the single-bound constraints.
     """
 
-    gt: Union[SupportsGt, None] = None
-    ge: Union[SupportsGe, None] = None
-    lt: Union[SupportsLt, None] = None
-    le: Union[SupportsLe, None] = None
+    gt: SupportsGt | None = None
+    ge: SupportsGe | None = None
+    lt: SupportsLt | None = None
+    le: SupportsLe | None = None
 
     def __iter__(self) -> Iterator[BaseMetadata]:
         """Unpack an Interval into zero or more single-bounds."""
@@ -237,7 +238,7 @@ class MultipleOf(BaseMetadata):
     and libraries to carefully document which they implement.
     """
 
-    multiple_of: Union[SupportsDiv, SupportsMod]
+    multiple_of: SupportsDiv | SupportsMod
 
 
 @dataclass(frozen=True, **SLOTS)
@@ -269,7 +270,7 @@ class Len(GroupedMetadata):
     """
 
     min_length: Annotated[int, Ge(0)] = 0
-    max_length: Optional[Annotated[int, Ge(0)]] = None
+    max_length: Annotated[int, Ge(0)] | None = None
 
     def __iter__(self) -> Iterator[BaseMetadata]:
         """Unpack a Len into zone or more single-bounds."""
@@ -293,7 +294,7 @@ class Timezone(BaseMetadata):
     a symptom of poor design.
     """
 
-    tz: Union[str, tzinfo, EllipsisType, None]
+    tz: str | tzinfo | EllipsisType | None
 
 
 @dataclass(frozen=True, **SLOTS)
@@ -391,7 +392,7 @@ Return True if all characters in the string are ASCII, False otherwise.
 ASCII characters have code points in the range U+0000-U+007F. Empty string is ASCII too.
 """
 
-_NumericType = TypeVar('_NumericType', bound=Union[SupportsFloat, SupportsIndex])
+_NumericType = TypeVar('_NumericType', bound=SupportsFloat | SupportsIndex)
 IsFinite = Annotated[_NumericType, Predicate(math.isfinite)]
 """Return True if x is neither an infinity nor a NaN, and False otherwise."""
 IsNotFinite = Annotated[_NumericType, Predicate(Not(math.isfinite))]

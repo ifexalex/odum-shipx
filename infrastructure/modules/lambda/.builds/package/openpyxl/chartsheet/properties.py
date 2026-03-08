@@ -1,10 +1,6 @@
 # Copyright (c) 2010-2024 openpyxl
 
-from openpyxl.descriptors import (
-    Bool,
-    String,
-    Typed
-)
+from openpyxl.descriptors import Bool, String, Typed
 from openpyxl.descriptors.serialisable import Serialisable
 from openpyxl.styles import Color
 

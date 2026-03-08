@@ -8,7 +8,7 @@ For each cbm_dispute with status = 'open':
 """
 
 import logging
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 
 from aws_xray_sdk.core import patch_all
 
@@ -61,7 +61,7 @@ def lambda_handler(event: dict, context) -> dict:
 
 
 def _process_tenant(tenant_id: str) -> int:
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     threshold = now - _SLA_WINDOW
 
     # Disputes in 'open' status where updated_at == created_at (never acknowledged)

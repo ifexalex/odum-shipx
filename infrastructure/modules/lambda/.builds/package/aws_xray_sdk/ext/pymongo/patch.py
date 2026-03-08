@@ -1,6 +1,6 @@
 # Copyright © 2018 Clarity Movement Co. All rights reserved.
-from pymongo import monitoring
 from aws_xray_sdk.core import xray_recorder
+from pymongo import monitoring
 
 
 class XrayCommandListener(monitoring.CommandListener):
@@ -51,5 +51,5 @@ def patch(record_full_documents=False):
     # ensure `patch()` is idempotent
     if hasattr(monitoring, '_xray_enabled'):
         return
-    setattr(monitoring, '_xray_enabled', True)
+    monitoring._xray_enabled = True
     monitoring.register(XrayCommandListener(record_full_documents))

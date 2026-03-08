@@ -5,10 +5,9 @@ import dataclasses as _dataclasses
 import re
 from importlib.metadata import version
 from ipaddress import IPv4Address, IPv4Interface, IPv4Network, IPv6Address, IPv6Interface, IPv6Network
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Annotated, Any, TypeAlias
 
 from pydantic_core import MultiHostUrl, PydanticCustomError, Url, core_schema
-from typing_extensions import Annotated, TypeAlias
 
 from ._internal import _fields, _repr, _schema_generation_shared
 from ._migration import getattr_migration

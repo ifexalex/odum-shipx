@@ -4,9 +4,8 @@
 
 # Python stdlib imports
 import datetime
-from math import isnan
 import re
-
+from math import isnan
 
 # constants
 MAC_EPOCH = datetime.datetime(1904, 1, 1)
@@ -75,7 +74,7 @@ def from_ISO8601(formatted_string):
                 parts[key] = float(val)
         return datetime.timedelta(**parts)
 
-    raise ValueError("Invalid datetime value {}".format(formatted_string))
+    raise ValueError(f"Invalid datetime value {formatted_string}")
 
 
 def to_excel(dt, epoch=WINDOWS_EPOCH):

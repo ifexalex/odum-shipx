@@ -1,10 +1,9 @@
-import copy
 import traceback
 
+from ..exceptions.exceptions import SegmentNameMissingException
+from ..utils.atomic_counter import AtomicCounter
 from .entity import Entity
 from .traceid import TraceId
-from ..utils.atomic_counter import AtomicCounter
-from ..exceptions.exceptions import SegmentNameMissingException
 
 ORIGIN_TRACE_HEADER_ATTR_KEY = '_origin_trace_header'
 
@@ -155,14 +154,14 @@ class Segment(Entity):
             self.aws['xray'] = {}
         self.aws['xray']['sampling_rule_name'] = rule_name
 
-    def to_dict(self):   
+    def to_dict(self):
         """
         Convert Segment object to dict with required properties
         that have non-empty values. 
-        """ 
+        """
         segment_dict = super().to_dict()
-          
+
         del segment_dict['ref_counter']
         del segment_dict['_subsegments_counter']
-        
+
         return segment_dict

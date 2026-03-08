@@ -8,7 +8,7 @@ Provides:
 import json
 import logging
 from calendar import monthrange
-from datetime import date, datetime, timezone
+from datetime import UTC, date, datetime
 
 from shared.exceptions import UsageLimitExceededError
 
@@ -119,7 +119,7 @@ def process_usage_event(message_body: str) -> None:
         try:
             ref_date = datetime.fromisoformat(
                 occurred_at_raw.replace("Z", "+00:00")
-            ).astimezone(timezone.utc).date()
+            ).astimezone(UTC).date()
         except (ValueError, AttributeError):
             ref_date = date.today()
     else:

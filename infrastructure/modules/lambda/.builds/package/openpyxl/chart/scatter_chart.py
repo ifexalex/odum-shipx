@@ -1,21 +1,16 @@
 # Copyright (c) 2010-2024 openpyxl
 
-from openpyxl.descriptors.serialisable import Serialisable
-from openpyxl.descriptors import (
-    Typed,
-    Sequence,
-    Alias
-)
+from openpyxl.descriptors import Alias, Sequence, Typed
 from openpyxl.descriptors.excel import ExtensionList
 from openpyxl.descriptors.nested import (
-    NestedNoneSet,
     NestedBool,
+    NestedNoneSet,
 )
 
 from ._chart import ChartBase
 from .axis import NumericAxis, TextAxis
-from .series import XYSeries
 from .label import DataLabelList
+from .series import XYSeries
 
 
 class ScatterChart(ChartBase):

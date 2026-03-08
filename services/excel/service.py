@@ -4,7 +4,6 @@ import io
 import logging
 import os
 import re
-from collections import defaultdict
 from datetime import date, datetime, timedelta
 from io import BytesIO
 
@@ -322,7 +321,7 @@ def import_packing_list(
     tracking_seq_cache: dict[str, int] = {}
     tracking_cache: dict[tuple, str] = {}
 
-    for (customer_id, received_date), items in items_by_group.items():
+    for (customer_id, _received_date), items in items_by_group.items():
         pl = repo.create_packing_list(tenant_id, {
             "tenant_id":    tenant_id,
             "container_id": container_id,

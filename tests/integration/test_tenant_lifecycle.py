@@ -1,10 +1,8 @@
 """Integration test: Tenant creation → config → users → suspend → activate."""
 import json
-from unittest.mock import MagicMock, patch
+from unittest.mock import patch
 
 import pytest
-
-from shared.tenant_context import TenantContext, UserRole
 
 PLATFORM_ID = "PLATFORM"
 
@@ -140,7 +138,6 @@ class TestTenantSuspensionEffect:
         """After suspension, any subsequent API call from this tenant → 403."""
         from shared.auth import get_tenant_context
         from shared.exceptions import TenantSuspendedError
-        from shared.tenant_context import PLATFORM_TENANT_ID
 
         # Simulate the DB returning 'suspended' status for the tenant
         def _mock_suspended(tenant_id, query, params=None):

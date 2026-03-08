@@ -7,13 +7,12 @@ import typing
 from copy import copy
 from dataclasses import Field as DataclassField
 from functools import cached_property
-from typing import Any, ClassVar
+from typing import Any, ClassVar, Literal, Unpack
 from warnings import warn
 
 import annotated_types
 import typing_extensions
 from pydantic_core import PydanticUndefined
-from typing_extensions import Literal, Unpack
 
 from . import types
 from ._internal import _decorators, _fields, _generics, _internal_dataclass, _repr, _typing_extra, _utils
@@ -562,11 +561,7 @@ class FieldInfo(_repr.Representation):
         for s in self.__slots__:
             if s == '_attributes_set':
                 continue
-            if s == 'annotation':
-                continue
-            elif s == 'metadata' and not self.metadata:
-                continue
-            elif s == 'repr' and self.repr is True:
+            if s == 'annotation' or s == 'metadata' and not self.metadata or s == 'repr' and self.repr is True:
                 continue
             if s == 'frozen' and self.frozen is False:
                 continue

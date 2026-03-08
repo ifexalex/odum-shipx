@@ -171,8 +171,6 @@ def webhook_handler(event: dict, context) -> dict:
       GET  /v1/webhooks/whatsapp — Meta hub challenge verification
       POST /v1/webhooks/whatsapp — Delivery status updates
     """
-    import json as _json
-    import os as _os
 
     http = event.get("requestContext", {}).get("http", {})
     method = http.get("method", event.get("httpMethod", "GET"))

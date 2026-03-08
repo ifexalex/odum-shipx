@@ -3,7 +3,7 @@ from __future__ import annotations as _annotations
 import typing
 from copy import deepcopy
 from enum import Enum
-from typing import Any, Tuple
+from typing import Any
 
 import typing_extensions
 
@@ -18,7 +18,7 @@ if typing.TYPE_CHECKING:
     from .._internal._utils import AbstractSetIntStr, MappingIntStrAny
 
     AnyClassMethod = classmethod[Any, Any, Any]
-    TupleGenerator = typing.Generator[Tuple[str, Any], None, None]
+    TupleGenerator = typing.Generator[tuple[str, Any], None, None]
     Model = typing.TypeVar('Model', bound='BaseModel')
     # should be `set[int] | set[str] | dict[int, IncEx] | dict[str, IncEx] | None`, but mypy can't cope
     IncEx: typing_extensions.TypeAlias = 'set[int] | set[str] | dict[int, Any] | dict[str, Any] | None'

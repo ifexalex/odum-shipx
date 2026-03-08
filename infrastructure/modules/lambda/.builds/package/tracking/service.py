@@ -6,17 +6,15 @@ tracking updates, billing event triggers, and customer-facing tracking lookup.
 
 import logging
 
+from services.metering.service import check_container_limit
 from shared.audit import log_audit
 from shared.events import publish_event
 from shared.exceptions import (
     BusinessRuleViolationError,
     IllegalTransitionError,
-    InsufficientPermissionsError,
     ResourceNotFoundError,
 )
 from shared.tenant_context import UserRole
-
-from services.metering.service import check_container_limit
 
 from . import repository as repo
 from .models import TrackingStage

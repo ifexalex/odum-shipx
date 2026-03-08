@@ -11,12 +11,16 @@ import decimal
 import inspect
 import os
 import typing
+from collections.abc import Callable, Iterable
 from enum import Enum
 from functools import partial
 from ipaddress import IPv4Address, IPv4Interface, IPv4Network, IPv6Address, IPv6Interface, IPv6Network
-from typing import Any, Callable, Iterable, TypeVar
+from typing import Any, TypeVar, get_args, get_origin
 
 import typing_extensions
+from pydantic.errors import PydanticSchemaGenerationError
+from pydantic.fields import FieldInfo
+from pydantic.types import Strict
 from pydantic_core import (
     CoreSchema,
     MultiHostUrl,
@@ -25,11 +29,6 @@ from pydantic_core import (
     Url,
     core_schema,
 )
-from typing_extensions import get_args, get_origin
-
-from pydantic.errors import PydanticSchemaGenerationError
-from pydantic.fields import FieldInfo
-from pydantic.types import Strict
 
 from ..config import ConfigDict
 from ..json_schema import JsonSchemaValue, update_json_schema
@@ -337,7 +336,7 @@ class SequenceValidator:
                 # that e.g. comes from JSON
                 coerce_instance_wrap = partial(
                     core_schema.no_info_wrap_validator_function,
-                    partial(dequeue_validator, maxlen=metadata.get('max_length', None)),
+                    partial(dequeue_validator, maxlen=metadata.get('max_length')),
                 )
             else:
                 coerce_instance_wrap = partial(core_schema.no_info_after_validator_function, self.mapped_origin)
@@ -366,15 +365,15 @@ class SequenceValidator:
 
 
 SEQUENCE_ORIGIN_MAP: dict[Any, Any] = {
-    typing.Deque: collections.deque,
+    collections.deque: collections.deque,
     collections.deque: collections.deque,
     list: list,
-    typing.List: list,
+    list: list,
     set: set,
     typing.AbstractSet: set,
-    typing.Set: set,
+    set: set,
     frozenset: frozenset,
-    typing.FrozenSet: frozenset,
+    frozenset: frozenset,
     typing.Sequence: list,
     typing.MutableSequence: list,
     typing.MutableSet: set,
@@ -394,7 +393,7 @@ def sequence_like_prepare_pydantic_annotations(
 ) -> tuple[Any, list[Any]] | None:
     origin: Any = get_origin(source_type)
 
-    mapped_origin = SEQUENCE_ORIGIN_MAP.get(origin, None) if origin else SEQUENCE_ORIGIN_MAP.get(source_type, None)
+    mapped_origin = SEQUENCE_ORIGIN_MAP.get(origin) if origin else SEQUENCE_ORIGIN_MAP.get(source_type)
     if mapped_origin is None:
         return None
 
@@ -414,12 +413,12 @@ def sequence_like_prepare_pydantic_annotations(
 
 
 MAPPING_ORIGIN_MAP: dict[Any, Any] = {
-    typing.DefaultDict: collections.defaultdict,
+    collections.defaultdict: collections.defaultdict,
     collections.defaultdict: collections.defaultdict,
     collections.OrderedDict: collections.OrderedDict,
     typing_extensions.OrderedDict: collections.OrderedDict,
     dict: dict,
-    typing.Dict: dict,
+    dict: dict,
     collections.Counter: collections.Counter,
     typing.Counter: collections.Counter,
     # this doesn't handle subclasses of these
@@ -444,14 +443,14 @@ def defaultdict_validator(
 def get_defaultdict_default_default_factory(values_source_type: Any) -> Callable[[], Any]:
     def infer_default() -> Callable[[], Any]:
         allowed_default_types: dict[Any, Any] = {
-            typing.Tuple: tuple,
+            tuple: tuple,
             tuple: tuple,
             collections.abc.Sequence: tuple,
             collections.abc.MutableSequence: list,
-            typing.List: list,
+            list: list,
             list: list,
             typing.Sequence: list,
-            typing.Set: set,
+            set: set,
             set: set,
             typing.MutableSet: set,
             collections.abc.MutableSet: set,
@@ -565,7 +564,7 @@ def mapping_like_prepare_pydantic_annotations(
 ) -> tuple[Any, list[Any]] | None:
     origin: Any = get_origin(source_type)
 
-    mapped_origin = MAPPING_ORIGIN_MAP.get(origin, None) if origin else MAPPING_ORIGIN_MAP.get(source_type, None)
+    mapped_origin = MAPPING_ORIGIN_MAP.get(origin) if origin else MAPPING_ORIGIN_MAP.get(source_type)
     if mapped_origin is None:
         return None
 

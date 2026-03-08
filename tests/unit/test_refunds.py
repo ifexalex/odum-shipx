@@ -1,5 +1,5 @@
 """Unit tests for services.refunds.service — refund workflow and debt check."""
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from decimal import Decimal
 from unittest.mock import MagicMock, patch
 
@@ -13,7 +13,7 @@ from shared.exceptions import (
 from shared.tenant_context import TenantContext, UserRole
 
 TENANT_ID = "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa"
-NOW = datetime(2026, 2, 1, tzinfo=timezone.utc)
+NOW = datetime(2026, 2, 1, tzinfo=UTC)
 
 
 def _ctx(role: UserRole) -> TenantContext:

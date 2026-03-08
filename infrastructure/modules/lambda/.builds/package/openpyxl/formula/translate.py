@@ -8,12 +8,11 @@ to identify the parts of the formula that need to change.
 """
 
 import re
-from .tokenizer import Tokenizer, Token
-from openpyxl.utils import (
-    coordinate_to_tuple,
-    column_index_from_string,
-    get_column_letter
-)
+
+from openpyxl.utils import column_index_from_string, coordinate_to_tuple, get_column_letter
+
+from .tokenizer import Token, Tokenizer
+
 
 class TranslatorError(Exception):
     """

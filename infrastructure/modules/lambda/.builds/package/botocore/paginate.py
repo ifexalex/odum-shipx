@@ -17,7 +17,6 @@ import logging
 from itertools import tee
 
 import jmespath
-
 from botocore.exceptions import PaginationError
 from botocore.utils import merge_dicts, set_value_from_jmespath
 
@@ -456,7 +455,7 @@ class PageIterator:
                 return {}
         next_tokens = {}
         for output_token, input_key in zip(
-            self._output_token, self._input_token
+            self._output_token, self._input_token, strict=False
         ):
             next_token = output_token.search(parsed)
             # We do not want to include any empty strings as actual tokens.
@@ -471,7 +470,7 @@ class PageIterator:
         teed_results = tee(self, len(self.result_keys))
         return [
             ResultKeyIterator(i, result_key)
-            for i, result_key in zip(teed_results, self.result_keys)
+            for i, result_key in zip(teed_results, self.result_keys, strict=False)
         ]
 
     def build_full_result(self):
@@ -585,7 +584,7 @@ class PageIterator:
             )
             for i in range(len_input_token - len_deprecated_token):
                 deprecated_token.append(None)
-        return dict(zip(self._input_token, deprecated_token))
+        return dict(zip(self._input_token, deprecated_token, strict=False))
 
 
 class Paginator:

@@ -1,15 +1,13 @@
 # Copyright (c) 2010-2024 openpyxl
 
-from openpyxl.descriptors.serialisable import Serialisable
 from openpyxl.descriptors import (
-    Typed,
+    Bool,
+    Integer,
+    NoneSet,
     Sequence,
     String,
-    Float,
-    Integer,
-    Bool,
-    NoneSet,
 )
+from openpyxl.descriptors.serialisable import Serialisable
 
 
 class WebPublishObject(Serialisable):

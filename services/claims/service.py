@@ -7,7 +7,7 @@ missing/seized items.
 
 import logging
 import os
-from datetime import date, timezone, datetime
+from datetime import UTC, date, datetime
 from decimal import Decimal
 
 import boto3
@@ -76,10 +76,7 @@ def file_claim(
             )
         customer_id = customer_id_override
 
-    if isinstance(req.cartons_affected, list):
-        cartons_affected = [str(t) for t in req.cartons_affected]
-    else:
-        cartons_affected = []
+    cartons_affected = [str(t) for t in req.cartons_affected] if isinstance(req.cartons_affected, list) else []
 
     claim = repo.create_damage_claim(
         tenant_id,
@@ -282,7 +279,7 @@ def resolve_claim(
     )
 
     # Update claim status
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     updated = repo.update_claim_status(
         tenant_id,
         claim_id,
@@ -363,7 +360,7 @@ def _resolve_claim_new_style(
         )
         refund_request_id = str(refund_row["id"]) if refund_row else None
 
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     updated = repo.update_claim_status(
         tenant_id, claim_id, "resolved",
         extra={"reviewed_by": actor_id, "reviewed_at": now},
@@ -585,7 +582,7 @@ def update_seized_item(
 
 def _fmt_claim(row: dict) -> dict:
     cartons = row.get("cartons_affected") or []
-    if isinstance(cartons, (int, float)):
+    if isinstance(cartons, int | float):
         cartons = []
     return {
         "id":               str(row["id"]),

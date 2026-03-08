@@ -1,11 +1,9 @@
-import copy
 import traceback
 
 import wrapt
 
-from .entity import Entity
 from ..exceptions.exceptions import SegmentNotFoundException
-
+from .entity import Entity
 
 # Attribute starts with _self_ to prevent wrapt proxying to underlying function
 SUBSEGMENT_RECORDING_ATTRIBUTE = '_self___SUBSEGMENT_RECORDING_ATTRIBUTE__'
@@ -149,13 +147,13 @@ class Subsegment(Entity):
         """
         self.sql = sql
 
-    def to_dict(self): 
+    def to_dict(self):
         """
         Convert Subsegment object to dict with required properties
         that have non-empty values. 
-        """    
+        """
         subsegment_dict = super().to_dict()
-        
+
         del subsegment_dict['parent_segment']
 
         return subsegment_dict

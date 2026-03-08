@@ -10,10 +10,9 @@
 # distributed on an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF
 # ANY KIND, either express or implied. See the License for the specific
 # language governing permissions and limitations under the License.
-import sys
-import os
 import errno
-import socket
+import os
+import sys
 import warnings
 
 from boto3.exceptions import PythonDeprecationWarning
@@ -24,7 +23,6 @@ from boto3.exceptions import PythonDeprecationWarning
 # ConnectionError
 SOCKET_ERROR = ConnectionError
 
-import collections.abc as collections_abc
 
 
 if sys.platform.startswith('win'):

@@ -2,12 +2,12 @@
 from __future__ import annotations
 
 import dataclasses
+from collections.abc import Callable
 from functools import partialmethod
-from typing import TYPE_CHECKING, Any, Callable, TypeVar, Union, overload
+from typing import TYPE_CHECKING, Annotated, Any, Literal, TypeAlias, TypeVar, Union, overload
 
 from pydantic_core import PydanticUndefined, core_schema
 from pydantic_core import core_schema as _core_schema
-from typing_extensions import Annotated, Literal, TypeAlias
 
 from . import PydanticUndefinedAnnotation
 from ._internal import _decorators, _internal_dataclass
@@ -175,7 +175,7 @@ class WrapSerializer:
 
 
 if TYPE_CHECKING:
-    _PartialClsOrStaticMethod: TypeAlias = Union[classmethod[Any, Any, Any], staticmethod[Any, Any], partialmethod[Any]]
+    _PartialClsOrStaticMethod: TypeAlias = classmethod[Any, Any, Any] | staticmethod[Any, Any] | partialmethod[Any]
     _PlainSerializationFunction = Union[_core_schema.SerializerFunction, _PartialClsOrStaticMethod]
     _WrapSerializationFunction = Union[_core_schema.WrapSerializerFunction, _PartialClsOrStaticMethod]
     _PlainSerializeMethodType = TypeVar('_PlainSerializeMethodType', bound=_PlainSerializationFunction)

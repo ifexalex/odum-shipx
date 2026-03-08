@@ -5,7 +5,8 @@ on Parameter and Signature from inspect module, which were added in Python 3.6.
 Thanks to Cyril Jouve for the implementation.
 """
 
-from typing import Any, Callable, List, Mapping, Optional, Sequence, Tuple
+from collections.abc import Callable, Mapping, Sequence
+from typing import Any
 
 try:
     from inspect import Parameter, Signature
@@ -14,12 +15,12 @@ except ImportError:
 else:
 
     def formatargspec(
-        args: List[str],
-        varargs: Optional[str] = None,
-        varkw: Optional[str] = None,
-        defaults: Optional[Tuple[Any, ...]] = None,
-        kwonlyargs: Optional[Sequence[str]] = None,
-        kwonlydefaults: Optional[Mapping[str, Any]] = None,
+        args: list[str],
+        varargs: str | None = None,
+        varkw: str | None = None,
+        defaults: tuple[Any, ...] | None = None,
+        kwonlyargs: Sequence[str] | None = None,
+        kwonlydefaults: Mapping[str, Any] | None = None,
         annotations: Mapping[str, Any] = {},
         formatarg: Callable[[str], str] = str,
         formatvarargs: Callable[[str], str] = lambda name: "*" + name,

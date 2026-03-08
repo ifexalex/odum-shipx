@@ -4,9 +4,8 @@ from __future__ import annotations as _annotations
 import dataclasses
 import sys
 import types
-from typing import TYPE_CHECKING, Any, Callable, Generic, NoReturn, TypeVar, overload
-
-from typing_extensions import Literal, TypeGuard, dataclass_transform
+from collections.abc import Callable
+from typing import TYPE_CHECKING, Any, Generic, Literal, NoReturn, TypeGuard, TypeVar, dataclass_transform, overload
 
 from ._internal import _config, _decorators, _typing_extra
 from ._internal import _dataclasses as _pydantic_dataclasses

@@ -1,11 +1,10 @@
 import copy
-import logging
 import importlib
-
-from django.db import connections
+import logging
 
 from aws_xray_sdk.core import xray_recorder
 from aws_xray_sdk.ext.dbapi2 import XRayTracedCursor
+from django.db import connections
 
 log = logging.getLogger(__name__)
 
@@ -46,14 +45,14 @@ class DjangoXRayTracedCursor(XRayTracedCursor):
 
 
 def _patch_cursor(cursor_name, conn):
-    attr = '_xray_original_{}'.format(cursor_name)
+    attr = f'_xray_original_{cursor_name}'
 
     if hasattr(conn, attr):
-        log.debug('django built-in db {} already patched'.format(cursor_name))
+        log.debug(f'django built-in db {cursor_name} already patched')
         return
 
     if not hasattr(conn, cursor_name):
-        log.debug('django built-in db does not have {}'.format(cursor_name))
+        log.debug(f'django built-in db does not have {cursor_name}')
         return
 
     setattr(conn, attr, getattr(conn, cursor_name))

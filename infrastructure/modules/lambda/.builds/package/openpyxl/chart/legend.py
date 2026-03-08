@@ -1,18 +1,13 @@
 # Copyright (c) 2010-2024 openpyxl
 
-from openpyxl.descriptors.serialisable import Serialisable
 from openpyxl.descriptors import (
-    Typed,
-    Integer,
     Alias,
     Sequence,
+    Typed,
 )
 from openpyxl.descriptors.excel import ExtensionList
-from openpyxl.descriptors.nested import (
-    NestedBool,
-    NestedSet,
-    NestedInteger
-)
+from openpyxl.descriptors.nested import NestedBool, NestedInteger, NestedSet
+from openpyxl.descriptors.serialisable import Serialisable
 
 from .layout import Layout
 from .shapes import GraphicalProperties

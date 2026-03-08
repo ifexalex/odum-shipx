@@ -1,9 +1,7 @@
 """Integration test: CBM dispute → investigation → resolution → billing adjustment."""
 import json
 from decimal import Decimal
-from unittest.mock import MagicMock, patch
-
-import pytest
+from unittest.mock import patch
 
 from shared.tenant_context import TenantContext, UserRole
 
@@ -119,7 +117,6 @@ class TestDisputeServiceFlow:
 
     def test_escalation_changes_status(self):
         from services.billing import service
-        from shared.tenant_context import TenantContext, UserRole
 
         dispute = {
             "id": "dispute-001",

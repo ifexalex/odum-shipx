@@ -3,17 +3,16 @@
 from copy import copy
 from operator import attrgetter
 
-from openpyxl.descriptors import Strict
-from openpyxl.descriptors import MinMax
+from openpyxl.descriptors import MinMax, Strict
 from openpyxl.descriptors.sequence import UniqueSequence
 from openpyxl.descriptors.serialisable import Serialisable
-
 from openpyxl.utils import (
-    range_boundaries,
-    range_to_tuple,
     get_column_letter,
     quote_sheetname,
+    range_boundaries,
+    range_to_tuple,
 )
+
 
 class CellRange(Serialisable):
     """
@@ -130,9 +129,9 @@ class CellRange(Serialisable):
 
 
     def __repr__(self):
-        fmt = u"<{cls} {coord}>"
+        fmt = "<{cls} {coord}>"
         if self.title:
-            fmt = u"<{cls} {title!r}!{coord}>"
+            fmt = "<{cls} {title!r}!{coord}>"
         return fmt.format(cls=self.__class__.__name__, title=self.title, coord=self.coord)
 
 
@@ -144,7 +143,7 @@ class CellRange(Serialisable):
         fmt = "{coord}"
         title = self.title
         if title:
-            fmt = u"{title}!{coord}"
+            fmt = "{title}!{coord}"
             title = quote_sheetname(title)
         return fmt.format(title=title, coord=self.coord)
 
@@ -168,7 +167,7 @@ class CellRange(Serialisable):
 
         if (self.min_col + col_shift <= 0
             or self.min_row + row_shift <= 0):
-            raise ValueError("Invalid shift value: col_shift={0}, row_shift={1}".format(col_shift, row_shift))
+            raise ValueError(f"Invalid shift value: col_shift={col_shift}, row_shift={row_shift}")
         self.min_col += col_shift
         self.min_row += row_shift
         self.max_col += col_shift
@@ -306,7 +305,7 @@ class CellRange(Serialisable):
             with this range.
         """
         if self.isdisjoint(other):
-            raise ValueError("Range {0} doesn't intersect {0}".format(self, other))
+            raise ValueError(f"Range {self} doesn't intersect {self}")
 
         min_row = max(self.min_row, other.min_row)
         max_row = min(self.max_row, other.max_row)
@@ -449,7 +448,7 @@ class MultiCellRange(Strict):
 
 
     def __str__(self):
-        ranges = u" ".join([str(r) for r in self.sorted()])
+        ranges = " ".join([str(r) for r in self.sorted()])
         return ranges
 
 

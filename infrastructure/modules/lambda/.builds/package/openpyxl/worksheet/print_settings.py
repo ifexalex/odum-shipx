@@ -1,14 +1,15 @@
 # Copyright (c) 2010-2024 openpyxl
 
 import re
+
 from openpyxl.descriptors import (
-    Strict,
     Integer,
+    Strict,
     String,
     Typed,
 )
-from openpyxl.utils import quote_sheetname, absolute_coordinate
-from openpyxl.utils.cell import SHEET_TITLE, SHEETRANGE_RE, RANGE_EXPR
+from openpyxl.utils import absolute_coordinate, quote_sheetname
+from openpyxl.utils.cell import RANGE_EXPR, SHEET_TITLE
 
 from .cell_range import MultiCellRange
 
@@ -16,7 +17,7 @@ COL_RANGE = r"""(?P<cols>[$]?(?P<min_col>[a-zA-Z]{1,3}):[$]?(?P<max_col>[a-zA-Z]
 COL_RANGE_RE = re.compile(COL_RANGE)
 ROW_RANGE = r"""(?P<rows>[$]?(?P<min_row>\d+):[$]?(?P<max_row>\d+))"""
 ROW_RANGE_RE = re.compile(ROW_RANGE)
-TITLES_REGEX = re.compile("""{0}{1}?,?{2}?,?""".format(SHEET_TITLE, ROW_RANGE, COL_RANGE),
+TITLES_REGEX = re.compile(f"""{SHEET_TITLE}{ROW_RANGE}?,?{COL_RANGE}?,?""",
                           re.VERBOSE)
 PRINT_AREA_RE = re.compile(f"({SHEET_TITLE})?(?P<cells>{RANGE_EXPR})", re.VERBOSE)
 

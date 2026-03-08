@@ -130,17 +130,15 @@ import math
 import os
 import queue
 import random
-import socket
 import string
 import threading
 
+import s3transfer.compat
 from botocore.compat import six  # noqa: F401
 from botocore.exceptions import IncompleteReadError
 from botocore.vendored.requests.packages.urllib3.exceptions import (
     ReadTimeoutError,
 )
-
-import s3transfer.compat
 from s3transfer.exceptions import RetriesExceededError, S3UploadFailedError
 
 __author__ = 'Amazon Web Services'
@@ -619,12 +617,7 @@ class MultipartDownloader:
                         self._ioqueue.put((current_index, chunk))
                         current_index += len(chunk)
                     return
-                except (
-                    socket.timeout,
-                    OSError,
-                    ReadTimeoutError,
-                    IncompleteReadError,
-                ) as e:
+                except (TimeoutError, OSError, ReadTimeoutError, IncompleteReadError) as e:
                     logger.debug(
                         "Retrying exception caught (%s), "
                         "retrying request, (attempt %s / %s)",
@@ -835,12 +828,7 @@ class S3Transfer:
                 return self._do_get_object(
                     bucket, key, filename, extra_args, callback
                 )
-            except (
-                socket.timeout,
-                OSError,
-                ReadTimeoutError,
-                IncompleteReadError,
-            ) as e:
+            except (TimeoutError, OSError, ReadTimeoutError, IncompleteReadError) as e:
                 # TODO: we need a way to reset the callback if the
                 # download failed.
                 logger.debug(

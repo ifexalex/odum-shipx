@@ -475,7 +475,7 @@ if HAS_CRT:
     _CHECKSUM_CLS.update(_CRT_CHECKSUM_CLS)
     # Validate this list isn't out of sync with _CRT_CHECKSUM_CLS keys
     assert all(
-        name in _CRT_CHECKSUM_ALGORITHMS for name in _CRT_CHECKSUM_CLS.keys()
+        name in _CRT_CHECKSUM_ALGORITHMS for name in _CRT_CHECKSUM_CLS
     )
 _SUPPORTED_CHECKSUM_ALGORITHMS = list(_CHECKSUM_CLS.keys())
 _ALGORITHMS_PRIORITY_LIST = ['crc32c', 'crc32', 'sha1', 'sha256']

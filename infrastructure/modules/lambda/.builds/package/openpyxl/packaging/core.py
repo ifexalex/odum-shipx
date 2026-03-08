@@ -3,20 +3,20 @@
 import datetime
 
 from openpyxl.descriptors import (
-    DateTime,
     Alias,
+    DateTime,
 )
-from openpyxl.descriptors.serialisable import Serialisable
 from openpyxl.descriptors.nested import NestedText
-from openpyxl.xml.functions import (
-    Element,
-    QName,
-)
+from openpyxl.descriptors.serialisable import Serialisable
 from openpyxl.xml.constants import (
     COREPROPS_NS,
     DCORE_NS,
-    XSI_NS,
     DCTERMS_NS,
+    XSI_NS,
+)
+from openpyxl.xml.functions import (
+    Element,
+    QName,
 )
 
 
@@ -97,7 +97,7 @@ class DocumentProperties(Serialisable):
                  subject=None,
                  title=None,
                  ):
-        now = datetime.datetime.now(tz=datetime.timezone.utc).replace(tzinfo=None)
+        now = datetime.datetime.now(tz=datetime.UTC).replace(tzinfo=None)
         self.contentStatus = contentStatus
         self.lastPrinted = lastPrinted
         self.revision = revision

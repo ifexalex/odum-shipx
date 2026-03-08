@@ -1,13 +1,17 @@
 import logging
-from .conf import settings
 
 from aws_xray_sdk.core import xray_recorder
+from aws_xray_sdk.core.lambda_launcher import LambdaContext, check_in_lambda
 from aws_xray_sdk.core.models import http
 from aws_xray_sdk.core.utils import stacktrace
-from aws_xray_sdk.ext.util import calculate_sampling_decision, \
-    calculate_segment_name, construct_xray_header, prepare_response_header
-from aws_xray_sdk.core.lambda_launcher import check_in_lambda, LambdaContext
+from aws_xray_sdk.ext.util import (
+    calculate_sampling_decision,
+    calculate_segment_name,
+    construct_xray_header,
+    prepare_response_header,
+)
 
+from .conf import settings
 
 log = logging.getLogger(__name__)
 
@@ -32,9 +36,7 @@ class XRayMiddleware:
             self.in_lambda_ctx = True
 
     def _urls_as_annotation(self):
-        if settings.URLS_AS_ANNOTATION == "LAMBDA" and self.in_lambda_ctx:
-            return True
-        elif settings.URLS_AS_ANNOTATION == "ALL":
+        if settings.URLS_AS_ANNOTATION == "LAMBDA" and self.in_lambda_ctx or settings.URLS_AS_ANNOTATION == "ALL":
             return True
         return False
 

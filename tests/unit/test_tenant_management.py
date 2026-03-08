@@ -10,7 +10,6 @@ from shared.exceptions import (
     ResourceNotFoundError,
     UsageLimitExceededError,
 )
-from shared.tenant_context import TenantContext, UserRole
 
 TENANT_ID = "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa"
 

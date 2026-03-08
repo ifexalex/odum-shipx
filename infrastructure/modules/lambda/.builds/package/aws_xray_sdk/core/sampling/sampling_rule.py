@@ -1,7 +1,8 @@
 import threading
 
-from .reservoir import Reservoir
 from aws_xray_sdk.core.utils.search_pattern import wildcard_match
+
+from .reservoir import Reservoir
 
 
 class SamplingRule:
@@ -14,7 +15,7 @@ class SamplingRule:
         self._name = name
         self._priority = priority
         self._rate = rate
-        self._can_borrow = not not reservoir_size
+        self._can_borrow = bool(reservoir_size)
 
         self._host = host
         self._method = method

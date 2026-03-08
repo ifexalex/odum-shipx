@@ -4,64 +4,64 @@
 
 
 # Python stdlib imports
+from inspect import isgenerator
 from itertools import chain
 from operator import itemgetter
-from inspect import isgenerator
 from warnings import warn
+
+from openpyxl.cell import Cell, MergedCell
 
 # compatibility imports
 from openpyxl.compat import (
     deprecated,
 )
+from openpyxl.formatting.formatting import ConditionalFormattingList
+from openpyxl.formula.translate import Translator
+from openpyxl.packaging.relationship import RelationshipList
 
 # package imports
 from openpyxl.utils import (
     column_index_from_string,
+    coordinate_to_tuple,
     get_column_letter,
     range_boundaries,
-    coordinate_to_tuple,
 )
-from openpyxl.cell import Cell, MergedCell
-from openpyxl.formatting.formatting import ConditionalFormattingList
-from openpyxl.packaging.relationship import RelationshipList
 from openpyxl.workbook.child import _WorkbookChild
 from openpyxl.workbook.defined_name import (
     DefinedNameDict,
 )
 
-from openpyxl.formula.translate import Translator
-
+from .cell_range import CellRange, MultiCellRange
 from .datavalidation import DataValidationList
-from .page import (
-    PrintPageSetup,
-    PageMargins,
-    PrintOptions,
-)
 from .dimensions import (
     ColumnDimension,
-    RowDimension,
     DimensionHolder,
+    RowDimension,
     SheetFormatProperties,
 )
-from .protection import SheetProtection
 from .filters import AutoFilter
+from .formula import ArrayFormula
+from .merge import MergedCellRange
+from .page import (
+    PageMargins,
+    PrintOptions,
+    PrintPageSetup,
+)
+from .pagebreak import ColBreak, RowBreak
+from .print_settings import (
+    ColRange,
+    PrintArea,
+    PrintTitles,
+    RowRange,
+)
+from .properties import WorksheetProperties
+from .protection import SheetProtection
+from .scenario import ScenarioList
+from .table import TableList
 from .views import (
     Pane,
     Selection,
     SheetViewList,
-)
-from .cell_range import MultiCellRange, CellRange
-from .merge import MergedCellRange
-from .properties import WorksheetProperties
-from .pagebreak import RowBreak, ColBreak
-from .scenario import ScenarioList
-from .table import TableList
-from .formula import ArrayFormula
-from .print_settings import (
-    PrintTitles,
-    ColRange,
-    RowRange,
-    PrintArea,
 )
 
 
@@ -256,7 +256,7 @@ class Worksheet(_WorkbookChild):
         if not 0 < row < 1048577:
             raise ValueError(f"Row numbers must be between 1 and 1048576. Row number supplied was {row}")
         coordinate = (row, column)
-        if not coordinate in self._cells:
+        if coordinate not in self._cells:
             cell = Cell(self, row=row, column=column)
             self._add_cell(cell)
         return self._cells[coordinate]
@@ -285,8 +285,8 @@ class Worksheet(_WorkbookChild):
         """
         if isinstance(key, slice):
             if not all([key.start, key.stop]):
-                raise IndexError("{0} is not a valid coordinate or range".format(key))
-            key = "{0}:{1}".format(key.start, key.stop)
+                raise IndexError(f"{key} is not a valid coordinate or range")
+            key = f"{key.start}:{key.stop}"
 
         if isinstance(key, int):
             key = str(key
@@ -294,7 +294,7 @@ class Worksheet(_WorkbookChild):
         min_col, min_row, max_col, max_row = range_boundaries(key)
 
         if not any([min_col, min_row, max_col, max_row]):
-            raise IndexError("{0} is not a valid coordinate or range".format(key))
+            raise IndexError(f"{key} is not a valid coordinate or range")
 
         if min_row is None:
             cols = tuple(self.iter_cols(min_col, max_col))
@@ -576,7 +576,7 @@ class Worksheet(_WorkbookChild):
         """
 
         if self.parent._duplicate_name(table.name):
-            raise ValueError("Table with name {0} already exists".format(table.name))
+            raise ValueError(f"Table with name {table.name} already exists")
         if not hasattr(self, "_get_cell"):
             warn("In write-only mode you must add table columns manually")
         self._tables.add(table)
@@ -628,7 +628,7 @@ class Worksheet(_WorkbookChild):
                       max_col=end_column, max_row=end_row)
 
         if cr.coord not in self.merged_cells:
-            raise ValueError("Cell range {0} is not merged".format(cr.coord))
+            raise ValueError(f"Cell range {cr.coord} is not merged")
 
         self.merged_cells.remove(cr)
 
@@ -706,9 +706,7 @@ class Worksheet(_WorkbookChild):
         cells = list(cells)
 
         for row, column in sorted(self._cells, key=itemgetter(key), reverse=reverse):
-            if min_row and row < min_row:
-                continue
-            elif min_col and column < min_col:
+            if min_row and row < min_row or min_col and column < min_col:
                 continue
 
             self._move_cell(row, column, row_offset, col_offset)

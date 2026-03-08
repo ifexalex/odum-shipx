@@ -6,10 +6,9 @@ carryover ledger creation when releasing with outstanding balances.
 """
 
 import logging
-from datetime import date, datetime, timezone
+from datetime import UTC, date, datetime
 from decimal import Decimal
 
-from shared.audit import log_audit
 from shared.events import publish_event
 from shared.exceptions import (
     BusinessRuleViolationError,
@@ -107,7 +106,7 @@ def confirm_payment(
         request_id=request_id,
     )
 
-    confirmed_at = payment.get("created_at") or datetime.now(timezone.utc)
+    confirmed_at = payment.get("created_at") or datetime.now(UTC)
     outstanding = Decimal(str(updated_billing["balance_ngn"]))
 
     return {

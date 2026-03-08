@@ -1,5 +1,4 @@
 """Generate manifest .xlsx (2-sheet workbook) per spec §7.2."""
-from datetime import datetime
 from io import BytesIO
 
 import openpyxl

@@ -1,25 +1,22 @@
 # Copyright (c) 2010-2024 openpyxl
 
-from openpyxl.descriptors.serialisable import Serialisable
 from openpyxl.descriptors import (
-    Typed,
     Alias,
+    Typed,
 )
-
 from openpyxl.descriptors.excel import ExtensionList
 from openpyxl.descriptors.nested import NestedBool
+from openpyxl.descriptors.serialisable import Serialisable
+from openpyxl.drawing.text import (
+    CharacterProperties,
+    Paragraph,
+    ParagraphProperties,
+    RegularTextRun,
+)
 
-from .text import Text, RichText
 from .layout import Layout
 from .shapes import GraphicalProperties
-
-from openpyxl.drawing.text import (
-    Paragraph,
-    RegularTextRun,
-    LineBreak,
-    ParagraphProperties,
-    CharacterProperties,
-)
+from .text import RichText, Text
 
 
 class Title(Serialisable):

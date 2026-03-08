@@ -1,13 +1,14 @@
 # Copyright (c) 2010-2024 openpyxl
 
-from openpyxl.descriptors import Typed, Alias
-from openpyxl.descriptors.serialisable import Serialisable
+from openpyxl.descriptors import Alias, Typed
+from openpyxl.descriptors.excel import ExtensionList
 from openpyxl.descriptors.nested import (
     NestedBool,
     NestedInteger,
     NestedMinMax,
 )
-from openpyxl.descriptors.excel import ExtensionList
+from openpyxl.descriptors.serialisable import Serialisable
+
 from .marker import PictureOptions
 from .shapes import GraphicalProperties
 

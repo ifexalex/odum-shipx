@@ -1,9 +1,8 @@
 import logging
 
+from aws_xray_sdk.core import xray_recorder
 from django.template import Template
 from django.utils.safestring import SafeString
-
-from aws_xray_sdk.core import xray_recorder
 
 log = logging.getLogger(__name__)
 

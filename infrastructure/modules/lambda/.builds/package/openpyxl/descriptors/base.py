@@ -12,7 +12,6 @@ import re
 from openpyxl import DEBUG
 from openpyxl.utils.datetime import from_ISO8601
 
-from .namespace import namespaced
 
 class Descriptor:
 
@@ -88,7 +87,7 @@ class Max(Convertible):
             or not self.allow_none):
             value = _convert(self.expected_type, value)
             if value > self.max:
-                raise ValueError('Max value is {0}'.format(self.max))
+                raise ValueError(f'Max value is {self.max}')
         super().__set__(instance, value)
 
 
@@ -108,7 +107,7 @@ class Min(Convertible):
             or not self.allow_none):
             value = _convert(self.expected_type, value)
             if value < self.min:
-                raise ValueError('Min value is {0}'.format(self.min))
+                raise ValueError(f'Min value is {self.min}')
         super().__set__(instance, value)
 
 
@@ -121,11 +120,11 @@ class Set(Descriptor):
     """Value can only be from a set of know values"""
 
     def __init__(self, name=None, **kw):
-        if not 'values' in kw:
+        if 'values' not in kw:
             raise TypeError("missing set of values")
         kw['values'] = set(kw['values'])
         super().__init__(name, **kw)
-        self.__doc__ = "Value must be one of {0}".format(self.values)
+        self.__doc__ = f"Value must be one of {self.values}"
 
     def __set__(self, instance, value):
         if value not in self.values:
@@ -198,7 +197,7 @@ class Length(Descriptor):
 
     def __set__(self, instance, value):
         if len(value) != self.length:
-            raise ValueError("Value must be length {0}".format(self.length))
+            raise ValueError(f"Value must be length {self.length}")
         super().__set__(instance, value)
 
 
@@ -254,7 +253,7 @@ class MatchPattern(Descriptor):
         if ((self.allow_none and value is not None)
             or not self.allow_none):
             if not self.test_pattern.match(value):
-                raise ValueError('Value does not match pattern {0}'.format(self.pattern))
+                raise ValueError(f'Value does not match pattern {self.pattern}')
 
         super().__set__(instance, value)
 

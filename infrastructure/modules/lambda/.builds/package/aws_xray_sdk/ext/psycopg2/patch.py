@@ -1,8 +1,7 @@
 import copy
-import re
-import wrapt
 from operator import methodcaller
 
+import wrapt
 from aws_xray_sdk.ext.dbapi2 import XRayTracedConn, XRayTracedCursor
 
 

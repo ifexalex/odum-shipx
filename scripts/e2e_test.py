@@ -268,7 +268,7 @@ class E2ERunner:
 
     def _test_health(self) -> None:
         self._section("Health Check")
-        data = self._run("Health Check", "GET", "/health", 200)
+        self._run("Health Check", "GET", "/health", 200)
 
     # ── 1. Platform Admin ─────────────────────────────────────────────────────
 
@@ -286,12 +286,12 @@ class E2ERunner:
                   assertions=[(True, "upserted")])
 
         # Dashboard
-        data = self._run("GET platform dashboard", "GET", "/v1/platform/dashboard", 200,
+        self._run("GET platform dashboard", "GET", "/v1/platform/dashboard", 200,
                          platform=True)
 
         # Create tenant
         email = f"admin_{suffix}@e2etest.com"
-        data = self._run(
+        self._run(
             "POST create tenant", "POST", "/v1/platform/tenants", 201,
             platform=True,
             body={
@@ -319,19 +319,19 @@ class E2ERunner:
         tid = self.state["tenant_id"]
 
         # List tenants
-        data = self._run("GET list tenants", "GET", "/v1/platform/tenants", 200,
+        self._run("GET list tenants", "GET", "/v1/platform/tenants", 200,
                          platform=True, params={"limit": 20},
                          assertions=[(True, "list returned")])
 
         # Get tenant
-        data = self._run("GET tenant by id", "GET", f"/v1/platform/tenants/{tid}", 200,
+        self._run("GET tenant by id", "GET", f"/v1/platform/tenants/{tid}", 200,
                          platform=True,
                          assertions=[
                              (lambda d: bool(d) and self._jpath(d, "data.id") == tid, "id matches"),
                          ])
 
         # Update tenant
-        data = self._run("PATCH update tenant", "PATCH", f"/v1/platform/tenants/{tid}", 200,
+        self._run("PATCH update tenant", "PATCH", f"/v1/platform/tenants/{tid}", 200,
                          platform=True,
                          body={"company_name": f"E2E Corp Updated {suffix}"},
                          assertions=[
@@ -339,7 +339,7 @@ class E2ERunner:
                          ])
 
         # Audit log — should have TENANT_CREATED and TENANT_UPDATED
-        data = self._run("GET audit log filtered by tenant", "GET", "/v1/platform/audit-log", 200,
+        self._run("GET audit log filtered by tenant", "GET", "/v1/platform/audit-log", 200,
                          platform=True,
                          params={"tenant_id": tid, "limit": 10},
                          assertions=[
@@ -378,7 +378,7 @@ class E2ERunner:
         suffix = self.state["suffix"]
 
         # Config
-        data = self._run("GET tenant config", "GET", "/v1/tenant/config", 200,
+        self._run("GET tenant config", "GET", "/v1/tenant/config", 200,
                          role="tenant_admin", tenant_id=tid)
 
         self._run("PUT tenant config", "PUT", "/v1/tenant/config", 200,
@@ -386,10 +386,10 @@ class E2ERunner:
                   body={"branding": {"primary_colour": "#FF5733"}})
 
         # Dollar rate
-        data = self._run("GET dollar rate", "GET", "/v1/tenant/dollar-rate", 200,
+        self._run("GET dollar rate", "GET", "/v1/tenant/dollar-rate", 200,
                          role="tenant_admin", tenant_id=tid)
 
-        data = self._run("PUT dollar rate", "PUT", "/v1/tenant/dollar-rate", 200,
+        self._run("PUT dollar rate", "PUT", "/v1/tenant/dollar-rate", 200,
                          role="tenant_admin", tenant_id=tid,
                          body={"rate": 1600.0, "currency_pair": "USD_NGN",
                                "effective_from": str(date.today())},
@@ -399,13 +399,13 @@ class E2ERunner:
 
         # Create user
         staff_email = f"staff_{suffix}@e2etest.com"
-        data = self._run("POST create user", "POST", "/v1/tenant/users", 201,
+        self._run("POST create user", "POST", "/v1/tenant/users", 201,
                          role="tenant_admin", tenant_id=tid,
                          body={"email": staff_email, "full_name": "E2E Staff",
                                "role": "nigeria_office_staff"},
                          capture={"staff_user_id": "data.id"})
 
-        data = self._run("GET list users", "GET", "/v1/tenant/users", 200,
+        self._run("GET list users", "GET", "/v1/tenant/users", 200,
                          role="tenant_admin", tenant_id=tid,
                          assertions=[
                              (lambda d: bool(d) and isinstance(self._jpath(d, "data"), list), "list returned"),
@@ -413,7 +413,7 @@ class E2ERunner:
 
         staff_id = self.state.get("staff_user_id")
         if staff_id:
-            data = self._run("GET user by id", "GET", f"/v1/tenant/users/{staff_id}", 200,
+            self._run("GET user by id", "GET", f"/v1/tenant/users/{staff_id}", 200,
                              role="tenant_admin", tenant_id=tid,
                              assertions=[
                                  (lambda d: bool(d) and self._jpath(d, "data.id") == staff_id, "id matches"),
@@ -425,7 +425,7 @@ class E2ERunner:
 
         # Create a throwaway user to test DELETE
         throwaway_email = f"throwaway_{suffix}@e2etest.com"
-        throwaway = self._run("POST create throwaway user", "POST", "/v1/tenant/users", 201,
+        self._run("POST create throwaway user", "POST", "/v1/tenant/users", 201,
                               role="tenant_admin", tenant_id=tid,
                               body={"email": throwaway_email, "full_name": "Throwaway",
                                     "role": "warehouse_attendant"},
@@ -436,7 +436,7 @@ class E2ERunner:
                       role="tenant_admin", tenant_id=tid)
 
         # Charge types
-        data = self._run("POST create charge type", "POST", "/v1/tenant/charge-types", 201,
+        self._run("POST create charge type", "POST", "/v1/tenant/charge-types", 201,
                          role="tenant_admin", tenant_id=tid,
                          body={"name": "Handling Fee", "description": "Port handling",
                                "default_amount_ngn": 5000},
@@ -466,7 +466,7 @@ class E2ERunner:
         tid = self.state["tenant_id"]
         suffix = self.state["suffix"]
 
-        data = self._run("POST create customer", "POST", "/v1/customers", 201,
+        self._run("POST create customer", "POST", "/v1/customers", 201,
                          role="tenant_admin", tenant_id=tid,
                          body={"name": f"E2E Customer {suffix}",
                                "phone": "+2348011111111",
@@ -474,7 +474,7 @@ class E2ERunner:
                                "address": "1 Test Street, Lagos"},
                          capture={"customer_id": "data.id"})
 
-        data = self._run("GET list customers", "GET", "/v1/customers", 200,
+        self._run("GET list customers", "GET", "/v1/customers", 200,
                          role="tenant_admin", tenant_id=tid,
                          params={"limit": 20},
                          assertions=[
@@ -483,7 +483,7 @@ class E2ERunner:
 
         cid = self.state.get("customer_id")
         if cid:
-            data = self._run("GET customer by id", "GET", f"/v1/customers/{cid}", 200,
+            self._run("GET customer by id", "GET", f"/v1/customers/{cid}", 200,
                              role="tenant_admin", tenant_id=tid,
                              assertions=[
                                  (lambda d: bool(d) and self._jpath(d, "data.id") == cid, "id matches"),
@@ -494,7 +494,7 @@ class E2ERunner:
                       body={"name": f"E2E Customer Updated {suffix}"})
 
             # GDPR export
-            data = self._run("GET customer export (GDPR)", "GET", f"/v1/customers/{cid}/export", 200,
+            self._run("GET customer export (GDPR)", "GET", f"/v1/customers/{cid}/export", 200,
                              role="tenant_admin", tenant_id=tid,
                              assertions=[
                                  (lambda d: bool(d) and self._jpath(d, "data.customer") is not None,
@@ -517,14 +517,14 @@ class E2ERunner:
         eta = str(date.today() + timedelta(days=20))
         self.state["ship_date"] = ship_date
 
-        data = self._run("POST create container", "POST", "/v1/containers", 201,
+        self._run("POST create container", "POST", "/v1/containers", 201,
                          role="china_office_staff", tenant_id=tid,
                          body={"container_number": f"E2E{suffix[:6].upper()}",
                                "ship_date": ship_date,
                                "estimated_arrival_date": eta},
                          capture={"container_id": "data.id"})
 
-        data = self._run("GET list containers", "GET", "/v1/containers", 200,
+        self._run("GET list containers", "GET", "/v1/containers", 200,
                          role="nigeria_office_staff", tenant_id=tid,
                          params={"limit": 20},
                          assertions=[
@@ -533,7 +533,7 @@ class E2ERunner:
 
         con_id = self.state.get("container_id")
         if con_id:
-            data = self._run("GET container by id", "GET", f"/v1/containers/{con_id}", 200,
+            self._run("GET container by id", "GET", f"/v1/containers/{con_id}", 200,
                              role="nigeria_office_staff", tenant_id=tid,
                              assertions=[
                                  (lambda d: bool(d) and self._jpath(d, "data.id") == con_id, "id matches"),
@@ -850,7 +850,7 @@ class E2ERunner:
             return
 
         # Damage claim
-        data = self._run("POST file damage claim", "POST", "/v1/claims", 201,
+        self._run("POST file damage claim", "POST", "/v1/claims", 201,
                          role="nigeria_office_staff", tenant_id=tid,
                          body={"container_id": con_id,
                                "customer_id": cust_id,
@@ -858,7 +858,7 @@ class E2ERunner:
                                "description": "Carton damaged on arrival"},
                          capture={"claim_id": "data.id"})
 
-        data = self._run("GET list claims", "GET", "/v1/claims", 200,
+        self._run("GET list claims", "GET", "/v1/claims", 200,
                          role="nigeria_office_staff", tenant_id=tid,
                          params={"limit": 20},
                          assertions=[
@@ -867,7 +867,7 @@ class E2ERunner:
 
         claim_id = self.state.get("claim_id")
         if claim_id:
-            data = self._run("GET claim by id", "GET", f"/v1/claims/{claim_id}", 200,
+            self._run("GET claim by id", "GET", f"/v1/claims/{claim_id}", 200,
                              role="nigeria_office_staff", tenant_id=tid,
                              assertions=[
                                  (lambda d: bool(d) and self._jpath(d, "data.id") == claim_id, "id matches"),
@@ -888,7 +888,7 @@ class E2ERunner:
                       role="nigeria_office_staff", tenant_id=tid,
                       body={"inspection_method": "customer_evidence"})
 
-            data = self._run("PATCH resolve claim", "PATCH", f"/v1/claims/{claim_id}/resolve", 200,
+            self._run("PATCH resolve claim", "PATCH", f"/v1/claims/{claim_id}/resolve", 200,
                              role="tenant_admin", tenant_id=tid,
                              body={"resolution_type": "compensation",
                                    "amount_usd": 50.0,
@@ -897,7 +897,7 @@ class E2ERunner:
 
         # Missing items
         if manifest_id and cust_id:
-            data = self._run("POST log missing item", "POST", "/v1/claims/missing-items", 201,
+            self._run("POST log missing item", "POST", "/v1/claims/missing-items", 201,
                              role="nigeria_office_staff", tenant_id=tid,
                              body={"manifest_id": manifest_id,
                                    "customer_id": cust_id,
@@ -918,7 +918,7 @@ class E2ERunner:
                           body={"status": "investigating", "notes": "Still missing after second check"})
 
         # Seized items
-        data = self._run("POST log seized item", "POST", "/v1/claims/seized-items", 201,
+        self._run("POST log seized item", "POST", "/v1/claims/seized-items", 201,
                          role="nigeria_office_staff", tenant_id=tid,
                          body={"container_id": con_id,
                                "customer_id": cust_id,
@@ -1003,7 +1003,7 @@ class E2ERunner:
             print(_c(YELLOW, "  SKIP: missing billing_id or customer_id"))
             return
 
-        data = self._run("POST create refund (overpayment)", "POST", "/v1/refunds", 201,
+        self._run("POST create refund (overpayment)", "POST", "/v1/refunds", 201,
                          role="nigeria_office_staff", tenant_id=tid,
                          body={"customer_id": cust_id,
                                "billing_id": billing_id,
@@ -1012,7 +1012,7 @@ class E2ERunner:
                                "customer_choice": "immediate_refund"},
                          capture={"refund_id": "data.id"})
 
-        data = self._run("GET list refunds", "GET", "/v1/refunds", 200,
+        self._run("GET list refunds", "GET", "/v1/refunds", 200,
                          role="tenant_admin", tenant_id=tid,
                          params={"limit": 20},
                          assertions=[
@@ -1024,14 +1024,14 @@ class E2ERunner:
             print(_c(YELLOW, "  SKIP refund workflow — create failed"))
             return
 
-        data = self._run("GET refund by id", "GET", f"/v1/refunds/{refund_id}", 200,
+        self._run("GET refund by id", "GET", f"/v1/refunds/{refund_id}", 200,
                          role="tenant_admin", tenant_id=tid,
                          assertions=[
                              (lambda d: bool(d) and self._jpath(d, "data.id") == refund_id, "id matches"),
                          ])
 
         # Accounts review (debt check)
-        data = self._run("PATCH accounts review (approved)", "PATCH",
+        self._run("PATCH accounts review (approved)", "PATCH",
                          f"/v1/refunds/{refund_id}/review", 200,
                          role="nigeria_office_staff", tenant_id=tid,
                          body={"debt_check_passed": True,
@@ -1043,7 +1043,7 @@ class E2ERunner:
                   body={"amount_approved_ngn": 5000.0, "approval_level": "staff"})
 
         # Create a second refund to test the reject flow
-        data2 = self._run("POST create refund (for reject test)", "POST", "/v1/refunds", 201,
+        self._run("POST create refund (for reject test)", "POST", "/v1/refunds", 201,
                           role="nigeria_office_staff", tenant_id=tid,
                           body={"customer_id": cust_id,
                                 "billing_id": billing_id,
@@ -1116,7 +1116,7 @@ class E2ERunner:
     def _test_gdpr_and_cleanup(self) -> None:
         self._section("12. GDPR & Cleanup")
         tid = self.state["tenant_id"]
-        cust_id = self.state.get("customer_id")
+        self.state.get("customer_id")
 
         # Create a second customer specifically for anonymisation (don't want to break billing refs)
         suffix = self.state["suffix"]

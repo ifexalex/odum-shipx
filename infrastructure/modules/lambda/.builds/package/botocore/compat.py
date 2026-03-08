@@ -12,21 +12,17 @@
 # language governing permissions and limitations under the License.
 
 import copy
-import datetime
-import sys
-import inspect
-import warnings
 import hashlib
-from http.client import HTTPMessage
+import inspect
 import logging
-import shlex
-import re
 import os
-from collections import OrderedDict
-from collections.abc import MutableMapping
+import re
+import shlex
+import sys
+import warnings
+from http.client import HTTPMessage
 from math import floor
 
-from botocore.vendored import six
 from botocore.exceptions import MD5UnavailableError
 from dateutil.tz import tzlocal
 from urllib3 import exceptions
@@ -37,23 +33,11 @@ logger = logging.getLogger(__name__)
 class HTTPHeaders(HTTPMessage):
     pass
 
-from urllib.parse import (
-    quote,
-    urlencode,
-    unquote,
-    unquote_plus,
-    urlparse,
-    urlsplit,
-    urlunsplit,
-    urljoin,
-    parse_qsl,
-    parse_qs,
-)
-from http.client import HTTPResponse
 from io import IOBase as _IOBase
-from base64 import encodebytes
-from email.utils import formatdate
-from itertools import zip_longest
+from urllib.parse import (
+    unquote_plus,
+)
+
 file_type = _IOBase
 zip = zip
 
@@ -87,12 +71,11 @@ def ensure_bytes(s, encoding='utf-8', errors='strict'):
 
 
 try:
-    import xml.etree.cElementTree as ETree
+    import xml.etree.ElementTree as ETree
 except ImportError:
     # cElementTree does not exist from Python3.9+
     import xml.etree.ElementTree as ETree
 XMLParseError = ETree.ParseError
-import json
 
 
 def filter_ssl_warnings():
@@ -291,7 +274,7 @@ try:
 
     # Allow user opt-out if needed
     disabled = os.environ.get('BOTO_DISABLE_CRT', "false")
-    HAS_CRT = not disabled.lower() == 'true'
+    HAS_CRT = disabled.lower() != 'true'
 except ImportError:
     HAS_CRT = False
 
@@ -305,7 +288,7 @@ except ImportError:
 IPV4_PAT = r"(?:[0-9]{1,3}\.){3}[0-9]{1,3}"
 IPV4_RE = re.compile("^" + IPV4_PAT + "$")
 HEX_PAT = "[0-9A-Fa-f]{1,4}"
-LS32_PAT = "(?:{hex}:{hex}|{ipv4})".format(hex=HEX_PAT, ipv4=IPV4_PAT)
+LS32_PAT = f"(?:{HEX_PAT}:{HEX_PAT}|{IPV4_PAT})"
 _subs = {"hex": HEX_PAT, "ls32": LS32_PAT}
 _variations = [
     #                            6( h16 ":" ) ls32

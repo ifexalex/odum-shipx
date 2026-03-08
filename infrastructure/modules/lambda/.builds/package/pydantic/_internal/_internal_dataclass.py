@@ -1,7 +1,7 @@
 import sys
-from typing import Any, Dict
+from typing import Any
 
-dataclass_kwargs: Dict[str, Any]
+dataclass_kwargs: dict[str, Any]
 
 # `slots` is available on Python >= 3.10
 if sys.version_info >= (3, 10):

@@ -1,7 +1,4 @@
-import sys
 import inspect
-from itertools import zip_longest
-
 
 text_type = str
 string_type = str

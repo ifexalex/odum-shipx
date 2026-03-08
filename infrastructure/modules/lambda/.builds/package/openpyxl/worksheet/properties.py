@@ -2,8 +2,8 @@
 
 """Worksheet Properties"""
 
+from openpyxl.descriptors import Bool, String, Typed
 from openpyxl.descriptors.serialisable import Serialisable
-from openpyxl.descriptors import String, Bool, Typed
 from openpyxl.styles.colors import ColorDescriptor
 
 

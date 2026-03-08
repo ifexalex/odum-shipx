@@ -28,10 +28,10 @@ from shared.responses import (
     no_content,
     paginated,
     success,
-    validation_error,
 )
 from shared.tenant_context import UserRole
 
+from . import service
 from .models import (
     CreateTenantRequest,
     CreateTenantUserRequest,
@@ -40,7 +40,6 @@ from .models import (
     UpdateTenantConfigRequest,
     UpdateTenantRequest,
 )
-from . import service
 
 # Module-level init (runs once on cold start)
 setup_logging()

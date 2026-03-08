@@ -1,51 +1,24 @@
 # Copyright (c) 2010-2024 openpyxl
 
 
-from openpyxl.descriptors.serialisable import Serialisable
-from openpyxl.descriptors import (
-    Alias,
-    Typed,
-    Set,
-    NoneSet,
-    Sequence,
-    String,
-    Bool,
-    MinMax,
-    Integer
-)
+from openpyxl.descriptors import Alias, Bool, Integer, MinMax, NoneSet, Sequence, Set, String, Typed
 from openpyxl.descriptors.excel import (
-    HexBinary,
     Coordinate,
+    HexBinary,
     Relation,
 )
-from openpyxl.descriptors.nested import (
-    NestedInteger,
-    NestedText,
-    NestedValue,
-    EmptyTag
-)
+from openpyxl.descriptors.excel import ExtensionList as OfficeArtExtensionList
+from openpyxl.descriptors.nested import EmptyTag, NestedBool, NestedInteger, NestedText, NestedValue
+from openpyxl.descriptors.serialisable import Serialisable
 from openpyxl.xml.constants import DRAWING_NS
-
 
 from .colors import ColorChoiceDescriptor
 from .effect import (
-    EffectList,
     EffectContainer,
+    EffectList,
 )
-from .fill import(
-    GradientFillProperties,
-    BlipFillProperties,
-    PatternFillProperties,
-    Blip
-)
-from .geometry import (
-    LineProperties,
-    Color,
-    Scene3D
-)
-
-from openpyxl.descriptors.excel import ExtensionList as OfficeArtExtensionList
-from openpyxl.descriptors.nested import NestedBool
+from .fill import Blip, BlipFillProperties, GradientFillProperties, PatternFillProperties
+from .geometry import Color, LineProperties, Scene3D
 
 
 class EmbeddedWAVAudioFile(Serialisable):

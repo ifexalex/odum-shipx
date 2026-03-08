@@ -23,8 +23,8 @@ from shared.pagination import decode_cursor
 from shared.responses import error_response, paginated, success
 from shared.tenant_context import UserRole
 
-from .models import VerifyManifestRequest
 from . import service
+from .models import VerifyManifestRequest
 
 # Module-level init (runs once on cold start)
 setup_logging()

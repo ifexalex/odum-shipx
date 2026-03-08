@@ -63,8 +63,9 @@ def encrypt_field(plaintext: str | None) -> str | None:
 
         kms = _get_kms()
         resp = kms.generate_data_key(KeyId=_KMS_KEY_ID, KeySpec="AES_256")
-        # AES_256 yields exactly 32 bytes; assert to catch any KMS API change early.
-        assert len(resp["Plaintext"]) == 32, "KMS AES_256 data key must be exactly 32 bytes"
+        # AES_256 yields exactly 32 bytes; raise explicitly to catch any KMS API change early.
+        if len(resp["Plaintext"]) != 32:
+            raise RuntimeError(f"KMS AES_256 data key must be exactly 32 bytes, got {len(resp['Plaintext'])}")
         fernet_key = base64.urlsafe_b64encode(resp["Plaintext"])
         f = Fernet(fernet_key)
         ciphertext = f.encrypt(plaintext.encode("utf-8"))
@@ -95,7 +96,8 @@ def decrypt_field(token: str | None) -> str | None:
         ciphertext = raw[sep_idx + len(_SEP):]
         kms = _get_kms()
         resp = kms.decrypt(CiphertextBlob=enc_key)
-        assert len(resp["Plaintext"]) == 32, "KMS decrypted data key must be exactly 32 bytes"
+        if len(resp["Plaintext"]) != 32:
+            raise RuntimeError(f"KMS decrypted data key must be exactly 32 bytes, got {len(resp['Plaintext'])}")
         fernet_key = base64.urlsafe_b64encode(resp["Plaintext"])
         f = Fernet(fernet_key)
         return f.decrypt(ciphertext).decode("utf-8")

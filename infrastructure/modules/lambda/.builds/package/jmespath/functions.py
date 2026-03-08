@@ -1,10 +1,9 @@
-import math
 import json
+import math
 
 from jmespath import exceptions
-from jmespath.compat import string_type as STRING_TYPE
 from jmespath.compat import get_methods
-
+from jmespath.compat import string_type as STRING_TYPE
 
 # python types -> jmespath types
 TYPES_MAP = {
@@ -195,9 +194,7 @@ class Functions(metaclass=FunctionRegistry):
 
     @signature({'types': []})
     def _func_to_number(self, arg):
-        if isinstance(arg, (list, dict, bool)):
-            return None
-        elif arg is None:
+        if isinstance(arg, (list, dict, bool)) or arg is None:
             return None
         elif isinstance(arg, (int, float)):
             return arg

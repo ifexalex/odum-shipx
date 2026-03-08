@@ -1,7 +1,7 @@
 import logging
-from random import Random
-import time
 import threading
+import time
+from random import Random
 
 log = logging.getLogger(__name__)
 

@@ -2,7 +2,8 @@
 from __future__ import annotations as _annotations
 
 import functools
-from typing import TYPE_CHECKING, Any, Callable, TypeVar, overload
+from collections.abc import Callable
+from typing import TYPE_CHECKING, Any, TypeVar, overload
 
 from ._internal import _validate_call
 

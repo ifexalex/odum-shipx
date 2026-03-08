@@ -6,12 +6,11 @@ and credit application to future billing.
 """
 
 import logging
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from decimal import Decimal
 
 from shared.events import publish_event
 from shared.exceptions import (
-    BusinessRuleViolationError,
     IllegalTransitionError,
     InsufficientPermissionsError,
     ResourceNotFoundError,
@@ -256,7 +255,7 @@ def approve_refund(
                 },
             )
 
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     updated = repo.update_refund_status(
         tenant_id,
         refund_id,

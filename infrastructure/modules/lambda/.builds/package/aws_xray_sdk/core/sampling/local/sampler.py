@@ -2,8 +2,8 @@ import json
 import pkgutil
 from random import Random
 
-from .sampling_rule import SamplingRule
 from ...exceptions.exceptions import InvalidSamplingManifestError
+from .sampling_rule import SamplingRule
 
 # `.decode('utf-8')` needed for Python 3.4, 3.5.
 local_sampling_rule = json.loads(pkgutil.get_data(__name__, 'sampling_rule.json').decode('utf-8'))

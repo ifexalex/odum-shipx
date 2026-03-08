@@ -1,25 +1,17 @@
 # Copyright (c) 2010-2024 openpyxl
 
-from openpyxl.descriptors.serialisable import Serialisable
-from openpyxl.descriptors import (
-    Typed,
-    Integer,
-    MinMax,
-    NoneSet,
-    Alias,
-    Sequence
-)
-
+from openpyxl.descriptors import Alias, Integer, MinMax, NoneSet, Sequence, Typed
+from openpyxl.descriptors.excel import ExtensionList as OfficeArtExtensionList
 from openpyxl.descriptors.nested import (
+    EmptyTag,
     NestedInteger,
     NestedNoneSet,
-    EmptyTag,
 )
+from openpyxl.descriptors.serialisable import Serialisable
 from openpyxl.xml.constants import DRAWING_NS
 
 from .colors import ColorChoiceDescriptor
 from .fill import GradientFillProperties, PatternFillProperties
-from openpyxl.descriptors.excel import ExtensionList as OfficeArtExtensionList
 
 """
 Line elements from drawing main schema

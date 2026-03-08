@@ -7,17 +7,18 @@ import time
 
 from aws_xray_sdk import global_sdk_config
 from aws_xray_sdk.version import VERSION
-from .models.segment import Segment, SegmentContextManager
-from .models.subsegment import Subsegment, SubsegmentContextManager
-from .models.default_dynamic_naming import DefaultDynamicNaming
-from .models.dummy_entities import DummySegment, DummySubsegment
-from .emitters.udp_emitter import UDPEmitter
-from .streaming.default_streaming import DefaultStreaming
+
 from .context import Context
 from .daemon_config import DaemonConfig
-from .plugins.utils import get_plugin_modules
+from .emitters.udp_emitter import UDPEmitter
+from .exceptions.exceptions import SegmentNameMissingException
 from .lambda_launcher import check_in_lambda
-from .exceptions.exceptions import SegmentNameMissingException, SegmentNotFoundException
+from .models.default_dynamic_naming import DefaultDynamicNaming
+from .models.dummy_entities import DummySegment, DummySubsegment
+from .models.segment import Segment, SegmentContextManager
+from .models.subsegment import Subsegment, SubsegmentContextManager
+from .plugins.utils import get_plugin_modules
+from .streaming.default_streaming import DefaultStreaming
 from .utils import stacktrace
 
 log = logging.getLogger(__name__)
@@ -481,7 +482,7 @@ class AWSXRayRecorder:
 
     def _populate_runtime_context(self, segment, sampling_decision):
         if self._origin:
-            setattr(segment, 'origin', self._origin)
+            segment.origin = self._origin
 
         segment.set_aws(copy.deepcopy(self._aws_metadata))
         segment.set_service(SERVICE_INFO)

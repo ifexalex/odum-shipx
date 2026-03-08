@@ -1,15 +1,15 @@
 # Copyright (c) 2010-2024 openpyxl
 
 from openpyxl.descriptors import (
-    Bool,
-    String,
     Alias,
+    Bool,
     Integer,
+    String,
 )
-from openpyxl.descriptors.serialisable import Serialisable
 from openpyxl.descriptors.excel import (
     Base64Binary,
 )
+from openpyxl.descriptors.serialisable import Serialisable
 from openpyxl.utils.protection import hash_password
 
 

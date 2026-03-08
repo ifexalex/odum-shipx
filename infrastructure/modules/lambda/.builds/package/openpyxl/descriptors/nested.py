@@ -3,19 +3,20 @@
 """
 Generic serialisable classes
 """
-from .base import (
-    Convertible,
-    Bool,
-    Descriptor,
-    NoneSet,
-    MinMax,
-    Set,
-    Float,
-    Integer,
-    String,
-    )
 from openpyxl.compat import safe_string
 from openpyxl.xml.functions import Element, localname, whitespace
+
+from .base import (
+    Bool,
+    Convertible,
+    Descriptor,
+    Float,
+    Integer,
+    MinMax,
+    NoneSet,
+    Set,
+    String,
+)
 
 
 class Nested(Descriptor):

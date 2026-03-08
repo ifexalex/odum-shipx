@@ -1,18 +1,7 @@
 # Copyright (c) 2010-2024 openpyxl
 
+from openpyxl.descriptors import Bool, Integer, Sequence, Set, String
 from openpyxl.descriptors.serialisable import Serialisable
-from openpyxl.descriptors import (
-    Typed,
-    Float,
-    Bool,
-    Set,
-    Integer,
-    NoneSet,
-    String,
-    Sequence
-)
-
-from .colors import Color
 
 
 class TableStyleElement(Serialisable):

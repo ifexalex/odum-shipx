@@ -4,23 +4,18 @@
 Richtext definition
 """
 
-from openpyxl.descriptors.serialisable import Serialisable
 from openpyxl.descriptors import (
     Alias,
-    Typed,
     Integer,
-    Set,
     NoneSet,
-    Bool,
-    String,
     Sequence,
+    Typed,
 )
 from openpyxl.descriptors.nested import (
-    NestedBool,
-    NestedInteger,
     NestedString,
     NestedText,
 )
+from openpyxl.descriptors.serialisable import Serialisable
 from openpyxl.styles.fonts import Font
 
 
@@ -181,4 +176,4 @@ class Text(Serialisable):
         for block in self.formatted:
             if block.t is not None:
                 snippets.append(block.t)
-        return u"".join(snippets)
+        return "".join(snippets)

@@ -6,13 +6,14 @@ import typing
 import warnings
 import weakref
 from abc import ABCMeta
+from collections.abc import Callable
 from functools import partial
 from types import FunctionType
-from typing import Any, Callable, Generic
+from typing import Any, Generic, dataclass_transform
 
 import typing_extensions
 from pydantic_core import PydanticUndefined, SchemaSerializer
-from typing_extensions import dataclass_transform, deprecated
+from typing_extensions import deprecated
 
 from ..errors import PydanticUndefinedAnnotation, PydanticUserError
 from ..plugin._schema_validator import create_schema_validator
@@ -217,7 +218,7 @@ class ModelMetaclass(ABCMeta):
                     rebuilt_validator = maybe_mock_validator.rebuild()
                     if rebuilt_validator is not None:
                         # In this case, a validator was built, and so `__pydantic_core_schema__` should now be set
-                        return getattr(self, '__pydantic_core_schema__')
+                        return self.__pydantic_core_schema__
             raise AttributeError(item)
 
     @classmethod

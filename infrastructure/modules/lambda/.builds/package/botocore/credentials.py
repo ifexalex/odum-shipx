@@ -23,9 +23,6 @@ from collections import namedtuple
 from copy import deepcopy
 from hashlib import sha1
 
-from dateutil.parser import parse
-from dateutil.tz import tzlocal, tzutc
-
 import botocore.compat
 import botocore.configloader
 from botocore import UNSIGNED
@@ -52,6 +49,8 @@ from botocore.utils import (
     parse_key_val_file,
     resolve_imds_endpoint_mode,
 )
+from dateutil.parser import parse
+from dateutil.tz import tzlocal, tzutc
 
 logger = logging.getLogger(__name__)
 ReadOnlyCredentials = namedtuple(
@@ -1899,7 +1898,7 @@ class CanonicalNameCredentialSourcer:
     def _get_provider_by_method(self, method):
         """Return a credential provider by its METHOD name."""
         for provider in self._providers:
-            if provider.METHOD == method:
+            if method == provider.METHOD:
                 return provider
 
 

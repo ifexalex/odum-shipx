@@ -130,6 +130,7 @@ class TestApprovalSideEffects:
 
     def _approve(self, manifest_exists, items=None):
         from unittest.mock import MagicMock, patch
+
         from services.packing_list import service
         from shared.tenant_context import TenantContext, UserRole
 
@@ -225,7 +226,6 @@ class TestPackingListService:
             "container_id": "cont-1",
             "packing_list_number": "PL-001",
         }
-        items = []
 
         with patch.object(service.repo, "get_packing_list_by_id", return_value=pl):
             ctx = TenantContext(

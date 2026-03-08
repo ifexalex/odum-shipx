@@ -1,20 +1,10 @@
 # Copyright (c) 2010-2024 openpyxl
 
-from openpyxl.worksheet.header_footer import HeaderFooter
-
-from openpyxl.descriptors import (
-    Bool,
-    Integer,
-    Set,
-    Typed,
-    Sequence
-)
+from openpyxl.descriptors import Bool, Integer, Sequence, Set, Typed
 from openpyxl.descriptors.excel import Guid
 from openpyxl.descriptors.serialisable import Serialisable
-from openpyxl.worksheet.page import (
-    PageMargins,
-    PrintPageSetup
-)
+from openpyxl.worksheet.header_footer import HeaderFooter
+from openpyxl.worksheet.page import PageMargins, PrintPageSetup
 
 
 class CustomChartsheetView(Serialisable):

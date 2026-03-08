@@ -1,6 +1,7 @@
-from .reservoir import Reservoir
-from ...exceptions.exceptions import InvalidSamplingManifestError
 from aws_xray_sdk.core.utils.search_pattern import wildcard_match
+
+from ...exceptions.exceptions import InvalidSamplingManifestError
+from .reservoir import Reservoir
 
 
 class SamplingRule:

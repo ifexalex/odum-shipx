@@ -498,7 +498,7 @@ else:
 
 
 # This is not a real generic class.  Don't use outside annotations.
-Type = typing.Type
+Type = type
 
 # Various ABCs mimicking those in collections.abc.
 # A few are simply re-exported for completeness.
@@ -506,18 +506,19 @@ Awaitable = typing.Awaitable
 Coroutine = typing.Coroutine
 AsyncIterable = typing.AsyncIterable
 AsyncIterator = typing.AsyncIterator
-Deque = typing.Deque
-DefaultDict = typing.DefaultDict
+Deque = collections.deque
+DefaultDict = collections.defaultdict
 OrderedDict = typing.OrderedDict
 Counter = typing.Counter
 ChainMap = typing.ChainMap
-Text = typing.Text
+Text = str
 TYPE_CHECKING = typing.TYPE_CHECKING
 
 
 # Breakpoint: https://github.com/python/cpython/pull/118681
 if sys.version_info >= (3, 13, 0, "beta"):
-    from typing import AsyncContextManager, AsyncGenerator, ContextManager, Generator
+    from collections.abc import AsyncGenerator, Generator
+    from typing import AsyncContextManager, ContextManager
 else:
     def _is_dunder(attr):
         return attr.startswith('__') and attr.endswith('__')
@@ -2035,7 +2036,7 @@ if not hasattr(typing, 'Concatenate'):
                     f" actual {alen}, expected {plen}"
                 )
 
-            subst = dict(zip(self.__parameters__, args))
+            subst = dict(zip(self.__parameters__, args, strict=False))
             # determine new args
             new_args = []
             for arg in self.__args__:
@@ -2752,8 +2753,8 @@ else:  # <=3.11
         order_default: bool = False,
         kw_only_default: bool = False,
         frozen_default: bool = False,
-        field_specifiers: typing.Tuple[
-            typing.Union[typing.Type[typing.Any], typing.Callable[..., typing.Any]],
+        field_specifiers: tuple[
+            type[typing.Any] | typing.Callable[..., typing.Any],
             ...
         ] = (),
         **kwargs: typing.Any,
@@ -2927,7 +2928,7 @@ else:
             message: str,
             /,
             *,
-            category: typing.Optional[typing.Type[Warning]] = DeprecationWarning,
+            category: type[Warning] | None = DeprecationWarning,
             stacklevel: int = 1,
         ) -> None:
             if not isinstance(message, str):
@@ -3820,7 +3821,7 @@ else:
             and tp is not typing.Protocol
         )
 
-    def get_protocol_members(tp: type, /) -> typing.FrozenSet[str]:
+    def get_protocol_members(tp: type, /) -> frozenset[str]:
         """Return the set of members defined in a Protocol.
 
         Example::
@@ -4219,7 +4220,7 @@ class Sentinel:
     def __init__(
         self,
         name: str,
-        repr: typing.Optional[str] = None,
+        repr: str | None = None,
     ):
         self._name = name
         self._repr = repr if repr is not None else f'<{name}>'

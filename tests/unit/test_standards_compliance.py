@@ -1,8 +1,6 @@
 """Standards compliance tests — verify all services meet 00_CROSS_CUTTING_STANDARDS.md."""
 import json
-from unittest.mock import MagicMock, patch
-
-import pytest
+from unittest.mock import patch
 
 from shared.exceptions import ResourceNotFoundError
 from shared.responses import created, error_response, no_content, paginated, success

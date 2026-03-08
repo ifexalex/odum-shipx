@@ -1,8 +1,6 @@
 """Unit tests for shared.responses — formatting, headers, RFC 7807."""
 import json
 
-import pytest
-
 from shared.exceptions import (
     IllegalTransitionError,
     InsufficientPermissionsError,

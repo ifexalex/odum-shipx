@@ -2,14 +2,14 @@
 from __future__ import annotations as _annotations
 
 from collections import deque
+from collections.abc import Callable, Iterable
 from dataclasses import dataclass, field
 from functools import cached_property, partial, partialmethod
 from inspect import Parameter, Signature, isdatadescriptor, ismethoddescriptor, signature
 from itertools import islice
-from typing import TYPE_CHECKING, Any, Callable, ClassVar, Generic, Iterable, TypeVar, Union
+from typing import TYPE_CHECKING, Any, ClassVar, Generic, Literal, TypeAlias, TypeVar, is_typeddict
 
 from pydantic_core import PydanticUndefined, core_schema
-from typing_extensions import Literal, TypeAlias, is_typeddict
 
 from ..errors import PydanticUserError
 from ._core_utils import get_type_ref
@@ -134,19 +134,11 @@ class ModelValidatorDecoratorInfo:
     mode: Literal['wrap', 'before', 'after']
 
 
-DecoratorInfo: TypeAlias = """Union[
-    ValidatorDecoratorInfo,
-    FieldValidatorDecoratorInfo,
-    RootValidatorDecoratorInfo,
-    FieldSerializerDecoratorInfo,
-    ModelSerializerDecoratorInfo,
-    ModelValidatorDecoratorInfo,
-    ComputedFieldInfo,
-]"""
+DecoratorInfo: TypeAlias = """ValidatorDecoratorInfo | FieldValidatorDecoratorInfo | RootValidatorDecoratorInfo | FieldSerializerDecoratorInfo | ModelSerializerDecoratorInfo | ModelValidatorDecoratorInfo | ComputedFieldInfo"""
 
 ReturnType = TypeVar('ReturnType')
 DecoratedType: TypeAlias = (
-    'Union[classmethod[Any, Any, ReturnType], staticmethod[Any, ReturnType], Callable[..., ReturnType], property]'
+    'classmethod[Any, Any, ReturnType] | staticmethod[Any, ReturnType] | Callable[..., ReturnType] | property'
 )
 
 
@@ -494,7 +486,7 @@ class DecoratorInfos:
             # so then we don't need to re-process the type, which means we can discard our descriptor wrappers
             # and replace them with the thing they are wrapping (see the other setattr call below)
             # which allows validator class methods to also function as regular class methods
-            setattr(model_dc, '__pydantic_decorators__', res)
+            model_dc.__pydantic_decorators__ = res
             for name, value in to_replace:
                 setattr(model_dc, name, value)
         return res
@@ -653,7 +645,7 @@ def _serializer_info_arg(mode: Literal['plain', 'wrap'], n_positional: int) -> b
 
 
 AnyDecoratorCallable: TypeAlias = (
-    'Union[classmethod[Any, Any, Any], staticmethod[Any, Any], partialmethod[Any], Callable[..., Any]]'
+    'classmethod[Any, Any, Any] | staticmethod[Any, Any] | partialmethod[Any] | Callable[..., Any]'
 )
 
 

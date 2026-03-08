@@ -1,9 +1,9 @@
 import time
 
+from aws_xray_sdk.core.models.segment import SegmentContextManager
+from aws_xray_sdk.core.models.subsegment import SubsegmentContextManager, is_already_recording, subsegment_decorator
 from aws_xray_sdk.core.recorder import AWSXRayRecorder
 from aws_xray_sdk.core.utils import stacktrace
-from aws_xray_sdk.core.models.subsegment import SubsegmentContextManager, is_already_recording, subsegment_decorator
-from aws_xray_sdk.core.models.segment import SegmentContextManager
 
 
 class AsyncSegmentContextManager(SegmentContextManager):

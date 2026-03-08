@@ -10,7 +10,7 @@ BR-SF-001 / BR-SF-002 / BR-SF-003:
 """
 
 import logging
-from datetime import date, datetime, timezone
+from datetime import date
 from decimal import Decimal
 
 from aws_xray_sdk.core import patch_all

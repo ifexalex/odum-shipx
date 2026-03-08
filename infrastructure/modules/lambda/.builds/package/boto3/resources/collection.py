@@ -54,9 +54,7 @@ class ResourceCollection:
         return '{}({}, {})'.format(
             self.__class__.__name__,
             self._parent,
-            '{}.{}'.format(
-                self._parent.meta.service_name, self._model.resource.type
-            ),
+            f'{self._parent.meta.service_name}.{self._model.resource.type}',
         )
 
     def __iter__(self):
@@ -327,9 +325,7 @@ class CollectionManager:
         return '{}({}, {})'.format(
             self.__class__.__name__,
             self._parent,
-            '{}.{}'.format(
-                self._parent.meta.service_name, self._model.resource.type
-            ),
+            f'{self._parent.meta.service_name}.{self._model.resource.type}',
         )
 
     def iterator(self, **kwargs):
@@ -424,13 +420,9 @@ class CollectionFactory:
         )
 
         if service_context.service_name == resource_name:
-            cls_name = '{}.{}Collection'.format(
-                service_context.service_name, collection_name
-            )
+            cls_name = f'{service_context.service_name}.{collection_name}Collection'
         else:
-            cls_name = '{}.{}.{}Collection'.format(
-                service_context.service_name, resource_name, collection_name
-            )
+            cls_name = f'{service_context.service_name}.{resource_name}.{collection_name}Collection'
 
         collection_cls = type(str(cls_name), (ResourceCollection,), attrs)
 

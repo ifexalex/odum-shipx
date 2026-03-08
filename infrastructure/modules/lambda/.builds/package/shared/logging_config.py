@@ -5,7 +5,7 @@ See 00_CROSS_CUTTING_STANDARDS.md §3 for the logging standard.
 import json
 import logging
 import os
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 
 class StructuredFormatter(logging.Formatter):
@@ -13,7 +13,7 @@ class StructuredFormatter(logging.Formatter):
 
     def format(self, record: logging.LogRecord) -> str:
         log_entry = {
-            "timestamp": datetime.now(timezone.utc).isoformat(),
+            "timestamp": datetime.now(UTC).isoformat(),
             "level": record.levelname,
             "service": os.environ.get("SERVICE_NAME", "unknown"),
             "environment": os.environ.get("ENVIRONMENT", "unknown"),

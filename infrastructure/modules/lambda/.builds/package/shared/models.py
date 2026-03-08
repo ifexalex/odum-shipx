@@ -4,9 +4,8 @@ Provides the foundational building blocks that every service model inherits from
 """
 
 from datetime import datetime
-from decimal import Decimal
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict
 
 
 class TenantScopedBase(BaseModel):

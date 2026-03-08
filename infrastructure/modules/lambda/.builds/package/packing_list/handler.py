@@ -34,13 +34,13 @@ from shared.responses import (
 )
 from shared.tenant_context import UserRole
 
+from . import service
 from .models import (
     ApprovePackingListRequest,
     CreatePackingListRequest,
     RejectPackingListRequest,
     UpdatePackingListRequest,
 )
-from . import service
 
 # Module-level init (runs once on cold start)
 setup_logging()

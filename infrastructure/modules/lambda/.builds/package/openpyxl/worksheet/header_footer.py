@@ -8,24 +8,20 @@ from warnings import warn
 from openpyxl.descriptors import (
     Alias,
     Bool,
-    Strict,
-    String,
     Integer,
     MatchPattern,
+    Strict,
+    String,
     Typed,
 )
 from openpyxl.descriptors.serialisable import Serialisable
-
-
-from openpyxl.xml.functions import Element
 from openpyxl.utils.escape import escape, unescape
-
+from openpyxl.xml.functions import Element
 
 FONT_PATTERN = '&"(?P<font>.+)"'
 COLOR_PATTERN  = "&K(?P<color>[A-F0-9]{6})"
 SIZE_REGEX = r"&(?P<size>\d+\s?)"
-FORMAT_REGEX = re.compile("{0}|{1}|{2}".format(FONT_PATTERN, COLOR_PATTERN,
-                                               SIZE_REGEX)
+FORMAT_REGEX = re.compile(f"{FONT_PATTERN}|{COLOR_PATTERN}|{SIZE_REGEX}"
                           )
 
 def _split_string(text):
@@ -103,12 +99,12 @@ class _HeaderFooterPart(Strict):
         """
         fmt = []
         if self.font:
-            fmt.append(u'&"{0}"'.format(self.font))
+            fmt.append(f'&"{self.font}"')
         if self.size:
-            fmt.append("&{0} ".format(self.size))
+            fmt.append(f"&{self.size} ")
         if self.color:
-            fmt.append("&K{0}".format(self.color))
-        return u"".join(fmt + [self.text])
+            fmt.append(f"&K{self.color}")
+        return "".join(fmt + [self.text])
 
     def __bool__(self):
         return bool(self.text)
@@ -122,7 +118,7 @@ class _HeaderFooterPart(Strict):
         """
         keys = ('font', 'color', 'size')
         kw = dict((k, v) for match in FORMAT_REGEX.findall(text)
-                  for k, v in zip(keys, match) if v)
+                  for k, v in zip(keys, match, strict=False) if v)
 
         kw['text'] = FORMAT_REGEX.sub('', text)
 
@@ -164,7 +160,7 @@ class HeaderFooterItem(Strict):
                      '&[Picture]': '&G'}
 
         # escape keys and create regex
-        SUBS_REGEX = re.compile("|".join(["({0})".format(re.escape(k))
+        SUBS_REGEX = re.compile("|".join([f"({re.escape(k)})"
                                           for k in TRANSFORM]))
 
         def replace(match):
@@ -177,9 +173,9 @@ class HeaderFooterItem(Strict):
 
         txt = []
         for key, part in zip(
-            self.__keys, [self.left, self.center, self.right]):
+            self.__keys, [self.left, self.center, self.right], strict=False):
             if part.text is not None:
-                txt.append(u"&{0}{1}".format(key, str(part)))
+                txt.append(f"&{key}{str(part)}")
         txt = "".join(txt)
         txt = SUBS_REGEX.sub(replace, txt)
         return escape(txt)

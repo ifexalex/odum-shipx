@@ -1,29 +1,20 @@
 # Copyright (c) 2010-2024 openpyxl
 
-from openpyxl.xml.constants import CHART_NS, DRAWING_NS
-from openpyxl.descriptors.serialisable import Serialisable
 from openpyxl.descriptors import (
-    Typed,
+    Alias,
     Bool,
     String,
-    Alias,
+    Typed,
 )
 from openpyxl.descriptors.excel import ExtensionList as OfficeArtExtensionList
+from openpyxl.descriptors.serialisable import Serialisable
+from openpyxl.xml.constants import CHART_NS, DRAWING_NS
 
-from .effect import (
-    EffectList,
-    EffectContainer,
-)
-from .fill import (
-    Blip,
-    GradientFillProperties,
-    BlipFillProperties,
-)
 from .picture import PictureFrame
 from .properties import (
+    GroupShapeProperties,
     NonVisualDrawingProps,
     NonVisualGroupShape,
-    GroupShapeProperties,
 )
 from .relation import ChartRelation
 from .xdr import XDRTransform2D

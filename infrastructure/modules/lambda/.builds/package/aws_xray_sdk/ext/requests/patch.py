@@ -1,8 +1,7 @@
 import wrapt
-
 from aws_xray_sdk.core import xray_recorder
 from aws_xray_sdk.core.models import http
-from aws_xray_sdk.ext.util import inject_trace_header, strip_url, get_hostname
+from aws_xray_sdk.ext.util import get_hostname, inject_trace_header, strip_url
 
 
 def patch():
@@ -36,7 +35,7 @@ def _inject_header(wrapped, instance, args, kwargs):
     request = args[0]
     headers = getattr(request, 'headers', {})
     inject_trace_header(headers, xray_recorder.current_subsegment())
-    setattr(request, 'headers', headers)
+    request.headers = headers
 
     return wrapped(*args, **kwargs)
 

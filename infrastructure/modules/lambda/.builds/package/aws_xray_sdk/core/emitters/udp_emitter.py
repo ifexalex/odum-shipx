@@ -2,6 +2,7 @@ import logging
 import socket
 
 from aws_xray_sdk.core.daemon_config import DaemonConfig
+
 from ..exceptions.exceptions import InvalidDaemonAddressException
 
 log = logging.getLogger(__name__)

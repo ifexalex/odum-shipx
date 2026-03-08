@@ -1,15 +1,16 @@
 import logging
-from random import Random
-import time
 import threading
+import time
+from random import Random
 
+from aws_xray_sdk import global_sdk_config
+
+from .connector import ServiceConnector
 from .local.sampler import LocalSampler
+from .reservoir import ReservoirDecision
 from .rule_cache import RuleCache
 from .rule_poller import RulePoller
 from .target_poller import TargetPoller
-from .connector import ServiceConnector
-from .reservoir import ReservoirDecision
-from aws_xray_sdk import global_sdk_config
 
 log = logging.getLogger(__name__)
 
@@ -104,10 +105,7 @@ class DefaultSampler:
         decision = reservoir.borrow_or_take(now, rule.can_borrow)
         if(decision == ReservoirDecision.BORROW):
             rule.increment_borrow_count()
-        elif (decision == ReservoirDecision.TAKE):
-            rule.increment_sampled_count()
-        # Otherwise we compute based on fixed rate of this sampling rule.
-        elif (self._random.random() <= rule.rate):
+        elif (decision == ReservoirDecision.TAKE) or (self._random.random() <= rule.rate):
             rule.increment_sampled_count()
         else:
             sample = False

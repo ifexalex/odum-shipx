@@ -1,8 +1,9 @@
 import os
+
 from .noop_traceid import NoOpTraceId
-from .traceid import TraceId
 from .segment import Segment
 from .subsegment import Subsegment
+from .traceid import TraceId
 
 
 class DummySegment(Segment):

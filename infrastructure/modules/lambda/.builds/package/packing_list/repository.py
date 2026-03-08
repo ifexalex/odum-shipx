@@ -11,7 +11,6 @@ Notes:
   - manifest and shipment_tracking have RLS.
 """
 
-import json
 import logging
 from datetime import date
 

@@ -3,8 +3,9 @@
 from __future__ import annotations
 
 import sys
+from collections.abc import Callable, Iterator
 from configparser import ConfigParser
-from typing import Any, Callable, Iterator
+from typing import Any
 
 from mypy.errorcodes import ErrorCode
 from mypy.expandtype import expand_type, expand_type_by_instance
@@ -75,7 +76,6 @@ from mypy.types import (
 from mypy.typevars import fill_typevars
 from mypy.util import get_unique_redefinition_name
 from mypy.version import __version__ as mypy_version
-
 from pydantic._internal import _fields
 from pydantic.version import parse_mypy_version
 
@@ -547,7 +547,7 @@ class PydanticModelTransformer:
                     continue
 
                 if isinstance(stmt.rvalue, CallExpr):  # calls to `dict` or `ConfigDict`
-                    for arg_name, arg in zip(stmt.rvalue.arg_names, stmt.rvalue.args):
+                    for arg_name, arg in zip(stmt.rvalue.arg_names, stmt.rvalue.args, strict=False):
                         if arg_name is None:
                             continue
                         config.update(self.get_config_update(arg_name, arg))
@@ -984,7 +984,7 @@ class PydanticModelTransformer:
             # * there is a positional argument that is not `...`
             # * there is a keyword argument named "default" that is not `...`
             # * there is a "default_factory" that is not `None`
-            for arg, name in zip(expr.args, expr.arg_names):
+            for arg, name in zip(expr.args, expr.arg_names, strict=False):
                 # If name is None, then this arg is the default because it is the only positional argument.
                 if name is None or name == 'default':
                     return arg.__class__ is not EllipsisExpr

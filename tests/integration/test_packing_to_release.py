@@ -5,7 +5,7 @@ service-layer orchestration across multiple services end-to-end in memory.
 """
 import json
 from decimal import Decimal
-from unittest.mock import MagicMock, patch
+from unittest.mock import patch
 
 import pytest
 
@@ -111,7 +111,7 @@ class TestPackingListHandlerDispatch:
         ):
             mock_svc.get_packing_list.return_value = pl
             resp = handler.lambda_handler(
-                self._event("GET", f"/v1/packing-lists/pl-001"), {}
+                self._event("GET", "/v1/packing-lists/pl-001"), {}
             )
         assert resp["statusCode"] == 200
 
@@ -172,7 +172,6 @@ class TestPackingListStateFlow:
             "packing_list_number": "ACME-PL-001",
         }
         pending_pl = {**draft_pl, "status": "pending_approval"}
-        approved_pl = {**draft_pl, "status": "approved"}
 
         with (
             patch.object(service.repo, "get_packing_list_by_id", return_value=draft_pl),

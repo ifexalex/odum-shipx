@@ -3,10 +3,9 @@
 """
 Collection of utilities used within the package and also available for client code
 """
-from functools import lru_cache
-from itertools import chain, product
-from string import ascii_uppercase, digits
 import re
+from functools import cache
+from string import ascii_uppercase, digits
 
 from .exceptions import CellCoordinatesException
 
@@ -23,8 +22,7 @@ RANGE_EXPR = r"""
 ABSOLUTE_RE = re.compile('^' + RANGE_EXPR +'$', re.VERBOSE)
 SHEET_TITLE = r"""
 (('(?P<quoted>([^']|'')*)')|(?P<notquoted>[^'^ ^!]*))!"""
-SHEETRANGE_RE = re.compile("""{0}(?P<cells>{1})(?=,?)""".format(
-    SHEET_TITLE, RANGE_EXPR), re.VERBOSE)
+SHEETRANGE_RE = re.compile(f"""{SHEET_TITLE}(?P<cells>{RANGE_EXPR})(?=,?)""", re.VERBOSE)
 
 
 def get_column_interval(start, end):
@@ -75,7 +73,7 @@ def absolute_coordinate(coord_string):
 
 __decimal_to_alpha = [""] + list(ascii_uppercase)
 
-@lru_cache(maxsize=None)
+@cache
 def get_column_letter(col_idx):
     """
     Convert decimal column position to its ASCII (base 26) form.
@@ -91,7 +89,7 @@ def get_column_letter(col_idx):
     """
 
     if not 1 <= col_idx <= 18278:
-        raise ValueError("Invalid column index {0}".format(col_idx))
+        raise ValueError(f"Invalid column index {col_idx}")
 
     result = []
 
@@ -111,7 +109,7 @@ def get_column_letter(col_idx):
 __alpha_to_decimal = {letter:pos for pos, letter in enumerate(ascii_uppercase, 1)}
 __powers = (1, 26, 676)
 
-@lru_cache(maxsize=None)
+@cache
 def column_index_from_string(col):
     """
     Convert ASCII column name (base 26) to decimal with 1-based index
@@ -125,7 +123,7 @@ def column_index_from_string(col):
         raise ValueError(error_msg)
     idx = 0
     col = reversed(col.upper())
-    for letter, power in zip(col, __powers):
+    for letter, power in zip(col, __powers, strict=False):
         try:
             pos = __alpha_to_decimal[letter]
         except KeyError:
@@ -142,7 +140,7 @@ def range_boundaries(range_string):
     (min_col, min_row, max_col, max_row)
     Cell coordinates will be converted into a range with the cell at both end
     """
-    msg = "{0} is not a valid coordinate or range".format(range_string)
+    msg = f"{range_string} is not a valid coordinate or range"
     m = ABSOLUTE_RE.match(range_string)
     if not m:
         raise ValueError(msg)
@@ -188,7 +186,7 @@ def rows_from_range(range_string):
     rows = range(min_row, max_row + 1)
     cols = [get_column_letter(col) for col in range(min_col, max_col + 1)]
     for row in rows:
-        yield tuple('{0}{1}'.format(col, row) for col in cols)
+        yield tuple(f'{col}{row}' for col in cols)
 
 
 def cols_from_range(range_string):
@@ -200,7 +198,7 @@ def cols_from_range(range_string):
     rows = range(min_row, max_row+1)
     cols = (get_column_letter(col) for col in range(min_col, max_col+1))
     for col in cols:
-        yield tuple('{0}{1}'.format(col, row) for row in rows)
+        yield tuple(f'{col}{row}' for row in rows)
 
 
 def coordinate_to_tuple(coordinate):
@@ -236,5 +234,5 @@ def quote_sheetname(sheetname):
     if "'" in sheetname:
         sheetname = sheetname.replace("'", "''")
 
-    sheetname = u"'{0}'".format(sheetname)
+    sheetname = f"'{sheetname}'"
     return sheetname

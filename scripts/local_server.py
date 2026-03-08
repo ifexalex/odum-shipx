@@ -35,10 +35,10 @@ Examples (Postman / curl):
 """
 
 import json
+import logging
 import os
 import sys
 import uuid
-import logging
 
 # Ensure project root is on the path
 PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -166,11 +166,11 @@ def dispatch(path: str):
     # checked before the general prefix table.  Only packing-lists, manifests,
     # billing, and containers have excel exports; other /export paths (e.g.
     # /v1/customers/{id}/export) belong to their own service handlers.
-    _EXCEL_PREFIXES = ("/v1/packing-lists/", "/v1/manifests/", "/v1/billing/", "/v1/containers/")
+    _excel_prefixes = ("/v1/packing-lists/", "/v1/manifests/", "/v1/billing/", "/v1/containers/")
     _path_no_qs = full_path.split("?")[0]
     service_name = None
     if (
-        (_path_no_qs.endswith("/export") and any(_path_no_qs.startswith(p) for p in _EXCEL_PREFIXES))
+        (_path_no_qs.endswith("/export") and any(_path_no_qs.startswith(p) for p in _excel_prefixes))
         or _path_no_qs.endswith("/import")
     ):
         service_name = "excel"

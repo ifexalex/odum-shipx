@@ -4,33 +4,35 @@
 # Python stdlib imports
 import datetime
 import re
-from zipfile import ZipFile, ZIP_DEFLATED
+from zipfile import ZIP_DEFLATED, ZipFile
+
+from openpyxl.comments.comment_sheet import CommentSheet
+from openpyxl.drawing.spreadsheet_drawing import SpreadsheetDrawing
+from openpyxl.packaging.manifest import Manifest
+from openpyxl.packaging.relationship import (
+    Relationship,
+    RelationshipList,
+    get_rels_path,
+)
+from openpyxl.styles.stylesheet import write_stylesheet
 
 # package imports
 from openpyxl.utils.exceptions import InvalidFileException
+from openpyxl.workbook._writer import WorkbookWriter
+from openpyxl.worksheet._writer import WorksheetWriter
 from openpyxl.xml.constants import (
-    ARC_ROOT_RELS,
-    ARC_WORKBOOK_RELS,
     ARC_APP,
     ARC_CORE,
     ARC_CUSTOM,
-    CPROPS_TYPE,
-    ARC_THEME,
+    ARC_ROOT_RELS,
     ARC_STYLE,
+    ARC_THEME,
     ARC_WORKBOOK,
-    )
-from openpyxl.drawing.spreadsheet_drawing import SpreadsheetDrawing
-from openpyxl.xml.functions import tostring, fromstring
-from openpyxl.packaging.manifest import Manifest
-from openpyxl.packaging.relationship import (
-    get_rels_path,
-    RelationshipList,
-    Relationship,
+    ARC_WORKBOOK_RELS,
+    CPROPS_TYPE,
 )
-from openpyxl.comments.comment_sheet import CommentSheet
-from openpyxl.styles.stylesheet import write_stylesheet
-from openpyxl.worksheet._writer import WorksheetWriter
-from openpyxl.workbook._writer import WorkbookWriter
+from openpyxl.xml.functions import fromstring, tostring
+
 from .theme import theme_xml
 
 
@@ -67,7 +69,7 @@ class ExcelWriter:
 
         if len(self.workbook.custom_doc_props) >= 1:
             archive.writestr(ARC_CUSTOM, tostring(self.workbook.custom_doc_props.to_tree()))
-            class CustomOverride():
+            class CustomOverride:
                 path = "/" + ARC_CUSTOM #PartName
                 mime_type = CPROPS_TYPE #ContentType
 
@@ -173,7 +175,7 @@ class ExcelWriter:
         self.manifest.append(cs)
 
         if ws.legacy_drawing is None or self.workbook.vba_archive is None:
-            ws.legacy_drawing = 'xl/drawings/commentsDrawing{0}.vml'.format(cs._id)
+            ws.legacy_drawing = f'xl/drawings/commentsDrawing{cs._id}.vml'
             vml = None
         else:
             vml = fromstring(self.workbook.vba_archive.read(ws.legacy_drawing))
@@ -289,7 +291,7 @@ def save_workbook(workbook, filename):
 
     """
     archive = ZipFile(filename, 'w', ZIP_DEFLATED, allowZip64=True)
-    workbook.properties.modified = datetime.datetime.now(tz=datetime.timezone.utc).replace(tzinfo=None)
+    workbook.properties.modified = datetime.datetime.now(tz=datetime.UTC).replace(tzinfo=None)
     writer = ExcelWriter(workbook, archive)
     writer.save()
     return True

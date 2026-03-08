@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """
 This module offers a parser for ISO-8601 strings
 
@@ -7,14 +6,13 @@ ISO-8601 specification.
 
 ..versionadded:: 2.7.0
 """
-from datetime import datetime, timedelta, time, date
 import calendar
-from dateutil import tz
-
+import re
+from datetime import date, datetime, time, timedelta
 from functools import wraps
 
-import re
 import six
+from dateutil import tz
 
 __all__ = ["isoparse", "isoparser"]
 
@@ -39,7 +37,7 @@ def _takes_ascii(f):
     return func
 
 
-class isoparser(object):
+class isoparser:
     def __init__(self, sep=None):
         """
         :param sep:
@@ -287,7 +285,7 @@ class isoparser(object):
 
             if ordinal_day < 1 or ordinal_day > (365 + calendar.isleap(year)):
                 raise ValueError('Invalid ordinal day' +
-                                 ' {} for year {}'.format(ordinal_day, year))
+                                 f' {ordinal_day} for year {year}')
 
             base_date = date(year, 1, 1) + timedelta(days=ordinal_day - 1)
 
@@ -314,10 +312,10 @@ class isoparser(object):
             Returns a :class:`datetime.date`
         """
         if not 0 < week < 54:
-            raise ValueError('Invalid week: {}'.format(week))
+            raise ValueError(f'Invalid week: {week}')
 
         if not 0 < day < 8:     # Range is 1-7
-            raise ValueError('Invalid weekday: {}'.format(day))
+            raise ValueError(f'Invalid weekday: {day}')
 
         # Get week 1 for the specific year:
         jan_4 = date(year, 1, 4)   # Week 1 always has January 4th in it

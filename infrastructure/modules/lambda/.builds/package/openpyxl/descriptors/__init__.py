@@ -39,7 +39,7 @@ class MetaSerialisable(type):
                     if hasattr(v.expected_type, 'to_tree'):
                         elements.append(k)
                     elif isinstance(v.expected_type, tuple):
-                        if any((hasattr(el, "to_tree") for el in v.expected_type)):
+                        if any(hasattr(el, "to_tree") for el in v.expected_type):
                             # don't bind elements as attrs
                             continue
                     else:

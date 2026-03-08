@@ -1,6 +1,5 @@
-from .segment import Segment
 from ..exceptions.exceptions import FacadeSegmentMutationException
-
+from .segment import Segment
 
 MUTATION_UNSUPPORTED_MESSAGE = 'FacadeSegments cannot be mutated.'
 

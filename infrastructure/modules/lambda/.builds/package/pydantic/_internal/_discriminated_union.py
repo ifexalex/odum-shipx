@@ -1,6 +1,7 @@
 from __future__ import annotations as _annotations
 
-from typing import TYPE_CHECKING, Any, Hashable, Sequence
+from collections.abc import Hashable, Sequence
+from typing import TYPE_CHECKING, Any
 
 from pydantic_core import CoreSchema, core_schema
 
@@ -365,10 +366,7 @@ class _ApplyInferredDiscriminator:
             self._should_be_nullable = True
             return self._infer_discriminator_values_for_choice(choice['schema'], source_name=None)
 
-        elif choice['type'] == 'model':
-            return self._infer_discriminator_values_for_choice(choice['schema'], source_name=choice['cls'].__name__)
-
-        elif choice['type'] == 'dataclass':
+        elif choice['type'] == 'model' or choice['type'] == 'dataclass':
             return self._infer_discriminator_values_for_choice(choice['schema'], source_name=choice['cls'].__name__)
 
         elif choice['type'] == 'model-fields':

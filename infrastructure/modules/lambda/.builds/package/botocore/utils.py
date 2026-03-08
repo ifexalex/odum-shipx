@@ -30,28 +30,25 @@ from ipaddress import ip_address
 from pathlib import Path
 from urllib.request import getproxies, proxy_bypass
 
-import dateutil.parser
-from dateutil.tz import tzutc
-from urllib3.exceptions import LocationParseError
-
 import botocore
 import botocore.awsrequest
 import botocore.httpsession
+import dateutil.parser
 
 # IP Regexes retained for backwards compatibility
-from botocore.compat import HEX_PAT  # noqa: F401
-from botocore.compat import IPV4_PAT  # noqa: F401
-from botocore.compat import IPV6_ADDRZ_PAT  # noqa: F401
-from botocore.compat import IPV6_PAT  # noqa: F401
-from botocore.compat import LS32_PAT  # noqa: F401
-from botocore.compat import UNRESERVED_PAT  # noqa: F401
-from botocore.compat import ZONE_ID_PAT  # noqa: F401
 from botocore.compat import (
     HAS_CRT,
+    HEX_PAT,  # noqa: F401
+    IPV4_PAT,  # noqa: F401
     IPV4_RE,
+    IPV6_ADDRZ_PAT,  # noqa: F401
     IPV6_ADDRZ_RE,
+    IPV6_PAT,  # noqa: F401
+    LS32_PAT,  # noqa: F401
     MD5_AVAILABLE,
+    UNRESERVED_PAT,  # noqa: F401
     UNSAFE_URL_CHARS,
+    ZONE_ID_PAT,  # noqa: F401
     OrderedDict,
     get_md5,
     get_tzinfo_options,
@@ -87,6 +84,8 @@ from botocore.exceptions import (
     UnsupportedS3ControlArnError,
     UnsupportedS3ControlConfigurationError,
 )
+from dateutil.tz import tzutc
+from urllib3.exceptions import LocationParseError
 
 logger = logging.getLogger(__name__)
 DEFAULT_METADATA_SERVICE_TIMEOUT = 1

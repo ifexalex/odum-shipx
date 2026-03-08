@@ -1,12 +1,10 @@
-# -*- coding: utf-8 -*-
-import datetime
 import calendar
-
+import datetime
 import operator
 from math import copysign
+from warnings import warn
 
 from six import integer_types
-from warnings import warn
 
 from ._common import weekday
 
@@ -15,7 +13,7 @@ MO, TU, WE, TH, FR, SA, SU = weekdays = tuple(weekday(x) for x in range(7))
 __all__ = ["relativedelta", "MO", "TU", "WE", "TH", "FR", "SA", "SU"]
 
 
-class relativedelta(object):
+class relativedelta:
     """
     The relativedelta type is designed to be applied to an existing datetime and
     can replace specific components of that datetime, or represents an interval
@@ -583,12 +581,12 @@ class relativedelta(object):
                      "hours", "minutes", "seconds", "microseconds"]:
             value = getattr(self, attr)
             if value:
-                l.append("{attr}={value:+g}".format(attr=attr, value=value))
+                l.append(f"{attr}={value:+g}")
         for attr in ["year", "month", "day", "weekday",
                      "hour", "minute", "second", "microsecond"]:
             value = getattr(self, attr)
             if value is not None:
-                l.append("{attr}={value}".format(attr=attr, value=repr(value)))
+                l.append(f"{attr}={repr(value)}")
         return "{classname}({attrs})".format(classname=self.__class__.__name__,
                                              attrs=", ".join(l))
 

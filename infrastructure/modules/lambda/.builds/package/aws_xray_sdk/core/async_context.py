@@ -69,7 +69,7 @@ class TaskLocalStorage:
         if hasattr(task, 'context') and item in task.context:
             return task.context[item]
 
-        raise AttributeError('Task context does not have attribute {0}'.format(item))
+        raise AttributeError(f'Task context does not have attribute {item}')
 
     def clear(self):
         # If were in a task, clear the context dictionary
@@ -106,6 +106,6 @@ def task_factory(loop, coro):
             new_context['entities'] = [item for item in current_task.context['entities']]
         else:
             new_context = current_task.context
-        setattr(task, 'context', new_context)
+        task.context = new_context
 
     return task

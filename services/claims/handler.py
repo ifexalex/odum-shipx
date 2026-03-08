@@ -31,6 +31,7 @@ from shared.pagination import decode_cursor
 from shared.responses import created, error_response, paginated, success
 from shared.tenant_context import UserRole
 
+from . import service
 from .models import (
     FileDamageClaimRequest,
     LogMissingItemRequest,
@@ -38,7 +39,6 @@ from .models import (
     ResolveClaimRequest,
     StartInspectionRequest,
 )
-from . import service
 
 # Module-level init (runs once on cold start)
 setup_logging()

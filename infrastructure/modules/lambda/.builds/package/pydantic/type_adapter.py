@@ -2,14 +2,25 @@
 from __future__ import annotations as _annotations
 
 import sys
+from collections.abc import Iterable
 from dataclasses import is_dataclass
-from typing import TYPE_CHECKING, Any, Dict, Generic, Iterable, Set, TypeVar, Union, cast, final, overload
-
-from pydantic_core import CoreSchema, SchemaSerializer, SchemaValidator, Some
-from typing_extensions import Literal, get_args, is_typeddict
+from typing import (
+    TYPE_CHECKING,
+    Any,
+    Generic,
+    Literal,
+    TypeVar,
+    Union,
+    cast,
+    final,
+    get_args,
+    is_typeddict,
+    overload,
+)
 
 from pydantic.errors import PydanticUserError
 from pydantic.main import BaseModel
+from pydantic_core import CoreSchema, SchemaSerializer, SchemaValidator, Some
 
 from ._internal import _config, _generate_schema, _typing_extra
 from .config import ConfigDict
@@ -27,7 +38,7 @@ T = TypeVar('T')
 
 if TYPE_CHECKING:
     # should be `set[int] | set[str] | dict[int, IncEx] | dict[str, IncEx] | None`, but mypy can't cope
-    IncEx = Union[Set[int], Set[str], Dict[int, Any], Dict[str, Any]]
+    IncEx = Union[set[int], set[str], dict[int, Any], dict[str, Any]]
 
 
 def _get_schema(type_: Any, config_wrapper: _config.ConfigWrapper, parent_depth: int) -> CoreSchema:

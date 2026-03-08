@@ -4,12 +4,12 @@ from collections import OrderedDict
 from operator import attrgetter
 
 from openpyxl.descriptors import (
-    Typed,
-    Integer,
     Alias,
-    MinMax,
     Bool,
+    Integer,
+    MinMax,
     Set,
+    Typed,
 )
 from openpyxl.descriptors.sequence import ValueSequence
 from openpyxl.descriptors.serialisable import Serialisable
@@ -19,10 +19,11 @@ from .data_source import AxDataSource, NumRef
 from .layout import Layout
 from .legend import Legend
 from .reference import Reference
-from .series_factory import SeriesFactory
 from .series import attribute_mapping
+from .series_factory import SeriesFactory
 from .shapes import GraphicalProperties
 from .title import TitleDescriptor
+
 
 class AxId(Serialisable):
 
@@ -123,7 +124,7 @@ class ChartBase(Serialisable):
 
 
     def _write(self):
-        from .chartspace import ChartSpace, ChartContainer
+        from .chartspace import ChartContainer, ChartSpace
         self.plot_area.layout = self.layout
 
         idx_base = self.idx_base

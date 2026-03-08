@@ -4,15 +4,12 @@
 RichText definition
 """
 from copy import copy
-from openpyxl.compat import NUMERIC_TYPES
-from openpyxl.cell.text import InlineFont, Text
-from openpyxl.descriptors import (
-    Strict,
-    String,
-    Typed
-)
 
+from openpyxl.cell.text import InlineFont, Text
+from openpyxl.compat import NUMERIC_TYPES
+from openpyxl.descriptors import Strict, String, Typed
 from openpyxl.xml.functions import Element, whitespace
+
 
 class TextBlock(Strict):
     """ Represents text string in a specific format
@@ -166,7 +163,7 @@ class CellRichText(list):
 
 
     def __repr__(self):
-        return "CellRichText([{}])".format(', '.join((repr(s) for s in self)))
+        return "CellRichText([{}])".format(', '.join(repr(s) for s in self))
 
 
     def __str__(self):

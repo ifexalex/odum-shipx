@@ -4,13 +4,13 @@ from __future__ import annotations as _annotations
 
 import dataclasses
 import sys
+from collections.abc import Callable
 from functools import partialmethod
 from types import FunctionType
-from typing import TYPE_CHECKING, Any, Callable, TypeVar, Union, cast, overload
+from typing import TYPE_CHECKING, Annotated, Any, Literal, TypeAlias, TypeVar, Union, cast, overload
 
 from pydantic_core import core_schema
 from pydantic_core import core_schema as _core_schema
-from typing_extensions import Annotated, Literal, TypeAlias
 
 from . import GetCoreSchemaHandler as _GetCoreSchemaHandler
 from ._internal import _core_metadata, _decorators, _generics, _internal_dataclass
@@ -18,7 +18,7 @@ from .annotated_handlers import GetCoreSchemaHandler
 from .errors import PydanticUserError
 
 if sys.version_info < (3, 11):
-    from typing_extensions import Protocol
+    from typing import Protocol
 else:
     from typing import Protocol
 
@@ -250,7 +250,7 @@ if TYPE_CHECKING:
         _core_schema.WithInfoWrapValidatorFunction,
     ]
 
-    _PartialClsOrStaticMethod: TypeAlias = Union[classmethod[Any, Any, Any], staticmethod[Any, Any], partialmethod[Any]]
+    _PartialClsOrStaticMethod: TypeAlias = classmethod[Any, Any, Any] | staticmethod[Any, Any] | partialmethod[Any]
 
     _V2BeforeAfterOrPlainValidatorType = TypeVar(
         '_V2BeforeAfterOrPlainValidatorType',

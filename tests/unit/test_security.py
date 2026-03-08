@@ -1,10 +1,8 @@
 """Security tests — SQL injection prevention, S3 key scoping, sort field allowlist."""
-import ast
 import os
 import re
 
 import pytest
-
 
 # ---------------------------------------------------------------------------
 # SQL injection — verify repository files use parameterized queries
@@ -39,7 +37,7 @@ _ALLOWLISTED_FILES = {
 def _get_repository_files() -> list[str]:
     """Collect all repository.py files across services."""
     files = []
-    for root, dirs, fnames in os.walk(_SERVICES_DIR):
+    for root, _dirs, fnames in os.walk(_SERVICES_DIR):
         for fname in fnames:
             if fname == "repository.py":
                 files.append(os.path.join(root, fname))
@@ -73,9 +71,8 @@ class TestNoRawSqlFstrings:
 class TestSortFieldAllowlist:
     def test_allowed_sort_fields_enforced(self):
         """Verify build_paginated_query rejects arbitrary sort fields."""
-        from shared.pagination import build_paginated_query
-
         from shared.exceptions import ValidationError
+        from shared.pagination import build_paginated_query
         with pytest.raises(ValidationError):
             build_paginated_query(
                 "SELECT * FROM billing WHERE 1=1",
@@ -107,7 +104,6 @@ class TestS3KeyScoping:
 
     def test_claims_s3_key_includes_tenant_id(self):
         """Evidence upload keys must be scoped to tenant."""
-        from services.claims import service
 
         # The _evidence_s3_key function (if public) or verify via pattern
         tenant_id = "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa"
@@ -201,7 +197,7 @@ class TestStatusExtraFieldAllowlist:
             "rejected_by",
             "rejection_reason",
         }
-        assert _STATUS_EXTRA_FIELDS == expected
+        assert expected == _STATUS_EXTRA_FIELDS
 
     def test_allowlisted_fields_safe_identifiers(self):
         from services.refunds.repository import _STATUS_EXTRA_FIELDS

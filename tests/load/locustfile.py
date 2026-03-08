@@ -34,7 +34,6 @@ import uuid
 from datetime import date, timedelta
 
 from locust import HttpUser, SequentialTaskSet, between, events, task
-from locust.contrib.fasthttp import FastHttpUser
 
 # ---------------------------------------------------------------------------
 # Configuration

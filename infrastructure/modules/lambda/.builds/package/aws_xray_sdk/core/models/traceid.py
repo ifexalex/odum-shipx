@@ -1,6 +1,6 @@
+import binascii
 import os
 import time
-import binascii
 
 
 class TraceId:

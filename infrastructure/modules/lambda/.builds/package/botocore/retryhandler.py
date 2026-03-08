@@ -384,7 +384,7 @@ class CRC32Checker(BaseChecker):
             )
         else:
             actual_crc32 = crc32(response[0].content) & 0xFFFFFFFF
-            if not actual_crc32 == int(expected_crc):
+            if actual_crc32 != int(expected_crc):
                 logger.debug(
                     "retry needed: crc32 check failed, expected != actual: "
                     "%s != %s",

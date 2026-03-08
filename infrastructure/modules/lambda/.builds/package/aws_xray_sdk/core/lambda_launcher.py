@@ -1,12 +1,13 @@
-import os
 import logging
+import os
 import threading
 
 from aws_xray_sdk import global_sdk_config
+
+from .context import Context
 from .models.dummy_entities import DummySegment
 from .models.facade_segment import FacadeSegment
 from .models.trace_header import TraceHeader
-from .context import Context
 
 log = logging.getLogger(__name__)
 
@@ -35,7 +36,7 @@ def check_in_lambda():
         f.close()
         # utime force second parameter in python2.7
         os.utime(TOUCH_FILE_PATH, None)
-    except (IOError, OSError):
+    except OSError:
         log.warning("Unable to write to %s. Failed to signal SDK initialization." % TOUCH_FILE_PATH)
 
     return LambdaContext()
@@ -88,8 +89,8 @@ class LambdaContext(Context):
         else:
             segment = trace_entity
 
-        setattr(self._local, 'segment', segment)
-        setattr(self._local, 'entities', [trace_entity])
+        self._local.segment = segment
+        self._local.entities = [trace_entity]
 
     def get_trace_entity(self):
         self._refresh_context()
@@ -161,5 +162,5 @@ class LambdaContext(Context):
                 sampled=sampled,
             )
         segment.save_origin_trace_header(trace_header)
-        setattr(self._local, 'segment', segment)
-        setattr(self._local, 'entities', [])
+        self._local.segment = segment
+        self._local.entities = []

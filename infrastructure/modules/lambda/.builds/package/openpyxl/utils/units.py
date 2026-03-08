@@ -3,7 +3,6 @@
 
 import math
 
-
 #constants
 
 DEFAULT_ROW_HEIGHT = 15.  # Default row height measured in point size.

@@ -1,12 +1,11 @@
 # Copyright (c) 2010-2024 openpyxl
 
+from openpyxl.utils import coordinate_to_tuple
 from openpyxl.xml.functions import (
     Element,
     SubElement,
     tostring,
 )
-
-from openpyxl.utils import coordinate_to_tuple
 
 vmlns = "urn:schemas-microsoft-com:vml"
 officens = "urn:schemas-microsoft-com:office:office"
@@ -80,11 +79,10 @@ def _shape_factory(row, column, height, width):
     style = ("position:absolute; "
              "margin-left:59.25pt;"
              "margin-top:1.5pt;"
-             "width:{width}px;"
-             "height:{height}px;"
+             f"width:{width}px;"
+             f"height:{height}px;"
              "z-index:1;"
-             "visibility:hidden").format(height=height,
-                                         width=width)
+             "visibility:hidden")
     attrs = {
         "type": "#_x0000_t202",
         "style": style,

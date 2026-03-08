@@ -6,10 +6,9 @@ carryover ledger creation when releasing with outstanding balances.
 """
 
 import logging
-from datetime import date, datetime, timezone
+from datetime import UTC, date, datetime
 from decimal import Decimal
 
-from shared.audit import log_audit
 from shared.events import publish_event
 from shared.exceptions import (
     BusinessRuleViolationError,
@@ -58,7 +57,7 @@ def confirm_payment(
     else:
         new_status = "partially_paid"
 
-    delegate_id_type = (
+    (
         req.delegate_id_type.value
         if hasattr(req, "delegate_id_type") and req.delegate_id_type and hasattr(req.delegate_id_type, "value")
         else getattr(req, "delegate_id_type", None)
@@ -107,7 +106,7 @@ def confirm_payment(
         request_id=request_id,
     )
 
-    confirmed_at = payment.get("created_at") or datetime.now(timezone.utc)
+    confirmed_at = payment.get("created_at") or datetime.now(UTC)
     outstanding = Decimal(str(updated_billing["balance_ngn"]))
 
     return {
@@ -158,22 +157,18 @@ def generate_release_note(
                 str(billing["container_id"]),
                 list(req.carton_tags),
             )
-            if total_cbm > Decimal("0"):
-                required_payment = (selected_cbm / total_cbm) * total_due
-            else:
-                required_payment = total_due
+            required_payment = selected_cbm / total_cbm * total_due if total_cbm > Decimal("0") else total_due
             if amount_paid < required_payment - _TOLERANCE:
                 raise BusinessRuleViolationError(
                     f"Insufficient payment for requested cartons. "
                     f"Required: {required_payment:.2f} NGN, Paid: {amount_paid:.2f} NGN",
                     rule_id="PAYMENT_REQUIRED",
                 )
-    elif payment_status == "unpaid":
-        if not req.release_with_outstanding:
-            raise BusinessRuleViolationError(
-                "Payment is required before generating a release note",
-                rule_id="PAYMENT_REQUIRED",
-            )
+    elif payment_status == "unpaid" and not req.release_with_outstanding:
+        raise BusinessRuleViolationError(
+            "Payment is required before generating a release note",
+            rule_id="PAYMENT_REQUIRED",
+        )
     # released_with_outstanding, waived — pass through
 
     if req.release_with_outstanding:

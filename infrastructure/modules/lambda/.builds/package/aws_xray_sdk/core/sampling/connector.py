@@ -1,15 +1,14 @@
 import binascii
 import os
 import time
-from datetime import datetime
 
 import botocore.session
+from aws_xray_sdk.core.context import Context
+from aws_xray_sdk.core.models.dummy_entities import DummySegment
 from botocore import UNSIGNED
 from botocore.client import Config
 
 from .sampling_rule import SamplingRule
-from aws_xray_sdk.core.models.dummy_entities import DummySegment
-from aws_xray_sdk.core.context import Context
 
 
 class ServiceConnector:

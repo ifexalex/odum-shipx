@@ -9,12 +9,11 @@ import keyword
 import typing
 import weakref
 from collections import OrderedDict, defaultdict, deque
+from collections.abc import Mapping
 from copy import deepcopy
 from itertools import zip_longest
 from types import BuiltinFunctionType, CodeType, FunctionType, GeneratorType, LambdaType, ModuleType
-from typing import Any, Mapping, TypeVar
-
-from typing_extensions import TypeAlias, TypeGuard
+from typing import Any, TypeAlias, TypeGuard, TypeVar
 
 from . import _repr, _typing_extra
 

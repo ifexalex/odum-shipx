@@ -11,7 +11,6 @@ Supports two trigger modes detected at runtime:
      GET /v1/platform/tenants/{id}/usage    — per-tenant usage breakdown
      GET /v1/platform/dashboard             — aggregated platform metrics
 """
-import json
 import logging
 import time
 import uuid

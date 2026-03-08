@@ -1,13 +1,14 @@
 # Copyright (c) 2010-2024 openpyxl
 
-from openpyxl.compat import safe_string
-from openpyxl.xml.functions import Element, SubElement, whitespace, XML_NS
-from openpyxl import LXML
-from openpyxl.utils.datetime import to_excel, to_ISO8601
 from datetime import timedelta
 
-from openpyxl.worksheet.formula import DataTableFormula, ArrayFormula
+from openpyxl import LXML
 from openpyxl.cell.rich_text import CellRichText
+from openpyxl.compat import safe_string
+from openpyxl.utils.datetime import to_excel, to_ISO8601
+from openpyxl.worksheet.formula import ArrayFormula, DataTableFormula
+from openpyxl.xml.functions import XML_NS, Element, SubElement, whitespace
+
 
 def _set_attributes(cell, styled=None):
     """
@@ -63,7 +64,7 @@ def etree_write_cell(xf, worksheet, cell, styled=None):
             value = None
 
         formula = SubElement(el, 'f', attrib)
-        if value is not None and not attrib.get('t') == "dataTable":
+        if value is not None and attrib.get('t') != 'dataTable':
             formula.text = value[1:]
             value = None
 
@@ -106,7 +107,7 @@ def lxml_write_cell(xf, worksheet, cell, styled=False):
                 value = None
 
             with xf.element('f', attrib):
-                if value is not None and not attrib.get('t') == "dataTable":
+                if value is not None and attrib.get('t') != 'dataTable':
                     xf.write(value[1:])
                     value = None
 

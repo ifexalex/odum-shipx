@@ -24,7 +24,6 @@ from collections import defaultdict
 from botocore.exceptions import IncompleteReadError, ReadTimeoutError
 from botocore.httpchecksum import AwsChunkedWrapper
 from botocore.utils import is_s3express_bucket
-
 from s3transfer.compat import SOCKET_ERROR, fallocate, rename_file
 
 MAX_PARTS = 10000
@@ -186,9 +185,7 @@ class FunctionContainer:
         self._kwargs = kwargs
 
     def __repr__(self):
-        return 'Function: {} with args {} and kwargs {}'.format(
-            self._func, self._args, self._kwargs
-        )
+        return f'Function: {self._func} with args {self._args} and kwargs {self._kwargs}'
 
     def __call__(self):
         return self._func(*self._args, **self._kwargs)

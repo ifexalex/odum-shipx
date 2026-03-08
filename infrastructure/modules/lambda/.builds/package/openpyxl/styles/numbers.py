@@ -3,12 +3,11 @@
 import re
 
 from openpyxl.descriptors import (
-    String,
-    Sequence,
     Integer,
+    Sequence,
+    String,
 )
 from openpyxl.descriptors.serialisable import Serialisable
-
 
 BUILTIN_FORMATS = {
     0: 'General',
@@ -125,9 +124,9 @@ def is_datetime(fmt):
 
     DATE = TIME = False
 
-    if any((x in fmt for x in 'dy')):
+    if any(x in fmt for x in 'dy'):
         DATE = True
-    if any((x in fmt for x in 'hs')):
+    if any(x in fmt for x in 'hs'):
         TIME = True
 
     if DATE and TIME:

@@ -1,11 +1,6 @@
 # Copyright (c) 2010-2024 openpyxl
 
-from openpyxl.descriptors import (
-    Bool,
-    Integer,
-    Typed,
-    Sequence
-)
+from openpyxl.descriptors import Bool, Integer, Sequence, Typed
 from openpyxl.descriptors.excel import ExtensionList
 from openpyxl.descriptors.serialisable import Serialisable
 

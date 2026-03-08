@@ -12,10 +12,6 @@
 # language governing permissions and limitations under the License.
 import os
 
-from botocore import xform_name
-from botocore.docs.bcdoc.restdoc import DocumentStructure
-from botocore.docs.utils import get_official_service_name
-
 from boto3.docs.action import ActionDocumenter
 from boto3.docs.attr import (
     document_attribute,
@@ -32,6 +28,9 @@ from boto3.docs.utils import (
     get_identifier_values_for_example,
 )
 from boto3.docs.waiter import WaiterResourceDocumenter
+from botocore import xform_name
+from botocore.docs.bcdoc.restdoc import DocumentStructure
+from botocore.docs.utils import get_official_service_name
 
 
 class ResourceDocumenter(BaseDocumenter):
@@ -91,9 +90,7 @@ class ResourceDocumenter(BaseDocumenter):
     def _add_description(self, section):
         official_service_name = get_official_service_name(self._service_model)
         section.write(
-            'A resource representing an {} {}'.format(
-                official_service_name, self._resource_name
-            )
+            f'A resource representing an {official_service_name} {self._resource_name}'
         )
 
     def _add_example(self, section, identifier_names):
@@ -103,19 +100,12 @@ class ResourceDocumenter(BaseDocumenter):
         section.style.new_line()
         section.style.new_line()
         section.write(
-            '{} = boto3.resource(\'{}\')'.format(
-                self._service_name, self._service_name
-            )
+            f'{self._service_name} = boto3.resource(\'{self._service_name}\')'
         )
         section.style.new_line()
         example_values = get_identifier_values_for_example(identifier_names)
         section.write(
-            '{} = {}.{}({})'.format(
-                xform_name(self._resource_name),
-                self._service_name,
-                self._resource_name,
-                example_values,
-            )
+            f'{xform_name(self._resource_name)} = {self._service_name}.{self._resource_name}({example_values})'
         )
         section.style.end_codeblock()
 

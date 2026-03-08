@@ -15,7 +15,7 @@ import logging
 from decimal import Decimal
 
 from shared.db import execute_with_tenant, execute_write_with_tenant
-from shared.encryption import decrypt_field, encrypt_field
+from shared.encryption import decrypt_field
 from shared.pagination import build_paginated_query, extract_page
 
 logger = logging.getLogger(__name__)

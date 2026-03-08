@@ -1,14 +1,13 @@
 import logging
 import sys
-from urllib.parse import urlparse, uses_netloc, quote_plus
+from urllib.parse import quote_plus, urlparse, uses_netloc
 
 import wrapt
-from sqlalchemy.sql.expression import ClauseElement
-
 from aws_xray_sdk.core import xray_recorder
 from aws_xray_sdk.core.patcher import _PATCHED_MODULES
 from aws_xray_sdk.core.utils import stacktrace
 from aws_xray_sdk.ext.util import unwrap
+from sqlalchemy.sql.expression import ClauseElement
 
 
 def _sql_meta(engine_instance, args):
@@ -25,16 +24,16 @@ def _sql_meta(engine_instance, args):
         if username:
             # Restore url encoded username
             quoted_username = quote_plus(username)
-            url = url._replace(netloc='{}@{}'.format(quoted_username, url.netloc))
+            url = url._replace(netloc=f'{quoted_username}@{url.netloc}')
         # Add Scheme to uses_netloc or // will be missing from url.
         uses_netloc.append(url.scheme)
         metadata['url'] = url.geturl()
         metadata['user'] = url.username
         metadata['database_type'] = engine_instance.engine.name
         try:
-            version = getattr(engine_instance.dialect, '{}_version'.format(engine_instance.engine.driver))
+            version = getattr(engine_instance.dialect, f'{engine_instance.engine.driver}_version')
             version_str = '.'.join(map(str, version))
-            metadata['driver_version'] = "{}-{}".format(engine_instance.engine.driver, version_str)
+            metadata['driver_version'] = f"{engine_instance.engine.driver}-{version_str}"
         except AttributeError:
             metadata['driver_version'] = engine_instance.engine.driver
         if engine_instance.dialect.server_version_info is not None:

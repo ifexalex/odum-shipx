@@ -1,33 +1,27 @@
 # Copyright (c) 2010-2024 openpyxl
 
-from openpyxl.descriptors.serialisable import Serialisable
 from openpyxl.descriptors import (
-    Typed,
-    Bool,
-    Integer,
-    Sequence,
     Alias,
+    Sequence,
+    Typed,
 )
 from openpyxl.descriptors.excel import ExtensionList
 from openpyxl.descriptors.nested import (
+    NestedBool,
     NestedNoneSet,
     NestedSet,
-    NestedBool,
-    NestedInteger,
-    NestedMinMax,
 )
 
+from ._3d import _3DBase
+from ._chart import ChartBase
+from .axis import ChartLines, NumericAxis, SeriesAxis, TextAxis
 from .descriptors import (
     NestedGapAmount,
     NestedOverlap,
 )
-from ._chart import ChartBase
-from ._3d import _3DBase
-from .axis import TextAxis, NumericAxis, SeriesAxis, ChartLines
-from .shapes import GraphicalProperties
-from .series import Series
-from .legend import Legend
 from .label import DataLabelList
+from .legend import Legend
+from .series import Series
 
 
 class _BarChartBase(ChartBase):

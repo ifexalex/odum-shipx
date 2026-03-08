@@ -5,25 +5,24 @@
 
 from warnings import warn
 
-from openpyxl.descriptors import Strict
-from openpyxl.descriptors.serialisable import Serialisable
-from openpyxl.descriptors.sequence import Sequence
 from openpyxl.descriptors import (
     Alias,
-    String,
-    Integer,
-    Float,
-    DateTime,
     Bool,
+    DateTime,
+    Float,
+    Integer,
+    Strict,
+    String,
 )
 from openpyxl.descriptors.nested import (
     NestedText,
 )
-
+from openpyxl.descriptors.sequence import Sequence
+from openpyxl.descriptors.serialisable import Serialisable
 from openpyxl.xml.constants import (
+    CPROPS_FMTID,
     CUSTPROPS_NS,
     VTYPES_NS,
-    CPROPS_FMTID,
 )
 
 from .core import NestedDateTime
@@ -72,7 +71,7 @@ class _CustomDocumentProperty(Serialisable):
 
         for k, v in kw.items():
             setattr(self, k, v)
-            setattr(self, "_typ", k) # ugh!
+            self._typ = k # ugh!
         for e in self.__elements__:
             if e not in kw:
                 setattr(self, e, None)
@@ -208,7 +207,7 @@ class CustomPropertyList(Strict):
         for prop in prop_list.property:
             attr = prop.type
 
-            typ = XML_MAPPING.get(attr, None)
+            typ = XML_MAPPING.get(attr)
             if not typ:
                 warn(f"Unknown type for {prop.name}")
                 continue

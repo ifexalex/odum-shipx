@@ -3,7 +3,6 @@ as well as some commonly used decorators.
 
 """
 
-import sys
 from functools import partial
 from inspect import isclass, signature
 from threading import Lock, RLock
@@ -494,7 +493,7 @@ def synchronized(wrapped):
 
                 if lock is None:
                     lock = RLock()
-                    setattr(context, "_synchronized_lock", lock)
+                    context._synchronized_lock = lock
 
         return lock
 

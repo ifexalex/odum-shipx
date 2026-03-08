@@ -1,23 +1,16 @@
 # Copyright (c) 2010-2024 openpyxl
 
-from openpyxl.descriptors.serialisable import Serialisable
 from openpyxl.descriptors import (
     Alias,
-    Typed,
-    String,
-    Float,
-    Integer,
     Bool,
-    NoneSet,
-    Set,
+    Integer,
+    String,
 )
 from openpyxl.descriptors.excel import (
-    ExtensionList,
-    HexBinary,
-    Guid,
-    Relation,
     Base64Binary,
+    HexBinary,
 )
+from openpyxl.descriptors.serialisable import Serialisable
 from openpyxl.utils.protection import hash_password
 
 

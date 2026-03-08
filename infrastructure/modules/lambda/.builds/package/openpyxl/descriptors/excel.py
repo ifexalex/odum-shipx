@@ -4,16 +4,16 @@
 Excel specific descriptors
 """
 
-from openpyxl.xml.constants import REL_NS
 from openpyxl.compat import safe_string
+from openpyxl.xml.constants import REL_NS
 from openpyxl.xml.functions import Element
 
 from . import (
+    Integer,
     MatchPattern,
     MinMax,
-    Integer,
-    String,
     Sequence,
+    String,
 )
 from .serialisable import Serialisable
 

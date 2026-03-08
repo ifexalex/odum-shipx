@@ -1,16 +1,15 @@
+import binascii
+import json
 import logging
 import os
-import binascii
-import time
 import string
+import time
 
-import json
-
+from ..exceptions.exceptions import AlreadyEndedException
 from ..utils.compat import annotation_value_types
 from ..utils.conversion import metadata_to_dict
-from .throwable import Throwable
 from . import http
-from ..exceptions.exceptions import AlreadyEndedException
+from .throwable import Throwable
 
 log = logging.getLogger(__name__)
 
@@ -40,7 +39,7 @@ class Entity:
         self.parent_id = None
 
         if self.name != name:
-            log.warning("Removing Segment/Subsugment Name invalid characters from {}.".format(name))
+            log.warning(f"Removing Segment/Subsugment Name invalid characters from {name}.")
 
         # sampling
         self.sampled = True
@@ -229,7 +228,7 @@ class Entity:
         self.add_fault_flag()
 
         if hasattr(exception, '_recorded'):
-            setattr(self, 'cause', getattr(exception, '_cause_id'))
+            self.cause = exception._cause_id
             return
 
         if not isinstance(self.cause, dict):

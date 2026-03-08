@@ -1,9 +1,10 @@
 from __future__ import annotations
 
 from collections import defaultdict
+from collections.abc import Callable, Iterable
 from copy import copy
 from functools import partial
-from typing import TYPE_CHECKING, Any, Callable, Iterable
+from typing import TYPE_CHECKING, Any
 
 from pydantic_core import CoreSchema, PydanticCustomError, to_jsonable_python
 from pydantic_core import core_schema as cs
@@ -133,7 +134,6 @@ def expand_grouped_metadata(annotations: Iterable[Any]) -> Iterable[Any]:
         ```
     """
     import annotated_types as at
-
     from pydantic.fields import FieldInfo  # circular import
 
     for annotation in annotations:

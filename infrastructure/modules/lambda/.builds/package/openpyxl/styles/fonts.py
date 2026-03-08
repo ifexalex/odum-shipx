@@ -1,27 +1,21 @@
 # Copyright (c) 2010-2024 openpyxl
 
 
-from openpyxl.descriptors import (
-    Alias,
-    Sequence,
-    Integer
+from openpyxl.compat import safe_string
+from openpyxl.descriptors import Alias
+from openpyxl.descriptors.nested import (
+    NestedBool,
+    NestedFloat,
+    NestedInteger,
+    NestedMinMax,
+    NestedNoneSet,
+    NestedString,
 )
 from openpyxl.descriptors.serialisable import Serialisable
-
-from openpyxl.descriptors.nested import (
-    NestedValue,
-    NestedBool,
-    NestedNoneSet,
-    NestedMinMax,
-    NestedString,
-    NestedInteger,
-    NestedFloat,
-)
-from .colors import ColorDescriptor, Color, BLACK
-
-from openpyxl.compat import safe_string
-from openpyxl.xml.functions import Element, SubElement
 from openpyxl.xml.constants import SHEET_MAIN_NS
+from openpyxl.xml.functions import Element
+
+from .colors import Color, ColorDescriptor
 
 
 def _no_value(tagname, value, namespace=None):

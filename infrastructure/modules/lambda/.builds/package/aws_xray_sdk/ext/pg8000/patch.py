@@ -1,8 +1,7 @@
 import pg8000
 import wrapt
-
-from aws_xray_sdk.ext.dbapi2 import XRayTracedConn
 from aws_xray_sdk.core.patcher import _PATCHED_MODULES
+from aws_xray_sdk.ext.dbapi2 import XRayTracedConn
 from aws_xray_sdk.ext.util import unwrap
 
 
@@ -25,7 +24,7 @@ def _xray_traced_connect(wrapped, instance, args, kwargs):
     }
 
     if hasattr(conn, '_server_version'):
-        version = getattr(conn, '_server_version')
+        version = conn._server_version
         if version:
             meta['database_version'] = str(version)
 

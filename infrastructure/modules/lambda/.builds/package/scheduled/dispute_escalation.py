@@ -8,7 +8,7 @@ For each tenant with dispute_escalation.enabled = true:
 """
 
 import logging
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 from aws_xray_sdk.core import patch_all
 
@@ -64,7 +64,7 @@ def _process_tenant(tenant_id: str) -> int:
         return 0
 
     auto_escalate_days = int(config.get("auto_escalate_days", _DEFAULT_ESCALATE_DAYS))
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
 
     disputes = _get_investigating_disputes(tenant_id)
     escalated = 0
@@ -73,7 +73,7 @@ def _process_tenant(tenant_id: str) -> int:
         try:
             updated_at = dispute["updated_at"]
             if updated_at.tzinfo is None:
-                updated_at = updated_at.replace(tzinfo=timezone.utc)
+                updated_at = updated_at.replace(tzinfo=UTC)
             days_investigating = (now - updated_at).days
 
             if days_investigating >= auto_escalate_days:

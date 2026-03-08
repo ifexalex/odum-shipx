@@ -1,19 +1,17 @@
 from __future__ import annotations as _annotations
 
 import warnings
+from collections.abc import Callable
 from contextlib import contextmanager
 from typing import (
     TYPE_CHECKING,
     Any,
-    Callable,
+    Literal,
+    Self,
     cast,
 )
 
 from pydantic_core import core_schema
-from typing_extensions import (
-    Literal,
-    Self,
-)
 
 from ..aliases import AliasGenerator
 from ..config import ConfigDict, ExtraValues, JsonDict, JsonEncoder, JsonSchemaExtraCallable

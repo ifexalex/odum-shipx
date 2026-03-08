@@ -1,17 +1,15 @@
 # Copyright (c) 2010-2024 openpyxl
 
-from openpyxl.xml.constants import DRAWING_NS
-from openpyxl.descriptors.serialisable import Serialisable
 from openpyxl.descriptors import (
-    Typed,
     Bool,
     Integer,
-    Set,
-    String,
-    Alias,
     NoneSet,
+    String,
+    Typed,
 )
 from openpyxl.descriptors.excel import ExtensionList as OfficeArtExtensionList
+from openpyxl.descriptors.serialisable import Serialisable
+from openpyxl.xml.constants import DRAWING_NS
 
 from .geometry import GroupTransform2D, Scene3D
 from .text import Hyperlink

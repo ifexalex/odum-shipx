@@ -6,7 +6,6 @@ import pytest
 
 from shared.exceptions import (
     BusinessRuleViolationError,
-    IllegalTransitionError,
     ResourceNotFoundError,
 )
 from shared.tenant_context import TenantContext, UserRole

@@ -3,12 +3,15 @@ AioHttp Middleware
 """
 from aiohttp import web
 from aiohttp.web_exceptions import HTTPException
-
 from aws_xray_sdk.core import xray_recorder
 from aws_xray_sdk.core.models import http
 from aws_xray_sdk.core.utils import stacktrace
-from aws_xray_sdk.ext.util import calculate_sampling_decision, \
-    calculate_segment_name, construct_xray_header, prepare_response_header
+from aws_xray_sdk.ext.util import (
+    calculate_sampling_decision,
+    calculate_segment_name,
+    construct_xray_header,
+    prepare_response_header,
+)
 
 
 @web.middleware

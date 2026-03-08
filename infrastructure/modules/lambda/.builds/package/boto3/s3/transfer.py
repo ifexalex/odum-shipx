@@ -126,6 +126,8 @@ import logging
 import threading
 from os import PathLike, fspath, getpid
 
+import boto3.s3.constants as constants
+from boto3.exceptions import RetriesExceededError, S3UploadFailedError
 from botocore.compat import HAS_CRT
 from botocore.exceptions import ClientError
 from s3transfer.exceptions import (
@@ -137,12 +139,8 @@ from s3transfer.manager import TransferManager
 from s3transfer.subscribers import BaseSubscriber
 from s3transfer.utils import OSUtils
 
-import boto3.s3.constants as constants
-from boto3.exceptions import RetriesExceededError, S3UploadFailedError
-
 if HAS_CRT:
     import awscrt.s3
-
     from boto3.crt import create_crt_transfer_manager
 
 KB = 1024

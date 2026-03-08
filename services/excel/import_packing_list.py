@@ -110,15 +110,20 @@ def parse_packing_list_xlsx(
         # c. Numeric fields (optional, positive)
         row_errors = []
         weight_dispatch, e = _parse_positive_decimal(ws.cell(row=row_idx, column=3).value, "Weight Dispatch (kg)", row_idx)
-        if e: row_errors.append(e)
+        if e:
+            row_errors.append(e)
         weight_actual, e = _parse_positive_decimal(ws.cell(row=row_idx, column=4).value, "Weight Actual (kg)", row_idx)
-        if e: row_errors.append(e)
+        if e:
+            row_errors.append(e)
         length_cm, e = _parse_positive_decimal(ws.cell(row=row_idx, column=5).value, "Length (cm)", row_idx)
-        if e: row_errors.append(e)
+        if e:
+            row_errors.append(e)
         width_cm, e = _parse_positive_decimal(ws.cell(row=row_idx, column=6).value, "Width (cm)", row_idx)
-        if e: row_errors.append(e)
+        if e:
+            row_errors.append(e)
         height_cm, e = _parse_positive_decimal(ws.cell(row=row_idx, column=7).value, "Height (cm)", row_idx)
-        if e: row_errors.append(e)
+        if e:
+            row_errors.append(e)
 
         if row_errors:
             errors.extend(row_errors)

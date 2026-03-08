@@ -1,27 +1,24 @@
 # Copyright (c) 2010-2024 openpyxl
 
 import atexit
+import os
 from collections import defaultdict
 from io import BytesIO
-import os
 from tempfile import NamedTemporaryFile
 from warnings import warn
 
-from openpyxl.xml.functions import xmlfile
-from openpyxl.xml.constants import SHEET_MAIN_NS
-
+from openpyxl.cell._writer import write_cell
 from openpyxl.comments.comment_sheet import CommentRecord
 from openpyxl.packaging.relationship import Relationship, RelationshipList
 from openpyxl.styles.differential import DifferentialStyle
+from openpyxl.xml.constants import SHEET_MAIN_NS
+from openpyxl.xml.functions import xmlfile
 
 from .dimensions import SheetDimension
 from .hyperlink import HyperlinkList
 from .merge import MergeCell, MergeCells
 from .related import Related
 from .table import TablePartList
-
-from openpyxl.cell._writer import write_cell
-
 
 ALL_TEMP_FILES = []
 
@@ -269,7 +266,7 @@ class WorksheetWriter:
                 if table.headerRowCount:
                     try:
                         row = self.ws[table.ref][0]
-                        for cell, col in zip(row, table.tableColumns):
+                        for cell, col in zip(row, table.tableColumns, strict=False):
                             if cell.data_type != "s":
                                 warn("File may not be readable: column headings must be strings.")
                             col.name = str(cell.value)

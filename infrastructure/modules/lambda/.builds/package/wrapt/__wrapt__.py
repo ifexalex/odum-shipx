@@ -4,9 +4,14 @@ wrappers.
 
 import os
 
-from .wrappers import BoundFunctionWrapper, CallableObjectProxy, FunctionWrapper
+from .wrappers import (
+    BoundFunctionWrapper,
+    CallableObjectProxy,
+    FunctionWrapper,
+    PartialCallableObjectProxy,
+    _FunctionWrapperBase,
+)
 from .wrappers import ObjectProxy as BaseObjectProxy
-from .wrappers import PartialCallableObjectProxy, _FunctionWrapperBase
 
 # Try to use C extensions if not disabled.
 
@@ -16,16 +21,14 @@ _use_extensions = not os.environ.get("WRAPT_DISABLE_EXTENSIONS")
 
 if _use_extensions:
     try:
-        from ._wrappers import (  # type: ignore[no-redef,import-not-found]
+        from ._wrappers import (  # type: ignore[no-redef,import-not-found]  # type: ignore[no-redef,import-not-found]
             BoundFunctionWrapper,
             CallableObjectProxy,
             FunctionWrapper,
-        )
-        from ._wrappers import ObjectProxy as BaseObjectProxy  # type: ignore[no-redef]
-        from ._wrappers import (  # type: ignore[no-redef,import-not-found]
             PartialCallableObjectProxy,
             _FunctionWrapperBase,
         )
+        from ._wrappers import ObjectProxy as BaseObjectProxy  # type: ignore[no-redef]
 
         _using_c_extension = True
     except ImportError:

@@ -62,9 +62,9 @@ class TraceHeader:
                     data[key] = entry[1]
 
             return cls(
-                root=header_dict.get(ROOT, None),
-                parent=header_dict.get(PARENT, None),
-                sampled=header_dict.get(SAMPLE, None),
+                root=header_dict.get(ROOT),
+                parent=header_dict.get(PARENT),
+                sampled=header_dict.get(SAMPLE),
                 data=data,
             )
 

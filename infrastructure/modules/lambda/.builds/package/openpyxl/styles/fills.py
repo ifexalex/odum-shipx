@@ -1,23 +1,19 @@
 
 # Copyright (c) 2010-2024 openpyxl
 
+from openpyxl.compat import safe_string
 from openpyxl.descriptors import (
-    Float,
-    Set,
     Alias,
+    Float,
+    MinMax,
     NoneSet,
     Sequence,
-    Integer,
-    MinMax,
+    Set,
 )
 from openpyxl.descriptors.serialisable import Serialisable
-from openpyxl.compat import safe_string
-
-from .colors import ColorDescriptor, Color
-
 from openpyxl.xml.functions import Element, localname
-from openpyxl.xml.constants import SHEET_MAIN_NS
 
+from .colors import Color, ColorDescriptor
 
 FILL_NONE = 'none'
 FILL_SOLID = 'solid'
@@ -153,7 +149,7 @@ def _assign_position(values):
     pos = set()
     for stop in values:
         if stop.position in pos:
-            raise ValueError("Duplicate position {0}".format(stop.position))
+            raise ValueError(f"Duplicate position {stop.position}")
         pos.add(stop.position)
 
     return values

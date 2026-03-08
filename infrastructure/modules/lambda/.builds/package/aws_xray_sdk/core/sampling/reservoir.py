@@ -61,7 +61,7 @@ class Reservoir:
         self._adjust_this_sec(now)
         # Don't borrow if the quota is available and fresh.
         if (self._quota is not None and self._quota >= 0 and
-                self._TTL is not None and self._TTL >= now):
+                self._TTL is not None and now <= self._TTL):
             if(self._taken_this_sec >= self._quota):
                 return ReservoirDecision.NO
 

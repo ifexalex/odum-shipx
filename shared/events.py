@@ -20,7 +20,7 @@ import json
 import logging
 import os
 import uuid
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 import boto3
 
@@ -57,7 +57,7 @@ def publish_event(
         The generated event_id (UUID v4 string).
     """
     event_id = str(uuid.uuid4())
-    occurred_at = datetime.now(timezone.utc).isoformat()
+    occurred_at = datetime.now(UTC).isoformat()
 
     detail = {
         "tenant_id": tenant_id,

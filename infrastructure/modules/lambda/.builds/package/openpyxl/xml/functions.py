@@ -12,48 +12,38 @@ from openpyxl import DEFUSEDXML, LXML
 
 if LXML is True:
     from lxml.etree import (
-    Element,
-    SubElement,
-    register_namespace,
-    QName,
-    xmlfile,
-    XMLParser,
+        XMLParser,
+        fromstring,
+        register_namespace,
+        tostring,
     )
-    from lxml.etree import fromstring, tostring
     # do not resolve entities
     safe_parser = XMLParser(resolve_entities=False)
     fromstring = partial(fromstring, parser=safe_parser)
 
 else:
-    from xml.etree.ElementTree import (
-    Element,
-    SubElement,
-    fromstring,
-    tostring,
-    QName,
-    register_namespace
-    )
-    from et_xmlfile import xmlfile
+    from xml.etree.ElementTree import fromstring, register_namespace, tostring
+
     if DEFUSEDXML is True:
         from defusedxml.ElementTree import fromstring
 
-from xml.etree.ElementTree import iterparse
+
 if DEFUSEDXML is True:
-    from defusedxml.ElementTree import iterparse
+    pass
 
 from openpyxl.xml.constants import (
-    CHART_NS,
-    DRAWING_NS,
-    SHEET_DRAWING_NS,
     CHART_DRAWING_NS,
-    SHEET_MAIN_NS,
-    REL_NS,
-    VTYPES_NS,
+    CHART_NS,
     COREPROPS_NS,
     CUSTPROPS_NS,
     DCTERMS_NS,
     DCTERMS_PREFIX,
-    XML_NS
+    DRAWING_NS,
+    REL_NS,
+    SHEET_DRAWING_NS,
+    SHEET_MAIN_NS,
+    VTYPES_NS,
+    XML_NS,
 )
 
 register_namespace(DCTERMS_PREFIX, DCTERMS_NS)

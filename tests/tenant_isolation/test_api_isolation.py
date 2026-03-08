@@ -5,10 +5,7 @@ the Cognito JWT claims, and that cross-tenant requests either return 404 or
 are never routed to another tenant's data.
 """
 import json
-from decimal import Decimal
 from unittest.mock import patch
-
-import pytest
 
 TENANT_A = "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa"
 TENANT_B = "bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb"

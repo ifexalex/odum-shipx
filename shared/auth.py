@@ -10,7 +10,12 @@ from functools import wraps
 from typing import Any
 
 from shared.distributed_cache import DistributedCache
-from shared.exceptions import AuthenticationRequiredError, ResourceNotFoundError, TenantOffboardedError, TenantSuspendedError
+from shared.exceptions import (
+    AuthenticationRequiredError,
+    ResourceNotFoundError,
+    TenantOffboardedError,
+    TenantSuspendedError,
+)
 from shared.tenant_context import PLATFORM_TENANT_ID, TenantContext, UserRole
 
 logger = logging.getLogger(__name__)

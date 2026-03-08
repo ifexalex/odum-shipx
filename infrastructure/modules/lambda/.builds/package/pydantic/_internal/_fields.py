@@ -5,12 +5,11 @@ import dataclasses
 import sys
 import warnings
 from copy import copy
-from functools import lru_cache
+from functools import cache
 from typing import TYPE_CHECKING, Any
 
-from pydantic_core import PydanticUndefined
-
 from pydantic.errors import PydanticUserError
+from pydantic_core import PydanticUndefined
 
 from . import _typing_extra
 from ._config import ConfigWrapper
@@ -73,7 +72,7 @@ def pydantic_general_metadata(**metadata: Any) -> BaseMetadata:
     return _general_metadata_cls()(metadata)  # type: ignore
 
 
-@lru_cache(maxsize=None)
+@cache
 def _general_metadata_cls() -> type[BaseMetadata]:
     """Do it this way to avoid importing `annotated_types` at import time."""
     from annotated_types import BaseMetadata
@@ -237,11 +236,7 @@ def collect_model_fields(  # noqa: C901
 def _is_finalvar_with_default_val(type_: type[Any], val: Any) -> bool:
     from ..fields import FieldInfo
 
-    if not is_finalvar(type_):
-        return False
-    elif val is PydanticUndefined:
-        return False
-    elif isinstance(val, FieldInfo) and (val.default is PydanticUndefined and val.default_factory is None):
+    if not is_finalvar(type_) or val is PydanticUndefined or isinstance(val, FieldInfo) and (val.default is PydanticUndefined and val.default_factory is None):
         return False
     else:
         return True

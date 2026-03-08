@@ -4,6 +4,7 @@ from __future__ import annotations as _annotations
 import base64
 import dataclasses as _dataclasses
 import re
+from collections.abc import Callable, Hashable, Iterator
 from datetime import date, datetime
 from decimal import Decimal
 from enum import Enum
@@ -11,16 +12,14 @@ from pathlib import Path
 from types import ModuleType
 from typing import (
     TYPE_CHECKING,
+    Annotated,
     Any,
-    Callable,
     ClassVar,
-    Dict,
-    FrozenSet,
     Generic,
-    Hashable,
-    Iterator,
-    List,
-    Set,
+    Literal,
+    Protocol,
+    TypeAlias,
+    TypeAliasType,
     TypeVar,
     Union,
     cast,
@@ -30,7 +29,7 @@ from uuid import UUID
 import annotated_types
 from annotated_types import BaseMetadata, MaxLen, MinLen
 from pydantic_core import CoreSchema, PydanticCustomError, core_schema
-from typing_extensions import Annotated, Literal, Protocol, TypeAlias, TypeAliasType, deprecated
+from typing_extensions import deprecated
 
 from ._internal import (
     _core_utils,
@@ -815,7 +814,7 @@ def conset(
     Returns:
         The wrapped set type.
     """
-    return Annotated[Set[item_type], annotated_types.Len(min_length or 0, max_length)]
+    return Annotated[set[item_type], annotated_types.Len(min_length or 0, max_length)]
 
 
 def confrozenset(
@@ -831,7 +830,7 @@ def confrozenset(
     Returns:
         The wrapped frozenset type.
     """
-    return Annotated[FrozenSet[item_type], annotated_types.Len(min_length or 0, max_length)]
+    return Annotated[frozenset[item_type], annotated_types.Len(min_length or 0, max_length)]
 
 
 AnyItemType = TypeVar('AnyItemType')
@@ -866,7 +865,7 @@ def conlist(
             ),
             code='removed-kwargs',
         )
-    return Annotated[List[item_type], annotated_types.Len(min_length or 0, max_length)]
+    return Annotated[list[item_type], annotated_types.Len(min_length or 0, max_length)]
 
 
 # ~~~~~~~~~~~~~~~~~~~~~~~~~~ IMPORT STRING TYPE ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -2784,15 +2783,7 @@ class _AllowAnyJson:
 
 if TYPE_CHECKING:
     # This seems to only be necessary for mypy
-    JsonValue: TypeAlias = Union[
-        List['JsonValue'],
-        Dict[str, 'JsonValue'],
-        str,
-        bool,
-        int,
-        float,
-        None,
-    ]
+    JsonValue: TypeAlias = list['JsonValue'] | dict[str, 'JsonValue'] | str | bool | int | float | None
     """A `JsonValue` is used to represent a value that can be serialized to JSON.
 
     It may be one of:
@@ -2841,8 +2832,8 @@ else:
         'JsonValue',
         Annotated[
             Union[
-                Annotated[List['JsonValue'], Tag('list')],
-                Annotated[Dict[str, 'JsonValue'], Tag('dict')],
+                Annotated[list['JsonValue'], Tag('list')],
+                Annotated[dict[str, 'JsonValue'], Tag('dict')],
                 Annotated[str, Tag('str')],
                 Annotated[bool, Tag('bool')],
                 Annotated[int, Tag('int')],

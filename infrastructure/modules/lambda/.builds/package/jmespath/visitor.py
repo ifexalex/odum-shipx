@@ -1,8 +1,8 @@
 import operator
+from numbers import Number
 
 from jmespath import functions
 from jmespath.compat import string_type
-from numbers import Number
 
 
 def _equals(x, y):
@@ -56,7 +56,7 @@ def _is_actual_number(x):
     return isinstance(x, Number)
 
 
-class Options(object):
+class Options:
     """Options to control how a JMESPath function is evaluated."""
     def __init__(self, dict_cls=None, custom_functions=None):
         #: The class to use when creating a dict.  The interpreter
@@ -71,7 +71,7 @@ class Options(object):
         self.custom_functions = custom_functions
 
 
-class _Expression(object):
+class _Expression:
     def __init__(self, expression, interpreter):
         self.expression = expression
         self.interpreter = interpreter
@@ -80,7 +80,7 @@ class _Expression(object):
         return self.interpreter.visit(node, *args, **kwargs)
 
 
-class Visitor(object):
+class Visitor:
     def __init__(self):
         self._method_cache = {}
 

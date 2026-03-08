@@ -1,13 +1,12 @@
 import logging
 
+from aws_xray_sdk.core import patch, xray_recorder
+from aws_xray_sdk.core.exceptions.exceptions import SegmentNameMissingException
 from django.apps import AppConfig
 
 from .conf import settings
 from .db import patch_db
 from .templates import patch_template
-from aws_xray_sdk.core import patch, xray_recorder
-from aws_xray_sdk.core.exceptions.exceptions import SegmentNameMissingException
-
 
 log = logging.getLogger(__name__)
 

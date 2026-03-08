@@ -2,7 +2,8 @@
 from __future__ import annotations
 
 import dataclasses
-from typing import Callable, Literal
+from collections.abc import Callable
+from typing import Literal
 
 from ._internal import _internal_dataclass
 
