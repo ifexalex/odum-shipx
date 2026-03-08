@@ -26,6 +26,7 @@ Environment variables:
     LOAD_TEST_CUSTOMER_TOKEN- JWT for customer role
 """
 
+import contextlib
 import os
 import random
 import string
@@ -241,11 +242,8 @@ class WriteHeavyUser(HttpUser):
             name="/v1/packing-lists [create]",
         ) as resp:
             if resp.status_code == 201:
-                try:
-                    data = resp.json()
-                    _SEEDED["packing_list_ids"].append(data["id"])
-                except Exception:
-                    pass
+                with contextlib.suppress(Exception):
+                    _SEEDED["packing_list_ids"].append(resp.json()["id"])
                 resp.success()
             elif resp.status_code in (400, 403, 422):
                 resp.success()  # Validation/auth errors are expected in load env
@@ -300,11 +298,8 @@ class WriteHeavyUser(HttpUser):
             name="/v1/claims [file]",
         ) as resp:
             if resp.status_code == 201:
-                try:
-                    data = resp.json()
-                    _SEEDED["claim_ids"].append(data["id"])
-                except Exception:
-                    pass
+                with contextlib.suppress(Exception):
+                    _SEEDED["claim_ids"].append(resp.json()["id"])
                 resp.success()
             elif resp.status_code in (400, 403, 404, 422):
                 resp.success()
@@ -355,11 +350,8 @@ class WriteHeavyUser(HttpUser):
             name="/v1/containers [create]",
         ) as resp:
             if resp.status_code == 201:
-                try:
-                    data = resp.json()
-                    _SEEDED["container_ids"].append(data["id"])
-                except Exception:
-                    pass
+                with contextlib.suppress(Exception):
+                    _SEEDED["container_ids"].append(resp.json()["id"])
                 resp.success()
             elif resp.status_code in (400, 403, 409, 422):
                 resp.success()
@@ -478,10 +470,8 @@ class WorkflowTaskSet(SequentialTaskSet):
             name="[workflow] step1: create container",
         ) as resp:
             if resp.status_code == 201:
-                try:
+                with contextlib.suppress(Exception):
                     self._container_id = resp.json()["id"]
-                except Exception:
-                    pass
                 resp.success()
             elif resp.status_code in (400, 403, 409, 422):
                 resp.success()
@@ -519,10 +509,8 @@ class WorkflowTaskSet(SequentialTaskSet):
             name="[workflow] step2: create packing list",
         ) as resp:
             if resp.status_code == 201:
-                try:
+                with contextlib.suppress(Exception):
                     self._pl_id = resp.json()["id"]
-                except Exception:
-                    pass
                 resp.success()
             elif resp.status_code in (400, 403, 422):
                 resp.success()
@@ -660,7 +648,7 @@ def on_quitting(environment, **kwargs):
             continue
         name = entry.name
         p95_ms = entry.get_response_time_percentile(0.95)
-        for tag, threshold, label in _TARGETS:
+        for tag, threshold, _label in _TARGETS:
             if tag in name:
                 status = "OK" if p95_ms <= threshold else "FAIL"
                 print(f"  {status:4s}  {name:<55s} p95={p95_ms:.0f}ms (target <{threshold}ms)")

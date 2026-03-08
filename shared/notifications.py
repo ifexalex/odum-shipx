@@ -211,11 +211,6 @@ def enqueue_notifications(
         template_data: Variables for the notification template.
         request_id: Correlation ID for tracing.
     """
-    try:
-        prefs = _get_notification_prefs(tenant_id)
-    except Exception:
-        prefs = {}
-
     # Fetch branding for tenant (use same cache path)
     try:
         rows = execute_with_tenant(

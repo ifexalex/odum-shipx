@@ -6,6 +6,7 @@ import pytest
 from shared.exceptions import (
     BusinessRuleViolationError,
     IllegalTransitionError,
+    InsufficientPermissionsError,
     ResourceNotFoundError,
 )
 from shared.tenant_context import TenantContext, UserRole
@@ -175,7 +176,7 @@ class TestUpdateContainerStatus:
         with (
             patch.object(service.repo, "get_container_by_id", return_value=container),
         ):
-            with pytest.raises(Exception):  # InsufficientPermissionsError
+            with pytest.raises(InsufficientPermissionsError):
                 service.update_container_status(
                     TENANT_ID, "container-001", "sealed",
                     extra={}, actor_id="u", ctx=_ctx(UserRole.NIGERIA_OFFICE_STAFF)
@@ -193,7 +194,7 @@ class TestUpdateContainerStatus:
         with (
             patch.object(service.repo, "get_container_by_id", return_value=container),
         ):
-            with pytest.raises(Exception):  # InsufficientPermissionsError
+            with pytest.raises(InsufficientPermissionsError):
                 service.update_container_status(
                     TENANT_ID, "container-001", "arrived",
                     extra={}, actor_id="u", ctx=_ctx(UserRole.CHINA_OFFICE_STAFF)

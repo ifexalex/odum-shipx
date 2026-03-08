@@ -75,7 +75,8 @@ class TestSortFieldAllowlist:
         """Verify build_paginated_query rejects arbitrary sort fields."""
         from shared.pagination import build_paginated_query
 
-        with pytest.raises(Exception):
+        from shared.exceptions import ValidationError
+        with pytest.raises(ValidationError):
             build_paginated_query(
                 "SELECT * FROM billing WHERE 1=1",
                 None, 20,

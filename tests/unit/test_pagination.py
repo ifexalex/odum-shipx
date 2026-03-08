@@ -95,7 +95,7 @@ class TestBuildPaginatedQuery:
         assert "cursor_sort_value" not in params
 
     def test_invalid_sort_field_raises_validation_error(self):
-        with pytest.raises(Exception):  # ValidationError or subclass
+        with pytest.raises(ValidationError):
             build_paginated_query(self._BASE, None, 20, sort_field="injected; DROP TABLE")
 
     def test_valid_sort_fields_accepted(self):
