@@ -78,7 +78,6 @@ jobs:
     needs: lint
     permissions:
       contents: read
-      security-events: write
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -96,9 +95,4 @@ jobs:
           scan-type: 'fs'
           scan-ref: '.'
           severity: 'CRITICAL,HIGH'
-          format: 'sarif'
-          output: 'trivy-results.sarif'
-      - name: Upload Trivy results to GitHub Security
-        uses: github/codeql-action/upload-sarif@v3
-        with:
-          sarif_file: 'trivy-results.sarif'
+          format: 'table'
