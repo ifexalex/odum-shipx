@@ -232,7 +232,7 @@ class TestIdempotency:
         assert resp["statusCode"] == 201
         # store_idempotency must have been called with the key and the response
         mock_store.assert_called_once()
-        stored_key, stored_resp = mock_store.call_args[0]
+        stored_key, stored_resp, *_ = mock_store.call_args[0]
         assert stored_key == "idem-key-002"
         assert stored_resp["statusCode"] == 201
 

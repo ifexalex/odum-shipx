@@ -421,7 +421,7 @@ class TestDeactivateUser:
             result = service.deactivate_user(TENANT_ID, "user-001", actor_id="admin")
 
         assert result["status"] == "deactivated"
-        cognito.disable_user.assert_called_once_with("cog-001")
+        cognito.disable_user.assert_called_once_with("staff@acme.com")
 
     def test_already_deactivated_raises(self):
         from services.tenant_management import service
