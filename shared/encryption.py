@@ -100,7 +100,8 @@ def decrypt_field(token: str | None) -> str | None:
             raise RuntimeError(f"KMS decrypted data key must be exactly 32 bytes, got {len(resp['Plaintext'])}")
         fernet_key = base64.urlsafe_b64encode(resp["Plaintext"])
         f = Fernet(fernet_key)
-        return f.decrypt(ciphertext).decode("utf-8")
+        plaintext: bytes = f.decrypt(ciphertext)
+        return plaintext.decode("utf-8")
     except Exception as exc:
         logger.error("Field decryption failed: %s", exc)
         raise
