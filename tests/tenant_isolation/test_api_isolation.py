@@ -82,9 +82,7 @@ class TestBillingApiTenantIsolation:
             patch("shared.metering.record_usage"),
         ):
             mock_svc.get_billing_for_customer.side_effect = ResourceNotFoundError("billing", "billing-B-001")
-            resp = handler.lambda_handler(
-                _event("GET", "/v1/billing/billing-B-001", TENANT_A), {}
-            )
+            resp = handler.lambda_handler(_event("GET", "/v1/billing/billing-B-001", TENANT_A), {})
 
         assert resp["statusCode"] == 404
         body = json.loads(resp["body"])
@@ -123,9 +121,7 @@ class TestPackingListApiTenantIsolation:
             patch("shared.metering.record_usage"),
         ):
             mock_svc.get_packing_list.side_effect = ResourceNotFoundError("packing_list", "pl-B-001")
-            resp = handler.lambda_handler(
-                _event("GET", "/v1/packing-lists/pl-B-001", TENANT_A), {}
-            )
+            resp = handler.lambda_handler(_event("GET", "/v1/packing-lists/pl-B-001", TENANT_A), {})
 
         assert resp["statusCode"] == 404
 
@@ -139,15 +135,18 @@ class TestPackingListApiTenantIsolation:
             patch("shared.metering.record_usage"),
         ):
             mock_svc.create_packing_list.return_value = {
-                "id": "pl-001", "tenant_id": TENANT_B, "status": "draft",
+                "id": "pl-001",
+                "tenant_id": TENANT_B,
+                "status": "draft",
                 "packing_list_number": "PL-001",
             }
             resp = handler.lambda_handler(
                 _event(
-                    "POST", "/v1/packing-lists", TENANT_B,
+                    "POST",
+                    "/v1/packing-lists",
+                    TENANT_B,
                     # valid body: items requires min_length=1 with a description
-                    body={"customer_id": "cust-001", "container_id": "cont-001",
-                          "items": [{"description": "Carton 1"}]},
+                    body={"customer_id": "cust-001", "container_id": "cont-001", "items": [{"description": "Carton 1"}]},
                     role="china_office_staff",
                 ),
                 {},
@@ -190,9 +189,7 @@ class TestClaimsApiTenantIsolation:
             patch("shared.metering.record_usage"),
         ):
             mock_svc.get_claim.side_effect = ResourceNotFoundError("damage_claim", "claim-B-001")
-            resp = handler.lambda_handler(
-                _event("GET", "/v1/claims/claim-B-001", TENANT_A), {}
-            )
+            resp = handler.lambda_handler(_event("GET", "/v1/claims/claim-B-001", TENANT_A), {})
 
         assert resp["statusCode"] == 404
 
@@ -215,9 +212,7 @@ class TestSuspendedTenantApiBlocked:
 
         monkeypatch.setattr("shared.auth._check_tenant_active", _raise)
         with patch("shared.metering.record_usage"):
-            resp = handler.lambda_handler(
-                _event("GET", "/v1/billing/customer-001", TENANT_B), {}
-            )
+            resp = handler.lambda_handler(_event("GET", "/v1/billing/customer-001", TENANT_B), {})
 
         assert resp["statusCode"] == 403
 
@@ -250,7 +245,9 @@ class TestRoleEnforcementWithinTenant:
         with patch("shared.metering.record_usage"):
             resp = handler.lambda_handler(
                 _event(
-                    "GET", "/v1/billing/customer-001", TENANT_A,
+                    "GET",
+                    "/v1/billing/customer-001",
+                    TENANT_A,
                     role="warehouse_attendant",
                 ),
                 {},
@@ -265,7 +262,9 @@ class TestRoleEnforcementWithinTenant:
         with patch("shared.metering.record_usage"):
             resp = handler.lambda_handler(
                 _event(
-                    "POST", "/v1/packing-lists", TENANT_A,
+                    "POST",
+                    "/v1/packing-lists",
+                    TENANT_A,
                     body={"customer_id": "c", "container_id": "co", "items": []},
                     role="customer",
                 ),

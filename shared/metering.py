@@ -21,15 +21,17 @@ from shared.events import publish_event
 logger = logging.getLogger(__name__)
 
 # Allowlist matching the metric_type CHECK constraint in the usage_record table
-VALID_METRIC_TYPES = frozenset({
-    "api_calls",
-    "containers_processed",
-    "storage_bytes",
-    "users_active",
-    "sms_sent",
-    "whatsapp_sent",
-    "emails_sent",
-})
+VALID_METRIC_TYPES = frozenset(
+    {
+        "api_calls",
+        "containers_processed",
+        "storage_bytes",
+        "users_active",
+        "sms_sent",
+        "whatsapp_sent",
+        "emails_sent",
+    }
+)
 
 
 def record_usage(
@@ -86,7 +88,9 @@ def record_usage(
     except Exception as exc:
         logger.warning(
             "Usage DB write failed for tenant=%s metric=%s: %s",
-            tenant_id, metric_type, exc,
+            tenant_id,
+            metric_type,
+            exc,
         )
 
     try:
@@ -104,5 +108,7 @@ def record_usage(
     except Exception as exc:
         logger.warning(
             "Usage event publish failed for tenant=%s metric=%s: %s",
-            tenant_id, metric_type, exc,
+            tenant_id,
+            metric_type,
+            exc,
         )

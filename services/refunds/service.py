@@ -8,6 +8,7 @@ and credit application to future billing.
 import logging
 from datetime import UTC, datetime
 from decimal import Decimal
+from typing import Any
 
 from shared.events import publish_event
 from shared.exceptions import (
@@ -35,11 +36,11 @@ _REJECTABLE_STATES = {"pending_review", "pending_approval"}
 
 def create_refund(
     tenant_id: str,
-    req,
+    req: Any,
     actor_id: str,
-    ctx,
+    ctx: Any,
     request_id: str = "",
-) -> dict:
+) -> dict[str, Any]:
     """Create a new refund request."""
     if req.billing_id:
         billing = repo.get_billing_by_id(tenant_id, req.billing_id)
@@ -56,31 +57,23 @@ def create_refund(
 
     customer_choice = None
     if req.customer_choice:
-        customer_choice = (
-            req.customer_choice.value
-            if hasattr(req.customer_choice, "value")
-            else str(req.customer_choice)
-        )
+        customer_choice = req.customer_choice.value if hasattr(req.customer_choice, "value") else str(req.customer_choice)
 
-    refund_type = (
-        req.refund_type.value
-        if hasattr(req.refund_type, "value")
-        else str(req.refund_type)
-    )
+    refund_type = req.refund_type.value if hasattr(req.refund_type, "value") else str(req.refund_type)
 
     refund = repo.create_refund_request(
         tenant_id,
         {
-            "tenant_id":          tenant_id,
-            "customer_id":        customer_id,
-            "billing_id":         req.billing_id,
-            "damage_claim_id":    req.damage_claim_id,
-            "refund_type":        refund_type,
-            "amount_ngn":         req.amount_requested_ngn,
-            "reason":             req.notes or "",
-            "status":             "pending_review",
-            "customer_choice":    customer_choice,
-            "requested_by":       actor_id,
+            "tenant_id": tenant_id,
+            "customer_id": customer_id,
+            "billing_id": req.billing_id,
+            "damage_claim_id": req.damage_claim_id,
+            "refund_type": refund_type,
+            "amount_ngn": req.amount_requested_ngn,
+            "reason": req.notes or "",
+            "status": "pending_review",
+            "customer_choice": customer_choice,
+            "requested_by": actor_id,
         },
     )
 
@@ -94,18 +87,16 @@ def create_refund(
 
 def list_refunds(
     tenant_id: str,
-    ctx,
-    filters: dict,
+    ctx: Any,
+    filters: dict[str, Any],
     limit: int,
-    cursor: dict | None,
-) -> tuple[list[dict], str | None, bool]:
-    rows, next_cursor, has_more = repo.list_refund_requests(
-        tenant_id, filters, limit, cursor
-    )
+    cursor: dict[str, Any] | None,
+) -> tuple[list[dict[str, Any]], str | None, bool]:
+    rows, next_cursor, has_more = repo.list_refund_requests(tenant_id, filters, limit, cursor)
     return [_fmt_refund(r) for r in rows], next_cursor, has_more
 
 
-def get_refund(tenant_id: str, refund_id: str, ctx) -> dict:
+def get_refund(tenant_id: str, refund_id: str, ctx: Any) -> dict[str, Any]:
     refund = repo.get_refund_request_by_id(tenant_id, refund_id)
     if not refund:
         raise ResourceNotFoundError("refund_request", refund_id)
@@ -113,9 +104,7 @@ def get_refund(tenant_id: str, refund_id: str, ctx) -> dict:
     if ctx.role == UserRole.CUSTOMER:
         customer = repo.get_customer_by_user_id(tenant_id, ctx.user_id)
         if not customer or str(customer["id"]) != str(refund["customer_id"]):
-            raise InsufficientPermissionsError(
-                "Customers may only view their own refund requests"
-            )
+            raise InsufficientPermissionsError("Customers may only view their own refund requests")
 
     return _fmt_refund(refund)
 
@@ -128,10 +117,10 @@ def get_refund(tenant_id: str, refund_id: str, ctx) -> dict:
 def accounts_review(
     tenant_id: str,
     refund_id: str,
-    req,
+    req: Any,
     actor_id: str,
-    ctx,
-) -> dict:
+    ctx: Any,
+) -> dict[str, Any]:
     """Accounts team reviews debt and decides whether to advance the refund."""
     refund = repo.get_refund_request_by_id(tenant_id, refund_id)
     if not refund:
@@ -149,9 +138,7 @@ def accounts_review(
     customer_id = str(refund["customer_id"])
     carryovers = repo.get_outstanding_carryovers_for_customer(tenant_id, customer_id)
     unpaid_total = repo.get_unpaid_billing_totals_for_customer(tenant_id, customer_id)
-    carryover_total = sum(
-        Decimal(str(c["carryover_amount_ngn"])) for c in carryovers
-    )
+    carryover_total = sum(Decimal(str(c["carryover_amount_ngn"])) for c in carryovers)
     total_debt = carryover_total + unpaid_total
     has_debt = total_debt > Decimal("0")
 
@@ -160,18 +147,18 @@ def accounts_review(
         extra = {
             "has_outstanding_debt": has_debt,
             "outstanding_debt_ngn": total_debt,
-            "debt_check_passed":    True,
-            "debt_check_notes":     req.debt_check_notes,
+            "debt_check_passed": True,
+            "debt_check_notes": req.debt_check_notes,
         }
     else:
         new_status = "rejected"
         extra = {
             "has_outstanding_debt": has_debt,
             "outstanding_debt_ngn": total_debt,
-            "debt_check_passed":    False,
-            "debt_check_notes":     req.debt_check_notes,
-            "rejected_by":          actor_id,
-            "rejection_reason":     req.debt_check_notes,
+            "debt_check_passed": False,
+            "debt_check_notes": req.debt_check_notes,
+            "rejected_by": actor_id,
+            "rejection_reason": req.debt_check_notes,
         }
 
     updated = repo.update_refund_status(tenant_id, refund_id, new_status, extra=extra)
@@ -186,11 +173,11 @@ def accounts_review(
 def approve_refund(
     tenant_id: str,
     refund_id: str,
-    req,
+    req: Any,
     actor_id: str,
-    ctx,
+    ctx: Any,
     request_id: str = "",
-) -> dict:
+) -> dict[str, Any]:
     """Approve a refund request with role-based authority enforcement."""
     refund = repo.get_refund_request_by_id(tenant_id, refund_id)
     if not refund:
@@ -211,15 +198,12 @@ def approve_refund(
     if refund_type == "cbm_correction":
         required_level = "head_of_finance"
         if ctx.role != UserRole.TENANT_ADMIN:
-            raise InsufficientPermissionsError(
-                "CBM correction refunds require head_of_finance (tenant_admin) approval"
-            )
+            raise InsufficientPermissionsError("CBM correction refunds require head_of_finance (tenant_admin) approval")
     elif refund_type == "damage_or_loss" and amount_ngn > _HOF_THRESHOLD_NGN:
         required_level = "head_of_finance"
         if ctx.role != UserRole.TENANT_ADMIN:
             raise InsufficientPermissionsError(
-                f"Damage/loss refunds above {_HOF_THRESHOLD_NGN} NGN require "
-                "head_of_finance (tenant_admin) approval"
+                f"Damage/loss refunds above {_HOF_THRESHOLD_NGN} NGN require " "head_of_finance (tenant_admin) approval"
             )
     else:
         # overpayment or small damage_or_loss — manager level, any approved role
@@ -234,9 +218,9 @@ def approve_refund(
     # On immediate refund: adjust billing total if billing_id exists
     if final_status == "processed" and refund.get("billing_id"):
         billing_id = str(refund["billing_id"])
-        updated_billing = repo.reduce_billing_total(
-            tenant_id, billing_id, amount_approved
-        )
+        updated_billing = repo.reduce_billing_total(tenant_id, billing_id, amount_approved)
+        if updated_billing is None:
+            raise RuntimeError("reduce_billing_total returned None unexpectedly")
         # Create new overpayment refund if reduction caused new negative balance
         new_balance = Decimal(str(updated_billing.get("balance_ngn", "0")))
         if new_balance < Decimal("-0.01"):
@@ -244,11 +228,11 @@ def approve_refund(
             repo.create_overpayment_refund_request(
                 tenant_id,
                 {
-                    "tenant_id":   tenant_id,
+                    "tenant_id": tenant_id,
                     "customer_id": str(refund["customer_id"]),
-                    "billing_id":  billing_id,
-                    "amount_ngn":  overpayment,
-                    "reason":      f"Overpayment after refund adjustment on refund {refund_id}",
+                    "billing_id": billing_id,
+                    "amount_ngn": overpayment,
+                    "reason": f"Overpayment after refund adjustment on refund {refund_id}",
                 },
             )
 
@@ -259,9 +243,9 @@ def approve_refund(
         final_status,
         extra={
             "amount_approved_ngn": amount_approved,
-            "approval_level":      required_level,
-            "approved_by":         actor_id,
-            "approved_at":         now,
+            "approval_level": required_level,
+            "approved_by": actor_id,
+            "approved_at": now,
         },
     )
 
@@ -270,11 +254,11 @@ def approve_refund(
         detail_type="RefundApproved",
         tenant_id=tenant_id,
         payload={
-            "refund_id":       refund_id,
-            "refund_type":     refund_type,
+            "refund_id": refund_id,
+            "refund_type": refund_type,
             "amount_approved": str(amount_approved),
-            "final_status":    final_status,
-            "customer_id":     str(refund["customer_id"]),
+            "final_status": final_status,
+            "customer_id": str(refund["customer_id"]),
         },
         request_id=request_id,
     )
@@ -292,8 +276,8 @@ def reject_refund(
     refund_id: str,
     rejection_reason: str,
     actor_id: str,
-    ctx,
-) -> dict:
+    ctx: Any,
+) -> dict[str, Any]:
     refund = repo.get_refund_request_by_id(tenant_id, refund_id)
     if not refund:
         raise ResourceNotFoundError("refund_request", refund_id)
@@ -311,7 +295,7 @@ def reject_refund(
         refund_id,
         "rejected",
         extra={
-            "rejected_by":      actor_id,
+            "rejected_by": actor_id,
             "rejection_reason": rejection_reason,
         },
     )
@@ -323,17 +307,17 @@ def reject_refund(
 # ---------------------------------------------------------------------------
 
 
-def _fmt_refund(row: dict) -> dict:
+def _fmt_refund(row: dict[str, Any]) -> dict[str, Any]:
     amount_approved = None
     if row.get("amount_approved_ngn") is not None:
         amount_approved = Decimal(str(row["amount_approved_ngn"]))
 
     return {
-        "id":                   str(row["id"]),
-        "status":               row["status"],
-        "refund_type":          row.get("refund_type") or "",
+        "id": str(row["id"]),
+        "status": row["status"],
+        "refund_type": row.get("refund_type") or "",
         "amount_requested_ngn": Decimal(str(row["amount_ngn"])),
-        "amount_approved_ngn":  amount_approved,
-        "customer_choice":      row.get("customer_choice"),
-        "created_at":           row["created_at"],
+        "amount_approved_ngn": amount_approved,
+        "customer_choice": row.get("customer_choice"),
+        "created_at": row["created_at"],
     }

@@ -20,6 +20,7 @@ Usage in a handler:
 
 import json
 import logging
+from typing import Any
 
 from shared.db import get_connection
 
@@ -57,7 +58,7 @@ def _ensure_table() -> None:
     _TABLE_CREATED = True
 
 
-def check_idempotency(key: str | None, tenant_id: str = "") -> dict | None:
+def check_idempotency(key: str | None, tenant_id: str = "") -> dict[str, Any] | None:
     """Look up a previously stored response by idempotency key, scoped to tenant.
 
     Args:
@@ -87,8 +88,7 @@ def check_idempotency(key: str | None, tenant_id: str = "") -> dict | None:
             )
             row = cur.fetchone()
         if row:
-            logger.info("Idempotency hit for key '%s' tenant '%s' — returning cached response",
-                        key, tenant_id)
+            logger.info("Idempotency hit for key '%s' tenant '%s' — returning cached response", key, tenant_id)
             return dict(row["response_body"])
         return None
     except Exception as exc:
@@ -97,7 +97,7 @@ def check_idempotency(key: str | None, tenant_id: str = "") -> dict | None:
         return None
 
 
-def store_idempotency(key: str | None, response: dict, tenant_id: str = "") -> None:
+def store_idempotency(key: str | None, response: dict[str, Any], tenant_id: str = "") -> None:
     """Persist a response under the given idempotency key, scoped to tenant.
 
     Uses ON CONFLICT DO NOTHING so a race between concurrent identical

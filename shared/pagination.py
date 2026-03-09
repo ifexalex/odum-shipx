@@ -10,6 +10,7 @@ the next page query to use inequality filters rather than OFFSET.
 import base64
 import json
 import logging
+from typing import Any
 
 from shared.exceptions import ValidationError
 
@@ -32,7 +33,7 @@ ALLOWED_SORT_FIELDS: set[str] = {
 }
 
 
-def encode_cursor(data: dict) -> str:
+def encode_cursor(data: dict[str, Any]) -> str:
     """Base64url-encode a cursor dict.
 
     Args:
@@ -45,7 +46,7 @@ def encode_cursor(data: dict) -> str:
     return base64.urlsafe_b64encode(json.dumps(data, default=str).encode()).decode()
 
 
-def decode_cursor(cursor: str | None) -> dict | None:
+def decode_cursor(cursor: str | None) -> dict[str, Any] | None:
     """Decode a cursor string back to a dict.
 
     Args:
@@ -59,13 +60,14 @@ def decode_cursor(cursor: str | None) -> dict | None:
     try:
         padded = cursor + "=" * (-len(cursor) % 4)
         decoded = base64.urlsafe_b64decode(padded).decode()
-        return json.loads(decoded)
+        result: dict[str, Any] = json.loads(decoded)
+        return result
     except Exception:
         logger.warning("Malformed cursor received — treating as first page")
         return None
 
 
-def parse_pagination_params(query_params: dict) -> tuple[dict | None, int]:
+def parse_pagination_params(query_params: dict[str, Any]) -> tuple[dict[str, Any] | None, int]:
     """Extract and validate pagination parameters from a query string dict.
 
     Args:
@@ -93,11 +95,11 @@ def parse_pagination_params(query_params: dict) -> tuple[dict | None, int]:
 
 def build_paginated_query(
     base_query: str,
-    cursor: dict | None,
+    cursor: dict[str, Any] | None,
     limit: int,
     sort_field: str = "created_at",
     sort_direction: str = "DESC",
-) -> tuple[str, dict]:
+) -> tuple[str, dict[str, Any]]:
     """Append cursor-based pagination clauses to a base SQL query.
 
     The base_query should NOT include ORDER BY or LIMIT. It may include
@@ -125,7 +127,7 @@ def build_paginated_query(
     # Comparison operator flips with direction
     op = "<" if direction == "DESC" else ">"
 
-    params: dict = {"limit": limit + 1}  # fetch one extra to determine has_more
+    params: dict[str, Any] = {"limit": limit + 1}  # fetch one extra to determine has_more
     query = base_query
 
     if cursor:
@@ -145,10 +147,10 @@ def build_paginated_query(
 
 
 def extract_page(
-    rows: list[dict],
+    rows: list[dict[str, Any]],
     limit: int,
     sort_field: str = "created_at",
-) -> tuple[list[dict], str | None, bool]:
+) -> tuple[list[dict[str, Any]], str | None, bool]:
     """Slice the fetched rows and build the next cursor.
 
     Call this after executing a query built with build_paginated_query.
@@ -166,10 +168,12 @@ def extract_page(
 
     if has_more and page:
         last = page[-1]
-        next_cursor = encode_cursor({
-            "sort_value": last.get(sort_field),
-            "id": last.get("id"),
-        })
+        next_cursor = encode_cursor(
+            {
+                "sort_value": last.get(sort_field),
+                "id": last.get("id"),
+            }
+        )
     else:
         next_cursor = None
 

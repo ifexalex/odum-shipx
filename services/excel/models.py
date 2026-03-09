@@ -27,4 +27,4 @@ class ImportResult(BaseModel):
     imported: int
     errors: int
     packing_lists_created: int
-    error_details: list[dict]
+    error_details: list[dict[str, object]]

@@ -14,6 +14,7 @@ import json
 import logging
 import time
 import uuid
+from typing import Any
 
 from aws_xray_sdk.core import patch_all
 
@@ -54,17 +55,13 @@ _ALL_AUTH_ROLES = (
 # ---------------------------------------------------------------------------
 
 
-def lambda_handler(event: dict, context) -> dict:
+def lambda_handler(event: dict[str, Any], context: Any) -> dict[str, Any]:
     start_time = time.time()
-    request_id = (
-        event.get("requestContext", {}).get("requestId") or str(uuid.uuid4())
-    )
+    request_id = event.get("requestContext", {}).get("requestId") or str(uuid.uuid4())
     http = event.get("requestContext", {}).get("http", {})
     method = http.get("method", "")
     path = http.get("path", "")
-    ip_address = (
-        event.get("requestContext", {}).get("identity", {}).get("sourceIp")
-    )
+    ip_address = event.get("requestContext", {}).get("identity", {}).get("sourceIp")
 
     try:
         parts = path.strip("/").split("/")
@@ -74,13 +71,7 @@ def lambda_handler(event: dict, context) -> dict:
             return _handle_health_check(request_id)
 
         # Public customer tracking lookup — no JWT required
-        if (
-            method == "GET"
-            and len(parts) == 3
-            and parts[0] == "v1"
-            and parts[1] == "shipments"
-            and _qp(event, "phone")
-        ):
+        if method == "GET" and len(parts) == 3 and parts[0] == "v1" and parts[1] == "shipments" and _qp(event, "phone"):
             response = _handle_public_tracking(event, parts[2], request_id)
             return response
 
@@ -135,15 +126,15 @@ def lambda_handler(event: dict, context) -> dict:
 # ---------------------------------------------------------------------------
 
 
-def _parse_body(event: dict) -> dict:
+def _parse_body(event: dict[str, Any]) -> dict[str, Any]:
     raw = event.get("body") or "{}"
     try:
-        return json.loads(raw)
+        return json.loads(raw)  # type: ignore[no-any-return]
     except json.JSONDecodeError:
         return {}
 
 
-def _qp(event: dict, key: str, default=None):
+def _qp(event: dict[str, Any], key: str, default: Any = None) -> Any:
     return (event.get("queryStringParameters") or {}).get(key, default)
 
 
@@ -152,16 +143,19 @@ def _qp(event: dict, key: str, default=None):
 # ---------------------------------------------------------------------------
 
 
-def _handle_health_check(request_id: str) -> dict:
+def _handle_health_check(request_id: str) -> dict[str, Any]:
     import datetime
+
     return {
         "statusCode": 200,
         "headers": {"Content-Type": "application/json"},
-        "body": __import__("json").dumps({
-            "status":    "healthy",
-            "version":   "1.0.0",
-            "timestamp": datetime.datetime.now(datetime.UTC).isoformat(),
-        }),
+        "body": __import__("json").dumps(
+            {
+                "status": "healthy",
+                "version": "1.0.0",
+                "timestamp": datetime.datetime.now(datetime.UTC).isoformat(),
+            }
+        ),
     }
 
 
@@ -170,7 +164,7 @@ def _handle_health_check(request_id: str) -> dict:
 # ---------------------------------------------------------------------------
 
 
-def _handle_public_tracking(event: dict, tracking_code: str, request_id: str) -> dict:
+def _handle_public_tracking(event: dict[str, Any], tracking_code: str, request_id: str) -> dict[str, Any]:
     phone = _qp(event, "phone", "")
     result = service.get_shipment_by_code_and_phone(tracking_code, phone)
     return success(result, request_id=request_id)
@@ -181,7 +175,15 @@ def _handle_public_tracking(event: dict, tracking_code: str, request_id: str) ->
 # ---------------------------------------------------------------------------
 
 
-def _dispatch(event, method, path, parts, ctx, request_id, ip_address):
+def _dispatch(
+    event: dict[str, Any],
+    method: str,
+    path: str,
+    parts: list[str],
+    ctx: Any,
+    request_id: str,
+    ip_address: str | None,
+) -> dict[str, Any]:
     if len(parts) < 2 or parts[0] != "v1":
         raise ResourceNotFoundError("route", path)
 
@@ -201,7 +203,14 @@ def _dispatch(event, method, path, parts, ctx, request_id, ip_address):
 # ---------------------------------------------------------------------------
 
 
-def _container_routes(event, parts, method, ctx, request_id, ip_address):
+def _container_routes(
+    event: dict[str, Any],
+    parts: list[str],
+    method: str,
+    ctx: Any,
+    request_id: str,
+    ip_address: str | None,
+) -> dict[str, Any]:
     tenant_id = ctx.tenant_id
     container_id = parts[2] if len(parts) > 2 else None
     action = parts[3] if len(parts) > 3 else None
@@ -212,7 +221,8 @@ def _container_routes(event, parts, method, ctx, request_id, ip_address):
             ctx.assert_role(UserRole.CHINA_OFFICE_STAFF)
             body = _parse_body(event)
             result = service.create_container(
-                tenant_id, body,
+                tenant_id,
+                body,
                 actor_id=ctx.user_id,
                 request_id=request_id,
                 ip_address=ip_address,
@@ -233,9 +243,7 @@ def _container_routes(event, parts, method, ctx, request_id, ip_address):
                 filters["q"] = _qp(event, "q")
             limit = int(_qp(event, "limit", 50))
             cursor = decode_cursor(_qp(event, "cursor"))
-            page, next_cursor, has_more = service.list_containers(
-                tenant_id, filters, limit, cursor
-            )
+            page, next_cursor, has_more = service.list_containers(tenant_id, filters, limit, cursor)
             return paginated(page, next_cursor, has_more, request_id=request_id)
 
     else:
@@ -251,13 +259,12 @@ def _container_routes(event, parts, method, ctx, request_id, ip_address):
             if action == "status" and method == "PATCH":
                 body = _parse_body(event)
                 new_status = body.get("new_status", "")
-                extra = {
-                    k: body.get(k)
-                    for k in ("ship_date", "actual_arrival_date", "notes")
-                    if body.get(k)
-                }
+                extra = {k: body.get(k) for k in ("ship_date", "actual_arrival_date", "notes") if body.get(k)}
                 result = service.update_container_status(
-                    tenant_id, container_id, new_status, extra,
+                    tenant_id,
+                    container_id,
+                    new_status,
+                    extra,
                     actor_id=ctx.user_id,
                     ctx=ctx,
                     request_id=request_id,
@@ -273,7 +280,14 @@ def _container_routes(event, parts, method, ctx, request_id, ip_address):
 # ---------------------------------------------------------------------------
 
 
-def _shipment_routes(event, parts, method, ctx, request_id, ip_address):
+def _shipment_routes(
+    event: dict[str, Any],
+    parts: list[str],
+    method: str,
+    ctx: Any,
+    request_id: str,
+    ip_address: str | None,
+) -> dict[str, Any]:
     tenant_id = ctx.tenant_id
 
     # GET /v1/shipments (list — all auth roles, customer filtered)
@@ -286,9 +300,7 @@ def _shipment_routes(event, parts, method, ctx, request_id, ip_address):
             filters["tracking_code"] = _qp(event, "tracking_code")
         limit = int(_qp(event, "limit", 50))
         cursor = decode_cursor(_qp(event, "cursor"))
-        page, next_cursor, has_more = service.list_shipments(
-            tenant_id, filters, limit, cursor, ctx
-        )
+        page, next_cursor, has_more = service.list_shipments(tenant_id, filters, limit, cursor, ctx)
         return paginated(page, next_cursor, has_more, request_id=request_id)
 
     raise ResourceNotFoundError("route", "/".join(parts))

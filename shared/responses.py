@@ -23,11 +23,11 @@ def _standard_headers(request_id: str = "") -> dict[str, str]:
 
 
 def success(
-    data: dict | list,
+    data: dict[str, Any] | list[Any],
     status_code: int = 200,
-    meta: dict | None = None,
+    meta: dict[str, Any] | None = None,
     request_id: str = "",
-) -> dict:
+) -> dict[str, Any]:
     """Format a successful response.
 
     Returns:
@@ -45,10 +45,10 @@ def success(
 
 
 def created(
-    data: dict,
+    data: dict[str, Any],
     location: str,
     request_id: str = "",
-) -> dict:
+) -> dict[str, Any]:
     """Format a 201 Created response with a Location header (§1.3)."""
     headers = _standard_headers(request_id)
     headers["Location"] = location
@@ -59,7 +59,7 @@ def created(
     }
 
 
-def no_content(request_id: str = "") -> dict:
+def no_content(request_id: str = "") -> dict[str, Any]:
     """Format a 204 No Content response (used for DELETE)."""
     return {
         "statusCode": 204,
@@ -69,12 +69,12 @@ def no_content(request_id: str = "") -> dict:
 
 
 def paginated(
-    data: list,
+    data: list[Any],
     cursor: str | None,
     has_more: bool,
     total_count: int | None = None,
     request_id: str = "",
-) -> dict:
+) -> dict[str, Any]:
     """Format a paginated list response.
 
     Pagination meta is nested under body["meta"]["pagination"].
@@ -101,7 +101,7 @@ def error_response(
     error: LogisticsBaseError,
     instance: str = "",
     request_id: str = "",
-) -> dict:
+) -> dict[str, Any]:
     """Format an RFC 7807 Problem Details error response from a LogisticsBaseError.
 
     RFC 7807 fields:
@@ -130,10 +130,10 @@ def error_response(
 
 
 def validation_error(
-    errors: list[dict],
+    errors: list[dict[str, Any]],
     instance: str = "",
     request_id: str = "",
-) -> dict:
+) -> dict[str, Any]:
     """Format a 422 Validation Error response with field-level details (RFC 7807)."""
     problem: dict[str, Any] = {
         "type": "https://errors.logistics-api.com/validation-error",

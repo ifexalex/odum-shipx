@@ -109,10 +109,7 @@ class TestEmailRendering:
     def test_html_includes_template_data(self):
         from services.notification.service import render_email_html
 
-        html = render_email_html(
-            self._BRANDING, "shipment_update", None,
-            {"tracking_code": "TRK-XYZ-001"}
-        )
+        html = render_email_html(self._BRANDING, "shipment_update", None, {"tracking_code": "TRK-XYZ-001"})
         assert "TRK-XYZ-001" in html
 
     def test_text_contains_company_name(self):
@@ -124,19 +121,13 @@ class TestEmailRendering:
     def test_text_includes_template_data(self):
         from services.notification.service import render_email_text
 
-        text = render_email_text(
-            self._BRANDING, "shipment_update", None,
-            {"amount": "50000.00"}
-        )
+        text = render_email_text(self._BRANDING, "shipment_update", None, {"amount": "50000.00"})
         assert "50000.00" in text
 
     def test_text_none_values_omitted(self):
         from services.notification.service import render_email_text
 
-        text = render_email_text(
-            self._BRANDING, "shipment_update", None,
-            {"tracking_code": "TRK-001", "empty_field": None}
-        )
+        text = render_email_text(self._BRANDING, "shipment_update", None, {"tracking_code": "TRK-001", "empty_field": None})
         assert "None" not in text
 
 
@@ -172,6 +163,4 @@ class TestWhatsAppComponents:
         from services.notification.service import WA_TEMPLATE_MAP
 
         for event in NotificationEvent:
-            assert event.value in WA_TEMPLATE_MAP, (
-                f"NotificationEvent.{event.name} missing from WA_TEMPLATE_MAP"
-            )
+            assert event.value in WA_TEMPLATE_MAP, f"NotificationEvent.{event.name} missing from WA_TEMPLATE_MAP"

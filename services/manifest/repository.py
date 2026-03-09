@@ -11,6 +11,7 @@ Notes:
 """
 
 import logging
+from typing import Any
 
 from shared.db import execute_with_tenant, execute_write_with_tenant
 from shared.pagination import build_paginated_query, extract_page
@@ -23,7 +24,7 @@ logger = logging.getLogger(__name__)
 # ---------------------------------------------------------------------------
 
 
-def get_manifest_by_id(tenant_id: str, manifest_id: str) -> dict | None:
+def get_manifest_by_id(tenant_id: str, manifest_id: str) -> dict[str, Any] | None:
     """Fetch manifest row joined with container_number."""
     rows = execute_with_tenant(
         tenant_id,
@@ -42,10 +43,10 @@ def get_manifest_by_id(tenant_id: str, manifest_id: str) -> dict | None:
 
 def list_manifests(
     tenant_id: str,
-    filters: dict,
+    filters: dict[str, Any],
     limit: int = 50,
-    cursor: dict | None = None,
-) -> tuple[list[dict], str | None, bool]:
+    cursor: dict[str, Any] | None = None,
+) -> tuple[list[dict[str, Any]], str | None, bool]:
     """Paginated manifest list with optional filters.
 
     Supported filters: verification_status, container_id.
@@ -53,7 +54,7 @@ def list_manifests(
     build_paginated_query's appended ORDER BY / cursor conditions.
     """
     conditions = ["tenant_id = %(tenant_id)s"]
-    extra: dict = {"tenant_id": tenant_id}
+    extra: dict[str, Any] = {"tenant_id": tenant_id}
 
     if filters.get("verification_status"):
         conditions.append("verification_status = %(verification_status)s")
@@ -69,7 +70,7 @@ def list_manifests(
     return extract_page(rows, limit)
 
 
-def get_customer_summaries(tenant_id: str, manifest_id: str) -> list[dict]:
+def get_customer_summaries(tenant_id: str, manifest_id: str) -> list[dict[str, Any]]:
     """Aggregate approved packing list items per customer for a manifest.
 
     Returns one row per customer with:
@@ -111,7 +112,7 @@ def set_manifest_verified(
     manifest_id: str,
     verified_by: str,
     notes: str | None = None,
-) -> dict:
+) -> dict[str, Any] | None:
     return execute_write_with_tenant(
         tenant_id,
         """
@@ -137,7 +138,7 @@ def set_manifest_discrepancies_found(
     tenant_id: str,
     manifest_id: str,
     verified_by: str,
-) -> dict:
+) -> dict[str, Any] | None:
     return execute_write_with_tenant(
         tenant_id,
         """
@@ -158,7 +159,7 @@ def set_manifest_discrepancies_found(
 # ---------------------------------------------------------------------------
 
 
-def get_item_by_carton_tag(tenant_id: str, carton_tag: str) -> dict | None:
+def get_item_by_carton_tag(tenant_id: str, carton_tag: str) -> dict[str, Any] | None:
     """Look up packing_list_id + tracking_code from a carton tag.
 
     packing_list_item has no RLS — join through packing_list for tenant scope.
@@ -177,7 +178,7 @@ def get_item_by_carton_tag(tenant_id: str, carton_tag: str) -> dict | None:
     return rows[0] if rows else None
 
 
-def create_missing_item(tenant_id: str, data: dict) -> dict:
+def create_missing_item(tenant_id: str, data: dict[str, Any]) -> dict[str, Any] | None:
     return execute_write_with_tenant(
         tenant_id,
         """

@@ -17,7 +17,8 @@ def upgrade() -> None:
     # ---------------------------------------------------------------------------
     # 1. cbm_dispute — disputes against CBM measurements on a billing invoice (7 statuses)
     # ---------------------------------------------------------------------------
-    op.execute("""
+    op.execute(
+        """
         CREATE TABLE cbm_dispute (
             id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
             tenant_id UUID NOT NULL REFERENCES tenant(id) ON DELETE RESTRICT,
@@ -43,7 +44,8 @@ def upgrade() -> None:
             created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
             updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
         )
-    """)
+    """
+    )
     op.execute("CREATE INDEX idx_cbm_dispute_tenant ON cbm_dispute(tenant_id)")
     op.execute("CREATE INDEX idx_cbm_dispute_billing ON cbm_dispute(billing_id)")
     op.execute("CREATE INDEX idx_cbm_dispute_tenant_status ON cbm_dispute(tenant_id, status)")
@@ -51,7 +53,8 @@ def upgrade() -> None:
     # ---------------------------------------------------------------------------
     # 2. damage_claim — physical damage claims; cartons_affected stored as TEXT[] (6 statuses)
     # ---------------------------------------------------------------------------
-    op.execute("""
+    op.execute(
+        """
         CREATE TABLE damage_claim (
             id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
             tenant_id UUID NOT NULL REFERENCES tenant(id) ON DELETE RESTRICT,
@@ -75,7 +78,8 @@ def upgrade() -> None:
             created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
             updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
         )
-    """)
+    """
+    )
     op.execute("CREATE INDEX idx_damage_claim_tenant ON damage_claim(tenant_id)")
     op.execute("CREATE INDEX idx_damage_claim_tenant_customer ON damage_claim(tenant_id, customer_id)")
     op.execute("CREATE INDEX idx_damage_claim_tenant_status ON damage_claim(tenant_id, status)")
@@ -83,7 +87,8 @@ def upgrade() -> None:
     # ---------------------------------------------------------------------------
     # 3. claim_evidence — S3-backed photos / supporting documents for damage claims
     # ---------------------------------------------------------------------------
-    op.execute("""
+    op.execute(
+        """
         CREATE TABLE claim_evidence (
             id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
             damage_claim_id UUID NOT NULL REFERENCES damage_claim(id) ON DELETE CASCADE,
@@ -94,13 +99,15 @@ def upgrade() -> None:
             uploaded_by UUID REFERENCES tenant_user(id),
             created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
         )
-    """)
+    """
+    )
     op.execute("CREATE INDEX idx_claim_evidence_claim ON claim_evidence(damage_claim_id)")
 
     # ---------------------------------------------------------------------------
     # 4. claim_resolution — outcome record for a damage claim with approval level
     # ---------------------------------------------------------------------------
-    op.execute("""
+    op.execute(
+        """
         CREATE TABLE claim_resolution (
             id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
             damage_claim_id UUID NOT NULL REFERENCES damage_claim(id) ON DELETE RESTRICT,
@@ -117,14 +124,16 @@ def upgrade() -> None:
             notes TEXT,
             created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
         )
-    """)
+    """
+    )
     op.execute("CREATE INDEX idx_claim_resolution_claim ON claim_resolution(damage_claim_id)")
     op.execute("CREATE INDEX idx_claim_resolution_tenant ON claim_resolution(tenant_id)")
 
     # ---------------------------------------------------------------------------
     # 5. missing_item — items that cannot be located in the warehouse (5 statuses)
     # ---------------------------------------------------------------------------
-    op.execute("""
+    op.execute(
+        """
         CREATE TABLE missing_item (
             id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
             tenant_id UUID NOT NULL REFERENCES tenant(id) ON DELETE RESTRICT,
@@ -148,7 +157,8 @@ def upgrade() -> None:
             created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
             updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
         )
-    """)
+    """
+    )
     op.execute("CREATE INDEX idx_missing_item_tenant ON missing_item(tenant_id)")
     op.execute("CREATE INDEX idx_missing_item_manifest ON missing_item(manifest_id)")
     op.execute("CREATE INDEX idx_missing_item_tenant_status ON missing_item(tenant_id, status)")
@@ -156,7 +166,8 @@ def upgrade() -> None:
     # ---------------------------------------------------------------------------
     # 6. seized_item — items confiscated by customs or other authorities (4 recovery states)
     # ---------------------------------------------------------------------------
-    op.execute("""
+    op.execute(
+        """
         CREATE TABLE seized_item (
             id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
             tenant_id UUID NOT NULL REFERENCES tenant(id) ON DELETE RESTRICT,
@@ -181,7 +192,8 @@ def upgrade() -> None:
             created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
             updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
         )
-    """)
+    """
+    )
     op.execute("CREATE INDEX idx_seized_item_tenant ON seized_item(tenant_id)")
     op.execute("CREATE INDEX idx_seized_item_container ON seized_item(container_id)")
     op.execute("CREATE INDEX idx_seized_item_tenant_status ON seized_item(tenant_id, recovery_status)")
@@ -190,7 +202,8 @@ def upgrade() -> None:
     # 7. release_note — authorisation document for warehouse carton pickup
     #    Supports partial release via self-referential parent_release_note_id FK
     # ---------------------------------------------------------------------------
-    op.execute("""
+    op.execute(
+        """
         CREATE TABLE release_note (
             id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
             tenant_id UUID NOT NULL REFERENCES tenant(id) ON DELETE RESTRICT,
@@ -216,7 +229,8 @@ def upgrade() -> None:
             updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
             UNIQUE (tenant_id, reference_number)
         )
-    """)
+    """
+    )
     op.execute("CREATE INDEX idx_release_note_tenant ON release_note(tenant_id)")
     op.execute("CREATE INDEX idx_release_note_tenant_billing ON release_note(tenant_id, billing_id)")
     op.execute("CREATE INDEX idx_release_note_tenant_customer ON release_note(tenant_id, customer_id)")
@@ -225,7 +239,8 @@ def upgrade() -> None:
     # ---------------------------------------------------------------------------
     # 8. pickup_record — records who collected cartons and identity verification
     # ---------------------------------------------------------------------------
-    op.execute("""
+    op.execute(
+        """
         CREATE TABLE pickup_record (
             id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
             tenant_id UUID NOT NULL REFERENCES tenant(id) ON DELETE RESTRICT,
@@ -245,7 +260,8 @@ def upgrade() -> None:
             notes TEXT,
             created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
         )
-    """)
+    """
+    )
     op.execute("CREATE INDEX idx_pickup_record_tenant ON pickup_record(tenant_id)")
     op.execute("CREATE INDEX idx_pickup_record_release_note ON pickup_record(release_note_id)")
     op.execute("CREATE INDEX idx_pickup_record_customer ON pickup_record(customer_id)")
@@ -253,7 +269,8 @@ def upgrade() -> None:
     # ---------------------------------------------------------------------------
     # 9. refund_request — full refund workflow including debt check + payout details (7 statuses)
     # ---------------------------------------------------------------------------
-    op.execute("""
+    op.execute(
+        """
         CREATE TABLE refund_request (
             id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
             tenant_id UUID NOT NULL REFERENCES tenant(id) ON DELETE RESTRICT,
@@ -287,7 +304,8 @@ def upgrade() -> None:
             created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
             updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
         )
-    """)
+    """
+    )
     op.execute("CREATE INDEX idx_refund_request_tenant ON refund_request(tenant_id)")
     op.execute("CREATE INDEX idx_refund_request_tenant_customer ON refund_request(tenant_id, customer_id)")
     op.execute("CREATE INDEX idx_refund_request_tenant_status ON refund_request(tenant_id, status)")
@@ -296,7 +314,8 @@ def upgrade() -> None:
     # 10. storage_fee_log — daily storage accrual; UNIQUE (billing_id, accrual_date)
     #     Partial index on is_billed for efficient unbilled accrual queries
     # ---------------------------------------------------------------------------
-    op.execute("""
+    op.execute(
+        """
         CREATE TABLE storage_fee_log (
             id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
             tenant_id UUID NOT NULL REFERENCES tenant(id) ON DELETE RESTRICT,
@@ -314,19 +333,18 @@ def upgrade() -> None:
             created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
             UNIQUE (billing_id, accrual_date)
         )
-    """)
+    """
+    )
     op.execute("CREATE INDEX idx_storage_fee_log_tenant ON storage_fee_log(tenant_id)")
     op.execute("CREATE INDEX idx_storage_fee_log_billing ON storage_fee_log(billing_id)")
     op.execute("CREATE INDEX idx_storage_fee_log_accrual ON storage_fee_log(tenant_id, accrual_date)")
-    op.execute(
-        "CREATE INDEX idx_storage_fee_log_unbilled ON storage_fee_log(tenant_id, is_billed) "
-        "WHERE is_billed = FALSE"
-    )
+    op.execute("CREATE INDEX idx_storage_fee_log_unbilled ON storage_fee_log(tenant_id, is_billed) " "WHERE is_billed = FALSE")
 
     # ---------------------------------------------------------------------------
     # 11. carryover_ledger — outstanding balance carried forward to the next shipment
     # ---------------------------------------------------------------------------
-    op.execute("""
+    op.execute(
+        """
         CREATE TABLE carryover_ledger (
             id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
             tenant_id UUID NOT NULL REFERENCES tenant(id) ON DELETE RESTRICT,
@@ -346,7 +364,8 @@ def upgrade() -> None:
             created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
             updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
         )
-    """)
+    """
+    )
     op.execute("CREATE INDEX idx_carryover_ledger_tenant ON carryover_ledger(tenant_id)")
     op.execute("CREATE INDEX idx_carryover_ledger_customer ON carryover_ledger(tenant_id, customer_id)")
     op.execute("CREATE INDEX idx_carryover_ledger_status ON carryover_ledger(tenant_id, status)")
@@ -354,7 +373,8 @@ def upgrade() -> None:
     # ---------------------------------------------------------------------------
     # 12. charge_type — tenant-configurable catalogue of miscellaneous charge types
     # ---------------------------------------------------------------------------
-    op.execute("""
+    op.execute(
+        """
         CREATE TABLE charge_type (
             id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
             tenant_id UUID NOT NULL REFERENCES tenant(id) ON DELETE CASCADE,
@@ -367,7 +387,8 @@ def upgrade() -> None:
             updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
             UNIQUE (tenant_id, name)
         )
-    """)
+    """
+    )
     op.execute("CREATE INDEX idx_charge_type_tenant ON charge_type(tenant_id)")
 
 

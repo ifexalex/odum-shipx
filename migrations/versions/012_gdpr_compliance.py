@@ -24,40 +24,20 @@ def upgrade() -> None:
     # ---------------------------------------------------------------------------
     # customer — right to erasure + consent tracking
     # ---------------------------------------------------------------------------
-    op.execute(
-        "ALTER TABLE customer ADD COLUMN IF NOT EXISTS anonymised_at TIMESTAMPTZ"
-    )
-    op.execute(
-        "ALTER TABLE customer ADD COLUMN IF NOT EXISTS consent_given_at TIMESTAMPTZ"
-    )
-    op.execute(
-        "ALTER TABLE customer ADD COLUMN IF NOT EXISTS notification_consent TEXT[] DEFAULT '{}'"
-    )
+    op.execute("ALTER TABLE customer ADD COLUMN IF NOT EXISTS anonymised_at TIMESTAMPTZ")
+    op.execute("ALTER TABLE customer ADD COLUMN IF NOT EXISTS consent_given_at TIMESTAMPTZ")
+    op.execute("ALTER TABLE customer ADD COLUMN IF NOT EXISTS notification_consent TEXT[] DEFAULT '{}'")
 
     # ---------------------------------------------------------------------------
     # tenant_user — consent tracking
     # ---------------------------------------------------------------------------
-    op.execute(
-        "ALTER TABLE tenant_user ADD COLUMN IF NOT EXISTS consent_given_at TIMESTAMPTZ"
-    )
-    op.execute(
-        "ALTER TABLE tenant_user ADD COLUMN IF NOT EXISTS marketing_consent BOOLEAN DEFAULT FALSE"
-    )
+    op.execute("ALTER TABLE tenant_user ADD COLUMN IF NOT EXISTS consent_given_at TIMESTAMPTZ")
+    op.execute("ALTER TABLE tenant_user ADD COLUMN IF NOT EXISTS marketing_consent BOOLEAN DEFAULT FALSE")
 
 
 def downgrade() -> None:
-    op.execute(
-        "ALTER TABLE tenant_user DROP COLUMN IF EXISTS marketing_consent"
-    )
-    op.execute(
-        "ALTER TABLE tenant_user DROP COLUMN IF EXISTS consent_given_at"
-    )
-    op.execute(
-        "ALTER TABLE customer DROP COLUMN IF EXISTS notification_consent"
-    )
-    op.execute(
-        "ALTER TABLE customer DROP COLUMN IF EXISTS consent_given_at"
-    )
-    op.execute(
-        "ALTER TABLE customer DROP COLUMN IF EXISTS anonymised_at"
-    )
+    op.execute("ALTER TABLE tenant_user DROP COLUMN IF EXISTS marketing_consent")
+    op.execute("ALTER TABLE tenant_user DROP COLUMN IF EXISTS consent_given_at")
+    op.execute("ALTER TABLE customer DROP COLUMN IF EXISTS notification_consent")
+    op.execute("ALTER TABLE customer DROP COLUMN IF EXISTS consent_given_at")
+    op.execute("ALTER TABLE customer DROP COLUMN IF EXISTS anonymised_at")

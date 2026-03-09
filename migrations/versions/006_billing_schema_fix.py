@@ -22,7 +22,8 @@ def upgrade() -> None:
     # billing — replace status CHECK + add new columns
     # ---------------------------------------------------------------------------
     op.execute("ALTER TABLE billing DROP CONSTRAINT billing_status_check")
-    op.execute("""
+    op.execute(
+        """
         ALTER TABLE billing ADD CONSTRAINT billing_status_check
         CHECK (status IN (
             'unpaid',
@@ -32,19 +33,18 @@ def upgrade() -> None:
             'waived',
             'released_with_outstanding'
         ))
-    """)
+    """
+    )
     op.execute("ALTER TABLE billing ALTER COLUMN status SET DEFAULT 'unpaid'")
     op.execute("ALTER TABLE billing ADD COLUMN billed_at TIMESTAMPTZ")
-    op.execute(
-        "ALTER TABLE billing ADD COLUMN released_with_outstanding "
-        "BOOLEAN NOT NULL DEFAULT FALSE"
-    )
+    op.execute("ALTER TABLE billing ADD COLUMN released_with_outstanding " "BOOLEAN NOT NULL DEFAULT FALSE")
 
     # ---------------------------------------------------------------------------
     # cbm_dispute — replace status CHECK + add new columns
     # ---------------------------------------------------------------------------
     op.execute("ALTER TABLE cbm_dispute DROP CONSTRAINT cbm_dispute_status_check")
-    op.execute("""
+    op.execute(
+        """
         ALTER TABLE cbm_dispute ADD CONSTRAINT cbm_dispute_status_check
         CHECK (status IN (
             'submitted',
@@ -55,41 +55,38 @@ def upgrade() -> None:
             'resolved_no_change',
             'closed'
         ))
-    """)
+    """
+    )
     op.execute("ALTER TABLE cbm_dispute ALTER COLUMN status SET DEFAULT 'submitted'")
     op.execute("ALTER TABLE cbm_dispute ADD COLUMN acknowledged_at TIMESTAMPTZ")
-    op.execute(
-        "ALTER TABLE cbm_dispute ADD COLUMN customer_measured_cbm DECIMAL(12, 6)"
-    )
+    op.execute("ALTER TABLE cbm_dispute ADD COLUMN customer_measured_cbm DECIMAL(12, 6)")
 
 
 def downgrade() -> None:
     # Restore original constraints
-    op.execute(
-        "ALTER TABLE cbm_dispute DROP COLUMN IF EXISTS customer_measured_cbm"
-    )
-    op.execute(
-        "ALTER TABLE cbm_dispute DROP COLUMN IF EXISTS acknowledged_at"
-    )
+    op.execute("ALTER TABLE cbm_dispute DROP COLUMN IF EXISTS customer_measured_cbm")
+    op.execute("ALTER TABLE cbm_dispute DROP COLUMN IF EXISTS acknowledged_at")
     op.execute("ALTER TABLE cbm_dispute DROP CONSTRAINT cbm_dispute_status_check")
-    op.execute("""
+    op.execute(
+        """
         ALTER TABLE cbm_dispute ADD CONSTRAINT cbm_dispute_status_check
         CHECK (status IN (
             'open', 'under_review', 'evidence_submitted',
             'agreed', 'rejected', 'resolved', 'escalated'
         ))
-    """)
+    """
+    )
     op.execute("ALTER TABLE cbm_dispute ALTER COLUMN status SET DEFAULT 'open'")
 
-    op.execute(
-        "ALTER TABLE billing DROP COLUMN IF EXISTS released_with_outstanding"
-    )
+    op.execute("ALTER TABLE billing DROP COLUMN IF EXISTS released_with_outstanding")
     op.execute("ALTER TABLE billing DROP COLUMN IF EXISTS billed_at")
     op.execute("ALTER TABLE billing DROP CONSTRAINT billing_status_check")
-    op.execute("""
+    op.execute(
+        """
         ALTER TABLE billing ADD CONSTRAINT billing_status_check
         CHECK (status IN (
             'draft', 'sent', 'partially_paid', 'paid', 'overdue', 'cancelled'
         ))
-    """)
+    """
+    )
     op.execute("ALTER TABLE billing ALTER COLUMN status SET DEFAULT 'draft'")

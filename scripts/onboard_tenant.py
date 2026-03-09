@@ -118,17 +118,12 @@ def step_create_cognito_user(
             {"Name": "custom:role", "Value": "tenant_admin"},
         ],
     )
-    sub = next(
-        attr["Value"]
-        for attr in resp["User"]["Attributes"]
-        if attr["Name"] == "sub"
-    )
+    sub = next(attr["Value"] for attr in resp["User"]["Attributes"] if attr["Name"] == "sub")
     print(f"      Cognito sub: {sub}")
     return sub
 
 
-def step_create_tenant_user(cur, tenant_id: str, cognito_sub: str,
-                             email: str, admin_name: str) -> dict:
+def step_create_tenant_user(cur, tenant_id: str, cognito_sub: str, email: str, admin_name: str) -> dict:
     print("[3/5] Creating tenant_user record...")
     return _one(
         cur,
@@ -232,7 +227,12 @@ def main() -> None:
             tenant_id = str(tenant["id"])
 
             cognito_sub = step_create_cognito_user(
-                cognito, user_pool_id, tenant_id, args.email, args.admin_name, temp_password,
+                cognito,
+                user_pool_id,
+                tenant_id,
+                args.email,
+                args.admin_name,
+                temp_password,
                 dry_run=False,
             )
 

@@ -27,7 +27,7 @@ Usage:
 import json
 import logging
 import os
-from typing import Any
+from typing import Any, cast
 
 import boto3
 
@@ -45,13 +45,13 @@ _sqs_client = None
 
 # Maps channel name → environment variable holding the queue URL
 _QUEUE_URL_ENV: dict[str, str] = {
-    "sms":       "SQS_SMS_QUEUE_URL",
-    "whatsapp":  "SQS_WHATSAPP_QUEUE_URL",
-    "email":     "SQS_EMAIL_QUEUE_URL",
+    "sms": "SQS_SMS_QUEUE_URL",
+    "whatsapp": "SQS_WHATSAPP_QUEUE_URL",
+    "email": "SQS_EMAIL_QUEUE_URL",
 }
 
 
-def _get_sqs():
+def _get_sqs() -> Any:
     global _sqs_client
     if _sqs_client is None:
         _sqs_client = boto3.client(
@@ -61,18 +61,18 @@ def _get_sqs():
     return _sqs_client
 
 
-def _get_notification_prefs(tenant_id: str) -> dict:
+def _get_notification_prefs(tenant_id: str) -> dict[str, Any]:
     """Fetch and cache the tenant's notification_preferences JSONB column."""
     cached = _prefs_cache.get(tenant_id)
     if cached is not None:
-        return cached
+        return cast(dict[str, Any], cached)
 
     rows = execute_with_tenant(
         tenant_id=PLATFORM_TENANT_ID,  # bypass RLS — reading the tenant row itself
         query="SELECT notification_preferences FROM tenant WHERE id = %s LIMIT 1",
         params=(tenant_id,),
     )
-    prefs: dict = rows[0]["notification_preferences"] if rows else {}
+    prefs: dict[str, Any] = rows[0]["notification_preferences"] if rows else {}
     _prefs_cache.set(tenant_id, prefs)
     return prefs
 
@@ -115,32 +115,37 @@ def enqueue_notification(
         if isinstance(channel_prefs, dict) and channel_prefs.get("enabled") is False:
             logger.info(
                 "Notification channel '%s' disabled for tenant %s — suppressed",
-                channel, tenant_id,
+                channel,
+                tenant_id,
             )
             return False
     except Exception as exc:
         # Preference check failure — fail-open and attempt to send
         logger.warning(
             "Could not fetch notification prefs for tenant %s: %s — proceeding",
-            tenant_id, exc,
+            tenant_id,
+            exc,
         )
 
     queue_url = os.environ.get(queue_url_env, "")
     if not queue_url:
         logger.warning(
             "Queue URL env var '%s' not set — notification dropped (channel=%s)",
-            queue_url_env, channel,
+            queue_url_env,
+            channel,
         )
         return False
 
-    message_body = json.dumps({
-        "tenant_id": tenant_id,
-        "channel": channel,
-        "recipient": recipient,
-        "template_id": template_id,
-        "template_vars": template_vars,
-        "request_id": request_id,
-    })
+    message_body = json.dumps(
+        {
+            "tenant_id": tenant_id,
+            "channel": channel,
+            "recipient": recipient,
+            "template_id": template_id,
+            "template_vars": template_vars,
+            "request_id": request_id,
+        }
+    )
 
     _get_sqs().send_message(QueueUrl=queue_url, MessageBody=message_body)
     logger.info(
@@ -180,7 +185,8 @@ def should_notify(tenant_id: str, event_type: str, channel: str) -> bool:
     except Exception as exc:
         logger.warning(
             "could not fetch prefs for tenant %s: %s — defaulting to True",
-            tenant_id, exc,
+            tenant_id,
+            exc,
         )
         return True
 
@@ -198,8 +204,8 @@ def should_notify(tenant_id: str, event_type: str, channel: str) -> bool:
 def enqueue_notifications(
     tenant_id: str,
     event_type: str,
-    recipient: dict,
-    template_data: dict,
+    recipient: dict[str, Any],
+    template_data: dict[str, Any],
     request_id: str = "",
 ) -> None:
     """Enqueue notification messages for all enabled channels for an event.
@@ -218,7 +224,7 @@ def enqueue_notifications(
             query="SELECT branding_config FROM tenant WHERE id = %s LIMIT 1",
             params=(tenant_id,),
         )
-        branding: dict = (rows[0]["branding_config"] if rows else None) or {}
+        branding: dict[str, Any] = (rows[0]["branding_config"] if rows else None) or {}
     except Exception:
         branding = {}
 
@@ -230,27 +236,30 @@ def enqueue_notifications(
         if not queue_url:
             logger.warning(
                 "Queue URL env var '%s' not set — skipping channel %s",
-                queue_url_env, channel,
+                queue_url_env,
+                channel,
             )
             continue
         try:
             _get_sqs().send_message(
                 QueueUrl=queue_url,
-                MessageBody=json.dumps({
-                    "tenant_id":     tenant_id,
-                    "event_type":    event_type,
-                    "channel":       channel,
-                    "recipient":     recipient,
-                    "tenant_branding": branding,
-                    "template_data": template_data,
-                    "request_id":    request_id,
-                }),
+                MessageBody=json.dumps(
+                    {
+                        "tenant_id": tenant_id,
+                        "event_type": event_type,
+                        "channel": channel,
+                        "recipient": recipient,
+                        "tenant_branding": branding,
+                        "template_data": template_data,
+                        "request_id": request_id,
+                    }
+                ),
             )
             logger.info(
                 "Event notification enqueued: %s via %s for tenant %s",
-                event_type, channel, tenant_id,
+                event_type,
+                channel,
+                tenant_id,
             )
         except Exception:
-            logger.exception(
-                "Failed to enqueue %s notification for event %s", channel, event_type
-            )
+            logger.exception("Failed to enqueue %s notification for event %s", channel, event_type)

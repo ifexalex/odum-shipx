@@ -8,6 +8,7 @@ carryover ledger creation when releasing with outstanding balances.
 import logging
 from datetime import UTC, date, datetime
 from decimal import Decimal
+from typing import Any
 
 from shared.events import publish_event
 from shared.exceptions import (
@@ -33,11 +34,11 @@ _TOLERANCE = Decimal("0.01")
 def confirm_payment(
     tenant_id: str,
     billing_id: str,
-    req,
+    req: Any,
     actor_id: str,
-    ctx,
+    ctx: Any,
     request_id: str = "",
-) -> dict:
+) -> dict[str, Any]:
     """Record a payment and update billing status."""
     billing = repo.get_billing_by_id(tenant_id, billing_id)
     if not billing:
@@ -63,33 +64,34 @@ def confirm_payment(
         else getattr(req, "delegate_id_type", None)
     )
 
+    # payment and updated_billing are returned from write operations; guard for None
     payment = repo.create_payment_record(
         tenant_id,
         {
-            "tenant_id":        tenant_id,
-            "billing_id":       billing_id,
-            "amount_ngn":       amount_ngn,
-            "payment_method":   req.payment_method,
+            "tenant_id": tenant_id,
+            "billing_id": billing_id,
+            "amount_ngn": amount_ngn,
+            "payment_method": req.payment_method,
             "reference_number": req.payment_reference,
-            "payment_date":     date.today(),
-            "recorded_by":      actor_id,
+            "payment_date": date.today(),
+            "recorded_by": actor_id,
         },
     )
 
-    updated_billing = repo.update_billing_payment(
-        tenant_id, billing_id, amount_ngn, new_status
-    )
+    updated_billing = repo.update_billing_payment(tenant_id, billing_id, amount_ngn, new_status)
+    if payment is None or updated_billing is None:
+        raise RuntimeError("payment or billing update returned None unexpectedly")
 
     if new_status == "overpaid":
         overpayment = abs(new_balance)
         repo.create_overpayment_refund_request(
             tenant_id,
             {
-                "tenant_id":   tenant_id,
+                "tenant_id": tenant_id,
                 "customer_id": str(billing["customer_id"]),
-                "billing_id":  billing_id,
-                "amount_ngn":  overpayment,
-                "reason":      f"Overpayment on invoice {billing.get('invoice_number', billing_id)}",
+                "billing_id": billing_id,
+                "amount_ngn": overpayment,
+                "reason": f"Overpayment on invoice {billing.get('invoice_number', billing_id)}",
             },
         )
 
@@ -110,13 +112,13 @@ def confirm_payment(
     outstanding = Decimal(str(updated_billing["balance_ngn"]))
 
     return {
-        "payment_id":            str(payment["id"]),
-        "billing_id":            billing_id,
-        "amount_ngn":            amount_ngn,
-        "new_payment_status":    new_status,
-        "outstanding_ngn":       outstanding,
+        "payment_id": str(payment["id"]),
+        "billing_id": billing_id,
+        "amount_ngn": amount_ngn,
+        "new_payment_status": new_status,
+        "outstanding_ngn": outstanding,
         "release_note_available": new_status in {"paid", "overpaid"},
-        "confirmed_at":          confirmed_at,
+        "confirmed_at": confirmed_at,
     }
 
 
@@ -127,11 +129,11 @@ def confirm_payment(
 
 def generate_release_note(
     tenant_id: str,
-    req,
+    req: Any,
     actor_id: str,
-    ctx,
+    ctx: Any,
     request_id: str = "",
-) -> dict:
+) -> dict[str, Any]:
     """Generate a release note for a customer's cartons.
 
     Enforces payment rules (BR-BL-002, BR-BL-003, BR-BL-004).
@@ -183,12 +185,12 @@ def generate_release_note(
             repo.create_carryover_entry(
                 tenant_id,
                 {
-                    "tenant_id":             tenant_id,
-                    "customer_id":           str(billing["customer_id"]),
-                    "source_billing_id":     req.billing_id,
-                    "carryover_amount_ngn":  balance,
-                    "notes":                 req.approval_notes,
-                    "created_by":            actor_id,
+                    "tenant_id": tenant_id,
+                    "customer_id": str(billing["customer_id"]),
+                    "source_billing_id": req.billing_id,
+                    "carryover_amount_ngn": balance,
+                    "notes": req.approval_notes,
+                    "created_by": actor_id,
                 },
             )
 
@@ -203,30 +205,32 @@ def generate_release_note(
     note = repo.create_release_note(
         tenant_id,
         {
-            "tenant_id":        tenant_id,
-            "billing_id":       req.billing_id,
-            "customer_id":      str(billing["customer_id"]),
-            "container_id":     str(billing["container_id"]),
+            "tenant_id": tenant_id,
+            "billing_id": req.billing_id,
+            "customer_id": str(billing["customer_id"]),
+            "container_id": str(billing["container_id"]),
             "reference_number": reference_number,
-            "carton_tags":      carton_tags,
-            "total_cartons":    len(carton_tags),
-            "is_partial":       is_partial,
-            "status":           "active",
-            "issued_by":        actor_id,
-            "notes":            getattr(req, "approval_notes", None),
+            "carton_tags": carton_tags,
+            "total_cartons": len(carton_tags),
+            "is_partial": is_partial,
+            "status": "active",
+            "issued_by": actor_id,
+            "notes": getattr(req, "approval_notes", None),
         },
     )
+    if note is None:
+        raise RuntimeError("create_release_note returned None unexpectedly")
 
     publish_event(
         source="logistics.payment_release",
         detail_type="ReleaseNoteGenerated",
         tenant_id=tenant_id,
         payload={
-            "release_note_id":  str(note["id"]),
+            "release_note_id": str(note["id"]),
             "reference_number": reference_number,
-            "billing_id":       req.billing_id,
-            "customer_id":      str(billing["customer_id"]),
-            "is_partial":       is_partial,
+            "billing_id": req.billing_id,
+            "customer_id": str(billing["customer_id"]),
+            "is_partial": is_partial,
         },
         request_id=request_id,
     )
@@ -239,7 +243,7 @@ def generate_release_note(
 # ---------------------------------------------------------------------------
 
 
-def get_release_note(tenant_id: str, note_id: str, ctx) -> dict:
+def get_release_note(tenant_id: str, note_id: str, ctx: Any) -> dict[str, Any]:
     note = repo.get_release_note_by_id(tenant_id, note_id)
     if not note:
         raise ResourceNotFoundError("release_note", note_id)
@@ -247,9 +251,7 @@ def get_release_note(tenant_id: str, note_id: str, ctx) -> dict:
     if ctx.role == UserRole.CUSTOMER:
         customer = repo.get_customer_by_user_id(tenant_id, ctx.user_id)
         if not customer or str(customer["id"]) != str(note["customer_id"]):
-            raise InsufficientPermissionsError(
-                "Customers may only view their own release notes"
-            )
+            raise InsufficientPermissionsError("Customers may only view their own release notes")
 
     total_cartons_for_customer = int(note.get("billing_total_cartons") or 0)
     return _fmt_release_note(note, note, total_cartons_for_customer)
@@ -263,11 +265,11 @@ def get_release_note(tenant_id: str, note_id: str, ctx) -> dict:
 def record_pickup(
     tenant_id: str,
     note_id: str,
-    req,
+    req: Any,
     actor_id: str,
-    ctx,
+    ctx: Any,
     request_id: str = "",
-) -> dict:
+) -> dict[str, Any]:
     """Record warehouse pickup for a release note."""
     note = repo.get_release_note_by_id(tenant_id, note_id)
     if not note:
@@ -283,10 +285,11 @@ def record_pickup(
 
     if req.is_delegate:
         missing = [
-            field for field, val in [
-                ("delegate_name",      req.delegate_name),
-                ("delegate_phone",     req.delegate_phone),
-                ("delegate_id_type",   req.delegate_id_type),
+            field
+            for field, val in [
+                ("delegate_name", req.delegate_name),
+                ("delegate_phone", req.delegate_phone),
+                ("delegate_id_type", req.delegate_id_type),
                 ("delegate_id_number", req.delegate_id_number),
             ]
             if not val
@@ -299,28 +302,24 @@ def record_pickup(
 
     delegate_id_type_val = None
     if req.delegate_id_type:
-        delegate_id_type_val = (
-            req.delegate_id_type.value
-            if hasattr(req.delegate_id_type, "value")
-            else str(req.delegate_id_type)
-        )
+        delegate_id_type_val = req.delegate_id_type.value if hasattr(req.delegate_id_type, "value") else str(req.delegate_id_type)
 
     pickup = repo.create_pickup_record(
         tenant_id,
         {
-            "tenant_id":          tenant_id,
-            "release_note_id":    note_id,
-            "customer_id":        str(note["customer_id"]),
+            "tenant_id": tenant_id,
+            "release_note_id": note_id,
+            "customer_id": str(note["customer_id"]),
             "carton_tags_picked": [],
-            "cartons_count":      req.cartons_released,
-            "pickup_date":        date.today(),
-            "is_delegate":        req.is_delegate,
-            "delegate_name":      req.delegate_name,
-            "delegate_phone":     req.delegate_phone,
-            "id_type":            delegate_id_type_val,
-            "id_number":          req.delegate_id_number,
-            "received_by":        actor_id,
-            "notes":              req.notes,
+            "cartons_count": req.cartons_released,
+            "pickup_date": date.today(),
+            "is_delegate": req.is_delegate,
+            "delegate_name": req.delegate_name,
+            "delegate_phone": req.delegate_phone,
+            "id_type": delegate_id_type_val,
+            "id_number": req.delegate_id_number,
+            "received_by": actor_id,
+            "notes": req.notes,
         },
     )
 
@@ -336,27 +335,17 @@ def record_pickup(
 
     # Update shipment_tracking if all customer cartons released
     customer_total = int(note.get("billing_total_cartons") or 0)
-    customer_released = repo.sum_cartons_released_for_customer(
-        tenant_id, str(note["customer_id"]), str(note["container_id"])
-    )
+    customer_released = repo.sum_cartons_released_for_customer(tenant_id, str(note["customer_id"]), str(note["container_id"]))
     shipment_status = None
     if customer_total > 0 and customer_released >= customer_total:
-        repo.update_shipment_tracking_for_customer(
-            tenant_id, str(note["customer_id"]), str(note["container_id"]), "picked_up"
-        )
+        repo.update_shipment_tracking_for_customer(tenant_id, str(note["customer_id"]), str(note["container_id"]), "picked_up")
         shipment_status = "picked_up"
 
     # Update container to fully_released if all customers done
-    container_total = repo.sum_total_cartons_from_billing(
-        tenant_id, str(note["container_id"])
-    )
-    container_released = repo.sum_cartons_released_for_container(
-        tenant_id, str(note["container_id"])
-    )
+    container_total = repo.sum_total_cartons_from_billing(tenant_id, str(note["container_id"]))
+    container_released = repo.sum_cartons_released_for_container(tenant_id, str(note["container_id"]))
     if container_total > 0 and container_released >= container_total:
-        repo.update_container_status(
-            tenant_id, str(note["container_id"]), "fully_released"
-        )
+        repo.update_container_status(tenant_id, str(note["container_id"]), "fully_released")
 
     remaining = max(0, note_total - total_picked)
 
@@ -366,14 +355,14 @@ def record_pickup(
         pickup_time = created_at.strftime("%H:%M")
 
     return {
-        "release_note_id":     note_id,
+        "release_note_id": note_id,
         "release_note_status": note_status,
-        "pickup_record_id":    str(pickup["id"]),
-        "pickup_date":         pickup["pickup_date"],
-        "pickup_time":         pickup_time,
-        "attendant_name":      None,
-        "remaining_cartons":   remaining,
-        "shipment_status":     shipment_status,
+        "pickup_record_id": str(pickup["id"]),
+        "pickup_date": pickup["pickup_date"],
+        "pickup_time": pickup_time,
+        "attendant_name": None,
+        "remaining_cartons": remaining,
+        "shipment_status": shipment_status,
     }
 
 
@@ -382,19 +371,19 @@ def record_pickup(
 # ---------------------------------------------------------------------------
 
 
-def _fmt_release_note(note: dict, billing: dict, total_cartons_for_customer: int) -> dict:
+def _fmt_release_note(note: dict[str, Any], billing: dict[str, Any], total_cartons_for_customer: int) -> dict[str, Any]:
     tags = note.get("carton_tags") or []
     return {
-        "id":                       str(note["id"]),
-        "reference_number":         note["reference_number"],
-        "customer_name":            note.get("customer_name"),
-        "container_number":         note.get("container_number"),
-        "carton_count":             int(note.get("total_cartons") or 0),
+        "id": str(note["id"]),
+        "reference_number": note["reference_number"],
+        "customer_name": note.get("customer_name"),
+        "container_number": note.get("container_number"),
+        "carton_count": int(note.get("total_cartons") or 0),
         "total_cartons_for_customer": total_cartons_for_customer,
-        "is_partial_release":       bool(note.get("is_partial", False)),
-        "carton_tags":              list(tags),
-        "payment_status":           note.get("payment_status") or billing.get("status", ""),
-        "status":                   note["status"],
-        "authorized_at":            note["created_at"],
-        "warehouse_address":        None,
+        "is_partial_release": bool(note.get("is_partial", False)),
+        "carton_tags": list(tags),
+        "payment_status": note.get("payment_status") or billing.get("status", ""),
+        "status": note["status"],
+        "authorized_at": note["created_at"],
+        "warehouse_address": None,
     }

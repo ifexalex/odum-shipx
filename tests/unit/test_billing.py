@@ -72,9 +72,7 @@ class TestBillingService:
         from services.billing import service
         from shared.tenant_context import TenantContext, UserRole
 
-        ctx = TenantContext(
-            tenant_id=TENANT_ID, user_id="u", role=UserRole.NIGERIA_OFFICE_STAFF
-        )
+        ctx = TenantContext(tenant_id=TENANT_ID, user_id="u", role=UserRole.NIGERIA_OFFICE_STAFF)
         with patch.object(service.repo, "list_billing_for_customer", return_value=[]):
             result = service.get_billing_for_customer(TENANT_ID, "nonexistent", ctx)
             assert result == []
@@ -87,9 +85,7 @@ class TestBillingService:
 
         customer_row = {"id": "customer-001"}  # logged-in user is customer-001
 
-        ctx = TenantContext(
-            tenant_id=TENANT_ID, user_id="user-cust-001", role=UserRole.CUSTOMER
-        )
+        ctx = TenantContext(tenant_id=TENANT_ID, user_id="user-cust-001", role=UserRole.CUSTOMER)
         with patch.object(service.repo, "get_customer_by_user_id", return_value=customer_row):
             with pytest.raises(InsufficientPermissionsError):
                 # requesting billing for customer-999, but ctx.user maps to customer-001

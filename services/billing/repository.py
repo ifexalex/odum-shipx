@@ -15,6 +15,7 @@ Notes:
 """
 
 import logging
+from typing import Any
 
 from shared.db import execute_with_tenant, execute_write_with_tenant
 from shared.tenant_context import PLATFORM_TENANT_ID
@@ -22,9 +23,7 @@ from shared.tenant_context import PLATFORM_TENANT_ID
 logger = logging.getLogger(__name__)
 
 # Allowlist for dynamic SET clauses in dispute status update
-_DISPUTE_EXTRA_FIELDS = frozenset(
-    {"agreed_cbm", "resolution_notes", "resolved_by", "resolved_at"}
-)
+_DISPUTE_EXTRA_FIELDS = frozenset({"agreed_cbm", "resolution_notes", "resolved_by", "resolved_at"})
 
 
 # ---------------------------------------------------------------------------
@@ -46,7 +45,7 @@ def get_tenant_short(tenant_id: str) -> str:
     return short.ljust(3, "X")
 
 
-def get_customer_by_user_id(tenant_id: str, user_id: str) -> dict | None:
+def get_customer_by_user_id(tenant_id: str, user_id: str) -> dict[str, Any] | None:
     rows = execute_with_tenant(
         tenant_id,
         "SELECT id FROM customer WHERE tenant_id = %s AND user_id = %s LIMIT 1",
@@ -60,7 +59,7 @@ def get_customer_by_user_id(tenant_id: str, user_id: str) -> dict | None:
 # ---------------------------------------------------------------------------
 
 
-def get_tenant_config_value(tenant_id: str, config_key: str) -> dict | None:
+def get_tenant_config_value(tenant_id: str, config_key: str) -> dict[str, Any] | None:
     """Return the JSONB config_value dict for a given key, or None."""
     rows = execute_with_tenant(
         tenant_id,
@@ -81,9 +80,7 @@ def get_tenant_config_value(tenant_id: str, config_key: str) -> dict | None:
 # ---------------------------------------------------------------------------
 
 
-def get_cbm_and_carton_totals(
-    tenant_id: str, customer_id: str, container_id: str
-) -> dict:
+def get_cbm_and_carton_totals(tenant_id: str, customer_id: str, container_id: str) -> dict[str, Any]:
     """Sum CBM and count cartons from approved packing lists for customer+container."""
     rows = execute_with_tenant(
         tenant_id,
@@ -103,7 +100,7 @@ def get_cbm_and_carton_totals(
     return rows[0] if rows else {"total_cbm": 0, "total_cartons": 0}
 
 
-def get_outstanding_carryovers(tenant_id: str, customer_id: str) -> list[dict]:
+def get_outstanding_carryovers(tenant_id: str, customer_id: str) -> list[dict[str, Any]]:
     return execute_with_tenant(
         tenant_id,
         """
@@ -117,7 +114,7 @@ def get_outstanding_carryovers(tenant_id: str, customer_id: str) -> list[dict]:
     )
 
 
-def get_pending_credit_refunds(tenant_id: str, customer_id: str) -> list[dict]:
+def get_pending_credit_refunds(tenant_id: str, customer_id: str) -> list[dict[str, Any]]:
     """Approved refund_requests with customer_choice='credit_note' not yet applied."""
     return execute_with_tenant(
         tenant_id,
@@ -147,7 +144,7 @@ def get_next_invoice_seq(tenant_id: str) -> int:
 # ---------------------------------------------------------------------------
 
 
-def create_billing(tenant_id: str, data: dict) -> dict:
+def create_billing(tenant_id: str, data: dict[str, Any]) -> dict[str, Any] | None:
     return execute_write_with_tenant(
         tenant_id,
         """
@@ -167,7 +164,7 @@ def create_billing(tenant_id: str, data: dict) -> dict:
     )
 
 
-def get_billing_by_id(tenant_id: str, billing_id: str) -> dict | None:
+def get_billing_by_id(tenant_id: str, billing_id: str) -> dict[str, Any] | None:
     rows = execute_with_tenant(
         tenant_id,
         """
@@ -184,15 +181,15 @@ def get_billing_by_id(tenant_id: str, billing_id: str) -> dict | None:
 
 def list_billing_all(
     tenant_id: str,
-    filters: dict,
+    filters: dict[str, Any],
     limit: int = 50,
-    cursor: dict | None = None,
-) -> tuple[list[dict], str | None, bool]:
+    cursor: dict[str, Any] | None = None,
+) -> tuple[list[dict[str, Any]], str | None, bool]:
     """Paginated list of all billing records for a tenant."""
     from shared.pagination import build_paginated_query, extract_page
 
     conditions = ["b.tenant_id = %(tenant_id)s"]
-    extra: dict = {"tenant_id": tenant_id}
+    extra: dict[str, Any] = {"tenant_id": tenant_id}
 
     if filters.get("status"):
         conditions.append("b.status = %(status)s")
@@ -217,7 +214,7 @@ def list_billing_for_customer(
     tenant_id: str,
     customer_id: str,
     container_id: str | None = None,
-) -> list[dict]:
+) -> list[dict[str, Any]]:
     if container_id:
         return execute_with_tenant(
             tenant_id,
@@ -251,9 +248,7 @@ def list_billing_for_customer(
 # ---------------------------------------------------------------------------
 
 
-def mark_carryovers_applied(
-    tenant_id: str, carryover_ids: list[str], billing_id: str
-) -> None:
+def mark_carryovers_applied(tenant_id: str, carryover_ids: list[str], billing_id: str) -> None:
     if not carryover_ids:
         return
     execute_write_with_tenant(
@@ -292,11 +287,11 @@ def mark_credit_refunds_applied(tenant_id: str, refund_ids: list[str]) -> None:
 def update_billing_cbm(
     tenant_id: str,
     billing_id: str,
-    new_cbm,
-    new_subtotal_usd,
-    new_subtotal_ngn,
-    new_total_ngn,
-) -> dict:
+    new_cbm: Any,
+    new_subtotal_usd: Any,
+    new_subtotal_ngn: Any,
+    new_total_ngn: Any,
+) -> dict[str, Any] | None:
     return execute_write_with_tenant(
         tenant_id,
         """
@@ -320,7 +315,7 @@ def update_billing_cbm(
     )
 
 
-def create_overpayment_refund_request(tenant_id: str, data: dict) -> dict:
+def create_overpayment_refund_request(tenant_id: str, data: dict[str, Any]) -> dict[str, Any] | None:
     return execute_write_with_tenant(
         tenant_id,
         """
@@ -340,7 +335,7 @@ def create_overpayment_refund_request(tenant_id: str, data: dict) -> dict:
 # ---------------------------------------------------------------------------
 
 
-def get_misc_charges(tenant_id: str, billing_id: str) -> list[dict]:
+def get_misc_charges(tenant_id: str, billing_id: str) -> list[dict[str, Any]]:
     """misc_charge has no RLS — scoped via billing_id (FK to billing which has RLS)."""
     return execute_with_tenant(
         tenant_id,
@@ -349,7 +344,7 @@ def get_misc_charges(tenant_id: str, billing_id: str) -> list[dict]:
     )
 
 
-def get_payment_records(tenant_id: str, billing_id: str) -> list[dict]:
+def get_payment_records(tenant_id: str, billing_id: str) -> list[dict[str, Any]]:
     return execute_with_tenant(
         tenant_id,
         """
@@ -361,7 +356,7 @@ def get_payment_records(tenant_id: str, billing_id: str) -> list[dict]:
     )
 
 
-def get_applied_carryovers(tenant_id: str, billing_id: str) -> list[dict]:
+def get_applied_carryovers(tenant_id: str, billing_id: str) -> list[dict[str, Any]]:
     return execute_with_tenant(
         tenant_id,
         """
@@ -374,7 +369,7 @@ def get_applied_carryovers(tenant_id: str, billing_id: str) -> list[dict]:
     )
 
 
-def get_active_disputes(tenant_id: str, billing_id: str) -> list[dict]:
+def get_active_disputes(tenant_id: str, billing_id: str) -> list[dict[str, Any]]:
     return execute_with_tenant(
         tenant_id,
         """
@@ -393,7 +388,7 @@ def get_active_disputes(tenant_id: str, billing_id: str) -> list[dict]:
 # ---------------------------------------------------------------------------
 
 
-def get_cbm_dispute_by_id(tenant_id: str, dispute_id: str) -> dict | None:
+def get_cbm_dispute_by_id(tenant_id: str, dispute_id: str) -> dict[str, Any] | None:
     rows = execute_with_tenant(
         tenant_id,
         "SELECT * FROM cbm_dispute WHERE tenant_id = %s AND id = %s LIMIT 1",
@@ -402,7 +397,7 @@ def get_cbm_dispute_by_id(tenant_id: str, dispute_id: str) -> dict | None:
     return rows[0] if rows else None
 
 
-def list_disputes_for_billing(tenant_id: str, billing_id: str) -> list[dict]:
+def list_disputes_for_billing(tenant_id: str, billing_id: str) -> list[dict[str, Any]]:
     return execute_with_tenant(
         tenant_id,
         """
@@ -414,7 +409,7 @@ def list_disputes_for_billing(tenant_id: str, billing_id: str) -> list[dict]:
     )
 
 
-def create_cbm_dispute(tenant_id: str, data: dict) -> dict:
+def create_cbm_dispute(tenant_id: str, data: dict[str, Any]) -> dict[str, Any] | None:
     return execute_write_with_tenant(
         tenant_id,
         """
@@ -432,9 +427,7 @@ def create_cbm_dispute(tenant_id: str, data: dict) -> dict:
     )
 
 
-def set_dispute_acknowledged(
-    tenant_id: str, dispute_id: str, actor_id: str
-) -> dict:
+def set_dispute_acknowledged(tenant_id: str, dispute_id: str, actor_id: str) -> dict[str, Any] | None:
     return execute_write_with_tenant(
         tenant_id,
         """
@@ -456,14 +449,14 @@ def set_dispute_acknowledged(
 
 def list_carryovers(
     tenant_id: str,
-    filters: dict,
+    filters: dict[str, Any],
     limit: int = 50,
-    cursor: dict | None = None,
-) -> tuple[list[dict], str | None, bool]:
+    cursor: dict[str, Any] | None = None,
+) -> tuple[list[dict[str, Any]], str | None, bool]:
     from shared.pagination import build_paginated_query, extract_page
 
     conditions = ["cl.tenant_id = %(tenant_id)s"]
-    extra: dict = {"tenant_id": tenant_id}
+    extra: dict[str, Any] = {"tenant_id": tenant_id}
 
     if filters.get("customer_id"):
         conditions.append("cl.customer_id = %(customer_id)s")
@@ -491,7 +484,7 @@ def list_carryovers(
     return extract_page(rows, limit)
 
 
-def get_carryover_by_id(tenant_id: str, carryover_id: str) -> dict | None:
+def get_carryover_by_id(tenant_id: str, carryover_id: str) -> dict[str, Any] | None:
     rows = execute_with_tenant(
         tenant_id,
         """
@@ -513,9 +506,7 @@ def get_carryover_by_id(tenant_id: str, carryover_id: str) -> dict | None:
     return rows[0] if rows else None
 
 
-def exempt_carryover(
-    tenant_id: str, carryover_id: str, actor_id: str, notes: str | None = None
-) -> dict:
+def exempt_carryover(tenant_id: str, carryover_id: str, actor_id: str, notes: str | None = None) -> dict[str, Any] | None:
     """Mark a carryover as exempted and record who did it."""
     return execute_write_with_tenant(
         tenant_id,
@@ -533,7 +524,7 @@ def exempt_carryover(
     )
 
 
-def create_carryover(tenant_id: str, data: dict) -> dict:
+def create_carryover(tenant_id: str, data: dict[str, Any]) -> dict[str, Any] | None:
     """Insert a new outstanding carryover_ledger entry (roll-forward)."""
     return execute_write_with_tenant(
         tenant_id,
@@ -555,7 +546,7 @@ def create_carryover(tenant_id: str, data: dict) -> dict:
 # ---------------------------------------------------------------------------
 
 
-def add_misc_charge(tenant_id: str, data: dict) -> dict:
+def add_misc_charge(tenant_id: str, data: dict[str, Any]) -> dict[str, Any] | None:
     """Insert a misc_charge record linked to a billing record."""
     return execute_write_with_tenant(
         tenant_id,
@@ -571,7 +562,7 @@ def add_misc_charge(tenant_id: str, data: dict) -> dict:
     )
 
 
-def get_misc_charge_by_id(charge_id: str) -> dict | None:
+def get_misc_charge_by_id(charge_id: str) -> dict[str, Any] | None:
     """misc_charge has no RLS; use platform scope, scoped by billing_id + id."""
     rows = execute_with_tenant(
         PLATFORM_TENANT_ID,
@@ -594,9 +585,7 @@ def delete_misc_charge(charge_id: str, billing_id: str) -> None:
     )
 
 
-def increment_billing_misc_fees(
-    tenant_id: str, billing_id: str, amount_ngn
-) -> dict:
+def increment_billing_misc_fees(tenant_id: str, billing_id: str, amount_ngn: Any) -> dict[str, Any] | None:
     """Increase billing.misc_charges_ngn and billing.total_ngn by amount_ngn."""
     return execute_write_with_tenant(
         tenant_id,
@@ -612,9 +601,7 @@ def increment_billing_misc_fees(
     )
 
 
-def decrement_billing_misc_fees(
-    tenant_id: str, billing_id: str, amount_ngn
-) -> dict:
+def decrement_billing_misc_fees(tenant_id: str, billing_id: str, amount_ngn: Any) -> dict[str, Any] | None:
     """Decrease billing.misc_charges_ngn and billing.total_ngn by amount_ngn."""
     return execute_write_with_tenant(
         tenant_id,
@@ -635,7 +622,7 @@ def decrement_billing_misc_fees(
 # ---------------------------------------------------------------------------
 
 
-def get_storage_fees_for_billing(tenant_id: str, billing_id: str) -> list[dict]:
+def get_storage_fees_for_billing(tenant_id: str, billing_id: str) -> list[dict[str, Any]]:
     """Return all storage_fee_log rows for a billing record, ordered by accrual_date."""
     return execute_with_tenant(
         tenant_id,
@@ -655,14 +642,14 @@ def get_storage_fees_for_billing(tenant_id: str, billing_id: str) -> list[dict]:
 
 def list_all_disputes(
     tenant_id: str,
-    filters: dict,
+    filters: dict[str, Any],
     limit: int = 50,
-    cursor: dict | None = None,
-) -> tuple[list[dict], str | None, bool]:
+    cursor: dict[str, Any] | None = None,
+) -> tuple[list[dict[str, Any]], str | None, bool]:
     from shared.pagination import build_paginated_query, extract_page
 
     conditions = ["tenant_id = %(tenant_id)s"]
-    extra: dict = {"tenant_id": tenant_id}
+    extra: dict[str, Any] = {"tenant_id": tenant_id}
 
     if filters.get("status"):
         conditions.append("status = %(status)s")
@@ -682,16 +669,13 @@ def set_dispute_status(
     tenant_id: str,
     dispute_id: str,
     status: str,
-    extra: dict | None = None,
-) -> dict:
+    extra: dict[str, Any] | None = None,
+) -> dict[str, Any] | None:
     """Update dispute status + optional extra fields (allowlisted)."""
-    params: dict = {"status": status, "tenant_id": tenant_id, "id": dispute_id}
+    params: dict[str, Any] = {"status": status, "tenant_id": tenant_id, "id": dispute_id}
     extra_clause = ""
     if extra:
-        safe = {
-            k: v for k, v in extra.items()
-            if k in _DISPUTE_EXTRA_FIELDS and v is not None
-        }
+        safe = {k: v for k, v in extra.items() if k in _DISPUTE_EXTRA_FIELDS and v is not None}
         for key, val in safe.items():
             extra_clause += f", {key} = %({key})s"
             params[key] = val

@@ -22,43 +22,51 @@ logger = logging.getLogger(__name__)
 # Allowed field sets for dynamic UPDATE (SQL-injection prevention §2.2)
 # ---------------------------------------------------------------------------
 
-_TENANT_UPDATE_FIELDS = frozenset({
-    "company_name",
-    "primary_contact_email",
-    "primary_contact_phone",
-    "origin_country",
-    "destination_country",
-    "subscription_tier",
-    "branding_config",
-    "notification_preferences",
-})
+_TENANT_UPDATE_FIELDS = frozenset(
+    {
+        "company_name",
+        "primary_contact_email",
+        "primary_contact_phone",
+        "origin_country",
+        "destination_country",
+        "subscription_tier",
+        "branding_config",
+        "notification_preferences",
+    }
+)
 
-_USER_UPDATE_FIELDS = frozenset({
-    "full_name",
-    "role",
-})
+_USER_UPDATE_FIELDS = frozenset(
+    {
+        "full_name",
+        "role",
+    }
+)
 
-_CUSTOMER_UPDATE_FIELDS = frozenset({
-    "name",
-    "phone",
-    "email",
-    "whatsapp",
-    "address",
-    "contract_details",
-    "user_id",                # Link customer to a tenant_user (portal account)
-    "notification_consent",   # GDPR Art. 6 — channel opt-in list (e.g. ['sms', 'email'])
-    "consent_given_at",       # Timestamp of explicit consent
-})
+_CUSTOMER_UPDATE_FIELDS = frozenset(
+    {
+        "name",
+        "phone",
+        "email",
+        "whatsapp",
+        "address",
+        "contract_details",
+        "user_id",  # Link customer to a tenant_user (portal account)
+        "notification_consent",  # GDPR Art. 6 — channel opt-in list (e.g. ['sms', 'email'])
+        "consent_given_at",  # Timestamp of explicit consent
+    }
+)
 
-_CHARGE_TYPE_UPDATE_FIELDS = frozenset({
-    "name",
-    "description",
-    "default_amount_ngn",
-    "is_active",
-})
+_CHARGE_TYPE_UPDATE_FIELDS = frozenset(
+    {
+        "name",
+        "description",
+        "default_amount_ngn",
+        "is_active",
+    }
+)
 
 
-def _build_set_clause(updates: dict, allowed: frozenset) -> tuple[str, dict]:
+def _build_set_clause(updates: dict[str, Any], allowed: frozenset[str]) -> tuple[str, dict[str, Any]]:
     """Build a safe SET clause from an updates dict filtered by an allowlist.
 
     Returns (set_clause_string, filtered_params_dict).
@@ -75,7 +83,7 @@ def _build_set_clause(updates: dict, allowed: frozenset) -> tuple[str, dict]:
 # ---------------------------------------------------------------------------
 
 
-def create_tenant(data: dict) -> dict:
+def create_tenant(data: dict[str, Any]) -> dict[str, Any] | None:
     return execute_write_with_tenant(
         PLATFORM_TENANT_ID,
         """
@@ -91,7 +99,7 @@ def create_tenant(data: dict) -> dict:
     )
 
 
-def get_tenant_by_id(tenant_id: str) -> dict | None:
+def get_tenant_by_id(tenant_id: str) -> dict[str, Any] | None:
     rows = execute_with_tenant(
         PLATFORM_TENANT_ID,
         "SELECT * FROM tenant WHERE id = %s LIMIT 1",
@@ -100,7 +108,7 @@ def get_tenant_by_id(tenant_id: str) -> dict | None:
     return rows[0] if rows else None
 
 
-def list_tenants(limit: int = 50, cursor: dict | None = None) -> list[dict]:
+def list_tenants(limit: int = 50, cursor: dict[str, Any] | None = None) -> list[dict[str, Any]]:
     from shared.pagination import build_paginated_query, extract_page
 
     base = "SELECT * FROM tenant WHERE 1=1"
@@ -110,7 +118,7 @@ def list_tenants(limit: int = 50, cursor: dict | None = None) -> list[dict]:
     return page
 
 
-def update_tenant(tenant_id: str, updates: dict) -> dict:
+def update_tenant(tenant_id: str, updates: dict[str, Any]) -> dict[str, Any] | None:
     set_clause, params = _build_set_clause(updates, _TENANT_UPDATE_FIELDS)
     params["updated_at"] = "NOW()"
     params["id"] = tenant_id
@@ -121,7 +129,7 @@ def update_tenant(tenant_id: str, updates: dict) -> dict:
     )
 
 
-def set_tenant_status(tenant_id: str, status: str) -> dict:
+def set_tenant_status(tenant_id: str, status: str) -> dict[str, Any] | None:
     return execute_write_with_tenant(
         PLATFORM_TENANT_ID,
         """
@@ -140,7 +148,7 @@ def set_tenant_status(tenant_id: str, status: str) -> dict:
     )
 
 
-def reactivate_tenant(tenant_id: str) -> dict:
+def reactivate_tenant(tenant_id: str) -> dict[str, Any] | None:
     """Set tenant back to active after offboarding.
 
     Clears deletion_scheduled_at (purge no longer applies) and stamps
@@ -166,7 +174,7 @@ def reactivate_tenant(tenant_id: str) -> dict:
 # ---------------------------------------------------------------------------
 
 
-def get_all_configs(tenant_id: str) -> list[dict]:
+def get_all_configs(tenant_id: str) -> list[dict[str, Any]]:
     return execute_with_tenant(
         tenant_id,
         "SELECT config_key, config_value, updated_at FROM tenant_config WHERE tenant_id = %s",
@@ -174,7 +182,7 @@ def get_all_configs(tenant_id: str) -> list[dict]:
     )
 
 
-def upsert_config(tenant_id: str, key: str, value: dict, updated_by: str | None = None) -> dict:
+def upsert_config(tenant_id: str, key: str, value: dict[str, Any], updated_by: str | None = None) -> dict[str, Any] | None:
     return execute_write_with_tenant(
         tenant_id,
         """
@@ -200,7 +208,7 @@ def upsert_config(tenant_id: str, key: str, value: dict, updated_by: str | None 
 # ---------------------------------------------------------------------------
 
 
-def create_tenant_user(tenant_id: str, data: dict) -> dict:
+def create_tenant_user(tenant_id: str, data: dict[str, Any]) -> dict[str, Any] | None:
     return execute_write_with_tenant(
         tenant_id,
         """
@@ -215,7 +223,7 @@ def create_tenant_user(tenant_id: str, data: dict) -> dict:
     )
 
 
-def get_user_by_id(tenant_id: str, user_id: str) -> dict | None:
+def get_user_by_id(tenant_id: str, user_id: str) -> dict[str, Any] | None:
     rows = execute_with_tenant(
         tenant_id,
         "SELECT * FROM tenant_user WHERE tenant_id = %s AND id = %s LIMIT 1",
@@ -224,7 +232,7 @@ def get_user_by_id(tenant_id: str, user_id: str) -> dict | None:
     return rows[0] if rows else None
 
 
-def get_user_by_email(tenant_id: str, email: str) -> dict | None:
+def get_user_by_email(tenant_id: str, email: str) -> dict[str, Any] | None:
     rows = execute_with_tenant(
         tenant_id,
         "SELECT * FROM tenant_user WHERE tenant_id = %s AND email = %s LIMIT 1",
@@ -233,7 +241,7 @@ def get_user_by_email(tenant_id: str, email: str) -> dict | None:
     return rows[0] if rows else None
 
 
-def list_users(tenant_id: str) -> list[dict]:
+def list_users(tenant_id: str) -> list[dict[str, Any]]:
     return execute_with_tenant(
         tenant_id,
         "SELECT * FROM tenant_user WHERE tenant_id = %s ORDER BY created_at DESC",
@@ -241,7 +249,7 @@ def list_users(tenant_id: str) -> list[dict]:
     )
 
 
-def update_user(tenant_id: str, user_id: str, updates: dict) -> dict:
+def update_user(tenant_id: str, user_id: str, updates: dict[str, Any]) -> dict[str, Any] | None:
     set_clause, params = _build_set_clause(updates, _USER_UPDATE_FIELDS)
     params["tenant_id"] = tenant_id
     params["id"] = user_id
@@ -252,7 +260,7 @@ def update_user(tenant_id: str, user_id: str, updates: dict) -> dict:
     )
 
 
-def set_user_status(tenant_id: str, user_id: str, status: str) -> dict:
+def set_user_status(tenant_id: str, user_id: str, status: str) -> dict[str, Any] | None:
     return execute_write_with_tenant(
         tenant_id,
         """
@@ -278,7 +286,7 @@ def count_active_users(tenant_id: str) -> int:
 # ---------------------------------------------------------------------------
 
 
-def create_customer(tenant_id: str, data: dict) -> dict:
+def create_customer(tenant_id: str, data: dict[str, Any]) -> dict[str, Any] | None:
     return execute_write_with_tenant(
         tenant_id,
         """
@@ -306,7 +314,7 @@ def create_customer(tenant_id: str, data: dict) -> dict:
     )
 
 
-def get_customer_by_id(tenant_id: str, customer_id: str) -> dict | None:
+def get_customer_by_id(tenant_id: str, customer_id: str) -> dict[str, Any] | None:
     rows = execute_with_tenant(
         tenant_id,
         "SELECT * FROM customer WHERE tenant_id = %s AND id = %s LIMIT 1",
@@ -319,8 +327,8 @@ def list_customers(
     tenant_id: str,
     q: str | None = None,
     limit: int = 50,
-    cursor: dict | None = None,
-) -> tuple[list[dict], str | None, bool]:
+    cursor: dict[str, Any] | None = None,
+) -> tuple[list[dict[str, Any]], str | None, bool]:
     from shared.pagination import build_paginated_query, extract_page
 
     if q:
@@ -340,7 +348,7 @@ def list_customers(
     return extract_page(rows, limit)
 
 
-def update_customer(tenant_id: str, customer_id: str, updates: dict) -> dict:
+def update_customer(tenant_id: str, customer_id: str, updates: dict[str, Any]) -> dict[str, Any] | None:
     set_clause, params = _build_set_clause(updates, _CUSTOMER_UPDATE_FIELDS)
     params["tenant_id"] = tenant_id
     params["id"] = customer_id
@@ -377,7 +385,7 @@ def anonymise_customer_record(tenant_id: str, customer_id: str) -> None:
     )
 
 
-def get_customer_full_export_data(tenant_id: str, customer_id: str) -> dict:
+def get_customer_full_export_data(tenant_id: str, customer_id: str) -> dict[str, Any]:
     """Return all data held for a customer across related tables (GDPR Art. 20).
 
     Used by the data portability export endpoint.
@@ -387,7 +395,7 @@ def get_customer_full_export_data(tenant_id: str, customer_id: str) -> dict:
         "SELECT * FROM customer WHERE tenant_id = %s AND id = %s LIMIT 1",
         (tenant_id, customer_id),
     )
-    customer = customer_rows[0] if customer_rows else {}
+    customer: dict[str, Any] = customer_rows[0] if customer_rows else {}
 
     billing_rows = execute_with_tenant(
         tenant_id,
@@ -452,7 +460,7 @@ def link_customer_user(tenant_id: str, customer_email: str, user_id: str) -> Non
 # ---------------------------------------------------------------------------
 
 
-def create_charge_type(tenant_id: str, data: dict) -> dict:
+def create_charge_type(tenant_id: str, data: dict[str, Any]) -> dict[str, Any] | None:
     return execute_write_with_tenant(
         tenant_id,
         """
@@ -470,7 +478,7 @@ def create_charge_type(tenant_id: str, data: dict) -> dict:
     )
 
 
-def list_charge_types(tenant_id: str) -> list[dict]:
+def list_charge_types(tenant_id: str) -> list[dict[str, Any]]:
     return execute_with_tenant(
         tenant_id,
         "SELECT * FROM charge_type WHERE tenant_id = %s ORDER BY name ASC",
@@ -478,7 +486,7 @@ def list_charge_types(tenant_id: str) -> list[dict]:
     )
 
 
-def get_charge_type_by_id(tenant_id: str, charge_type_id: str) -> dict | None:
+def get_charge_type_by_id(tenant_id: str, charge_type_id: str) -> dict[str, Any] | None:
     rows = execute_with_tenant(
         tenant_id,
         "SELECT * FROM charge_type WHERE tenant_id = %s AND id = %s LIMIT 1",
@@ -487,7 +495,7 @@ def get_charge_type_by_id(tenant_id: str, charge_type_id: str) -> dict | None:
     return rows[0] if rows else None
 
 
-def update_charge_type(tenant_id: str, charge_type_id: str, updates: dict) -> dict:
+def update_charge_type(tenant_id: str, charge_type_id: str, updates: dict[str, Any]) -> dict[str, Any] | None:
     set_clause, params = _build_set_clause(updates, _CHARGE_TYPE_UPDATE_FIELDS)
     params["tenant_id"] = tenant_id
     params["id"] = charge_type_id
@@ -503,7 +511,7 @@ def update_charge_type(tenant_id: str, charge_type_id: str, updates: dict) -> di
 # ---------------------------------------------------------------------------
 
 
-def get_dashboard_stats() -> dict:
+def get_dashboard_stats() -> dict[str, Any]:
     """Aggregate cross-tenant metrics for the platform admin dashboard."""
     rows = execute_with_tenant(
         PLATFORM_TENANT_ID,
@@ -519,7 +527,7 @@ def get_dashboard_stats() -> dict:
         """,
         None,
     )
-    tenant_stats = rows[0] if rows else {}
+    tenant_stats: dict[str, Any] = rows[0] if rows else {}
 
     user_rows = execute_with_tenant(
         PLATFORM_TENANT_ID,
@@ -541,14 +549,14 @@ def get_dashboard_stats() -> dict:
 
 def list_platform_audit_log(
     limit: int = 50,
-    cursor: dict | None = None,
+    cursor: dict[str, Any] | None = None,
     target_tenant_id: str | None = None,
     action: str | None = None,
-) -> tuple[list[dict], str | None, bool]:
+) -> tuple[list[dict[str, Any]], str | None, bool]:
     from shared.pagination import build_paginated_query, extract_page
 
     base = "SELECT * FROM platform_audit_log WHERE 1=1"
-    extra: dict = {}
+    extra: dict[str, Any] = {}
     if target_tenant_id:
         base += " AND target_tenant_id = %(target_tenant_id)s"
         extra["target_tenant_id"] = target_tenant_id
@@ -565,7 +573,7 @@ def insert_platform_audit(
     action: str,
     actor_id: str | None,
     target_tenant_id: str | None,
-    details: dict | None = None,
+    details: dict[str, Any] | None = None,
     ip_address: str | None = None,
 ) -> None:
     execute_write_with_tenant(
@@ -585,13 +593,12 @@ def insert_platform_audit(
     )
 
 
-
 # ---------------------------------------------------------------------------
 # Platform settings — platform_settings table (no RLS — PLATFORM scope)
 # ---------------------------------------------------------------------------
 
 
-def get_platform_settings() -> dict:
+def get_platform_settings() -> dict[str, Any]:
     """Return all platform settings as a key→value dict."""
     rows = execute_with_tenant(
         PLATFORM_TENANT_ID,
@@ -601,7 +608,7 @@ def get_platform_settings() -> dict:
     return {row["key"]: row["value"] for row in rows}
 
 
-def upsert_platform_setting(key: str, value, actor_id: str | None) -> None:
+def upsert_platform_setting(key: str, value: Any, actor_id: str | None) -> None:
     """Insert or update a single platform setting."""
     execute_write_with_tenant(
         PLATFORM_TENANT_ID,
@@ -623,7 +630,7 @@ def upsert_platform_setting(key: str, value, actor_id: str | None) -> None:
 # ---------------------------------------------------------------------------
 
 
-def get_tenant_report_data(tenant_id: str, period: str) -> dict:
+def get_tenant_report_data(tenant_id: str, period: str) -> dict[str, Any]:
     """Run aggregate queries for the tenant reports endpoint."""
     # Containers by status
     container_rows = execute_with_tenant(
@@ -636,7 +643,7 @@ def get_tenant_report_data(tenant_id: str, period: str) -> dict:
         """,
         (tenant_id,),
     )
-    containers_by_status: dict = {r["status"]: int(r["cnt"]) for r in container_rows}
+    containers_by_status: dict[str, Any] = {r["status"]: int(r["cnt"]) for r in container_rows}
     total_containers = sum(containers_by_status.values())
 
     # Customers
@@ -660,7 +667,7 @@ def get_tenant_report_data(tenant_id: str, period: str) -> dict:
         """,
         (tenant_id,),
     )
-    customer_data = customer_rows[0] if customer_rows else {"total": 0, "with_active_shipments": 0}
+    customer_data: dict[str, Any] = customer_rows[0] if customer_rows else {"total": 0, "with_active_shipments": 0}
 
     # Billing totals
     billing_rows = execute_with_tenant(
@@ -676,7 +683,7 @@ def get_tenant_report_data(tenant_id: str, period: str) -> dict:
         """,
         (tenant_id,),
     )
-    billing_data = billing_rows[0] if billing_rows else {}
+    billing_data: dict[str, Any] = billing_rows[0] if billing_rows else {}
 
     # Claims
     claims_rows = execute_with_tenant(
@@ -692,7 +699,7 @@ def get_tenant_report_data(tenant_id: str, period: str) -> dict:
         """,
         (tenant_id,),
     )
-    claims_data = claims_rows[0] if claims_rows else {"open_claims": 0, "resolved_this_month": 0}
+    claims_data: dict[str, Any] = claims_rows[0] if claims_rows else {"open_claims": 0, "resolved_this_month": 0}
 
     # Disputes
     disputes_rows = execute_with_tenant(
@@ -708,32 +715,32 @@ def get_tenant_report_data(tenant_id: str, period: str) -> dict:
         """,
         (tenant_id,),
     )
-    disputes_data = disputes_rows[0] if disputes_rows else {"open_disputes": 0, "resolved_this_month": 0}
+    disputes_data: dict[str, Any] = disputes_rows[0] if disputes_rows else {"open_disputes": 0, "resolved_this_month": 0}
 
     return {
-        "period":     period,
+        "period": period,
         "containers": {
-            "total":          total_containers,
-            "in_transit":     containers_by_status.get("in_transit", 0),
-            "at_warehouse":   containers_by_status.get("at_warehouse", 0),
+            "total": total_containers,
+            "in_transit": containers_by_status.get("in_transit", 0),
+            "at_warehouse": containers_by_status.get("at_warehouse", 0),
             "fully_released": containers_by_status.get("fully_released", 0),
         },
         "customers": {
-            "total":                  int(customer_data["total"]),
-            "with_active_shipments":  int(customer_data["with_active_shipments"]),
+            "total": int(customer_data["total"]),
+            "with_active_shipments": int(customer_data["with_active_shipments"]),
         },
         "billing": {
-            "total_billed_ngn":          float(billing_data.get("total_billed_ngn", 0)),
-            "total_collected_ngn":       float(billing_data.get("total_collected_ngn", 0)),
-            "outstanding_ngn":           float(billing_data.get("outstanding_ngn", 0)),
+            "total_billed_ngn": float(billing_data.get("total_billed_ngn", 0)),
+            "total_collected_ngn": float(billing_data.get("total_collected_ngn", 0)),
+            "outstanding_ngn": float(billing_data.get("outstanding_ngn", 0)),
             "average_cbm_per_container": float(billing_data.get("average_cbm", 0)),
         },
         "claims": {
-            "open":               int(claims_data["open_claims"]),
+            "open": int(claims_data["open_claims"]),
             "resolved_this_month": int(claims_data["resolved_this_month"]),
         },
         "disputes": {
-            "open":               int(disputes_data["open_disputes"]),
+            "open": int(disputes_data["open_disputes"]),
             "resolved_this_month": int(disputes_data["resolved_this_month"]),
         },
     }

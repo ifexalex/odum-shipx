@@ -59,16 +59,23 @@ class TestApprovalThresholds:
             patch.object(service.repo, "get_damage_claim_by_id", return_value=claim),
             patch.object(service.repo, "get_tenant_config_value", return_value={"staff_limit": 50}),
             patch.object(service.repo, "create_refund_request_for_claim", return_value={"id": "ref-001"}),
-            patch.object(service.repo, "create_claim_resolution", return_value={"id": "res-001", "resolution_type": "refund", "resolution_amount_ngn": None, "approval_level": "nigeria_staff", "refund_request_id": None}),
+            patch.object(
+                service.repo,
+                "create_claim_resolution",
+                return_value={
+                    "id": "res-001",
+                    "resolution_type": "refund",
+                    "resolution_amount_ngn": None,
+                    "approval_level": "nigeria_staff",
+                    "refund_request_id": None,
+                },
+            ),
             patch.object(service.repo, "update_claim_status", return_value=updated),
             patch("services.claims.service.publish_event"),
             patch("services.claims.service.log_audit"),
         ):
             ctx = _ctx(UserRole.NIGERIA_OFFICE_STAFF)
-            result = service.resolve_claim(
-                TENANT_ID, "claim-001", req,
-                actor_id="user-1", ctx=ctx
-            )
+            result = service.resolve_claim(TENANT_ID, "claim-001", req, actor_id="user-1", ctx=ctx)
             assert result["status"] == "resolved"
 
     def test_amount_above_threshold_staff_cannot_approve(self):
@@ -88,10 +95,7 @@ class TestApprovalThresholds:
         ):
             ctx = _ctx(UserRole.NIGERIA_OFFICE_STAFF)
             with pytest.raises((ApprovalThresholdExceededError, InsufficientPermissionsError)):
-                service.resolve_claim(
-                    TENANT_ID, "claim-001", req,
-                    actor_id="user-1", ctx=ctx
-                )
+                service.resolve_claim(TENANT_ID, "claim-001", req, actor_id="user-1", ctx=ctx)
 
     def test_amount_above_threshold_admin_can_approve(self):
         """Refund claims > $50 can be approved by tenant_admin."""
@@ -111,16 +115,23 @@ class TestApprovalThresholds:
             patch.object(service.repo, "get_damage_claim_by_id", return_value=claim),
             patch.object(service.repo, "get_tenant_config_value", return_value={"staff_limit": 50}),
             patch.object(service.repo, "create_refund_request_for_claim", return_value={"id": "ref-001"}),
-            patch.object(service.repo, "create_claim_resolution", return_value={"id": "res-001", "resolution_type": "refund", "resolution_amount_ngn": None, "approval_level": "tenant_admin", "refund_request_id": None}),
+            patch.object(
+                service.repo,
+                "create_claim_resolution",
+                return_value={
+                    "id": "res-001",
+                    "resolution_type": "refund",
+                    "resolution_amount_ngn": None,
+                    "approval_level": "tenant_admin",
+                    "refund_request_id": None,
+                },
+            ),
             patch.object(service.repo, "update_claim_status", return_value=updated),
             patch("services.claims.service.publish_event"),
             patch("services.claims.service.log_audit"),
         ):
             ctx = _ctx(UserRole.TENANT_ADMIN)
-            result = service.resolve_claim(
-                TENANT_ID, "claim-001", req,
-                actor_id="user-1", ctx=ctx
-            )
+            result = service.resolve_claim(TENANT_ID, "claim-001", req, actor_id="user-1", ctx=ctx)
             assert result["status"] == "resolved"
 
 
@@ -150,7 +161,17 @@ class TestApprovalLevelRecorded:
             patch.object(service.repo, "get_damage_claim_by_id", return_value=claim),
             patch.object(service.repo, "get_tenant_config_value", return_value={"staff_limit": 50}),
             patch.object(service.repo, "create_refund_request_for_claim", return_value={"id": "ref-001"}),
-            patch.object(service.repo, "create_claim_resolution", return_value={"id": "res-001", "resolution_type": "refund", "resolution_amount_ngn": None, "approval_level": "nigeria_staff", "refund_request_id": None}) as mock_resolution,
+            patch.object(
+                service.repo,
+                "create_claim_resolution",
+                return_value={
+                    "id": "res-001",
+                    "resolution_type": "refund",
+                    "resolution_amount_ngn": None,
+                    "approval_level": "nigeria_staff",
+                    "refund_request_id": None,
+                },
+            ) as mock_resolution,
             patch.object(service.repo, "update_claim_status", return_value=updated),
             patch("services.claims.service.publish_event"),
             patch("services.claims.service.log_audit"),
@@ -160,9 +181,10 @@ class TestApprovalLevelRecorded:
 
         mock_resolution.assert_called_once()
         resolution_data = mock_resolution.call_args[0][1]
-        assert resolution_data["approval_level"] in ("nigeria_staff", "staff"), (
-            f"Expected staff-level approval, got {resolution_data['approval_level']!r}"
-        )
+        assert resolution_data["approval_level"] in (
+            "nigeria_staff",
+            "staff",
+        ), f"Expected staff-level approval, got {resolution_data['approval_level']!r}"
 
     def test_large_refund_by_admin_records_tenant_admin_approval_level(self):
         """A refund above $50 approved by tenant_admin records approval_level='tenant_admin'."""
@@ -177,7 +199,17 @@ class TestApprovalLevelRecorded:
             patch.object(service.repo, "get_damage_claim_by_id", return_value=claim),
             patch.object(service.repo, "get_tenant_config_value", return_value={"staff_limit": 50}),
             patch.object(service.repo, "create_refund_request_for_claim", return_value={"id": "ref-001"}),
-            patch.object(service.repo, "create_claim_resolution", return_value={"id": "res-001", "resolution_type": "refund", "resolution_amount_ngn": None, "approval_level": "tenant_admin", "refund_request_id": None}) as mock_resolution,
+            patch.object(
+                service.repo,
+                "create_claim_resolution",
+                return_value={
+                    "id": "res-001",
+                    "resolution_type": "refund",
+                    "resolution_amount_ngn": None,
+                    "approval_level": "tenant_admin",
+                    "refund_request_id": None,
+                },
+            ) as mock_resolution,
             patch.object(service.repo, "update_claim_status", return_value=updated),
             patch("services.claims.service.publish_event"),
             patch("services.claims.service.log_audit"),
@@ -187,9 +219,9 @@ class TestApprovalLevelRecorded:
 
         mock_resolution.assert_called_once()
         resolution_data = mock_resolution.call_args[0][1]
-        assert resolution_data["approval_level"] == "tenant_admin", (
-            f"Expected tenant_admin approval, got {resolution_data['approval_level']!r}"
-        )
+        assert (
+            resolution_data["approval_level"] == "tenant_admin"
+        ), f"Expected tenant_admin approval, got {resolution_data['approval_level']!r}"
 
     def test_approved_by_field_matches_actor_id(self):
         """The approved_by field in the resolution record must equal the actor_id."""
@@ -204,7 +236,17 @@ class TestApprovalLevelRecorded:
             patch.object(service.repo, "get_damage_claim_by_id", return_value=claim),
             patch.object(service.repo, "get_tenant_config_value", return_value={"staff_limit": 50}),
             patch.object(service.repo, "create_refund_request_for_claim", return_value={"id": "ref-001"}),
-            patch.object(service.repo, "create_claim_resolution", return_value={"id": "res-001", "resolution_type": "compensation", "resolution_amount_ngn": None, "approval_level": "nigeria_staff", "refund_request_id": None}) as mock_resolution,
+            patch.object(
+                service.repo,
+                "create_claim_resolution",
+                return_value={
+                    "id": "res-001",
+                    "resolution_type": "compensation",
+                    "resolution_amount_ngn": None,
+                    "approval_level": "nigeria_staff",
+                    "refund_request_id": None,
+                },
+            ) as mock_resolution,
             patch.object(service.repo, "update_claim_status", return_value=updated),
             patch("services.claims.service.publish_event"),
             patch("services.claims.service.log_audit"),
@@ -251,10 +293,7 @@ class TestClaimStateMachine:
         with patch.object(service.repo, "get_damage_claim_by_id", return_value=claim):
             ctx = _ctx(UserRole.NIGERIA_OFFICE_STAFF)
             with pytest.raises(IllegalTransitionError):
-                service.resolve_claim(
-                    TENANT_ID, "claim-001", req,
-                    actor_id="user-1", ctx=ctx
-                )
+                service.resolve_claim(TENANT_ID, "claim-001", req, actor_id="user-1", ctx=ctx)
 
     def test_get_claim_not_found_raises(self):
         from services.claims import service

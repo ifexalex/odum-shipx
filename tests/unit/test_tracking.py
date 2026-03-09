@@ -35,6 +35,7 @@ def _container(**kw) -> dict:
 # State machine constants
 # ---------------------------------------------------------------------------
 
+
 class TestNextStateMap:
     """Verify the linear state machine is correctly defined."""
 
@@ -136,8 +137,7 @@ class TestUpdateContainerStatus:
             patch("services.tracking.service.log_audit"),
         ):
             return service.update_container_status(
-                TENANT_ID, "container-001", new_status,
-                extra=extra or {}, actor_id="u", ctx=ctx
+                TENANT_ID, "container-001", new_status, extra=extra or {}, actor_id="u", ctx=ctx
             )
 
     def test_invalid_transition_raises(self):
@@ -149,8 +149,7 @@ class TestUpdateContainerStatus:
         ):
             with pytest.raises(IllegalTransitionError):
                 service.update_container_status(
-                    TENANT_ID, "container-001", "cleared",
-                    extra={}, actor_id="u", ctx=_ctx(UserRole.CHINA_OFFICE_STAFF)
+                    TENANT_ID, "container-001", "cleared", extra={}, actor_id="u", ctx=_ctx(UserRole.CHINA_OFFICE_STAFF)
                 )
 
     def test_not_found_raises(self):
@@ -159,8 +158,7 @@ class TestUpdateContainerStatus:
         with patch.object(service.repo, "get_container_by_id", return_value=None):
             with pytest.raises(ResourceNotFoundError):
                 service.update_container_status(
-                    TENANT_ID, "nonexistent", "sealed",
-                    extra={}, actor_id="u", ctx=_ctx(UserRole.CHINA_OFFICE_STAFF)
+                    TENANT_ID, "nonexistent", "sealed", extra={}, actor_id="u", ctx=_ctx(UserRole.CHINA_OFFICE_STAFF)
                 )
 
     def test_china_staff_can_seal(self):
@@ -178,8 +176,7 @@ class TestUpdateContainerStatus:
         ):
             with pytest.raises(InsufficientPermissionsError):
                 service.update_container_status(
-                    TENANT_ID, "container-001", "sealed",
-                    extra={}, actor_id="u", ctx=_ctx(UserRole.NIGERIA_OFFICE_STAFF)
+                    TENANT_ID, "container-001", "sealed", extra={}, actor_id="u", ctx=_ctx(UserRole.NIGERIA_OFFICE_STAFF)
                 )
 
     def test_nigeria_staff_can_advance_in_transit(self):
@@ -196,8 +193,7 @@ class TestUpdateContainerStatus:
         ):
             with pytest.raises(InsufficientPermissionsError):
                 service.update_container_status(
-                    TENANT_ID, "container-001", "arrived",
-                    extra={}, actor_id="u", ctx=_ctx(UserRole.CHINA_OFFICE_STAFF)
+                    TENANT_ID, "container-001", "arrived", extra={}, actor_id="u", ctx=_ctx(UserRole.CHINA_OFFICE_STAFF)
                 )
 
     def test_tenant_admin_can_perform_any_stage(self):
@@ -215,8 +211,7 @@ class TestUpdateContainerStatus:
         ):
             with pytest.raises(BusinessRuleViolationError) as exc_info:
                 service.update_container_status(
-                    TENANT_ID, "container-001", "sealed",
-                    extra={}, actor_id="u", ctx=_ctx(UserRole.CHINA_OFFICE_STAFF)
+                    TENANT_ID, "container-001", "sealed", extra={}, actor_id="u", ctx=_ctx(UserRole.CHINA_OFFICE_STAFF)
                 )
             assert "NO_APPROVED_PACKING_LISTS" in str(exc_info.value.rule_id)
 
@@ -231,8 +226,7 @@ class TestUpdateContainerStatus:
         ):
             with pytest.raises(BusinessRuleViolationError) as exc_info:
                 service.update_container_status(
-                    TENANT_ID, "container-001", "sealed",
-                    extra={}, actor_id="u", ctx=_ctx(UserRole.CHINA_OFFICE_STAFF)
+                    TENANT_ID, "container-001", "sealed", extra={}, actor_id="u", ctx=_ctx(UserRole.CHINA_OFFICE_STAFF)
                 )
             assert "NO_MANIFEST" in str(exc_info.value.rule_id)
 
@@ -245,17 +239,17 @@ class TestUpdateContainerStatus:
         ):
             with pytest.raises(BusinessRuleViolationError) as exc_info:
                 service.update_container_status(
-                    TENANT_ID, "container-001", "in_transit",
+                    TENANT_ID,
+                    "container-001",
+                    "in_transit",
                     extra={},  # no ship_date
-                    actor_id="u", ctx=_ctx(UserRole.CHINA_OFFICE_STAFF)
+                    actor_id="u",
+                    ctx=_ctx(UserRole.CHINA_OFFICE_STAFF),
                 )
             assert "MISSING_SHIP_DATE" in str(exc_info.value.rule_id)
 
     def test_in_transit_with_ship_date_succeeds(self):
-        result = self._update(
-            "sealed", "in_transit", _ctx(UserRole.CHINA_OFFICE_STAFF),
-            extra={"ship_date": "2026-01-15"}
-        )
+        result = self._update("sealed", "in_transit", _ctx(UserRole.CHINA_OFFICE_STAFF), extra={"ship_date": "2026-01-15"})
         assert result["status"] == "in_transit"
 
     def test_cleared_publishes_payment_due_per_customer(self):
@@ -275,8 +269,7 @@ class TestUpdateContainerStatus:
             patch("services.tracking.service.log_audit"),
         ):
             service.update_container_status(
-                TENANT_ID, "container-001", "cleared",
-                extra={}, actor_id="u", ctx=_ctx(UserRole.NIGERIA_OFFICE_STAFF)
+                TENANT_ID, "container-001", "cleared", extra={}, actor_id="u", ctx=_ctx(UserRole.NIGERIA_OFFICE_STAFF)
             )
 
         # PaymentDue for each customer + ContainerStatusUpdated
@@ -295,8 +288,13 @@ class TestTrackingStageMapping:
         from services.tracking.service import _STATUS_TO_STAGE
 
         expected_db_statuses = {
-            "received", "in_transit", "arrived_port",
-            "customs_clearance", "at_warehouse", "ready_for_pickup", "released"
+            "received",
+            "in_transit",
+            "arrived_port",
+            "customs_clearance",
+            "at_warehouse",
+            "ready_for_pickup",
+            "released",
         }
         assert set(_STATUS_TO_STAGE.keys()) == expected_db_statuses
 
@@ -304,10 +302,7 @@ class TestTrackingStageMapping:
         from services.tracking.service import _CONTAINER_TO_TRACKING_STATUS
 
         # These container statuses should produce tracking status updates
-        transitioned = {
-            "in_transit", "arrived", "customs_clearance",
-            "cleared", "at_warehouse", "fully_released"
-        }
+        transitioned = {"in_transit", "arrived", "customs_clearance", "cleared", "at_warehouse", "fully_released"}
         assert set(_CONTAINER_TO_TRACKING_STATUS.keys()) == transitioned
 
 
@@ -371,6 +366,7 @@ class TestGetShipmentByCodeAndPhone:
         from datetime import datetime
 
         from services.tracking import service
+
         row = {
             "id": "ship-001",
             "tracking_code": "TK-001",

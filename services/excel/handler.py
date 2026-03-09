@@ -11,6 +11,7 @@ import json
 import logging
 import time
 import uuid
+from typing import Any, cast
 
 from aws_xray_sdk.core import patch_all
 
@@ -43,11 +44,9 @@ _BILLING_EXPORT_ROLES = (
 _IMPORT_ROLES = (UserRole.CHINA_OFFICE_STAFF,)
 
 
-def lambda_handler(event: dict, context) -> dict:
+def lambda_handler(event: dict[str, Any], context: Any) -> dict[str, Any]:
     start_time = time.time()
-    request_id = (
-        event.get("requestContext", {}).get("requestId") or str(uuid.uuid4())
-    )
+    request_id = event.get("requestContext", {}).get("requestId") or str(uuid.uuid4())
     http = event.get("requestContext", {}).get("http", {})
     method = http.get("method", "")
     path = http.get("path", "")
@@ -60,7 +59,7 @@ def lambda_handler(event: dict, context) -> dict:
             path,
             extra={"request_id": request_id, "tenant_id": tenant_ctx.tenant_id},
         )
-        response = _dispatch(event, method, path, tenant_ctx, request_id)
+        response: dict[str, Any] = _dispatch(event, method, path, tenant_ctx, request_id)
         record_usage(tenant_ctx.tenant_id, "api_calls", request_id=request_id)
         return response
 
@@ -85,27 +84,35 @@ def lambda_handler(event: dict, context) -> dict:
         )
 
 
-def _parse_body(event: dict) -> dict:
+def _parse_body(event: dict[str, Any]) -> dict[str, Any]:
     raw = event.get("body") or "{}"
     try:
-        return json.loads(raw)
+        return json.loads(raw)  # type: ignore[no-any-return]
     except json.JSONDecodeError:
         return {}
 
 
-def _parse_validated(model_class, body: dict):
+def _parse_validated(model_class: Any, body: dict[str, Any]) -> Any:
     from pydantic import ValidationError as PydanticValidationError
+
     try:
         return model_class(**body)
     except PydanticValidationError as exc:
         from shared.exceptions import ValidationError
+
         raise ValidationError(
             "Request validation failed",
-            field_errors={e["loc"][-1]: e["msg"] for e in exc.errors()},
+            field_errors={str(e["loc"][-1]): e["msg"] for e in exc.errors()},
         ) from exc
 
 
-def _dispatch(event, method, path, ctx, request_id):
+def _dispatch(
+    event: dict[str, Any],
+    method: str,
+    path: str,
+    ctx: Any,
+    request_id: str,
+) -> dict[str, Any]:
     parts = path.strip("/").split("/")
     tenant_id = ctx.tenant_id
 
@@ -148,13 +155,7 @@ def _dispatch(event, method, path, ctx, request_id):
         return success(result, request_id=request_id)
 
     # GET /v1/containers/{id}/billing/export
-    if (
-        resource == "containers"
-        and len(parts) == 5
-        and parts[3] == "billing"
-        and parts[4] == "export"
-        and method == "GET"
-    ):
+    if resource == "containers" and len(parts) == 5 and parts[3] == "billing" and parts[4] == "export" and method == "GET":
         ctx.assert_role(*_BILLING_EXPORT_ROLES)
         result = service.export_container_billing(tenant_id, parts[2], fmt=fmt)
         return success(result, request_id=request_id)
@@ -162,11 +163,12 @@ def _dispatch(event, method, path, ctx, request_id):
     raise ResourceNotFoundError("route", path)
 
 
-def _resolve_format(event: dict) -> str:
+def _resolve_format(event: dict[str, Any]) -> str:
     """Return validated export format from ?format= query param (default: xlsx)."""
-    raw = (event.get("queryStringParameters") or {}).get("format", "xlsx").lower()
+    raw = cast(str, (event.get("queryStringParameters") or {}).get("format", "xlsx")).lower()
     if raw not in {"xlsx", "csv", "pdf"}:
         from shared.exceptions import ValidationError
+
         raise ValidationError(
             "Invalid export format",
             field_errors={"format": f"Must be one of: xlsx, csv, pdf. Got: '{raw}'"},

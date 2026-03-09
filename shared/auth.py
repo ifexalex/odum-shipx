@@ -25,12 +25,10 @@ _VALID_ROLES: set[str] = {r.value for r in UserRole}
 
 # Distributed Redis cache for tenant status — consistent across all Lambda instances.
 # TTL 60s. On Redis failure, get() returns None and the caller falls through to DB.
-_tenant_status_cache: DistributedCache = DistributedCache(
-    default_ttl=15, key_prefix="tenant_status:"
-)
+_tenant_status_cache: DistributedCache = DistributedCache(default_ttl=15, key_prefix="tenant_status:")
 
 
-def get_tenant_context(event: dict) -> TenantContext:
+def get_tenant_context(event: dict[str, Any]) -> TenantContext:
     """Extract and validate tenant context from an API Gateway proxy event.
 
     Reads JWT claims injected by Cognito authorizer at:
@@ -42,11 +40,7 @@ def get_tenant_context(event: dict) -> TenantContext:
         cognito:groups    → comma-separated list of "{tenant_id}:{role}" strings
     """
     try:
-        claims: dict = (
-            event.get("requestContext", {})
-            .get("authorizer", {})
-            .get("claims", {})
-        )
+        claims: dict[str, Any] = event.get("requestContext", {}).get("authorizer", {}).get("claims", {})
         if not claims:
             raise AuthenticationRequiredError()
 
@@ -71,7 +65,7 @@ def get_tenant_context(event: dict) -> TenantContext:
     return TenantContext(tenant_id=tenant_id, user_id=user_id, role=role)
 
 
-def _parse_role(claims: dict, tenant_id: str) -> UserRole:
+def _parse_role(claims: dict[str, Any], tenant_id: str) -> UserRole:
     """Extract role from cognito:groups claim.
 
     Groups format: "{tenant_id}:{role}" e.g. "abc-123:tenant_admin"
@@ -83,6 +77,7 @@ def _parse_role(claims: dict, tenant_id: str) -> UserRole:
     # Handle both comma-separated string and JSON array string
     if groups_raw.startswith("["):
         import json
+
         try:
             groups: list[str] = json.loads(groups_raw)
         except ValueError:
@@ -98,7 +93,7 @@ def _parse_role(claims: dict, tenant_id: str) -> UserRole:
     prefix = f"{tenant_id}:"
     for group in groups:
         if group.startswith(prefix):
-            role_str = group[len(prefix):]
+            role_str = group[len(prefix) :]
             if role_str in _VALID_ROLES:
                 return UserRole(role_str)
 
@@ -151,10 +146,11 @@ def _check_tenant_active(tenant_id: str) -> None:
             exc,
         )
         from shared.exceptions import ServiceUnavailableError
+
         raise ServiceUnavailableError("Tenant status check unavailable") from exc
 
 
-def require_roles(*roles: UserRole) -> Callable:
+def require_roles(*roles: UserRole) -> Callable[..., Any]:
     """Decorator: validates the caller has one of the specified roles.
 
     Injects a `tenant_ctx` keyword argument into the decorated function.
@@ -166,9 +162,9 @@ def require_roles(*roles: UserRole) -> Callable:
             ...
     """
 
-    def decorator(func: Callable) -> Callable:
+    def decorator(func: Callable[..., Any]) -> Callable[..., Any]:
         @wraps(func)
-        def wrapper(event: dict, *args: Any, **kwargs: Any) -> Any:
+        def wrapper(event: dict[str, Any], *args: Any, **kwargs: Any) -> Any:
             ctx = get_tenant_context(event)
             ctx.assert_role(*roles)
             return func(event, *args, tenant_ctx=ctx, **kwargs)

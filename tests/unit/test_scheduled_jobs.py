@@ -19,9 +19,7 @@ class TestStorageFeeAccrual:
     """Test the core fee-per-note logic in isolation."""
 
     def _note(self, created_days_ago: int, total_cartons: int = 10) -> dict:
-        created_at = datetime(2026, 1, 1, tzinfo=UTC) + timedelta(
-            days=max(0, (TODAY - date(2026, 1, 1)).days - created_days_ago)
-        )
+        created_at = datetime(2026, 1, 1, tzinfo=UTC) + timedelta(days=max(0, (TODAY - date(2026, 1, 1)).days - created_days_ago))
         # Simpler: created_at = NOW - timedelta(days=created_days_ago)
         created_at = datetime.now(UTC) - timedelta(days=created_days_ago)
         return {
@@ -161,9 +159,7 @@ class TestDisputeEscalation:
                 "services.scheduled.dispute_escalation._get_investigating_disputes",
                 return_value=[dispute],
             ),
-            patch(
-                "services.scheduled.dispute_escalation._escalate_dispute"
-            ) as mock_escalate,
+            patch("services.scheduled.dispute_escalation._escalate_dispute") as mock_escalate,
         ):
             result = _process_tenant(TENANT_ID)
             assert result == 1
@@ -210,9 +206,7 @@ class TestReleaseExpiry:
     def test_no_expired_notes_returns_zero(self):
         from services.scheduled.release_expiry import _process_tenant
 
-        with patch(
-            "services.scheduled.release_expiry._get_expired_notes", return_value=[]
-        ):
+        with patch("services.scheduled.release_expiry._get_expired_notes", return_value=[]):
             result = _process_tenant(TENANT_ID)
             assert result == 0
 

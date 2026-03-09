@@ -16,23 +16,17 @@ TENANT_ID = "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa"
 
 @pytest.fixture
 def staff_ctx():
-    return TenantContext(
-        tenant_id=TENANT_ID, user_id="user-nigeria", role=UserRole.NIGERIA_OFFICE_STAFF
-    )
+    return TenantContext(tenant_id=TENANT_ID, user_id="user-nigeria", role=UserRole.NIGERIA_OFFICE_STAFF)
 
 
 @pytest.fixture
 def admin_ctx():
-    return TenantContext(
-        tenant_id=TENANT_ID, user_id="user-admin", role=UserRole.TENANT_ADMIN
-    )
+    return TenantContext(tenant_id=TENANT_ID, user_id="user-admin", role=UserRole.TENANT_ADMIN)
 
 
 @pytest.fixture
 def customer_ctx():
-    return TenantContext(
-        tenant_id=TENANT_ID, user_id="user-cust", role=UserRole.CUSTOMER
-    )
+    return TenantContext(tenant_id=TENANT_ID, user_id="user-cust", role=UserRole.CUSTOMER)
 
 
 # ---------------------------------------------------------------------------
@@ -110,9 +104,7 @@ class TestPackingListHandlerDispatch:
             patch("shared.metering.record_usage"),
         ):
             mock_svc.get_packing_list.return_value = pl
-            resp = handler.lambda_handler(
-                self._event("GET", "/v1/packing-lists/pl-001"), {}
-            )
+            resp = handler.lambda_handler(self._event("GET", "/v1/packing-lists/pl-001"), {})
         assert resp["statusCode"] == 200
 
     def test_unknown_route_returns_404(self, monkeypatch):
@@ -122,9 +114,7 @@ class TestPackingListHandlerDispatch:
         with (
             patch("shared.metering.record_usage"),
         ):
-            resp = handler.lambda_handler(
-                self._event("GET", "/v1/unknown-resource"), {}
-            )
+            resp = handler.lambda_handler(self._event("GET", "/v1/unknown-resource"), {})
         assert resp["statusCode"] == 404
 
     def test_wrong_role_blocked(self, monkeypatch):
@@ -179,9 +169,7 @@ class TestPackingListStateFlow:
             patch.object(service.repo, "update_packing_list_status", return_value=pending_pl),
             patch("services.packing_list.service.log_audit"),
         ):
-            ctx = TenantContext(
-                tenant_id=TENANT_ID, user_id="user-china", role=UserRole.CHINA_OFFICE_STAFF
-            )
+            ctx = TenantContext(tenant_id=TENANT_ID, user_id="user-china", role=UserRole.CHINA_OFFICE_STAFF)
             result = service.submit_packing_list("pl-001", TENANT_ID, ctx)
             assert result["status"] == "pending_approval"
 

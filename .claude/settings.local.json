@@ -78,7 +78,8 @@
       "Bash(LOCALSTACK_HOST=localhost AWS_ACCESS_KEY_ID=test AWS_SECRET_ACCESS_KEY=test AWS_DEFAULT_REGION=eu-west-1 tflocal apply -var-file=environments/dev.tfvars -var-file=environments/local.tfvars -auto-approve)",
       "Bash(LOCALSTACK_HOST=localhost AWS_ACCESS_KEY_ID=test AWS_SECRET_ACCESS_KEY=test AWS_DEFAULT_REGION=eu-west-1 tflocal init -reconfigure)",
       "Bash(LOCALSTACK_HOST=localhost AWS_ACCESS_KEY_ID=test AWS_SECRET_ACCESS_KEY=test AWS_DEFAULT_REGION=eu-west-1 tflocal init -reconfigure -backend-config=environments/local.backend.hcl)",
-      "Bash(make bootstrap:*)"
+      "Bash(make bootstrap:*)",
+      "Bash(pre-commit run --all-files)"
     ]
   }
 }

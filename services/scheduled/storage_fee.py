@@ -12,6 +12,7 @@ BR-SF-001 / BR-SF-002 / BR-SF-003:
 import logging
 from datetime import date
 from decimal import Decimal
+from typing import Any
 
 from aws_xray_sdk.core import patch_all
 
@@ -34,7 +35,7 @@ _DEFAULT_DAILY_RATE_NGN = Decimal("500")
 # ---------------------------------------------------------------------------
 
 
-def lambda_handler(event: dict, context) -> dict:
+def lambda_handler(event: dict[str, Any], context: Any) -> dict[str, Any]:
     tenants = _get_active_tenants()
     processed = skipped = errors = 0
 
@@ -49,14 +50,14 @@ def lambda_handler(event: dict, context) -> dict:
                     extra={"tenant_id": tenant_id, "fees_accrued": fees_accrued},
                 )
         except Exception:
-            logger.exception(
-                "Storage fee accrual failed for tenant %s", tenant_id
-            )
+            logger.exception("Storage fee accrual failed for tenant %s", tenant_id)
             errors += 1
 
     logger.info(
         "Storage fee job done: processed=%d skipped=%d errors=%d",
-        processed, skipped, errors,
+        processed,
+        skipped,
+        errors,
     )
     return {"processed": processed, "skipped": skipped, "errors": errors}
 
@@ -84,7 +85,8 @@ def _process_tenant(tenant_id: str) -> int:
             fees_accrued += 1 if accrued else 0
         except Exception:
             logger.exception(
-                "Storage fee error for release_note %s", note["id"],
+                "Storage fee error for release_note %s",
+                note["id"],
                 extra={"tenant_id": tenant_id},
             )
 
@@ -93,7 +95,7 @@ def _process_tenant(tenant_id: str) -> int:
 
 def _accrue_for_note(
     tenant_id: str,
-    note: dict,
+    note: dict[str, Any],
     grace_period: int,
     daily_rate: Decimal,
     today: date,
@@ -136,16 +138,16 @@ def _accrue_for_note(
         RETURNING id
         """,
         {
-            "tenant_id":         tenant_id,
-            "billing_id":        billing_id,
-            "customer_id":       str(note["customer_id"]),
-            "container_id":      str(note["container_id"]),
-            "accrual_date":      today,
+            "tenant_id": tenant_id,
+            "billing_id": billing_id,
+            "customer_id": str(note["customer_id"]),
+            "container_id": str(note["container_id"]),
+            "accrual_date": today,
             "cartons_in_storage": unreleased,
-            "daily_rate_ngn":    daily_rate,
-            "amount_ngn":        fee,
+            "daily_rate_ngn": daily_rate,
+            "amount_ngn": fee,
             "grace_period_days": grace_period,
-            "days_in_storage":   day_number,
+            "days_in_storage": day_number,
         },
     )
 
@@ -171,20 +173,23 @@ def _accrue_for_note(
         detail_type="StorageFeeAccrued",
         tenant_id=tenant_id,
         payload={
-            "release_note_id":   str(note["id"]),
-            "billing_id":        billing_id,
-            "customer_id":       str(note["customer_id"]),
-            "accrual_date":      str(today),
+            "release_note_id": str(note["id"]),
+            "billing_id": billing_id,
+            "customer_id": str(note["customer_id"]),
+            "accrual_date": str(today),
             "cartons_in_storage": unreleased,
-            "daily_rate_ngn":    str(daily_rate),
-            "amount_ngn":        str(fee),
-            "day_number":        day_number,
+            "daily_rate_ngn": str(daily_rate),
+            "amount_ngn": str(fee),
+            "day_number": day_number,
         },
     )
 
     logger.info(
         "Storage fee accrued: billing=%s date=%s cartons=%d fee=%s",
-        billing_id, today, unreleased, fee,
+        billing_id,
+        today,
+        unreleased,
+        fee,
         extra={"tenant_id": tenant_id},
     )
     return True
@@ -195,14 +200,14 @@ def _accrue_for_note(
 # ---------------------------------------------------------------------------
 
 
-def _get_active_tenants() -> list[dict]:
+def _get_active_tenants() -> list[dict[str, Any]]:
     return execute_with_tenant(
         PLATFORM_TENANT_ID,
         "SELECT id FROM tenant WHERE status = 'active'",
     )
 
 
-def _get_storage_fee_config(tenant_id: str) -> dict:
+def _get_storage_fee_config(tenant_id: str) -> dict[str, Any]:
     rows = execute_with_tenant(
         tenant_id,
         """
@@ -215,7 +220,7 @@ def _get_storage_fee_config(tenant_id: str) -> dict:
     return rows[0]["config_value"] if rows else {}
 
 
-def _get_active_release_notes(tenant_id: str) -> list[dict]:
+def _get_active_release_notes(tenant_id: str) -> list[dict[str, Any]]:
     return execute_with_tenant(
         tenant_id,
         """

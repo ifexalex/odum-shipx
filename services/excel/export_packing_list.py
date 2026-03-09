@@ -2,13 +2,15 @@
 import contextlib
 from datetime import datetime
 from io import BytesIO
+from typing import Any
 
 import openpyxl
 from openpyxl.styles import Font
 from openpyxl.utils import get_column_letter
+from openpyxl.worksheet.worksheet import Worksheet
 
 
-def _autosize_columns(ws) -> None:
+def _autosize_columns(ws: Worksheet) -> None:
     for col in ws.columns:
         max_length = 0
         col_letter = get_column_letter(col[0].column)
@@ -23,7 +25,7 @@ def generate_packing_list_xlsx(
     tenant_display_name: str,
     container_number: str,
     customer_name: str,
-    items: list[dict],
+    items: list[dict[str, Any]],
 ) -> BytesIO:
     """Return a BytesIO buffer containing the packing list workbook."""
     wb = openpyxl.Workbook()
@@ -35,10 +37,16 @@ def generate_packing_list_xlsx(
     ws.title = "Packing List"
 
     headers = [
-        "Carton Tag", "Tracking Code", "Description",
-        "Weight (Dispatch) kg", "Weight (Actual) kg",
-        "Length (cm)", "Width (cm)", "Height (cm)",
-        "CBM", "Received Date",
+        "Carton Tag",
+        "Tracking Code",
+        "Description",
+        "Weight (Dispatch) kg",
+        "Weight (Actual) kg",
+        "Length (cm)",
+        "Width (cm)",
+        "Height (cm)",
+        "CBM",
+        "Received Date",
     ]
     for col, header in enumerate(headers, 1):
         cell = ws.cell(row=1, column=col, value=header)
@@ -61,12 +69,9 @@ def generate_packing_list_xlsx(
         total_row = len(items) + 2
         totals_cell = ws.cell(row=total_row, column=3, value="TOTALS")
         totals_cell.font = Font(bold=True)
-        ws.cell(row=total_row, column=4,
-                value=sum(float(i.get("weight_dispatch_kg") or 0) for i in items))
-        ws.cell(row=total_row, column=5,
-                value=sum(float(i.get("weight_actual_kg") or 0) for i in items))
-        ws.cell(row=total_row, column=9,
-                value=round(sum(float(i.get("cbm") or 0) for i in items), 6))
+        ws.cell(row=total_row, column=4, value=sum(float(i.get("weight_dispatch_kg") or 0) for i in items))
+        ws.cell(row=total_row, column=5, value=sum(float(i.get("weight_actual_kg") or 0) for i in items))
+        ws.cell(row=total_row, column=9, value=round(sum(float(i.get("cbm") or 0) for i in items), 6))
 
     ws.auto_filter.ref = f"A1:J{len(items) + 1}"
     _autosize_columns(ws)
@@ -76,13 +81,13 @@ def generate_packing_list_xlsx(
     # ------------------------------------------------------------------
     ws2 = wb.create_sheet("Summary")
     summary_rows = [
-        ("Company Name",      tenant_display_name),
-        ("Container Number",  container_number),
-        ("Customer Name",     customer_name),
-        ("Total Cartons",     len(items)),
+        ("Company Name", tenant_display_name),
+        ("Container Number", container_number),
+        ("Customer Name", customer_name),
+        ("Total Cartons", len(items)),
         ("Total Weight (kg)", round(sum(float(i.get("weight_actual_kg") or 0) for i in items), 3)),
-        ("Total CBM",         round(sum(float(i.get("cbm") or 0) for i in items), 6)),
-        ("Generated Date",    datetime.utcnow().strftime("%Y-%m-%d %H:%M UTC")),
+        ("Total CBM", round(sum(float(i.get("cbm") or 0) for i in items), 6)),
+        ("Generated Date", datetime.utcnow().strftime("%Y-%m-%d %H:%M UTC")),
     ]
     for row_idx, (label, value) in enumerate(summary_rows, 1):
         ws2.cell(row=row_idx, column=1, value=label).font = Font(bold=True)

@@ -28,6 +28,4 @@ def upgrade() -> None:
 
 
 def downgrade() -> None:
-    op.execute(
-        "ALTER TABLE usage_record DROP CONSTRAINT IF EXISTS uq_usage_tenant_metric_period"
-    )
+    op.execute("ALTER TABLE usage_record DROP CONSTRAINT IF EXISTS uq_usage_tenant_metric_period")

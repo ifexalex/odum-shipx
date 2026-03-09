@@ -14,6 +14,7 @@ import json
 import logging
 import time
 import uuid
+from typing import Any
 
 from aws_xray_sdk.core import patch_all
 
@@ -62,17 +63,13 @@ _STAFF_ROLES = (
 # ---------------------------------------------------------------------------
 
 
-def lambda_handler(event: dict, context) -> dict:
+def lambda_handler(event: dict[str, Any], context: Any) -> dict[str, Any]:
     start_time = time.time()
-    request_id = (
-        event.get("requestContext", {}).get("requestId") or str(uuid.uuid4())
-    )
+    request_id = event.get("requestContext", {}).get("requestId") or str(uuid.uuid4())
     http = event.get("requestContext", {}).get("http", {})
     method = http.get("method", "")
     path = http.get("path", "")
-    ip_address = (
-        event.get("requestContext", {}).get("identity", {}).get("sourceIp")
-    )
+    ip_address = event.get("requestContext", {}).get("identity", {}).get("sourceIp")
 
     try:
         tenant_ctx = get_tenant_context(event)
@@ -91,7 +88,7 @@ def lambda_handler(event: dict, context) -> dict:
             if cached:
                 return cached
 
-        response = _dispatch(event, method, path, tenant_ctx, request_id, ip_address)
+        response: dict[str, Any] = _dispatch(event, method, path, tenant_ctx, request_id, ip_address)
 
         if method == "POST" and idempotency_key and response.get("statusCode", 500) < 400:
             store_idempotency(idempotency_key, response, tenant_ctx.tenant_id)
@@ -125,7 +122,14 @@ def lambda_handler(event: dict, context) -> dict:
 # ---------------------------------------------------------------------------
 
 
-def _dispatch(event, method, path, ctx, request_id, ip_address):
+def _dispatch(
+    event: dict[str, Any],
+    method: str,
+    path: str,
+    ctx: Any,
+    request_id: str,
+    ip_address: str | None,
+) -> dict[str, Any]:
     parts = path.strip("/").split("/")
 
     if len(parts) >= 2 and parts[0] == "v1":
@@ -141,8 +145,9 @@ def _dispatch(event, method, path, ctx, request_id, ip_address):
             # Handle POST directly — body is passed as dict (flexible schema)
             if method == "POST" and len(parts) == 2:
                 body = _parse_body(event)
+                req = _parse_validated(CreateTenantRequest, body)
                 result = service.create_tenant(
-                    body,
+                    req,
                     actor_id=ctx.user_id,
                     request_id=request_id,
                     ip_address=ip_address,
@@ -161,19 +166,19 @@ def _dispatch(event, method, path, ctx, request_id, ip_address):
     raise ResourceNotFoundError("route", path)
 
 
-def _parse_body(event: dict) -> dict:
+def _parse_body(event: dict[str, Any]) -> dict[str, Any]:
     raw = event.get("body") or "{}"
     try:
-        return json.loads(raw)
+        return json.loads(raw)  # type: ignore[no-any-return]
     except json.JSONDecodeError:
         return {}
 
 
-def _qp(event: dict, key: str, default=None):
+def _qp(event: dict[str, Any], key: str, default: Any = None) -> Any:
     return (event.get("queryStringParameters") or {}).get(key, default)
 
 
-def _parse_validated(model_class, body: dict):
+def _parse_validated(model_class: Any, body: dict[str, Any]) -> Any:
     """Parse body dict with Pydantic model; raise validation_error on failure."""
     from pydantic import ValidationError as PydanticValidationError
 
@@ -181,9 +186,10 @@ def _parse_validated(model_class, body: dict):
         return model_class(**body)
     except PydanticValidationError as exc:
         from shared.exceptions import ValidationError
+
         raise ValidationError(
             "Request validation failed",
-            field_errors={e["loc"][-1]: e["msg"] for e in exc.errors()},
+            field_errors={str(e["loc"][-1]): e["msg"] for e in exc.errors()},
         ) from exc
 
 
@@ -192,7 +198,14 @@ def _parse_validated(model_class, body: dict):
 # ---------------------------------------------------------------------------
 
 
-def _platform_routes(event, parts, method, ctx, request_id, ip_address):
+def _platform_routes(
+    event: dict[str, Any],
+    parts: list[str],
+    method: str,
+    ctx: Any,
+    request_id: str,
+    ip_address: str | None,
+) -> dict[str, Any]:
     # parts: ["v1", "platform", <resource>, ...]
     resource = parts[2] if len(parts) > 2 else ""
 
@@ -204,6 +217,7 @@ def _platform_routes(event, parts, method, ctx, request_id, ip_address):
     # GET /v1/platform/audit-log
     if resource == "audit-log" and method == "GET":
         from shared.pagination import decode_cursor
+
         cursor_str = _qp(event, "cursor")
         page, next_cursor, has_more = service.list_platform_audit_log(
             limit=int(_qp(event, "limit", 50)),
@@ -255,23 +269,17 @@ def _platform_routes(event, parts, method, ctx, request_id, ip_address):
             if action == "suspend" and method == "PATCH":
                 body = _parse_body(event)
                 req = _parse_validated(SuspendTenantRequest, body)
-                result = service.suspend_tenant(
-                    tenant_id, req.reason, actor_id=ctx.user_id, ip_address=ip_address
-                )
+                result = service.suspend_tenant(tenant_id, req.reason, actor_id=ctx.user_id, ip_address=ip_address)
                 return success(result, request_id=request_id)
 
             # PATCH /v1/platform/tenants/{id}/activate
             if action == "activate" and method == "PATCH":
-                result = service.activate_tenant(
-                    tenant_id, actor_id=ctx.user_id, ip_address=ip_address
-                )
+                result = service.activate_tenant(tenant_id, actor_id=ctx.user_id, ip_address=ip_address)
                 return success(result, request_id=request_id)
 
             # PATCH /v1/platform/tenants/{id}/reactivate
             if action == "reactivate" and method == "PATCH":
-                result = service.reactivate_tenant(
-                    tenant_id, actor_id=ctx.user_id, ip_address=ip_address
-                )
+                result = service.reactivate_tenant(tenant_id, actor_id=ctx.user_id, ip_address=ip_address)
                 return success(result, request_id=request_id)
 
             # GET /v1/platform/tenants/{id}
@@ -282,16 +290,12 @@ def _platform_routes(event, parts, method, ctx, request_id, ip_address):
             if method == "PATCH":
                 body = _parse_body(event)
                 req = _parse_validated(UpdateTenantRequest, body)
-                result = service.update_tenant(
-                    tenant_id, req, actor_id=ctx.user_id, ip_address=ip_address
-                )
+                result = service.update_tenant(tenant_id, req, actor_id=ctx.user_id, ip_address=ip_address)
                 return success(result, request_id=request_id)
 
             # DELETE /v1/platform/tenants/{id}
             if method == "DELETE":
-                result = service.offboard_tenant(
-                    tenant_id, actor_id=ctx.user_id, ip_address=ip_address
-                )
+                result = service.offboard_tenant(tenant_id, actor_id=ctx.user_id, ip_address=ip_address)
                 return success(result, request_id=request_id)
 
     raise ResourceNotFoundError("route", "/".join(parts))
@@ -302,7 +306,14 @@ def _platform_routes(event, parts, method, ctx, request_id, ip_address):
 # ---------------------------------------------------------------------------
 
 
-def _tenant_admin_routes(event, parts, method, ctx, request_id, ip_address):
+def _tenant_admin_routes(
+    event: dict[str, Any],
+    parts: list[str],
+    method: str,
+    ctx: Any,
+    request_id: str,
+    ip_address: str | None,
+) -> dict[str, Any]:
     tenant_id = ctx.tenant_id
     resource = parts[2] if len(parts) > 2 else ""
 
@@ -318,9 +329,7 @@ def _tenant_admin_routes(event, parts, method, ctx, request_id, ip_address):
         if method == "PUT":
             body = _parse_body(event)
             req = _parse_validated(UpdateTenantConfigRequest, body)
-            result = service.update_tenant_config(
-                tenant_id, req, actor_id=ctx.user_id, ip_address=ip_address
-            )
+            result = service.update_tenant_config(tenant_id, req, actor_id=ctx.user_id, ip_address=ip_address)
             return success(result, request_id=request_id)
 
     # /v1/tenant/dollar-rate
@@ -330,9 +339,7 @@ def _tenant_admin_routes(event, parts, method, ctx, request_id, ip_address):
         if method == "PUT":
             body = _parse_body(event)
             req = _parse_validated(UpdateDollarRateRequest, body)
-            result = service.update_dollar_rate(
-                tenant_id, req, actor_id=ctx.user_id, ip_address=ip_address
-            )
+            result = service.update_dollar_rate(tenant_id, req, actor_id=ctx.user_id, ip_address=ip_address)
             return success(result, request_id=request_id)
 
     # /v1/tenant/users[/{id}]
@@ -363,14 +370,10 @@ def _tenant_admin_routes(event, parts, method, ctx, request_id, ip_address):
             if method == "PATCH":
                 body = _parse_body(event)
                 updates = {k: v for k, v in body.items() if k in ("full_name", "role")}
-                result = service.update_user(
-                    tenant_id, user_id, updates, actor_id=ctx.user_id, ip_address=ip_address
-                )
+                result = service.update_user(tenant_id, user_id, updates, actor_id=ctx.user_id, ip_address=ip_address)
                 return success(result, request_id=request_id)
             if method == "DELETE":
-                service.deactivate_user(
-                    tenant_id, user_id, actor_id=ctx.user_id, ip_address=ip_address
-                )
+                service.deactivate_user(tenant_id, user_id, actor_id=ctx.user_id, ip_address=ip_address)
                 return no_content(request_id=request_id)
 
     # /v1/tenant/charge-types[/{id}]
@@ -380,9 +383,7 @@ def _tenant_admin_routes(event, parts, method, ctx, request_id, ip_address):
         if not charge_type_id:
             if method == "POST":
                 body = _parse_body(event)
-                result = service.create_charge_type(
-                    tenant_id, body, actor_id=ctx.user_id, ip_address=ip_address
-                )
+                result = service.create_charge_type(tenant_id, body, actor_id=ctx.user_id, ip_address=ip_address)
                 return created(
                     result,
                     location=f"/v1/tenant/charge-types/{result['id']}",
@@ -393,14 +394,10 @@ def _tenant_admin_routes(event, parts, method, ctx, request_id, ip_address):
         else:
             if method == "PUT":
                 body = _parse_body(event)
-                result = service.update_charge_type(
-                    tenant_id, charge_type_id, body, actor_id=ctx.user_id, ip_address=ip_address
-                )
+                result = service.update_charge_type(tenant_id, charge_type_id, body, actor_id=ctx.user_id, ip_address=ip_address)
                 return success(result, request_id=request_id)
             if method == "DELETE":
-                service.deactivate_charge_type(
-                    tenant_id, charge_type_id, actor_id=ctx.user_id, ip_address=ip_address
-                )
+                service.deactivate_charge_type(tenant_id, charge_type_id, actor_id=ctx.user_id, ip_address=ip_address)
                 return no_content(request_id=request_id)
 
     raise ResourceNotFoundError("route", "/".join(parts))
@@ -411,7 +408,14 @@ def _tenant_admin_routes(event, parts, method, ctx, request_id, ip_address):
 # ---------------------------------------------------------------------------
 
 
-def _customer_routes(event, parts, method, ctx, request_id, ip_address):
+def _customer_routes(
+    event: dict[str, Any],
+    parts: list[str],
+    method: str,
+    ctx: Any,
+    request_id: str,
+    ip_address: str | None,
+) -> dict[str, Any]:
     tenant_id = ctx.tenant_id
     customer_id = parts[2] if len(parts) > 2 else None
     action = parts[3] if len(parts) > 3 else None
@@ -427,9 +431,7 @@ def _customer_routes(event, parts, method, ctx, request_id, ip_address):
                 UserRole.NIGERIA_OFFICE_STAFF,
             )
             body = _parse_body(event)
-            result = service.create_customer(
-                tenant_id, body, actor_id=ctx.user_id, request_id=request_id, ip_address=ip_address
-            )
+            result = service.create_customer(tenant_id, body, actor_id=ctx.user_id, request_id=request_id, ip_address=ip_address)
             return created(
                 result,
                 location=f"/v1/customers/{result['id']}",
@@ -442,10 +444,9 @@ def _customer_routes(event, parts, method, ctx, request_id, ip_address):
             limit = int(_qp(event, "limit", 50))
             cursor_str = _qp(event, "cursor")
             from shared.pagination import decode_cursor
+
             cursor = decode_cursor(cursor_str)
-            page, next_cursor, has_more = service.list_customers(
-                tenant_id, q=q, limit=limit, cursor=cursor
-            )
+            page, next_cursor, has_more = service.list_customers(tenant_id, q=q, limit=limit, cursor=cursor)
             return paginated(page, next_cursor, has_more, request_id=request_id)
 
     else:
@@ -464,20 +465,19 @@ def _customer_routes(event, parts, method, ctx, request_id, ip_address):
             if method == "PATCH":
                 ctx.assert_role(*_STAFF_ROLES)
                 body = _parse_body(event)
-                result = service.update_customer(
-                    tenant_id, customer_id, body, actor_id=ctx.user_id, ip_address=ip_address
-                )
+                result = service.update_customer(tenant_id, customer_id, body, actor_id=ctx.user_id, ip_address=ip_address)
                 return success(result, request_id=request_id)
 
             # DELETE /v1/customers/{id} — tenant_admin only (GDPR Art. 17 erasure)
             if method == "DELETE":
                 ctx.assert_role(UserRole.TENANT_ADMIN)
-                result = service.anonymise_customer(
-                    tenant_id, customer_id,
+                anonymised = service.anonymise_customer(
+                    tenant_id,
+                    customer_id,
                     actor_id=ctx.user_id,
                     ip_address=ip_address,
                 )
-                return success(result, request_id=request_id)
+                return success(anonymised or {}, request_id=request_id)
 
         else:
             # GET /v1/customers/{id}/export — tenant_admin or the customer themselves

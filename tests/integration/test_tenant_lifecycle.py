@@ -65,9 +65,7 @@ class TestTenantHandlerDispatch:
             patch("shared.metering.record_usage"),
         ):
             mock_svc.list_tenants.return_value = ([], None, False)
-            resp = handler.lambda_handler(
-                _platform_event("GET", "/v1/tenants"), {}
-            )
+            resp = handler.lambda_handler(_platform_event("GET", "/v1/tenants"), {})
         assert resp["statusCode"] == 200
 
     def test_suspend_tenant_returns_200(self, monkeypatch):
@@ -160,6 +158,7 @@ class TestTenantSuspensionEffect:
 
         # Clear the tenant status cache so the DB is actually queried
         from shared import auth
+
         auth._tenant_status_cache._cache.clear()
 
         with pytest.raises(TenantSuspendedError):

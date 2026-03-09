@@ -32,17 +32,14 @@ def upgrade() -> None:
     # ---------------------------------------------------------------------------
     # Data migration: rename existing 'pending' records before CHECK change
     # ---------------------------------------------------------------------------
-    op.execute(
-        "UPDATE refund_request SET status = 'pending_review' WHERE status = 'pending'"
-    )
+    op.execute("UPDATE refund_request SET status = 'pending_review' WHERE status = 'pending'")
 
     # ---------------------------------------------------------------------------
     # refund_request — fix status CHECK + update default
     # ---------------------------------------------------------------------------
+    op.execute("ALTER TABLE refund_request DROP CONSTRAINT refund_request_status_check")
     op.execute(
-        "ALTER TABLE refund_request DROP CONSTRAINT refund_request_status_check"
-    )
-    op.execute("""
+        """
         ALTER TABLE refund_request ADD CONSTRAINT refund_request_status_check
         CHECK (status IN (
             'pending_review',
@@ -53,116 +50,92 @@ def upgrade() -> None:
             'processed',
             'applied_as_credit'
         ))
-    """)
-    op.execute(
-        "ALTER TABLE refund_request ALTER COLUMN status SET DEFAULT 'pending_review'"
+    """
     )
+    op.execute("ALTER TABLE refund_request ALTER COLUMN status SET DEFAULT 'pending_review'")
 
     # ---------------------------------------------------------------------------
     # refund_request — fix customer_choice CHECK
     # ---------------------------------------------------------------------------
+    op.execute("ALTER TABLE refund_request " "DROP CONSTRAINT IF EXISTS refund_request_customer_choice_check")
     op.execute(
-        "ALTER TABLE refund_request "
-        "DROP CONSTRAINT IF EXISTS refund_request_customer_choice_check"
-    )
-    op.execute("""
+        """
         ALTER TABLE refund_request ADD CONSTRAINT refund_request_customer_choice_check
         CHECK (
             customer_choice IN ('immediate_refund', 'credit_next_shipment')
             OR customer_choice IS NULL
         )
-    """)
+    """
+    )
 
     # ---------------------------------------------------------------------------
     # refund_request — fix approval_level CHECK
     # ---------------------------------------------------------------------------
+    op.execute("ALTER TABLE refund_request " "DROP CONSTRAINT IF EXISTS refund_request_approval_level_check")
     op.execute(
-        "ALTER TABLE refund_request "
-        "DROP CONSTRAINT IF EXISTS refund_request_approval_level_check"
-    )
-    op.execute("""
+        """
         ALTER TABLE refund_request ADD CONSTRAINT refund_request_approval_level_check
         CHECK (
             approval_level IN ('manager', 'head_of_finance')
             OR approval_level IS NULL
         )
-    """)
+    """
+    )
 
     # ---------------------------------------------------------------------------
     # refund_request — add missing columns
     # ---------------------------------------------------------------------------
-    op.execute("""
+    op.execute(
+        """
         ALTER TABLE refund_request ADD COLUMN refund_type VARCHAR(30)
         CHECK (refund_type IN ('overpayment', 'cbm_correction', 'damage_or_loss'))
-    """)
-    op.execute(
-        "ALTER TABLE refund_request ADD COLUMN amount_approved_ngn DECIMAL(15, 2)"
+    """
     )
-    op.execute(
-        "ALTER TABLE refund_request ADD COLUMN damage_claim_id UUID "
-        "REFERENCES damage_claim(id)"
-    )
-    op.execute(
-        "ALTER TABLE refund_request ADD COLUMN debt_check_passed BOOLEAN"
-    )
-    op.execute(
-        "ALTER TABLE refund_request ADD COLUMN debt_check_notes TEXT"
-    )
+    op.execute("ALTER TABLE refund_request ADD COLUMN amount_approved_ngn DECIMAL(15, 2)")
+    op.execute("ALTER TABLE refund_request ADD COLUMN damage_claim_id UUID " "REFERENCES damage_claim(id)")
+    op.execute("ALTER TABLE refund_request ADD COLUMN debt_check_passed BOOLEAN")
+    op.execute("ALTER TABLE refund_request ADD COLUMN debt_check_notes TEXT")
 
 
 def downgrade() -> None:
     # Remove added columns
-    op.execute(
-        "ALTER TABLE refund_request DROP COLUMN IF EXISTS debt_check_notes"
-    )
-    op.execute(
-        "ALTER TABLE refund_request DROP COLUMN IF EXISTS debt_check_passed"
-    )
-    op.execute(
-        "ALTER TABLE refund_request DROP COLUMN IF EXISTS damage_claim_id"
-    )
-    op.execute(
-        "ALTER TABLE refund_request DROP COLUMN IF EXISTS amount_approved_ngn"
-    )
-    op.execute(
-        "ALTER TABLE refund_request DROP COLUMN IF EXISTS refund_type"
-    )
+    op.execute("ALTER TABLE refund_request DROP COLUMN IF EXISTS debt_check_notes")
+    op.execute("ALTER TABLE refund_request DROP COLUMN IF EXISTS debt_check_passed")
+    op.execute("ALTER TABLE refund_request DROP COLUMN IF EXISTS damage_claim_id")
+    op.execute("ALTER TABLE refund_request DROP COLUMN IF EXISTS amount_approved_ngn")
+    op.execute("ALTER TABLE refund_request DROP COLUMN IF EXISTS refund_type")
 
     # Restore approval_level CHECK
+    op.execute("ALTER TABLE refund_request " "DROP CONSTRAINT IF EXISTS refund_request_approval_level_check")
     op.execute(
-        "ALTER TABLE refund_request "
-        "DROP CONSTRAINT IF EXISTS refund_request_approval_level_check"
-    )
-    op.execute("""
+        """
         ALTER TABLE refund_request ADD CONSTRAINT refund_request_approval_level_check
         CHECK (approval_level IN ('staff', 'manager', 'admin') OR approval_level IS NULL)
-    """)
+    """
+    )
 
     # Restore customer_choice CHECK
+    op.execute("ALTER TABLE refund_request " "DROP CONSTRAINT IF EXISTS refund_request_customer_choice_check")
     op.execute(
-        "ALTER TABLE refund_request "
-        "DROP CONSTRAINT IF EXISTS refund_request_customer_choice_check"
-    )
-    op.execute("""
+        """
         ALTER TABLE refund_request ADD CONSTRAINT refund_request_customer_choice_check
         CHECK (
             customer_choice IN ('cash', 'bank_transfer', 'credit_note')
             OR customer_choice IS NULL
         )
-    """)
+    """
+    )
 
     # Restore status CHECK
+    op.execute("ALTER TABLE refund_request DROP CONSTRAINT refund_request_status_check")
     op.execute(
-        "ALTER TABLE refund_request DROP CONSTRAINT refund_request_status_check"
-    )
-    op.execute("""
+        """
         ALTER TABLE refund_request ADD CONSTRAINT refund_request_status_check
         CHECK (status IN (
             'pending', 'debt_check', 'approved', 'rejected',
             'processing', 'completed', 'cancelled'
         ))
-    """)
-    op.execute(
-        "ALTER TABLE refund_request ALTER COLUMN status SET DEFAULT 'pending'"
+    """
     )
+    op.execute("ALTER TABLE refund_request ALTER COLUMN status SET DEFAULT 'pending'")
     # Note: data migration back (pending_review → pending) is not safe to auto-reverse

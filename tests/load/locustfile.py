@@ -622,13 +622,13 @@ def on_quitting(environment, **kwargs):
 
     # Targets: (tag substring, threshold_ms, label)
     _TARGETS = [
-        ("[list]",    500,  "GET list endpoints"),
-        ("[get]",     200,  "GET single resource"),
-        ("[create]",  1000, "POST create"),
+        ("[list]", 500, "GET list endpoints"),
+        ("[get]", 200, "GET single resource"),
+        ("[create]", 1000, "POST create"),
         ("[confirm]", 1000, "POST confirm"),
-        ("[update]",  500,  "PATCH state transitions"),
-        ("[public]",  500,  "Public tracking lookup"),
-        ("[admin]",   500,  "Admin dashboard reads"),
+        ("[update]", 500, "PATCH state transitions"),
+        ("[public]", 500, "Public tracking lookup"),
+        ("[admin]", 500, "Admin dashboard reads"),
     ]
 
     passed = True

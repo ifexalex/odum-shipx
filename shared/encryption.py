@@ -24,6 +24,7 @@ Environment:
 import base64
 import logging
 import os
+from typing import Any
 
 logger = logging.getLogger(__name__)
 
@@ -36,10 +37,11 @@ _SEP = b"||"
 _kms_client = None
 
 
-def _get_kms():
+def _get_kms() -> Any:
     global _kms_client
     if _kms_client is None:
         import boto3
+
         _kms_client = boto3.client("kms", region_name=os.environ.get("AWS_REGION", "eu-west-1"))
     return _kms_client
 
@@ -54,9 +56,7 @@ def encrypt_field(plaintext: str | None) -> str | None:
     if plaintext is None:
         return None
     if not _KMS_KEY_ID:
-        logger.warning(
-            "ENCRYPTION_KMS_KEY_ID not set — storing sensitive field unencrypted"
-        )
+        logger.warning("ENCRYPTION_KMS_KEY_ID not set — storing sensitive field unencrypted")
         return plaintext
     try:
         from cryptography.fernet import Fernet
@@ -93,7 +93,7 @@ def decrypt_field(token: str | None) -> str | None:
         raw = base64.b64decode(token.encode("ascii"))
         sep_idx = raw.index(_SEP)
         enc_key = raw[:sep_idx]
-        ciphertext = raw[sep_idx + len(_SEP):]
+        ciphertext = raw[sep_idx + len(_SEP) :]
         kms = _get_kms()
         resp = kms.decrypt(CiphertextBlob=enc_key)
         if len(resp["Plaintext"]) != 32:

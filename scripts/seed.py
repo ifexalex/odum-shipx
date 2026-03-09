@@ -81,6 +81,7 @@ def create_user(cur, tenant_id: str, email: str, name: str, role: str, created_b
 
 def create_config(cur, tenant_id: str, key: str, value: dict) -> None:
     import json
+
     cur.execute(
         """
         INSERT INTO tenant_config (tenant_id, config_key, config_value)
@@ -103,8 +104,9 @@ def create_customer(cur, tenant_id: str, name: str, phone: str, email: str, addr
     )
 
 
-def create_container(cur, tenant_id: str, number: str, status: str, created_by: str,
-                     ship_date=None, eta=None, arrival=None) -> dict:
+def create_container(
+    cur, tenant_id: str, number: str, status: str, created_by: str, ship_date=None, eta=None, arrival=None
+) -> dict:
     return _one(
         cur,
         """
@@ -119,9 +121,16 @@ def create_container(cur, tenant_id: str, number: str, status: str, created_by: 
     )
 
 
-def create_manifest(cur, tenant_id: str, container_id: str, total_customers: int,
-                    total_cartons: int, weight_kg: float, total_cbm: float,
-                    verified_by: str | None = None) -> dict:
+def create_manifest(
+    cur,
+    tenant_id: str,
+    container_id: str,
+    total_customers: int,
+    total_cartons: int,
+    weight_kg: float,
+    total_cbm: float,
+    verified_by: str | None = None,
+) -> dict:
     vstatus = "verified" if verified_by else "pending"
     return _one(
         cur,
@@ -132,13 +141,13 @@ def create_manifest(cur, tenant_id: str, container_id: str, total_customers: int
         ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
         RETURNING *
         """,
-        (tenant_id, container_id, total_customers, total_cartons,
-         weight_kg, total_cbm, vstatus, verified_by),
+        (tenant_id, container_id, total_customers, total_cartons, weight_kg, total_cbm, vstatus, verified_by),
     )
 
 
-def create_packing_list(cur, tenant_id: str, container_id: str, manifest_id: str,
-                        customer_id: str, status: str, created_by: str) -> dict:
+def create_packing_list(
+    cur, tenant_id: str, container_id: str, manifest_id: str, customer_id: str, status: str, created_by: str
+) -> dict:
     return _one(
         cur,
         """
@@ -151,9 +160,9 @@ def create_packing_list(cur, tenant_id: str, container_id: str, manifest_id: str
     )
 
 
-def create_packing_list_item(cur, packing_list_id: str, description: str,
-                             carton_tag: str, tracking_code: str,
-                             weight_kg: float, cbm: float) -> dict:
+def create_packing_list_item(
+    cur, packing_list_id: str, description: str, carton_tag: str, tracking_code: str, weight_kg: float, cbm: float
+) -> dict:
     return _one(
         cur,
         """
@@ -167,8 +176,7 @@ def create_packing_list_item(cur, packing_list_id: str, description: str,
     )
 
 
-def create_shipment_tracking(cur, tenant_id: str, packing_list_item_id: str,
-                              tracking_code: str, status: str) -> dict:
+def create_shipment_tracking(cur, tenant_id: str, packing_list_item_id: str, tracking_code: str, status: str) -> dict:
     return _one(
         cur,
         """
@@ -180,10 +188,21 @@ def create_shipment_tracking(cur, tenant_id: str, packing_list_item_id: str,
     )
 
 
-def create_billing(cur, tenant_id: str, customer_id: str, container_id: str,
-                   packing_list_id: str, invoice_number: str, total_cartons: int,
-                   total_cbm: float, cbm_rate_usd: float, exchange_rate: float,
-                   status: str, created_by: str, due_date=None) -> dict:
+def create_billing(
+    cur,
+    tenant_id: str,
+    customer_id: str,
+    container_id: str,
+    packing_list_id: str,
+    invoice_number: str,
+    total_cartons: int,
+    total_cbm: float,
+    cbm_rate_usd: float,
+    exchange_rate: float,
+    status: str,
+    created_by: str,
+    due_date=None,
+) -> dict:
     subtotal_usd = round(total_cbm * cbm_rate_usd, 2)
     subtotal_ngn = round(subtotal_usd * exchange_rate, 2)
     return _one(
@@ -197,15 +216,29 @@ def create_billing(cur, tenant_id: str, customer_id: str, container_id: str,
         ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
         RETURNING *
         """,
-        (tenant_id, customer_id, container_id, packing_list_id,
-         invoice_number, total_cartons, total_cbm,
-         cbm_rate_usd, subtotal_usd, exchange_rate,
-         subtotal_ngn, subtotal_ngn, status, due_date, created_by),
+        (
+            tenant_id,
+            customer_id,
+            container_id,
+            packing_list_id,
+            invoice_number,
+            total_cartons,
+            total_cbm,
+            cbm_rate_usd,
+            subtotal_usd,
+            exchange_rate,
+            subtotal_ngn,
+            subtotal_ngn,
+            status,
+            due_date,
+            created_by,
+        ),
     )
 
 
-def create_payment(cur, billing_id: str, tenant_id: str, amount_ngn: float,
-                   method: str, reference: str, payment_date, recorded_by: str) -> dict:
+def create_payment(
+    cur, billing_id: str, tenant_id: str, amount_ngn: float, method: str, reference: str, payment_date, recorded_by: str
+) -> dict:
     return _one(
         cur,
         """
@@ -265,35 +298,60 @@ def seed_tenant_a(cur) -> dict:
     # Container 1 — fully released (historical)
     ship1 = today - timedelta(days=90)
     arr1 = today - timedelta(days=30)
-    con1 = create_container(cur, tid, "ACME001001", "fully_released", str(admin["id"]),
-                            ship_date=ship1, eta=arr1 - timedelta(days=5), arrival=arr1)
+    con1 = create_container(
+        cur, tid, "ACME001001", "fully_released", str(admin["id"]), ship_date=ship1, eta=arr1 - timedelta(days=5), arrival=arr1
+    )
     man1 = create_manifest(cur, tid, str(con1["id"]), 2, 10, 210.5, 3.5, str(ng_staff["id"]))
 
-    pl1 = create_packing_list(cur, tid, str(con1["id"]), str(man1["id"]),
-                               str(cust1["id"]), "approved", str(china_staff["id"]))
+    pl1 = create_packing_list(cur, tid, str(con1["id"]), str(man1["id"]), str(cust1["id"]), "approved", str(china_staff["id"]))
     item1a = create_packing_list_item(cur, str(pl1["id"]), "Electronic goods", "ACME-001-001", "TRK001001", 20.5, 0.8)
     item1b = create_packing_list_item(cur, str(pl1["id"]), "Clothing items", "ACME-001-002", "TRK001002", 18.0, 0.7)
     create_shipment_tracking(cur, tid, str(item1a["id"]), "TRK001001", "released")
     create_shipment_tracking(cur, tid, str(item1b["id"]), "TRK001002", "released")
 
-    pl2 = create_packing_list(cur, tid, str(con1["id"]), str(man1["id"]),
-                               str(cust2["id"]), "approved", str(china_staff["id"]))
+    pl2 = create_packing_list(cur, tid, str(con1["id"]), str(man1["id"]), str(cust2["id"]), "approved", str(china_staff["id"]))
     item2a = create_packing_list_item(cur, str(pl2["id"]), "Kitchen appliances", "ACME-001-003", "TRK001003", 95.0, 1.2)
     item2b = create_packing_list_item(cur, str(pl2["id"]), "Auto parts", "ACME-001-004", "TRK001004", 77.0, 0.8)
     create_shipment_tracking(cur, tid, str(item2a["id"]), "TRK001003", "released")
     create_shipment_tracking(cur, tid, str(item2b["id"]), "TRK001004", "released")
 
     # Billing for container 1 — cust1 paid, cust2 partially_paid
-    b1 = create_billing(cur, tid, str(cust1["id"]), str(con1["id"]), str(pl1["id"]),
-                        "INV-A-001", 2, 1.5, 45.0, 1550.0, "paid",
-                        str(ng_staff["id"]), due_date=arr1 + timedelta(days=7))
-    create_payment(cur, str(b1["id"]), tid, b1["total_ngn"], "bank_transfer", "REF001", arr1 + timedelta(days=3), str(ng_staff["id"]))
+    b1 = create_billing(
+        cur,
+        tid,
+        str(cust1["id"]),
+        str(con1["id"]),
+        str(pl1["id"]),
+        "INV-A-001",
+        2,
+        1.5,
+        45.0,
+        1550.0,
+        "paid",
+        str(ng_staff["id"]),
+        due_date=arr1 + timedelta(days=7),
+    )
+    create_payment(
+        cur, str(b1["id"]), tid, b1["total_ngn"], "bank_transfer", "REF001", arr1 + timedelta(days=3), str(ng_staff["id"])
+    )
     # mark amount_paid_ngn
     cur.execute("UPDATE billing SET amount_paid_ngn = %s WHERE id = %s", (b1["total_ngn"], b1["id"]))
 
-    b2 = create_billing(cur, tid, str(cust2["id"]), str(con1["id"]), str(pl2["id"]),
-                        "INV-A-002", 4, 2.0, 45.0, 1550.0, "partially_paid",
-                        str(ng_staff["id"]), due_date=arr1 + timedelta(days=7))
+    b2 = create_billing(
+        cur,
+        tid,
+        str(cust2["id"]),
+        str(con1["id"]),
+        str(pl2["id"]),
+        "INV-A-002",
+        4,
+        2.0,
+        45.0,
+        1550.0,
+        "partially_paid",
+        str(ng_staff["id"]),
+        due_date=arr1 + timedelta(days=7),
+    )
     partial = round(b2["total_ngn"] * Decimal("0.6"), 2)
     create_payment(cur, str(b2["id"]), tid, partial, "cash", "CASH001", arr1 + timedelta(days=4), str(ng_staff["id"]))
     cur.execute("UPDATE billing SET amount_paid_ngn = %s WHERE id = %s", (partial, b2["id"]))
@@ -301,21 +359,35 @@ def seed_tenant_a(cur) -> dict:
     # Container 2 — at_warehouse (active)
     ship2 = today - timedelta(days=20)
     arr2 = today - timedelta(days=5)
-    con2 = create_container(cur, tid, "ACME001002", "at_warehouse", str(admin["id"]),
-                            ship_date=ship2, eta=arr2 + timedelta(days=2), arrival=arr2)
+    con2 = create_container(
+        cur, tid, "ACME001002", "at_warehouse", str(admin["id"]), ship_date=ship2, eta=arr2 + timedelta(days=2), arrival=arr2
+    )
     man2 = create_manifest(cur, tid, str(con2["id"]), 1, 5, 110.0, 2.0)
 
-    pl3 = create_packing_list(cur, tid, str(con2["id"]), str(man2["id"]),
-                               str(cust1["id"]), "pending_approval", str(china_staff["id"]))
+    pl3 = create_packing_list(
+        cur, tid, str(con2["id"]), str(man2["id"]), str(cust1["id"]), "pending_approval", str(china_staff["id"])
+    )
     item3a = create_packing_list_item(cur, str(pl3["id"]), "Fabric rolls", "ACME-002-001", "TRK002001", 55.0, 1.0)
     item3b = create_packing_list_item(cur, str(pl3["id"]), "Shoes", "ACME-002-002", "TRK002002", 30.0, 0.6)
     create_shipment_tracking(cur, tid, str(item3a["id"]), "TRK002001", "at_warehouse")
     create_shipment_tracking(cur, tid, str(item3b["id"]), "TRK002002", "at_warehouse")
 
     # Unpaid billing for container 2
-    create_billing(cur, tid, str(cust1["id"]), str(con2["id"]), str(pl3["id"]),
-                   "INV-A-003", 2, 1.6, 45.0, 1550.0, "unpaid",
-                   str(ng_staff["id"]), due_date=today + timedelta(days=14))
+    create_billing(
+        cur,
+        tid,
+        str(cust1["id"]),
+        str(con2["id"]),
+        str(pl3["id"]),
+        "INV-A-003",
+        2,
+        1.6,
+        45.0,
+        1550.0,
+        "unpaid",
+        str(ng_staff["id"]),
+        due_date=today + timedelta(days=14),
+    )
 
     print(f"  containers: {con1['id']} (fully_released), {con2['id']} (at_warehouse)")
     return {"tenant": tenant, "admin": admin, "customers": [cust1, cust2]}
@@ -357,12 +429,10 @@ def seed_tenant_b(cur) -> dict:
     # Container — in_transit
     ship_date = date.today() - timedelta(days=10)
     eta = date.today() + timedelta(days=15)
-    con1 = create_container(cur, tid, "GCCO001001", "in_transit", str(admin["id"]),
-                            ship_date=ship_date, eta=eta)
+    con1 = create_container(cur, tid, "GCCO001001", "in_transit", str(admin["id"]), ship_date=ship_date, eta=eta)
     man1 = create_manifest(cur, tid, str(con1["id"]), 1, 8, 180.0, 4.0)
 
-    pl1 = create_packing_list(cur, tid, str(con1["id"]), str(man1["id"]),
-                               str(cust1["id"]), "approved", str(china1["id"]))
+    pl1 = create_packing_list(cur, tid, str(con1["id"]), str(man1["id"]), str(cust1["id"]), "approved", str(china1["id"]))
     item1a = create_packing_list_item(cur, str(pl1["id"]), "Machinery parts", "GCCO-001-001", "TRK003001", 90.0, 2.0)
     item1b = create_packing_list_item(cur, str(pl1["id"]), "Electronics", "GCCO-001-002", "TRK003002", 50.0, 1.2)
     item1c = create_packing_list_item(cur, str(pl1["id"]), "Textiles", "GCCO-001-003", "TRK003003", 40.0, 0.8)
@@ -371,9 +441,21 @@ def seed_tenant_b(cur) -> dict:
     create_shipment_tracking(cur, tid, str(item1c["id"]), "TRK003003", "in_transit")
 
     # Billing — sent (awaiting payment)
-    create_billing(cur, tid, str(cust1["id"]), str(con1["id"]), str(pl1["id"]),
-                        "INV-B-001", 3, 4.0, 50.0, 1580.0, "unpaid",
-                        str(admin["id"]), due_date=eta + timedelta(days=7))
+    create_billing(
+        cur,
+        tid,
+        str(cust1["id"]),
+        str(con1["id"]),
+        str(pl1["id"]),
+        "INV-B-001",
+        3,
+        4.0,
+        50.0,
+        1580.0,
+        "unpaid",
+        str(admin["id"]),
+        due_date=eta + timedelta(days=7),
+    )
 
     print(f"  container: {con1['id']} (in_transit)")
     return {"tenant": tenant, "admin": admin, "customers": [cust1]}

@@ -64,11 +64,8 @@ class TestVerifyManifest:
     def _req(self, status: str, discrepancies=None) -> MagicMock:
         req = MagicMock()
         from services.manifest.models import VerificationStatus
-        req.verification_status = (
-            VerificationStatus.verified
-            if status == "verified"
-            else VerificationStatus.discrepancies_found
-        )
+
+        req.verification_status = VerificationStatus.verified if status == "verified" else VerificationStatus.discrepancies_found
         req.discrepancies = discrepancies or []
         return req
 
@@ -79,10 +76,7 @@ class TestVerifyManifest:
 
         with patch.object(service.repo, "get_manifest_by_id", return_value=manifest):
             with pytest.raises(BusinessRuleViolationError):
-                service.verify_manifest(
-                    TENANT_ID, "manifest-001", self._req("verified"),
-                    actor_id="u", ctx=_ctx()
-                )
+                service.verify_manifest(TENANT_ID, "manifest-001", self._req("verified"), actor_id="u", ctx=_ctx())
 
     def test_already_discrepancies_raises(self):
         from services.manifest import service
@@ -91,20 +85,14 @@ class TestVerifyManifest:
 
         with patch.object(service.repo, "get_manifest_by_id", return_value=manifest):
             with pytest.raises(BusinessRuleViolationError):
-                service.verify_manifest(
-                    TENANT_ID, "manifest-001", self._req("discrepancies_found"),
-                    actor_id="u", ctx=_ctx()
-                )
+                service.verify_manifest(TENANT_ID, "manifest-001", self._req("discrepancies_found"), actor_id="u", ctx=_ctx())
 
     def test_not_found_raises(self):
         from services.manifest import service
 
         with patch.object(service.repo, "get_manifest_by_id", return_value=None):
             with pytest.raises(ResourceNotFoundError):
-                service.verify_manifest(
-                    TENANT_ID, "nonexistent", self._req("verified"),
-                    actor_id="u", ctx=_ctx()
-                )
+                service.verify_manifest(TENANT_ID, "nonexistent", self._req("verified"), actor_id="u", ctx=_ctx())
 
     def test_verified_transition_calls_set_verified(self):
         from services.manifest import service
@@ -119,10 +107,7 @@ class TestVerifyManifest:
             patch.object(service.repo, "get_customer_summaries", return_value=customers),
             patch("services.manifest.service.log_audit"),
         ):
-            result = service.verify_manifest(
-                TENANT_ID, "manifest-001", self._req("verified"),
-                actor_id="u", ctx=_ctx()
-            )
+            result = service.verify_manifest(TENANT_ID, "manifest-001", self._req("verified"), actor_id="u", ctx=_ctx())
 
         mock_verify.assert_called_once_with(TENANT_ID, "manifest-001", "u", notes=None)
         assert result["verification_status"] == "verified"
@@ -152,10 +137,7 @@ class TestVerifyManifest:
             patch.object(service.repo, "get_customer_summaries", return_value=customers),
             patch("services.manifest.service.log_audit"),
         ):
-            service.verify_manifest(
-                TENANT_ID, "manifest-001", req,
-                actor_id="u", ctx=_ctx()
-            )
+            service.verify_manifest(TENANT_ID, "manifest-001", req, actor_id="u", ctx=_ctx())
 
         # One call per carton_tag
         assert mock_create.call_count == 2
@@ -186,10 +168,7 @@ class TestVerifyManifest:
             patch.object(service.repo, "get_customer_summaries", return_value=[]),
             patch("services.manifest.service.log_audit"),
         ):
-            service.verify_manifest(
-                TENANT_ID, "manifest-001", req,
-                actor_id="u", ctx=_ctx()
-            )
+            service.verify_manifest(TENANT_ID, "manifest-001", req, actor_id="u", ctx=_ctx())
 
         mock_create.assert_not_called()
 
@@ -216,10 +195,7 @@ class TestVerifyManifest:
             patch.object(service.repo, "get_customer_summaries", return_value=[]),
             patch("services.manifest.service.log_audit"),
         ):
-            service.verify_manifest(
-                TENANT_ID, "manifest-001", req,
-                actor_id="u", ctx=_ctx()
-            )
+            service.verify_manifest(TENANT_ID, "manifest-001", req, actor_id="u", ctx=_ctx())
 
         mock_create.assert_called_once()
         created_data = mock_create.call_args[0][1]
@@ -238,10 +214,7 @@ class TestVerifyManifest:
             patch.object(service.repo, "get_customer_summaries", return_value=[]),
             patch("services.manifest.service.log_audit") as mock_audit,
         ):
-            service.verify_manifest(
-                TENANT_ID, "manifest-001", self._req("verified"),
-                actor_id="auditor", ctx=_ctx()
-            )
+            service.verify_manifest(TENANT_ID, "manifest-001", self._req("verified"), actor_id="auditor", ctx=_ctx())
 
         mock_audit.assert_called_once()
         audit_kwargs = mock_audit.call_args[1]

@@ -12,6 +12,7 @@ Notes:
 """
 
 import logging
+from typing import Any
 
 from shared.db import execute_with_tenant, execute_write_with_tenant
 from shared.pagination import build_paginated_query, extract_page
@@ -28,7 +29,7 @@ _CONTAINER_EXTRA_FIELDS = frozenset({"ship_date", "actual_arrival_date", "notes"
 # ---------------------------------------------------------------------------
 
 
-def create_container(tenant_id: str, data: dict) -> dict:
+def create_container(tenant_id: str, data: dict[str, Any]) -> dict[str, Any] | None:
     return execute_write_with_tenant(
         tenant_id,
         """
@@ -45,7 +46,7 @@ def create_container(tenant_id: str, data: dict) -> dict:
     )
 
 
-def get_container_by_id(tenant_id: str, container_id: str) -> dict | None:
+def get_container_by_id(tenant_id: str, container_id: str) -> dict[str, Any] | None:
     rows = execute_with_tenant(
         tenant_id,
         "SELECT * FROM container WHERE tenant_id = %s AND id = %s LIMIT 1",
@@ -56,12 +57,12 @@ def get_container_by_id(tenant_id: str, container_id: str) -> dict | None:
 
 def list_containers(
     tenant_id: str,
-    filters: dict,
+    filters: dict[str, Any],
     limit: int = 50,
-    cursor: dict | None = None,
-) -> tuple[list[dict], str | None, bool]:
+    cursor: dict[str, Any] | None = None,
+) -> tuple[list[dict[str, Any]], str | None, bool]:
     conditions = ["tenant_id = %(tenant_id)s"]
-    extra: dict = {"tenant_id": tenant_id}
+    extra: dict[str, Any] = {"tenant_id": tenant_id}
 
     if filters.get("status"):
         conditions.append("status = %(status)s")
@@ -81,13 +82,13 @@ def update_container_status(
     tenant_id: str,
     container_id: str,
     status: str,
-    extra: dict | None = None,
-) -> dict:
+    extra: dict[str, Any] | None = None,
+) -> dict[str, Any] | None:
     """Update container status + optional date/notes fields.
 
     extra keys are restricted to _CONTAINER_EXTRA_FIELDS (allowlist guard).
     """
-    params: dict = {"status": status, "tenant_id": tenant_id, "id": container_id}
+    params: dict[str, Any] = {"status": status, "tenant_id": tenant_id, "id": container_id}
     extra_clause = ""
     if extra:
         safe_extra = {k: v for k, v in extra.items() if k in _CONTAINER_EXTRA_FIELDS and v is not None}
@@ -124,7 +125,7 @@ def count_approved_packing_lists(tenant_id: str, container_id: str) -> int:
     return int(rows[0]["cnt"]) if rows else 0
 
 
-def get_manifest_for_container(tenant_id: str, container_id: str) -> dict | None:
+def get_manifest_for_container(tenant_id: str, container_id: str) -> dict[str, Any] | None:
     rows = execute_with_tenant(
         tenant_id,
         "SELECT id FROM manifest WHERE tenant_id = %s AND container_id = %s LIMIT 1",
@@ -139,9 +140,7 @@ def get_manifest_for_container(tenant_id: str, container_id: str) -> dict | None
 # ---------------------------------------------------------------------------
 
 
-def bulk_update_tracking_status(
-    tenant_id: str, container_id: str, tracking_status: str
-) -> None:
+def bulk_update_tracking_status(tenant_id: str, container_id: str, tracking_status: str) -> None:
     """Bulk-update shipment_tracking.status for all codes in this container."""
     execute_write_with_tenant(
         tenant_id,
@@ -211,7 +210,7 @@ def bulk_insert_tracking_events(
 # ---------------------------------------------------------------------------
 
 
-def get_customers_for_container(tenant_id: str, container_id: str) -> list[dict]:
+def get_customers_for_container(tenant_id: str, container_id: str) -> list[dict[str, Any]]:
     """Return distinct customers with approved packing lists for this container."""
     return execute_with_tenant(
         tenant_id,
@@ -232,12 +231,12 @@ def get_customers_for_container(tenant_id: str, container_id: str) -> list[dict]
 
 def list_shipments(
     tenant_id: str,
-    filters: dict,
+    filters: dict[str, Any],
     limit: int = 50,
-    cursor: dict | None = None,
-) -> tuple[list[dict], str | None, bool]:
+    cursor: dict[str, Any] | None = None,
+) -> tuple[list[dict[str, Any]], str | None, bool]:
     conditions = ["tenant_id = %(tenant_id)s"]
-    extra: dict = {"tenant_id": tenant_id}
+    extra: dict[str, Any] = {"tenant_id": tenant_id}
 
     if filters.get("status"):
         conditions.append("status = %(status)s")
@@ -257,10 +256,10 @@ def list_customer_shipments(
     tenant_id: str,
     customer_id: str,
     limit: int = 50,
-    cursor: dict | None = None,
-) -> tuple[list[dict], str | None, bool]:
+    cursor: dict[str, Any] | None = None,
+) -> tuple[list[dict[str, Any]], str | None, bool]:
     """Return shipment_tracking rows for a specific customer (via packing list join)."""
-    extra: dict = {"tenant_id": tenant_id, "customer_id": customer_id}
+    extra: dict[str, Any] = {"tenant_id": tenant_id, "customer_id": customer_id}
     base = """
         SELECT st.*
         FROM shipment_tracking st
@@ -279,7 +278,7 @@ def list_customer_shipments(
     return extract_page(rows, limit)
 
 
-def get_customer_by_user_id(tenant_id: str, user_id: str) -> dict | None:
+def get_customer_by_user_id(tenant_id: str, user_id: str) -> dict[str, Any] | None:
     rows = execute_with_tenant(
         tenant_id,
         "SELECT id FROM customer WHERE tenant_id = %s AND user_id = %s LIMIT 1",
@@ -288,9 +287,7 @@ def get_customer_by_user_id(tenant_id: str, user_id: str) -> dict | None:
     return rows[0] if rows else None
 
 
-def get_shipment_by_tracking_code_and_phone(
-    tracking_code: str, phone: str
-) -> dict | None:
+def get_shipment_by_tracking_code_and_phone(tracking_code: str, phone: str) -> dict[str, Any] | None:
     """Public lookup — bypasses RLS via PLATFORM scope.
 
     Verifies ownership by joining through packing_list → customer.phone.
@@ -321,7 +318,7 @@ def get_shipment_by_tracking_code_and_phone(
     return rows[0] if rows else None
 
 
-def get_tracking_events(shipment_tracking_id: str) -> list[dict]:
+def get_tracking_events(shipment_tracking_id: str) -> list[dict[str, Any]]:
     """Fetch ordered tracking_event history for a shipment_tracking row.
 
     tracking_event has no RLS — use PLATFORM scope.

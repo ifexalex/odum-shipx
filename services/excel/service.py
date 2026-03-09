@@ -6,6 +6,7 @@ import os
 import re
 from datetime import date, datetime, timedelta
 from io import BytesIO
+from typing import Any
 
 import boto3
 
@@ -41,7 +42,7 @@ _CONTENT_TYPES = {
 }
 
 
-def _upload_and_presign(tenant_id: str, filename: str, buf: BytesIO, fmt: str = "xlsx") -> dict:
+def _upload_and_presign(tenant_id: str, filename: str, buf: BytesIO, fmt: str = "xlsx") -> dict[str, Any]:
     today = date.today().strftime("%Y-%m-%d")
     key = f"{tenant_id}/exports/{today}/{filename}"
     file_bytes = buf.getvalue()
@@ -56,9 +57,7 @@ def _upload_and_presign(tenant_id: str, filename: str, buf: BytesIO, fmt: str = 
         Params={"Bucket": _BUCKET, "Key": key},
         ExpiresIn=_PRESIGNED_EXPIRY,
     )
-    expires_at = (
-        datetime.utcnow() + timedelta(seconds=_PRESIGNED_EXPIRY)
-    ).strftime("%Y-%m-%dT%H:%M:%SZ")
+    expires_at = (datetime.utcnow() + timedelta(seconds=_PRESIGNED_EXPIRY)).strftime("%Y-%m-%dT%H:%M:%SZ")
     return {
         "filename": filename,
         "download_url": download_url,
@@ -73,7 +72,7 @@ def _upload_and_presign(tenant_id: str, filename: str, buf: BytesIO, fmt: str = 
 # ---------------------------------------------------------------------------
 
 
-def _rows_to_csv(rows: list[dict], columns: list[str]) -> BytesIO:
+def _rows_to_csv(rows: list[dict[str, Any]], columns: list[str]) -> BytesIO:
     buf = io.StringIO()
     writer = csv.DictWriter(buf, fieldnames=columns, extrasaction="ignore", lineterminator="\r\n")
     writer.writeheader()
@@ -86,7 +85,7 @@ def _rows_to_csv(rows: list[dict], columns: list[str]) -> BytesIO:
 # ---------------------------------------------------------------------------
 
 
-def _rows_to_pdf(title: str, rows: list[dict], columns: list[str]) -> BytesIO:
+def _rows_to_pdf(title: str, rows: list[dict[str, Any]], columns: list[str]) -> BytesIO:
     from reportlab.lib import colors
     from reportlab.lib.pagesizes import A4, landscape
     from reportlab.lib.styles import getSampleStyleSheet
@@ -94,8 +93,9 @@ def _rows_to_pdf(title: str, rows: list[dict], columns: list[str]) -> BytesIO:
     from reportlab.platypus import Paragraph, SimpleDocTemplate, Spacer, Table, TableStyle
 
     buf = BytesIO()
-    doc = SimpleDocTemplate(buf, pagesize=landscape(A4), leftMargin=1*cm, rightMargin=1*cm,
-                            topMargin=1.5*cm, bottomMargin=1.5*cm)
+    doc = SimpleDocTemplate(
+        buf, pagesize=landscape(A4), leftMargin=1 * cm, rightMargin=1 * cm, topMargin=1.5 * cm, bottomMargin=1.5 * cm
+    )
     styles = getSampleStyleSheet()
 
     header_row = [col.replace("_", " ").title() for col in columns]
@@ -103,23 +103,27 @@ def _rows_to_pdf(title: str, rows: list[dict], columns: list[str]) -> BytesIO:
     for row in rows:
         data.append([str(row.get(col, "") or "") for col in columns])
 
-    col_width = (landscape(A4)[0] - 2*cm) / max(len(columns), 1)
+    col_width = (landscape(A4)[0] - 2 * cm) / max(len(columns), 1)
     table = Table(data, colWidths=[col_width] * len(columns), repeatRows=1)
-    table.setStyle(TableStyle([
-        ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#1a56db")),
-        ("TEXTCOLOR",  (0, 0), (-1, 0), colors.white),
-        ("FONTNAME",   (0, 0), (-1, 0), "Helvetica-Bold"),
-        ("FONTSIZE",   (0, 0), (-1, -1), 8),
-        ("ROWBACKGROUNDS", (0, 1), (-1, -1), [colors.white, colors.HexColor("#f3f4f6")]),
-        ("GRID",       (0, 0), (-1, -1), 0.4, colors.HexColor("#d1d5db")),
-        ("VALIGN",     (0, 0), (-1, -1), "MIDDLE"),
-        ("TOPPADDING", (0, 0), (-1, -1), 4),
-        ("BOTTOMPADDING", (0, 0), (-1, -1), 4),
-    ]))
+    table.setStyle(
+        TableStyle(
+            [
+                ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#1a56db")),
+                ("TEXTCOLOR", (0, 0), (-1, 0), colors.white),
+                ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
+                ("FONTSIZE", (0, 0), (-1, -1), 8),
+                ("ROWBACKGROUNDS", (0, 1), (-1, -1), [colors.white, colors.HexColor("#f3f4f6")]),
+                ("GRID", (0, 0), (-1, -1), 0.4, colors.HexColor("#d1d5db")),
+                ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
+                ("TOPPADDING", (0, 0), (-1, -1), 4),
+                ("BOTTOMPADDING", (0, 0), (-1, -1), 4),
+            ]
+        )
+    )
 
     elements = [
         Paragraph(title, styles["Title"]),
-        Spacer(1, 0.4*cm),
+        Spacer(1, 0.4 * cm),
         table,
     ]
     doc.build(elements)
@@ -133,13 +137,20 @@ def _rows_to_pdf(title: str, rows: list[dict], columns: list[str]) -> BytesIO:
 
 
 _PL_COLUMNS = [
-    "carton_tag", "tracking_code", "description",
-    "weight_dispatch_kg", "weight_actual_kg", "cbm",
-    "length_cm", "width_cm", "height_cm", "received_date",
+    "carton_tag",
+    "tracking_code",
+    "description",
+    "weight_dispatch_kg",
+    "weight_actual_kg",
+    "cbm",
+    "length_cm",
+    "width_cm",
+    "height_cm",
+    "received_date",
 ]
 
 
-def export_packing_list(tenant_id: str, pl_id: str, fmt: str = "xlsx") -> dict:
+def export_packing_list(tenant_id: str, pl_id: str, fmt: str = "xlsx") -> dict[str, Any]:
     pl = repo.get_packing_list_for_export(tenant_id, pl_id)
     if not pl:
         raise ResourceNotFoundError("packing_list", pl_id)
@@ -171,7 +182,7 @@ def export_packing_list(tenant_id: str, pl_id: str, fmt: str = "xlsx") -> dict:
 _MANIFEST_COLUMNS = ["customer_name", "carton_count", "total_weight_kg", "total_cbm", "carton_tags"]
 
 
-def export_manifest(tenant_id: str, manifest_id: str, fmt: str = "xlsx") -> dict:
+def export_manifest(tenant_id: str, manifest_id: str, fmt: str = "xlsx") -> dict[str, Any]:
     manifest = repo.get_manifest_for_export(tenant_id, manifest_id)
     if not manifest:
         raise ResourceNotFoundError("manifest", manifest_id)
@@ -182,7 +193,7 @@ def export_manifest(tenant_id: str, manifest_id: str, fmt: str = "xlsx") -> dict
     all_items = repo.get_items_for_manifest(tenant_id, container_id)
 
     # Build per-customer summary rows
-    customer_data: dict[str, dict] = {}
+    customer_data: dict[str, dict[str, Any]] = {}
     for item in all_items:
         cname = str(item.get("customer_name") or "")
         if cname not in customer_data:
@@ -226,12 +237,17 @@ def export_manifest(tenant_id: str, manifest_id: str, fmt: str = "xlsx") -> dict
 
 
 _BILLING_COLUMNS = [
-    "customer_name", "container_number", "total_ngn", "balance_ngn",
-    "status", "billed_at", "created_at",
+    "customer_name",
+    "container_number",
+    "total_ngn",
+    "balance_ngn",
+    "status",
+    "billed_at",
+    "created_at",
 ]
 
 
-def export_billing(tenant_id: str, billing_id: str, fmt: str = "xlsx") -> dict:
+def export_billing(tenant_id: str, billing_id: str, fmt: str = "xlsx") -> dict[str, Any]:
     billing = repo.get_billing_for_export(tenant_id, billing_id)
     if not billing:
         raise ResourceNotFoundError("billing", billing_id)
@@ -257,7 +273,7 @@ def export_billing(tenant_id: str, billing_id: str, fmt: str = "xlsx") -> dict:
 # ---------------------------------------------------------------------------
 
 
-def export_container_billing(tenant_id: str, container_id: str, fmt: str = "xlsx") -> dict:
+def export_container_billing(tenant_id: str, container_id: str, fmt: str = "xlsx") -> dict[str, Any]:
     container = repo.get_container_by_id(tenant_id, container_id)
     if not container:
         raise ResourceNotFoundError("container", container_id)
@@ -289,11 +305,12 @@ def import_packing_list(
     container_id: str,
     file_key: str,
     actor_id: str,
-) -> dict:
+) -> dict[str, Any]:
     # 1. Guard: file_key must be under this tenant's S3 prefix to prevent cross-tenant reads.
     expected_prefix = f"{tenant_id}/"
     if not file_key.startswith(expected_prefix) or ".." in file_key:
         from shared.exceptions import ValidationError
+
         raise ValidationError(f"file_key must be under the tenant prefix '{expected_prefix}'")
 
     # 2. Download file from S3
@@ -319,15 +336,20 @@ def import_packing_list(
     imported_count = 0
     seq = repo.get_next_carton_sequence(tenant_id, container_id)
     tracking_seq_cache: dict[str, int] = {}
-    tracking_cache: dict[tuple, str] = {}
+    tracking_cache: dict[tuple[str, Any], str] = {}
 
     for (customer_id, _received_date), items in items_by_group.items():
-        pl = repo.create_packing_list(tenant_id, {
-            "tenant_id":    tenant_id,
-            "container_id": container_id,
-            "customer_id":  customer_id,
-            "created_by":   actor_id,
-        })
+        pl = repo.create_packing_list(
+            tenant_id,
+            {
+                "tenant_id": tenant_id,
+                "container_id": container_id,
+                "customer_id": customer_id,
+                "created_by": actor_id,
+            },
+        )
+        if pl is None:
+            raise RuntimeError("create_packing_list returned None unexpectedly")
         pl_id = str(pl["id"])
 
         item_rows = []
@@ -356,28 +378,30 @@ def import_packing_list(
             carton_tag = f"{tenant_short}-{container_number}-{seq:03d}"
             seq += 1
 
-            item_rows.append({
-                "packing_list_id":   pl_id,
-                "description":       item["description"],
-                "weight_dispatch_kg": item["weight_dispatch_kg"],
-                "weight_actual_kg":  item["weight_actual_kg"],
-                "carton_tag":        carton_tag,
-                "tracking_code":     tracking_code,
-                "cbm":               item["cbm"],
-                "length_cm":         item["length_cm"],
-                "width_cm":          item["width_cm"],
-                "height_cm":         item["height_cm"],
-                "received_date":     item_date,
-            })
+            item_rows.append(
+                {
+                    "packing_list_id": pl_id,
+                    "description": item["description"],
+                    "weight_dispatch_kg": item["weight_dispatch_kg"],
+                    "weight_actual_kg": item["weight_actual_kg"],
+                    "carton_tag": carton_tag,
+                    "tracking_code": tracking_code,
+                    "cbm": item["cbm"],
+                    "length_cm": item["length_cm"],
+                    "width_cm": item["width_cm"],
+                    "height_cm": item["height_cm"],
+                    "received_date": item_date,
+                }
+            )
 
         repo.insert_packing_list_items(tenant_id, item_rows)
         imported_count += len(item_rows)
         packing_lists_created += 1
 
     return {
-        "total_rows":            total_rows,
-        "imported":              imported_count,
-        "errors":                len(errors),
+        "total_rows": total_rows,
+        "imported": imported_count,
+        "errors": len(errors),
         "packing_lists_created": packing_lists_created,
-        "error_details":         errors,
+        "error_details": errors,
     }

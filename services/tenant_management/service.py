@@ -73,7 +73,7 @@ def create_tenant(
     actor_id: str,
     request_id: str = "",
     ip_address: str | None = None,
-) -> dict:
+) -> dict[str, Any]:
     """Create a new tenant with initial admin user and default config.
 
     Steps:
@@ -87,14 +87,18 @@ def create_tenant(
     cognito = get_cognito_client()
 
     # 1. Create tenant
-    tenant = repo.create_tenant({
-        "company_name": req.company_name,
-        "primary_contact_email": req.primary_contact_email,
-        "primary_contact_phone": req.primary_contact_phone,
-        "origin_country": req.origin_country,
-        "destination_country": req.destination_country,
-        "subscription_tier": req.subscription_tier.value,
-    })
+    tenant = repo.create_tenant(
+        {
+            "company_name": req.company_name,
+            "primary_contact_email": req.primary_contact_email,
+            "primary_contact_phone": req.primary_contact_phone,
+            "origin_country": req.origin_country,
+            "destination_country": req.destination_country,
+            "subscription_tier": req.subscription_tier.value,
+        }
+    )
+    if tenant is None:
+        raise RuntimeError("create_tenant returned None unexpectedly")
     tenant_id = str(tenant["id"])
 
     # 2. Provision Cognito user and group
@@ -109,14 +113,19 @@ def create_tenant(
     cognito.add_user_to_group(req.initial_admin.email, group_name)
 
     # 3. Insert tenant_user record
-    admin_user = repo.create_tenant_user(tenant_id, {
-        "tenant_id": tenant_id,
-        "cognito_sub": cognito_sub,
-        "email": req.initial_admin.email,
-        "full_name": req.initial_admin.full_name,
-        "role": "tenant_admin",
-        "created_by": None,
-    })
+    admin_user = repo.create_tenant_user(
+        tenant_id,
+        {
+            "tenant_id": tenant_id,
+            "cognito_sub": cognito_sub,
+            "email": req.initial_admin.email,
+            "full_name": req.initial_admin.full_name,
+            "role": "tenant_admin",
+            "created_by": None,
+        },
+    )
+    if admin_user is None:
+        raise RuntimeError("create_tenant_user returned None unexpectedly")
 
     # 4. Upsert default configs
     today = datetime.now(UTC).isoformat()
@@ -157,11 +166,11 @@ def create_tenant(
     return {"tenant": tenant, "admin_user": admin_user}
 
 
-def list_tenants(limit: int = 50, cursor: dict | None = None) -> list[dict]:
+def list_tenants(limit: int = 50, cursor: dict[str, Any] | None = None) -> list[dict[str, Any]]:
     return repo.list_tenants(limit=limit, cursor=cursor)
 
 
-def get_tenant(tenant_id: str) -> dict:
+def get_tenant(tenant_id: str) -> dict[str, Any]:
     tenant = repo.get_tenant_by_id(tenant_id)
     if not tenant:
         raise ResourceNotFoundError("tenant", tenant_id)
@@ -173,7 +182,7 @@ def update_tenant(
     req: UpdateTenantRequest,
     actor_id: str,
     ip_address: str | None = None,
-) -> dict:
+) -> dict[str, Any]:
     existing = get_tenant(tenant_id)
     if existing["status"] == "offboarded":
         raise TenantOffboardedError(tenant_id)
@@ -181,6 +190,8 @@ def update_tenant(
     if not updates:
         return existing
     updated = repo.update_tenant(tenant_id, updates)
+    if updated is None:
+        raise RuntimeError("update_tenant returned None unexpectedly")
     try:
         repo.insert_platform_audit(
             action="TENANT_UPDATED",
@@ -198,11 +209,13 @@ def offboard_tenant(
     tenant_id: str,
     actor_id: str,
     ip_address: str | None = None,
-) -> dict:
+) -> dict[str, Any]:
     existing = get_tenant(tenant_id)
     if existing["status"] == "offboarded":
         raise BusinessRuleViolationError("Tenant is already offboarded")
     updated = repo.set_tenant_status(tenant_id, "offboarded")
+    if updated is None:
+        raise RuntimeError("set_tenant_status returned None unexpectedly")
     try:
         repo.insert_platform_audit(
             action="TENANT_OFFBOARDED",
@@ -220,17 +233,18 @@ def suspend_tenant(
     reason: str,
     actor_id: str,
     ip_address: str | None = None,
-) -> dict:
+) -> dict[str, Any]:
     existing = get_tenant(tenant_id)
     if existing["status"] != "active":
-        raise BusinessRuleViolationError(
-            f"Cannot suspend tenant with status '{existing['status']}'"
-        )
+        raise BusinessRuleViolationError(f"Cannot suspend tenant with status '{existing['status']}'")
     updated = repo.set_tenant_status(tenant_id, "suspended")
+    if updated is None:
+        raise RuntimeError("set_tenant_status returned None unexpectedly")
 
     # Immediately evict the cached status so auth blocks requests right away
     try:
         from shared.auth import _tenant_status_cache
+
         _tenant_status_cache.delete(tenant_id)
     except Exception as exc:
         logger.warning("Cache eviction failed for tenant %s: %s", tenant_id, exc)
@@ -263,16 +277,19 @@ def activate_tenant(
     tenant_id: str,
     actor_id: str,
     ip_address: str | None = None,
-) -> dict:
+) -> dict[str, Any]:
     existing = get_tenant(tenant_id)
     if existing["status"] == "active":
         raise BusinessRuleViolationError("Tenant is already active")
     if existing["status"] == "offboarded":
         raise BusinessRuleViolationError("Cannot reactivate an offboarded tenant")
     updated = repo.set_tenant_status(tenant_id, "active")
+    if updated is None:
+        raise RuntimeError("set_tenant_status returned None unexpectedly")
 
     try:
         from shared.auth import _tenant_status_cache
+
         _tenant_status_cache.delete(tenant_id)
     except Exception as exc:
         logger.warning("Cache eviction failed for tenant %s: %s", tenant_id, exc)
@@ -294,7 +311,7 @@ def reactivate_tenant(
     tenant_id: str,
     actor_id: str,
     ip_address: str | None = None,
-) -> dict:
+) -> dict[str, Any]:
     """Re-onboard an offboarded tenant under a new agreement.
 
     Distinct from activate_tenant (suspended→active). Only valid from
@@ -303,15 +320,16 @@ def reactivate_tenant(
     """
     existing = get_tenant(tenant_id)
     if existing["status"] != "offboarded":
-        raise BusinessRuleViolationError(
-            f"Only offboarded tenants can be reactivated. Current status: '{existing['status']}'"
-        )
+        raise BusinessRuleViolationError(f"Only offboarded tenants can be reactivated. Current status: '{existing['status']}'")
 
     updated = repo.reactivate_tenant(tenant_id)
+    if updated is None:
+        raise RuntimeError("reactivate_tenant returned None unexpectedly")
 
     # Evict cached status so requests are unblocked immediately
     try:
         from shared.auth import _tenant_status_cache
+
         _tenant_status_cache.delete(tenant_id)
     except Exception as exc:
         logger.warning("Cache eviction failed for tenant %s: %s", tenant_id, exc)
@@ -345,16 +363,16 @@ def reactivate_tenant(
     }
 
 
-def get_platform_dashboard() -> dict:
+def get_platform_dashboard() -> dict[str, Any]:
     return repo.get_dashboard_stats()
 
 
 def list_platform_audit_log(
     limit: int = 50,
-    cursor: dict | None = None,
+    cursor: dict[str, Any] | None = None,
     target_tenant_id: str | None = None,
     action: str | None = None,
-) -> tuple[list[dict], str | None, bool]:
+) -> tuple[list[dict[str, Any]], str | None, bool]:
     return repo.list_platform_audit_log(
         limit=limit,
         cursor=cursor,
@@ -368,7 +386,7 @@ def list_platform_audit_log(
 # ---------------------------------------------------------------------------
 
 
-def get_tenant_config(tenant_id: str) -> dict:
+def get_tenant_config(tenant_id: str) -> dict[str, Any]:
     """Return tenant config as a flat dict keyed by config_key."""
     rows = repo.get_all_configs(tenant_id)
     return {row["config_key"]: row["config_value"] for row in rows}
@@ -379,7 +397,7 @@ def update_tenant_config(
     req: UpdateTenantConfigRequest,
     actor_id: str,
     ip_address: str | None = None,
-) -> dict:
+) -> dict[str, Any]:
     if req.branding is not None:
         repo.upsert_config(tenant_id, "branding_config", req.branding, updated_by=actor_id)
         # Also update tenant.branding_config column
@@ -395,7 +413,7 @@ def update_tenant_config(
 # ---------------------------------------------------------------------------
 
 
-def get_dollar_rate(tenant_id: str) -> dict:
+def get_dollar_rate(tenant_id: str) -> dict[str, Any]:
     rows = repo.get_all_configs(tenant_id)
     config_map = {r["config_key"]: r["config_value"] for r in rows}
     rate_cfg = config_map.get("dollar_rate", {})
@@ -411,7 +429,7 @@ def update_dollar_rate(
     req: UpdateDollarRateRequest,
     actor_id: str,
     ip_address: str | None = None,
-) -> dict:
+) -> dict[str, Any]:
     current = get_dollar_rate(tenant_id)
     previous_rate = current.get("rate")
 
@@ -447,7 +465,7 @@ def create_user(
     actor_id: str,
     request_id: str = "",
     ip_address: str | None = None,
-) -> dict:
+) -> dict[str, Any]:
     # Check tier limits
     tenant = get_tenant(tenant_id)
     tier = tenant["subscription_tier"]
@@ -473,14 +491,19 @@ def create_user(
     cognito.add_user_to_group(req.email, group_name)
 
     # Insert tenant_user
-    user = repo.create_tenant_user(tenant_id, {
-        "tenant_id": tenant_id,
-        "cognito_sub": cognito_sub,
-        "email": req.email,
-        "full_name": req.full_name,
-        "role": req.role.value,
-        "created_by": actor_id,
-    })
+    user = repo.create_tenant_user(
+        tenant_id,
+        {
+            "tenant_id": tenant_id,
+            "cognito_sub": cognito_sub,
+            "email": req.email,
+            "full_name": req.full_name,
+            "role": req.role.value,
+            "created_by": actor_id,
+        },
+    )
+    if user is None:
+        raise RuntimeError("create_tenant_user returned None unexpectedly")
     user_id = str(user["id"])
 
     # Link customer record if role is customer
@@ -508,11 +531,11 @@ def create_user(
     return user
 
 
-def list_users(tenant_id: str) -> list[dict]:
+def list_users(tenant_id: str) -> list[dict[str, Any]]:
     return repo.list_users(tenant_id)
 
 
-def get_user(tenant_id: str, user_id: str) -> dict:
+def get_user(tenant_id: str, user_id: str) -> dict[str, Any]:
     user = repo.get_user_by_id(tenant_id, user_id)
     if not user:
         raise ResourceNotFoundError("user", user_id)
@@ -522,14 +545,16 @@ def get_user(tenant_id: str, user_id: str) -> dict:
 def update_user(
     tenant_id: str,
     user_id: str,
-    updates: dict,
+    updates: dict[str, Any],
     actor_id: str,
     ip_address: str | None = None,
-) -> dict:
+) -> dict[str, Any]:
     existing = get_user(tenant_id, user_id)
     if not updates:
         return existing
     updated = repo.update_user(tenant_id, user_id, updates)
+    if updated is None:
+        raise RuntimeError("update_user returned None unexpectedly")
     # Sync mutable Cognito attributes (name, role) — username/email is immutable
     cognito_updates = {k: updates[k] for k in ("full_name", "role") if k in updates}
     if cognito_updates:
@@ -558,7 +583,7 @@ def deactivate_user(
     user_id: str,
     actor_id: str,
     ip_address: str | None = None,
-) -> dict:
+) -> dict[str, Any]:
     existing = get_user(tenant_id, user_id)
     if existing["status"] == "deactivated":
         raise BusinessRuleViolationError("User is already deactivated")
@@ -568,6 +593,8 @@ def deactivate_user(
         cognito.disable_user(existing["email"])
 
     updated = repo.set_user_status(tenant_id, user_id, "deactivated")
+    if updated is None:
+        raise RuntimeError("set_user_status returned None unexpectedly")
     log_audit(
         tenant_id=tenant_id,
         entity_type="tenant_user",
@@ -589,15 +616,17 @@ def deactivate_user(
 
 def create_customer(
     tenant_id: str,
-    data: dict,
+    data: dict[str, Any],
     actor_id: str,
     request_id: str = "",
     ip_address: str | None = None,
-) -> dict:
+) -> dict[str, Any]:
     # Accept both "full_name" and "name" — normalise to "name" for storage
     if "full_name" in data and "name" not in data:
         data = {**data, "name": data["full_name"]}
     customer = repo.create_customer(tenant_id, data)
+    if customer is None:
+        raise RuntimeError("create_customer returned None unexpectedly")
     log_audit(
         tenant_id=tenant_id,
         entity_type="customer",
@@ -615,8 +644,8 @@ def list_customers(
     tenant_id: str,
     q: str | None = None,
     limit: int = 50,
-    cursor: dict | None = None,
-) -> tuple[list[dict], str | None, bool]:
+    cursor: dict[str, Any] | None = None,
+) -> tuple[list[dict[str, Any]], str | None, bool]:
     return repo.list_customers(tenant_id, q=q, limit=limit, cursor=cursor)
 
 
@@ -625,7 +654,7 @@ def get_customer(
     customer_id: str,
     requesting_user_id: str | None = None,
     is_customer_role: bool = False,
-) -> dict:
+) -> dict[str, Any]:
     customer = repo.get_customer_by_id(tenant_id, customer_id)
     if not customer:
         raise ResourceNotFoundError("customer", customer_id)
@@ -640,7 +669,7 @@ def anonymise_customer(
     customer_id: str,
     actor_id: str,
     ip_address: str | None = None,
-) -> None:
+) -> dict[str, Any] | None:
     """Erase a customer's personal data (GDPR Art. 17 — right to erasure).
 
     Anonymises the record in-place to preserve FK integrity.
@@ -655,10 +684,7 @@ def anonymise_customer(
             rule_id="ALREADY_ANONYMISED",
         )
     _pii_fields = {"name", "email", "phone", "whatsapp", "address", "contract_details"}
-    before_masked = {
-        k: ("***" if k in _pii_fields else v)
-        for k, v in customer.items()
-    }
+    before_masked = {k: ("***" if k in _pii_fields else v) for k, v in customer.items()}
     repo.anonymise_customer_record(tenant_id, customer_id)
     log_audit(
         tenant_id=tenant_id,
@@ -679,7 +705,7 @@ def export_customer_data(
     customer_id: str,
     requesting_user_id: str | None = None,
     is_customer_role: bool = False,
-) -> dict:
+) -> dict[str, Any]:
     """Return all data held for a customer (GDPR Art. 20 — right to portability)."""
     from datetime import datetime
 
@@ -696,14 +722,16 @@ def export_customer_data(
 def update_customer(
     tenant_id: str,
     customer_id: str,
-    updates: dict,
+    updates: dict[str, Any],
     actor_id: str,
     ip_address: str | None = None,
-) -> dict:
+) -> dict[str, Any]:
     existing = get_customer(tenant_id, customer_id)
     if not updates:
         return existing
     updated = repo.update_customer(tenant_id, customer_id, updates)
+    if updated is None:
+        raise RuntimeError("update_customer returned None unexpectedly")
     log_audit(
         tenant_id=tenant_id,
         entity_type="customer",
@@ -725,11 +753,13 @@ def update_customer(
 
 def create_charge_type(
     tenant_id: str,
-    data: dict,
+    data: dict[str, Any],
     actor_id: str,
     ip_address: str | None = None,
-) -> dict:
+) -> dict[str, Any]:
     charge_type = repo.create_charge_type(tenant_id, {**data, "created_by": actor_id})
+    if charge_type is None:
+        raise RuntimeError("create_charge_type returned None unexpectedly")
     log_audit(
         tenant_id=tenant_id,
         entity_type="charge_type",
@@ -743,21 +773,23 @@ def create_charge_type(
     return charge_type
 
 
-def list_charge_types(tenant_id: str) -> list[dict]:
+def list_charge_types(tenant_id: str) -> list[dict[str, Any]]:
     return repo.list_charge_types(tenant_id)
 
 
 def update_charge_type(
     tenant_id: str,
     charge_type_id: str,
-    updates: dict,
+    updates: dict[str, Any],
     actor_id: str,
     ip_address: str | None = None,
-) -> dict:
+) -> dict[str, Any]:
     existing = repo.get_charge_type_by_id(tenant_id, charge_type_id)
     if not existing:
         raise ResourceNotFoundError("charge_type", charge_type_id)
     updated = repo.update_charge_type(tenant_id, charge_type_id, updates)
+    if updated is None:
+        raise RuntimeError("update_charge_type returned None unexpectedly")
     log_audit(
         tenant_id=tenant_id,
         entity_type="charge_type",
@@ -777,11 +809,14 @@ def deactivate_charge_type(
     charge_type_id: str,
     actor_id: str,
     ip_address: str | None = None,
-) -> dict:
+) -> dict[str, Any]:
     existing = repo.get_charge_type_by_id(tenant_id, charge_type_id)
     if not existing:
         raise ResourceNotFoundError("charge_type", charge_type_id)
-    return repo.update_charge_type(tenant_id, charge_type_id, {"is_active": False})
+    result = repo.update_charge_type(tenant_id, charge_type_id, {"is_active": False})
+    if result is None:
+        raise RuntimeError("update_charge_type returned None unexpectedly")
+    return result
 
 
 # ---------------------------------------------------------------------------
@@ -789,12 +824,12 @@ def deactivate_charge_type(
 # ---------------------------------------------------------------------------
 
 
-def get_platform_settings() -> dict:
+def get_platform_settings() -> dict[str, Any]:
     """Return all platform settings as a flat dict."""
     return repo.get_platform_settings()
 
 
-def update_platform_settings(settings: dict, actor_id: str) -> dict:
+def update_platform_settings(settings: dict[str, Any], actor_id: str) -> dict[str, Any]:
     """Upsert each key in the provided settings dict."""
     for key, value in settings.items():
         repo.upsert_platform_setting(key, value, actor_id)
@@ -806,8 +841,9 @@ def update_platform_settings(settings: dict, actor_id: str) -> dict:
 # ---------------------------------------------------------------------------
 
 
-def get_tenant_report(tenant_id: str) -> dict:
+def get_tenant_report(tenant_id: str) -> dict[str, Any]:
     """Return aggregated analytics for the tenant's current calendar month."""
     from datetime import date
+
     period = date.today().strftime("%Y-%m")
     return repo.get_tenant_report_data(tenant_id, period)

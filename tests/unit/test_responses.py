@@ -180,9 +180,7 @@ class TestErrorResponse:
         assert resp["statusCode"] == 409
 
     def test_403_for_insufficient_permissions(self):
-        err = InsufficientPermissionsError(
-            action="approve", required_role="tenant_admin"
-        )
+        err = InsufficientPermissionsError(action="approve", required_role="tenant_admin")
         resp = error_response(err)
         assert resp["statusCode"] == 403
 

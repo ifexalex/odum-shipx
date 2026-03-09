@@ -10,6 +10,7 @@ For each release_note with:
 
 import logging
 from datetime import date
+from typing import Any
 
 from aws_xray_sdk.core import patch_all
 
@@ -29,7 +30,7 @@ logger = logging.getLogger(__name__)
 # ---------------------------------------------------------------------------
 
 
-def lambda_handler(event: dict, context) -> dict:
+def lambda_handler(event: dict[str, Any], context: Any) -> dict[str, Any]:
     tenants = _get_active_tenants()
     expired = errors = 0
 
@@ -39,14 +40,13 @@ def lambda_handler(event: dict, context) -> dict:
             count = _process_tenant(tenant_id)
             expired += count
         except Exception:
-            logger.exception(
-                "Release expiry failed for tenant %s", tenant_id
-            )
+            logger.exception("Release expiry failed for tenant %s", tenant_id)
             errors += 1
 
     logger.info(
         "Release expiry job done: expired=%d errors=%d",
-        expired, errors,
+        expired,
+        errors,
     )
     return {"expired": expired, "errors": errors}
 
@@ -67,14 +67,15 @@ def _process_tenant(tenant_id: str) -> int:
             expired_count += 1
         except Exception:
             logger.exception(
-                "Failed to expire release_note %s", note["id"],
+                "Failed to expire release_note %s",
+                note["id"],
                 extra={"tenant_id": tenant_id},
             )
 
     return expired_count
 
 
-def _expire_note(tenant_id: str, note: dict) -> None:
+def _expire_note(tenant_id: str, note: dict[str, Any]) -> None:
     note_id = str(note["id"])
 
     execute_write_with_tenant(
@@ -91,21 +92,22 @@ def _expire_note(tenant_id: str, note: dict) -> None:
 
     logger.info(
         "Release note expired: %s valid_until=%s",
-        note_id, note.get("valid_until"),
+        note_id,
+        note.get("valid_until"),
         extra={"tenant_id": tenant_id},
     )
 
     _notify_customer(tenant_id, note)
 
 
-def _notify_customer(tenant_id: str, note: dict) -> None:
+def _notify_customer(tenant_id: str, note: dict[str, Any]) -> None:
     customer = _get_customer_contact(tenant_id, str(note["customer_id"]))
     if not customer:
         return
 
     template_vars = {
         "reference_number": note.get("reference_number", ""),
-        "valid_until":      str(note.get("valid_until", "")),
+        "valid_until": str(note.get("valid_until", "")),
     }
 
     if customer.get("phone"):
@@ -119,7 +121,8 @@ def _notify_customer(tenant_id: str, note: dict) -> None:
             )
         except Exception:
             logger.warning(
-                "Failed to send expiry SMS for note %s", note["id"],
+                "Failed to send expiry SMS for note %s",
+                note["id"],
                 extra={"tenant_id": tenant_id},
             )
 
@@ -134,7 +137,8 @@ def _notify_customer(tenant_id: str, note: dict) -> None:
             )
         except Exception:
             logger.warning(
-                "Failed to send expiry email for note %s", note["id"],
+                "Failed to send expiry email for note %s",
+                note["id"],
                 extra={"tenant_id": tenant_id},
             )
 
@@ -144,14 +148,14 @@ def _notify_customer(tenant_id: str, note: dict) -> None:
 # ---------------------------------------------------------------------------
 
 
-def _get_active_tenants() -> list[dict]:
+def _get_active_tenants() -> list[dict[str, Any]]:
     return execute_with_tenant(
         PLATFORM_TENANT_ID,
         "SELECT id FROM tenant WHERE status = 'active'",
     )
 
 
-def _get_expired_notes(tenant_id: str, today: date) -> list[dict]:
+def _get_expired_notes(tenant_id: str, today: date) -> list[dict[str, Any]]:
     return execute_with_tenant(
         tenant_id,
         """
@@ -167,7 +171,7 @@ def _get_expired_notes(tenant_id: str, today: date) -> list[dict]:
     )
 
 
-def _get_customer_contact(tenant_id: str, customer_id: str) -> dict | None:
+def _get_customer_contact(tenant_id: str, customer_id: str) -> dict[str, Any] | None:
     rows = execute_with_tenant(
         tenant_id,
         """

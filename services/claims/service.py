@@ -9,6 +9,7 @@ import logging
 import os
 from datetime import UTC, date, datetime
 from decimal import Decimal
+from typing import Any
 
 import boto3
 
@@ -52,12 +53,12 @@ _RESOLVABLE_STATES = {"under_inspection", "inspection_complete", "pending_resolu
 
 def file_claim(
     tenant_id: str,
-    req,
+    req: Any,
     actor_id: str,
-    ctx,
+    ctx: Any,
     customer_id_override: str | None = None,
     request_id: str = "",
-) -> dict:
+) -> dict[str, Any]:
     """File a new damage claim.
 
     For CUSTOMER role: customer_id is derived from ctx.user_id.
@@ -81,15 +82,17 @@ def file_claim(
     claim = repo.create_damage_claim(
         tenant_id,
         {
-            "tenant_id":        tenant_id,
-            "customer_id":      customer_id,
-            "container_id":     req.container_id,
+            "tenant_id": tenant_id,
+            "customer_id": customer_id,
+            "container_id": req.container_id,
             "cartons_affected": cartons_affected,
-            "description":      req.description,
-            "status":           "filed",
-            "submitted_by":     actor_id,
+            "description": req.description,
+            "status": "filed",
+            "submitted_by": actor_id,
         },
     )
+    if claim is None:
+        raise RuntimeError("create_damage_claim returned None unexpectedly")
 
     log_audit(
         tenant_id=tenant_id,
@@ -106,7 +109,7 @@ def file_claim(
         detail_type="DamageClaimFiled",
         tenant_id=tenant_id,
         payload={
-            "claim_id":    str(claim["id"]),
+            "claim_id": str(claim["id"]),
             "customer_id": customer_id,
             "container_id": req.container_id,
         },
@@ -118,24 +121,22 @@ def file_claim(
 
 def list_claims(
     tenant_id: str,
-    ctx,
-    filters: dict,
+    ctx: Any,
+    filters: dict[str, Any],
     limit: int,
-    cursor: dict | None,
-) -> tuple[list[dict], str | None, bool]:
+    cursor: dict[str, Any] | None,
+) -> tuple[list[dict[str, Any]], str | None, bool]:
     if ctx.role == UserRole.CUSTOMER:
         customer = repo.get_customer_by_user_id(tenant_id, ctx.user_id)
         if not customer:
             return [], None, False
         filters = {**filters, "customer_id": str(customer["id"])}
 
-    rows, next_cursor, has_more = repo.list_damage_claims(
-        tenant_id, filters, limit, cursor
-    )
+    rows, next_cursor, has_more = repo.list_damage_claims(tenant_id, filters, limit, cursor)
     return [_fmt_claim(r) for r in rows], next_cursor, has_more
 
 
-def get_claim(tenant_id: str, claim_id: str, ctx) -> dict:
+def get_claim(tenant_id: str, claim_id: str, ctx: Any) -> dict[str, Any]:
     claim = repo.get_damage_claim_by_id(tenant_id, claim_id)
     if not claim:
         raise ResourceNotFoundError("damage_claim", claim_id)
@@ -143,9 +144,7 @@ def get_claim(tenant_id: str, claim_id: str, ctx) -> dict:
     if ctx.role == UserRole.CUSTOMER:
         customer = repo.get_customer_by_user_id(tenant_id, ctx.user_id)
         if not customer or str(customer["id"]) != str(claim["customer_id"]):
-            raise InsufficientPermissionsError(
-                "Customers may only view their own claims"
-            )
+            raise InsufficientPermissionsError("Customers may only view their own claims")
 
     return _fmt_claim(claim)
 
@@ -153,10 +152,10 @@ def get_claim(tenant_id: str, claim_id: str, ctx) -> dict:
 def start_inspection(
     tenant_id: str,
     claim_id: str,
-    req,
+    req: Any,
     actor_id: str,
     ip_address: str | None = None,
-) -> dict:
+) -> dict[str, Any]:
     claim = repo.get_damage_claim_by_id(tenant_id, claim_id)
     if not claim:
         raise ResourceNotFoundError("damage_claim", claim_id)
@@ -169,11 +168,7 @@ def start_inspection(
             allowed=["filed"],
         )
 
-    inspection_method = (
-        req.inspection_method.value
-        if hasattr(req.inspection_method, "value")
-        else str(req.inspection_method)
-    )
+    inspection_method = req.inspection_method.value if hasattr(req.inspection_method, "value") else str(req.inspection_method)
     updated = repo.update_claim_status(
         tenant_id,
         claim_id,
@@ -183,6 +178,8 @@ def start_inspection(
             "reviewed_by": actor_id,
         },
     )
+    if updated is None:
+        raise RuntimeError("update_claim_status returned None unexpectedly")
 
     log_audit(
         tenant_id=tenant_id,
@@ -201,12 +198,12 @@ def start_inspection(
 def resolve_claim(
     tenant_id: str,
     claim_id: str,
-    req,
+    req: Any,
     actor_id: str,
-    ctx,
+    ctx: Any,
     request_id: str = "",
     ip_address: str | None = None,
-) -> dict:
+) -> dict[str, Any]:
     claim = repo.get_damage_claim_by_id(tenant_id, claim_id)
     if not claim:
         raise ResourceNotFoundError("damage_claim", claim_id)
@@ -219,18 +216,21 @@ def resolve_claim(
             allowed=list(_RESOLVABLE_STATES),
         )
 
-    resolution_type = (
-        req.resolution_type.value
-        if hasattr(req.resolution_type, "value")
-        else str(req.resolution_type)
-    )
+    resolution_type = req.resolution_type.value if hasattr(req.resolution_type, "value") else str(req.resolution_type)
 
     # New-style request uses settlement_amount_usd + notes (no threshold check, no claim_resolution record)
     settlement_usd = getattr(req, "settlement_amount_usd", None)
     if isinstance(settlement_usd, Decimal):
         return _resolve_claim_new_style(
-            tenant_id, claim_id, claim, req, resolution_type,
-            actor_id, ctx, request_id, ip_address,
+            tenant_id,
+            claim_id,
+            claim,
+            req,
+            resolution_type,
+            actor_id,
+            ctx,
+            request_id,
+            ip_address,
         )
 
     # Determine approval level + enforce threshold
@@ -241,8 +241,7 @@ def resolve_claim(
         if Decimal(str(req.amount_usd)) > staff_limit:
             if ctx.role != UserRole.TENANT_ADMIN:
                 raise ApprovalThresholdExceededError(
-                    f"Refund of ${req.amount_usd} exceeds staff limit of ${staff_limit}; "
-                    "tenant_admin approval required"
+                    f"Refund of ${req.amount_usd} exceeds staff limit of ${staff_limit}; " "tenant_admin approval required"
                 )
             approval_level = "tenant_admin"
 
@@ -253,11 +252,11 @@ def resolve_claim(
         refund_row = repo.create_refund_request_for_claim(
             tenant_id,
             {
-                "tenant_id":   tenant_id,
+                "tenant_id": tenant_id,
                 "customer_id": str(claim["customer_id"]),
-                "billing_id":  None,
-                "amount_ngn":  refund_ngn,
-                "reason":      f"Damage claim resolution — {req.reason}",
+                "billing_id": None,
+                "amount_ngn": refund_ngn,
+                "reason": f"Damage claim resolution — {req.reason}",
             },
         )
         refund_request_id = str(refund_row["id"]) if refund_row else None
@@ -266,14 +265,14 @@ def resolve_claim(
     resolution = repo.create_claim_resolution(
         tenant_id,
         {
-            "tenant_id":           tenant_id,
-            "damage_claim_id":     claim_id,
-            "resolution_type":     resolution_type,
+            "tenant_id": tenant_id,
+            "damage_claim_id": claim_id,
+            "resolution_type": resolution_type,
             "resolution_amount_ngn": req.amount_ngn,
-            "approval_level":      approval_level,
-            "approved_by":         actor_id,
-            "notes":               req.reason,
-            "refund_request_id":   refund_request_id,
+            "approval_level": approval_level,
+            "approved_by": actor_id,
+            "notes": req.reason,
+            "refund_request_id": refund_request_id,
             "discount_percentage": req.discount_percentage,
         },
     )
@@ -286,15 +285,17 @@ def resolve_claim(
         "resolved",
         extra={"reviewed_by": actor_id, "reviewed_at": now},
     )
+    if updated is None:
+        raise RuntimeError("update_claim_status returned None unexpectedly")
 
     publish_event(
         source="logistics.claims",
         detail_type="DamageClaimResolved",
         tenant_id=tenant_id,
         payload={
-            "claim_id":        claim_id,
+            "claim_id": claim_id,
             "resolution_type": resolution_type,
-            "approval_level":  approval_level,
+            "approval_level": approval_level,
         },
         request_id=request_id,
     )
@@ -311,6 +312,8 @@ def resolve_claim(
         ip_address=ip_address,
     )
 
+    if resolution is None:
+        raise RuntimeError("create_claim_resolution returned None unexpectedly")
     return {
         **_fmt_claim(updated),
         "resolution": _fmt_resolution(resolution),
@@ -325,14 +328,14 @@ def resolve_claim(
 def _resolve_claim_new_style(
     tenant_id: str,
     claim_id: str,
-    claim: dict,
-    req,
+    claim: dict[str, Any],
+    req: Any,
     resolution_type: str,
     actor_id: str,
-    ctx,
+    ctx: Any,
     request_id: str,
     ip_address: str | None,
-) -> dict:
+) -> dict[str, Any]:
     """Handle resolve_claim when req.settlement_amount_usd is a Decimal.
 
     Skips approval threshold check and claim_resolution record creation;
@@ -351,27 +354,31 @@ def _resolve_claim_new_style(
         refund_row = repo.create_refund_request_for_claim(
             tenant_id,
             {
-                "tenant_id":   tenant_id,
+                "tenant_id": tenant_id,
                 "customer_id": str(claim["customer_id"]),
-                "billing_id":  billing_id,
-                "amount_ngn":  amount_ngn,
-                "reason":      f"Damage claim resolution — {notes_text}",
+                "billing_id": billing_id,
+                "amount_ngn": amount_ngn,
+                "reason": f"Damage claim resolution — {notes_text}",
             },
         )
         refund_request_id = str(refund_row["id"]) if refund_row else None
 
     now = datetime.now(UTC)
     updated = repo.update_claim_status(
-        tenant_id, claim_id, "resolved",
+        tenant_id,
+        claim_id,
+        "resolved",
         extra={"reviewed_by": actor_id, "reviewed_at": now},
     )
+    if updated is None:
+        raise RuntimeError("update_claim_status returned None unexpectedly")
 
     publish_event(
         source="logistics.claims",
         detail_type="DamageClaimResolved",
         tenant_id=tenant_id,
         payload={
-            "claim_id":        claim_id,
+            "claim_id": claim_id,
             "resolution_type": resolution_type,
         },
         request_id=request_id,
@@ -407,11 +414,10 @@ def generate_presigned_url(
     filename: str,
     content_type: str,
     actor_id: str,
-) -> dict:
+) -> dict[str, Any]:
     if content_type not in _ALLOWED_CONTENT_TYPES:
         raise BusinessRuleViolationError(
-            f"content_type '{content_type}' is not allowed. "
-            f"Allowed: {', '.join(sorted(_ALLOWED_CONTENT_TYPES))}",
+            f"content_type '{content_type}' is not allowed. " f"Allowed: {', '.join(sorted(_ALLOWED_CONTENT_TYPES))}",
             rule_id="INVALID_CONTENT_TYPE",
         )
 
@@ -435,19 +441,19 @@ def generate_presigned_url(
     evidence = repo.create_claim_evidence(
         {
             "damage_claim_id": claim_id,
-            "file_key":        file_key,
-            "file_name":       filename,
-            "file_type":       content_type,
+            "file_key": file_key,
+            "file_name": filename,
+            "file_type": content_type,
             "file_size_bytes": None,
-            "uploaded_by":     actor_id,
+            "uploaded_by": actor_id,
         }
     )
 
     return {
-        "upload_url":  presigned["url"],
-        "fields":      presigned["fields"],
+        "upload_url": presigned["url"],
+        "fields": presigned["fields"],
         "evidence_id": str(evidence["id"]) if evidence else None,
-        "file_key":    file_key,
+        "file_key": file_key,
     }
 
 
@@ -458,15 +464,15 @@ def generate_presigned_url(
 
 def list_missing_items(
     tenant_id: str,
-    filters: dict,
+    filters: dict[str, Any],
     limit: int,
-    cursor: dict | None,
-) -> tuple[list[dict], str | None, bool]:
+    cursor: dict[str, Any] | None,
+) -> tuple[list[dict[str, Any]], str | None, bool]:
     rows, next_cursor, has_more = repo.list_missing_items(tenant_id, filters, limit, cursor)
     return [dict(r) for r in rows], next_cursor, has_more
 
 
-def get_missing_item(tenant_id: str, item_id: str) -> dict:
+def get_missing_item(tenant_id: str, item_id: str) -> dict[str, Any]:
     item = repo.get_missing_item_by_id(tenant_id, item_id)
     if not item:
         raise ResourceNotFoundError("missing_item", item_id)
@@ -475,15 +481,15 @@ def get_missing_item(tenant_id: str, item_id: str) -> dict:
 
 def list_seized_items(
     tenant_id: str,
-    filters: dict,
+    filters: dict[str, Any],
     limit: int,
-    cursor: dict | None,
-) -> tuple[list[dict], str | None, bool]:
+    cursor: dict[str, Any] | None,
+) -> tuple[list[dict[str, Any]], str | None, bool]:
     rows, next_cursor, has_more = repo.list_seized_items(tenant_id, filters, limit, cursor)
     return [dict(r) for r in rows], next_cursor, has_more
 
 
-def get_seized_item(tenant_id: str, item_id: str) -> dict:
+def get_seized_item(tenant_id: str, item_id: str) -> dict[str, Any]:
     item = repo.get_seized_item_by_id(tenant_id, item_id)
     if not item:
         raise ResourceNotFoundError("seized_item", item_id)
@@ -497,21 +503,23 @@ def get_seized_item(tenant_id: str, item_id: str) -> dict:
 
 def log_missing_item(
     tenant_id: str,
-    req,
+    req: Any,
     actor_id: str,
-) -> dict:
+) -> dict[str, Any]:
     item = repo.create_missing_item(
         tenant_id,
         {
-            "tenant_id":   tenant_id,
+            "tenant_id": tenant_id,
             "manifest_id": req.manifest_id,
             "customer_id": req.customer_id,
             "carton_tags": req.carton_tags,
             "description": req.description,
-            "status":      "reported",
+            "status": "reported",
             "reported_by": actor_id,
         },
     )
+    if item is None:
+        raise RuntimeError("create_missing_item returned None unexpectedly")
     return _fmt_missing(item)
 
 
@@ -521,14 +529,14 @@ def update_missing_item(
     status: str,
     notes: str | None,
     actor_id: str,
-) -> dict:
+) -> dict[str, Any]:
     item = repo.get_missing_item_by_id(tenant_id, item_id)
     if not item:
         raise ResourceNotFoundError("missing_item", item_id)
 
-    updated = repo.update_missing_item_status(
-        tenant_id, item_id, status, notes=notes, actor_id=actor_id
-    )
+    updated = repo.update_missing_item_status(tenant_id, item_id, status, notes=notes, actor_id=actor_id)
+    if updated is None:
+        raise RuntimeError("update_missing_item_status returned None unexpectedly")
     return _fmt_missing(updated)
 
 
@@ -539,22 +547,24 @@ def update_missing_item(
 
 def log_seized_item(
     tenant_id: str,
-    req,
+    req: Any,
     actor_id: str,
-) -> dict:
+) -> dict[str, Any]:
     item = repo.create_seized_item(
         tenant_id,
         {
-            "tenant_id":       tenant_id,
-            "container_id":    req.container_id,
-            "customer_id":     req.customer_id,
-            "carton_tags":     req.carton_tags,
-            "description":     req.reason,
-            "seizure_date":    date.today(),
+            "tenant_id": tenant_id,
+            "container_id": req.container_id,
+            "customer_id": req.customer_id,
+            "carton_tags": req.carton_tags,
+            "description": req.reason,
+            "seizure_date": date.today(),
             "recovery_status": "seized",
-            "created_by":      actor_id,
+            "created_by": actor_id,
         },
     )
+    if item is None:
+        raise RuntimeError("create_seized_item returned None unexpectedly")
     return _fmt_seized(item)
 
 
@@ -564,14 +574,14 @@ def update_seized_item(
     recovery_status: str,
     notes: str | None,
     actor_id: str,
-) -> dict:
+) -> dict[str, Any]:
     item = repo.get_seized_item_by_id(tenant_id, item_id)
     if not item:
         raise ResourceNotFoundError("seized_item", item_id)
 
-    updated = repo.update_seized_item_status(
-        tenant_id, item_id, recovery_status, notes=notes, actor_id=actor_id
-    )
+    updated = repo.update_seized_item_status(tenant_id, item_id, recovery_status, notes=notes, actor_id=actor_id)
+    if updated is None:
+        raise RuntimeError("update_seized_item_status returned None unexpectedly")
     return _fmt_seized(updated)
 
 
@@ -580,51 +590,51 @@ def update_seized_item(
 # ---------------------------------------------------------------------------
 
 
-def _fmt_claim(row: dict) -> dict:
+def _fmt_claim(row: dict[str, Any]) -> dict[str, Any]:
     cartons = row.get("cartons_affected") or []
     if isinstance(cartons, int | float):
         cartons = []
     return {
-        "id":               str(row["id"]),
-        "status":           row["status"],
+        "id": str(row["id"]),
+        "status": row["status"],
         "cartons_affected": list(cartons),
-        "upload_urls":      None,
-        "created_at":       row.get("created_at"),
+        "upload_urls": None,
+        "created_at": row.get("created_at"),
     }
 
 
-def _fmt_resolution(row: dict) -> dict:
+def _fmt_resolution(row: dict[str, Any]) -> dict[str, Any]:
     return {
-        "resolution_type":   row["resolution_type"],
-        "amount_usd":        None,
-        "amount_ngn":        row.get("resolution_amount_ngn"),
-        "approval_level":    row["approval_level"],
+        "resolution_type": row["resolution_type"],
+        "amount_usd": None,
+        "amount_ngn": row.get("resolution_amount_ngn"),
+        "approval_level": row["approval_level"],
         "refund_request_id": str(row["refund_request_id"]) if row.get("refund_request_id") else None,
     }
 
 
-def _fmt_missing(row: dict) -> dict:
+def _fmt_missing(row: dict[str, Any]) -> dict[str, Any]:
     tags = row.get("carton_tags") or []
     return {
-        "id":          str(row["id"]),
+        "id": str(row["id"]),
         "manifest_id": str(row["manifest_id"]),
         "customer_id": str(row["customer_id"]),
         "carton_tags": list(tags),
         "description": row["description"],
-        "status":      row["status"],
-        "created_at":  row["created_at"],
+        "status": row["status"],
+        "created_at": row["created_at"],
     }
 
 
-def _fmt_seized(row: dict) -> dict:
+def _fmt_seized(row: dict[str, Any]) -> dict[str, Any]:
     tags = row.get("carton_tags") or []
     description = row.get("description") or row.get("notes") or ""
     return {
-        "id":           str(row["id"]),
+        "id": str(row["id"]),
         "container_id": str(row["container_id"]),
-        "customer_id":  str(row["customer_id"]) if row.get("customer_id") else None,
-        "carton_tags":  list(tags),
-        "reason":       description,
-        "status":       row["recovery_status"],
-        "created_at":   row["created_at"],
+        "customer_id": str(row["customer_id"]) if row.get("customer_id") else None,
+        "carton_tags": list(tags),
+        "reason": description,
+        "status": row["recovery_status"],
+        "created_at": row["created_at"],
     }

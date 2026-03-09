@@ -19,6 +19,7 @@ import json
 import logging
 import time
 import uuid
+from typing import Any
 
 from aws_xray_sdk.core import patch_all
 
@@ -72,17 +73,13 @@ _STAFF_ROLES = (UserRole.NIGERIA_OFFICE_STAFF,)
 # ---------------------------------------------------------------------------
 
 
-def lambda_handler(event: dict, context) -> dict:
+def lambda_handler(event: dict[str, Any], context: Any) -> dict[str, Any]:
     start_time = time.time()
-    request_id = (
-        event.get("requestContext", {}).get("requestId") or str(uuid.uuid4())
-    )
+    request_id = event.get("requestContext", {}).get("requestId") or str(uuid.uuid4())
     http = event.get("requestContext", {}).get("http", {})
     method = http.get("method", "")
     path = http.get("path", "")
-    ip_address = (
-        event.get("requestContext", {}).get("identity", {}).get("sourceIp")
-    )
+    ip_address = event.get("requestContext", {}).get("identity", {}).get("sourceIp")
 
     try:
         tenant_ctx = get_tenant_context(event)
@@ -135,7 +132,7 @@ def lambda_handler(event: dict, context) -> dict:
 # ---------------------------------------------------------------------------
 
 
-def _dispatch(event, method, path, ctx, request_id, ip_address):
+def _dispatch(event: dict[str, Any], method: str, path: str, ctx: Any, request_id: str, ip_address: str | None) -> dict[str, Any]:
     parts = path.strip("/").split("/")
 
     if len(parts) < 2:
@@ -166,7 +163,9 @@ def _dispatch(event, method, path, ctx, request_id, ip_address):
 # ---------------------------------------------------------------------------
 
 
-def _claim_routes(event, parts, method, ctx, request_id, ip_address, claim_id):
+def _claim_routes(
+    event: dict[str, Any], parts: list[str], method: str, ctx: Any, request_id: str, ip_address: str | None, claim_id: str | None
+) -> dict[str, Any]:
     tenant_id = ctx.tenant_id
     action = parts[3] if len(parts) > 3 else None
 
@@ -178,7 +177,8 @@ def _claim_routes(event, parts, method, ctx, request_id, ip_address, claim_id):
             req = _parse_validated(FileDamageClaimRequest, body)
             customer_id_override = body.get("customer_id") if ctx.role != UserRole.CUSTOMER else None
             result = service.file_claim(
-                tenant_id, req,
+                tenant_id,
+                req,
                 actor_id=ctx.user_id,
                 ctx=ctx,
                 customer_id_override=customer_id_override,
@@ -198,9 +198,7 @@ def _claim_routes(event, parts, method, ctx, request_id, ip_address, claim_id):
                 filters["status"] = _qp(event, "status")
             limit = int(_qp(event, "limit", 50))
             cursor = decode_cursor(_qp(event, "cursor"))
-            page, next_cursor, has_more = service.list_claims(
-                tenant_id, ctx, filters, limit, cursor
-            )
+            page, next_cursor, has_more = service.list_claims(tenant_id, ctx, filters, limit, cursor)
             return paginated(page, next_cursor, has_more, request_id=request_id)
 
     else:
@@ -218,7 +216,9 @@ def _claim_routes(event, parts, method, ctx, request_id, ip_address, claim_id):
                 body = _parse_body(event)
                 req = _parse_validated(StartInspectionRequest, body)
                 result = service.start_inspection(
-                    tenant_id, claim_id, req,
+                    tenant_id,
+                    claim_id,
+                    req,
                     actor_id=ctx.user_id,
                     ip_address=ip_address,
                 )
@@ -230,7 +230,9 @@ def _claim_routes(event, parts, method, ctx, request_id, ip_address, claim_id):
                 body = _parse_body(event)
                 req = _parse_validated(ResolveClaimRequest, body)
                 result = service.resolve_claim(
-                    tenant_id, claim_id, req,
+                    tenant_id,
+                    claim_id,
+                    req,
                     actor_id=ctx.user_id,
                     ctx=ctx,
                     request_id=request_id,
@@ -246,7 +248,9 @@ def _claim_routes(event, parts, method, ctx, request_id, ip_address, claim_id):
 # ---------------------------------------------------------------------------
 
 
-def _upload_routes(event, parts, method, ctx, request_id, ip_address):
+def _upload_routes(
+    event: dict[str, Any], parts: list[str], method: str, ctx: Any, request_id: str, ip_address: str | None
+) -> dict[str, Any]:
     # POST /v1/uploads/presigned-url
     if len(parts) >= 3 and parts[2] == "presigned-url" and method == "POST":
         ctx.assert_role(*_UPLOAD_ROLES)
@@ -256,12 +260,16 @@ def _upload_routes(event, parts, method, ctx, request_id, ip_address):
         content_type = body.get("content_type", "")
         if not claim_id or not filename or not content_type:
             from shared.exceptions import BusinessRuleViolationError
+
             raise BusinessRuleViolationError(
                 "claim_id, filename, and content_type are required",
                 rule_id="MISSING_PRESIGNED_URL_FIELDS",
             )
         result = service.generate_presigned_url(
-            ctx.tenant_id, claim_id, filename, content_type,
+            ctx.tenant_id,
+            claim_id,
+            filename,
+            content_type,
             actor_id=ctx.user_id,
         )
         return success(result, request_id=request_id)
@@ -277,7 +285,9 @@ def _upload_routes(event, parts, method, ctx, request_id, ip_address):
 _ITEM_READ_ROLES = (UserRole.NIGERIA_OFFICE_STAFF, UserRole.TENANT_ADMIN)
 
 
-def _missing_item_routes(event, parts, method, ctx, request_id, ip_address):
+def _missing_item_routes(
+    event: dict[str, Any], parts: list[str], method: str, ctx: Any, request_id: str, ip_address: str | None
+) -> dict[str, Any]:
     tenant_id = ctx.tenant_id
     item_id = parts[3] if len(parts) > 3 else None
 
@@ -294,9 +304,7 @@ def _missing_item_routes(event, parts, method, ctx, request_id, ip_address):
                 filters["status"] = _qp(event, "status")
             limit = int(_qp(event, "limit", 50))
             cursor = decode_cursor(_qp(event, "cursor"))
-            page, next_cursor, has_more = service.list_missing_items(
-                tenant_id, filters, limit, cursor
-            )
+            page, next_cursor, has_more = service.list_missing_items(tenant_id, filters, limit, cursor)
             return paginated(page, next_cursor, has_more, request_id=request_id)
 
         # POST /v1/claims/missing-items
@@ -325,12 +333,9 @@ def _missing_item_routes(event, parts, method, ctx, request_id, ip_address):
             notes = body.get("notes")
             if not status:
                 from shared.exceptions import BusinessRuleViolationError
-                raise BusinessRuleViolationError(
-                    "status is required", rule_id="MISSING_STATUS"
-                )
-            result = service.update_missing_item(
-                tenant_id, item_id, status, notes, actor_id=ctx.user_id
-            )
+
+                raise BusinessRuleViolationError("status is required", rule_id="MISSING_STATUS")
+            result = service.update_missing_item(tenant_id, item_id, status, notes, actor_id=ctx.user_id)
             return success(result, request_id=request_id)
 
     raise ResourceNotFoundError("route", "/".join(parts))
@@ -341,7 +346,9 @@ def _missing_item_routes(event, parts, method, ctx, request_id, ip_address):
 # ---------------------------------------------------------------------------
 
 
-def _seized_item_routes(event, parts, method, ctx, request_id, ip_address):
+def _seized_item_routes(
+    event: dict[str, Any], parts: list[str], method: str, ctx: Any, request_id: str, ip_address: str | None
+) -> dict[str, Any]:
     tenant_id = ctx.tenant_id
     item_id = parts[3] if len(parts) > 3 else None
 
@@ -358,9 +365,7 @@ def _seized_item_routes(event, parts, method, ctx, request_id, ip_address):
                 filters["status"] = _qp(event, "status")
             limit = int(_qp(event, "limit", 50))
             cursor = decode_cursor(_qp(event, "cursor"))
-            page, next_cursor, has_more = service.list_seized_items(
-                tenant_id, filters, limit, cursor
-            )
+            page, next_cursor, has_more = service.list_seized_items(tenant_id, filters, limit, cursor)
             return paginated(page, next_cursor, has_more, request_id=request_id)
 
         # POST /v1/claims/seized-items
@@ -389,12 +394,9 @@ def _seized_item_routes(event, parts, method, ctx, request_id, ip_address):
             notes = body.get("notes")
             if not recovery_status:
                 from shared.exceptions import BusinessRuleViolationError
-                raise BusinessRuleViolationError(
-                    "recovery_status is required", rule_id="MISSING_STATUS"
-                )
-            result = service.update_seized_item(
-                tenant_id, item_id, recovery_status, notes, actor_id=ctx.user_id
-            )
+
+                raise BusinessRuleViolationError("recovery_status is required", rule_id="MISSING_STATUS")
+            result = service.update_seized_item(tenant_id, item_id, recovery_status, notes, actor_id=ctx.user_id)
             return success(result, request_id=request_id)
 
     raise ResourceNotFoundError("route", "/".join(parts))
@@ -405,25 +407,27 @@ def _seized_item_routes(event, parts, method, ctx, request_id, ip_address):
 # ---------------------------------------------------------------------------
 
 
-def _parse_body(event: dict) -> dict:
+def _parse_body(event: dict[str, Any]) -> dict[str, Any]:
     raw = event.get("body") or "{}"
     try:
-        return json.loads(raw)
+        return json.loads(raw)  # type: ignore[no-any-return]
     except json.JSONDecodeError:
         return {}
 
 
-def _qp(event: dict, key: str, default=None):
+def _qp(event: dict[str, Any], key: str, default: Any = None) -> Any:
     return (event.get("queryStringParameters") or {}).get(key, default)
 
 
-def _parse_validated(model_class, body: dict):
+def _parse_validated(model_class: Any, body: dict[str, Any]) -> Any:
     from pydantic import ValidationError as PydanticValidationError
+
     try:
         return model_class(**body)
     except PydanticValidationError as exc:
         from shared.exceptions import ValidationError
+
         raise ValidationError(
             "Request validation failed",
-            field_errors={e["loc"][-1]: e["msg"] for e in exc.errors()},
+            field_errors={str(e["loc"][-1]): e["msg"] for e in exc.errors()},
         ) from exc

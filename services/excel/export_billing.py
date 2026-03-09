@@ -1,13 +1,15 @@
 """Generate billing .xlsx (single-sheet, 14 columns) per spec §7.4."""
 import contextlib
 from io import BytesIO
+from typing import Any
 
 import openpyxl
 from openpyxl.styles import Font
 from openpyxl.utils import get_column_letter
+from openpyxl.worksheet.worksheet import Worksheet
 
 
-def _autosize_columns(ws) -> None:
+def _autosize_columns(ws: Worksheet) -> None:
     for col in ws.columns:
         max_length = 0
         col_letter = get_column_letter(col[0].column)
@@ -19,24 +21,24 @@ def _autosize_columns(ws) -> None:
 
 
 _HEADERS = [
-    "Customer Name",        # A
-    "Total CBM",            # B
-    "CBM Rate (USD)",       # C
-    "Dollar Rate (NGN)",    # D
-    "Subtotal (USD)",       # E
-    "Subtotal (NGN)",       # F
-    "Misc Fees (NGN)",      # G
-    "Carryover (NGN)",      # H
-    "Adjustments (NGN)",    # I
-    "Storage Fees (NGN)",   # J
-    "Total Due (NGN)",      # K
-    "Total Paid (NGN)",     # L
-    "Outstanding (NGN)",    # M
-    "Payment Status",       # N
+    "Customer Name",  # A
+    "Total CBM",  # B
+    "CBM Rate (USD)",  # C
+    "Dollar Rate (NGN)",  # D
+    "Subtotal (USD)",  # E
+    "Subtotal (NGN)",  # F
+    "Misc Fees (NGN)",  # G
+    "Carryover (NGN)",  # H
+    "Adjustments (NGN)",  # I
+    "Storage Fees (NGN)",  # J
+    "Total Due (NGN)",  # K
+    "Total Paid (NGN)",  # L
+    "Outstanding (NGN)",  # M
+    "Payment Status",  # N
 ]
 
 
-def _billing_row(b: dict) -> list:
+def _billing_row(b: dict[str, Any]) -> list[Any]:
     """Convert a billing dict (with aggregated fields) to a 14-column list."""
     total_due = float(b.get("total_ngn") or 0)
     total_paid = float(b.get("amount_paid_ngn") or 0)
@@ -59,7 +61,7 @@ def _billing_row(b: dict) -> list:
     ]
 
 
-def generate_billing_xlsx(billing_rows: list[dict]) -> BytesIO:
+def generate_billing_xlsx(billing_rows: list[dict[str, Any]]) -> BytesIO:
     """Return a BytesIO buffer containing the billing workbook.
 
     billing_rows may contain one row (single billing export) or many

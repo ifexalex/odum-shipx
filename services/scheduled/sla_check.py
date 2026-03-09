@@ -9,6 +9,7 @@ For each cbm_dispute with status = 'open':
 
 import logging
 from datetime import UTC, datetime, timedelta
+from typing import Any
 
 from aws_xray_sdk.core import patch_all
 
@@ -33,7 +34,7 @@ _SYSTEM_ROLE = "scheduler"
 # ---------------------------------------------------------------------------
 
 
-def lambda_handler(event: dict, context) -> dict:
+def lambda_handler(event: dict[str, Any], context: Any) -> dict[str, Any]:
     tenants = _get_active_tenants()
     breaches = errors = 0
 
@@ -43,14 +44,13 @@ def lambda_handler(event: dict, context) -> dict:
             count = _process_tenant(tenant_id)
             breaches += count
         except Exception:
-            logger.exception(
-                "SLA check failed for tenant %s", tenant_id
-            )
+            logger.exception("SLA check failed for tenant %s", tenant_id)
             errors += 1
 
     logger.info(
         "SLA check job done: breaches=%d errors=%d",
-        breaches, errors,
+        breaches,
+        errors,
     )
     return {"breaches": breaches, "errors": errors}
 
@@ -75,14 +75,15 @@ def _process_tenant(tenant_id: str) -> int:
             breach_count += 1
         except Exception:
             logger.exception(
-                "SLA breach record failed for dispute %s", dispute["id"],
+                "SLA breach record failed for dispute %s",
+                dispute["id"],
                 extra={"tenant_id": tenant_id},
             )
 
     return breach_count
 
 
-def _record_breach(tenant_id: str, dispute: dict) -> None:
+def _record_breach(tenant_id: str, dispute: dict[str, Any]) -> None:
     dispute_id = str(dispute["id"])
 
     log_audit(
@@ -93,9 +94,9 @@ def _record_breach(tenant_id: str, dispute: dict) -> None:
         actor_id=_SYSTEM_ACTOR,
         actor_role=_SYSTEM_ROLE,
         after_state={
-            "dispute_id":  dispute_id,
+            "dispute_id": dispute_id,
             "breach_type": "unacknowledged_24h",
-            "created_at":  str(dispute["created_at"]),
+            "created_at": str(dispute["created_at"]),
         },
     )
 
@@ -109,7 +110,7 @@ def _record_breach(tenant_id: str, dispute: dict) -> None:
     _notify_nigeria_staff(tenant_id, dispute)
 
 
-def _notify_nigeria_staff(tenant_id: str, dispute: dict) -> None:
+def _notify_nigeria_staff(tenant_id: str, dispute: dict[str, Any]) -> None:
     staff = execute_with_tenant(
         tenant_id,
         """
@@ -124,7 +125,7 @@ def _notify_nigeria_staff(tenant_id: str, dispute: dict) -> None:
     )
 
     template_vars = {
-        "dispute_id":   str(dispute["id"]),
+        "dispute_id": str(dispute["id"]),
         "disputed_cbm": str(dispute["disputed_cbm"]),
     }
 
@@ -141,7 +142,8 @@ def _notify_nigeria_staff(tenant_id: str, dispute: dict) -> None:
             except Exception:
                 logger.warning(
                     "Failed to send SLA breach notification for dispute %s",
-                    dispute["id"], extra={"tenant_id": tenant_id},
+                    dispute["id"],
+                    extra={"tenant_id": tenant_id},
                 )
 
 
@@ -150,14 +152,14 @@ def _notify_nigeria_staff(tenant_id: str, dispute: dict) -> None:
 # ---------------------------------------------------------------------------
 
 
-def _get_active_tenants() -> list[dict]:
+def _get_active_tenants() -> list[dict[str, Any]]:
     return execute_with_tenant(
         PLATFORM_TENANT_ID,
         "SELECT id FROM tenant WHERE status = 'active'",
     )
 
 
-def _get_sla_breaching_disputes(tenant_id: str, threshold: datetime) -> list[dict]:
+def _get_sla_breaching_disputes(tenant_id: str, threshold: datetime) -> list[dict[str, Any]]:
     """Return open disputes created before threshold that have never been touched."""
     return execute_with_tenant(
         tenant_id,

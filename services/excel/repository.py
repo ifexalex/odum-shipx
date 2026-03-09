@@ -5,6 +5,7 @@ All queries use parameterized statements (%s / %(name)s) — never f-strings on
 user-supplied values.
 """
 import logging
+from typing import Any
 
 from shared.db import execute_with_tenant, execute_write_with_tenant
 from shared.tenant_context import PLATFORM_TENANT_ID
@@ -53,7 +54,7 @@ def get_tenant_short(tenant_id: str) -> str:
 # ---------------------------------------------------------------------------
 
 
-def get_packing_list_for_export(tenant_id: str, pl_id: str) -> dict | None:
+def get_packing_list_for_export(tenant_id: str, pl_id: str) -> dict[str, Any] | None:
     """Return packing list row with customer_name and container_number."""
     rows = execute_with_tenant(
         tenant_id,
@@ -72,7 +73,7 @@ def get_packing_list_for_export(tenant_id: str, pl_id: str) -> dict | None:
     return rows[0] if rows else None
 
 
-def get_items_for_packing_list(tenant_id: str, pl_id: str) -> list[dict]:
+def get_items_for_packing_list(tenant_id: str, pl_id: str) -> list[dict[str, Any]]:
     """Return all items for a packing list (join enforces tenant scope)."""
     return execute_with_tenant(
         tenant_id,
@@ -92,7 +93,7 @@ def get_items_for_packing_list(tenant_id: str, pl_id: str) -> list[dict]:
 # ---------------------------------------------------------------------------
 
 
-def get_manifest_for_export(tenant_id: str, manifest_id: str) -> dict | None:
+def get_manifest_for_export(tenant_id: str, manifest_id: str) -> dict[str, Any] | None:
     rows = execute_with_tenant(
         tenant_id,
         """
@@ -107,7 +108,7 @@ def get_manifest_for_export(tenant_id: str, manifest_id: str) -> dict | None:
     return rows[0] if rows else None
 
 
-def get_items_for_manifest(tenant_id: str, container_id: str) -> list[dict]:
+def get_items_for_manifest(tenant_id: str, container_id: str) -> list[dict[str, Any]]:
     """Return all packing list items for a container with customer_name."""
     return execute_with_tenant(
         tenant_id,
@@ -128,7 +129,7 @@ def get_items_for_manifest(tenant_id: str, container_id: str) -> list[dict]:
 # ---------------------------------------------------------------------------
 
 
-def get_billing_for_export(tenant_id: str, billing_id: str) -> dict | None:
+def get_billing_for_export(tenant_id: str, billing_id: str) -> dict[str, Any] | None:
     """Return billing row with customer_name, container_number, and aggregated extras."""
     rows = execute_with_tenant(
         tenant_id,
@@ -164,7 +165,7 @@ def get_billing_for_export(tenant_id: str, billing_id: str) -> dict | None:
     return None
 
 
-def get_billing_for_container_export(tenant_id: str, container_id: str) -> list[dict]:
+def get_billing_for_container_export(tenant_id: str, container_id: str) -> list[dict[str, Any]]:
     """Return all billing rows for a container with per-row aggregated extras."""
     rows = execute_with_tenant(
         tenant_id,
@@ -202,7 +203,7 @@ def get_billing_for_container_export(tenant_id: str, container_id: str) -> list[
     return result
 
 
-def get_container_by_id(tenant_id: str, container_id: str) -> dict | None:
+def get_container_by_id(tenant_id: str, container_id: str) -> dict[str, Any] | None:
     rows = execute_with_tenant(
         tenant_id,
         "SELECT id, container_number FROM container WHERE tenant_id = %s AND id = %s LIMIT 1",
@@ -216,7 +217,7 @@ def get_container_by_id(tenant_id: str, container_id: str) -> dict | None:
 # ---------------------------------------------------------------------------
 
 
-def get_tenant_customers(tenant_id: str) -> list[dict]:
+def get_tenant_customers(tenant_id: str) -> list[dict[str, Any]]:
     """Return all customers for this tenant (id, name)."""
     return execute_with_tenant(
         tenant_id,
@@ -239,9 +240,7 @@ def get_next_carton_sequence(tenant_id: str, container_id: str) -> int:
     return int(rows[0]["cnt"]) + 1 if rows else 1
 
 
-def get_existing_tracking_code(
-    tenant_id: str, customer_id: str, received_date
-) -> str | None:
+def get_existing_tracking_code(tenant_id: str, customer_id: str, received_date: Any) -> str | None:
     rows = execute_with_tenant(
         tenant_id,
         """
@@ -271,7 +270,7 @@ def get_next_tracking_sequence(tenant_id: str, date_prefix: str) -> int:
     return int(rows[0]["cnt"]) + 1 if rows else 1
 
 
-def create_packing_list(tenant_id: str, data: dict) -> dict:
+def create_packing_list(tenant_id: str, data: dict[str, Any]) -> dict[str, Any] | None:
     return execute_write_with_tenant(
         tenant_id,
         """
@@ -283,7 +282,7 @@ def create_packing_list(tenant_id: str, data: dict) -> dict:
     )
 
 
-def insert_packing_list_items(tenant_id: str, items: list[dict]) -> None:
+def insert_packing_list_items(tenant_id: str, items: list[dict[str, Any]]) -> None:
     for item in items:
         execute_write_with_tenant(
             tenant_id,

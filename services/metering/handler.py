@@ -14,6 +14,7 @@ Supports two trigger modes detected at runtime:
 import logging
 import time
 import uuid
+from typing import Any
 
 from aws_xray_sdk.core import patch_all
 
@@ -36,7 +37,7 @@ logger = logging.getLogger(__name__)
 # ---------------------------------------------------------------------------
 
 
-def lambda_handler(event: dict, context) -> dict:
+def lambda_handler(event: dict[str, Any], context: Any) -> dict[str, Any]:
     # Detect SQS batch trigger
     if "Records" in event and event["Records"] and event["Records"][0].get("eventSource") == "aws:sqs":
         return _handle_sqs_batch(event)
@@ -50,7 +51,7 @@ def lambda_handler(event: dict, context) -> dict:
 # ---------------------------------------------------------------------------
 
 
-def _handle_sqs_batch(event: dict) -> dict:
+def _handle_sqs_batch(event: dict[str, Any]) -> dict[str, Any]:
     """Process SQS batch; return itemIdentifier list for partial-batch failure."""
     batch_item_failures = []
 
@@ -71,11 +72,9 @@ def _handle_sqs_batch(event: dict) -> dict:
 # ---------------------------------------------------------------------------
 
 
-def _handle_api(event: dict, context) -> dict:
+def _handle_api(event: dict[str, Any], context: Any) -> dict[str, Any]:
     start_time = time.time()
-    request_id = (
-        event.get("requestContext", {}).get("requestId") or str(uuid.uuid4())
-    )
+    request_id = event.get("requestContext", {}).get("requestId") or str(uuid.uuid4())
     http = event.get("requestContext", {}).get("http", {})
     method = http.get("method", "")
     path = http.get("path", "")
@@ -88,7 +87,7 @@ def _handle_api(event: dict, context) -> dict:
             path,
             extra={"request_id": request_id, "tenant_id": tenant_ctx.tenant_id},
         )
-        response = _dispatch_api(event, method, path, tenant_ctx, request_id)
+        response: dict[str, Any] = _dispatch_api(event, method, path, tenant_ctx, request_id)
         return response
 
     except LogisticsBaseError as exc:
@@ -105,26 +104,28 @@ def _handle_api(event: dict, context) -> dict:
         duration_ms = (time.time() - start_time) * 1000
         logger.info(
             "← %s %s %.0fms",
-            method, path, duration_ms,
+            method,
+            path,
+            duration_ms,
             extra={"request_id": request_id, "duration_ms": duration_ms},
         )
 
 
-def _qp(event: dict, key: str, default=None):
+def _qp(event: dict[str, Any], key: str, default: Any = None) -> Any:
     return (event.get("queryStringParameters") or {}).get(key, default)
 
 
-def _dispatch_api(event, method, path, ctx, request_id):
+def _dispatch_api(
+    event: dict[str, Any],
+    method: str,
+    path: str,
+    ctx: Any,
+    request_id: str,
+) -> dict[str, Any]:
     parts = path.strip("/").split("/")
 
     # /v1/platform/tenants/{id}/usage
-    if (
-        len(parts) == 5
-        and parts[:2] == ["v1", "platform"]
-        and parts[2] == "tenants"
-        and parts[4] == "usage"
-        and method == "GET"
-    ):
+    if len(parts) == 5 and parts[:2] == ["v1", "platform"] and parts[2] == "tenants" and parts[4] == "usage" and method == "GET":
         ctx.assert_role(UserRole.PLATFORM_ADMIN)
         target_tenant_id = parts[3]
         period = _qp(event, "period")
@@ -132,11 +133,7 @@ def _dispatch_api(event, method, path, ctx, request_id):
         return success(result, request_id=request_id)
 
     # /v1/platform/dashboard
-    if (
-        len(parts) == 3
-        and parts[:3] == ["v1", "platform", "dashboard"]
-        and method == "GET"
-    ):
+    if len(parts) == 3 and parts[:3] == ["v1", "platform", "dashboard"] and method == "GET":
         ctx.assert_role(UserRole.PLATFORM_ADMIN)
         result = _build_dashboard()
         return success(result, request_id=request_id)
@@ -144,9 +141,7 @@ def _dispatch_api(event, method, path, ctx, request_id):
     raise ResourceNotFoundError("route", path)
 
 
-def _build_dashboard() -> dict:
+def _build_dashboard() -> dict[str, Any]:
     """Return platform-wide aggregated metrics (minimal — expandable)."""
     # A lightweight summary; full aggregation would query all tenants in production.
-    return {
-        "message": "Platform dashboard — aggregate metrics available per-tenant via /v1/platform/tenants/{id}/usage"
-    }
+    return {"message": "Platform dashboard — aggregate metrics available per-tenant via /v1/platform/tenants/{id}/usage"}

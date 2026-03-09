@@ -20,8 +20,7 @@ cur = conn.cursor()
 
 # Terminate any active connections so DROP DATABASE succeeds
 cur.execute(
-    "SELECT pg_terminate_backend(pid) FROM pg_stat_activity "
-    "WHERE datname = %s AND pid <> pg_backend_pid()",
+    "SELECT pg_terminate_backend(pid) FROM pg_stat_activity " "WHERE datname = %s AND pid <> pg_backend_pid()",
     (dbname,),
 )
 cur.execute(f"DROP DATABASE IF EXISTS {dbname}")

@@ -25,7 +25,8 @@ def upgrade() -> None:
     # damage_claim — replace status CHECK + add inspection_method
     # ---------------------------------------------------------------------------
     op.execute("ALTER TABLE damage_claim DROP CONSTRAINT damage_claim_status_check")
-    op.execute("""
+    op.execute(
+        """
         ALTER TABLE damage_claim ADD CONSTRAINT damage_claim_status_check
         CHECK (status IN (
             'filed',
@@ -35,38 +36,30 @@ def upgrade() -> None:
             'resolved',
             'closed'
         ))
-    """)
-    op.execute("ALTER TABLE damage_claim ALTER COLUMN status SET DEFAULT 'filed'")
-    op.execute(
-        "ALTER TABLE damage_claim ADD COLUMN inspection_method VARCHAR(30)"
+    """
     )
+    op.execute("ALTER TABLE damage_claim ALTER COLUMN status SET DEFAULT 'filed'")
+    op.execute("ALTER TABLE damage_claim ADD COLUMN inspection_method VARCHAR(30)")
 
     # ---------------------------------------------------------------------------
     # claim_resolution — replace approval_level CHECK + add columns
     # ---------------------------------------------------------------------------
+    op.execute("ALTER TABLE claim_resolution DROP CONSTRAINT " "claim_resolution_approval_level_check")
     op.execute(
-        "ALTER TABLE claim_resolution DROP CONSTRAINT "
-        "claim_resolution_approval_level_check"
-    )
-    op.execute("""
+        """
         ALTER TABLE claim_resolution ADD CONSTRAINT claim_resolution_approval_level_check
         CHECK (approval_level IN ('nigeria_staff', 'tenant_admin', 'head_of_finance'))
-    """)
-    op.execute(
-        "ALTER TABLE claim_resolution ADD COLUMN "
-        "refund_request_id UUID REFERENCES refund_request(id)"
+    """
     )
-    op.execute(
-        "ALTER TABLE claim_resolution ADD COLUMN discount_percentage DECIMAL(5, 2)"
-    )
+    op.execute("ALTER TABLE claim_resolution ADD COLUMN " "refund_request_id UUID REFERENCES refund_request(id)")
+    op.execute("ALTER TABLE claim_resolution ADD COLUMN discount_percentage DECIMAL(5, 2)")
 
     # ---------------------------------------------------------------------------
     # missing_item — replace status CHECK + add carton_tags column
     # ---------------------------------------------------------------------------
+    op.execute("ALTER TABLE missing_item DROP CONSTRAINT missing_item_status_check")
     op.execute(
-        "ALTER TABLE missing_item DROP CONSTRAINT missing_item_status_check"
-    )
-    op.execute("""
+        """
         ALTER TABLE missing_item ADD CONSTRAINT missing_item_status_check
         CHECK (status IN (
             'reported',
@@ -75,20 +68,16 @@ def upgrade() -> None:
             'confirmed_lost',
             'resolved'
         ))
-    """)
-    op.execute(
-        "ALTER TABLE missing_item ADD COLUMN "
-        "carton_tags TEXT[] NOT NULL DEFAULT '{}'"
+    """
     )
+    op.execute("ALTER TABLE missing_item ADD COLUMN " "carton_tags TEXT[] NOT NULL DEFAULT '{}'")
 
     # ---------------------------------------------------------------------------
     # seized_item — replace recovery_status CHECK + add carton_tags column
     # ---------------------------------------------------------------------------
+    op.execute("ALTER TABLE seized_item DROP CONSTRAINT " "seized_item_recovery_status_check")
     op.execute(
-        "ALTER TABLE seized_item DROP CONSTRAINT "
-        "seized_item_recovery_status_check"
-    )
-    op.execute("""
+        """
         ALTER TABLE seized_item ADD CONSTRAINT seized_item_recovery_status_check
         CHECK (recovery_status IN (
             'seized',
@@ -96,71 +85,56 @@ def upgrade() -> None:
             'recovered',
             'permanently_lost'
         ))
-    """)
-    op.execute(
-        "ALTER TABLE seized_item ADD COLUMN "
-        "carton_tags TEXT[] NOT NULL DEFAULT '{}'"
+    """
     )
+    op.execute("ALTER TABLE seized_item ADD COLUMN " "carton_tags TEXT[] NOT NULL DEFAULT '{}'")
 
 
 def downgrade() -> None:
     # seized_item
+    op.execute("ALTER TABLE seized_item DROP COLUMN IF EXISTS carton_tags")
+    op.execute("ALTER TABLE seized_item DROP CONSTRAINT seized_item_recovery_status_check")
     op.execute(
-        "ALTER TABLE seized_item DROP COLUMN IF EXISTS carton_tags"
-    )
-    op.execute(
-        "ALTER TABLE seized_item DROP CONSTRAINT seized_item_recovery_status_check"
-    )
-    op.execute("""
+        """
         ALTER TABLE seized_item ADD CONSTRAINT seized_item_recovery_status_check
         CHECK (recovery_status IN (
             'seized', 'under_review', 'recovered', 'forfeited'
         ))
-    """)
+    """
+    )
 
     # missing_item
+    op.execute("ALTER TABLE missing_item DROP COLUMN IF EXISTS carton_tags")
+    op.execute("ALTER TABLE missing_item DROP CONSTRAINT missing_item_status_check")
     op.execute(
-        "ALTER TABLE missing_item DROP COLUMN IF EXISTS carton_tags"
-    )
-    op.execute(
-        "ALTER TABLE missing_item DROP CONSTRAINT missing_item_status_check"
-    )
-    op.execute("""
+        """
         ALTER TABLE missing_item ADD CONSTRAINT missing_item_status_check
         CHECK (status IN (
             'reported', 'investigating', 'found', 'confirmed_missing', 'compensated'
         ))
-    """)
+    """
+    )
 
     # claim_resolution
+    op.execute("ALTER TABLE claim_resolution DROP COLUMN IF EXISTS discount_percentage")
+    op.execute("ALTER TABLE claim_resolution DROP COLUMN IF EXISTS refund_request_id")
+    op.execute("ALTER TABLE claim_resolution DROP CONSTRAINT " "claim_resolution_approval_level_check")
     op.execute(
-        "ALTER TABLE claim_resolution DROP COLUMN IF EXISTS discount_percentage"
-    )
-    op.execute(
-        "ALTER TABLE claim_resolution DROP COLUMN IF EXISTS refund_request_id"
-    )
-    op.execute(
-        "ALTER TABLE claim_resolution DROP CONSTRAINT "
-        "claim_resolution_approval_level_check"
-    )
-    op.execute("""
+        """
         ALTER TABLE claim_resolution ADD CONSTRAINT claim_resolution_approval_level_check
         CHECK (approval_level IN ('staff', 'manager', 'admin'))
-    """)
+    """
+    )
 
     # damage_claim
+    op.execute("ALTER TABLE damage_claim DROP COLUMN IF EXISTS inspection_method")
+    op.execute("ALTER TABLE damage_claim DROP CONSTRAINT damage_claim_status_check")
     op.execute(
-        "ALTER TABLE damage_claim DROP COLUMN IF EXISTS inspection_method"
-    )
-    op.execute(
-        "ALTER TABLE damage_claim DROP CONSTRAINT damage_claim_status_check"
-    )
-    op.execute("""
+        """
         ALTER TABLE damage_claim ADD CONSTRAINT damage_claim_status_check
         CHECK (status IN (
             'submitted', 'under_review', 'approved', 'rejected', 'resolved', 'escalated'
         ))
-    """)
-    op.execute(
-        "ALTER TABLE damage_claim ALTER COLUMN status SET DEFAULT 'submitted'"
+    """
     )
+    op.execute("ALTER TABLE damage_claim ALTER COLUMN status SET DEFAULT 'submitted'")

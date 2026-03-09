@@ -41,9 +41,7 @@ class FileCBMDisputeRequest(BaseModel):
 
 
 class ResolveCBMDisputeRequest(BaseModel):
-    status: CBMDisputeStatus = Field(
-        description="Must be resolved_adjusted or resolved_no_change"
-    )
+    status: CBMDisputeStatus = Field(description="Must be resolved_adjusted or resolved_no_change")
     corrected_cbm: Decimal | None = Field(default=None, gt=Decimal("0"))
     resolution_notes: str = Field(min_length=1)
 

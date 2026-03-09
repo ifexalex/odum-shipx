@@ -11,6 +11,7 @@ For each tenant with storage_fee.enabled = true:
 
 import logging
 from datetime import date
+from typing import Any
 
 from aws_xray_sdk.core import patch_all
 
@@ -34,7 +35,7 @@ _DEFAULT_GRACE_PERIOD = 14
 # ---------------------------------------------------------------------------
 
 
-def lambda_handler(event: dict, context) -> dict:
+def lambda_handler(event: dict[str, Any], context: Any) -> dict[str, Any]:
     tenants = _get_active_tenants()
     sent = errors = 0
 
@@ -44,14 +45,13 @@ def lambda_handler(event: dict, context) -> dict:
             count = _process_tenant(tenant_id)
             sent += count
         except Exception:
-            logger.exception(
-                "Storage reminders failed for tenant %s", tenant_id
-            )
+            logger.exception("Storage reminders failed for tenant %s", tenant_id)
             errors += 1
 
     logger.info(
         "Storage reminders job done: sent=%d errors=%d",
-        sent, errors,
+        sent,
+        errors,
     )
     return {"sent": sent, "errors": errors}
 
@@ -67,15 +67,9 @@ def _process_tenant(tenant_id: str) -> int:
         return 0
 
     reminder_config = _get_reminder_config(tenant_id)
-    first_reminder_day = int(
-        reminder_config.get("storage_first_reminder", _DEFAULT_FIRST_REMINDER)
-    )
-    final_reminder_day = int(
-        reminder_config.get("storage_final_reminder", _DEFAULT_FINAL_REMINDER)
-    )
-    grace_period = int(
-        storage_config.get("grace_period_days", _DEFAULT_GRACE_PERIOD)
-    )
+    first_reminder_day = int(reminder_config.get("storage_first_reminder", _DEFAULT_FIRST_REMINDER))
+    final_reminder_day = int(reminder_config.get("storage_final_reminder", _DEFAULT_FINAL_REMINDER))
+    grace_period = int(storage_config.get("grace_period_days", _DEFAULT_GRACE_PERIOD))
     today = date.today()
 
     active_notes = _get_active_release_notes(tenant_id)
@@ -84,12 +78,17 @@ def _process_tenant(tenant_id: str) -> int:
     for note in active_notes:
         try:
             sent += _maybe_send_reminder(
-                tenant_id, note, today,
-                first_reminder_day, final_reminder_day, grace_period,
+                tenant_id,
+                note,
+                today,
+                first_reminder_day,
+                final_reminder_day,
+                grace_period,
             )
         except Exception:
             logger.exception(
-                "Reminder error for release_note %s", note["id"],
+                "Reminder error for release_note %s",
+                note["id"],
                 extra={"tenant_id": tenant_id},
             )
 
@@ -98,7 +97,7 @@ def _process_tenant(tenant_id: str) -> int:
 
 def _maybe_send_reminder(
     tenant_id: str,
-    note: dict,
+    note: dict[str, Any],
     today: date,
     first_reminder_day: int,
     final_reminder_day: int,
@@ -125,15 +124,15 @@ def _maybe_send_reminder(
     if days_since == first_reminder_day:
         template_id = "storage_first_reminder"
         template_vars = {
-            "reference_number":   note.get("reference_number", ""),
-            "carton_count":       unreleased,
-            "days_remaining":     max(days_remaining, 0),
+            "reference_number": note.get("reference_number", ""),
+            "carton_count": unreleased,
+            "days_remaining": max(days_remaining, 0),
         }
     else:  # final reminder
         template_id = "storage_final_reminder"
         template_vars = {
             "reference_number": note.get("reference_number", ""),
-            "carton_count":     unreleased,
+            "carton_count": unreleased,
         }
 
     sent = 0
@@ -149,7 +148,8 @@ def _maybe_send_reminder(
             sent += 1
         except Exception:
             logger.warning(
-                "Failed to enqueue SMS reminder for note %s", note_id,
+                "Failed to enqueue SMS reminder for note %s",
+                note_id,
                 extra={"tenant_id": tenant_id},
             )
 
@@ -165,14 +165,17 @@ def _maybe_send_reminder(
             sent += 1
         except Exception:
             logger.warning(
-                "Failed to enqueue email reminder for note %s", note_id,
+                "Failed to enqueue email reminder for note %s",
+                note_id,
                 extra={"tenant_id": tenant_id},
             )
 
     if sent:
         logger.info(
             "Storage reminder sent: note=%s days=%d type=%s",
-            note_id, days_since, template_id,
+            note_id,
+            days_since,
+            template_id,
             extra={"tenant_id": tenant_id},
         )
 
@@ -184,14 +187,14 @@ def _maybe_send_reminder(
 # ---------------------------------------------------------------------------
 
 
-def _get_active_tenants() -> list[dict]:
+def _get_active_tenants() -> list[dict[str, Any]]:
     return execute_with_tenant(
         PLATFORM_TENANT_ID,
         "SELECT id FROM tenant WHERE status = 'active'",
     )
 
 
-def _get_storage_fee_config(tenant_id: str) -> dict:
+def _get_storage_fee_config(tenant_id: str) -> dict[str, Any]:
     rows = execute_with_tenant(
         tenant_id,
         """
@@ -204,7 +207,7 @@ def _get_storage_fee_config(tenant_id: str) -> dict:
     return rows[0]["config_value"] if rows else {}
 
 
-def _get_reminder_config(tenant_id: str) -> dict:
+def _get_reminder_config(tenant_id: str) -> dict[str, Any]:
     rows = execute_with_tenant(
         tenant_id,
         """
@@ -217,7 +220,7 @@ def _get_reminder_config(tenant_id: str) -> dict:
     return rows[0]["config_value"] if rows else {}
 
 
-def _get_active_release_notes(tenant_id: str) -> list[dict]:
+def _get_active_release_notes(tenant_id: str) -> list[dict[str, Any]]:
     return execute_with_tenant(
         tenant_id,
         """
@@ -242,7 +245,7 @@ def _sum_cartons_picked(tenant_id: str, release_note_id: str) -> int:
     return int(rows[0]["total_picked"]) if rows else 0
 
 
-def _get_customer_contact(tenant_id: str, customer_id: str) -> dict | None:
+def _get_customer_contact(tenant_id: str, customer_id: str) -> dict[str, Any] | None:
     rows = execute_with_tenant(
         tenant_id,
         """

@@ -54,18 +54,27 @@ class TestBillingDbIsolation:
         from services.billing import service
 
         billing = {
-            "id": "bill-001", "tenant_id": TENANT_A, "status": "unpaid",
-            "total_ngn": Decimal("50000"), "balance_ngn": Decimal("50000"),
-            "total_cbm": Decimal("5"), "customer_id": "cust-001",
+            "id": "bill-001",
+            "tenant_id": TENANT_A,
+            "status": "unpaid",
+            "total_ngn": Decimal("50000"),
+            "balance_ngn": Decimal("50000"),
+            "total_cbm": Decimal("5"),
+            "customer_id": "cust-001",
         }
 
         with (
-            patch.object(service.repo, "get_tenant_config_value", side_effect=[
-                {"rate_usd": 45},    # cbm_rate_per_unit
-                {"rate": 1550},      # dollar_rate
-            ]),
-            patch.object(service.repo, "get_cbm_and_carton_totals",
-                         return_value={"total_cbm": Decimal("5"), "total_cartons": 10}),
+            patch.object(
+                service.repo,
+                "get_tenant_config_value",
+                side_effect=[
+                    {"rate_usd": 45},  # cbm_rate_per_unit
+                    {"rate": 1550},  # dollar_rate
+                ],
+            ),
+            patch.object(
+                service.repo, "get_cbm_and_carton_totals", return_value={"total_cbm": Decimal("5"), "total_cartons": 10}
+            ),
             patch.object(service.repo, "get_outstanding_carryovers", return_value=[]),
             patch.object(service.repo, "get_pending_credit_refunds", return_value=[]),
             patch.object(service.repo, "get_tenant_short", return_value="ACME"),
@@ -136,8 +145,10 @@ class TestClaimsDbIsolation:
 
         ctx = TenantContext(tenant_id=TENANT_A, user_id="u", role=UserRole.NIGERIA_OFFICE_STAFF)
         claim = {
-            "id": "claim-001", "tenant_id": TENANT_A,
-            "customer_id": "cust-001", "container_id": "cont-001",
+            "id": "claim-001",
+            "tenant_id": TENANT_A,
+            "customer_id": "cust-001",
+            "container_id": "cont-001",
             "cartons_affected": ["TAG-001", "TAG-002"],
             "status": "filed",
             "created_at": None,
@@ -154,8 +165,7 @@ class TestClaimsDbIsolation:
             patch("services.claims.service.publish_event"),
         ):
             # For staff roles, customer_id_override must be provided
-            service.file_claim(TENANT_A, req, actor_id="u", ctx=ctx,
-                               customer_id_override="cust-001")
+            service.file_claim(TENANT_A, req, actor_id="u", ctx=ctx, customer_id_override="cust-001")
 
         # First positional arg to create_damage_claim must be TENANT_A
         assert mock_create.call_args[0][0] == TENANT_A
@@ -205,10 +215,14 @@ class TestPaymentReleaseDbIsolation:
         ctx = TenantContext(tenant_id=TENANT_A, user_id="u", role=UserRole.NIGERIA_OFFICE_STAFF)
 
         billing = {
-            "id": "billing-001", "tenant_id": TENANT_A,
-            "customer_id": "cust-001", "container_id": "cont-001",
-            "total_ngn": Decimal("100000"), "amount_paid_ngn": Decimal("0"),
-            "balance_ngn": Decimal("100000"), "total_cbm": Decimal("10"),
+            "id": "billing-001",
+            "tenant_id": TENANT_A,
+            "customer_id": "cust-001",
+            "container_id": "cont-001",
+            "total_ngn": Decimal("100000"),
+            "amount_paid_ngn": Decimal("0"),
+            "balance_ngn": Decimal("100000"),
+            "total_cbm": Decimal("10"),
             "status": "unpaid",
         }
         updated = {**billing, "amount_paid_ngn": Decimal("100000"), "balance_ngn": Decimal("0"), "status": "paid"}

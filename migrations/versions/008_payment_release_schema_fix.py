@@ -25,10 +25,9 @@ def upgrade() -> None:
     # ---------------------------------------------------------------------------
     # release_note — replace status CHECK + update default
     # ---------------------------------------------------------------------------
+    op.execute("ALTER TABLE release_note DROP CONSTRAINT release_note_status_check")
     op.execute(
-        "ALTER TABLE release_note DROP CONSTRAINT release_note_status_check"
-    )
-    op.execute("""
+        """
         ALTER TABLE release_note ADD CONSTRAINT release_note_status_check
         CHECK (status IN (
             'active',
@@ -36,18 +35,16 @@ def upgrade() -> None:
             'expired',
             'cancelled'
         ))
-    """)
-    op.execute(
-        "ALTER TABLE release_note ALTER COLUMN status SET DEFAULT 'active'"
+    """
     )
+    op.execute("ALTER TABLE release_note ALTER COLUMN status SET DEFAULT 'active'")
 
     # ---------------------------------------------------------------------------
     # shipment_tracking — add 'picked_up' to status CHECK
     # ---------------------------------------------------------------------------
+    op.execute("ALTER TABLE shipment_tracking DROP CONSTRAINT shipment_tracking_status_check")
     op.execute(
-        "ALTER TABLE shipment_tracking DROP CONSTRAINT shipment_tracking_status_check"
-    )
-    op.execute("""
+        """
         ALTER TABLE shipment_tracking ADD CONSTRAINT shipment_tracking_status_check
         CHECK (status IN (
             'received',
@@ -59,39 +56,31 @@ def upgrade() -> None:
             'released',
             'picked_up'
         ))
-    """)
+    """
+    )
 
     # ---------------------------------------------------------------------------
     # payment_record — make payment_method nullable
     # ---------------------------------------------------------------------------
-    op.execute(
-        "ALTER TABLE payment_record ALTER COLUMN payment_method DROP NOT NULL"
-    )
+    op.execute("ALTER TABLE payment_record ALTER COLUMN payment_method DROP NOT NULL")
 
     # ---------------------------------------------------------------------------
     # pickup_record — make collected_by_name nullable
     # ---------------------------------------------------------------------------
-    op.execute(
-        "ALTER TABLE pickup_record ALTER COLUMN collected_by_name DROP NOT NULL"
-    )
+    op.execute("ALTER TABLE pickup_record ALTER COLUMN collected_by_name DROP NOT NULL")
 
 
 def downgrade() -> None:
     # pickup_record
-    op.execute(
-        "ALTER TABLE pickup_record ALTER COLUMN collected_by_name SET NOT NULL"
-    )
+    op.execute("ALTER TABLE pickup_record ALTER COLUMN collected_by_name SET NOT NULL")
 
     # payment_record
-    op.execute(
-        "ALTER TABLE payment_record ALTER COLUMN payment_method SET NOT NULL"
-    )
+    op.execute("ALTER TABLE payment_record ALTER COLUMN payment_method SET NOT NULL")
 
     # shipment_tracking
+    op.execute("ALTER TABLE shipment_tracking DROP CONSTRAINT shipment_tracking_status_check")
     op.execute(
-        "ALTER TABLE shipment_tracking DROP CONSTRAINT shipment_tracking_status_check"
-    )
-    op.execute("""
+        """
         ALTER TABLE shipment_tracking ADD CONSTRAINT shipment_tracking_status_check
         CHECK (status IN (
             'received',
@@ -102,13 +91,13 @@ def downgrade() -> None:
             'ready_for_pickup',
             'released'
         ))
-    """)
+    """
+    )
 
     # release_note
+    op.execute("ALTER TABLE release_note DROP CONSTRAINT release_note_status_check")
     op.execute(
-        "ALTER TABLE release_note DROP CONSTRAINT release_note_status_check"
-    )
-    op.execute("""
+        """
         ALTER TABLE release_note ADD CONSTRAINT release_note_status_check
         CHECK (status IN (
             'issued',
@@ -117,7 +106,6 @@ def downgrade() -> None:
             'expired',
             'cancelled'
         ))
-    """)
-    op.execute(
-        "ALTER TABLE release_note ALTER COLUMN status SET DEFAULT 'issued'"
+    """
     )
+    op.execute("ALTER TABLE release_note ALTER COLUMN status SET DEFAULT 'issued'")

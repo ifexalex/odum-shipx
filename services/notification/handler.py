@@ -13,6 +13,7 @@ message data (including tenant branding) is embedded in the SQS event payload.
 
 import json
 import logging
+from typing import Any
 
 from aws_xray_sdk.core import patch_all
 
@@ -34,7 +35,7 @@ logger = logging.getLogger(__name__)
 # ---------------------------------------------------------------------------
 
 
-def sms_handler(event: dict, context) -> dict:
+def sms_handler(event: dict[str, Any], context: Any) -> dict[str, Any]:
     """SQS consumer for the SMS notification queue."""
     batch_item_failures = []
     for record in event.get("Records", []):
@@ -43,15 +44,13 @@ def sms_handler(event: dict, context) -> dict:
             body = json.loads(record["body"])
             _process_sms(body)
         except Exception:
-            logger.exception(
-                "SMS processing failed for message %s", msg_id
-            )
+            logger.exception("SMS processing failed for message %s", msg_id)
             batch_item_failures.append({"itemIdentifier": msg_id})
 
     return {"batchItemFailures": batch_item_failures}
 
 
-def _process_sms(body: dict) -> None:
+def _process_sms(body: dict[str, Any]) -> None:
     tenant_id = body.get("tenant_id", "")
     event_type = body.get("event_type", "")
     recipient = body.get("recipient") or {}
@@ -76,7 +75,7 @@ def _process_sms(body: dict) -> None:
 # ---------------------------------------------------------------------------
 
 
-def whatsapp_handler(event: dict, context) -> dict:
+def whatsapp_handler(event: dict[str, Any], context: Any) -> dict[str, Any]:
     """SQS consumer for the WhatsApp notification queue."""
     batch_item_failures = []
     for record in event.get("Records", []):
@@ -85,15 +84,13 @@ def whatsapp_handler(event: dict, context) -> dict:
             body = json.loads(record["body"])
             _process_whatsapp(body)
         except Exception:
-            logger.exception(
-                "WhatsApp processing failed for message %s", msg_id
-            )
+            logger.exception("WhatsApp processing failed for message %s", msg_id)
             batch_item_failures.append({"itemIdentifier": msg_id})
 
     return {"batchItemFailures": batch_item_failures}
 
 
-def _process_whatsapp(body: dict) -> None:
+def _process_whatsapp(body: dict[str, Any]) -> None:
     tenant_id = body.get("tenant_id", "")
     event_type = body.get("event_type", "")
     recipient = body.get("recipient") or {}
@@ -119,7 +116,7 @@ def _process_whatsapp(body: dict) -> None:
 # ---------------------------------------------------------------------------
 
 
-def email_handler(event: dict, context) -> dict:
+def email_handler(event: dict[str, Any], context: Any) -> dict[str, Any]:
     """SQS consumer for the Email notification queue."""
     batch_item_failures = []
     for record in event.get("Records", []):
@@ -128,15 +125,13 @@ def email_handler(event: dict, context) -> dict:
             body = json.loads(record["body"])
             _process_email(body)
         except Exception:
-            logger.exception(
-                "Email processing failed for message %s", msg_id
-            )
+            logger.exception("Email processing failed for message %s", msg_id)
             batch_item_failures.append({"itemIdentifier": msg_id})
 
     return {"batchItemFailures": batch_item_failures}
 
 
-def _process_email(body: dict) -> None:
+def _process_email(body: dict[str, Any]) -> None:
     tenant_id = body.get("tenant_id", "")
     event_type = body.get("event_type", "")
     recipient = body.get("recipient") or {}
@@ -164,7 +159,7 @@ def _process_email(body: dict) -> None:
 # ---------------------------------------------------------------------------
 
 
-def webhook_handler(event: dict, context) -> dict:
+def webhook_handler(event: dict[str, Any], context: Any) -> dict[str, Any]:
     """HTTP Lambda for WhatsApp webhook verification and delivery status callbacks.
 
     Routes:
@@ -183,13 +178,14 @@ def webhook_handler(event: dict, context) -> dict:
     return {"statusCode": 405, "body": "Method Not Allowed"}
 
 
-def _handle_whatsapp_verify(event: dict) -> dict:
+def _handle_whatsapp_verify(event: dict[str, Any]) -> dict[str, Any]:
     """Respond to Meta's hub challenge for webhook subscription."""
     import hmac
     import os
+
     params = event.get("queryStringParameters") or {}
-    mode      = params.get("hub.mode", "")
-    token     = params.get("hub.verify_token", "")
+    mode = params.get("hub.mode", "")
+    token = params.get("hub.verify_token", "")
     challenge = params.get("hub.challenge", "")
 
     verify_token = os.environ.get("WHATSAPP_VERIFY_TOKEN", "")
@@ -201,9 +197,10 @@ def _handle_whatsapp_verify(event: dict) -> dict:
     return {"statusCode": 403, "body": "Forbidden"}
 
 
-def _handle_whatsapp_delivery_status(event: dict) -> dict:
+def _handle_whatsapp_delivery_status(event: dict[str, Any]) -> dict[str, Any]:
     """Process delivery status updates from Meta Cloud API."""
     import json as _json
+
     try:
         body = _json.loads(event.get("body") or "{}")
         # Meta sends statuses in body.entry[].changes[].value.statuses[]
@@ -211,12 +208,14 @@ def _handle_whatsapp_delivery_status(event: dict) -> dict:
             for change in entry.get("changes", []):
                 value = change.get("value", {})
                 for status_obj in value.get("statuses", []):
-                    msg_id    = status_obj.get("id", "")
-                    status    = status_obj.get("status", "")
+                    msg_id = status_obj.get("id", "")
+                    status = status_obj.get("status", "")
                     timestamp = status_obj.get("timestamp", "")
                     logger.info(
                         "WhatsApp delivery status: msg=%s status=%s ts=%s",
-                        msg_id, status, timestamp,
+                        msg_id,
+                        status,
+                        timestamp,
                     )
     except Exception:
         logger.exception("Failed to process WhatsApp delivery status")

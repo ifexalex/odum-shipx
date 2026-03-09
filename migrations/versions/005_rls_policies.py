@@ -46,14 +46,16 @@ def upgrade() -> None:
     # 1. Application database role used by all Lambda functions.
     #    Password is intentionally a placeholder — rotate via Secrets Manager.
     # ---------------------------------------------------------------------------
-    op.execute("""
+    op.execute(
+        """
         DO $$
         BEGIN
             IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'logistics_app') THEN
                 CREATE ROLE logistics_app LOGIN PASSWORD 'CHANGE_ME_IN_SECRETS_MANAGER';
             END IF;
         END $$
-    """)
+    """
+    )
 
     # Grant table-level and sequence-level privileges.
     # Row visibility is controlled by RLS policies, not by GRANT.
@@ -67,7 +69,8 @@ def upgrade() -> None:
     #    FORCE ROW LEVEL SECURITY ensures policies apply even to the table owner
     #    (e.g. when running migrations or admin scripts as the DB owner).
     # ---------------------------------------------------------------------------
-    op.execute("""
+    op.execute(
+        """
         DO $$
         DECLARE
             tbl TEXT;
@@ -103,14 +106,16 @@ def upgrade() -> None:
                 );
             END LOOP;
         END $$
-    """)
+    """
+    )
 
 
 def downgrade() -> None:
     # ---------------------------------------------------------------------------
     # Drop policies, disable RLS, and revoke grants — in reverse order.
     # ---------------------------------------------------------------------------
-    op.execute("""
+    op.execute(
+        """
         DO $$
         DECLARE
             tbl TEXT;
@@ -131,7 +136,8 @@ def downgrade() -> None:
                 EXECUTE format('ALTER TABLE %I DISABLE ROW LEVEL SECURITY', tbl);
             END LOOP;
         END $$
-    """)
+    """
+    )
 
     op.execute("REVOKE SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA public FROM logistics_app")
     op.execute("REVOKE USAGE ON ALL SEQUENCES IN SCHEMA public FROM logistics_app")

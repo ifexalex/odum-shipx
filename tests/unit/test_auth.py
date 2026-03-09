@@ -67,9 +67,7 @@ class TestParseRole:
         assert _parse_role(claims, TENANT_ID) == UserRole.CUSTOMER
 
     def test_multiple_groups_picks_first_matching(self):
-        claims = {
-            "cognito:groups": f"other-tenant:tenant_admin,{TENANT_ID}:nigeria_office_staff"
-        }
+        claims = {"cognito:groups": f"other-tenant:tenant_admin,{TENANT_ID}:nigeria_office_staff"}
         assert _parse_role(claims, TENANT_ID) == UserRole.NIGERIA_OFFICE_STAFF
 
     def test_invalid_role_in_group_ignored(self):
@@ -134,9 +132,7 @@ class TestGetTenantContext:
     def test_platform_admin_skips_suspension_check(self, monkeypatch):
         """Platform admins bypass tenant suspension check."""
         called = []
-        monkeypatch.setattr(
-            "shared.auth._check_tenant_active", lambda tid: called.append(tid)
-        )
+        monkeypatch.setattr("shared.auth._check_tenant_active", lambda tid: called.append(tid))
         claims = {
             "sub": "platform-user",
             "custom:tenant_id": "PLATFORM",
@@ -154,15 +150,11 @@ class TestGetTenantContext:
 
 class TestAssertRole:
     def test_assert_role_passes_for_allowed_role(self):
-        ctx = TenantContext(
-            tenant_id=TENANT_ID, user_id="u", role=UserRole.TENANT_ADMIN
-        )
+        ctx = TenantContext(tenant_id=TENANT_ID, user_id="u", role=UserRole.TENANT_ADMIN)
         ctx.assert_role(UserRole.TENANT_ADMIN)  # should not raise
 
     def test_assert_role_passes_for_one_of_multiple(self):
-        ctx = TenantContext(
-            tenant_id=TENANT_ID, user_id="u", role=UserRole.NIGERIA_OFFICE_STAFF
-        )
+        ctx = TenantContext(tenant_id=TENANT_ID, user_id="u", role=UserRole.NIGERIA_OFFICE_STAFF)
         ctx.assert_role(UserRole.TENANT_ADMIN, UserRole.NIGERIA_OFFICE_STAFF)
 
     def test_assert_role_raises_for_wrong_role(self):

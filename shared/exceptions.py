@@ -99,7 +99,7 @@ class PaymentRequiredError(LogisticsBaseError):
 
 
 class UsageLimitExceededError(LogisticsBaseError):
-    def __init__(self, limit_type: str, current: int, maximum: int) -> None:
+    def __init__(self, limit_type: str, current: int | float, maximum: int | float) -> None:
         super().__init__(
             message=f"Usage limit exceeded for {limit_type}: {current}/{maximum}",
             error_code="USAGE_LIMIT_EXCEEDED",
@@ -124,7 +124,7 @@ class InsufficientPermissionsError(LogisticsBaseError):
 
 
 class ApprovalThresholdExceededError(LogisticsBaseError):
-    def __init__(self, message_or_amount, threshold: float = 0, required_role: str = "") -> None:
+    def __init__(self, message_or_amount: float | str, threshold: float = 0, required_role: str = "") -> None:
         if isinstance(message_or_amount, str) and not threshold:
             message = message_or_amount
         else:
@@ -155,7 +155,7 @@ class IdempotencyConflictError(LogisticsBaseError):
 
 
 class ValidationError(LogisticsBaseError):
-    def __init__(self, message: str, field_errors: dict | None = None) -> None:
+    def __init__(self, message: str, field_errors: dict[str, str] | None = None) -> None:
         super().__init__(message=message, error_code="VALIDATION_ERROR", status_code=422)
         self.field_errors = field_errors or {}
 

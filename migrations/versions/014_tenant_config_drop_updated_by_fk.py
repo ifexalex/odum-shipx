@@ -23,9 +23,7 @@ depends_on = None
 
 
 def upgrade() -> None:
-    op.execute(
-        "ALTER TABLE tenant_config DROP CONSTRAINT IF EXISTS tenant_config_updated_by_fkey"
-    )
+    op.execute("ALTER TABLE tenant_config DROP CONSTRAINT IF EXISTS tenant_config_updated_by_fkey")
 
 
 def downgrade() -> None:

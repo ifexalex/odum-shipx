@@ -3,6 +3,7 @@ from collections import defaultdict
 from datetime import date
 from decimal import Decimal, InvalidOperation
 from io import BytesIO
+from typing import Any
 
 import openpyxl
 
@@ -20,7 +21,7 @@ _EXPECTED_HEADERS = [
 ]
 
 
-def _parse_positive_decimal(value, field: str, row: int) -> tuple[Decimal | None, dict | None]:
+def _parse_positive_decimal(value: Any, field: str, row: int) -> tuple[Decimal | None, dict[str, Any] | None]:
     """Return (Decimal, None) on success or (None, error_dict) on failure."""
     if value is None or str(value).strip() == "":
         return None, None
@@ -33,7 +34,7 @@ def _parse_positive_decimal(value, field: str, row: int) -> tuple[Decimal | None
         return None, {"row": row, "field": field, "value": str(value), "error": "Invalid number"}
 
 
-def _parse_date(value, row: int) -> tuple[date | None, dict | None]:
+def _parse_date(value: Any, row: int) -> tuple[date | None, dict[str, Any] | None]:
     if value is None or str(value).strip() == "":
         return date.today(), None
     if isinstance(value, date):
@@ -42,6 +43,7 @@ def _parse_date(value, row: int) -> tuple[date | None, dict | None]:
     for fmt in ("%Y-%m-%d", "%d/%m/%Y", "%m/%d/%Y"):
         try:
             from datetime import datetime as dt
+
             return dt.strptime(raw, fmt).date(), None
         except ValueError:
             pass
@@ -56,8 +58,8 @@ def _compute_cbm(length: Decimal | None, width: Decimal | None, height: Decimal 
 
 def parse_packing_list_xlsx(
     file_buffer: BytesIO,
-    customers_by_name: dict,  # {lowercase_name: customer_id}
-) -> tuple[dict[tuple, list], list[dict], int]:
+    customers_by_name: dict[str, Any],  # {lowercase_name: customer_id}
+) -> tuple[dict[tuple[Any, ...], list[dict[str, Any]]], list[dict[str, Any]], int]:
     """Parse xlsx and return (items_by_group, errors, total_data_rows).
 
     items_by_group: {(customer_id, received_date): [item_dict, ...]}
@@ -67,18 +69,15 @@ def parse_packing_list_xlsx(
     ws = wb.active
 
     # 1. Validate header row (case-insensitive)
-    actual_headers = [
-        str(ws.cell(row=1, column=c).value or "").strip().lower()
-        for c in range(1, 9)
-    ]
+    actual_headers = [str(ws.cell(row=1, column=c).value or "").strip().lower() for c in range(1, 9)]
     if actual_headers != _EXPECTED_HEADERS:
         raise ValidationError(
             "Header row does not match expected format",
             field_errors={"headers": f"Expected {_EXPECTED_HEADERS}, got {actual_headers}"},
         )
 
-    errors: list[dict] = []
-    items_by_group: dict[tuple, list] = defaultdict(list)
+    errors: list[dict[str, Any]] = []
+    items_by_group: dict[tuple[Any, ...], list[dict[str, Any]]] = defaultdict(list)
     total_rows = 0
 
     for row_idx in range(2, ws.max_row + 1):
@@ -92,23 +91,31 @@ def parse_packing_list_xlsx(
         raw_customer = str(ws.cell(row=row_idx, column=1).value or "").strip()
         customer_id = customers_by_name.get(raw_customer.lower())
         if not customer_id:
-            errors.append({
-                "row": row_idx, "field": "Customer Name",
-                "value": raw_customer, "error": "Customer not found",
-            })
+            errors.append(
+                {
+                    "row": row_idx,
+                    "field": "Customer Name",
+                    "value": raw_customer,
+                    "error": "Customer not found",
+                }
+            )
             continue
 
         # b. Description (required)
         description = str(ws.cell(row=row_idx, column=2).value or "").strip()
         if not description:
-            errors.append({
-                "row": row_idx, "field": "Description",
-                "value": "", "error": "Description is required",
-            })
+            errors.append(
+                {
+                    "row": row_idx,
+                    "field": "Description",
+                    "value": "",
+                    "error": "Description is required",
+                }
+            )
             continue
 
         # c. Numeric fields (optional, positive)
-        row_errors = []
+        row_errors: list[dict[str, Any]] = []
         weight_dispatch, e = _parse_positive_decimal(ws.cell(row=row_idx, column=3).value, "Weight Dispatch (kg)", row_idx)
         if e:
             row_errors.append(e)
@@ -137,15 +144,15 @@ def parse_packing_list_xlsx(
 
         cbm = _compute_cbm(length_cm, width_cm, height_cm)
 
-        item = {
-            "description":       description,
+        item: dict[str, Any] = {
+            "description": description,
             "weight_dispatch_kg": float(weight_dispatch) if weight_dispatch is not None else None,
-            "weight_actual_kg":   float(weight_actual) if weight_actual is not None else None,
-            "length_cm":          float(length_cm) if length_cm is not None else None,
-            "width_cm":           float(width_cm) if width_cm is not None else None,
-            "height_cm":          float(height_cm) if height_cm is not None else None,
-            "cbm":                float(cbm),
-            "received_date":      received_date,
+            "weight_actual_kg": float(weight_actual) if weight_actual is not None else None,
+            "length_cm": float(length_cm) if length_cm is not None else None,
+            "width_cm": float(width_cm) if width_cm is not None else None,
+            "height_cm": float(height_cm) if height_cm is not None else None,
+            "cbm": float(cbm),
+            "received_date": received_date,
         }
         items_by_group[(customer_id, received_date)].append(item)
 

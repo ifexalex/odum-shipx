@@ -62,6 +62,7 @@ _handlers: dict = {}
 def _get_handler(name: str):
     if name not in _handlers:
         import importlib
+
         mod = importlib.import_module(f"services.{name}.handler")
         _handlers[name] = mod
     return _handlers[name]
@@ -73,47 +74,48 @@ def _get_handler(name: str):
 # ---------------------------------------------------------------------------
 
 _ROUTES = [
-    ("/v1/billing",       "billing"),
-    ("/v1/refunds",       "refunds"),
-    ("/v1/claims",        "claims"),
-    ("/v1/uploads",       "claims"),       # presigned URL lives in claims handler
+    ("/v1/billing", "billing"),
+    ("/v1/refunds", "refunds"),
+    ("/v1/claims", "claims"),
+    ("/v1/uploads", "claims"),  # presigned URL lives in claims handler
     ("/v1/packing-lists", "packing_list"),
     ("/v1/release-notes", "payment_release"),
-    ("/v1/payments",      "payment_release"),
-    ("/v1/containers",    "tracking"),
-    ("/v1/shipments",     "tracking"),
-    ("/v1/manifests",     "manifest"),
-    ("/v1/platform",      "tenant_management"),
-    ("/v1/tenants",       "tenant_management"),
-    ("/v1/tenant",        "tenant_management"),   # tenant-admin routes
-    ("/v1/customers",     "tenant_management"),   # customer management routes
+    ("/v1/payments", "payment_release"),
+    ("/v1/containers", "tracking"),
+    ("/v1/shipments", "tracking"),
+    ("/v1/manifests", "manifest"),
+    ("/v1/platform", "tenant_management"),
+    ("/v1/tenants", "tenant_management"),
+    ("/v1/tenant", "tenant_management"),  # tenant-admin routes
+    ("/v1/customers", "tenant_management"),  # customer management routes
     ("/v1/notifications", "notification"),
-    ("/v1/excel",         "excel"),
+    ("/v1/excel", "excel"),
 ]
 
 DEFAULT_TENANT_ID = "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa"
-DEFAULT_USER_ID   = "local-user-001"
-DEFAULT_ROLE      = "nigeria_office_staff"
+DEFAULT_USER_ID = "local-user-001"
+DEFAULT_ROLE = "nigeria_office_staff"
 
 
 # ---------------------------------------------------------------------------
 # Build API Gateway v2 event from Flask request
 # ---------------------------------------------------------------------------
 
+
 def _build_event() -> dict:
     tenant_id = request.headers.get("X-Tenant-ID", DEFAULT_TENANT_ID)
-    user_id   = request.headers.get("X-User-ID",   DEFAULT_USER_ID)
-    role      = request.headers.get("X-Role",       DEFAULT_ROLE)
+    user_id = request.headers.get("X-User-ID", DEFAULT_USER_ID)
+    role = request.headers.get("X-Role", DEFAULT_ROLE)
 
     # Platform admins have no tenant scope — their Cognito group is just
     # "platform_admin" (no tenant prefix) and their tenant_id claim is "PLATFORM".
     # This bypasses the tenant suspension check in get_tenant_context().
     if role == "platform_admin":
         claims_tenant_id = "PLATFORM"
-        cognito_groups   = "platform_admin"
+        cognito_groups = "platform_admin"
     else:
         claims_tenant_id = tenant_id
-        cognito_groups   = f"{tenant_id}:{role}"
+        cognito_groups = f"{tenant_id}:{role}"
 
     body_raw = request.get_data(as_text=True) or None
 
@@ -122,13 +124,13 @@ def _build_event() -> dict:
             "requestId": str(uuid.uuid4()),
             "http": {
                 "method": request.method,
-                "path":   request.path,
+                "path": request.path,
             },
             "authorizer": {
                 "claims": {
-                    "sub":              user_id,
+                    "sub": user_id,
                     "custom:tenant_id": claims_tenant_id,
-                    "cognito:groups":   cognito_groups,
+                    "cognito:groups": cognito_groups,
                 }
             },
             "identity": {"sourceIp": request.remote_addr or "127.0.0.1"},
@@ -143,10 +145,11 @@ def _build_event() -> dict:
 # Convert Lambda response dict → Flask Response
 # ---------------------------------------------------------------------------
 
+
 def _to_flask_response(lambda_resp: dict) -> Response:
     status_code = lambda_resp.get("statusCode", 200)
-    headers     = lambda_resp.get("headers", {})
-    body        = lambda_resp.get("body", "")
+    headers = lambda_resp.get("headers", {})
+    body = lambda_resp.get("body", "")
 
     content_type = headers.get("Content-Type", "application/json")
     return Response(body, status=status_code, content_type=content_type)
@@ -155,6 +158,7 @@ def _to_flask_response(lambda_resp: dict) -> Response:
 # ---------------------------------------------------------------------------
 # Generic catch-all route
 # ---------------------------------------------------------------------------
+
 
 @app.route("/v1/<path:path>", methods=["GET", "POST", "PUT", "PATCH", "DELETE"])
 def dispatch(path: str):
@@ -169,9 +173,8 @@ def dispatch(path: str):
     _excel_prefixes = ("/v1/packing-lists/", "/v1/manifests/", "/v1/billing/", "/v1/containers/")
     _path_no_qs = full_path.split("?")[0]
     service_name = None
-    if (
-        (_path_no_qs.endswith("/export") and any(_path_no_qs.startswith(p) for p in _excel_prefixes))
-        or _path_no_qs.endswith("/import")
+    if (_path_no_qs.endswith("/export") and any(_path_no_qs.startswith(p) for p in _excel_prefixes)) or _path_no_qs.endswith(
+        "/import"
     ):
         service_name = "excel"
     else:
@@ -222,7 +225,8 @@ if __name__ == "__main__":
         )
 
     port = int(os.environ.get("LOCAL_PORT", "3000"))
-    print(f"""
+    print(
+        f"""
 ╔══════════════════════════════════════════════════════════════╗
 ║           ShipX Local API Server  →  http://localhost:{port}   ║
 ╠══════════════════════════════════════════════════════════════╣
@@ -235,6 +239,7 @@ if __name__ == "__main__":
 ║    china_office_staff, nigeria_office_staff,                 ║
 ║    warehouse_attendant, customer                             ║
 ╚══════════════════════════════════════════════════════════════╝
-""")
+"""
+    )
     # Bind to loopback only — do not expose the bypass server on the network.
     app.run(host="127.0.0.1", port=port, debug=False)

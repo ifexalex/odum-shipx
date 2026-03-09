@@ -23,9 +23,9 @@ logger = logging.getLogger(__name__)
 
 
 class CircuitState(Enum):
-    CLOSED = "closed"       # Normal operation — calls pass through
-    OPEN = "open"           # Failing — calls rejected immediately
-    HALF_OPEN = "half_open" # Testing recovery — one call allowed through
+    CLOSED = "closed"  # Normal operation — calls pass through
+    OPEN = "open"  # Failing — calls rejected immediately
+    HALF_OPEN = "half_open"  # Testing recovery — one call allowed through
 
 
 class CircuitBreaker:
@@ -50,7 +50,7 @@ class CircuitBreaker:
         self.state: CircuitState = CircuitState.CLOSED
         self.last_failure_time: float = 0.0
 
-    def call(self, func: Callable, *args: Any, **kwargs: Any) -> Any:
+    def call(self, func: Callable[..., Any], *args: Any, **kwargs: Any) -> Any:
         """Execute func through the circuit breaker.
 
         Raises:

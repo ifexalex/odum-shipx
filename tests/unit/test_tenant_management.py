@@ -274,7 +274,10 @@ class TestUpdateDollarRate:
         from services.tenant_management import service
 
         config_rows = [
-            {"config_key": "dollar_rate", "config_value": {"rate": 1500.00, "currency_pair": "USD_NGN", "effective_from": "2026-01-01"}},
+            {
+                "config_key": "dollar_rate",
+                "config_value": {"rate": 1500.00, "currency_pair": "USD_NGN", "effective_from": "2026-01-01"},
+            },
         ]
 
         req = MagicMock()
@@ -387,14 +390,17 @@ class TestCreateUser:
 
     def test_starter_tier_has_limit_10(self):
         from services.tenant_management.service import TIER_USER_LIMITS
+
         assert TIER_USER_LIMITS["starter"] == 10
 
     def test_business_tier_has_limit_50(self):
         from services.tenant_management.service import TIER_USER_LIMITS
+
         assert TIER_USER_LIMITS["business"] == 50
 
     def test_enterprise_tier_has_limit_500(self):
         from services.tenant_management.service import TIER_USER_LIMITS
+
         assert TIER_USER_LIMITS["enterprise"] == 500
 
 
@@ -438,7 +444,8 @@ class TestGetCustomer:
         customer = {"id": "cust-001", "user_id": "user-cust"}
         with patch.object(service.repo, "get_customer_by_id", return_value=customer):
             result = service.get_customer(
-                TENANT_ID, "cust-001",
+                TENANT_ID,
+                "cust-001",
                 requesting_user_id="user-cust",
                 is_customer_role=True,
             )
@@ -452,7 +459,8 @@ class TestGetCustomer:
         with patch.object(service.repo, "get_customer_by_id", return_value=customer):
             with pytest.raises(ResourceNotFoundError):
                 service.get_customer(
-                    TENANT_ID, "cust-001",
+                    TENANT_ID,
+                    "cust-001",
                     requesting_user_id="user-cust",
                     is_customer_role=True,
                 )
@@ -463,7 +471,8 @@ class TestGetCustomer:
         customer = {"id": "cust-001", "user_id": "user-other"}
         with patch.object(service.repo, "get_customer_by_id", return_value=customer):
             result = service.get_customer(
-                TENANT_ID, "cust-001",
+                TENANT_ID,
+                "cust-001",
                 requesting_user_id="user-staff",
                 is_customer_role=False,  # staff
             )
@@ -486,24 +495,30 @@ class TestGetCustomer:
 class TestDefaultConfigs:
     def test_default_dollar_rate_is_1550(self):
         from services.tenant_management.service import DEFAULT_CONFIGS
+
         assert DEFAULT_CONFIGS["dollar_rate"]["rate"] == 1550.00
 
     def test_default_grace_period_is_14_days(self):
         from services.tenant_management.service import DEFAULT_CONFIGS
+
         assert DEFAULT_CONFIGS["storage_fee"]["grace_period_days"] == 14
 
     def test_default_daily_fee_is_500(self):
         from services.tenant_management.service import DEFAULT_CONFIGS
+
         assert DEFAULT_CONFIGS["storage_fee"]["daily_fee_per_carton_ngn"] == 500
 
     def test_default_cbm_rate_usd_is_45(self):
         from services.tenant_management.service import DEFAULT_CONFIGS
+
         assert DEFAULT_CONFIGS["cbm_rate_per_unit"]["rate_usd"] == 45.00
 
     def test_dispute_escalation_default_days_is_5(self):
         from services.tenant_management.service import DEFAULT_CONFIGS
+
         assert DEFAULT_CONFIGS["dispute_escalation"]["auto_escalate_days"] == 5
 
     def test_refund_staff_limit_is_50_usd(self):
         from services.tenant_management.service import DEFAULT_CONFIGS
+
         assert DEFAULT_CONFIGS["refund_threshold_usd"]["staff_limit"] == 50

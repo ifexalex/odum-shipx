@@ -14,6 +14,7 @@ after each run).
 
 import logging
 from datetime import date, timedelta
+from typing import Any
 
 from aws_xray_sdk.core import patch_all
 
@@ -32,7 +33,7 @@ logger = logging.getLogger(__name__)
 # ---------------------------------------------------------------------------
 
 
-def lambda_handler(event: dict, context) -> dict:
+def lambda_handler(event: dict[str, Any], context: Any) -> dict[str, Any]:
     # Aggregate all completed days (yesterday and earlier) — never today,
     # since today's records are still accumulating.
     yesterday = date.today() - timedelta(days=1)
@@ -46,14 +47,13 @@ def lambda_handler(event: dict, context) -> dict:
             count = _aggregate_tenant(tenant_id, up_to=yesterday)
             aggregated += count
         except Exception:
-            logger.exception(
-                "Usage aggregation failed for tenant %s", tenant_id
-            )
+            logger.exception("Usage aggregation failed for tenant %s", tenant_id)
             errors += 1
 
     logger.info(
         "Usage aggregation job done: groups_aggregated=%d errors=%d",
-        aggregated, errors,
+        aggregated,
+        errors,
     )
     return {"groups_aggregated": aggregated, "errors": errors}
 
@@ -99,12 +99,16 @@ def _aggregate_tenant(tenant_id: str, up_to: date) -> int:
         except Exception:
             logger.exception(
                 "Failed to consolidate usage group tenant=%s metric=%s period=%s",
-                tenant_id, group["metric_type"], group["period_start"],
+                tenant_id,
+                group["metric_type"],
+                group["period_start"],
             )
 
     logger.info(
         "Aggregated %d usage groups for tenant %s up to %s",
-        len(groups), tenant_id, up_to,
+        len(groups),
+        tenant_id,
+        up_to,
         extra={"tenant_id": tenant_id},
     )
     return len(groups)
@@ -114,7 +118,7 @@ def _consolidate_group(
     tenant_id: str,
     metric_type: str,
     period_start: date,
-    total_value,
+    total_value: Any,
 ) -> None:
     """Delete individual rows for a group and insert one aggregated row."""
     # Delete all rows for this group
@@ -128,8 +132,8 @@ def _consolidate_group(
         RETURNING id
         """,
         {
-            "tenant_id":    tenant_id,
-            "metric_type":  metric_type,
+            "tenant_id": tenant_id,
+            "metric_type": metric_type,
             "period_start": period_start,
         },
     )
@@ -147,11 +151,11 @@ def _consolidate_group(
         RETURNING id
         """,
         {
-            "tenant_id":    tenant_id,
-            "metric_type":  metric_type,
-            "value":        total_value,
+            "tenant_id": tenant_id,
+            "metric_type": metric_type,
+            "value": total_value,
             "period_start": period_start,
-            "period_end":   period_start,
+            "period_end": period_start,
         },
     )
 
@@ -161,7 +165,7 @@ def _consolidate_group(
 # ---------------------------------------------------------------------------
 
 
-def _get_active_tenants() -> list[dict]:
+def _get_active_tenants() -> list[dict[str, Any]]:
     return execute_with_tenant(
         PLATFORM_TENANT_ID,
         "SELECT id FROM tenant WHERE status = 'active'",

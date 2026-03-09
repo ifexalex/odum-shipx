@@ -91,7 +91,7 @@ def _set_tenant(cursor: psycopg2.extensions.cursor, tenant_id: str) -> None:
     cursor.execute("SET LOCAL app.current_tenant_id = %s", (tenant_id,))
 
 
-def _rows_to_dicts(cursor: psycopg2.extensions.cursor) -> list[dict]:
+def _rows_to_dicts(cursor: psycopg2.extensions.cursor) -> list[dict[str, Any]]:
     """Convert cursor results to plain dicts."""
     if cursor.description is None:
         return []
@@ -105,7 +105,7 @@ def execute_with_tenant(
     tenant_id: str,
     query: str,
     params: Any = None,
-) -> list[dict]:
+) -> list[dict[str, Any]]:
     """Execute a SELECT query within a tenant scope.
 
     Sets `app.current_tenant_id` session variable before executing, which
@@ -134,7 +134,7 @@ def execute_write_with_tenant(
     tenant_id: str,
     query: str,
     params: Any = None,
-) -> dict | None:
+) -> dict[str, Any] | None:
     """Execute an INSERT/UPDATE/DELETE query within a tenant scope.
 
     Appends `RETURNING *` expectation — the caller's query should include it.
@@ -159,7 +159,7 @@ def execute_write_with_tenant(
 def execute_transaction(
     tenant_id: str,
     queries: list[tuple[str, Any]],
-) -> list[dict | None]:
+) -> list[dict[str, Any] | None]:
     """Execute multiple queries in a single transaction within a tenant scope.
 
     Sets the tenant RLS variable once, then runs all queries. Commits on
@@ -174,7 +174,7 @@ def execute_transaction(
         List of result rows (one per query, None for queries without RETURNING).
     """
     conn = get_connection()
-    results: list[dict | None] = []
+    results: list[dict[str, Any] | None] = []
     try:
         with conn.cursor() as cur:
             _set_tenant(cur, tenant_id)

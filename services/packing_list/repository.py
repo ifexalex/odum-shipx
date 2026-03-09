@@ -13,6 +13,7 @@ Notes:
 
 import logging
 from datetime import date
+from typing import Any
 
 from shared.db import execute_with_tenant, execute_write_with_tenant
 from shared.pagination import build_paginated_query, extract_page
@@ -26,7 +27,7 @@ logger = logging.getLogger(__name__)
 # ---------------------------------------------------------------------------
 
 
-def get_container_by_id(tenant_id: str, container_id: str) -> dict | None:
+def get_container_by_id(tenant_id: str, container_id: str) -> dict[str, Any] | None:
     rows = execute_with_tenant(
         tenant_id,
         "SELECT id, container_number, status FROM container WHERE tenant_id = %s AND id = %s LIMIT 1",
@@ -35,7 +36,7 @@ def get_container_by_id(tenant_id: str, container_id: str) -> dict | None:
     return rows[0] if rows else None
 
 
-def get_customer_by_id(tenant_id: str, customer_id: str) -> dict | None:
+def get_customer_by_id(tenant_id: str, customer_id: str) -> dict[str, Any] | None:
     rows = execute_with_tenant(
         tenant_id,
         "SELECT id, name, user_id FROM customer WHERE tenant_id = %s AND id = %s LIMIT 1",
@@ -44,7 +45,7 @@ def get_customer_by_id(tenant_id: str, customer_id: str) -> dict | None:
     return rows[0] if rows else None
 
 
-def get_customer_by_user_id(tenant_id: str, user_id: str) -> dict | None:
+def get_customer_by_user_id(tenant_id: str, user_id: str) -> dict[str, Any] | None:
     rows = execute_with_tenant(
         tenant_id,
         "SELECT id, name, user_id FROM customer WHERE tenant_id = %s AND user_id = %s LIMIT 1",
@@ -87,9 +88,7 @@ def get_next_carton_sequence(tenant_id: str, container_id: str) -> int:
     return int(rows[0]["cnt"]) + 1 if rows else 1
 
 
-def get_existing_tracking_code(
-    tenant_id: str, customer_id: str, received_date: date
-) -> str | None:
+def get_existing_tracking_code(tenant_id: str, customer_id: str, received_date: date) -> str | None:
     """Return an existing tracking code for (customer, date) if one already exists."""
     rows = execute_with_tenant(
         tenant_id,
@@ -129,7 +128,7 @@ def get_next_tracking_sequence(tenant_id: str, date_prefix: str) -> int:
 # ---------------------------------------------------------------------------
 
 
-def create_packing_list(tenant_id: str, data: dict) -> dict:
+def create_packing_list(tenant_id: str, data: dict[str, Any]) -> dict[str, Any] | None:
     return execute_write_with_tenant(
         tenant_id,
         """
@@ -141,9 +140,9 @@ def create_packing_list(tenant_id: str, data: dict) -> dict:
     )
 
 
-def insert_packing_list_items(tenant_id: str, items: list[dict]) -> list[dict]:
+def insert_packing_list_items(tenant_id: str, items: list[dict[str, Any]]) -> list[dict[str, Any] | None]:
     """Insert packing list items individually, returning all inserted rows."""
-    results = []
+    results: list[dict[str, Any] | None] = []
     for item in items:
         row = execute_write_with_tenant(
             tenant_id,
@@ -164,7 +163,7 @@ def insert_packing_list_items(tenant_id: str, items: list[dict]) -> list[dict]:
     return results
 
 
-def get_packing_list_by_id(tenant_id: str, pl_id: str) -> dict | None:
+def get_packing_list_by_id(tenant_id: str, pl_id: str) -> dict[str, Any] | None:
     rows = execute_with_tenant(
         tenant_id,
         """
@@ -179,7 +178,7 @@ def get_packing_list_by_id(tenant_id: str, pl_id: str) -> dict | None:
     return rows[0] if rows else None
 
 
-def get_items_by_packing_list(tenant_id: str, pl_id: str) -> list[dict]:
+def get_items_by_packing_list(tenant_id: str, pl_id: str) -> list[dict[str, Any]]:
     """Fetch all items for a packing list. Uses tenant scope for DB set/reset."""
     return execute_with_tenant(
         tenant_id,
@@ -190,12 +189,12 @@ def get_items_by_packing_list(tenant_id: str, pl_id: str) -> list[dict]:
 
 def list_packing_lists(
     tenant_id: str,
-    filters: dict,
+    filters: dict[str, Any],
     limit: int = 50,
-    cursor: dict | None = None,
-) -> tuple[list[dict], str | None, bool]:
+    cursor: dict[str, Any] | None = None,
+) -> tuple[list[dict[str, Any]], str | None, bool]:
     conditions = ["tenant_id = %(tenant_id)s"]
-    extra: dict = {"tenant_id": tenant_id}
+    extra: dict[str, Any] = {"tenant_id": tenant_id}
 
     if filters.get("status"):
         conditions.append("status = %(status)s")
@@ -240,7 +239,7 @@ def delete_items_by_packing_list(tenant_id: str, pl_id: str) -> None:
 # ---------------------------------------------------------------------------
 
 
-def set_packing_list_status(tenant_id: str, pl_id: str, status: str) -> dict:
+def set_packing_list_status(tenant_id: str, pl_id: str, status: str) -> dict[str, Any] | None:
     """Generic status update for draft ↔ pending_approval transitions."""
     return execute_write_with_tenant(
         tenant_id,
@@ -254,7 +253,7 @@ def set_packing_list_status(tenant_id: str, pl_id: str, status: str) -> dict:
     )
 
 
-def approve_packing_list_row(tenant_id: str, pl_id: str, approved_by: str) -> dict:
+def approve_packing_list_row(tenant_id: str, pl_id: str, approved_by: str) -> dict[str, Any] | None:
     return execute_write_with_tenant(
         tenant_id,
         """
@@ -268,9 +267,7 @@ def approve_packing_list_row(tenant_id: str, pl_id: str, approved_by: str) -> di
     )
 
 
-def reject_packing_list_row(
-    tenant_id: str, pl_id: str, rejected_by: str, approval_comments_json: str
-) -> dict:
+def reject_packing_list_row(tenant_id: str, pl_id: str, rejected_by: str, approval_comments_json: str) -> dict[str, Any] | None:
     return execute_write_with_tenant(
         tenant_id,
         """
@@ -306,8 +303,7 @@ def link_manifest(tenant_id: str, pl_id: str, manifest_id: str) -> None:
 def touch_updated_at(tenant_id: str, pl_id: str) -> None:
     execute_write_with_tenant(
         tenant_id,
-        "UPDATE packing_list SET updated_at = NOW() "
-        "WHERE tenant_id = %(tenant_id)s AND id = %(id)s RETURNING id",
+        "UPDATE packing_list SET updated_at = NOW() " "WHERE tenant_id = %(tenant_id)s AND id = %(id)s RETURNING id",
         {"tenant_id": tenant_id, "id": pl_id},
     )
 
@@ -317,7 +313,7 @@ def touch_updated_at(tenant_id: str, pl_id: str) -> None:
 # ---------------------------------------------------------------------------
 
 
-def get_manifest_by_container(tenant_id: str, container_id: str) -> dict | None:
+def get_manifest_by_container(tenant_id: str, container_id: str) -> dict[str, Any] | None:
     rows = execute_with_tenant(
         tenant_id,
         "SELECT * FROM manifest WHERE tenant_id = %s AND container_id = %s LIMIT 1",
@@ -326,7 +322,7 @@ def get_manifest_by_container(tenant_id: str, container_id: str) -> dict | None:
     return rows[0] if rows else None
 
 
-def create_manifest(tenant_id: str, container_id: str) -> dict:
+def create_manifest(tenant_id: str, container_id: str) -> dict[str, Any] | None:
     return execute_write_with_tenant(
         tenant_id,
         """
@@ -338,7 +334,7 @@ def create_manifest(tenant_id: str, container_id: str) -> dict:
     )
 
 
-def recalculate_manifest_totals(tenant_id: str, manifest_id: str) -> dict:
+def recalculate_manifest_totals(tenant_id: str, manifest_id: str) -> dict[str, Any] | None:
     """Recompute manifest aggregates from approved packing lists + their items."""
     return execute_write_with_tenant(
         tenant_id,
@@ -373,12 +369,13 @@ def recalculate_manifest_totals(tenant_id: str, manifest_id: str) -> dict:
 # Aliases for test compatibility
 # ---------------------------------------------------------------------------
 
-def list_packing_list_items(tenant_id: str, pl_id: str) -> list[dict]:
+
+def list_packing_list_items(tenant_id: str, pl_id: str) -> list[dict[str, Any]]:
     """Alias for get_items_by_packing_list."""
     return get_items_by_packing_list(tenant_id, pl_id)
 
 
-def update_packing_list_status(tenant_id: str, pl_id: str, status: str) -> dict:
+def update_packing_list_status(tenant_id: str, pl_id: str, status: str) -> dict[str, Any] | None:
     """Alias for set_packing_list_status."""
     return set_packing_list_status(tenant_id, pl_id, status)
 

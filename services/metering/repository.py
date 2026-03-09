@@ -6,6 +6,7 @@ user-supplied values.
 """
 import logging
 from datetime import date
+from typing import Any
 
 from shared.db import execute_with_tenant, execute_write_with_tenant
 from shared.tenant_context import PLATFORM_TENANT_ID
@@ -18,7 +19,7 @@ logger = logging.getLogger(__name__)
 # ---------------------------------------------------------------------------
 
 
-def get_tenant_info(tenant_id: str) -> dict | None:
+def get_tenant_info(tenant_id: str) -> dict[str, Any] | None:
     """Return tenant row (id, subscription_tier, status) using platform scope."""
     rows = execute_with_tenant(
         PLATFORM_TENANT_ID,
@@ -102,11 +103,11 @@ def upsert_usage_record(
         RETURNING id
         """,
         {
-            "tenant_id":    tenant_id,
-            "metric_type":  metric_type,
-            "value":        value,
+            "tenant_id": tenant_id,
+            "metric_type": metric_type,
+            "value": value,
             "period_start": period_start,
-            "period_end":   period_end,
+            "period_end": period_end,
         },
     )
 
@@ -120,7 +121,7 @@ def get_usage_records(
     tenant_id: str,
     period_start: date,
     period_end: date,
-) -> list[dict]:
+) -> list[dict[str, Any]]:
     """Return all usage_record rows for a tenant within a period window."""
     return execute_with_tenant(
         tenant_id,

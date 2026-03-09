@@ -13,6 +13,7 @@ Notes:
 
 import logging
 from decimal import Decimal
+from typing import Any
 
 from shared.db import execute_with_tenant, execute_write_with_tenant
 from shared.encryption import decrypt_field
@@ -21,7 +22,7 @@ from shared.pagination import build_paginated_query, extract_page
 logger = logging.getLogger(__name__)
 
 
-def _decrypt_refund_row(row: dict) -> dict:
+def _decrypt_refund_row(row: dict[str, Any]) -> dict[str, Any]:
     """Decrypt sensitive bank-detail fields before returning a refund_request row.
 
     account_number / account_name / bank_name are encrypted at rest using
@@ -35,23 +36,25 @@ def _decrypt_refund_row(row: dict) -> dict:
     return {
         **row,
         "account_number": decrypt_field(row.get("account_number")),
-        "account_name":   decrypt_field(row.get("account_name")),
+        "account_name": decrypt_field(row.get("account_name")),
     }
 
 
 # Allowlist for dynamic SET clauses in refund status updates
-_STATUS_EXTRA_FIELDS = frozenset({
-    "has_outstanding_debt",
-    "outstanding_debt_ngn",
-    "debt_check_passed",
-    "debt_check_notes",
-    "amount_approved_ngn",
-    "approval_level",
-    "approved_by",
-    "approved_at",
-    "rejected_by",
-    "rejection_reason",
-})
+_STATUS_EXTRA_FIELDS = frozenset(
+    {
+        "has_outstanding_debt",
+        "outstanding_debt_ngn",
+        "debt_check_passed",
+        "debt_check_notes",
+        "amount_approved_ngn",
+        "approval_level",
+        "approved_by",
+        "approved_at",
+        "rejected_by",
+        "rejection_reason",
+    }
+)
 
 
 # ---------------------------------------------------------------------------
@@ -59,7 +62,7 @@ _STATUS_EXTRA_FIELDS = frozenset({
 # ---------------------------------------------------------------------------
 
 
-def get_customer_by_user_id(tenant_id: str, user_id: str) -> dict | None:
+def get_customer_by_user_id(tenant_id: str, user_id: str) -> dict[str, Any] | None:
     rows = execute_with_tenant(
         tenant_id,
         "SELECT id FROM customer WHERE tenant_id = %s AND user_id = %s LIMIT 1",
@@ -73,7 +76,7 @@ def get_customer_by_user_id(tenant_id: str, user_id: str) -> dict | None:
 # ---------------------------------------------------------------------------
 
 
-def get_billing_by_id(tenant_id: str, billing_id: str) -> dict | None:
+def get_billing_by_id(tenant_id: str, billing_id: str) -> dict[str, Any] | None:
     rows = execute_with_tenant(
         tenant_id,
         "SELECT id, customer_id, balance_ngn FROM billing WHERE tenant_id = %s AND id = %s LIMIT 1",
@@ -82,7 +85,7 @@ def get_billing_by_id(tenant_id: str, billing_id: str) -> dict | None:
     return rows[0] if rows else None
 
 
-def get_damage_claim_by_id(tenant_id: str, claim_id: str) -> dict | None:
+def get_damage_claim_by_id(tenant_id: str, claim_id: str) -> dict[str, Any] | None:
     rows = execute_with_tenant(
         tenant_id,
         "SELECT id FROM damage_claim WHERE tenant_id = %s AND id = %s LIMIT 1",
@@ -96,7 +99,7 @@ def get_damage_claim_by_id(tenant_id: str, claim_id: str) -> dict | None:
 # ---------------------------------------------------------------------------
 
 
-def create_refund_request(tenant_id: str, data: dict) -> dict:
+def create_refund_request(tenant_id: str, data: dict[str, Any]) -> dict[str, Any]:
     row = execute_write_with_tenant(
         tenant_id,
         """
@@ -112,10 +115,12 @@ def create_refund_request(tenant_id: str, data: dict) -> dict:
         """,
         data,
     )
+    if row is None:
+        return {}
     return _decrypt_refund_row(row)
 
 
-def get_refund_request_by_id(tenant_id: str, refund_id: str) -> dict | None:
+def get_refund_request_by_id(tenant_id: str, refund_id: str) -> dict[str, Any] | None:
     rows = execute_with_tenant(
         tenant_id,
         "SELECT * FROM refund_request WHERE tenant_id = %s AND id = %s LIMIT 1",
@@ -126,12 +131,12 @@ def get_refund_request_by_id(tenant_id: str, refund_id: str) -> dict | None:
 
 def list_refund_requests(
     tenant_id: str,
-    filters: dict,
+    filters: dict[str, Any],
     limit: int = 50,
-    cursor: dict | None = None,
-) -> tuple[list[dict], str | None, bool]:
+    cursor: dict[str, Any] | None = None,
+) -> tuple[list[dict[str, Any]], str | None, bool]:
     conditions = ["tenant_id = %(tenant_id)s"]
-    extra: dict = {"tenant_id": tenant_id}
+    extra: dict[str, Any] = {"tenant_id": tenant_id}
 
     if filters.get("status"):
         conditions.append("status = %(status)s")
@@ -152,16 +157,13 @@ def update_refund_status(
     tenant_id: str,
     refund_id: str,
     status: str,
-    extra: dict | None = None,
-) -> dict:
+    extra: dict[str, Any] | None = None,
+) -> dict[str, Any]:
     """Update refund_request status + optional allowlisted extra fields."""
-    params: dict = {"status": status, "tenant_id": tenant_id, "id": refund_id}
+    params: dict[str, Any] = {"status": status, "tenant_id": tenant_id, "id": refund_id}
     extra_clause = ""
     if extra:
-        safe = {
-            k: v for k, v in extra.items()
-            if k in _STATUS_EXTRA_FIELDS and v is not None
-        }
+        safe = {k: v for k, v in extra.items() if k in _STATUS_EXTRA_FIELDS and v is not None}
         for key, val in safe.items():
             extra_clause += f", {key} = %({key})s"
             params[key] = val
@@ -176,6 +178,8 @@ def update_refund_status(
         """,
         params,
     )
+    if row is None:
+        return {}
     return _decrypt_refund_row(row)
 
 
@@ -184,9 +188,7 @@ def update_refund_status(
 # ---------------------------------------------------------------------------
 
 
-def get_outstanding_carryovers_for_customer(
-    tenant_id: str, customer_id: str
-) -> list[dict]:
+def get_outstanding_carryovers_for_customer(tenant_id: str, customer_id: str) -> list[dict[str, Any]]:
     return execute_with_tenant(
         tenant_id,
         """
@@ -200,9 +202,7 @@ def get_outstanding_carryovers_for_customer(
     )
 
 
-def get_unpaid_billing_totals_for_customer(
-    tenant_id: str, customer_id: str
-) -> Decimal:
+def get_unpaid_billing_totals_for_customer(tenant_id: str, customer_id: str) -> Decimal:
     """Sum balance_ngn (outstanding) across unpaid/partially_paid billing records."""
     rows = execute_with_tenant(
         tenant_id,
@@ -223,9 +223,7 @@ def get_unpaid_billing_totals_for_customer(
 # ---------------------------------------------------------------------------
 
 
-def reduce_billing_total(
-    tenant_id: str, billing_id: str, reduction_amount
-) -> dict:
+def reduce_billing_total(tenant_id: str, billing_id: str, reduction_amount: Any) -> dict[str, Any] | None:
     """Subtract reduction_amount from billing.total_ngn; balance_ngn is GENERATED."""
     return execute_write_with_tenant(
         tenant_id,
@@ -244,7 +242,7 @@ def reduce_billing_total(
     )
 
 
-def create_overpayment_refund_request(tenant_id: str, data: dict) -> dict:
+def create_overpayment_refund_request(tenant_id: str, data: dict[str, Any]) -> dict[str, Any]:
     row = execute_write_with_tenant(
         tenant_id,
         """
@@ -257,4 +255,6 @@ def create_overpayment_refund_request(tenant_id: str, data: dict) -> dict:
         """,
         data,
     )
+    if row is None:
+        return {}
     return _decrypt_refund_row(row)

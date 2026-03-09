@@ -14,24 +14,23 @@ logger = logging.getLogger(__name__)
 
 # Fields that must never appear in plaintext in audit JSONB snapshots.
 # Redacted to "***" before storage.
-_AUDIT_SENSITIVE_FIELDS = frozenset({
-    "id_number",           # passport / national ID (pickup_record)
-    "account_number",      # bank account (refund_request)
-    "account_name",        # account holder name (refund_request)
-    "bank_name",           # bank name (refund_request)
-    "delegate_phone",      # delegate collector phone (pickup_record)
-    "collected_by_phone",  # collector phone (pickup_record)
-})
+_AUDIT_SENSITIVE_FIELDS = frozenset(
+    {
+        "id_number",  # passport / national ID (pickup_record)
+        "account_number",  # bank account (refund_request)
+        "account_name",  # account holder name (refund_request)
+        "bank_name",  # bank name (refund_request)
+        "delegate_phone",  # delegate collector phone (pickup_record)
+        "collected_by_phone",  # collector phone (pickup_record)
+    }
+)
 
 
-def _mask_sensitive(state: dict | None) -> dict | None:
+def _mask_sensitive(state: dict[str, Any] | None) -> dict[str, Any] | None:
     """Return a copy of state with sensitive fields replaced by '***'."""
     if not state:
         return state
-    return {
-        k: ("***" if k in _AUDIT_SENSITIVE_FIELDS else v)
-        for k, v in state.items()
-    }
+    return {k: ("***" if k in _AUDIT_SENSITIVE_FIELDS else v) for k, v in state.items()}
 
 
 def log_audit(
@@ -41,8 +40,8 @@ def log_audit(
     action: str,
     actor_id: str,
     actor_role: str,
-    before_state: dict | None = None,
-    after_state: dict | None = None,
+    before_state: dict[str, Any] | None = None,
+    after_state: dict[str, Any] | None = None,
     ip_address: str | None = None,
 ) -> None:
     """Insert an audit record into the audit_log table.

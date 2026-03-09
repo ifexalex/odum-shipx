@@ -21,6 +21,7 @@ import logging
 import os
 import uuid
 from datetime import UTC, datetime
+from typing import Any
 
 import boto3
 
@@ -30,7 +31,7 @@ logger = logging.getLogger(__name__)
 _events_client = None
 
 
-def _get_client():
+def _get_client() -> Any:
     global _events_client
     if _events_client is None:
         _events_client = boto3.client("events", region_name=os.environ.get("AWS_REGION", "eu-west-1"))
@@ -41,7 +42,7 @@ def publish_event(
     source: str,
     detail_type: str,
     tenant_id: str,
-    payload: dict,
+    payload: dict[str, Any],
     request_id: str = "",
 ) -> str:
     """Publish a domain event to EventBridge.
@@ -94,6 +95,7 @@ def publish_event(
             },
         )
         from shared.exceptions import ExternalServiceError
+
         raise ExternalServiceError("EventBridge", f"{error_code}: {error_msg}")
 
     logger.info(

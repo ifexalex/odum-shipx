@@ -60,14 +60,12 @@ class CognitoClient:
                 ],
                 DesiredDeliveryMediums=["EMAIL"],
             )
-            sub = next(
-                a["Value"]
-                for a in resp["User"]["Attributes"]
-                if a["Name"] == "sub"
-            )
+            sub: str = next(a["Value"] for a in resp["User"]["Attributes"] if a["Name"] == "sub")
             logger.info(
                 "Cognito user created: tenant_id=%s role=%s sub=%s",
-                tenant_id, role, sub,
+                tenant_id,
+                role,
+                sub,
             )
             return sub
         except ClientError as exc:
@@ -146,9 +144,7 @@ class CognitoClient:
                 Username=username,
                 GroupName=group_name,
             )
-            logger.info(
-                "Cognito user %s added to group %s", username, group_name
-            )
+            logger.info("Cognito user %s added to group %s", username, group_name)
         except ClientError as exc:
             raise ExternalServiceError("Cognito", str(exc)) from exc
 

@@ -17,7 +17,8 @@ def upgrade() -> None:
     # ---------------------------------------------------------------------------
     # 1. tenant — top-level multi-tenant entity
     # ---------------------------------------------------------------------------
-    op.execute("""
+    op.execute(
+        """
         CREATE TABLE tenant (
             id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
             company_name VARCHAR(255) NOT NULL,
@@ -35,13 +36,15 @@ def upgrade() -> None:
             created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
             updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
         )
-    """)
+    """
+    )
     op.execute("CREATE INDEX idx_tenant_status ON tenant(status)")
 
     # ---------------------------------------------------------------------------
     # 2. tenant_user — staff and customer accounts scoped to a tenant
     # ---------------------------------------------------------------------------
-    op.execute("""
+    op.execute(
+        """
         CREATE TABLE tenant_user (
             id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
             tenant_id UUID NOT NULL REFERENCES tenant(id) ON DELETE RESTRICT,
@@ -61,7 +64,8 @@ def upgrade() -> None:
             updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
             UNIQUE (tenant_id, email)
         )
-    """)
+    """
+    )
     op.execute("CREATE INDEX idx_tenant_user_tenant ON tenant_user(tenant_id)")
     op.execute("CREATE INDEX idx_tenant_user_email ON tenant_user(email)")
 
@@ -77,7 +81,8 @@ def upgrade() -> None:
     #   cbm_rate_per_unit   → { "rate_usd": 45.00 }
     #   reminder_days       → { "storage_first_reminder": 7, "storage_final_reminder": 13 }
     # ---------------------------------------------------------------------------
-    op.execute("""
+    op.execute(
+        """
         CREATE TABLE tenant_config (
             id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
             tenant_id UUID NOT NULL REFERENCES tenant(id) ON DELETE CASCADE,
@@ -87,13 +92,15 @@ def upgrade() -> None:
             updated_by UUID REFERENCES tenant_user(id),
             UNIQUE (tenant_id, config_key)
         )
-    """)
+    """
+    )
     op.execute("CREATE INDEX idx_tenant_config_tenant ON tenant_config(tenant_id)")
 
     # ---------------------------------------------------------------------------
     # 4. usage_record — metering data aggregated per tenant per period
     # ---------------------------------------------------------------------------
-    op.execute("""
+    op.execute(
+        """
         CREATE TABLE usage_record (
             id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
             tenant_id UUID NOT NULL REFERENCES tenant(id) ON DELETE CASCADE,
@@ -111,7 +118,8 @@ def upgrade() -> None:
             period_end DATE NOT NULL,
             recorded_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
         )
-    """)
+    """
+    )
     op.execute("CREATE INDEX idx_usage_record_tenant_period ON usage_record(tenant_id, period_start)")
     op.execute("CREATE INDEX idx_usage_record_tenant_metric ON usage_record(tenant_id, metric_type, period_start)")
 

@@ -18,7 +18,8 @@ depends_on = None
 
 def upgrade() -> None:
     op.execute("ALTER TABLE cbm_dispute DROP CONSTRAINT cbm_dispute_status_check")
-    op.execute("""
+    op.execute(
+        """
         ALTER TABLE cbm_dispute ADD CONSTRAINT cbm_dispute_status_check
         CHECK (status IN (
             'submitted',
@@ -30,12 +31,14 @@ def upgrade() -> None:
             'rejected',
             'closed'
         ))
-    """)
+    """
+    )
 
 
 def downgrade() -> None:
     op.execute("ALTER TABLE cbm_dispute DROP CONSTRAINT cbm_dispute_status_check")
-    op.execute("""
+    op.execute(
+        """
         ALTER TABLE cbm_dispute ADD CONSTRAINT cbm_dispute_status_check
         CHECK (status IN (
             'submitted',
@@ -46,4 +49,5 @@ def downgrade() -> None:
             'resolved_no_change',
             'closed'
         ))
-    """)
+    """
+    )

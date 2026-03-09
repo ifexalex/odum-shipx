@@ -14,6 +14,7 @@ For each tenant with status = 'offboarded':
 import logging
 import os
 from datetime import UTC, datetime, timedelta
+from typing import Any
 
 import boto3
 from aws_xray_sdk.core import patch_all
@@ -36,23 +37,23 @@ _SYSTEM_ROLE = "scheduler"
 # claim_evidence is intentionally absent: it has no tenant_id and is
 # cascade-deleted automatically when damage_claim rows are removed.
 _DELETE_ORDER = [
-    "storage_fee_log",    # → billing, container, customer
-    "pickup_record",      # → release_note, customer
-    "release_note",       # → billing, customer, container
-    "payment_record",     # → billing
-    "carryover_ledger",   # → billing, customer
-    "claim_resolution",   # → damage_claim (RESTRICT FK — must precede damage_claim)
-    "refund_request",     # → damage_claim, customer, billing
-    "damage_claim",       # cascade-deletes claim_evidence automatically
-    "cbm_dispute",        # → billing, customer, packing_list
-    "missing_item",       # → manifest, customer, packing_list
-    "seized_item",        # → container, customer, packing_list_item
+    "storage_fee_log",  # → billing, container, customer
+    "pickup_record",  # → release_note, customer
+    "release_note",  # → billing, customer, container
+    "payment_record",  # → billing
+    "carryover_ledger",  # → billing, customer
+    "claim_resolution",  # → damage_claim (RESTRICT FK — must precede damage_claim)
+    "refund_request",  # → damage_claim, customer, billing
+    "damage_claim",  # cascade-deletes claim_evidence automatically
+    "cbm_dispute",  # → billing, customer, packing_list
+    "missing_item",  # → manifest, customer, packing_list
+    "seized_item",  # → container, customer, packing_list_item
     "audit_log",
     "usage_record",
     "shipment_tracking",  # → container
-    "manifest",           # → container, packing_list
-    "packing_list",       # → customer, container (cascade-deletes packing_list_item)
-    "billing",            # → customer, container, packing_list
+    "manifest",  # → container, packing_list
+    "packing_list",  # → customer, container (cascade-deletes packing_list_item)
+    "billing",  # → customer, container, packing_list
     "container",
     "customer",
     "tenant_user",
@@ -76,16 +77,14 @@ _s3_client = None
 _cognito_client = None
 
 
-def _get_s3():
+def _get_s3() -> Any:
     global _s3_client
     if _s3_client is None:
-        _s3_client = boto3.client(
-            "s3", region_name=os.environ.get("AWS_REGION", "eu-west-1")
-        )
+        _s3_client = boto3.client("s3", region_name=os.environ.get("AWS_REGION", "eu-west-1"))
     return _s3_client
 
 
-def _get_cognito():
+def _get_cognito() -> Any:
     global _cognito_client
     if _cognito_client is None:
         _cognito_client = boto3.client(
@@ -100,7 +99,7 @@ def _get_cognito():
 # ---------------------------------------------------------------------------
 
 
-def lambda_handler(event: dict, context) -> dict:
+def lambda_handler(event: dict[str, Any], context: Any) -> dict[str, Any]:
     now = datetime.now(UTC)
     cutoff = now - timedelta(days=_RETENTION_DAYS)
 
@@ -114,14 +113,13 @@ def lambda_handler(event: dict, context) -> dict:
             deleted += 1
             logger.info("Tenant data deleted: %s", tenant_id)
         except Exception:
-            logger.exception(
-                "Data cleanup failed for tenant %s", tenant_id
-            )
+            logger.exception("Data cleanup failed for tenant %s", tenant_id)
             errors += 1
 
     logger.info(
         "Data cleanup job done: deleted=%d errors=%d",
-        deleted, errors,
+        deleted,
+        errors,
     )
     return {"deleted": deleted, "errors": errors}
 
@@ -131,7 +129,7 @@ def lambda_handler(event: dict, context) -> dict:
 # ---------------------------------------------------------------------------
 
 
-def _delete_tenant(tenant_id: str, tenant: dict) -> None:
+def _delete_tenant(tenant_id: str, tenant: dict[str, Any]) -> None:
     params = {"tenant_id": tenant_id}
 
     # 1. Delete tables that have no tenant_id column (subquery-based)
@@ -139,9 +137,7 @@ def _delete_tenant(tenant_id: str, tenant: dict) -> None:
         try:
             execute_write_with_tenant(PLATFORM_TENANT_ID, query, params)  # noqa: S608
         except Exception:
-            logger.exception(
-                "Failed special delete of %s for tenant %s", table, tenant_id
-            )
+            logger.exception("Failed special delete of %s for tenant %s", table, tenant_id)
             raise
 
     # 2. Delete all relational data in FK-safe order
@@ -153,9 +149,7 @@ def _delete_tenant(tenant_id: str, tenant: dict) -> None:
                 params,
             )
         except Exception:
-            logger.exception(
-                "Failed to delete %s rows for tenant %s", table, tenant_id
-            )
+            logger.exception("Failed to delete %s rows for tenant %s", table, tenant_id)
             raise
 
     # 3. Delete S3 prefix
@@ -182,9 +176,7 @@ def _delete_tenant(tenant_id: str, tenant: dict) -> None:
             params,
         )
     except Exception:
-        logger.exception(
-            "Failed to anonymise platform_audit_log for tenant %s", tenant_id
-        )
+        logger.exception("Failed to anonymise platform_audit_log for tenant %s", tenant_id)
         raise
 
     # 6. Delete tenant record
@@ -203,7 +195,7 @@ def _delete_tenant(tenant_id: str, tenant: dict) -> None:
         actor_id=_SYSTEM_ACTOR,
         actor_role=_SYSTEM_ROLE,
         before_state={
-            "tenant_id":    tenant_id,
+            "tenant_id": tenant_id,
             "offboarded_at": str(tenant.get("offboarded_at")),
         },
     )
@@ -237,8 +229,7 @@ def _delete_s3_prefix(tenant_id: str) -> None:
         version_paginator = s3.get_paginator("list_object_versions")
         for page in version_paginator.paginate(Bucket=bucket, Prefix=prefix):
             to_delete = [
-                {"Key": v["Key"], "VersionId": v["VersionId"]}
-                for v in page.get("Versions", []) + page.get("DeleteMarkers", [])
+                {"Key": v["Key"], "VersionId": v["VersionId"]} for v in page.get("Versions", []) + page.get("DeleteMarkers", [])
             ]
             if to_delete:
                 s3.delete_objects(Bucket=bucket, Delete={"Objects": to_delete})
@@ -272,9 +263,7 @@ def _delete_cognito_users(tenant_id: str) -> None:
             for user in page.get("Users", []):
                 username = user["Username"]
                 try:
-                    cognito.admin_delete_user(
-                        UserPoolId=pool_id, Username=username
-                    )
+                    cognito.admin_delete_user(UserPoolId=pool_id, Username=username)
                     deleted_count += 1
                 except Exception:
                     logger.exception("Failed to delete a Cognito user for tenant %s", tenant_id)
@@ -289,7 +278,7 @@ def _delete_cognito_users(tenant_id: str) -> None:
 # ---------------------------------------------------------------------------
 
 
-def _get_offboarded_tenants(cutoff: datetime) -> list[dict]:
+def _get_offboarded_tenants(cutoff: datetime) -> list[dict[str, Any]]:
     return execute_with_tenant(
         PLATFORM_TENANT_ID,
         """

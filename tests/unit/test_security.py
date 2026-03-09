@@ -8,9 +8,7 @@ import pytest
 # SQL injection — verify repository files use parameterized queries
 # ---------------------------------------------------------------------------
 
-_SERVICES_DIR = os.path.join(
-    os.path.dirname(__file__), "..", "..", "services"
-)
+_SERVICES_DIR = os.path.join(os.path.dirname(__file__), "..", "..", "services")
 _SHARED_DIR = os.path.join(os.path.dirname(__file__), "..", "..", "shared")
 
 # Patterns that indicate raw string interpolation into SQL — must not appear
@@ -23,7 +21,7 @@ _DANGEROUS_SQL_PATTERNS = [
     r"f'.*UPDATE",
     r'f".*DELETE',
     r"f'.*DELETE",
-    r'%\s*\(' ,   # old-style %-formatting directly into SQL
+    r"%\s*\(",  # old-style %-formatting directly into SQL
 ]
 
 # Files known to use limited f-strings for safe allowlisted values (e.g., SET clauses)
@@ -63,9 +61,7 @@ class TestNoRawSqlFstrings:
             if re.search(r'"SELECT.*%s.*".*%\s*\w+', content):
                 violations.append(fpath)
 
-        assert not violations, (
-            f"Potential SQL injection via % formatting found in: {violations}"
-        )
+        assert not violations, f"Potential SQL injection via % formatting found in: {violations}"
 
 
 class TestSortFieldAllowlist:
@@ -73,10 +69,12 @@ class TestSortFieldAllowlist:
         """Verify build_paginated_query rejects arbitrary sort fields."""
         from shared.exceptions import ValidationError
         from shared.pagination import build_paginated_query
+
         with pytest.raises(ValidationError):
             build_paginated_query(
                 "SELECT * FROM billing WHERE 1=1",
-                None, 20,
+                None,
+                20,
                 sort_field="1; DROP TABLE billing; --",
             )
 
@@ -162,9 +160,7 @@ class TestNoSecretsInLogs:
         output = stream.getvalue()
         # Verify no secrets leaked
         for sensitive in ("password", "secret", "token", "private_key"):
-            assert sensitive not in output.lower(), (
-                f"Sensitive field '{sensitive}' found in log output"
-            )
+            assert sensitive not in output.lower(), f"Sensitive field '{sensitive}' found in log output"
 
     def test_db_password_not_in_environment_variables_log(self):
         """DB password should come from Secrets Manager, not env vars logged."""
@@ -204,6 +200,4 @@ class TestStatusExtraFieldAllowlist:
 
         for field in _STATUS_EXTRA_FIELDS:
             # Must be valid SQL identifier: only alphanumeric and underscores
-            assert re.match(r"^[a-z_]+$", field), (
-                f"Field '{field}' contains unsafe characters"
-            )
+            assert re.match(r"^[a-z_]+$", field), f"Field '{field}' contains unsafe characters"

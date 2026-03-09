@@ -19,6 +19,7 @@ Notes:
 
 import logging
 from decimal import Decimal
+from typing import Any
 
 from shared.db import execute_with_tenant, execute_write_with_tenant
 from shared.encryption import decrypt_field, encrypt_field
@@ -46,7 +47,7 @@ def get_tenant_short(tenant_id: str) -> str:
     return short.ljust(3, "X")
 
 
-def get_customer_by_user_id(tenant_id: str, user_id: str) -> dict | None:
+def get_customer_by_user_id(tenant_id: str, user_id: str) -> dict[str, Any] | None:
     rows = execute_with_tenant(
         tenant_id,
         "SELECT id, name FROM customer WHERE tenant_id = %s AND user_id = %s LIMIT 1",
@@ -55,7 +56,7 @@ def get_customer_by_user_id(tenant_id: str, user_id: str) -> dict | None:
     return rows[0] if rows else None
 
 
-def get_tenant_config_value(tenant_id: str, config_key: str) -> dict | None:
+def get_tenant_config_value(tenant_id: str, config_key: str) -> dict[str, Any] | None:
     """Return the JSONB config_value dict for a given key, or None."""
     rows = execute_with_tenant(
         tenant_id,
@@ -76,7 +77,7 @@ def get_tenant_config_value(tenant_id: str, config_key: str) -> dict | None:
 # ---------------------------------------------------------------------------
 
 
-def get_billing_by_id(tenant_id: str, billing_id: str) -> dict | None:
+def get_billing_by_id(tenant_id: str, billing_id: str) -> dict[str, Any] | None:
     rows = execute_with_tenant(
         tenant_id,
         """
@@ -97,9 +98,9 @@ def get_billing_by_id(tenant_id: str, billing_id: str) -> dict | None:
 def update_billing_payment(
     tenant_id: str,
     billing_id: str,
-    amount_to_add,
+    amount_to_add: Any,
     new_status: str,
-) -> dict:
+) -> dict[str, Any] | None:
     """Increment amount_paid_ngn and update payment status. balance_ngn is GENERATED."""
     return execute_write_with_tenant(
         tenant_id,
@@ -120,9 +121,7 @@ def update_billing_payment(
     )
 
 
-def mark_billing_released_with_outstanding(
-    tenant_id: str, billing_id: str
-) -> dict:
+def mark_billing_released_with_outstanding(tenant_id: str, billing_id: str) -> dict[str, Any] | None:
     return execute_write_with_tenant(
         tenant_id,
         """
@@ -142,7 +141,7 @@ def mark_billing_released_with_outstanding(
 # ---------------------------------------------------------------------------
 
 
-def create_overpayment_refund_request(tenant_id: str, data: dict) -> dict:
+def create_overpayment_refund_request(tenant_id: str, data: dict[str, Any]) -> dict[str, Any] | None:
     return execute_write_with_tenant(
         tenant_id,
         """
@@ -162,7 +161,7 @@ def create_overpayment_refund_request(tenant_id: str, data: dict) -> dict:
 # ---------------------------------------------------------------------------
 
 
-def create_carryover_entry(tenant_id: str, data: dict) -> dict:
+def create_carryover_entry(tenant_id: str, data: dict[str, Any]) -> dict[str, Any] | None:
     return execute_write_with_tenant(
         tenant_id,
         """
@@ -183,7 +182,7 @@ def create_carryover_entry(tenant_id: str, data: dict) -> dict:
 # ---------------------------------------------------------------------------
 
 
-def create_payment_record(tenant_id: str, data: dict) -> dict:
+def create_payment_record(tenant_id: str, data: dict[str, Any]) -> dict[str, Any] | None:
     return execute_write_with_tenant(
         tenant_id,
         """
@@ -213,7 +212,7 @@ def get_next_release_note_seq(tenant_id: str) -> int:
     return int(rows[0]["seq"]) if rows else 1
 
 
-def create_release_note(tenant_id: str, data: dict) -> dict:
+def create_release_note(tenant_id: str, data: dict[str, Any]) -> dict[str, Any] | None:
     return execute_write_with_tenant(
         tenant_id,
         """
@@ -231,7 +230,7 @@ def create_release_note(tenant_id: str, data: dict) -> dict:
     )
 
 
-def get_release_note_by_id(tenant_id: str, note_id: str) -> dict | None:
+def get_release_note_by_id(tenant_id: str, note_id: str) -> dict[str, Any] | None:
     rows = execute_with_tenant(
         tenant_id,
         """
@@ -257,9 +256,7 @@ def get_release_note_by_id(tenant_id: str, note_id: str) -> dict | None:
     return rows[0] if rows else None
 
 
-def update_release_note_status(
-    tenant_id: str, note_id: str, status: str
-) -> dict:
+def update_release_note_status(tenant_id: str, note_id: str, status: str) -> dict[str, Any] | None:
     return execute_write_with_tenant(
         tenant_id,
         """
@@ -277,7 +274,7 @@ def update_release_note_status(
 # ---------------------------------------------------------------------------
 
 
-def create_pickup_record(tenant_id: str, data: dict) -> dict:
+def create_pickup_record(tenant_id: str, data: dict[str, Any]) -> dict[str, Any]:
     # Encrypt passport / national ID before storage (GDPR Art. 32 — enhanced protection).
     # decrypt_field() is applied to the RETURNING * row so callers always receive plaintext.
     encrypted_data = {**data, "id_number": encrypt_field(data.get("id_number"))}
@@ -298,12 +295,12 @@ def create_pickup_record(tenant_id: str, data: dict) -> dict:
         """,
         encrypted_data,
     )
+    if row is None:
+        return {}
     return {**row, "id_number": decrypt_field(row.get("id_number"))}
 
 
-def sum_cartons_picked_for_release_note(
-    tenant_id: str, note_id: str
-) -> int:
+def sum_cartons_picked_for_release_note(tenant_id: str, note_id: str) -> int:
     rows = execute_with_tenant(
         tenant_id,
         """
@@ -316,9 +313,7 @@ def sum_cartons_picked_for_release_note(
     return int(rows[0]["total"]) if rows else 0
 
 
-def sum_cartons_released_for_customer(
-    tenant_id: str, customer_id: str, container_id: str
-) -> int:
+def sum_cartons_released_for_customer(tenant_id: str, customer_id: str, container_id: str) -> int:
     rows = execute_with_tenant(
         tenant_id,
         """
@@ -334,9 +329,7 @@ def sum_cartons_released_for_customer(
     return int(rows[0]["total"]) if rows else 0
 
 
-def sum_cartons_released_for_container(
-    tenant_id: str, container_id: str
-) -> int:
+def sum_cartons_released_for_container(tenant_id: str, container_id: str) -> int:
     rows = execute_with_tenant(
         tenant_id,
         """
@@ -351,9 +344,7 @@ def sum_cartons_released_for_container(
     return int(rows[0]["total"]) if rows else 0
 
 
-def sum_total_cartons_from_billing(
-    tenant_id: str, container_id: str
-) -> int:
+def sum_total_cartons_from_billing(tenant_id: str, container_id: str) -> int:
     """Total cartons billed for a container across all billing records."""
     rows = execute_with_tenant(
         tenant_id,
@@ -401,9 +392,7 @@ def get_cbm_for_carton_tags(
 # ---------------------------------------------------------------------------
 
 
-def update_container_status(
-    tenant_id: str, container_id: str, status: str
-) -> dict:
+def update_container_status(tenant_id: str, container_id: str, status: str) -> dict[str, Any] | None:
     return execute_write_with_tenant(
         tenant_id,
         """

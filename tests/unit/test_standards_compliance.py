@@ -110,9 +110,7 @@ class TestRfc7807ErrorFormat:
         assert resp["statusCode"] == 404
 
     def test_instance_included_when_provided(self):
-        resp = error_response(
-            ResourceNotFoundError("x", "y"), instance="/v1/containers/cnt-001"
-        )
+        resp = error_response(ResourceNotFoundError("x", "y"), instance="/v1/containers/cnt-001")
         body = json.loads(resp["body"])
         assert "instance" in body
 
@@ -165,13 +163,13 @@ class TestIdempotency:
                 "identity": {"sourceIp": "127.0.0.1"},
             },
             "headers": headers,
-            "body": json.dumps({"customer_id": "cust-001", "container_id": "cont-001", "items": [{"description": "Test carton"}]}),
+            "body": json.dumps(
+                {"customer_id": "cust-001", "container_id": "cont-001", "items": [{"description": "Test carton"}]}
+            ),
             "queryStringParameters": {},
         }
 
-    def test_idempotency_hit_returns_cached_response_without_calling_service(
-        self, monkeypatch
-    ):
+    def test_idempotency_hit_returns_cached_response_without_calling_service(self, monkeypatch):
         """When check_idempotency finds a prior response, the handler must return
         it immediately without invoking the service layer again."""
         from services.packing_list import handler

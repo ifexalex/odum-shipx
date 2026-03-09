@@ -15,6 +15,7 @@ import os
 import urllib.error
 import urllib.parse
 import urllib.request
+from typing import Any
 
 import boto3
 
@@ -29,12 +30,10 @@ logger = logging.getLogger(__name__)
 _ses_client = None
 
 
-def _get_ses():
+def _get_ses() -> Any:
     global _ses_client
     if _ses_client is None:
-        _ses_client = boto3.client(
-            "ses", region_name=os.environ.get("AWS_REGION", "eu-west-1")
-        )
+        _ses_client = boto3.client("ses", region_name=os.environ.get("AWS_REGION", "eu-west-1"))
     return _ses_client
 
 
@@ -43,30 +42,24 @@ def _get_ses():
 # ---------------------------------------------------------------------------
 
 _SMS_TEMPLATES: dict[str, str] = {
-    "shipment_update": (
-        "{company_name}: Your shipment {tracking_code} is now {status}."
-    ),
+    "shipment_update": ("{company_name}: Your shipment {tracking_code} is now {status}."),
     "payment_due": (
-        "{company_name}: Container {container_number} arrived. "
-        "Amount: {currency} {amount}. Pickup: {warehouse_address}"
+        "{company_name}: Container {container_number} arrived. " "Amount: {currency} {amount}. Pickup: {warehouse_address}"
     ),
-    "release_note_generated": (
-        "{company_name}: Release note ready. "
-        "Ref: {reference_number}. Collect {carton_count} cartons."
-    ),
+    "release_note_generated": ("{company_name}: Release note ready. " "Ref: {reference_number}. Collect {carton_count} cartons."),
 }
 
 _DEFAULT_SMS_TEMPLATE = "{company_name}: You have a new notification."
 
 
-class _SafeFormatMap(dict):
+class _SafeFormatMap(dict):  # type: ignore[type-arg]
     """dict subclass that returns {key} for missing keys instead of raising."""
 
     def __missing__(self, key: str) -> str:
         return f"{{{key}}}"
 
 
-def format_sms(event_type: str, branding: dict, template_data: dict) -> str:
+def format_sms(event_type: str, branding: dict[str, Any], template_data: dict[str, Any]) -> str:
     """Format an SMS message body from event type + template data."""
     template = _SMS_TEMPLATES.get(event_type, _DEFAULT_SMS_TEMPLATE)
     data = _SafeFormatMap({"company_name": get_company_name(branding), **template_data})
@@ -93,7 +86,7 @@ def send_sms(phone: str, message: str, tenant_id: str) -> bool:
         )
         return False
 
-    payload: dict = {"username": username, "to": phone, "message": message}
+    payload: dict[str, Any] = {"username": username, "to": phone, "message": message}
     if sender_id:
         payload["from"] = sender_id
 
@@ -136,9 +129,7 @@ def send_sms(phone: str, message: str, tenant_id: str) -> bool:
         )
         raise
     except Exception:
-        logger.exception(
-            "Africa's Talking send_sms failed", extra={"tenant_id": tenant_id}
-        )
+        logger.exception("Africa's Talking send_sms failed", extra={"tenant_id": tenant_id})
         raise
 
 
@@ -148,26 +139,26 @@ def send_sms(phone: str, message: str, tenant_id: str) -> bool:
 
 # Maps internal event_type → pre-approved WhatsApp template name
 WA_TEMPLATE_MAP: dict[str, str] = {
-    "shipment_update":        "shipment_status_update",
-    "payment_due":            "payment_due_notification",
+    "shipment_update": "shipment_status_update",
+    "payment_due": "payment_due_notification",
     "release_note_generated": "release_note_ready",
-    "damage_claim_update":    "damage_claim_update",
-    "cbm_dispute_update":     "cbm_dispute_update",
-    "packing_list_approved":  "packing_list_approved",
-    "tenant_onboarded":       "tenant_welcome",
-    "tenant_suspended":       "tenant_suspended",
+    "damage_claim_update": "damage_claim_update",
+    "cbm_dispute_update": "cbm_dispute_update",
+    "packing_list_approved": "packing_list_approved",
+    "tenant_onboarded": "tenant_welcome",
+    "tenant_suspended": "tenant_suspended",
 }
 
 _WA_MAX_PARAMS = 5
 
 
-def build_wa_components(branding: dict, template_data: dict) -> list[dict]:
+def build_wa_components(branding: dict[str, Any], template_data: dict[str, Any]) -> list[dict[str, Any]]:
     """Build WhatsApp template body components.
 
     First parameter is always the company name; subsequent params come from
     template_data values (in insertion order) up to _WA_MAX_PARAMS total.
     """
-    params: list[dict] = [{"type": "text", "text": get_company_name(branding)}]
+    params: list[dict[str, Any]] = [{"type": "text", "text": get_company_name(branding)}]
     for val in template_data.values():
         if len(params) >= _WA_MAX_PARAMS:
             break
@@ -179,7 +170,7 @@ def build_wa_components(branding: dict, template_data: dict) -> list[dict]:
 def send_whatsapp(
     phone: str,
     template_name: str,
-    components: list[dict],
+    components: list[dict[str, Any]],
     tenant_id: str,
 ) -> bool:
     """Send a WhatsApp template message via Meta Cloud API. Raises on errors.
@@ -240,9 +231,7 @@ def send_whatsapp(
         )
         raise
     except Exception:
-        logger.exception(
-            "Meta WhatsApp send failed", extra={"tenant_id": tenant_id}
-        )
+        logger.exception("Meta WhatsApp send failed", extra={"tenant_id": tenant_id})
         raise
 
 
@@ -251,24 +240,24 @@ def send_whatsapp(
 # ---------------------------------------------------------------------------
 
 EMAIL_SUBJECTS: dict[str, str] = {
-    "shipment_update":        "Shipment status update",
-    "payment_due":            "Payment due for your shipment",
+    "shipment_update": "Shipment status update",
+    "payment_due": "Payment due for your shipment",
     "release_note_generated": "Release note ready for collection",
-    "damage_claim_update":    "Update on your damage claim",
-    "cbm_dispute_update":     "CBM dispute update",
-    "packing_list_approved":  "Your packing list has been approved",
-    "tenant_onboarded":       "Welcome to the platform",
-    "tenant_suspended":       "Account suspended",
+    "damage_claim_update": "Update on your damage claim",
+    "cbm_dispute_update": "CBM dispute update",
+    "packing_list_approved": "Your packing list has been approved",
+    "tenant_onboarded": "Welcome to the platform",
+    "tenant_suspended": "Account suspended",
 }
 
 _DEFAULT_EMAIL_SUBJECT = "Notification from your logistics provider"
 
 
 def render_email_html(
-    branding: dict,
+    branding: dict[str, Any],
     event_type: str,
     recipient_name: str | None,
-    template_data: dict,
+    template_data: dict[str, Any],
 ) -> str:
     """Render a tenant-branded HTML email body."""
     company_name = get_company_name(branding)
@@ -285,12 +274,7 @@ def render_email_html(
         for k, v in template_data.items()
         if v is not None
     )
-    table = (
-        f"<table style='border-collapse:collapse;width:100%;margin-top:12px;'>"
-        f"{rows}</table>"
-        if rows
-        else ""
-    )
+    table = f"<table style='border-collapse:collapse;width:100%;margin-top:12px;'>" f"{rows}</table>" if rows else ""
 
     return (
         "<!DOCTYPE html>"
@@ -318,10 +302,10 @@ def render_email_html(
 
 
 def render_email_text(
-    branding: dict,
+    branding: dict[str, Any],
     event_type: str,
     recipient_name: str | None,
-    template_data: dict,
+    template_data: dict[str, Any],
 ) -> str:
     """Render a plain-text fallback email body."""
     company_name = get_company_name(branding)
@@ -346,9 +330,7 @@ def send_email(
 
     Returns True on success.
     """
-    from_address = os.environ.get(
-        "SES_FROM_ADDRESS", "notifications@logistics.example.com"
-    )
+    from_address = os.environ.get("SES_FROM_ADDRESS", "notifications@logistics.example.com")
 
     try:
         _get_ses().send_email(

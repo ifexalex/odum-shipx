@@ -14,7 +14,9 @@ Notes:
 """
 
 import logging
+from datetime import date
 from decimal import Decimal
+from typing import Any
 
 from shared.db import execute_with_tenant, execute_write_with_tenant
 from shared.pagination import build_paginated_query, extract_page
@@ -23,9 +25,7 @@ from shared.tenant_context import PLATFORM_TENANT_ID
 logger = logging.getLogger(__name__)
 
 # Allowlist for dynamic extra fields in claim status update
-_CLAIM_STATUS_EXTRA_FIELDS = frozenset(
-    {"inspection_method", "reviewed_by", "reviewed_at"}
-)
+_CLAIM_STATUS_EXTRA_FIELDS = frozenset({"inspection_method", "reviewed_by", "reviewed_at"})
 
 # Terminal states for missing item (set resolved_by / resolved_at)
 _MISSING_TERMINAL = {"found_and_shipping", "confirmed_lost", "resolved"}
@@ -39,7 +39,7 @@ _SEIZED_TERMINAL = {"recovered", "permanently_lost"}
 # ---------------------------------------------------------------------------
 
 
-def get_customer_by_user_id(tenant_id: str, user_id: str) -> dict | None:
+def get_customer_by_user_id(tenant_id: str, user_id: str) -> dict[str, Any] | None:
     rows = execute_with_tenant(
         tenant_id,
         "SELECT id, name FROM customer WHERE tenant_id = %s AND user_id = %s LIMIT 1",
@@ -66,7 +66,7 @@ def get_dollar_rate(tenant_id: str) -> Decimal:
     return Decimal(str(val))
 
 
-def get_billing_by_id(tenant_id: str, billing_id: str) -> dict | None:
+def get_billing_by_id(tenant_id: str, billing_id: str) -> dict[str, Any] | None:
     """Return a billing record by ID."""
     if not billing_id:
         return None
@@ -78,7 +78,7 @@ def get_billing_by_id(tenant_id: str, billing_id: str) -> dict | None:
     return rows[0] if rows else None
 
 
-def get_tenant_config_value(tenant_id: str, config_key: str) -> dict | None:
+def get_tenant_config_value(tenant_id: str, config_key: str) -> dict[str, Any] | None:
     """Return the JSONB config_value dict for a given key, or None."""
     rows = execute_with_tenant(
         tenant_id,
@@ -99,7 +99,7 @@ def get_tenant_config_value(tenant_id: str, config_key: str) -> dict | None:
 # ---------------------------------------------------------------------------
 
 
-def create_damage_claim(tenant_id: str, data: dict) -> dict:
+def create_damage_claim(tenant_id: str, data: dict[str, Any]) -> dict[str, Any] | None:
     return execute_write_with_tenant(
         tenant_id,
         """
@@ -115,7 +115,7 @@ def create_damage_claim(tenant_id: str, data: dict) -> dict:
     )
 
 
-def get_damage_claim_by_id(tenant_id: str, claim_id: str) -> dict | None:
+def get_damage_claim_by_id(tenant_id: str, claim_id: str) -> dict[str, Any] | None:
     rows = execute_with_tenant(
         tenant_id,
         "SELECT * FROM damage_claim WHERE tenant_id = %s AND id = %s LIMIT 1",
@@ -126,12 +126,12 @@ def get_damage_claim_by_id(tenant_id: str, claim_id: str) -> dict | None:
 
 def list_damage_claims(
     tenant_id: str,
-    filters: dict,
+    filters: dict[str, Any],
     limit: int = 50,
-    cursor: dict | None = None,
-) -> tuple[list[dict], str | None, bool]:
+    cursor: dict[str, Any] | None = None,
+) -> tuple[list[dict[str, Any]], str | None, bool]:
     conditions = ["tenant_id = %(tenant_id)s"]
-    extra: dict = {"tenant_id": tenant_id}
+    extra: dict[str, Any] = {"tenant_id": tenant_id}
 
     if filters.get("status"):
         conditions.append("status = %(status)s")
@@ -151,16 +151,13 @@ def update_claim_status(
     tenant_id: str,
     claim_id: str,
     status: str,
-    extra: dict | None = None,
-) -> dict:
+    extra: dict[str, Any] | None = None,
+) -> dict[str, Any] | None:
     """Update damage_claim status + optional extra fields (allowlisted)."""
-    params: dict = {"status": status, "tenant_id": tenant_id, "id": claim_id}
+    params: dict[str, Any] = {"status": status, "tenant_id": tenant_id, "id": claim_id}
     extra_clause = ""
     if extra:
-        safe = {
-            k: v for k, v in extra.items()
-            if k in _CLAIM_STATUS_EXTRA_FIELDS and v is not None
-        }
+        safe = {k: v for k, v in extra.items() if k in _CLAIM_STATUS_EXTRA_FIELDS and v is not None}
         for key, val in safe.items():
             extra_clause += f", {key} = %({key})s"
             params[key] = val
@@ -182,7 +179,7 @@ def update_claim_status(
 # ---------------------------------------------------------------------------
 
 
-def get_claim_resolution(tenant_id: str, claim_id: str) -> dict | None:
+def get_claim_resolution(tenant_id: str, claim_id: str) -> dict[str, Any] | None:
     rows = execute_with_tenant(
         tenant_id,
         """
@@ -195,7 +192,7 @@ def get_claim_resolution(tenant_id: str, claim_id: str) -> dict | None:
     return rows[0] if rows else None
 
 
-def create_claim_resolution(tenant_id: str, data: dict) -> dict:
+def create_claim_resolution(tenant_id: str, data: dict[str, Any]) -> dict[str, Any] | None:
     return execute_write_with_tenant(
         tenant_id,
         """
@@ -213,7 +210,7 @@ def create_claim_resolution(tenant_id: str, data: dict) -> dict:
     )
 
 
-def create_refund_request_for_claim(tenant_id: str, data: dict) -> dict:
+def create_refund_request_for_claim(tenant_id: str, data: dict[str, Any]) -> dict[str, Any] | None:
     return execute_write_with_tenant(
         tenant_id,
         """
@@ -234,7 +231,7 @@ def create_refund_request_for_claim(tenant_id: str, data: dict) -> dict:
 # ---------------------------------------------------------------------------
 
 
-def create_claim_evidence(data: dict) -> dict:
+def create_claim_evidence(data: dict[str, Any]) -> dict[str, Any] | None:
     """Insert a claim_evidence record.
 
     claim_evidence has no RLS — use PLATFORM_TENANT_ID scope.
@@ -261,19 +258,17 @@ def create_claim_evidence(data: dict) -> dict:
 
 def list_missing_items(
     tenant_id: str,
-    filters: dict,
+    filters: dict[str, Any],
     limit: int = 50,
-    cursor: dict | None = None,
-) -> tuple[list[dict], str | None, bool]:
+    cursor: dict[str, Any] | None = None,
+) -> tuple[list[dict[str, Any]], str | None, bool]:
     conditions = ["tenant_id = %(tenant_id)s"]
-    extra: dict = {"tenant_id": tenant_id}
+    extra: dict[str, Any] = {"tenant_id": tenant_id}
 
     if filters.get("container_id"):
         # missing_item links to manifest; filter via subquery
         conditions.append(
-            "manifest_id IN ("
-            "SELECT id FROM manifest "
-            "WHERE container_id = %(container_id)s AND tenant_id = %(tenant_id)s)"
+            "manifest_id IN (" "SELECT id FROM manifest " "WHERE container_id = %(container_id)s AND tenant_id = %(tenant_id)s)"
         )
         extra["container_id"] = filters["container_id"]
     if filters.get("customer_id"):
@@ -292,12 +287,12 @@ def list_missing_items(
 
 def list_seized_items(
     tenant_id: str,
-    filters: dict,
+    filters: dict[str, Any],
     limit: int = 50,
-    cursor: dict | None = None,
-) -> tuple[list[dict], str | None, bool]:
+    cursor: dict[str, Any] | None = None,
+) -> tuple[list[dict[str, Any]], str | None, bool]:
     conditions = ["tenant_id = %(tenant_id)s"]
-    extra: dict = {"tenant_id": tenant_id}
+    extra: dict[str, Any] = {"tenant_id": tenant_id}
 
     if filters.get("container_id"):
         conditions.append("container_id = %(container_id)s")
@@ -316,7 +311,7 @@ def list_seized_items(
     return extract_page(rows, limit)
 
 
-def create_missing_item(tenant_id: str, data: dict) -> dict:
+def create_missing_item(tenant_id: str, data: dict[str, Any]) -> dict[str, Any] | None:
     return execute_write_with_tenant(
         tenant_id,
         """
@@ -332,7 +327,7 @@ def create_missing_item(tenant_id: str, data: dict) -> dict:
     )
 
 
-def get_missing_item_by_id(tenant_id: str, item_id: str) -> dict | None:
+def get_missing_item_by_id(tenant_id: str, item_id: str) -> dict[str, Any] | None:
     rows = execute_with_tenant(
         tenant_id,
         "SELECT * FROM missing_item WHERE tenant_id = %s AND id = %s LIMIT 1",
@@ -347,8 +342,8 @@ def update_missing_item_status(
     status: str,
     notes: str | None = None,
     actor_id: str | None = None,
-) -> dict:
-    params: dict = {"status": status, "tenant_id": tenant_id, "id": item_id}
+) -> dict[str, Any] | None:
+    params: dict[str, Any] = {"status": status, "tenant_id": tenant_id, "id": item_id}
     extra_clause = ""
     if notes is not None:
         extra_clause += ", notes = %(notes)s"
@@ -374,7 +369,7 @@ def update_missing_item_status(
 # ---------------------------------------------------------------------------
 
 
-def create_seized_item(tenant_id: str, data: dict) -> dict:
+def create_seized_item(tenant_id: str, data: dict[str, Any]) -> dict[str, Any] | None:
     return execute_write_with_tenant(
         tenant_id,
         """
@@ -392,7 +387,7 @@ def create_seized_item(tenant_id: str, data: dict) -> dict:
     )
 
 
-def get_seized_item_by_id(tenant_id: str, item_id: str) -> dict | None:
+def get_seized_item_by_id(tenant_id: str, item_id: str) -> dict[str, Any] | None:
     rows = execute_with_tenant(
         tenant_id,
         "SELECT * FROM seized_item WHERE tenant_id = %s AND id = %s LIMIT 1",
@@ -407,9 +402,8 @@ def update_seized_item_status(
     recovery_status: str,
     notes: str | None = None,
     actor_id: str | None = None,
-) -> dict:
-    from datetime import date
-    params: dict = {"recovery_status": recovery_status, "tenant_id": tenant_id, "id": item_id}
+) -> dict[str, Any] | None:
+    params: dict[str, Any] = {"recovery_status": recovery_status, "tenant_id": tenant_id, "id": item_id}
     extra_clause = ""
     if notes is not None:
         extra_clause += ", notes = %(notes)s"

@@ -17,7 +17,8 @@ def upgrade() -> None:
     # ---------------------------------------------------------------------------
     # 5. customer — end customers belonging to a tenant
     # ---------------------------------------------------------------------------
-    op.execute("""
+    op.execute(
+        """
         CREATE TABLE customer (
             id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
             tenant_id UUID NOT NULL REFERENCES tenant(id) ON DELETE RESTRICT,
@@ -31,7 +32,8 @@ def upgrade() -> None:
             created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
             updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
         )
-    """)
+    """
+    )
     op.execute("CREATE INDEX idx_customer_tenant ON customer(tenant_id)")
     op.execute("CREATE INDEX idx_customer_tenant_name ON customer(tenant_id, name)")
     op.execute("CREATE INDEX idx_customer_tenant_phone ON customer(tenant_id, phone)")
@@ -39,7 +41,8 @@ def upgrade() -> None:
     # ---------------------------------------------------------------------------
     # 6. container — shipping containers from origin to destination
     # ---------------------------------------------------------------------------
-    op.execute("""
+    op.execute(
+        """
         CREATE TABLE container (
             id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
             tenant_id UUID NOT NULL REFERENCES tenant(id) ON DELETE RESTRICT,
@@ -66,14 +69,16 @@ def upgrade() -> None:
             updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
             UNIQUE (tenant_id, container_number)
         )
-    """)
+    """
+    )
     op.execute("CREATE INDEX idx_container_tenant ON container(tenant_id)")
     op.execute("CREATE INDEX idx_container_tenant_status ON container(tenant_id, status)")
 
     # ---------------------------------------------------------------------------
     # 7. manifest — aggregate summary of a container's contents
     # ---------------------------------------------------------------------------
-    op.execute("""
+    op.execute(
+        """
         CREATE TABLE manifest (
             id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
             tenant_id UUID NOT NULL REFERENCES tenant(id) ON DELETE RESTRICT,
@@ -94,14 +99,16 @@ def upgrade() -> None:
             updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
             UNIQUE (tenant_id, container_id)
         )
-    """)
+    """
+    )
     op.execute("CREATE INDEX idx_manifest_tenant ON manifest(tenant_id)")
     op.execute("CREATE INDEX idx_manifest_tenant_container ON manifest(tenant_id, container_id)")
 
     # ---------------------------------------------------------------------------
     # 8. packing_list — per-customer list of items in a container
     # ---------------------------------------------------------------------------
-    op.execute("""
+    op.execute(
+        """
         CREATE TABLE packing_list (
             id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
             tenant_id UUID NOT NULL REFERENCES tenant(id) ON DELETE RESTRICT,
@@ -123,7 +130,8 @@ def upgrade() -> None:
             created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
             updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
         )
-    """)
+    """
+    )
     op.execute("CREATE INDEX idx_packing_list_tenant_customer ON packing_list(tenant_id, customer_id)")
     op.execute("CREATE INDEX idx_packing_list_tenant_container ON packing_list(tenant_id, container_id)")
     op.execute("CREATE INDEX idx_packing_list_tenant_status ON packing_list(tenant_id, status)")
@@ -131,7 +139,8 @@ def upgrade() -> None:
     # ---------------------------------------------------------------------------
     # 9. packing_list_item — individual cartons within a packing list
     # ---------------------------------------------------------------------------
-    op.execute("""
+    op.execute(
+        """
         CREATE TABLE packing_list_item (
             id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
             packing_list_id UUID NOT NULL REFERENCES packing_list(id) ON DELETE CASCADE,
@@ -147,7 +156,8 @@ def upgrade() -> None:
             received_date DATE NOT NULL DEFAULT CURRENT_DATE,
             created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
         )
-    """)
+    """
+    )
     op.execute("CREATE INDEX idx_packing_list_item_list ON packing_list_item(packing_list_id)")
     op.execute("CREATE INDEX idx_packing_list_item_tracking ON packing_list_item(tracking_code)")
     op.execute("CREATE INDEX idx_packing_list_item_carton ON packing_list_item(carton_tag)")
@@ -155,7 +165,8 @@ def upgrade() -> None:
     # ---------------------------------------------------------------------------
     # 10. shipment_tracking — public-facing tracking record per carton
     # ---------------------------------------------------------------------------
-    op.execute("""
+    op.execute(
+        """
         CREATE TABLE shipment_tracking (
             id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
             tenant_id UUID NOT NULL REFERENCES tenant(id) ON DELETE RESTRICT,
@@ -176,14 +187,16 @@ def upgrade() -> None:
             updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
             UNIQUE (tenant_id, tracking_code)
         )
-    """)
+    """
+    )
     op.execute("CREATE INDEX idx_shipment_tracking_tenant ON shipment_tracking(tenant_id)")
     op.execute("CREATE INDEX idx_shipment_tracking_code ON shipment_tracking(tracking_code)")
 
     # ---------------------------------------------------------------------------
     # 11. tracking_event — append-only audit log of shipment status changes
     # ---------------------------------------------------------------------------
-    op.execute("""
+    op.execute(
+        """
         CREATE TABLE tracking_event (
             id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
             shipment_tracking_id UUID NOT NULL REFERENCES shipment_tracking(id) ON DELETE CASCADE,
@@ -194,13 +207,15 @@ def upgrade() -> None:
             created_by UUID REFERENCES tenant_user(id),
             created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
         )
-    """)
+    """
+    )
     op.execute("CREATE INDEX idx_tracking_event_shipment ON tracking_event(shipment_tracking_id)")
 
     # ---------------------------------------------------------------------------
     # 12. billing — CBM-based invoice per customer per container
     # ---------------------------------------------------------------------------
-    op.execute("""
+    op.execute(
+        """
         CREATE TABLE billing (
             id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
             tenant_id UUID NOT NULL REFERENCES tenant(id) ON DELETE RESTRICT,
@@ -233,7 +248,8 @@ def upgrade() -> None:
             updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
             UNIQUE (tenant_id, invoice_number)
         )
-    """)
+    """
+    )
     op.execute("CREATE INDEX idx_billing_tenant ON billing(tenant_id)")
     op.execute("CREATE INDEX idx_billing_tenant_customer ON billing(tenant_id, customer_id)")
     op.execute("CREATE INDEX idx_billing_tenant_status ON billing(tenant_id, status)")
@@ -241,7 +257,8 @@ def upgrade() -> None:
     # ---------------------------------------------------------------------------
     # 13. misc_charge — additional line items on a billing invoice
     # ---------------------------------------------------------------------------
-    op.execute("""
+    op.execute(
+        """
         CREATE TABLE misc_charge (
             id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
             billing_id UUID NOT NULL REFERENCES billing(id) ON DELETE CASCADE,
@@ -258,13 +275,15 @@ def upgrade() -> None:
             created_by UUID REFERENCES tenant_user(id),
             created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
         )
-    """)
+    """
+    )
     op.execute("CREATE INDEX idx_misc_charge_billing ON misc_charge(billing_id)")
 
     # ---------------------------------------------------------------------------
     # 14. payment_record — cash / transfer payments recorded against a billing
     # ---------------------------------------------------------------------------
-    op.execute("""
+    op.execute(
+        """
         CREATE TABLE payment_record (
             id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
             billing_id UUID NOT NULL REFERENCES billing(id) ON DELETE RESTRICT,
@@ -282,7 +301,8 @@ def upgrade() -> None:
             notes TEXT,
             created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
         )
-    """)
+    """
+    )
     op.execute("CREATE INDEX idx_payment_record_billing ON payment_record(billing_id)")
     op.execute("CREATE INDEX idx_payment_record_tenant ON payment_record(tenant_id)")
 

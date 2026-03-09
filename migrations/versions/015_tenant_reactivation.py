@@ -21,12 +21,8 @@ depends_on = None
 
 
 def upgrade() -> None:
-    op.execute(
-        "ALTER TABLE tenant ADD COLUMN IF NOT EXISTS reactivated_at TIMESTAMPTZ"
-    )
+    op.execute("ALTER TABLE tenant ADD COLUMN IF NOT EXISTS reactivated_at TIMESTAMPTZ")
 
 
 def downgrade() -> None:
-    op.execute(
-        "ALTER TABLE tenant DROP COLUMN IF EXISTS reactivated_at"
-    )
+    op.execute("ALTER TABLE tenant DROP COLUMN IF EXISTS reactivated_at")

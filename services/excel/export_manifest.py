@@ -1,13 +1,15 @@
 """Generate manifest .xlsx (2-sheet workbook) per spec §7.2."""
 import contextlib
 from io import BytesIO
+from typing import Any
 
 import openpyxl
 from openpyxl.styles import Font
 from openpyxl.utils import get_column_letter
+from openpyxl.worksheet.worksheet import Worksheet
 
 
-def _autosize_columns(ws) -> None:
+def _autosize_columns(ws: Worksheet) -> None:
     for col in ws.columns:
         max_length = 0
         col_letter = get_column_letter(col[0].column)
@@ -21,8 +23,8 @@ def _autosize_columns(ws) -> None:
 def generate_manifest_xlsx(
     tenant_display_name: str,
     container_number: str,
-    customer_rows: list[dict],
-    all_items: list[dict],
+    customer_rows: list[dict[str, Any]],
+    all_items: list[dict[str, Any]],
 ) -> BytesIO:
     """Return a BytesIO buffer containing the manifest workbook.
 
@@ -62,10 +64,16 @@ def generate_manifest_xlsx(
     # ------------------------------------------------------------------
     ws2 = wb.create_sheet("All Items")
     item_headers = [
-        "Carton Tag", "Tracking Code", "Description",
-        "Weight (Dispatch) kg", "Weight (Actual) kg",
-        "Length (cm)", "Width (cm)", "Height (cm)",
-        "CBM", "Received Date",
+        "Carton Tag",
+        "Tracking Code",
+        "Description",
+        "Weight (Dispatch) kg",
+        "Weight (Actual) kg",
+        "Length (cm)",
+        "Width (cm)",
+        "Height (cm)",
+        "CBM",
+        "Received Date",
     ]
     for col, header in enumerate(item_headers, 1):
         cell = ws2.cell(row=1, column=col, value=header)

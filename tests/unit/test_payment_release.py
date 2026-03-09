@@ -63,8 +63,7 @@ class TestConfirmPayment:
             patch("services.payment_release.service.publish_event"),
         ):
             result = service.confirm_payment(
-                TENANT_ID, "billing-001", self._req("100000"),
-                actor_id="u", ctx=_ctx(UserRole.NIGERIA_OFFICE_STAFF)
+                TENANT_ID, "billing-001", self._req("100000"), actor_id="u", ctx=_ctx(UserRole.NIGERIA_OFFICE_STAFF)
             )
             assert result["new_payment_status"] == "paid"
 
@@ -81,8 +80,7 @@ class TestConfirmPayment:
             patch("services.payment_release.service.publish_event"),
         ):
             result = service.confirm_payment(
-                TENANT_ID, "billing-001", self._req("60000"),
-                actor_id="u", ctx=_ctx(UserRole.NIGERIA_OFFICE_STAFF)
+                TENANT_ID, "billing-001", self._req("60000"), actor_id="u", ctx=_ctx(UserRole.NIGERIA_OFFICE_STAFF)
             )
             assert result["new_payment_status"] == "partially_paid"
 
@@ -105,8 +103,7 @@ class TestConfirmPayment:
             patch("services.payment_release.service.publish_event"),
         ):
             service.confirm_payment(
-                TENANT_ID, "billing-001", self._req("105000"),
-                actor_id="u", ctx=_ctx(UserRole.NIGERIA_OFFICE_STAFF)
+                TENANT_ID, "billing-001", self._req("105000"), actor_id="u", ctx=_ctx(UserRole.NIGERIA_OFFICE_STAFF)
             )
             mock_refund.assert_called_once()
 
@@ -124,8 +121,7 @@ class TestConfirmPayment:
             patch("services.payment_release.service.publish_event"),
         ):
             result = service.confirm_payment(
-                TENANT_ID, "billing-001", self._req("99999.99"),
-                actor_id="u", ctx=_ctx(UserRole.NIGERIA_OFFICE_STAFF)
+                TENANT_ID, "billing-001", self._req("99999.99"), actor_id="u", ctx=_ctx(UserRole.NIGERIA_OFFICE_STAFF)
             )
             assert result["new_payment_status"] == "paid"
 
@@ -135,8 +131,7 @@ class TestConfirmPayment:
         with patch.object(service.repo, "get_billing_by_id", return_value=None):
             with pytest.raises(ResourceNotFoundError):
                 service.confirm_payment(
-                    TENANT_ID, "nonexistent", self._req("100000"),
-                    actor_id="u", ctx=_ctx(UserRole.NIGERIA_OFFICE_STAFF)
+                    TENANT_ID, "nonexistent", self._req("100000"), actor_id="u", ctx=_ctx(UserRole.NIGERIA_OFFICE_STAFF)
                 )
 
 
@@ -162,10 +157,7 @@ class TestGenerateReleaseNote:
 
         with patch.object(service.repo, "get_billing_by_id", return_value=billing):
             with pytest.raises(BusinessRuleViolationError):
-                service.generate_release_note(
-                    TENANT_ID, self._req(),
-                    actor_id="u", ctx=_ctx(UserRole.NIGERIA_OFFICE_STAFF)
-                )
+                service.generate_release_note(TENANT_ID, self._req(), actor_id="u", ctx=_ctx(UserRole.NIGERIA_OFFICE_STAFF))
 
     def test_release_with_outstanding_flag_bypasses_payment_check(self):
         from services.payment_release import service
@@ -191,8 +183,7 @@ class TestGenerateReleaseNote:
             patch("services.payment_release.service.publish_event"),
         ):
             result = service.generate_release_note(
-                TENANT_ID, self._req(release_with_outstanding=True),
-                actor_id="u", ctx=_ctx(UserRole.NIGERIA_OFFICE_STAFF)
+                TENANT_ID, self._req(release_with_outstanding=True), actor_id="u", ctx=_ctx(UserRole.NIGERIA_OFFICE_STAFF)
             )
             assert result["id"] == "note-001"
 
@@ -217,10 +208,7 @@ class TestGenerateReleaseNote:
             patch.object(service.repo, "create_release_note", return_value=release_note),
             patch("services.payment_release.service.publish_event"),
         ):
-            result = service.generate_release_note(
-                TENANT_ID, self._req(),
-                actor_id="u", ctx=_ctx(UserRole.NIGERIA_OFFICE_STAFF)
-            )
+            result = service.generate_release_note(TENANT_ID, self._req(), actor_id="u", ctx=_ctx(UserRole.NIGERIA_OFFICE_STAFF))
             assert result["id"] == "note-001"
 
 

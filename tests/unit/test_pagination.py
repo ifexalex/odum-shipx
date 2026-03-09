@@ -26,11 +26,13 @@ class TestEncodeDecode:
 
     def test_decode_invalid_json_returns_none(self):
         import base64
+
         bad = base64.urlsafe_b64encode(b"not json").decode()
         assert decode_cursor(bad) is None
 
     def test_encode_handles_datetime_default(self):
         from datetime import datetime
+
         data = {"sort_value": datetime(2024, 1, 1, tzinfo=UTC), "id": "u"}
         cursor = encode_cursor(data)
         assert isinstance(cursor, str)
@@ -108,10 +110,7 @@ class TestBuildPaginatedQuery:
 
 class TestExtractPage:
     def _rows(self, n: int) -> list[dict]:
-        return [
-            {"id": f"id-{i}", "created_at": f"2024-01-{i:02d}T00:00:00"}
-            for i in range(1, n + 1)
-        ]
+        return [{"id": f"id-{i}", "created_at": f"2024-01-{i:02d}T00:00:00"} for i in range(1, n + 1)]
 
     def test_fewer_rows_than_limit_no_more(self):
         rows = self._rows(5)

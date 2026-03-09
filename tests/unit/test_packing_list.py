@@ -144,8 +144,7 @@ class TestApprovalSideEffects:
         with (
             patch.object(service.repo, "get_packing_list_by_id", return_value=pl),
             patch.object(service.repo, "approve_packing_list_row", return_value=updated),
-            patch.object(service.repo, "get_manifest_by_container",
-                         return_value=manifest if manifest_exists else None),
+            patch.object(service.repo, "get_manifest_by_container", return_value=manifest if manifest_exists else None),
             patch.object(service.repo, "create_manifest", return_value=manifest) as mock_create,
             patch.object(service.repo, "link_manifest") as mock_link,
             patch.object(service.repo, "recalculate_manifest_totals"),
@@ -154,11 +153,8 @@ class TestApprovalSideEffects:
             patch("services.packing_list.service.publish_event") as mock_publish,
             patch("services.packing_list.service.log_audit"),
         ):
-            ctx = TenantContext(tenant_id="tenant-1", user_id="user-approver",
-                                role=UserRole.TENANT_ADMIN)
-            service.approve_packing_list(
-                "tenant-1", "pl-001", req, actor_id="user-approver", ctx=ctx
-            )
+            ctx = TenantContext(tenant_id="tenant-1", user_id="user-approver", role=UserRole.TENANT_ADMIN)
+            service.approve_packing_list("tenant-1", "pl-001", req, actor_id="user-approver", ctx=ctx)
             return mock_create, mock_link, mock_upsert, mock_publish
 
     def test_creates_manifest_when_none_exists(self):

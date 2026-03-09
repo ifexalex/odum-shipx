@@ -185,9 +185,7 @@ def mock_db(monkeypatch):
     """Patch shared.db execute functions for unit tests that avoid real DB."""
     db = MockDb()
     monkeypatch.setattr("shared.db.execute_with_tenant", db.execute_with_tenant)
-    monkeypatch.setattr(
-        "shared.db.execute_write_with_tenant", db.execute_write_with_tenant
-    )
+    monkeypatch.setattr("shared.db.execute_write_with_tenant", db.execute_write_with_tenant)
     return db
 
 

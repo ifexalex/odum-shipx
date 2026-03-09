@@ -25,7 +25,7 @@ from typing import Any
 logger = logging.getLogger(__name__)
 
 _CONNECT_TIMEOUT = 0.5  # seconds
-_SOCKET_TIMEOUT = 0.5   # seconds
+_SOCKET_TIMEOUT = 0.5  # seconds
 
 
 class DistributedCache:
@@ -53,11 +53,9 @@ class DistributedCache:
         if self._client is not None:
             return self._client
         try:
-            import redis  # type: ignore[import]
+            import redis
         except ImportError as exc:
-            raise RuntimeError(
-                "redis package is not installed. Add redis>=5.0.0 to requirements-layer.txt."
-            ) from exc
+            raise RuntimeError("redis package is not installed. Add redis>=5.0.0 to requirements-layer.txt.") from exc
 
         host = os.environ.get("REDIS_HOST", "localhost")
         port = int(os.environ.get("REDIS_PORT", "6379"))
@@ -81,7 +79,8 @@ class DistributedCache:
     def get(self, key: str) -> str | None:
         """Return the cached string value, or None on miss or error."""
         try:
-            return self._get_client().get(self._key(key))
+            result: str | None = self._get_client().get(self._key(key))
+            return result
         except Exception as exc:
             logger.warning("Redis GET failed for key=%s: %s", key, exc)
             return None
@@ -104,6 +103,4 @@ class DistributedCache:
     def clear(self) -> None:
         """No-op for distributed cache — flushing the whole keyspace is unsafe
         in a shared Redis instance. Call delete() per key instead."""
-        logger.warning(
-            "DistributedCache.clear() is a no-op — delete keys individually."
-        )
+        logger.warning("DistributedCache.clear() is a no-op — delete keys individually.")

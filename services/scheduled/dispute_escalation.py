@@ -9,6 +9,7 @@ For each tenant with dispute_escalation.enabled = true:
 
 import logging
 from datetime import UTC, datetime
+from typing import Any
 
 from aws_xray_sdk.core import patch_all
 
@@ -31,7 +32,7 @@ _DEFAULT_ESCALATE_DAYS = 5
 # ---------------------------------------------------------------------------
 
 
-def lambda_handler(event: dict, context) -> dict:
+def lambda_handler(event: dict[str, Any], context: Any) -> dict[str, Any]:
     tenants = _get_active_tenants()
     escalated = errors = 0
 
@@ -41,14 +42,13 @@ def lambda_handler(event: dict, context) -> dict:
             count = _process_tenant(tenant_id)
             escalated += count
         except Exception:
-            logger.exception(
-                "Dispute escalation failed for tenant %s", tenant_id
-            )
+            logger.exception("Dispute escalation failed for tenant %s", tenant_id)
             errors += 1
 
     logger.info(
         "Dispute escalation job done: escalated=%d errors=%d",
-        escalated, errors,
+        escalated,
+        errors,
     )
     return {"escalated": escalated, "errors": errors}
 
@@ -81,14 +81,15 @@ def _process_tenant(tenant_id: str) -> int:
                 escalated += 1
         except Exception:
             logger.exception(
-                "Escalation error for dispute %s", dispute["id"],
+                "Escalation error for dispute %s",
+                dispute["id"],
                 extra={"tenant_id": tenant_id},
             )
 
     return escalated
 
 
-def _escalate_dispute(tenant_id: str, dispute: dict) -> None:
+def _escalate_dispute(tenant_id: str, dispute: dict[str, Any]) -> None:
     dispute_id = str(dispute["id"])
 
     execute_write_with_tenant(
@@ -108,10 +109,10 @@ def _escalate_dispute(tenant_id: str, dispute: dict) -> None:
         detail_type="DisputeEscalated",
         tenant_id=tenant_id,
         payload={
-            "dispute_id":    dispute_id,
-            "billing_id":    str(dispute["billing_id"]),
-            "customer_id":   str(dispute["customer_id"]),
-            "disputed_cbm":  str(dispute["disputed_cbm"]),
+            "dispute_id": dispute_id,
+            "billing_id": str(dispute["billing_id"]),
+            "customer_id": str(dispute["customer_id"]),
+            "disputed_cbm": str(dispute["disputed_cbm"]),
         },
     )
 
@@ -119,12 +120,13 @@ def _escalate_dispute(tenant_id: str, dispute: dict) -> None:
     _notify_escalation(tenant_id, dispute)
 
     logger.info(
-        "Dispute escalated: %s", dispute_id,
+        "Dispute escalated: %s",
+        dispute_id,
         extra={"tenant_id": tenant_id},
     )
 
 
-def _notify_escalation(tenant_id: str, dispute: dict) -> None:
+def _notify_escalation(tenant_id: str, dispute: dict[str, Any]) -> None:
     """Enqueue notifications to admin-level recipients via platform SQS."""
     # Fetch tenant admin contact info for notification routing
     admins = execute_with_tenant(
@@ -141,7 +143,7 @@ def _notify_escalation(tenant_id: str, dispute: dict) -> None:
     )
 
     template_vars = {
-        "dispute_id":   str(dispute["id"]),
+        "dispute_id": str(dispute["id"]),
         "disputed_cbm": str(dispute["disputed_cbm"]),
     }
 
@@ -158,7 +160,8 @@ def _notify_escalation(tenant_id: str, dispute: dict) -> None:
             except Exception:
                 logger.warning(
                     "Failed to enqueue escalation email for dispute %s",
-                    dispute["id"], extra={"tenant_id": tenant_id},
+                    dispute["id"],
+                    extra={"tenant_id": tenant_id},
                 )
 
 
@@ -167,14 +170,14 @@ def _notify_escalation(tenant_id: str, dispute: dict) -> None:
 # ---------------------------------------------------------------------------
 
 
-def _get_active_tenants() -> list[dict]:
+def _get_active_tenants() -> list[dict[str, Any]]:
     return execute_with_tenant(
         PLATFORM_TENANT_ID,
         "SELECT id FROM tenant WHERE status = 'active'",
     )
 
 
-def _get_dispute_escalation_config(tenant_id: str) -> dict:
+def _get_dispute_escalation_config(tenant_id: str) -> dict[str, Any]:
     rows = execute_with_tenant(
         tenant_id,
         """
@@ -187,7 +190,7 @@ def _get_dispute_escalation_config(tenant_id: str) -> dict:
     return rows[0]["config_value"] if rows else {}
 
 
-def _get_investigating_disputes(tenant_id: str) -> list[dict]:
+def _get_investigating_disputes(tenant_id: str) -> list[dict[str, Any]]:
     return execute_with_tenant(
         tenant_id,
         """

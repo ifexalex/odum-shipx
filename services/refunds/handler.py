@@ -13,6 +13,7 @@ import json
 import logging
 import time
 import uuid
+from typing import Any
 
 from aws_xray_sdk.core import patch_all
 
@@ -33,12 +34,12 @@ patch_all()
 
 logger = logging.getLogger(__name__)
 
-_CREATE_ROLES      = (UserRole.NIGERIA_OFFICE_STAFF,)
-_LIST_ROLES        = (UserRole.TENANT_ADMIN, UserRole.NIGERIA_OFFICE_STAFF)
-_READ_ROLES        = (UserRole.TENANT_ADMIN, UserRole.NIGERIA_OFFICE_STAFF, UserRole.CUSTOMER)
-_REVIEW_ROLES      = (UserRole.NIGERIA_OFFICE_STAFF,)
-_APPROVE_ROLES     = (UserRole.TENANT_ADMIN, UserRole.NIGERIA_OFFICE_STAFF)
-_REJECT_ROLES      = (UserRole.TENANT_ADMIN, UserRole.NIGERIA_OFFICE_STAFF)
+_CREATE_ROLES = (UserRole.NIGERIA_OFFICE_STAFF,)
+_LIST_ROLES = (UserRole.TENANT_ADMIN, UserRole.NIGERIA_OFFICE_STAFF)
+_READ_ROLES = (UserRole.TENANT_ADMIN, UserRole.NIGERIA_OFFICE_STAFF, UserRole.CUSTOMER)
+_REVIEW_ROLES = (UserRole.NIGERIA_OFFICE_STAFF,)
+_APPROVE_ROLES = (UserRole.TENANT_ADMIN, UserRole.NIGERIA_OFFICE_STAFF)
+_REJECT_ROLES = (UserRole.TENANT_ADMIN, UserRole.NIGERIA_OFFICE_STAFF)
 
 
 # ---------------------------------------------------------------------------
@@ -46,17 +47,13 @@ _REJECT_ROLES      = (UserRole.TENANT_ADMIN, UserRole.NIGERIA_OFFICE_STAFF)
 # ---------------------------------------------------------------------------
 
 
-def lambda_handler(event: dict, context) -> dict:
+def lambda_handler(event: dict[str, Any], context: Any) -> dict[str, Any]:
     start_time = time.time()
-    request_id = (
-        event.get("requestContext", {}).get("requestId") or str(uuid.uuid4())
-    )
+    request_id = event.get("requestContext", {}).get("requestId") or str(uuid.uuid4())
     http = event.get("requestContext", {}).get("http", {})
     method = http.get("method", "")
     path = http.get("path", "")
-    ip_address = (
-        event.get("requestContext", {}).get("identity", {}).get("sourceIp")
-    )
+    ip_address = event.get("requestContext", {}).get("identity", {}).get("sourceIp")
 
     try:
         tenant_ctx = get_tenant_context(event)
@@ -67,7 +64,7 @@ def lambda_handler(event: dict, context) -> dict:
             extra={"request_id": request_id, "tenant_id": tenant_ctx.tenant_id},
         )
 
-        response = _dispatch(event, method, path, tenant_ctx, request_id, ip_address)
+        response: dict[str, Any] = _dispatch(event, method, path, tenant_ctx, request_id, ip_address)
         record_usage(tenant_ctx.tenant_id, "api_calls", request_id=request_id)
         return response
 
@@ -97,7 +94,14 @@ def lambda_handler(event: dict, context) -> dict:
 # ---------------------------------------------------------------------------
 
 
-def _dispatch(event, method, path, ctx, request_id, ip_address):
+def _dispatch(
+    event: dict[str, Any],
+    method: str,
+    path: str,
+    ctx: Any,
+    request_id: str,
+    ip_address: str | None,
+) -> dict[str, Any]:
     parts = path.strip("/").split("/")
 
     if len(parts) < 2 or parts[1] != "refunds":
@@ -113,7 +117,8 @@ def _dispatch(event, method, path, ctx, request_id, ip_address):
             body = _parse_body(event)
             req = _parse_validated(CreateRefundRequest, body)
             result = service.create_refund(
-                ctx.tenant_id, req,
+                ctx.tenant_id,
+                req,
                 actor_id=ctx.user_id,
                 ctx=ctx,
                 request_id=request_id,
@@ -134,9 +139,7 @@ def _dispatch(event, method, path, ctx, request_id, ip_address):
                 filters["customer_id"] = _qp(event, "customer_id")
             limit = int(_qp(event, "limit", 50))
             cursor = decode_cursor(_qp(event, "cursor"))
-            page, next_cursor, has_more = service.list_refunds(
-                ctx.tenant_id, ctx, filters, limit, cursor
-            )
+            page, next_cursor, has_more = service.list_refunds(ctx.tenant_id, ctx, filters, limit, cursor)
             return paginated(page, next_cursor, has_more, request_id=request_id)
 
     else:
@@ -154,7 +157,9 @@ def _dispatch(event, method, path, ctx, request_id, ip_address):
                 body = _parse_body(event)
                 req = _parse_validated(AccountsReviewRequest, body)
                 result = service.accounts_review(
-                    ctx.tenant_id, refund_id, req,
+                    ctx.tenant_id,
+                    refund_id,
+                    req,
                     actor_id=ctx.user_id,
                     ctx=ctx,
                 )
@@ -166,7 +171,9 @@ def _dispatch(event, method, path, ctx, request_id, ip_address):
                 body = _parse_body(event)
                 req = _parse_validated(ApproveRefundRequest, body)
                 result = service.approve_refund(
-                    ctx.tenant_id, refund_id, req,
+                    ctx.tenant_id,
+                    refund_id,
+                    req,
                     actor_id=ctx.user_id,
                     ctx=ctx,
                     request_id=request_id,
@@ -180,12 +187,15 @@ def _dispatch(event, method, path, ctx, request_id, ip_address):
                 reason = body.get("reason") or ""
                 if not reason:
                     from shared.exceptions import BusinessRuleViolationError
+
                     raise BusinessRuleViolationError(
                         "reason is required for rejection",
                         rule_id="MISSING_REJECTION_REASON",
                     )
                 result = service.reject_refund(
-                    ctx.tenant_id, refund_id, reason,
+                    ctx.tenant_id,
+                    refund_id,
+                    reason,
                     actor_id=ctx.user_id,
                     ctx=ctx,
                 )
@@ -199,25 +209,27 @@ def _dispatch(event, method, path, ctx, request_id, ip_address):
 # ---------------------------------------------------------------------------
 
 
-def _parse_body(event: dict) -> dict:
+def _parse_body(event: dict[str, Any]) -> dict[str, Any]:
     raw = event.get("body") or "{}"
     try:
-        return json.loads(raw)
+        return json.loads(raw)  # type: ignore[no-any-return]
     except json.JSONDecodeError:
         return {}
 
 
-def _qp(event: dict, key: str, default=None):
+def _qp(event: dict[str, Any], key: str, default: Any = None) -> Any:
     return (event.get("queryStringParameters") or {}).get(key, default)
 
 
-def _parse_validated(model_class, body: dict):
+def _parse_validated(model_class: Any, body: dict[str, Any]) -> Any:
     from pydantic import ValidationError as PydanticValidationError
+
     try:
         return model_class(**body)
     except PydanticValidationError as exc:
         from shared.exceptions import ValidationError
+
         raise ValidationError(
             "Request validation failed",
-            field_errors={e["loc"][-1]: e["msg"] for e in exc.errors()},
+            field_errors={str(e["loc"][-1]): e["msg"] for e in exc.errors()},
         ) from exc
