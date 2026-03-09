@@ -87,7 +87,7 @@ jobs:
       - name: Install security tools
         run: pip install bandit safety
       - name: SAST scan (bandit)
-        run: bandit -r services/ shared/ -ll -q
+        run: bandit -r services/ shared/ -ll -q -c pyproject.toml
       - name: Dependency vulnerability scan (safety)
         run: safety check -r requirements.txt
       - name: Trivy filesystem scan
