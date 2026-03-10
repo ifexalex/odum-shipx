@@ -216,6 +216,31 @@ def offboard_tenant(
     updated = repo.set_tenant_status(tenant_id, "offboarded")
     if updated is None:
         raise RuntimeError("set_tenant_status returned None unexpectedly")
+
+    # Art. 32 — immediately block further requests: evict the cached 'active'
+    # status so _check_tenant_active() hits the DB on the very next request
+    # rather than serving the stale cache for up to the TTL window.
+    try:
+        from shared.auth import _tenant_status_cache
+
+        _tenant_status_cache.delete(tenant_id)
+    except Exception as exc:
+        logger.warning("Cache eviction failed for tenant %s: %s", tenant_id, exc)
+
+    # Art. 32 — revoke all active Cognito sessions so existing access tokens
+    # and refresh tokens cannot be used to obtain new tokens after offboarding.
+    # Best-effort: a Cognito outage must not roll back the offboarding itself.
+    try:
+        from services.tenant_management.cognito_client import get_cognito_client
+
+        cognito = get_cognito_client()
+        for user in repo.list_users(tenant_id):
+            email: str = user.get("email", "")
+            if email:
+                cognito.global_sign_out(email)
+    except Exception as exc:
+        logger.warning("Cognito session revocation failed for tenant %s: %s", tenant_id, exc)
+
     try:
         repo.insert_platform_audit(
             action="TENANT_OFFBOARDED",
@@ -706,7 +731,11 @@ def export_customer_data(
     requesting_user_id: str | None = None,
     is_customer_role: bool = False,
 ) -> dict[str, Any]:
-    """Return all data held for a customer (GDPR Art. 20 — right to portability)."""
+    """Return all data held for a customer (GDPR Art. 20 — right to portability).
+
+    Audit-logs every export so there is an accountable record of who accessed
+    personal data and when (GDPR Art. 5(2) — accountability principle).
+    """
     from datetime import datetime
 
     customer = repo.get_customer_by_id(tenant_id, customer_id)
@@ -715,7 +744,21 @@ def export_customer_data(
     if is_customer_role and requesting_user_id and str(customer.get("user_id")) != requesting_user_id:
         raise ResourceNotFoundError("customer", customer_id)
     data = repo.get_customer_full_export_data(tenant_id, customer_id)
-    data["exported_at"] = datetime.now(UTC).isoformat()
+    exported_at = datetime.now(UTC).isoformat()
+    data["exported_at"] = exported_at
+
+    # Audit trail — required by GDPR Art. 5(2) accountability principle.
+    # Records who exported the data and when, without logging PII fields.
+    actor_role = "customer" if is_customer_role else "tenant_admin"
+    log_audit(
+        tenant_id=tenant_id,
+        entity_type="customer",
+        entity_id=customer_id,
+        action="EXPORT",
+        actor_id=requesting_user_id or "",
+        actor_role=actor_role,
+        after_state={"exported_at": exported_at, "record_count": len(data.get("shipments", []))},
+    )
     return data
 
 

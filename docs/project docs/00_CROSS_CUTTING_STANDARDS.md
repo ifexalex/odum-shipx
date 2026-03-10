@@ -445,6 +445,18 @@ The UUID shell is retained for FK integrity. All API reads still return the anon
 
 `GET /v1/customers/{id}/export` (tenant_admin or the customer themselves) returns a JSON bundle with the customer's full data: billing summary, shipments, claims, and exported_at timestamp.
 
+Every export call writes an `EXPORT` audit log entry (entity_type=customer, action=EXPORT) recording the actor, role, and timestamp. This satisfies the GDPR Art. 5(2) accountability obligation — there is always a traceable record of who accessed personal data and when. The after_state contains only `exported_at` and `record_count` — no PII.
+
+### 11.6 Tenant Offboarding — Auth Revocation (Art. 32)
+
+`offboard_tenant()` performs three operations atomically (best-effort on 2+3):
+
+1. **DB status update** — `tenant.status = 'offboarded'` (and `offboarded_at`, `deletion_scheduled_at` set)
+2. **Redis cache eviction** — immediately deletes the cached `'active'` status so `_check_tenant_active()` returns `TenantOffboardedError (410)` on the very next request, without waiting for the 15s TTL
+3. **Cognito global sign-out** — calls `AdminUserGlobalSignOut` for every `tenant_user` record, invalidating all existing access tokens and refresh tokens in Cognito
+
+Steps 2 and 3 are wrapped in `try/except` — a cache or Cognito failure does NOT roll back the offboarding. Since the app re-checks tenant status on every request (step 1 + 2), the security invariant is maintained even if step 3 fails partially.
+
 ### 11.4 Audit Log PII Masking
 
 `shared/audit.py` masks sensitive fields in `before_state` / `after_state` snapshots. Masked fields:

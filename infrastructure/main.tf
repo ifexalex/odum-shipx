@@ -130,3 +130,15 @@ module "monitoring" {
   cluster_identifier    = "${var.project_name}-${var.environment}-aurora"
   alerts_email          = var.alerts_email
 }
+
+# ---------------------------------------------------------------------------
+# GitHub Actions OIDC — deploy roles + permissions boundary
+# bootstrap_aws.sh creates these on first boot; run `terraform import` after
+# the first apply to hand ownership to Terraform (see 18_cicd_pipeline.md).
+# ---------------------------------------------------------------------------
+module "iam_oidc" {
+  source       = "./modules/iam-oidc"
+  project_name = var.project_name
+  environment  = var.environment
+  github_repo  = var.github_repo
+}

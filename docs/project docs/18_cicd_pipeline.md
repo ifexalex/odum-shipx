@@ -206,19 +206,114 @@ jobs:
         run: echo "Approved for production deployment"
 ```
 
+---
+
+## AWS Bootstrap (One-Time Setup)
+
+Before any GitHub Actions workflow can run, the AWS account must be bootstrapped. This creates the Terraform state backend, GitHub OIDC provider, and scoped IAM deploy roles.
+
+### Prerequisites
+
+- AWS CLI v2 configured with `AdministratorAccess` (or equivalent: `iam:*`, `s3:*`, `dynamodb:*`, `sts:GetCallerIdentity`)
+- `jq` installed
+- Run from the repository root
+
+### Run bootstrap
+
+```bash
+bash scripts/bootstrap_aws.sh "ifexalex/odum-shipx"
+# Optionally pass region as second arg (default: eu-west-1):
+# bash scripts/bootstrap_aws.sh "ifexalex/odum-shipx" eu-west-1
+```
+
+The script is **idempotent** — safe to re-run.
+
+**What it creates:**
+
+| Resource | Name |
+|---|---|
+| S3 state bucket | `logistics-terraform-state-{ACCOUNT_ID}` |
+| DynamoDB lock table | `logistics-terraform-locks` |
+| OIDC provider | `token.actions.githubusercontent.com` |
+| IAM permissions boundary | `logistics-lambda-permissions-boundary` |
+| IAM deploy role (dev) | `logistics-github-deploy-dev` |
+| IAM deploy role (staging) | `logistics-github-deploy-staging` |
+| IAM deploy role (prod) | `logistics-github-deploy-prod` |
+
+It also patches `infrastructure/environments/{dev,staging,prod}.backend.hcl` replacing the `ACCOUNT_ID` placeholder with the real account ID.
+
+### Set GitHub Environment Secrets
+
+After bootstrap, set `AWS_DEPLOY_ROLE_ARN` in each GitHub Environment (Settings → Environments):
+
+```
+Environment "dev"     → AWS_DEPLOY_ROLE_ARN = arn:aws:iam::{ACCOUNT_ID}:role/logistics-github-deploy-dev
+Environment "staging" → AWS_DEPLOY_ROLE_ARN = arn:aws:iam::{ACCOUNT_ID}:role/logistics-github-deploy-staging
+Environment "prod"    → AWS_DEPLOY_ROLE_ARN = arn:aws:iam::{ACCOUNT_ID}:role/logistics-github-deploy-prod
+```
+
+### Initialise Terraform
+
+```bash
+cd infrastructure
+terraform init -backend-config=environments/dev.backend.hcl
+terraform plan -var-file=environments/dev.tfvars
+```
+
+### Import OIDC resources into Terraform state (post first apply)
+
+After `terraform apply` succeeds, import the bootstrap-created resources so Terraform manages their lifecycle:
+
+```bash
+ACCOUNT_ID=$(aws sts get-caller-identity --query Account --output text)
+
+terraform import module.iam_oidc.aws_iam_openid_connect_provider.github \
+  arn:aws:iam::${ACCOUNT_ID}:oidc-provider/token.actions.githubusercontent.com
+
+terraform import module.iam_oidc.aws_iam_policy.permissions_boundary \
+  arn:aws:iam::${ACCOUNT_ID}:policy/logistics-lambda-permissions-boundary
+
+terraform import 'module.iam_oidc.aws_iam_role.deploy["dev"]'     logistics-github-deploy-dev
+terraform import 'module.iam_oidc.aws_iam_role.deploy["staging"]' logistics-github-deploy-staging
+terraform import 'module.iam_oidc.aws_iam_role.deploy["prod"]'    logistics-github-deploy-prod
+```
+
+Run `terraform plan -var-file=environments/dev.tfvars` — should show **0 changes** after import.
+
+### Security Design
+
+**OIDC trust scoping (no stored AWS credentials):**
+
+| Role | Trusted GitHub contexts |
+|---|---|
+| `logistics-github-deploy-dev` | `refs/heads/main` + `environment:dev` |
+| `logistics-github-deploy-staging` | `environment:staging` only |
+| `logistics-github-deploy-prod` | `environment:prod` only |
+
+Staging and prod roles are **not** assumable from branch pushes — only from workflow runs that explicitly target the GitHub Environment (manual dispatch or promotion gate).
+
+**Permissions boundary (`logistics-lambda-permissions-boundary`):**
+All IAM roles created by Terraform (Lambda execution roles) must have this boundary attached. The boundary caps their maximum permissions to only what Lambda legitimately needs. The deploy role's IAM policy enforces this via `Condition: iam:PermissionsBoundary = ...` on `iam:CreateRole` — even a compromised deploy role cannot create an admin role.
+
+**Least-privilege operator policy:** Scoped to `logistics-*` resource ARNs across all services. The VPC/EC2 and CloudWatch statements are the only ones that cannot be resource-scoped (AWS limitation).
+
+---
+
 ## Acceptance Criteria
 
-- [ ] CI runs lint (ruff + mypy), unit tests, tenant isolation tests, and security scan
-- [ ] Security scan includes bandit (SAST), safety (dependency vulns), and Trivy (filesystem scan)
-- [ ] Trivy SARIF results uploaded to GitHub Security tab
-- [ ] Tests run against a real PostgreSQL (GitHub Actions service container)
-- [ ] Deploy packages shared layer (ARM64 compatible) and all Lambda functions
-- [ ] Terraform plan/apply runs per environment using remote state (S3 + DynamoDB)
-- [ ] Smoke tests verify API is reachable after deploy (health check + 401 on protected endpoints)
-- [ ] Staging → prod requires manual approval via GitHub environment protection rules
-- [ ] Pipeline uses GitHub environments for secrets management (AWS credentials per environment)
-- [ ] Coverage report uploaded to Codecov
-- [ ] Lambda layer packaged with `--platform manylinux2014_aarch64` for ARM64 compatibility
+- [x] CI runs lint (ruff + mypy), unit tests, tenant isolation tests, and security scan
+- [x] Security scan includes bandit (SAST), safety (dependency vulns), and Trivy (filesystem scan, table format — SARIF requires GHAS)
+- [x] Tests run against a real PostgreSQL (GitHub Actions service container)
+- [x] Deploy packages shared layer (ARM64 compatible) and all Lambda functions
+- [x] Terraform plan/apply runs per environment using remote state (S3 + DynamoDB)
+- [x] Smoke tests verify API is reachable after deploy (health check + 401 on protected endpoints)
+- [x] Staging → prod requires manual approval via GitHub environment protection rules
+- [x] Pipeline uses GitHub environments + OIDC for credential-free AWS access (no stored keys)
+- [x] Coverage report uploaded to Codecov
+- [x] Lambda layer packaged with `--platform manylinux2014_aarch64` for ARM64 compatibility
+- [x] `scripts/bootstrap_aws.sh` — idempotent one-time setup (S3 state, DynamoDB, OIDC, IAM roles)
+- [x] `infrastructure/modules/iam-oidc/` — Terraform module manages OIDC + deploy roles post-bootstrap
+- [x] Permissions boundary on all Lambda execution roles prevents privilege escalation
 
 ## Rollback Strategy
 

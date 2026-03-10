@@ -108,6 +108,23 @@ class CognitoClient:
         except ClientError as exc:
             raise ExternalServiceError("Cognito", str(exc)) from exc
 
+    def global_sign_out(self, username: str) -> None:
+        """Invalidate all active sessions (access + refresh tokens) for a user.
+
+        Called during tenant offboarding to prevent token reuse after offboard.
+        UserNotFoundException is silently swallowed — the user may already be
+        deleted or may never have logged in.
+        """
+        try:
+            self.client.admin_user_global_sign_out(
+                UserPoolId=self.user_pool_id,
+                Username=username,
+            )
+        except ClientError as exc:
+            if exc.response["Error"]["Code"] == "UserNotFoundException":
+                return
+            raise ExternalServiceError("Cognito", str(exc)) from exc
+
     def enable_user(self, username: str) -> None:
         """Re-enable a previously disabled Cognito user account."""
         try:

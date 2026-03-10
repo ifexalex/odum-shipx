@@ -117,3 +117,18 @@ output "alerts_topic_arn" {
   description = "SNS topic ARN for CloudWatch alarm notifications"
   value       = module.monitoring.alerts_topic_arn
 }
+
+output "deploy_role_arns" {
+  description = "GitHub Actions IAM deploy role ARNs — set each as AWS_DEPLOY_ROLE_ARN in the matching GitHub Environment secret"
+  value       = module.iam_oidc.deploy_role_arns
+}
+
+output "oidc_provider_arn" {
+  description = "GitHub Actions OIDC provider ARN"
+  value       = module.iam_oidc.oidc_provider_arn
+}
+
+output "permissions_boundary_arn" {
+  description = "Lambda permissions boundary policy ARN"
+  value       = module.iam_oidc.permissions_boundary_arn
+}
