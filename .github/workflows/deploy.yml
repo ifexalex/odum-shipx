@@ -40,21 +40,29 @@ jobs:
         run: terraform init -backend-config=environments/${{ env.ENVIRONMENT }}.backend.hcl
       - name: Import bootstrap resources (idempotent)
         working-directory: infrastructure
-        # These resources were created by bootstrap_aws.sh before Terraform existed.
-        # Import them into state on first run; subsequent runs exit 0 (already managed).
+        # These resources were pre-created by bootstrap_aws.sh (chicken-and-egg).
+        # Check state first; only import if not already tracked. Fails loudly on error.
         run: |
           ACCOUNT_ID=$(aws sts get-caller-identity --query Account --output text)
-          tf_import() {
-            terraform import -var-file=environments/${{ env.ENVIRONMENT }}.tfvars "$1" "$2" 2>&1 \
-              | grep -v "already managed\|Resource already\|Cannot import" || true
+          TFVARS="-var-file=environments/${{ env.ENVIRONMENT }}.tfvars"
+
+          import_once() {
+            local addr="$1" id="$2"
+            if terraform state show "$addr" &>/dev/null; then
+              echo "  ✓ $addr already in state — skipping"
+            else
+              echo "  → importing $addr"
+              terraform import $TFVARS "$addr" "$id"
+            fi
           }
-          tf_import module.iam_oidc.aws_iam_openid_connect_provider.github \
+
+          import_once module.iam_oidc.aws_iam_openid_connect_provider.github \
             "arn:aws:iam::${ACCOUNT_ID}:oidc-provider/token.actions.githubusercontent.com"
-          tf_import module.iam_oidc.aws_iam_policy.permissions_boundary \
+          import_once module.iam_oidc.aws_iam_policy.permissions_boundary \
             "arn:aws:iam::${ACCOUNT_ID}:policy/logistics-lambda-permissions-boundary"
-          tf_import 'module.iam_oidc.aws_iam_role.deploy["dev"]'     logistics-github-deploy-dev
-          tf_import 'module.iam_oidc.aws_iam_role.deploy["staging"]' logistics-github-deploy-staging
-          tf_import 'module.iam_oidc.aws_iam_role.deploy["prod"]'    logistics-github-deploy-prod
+          import_once 'module.iam_oidc.aws_iam_role.deploy["dev"]'     logistics-github-deploy-dev
+          import_once 'module.iam_oidc.aws_iam_role.deploy["staging"]' logistics-github-deploy-staging
+          import_once 'module.iam_oidc.aws_iam_role.deploy["prod"]'    logistics-github-deploy-prod
       - name: Terraform Plan
         working-directory: infrastructure
         run: terraform plan -var-file=environments/${{ env.ENVIRONMENT }}.tfvars -out=tfplan

@@ -326,15 +326,12 @@ data "aws_iam_policy_document" "terraform_operator" {
   }
 
   statement {
-    sid    = "ElastiCache"
-    effect = "Allow"
-    actions = ["elasticache:*"]
+    sid       = "ElastiCache"
+    effect    = "Allow"
+    actions   = ["elasticache:*"]
     resources = ["*"]
-    condition {
-      test     = "StringLike"
-      variable = "aws:ResourceTag/Name"
-      values   = ["${local.name_prefix}-*"]
-    }
+    # Tag conditions can't be used on resource creation (default parameter groups
+    # and subnet groups have no project tags at the time of the API call).
   }
 
   statement {
@@ -357,9 +354,10 @@ data "aws_iam_policy_document" "terraform_operator" {
   }
 
   statement {
-    sid       = "KmsCreateKey"
-    effect    = "Allow"
-    actions   = ["kms:CreateKey"]
+    sid     = "KmsGlobalActions"
+    effect  = "Allow"
+    actions = ["kms:CreateKey", "kms:ListAliases", "kms:ListKeys"]
+    # These KMS actions apply to the entire service, not a specific key/alias ARN
     resources = ["*"]
   }
 

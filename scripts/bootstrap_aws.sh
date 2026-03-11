@@ -424,12 +424,7 @@ OPERATOR_DOC=$(cat <<POLICY
       "Sid": "ElastiCache",
       "Effect": "Allow",
       "Action": ["elasticache:*"],
-      "Resource": "*",
-      "Condition": {
-        "StringLike": {
-          "aws:ResourceTag/Name": "${PROJECT}-*"
-        }
-      }
+      "Resource": "*"
     },
     {
       "Sid": "SecretsAndKms",
@@ -450,9 +445,9 @@ OPERATOR_DOC=$(cat <<POLICY
       ]
     },
     {
-      "Sid": "KmsCreateKey",
+      "Sid": "KmsGlobalActions",
       "Effect": "Allow",
-      "Action": ["kms:CreateKey"],
+      "Action": ["kms:CreateKey", "kms:ListAliases", "kms:ListKeys"],
       "Resource": "*"
     },
     {

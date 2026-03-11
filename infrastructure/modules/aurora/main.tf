@@ -36,7 +36,7 @@ resource "aws_secretsmanager_secret_version" "db_password" {
 resource "aws_rds_cluster" "main" {
   cluster_identifier = "${local.name_prefix}-aurora"
   engine             = "aurora-postgresql"
-  engine_version     = "15.4"
+  engine_version     = "15.8"
   engine_mode        = "provisioned" # required for Serverless v2
 
   serverlessv2_scaling_configuration {
