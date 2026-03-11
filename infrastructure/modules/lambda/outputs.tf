@@ -1,20 +1,23 @@
 output "api_lambda_arns" {
   description = "Map of API Gateway service key → Lambda ARN (passed to api_gateway module as lambda_arns)"
+  # Constructed from static locals + data sources so keys/values are known at plan time,
+  # allowing api_gateway module to use this map in for_each without "known after apply" errors.
   value = merge(
-    { for k, v in aws_lambda_function.vpc_api : k => v.arn },
-    # notif_whatsapp handles the GET/POST /v1/webhooks/whatsapp public routes
-    { notification = aws_lambda_function.notification["notif_whatsapp"].arn },
+    {
+      for k, v in local.vpc_api_configs :
+      k => "arn:aws:lambda:${data.aws_region.current.name}:${data.aws_caller_identity.current.account_id}:function:${var.project_name}-${v.name}-${var.environment}"
+    },
+    {
+      notification = "arn:aws:lambda:${data.aws_region.current.name}:${data.aws_caller_identity.current.account_id}:function:${var.project_name}-${local.notification_configs.notif_whatsapp.name}-${var.environment}"
+    },
   )
 }
 
 output "all_function_names" {
   description = "List of all Lambda function names (used by monitoring module for alarms)"
-  value = concat(
-    [for v in aws_lambda_function.vpc_api : v.function_name],
-    [aws_lambda_function.metering.function_name],
-    [for v in aws_lambda_function.notification : v.function_name],
-    [for v in aws_lambda_function.scheduled_job : v.function_name],
-  )
+  # Use the static local (computed from variables, not resource attributes) so monitoring
+  # module can use this list in for_each without "known after apply" errors.
+  value = local.all_function_names
 }
 
 output "shared_layer_arn" {
