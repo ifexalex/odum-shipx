@@ -1,5 +1,9 @@
 name: Deploy Pipeline
 
+# Triggered automatically after CI passes on main (deploys dev), then promotes
+# through staging → prod via GitHub Environment protection rules (required reviewers).
+# Each environment runs sequentially — staging only starts after dev smoke tests pass,
+# prod only starts after staging smoke tests pass + a required-reviewer approval.
 on:
   workflow_run:
     workflows: ["CI Pipeline"]
@@ -8,161 +12,60 @@ on:
   workflow_dispatch:
     inputs:
       environment:
-        description: "Target environment"
+        description: "Target environment (for hotfix re-deploys only)"
         required: true
         type: choice
         options: [dev, staging, prod]
 
+# ---------------------------------------------------------------------------
+# Reusable job templates via strategy — one concrete job per environment so
+# GitHub's environment protection rules (required reviewers, wait timers) fire
+# naturally between them.
+# ---------------------------------------------------------------------------
+
 jobs:
-  terraform:
-    runs-on: ubuntu-latest
+  # ── Dev — auto-deploys on every successful CI run ──────────────────────
+  deploy-dev:
     if: >-
-      github.event_name == 'workflow_dispatch' ||
-      github.event.workflow_run.conclusion == 'success'
-    environment: ${{ inputs.environment || 'dev' }}
-    env:
-      ENVIRONMENT: ${{ inputs.environment || 'dev' }}
-    permissions:
-      contents: read
-      id-token: write
-    steps:
-      - uses: actions/checkout@v4
-      - name: Configure AWS credentials
-        uses: aws-actions/configure-aws-credentials@v4
-        with:
-          role-to-assume: ${{ secrets.AWS_DEPLOY_ROLE_ARN }}
-          aws-region: eu-west-1
-      - uses: hashicorp/setup-terraform@v3
-        with:
-          terraform_version: "~1.7"
-      - name: Terraform Init
-        working-directory: infrastructure
-        run: terraform init -backend-config=environments/${{ env.ENVIRONMENT }}.backend.hcl
-      - name: Import bootstrap resources (idempotent)
-        working-directory: infrastructure
-        # These resources were pre-created by bootstrap_aws.sh (chicken-and-egg).
-        # Check state first; only import if not already tracked. Fails loudly on error.
-        run: |
-          ACCOUNT_ID=$(aws sts get-caller-identity --query Account --output text)
-          TFVARS="-var-file=environments/${{ env.ENVIRONMENT }}.tfvars"
+      (github.event_name == 'workflow_run' && github.event.workflow_run.conclusion == 'success') ||
+      (github.event_name == 'workflow_dispatch' && inputs.environment == 'dev')
+    uses: ./.github/workflows/_deploy-env.yml
+    with:
+      environment: dev
+    secrets: inherit
 
-          import_once() {
-            local addr="$1" id="$2"
-            if terraform state show "$addr" &>/dev/null; then
-              echo "  ✓ $addr already in state — skipping"
-            else
-              echo "  → importing $addr"
-              terraform import $TFVARS "$addr" "$id"
-            fi
-          }
+  smoke-dev:
+    needs: deploy-dev
+    if: >-
+      (github.event_name == 'workflow_run' && github.event.workflow_run.conclusion == 'success') ||
+      (github.event_name == 'workflow_dispatch' && inputs.environment == 'dev')
+    uses: ./.github/workflows/_smoke-test.yml
+    with:
+      environment: dev
+    secrets: inherit
 
-          import_once module.iam_oidc.aws_iam_openid_connect_provider.github \
-            "arn:aws:iam::${ACCOUNT_ID}:oidc-provider/token.actions.githubusercontent.com"
-          import_once module.iam_oidc.aws_iam_policy.permissions_boundary \
-            "arn:aws:iam::${ACCOUNT_ID}:policy/logistics-lambda-permissions-boundary"
-          import_once 'module.iam_oidc.aws_iam_role.deploy["dev"]'     logistics-github-deploy-dev
-          import_once 'module.iam_oidc.aws_iam_role.deploy["staging"]' logistics-github-deploy-staging
-          import_once 'module.iam_oidc.aws_iam_role.deploy["prod"]'    logistics-github-deploy-prod
-      - name: Terraform Plan
-        working-directory: infrastructure
-        run: terraform plan -var-file=environments/${{ env.ENVIRONMENT }}.tfvars -out=tfplan
-      - name: Terraform Apply (dev auto, staging/prod require workflow_dispatch)
-        if: env.ENVIRONMENT == 'dev' || github.event_name == 'workflow_dispatch'
-        working-directory: infrastructure
-        run: terraform apply tfplan
+  # ── Staging — gated by dev smoke tests + GitHub Environment approval ───
+  deploy-staging:
+    needs: smoke-dev
+    if: github.event_name == 'workflow_run' && github.event.workflow_run.conclusion == 'success'
+    uses: ./.github/workflows/_deploy-env.yml
+    with:
+      environment: staging
+    secrets: inherit
 
-  package-and-deploy:
-    runs-on: ubuntu-latest
-    needs: terraform
-    environment: ${{ inputs.environment || 'dev' }}
-    env:
-      ENVIRONMENT: ${{ inputs.environment || 'dev' }}
-    permissions:
-      contents: read
-      id-token: write
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
-        with:
-          python-version: "3.12"
-      - name: Configure AWS credentials
-        uses: aws-actions/configure-aws-credentials@v4
-        with:
-          role-to-assume: ${{ secrets.AWS_DEPLOY_ROLE_ARN }}
-          aws-region: eu-west-1
+  smoke-staging:
+    needs: deploy-staging
+    if: github.event_name == 'workflow_run' && github.event.workflow_run.conclusion == 'success'
+    uses: ./.github/workflows/_smoke-test.yml
+    with:
+      environment: staging
+    secrets: inherit
 
-      # Package shared Lambda layer (ARM64 / manylinux2014_aarch64)
-      - name: Package shared Lambda layer
-        run: |
-          mkdir -p build/layer/python
-          cp -r shared/ build/layer/python/shared/
-          pip install \
-            --platform manylinux2014_aarch64 \
-            --target build/layer/python/ \
-            --implementation cp \
-            --python-version 3.12 \
-            --only-binary=:all: \
-            -r requirements-layer.txt
-          cd build/layer && zip -r ../shared-layer.zip python/
-      - name: Deploy shared layer
-        run: |
-          aws lambda publish-layer-version \
-            --layer-name logistics-shared-${{ env.ENVIRONMENT }} \
-            --zip-file fileb://build/shared-layer.zip \
-            --compatible-runtimes python3.12 \
-            --compatible-architectures arm64
-
-      # Package and deploy each service Lambda
-      - name: Deploy services
-        run: |
-          for service in tenant_management packing_list manifest tracking billing claims payment_release refunds notification metering excel; do
-            cd services/$service
-            zip -r ../../build/$service.zip .
-            cd ../..
-            aws lambda update-function-code \
-              --function-name logistics-$service-${{ env.ENVIRONMENT }} \
-              --zip-file fileb://build/$service.zip \
-              --architectures arm64
-          done
-
-      # Package and deploy scheduled job Lambdas
-      - name: Deploy scheduled jobs
-        run: |
-          for job in storage_fee dispute_escalation sla_check storage_reminders data_cleanup usage_aggregation release_expiry; do
-            cd services/scheduled
-            zip -r ../../build/scheduled-$job.zip $job.py
-            cd ../..
-            aws lambda update-function-code \
-              --function-name logistics-$job-${{ env.ENVIRONMENT }} \
-              --zip-file fileb://build/scheduled-$job.zip \
-              --architectures arm64
-          done
-
-  smoke-tests:
-    runs-on: ubuntu-latest
-    needs: package-and-deploy
-    if: inputs.environment != 'prod'
-    env:
-      ENVIRONMENT: ${{ inputs.environment || 'dev' }}
-    steps:
-      - uses: actions/checkout@v4
-      - name: Run smoke tests
-        env:
-          API_BASE: https://api-${{ inputs.environment || 'dev' }}.logistics.example.com
-        run: |
-          # Health check API
-          curl -f $API_BASE/v1/health
-          # Verify key endpoints return 401 without auth
-          status=$(curl -s -o /dev/null -w "%{http_code}" $API_BASE/v1/packing-lists)
-          test "$status" = "401" || (echo "Expected 401, got $status" && exit 1)
-          status=$(curl -s -o /dev/null -w "%{http_code}" $API_BASE/v1/billing)
-          test "$status" = "401" || (echo "Expected 401, got $status" && exit 1)
-
-  promote:
-    runs-on: ubuntu-latest
-    needs: smoke-tests
-    if: inputs.environment == 'staging'
-    environment: prod
-    steps:
-      - name: Manual approval gate
-        run: echo "Approved for production deployment"
+  # ── Prod — gated by staging smoke tests + GitHub Environment approval ──
+  deploy-prod:
+    needs: smoke-staging
+    if: github.event_name == 'workflow_run' && github.event.workflow_run.conclusion == 'success'
+    uses: ./.github/workflows/_deploy-env.yml
+    with:
+      environment: prod
+    secrets: inherit

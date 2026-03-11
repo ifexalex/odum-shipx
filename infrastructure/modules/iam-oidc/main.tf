@@ -329,7 +329,7 @@ data "aws_iam_policy_document" "terraform_operator" {
     resources = [
       "arn:aws:rds:*:${local.account_id}:cluster:${local.name_prefix}-*",
       "arn:aws:rds:*:${local.account_id}:db:${local.name_prefix}-*",
-      "arn:aws:rds:*:${local.account_id}:proxy:${local.name_prefix}-*",
+      "arn:aws:rds:*:${local.account_id}:db-proxy:*",
       "arn:aws:rds:*:${local.account_id}:subgrp:${local.name_prefix}-*",
       "arn:aws:rds:*:${local.account_id}:cluster-pg:${local.name_prefix}-*",
       "arn:aws:rds:*:${local.account_id}:og:${local.name_prefix}-*",
@@ -493,6 +493,10 @@ data "aws_iam_policy_document" "terraform_operator" {
       "iam:DeleteRole", "iam:DetachRolePolicy", "iam:DeleteRolePolicy",
       "iam:UpdateRole", "iam:UpdateRoleDescription",
       "iam:TagRole", "iam:UntagRole",
+      # PutRolePolicy on existing roles (e.g. updating deploy role inline policy
+      # after import) — cannot use PermissionsBoundary condition here since
+      # deploy roles deliberately have no boundary.
+      "iam:PutRolePolicy",
     ]
     resources = ["arn:aws:iam::${local.account_id}:role/${local.name_prefix}-*"]
   }

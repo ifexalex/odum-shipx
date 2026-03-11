@@ -412,7 +412,7 @@ OPERATOR_DOC=$(cat <<POLICY
         "arn:aws:rds:*:${ACCOUNT_ID}:*:${PROJECT}-*",
         "arn:aws:rds:*:${ACCOUNT_ID}:cluster:${PROJECT}-*",
         "arn:aws:rds:*:${ACCOUNT_ID}:db:${PROJECT}-*",
-        "arn:aws:rds:*:${ACCOUNT_ID}:proxy:${PROJECT}-*",
+        "arn:aws:rds:*:${ACCOUNT_ID}:db-proxy:*",
         "arn:aws:rds:*:${ACCOUNT_ID}:subgrp:${PROJECT}-*",
         "arn:aws:rds:*:${ACCOUNT_ID}:cluster-pg:${PROJECT}-*",
         "arn:aws:rds:*:${ACCOUNT_ID}:og:${PROJECT}-*",
@@ -579,7 +579,8 @@ OPERATOR_DOC=$(cat <<POLICY
         "iam:UpdateRole",
         "iam:UpdateRoleDescription",
         "iam:TagRole",
-        "iam:UntagRole"
+        "iam:UntagRole",
+        "iam:PutRolePolicy"
       ],
       "Resource": "arn:aws:iam::${ACCOUNT_ID}:role/${PROJECT}-*"
     },

@@ -1,0 +1,23 @@
+name: Smoke Tests (reusable)
+
+on:
+  workflow_call:
+    inputs:
+      environment:
+        required: true
+        type: string
+
+jobs:
+  smoke:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Run smoke tests
+        env:
+          API_BASE: https://api-${{ inputs.environment }}.logistics.example.com
+        run: |
+          curl -f $API_BASE/v1/health
+          status=$(curl -s -o /dev/null -w "%{http_code}" $API_BASE/v1/packing-lists)
+          test "$status" = "401" || (echo "Expected 401, got $status" && exit 1)
+          status=$(curl -s -o /dev/null -w "%{http_code}" $API_BASE/v1/billing)
+          test "$status" = "401" || (echo "Expected 401, got $status" && exit 1)

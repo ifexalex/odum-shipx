@@ -1,0 +1,117 @@
+name: Deploy Environment (reusable)
+
+on:
+  workflow_call:
+    inputs:
+      environment:
+        required: true
+        type: string
+
+jobs:
+  terraform:
+    runs-on: ubuntu-latest
+    environment: ${{ inputs.environment }}
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - uses: actions/checkout@v4
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_DEPLOY_ROLE_ARN }}
+          aws-region: eu-west-1
+      - uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: "~1.7"
+      - name: Terraform Init
+        working-directory: infrastructure
+        run: terraform init -backend-config=environments/${{ inputs.environment }}.backend.hcl
+      - name: Import bootstrap resources (idempotent)
+        working-directory: infrastructure
+        run: |
+          ACCOUNT_ID=$(aws sts get-caller-identity --query Account --output text)
+          TFVARS="-var-file=environments/${{ inputs.environment }}.tfvars"
+
+          import_once() {
+            local addr="$1" id="$2"
+            if terraform state show "$addr" &>/dev/null; then
+              echo "  ✓ $addr already in state — skipping"
+            else
+              echo "  → importing $addr"
+              terraform import $TFVARS "$addr" "$id"
+            fi
+          }
+
+          import_once module.iam_oidc.aws_iam_openid_connect_provider.github \
+            "arn:aws:iam::${ACCOUNT_ID}:oidc-provider/token.actions.githubusercontent.com"
+          import_once module.iam_oidc.aws_iam_policy.permissions_boundary \
+            "arn:aws:iam::${ACCOUNT_ID}:policy/logistics-lambda-permissions-boundary"
+          import_once 'module.iam_oidc.aws_iam_role.deploy["dev"]'     logistics-github-deploy-dev
+          import_once 'module.iam_oidc.aws_iam_role.deploy["staging"]' logistics-github-deploy-staging
+          import_once 'module.iam_oidc.aws_iam_role.deploy["prod"]'    logistics-github-deploy-prod
+      - name: Terraform Plan
+        working-directory: infrastructure
+        run: terraform plan -var-file=environments/${{ inputs.environment }}.tfvars -out=tfplan
+      - name: Terraform Apply
+        working-directory: infrastructure
+        run: terraform apply tfplan
+
+  package-and-deploy:
+    runs-on: ubuntu-latest
+    needs: terraform
+    environment: ${{ inputs.environment }}
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_DEPLOY_ROLE_ARN }}
+          aws-region: eu-west-1
+      - name: Package shared Lambda layer
+        run: |
+          mkdir -p build/layer/python
+          cp -r shared/ build/layer/python/shared/
+          pip install \
+            --platform manylinux2014_aarch64 \
+            --target build/layer/python/ \
+            --implementation cp \
+            --python-version 3.12 \
+            --only-binary=:all: \
+            -r requirements-layer.txt
+          cd build/layer && zip -r ../shared-layer.zip python/
+      - name: Deploy shared layer
+        run: |
+          aws lambda publish-layer-version \
+            --layer-name logistics-shared-${{ inputs.environment }} \
+            --zip-file fileb://build/shared-layer.zip \
+            --compatible-runtimes python3.12 \
+            --compatible-architectures arm64
+      - name: Deploy services
+        run: |
+          for service in tenant_management packing_list manifest tracking billing claims payment_release refunds notification metering excel; do
+            cd services/$service
+            zip -r ../../build/$service.zip .
+            cd ../..
+            aws lambda update-function-code \
+              --function-name logistics-$service-${{ inputs.environment }} \
+              --zip-file fileb://build/$service.zip \
+              --architectures arm64
+          done
+      - name: Deploy scheduled jobs
+        run: |
+          for job in storage_fee dispute_escalation sla_check storage_reminders data_cleanup usage_aggregation release_expiry; do
+            cd services/scheduled
+            zip -r ../../build/scheduled-$job.zip $job.py
+            cd ../..
+            aws lambda update-function-code \
+              --function-name logistics-$job-${{ inputs.environment }} \
+              --zip-file fileb://build/scheduled-$job.zip \
+              --architectures arm64
+          done
