@@ -235,11 +235,13 @@ data "aws_iam_policy_document" "trust" {
 }
 
 resource "aws_iam_role" "deploy" {
-  for_each             = local.env_trust_subjects
-  name                 = "${local.name_prefix}-github-deploy-${each.key}"
-  assume_role_policy   = data.aws_iam_policy_document.trust[each.key].json
-  permissions_boundary = aws_iam_policy.permissions_boundary.arn
-  description          = "GitHub Actions OIDC deploy role for ${local.name_prefix} ${each.key}"
+  for_each           = local.env_trust_subjects
+  name               = "${local.name_prefix}-github-deploy-${each.key}"
+  assume_role_policy = data.aws_iam_policy_document.trust[each.key].json
+  # No permissions_boundary — the boundary is for Lambda execution roles only.
+  # Deploy roles are constrained by OIDC trust + scoped inline policy.
+  # Attaching the Lambda boundary would block access to the Terraform state bucket.
+  description        = "GitHub Actions OIDC deploy role for ${local.name_prefix} ${each.key}"
 
   tags = {
     Project     = var.project_name
@@ -260,7 +262,7 @@ data "aws_iam_policy_document" "terraform_operator" {
     sid    = "TerraformState"
     effect = "Allow"
     actions = [
-      "s3:GetObject", "s3:PutObject", "s3:DeleteObject",
+      "s3:GetObject", "s3:PutObject", "s3:DeleteObject", "s3:HeadObject",
       "s3:ListBucket", "s3:GetBucketVersioning", "s3:GetEncryptionConfiguration",
     ]
     resources = [

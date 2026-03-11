@@ -625,12 +625,15 @@ TRUST
     aws iam update-assume-role-policy \
       --role-name "${role_name}" \
       --policy-document "${trust_doc}" >/dev/null
+    # Remove permissions boundary if previously set — deploy roles must not have it
+    # (the boundary is for Lambda execution roles only; it would block state bucket access)
+    aws iam delete-role-permissions-boundary \
+      --role-name "${role_name}" 2>/dev/null || true
   else
     log "Creating role '${role_name}'..."
     aws iam create-role \
       --role-name "${role_name}" \
       --assume-role-policy-document "${trust_doc}" \
-      --permissions-boundary "${BOUNDARY_ARN}" \
       --description "GitHub Actions OIDC deploy role for ${PROJECT} ${env} - managed by bootstrap_aws.sh" \
       --tags Key=ManagedBy,Value=bootstrap_aws.sh Key=Project,Value="${PROJECT}" Key=Environment,Value="${env}" \
       >/dev/null
