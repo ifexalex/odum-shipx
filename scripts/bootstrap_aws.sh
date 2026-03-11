@@ -421,6 +421,18 @@ OPERATOR_DOC=$(cat <<POLICY
       ]
     },
     {
+      "Sid": "RdsGlobalDescribe",
+      "Effect": "Allow",
+      "Action": [
+        "rds:DescribeGlobalClusters",
+        "rds:DescribeEngineDefaultParameters",
+        "rds:DescribeEngineDefaultClusterParameters",
+        "rds:DescribeDBEngineVersions",
+        "rds:DescribeOrderableDBInstanceOptions"
+      ],
+      "Resource": "*"
+    },
+    {
       "Sid": "ElastiCache",
       "Effect": "Allow",
       "Action": ["elasticache:*"],
@@ -566,6 +578,7 @@ OPERATOR_DOC=$(cat <<POLICY
         "iam:DeleteRolePolicy",
         "iam:UpdateRole",
         "iam:UpdateRoleDescription",
+        "iam:TagRole",
         "iam:UntagRole"
       ],
       "Resource": "arn:aws:iam::${ACCOUNT_ID}:role/${PROJECT}-*"

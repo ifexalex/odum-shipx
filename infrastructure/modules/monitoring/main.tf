@@ -1,5 +1,8 @@
+data "aws_region" "current" {}
+
 locals {
   name_prefix = "${var.project_name}-${var.environment}"
+  region      = data.aws_region.current.name
   common_tags = {
     Project     = var.project_name
     Environment = var.environment
@@ -144,9 +147,11 @@ resource "aws_cloudwatch_dashboard" "main" {
         width  = 12
         height = 6
         properties = {
-          title  = "Lambda Errors (all functions)"
-          view   = "timeSeries"
-          period = 300
+          title       = "Lambda Errors (all functions)"
+          view        = "timeSeries"
+          period      = 300
+          region      = local.region
+          annotations = { horizontal = [] }
           metrics = [
             for fn in var.lambda_function_names : ["AWS/Lambda", "Errors", "FunctionName", fn, { stat = "Sum" }]
           ]
@@ -159,9 +164,11 @@ resource "aws_cloudwatch_dashboard" "main" {
         width  = 12
         height = 6
         properties = {
-          title  = "API Gateway — Requests & 5xx Errors"
-          view   = "timeSeries"
-          period = 60
+          title       = "API Gateway — Requests & 5xx Errors"
+          view        = "timeSeries"
+          period      = 60
+          region      = local.region
+          annotations = { horizontal = [] }
           metrics = [
             ["AWS/ApiGateway", "Count", "ApiId", var.api_id, "Stage", "$default", { stat = "Sum", label = "Requests" }],
             ["AWS/ApiGateway", "5XXError", "ApiId", var.api_id, "Stage", "$default", { stat = "Sum", label = "5xx Errors" }],
@@ -175,9 +182,11 @@ resource "aws_cloudwatch_dashboard" "main" {
         width  = 12
         height = 6
         properties = {
-          title  = "Lambda p95 Duration (all functions)"
-          view   = "timeSeries"
-          period = 300
+          title       = "Lambda p95 Duration (all functions)"
+          view        = "timeSeries"
+          period      = 300
+          region      = local.region
+          annotations = { horizontal = [] }
           metrics = [
             for fn in var.lambda_function_names : ["AWS/Lambda", "Duration", "FunctionName", fn, { stat = "p95" }]
           ]
@@ -190,9 +199,11 @@ resource "aws_cloudwatch_dashboard" "main" {
         width  = 12
         height = 6
         properties = {
-          title  = "Aurora — Database Connections"
-          view   = "timeSeries"
-          period = 60
+          title       = "Aurora — Database Connections"
+          view        = "timeSeries"
+          period      = 60
+          region      = local.region
+          annotations = { horizontal = [] }
           metrics = [
             ["AWS/RDS", "DatabaseConnections", "DBClusterIdentifier", var.cluster_identifier, { stat = "Maximum" }]
           ]
@@ -205,9 +216,11 @@ resource "aws_cloudwatch_dashboard" "main" {
         width  = 24
         height = 6
         properties = {
-          title  = "SQS DLQ — Messages Visible"
-          view   = "timeSeries"
-          period = 60
+          title       = "SQS DLQ — Messages Visible"
+          view        = "timeSeries"
+          period      = 60
+          region      = local.region
+          annotations = { horizontal = [] }
           metrics = [
             for name, queue_name in var.dlq_names : ["AWS/SQS", "ApproximateNumberOfMessagesVisible", "QueueName", queue_name, { stat = "Maximum", label = name }]
           ]

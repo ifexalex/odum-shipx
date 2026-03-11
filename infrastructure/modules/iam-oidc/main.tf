@@ -309,6 +309,20 @@ data "aws_iam_policy_document" "terraform_operator" {
   }
 
   statement {
+    sid     = "RdsGlobalDescribe"
+    effect  = "Allow"
+    actions = [
+      "rds:DescribeGlobalClusters",
+      "rds:DescribeEngineDefaultParameters",
+      "rds:DescribeEngineDefaultClusterParameters",
+      "rds:DescribeDBEngineVersions",
+      "rds:DescribeOrderableDBInstanceOptions",
+    ]
+    # Global cluster ARNs have no region component; can't be scoped to logistics-*
+    resources = ["*"]
+  }
+
+  statement {
     sid    = "DataLayer"
     effect = "Allow"
     actions = ["rds:*", "rds-data:*"]
@@ -477,7 +491,8 @@ data "aws_iam_policy_document" "terraform_operator" {
     effect = "Allow"
     actions = [
       "iam:DeleteRole", "iam:DetachRolePolicy", "iam:DeleteRolePolicy",
-      "iam:UpdateRole", "iam:UpdateRoleDescription", "iam:UntagRole",
+      "iam:UpdateRole", "iam:UpdateRoleDescription",
+      "iam:TagRole", "iam:UntagRole",
     ]
     resources = ["arn:aws:iam::${local.account_id}:role/${local.name_prefix}-*"]
   }
