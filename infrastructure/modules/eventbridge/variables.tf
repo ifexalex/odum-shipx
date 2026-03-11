@@ -3,6 +3,11 @@ variable "project_name" {
   type        = string
 }
 
+variable "permissions_boundary_arn" {
+  description = "IAM permissions boundary ARN to attach to the EventBridge delivery role"
+  type        = string
+}
+
 variable "environment" {
   description = "Deployment environment (dev, staging, prod)"
   type        = string

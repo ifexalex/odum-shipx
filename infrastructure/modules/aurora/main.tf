@@ -95,8 +95,9 @@ data "aws_iam_policy_document" "rds_proxy_assume" {
 }
 
 resource "aws_iam_role" "rds_proxy" {
-  name               = "${local.name_prefix}-rds-proxy-role"
-  assume_role_policy = data.aws_iam_policy_document.rds_proxy_assume.json
+  name                 = "${local.name_prefix}-rds-proxy-role"
+  assume_role_policy   = data.aws_iam_policy_document.rds_proxy_assume.json
+  permissions_boundary = var.permissions_boundary_arn
 
   tags = {
     Name = "${local.name_prefix}-rds-proxy-role"

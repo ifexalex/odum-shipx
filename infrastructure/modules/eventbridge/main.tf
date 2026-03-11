@@ -50,7 +50,8 @@ resource "aws_cloudwatch_event_bus" "main" {
 # ---------------------------------------------------------------------------
 
 resource "aws_iam_role" "eventbridge_sqs" {
-  name = "${local.name_prefix}-eventbridge-sqs-role"
+  name                 = "${local.name_prefix}-eventbridge-sqs-role"
+  permissions_boundary = var.permissions_boundary_arn
 
   assume_role_policy = jsonencode({
     Version = "2012-10-17"

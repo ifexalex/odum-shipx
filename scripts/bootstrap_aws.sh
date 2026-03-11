@@ -436,13 +436,30 @@ OPERATOR_DOC=$(cat <<POLICY
       "Effect": "Allow",
       "Action": [
         "secretsmanager:*",
-        "kms:*"
+        "kms:Describe*", "kms:Get*", "kms:List*",
+        "kms:Create*", "kms:Delete*", "kms:Update*",
+        "kms:Enable*", "kms:Disable*", "kms:Put*",
+        "kms:Schedule*", "kms:Cancel*", "kms:Tag*", "kms:Untag*",
+        "kms:Encrypt", "kms:Decrypt", "kms:GenerateDataKey*",
+        "kms:ReEncrypt*", "kms:Sign", "kms:Verify"
       ],
       "Resource": [
         "arn:aws:secretsmanager:*:${ACCOUNT_ID}:secret:${PROJECT}-*",
         "arn:aws:kms:*:${ACCOUNT_ID}:key/*",
         "arn:aws:kms:*:${ACCOUNT_ID}:alias/${PROJECT}-*"
       ]
+    },
+    {
+      "Sid": "KmsCreateKey",
+      "Effect": "Allow",
+      "Action": ["kms:CreateKey"],
+      "Resource": "*"
+    },
+    {
+      "Sid": "IamServiceLinkedRoles",
+      "Effect": "Allow",
+      "Action": ["iam:CreateServiceLinkedRole"],
+      "Resource": "arn:aws:iam::${ACCOUNT_ID}:role/aws-service-role/*"
     },
     {
       "Sid": "S3Assets",
@@ -482,7 +499,10 @@ OPERATOR_DOC=$(cat <<POLICY
       "Sid": "Cognito",
       "Effect": "Allow",
       "Action": ["cognito-idp:*"],
-      "Resource": "arn:aws:cognito-idp:*:${ACCOUNT_ID}:userpool/*"
+      "Resource": [
+        "arn:aws:cognito-idp:*:${ACCOUNT_ID}:userpool/*",
+        "*"
+      ]
     },
     {
       "Sid": "Ses",
@@ -490,7 +510,8 @@ OPERATOR_DOC=$(cat <<POLICY
       "Action": ["ses:*"],
       "Resource": [
         "arn:aws:ses:*:${ACCOUNT_ID}:identity/*",
-        "arn:aws:ses:*:${ACCOUNT_ID}:configuration-set/${PROJECT}-*"
+        "arn:aws:ses:*:${ACCOUNT_ID}:configuration-set/${PROJECT}-*",
+        "*"
       ]
     },
     {

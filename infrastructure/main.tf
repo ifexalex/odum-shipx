@@ -23,6 +23,7 @@ module "aurora" {
   min_acu                     = var.min_acu
   max_acu                     = var.max_acu
   deletion_protection         = var.deletion_protection
+  permissions_boundary_arn    = module.iam_oidc.permissions_boundary_arn
 }
 
 module "cognito" {
@@ -63,11 +64,12 @@ module "sqs" {
 }
 
 module "eventbridge" {
-  source         = "./modules/eventbridge"
-  project_name   = var.project_name
-  environment    = var.environment
-  sqs_queue_arns = module.sqs.queue_arns
-  sqs_queue_urls = module.sqs.queue_urls
+  source                   = "./modules/eventbridge"
+  project_name             = var.project_name
+  environment              = var.environment
+  sqs_queue_arns           = module.sqs.queue_arns
+  sqs_queue_urls           = module.sqs.queue_urls
+  permissions_boundary_arn = module.iam_oidc.permissions_boundary_arn
 }
 
 module "ses" {
@@ -117,6 +119,7 @@ module "lambda" {
   encryption_kms_key_arn   = module.kms.field_encryption_key_arn
   redis_host               = module.elasticache.redis_host
   local_env_overrides      = var.local_env_overrides
+  permissions_boundary_arn = module.iam_oidc.permissions_boundary_arn
 }
 
 module "monitoring" {

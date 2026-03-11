@@ -340,12 +340,34 @@ data "aws_iam_policy_document" "terraform_operator" {
   statement {
     sid    = "SecretsAndKms"
     effect = "Allow"
-    actions = ["secretsmanager:*", "kms:*"]
+    actions = [
+      "secretsmanager:*",
+      "kms:Describe*", "kms:Get*", "kms:List*",
+      "kms:Create*", "kms:Delete*", "kms:Update*",
+      "kms:Enable*", "kms:Disable*", "kms:Put*",
+      "kms:Schedule*", "kms:Cancel*", "kms:Tag*", "kms:Untag*",
+      "kms:Encrypt", "kms:Decrypt", "kms:GenerateDataKey*",
+      "kms:ReEncrypt*", "kms:Sign", "kms:Verify",
+    ]
     resources = [
       "arn:aws:secretsmanager:*:${local.account_id}:secret:${local.name_prefix}-*",
       "arn:aws:kms:*:${local.account_id}:key/*",
       "arn:aws:kms:*:${local.account_id}:alias/${local.name_prefix}-*",
     ]
+  }
+
+  statement {
+    sid       = "KmsCreateKey"
+    effect    = "Allow"
+    actions   = ["kms:CreateKey"]
+    resources = ["*"]
+  }
+
+  statement {
+    sid     = "IamServiceLinkedRoles"
+    effect  = "Allow"
+    actions = ["iam:CreateServiceLinkedRole"]
+    resources = ["arn:aws:iam::${local.account_id}:role/aws-service-role/*"]
   }
 
   statement {
@@ -387,16 +409,22 @@ data "aws_iam_policy_document" "terraform_operator" {
     sid     = "Cognito"
     effect  = "Allow"
     actions = ["cognito-idp:*"]
-    resources = ["arn:aws:cognito-idp:*:${local.account_id}:userpool/*"]
+    # DescribeUserPoolDomain and similar global APIs require "*" resource
+    resources = [
+      "arn:aws:cognito-idp:*:${local.account_id}:userpool/*",
+      "*",
+    ]
   }
 
   statement {
     sid     = "Ses"
     effect  = "Allow"
     actions = ["ses:*"]
+    # VerifyEmailIdentity (SES v1) and sending-quota APIs require "*" resource
     resources = [
       "arn:aws:ses:*:${local.account_id}:identity/*",
       "arn:aws:ses:*:${local.account_id}:configuration-set/${local.name_prefix}-*",
+      "*",
     ]
   }
 

@@ -154,10 +154,11 @@ data "aws_iam_policy_document" "lambda_assume" {
 }
 
 resource "aws_iam_role" "lambda" {
-  for_each           = local.all_lambda_keys
-  name               = "${var.project_name}-${each.value.name}-role-${var.environment}"
-  assume_role_policy = data.aws_iam_policy_document.lambda_assume.json
-  tags               = local.common_tags
+  for_each             = local.all_lambda_keys
+  name                 = "${var.project_name}-${each.value.name}-role-${var.environment}"
+  assume_role_policy   = data.aws_iam_policy_document.lambda_assume.json
+  permissions_boundary = var.permissions_boundary_arn
+  tags                 = local.common_tags
 }
 
 # All Lambdas — CloudWatch Logs (basic execution)
