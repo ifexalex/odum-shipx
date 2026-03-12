@@ -14,6 +14,7 @@ on:
 jobs:
   smoke:
     runs-on: ubuntu-latest
+    environment: ${{ inputs.environment }}
     steps:
       - name: Wait for Lambda warm-up
         # Allow time for update-function-code to propagate before hitting the API
