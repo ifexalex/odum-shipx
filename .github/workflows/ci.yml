@@ -136,20 +136,24 @@ jobs:
 
       - name: Build service zips
         run: |
+          # Zip from services/ level so the package is at e.g. tracking/handler.py,
+          # matching Terraform handler config "tracking.handler.lambda_handler".
           for service in tenant_management packing_list manifest tracking billing claims \
                          payment_release refunds notification metering excel; do
-            cd services/$service
-            zip -r ../../build/${service}.zip .
-            cd ../..
+            cd services
+            zip -r ../build/${service}.zip ${service}/
+            cd ..
           done
 
       - name: Build scheduled job zips
         run: |
+          # Zip from services/ level so each module is at scheduled/{job}.py,
+          # matching Terraform handler config "scheduled.storage_fee.lambda_handler".
           for job in storage_fee dispute_escalation sla_check storage_reminders \
                      data_cleanup usage_aggregation release_expiry; do
-            cd services/scheduled
-            zip -r ../../build/scheduled-${job}.zip ${job}.py
-            cd ../..
+            cd services
+            zip -r ../build/scheduled-${job}.zip scheduled/__init__.py scheduled/${job}.py
+            cd ..
           done
 
       - name: Build migration zip
