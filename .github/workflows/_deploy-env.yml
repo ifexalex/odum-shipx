@@ -81,49 +81,81 @@ jobs:
       # Two waits per function: update-function-code and update-function-configuration
       # each independently enter Updating state. Calling config-update while code-update
       # is still in-flight returns ResourceConflictException.
+      # Format: "fn-suffix:zip-name" — fn-suffix matches Terraform name field (hyphens).
       - name: Deploy services
         env:
           LAYER_ARN: ${{ steps.layer.outputs.arn }}
           ENV: ${{ inputs.environment }}
         run: |
-          for service in tenant_management packing_list manifest tracking billing claims \
-                         payment_release refunds notification metering excel; do
-            fn="logistics-${service}-${ENV}"
-
+          deploy_fn() {
+            local fn="$1" zip="$2"
             aws lambda update-function-code \
               --function-name "$fn" \
-              --zip-file fileb://build/${service}.zip \
+              --zip-file "fileb://build/${zip}.zip" \
               --architectures arm64 \
               --no-cli-pager
             aws lambda wait function-updated --function-name "$fn"
-
             aws lambda update-function-configuration \
               --function-name "$fn" \
               --layers "$LAYER_ARN" \
               --no-cli-pager
             aws lambda wait function-updated --function-name "$fn"
+          }
+
+          # "fn-suffix:zip-stem" pairs — suffix matches Terraform name field
+          for entry in \
+            "tenant-mgmt:tenant_management" \
+            "packing-list:packing_list" \
+            "manifest:manifest" \
+            "tracking:tracking" \
+            "billing:billing" \
+            "claims:claims" \
+            "payment-release:payment_release" \
+            "refunds:refunds" \
+            "excel:excel" \
+            "metering:metering"; do
+            fn_suffix="${entry%%:*}"
+            zip_name="${entry##*:}"
+            deploy_fn "logistics-${fn_suffix}-${ENV}" "${zip_name}"
+          done
+
+          # Notification: 3 separate functions, all deployed from notification.zip
+          for notif in notif-sms notif-whatsapp notif-email; do
+            deploy_fn "logistics-${notif}-${ENV}" "notification"
           done
 
       # ── Scheduled job Lambdas ─────────────────────────────────────────────
+      # Format: "fn-suffix:job-key" — fn-suffix matches Terraform name field,
+      # job-key is the underscore key used in the zip filename (scheduled-{key}.zip).
       - name: Deploy scheduled jobs
         env:
           LAYER_ARN: ${{ steps.layer.outputs.arn }}
           ENV: ${{ inputs.environment }}
         run: |
-          for job in storage_fee dispute_escalation sla_check storage_reminders \
-                     data_cleanup usage_aggregation release_expiry; do
-            fn="logistics-${job}-${ENV}"
-
+          deploy_fn() {
+            local fn="$1" zip="$2"
             aws lambda update-function-code \
               --function-name "$fn" \
-              --zip-file fileb://build/scheduled-${job}.zip \
+              --zip-file "fileb://build/${zip}.zip" \
               --architectures arm64 \
               --no-cli-pager
             aws lambda wait function-updated --function-name "$fn"
-
             aws lambda update-function-configuration \
               --function-name "$fn" \
               --layers "$LAYER_ARN" \
               --no-cli-pager
             aws lambda wait function-updated --function-name "$fn"
+          }
+
+          for entry in \
+            "storage-fee:storage_fee" \
+            "dispute-escalation:dispute_escalation" \
+            "sla-check:sla_check" \
+            "storage-reminders:storage_reminders" \
+            "data-cleanup:data_cleanup" \
+            "usage-aggregation:usage_aggregation" \
+            "release-expiry:release_expiry"; do
+            fn_suffix="${entry%%:*}"
+            job_key="${entry##*:}"
+            deploy_fn "logistics-${fn_suffix}-${ENV}" "scheduled-${job_key}"
           done
