@@ -40,7 +40,10 @@ def get_tenant_context(event: dict[str, Any]) -> TenantContext:
         cognito:groups    → comma-separated list of "{tenant_id}:{role}" strings
     """
     try:
-        claims: dict[str, Any] = event.get("requestContext", {}).get("authorizer", {}).get("claims", {})
+        authorizer: dict[str, Any] = event.get("requestContext", {}).get("authorizer", {})
+        # HTTP API v2 JWT authorizer: requestContext.authorizer.jwt.claims
+        # REST API v1 / local simulation: requestContext.authorizer.claims
+        claims: dict[str, Any] = authorizer.get("jwt", {}).get("claims", {}) or authorizer.get("claims", {})
         if not claims:
             raise AuthenticationRequiredError()
 
