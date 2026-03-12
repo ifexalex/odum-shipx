@@ -58,8 +58,8 @@ jobs:
             --cli-binary-format raw-in-base64-out \
             /tmp/migrate-out.json)
           echo "$RESULT" | jq -r '.LogResult' | base64 -d
-          RC=$(jq -r '.returncode // 1' /tmp/migrate-out.json)
-          [ "$RC" = "0" ] || { echo "Migration FAILED — aborting deploy"; exit 1; }
+          STATUS=$(jq -r '.status // "error"' /tmp/migrate-out.json)
+          [ "$STATUS" = "ok" ] || { echo "Migration FAILED — aborting deploy"; exit 1; }
 
       # ── Shared Lambda layer ────────────────────────────────────────────────
       # publish-layer-version creates a NEW ARN with an incremented version
