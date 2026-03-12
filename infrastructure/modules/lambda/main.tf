@@ -501,13 +501,13 @@ resource "aws_lambda_permission" "scheduled_eventbridge" {
 # ---------------------------------------------------------------------------
 
 resource "aws_cloudwatch_log_group" "migrate" {
-  name              = "/aws/lambda/${local.name_prefix}-migrate"
+  name              = "/aws/lambda/${var.project_name}-migrate-${var.environment}"
   retention_in_days = local.log_retention_days
   tags              = local.common_tags
 }
 
 resource "aws_iam_role" "migrate" {
-  name                 = "${local.name_prefix}-migrate-role"
+  name                 = "${var.project_name}-migrate-role-${var.environment}"
   assume_role_policy   = data.aws_iam_policy_document.lambda_assume.json
   permissions_boundary = var.permissions_boundary_arn
   tags                 = local.common_tags
@@ -524,7 +524,7 @@ resource "aws_iam_role_policy_attachment" "migrate_vpc_access" {
 }
 
 resource "aws_iam_role_policy" "migrate_db_access" {
-  name = "${local.name_prefix}-migrate-db"
+  name = "${var.project_name}-migrate-db-${var.environment}"
   role = aws_iam_role.migrate.id
   policy = jsonencode({
     Version = "2012-10-17"
@@ -544,7 +544,7 @@ resource "aws_iam_role_policy" "migrate_db_access" {
 }
 
 resource "aws_lambda_function" "migrate" {
-  function_name = "${local.name_prefix}-migrate"
+  function_name = "${var.project_name}-migrate-${var.environment}"
   role          = aws_iam_role.migrate.arn
   runtime       = "python3.12"
   handler       = "handler.lambda_handler"
