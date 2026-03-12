@@ -163,7 +163,8 @@ jobs:
             --implementation cp \
             --python-version 3.12 \
             --only-binary=:all: \
-            alembic==1.13.0
+            alembic==1.13.0 \
+            psycopg2-binary==2.9.11
           cd build/migrate_pkg && zip -r ../../build/migrate.zip .
 
       - name: Upload lambda packages
