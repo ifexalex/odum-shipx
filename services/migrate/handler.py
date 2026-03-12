@@ -1,7 +1,7 @@
 """Migration Lambda — runs Alembic upgrade head against Aurora via RDS Proxy.
 
 Invoked synchronously by the deploy pipeline before any service code is deployed.
-Returns a non-zero returncode to cause the pipeline step to fail and abort the deploy.
+Raises on failure so the pipeline step exits non-zero and aborts the deploy.
 
 Environment variables (injected by Terraform, same as all VPC Lambdas):
     DATABASE_HOST     RDS Proxy endpoint
@@ -11,11 +11,14 @@ Environment variables (injected by Terraform, same as all VPC Lambdas):
     DB_SECRET_ARN     Secrets Manager ARN for the DB password
 """
 import json
+import logging
 import os
-import subprocess
-import sys
 
 import boto3
+from alembic import command
+from alembic.config import Config
+
+logger = logging.getLogger(__name__)
 
 
 def lambda_handler(event: dict[str, object], context: object) -> dict[str, object]:
@@ -26,23 +29,18 @@ def lambda_handler(event: dict[str, object], context: object) -> dict[str, objec
         context: Lambda context (unused).
 
     Returns:
-        dict with status, returncode, stdout, stderr.
+        dict with status and revision.
+
+    Raises:
+        Exception: Re-raises any alembic error so Lambda exits non-zero.
     """
     _inject_db_password()
 
-    cmd = [sys.executable, "-m", "alembic", "-c", "migrations/alembic.ini", "upgrade", "head"]
-    result = subprocess.run(cmd, capture_output=True, text=True)  # noqa: S603
+    cfg = Config("migrations/alembic.ini")
+    command.upgrade(cfg, "head")
 
-    print(result.stdout)
-    if result.returncode != 0:
-        print(result.stderr)
-
-    return {
-        "status": "ok" if result.returncode == 0 else "error",
-        "returncode": result.returncode,
-        "stdout": result.stdout,
-        "stderr": result.stderr,
-    }
+    logger.info("Migrations complete")
+    return {"status": "ok"}
 
 
 def _inject_db_password() -> None:
