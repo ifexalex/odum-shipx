@@ -159,8 +159,8 @@ jobs:
       - name: Dependency vulnerability scan (safety)
         run: safety check -r requirements.txt
       - name: Trivy filesystem scan
-        # Pinned to v0.24.0 — update via Dependabot, never float @master
-        uses: aquasecurity/trivy-action@6c175e9c4083a92bbca2f9724c8a5e33bc2d97a5  # v0.24.0
+        # Pinned to v0.35.0 — update via Dependabot, never float @master
+        uses: aquasecurity/trivy-action@57a97c7e7821a5776cebc9bb87c984fa69cba8f1  # v0.35.0
         with:
           scan-type: 'fs'
           scan-ref: '.'
