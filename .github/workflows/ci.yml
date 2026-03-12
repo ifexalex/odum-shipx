@@ -157,6 +157,13 @@ jobs:
           mkdir -p build/migrate_pkg
           cp -r migrations/ build/migrate_pkg/migrations/
           cp services/migrate/handler.py build/migrate_pkg/handler.py
+          pip install \
+            --platform manylinux2014_aarch64 \
+            --target build/migrate_pkg/ \
+            --implementation cp \
+            --python-version 3.12 \
+            --only-binary=:all: \
+            alembic==1.13.0
           cd build/migrate_pkg && zip -r ../../build/migrate.zip .
 
       - name: Upload lambda packages
