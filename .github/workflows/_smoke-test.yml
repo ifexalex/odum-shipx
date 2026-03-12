@@ -37,7 +37,7 @@ jobs:
           API_BASE: ${{ secrets.API_BASE_URL }}
         run: |
           failed=0
-          for ep in "/v1/packing-lists" "/v1/billing" "/v1/manifests" "/v1/tracking" "/v1/claims"; do
+          for ep in "/v1/packing-lists" "/v1/billing/disputes" "/v1/manifests" "/v1/containers" "/v1/claims"; do
             status=$(curl -s -o /dev/null -w "%{http_code}" --max-time 10 "$API_BASE$ep")
             if [ "$status" != "401" ]; then
               echo "FAIL: $ep returned $status, expected 401"
