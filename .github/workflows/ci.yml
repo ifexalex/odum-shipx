@@ -136,23 +136,24 @@ jobs:
 
       - name: Build service zips
         run: |
-          # Zip from services/ level so the package is at e.g. tracking/handler.py,
-          # matching Terraform handler config "tracking.handler.lambda_handler".
+          # Each zip contains the full services/ tree so cross-service imports resolve
+          # (e.g. tracking imports from metering). Handler paths like
+          # "tracking.handler.lambda_handler" resolve because tracking/handler.py sits
+          # at the zip root (services/ is the zip root, not a subdirectory).
           for service in tenant_management packing_list manifest tracking billing claims \
                          payment_release refunds notification metering excel; do
             cd services
-            zip -r ../build/${service}.zip ${service}/
+            zip -r ../build/${service}.zip . --exclude "*/__pycache__/*" --exclude "*.pyc"
             cd ..
           done
 
       - name: Build scheduled job zips
         run: |
-          # Zip from services/ level so each module is at scheduled/{job}.py,
-          # matching Terraform handler config "scheduled.storage_fee.lambda_handler".
+          # Same full-services-tree approach — scheduled jobs also have intra-service imports.
           for job in storage_fee dispute_escalation sla_check storage_reminders \
                      data_cleanup usage_aggregation release_expiry; do
             cd services
-            zip -r ../build/scheduled-${job}.zip scheduled/__init__.py scheduled/${job}.py
+            zip -r ../build/scheduled-${job}.zip . --exclude "*/__pycache__/*" --exclude "*.pyc"
             cd ..
           done
 

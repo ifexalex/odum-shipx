@@ -7,7 +7,7 @@ tracking updates, billing event triggers, and customer-facing tracking lookup.
 import logging
 from typing import Any
 
-from services.metering.service import check_container_limit
+from metering.service import check_container_limit
 from shared.audit import log_audit
 from shared.events import publish_event
 from shared.exceptions import (

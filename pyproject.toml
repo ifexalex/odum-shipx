@@ -28,6 +28,26 @@ ignore = [
     "S310",   # URL open — all urlopen calls target known external APIs (Africa's Talking, Meta)
 ]
 
+[tool.ruff.lint.isort]
+# All service packages and shared utilities are first-party.
+# Without this, ruff treats them as third-party and may insert unexpected section breaks.
+known-first-party = [
+    "shared",
+    "metering",
+    "tracking",
+    "billing",
+    "claims",
+    "excel",
+    "manifest",
+    "notification",
+    "packing_list",
+    "payment_release",
+    "refunds",
+    "tenant_management",
+    "scheduled",
+    "migrate",
+]
+
 [tool.ruff.lint.per-file-ignores]
 "tests/**/*.py" = [
     "S311",  # random in load/unit tests — not used for crypto
