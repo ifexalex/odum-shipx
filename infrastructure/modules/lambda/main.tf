@@ -286,6 +286,21 @@ resource "aws_iam_role_policy" "kms_field_encryption" {
   })
 }
 
+# notification Lambdas — consume from their respective SQS queues
+resource "aws_iam_role_policy" "sqs_notification" {
+  for_each = local.notification_configs
+  name     = "${local.name_prefix}-${each.value.name}-sqs"
+  role     = aws_iam_role.lambda[each.key].id
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [{
+      Effect   = "Allow"
+      Action   = ["sqs:ReceiveMessage", "sqs:DeleteMessage", "sqs:GetQueueAttributes"]
+      Resource = [var.sqs_queue_arns[each.value.queue_key]]
+    }]
+  })
+}
+
 # metering — consume from metering SQS queue
 resource "aws_iam_role_policy" "sqs_metering" {
   name = "${local.name_prefix}-metering-sqs"

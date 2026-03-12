@@ -22,7 +22,7 @@ locals {
       max_receive_count          = 3
     }
     metering = {
-      visibility_timeout_seconds = 30
+      visibility_timeout_seconds = 360 # 6× Lambda timeout (60s) — AWS requirement
       max_receive_count          = 5
     }
   }
