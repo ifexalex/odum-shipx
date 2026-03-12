@@ -61,11 +61,11 @@ jobs:
         run: python scripts/migrate.py
       - name: Run unit tests
         env:
-          PYTHONPATH: .
+          PYTHONPATH: ".:services"
         run: pytest tests/unit/ -v --cov=services --cov=shared --cov-report=xml
       - name: Run tenant isolation tests
         env:
-          PYTHONPATH: .
+          PYTHONPATH: ".:services"
           DATABASE_HOST: localhost
           DATABASE_PORT: 5432
           DATABASE_NAME: logistics_test

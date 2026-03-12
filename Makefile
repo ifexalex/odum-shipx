@@ -1,4 +1,4 @@
-.PHONY: install lint test test-unit test-integration test-isolation migrate seed deploy clean security-scan \
+.PHONY: install lint check test test-unit test-integration test-isolation test-all migrate seed deploy clean security-scan \
         up down bootstrap dev e2e
 
 # ─── Local stack ─────────────────────────────────────────────────────────────
@@ -51,16 +51,22 @@ security-scan:
 test: test-unit
 
 test-unit:
-	pytest tests/unit/ -v --cov=services --cov=shared --cov-report=term-missing -m unit
+	PYTHONPATH=.:services pytest tests/unit/ -v --cov=services --cov=shared --cov-report=term-missing
 
 test-integration:
-	pytest tests/integration/ -v -m integration
+	PYTHONPATH=.:services pytest tests/integration/ -v -m integration
 
 test-isolation:
-	pytest tests/tenant_isolation/ -v -m isolation
+	PYTHONPATH=.:services pytest tests/tenant_isolation/ -v -m isolation
 
 test-all:
-	pytest tests/ -v --cov=services --cov=shared --cov-report=xml
+	PYTHONPATH=.:services pytest tests/ -v --cov=services --cov=shared --cov-report=xml
+
+# Run lint + type-check + unit tests in one shot
+check:
+	ruff check .
+	mypy shared/ services/ --ignore-missing-imports
+	PYTHONPATH=.:services pytest tests/unit/ -v --cov=services --cov=shared --cov-report=term-missing
 
 # Run end-to-end API tests against the local server.
 # REQUIRES: 'make dev' running in another terminal first.
