@@ -14,17 +14,17 @@ locals {
   # ---------------------------------------------------------------------------
   all_routes = {
     # --- Platform Admin (11 routes) -----------------------------------------
-    "POST /v1/platform/tenants"                   = "tenant_management"
-    "GET /v1/platform/tenants"                    = "tenant_management"
-    "GET /v1/platform/tenants/{id}"               = "tenant_management"
-    "PATCH /v1/platform/tenants/{id}"             = "tenant_management"
-    "DELETE /v1/platform/tenants/{id}"            = "tenant_management"
-    "PATCH /v1/platform/tenants/{id}/suspend"     = "tenant_management"
-    "PATCH /v1/platform/tenants/{id}/activate"    = "tenant_management"
-    "PATCH /v1/platform/tenants/{id}/reactivate"  = "tenant_management"
-    "GET /v1/platform/tenants/{id}/usage"         = "metering"
-    "GET /v1/platform/dashboard"                  = "tenant_management"
-    "GET /v1/platform/audit-log"                  = "tenant_management"
+    "POST /v1/platform/tenants"                  = "tenant_management"
+    "GET /v1/platform/tenants"                   = "tenant_management"
+    "GET /v1/platform/tenants/{id}"              = "tenant_management"
+    "PATCH /v1/platform/tenants/{id}"            = "tenant_management"
+    "DELETE /v1/platform/tenants/{id}"           = "tenant_management"
+    "PATCH /v1/platform/tenants/{id}/suspend"    = "tenant_management"
+    "PATCH /v1/platform/tenants/{id}/activate"   = "tenant_management"
+    "PATCH /v1/platform/tenants/{id}/reactivate" = "tenant_management"
+    "GET /v1/platform/tenants/{id}/usage"        = "metering"
+    "GET /v1/platform/dashboard"                 = "tenant_management"
+    "GET /v1/platform/audit-log"                 = "tenant_management"
 
     # --- Tenant Admin (13 routes) -------------------------------------------
     "GET /v1/tenant/config"               = "tenant_management"
@@ -117,12 +117,12 @@ locals {
     "GET /v1/containers/{id}/billing/export" = "excel"
 
     # --- Customers (6 routes) -----------------------------------------------
-    "POST /v1/customers"              = "tenant_management"
-    "GET /v1/customers"               = "tenant_management"
-    "GET /v1/customers/{id}"          = "tenant_management"
-    "PATCH /v1/customers/{id}"        = "tenant_management"
-    "DELETE /v1/customers/{id}"       = "tenant_management"
-    "GET /v1/customers/{id}/export"   = "tenant_management"
+    "POST /v1/customers"            = "tenant_management"
+    "GET /v1/customers"             = "tenant_management"
+    "GET /v1/customers/{id}"        = "tenant_management"
+    "PATCH /v1/customers/{id}"      = "tenant_management"
+    "DELETE /v1/customers/{id}"     = "tenant_management"
+    "GET /v1/customers/{id}/export" = "tenant_management"
 
     # --- Containers (4 routes) ----------------------------------------------
     "POST /v1/containers"              = "tracking"

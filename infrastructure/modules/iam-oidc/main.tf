@@ -49,9 +49,9 @@ resource "aws_iam_openid_connect_provider" "github" {
   thumbprint_list = ["6938fd4d98bab03faadb97b34396831e3780aea1", "1c58a3a8518e8759bf075b76b750d4f2df264fcd"]
 
   tags = {
-    Name        = "github-actions-oidc"
-    Project     = var.project_name
-    ManagedBy   = "terraform"
+    Name      = "github-actions-oidc"
+    Project   = var.project_name
+    ManagedBy = "terraform"
   }
 }
 
@@ -111,23 +111,23 @@ data "aws_iam_policy_document" "lambda_boundary" {
   }
 
   statement {
-    sid     = "SecretsManagerDbPassword"
-    effect  = "Allow"
-    actions = ["secretsmanager:GetSecretValue"]
+    sid       = "SecretsManagerDbPassword"
+    effect    = "Allow"
+    actions   = ["secretsmanager:GetSecretValue"]
     resources = ["arn:aws:secretsmanager:*:${local.account_id}:secret:${local.name_prefix}-*"]
   }
 
   statement {
-    sid     = "S3Assets"
-    effect  = "Allow"
-    actions = ["s3:GetObject", "s3:PutObject", "s3:DeleteObject", "s3:GetObjectVersion"]
+    sid       = "S3Assets"
+    effect    = "Allow"
+    actions   = ["s3:GetObject", "s3:PutObject", "s3:DeleteObject", "s3:GetObjectVersion"]
     resources = ["arn:aws:s3:::${local.name_prefix}-assets-*/*"]
   }
 
   statement {
-    sid     = "S3AssetsList"
-    effect  = "Allow"
-    actions = ["s3:ListBucket", "s3:GetBucketLocation"]
+    sid       = "S3AssetsList"
+    effect    = "Allow"
+    actions   = ["s3:ListBucket", "s3:GetBucketLocation"]
     resources = ["arn:aws:s3:::${local.name_prefix}-assets-*"]
   }
 
@@ -146,16 +146,16 @@ data "aws_iam_policy_document" "lambda_boundary" {
   }
 
   statement {
-    sid     = "EventBridgePutEvents"
-    effect  = "Allow"
-    actions = ["events:PutEvents"]
+    sid       = "EventBridgePutEvents"
+    effect    = "Allow"
+    actions   = ["events:PutEvents"]
     resources = ["arn:aws:events:*:${local.account_id}:event-bus/${local.name_prefix}-events-*"]
   }
 
   statement {
-    sid     = "KmsFieldEncryption"
-    effect  = "Allow"
-    actions = ["kms:Decrypt", "kms:GenerateDataKey", "kms:DescribeKey"]
+    sid       = "KmsFieldEncryption"
+    effect    = "Allow"
+    actions   = ["kms:Decrypt", "kms:GenerateDataKey", "kms:DescribeKey"]
     resources = ["*"]
     condition {
       test     = "StringLike"
@@ -187,23 +187,23 @@ data "aws_iam_policy_document" "lambda_boundary" {
   }
 
   statement {
-    sid     = "SesSendEmail"
-    effect  = "Allow"
-    actions = ["ses:SendEmail", "ses:SendRawEmail"]
+    sid       = "SesSendEmail"
+    effect    = "Allow"
+    actions   = ["ses:SendEmail", "ses:SendRawEmail"]
     resources = ["arn:aws:ses:*:${local.account_id}:identity/*"]
   }
 
   statement {
-    sid     = "RdsDbConnect"
-    effect  = "Allow"
-    actions = ["rds-db:connect"]
+    sid       = "RdsDbConnect"
+    effect    = "Allow"
+    actions   = ["rds-db:connect"]
     resources = ["arn:aws:rds-db:*:${local.account_id}:dbuser:*/*"]
   }
 
   statement {
-    sid     = "ElastiCacheConnect"
-    effect  = "Allow"
-    actions = ["elasticache:Connect"]
+    sid       = "ElastiCacheConnect"
+    effect    = "Allow"
+    actions   = ["elasticache:Connect"]
     resources = ["arn:aws:elasticache:*:${local.account_id}:*:${local.name_prefix}-*"]
   }
 }
@@ -241,7 +241,7 @@ resource "aws_iam_role" "deploy" {
   # No permissions_boundary — the boundary is for Lambda execution roles only.
   # Deploy roles are constrained by OIDC trust + scoped inline policy.
   # Attaching the Lambda boundary would block access to the Terraform state bucket.
-  description        = "GitHub Actions OIDC deploy role for ${local.name_prefix} ${each.key}"
+  description = "GitHub Actions OIDC deploy role for ${local.name_prefix} ${each.key}"
 
   tags = {
     Project     = var.project_name
@@ -292,15 +292,15 @@ data "aws_iam_policy_document" "terraform_operator" {
   }
 
   statement {
-    sid     = "ApiGateway"
-    effect  = "Allow"
-    actions = ["apigateway:*"]
+    sid       = "ApiGateway"
+    effect    = "Allow"
+    actions   = ["apigateway:*"]
     resources = ["arn:aws:apigateway:${local.region}::/*"]
   }
 
   statement {
-    sid    = "EventBridgeAndSqs"
-    effect = "Allow"
+    sid     = "EventBridgeAndSqs"
+    effect  = "Allow"
     actions = ["events:*", "sqs:*"]
     resources = [
       "arn:aws:events:*:${local.account_id}:*",
@@ -309,8 +309,8 @@ data "aws_iam_policy_document" "terraform_operator" {
   }
 
   statement {
-    sid     = "RdsGlobalDescribe"
-    effect  = "Allow"
+    sid    = "RdsGlobalDescribe"
+    effect = "Allow"
     actions = [
       "rds:DescribeGlobalClusters",
       "rds:DescribeEngineDefaultParameters",
@@ -323,8 +323,8 @@ data "aws_iam_policy_document" "terraform_operator" {
   }
 
   statement {
-    sid    = "DataLayer"
-    effect = "Allow"
+    sid     = "DataLayer"
+    effect  = "Allow"
     actions = ["rds:*", "rds-data:*"]
     resources = [
       "arn:aws:rds:*:${local.account_id}:cluster:${local.name_prefix}-*",
@@ -376,15 +376,15 @@ data "aws_iam_policy_document" "terraform_operator" {
   }
 
   statement {
-    sid     = "IamServiceLinkedRoles"
-    effect  = "Allow"
-    actions = ["iam:CreateServiceLinkedRole"]
+    sid       = "IamServiceLinkedRoles"
+    effect    = "Allow"
+    actions   = ["iam:CreateServiceLinkedRole"]
     resources = ["arn:aws:iam::${local.account_id}:role/aws-service-role/*"]
   }
 
   statement {
-    sid    = "S3Assets"
-    effect = "Allow"
+    sid     = "S3Assets"
+    effect  = "Allow"
     actions = ["s3:*"]
     resources = [
       "arn:aws:s3:::${local.name_prefix}-assets-*",
@@ -441,8 +441,8 @@ data "aws_iam_policy_document" "terraform_operator" {
   }
 
   statement {
-    sid    = "ObservabilityAndAlerts"
-    effect = "Allow"
+    sid     = "ObservabilityAndAlerts"
+    effect  = "Allow"
     actions = ["logs:*", "cloudwatch:*", "sns:*", "xray:*"]
     resources = [
       "arn:aws:logs:*:${local.account_id}:log-group:*${local.name_prefix}*",

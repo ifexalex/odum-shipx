@@ -78,16 +78,16 @@ locals {
   # DATABASE_HOST, DB_SECRET_ARN, DATABASE_PASSWORD, etc. without touching CI/CD.
   common_env_vars = merge(
     {
-      DATABASE_HOST          = var.rds_proxy_endpoint
-      DATABASE_NAME          = var.db_name
-      DATABASE_USER          = "postgres"
-      DB_SECRET_ARN          = var.db_secret_arn
-      S3_BUCKET              = var.bucket_name
-      EVENT_BUS_NAME         = var.event_bus_name
-      COGNITO_USER_POOL_ID   = var.cognito_user_pool_id
-      ENVIRONMENT            = var.environment
-      ENCRYPTION_KMS_KEY_ID  = var.encryption_kms_key_arn
-      REDIS_HOST             = var.redis_host
+      DATABASE_HOST         = var.rds_proxy_endpoint
+      DATABASE_NAME         = var.db_name
+      DATABASE_USER         = "postgres"
+      DB_SECRET_ARN         = var.db_secret_arn
+      S3_BUCKET             = var.bucket_name
+      EVENT_BUS_NAME        = var.event_bus_name
+      COGNITO_USER_POOL_ID  = var.cognito_user_pool_id
+      ENVIRONMENT           = var.environment
+      ENCRYPTION_KMS_KEY_ID = var.encryption_kms_key_arn
+      REDIS_HOST            = var.redis_host
     },
     var.local_env_overrides,
   )
@@ -550,12 +550,12 @@ resource "aws_lambda_function" "migrate" {
 
   environment {
     variables = {
-      DATABASE_HOST  = var.rds_proxy_endpoint
-      DATABASE_NAME  = var.db_name
-      DATABASE_USER  = "postgres"
-      DATABASE_PORT  = "5432"
-      DB_SECRET_ARN  = var.db_secret_arn
-      ENVIRONMENT    = var.environment
+      DATABASE_HOST = var.rds_proxy_endpoint
+      DATABASE_NAME = var.db_name
+      DATABASE_USER = "postgres"
+      DATABASE_PORT = "5432"
+      DB_SECRET_ARN = var.db_secret_arn
+      ENVIRONMENT   = var.environment
     }
   }
 
