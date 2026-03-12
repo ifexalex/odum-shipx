@@ -6,18 +6,52 @@ on:
       environment:
         required: true
         type: string
+    secrets:
+      API_BASE_URL:
+        required: true
+        description: "API Gateway stage URL — set as API_BASE_URL secret per GitHub Environment"
 
 jobs:
   smoke:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - name: Run smoke tests
+      - name: Wait for Lambda warm-up
+        # Allow time for update-function-code to propagate before hitting the API
+        run: sleep 10
+
+      - name: Health endpoint
         env:
-          API_BASE: https://api-${{ inputs.environment }}.logistics.example.com
+          API_BASE: ${{ secrets.API_BASE_URL }}
         run: |
-          curl -f $API_BASE/v1/health
-          status=$(curl -s -o /dev/null -w "%{http_code}" $API_BASE/v1/packing-lists)
-          test "$status" = "401" || (echo "Expected 401, got $status" && exit 1)
-          status=$(curl -s -o /dev/null -w "%{http_code}" $API_BASE/v1/billing)
-          test "$status" = "401" || (echo "Expected 401, got $status" && exit 1)
+          response=$(curl -sf --max-time 10 --retry 3 --retry-delay 5 \
+            -w "\n%{http_code}" "$API_BASE/v1/health")
+          http_code=$(echo "$response" | tail -1)
+          body=$(echo "$response" | head -n -1)
+          echo "Status: $http_code"
+          echo "Body: $body"
+          test "$http_code" = "200"
+
+      - name: Auth enforcement — unauthenticated requests must return 401
+        env:
+          API_BASE: ${{ secrets.API_BASE_URL }}
+        run: |
+          failed=0
+          for ep in "/v1/packing-lists" "/v1/billing" "/v1/manifests" "/v1/tracking" "/v1/claims"; do
+            status=$(curl -s -o /dev/null -w "%{http_code}" --max-time 10 "$API_BASE$ep")
+            if [ "$status" != "401" ]; then
+              echo "FAIL: $ep returned $status, expected 401"
+              failed=1
+            else
+              echo "OK:   $ep → 401"
+            fi
+          done
+          exit $failed
+
+      - name: Response time SLA — health endpoint must respond within 2s
+        env:
+          API_BASE: ${{ secrets.API_BASE_URL }}
+        run: |
+          time_total=$(curl -so /dev/null -w "%{time_total}" "$API_BASE/v1/health")
+          echo "Response time: ${time_total}s"
+          result=$(echo "$time_total < 2.0" | bc -l)
+          test "$result" = "1" || (echo "SLA breach: ${time_total}s > 2s" && exit 1)

@@ -93,7 +93,7 @@ Phase 9 — CI/CD (after everything)
 | 15 | `15_api_notifications.md` | API: Notification Service (SMS, WhatsApp, Email) | 06 | Medium |
 | 16 | `16_scheduled_jobs.md` | Scheduled Jobs: Storage Fees, Escalation, Cleanup | 06, 11 | Medium |
 | 17 | `17_testing.md` | Testing: Unit, Integration, Tenant Isolation, Load | All services | High |
-| 18 | `18_cicd_pipeline.md` | CI/CD: GitHub Actions + Rollback + Security Scanning | All | Medium |
+| 18 ✅ | `18_cicd_pipeline.md` | CI/CD: GitHub Actions + Rollback + Security Scanning | All | Medium |
 | 19 | `19_excel_import_export.md` | Excel Import/Export (4 formats) | 08, 09, 11 | High |
 | 20 | `20_metering_service.md` | Metering SQS Consumer + Tier Limits | 06, 04d | Medium |
 | 21 | `21_missing_endpoints.md` | Gap Closures: Carryovers, Misc Charges, Public Tracking, etc. | 07, 10, 11, 12, 15 | High |

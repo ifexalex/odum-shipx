@@ -1,0 +1,178 @@
+name: Terraform
+
+# Triggered on infra changes to main. Code-only pushes skip this entirely.
+# staging and prod are gated by GitHub Environment protection rules (required reviewers).
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "infrastructure/**"
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: "Environment to apply (runs all envs sequentially from the selected one)"
+        required: true
+        type: choice
+        options: [dev, staging, prod]
+
+# Queue infra changes — never cancel a Terraform apply mid-run.
+concurrency:
+  group: terraform-${{ github.ref }}
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  # ── Dev — auto-applies on every infra change ─────────────────────────────
+  terraform-dev:
+    if: >-
+      github.event_name == 'push' ||
+      (github.event_name == 'workflow_dispatch' && inputs.environment == 'dev')
+    runs-on: ubuntu-latest
+    environment: dev
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_DEPLOY_ROLE_ARN }}
+          aws-region: eu-west-1
+
+      - uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: "1.7.5"
+
+      - name: Terraform Init
+        working-directory: infrastructure
+        run: terraform init -backend-config=environments/dev.backend.hcl
+
+      - name: Import bootstrap resources (idempotent)
+        working-directory: infrastructure
+        run: |
+          ACCOUNT_ID=$(aws sts get-caller-identity --query Account --output text)
+          TFVARS="-var-file=environments/dev.tfvars"
+
+          import_once() {
+            local addr="$1" id="$2"
+            if terraform state show "$addr" &>/dev/null; then
+              echo "  ✓ $addr already in state — skipping"
+            else
+              echo "  → importing $addr"
+              terraform import $TFVARS "$addr" "$id"
+            fi
+          }
+
+          import_once module.iam_oidc.aws_iam_openid_connect_provider.github \
+            "arn:aws:iam::${ACCOUNT_ID}:oidc-provider/token.actions.githubusercontent.com"
+          import_once module.iam_oidc.aws_iam_policy.permissions_boundary \
+            "arn:aws:iam::${ACCOUNT_ID}:policy/logistics-lambda-permissions-boundary"
+          import_once 'module.iam_oidc.aws_iam_role.deploy["dev"]'     logistics-github-deploy-dev
+          import_once 'module.iam_oidc.aws_iam_role.deploy["staging"]' logistics-github-deploy-staging
+          import_once 'module.iam_oidc.aws_iam_role.deploy["prod"]'    logistics-github-deploy-prod
+
+      - name: Terraform Format Check
+        working-directory: infrastructure
+        run: terraform fmt -check -recursive
+
+      - name: Terraform Validate
+        working-directory: infrastructure
+        run: terraform validate
+
+      - name: Terraform Plan
+        working-directory: infrastructure
+        run: terraform plan -var-file=environments/dev.tfvars -out=tfplan
+
+      - name: Terraform Apply
+        working-directory: infrastructure
+        run: terraform apply tfplan
+
+  # ── Staging — gated by dev success + GitHub Environment approval ─────────
+  terraform-staging:
+    needs: terraform-dev
+    if: >-
+      github.event_name == 'push' ||
+      (github.event_name == 'workflow_dispatch' && (inputs.environment == 'dev' || inputs.environment == 'staging'))
+    runs-on: ubuntu-latest
+    environment: staging
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_DEPLOY_ROLE_ARN }}
+          aws-region: eu-west-1
+
+      - uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: "1.7.5"
+
+      - name: Terraform Init
+        working-directory: infrastructure
+        run: terraform init -backend-config=environments/staging.backend.hcl
+
+      - name: Terraform Format Check
+        working-directory: infrastructure
+        run: terraform fmt -check -recursive
+
+      - name: Terraform Validate
+        working-directory: infrastructure
+        run: terraform validate
+
+      - name: Terraform Plan
+        working-directory: infrastructure
+        run: terraform plan -var-file=environments/staging.tfvars -out=tfplan
+
+      - name: Terraform Apply
+        working-directory: infrastructure
+        run: terraform apply tfplan
+
+  # ── Prod — gated by staging success + GitHub Environment approval ─────────
+  terraform-prod:
+    needs: terraform-staging
+    runs-on: ubuntu-latest
+    environment: prod
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_DEPLOY_ROLE_ARN }}
+          aws-region: eu-west-1
+
+      - uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: "1.7.5"
+
+      - name: Terraform Init
+        working-directory: infrastructure
+        run: terraform init -backend-config=environments/prod.backend.hcl
+
+      - name: Terraform Format Check
+        working-directory: infrastructure
+        run: terraform fmt -check -recursive
+
+      - name: Terraform Validate
+        working-directory: infrastructure
+        run: terraform validate
+
+      - name: Terraform Plan
+        working-directory: infrastructure
+        run: terraform plan -var-file=environments/prod.tfvars -out=tfplan
+
+      - name: Terraform Apply
+        working-directory: infrastructure
+        run: terraform apply tfplan

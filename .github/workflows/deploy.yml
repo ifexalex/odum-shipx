@@ -1,29 +1,87 @@
 name: Deploy Pipeline
 
-# Triggered automatically after CI passes on main (deploys dev), then promotes
-# through staging → prod via GitHub Environment protection rules (required reviewers).
-# Each environment runs sequentially — staging only starts after dev smoke tests pass,
-# prod only starts after staging smoke tests pass + a required-reviewer approval.
+# ── Trigger summary ──────────────────────────────────────────────────────────
+#
+#   push to main  →  deploy-dev (auto, every successful CI run)
+#                     └─ smoke-dev
+#
+#   v*.*.*-rc*    →  resolve artifact for tagged commit
+#   tag push           └─ deploy-staging (auto, tag protection = gate)
+#   (protected)             └─ smoke-staging
+#
+#   v*.*.* tag    →  resolve artifact for tagged commit
+#   push           └─ deploy-prod (auto, after smoke-staging passes)
+#   (protected)         └─ [CloudWatch alarms monitor prod — no synthetic smoke]
+#
+#   workflow_dispatch  →  break-glass hotfix only; operator supplies run_id
+#
+# Tag protection ruleset (configure in repo Settings → Rules):
+#   Pattern: v*
+#   Restriction: @{org}/release-managers team only
+#   Block force pushes: yes
+# ---------------------------------------------------------------------------
+
 on:
   workflow_run:
     workflows: ["CI Pipeline"]
     types: [completed]
     branches: [main]
+  push:
+    tags:
+      - 'v[0-9]+.[0-9]+.[0-9]+-rc[0-9]+'   # staging: e.g. v1.2.3-rc1
+      - 'v[0-9]+.[0-9]+.[0-9]+'             # prod:    e.g. v1.2.3
   workflow_dispatch:
     inputs:
       environment:
-        description: "Target environment (for hotfix re-deploys only)"
+        description: "Target environment (break-glass hotfix only)"
         required: true
         type: choice
         options: [dev, staging, prod]
+      run_id:
+        description: "CI Pipeline run ID whose artifact to deploy (find in the Actions tab URL)"
+        required: true
+        type: string
 
-# ---------------------------------------------------------------------------
-# Reusable job templates via strategy — one concrete job per environment so
-# GitHub's environment protection rules (required reviewers, wait timers) fire
-# naturally between them.
-# ---------------------------------------------------------------------------
+# Queue deploys — never cancel a deploy mid-run (leaves mixed state).
+concurrency:
+  group: deploy-${{ github.ref }}
+  cancel-in-progress: false
 
+permissions:
+  contents: read
+  actions: read    # required for cross-workflow artifact download
+
+# ── Artifact resolution ──────────────────────────────────────────────────────
+# On tag push: find the successful CI Pipeline run for the exact tagged commit
+# SHA. Fails if no successful CI run exists for that commit — enforces that
+# only tested code can be deployed.
+# On workflow_run and workflow_dispatch: not used (run ID is known directly).
 jobs:
+  resolve-artifact:
+    runs-on: ubuntu-latest
+    if: github.event_name == 'push'   # tag push path only
+    outputs:
+      run_id: ${{ steps.find.outputs.run_id }}
+    permissions:
+      contents: read
+      actions: read
+    steps:
+      - name: Find successful CI run for tagged commit
+        id: find
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          RUN_ID=$(gh api \
+            "repos/${{ github.repository }}/actions/runs?head_sha=${{ github.sha }}&event=push&status=success" \
+            --jq '[.workflow_runs[] | select(.name == "CI Pipeline")] | first | .id')
+          if [ -z "$RUN_ID" ] || [ "$RUN_ID" = "null" ]; then
+            echo "No successful CI Pipeline run found for commit ${{ github.sha }}"
+            echo "Only commits that have passed CI can be deployed via tag."
+            exit 1
+          fi
+          echo "Found CI run: $RUN_ID"
+          echo "run_id=${RUN_ID}" >> "$GITHUB_OUTPUT"
+
   # ── Dev — auto-deploys on every successful CI run ──────────────────────
   deploy-dev:
     if: >-
@@ -32,9 +90,14 @@ jobs:
     permissions:
       contents: read
       id-token: write
+      actions: read
     uses: ./.github/workflows/_deploy-env.yml
     with:
       environment: dev
+      artifact_run_id: >-
+        ${{ github.event_name == 'workflow_run'
+            && github.event.workflow_run.id
+            || inputs.run_id }}
     secrets: inherit
 
   smoke-dev:
@@ -49,21 +112,36 @@ jobs:
       environment: dev
     secrets: inherit
 
-  # ── Staging — gated by dev smoke tests + GitHub Environment approval ───
+  # ── Staging — triggered by v*.*.*-rc* tag push ──────────────────────────
+  # Tag protection rules enforce who can create these tags.
+  # resolve-artifact finds the CI run for the tagged commit.
   deploy-staging:
-    needs: smoke-dev
-    if: github.event_name == 'workflow_run' && github.event.workflow_run.conclusion == 'success'
+    needs: resolve-artifact
+    if: >-
+      (github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v') &&
+        contains(github.ref, '-rc')) ||
+      (github.event_name == 'workflow_dispatch' && inputs.environment == 'staging')
     permissions:
       contents: read
       id-token: write
+      actions: read
     uses: ./.github/workflows/_deploy-env.yml
     with:
       environment: staging
+      artifact_run_id: >-
+        ${{ github.event_name == 'push'
+            && needs.resolve-artifact.outputs.run_id
+            || inputs.run_id }}
     secrets: inherit
 
   smoke-staging:
     needs: deploy-staging
-    if: github.event_name == 'workflow_run' && github.event.workflow_run.conclusion == 'success'
+    if: >-
+      always() && needs.deploy-staging.result == 'success' && (
+        (github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v') &&
+          contains(github.ref, '-rc')) ||
+        (github.event_name == 'workflow_dispatch' && inputs.environment == 'staging')
+      )
     permissions:
       contents: read
     uses: ./.github/workflows/_smoke-test.yml
@@ -71,14 +149,29 @@ jobs:
       environment: staging
     secrets: inherit
 
-  # ── Prod — gated by staging smoke tests + GitHub Environment approval ──
+  # ── Prod — triggered by v*.*.* tag push (no -rc suffix) ─────────────────
+  # For the normal release path: smoke-staging must pass before prod deploys.
+  # For direct prod hotfix (push v*.*.* without a prior -rc): smoke-staging is
+  # skipped; always() lets this job evaluate its own condition. Tag protection
+  # rules are the sole gate in that case — only release managers can push prod tags.
   deploy-prod:
-    needs: smoke-staging
-    if: github.event_name == 'workflow_run' && github.event.workflow_run.conclusion == 'success'
+    needs: [resolve-artifact, smoke-staging]
+    if: >-
+      always() && (
+        (github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v') &&
+          !contains(github.ref, '-rc') &&
+          (needs.smoke-staging.result == 'success' || needs.smoke-staging.result == 'skipped')) ||
+        (github.event_name == 'workflow_dispatch' && inputs.environment == 'prod')
+      )
     permissions:
       contents: read
       id-token: write
+      actions: read
     uses: ./.github/workflows/_deploy-env.yml
     with:
       environment: prod
+      artifact_run_id: >-
+        ${{ github.event_name == 'push'
+            && needs.resolve-artifact.outputs.run_id
+            || inputs.run_id }}
     secrets: inherit

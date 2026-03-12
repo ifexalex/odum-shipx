@@ -479,3 +479,87 @@ resource "aws_lambda_permission" "scheduled_eventbridge" {
   principal     = "events.amazonaws.com"
   source_arn    = var.scheduled_rule_arns[each.value.rule_key]
 }
+
+# ---------------------------------------------------------------------------
+# Migration Lambda — runs Alembic upgrade head, invoked by the deploy pipeline
+# before service code is deployed. No API Gateway or EventBridge trigger.
+# ---------------------------------------------------------------------------
+
+resource "aws_cloudwatch_log_group" "migrate" {
+  name              = "/aws/lambda/${local.name_prefix}-migrate"
+  retention_in_days = local.log_retention_days
+  tags              = local.common_tags
+}
+
+resource "aws_iam_role" "migrate" {
+  name                 = "${local.name_prefix}-migrate-role"
+  assume_role_policy   = data.aws_iam_policy_document.lambda_assume.json
+  permissions_boundary = var.permissions_boundary_arn
+  tags                 = local.common_tags
+}
+
+resource "aws_iam_role_policy_attachment" "migrate_basic_execution" {
+  role       = aws_iam_role.migrate.name
+  policy_arn = "arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole"
+}
+
+resource "aws_iam_role_policy_attachment" "migrate_vpc_access" {
+  role       = aws_iam_role.migrate.name
+  policy_arn = "arn:aws:iam::aws:policy/service-role/AWSLambdaVPCAccessExecutionRole"
+}
+
+resource "aws_iam_role_policy" "migrate_db_access" {
+  name = "${local.name_prefix}-migrate-db"
+  role = aws_iam_role.migrate.id
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Effect   = "Allow"
+        Action   = ["secretsmanager:GetSecretValue"]
+        Resource = [var.db_secret_arn]
+      },
+      {
+        Effect   = "Allow"
+        Action   = ["rds-db:connect"]
+        Resource = ["${var.cluster_arn}/*"]
+      },
+    ]
+  })
+}
+
+resource "aws_lambda_function" "migrate" {
+  function_name = "${local.name_prefix}-migrate"
+  role          = aws_iam_role.migrate.arn
+  runtime       = "python3.12"
+  handler       = "handler.lambda_handler"
+  memory_size   = 256
+  timeout       = 300
+
+  # Placeholder package — the deploy pipeline overwrites with update-function-code
+  # on every deploy run. The package must exist at creation time for Terraform apply.
+  filename         = data.archive_file.services_code.output_path
+  source_code_hash = data.archive_file.services_code.output_base64sha256
+
+  layers = [aws_lambda_layer_version.shared.arn]
+
+  vpc_config {
+    subnet_ids         = var.private_subnet_ids
+    security_group_ids = [var.lambda_security_group_id]
+  }
+
+  environment {
+    variables = {
+      DATABASE_HOST  = var.rds_proxy_endpoint
+      DATABASE_NAME  = var.db_name
+      DATABASE_USER  = "postgres"
+      DATABASE_PORT  = "5432"
+      DB_SECRET_ARN  = var.db_secret_arn
+      ENVIRONMENT    = var.environment
+    }
+  }
+
+  depends_on = [aws_cloudwatch_log_group.migrate]
+
+  tags = local.common_tags
+}
