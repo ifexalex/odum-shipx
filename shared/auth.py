@@ -77,14 +77,17 @@ def _parse_role(claims: dict[str, Any], tenant_id: str) -> UserRole:
     """
     groups_raw: str = claims.get("cognito:groups", "") or ""
 
-    # Handle both comma-separated string and JSON array string
+    # Handle both comma-separated string and JSON array string.
+    # API Gateway HTTP API v2 passes cognito:groups as "[group1,group2]" — unquoted values,
+    # not valid JSON. json.loads raises ValueError; fall back to stripping brackets.
     if groups_raw.startswith("["):
         import json
 
         try:
             groups: list[str] = json.loads(groups_raw)
         except ValueError:
-            groups = []
+            inner = groups_raw.strip("[]")
+            groups = [g.strip() for g in inner.split(",") if g.strip()]
     else:
         groups = [g.strip() for g in groups_raw.split(",") if g.strip()]
 
