@@ -282,6 +282,8 @@ locals {
     email_smtp     = "com.amazonaws.${data.aws_region.current.name}.email-smtp"
     secretsmanager = "com.amazonaws.${data.aws_region.current.name}.secretsmanager"
     logs           = "com.amazonaws.${data.aws_region.current.name}.logs"
+    cognito_idp    = "com.amazonaws.${data.aws_region.current.name}.cognito-idp"
+    kms            = "com.amazonaws.${data.aws_region.current.name}.kms"
   }
 }
 
