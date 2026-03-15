@@ -318,6 +318,7 @@ data "aws_iam_policy_document" "terraform_operator" {
       "rds:DescribeEngineDefaultClusterParameters",
       "rds:DescribeDBEngineVersions",
       "rds:DescribeOrderableDBInstanceOptions",
+      "rds:DescribeDBProxyTargets",
     ]
     # Global cluster ARNs have no region component; can't be scoped to logistics-*
     resources = ["*"]
