@@ -230,286 +230,493 @@
   "item": [
     {
       "name": "0. Auth (Cognito)",
-      "description": "All auth operations call Cognito directly \u2014 not through the ShipX API.\n\n**Typical flow:**\n1. Run **Login** \u2192 tokens auto-stored in collection variables\n2. If response contains `NEW_PASSWORD_REQUIRED`, run **New Password Challenge**\n3. Every subsequent API request sends `id_token` as Bearer automatically\n\n**Switch users:** update `cognito_username` + `cognito_password` in collection Variables tab, then run Login again.",
+      "description": "All auth operations call Cognito directly via the pre-request script.\n\n**How to use:**\n1. Fill `cognito_username`, `cognito_password` in the collection **Variables** tab\n2. Click **Send** on any request \u2014 the pre-request script calls Cognito\n3. Check the **Test Results** tab for pass/fail and **Console** (View \u2192 Console) for details\n\n**Why pre-request scripts?** Postman's native request engine adds headers that confuse the Cognito endpoint. `pm.sendRequest` sends headers exactly as specified.\n\n**Switch users:** change `cognito_username` + `cognito_password` in Variables, run Login again.",
+      "auth": {
+        "type": "noauth"
+      },
       "item": [
         {
           "name": "Login",
+          "description": "Logs in with cognito_username + cognito_password. Tokens stored automatically.\nIf first login, response will show NEW_PASSWORD_REQUIRED \u2014 run New Password Challenge next.",
           "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const clientId = pm.variables.get('cognito_client_id');",
+                  "const region   = pm.variables.get('cognito_region') || 'eu-west-1';",
+                  "const payload = {",
+                  "    AuthFlow: 'USER_PASSWORD_AUTH',",
+                  "    ClientId: clientId,",
+                  "    AuthParameters: {",
+                  "        USERNAME: pm.variables.get('cognito_username'),",
+                  "        PASSWORD: pm.variables.get('cognito_password')",
+                  "    }",
+                  "};",
+                  "pm.sendRequest({",
+                  "    url: 'https://cognito-idp.' + region + '.amazonaws.com/',",
+                  "    method: 'POST',",
+                  "    header: [",
+                  "        { key: 'Content-Type', value: 'application/x-amz-json-1.1' },",
+                  "        { key: 'X-Amz-Target', value: 'AmazonCognitoIdentityProviderService.InitiateAuth' }",
+                  "    ],",
+                  "    body: { mode: 'raw', raw: JSON.stringify(payload) }",
+                  "}, (err, res) => {",
+                  "    if (err) { console.error('Request error:', err); return; }",
+                  "    const body = res.json();",
+                  "    pm.collectionVariables.set('_cognito_response', JSON.stringify(body));",
+                  "    if (body.AuthenticationResult) {",
+                  "        const r = body.AuthenticationResult;",
+                  "        pm.collectionVariables.set('id_token',      r.IdToken);",
+                  "        pm.collectionVariables.set('access_token',  r.AccessToken);",
+                  "        pm.collectionVariables.set('refresh_token', r.RefreshToken);",
+                  "        pm.collectionVariables.set('token_expires_at', String(Date.now() + 55 * 60 * 1000));",
+                  "        console.log('Logged in \u2014 tokens stored.');",
+                  "    } else if (body.ChallengeName === 'NEW_PASSWORD_REQUIRED') {",
+                  "        pm.collectionVariables.set('auth_session', body.Session);",
+                  "        console.warn('NEW_PASSWORD_REQUIRED: run the New Password Challenge request.');",
+                  "    } else {",
+                  "        console.error('Login failed:', JSON.stringify(body));",
+                  "    }",
+                  "});"
+                ]
+              }
+            },
             {
               "listen": "test",
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "const body = pm.response.json();",
+                  "const raw = pm.collectionVariables.get('_cognito_response');",
+                  "if (!raw) { pm.test('No Cognito response stored', () => pm.expect(false).to.be.true); return; }",
+                  "const body = JSON.parse(raw);",
                   "if (body.AuthenticationResult) {",
-                  "    const r = body.AuthenticationResult;",
-                  "    pm.collectionVariables.set('id_token',      r.IdToken);",
-                  "    pm.collectionVariables.set('access_token',  r.AccessToken);",
-                  "    pm.collectionVariables.set('refresh_token', r.RefreshToken);",
-                  "    pm.collectionVariables.set('token_expires_at', String(Date.now() + 55 * 60 * 1000));",
-                  "    console.log('Logged in \u2014 tokens stored.');",
-                  "} else if (body.ChallengeName === 'NEW_PASSWORD_REQUIRED') {",
-                  "    pm.collectionVariables.set('auth_session', body.Session);",
-                  "    console.warn('NEW_PASSWORD_REQUIRED \u2014 run the New Password Challenge request.');",
+                  "    pm.test('Success \u2014 tokens stored in collection variables', () => pm.expect(true).to.be.true);",
+                  "    console.log('id_token:', pm.collectionVariables.get('id_token').substring(0, 40) + '...');",
+                  "} else if (body.ChallengeName) {",
+                  "    pm.test('Challenge: ' + body.ChallengeName + ' \u2014 see console for next step', () => pm.expect(true).to.be.true);",
+                  "} else if (body.__type) {",
+                  "    pm.test('Cognito error: ' + body.__type, () => pm.expect(false).to.be.true);",
+                  "    console.error(JSON.stringify(body));",
                   "} else {",
-                  "    console.error('Login failed:', JSON.stringify(body));",
+                  "    pm.test('Unexpected response', () => pm.expect(false).to.be.true);",
+                  "    console.log(JSON.stringify(body));",
                   "}"
                 ]
               }
             }
           ],
           "request": {
-            "method": "POST",
-            "header": [
-              {
-                "key": "Content-Type",
-                "value": "application/x-amz-json-1.1",
-                "type": "text"
-              },
-              {
-                "key": "X-Amz-Target",
-                "value": "AmazonCognitoIdentityProviderService.InitiateAuth",
-                "type": "text"
-              }
-            ],
-            "body": {
-              "mode": "raw",
-              "raw": "{\n  \"AuthFlow\": \"USER_PASSWORD_AUTH\",\n  \"ClientId\": \"{{cognito_client_id}}\",\n  \"AuthParameters\": {\n    \"USERNAME\": \"{{cognito_username}}\",\n    \"PASSWORD\": \"{{cognito_password}}\"\n  }\n}"
+            "auth": {
+              "type": "noauth"
             },
+            "method": "GET",
+            "header": [],
             "url": {
-              "raw": "https://cognito-idp.eu-west-1.amazonaws.com/",
-              "protocol": "https",
+              "raw": "{{base_url}}/v1/health",
               "host": [
-                "cognito-idp",
-                "eu-west-1",
-                "amazonaws",
-                "com"
+                "{{base_url}}"
               ],
               "path": [
-                ""
+                "v1",
+                "health"
               ]
-            }
+            },
+            "description": "The actual Cognito call runs in the pre-request script via pm.sendRequest (which reliably sends headers). Check the Postman Console (View \u2192 Console) and the Test Results tab for the outcome."
           }
         },
         {
           "name": "New Password Challenge (first login)",
-          "description": "Run after Login returns NEW_PASSWORD_REQUIRED.\nSet `cognito_new_password` in the collection Variables tab first.",
+          "description": "Run after Login shows NEW_PASSWORD_REQUIRED.\nSet cognito_new_password in collection Variables first.",
           "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const clientId = pm.variables.get('cognito_client_id');",
+                  "const region   = pm.variables.get('cognito_region') || 'eu-west-1';",
+                  "const payload = {",
+                  "    ChallengeName: 'NEW_PASSWORD_REQUIRED',",
+                  "    ClientId: clientId,",
+                  "    Session: pm.collectionVariables.get('auth_session'),",
+                  "    ChallengeResponses: {",
+                  "        USERNAME: pm.variables.get('cognito_username'),",
+                  "        NEW_PASSWORD: pm.variables.get('cognito_new_password')",
+                  "    }",
+                  "};",
+                  "pm.sendRequest({",
+                  "    url: 'https://cognito-idp.' + region + '.amazonaws.com/',",
+                  "    method: 'POST',",
+                  "    header: [",
+                  "        { key: 'Content-Type', value: 'application/x-amz-json-1.1' },",
+                  "        { key: 'X-Amz-Target', value: 'AmazonCognitoIdentityProviderService.RespondToAuthChallenge' }",
+                  "    ],",
+                  "    body: { mode: 'raw', raw: JSON.stringify(payload) }",
+                  "}, (err, res) => {",
+                  "    if (err) { console.error('Request error:', err); return; }",
+                  "    const body = res.json();",
+                  "    pm.collectionVariables.set('_cognito_response', JSON.stringify(body));",
+                  "    if (body.AuthenticationResult) {",
+                  "        const r = body.AuthenticationResult;",
+                  "        pm.collectionVariables.set('id_token',      r.IdToken);",
+                  "        pm.collectionVariables.set('access_token',  r.AccessToken);",
+                  "        pm.collectionVariables.set('refresh_token', r.RefreshToken);",
+                  "        pm.collectionVariables.set('token_expires_at', String(Date.now() + 55 * 60 * 1000));",
+                  "        console.log('Password set \u2014 logged in.');",
+                  "    } else {",
+                  "        console.error('Challenge failed:', JSON.stringify(body));",
+                  "    }",
+                  "});"
+                ]
+              }
+            },
             {
               "listen": "test",
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "const body = pm.response.json();",
+                  "const raw = pm.collectionVariables.get('_cognito_response');",
+                  "if (!raw) { pm.test('No Cognito response stored', () => pm.expect(false).to.be.true); return; }",
+                  "const body = JSON.parse(raw);",
                   "if (body.AuthenticationResult) {",
-                  "    const r = body.AuthenticationResult;",
-                  "    pm.collectionVariables.set('id_token',      r.IdToken);",
-                  "    pm.collectionVariables.set('access_token',  r.AccessToken);",
-                  "    pm.collectionVariables.set('refresh_token', r.RefreshToken);",
-                  "    pm.collectionVariables.set('token_expires_at', String(Date.now() + 55 * 60 * 1000));",
-                  "    console.log('Password set \u2014 tokens stored.');",
+                  "    pm.test('Success \u2014 tokens stored in collection variables', () => pm.expect(true).to.be.true);",
+                  "    console.log('id_token:', pm.collectionVariables.get('id_token').substring(0, 40) + '...');",
+                  "} else if (body.ChallengeName) {",
+                  "    pm.test('Challenge: ' + body.ChallengeName + ' \u2014 see console for next step', () => pm.expect(true).to.be.true);",
+                  "} else if (body.__type) {",
+                  "    pm.test('Cognito error: ' + body.__type, () => pm.expect(false).to.be.true);",
+                  "    console.error(JSON.stringify(body));",
                   "} else {",
-                  "    console.error('Challenge failed:', JSON.stringify(body));",
+                  "    pm.test('Unexpected response', () => pm.expect(false).to.be.true);",
+                  "    console.log(JSON.stringify(body));",
                   "}"
                 ]
               }
             }
           ],
           "request": {
-            "method": "POST",
-            "header": [
-              {
-                "key": "Content-Type",
-                "value": "application/x-amz-json-1.1",
-                "type": "text"
-              },
-              {
-                "key": "X-Amz-Target",
-                "value": "AmazonCognitoIdentityProviderService.RespondToAuthChallenge",
-                "type": "text"
-              }
-            ],
-            "body": {
-              "mode": "raw",
-              "raw": "{\n  \"ChallengeName\": \"NEW_PASSWORD_REQUIRED\",\n  \"ClientId\": \"{{cognito_client_id}}\",\n  \"Session\": \"{{auth_session}}\",\n  \"ChallengeResponses\": {\n    \"USERNAME\": \"{{cognito_username}}\",\n    \"NEW_PASSWORD\": \"{{cognito_new_password}}\"\n  }\n}"
+            "auth": {
+              "type": "noauth"
             },
+            "method": "GET",
+            "header": [],
             "url": {
-              "raw": "https://cognito-idp.eu-west-1.amazonaws.com/",
-              "protocol": "https",
+              "raw": "{{base_url}}/v1/health",
               "host": [
-                "cognito-idp",
-                "eu-west-1",
-                "amazonaws",
-                "com"
+                "{{base_url}}"
               ],
               "path": [
-                ""
+                "v1",
+                "health"
               ]
-            }
+            },
+            "description": "The actual Cognito call runs in the pre-request script via pm.sendRequest (which reliably sends headers). Check the Postman Console (View \u2192 Console) and the Test Results tab for the outcome."
           }
         },
         {
           "name": "Change Password (logged in)",
-          "description": "Requires a valid `access_token` (run Login first).\nSet `cognito_old_password` and `cognito_new_password` in collection Variables.",
-          "request": {
-            "method": "POST",
-            "header": [
-              {
-                "key": "Content-Type",
-                "value": "application/x-amz-json-1.1",
-                "type": "text"
-              },
-              {
-                "key": "X-Amz-Target",
-                "value": "AmazonCognitoIdentityProviderService.ChangePassword",
-                "type": "text"
-              }
-            ],
-            "body": {
-              "mode": "raw",
-              "raw": "{\n  \"AccessToken\": \"{{access_token}}\",\n  \"PreviousPassword\": \"{{cognito_old_password}}\",\n  \"ProposedPassword\": \"{{cognito_new_password}}\"\n}"
-            },
-            "url": {
-              "raw": "https://cognito-idp.eu-west-1.amazonaws.com/",
-              "protocol": "https",
-              "host": [
-                "cognito-idp",
-                "eu-west-1",
-                "amazonaws",
-                "com"
-              ],
-              "path": [
-                ""
-              ]
-            }
-          }
-        },
-        {
-          "name": "Forgot Password \u2014 Send Code",
-          "description": "Step 1: Cognito emails a 6-digit reset code to the user.\nSet `cognito_username` to the account email.",
-          "request": {
-            "method": "POST",
-            "header": [
-              {
-                "key": "Content-Type",
-                "value": "application/x-amz-json-1.1",
-                "type": "text"
-              },
-              {
-                "key": "X-Amz-Target",
-                "value": "AmazonCognitoIdentityProviderService.ForgotPassword",
-                "type": "text"
-              }
-            ],
-            "body": {
-              "mode": "raw",
-              "raw": "{\n  \"ClientId\": \"{{cognito_client_id}}\",\n  \"Username\": \"{{cognito_username}}\"\n}"
-            },
-            "url": {
-              "raw": "https://cognito-idp.eu-west-1.amazonaws.com/",
-              "protocol": "https",
-              "host": [
-                "cognito-idp",
-                "eu-west-1",
-                "amazonaws",
-                "com"
-              ],
-              "path": [
-                ""
-              ]
-            }
-          }
-        },
-        {
-          "name": "Forgot Password \u2014 Confirm Reset",
-          "description": "Step 2: enter the code from the email + new password.\nSet `cognito_reset_code` and `cognito_new_password` in collection Variables.",
-          "request": {
-            "method": "POST",
-            "header": [
-              {
-                "key": "Content-Type",
-                "value": "application/x-amz-json-1.1",
-                "type": "text"
-              },
-              {
-                "key": "X-Amz-Target",
-                "value": "AmazonCognitoIdentityProviderService.ConfirmForgotPassword",
-                "type": "text"
-              }
-            ],
-            "body": {
-              "mode": "raw",
-              "raw": "{\n  \"ClientId\": \"{{cognito_client_id}}\",\n  \"Username\": \"{{cognito_username}}\",\n  \"ConfirmationCode\": \"{{cognito_reset_code}}\",\n  \"Password\": \"{{cognito_new_password}}\"\n}"
-            },
-            "url": {
-              "raw": "https://cognito-idp.eu-west-1.amazonaws.com/",
-              "protocol": "https",
-              "host": [
-                "cognito-idp",
-                "eu-west-1",
-                "amazonaws",
-                "com"
-              ],
-              "path": [
-                ""
-              ]
-            }
-          }
-        },
-        {
-          "name": "Refresh Token",
-          "description": "Get a new id_token silently using the refresh_token (valid 30 days).\nRun when the id_token expires after 60 minutes.",
+          "description": "Changes password for the currently logged-in user.\nSet cognito_old_password and cognito_new_password in collection Variables.",
           "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const clientId = pm.variables.get('cognito_client_id');",
+                  "const region   = pm.variables.get('cognito_region') || 'eu-west-1';",
+                  "const payload = {",
+                  "    AccessToken: pm.collectionVariables.get('access_token'),",
+                  "    PreviousPassword: pm.variables.get('cognito_old_password'),",
+                  "    ProposedPassword: pm.variables.get('cognito_new_password')",
+                  "};",
+                  "pm.sendRequest({",
+                  "    url: 'https://cognito-idp.' + region + '.amazonaws.com/',",
+                  "    method: 'POST',",
+                  "    header: [",
+                  "        { key: 'Content-Type', value: 'application/x-amz-json-1.1' },",
+                  "        { key: 'X-Amz-Target', value: 'AmazonCognitoIdentityProviderService.ChangePassword' }",
+                  "    ],",
+                  "    body: { mode: 'raw', raw: JSON.stringify(payload) }",
+                  "}, (err, res) => {",
+                  "    if (err) { console.error('Request error:', err); return; }",
+                  "    const body = res.json();",
+                  "    pm.collectionVariables.set('_cognito_response', JSON.stringify(body));",
+                  "    if (!body.__type) {",
+                  "        console.log('Password changed successfully.');",
+                  "    } else {",
+                  "        console.error('Change password failed:', JSON.stringify(body));",
+                  "    }",
+                  "});"
+                ]
+              }
+            },
             {
               "listen": "test",
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "const body = pm.response.json();",
-                  "if (body.AuthenticationResult) {",
-                  "    const r = body.AuthenticationResult;",
-                  "    pm.collectionVariables.set('id_token',     r.IdToken);",
-                  "    pm.collectionVariables.set('access_token', r.AccessToken);",
-                  "    pm.collectionVariables.set('token_expires_at', String(Date.now() + 55 * 60 * 1000));",
-                  "    console.log('Token refreshed.');",
+                  "const raw = pm.collectionVariables.get('_cognito_response');",
+                  "if (!raw) { pm.test('No response', () => pm.expect(false).to.be.true); return; }",
+                  "const body = JSON.parse(raw);",
+                  "if (!body.__type) {",
+                  "    pm.test('Password changed successfully', () => pm.expect(true).to.be.true);",
                   "} else {",
-                  "    console.error('Refresh failed:', JSON.stringify(body));",
+                  "    pm.test('Failed: ' + body.__type, () => pm.expect(false).to.be.true);",
+                  "    console.error(JSON.stringify(body));",
                   "}"
                 ]
               }
             }
           ],
           "request": {
-            "method": "POST",
-            "header": [
-              {
-                "key": "Content-Type",
-                "value": "application/x-amz-json-1.1",
-                "type": "text"
-              },
-              {
-                "key": "X-Amz-Target",
-                "value": "AmazonCognitoIdentityProviderService.InitiateAuth",
-                "type": "text"
-              }
-            ],
-            "body": {
-              "mode": "raw",
-              "raw": "{\n  \"AuthFlow\": \"REFRESH_TOKEN_AUTH\",\n  \"ClientId\": \"{{cognito_client_id}}\",\n  \"AuthParameters\": {\n    \"REFRESH_TOKEN\": \"{{refresh_token}}\"\n  }\n}"
+            "auth": {
+              "type": "noauth"
             },
+            "method": "GET",
+            "header": [],
             "url": {
-              "raw": "https://cognito-idp.eu-west-1.amazonaws.com/",
-              "protocol": "https",
+              "raw": "{{base_url}}/v1/health",
               "host": [
-                "cognito-idp",
-                "eu-west-1",
-                "amazonaws",
-                "com"
+                "{{base_url}}"
               ],
               "path": [
-                ""
+                "v1",
+                "health"
               ]
+            },
+            "description": "The actual Cognito call runs in the pre-request script via pm.sendRequest (which reliably sends headers). Check the Postman Console (View \u2192 Console) and the Test Results tab for the outcome."
+          }
+        },
+        {
+          "name": "Forgot Password \u2014 Send Code",
+          "description": "Step 1: sends a 6-digit reset code to the user's email.\nSet cognito_username to the account email.",
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const clientId = pm.variables.get('cognito_client_id');",
+                  "const region   = pm.variables.get('cognito_region') || 'eu-west-1';",
+                  "const payload = {",
+                  "    ClientId: clientId,",
+                  "    Username: pm.variables.get('cognito_username')",
+                  "};",
+                  "pm.sendRequest({",
+                  "    url: 'https://cognito-idp.' + region + '.amazonaws.com/',",
+                  "    method: 'POST',",
+                  "    header: [",
+                  "        { key: 'Content-Type', value: 'application/x-amz-json-1.1' },",
+                  "        { key: 'X-Amz-Target', value: 'AmazonCognitoIdentityProviderService.ForgotPassword' }",
+                  "    ],",
+                  "    body: { mode: 'raw', raw: JSON.stringify(payload) }",
+                  "}, (err, res) => {",
+                  "    if (err) { console.error('Request error:', err); return; }",
+                  "    const body = res.json();",
+                  "    pm.collectionVariables.set('_cognito_response', JSON.stringify(body));",
+                  "    if (body.CodeDeliveryDetails) {",
+                  "        console.log('Reset code sent to:', body.CodeDeliveryDetails.Destination);",
+                  "    } else if (body.__type) {",
+                  "        console.error('ForgotPassword failed:', JSON.stringify(body));",
+                  "    } else {",
+                  "        console.log('Code sent (no delivery details returned).');",
+                  "    }",
+                  "});"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const raw = pm.collectionVariables.get('_cognito_response');",
+                  "if (!raw) { pm.test('No response', () => pm.expect(false).to.be.true); return; }",
+                  "const body = JSON.parse(raw);",
+                  "if (body.CodeDeliveryDetails || !body.__type) {",
+                  "    pm.test('Reset code sent \u2014 check email', () => pm.expect(true).to.be.true);",
+                  "    if (body.CodeDeliveryDetails) console.log('Sent to:', body.CodeDeliveryDetails.Destination);",
+                  "} else {",
+                  "    pm.test('Failed: ' + body.__type, () => pm.expect(false).to.be.true);",
+                  "    console.error(JSON.stringify(body));",
+                  "}"
+                ]
+              }
             }
+          ],
+          "request": {
+            "auth": {
+              "type": "noauth"
+            },
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/v1/health",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "v1",
+                "health"
+              ]
+            },
+            "description": "The actual Cognito call runs in the pre-request script via pm.sendRequest (which reliably sends headers). Check the Postman Console (View \u2192 Console) and the Test Results tab for the outcome."
+          }
+        },
+        {
+          "name": "Forgot Password \u2014 Confirm Reset",
+          "description": "Step 2: reset password using the emailed code.\nSet cognito_reset_code and cognito_new_password in collection Variables.",
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const clientId = pm.variables.get('cognito_client_id');",
+                  "const region   = pm.variables.get('cognito_region') || 'eu-west-1';",
+                  "const payload = {",
+                  "    ClientId: clientId,",
+                  "    Username: pm.variables.get('cognito_username'),",
+                  "    ConfirmationCode: pm.variables.get('cognito_reset_code'),",
+                  "    Password: pm.variables.get('cognito_new_password')",
+                  "};",
+                  "pm.sendRequest({",
+                  "    url: 'https://cognito-idp.' + region + '.amazonaws.com/',",
+                  "    method: 'POST',",
+                  "    header: [",
+                  "        { key: 'Content-Type', value: 'application/x-amz-json-1.1' },",
+                  "        { key: 'X-Amz-Target', value: 'AmazonCognitoIdentityProviderService.ConfirmForgotPassword' }",
+                  "    ],",
+                  "    body: { mode: 'raw', raw: JSON.stringify(payload) }",
+                  "}, (err, res) => {",
+                  "    if (err) { console.error('Request error:', err); return; }",
+                  "    const body = res.json();",
+                  "    pm.collectionVariables.set('_cognito_response', JSON.stringify(body));",
+                  "    if (!body.__type) {",
+                  "        console.log('Password reset successfully. Run Login to get new tokens.');",
+                  "    } else {",
+                  "        console.error('Confirm reset failed:', JSON.stringify(body));",
+                  "    }",
+                  "});"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const raw = pm.collectionVariables.get('_cognito_response');",
+                  "if (!raw) { pm.test('No response', () => pm.expect(false).to.be.true); return; }",
+                  "const body = JSON.parse(raw);",
+                  "if (!body.__type) {",
+                  "    pm.test('Password reset \u2014 run Login to get new tokens', () => pm.expect(true).to.be.true);",
+                  "} else {",
+                  "    pm.test('Failed: ' + body.__type, () => pm.expect(false).to.be.true);",
+                  "    console.error(JSON.stringify(body));",
+                  "}"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "auth": {
+              "type": "noauth"
+            },
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/v1/health",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "v1",
+                "health"
+              ]
+            },
+            "description": "The actual Cognito call runs in the pre-request script via pm.sendRequest (which reliably sends headers). Check the Postman Console (View \u2192 Console) and the Test Results tab for the outcome."
+          }
+        },
+        {
+          "name": "Refresh Token",
+          "description": "Gets a new id_token using the refresh_token (valid 30 days).\nRun when id_token expires after 60 minutes.",
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const clientId = pm.variables.get('cognito_client_id');",
+                  "const region   = pm.variables.get('cognito_region') || 'eu-west-1';",
+                  "const payload = {",
+                  "    AuthFlow: 'REFRESH_TOKEN_AUTH',",
+                  "    ClientId: clientId,",
+                  "    AuthParameters: {",
+                  "        REFRESH_TOKEN: pm.collectionVariables.get('refresh_token')",
+                  "    }",
+                  "};",
+                  "pm.sendRequest({",
+                  "    url: 'https://cognito-idp.' + region + '.amazonaws.com/',",
+                  "    method: 'POST',",
+                  "    header: [",
+                  "        { key: 'Content-Type', value: 'application/x-amz-json-1.1' },",
+                  "        { key: 'X-Amz-Target', value: 'AmazonCognitoIdentityProviderService.InitiateAuth' }",
+                  "    ],",
+                  "    body: { mode: 'raw', raw: JSON.stringify(payload) }",
+                  "}, (err, res) => {",
+                  "    if (err) { console.error('Request error:', err); return; }",
+                  "    const body = res.json();",
+                  "    pm.collectionVariables.set('_cognito_response', JSON.stringify(body));",
+                  "    if (body.AuthenticationResult) {",
+                  "        const r = body.AuthenticationResult;",
+                  "        pm.collectionVariables.set('id_token',     r.IdToken);",
+                  "        pm.collectionVariables.set('access_token', r.AccessToken);",
+                  "        pm.collectionVariables.set('token_expires_at', String(Date.now() + 55 * 60 * 1000));",
+                  "        console.log('Token refreshed.');",
+                  "    } else {",
+                  "        console.error('Refresh failed:', JSON.stringify(body));",
+                  "    }",
+                  "});"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const raw = pm.collectionVariables.get('_cognito_response');",
+                  "if (!raw) { pm.test('No response', () => pm.expect(false).to.be.true); return; }",
+                  "const body = JSON.parse(raw);",
+                  "if (body.AuthenticationResult) {",
+                  "    pm.test('Token refreshed \u2014 new id_token stored', () => pm.expect(true).to.be.true);",
+                  "} else {",
+                  "    pm.test('Failed: ' + (body.__type || JSON.stringify(body)), () => pm.expect(false).to.be.true);",
+                  "}"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "auth": {
+              "type": "noauth"
+            },
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/v1/health",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "v1",
+                "health"
+              ]
+            },
+            "description": "The actual Cognito call runs in the pre-request script via pm.sendRequest (which reliably sends headers). Check the Postman Console (View \u2192 Console) and the Test Results tab for the outcome."
           }
         }
       ]
