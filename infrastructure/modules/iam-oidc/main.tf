@@ -288,6 +288,7 @@ data "aws_iam_policy_document" "terraform_operator" {
     resources = [
       "arn:aws:lambda:*:${local.account_id}:function:${local.name_prefix}-*",
       "arn:aws:lambda:*:${local.account_id}:layer:${local.name_prefix}-*",
+      "arn:aws:lambda:*:${local.account_id}:event-source-mapping:*",
     ]
   }
 
