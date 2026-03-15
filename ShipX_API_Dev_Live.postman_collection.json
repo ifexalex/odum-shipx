@@ -230,7 +230,7 @@
   "item": [
     {
       "name": "0. Auth (Cognito)",
-      "description": "All auth operations go directly to Cognito \u2014 not through the ShipX API.\n\n**Flow:**\n1. Run **Login** \u2192 tokens stored automatically in collection variables\n2. If first login returns `NEW_PASSWORD_REQUIRED`, run **New Password Challenge**\n3. Every API request then sends `id_token` as Bearer automatically via the pre-request script\n\n**Switching users:** change `cognito_username` + `cognito_password` in collection Variables, then run Login again.",
+      "description": "All auth operations call Cognito directly \u2014 not through the ShipX API.\n\n**Typical flow:**\n1. Run **Login** \u2192 tokens auto-stored in collection variables\n2. If response contains `NEW_PASSWORD_REQUIRED`, run **New Password Challenge**\n3. Every subsequent API request sends `id_token` as Bearer automatically\n\n**Switch users:** update `cognito_username` + `cognito_password` in collection Variables tab, then run Login again.",
       "item": [
         {
           "name": "Login",
@@ -241,17 +241,16 @@
                 "type": "text/javascript",
                 "exec": [
                   "const body = pm.response.json();",
-                  "",
                   "if (body.AuthenticationResult) {",
                   "    const r = body.AuthenticationResult;",
                   "    pm.collectionVariables.set('id_token',      r.IdToken);",
                   "    pm.collectionVariables.set('access_token',  r.AccessToken);",
                   "    pm.collectionVariables.set('refresh_token', r.RefreshToken);",
                   "    pm.collectionVariables.set('token_expires_at', String(Date.now() + 55 * 60 * 1000));",
-                  "    console.log('Logged in. Tokens stored in collection variables.');",
+                  "    console.log('Logged in \u2014 tokens stored.');",
                   "} else if (body.ChallengeName === 'NEW_PASSWORD_REQUIRED') {",
                   "    pm.collectionVariables.set('auth_session', body.Session);",
-                  "    console.warn('NEW_PASSWORD_REQUIRED \u2014 run the \"New Password Challenge\" request.');",
+                  "    console.warn('NEW_PASSWORD_REQUIRED \u2014 run the New Password Challenge request.');",
                   "} else {",
                   "    console.error('Login failed:', JSON.stringify(body));",
                   "}"
@@ -264,33 +263,37 @@
             "header": [
               {
                 "key": "Content-Type",
-                "value": "application/x-amz-json-1.1"
+                "value": "application/x-amz-json-1.1",
+                "type": "text"
               },
               {
                 "key": "X-Amz-Target",
-                "value": "AmazonCognitoIdentityProviderService.InitiateAuth"
+                "value": "AmazonCognitoIdentityProviderService.InitiateAuth",
+                "type": "text"
               }
             ],
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"AuthFlow\": \"USER_PASSWORD_AUTH\",\n  \"ClientId\": \"{{cognito_client_id}}\",\n  \"AuthParameters\": {\n    \"USERNAME\": \"{{cognito_username}}\",\n    \"PASSWORD\": \"{{cognito_password}}\"\n  }\n}",
-              "options": {
-                "raw": {
-                  "language": "json"
-                }
-              }
+              "raw": "{\n  \"AuthFlow\": \"USER_PASSWORD_AUTH\",\n  \"ClientId\": \"{{cognito_client_id}}\",\n  \"AuthParameters\": {\n    \"USERNAME\": \"{{cognito_username}}\",\n    \"PASSWORD\": \"{{cognito_password}}\"\n  }\n}"
             },
             "url": {
-              "raw": "https://cognito-idp.{{cognito_region}}.amazonaws.com/",
+              "raw": "https://cognito-idp.eu-west-1.amazonaws.com/",
+              "protocol": "https",
               "host": [
-                "https://cognito-idp.{{cognito_region}}.amazonaws.com/"
+                "cognito-idp",
+                "eu-west-1",
+                "amazonaws",
+                "com"
+              ],
+              "path": [
+                ""
               ]
             }
           }
         },
         {
           "name": "New Password Challenge (first login)",
-          "description": "Run this after Login returns NEW_PASSWORD_REQUIRED.\nSet `cognito_new_password` in collection Variables before sending.",
+          "description": "Run after Login returns NEW_PASSWORD_REQUIRED.\nSet `cognito_new_password` in the collection Variables tab first.",
           "event": [
             {
               "listen": "test",
@@ -304,7 +307,7 @@
                   "    pm.collectionVariables.set('access_token',  r.AccessToken);",
                   "    pm.collectionVariables.set('refresh_token', r.RefreshToken);",
                   "    pm.collectionVariables.set('token_expires_at', String(Date.now() + 55 * 60 * 1000));",
-                  "    console.log('Password set. Tokens stored.');",
+                  "    console.log('Password set \u2014 tokens stored.');",
                   "} else {",
                   "    console.error('Challenge failed:', JSON.stringify(body));",
                   "}"
@@ -317,129 +320,145 @@
             "header": [
               {
                 "key": "Content-Type",
-                "value": "application/x-amz-json-1.1"
+                "value": "application/x-amz-json-1.1",
+                "type": "text"
               },
               {
                 "key": "X-Amz-Target",
-                "value": "AmazonCognitoIdentityProviderService.RespondToAuthChallenge"
+                "value": "AmazonCognitoIdentityProviderService.RespondToAuthChallenge",
+                "type": "text"
               }
             ],
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"ChallengeName\": \"NEW_PASSWORD_REQUIRED\",\n  \"ClientId\": \"{{cognito_client_id}}\",\n  \"Session\": \"{{auth_session}}\",\n  \"ChallengeResponses\": {\n    \"USERNAME\": \"{{cognito_username}}\",\n    \"NEW_PASSWORD\": \"{{cognito_new_password}}\"\n  }\n}",
-              "options": {
-                "raw": {
-                  "language": "json"
-                }
-              }
+              "raw": "{\n  \"ChallengeName\": \"NEW_PASSWORD_REQUIRED\",\n  \"ClientId\": \"{{cognito_client_id}}\",\n  \"Session\": \"{{auth_session}}\",\n  \"ChallengeResponses\": {\n    \"USERNAME\": \"{{cognito_username}}\",\n    \"NEW_PASSWORD\": \"{{cognito_new_password}}\"\n  }\n}"
             },
             "url": {
-              "raw": "https://cognito-idp.{{cognito_region}}.amazonaws.com/",
+              "raw": "https://cognito-idp.eu-west-1.amazonaws.com/",
+              "protocol": "https",
               "host": [
-                "https://cognito-idp.{{cognito_region}}.amazonaws.com/"
+                "cognito-idp",
+                "eu-west-1",
+                "amazonaws",
+                "com"
+              ],
+              "path": [
+                ""
               ]
             }
           }
         },
         {
-          "name": "Change Password",
-          "description": "User must be logged in. Uses access_token (not id_token).\nSet `cognito_old_password` and `cognito_new_password` in collection Variables.",
+          "name": "Change Password (logged in)",
+          "description": "Requires a valid `access_token` (run Login first).\nSet `cognito_old_password` and `cognito_new_password` in collection Variables.",
           "request": {
             "method": "POST",
             "header": [
               {
                 "key": "Content-Type",
-                "value": "application/x-amz-json-1.1"
+                "value": "application/x-amz-json-1.1",
+                "type": "text"
               },
               {
                 "key": "X-Amz-Target",
-                "value": "AmazonCognitoIdentityProviderService.ChangePassword"
+                "value": "AmazonCognitoIdentityProviderService.ChangePassword",
+                "type": "text"
               }
             ],
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"AccessToken\": \"{{access_token}}\",\n  \"PreviousPassword\": \"{{cognito_old_password}}\",\n  \"ProposedPassword\": \"{{cognito_new_password}}\"\n}",
-              "options": {
-                "raw": {
-                  "language": "json"
-                }
-              }
+              "raw": "{\n  \"AccessToken\": \"{{access_token}}\",\n  \"PreviousPassword\": \"{{cognito_old_password}}\",\n  \"ProposedPassword\": \"{{cognito_new_password}}\"\n}"
             },
             "url": {
-              "raw": "https://cognito-idp.{{cognito_region}}.amazonaws.com/",
+              "raw": "https://cognito-idp.eu-west-1.amazonaws.com/",
+              "protocol": "https",
               "host": [
-                "https://cognito-idp.{{cognito_region}}.amazonaws.com/"
+                "cognito-idp",
+                "eu-west-1",
+                "amazonaws",
+                "com"
+              ],
+              "path": [
+                ""
               ]
             }
           }
         },
         {
-          "name": "Forgot Password (send code)",
-          "description": "Step 1 of password reset. Cognito emails a 6-digit code to the user.\nSet `cognito_username` to the user's email before sending.",
+          "name": "Forgot Password \u2014 Send Code",
+          "description": "Step 1: Cognito emails a 6-digit reset code to the user.\nSet `cognito_username` to the account email.",
           "request": {
             "method": "POST",
             "header": [
               {
                 "key": "Content-Type",
-                "value": "application/x-amz-json-1.1"
+                "value": "application/x-amz-json-1.1",
+                "type": "text"
               },
               {
                 "key": "X-Amz-Target",
-                "value": "AmazonCognitoIdentityProviderService.ForgotPassword"
+                "value": "AmazonCognitoIdentityProviderService.ForgotPassword",
+                "type": "text"
               }
             ],
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"ClientId\": \"{{cognito_client_id}}\",\n  \"Username\": \"{{cognito_username}}\"\n}",
-              "options": {
-                "raw": {
-                  "language": "json"
-                }
-              }
+              "raw": "{\n  \"ClientId\": \"{{cognito_client_id}}\",\n  \"Username\": \"{{cognito_username}}\"\n}"
             },
             "url": {
-              "raw": "https://cognito-idp.{{cognito_region}}.amazonaws.com/",
+              "raw": "https://cognito-idp.eu-west-1.amazonaws.com/",
+              "protocol": "https",
               "host": [
-                "https://cognito-idp.{{cognito_region}}.amazonaws.com/"
+                "cognito-idp",
+                "eu-west-1",
+                "amazonaws",
+                "com"
+              ],
+              "path": [
+                ""
               ]
             }
           }
         },
         {
-          "name": "Confirm Forgot Password (reset with code)",
-          "description": "Step 2 of password reset. User enters the code from their email.\nSet `cognito_reset_code` and `cognito_new_password` in collection Variables.",
+          "name": "Forgot Password \u2014 Confirm Reset",
+          "description": "Step 2: enter the code from the email + new password.\nSet `cognito_reset_code` and `cognito_new_password` in collection Variables.",
           "request": {
             "method": "POST",
             "header": [
               {
                 "key": "Content-Type",
-                "value": "application/x-amz-json-1.1"
+                "value": "application/x-amz-json-1.1",
+                "type": "text"
               },
               {
                 "key": "X-Amz-Target",
-                "value": "AmazonCognitoIdentityProviderService.ConfirmForgotPassword"
+                "value": "AmazonCognitoIdentityProviderService.ConfirmForgotPassword",
+                "type": "text"
               }
             ],
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"ClientId\": \"{{cognito_client_id}}\",\n  \"Username\": \"{{cognito_username}}\",\n  \"ConfirmationCode\": \"{{cognito_reset_code}}\",\n  \"Password\": \"{{cognito_new_password}}\"\n}",
-              "options": {
-                "raw": {
-                  "language": "json"
-                }
-              }
+              "raw": "{\n  \"ClientId\": \"{{cognito_client_id}}\",\n  \"Username\": \"{{cognito_username}}\",\n  \"ConfirmationCode\": \"{{cognito_reset_code}}\",\n  \"Password\": \"{{cognito_new_password}}\"\n}"
             },
             "url": {
-              "raw": "https://cognito-idp.{{cognito_region}}.amazonaws.com/",
+              "raw": "https://cognito-idp.eu-west-1.amazonaws.com/",
+              "protocol": "https",
               "host": [
-                "https://cognito-idp.{{cognito_region}}.amazonaws.com/"
+                "cognito-idp",
+                "eu-west-1",
+                "amazonaws",
+                "com"
+              ],
+              "path": [
+                ""
               ]
             }
           }
         },
         {
           "name": "Refresh Token",
-          "description": "Silently get a new id_token using the refresh_token (valid for 30 days).\nRun this when the id_token expires after 60 minutes.",
+          "description": "Get a new id_token silently using the refresh_token (valid 30 days).\nRun when the id_token expires after 60 minutes.",
           "event": [
             {
               "listen": "test",
@@ -465,26 +484,30 @@
             "header": [
               {
                 "key": "Content-Type",
-                "value": "application/x-amz-json-1.1"
+                "value": "application/x-amz-json-1.1",
+                "type": "text"
               },
               {
                 "key": "X-Amz-Target",
-                "value": "AmazonCognitoIdentityProviderService.InitiateAuth"
+                "value": "AmazonCognitoIdentityProviderService.InitiateAuth",
+                "type": "text"
               }
             ],
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"AuthFlow\": \"REFRESH_TOKEN_AUTH\",\n  \"ClientId\": \"{{cognito_client_id}}\",\n  \"AuthParameters\": {\n    \"REFRESH_TOKEN\": \"{{refresh_token}}\"\n  }\n}",
-              "options": {
-                "raw": {
-                  "language": "json"
-                }
-              }
+              "raw": "{\n  \"AuthFlow\": \"REFRESH_TOKEN_AUTH\",\n  \"ClientId\": \"{{cognito_client_id}}\",\n  \"AuthParameters\": {\n    \"REFRESH_TOKEN\": \"{{refresh_token}}\"\n  }\n}"
             },
             "url": {
-              "raw": "https://cognito-idp.{{cognito_region}}.amazonaws.com/",
+              "raw": "https://cognito-idp.eu-west-1.amazonaws.com/",
+              "protocol": "https",
               "host": [
-                "https://cognito-idp.{{cognito_region}}.amazonaws.com/"
+                "cognito-idp",
+                "eu-west-1",
+                "amazonaws",
+                "com"
+              ],
+              "path": [
+                ""
               ]
             }
           }
