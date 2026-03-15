@@ -160,6 +160,18 @@ jobs:
       - name: Build migration zip
         run: |
           mkdir -p build/migrate_pkg
+          # Install alembic + DB driver directly into the package — the shared
+          # layer does not include these; the migrate Lambda must be self-contained.
+          # alembic is pure Python; install normally.
+          pip install alembic==1.13.0 --target build/migrate_pkg --quiet
+          # psycopg2-binary has a C extension. CI runs on linux/amd64 but Lambda
+          # runs on arm64 — use --platform to download the correct binary wheel.
+          pip install psycopg2-binary==2.9.11 \
+            --target build/migrate_pkg \
+            --platform manylinux2014_aarch64 \
+            --python-version 3.12 \
+            --only-binary=:all: \
+            --quiet
           cp -r migrations/ build/migrate_pkg/migrations/
           cp services/migrate/handler.py build/migrate_pkg/handler.py
           cd build/migrate_pkg && zip -r ../../build/migrate.zip .
