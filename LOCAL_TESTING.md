@@ -134,11 +134,23 @@ All local dev commands are in the `Makefile`:
 | `make bootstrap` | Create SQS queues, EventBridge, S3, Secrets Manager in Moto |
 | `make migrate` | Apply database migrations |
 | `make seed` | Seed the database with sample data |
-| `make dev` | Start the local Flask API server on `:3000` |
+| `make dev` | Start the local Flask API server on `:3000` | Single-threaded (`threaded=False`) — see note below.
 | `make test-unit` | Run unit tests (no containers needed) |
 | `make test-integration` | Run integration tests (containers must be running) |
 
 ---
+
+> **Why the dev server is single-threaded.** Flask's `app.run()` defaults to
+> `threaded=True`, but `shared/db.py`'s module-level `_connection` (the
+> warm-Lambda-container reuse pattern) has no lock — two concurrent requests
+> sharing it can corrupt its transaction state, breaking arbitrary *other*
+> requests with `psycopg2.errors.InFailedSqlTransaction`. Real Lambda never
+> has this hazard (one container, one invocation at a time), so
+> `threaded=False` also matches production's actual execution model. One
+> practical effect: a page that fires several fetches at once now serves
+> them one at a time rather than in parallel — noticeably slower on
+> data-heavy dashboards, but correct. See `02_shared_utilities.md`'s
+> "Local dev server made single-threaded" for the full incident.
 
 ### 4.1 First-time setup (one command)
 

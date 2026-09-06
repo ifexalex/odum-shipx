@@ -11,6 +11,9 @@ Route groups:
   PATCH  /v1/packing-lists/{id}/submit   — china_office_staff, tenant_admin
   PATCH  /v1/packing-lists/{id}/approve  — china_office_staff, tenant_admin
   PATCH  /v1/packing-lists/{id}/reject   — china_office_staff, tenant_admin
+  POST   /v1/packing-lists/bulk-submit   — china_office_staff, tenant_admin (draft -> pending_approval)
+  POST   /v1/packing-lists/bulk-approve  — china_office_staff, tenant_admin (pending_approval -> approved)
+  POST   /v1/packing-lists/bulk-reject   — china_office_staff, tenant_admin (pending_approval -> rejected)
 """
 
 import json
@@ -34,10 +37,14 @@ from shared.responses import (
     success,
 )
 from shared.tenant_context import UserRole
+from shared.validation import parse_validated
 
 from . import service
 from .models import (
     ApprovePackingListRequest,
+    BulkApproveRequest,
+    BulkRejectRequest,
+    BulkSubmitRequest,
     CreatePackingListRequest,
     RejectPackingListRequest,
     UpdatePackingListRequest,
@@ -77,6 +84,9 @@ def lambda_handler(event: dict[str, Any], context: Any) -> dict[str, Any]:
     method = http.get("method", "")
     path = http.get("path", "")
     ip_address = event.get("requestContext", {}).get("identity", {}).get("sourceIp")
+
+    if method == "GET" and path.strip("/") == "v1/health":
+        return _health_response(request_id)
 
     try:
         tenant_ctx = get_tenant_context(event)
@@ -139,13 +149,48 @@ def _dispatch(
 ) -> dict[str, Any]:
     parts = path.strip("/").split("/")
 
-    # Expect /v1/packing-lists[/{id}[/{action}]]
+    # GET /v1/containers/{id}/packing-lists — sub-resource alias
+    if (
+        len(parts) >= 4
+        and parts[0] == "v1"
+        and parts[1] == "containers"
+        and parts[3] == "packing-lists"
+        and method == "GET"
+    ):
+        container_id = parts[2]
+        return _container_packing_lists(event, method, ctx, request_id, container_id)
+
+    # /v1/packing-lists[/{id}[/{action}]]
     if len(parts) >= 2 and parts[0] == "v1" and parts[1] == "packing-lists":
         pl_id = parts[2] if len(parts) > 2 else None
         action = parts[3] if len(parts) > 3 else None
         return _packing_list_routes(event, parts, method, ctx, request_id, ip_address, pl_id, action)
 
     raise ResourceNotFoundError("route", path)
+
+
+def _container_packing_lists(
+    event: dict[str, Any],
+    method: str,
+    ctx: Any,
+    request_id: str,
+    container_id: str,
+) -> dict[str, Any]:
+    """GET /v1/containers/{id}/packing-lists — ergonomic sub-resource."""
+    ctx.assert_role(*_READ_ROLES)
+    filters = {"container_id": container_id}
+    if _qp(event, "q"):
+        filters["q"] = _qp(event, "q")
+    if _qp(event, "status"):
+        filters["status"] = _qp(event, "status")
+    if _qp(event, "customer_id"):
+        filters["customer_id"] = _qp(event, "customer_id")
+    limit = int(_qp(event, "limit", 50))
+    cursor = decode_cursor(_qp(event, "cursor"))
+    page, next_cursor, has_more, total = service.list_packing_lists(
+        ctx.tenant_id, filters, limit, cursor, ctx
+    )
+    return paginated(page, next_cursor, has_more, total_count=total, request_id=request_id)
 
 
 def _parse_body(event: dict[str, Any]) -> dict[str, Any]:
@@ -158,21 +203,6 @@ def _parse_body(event: dict[str, Any]) -> dict[str, Any]:
 
 def _qp(event: dict[str, Any], key: str, default: Any = None) -> Any:
     return (event.get("queryStringParameters") or {}).get(key, default)
-
-
-def _parse_validated(model_class: Any, body: dict[str, Any]) -> Any:
-    """Parse body dict with Pydantic model; raise ValidationError on failure."""
-    from pydantic import ValidationError as PydanticValidationError
-
-    try:
-        return model_class(**body)
-    except PydanticValidationError as exc:
-        from shared.exceptions import ValidationError
-
-        raise ValidationError(
-            "Request validation failed",
-            field_errors={str(e["loc"][-1]): e["msg"] for e in exc.errors()},
-        ) from exc
 
 
 # ---------------------------------------------------------------------------
@@ -192,12 +222,54 @@ def _packing_list_routes(
 ) -> dict[str, Any]:
     tenant_id = ctx.tenant_id
 
+    # Bulk operations — must come before individual-ID handling
+    if pl_id == "bulk-approve" and method == "POST":
+        ctx.assert_role(*_WORKFLOW_ROLES)
+        body = _parse_body(event)
+        req = parse_validated(BulkApproveRequest, body)
+        result = service.bulk_approve_packing_lists(
+            tenant_id,
+            req,
+            actor_id=ctx.user_id,
+            ctx=ctx,
+            request_id=request_id,
+            ip_address=ip_address,
+        )
+        return success(result, request_id=request_id)
+
+    if pl_id == "bulk-submit" and method == "POST":
+        ctx.assert_role(*_WORKFLOW_ROLES)
+        body = _parse_body(event)
+        req = parse_validated(BulkSubmitRequest, body)
+        result = service.bulk_submit_packing_lists(
+            tenant_id,
+            req,
+            actor_id=ctx.user_id,
+            ctx=ctx,
+            request_id=request_id,
+            ip_address=ip_address,
+        )
+        return success(result, request_id=request_id)
+
+    if pl_id == "bulk-reject" and method == "POST":
+        ctx.assert_role(*_WORKFLOW_ROLES)
+        body = _parse_body(event)
+        req = parse_validated(BulkRejectRequest, body)
+        result = service.bulk_reject_packing_lists(
+            tenant_id,
+            req,
+            actor_id=ctx.user_id,
+            ctx=ctx,
+            ip_address=ip_address,
+        )
+        return success(result, request_id=request_id)
+
     if pl_id is None:
         # POST /v1/packing-lists
         if method == "POST":
             ctx.assert_role(UserRole.CHINA_OFFICE_STAFF, UserRole.NIGERIA_OFFICE_STAFF)
             body = _parse_body(event)
-            req = _parse_validated(CreatePackingListRequest, body)
+            req = parse_validated(CreatePackingListRequest, body)
             result = service.create_packing_list(
                 tenant_id,
                 req,
@@ -216,6 +288,11 @@ def _packing_list_routes(
         if method == "GET":
             ctx.assert_role(*_READ_ROLES)
             filters = {}
+            # Free-text search. The repository has supported this all along and
+            # the UI has always sent it — the handler simply never read it, so
+            # every search silently returned the unfiltered list.
+            if _qp(event, "q"):
+                filters["q"] = _qp(event, "q")
             if _qp(event, "status"):
                 filters["status"] = _qp(event, "status")
             if _qp(event, "container_id"):
@@ -228,8 +305,12 @@ def _packing_list_routes(
                 filters["created_before"] = _qp(event, "created_before")
             limit = int(_qp(event, "limit", 50))
             cursor = decode_cursor(_qp(event, "cursor"))
-            page, next_cursor, has_more = service.list_packing_lists(tenant_id, filters, limit, cursor, ctx)
-            return paginated(page, next_cursor, has_more, request_id=request_id)
+            page, next_cursor, has_more, total = service.list_packing_lists(
+                tenant_id, filters, limit, cursor, ctx
+            )
+            return paginated(
+                page, next_cursor, has_more, total_count=total, request_id=request_id
+            )
 
     else:
         if action is None:
@@ -243,7 +324,7 @@ def _packing_list_routes(
             if method == "PUT":
                 ctx.assert_role(UserRole.CHINA_OFFICE_STAFF)
                 body = _parse_body(event)
-                req = _parse_validated(UpdatePackingListRequest, body)
+                req = parse_validated(UpdatePackingListRequest, body)
                 result = service.update_packing_list(
                     tenant_id,
                     pl_id,
@@ -271,7 +352,7 @@ def _packing_list_routes(
             if action == "approve" and method == "PATCH":
                 ctx.assert_role(*_WORKFLOW_ROLES)
                 body = _parse_body(event)
-                req = _parse_validated(ApprovePackingListRequest, body)
+                req = parse_validated(ApprovePackingListRequest, body)
                 result = service.approve_packing_list(
                     tenant_id,
                     pl_id,
@@ -287,7 +368,7 @@ def _packing_list_routes(
             if action == "reject" and method == "PATCH":
                 ctx.assert_role(*_WORKFLOW_ROLES)
                 body = _parse_body(event)
-                req = _parse_validated(RejectPackingListRequest, body)
+                req = parse_validated(RejectPackingListRequest, body)
                 result = service.reject_packing_list(
                     tenant_id,
                     pl_id,
@@ -299,3 +380,25 @@ def _packing_list_routes(
                 return success(result, request_id=request_id)
 
     raise ResourceNotFoundError("route", "/".join(parts))
+
+
+# ---------------------------------------------------------------------------
+# Health check (no auth)
+# ---------------------------------------------------------------------------
+
+
+def _health_response(request_id: str) -> dict[str, Any]:
+    import datetime
+    import json as _json
+
+    return {
+        "statusCode": 200,
+        "headers": {"Content-Type": "application/json", "X-Request-Id": request_id},
+        "body": _json.dumps(
+            {
+                "status": "healthy",
+                "timestamp": datetime.datetime.now(datetime.UTC).isoformat(),
+            }
+        ),
+    }
+

@@ -55,9 +55,33 @@ def record_usage(
         logger.warning("Unknown metric_type '%s' — skipping metering record", metric_type)
         return
 
+    from shared.tenant_context import PLATFORM_TENANT_ID
+
+    if tenant_id == PLATFORM_TENANT_ID:
+        # usage_record.tenant_id is a UUID column; the platform-admin sentinel
+        # is the literal string "PLATFORM", which every write here failed on
+        # with InvalidTextRepresentation — on every single platform-admin
+        # request, since platform_admin has no tier limits to meter against
+        # in the first place. Skip rather than let it fail (harmlessly, but
+        # noisily and needlessly) every time.
+        return
+
     today = date.today()
 
     try:
+        # ON CONFLICT upsert, not a plain INSERT — migration 010's own
+        # docstring documents this exact upsert as the reason
+        # uq_usage_tenant_metric_period exists, but record_usage() never
+        # actually used it. Every metering write past the first for a given
+        # (tenant, metric, day) hit the unique constraint and was silently
+        # dropped (this function fails open), so usage-based quota counting
+        # only ever counted 1 per day per tenant per metric. Worse locally:
+        # the resulting IntegrityError, while itself rolled back correctly,
+        # was observed leaving the shared connection in a failed-transaction
+        # state afterward — and since this constraint is hit on essentially
+        # every request after the first each day, that wasn't a rare edge
+        # case but the normal steady state (see get_connection()'s self-heal
+        # in shared/db.py, added for the same reason).
         execute_write_with_tenant(
             tenant_id,
             """
@@ -66,6 +90,8 @@ def record_usage(
             ) VALUES (
                 %(tenant_id)s, %(metric_type)s, %(value)s, %(period_start)s, %(period_end)s
             )
+            ON CONFLICT (tenant_id, metric_type, period_start)
+            DO UPDATE SET value = usage_record.value + EXCLUDED.value
             RETURNING id
             """,
             {

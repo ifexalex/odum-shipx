@@ -19,11 +19,13 @@ from aws_xray_sdk.core import patch_all
 
 from shared.auth import get_tenant_context
 from shared.exceptions import LogisticsBaseError, ResourceNotFoundError
+from shared.idempotency import check_idempotency, store_idempotency
 from shared.logging_config import setup_logging
 from shared.metering import record_usage
 from shared.pagination import decode_cursor
 from shared.responses import created, error_response, paginated, success
 from shared.tenant_context import UserRole
+from shared.validation import parse_validated
 
 from . import service
 from .models import AccountsReviewRequest, ApproveRefundRequest, CreateRefundRequest
@@ -55,6 +57,9 @@ def lambda_handler(event: dict[str, Any], context: Any) -> dict[str, Any]:
     path = http.get("path", "")
     ip_address = event.get("requestContext", {}).get("identity", {}).get("sourceIp")
 
+    if method == "GET" and path.strip("/") == "v1/health":
+        return _health_response(request_id)
+
     try:
         tenant_ctx = get_tenant_context(event)
         logger.info(
@@ -64,7 +69,18 @@ def lambda_handler(event: dict[str, Any], context: Any) -> dict[str, Any]:
             extra={"request_id": request_id, "tenant_id": tenant_ctx.tenant_id},
         )
 
+        idempotency_key = None
+        if method == "POST":
+            idempotency_key = (event.get("headers") or {}).get("idempotency-key")
+            cached = check_idempotency(idempotency_key, tenant_ctx.tenant_id)
+            if cached:
+                return cached
+
         response: dict[str, Any] = _dispatch(event, method, path, tenant_ctx, request_id, ip_address)
+
+        if method == "POST" and idempotency_key and response.get("statusCode", 500) < 400:
+            store_idempotency(idempotency_key, response, tenant_ctx.tenant_id)
+
         record_usage(tenant_ctx.tenant_id, "api_calls", request_id=request_id)
         return response
 
@@ -115,7 +131,7 @@ def _dispatch(
         if method == "POST":
             ctx.assert_role(*_CREATE_ROLES)
             body = _parse_body(event)
-            req = _parse_validated(CreateRefundRequest, body)
+            req = parse_validated(CreateRefundRequest, body)
             result = service.create_refund(
                 ctx.tenant_id,
                 req,
@@ -155,7 +171,7 @@ def _dispatch(
             if action == "review" and method == "PATCH":
                 ctx.assert_role(*_REVIEW_ROLES)
                 body = _parse_body(event)
-                req = _parse_validated(AccountsReviewRequest, body)
+                req = parse_validated(AccountsReviewRequest, body)
                 result = service.accounts_review(
                     ctx.tenant_id,
                     refund_id,
@@ -169,7 +185,7 @@ def _dispatch(
             if action == "approve" and method == "PATCH":
                 ctx.assert_role(*_APPROVE_ROLES)
                 body = _parse_body(event)
-                req = _parse_validated(ApproveRefundRequest, body)
+                req = parse_validated(ApproveRefundRequest, body)
                 result = service.approve_refund(
                     ctx.tenant_id,
                     refund_id,
@@ -221,15 +237,23 @@ def _qp(event: dict[str, Any], key: str, default: Any = None) -> Any:
     return (event.get("queryStringParameters") or {}).get(key, default)
 
 
-def _parse_validated(model_class: Any, body: dict[str, Any]) -> Any:
-    from pydantic import ValidationError as PydanticValidationError
+# ---------------------------------------------------------------------------
+# Health check (no auth)
+# ---------------------------------------------------------------------------
 
-    try:
-        return model_class(**body)
-    except PydanticValidationError as exc:
-        from shared.exceptions import ValidationError
 
-        raise ValidationError(
-            "Request validation failed",
-            field_errors={str(e["loc"][-1]): e["msg"] for e in exc.errors()},
-        ) from exc
+def _health_response(request_id: str) -> dict[str, Any]:
+    import datetime
+    import json as _json
+
+    return {
+        "statusCode": 200,
+        "headers": {"Content-Type": "application/json", "X-Request-Id": request_id},
+        "body": _json.dumps(
+            {
+                "status": "healthy",
+                "timestamp": datetime.datetime.now(datetime.UTC).isoformat(),
+            }
+        ),
+    }
+

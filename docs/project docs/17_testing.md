@@ -518,3 +518,36 @@ between tests — the module-level hooks silently don't apply inside a test
 class, which the first version of this file discovered the hard way: a mock
 connection leaked from one test into the next, and from there into an
 unrelated file (`test_scheduled_jobs.py`) in the same pytest session.
+
+## Deep interaction e2e specs (2026-09-06)
+
+Beyond the smoke sweep, real multi-step interaction flows against the live
+local stack — each one chained through a genuine business process rather
+than testing one screen in isolation:
+
+- `manifest-verify-and-advance.spec.ts` — verify a pending manifest, then
+  advance its container `loading` → `sealed`. The exact chain from an
+  earlier session bug report ("container must have a manifest"). Confirmed
+  by reading the database afterward, not just the UI: the container is
+  genuinely `sealed`, the manifest genuinely `verified`.
+- `billing-payment-and-release.spec.ts` — record a payment, generate a
+  release note (including the "release with outstanding balance" manager-
+  override path), record its pickup. Found two real, previously-undetected
+  bugs (see `13_api_payment_release.md` and `frontend/07_domain_modules.md`):
+  a page-crashing null-safety bug in the tenant dashboard, and a completely
+  broken non-delegate pickup path. Confirmed each fix by reading the
+  database afterward — `release_note.status = 'picked_up'`, not just a
+  green checkmark in the test runner.
+
+Both specs mutate real seeded data (not isolated fixtures) and are written
+to be idempotent on re-run — each step checks the record's current state
+and skips cleanly if a previous run already advanced it, rather than
+assuming a fixed starting point.
+
+**Testing-gap pattern repeated here, worth naming explicitly:** every bug
+these two specs found was invisible to the existing unit suite, because
+unit tests mock the layer where the bug actually lived (a component's own
+`.replace()` call, a cross-service SQL upsert, nine copies of the same
+error-formatting function) rather than exercising it. Matches the exact
+caveat already recorded in `13_api_payment_release.md`'s two earlier
+ground-truth fixes for the pickup endpoint.

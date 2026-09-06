@@ -6,6 +6,7 @@ Routes:
   GET   /v1/release-notes/{id}                  — tenant_admin, nigeria_office_staff,
                                                    warehouse_attendant, customer (own)
   PATCH /v1/release-notes/{id}/release          — warehouse_attendant
+  POST  /v1/webhooks/payment                    — no JWT auth; HMAC-verified gateway webhook
 """
 
 import json
@@ -18,13 +19,17 @@ from aws_xray_sdk.core import patch_all
 
 from shared.auth import get_tenant_context
 from shared.exceptions import LogisticsBaseError, ResourceNotFoundError
+from shared.idempotency import check_idempotency, store_idempotency
 from shared.logging_config import setup_logging
 from shared.metering import record_usage
 from shared.responses import created, error_response, success
 from shared.tenant_context import UserRole
+from shared.validation import parse_validated
 
+from . import repository as repo
 from . import service
-from .models import ConfirmPaymentRequest, GenerateReleaseNoteRequest, RecordPickupRequest
+from . import webhook as wh
+from .models import ConfirmPaymentRequest, GenerateReleaseNoteRequest, RecordPickupRequest, SplitReleaseNoteRequest
 
 # Module-level init (runs once on cold start)
 setup_logging()
@@ -47,6 +52,20 @@ _RELEASE_READ_ROLES = (
     UserRole.CUSTOMER,
 )
 _PICKUP_ROLES = (UserRole.WAREHOUSE_ATTENDANT,)
+_RELEASE_LIST_ROLES = (
+    UserRole.TENANT_ADMIN,
+    UserRole.NIGERIA_OFFICE_STAFF,
+    UserRole.WAREHOUSE_ATTENDANT,
+    UserRole.CUSTOMER,
+)
+_SPLIT_ROLES = (
+    UserRole.TENANT_ADMIN,
+    UserRole.NIGERIA_OFFICE_STAFF,
+)
+_REISSUE_ROLES = (
+    UserRole.TENANT_ADMIN,
+    UserRole.NIGERIA_OFFICE_STAFF,
+)
 
 
 # ---------------------------------------------------------------------------
@@ -62,6 +81,25 @@ def lambda_handler(event: dict[str, Any], context: Any) -> dict[str, Any]:
     path = http.get("path", "")
     ip_address = event.get("requestContext", {}).get("identity", {}).get("sourceIp")
 
+    if method == "GET" and path.strip("/") == "v1/health":
+        return _health_response(request_id)
+
+    # Webhook routes bypass JWT auth — handle before get_tenant_context()
+    parts = path.strip("/").split("/")
+    if len(parts) >= 2 and parts[1] == "webhooks":
+        try:
+            return _webhook_routes(event, parts, method, request_id)
+        except LogisticsBaseError as exc:
+            logger.warning("Webhook error: %s - %s", exc.error_code, exc.message)
+            return error_response(exc, instance=path, request_id=request_id)
+        except Exception:
+            logger.exception("Unhandled webhook error")
+            return error_response(
+                LogisticsBaseError("Internal server error", "INTERNAL_ERROR", 500),
+                instance=path,
+                request_id=request_id,
+            )
+
     try:
         tenant_ctx = get_tenant_context(event)
         logger.info(
@@ -71,7 +109,19 @@ def lambda_handler(event: dict[str, Any], context: Any) -> dict[str, Any]:
             extra={"request_id": request_id, "tenant_id": tenant_ctx.tenant_id},
         )
 
+        # Idempotency for payment confirmation (POST only)
+        idempotency_key = None
+        if method == "POST":
+            idempotency_key = (event.get("headers") or {}).get("idempotency-key")
+            cached = check_idempotency(idempotency_key, tenant_ctx.tenant_id)
+            if cached:
+                return cached
+
         response = _dispatch(event, method, path, tenant_ctx, request_id, ip_address)
+
+        if method == "POST" and idempotency_key and response.get("statusCode", 500) < 400:
+            store_idempotency(idempotency_key, response, tenant_ctx.tenant_id)
+
         record_usage(tenant_ctx.tenant_id, "api_calls", request_id=request_id)
         return response
 
@@ -129,10 +179,25 @@ def _payment_routes(
     billing_id = parts[2] if len(parts) > 2 else None
     action = parts[3] if len(parts) > 3 else None
 
+    # POST /v1/payments/{billing-id}/initialize — customer-own Paystack checkout
+    # (audit gap B12). Ownership + amount guards live in the service; the
+    # payment itself is only ever recorded by the verified gateway webhook.
+    if billing_id and action == "initialize" and method == "POST":
+        ctx.assert_role(UserRole.CUSTOMER)
+        body = _parse_body(event)
+        result = service.initialize_online_payment(
+            ctx.tenant_id,
+            billing_id,
+            ctx,
+            callback_url=body.get("callback_url"),
+            request_id=request_id,
+        )
+        return success(result, request_id=request_id)
+
     if billing_id and action == "confirm" and method == "POST":
         ctx.assert_role(*_PAYMENT_ROLES)
         body = _parse_body(event)
-        req = _parse_validated(ConfirmPaymentRequest, body)
+        req = parse_validated(ConfirmPaymentRequest, body)
         result = service.confirm_payment(
             ctx.tenant_id,
             billing_id,
@@ -158,11 +223,33 @@ def _release_note_routes(
     action = parts[3] if len(parts) > 3 else None
 
     if note_id is None:
+        # GET /v1/release-notes
+        if method == "GET":
+            ctx.assert_role(*_RELEASE_LIST_ROLES)
+            filters = {}
+            if _qp(event, "customer_id"):
+                filters["customer_id"] = _qp(event, "customer_id")
+            if _qp(event, "container_id"):
+                filters["container_id"] = _qp(event, "container_id")
+            if _qp(event, "status"):
+                filters["status"] = _qp(event, "status")
+            if _qp(event, "reference"):
+                # Warehouse scan-or-type lookup (P2-2) — exact reference match.
+                filters["reference"] = _qp(event, "reference")
+            from shared.pagination import decode_cursor
+            limit = int(_qp(event, "limit", 50))
+            cursor = decode_cursor(_qp(event, "cursor"))
+            page, next_cursor, has_more = service.list_release_notes(
+                ctx.tenant_id, filters, limit, cursor, ctx
+            )
+            from shared.responses import paginated
+            return paginated(page, next_cursor, has_more, request_id=request_id)
+
         # POST /v1/release-notes
         if method == "POST":
             ctx.assert_role(*_RELEASE_CREATE_ROLES)
             body = _parse_body(event)
-            req = _parse_validated(GenerateReleaseNoteRequest, body)
+            req = parse_validated(GenerateReleaseNoteRequest, body)
             result = service.generate_release_note(
                 ctx.tenant_id,
                 req,
@@ -171,6 +258,16 @@ def _release_note_routes(
                 request_id=request_id,
             )
             return created(result, location=f"/v1/release-notes/{result['id']}", request_id=request_id)
+
+    elif note_id == "stats":
+        # GET /v1/release-notes/stats — per-status counts for the list stats
+        # row (§9.1, P2-3). Staff/warehouse only: tenant-wide aggregates are
+        # not for the customer role.
+        if method == "GET":
+            ctx.assert_role(
+                UserRole.TENANT_ADMIN, UserRole.NIGERIA_OFFICE_STAFF, UserRole.WAREHOUSE_ATTENDANT
+            )
+            return success(service.get_release_note_stats(ctx.tenant_id), request_id=request_id)
 
     else:
         if action is None:
@@ -185,7 +282,7 @@ def _release_note_routes(
             if action == "release" and method == "PATCH":
                 ctx.assert_role(*_PICKUP_ROLES)
                 body = _parse_body(event)
-                req = _parse_validated(RecordPickupRequest, body)
+                req = parse_validated(RecordPickupRequest, body)
                 result = service.record_pickup(
                     ctx.tenant_id,
                     note_id,
@@ -195,6 +292,136 @@ def _release_note_routes(
                     request_id=request_id,
                 )
                 return success(result, request_id=request_id)
+
+            # POST /v1/release-notes/{id}/split
+            if action == "split" and method == "POST":
+                ctx.assert_role(*_SPLIT_ROLES)
+                body = _parse_body(event)
+                req = parse_validated(SplitReleaseNoteRequest, body)
+                result = service.split_release_note(
+                    ctx.tenant_id,
+                    note_id,
+                    req,
+                    actor_id=ctx.user_id,
+                    ctx=ctx,
+                    request_id=request_id,
+                )
+                return created(result, location=f"/v1/release-notes/{result['id']}", request_id=request_id)
+
+            # POST /v1/release-notes/{id}/reissue
+            if action == "reissue" and method == "POST":
+                ctx.assert_role(*_REISSUE_ROLES)
+                result = service.reissue_release_note(
+                    ctx.tenant_id,
+                    note_id,
+                    actor_id=ctx.user_id,
+                    ctx=ctx,
+                    request_id=request_id,
+                )
+                return created(result, location=f"/v1/release-notes/{result['id']}", request_id=request_id)
+
+    raise ResourceNotFoundError("route", "/".join(parts))
+
+
+# ---------------------------------------------------------------------------
+# Webhook routes (no JWT auth — HMAC verified)
+# ---------------------------------------------------------------------------
+
+
+def _webhook_routes(
+    event: dict[str, Any], parts: list[str], method: str, request_id: str
+) -> dict[str, Any]:
+    """Handle POST /v1/webhooks/payment from Paystack or Flutterwave.
+
+    No JWT auth. Signature is verified via HMAC before any processing.
+    Returns 200 immediately on any rejection (bad signature, unknown
+    billing_id, tenant has no gateway configured) to avoid timing/response
+    differences that would let an outside caller distinguish these cases —
+    same posture regardless of *why* a webhook was rejected.
+
+    Paystack (2026-07-19 — multi-tenant): there is no shared platform secret
+    to verify against anymore, so the usual "verify signature, then resolve
+    tenant" order is inverted for this gateway — tenant must be resolved
+    FIRST (from the billing_id in the payload's reference, a harmless read)
+    so the signature can be checked against that specific tenant's own key.
+    No database write happens, and nothing about the outcome is ever
+    reflected in the response, until AFTER a valid signature is confirmed —
+    see webhook.py's module docstring for the full security reasoning.
+    """
+    resource = parts[2] if len(parts) > 2 else None
+
+    if resource == "payment" and method == "POST":
+        headers = event.get("headers") or {}
+        raw_body: bytes = (event.get("body") or "").encode()
+        payload = _parse_body(event)
+
+        paystack_sig = headers.get("x-paystack-signature", "")
+        flutterwave_hash = headers.get("verif-hash", "")
+
+        extracted: dict[str, Any] | None = None
+        tenant_id: str | None = None
+
+        if paystack_sig:
+            extracted = wh.extract_paystack_payment(payload)
+            if not extracted:
+                # Non-payment event type or non-successful status — acknowledge and skip.
+                return {"statusCode": 200, "body": ""}
+
+            billing_id = extracted.get("billing_id", "")
+            tenant_id = wh.get_billing_tenant(billing_id)
+            if not tenant_id:
+                logger.warning("Paystack webhook for unknown billing_id=%s — rejecting", billing_id)
+                return {"statusCode": 200, "body": ""}
+
+            secret_key = repo.get_tenant_paystack_secret(tenant_id)
+            if not secret_key:
+                logger.warning(
+                    "Paystack webhook for tenant=%s with no configured gateway — rejecting", tenant_id
+                )
+                return {"statusCode": 200, "body": ""}
+
+            if not wh.verify_paystack_signature(raw_body, paystack_sig, secret_key):
+                logger.warning("Invalid Paystack HMAC signature for tenant=%s — rejecting webhook", tenant_id)
+                return {"statusCode": 200, "body": ""}
+
+        elif flutterwave_hash:
+            # Out of scope for the Paystack multi-tenant migration — no
+            # frontend integration exists for Flutterwave, kept on its
+            # original single env-var secret. Tenant is still resolved the
+            # old way (after verification), since it has no per-tenant key.
+            if not wh.verify_flutterwave_signature(flutterwave_hash):
+                logger.warning("Invalid Flutterwave verif-hash — rejecting webhook")
+                return {"statusCode": 200, "body": ""}
+            extracted = wh.extract_flutterwave_payment(payload)
+            if not extracted:
+                return {"statusCode": 200, "body": ""}
+            billing_id = extracted.get("billing_id", "")
+            tenant_id = wh.get_billing_tenant(billing_id)
+            if not tenant_id:
+                logger.warning("Flutterwave webhook for unknown billing_id=%s — rejecting", billing_id)
+                return {"statusCode": 200, "body": ""}
+
+        else:
+            logger.warning("Webhook missing gateway signature headers — rejecting")
+            return {"statusCode": 200, "body": ""}
+
+        result = service.process_webhook_payment(
+            tenant_id=tenant_id,
+            billing_id=billing_id,
+            amount_ngn=extracted["amount_ngn"],
+            payment_method=extracted["payment_method"],
+            payment_reference=extracted["payment_reference"],
+            gateway_transaction_id=extracted["gateway_transaction_id"],
+            request_id=request_id,
+        )
+
+        logger.info(
+            "Webhook payment processed: billing=%s gateway_tx=%s result=%s",
+            billing_id,
+            extracted["gateway_transaction_id"],
+            "duplicate_skipped" if result is None else result.get("new_payment_status"),
+        )
+        return {"statusCode": 200, "body": ""}
 
     raise ResourceNotFoundError("route", "/".join(parts))
 
@@ -216,15 +443,23 @@ def _qp(event: dict[str, Any], key: str, default: Any = None) -> Any:
     return (event.get("queryStringParameters") or {}).get(key, default)
 
 
-def _parse_validated(model_class: Any, body: dict[str, Any]) -> Any:
-    from pydantic import ValidationError as PydanticValidationError
+# ---------------------------------------------------------------------------
+# Health check (no auth)
+# ---------------------------------------------------------------------------
 
-    try:
-        return model_class(**body)
-    except PydanticValidationError as exc:
-        from shared.exceptions import ValidationError
 
-        raise ValidationError(
-            "Request validation failed",
-            field_errors={str(e["loc"][-1]): e["msg"] for e in exc.errors()},
-        ) from exc
+def _health_response(request_id: str) -> dict[str, Any]:
+    import datetime
+    import json as _json
+
+    return {
+        "statusCode": 200,
+        "headers": {"Content-Type": "application/json", "X-Request-Id": request_id},
+        "body": _json.dumps(
+            {
+                "status": "healthy",
+                "timestamp": datetime.datetime.now(datetime.UTC).isoformat(),
+            }
+        ),
+    }
+

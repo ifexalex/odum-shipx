@@ -34,6 +34,7 @@ Examples (Postman / curl):
          -d '{"container_id":"c-001","customer_id":"cust-001"}'
 """
 
+import base64
 import json
 import logging
 import os
@@ -46,11 +47,34 @@ if PROJECT_ROOT not in sys.path:
     sys.path.insert(0, PROJECT_ROOT)
 
 from flask import Flask, Response, request
+from flask_cors import CORS
+
+from shared.db import execute_with_tenant
 
 logging.basicConfig(level=logging.INFO, format="%(levelname)s  %(name)s  %(message)s")
 logger = logging.getLogger("local_server")
 
 app = Flask(__name__)
+
+# The frontend (Vite, localhost:5173) and this server (localhost:3000) are
+# different origins, so browser fetches need CORS — without it, every
+# request (including the preflight OPTIONS triggered by the custom
+# X-Tenant-ID/X-Role/X-User-ID headers LocalAuthProvider sends) is blocked
+# client-side before it ever reaches a route below. Local dev only — never
+# runs against production, where API Gateway + Cognito handle this for real.
+#
+# supports_credentials=True mirrors api-gateway/main.tf's allow_credentials —
+# required for the /v1/auth/* httpOnly session cookie (services/auth/handler.py):
+# without it, the browser silently drops the Set-Cookie on the response to
+# POST /v1/auth/session and never attaches the cookie on later requests, so
+# POST /v1/auth/refresh always 401s and every page reload looks like a fresh,
+# unauthenticated visitor even though login just succeeded.
+CORS(
+    app,
+    origins=["http://localhost:5173", "http://127.0.0.1:5173"],
+    allow_headers=["Content-Type", "X-Tenant-ID", "X-Role", "X-User-ID", "Idempotency-Key", "Authorization"],
+    supports_credentials=True,
+)
 
 # ---------------------------------------------------------------------------
 # Lazy-import handler modules (avoids importing everything on startup)
@@ -74,6 +98,14 @@ def _get_handler(name: str):
 # ---------------------------------------------------------------------------
 
 _ROUTES = [
+    ("/v1/auth", "auth"),  # httpOnly-cookie session refresh — see services/auth/handler.py
+    ("/v1/register", "tenant_management"),  # customer self-registration (public)
+    ("/v1/invites", "tenant_management"),  # customer account-creation invites (public claim + staff issue)
+    # Webhooks split by provider — payment (Paystack/Flutterwave, HMAC-verified)
+    # vs WhatsApp (Meta). Both were previously unroutable here AND in API
+    # Gateway (found closing audit gap B12).
+    ("/v1/webhooks/payment", "payment_release"),
+    ("/v1/webhooks/whatsapp", "notification"),
     ("/v1/billing", "billing"),
     ("/v1/refunds", "refunds"),
     ("/v1/claims", "claims"),
@@ -92,9 +124,143 @@ _ROUTES = [
     ("/v1/excel", "excel"),
 ]
 
-DEFAULT_TENANT_ID = "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa"
+# Matches the Acme Shipping Ltd dev-seed tenant — seed.py inserts with this
+# exact UUID so it survives make stack. DEFAULT_USER_ID is a placeholder;
+# _resolve_user_id() replaces it with the real seeded user id at request time.
+DEFAULT_TENANT_ID = "10000000-0000-0000-0000-000000000001"
 DEFAULT_USER_ID = "local-user-001"
 DEFAULT_ROLE = "nigeria_office_staff"
+
+# Real Cognito subs are always UUIDs, and every *_by / created_by column is
+# `UUID REFERENCES tenant_user(id)` (see migrations 001-003) — so the fake
+# slugs LocalAuthProvider.tsx sends (e.g. "local-china-staff") fail with
+# "invalid input syntax for type uuid" on any write. Resolve them here to a
+# real tenant_user.id for that tenant+role, looked up once and cached.
+_PLATFORM_ADMIN_UUID = "00000000-0000-0000-0000-000000000000"
+_user_id_cache: dict[tuple[str, str], str] = {}
+
+
+def _resolve_user_id(user_id: str, tenant_id: str, role: str) -> str:
+    try:
+        uuid.UUID(user_id)
+        return user_id  # already a real UUID (e.g. a real Cognito sub)
+    except ValueError:
+        pass
+
+    if role == "platform_admin":
+        return _PLATFORM_ADMIN_UUID  # no tenant_user row for platform admins
+
+    cache_key = (tenant_id, role)
+    if cache_key in _user_id_cache:
+        return _user_id_cache[cache_key]
+
+    try:
+        rows = execute_with_tenant(
+            tenant_id,
+            "SELECT id FROM tenant_user WHERE tenant_id = %s AND role = %s "
+            "ORDER BY created_at LIMIT 1",
+            (tenant_id, role),
+        )
+    except Exception:
+        logger.exception("Could not resolve local dev user id for %s/%s", tenant_id, role)
+        return user_id
+
+    if not rows:
+        logger.warning("No seeded tenant_user for tenant=%s role=%s; writes will fail", tenant_id, role)
+        return user_id
+
+    resolved = str(rows[0]["id"])
+    _user_id_cache[cache_key] = resolved
+    return resolved
+
+
+def _resolve_user_id_by_sub(sub: str, tenant_id: str) -> str | None:
+    """Return `sub` itself if it's already a real tenant_user.id in this tenant.
+
+    True for every self-registered or invite-accepted customer — their
+    tenant_user.id is set equal to the Cognito sub at creation
+    (repository.create_tenant_user) — but never true for seed-time staff/
+    customer rows, whose fixed seed UUID never matches moto's randomly
+    generated sub. Checked first so this common case skips the email/role
+    guesswork entirely.
+    """
+    if not sub:
+        return None
+    cache_key = ("sub", tenant_id, sub)
+    if cache_key in _user_id_cache:
+        return _user_id_cache[cache_key]
+    try:
+        rows = execute_with_tenant(
+            tenant_id,
+            "SELECT id FROM tenant_user WHERE tenant_id = %s AND id = %s LIMIT 1",
+            (tenant_id, sub),
+        )
+    except Exception:
+        logger.exception("Could not resolve user id by sub %s/%s", tenant_id, sub)
+        return None
+    if not rows:
+        return None
+    resolved = str(rows[0]["id"])
+    _user_id_cache[cache_key] = resolved
+    return resolved
+
+
+def _resolve_user_id_by_email(email: str, tenant_id: str) -> str | None:
+    """Look up tenant_user.id by email — used for Cognito JWT logins where the
+    Moto-generated sub UUID doesn't match our seeded tenant_user rows."""
+    if not email:
+        return None
+    cache_key = ("email", tenant_id, email)
+    if cache_key in _user_id_cache:
+        return _user_id_cache[cache_key]
+    try:
+        rows = execute_with_tenant(
+            tenant_id,
+            "SELECT id FROM tenant_user WHERE tenant_id = %s AND email = %s LIMIT 1",
+            (tenant_id, email),
+        )
+    except Exception:
+        logger.exception("Could not resolve user id by email %s/%s", tenant_id, email)
+        return None
+    if not rows:
+        return None
+    resolved = str(rows[0]["id"])
+    _user_id_cache[cache_key] = resolved
+    return resolved
+
+
+def _role_from_groups(groups_str: str, tenant_id: str) -> str | None:
+    """Extract the role from a comma-joined cognito:groups string."""
+    prefix = f"{tenant_id}:"
+    for group in groups_str.split(","):
+        group = group.strip()
+        if group.startswith(prefix):
+            return group[len(prefix):]
+    return None
+
+
+def _resolve_user_id_by_role(tenant_id: str, role: str | None) -> str | None:
+    """Look up tenant_user.id by (tenant_id, role) — fallback when email is absent."""
+    if not role:
+        return None
+    cache_key = (tenant_id, role)
+    if cache_key in _user_id_cache:
+        return _user_id_cache[cache_key]
+    try:
+        rows = execute_with_tenant(
+            tenant_id,
+            "SELECT id FROM tenant_user WHERE tenant_id = %s AND role = %s ORDER BY created_at LIMIT 1",
+            (tenant_id, role),
+        )
+    except Exception:
+        logger.exception("Could not resolve user id by role %s/%s", tenant_id, role)
+        return None
+    if not rows:
+        return None
+    resolved = str(rows[0]["id"])
+    _user_id_cache[cache_key] = resolved
+    return resolved
+
 
 
 # ---------------------------------------------------------------------------
@@ -102,20 +268,110 @@ DEFAULT_ROLE = "nigeria_office_staff"
 # ---------------------------------------------------------------------------
 
 
-def _build_event() -> dict:
-    tenant_id = request.headers.get("X-Tenant-ID", DEFAULT_TENANT_ID)
-    user_id = request.headers.get("X-User-ID", DEFAULT_USER_ID)
-    role = request.headers.get("X-Role", DEFAULT_ROLE)
+def _decode_jwt_claims(token: str) -> dict | None:
+    """Decode a JWT's payload without verifying its signature.
 
-    # Platform admins have no tenant scope — their Cognito group is just
-    # "platform_admin" (no tenant prefix) and their tenant_id claim is "PLATFORM".
-    # This bypasses the tenant suspension check in get_tenant_context().
-    if role == "platform_admin":
-        claims_tenant_id = "PLATFORM"
-        cognito_groups = "platform_admin"
+    Local dev only — production's API Gateway JWT authorizer verifies the
+    signature against Cognito's JWKS before this code ever runs; this server
+    has no equivalent and skips verification entirely, same bypass posture
+    as the X-Tenant-ID/X-Role/X-User-ID header path below.
+    """
+    try:
+        payload_b64 = token.split(".")[1]
+        padded = payload_b64 + "=" * (-len(payload_b64) % 4)
+        return json.loads(base64.urlsafe_b64decode(padded))
+    except (IndexError, ValueError, UnicodeDecodeError):
+        return None
+
+
+def _build_event() -> dict:
+    auth_header = request.headers.get("Authorization", "")
+    claims: dict | None = None
+    if auth_header.startswith("Bearer "):
+        claims = _decode_jwt_claims(auth_header.removeprefix("Bearer "))
+
+    if claims is not None and "impersonated_by" in claims and "session_id" in claims:
+        # ShipX impersonation token (services/tenant_management/impersonation.py).
+        # Mirror the production REQUEST authorizer (services/authorizer/handler.py):
+        # its claims are tenant_id/role (not custom:tenant_id/cognito:groups), so
+        # synthesise the Cognito-shaped claims get_tenant_context() expects and
+        # pass the impersonation markers through for read-only enforcement.
+        # Signature is NOT verified — same bypass posture as the paths below.
+        imp_tenant_id = claims.get("tenant_id", DEFAULT_TENANT_ID)
+        imp_role = claims.get("role", "tenant_admin")
+        claims_out = {
+            "sub": claims.get("sub", DEFAULT_USER_ID),
+            "custom:tenant_id": imp_tenant_id,
+            "cognito:groups": f"{imp_tenant_id}:{imp_role}",
+            "impersonated_by": claims.get("impersonated_by", ""),
+            "session_id": claims.get("session_id", ""),
+            "read_only": "true",
+        }
+    elif claims is not None:
+        # Real Cognito-via-Moto login (frontend/src/auth/CognitoClient.ts).
+        # A raw ID token's cognito:groups is a real JSON list — API Gateway's
+        # HTTP API v2 JWT authorizer flattens it to a comma-joined string
+        # before shared/auth.py ever sees it (see _parse_roles()'s docstring).
+        # Mirror that flattening here rather than passing the list through.
+        raw_groups = claims.get("cognito:groups", "")
+        groups_str = ",".join(raw_groups) if isinstance(raw_groups, list) else raw_groups
+        tenant_id = claims.get("custom:tenant_id", DEFAULT_TENANT_ID)
+        # Moto generates a random UUID for the Cognito sub which won't match any
+        # *seeded* tenant_user.id row — resolve the real DB row so FK constraints
+        # on container.created_by / audit_log.actor_id don't reject writes.
+        # Self-registered/invite-accepted accounts are the exception: their
+        # tenant_user.id is set equal to their real Cognito sub at creation
+        # time (see repository.create_tenant_user), so the sub already *is*
+        # the right row and must be tried first — moto's ID token carries no
+        # "email" claim at all (found live verifying 7.52's invite-claim
+        # flow: every login fell through to the role-based fallback, which
+        # arbitrarily picks the *first*-created tenant_user for that role,
+        # silently showing one customer's portal data under another's
+        # session). Only fall back to email/role lookup for seeded users
+        # whose sub was never written to tenant_user.id.
+        email = claims.get("email", "")
+        role_from_groups = _role_from_groups(groups_str, tenant_id)
+        sub = claims.get("sub", DEFAULT_USER_ID)
+        resolved_sub = (
+            _resolve_user_id_by_sub(sub, tenant_id)
+            or _resolve_user_id_by_email(email, tenant_id)
+            or _resolve_user_id_by_role(tenant_id, role_from_groups)
+            or sub
+        )
+        claims_out = {
+            "sub": resolved_sub,
+            "custom:tenant_id": tenant_id,
+            "cognito:groups": groups_str,
+        }
     else:
-        claims_tenant_id = tenant_id
-        cognito_groups = f"{tenant_id}:{role}"
+        # LocalAuthProvider dev shim — synthesize equivalent claims from the
+        # X-Tenant-ID/X-Role/X-Roles/X-User-ID headers it sends instead of a JWT.
+        # X-Role is always the primary/active role (mirrors custom:role); X-Roles
+        # is an optional comma-separated list of every role the dev identity
+        # holds (multi-role staff support) — defaults to just [X-Role] when absent.
+        tenant_id = request.headers.get("X-Tenant-ID", DEFAULT_TENANT_ID)
+        user_id = request.headers.get("X-User-ID", DEFAULT_USER_ID)
+        role = request.headers.get("X-Role", DEFAULT_ROLE)
+        roles_header = request.headers.get("X-Roles", "")
+        roles = [r.strip() for r in roles_header.split(",") if r.strip()] or [role]
+
+        # Platform admins have no tenant scope — their Cognito group is just
+        # "platform_admin" (no tenant prefix) and their tenant_id claim is "PLATFORM".
+        # This bypasses the tenant suspension check in get_tenant_context().
+        if role == "platform_admin":
+            claims_tenant_id = "PLATFORM"
+            cognito_groups = "platform_admin"
+        else:
+            claims_tenant_id = tenant_id
+            cognito_groups = ",".join(f"{tenant_id}:{r}" for r in roles)
+
+        user_id = _resolve_user_id(user_id, tenant_id, role)
+        claims_out = {
+            "sub": user_id,
+            "custom:tenant_id": claims_tenant_id,
+            "custom:role": role,
+            "cognito:groups": cognito_groups,
+        }
 
     body_raw = request.get_data(as_text=True) or None
 
@@ -127,17 +383,18 @@ def _build_event() -> dict:
                 "path": request.path,
             },
             "authorizer": {
-                "claims": {
-                    "sub": user_id,
-                    "custom:tenant_id": claims_tenant_id,
-                    "cognito:groups": cognito_groups,
-                }
+                "claims": claims_out
             },
             "identity": {"sourceIp": request.remote_addr or "127.0.0.1"},
         },
         "body": body_raw,
         "queryStringParameters": dict(request.args) or {},
-        "headers": dict(request.headers),
+        # API Gateway v2 lowercases all header names — handlers rely on that
+        # (e.g. "x-paystack-signature", "idempotency-key"); mirror it here.
+        "headers": {k.lower(): v for k, v in request.headers.items()},
+        # Payload-format-2.0 shape (services/auth/handler.py reads this, not
+        # a Cookie header) — one "name=value" string per cookie.
+        "cookies": [f"{name}={value}" for name, value in request.cookies.items()],
     }
 
 
@@ -152,7 +409,15 @@ def _to_flask_response(lambda_resp: dict) -> Response:
     body = lambda_resp.get("body", "")
 
     content_type = headers.get("Content-Type", "application/json")
-    return Response(body, status=status_code, content_type=content_type)
+    resp = Response(body, status=status_code, content_type=content_type)
+
+    # Payload-format-2.0's dedicated "cookies" array (services/auth/handler.py) —
+    # mirror API Gateway's behavior of turning each entry into its own
+    # Set-Cookie header, since Werkzeug won't do that from a plain headers dict.
+    for cookie in lambda_resp.get("cookies", []):
+        resp.headers.add("Set-Cookie", cookie)
+
+    return resp
 
 
 # ---------------------------------------------------------------------------
@@ -171,12 +436,31 @@ def dispatch(path: str):
     # billing, and containers have excel exports; other /export paths (e.g.
     # /v1/customers/{id}/export) belong to their own service handlers.
     _excel_prefixes = ("/v1/packing-lists/", "/v1/manifests/", "/v1/billing/", "/v1/containers/")
+    # PDF document generators all live in the excel service, but their paths sit
+    # under other resources' prefixes (/v1/release-notes/, /v1/payments/), which
+    # _ROUTES below would otherwise hand to payment_release — a handler with no
+    # /pdf branch at all. Production API Gateway routes these to the excel Lambda
+    # explicitly (04c_terraform_api_gateway.md); this mirrors that mapping so the
+    # PDF endpoints are reachable in local dev too. Without it every PDF route
+    # 404s locally, which is why the release-note PDF's broken SQL went unnoticed.
+    _excel_pdf_prefixes = ("/v1/packing-lists/", "/v1/release-notes/", "/v1/payments/")
     _path_no_qs = full_path.split("?")[0]
     service_name = None
-    if (_path_no_qs.endswith("/export") and any(_path_no_qs.startswith(p) for p in _excel_prefixes)) or _path_no_qs.endswith(
-        "/import"
+    if (
+        (_path_no_qs.endswith("/export") and any(_path_no_qs.startswith(p) for p in _excel_prefixes))
+        or (_path_no_qs.endswith("/pdf") and any(_path_no_qs.startswith(p) for p in _excel_pdf_prefixes))
+        or _path_no_qs.endswith("/import")
+        or _path_no_qs.endswith("/import/presigned-url")
     ):
         service_name = "excel"
+    elif _path_no_qs.startswith("/v1/containers/") and _path_no_qs.endswith("/packing-lists"):
+        # GET /v1/containers/{id}/packing-lists — sub-resource alias handled by
+        # packing_list/handler.py's _container_packing_lists(), not tracking.
+        service_name = "packing_list"
+    elif _path_no_qs.startswith("/v1/platform/tenants/") and _path_no_qs.endswith("/usage"):
+        # Per-tenant usage lives in the metering handler (API GW routes it there
+        # in production); everything else under /v1/platform is tenant_management.
+        service_name = "metering"
     else:
         for prefix, name in _ROUTES:
             if full_path == prefix or full_path.startswith(prefix + "/") or full_path.startswith(prefix + "?"):
@@ -194,7 +478,10 @@ def dispatch(path: str):
 
     try:
         handler_mod = _get_handler(service_name)
-        result = handler_mod.lambda_handler(event, {})
+        fn = getattr(handler_mod, "lambda_handler", None) or getattr(handler_mod, "http_handler", None)
+        if fn is None:
+            raise AttributeError(f"No lambda_handler or http_handler in services.{service_name}.handler")
+        result = fn(event, {})
         return _to_flask_response(result)
     except Exception as exc:
         logger.exception("Unhandled error in %s handler", service_name)
@@ -242,4 +529,21 @@ if __name__ == "__main__":
 """
     )
     # Bind to loopback only — do not expose the bypass server on the network.
-    app.run(host="127.0.0.1", port=port, debug=False)
+    #
+    # threaded=False is load-bearing, not a default: Flask's own run()
+    # docstring says "Threaded mode is enabled by default," and shared/db.py's
+    # module-level `_connection` singleton (the warm-Lambda-container reuse
+    # pattern) is not thread-safe — nothing locks it. With threading on, two
+    # browser XHRs firing in parallel (any page that fetches several
+    # endpoints at once) can genuinely interleave cur.execute() calls from
+    # separate Python threads on the *same* psycopg2 connection, corrupting
+    # its transaction state in ways a single connection was never built to
+    # survive. Found live: an e2e smoke sweep intermittently crashed
+    # unrelated pages with "Internal server error" /
+    # psycopg2.errors.InFailedSqlTransaction, scattered across endpoints with
+    # no per-endpoint pattern — the signature of a shared resource being
+    # corrupted by concurrent access, not a single buggy query. Real AWS
+    # Lambda never has this hazard: one container processes one invocation
+    # at a time, so threaded=False here is also the more faithful match to
+    # production's actual execution model, not just a workaround.
+    app.run(host="127.0.0.1", port=port, debug=False, threaded=False)

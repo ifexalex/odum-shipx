@@ -291,6 +291,33 @@ phone from the customer record (the log deliberately stores only a masked contac
 so without it the fallback cannot resolve a number and gives up silently. See
 `15_api_notifications.md` §"Ground-truth gaps found by draining a real notification".
 
+## Local dev server made single-threaded (2026-09-06) — the actual root cause
+
+`scripts/local_server.py`'s `app.run()` now passes `threaded=False` explicitly.
+
+**This is the real root cause of the connection-self-heal issue below**, not
+just one contributing trigger. Flask's own `run()` docstring says *"Threaded
+mode is enabled by default"* — the local dev server had been processing
+concurrent requests on separate Python threads all along, every one of them
+sharing `shared/db.py`'s single module-level `_connection` with no lock. Two
+browser XHRs firing in parallel (any page that fetches several endpoints at
+once — a dashboard is exactly that) could genuinely interleave `cur.execute()`
+calls from different threads on the *same* psycopg2 connection, corrupting
+its transaction state in ways no amount of per-call rollback discipline can
+prevent. Every fix below (the metering upsert, the self-heal, the PLATFORM
+sentinel skip) narrowed *a* trigger; none of them could fully stop the
+corruption while two threads could still race on one connection. Confirmed:
+the platform dashboard, which reliably crashed 1-in-3 runs before, passed 20
+consecutive times after this change with zero
+`InFailedSqlTransaction` occurrences in the log.
+
+Real AWS Lambda never has this hazard — a single container processes one
+invocation at a time, never two concurrently — so `threaded=False` here is
+also the more faithful match to production's actual execution model, not a
+workaround that trades correctness for speed. (It does mean the local server
+now genuinely serializes concurrent page-load fetches, same as Lambda would
+via cold starts / separate containers per concurrent request in practice.)
+
 ## shared/db.py — connection self-heal (added 2026-09-06)
 
 `get_connection()` now checks `_connection.get_transaction_status()` and calls
@@ -325,3 +352,27 @@ the same shape. Verified: the exact e2e smoke sweep that surfaced the crash
 now runs clean end to end (`frontend/e2e/flows/smoke-navigation.spec.ts`).
 
 Covered by `tests/unit/test_db_connection_healing.py`.
+
+## shared/validation.py — parse_validated() (added 2026-09-06)
+
+`parse_validated(model_class, body)` parses a request body dict into a Pydantic
+model, raising the app's `ValidationError` (not a raw `pydantic.ValidationError`)
+on failure. Consolidates nine byte-for-byte-identical `_parse_validated()`
+copies across `services/*/handler.py` (plus a tenth, differently-shaped
+instance inline in `services/auth/handler.py`).
+
+**Real bug found by having nine copies, fixed by having one.** Every copy
+built `field_errors` with `str(e["loc"][-1]): e["msg"]` — correct for a
+per-field pydantic error, but a `@model_validator` cross-field check reports
+an error with an **empty** `loc` tuple (it isn't about one field), and
+`()[-1]` raises `IndexError`. That turned a validation failure that should
+be a clean 422 into a raw, undiagnosable 500 for any endpoint using a
+model-level validator — found live via e2e testing
+(`RecordPickupRequest`'s "collected_by_name is required when is_delegate is
+false"; see `13_api_payment_release.md`). `parse_validated()` keys a
+model-level error `"__root__"` instead. Covered by
+`tests/unit/test_shared_validation.py`.
+
+Every `services/*/handler.py` now imports this instead of defining its own
+copy — a future fix to this logic can no longer land in eight of nine files
+by accident.

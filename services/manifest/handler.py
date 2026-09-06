@@ -1,11 +1,14 @@
 """Manifest Lambda handler.
 
 Routes:
-  GET   /v1/manifests            — china_office_staff, nigeria_office_staff, tenant_admin
-  GET   /v1/manifests/{id}       — same
-  PATCH /v1/manifests/{id}/verify — china_office_staff, nigeria_office_staff
+  GET   /v1/manifests                        — china_office_staff, nigeria_office_staff, tenant_admin
+  GET   /v1/manifests/{id}                   — same
+  PATCH /v1/manifests/{id}/verify            — china_office_staff, nigeria_office_staff
+  PATCH /v1/manifests/{id}/revoke-verification — china_office_staff, nigeria_office_staff, tenant_admin
+  POST  /v1/manifests/{id}/evidence          — china_office_staff, nigeria_office_staff (presigned upload)
 
-No POST — manifests are auto-created when packing lists are approved (Task 08).
+Manifests are auto-created when packing lists are approved (Task 08); the only
+POST is the verification-evidence presigned-upload contract.
 """
 
 import json
@@ -23,9 +26,10 @@ from shared.metering import record_usage
 from shared.pagination import decode_cursor
 from shared.responses import error_response, paginated, success
 from shared.tenant_context import UserRole
+from shared.validation import parse_validated
 
 from . import service
-from .models import VerifyManifestRequest
+from .models import EvidenceUploadRequest, ResolveDiscrepancyRequest, VerifyManifestRequest
 
 # Module-level init (runs once on cold start)
 setup_logging()
@@ -42,6 +46,15 @@ _VERIFY_ROLES = (
     UserRole.CHINA_OFFICE_STAFF,
     UserRole.NIGERIA_OFFICE_STAFF,
 )
+_RESOLVE_ROLES = (
+    UserRole.NIGERIA_OFFICE_STAFF,
+    UserRole.TENANT_ADMIN,
+)
+_REVOKE_ROLES = (
+    UserRole.CHINA_OFFICE_STAFF,
+    UserRole.NIGERIA_OFFICE_STAFF,
+    UserRole.TENANT_ADMIN,
+)
 
 
 # ---------------------------------------------------------------------------
@@ -56,6 +69,9 @@ def lambda_handler(event: dict[str, Any], context: Any) -> dict[str, Any]:
     method = http.get("method", "")
     path = http.get("path", "")
     ip_address = event.get("requestContext", {}).get("identity", {}).get("sourceIp")
+
+    if method == "GET" and path.strip("/") == "v1/health":
+        return _health_response(request_id)
 
     try:
         tenant_ctx = get_tenant_context(event)
@@ -120,20 +136,6 @@ def _qp(event: dict[str, Any], key: str, default: Any = None) -> Any:
     return (event.get("queryStringParameters") or {}).get(key, default)
 
 
-def _parse_validated(model_class: Any, body: dict[str, Any]) -> Any:
-    from pydantic import ValidationError as PydanticValidationError
-
-    try:
-        return model_class(**body)
-    except PydanticValidationError as exc:
-        from shared.exceptions import ValidationError
-
-        raise ValidationError(
-            "Request validation failed",
-            field_errors={str(e["loc"][-1]): e["msg"] for e in exc.errors()},
-        ) from exc
-
-
 # ---------------------------------------------------------------------------
 # Route handler
 # ---------------------------------------------------------------------------
@@ -165,6 +167,13 @@ def _manifest_routes(
             page, next_cursor, has_more = service.list_manifests(tenant_id, filters, limit, cursor)
             return paginated(page, next_cursor, has_more, request_id=request_id)
 
+    elif manifest_id == "stats":
+        # GET /v1/manifests/stats — per-status counts + overdue for the list
+        # stats row (§6.2, P2-4).
+        if method == "GET":
+            ctx.assert_role(*_READ_ROLES)
+            return success(service.get_manifest_stats(tenant_id), request_id=request_id)
+
     else:
         if action is None:
             # GET /v1/manifests/{id}
@@ -178,7 +187,7 @@ def _manifest_routes(
             if action == "verify" and method == "PATCH":
                 ctx.assert_role(*_VERIFY_ROLES)
                 body = _parse_body(event)
-                req = _parse_validated(VerifyManifestRequest, body)
+                req = parse_validated(VerifyManifestRequest, body)
                 result = service.verify_manifest(
                     tenant_id,
                     manifest_id,
@@ -189,4 +198,68 @@ def _manifest_routes(
                 )
                 return success(result, request_id=request_id)
 
+            # PATCH /v1/manifests/{id}/revoke-verification
+            if action == "revoke-verification" and method == "PATCH":
+                ctx.assert_role(*_REVOKE_ROLES)
+                result = service.revoke_verification(
+                    tenant_id,
+                    manifest_id,
+                    actor_id=ctx.user_id,
+                    ctx=ctx,
+                    ip_address=ip_address,
+                )
+                return success(result, request_id=request_id)
+
+            # POST /v1/manifests/{id}/evidence — presigned upload for a verify photo/doc
+            if action == "evidence" and method == "POST":
+                ctx.assert_role(*_VERIFY_ROLES)
+                body = _parse_body(event)
+                req = parse_validated(EvidenceUploadRequest, body)
+                result = service.generate_evidence_upload(
+                    tenant_id,
+                    manifest_id,
+                    filename=req.filename,
+                    content_type=req.content_type,
+                    actor_id=ctx.user_id,
+                    label=req.label,
+                )
+                return success(result, request_id=request_id, status_code=201)
+
+            # PATCH /v1/manifests/{id}/resolve-discrepancy
+            if action == "resolve-discrepancy" and method == "PATCH":
+                ctx.assert_role(*_RESOLVE_ROLES)
+                body = _parse_body(event)
+                req = parse_validated(ResolveDiscrepancyRequest, body)
+                result = service.resolve_discrepancy(
+                    tenant_id,
+                    manifest_id,
+                    req,
+                    actor_id=ctx.user_id,
+                    ctx=ctx,
+                    ip_address=ip_address,
+                )
+                return success(result, request_id=request_id)
+
     raise ResourceNotFoundError("route", "/".join(parts))
+
+
+# ---------------------------------------------------------------------------
+# Health check (no auth)
+# ---------------------------------------------------------------------------
+
+
+def _health_response(request_id: str) -> dict[str, Any]:
+    import datetime
+    import json as _json
+
+    return {
+        "statusCode": 200,
+        "headers": {"Content-Type": "application/json", "X-Request-Id": request_id},
+        "body": _json.dumps(
+            {
+                "status": "healthy",
+                "timestamp": datetime.datetime.now(datetime.UTC).isoformat(),
+            }
+        ),
+    }
+

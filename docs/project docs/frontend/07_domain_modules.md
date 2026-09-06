@@ -704,3 +704,30 @@ underneath, no error. `frontend/e2e/support/roleSwitch.ts`'s
 `switchRole()` now suppresses its pointer-events via this id once a role is
 set, since most tests never touch the switcher again afterward. Purely a
 test hook; no visual or behavioral change for real dev use.
+
+## Two real bugs found by deep e2e interaction testing (2026-09-06)
+
+**`Dashboard.tsx` crashed the whole page for any tenant with an unmethoded
+payment.** `RecentPayment.payment_method` was typed `string` (non-nullable),
+but the DB column is deliberately nullable (migration 008 dropped `NOT NULL`
+specifically to support `RecordPaymentInput.payment_method` being optional).
+`Dashboard.tsx` called `.replace(/_/g, ' ')` on it directly — `tsc` never
+caught it because the *type*, not the real value, said non-nullable. Any
+payment recorded without picking a method (a real, common case — the field
+is optional in the Record Payment form) blanked the entire nigeria-staff/
+tenant-admin dashboard with "Cannot read properties of null". Fixed: the
+type is now `string | null`, and the cell falls back to `'—'`. Covered by a
+new case in `Dashboard.test.tsx` — the only existing recent-payments test
+stubbed a payment *with* a method, so this was untested.
+
+**`ReleaseNoteDetail.tsx`'s pickup form never collected a required field.**
+See `13_api_payment_release.md`'s "Ground-truth fix (2026-09-06)" for the
+full story — a backend validator requires `collected_by_name` for any
+non-delegate pickup, but the form only ever asked for delegate details.
+Fixed by adding a "Collected by" field (defaulting to the note's own
+customer) shown when the delegate toggle is off. Covered by two new cases
+in `ReleaseNoteDetail.test.tsx`.
+
+Both were found running the real billing → payment → release-note → pickup
+chain against the live local stack, not through code review — confirmed
+each fix by watching the record actually reach `picked_up` in the database.

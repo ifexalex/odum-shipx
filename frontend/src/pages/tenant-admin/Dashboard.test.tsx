@@ -1,0 +1,229 @@
+/**
+ * 3.1 / audit gap B3 — tenant admin dashboard: greeting hero + summary line,
+ * admin-only Active-customers / Open-claims stats, and a recent-containers table.
+ */
+import { render, screen, waitFor } from '@testing-library/react'
+import { MemoryRouter } from 'react-router-dom'
+import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { billingApi, disputeApi } from '../../api/billing'
+import { claimsApi } from '../../api/claims'
+import { manifestApi } from '../../api/manifest'
+import { packingListApi } from '../../api/packingList'
+import { releaseNotesApi } from '../../api/releaseNotes'
+import { customersApi } from '../../api/tenantManagement'
+import { containersApi } from '../../api/tracking'
+import { SessionContext, type SessionContextValue } from '../../auth/SessionContext'
+import type { Session } from '../../auth/types'
+import { Dashboard } from './Dashboard'
+
+vi.mock('../../api/tracking', async (importOriginal) => {
+  const original = await importOriginal<typeof import('../../api/tracking')>()
+  return { ...original, containersApi: { ...original.containersApi, list: vi.fn() } }
+})
+vi.mock('../../api/billing', async (importOriginal) => {
+  const original = await importOriginal<typeof import('../../api/billing')>()
+  return {
+    ...original,
+    billingApi: { ...original.billingApi, list: vi.fn(), recentPayments: vi.fn() },
+    disputeApi: { ...original.disputeApi, list: vi.fn() },
+  }
+})
+vi.mock('../../api/manifest', async (importOriginal) => {
+  const original = await importOriginal<typeof import('../../api/manifest')>()
+  return { ...original, manifestApi: { ...original.manifestApi, list: vi.fn() } }
+})
+vi.mock('../../api/releaseNotes', async (importOriginal) => {
+  const original = await importOriginal<typeof import('../../api/releaseNotes')>()
+  return { ...original, releaseNotesApi: { ...original.releaseNotesApi, list: vi.fn() } }
+})
+vi.mock('../../api/packingList', async (importOriginal) => {
+  const original = await importOriginal<typeof import('../../api/packingList')>()
+  return { ...original, packingListApi: { ...original.packingListApi, list: vi.fn() } }
+})
+vi.mock('../../api/claims', async (importOriginal) => {
+  const original = await importOriginal<typeof import('../../api/claims')>()
+  return { ...original, claimsApi: { ...original.claimsApi, list: vi.fn() } }
+})
+vi.mock('../../api/tenantManagement', async (importOriginal) => {
+  const original = await importOriginal<typeof import('../../api/tenantManagement')>()
+  return { ...original, customersApi: { ...original.customersApi, list: vi.fn() } }
+})
+// PlanUsagePanel makes its own quota call — stub it out of this page test.
+vi.mock('../../shell/PlanUsagePanel', () => ({ PlanUsagePanel: () => null }))
+
+const CONTAINER = {
+  id: 'c1', tenant_id: 't1', container_number: 'MSCU1234567', parcel_number: null,
+  origin: 'Guangzhou', destination: 'Lagos', ship_date: null, estimated_arrival_date: '2026-08-14',
+  actual_arrival_date: null, status: 'in_transit', notes: null, created_by: 's1',
+  created_at: '2026-07-01', updated_at: '2026-07-01', vessel_name: null, voyage_number: null,
+  shipping_line: null, seal_number: null, container_type: null, created_by_name: null,
+}
+
+function renderDashboard(role: Session['role'] = 'tenant_admin') {
+  const session: Session = {
+    tenantId: 't1', userId: 'u1', name: 'Amara Okafor', role, roles: [role],
+    isPlatformAdmin: false, impersonatedBy: null, sessionId: null,
+    readOnly: false, expiresAt: Date.now() + 60_000, tokenType: 'cognito',
+  }
+  const ctx: SessionContextValue = {
+    session, status: 'authenticated',
+    login: vi.fn(), logout: vi.fn(), startImpersonation: vi.fn(), exitImpersonation: vi.fn(), refreshNow: vi.fn(), setActiveRole: vi.fn(),
+  }
+  return render(
+    <SessionContext.Provider value={ctx}>
+      <MemoryRouter>
+        <Dashboard />
+      </MemoryRouter>
+    </SessionContext.Provider>,
+  )
+}
+
+describe('Dashboard (B3)', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+    vi.mocked(containersApi.list).mockResolvedValue({
+      data: [CONTAINER],
+      meta: { pagination: { has_more: false, next_cursor: null, total_count: 1 } },
+    } as never)
+    vi.mocked(billingApi.list).mockResolvedValue({
+      data: [],
+      meta: { pagination: { has_more: false, next_cursor: null, total_count: 0 } },
+    } as never)
+    vi.mocked(customersApi.list).mockResolvedValue({
+      data: [],
+      meta: { pagination: { has_more: true, next_cursor: 'x', total_count: 142 } },
+    } as never)
+    vi.mocked(claimsApi.list).mockResolvedValue({
+      data: [{ status: 'filed' }, { status: 'under_inspection' }, { status: 'resolved' }],
+      meta: { pagination: { has_more: false, next_cursor: null, total_count: 3 } },
+    } as never)
+    const emptyList = {
+      data: [], meta: { pagination: { has_more: false, next_cursor: null, total_count: 0 } },
+    } as never
+    vi.mocked(packingListApi.list).mockResolvedValue(emptyList)
+    vi.mocked(manifestApi.list).mockResolvedValue(emptyList)
+    vi.mocked(disputeApi.list).mockResolvedValue(emptyList)
+    vi.mocked(releaseNotesApi.list).mockResolvedValue(emptyList)
+    vi.mocked(billingApi.recentPayments).mockResolvedValue([])
+  })
+
+  it('greets the admin by first name with a container summary line', async () => {
+    renderDashboard()
+    expect(await screen.findByText(/Lead every shipment, Amara\./)).toBeInTheDocument()
+    expect(screen.getByText(/1 in transit · 0 awaiting customs · 0 ready for pickup/)).toBeInTheDocument()
+  })
+
+  it('shows admin-only active-customers and open-claims stats', async () => {
+    renderDashboard()
+    await screen.findByText(/Lead every shipment/)
+    await waitFor(() => expect(screen.getByText('142')).toBeInTheDocument())   // customers
+    await waitFor(() => expect(screen.getByText('2')).toBeInTheDocument())     // open claims (filed + under_inspection)
+    expect(screen.getByText('Active customers')).toBeInTheDocument()
+    expect(screen.getByText('Open claims')).toBeInTheDocument()
+  })
+
+  it('renders a payment with no method recorded, rather than crashing', async () => {
+    // Regression: RecordPaymentInput.payment_method is optional, and the DB
+    // column is nullable (migration 008 dropped NOT NULL specifically for
+    // this) — but the frontend type lied and called payment_method.replace()
+    // directly, throwing "Cannot read properties of null" and blanking the
+    // whole page for any tenant with even one such payment. tsc missed it
+    // because the wrong type said `string`, not `string | null`.
+    vi.mocked(billingApi.recentPayments).mockResolvedValue([
+      {
+        id: 'p1', billing_id: 'b1', customer_name: 'Ngozi Okonkwo', amount_ngn: '50000.00',
+        payment_method: null, reference_number: null, payment_date: '2026-07-16',
+        created_at: '2026-07-16T09:00:00Z',
+      },
+    ])
+
+    renderDashboard('nigeria_office_staff')
+    await screen.findByText(/Lead every shipment/)
+
+    expect(screen.getByText('Recent payments')).toBeInTheDocument()
+    expect(screen.getByText('₦50,000')).toBeInTheDocument()
+    expect(screen.getByText('—')).toBeInTheDocument()
+  })
+
+  it('renders the recent-containers table for admins', async () => {
+    renderDashboard()
+    await screen.findByText(/Lead every shipment/)
+    expect(screen.getByText('Recent containers')).toBeInTheDocument()
+    expect(screen.getByText('MSCU1234567')).toBeInTheDocument()
+  })
+
+  it('does not show the admin-only extras for nigeria staff', async () => {
+    renderDashboard('nigeria_office_staff')
+    await screen.findByText(/Lead every shipment/)
+    expect(screen.queryByText('Active customers')).toBeNull()
+    expect(screen.queryByText('Recent containers')).toBeNull()
+    expect(customersApi.list).not.toHaveBeenCalled()
+  })
+
+  // P2-5 — §6.1 Nigeria ops action queues
+  it('shows the manifest-verification queue, disputes queue, and recent payments for nigeria staff', async () => {
+    vi.mocked(manifestApi.list).mockResolvedValue({
+      data: [
+        // Arrived in NG → in the queue
+        { id: 'm1', container_number: 'MSCU1234567', container_status: 'arrived', total_cartons: 22, verification_status: 'pending' },
+        // Still at sea → filtered out
+        { id: 'm2', container_number: 'HLBU9384712', container_status: 'in_transit', total_cartons: 8, verification_status: 'pending' },
+      ],
+      meta: { pagination: { has_more: false, next_cursor: null, total_count: 2 } },
+    } as never)
+    vi.mocked(disputeApi.list).mockResolvedValue({
+      data: [{ id: 'd1', original_cbm: '2.14', status: 'submitted', submitted_at: '2026-07-15T10:00:00Z' }],
+      meta: { pagination: { has_more: false, next_cursor: null, total_count: 1 } },
+    } as never)
+    vi.mocked(billingApi.recentPayments).mockResolvedValue([
+      { id: 'p1', billing_id: 'b1', customer_name: 'Ngozi Okonkwo', amount_ngn: '50000.00', payment_method: 'bank_transfer', reference_number: null, payment_date: '2026-07-16', created_at: '2026-07-16T09:00:00Z' },
+    ])
+    vi.mocked(releaseNotesApi.list).mockResolvedValue({
+      data: [{ id: 'rn1' }, { id: 'rn2' }],
+      meta: { pagination: { has_more: false, next_cursor: null, total_count: 2 } },
+    } as never)
+
+    renderDashboard('nigeria_office_staff')
+    await screen.findByText(/Lead every shipment/)
+
+    await waitFor(() => expect(screen.getByText('Containers awaiting manifest verification')).toBeInTheDocument())
+    // Only the arrived container is queued — the in-transit one is filtered out.
+    // (MSCU1234567 also appears in the pipeline kanban, hence getAllByText.)
+    expect(screen.getAllByText('MSCU1234567').length).toBeGreaterThan(0)
+    expect(screen.queryByText('HLBU9384712')).toBeNull()
+
+    expect(screen.getByText('CBM disputes need response')).toBeInTheDocument()
+    expect(screen.getByText('Recent payments')).toBeInTheDocument()
+    expect(screen.getByText('₦50,000')).toBeInTheDocument()
+    expect(screen.getByText('Ready for pickup')).toBeInTheDocument()
+  })
+
+  // §3.1 bottom row — QuickActionCards replaced the old generic nav-card stacks
+  it('shows admin quick actions instead of the old nav stacks', async () => {
+    renderDashboard()
+    await screen.findByText(/Lead every shipment/)
+    expect(screen.getByText('Quick actions')).toBeInTheDocument()
+    // Card title + CTA both carry the label — assert the heading
+    expect(screen.getByRole('heading', { name: 'Add customer' })).toBeInTheDocument()
+    expect(screen.getByRole('heading', { name: 'Invite staff' })).toBeInTheDocument()
+    expect(screen.getByRole('heading', { name: 'Update dollar rate' })).toBeInTheDocument()
+    expect(screen.queryByText('Operations')).toBeNull()
+    expect(screen.queryByText('Billing & Claims')).toBeNull()
+  })
+
+  // §6.1 bottom row — incoming containers (still at sea, soonest ETA first)
+  it('shows incoming containers for nigeria staff, excluding arrived ones', async () => {
+    vi.mocked(containersApi.list).mockResolvedValue({
+      data: [
+        CONTAINER, // in_transit → incoming
+        { ...CONTAINER, id: 'c2', container_number: 'HLBU9384712', status: 'sealed', estimated_arrival_date: '2026-07-20' },
+        { ...CONTAINER, id: 'c3', container_number: 'COSU7194820', status: 'at_warehouse' }, // already here
+      ],
+      meta: { pagination: { has_more: false, next_cursor: null, total_count: 3 } },
+    } as never)
+    renderDashboard('nigeria_office_staff')
+    await screen.findByText(/Lead every shipment/)
+    await waitFor(() => expect(screen.getByText('Incoming containers')).toBeInTheDocument())
+    expect(screen.getByText('Next 2 expected arrivals')).toBeInTheDocument()
+  })
+})
