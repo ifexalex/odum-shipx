@@ -13,6 +13,7 @@ from typing import Any
 
 import boto3
 
+from services.refunds import repository as refund_repo
 from shared.audit import log_audit
 from shared.events import publish_event
 from shared.exceptions import (
@@ -79,16 +80,35 @@ def file_claim(
 
     cartons_affected = [str(t) for t in req.cartons_affected] if isinstance(req.cartons_affected, list) else []
 
+    # FileDamageClaimRequest.container_id was passed straight through to a
+    # `uuid` column with no resolution — a customer typing what they actually
+    # see (the container number; they never see its internal UUID) crashed
+    # with InvalidTextRepresentation, despite the frontend's own field label
+    # promising number support ("Container ID or number ... e.g. ACME-001 or
+    # paste the UUID"). Found live: every attempt to file a claim by number
+    # failed.
+    container_id = repo.resolve_container_id(tenant_id, req.container_id)
+    if not container_id:
+        raise ResourceNotFoundError("container", req.container_id)
+    if ctx.role == UserRole.CUSTOMER and not repo.customer_has_cargo_in_container(
+        tenant_id, customer_id, container_id
+    ):
+        # Without this, a customer could file a claim against any container
+        # in the tenant by guessing/enumerating numbers, not only their own.
+        raise ResourceNotFoundError("container", req.container_id)
+
+    reference = repo.get_next_claim_reference(tenant_id)
     claim = repo.create_damage_claim(
         tenant_id,
         {
             "tenant_id": tenant_id,
             "customer_id": customer_id,
-            "container_id": req.container_id,
+            "container_id": container_id,
             "cartons_affected": cartons_affected,
             "description": req.description,
             "status": "filed",
             "submitted_by": actor_id,
+            "reference": reference,
         },
     )
     if claim is None:
@@ -101,7 +121,7 @@ def file_claim(
         action="CREATE",
         actor_id=actor_id,
         actor_role=str(ctx.role),
-        after_state={"status": "filed", "container_id": req.container_id},
+        after_state={"status": "filed", "container_id": container_id},
     )
 
     publish_event(
@@ -111,7 +131,7 @@ def file_claim(
         payload={
             "claim_id": str(claim["id"]),
             "customer_id": customer_id,
-            "container_id": req.container_id,
+            "container_id": container_id,
         },
         request_id=request_id,
     )
@@ -125,6 +145,8 @@ def list_claims(
     filters: dict[str, Any],
     limit: int,
     cursor: dict[str, Any] | None,
+    sort_field: str = "created_at",
+    sort_direction: str = "DESC",
 ) -> tuple[list[dict[str, Any]], str | None, bool]:
     if ctx.role == UserRole.CUSTOMER:
         customer = repo.get_customer_by_user_id(tenant_id, ctx.user_id)
@@ -132,7 +154,9 @@ def list_claims(
             return [], None, False
         filters = {**filters, "customer_id": str(customer["id"])}
 
-    rows, next_cursor, has_more = repo.list_damage_claims(tenant_id, filters, limit, cursor)
+    rows, next_cursor, has_more = repo.list_damage_claims(
+        tenant_id, filters, limit, cursor, sort_field=sort_field, sort_direction=sort_direction
+    )
     return [_fmt_claim(r) for r in rows], next_cursor, has_more
 
 
@@ -233,15 +257,30 @@ def resolve_claim(
             ip_address,
         )
 
-    # Determine approval level + enforce threshold
+    # Determine approval level + enforce threshold.
+    #
+    # Ground-truth gap found live via e2e testing: this checked req.amount_usd,
+    # but ResolveClaimInput (the frontend's real request body) only ever sends
+    # amount_ngn — no field named amount_usd exists on it at all. `if ...
+    # req.amount_usd:` was therefore always falsy from the one call site that
+    # actually reaches this code, and the entire staff-approval-threshold
+    # enforcement was dead: nigeria_office_staff could resolve a refund of any
+    # size with no tenant_admin escalation. Confirmed live — a ₦500,000
+    # refund resolved cleanly as nigeria_office_staff with no rejection.
+    # Fixed by converting the NGN amount actually sent to USD via the
+    # tenant's configured dollar rate, the same conversion this file already
+    # does the other direction for the new-style resolution path below.
     approval_level = "nigeria_staff"
-    if resolution_type == "refund" and req.amount_usd:
+    if resolution_type == "refund" and req.amount_ngn:
         threshold_cfg = repo.get_tenant_config_value(tenant_id, "refund_threshold_usd") or {}
-        staff_limit = Decimal(str(threshold_cfg.get("staff_limit", 50)))
-        if Decimal(str(req.amount_usd)) > staff_limit:
+        staff_limit_usd = Decimal(str(threshold_cfg.get("staff_limit", 50)))
+        dollar_rate = repo.get_dollar_rate(tenant_id)
+        amount_usd = Decimal(str(req.amount_ngn)) / dollar_rate if dollar_rate > 0 else Decimal(0)
+        if amount_usd > staff_limit_usd:
             if ctx.role != UserRole.TENANT_ADMIN:
                 raise ApprovalThresholdExceededError(
-                    f"Refund of ${req.amount_usd} exceeds staff limit of ${staff_limit}; " "tenant_admin approval required"
+                    f"Refund of ₦{req.amount_ngn} (~${amount_usd:.2f}) exceeds staff limit of "
+                    f"${staff_limit_usd}; tenant_admin approval required"
                 )
             approval_level = "tenant_admin"
 
@@ -529,6 +568,7 @@ def update_missing_item(
     status: str,
     notes: str | None,
     actor_id: str,
+    refund_amount_ngn: Decimal | None = None,
 ) -> dict[str, Any]:
     item = repo.get_missing_item_by_id(tenant_id, item_id)
     if not item:
@@ -537,7 +577,31 @@ def update_missing_item(
     updated = repo.update_missing_item_status(tenant_id, item_id, status, notes=notes, actor_id=actor_id)
     if updated is None:
         raise RuntimeError("update_missing_item_status returned None unexpectedly")
-    return _fmt_missing(updated)
+
+    result = _fmt_missing(updated)
+
+    if status == "compensated" and refund_amount_ngn is not None:
+        refund_row = refund_repo.create_refund_request(
+            tenant_id,
+            {
+                "tenant_id": tenant_id,
+                "customer_id": str(item["customer_id"]),
+                "billing_id": None,
+                "damage_claim_id": None,
+                "refund_type": "missing_item",
+                "amount_ngn": refund_amount_ngn,
+                "reason": f"Compensation for missing item {item_id}",
+                "status": "pending_review",
+                "customer_choice": None,
+                "requested_by": actor_id,
+            },
+        )
+        linked = repo.link_refund_to_missing_item(tenant_id, item_id, str(refund_row["id"]))
+        result["refund_request_id"] = str(refund_row["id"]) if refund_row else None
+        if linked is not None:
+            result["refund_request_id"] = str(linked.get("refund_request_id") or refund_row["id"])
+
+    return result
 
 
 # ---------------------------------------------------------------------------
@@ -574,6 +638,7 @@ def update_seized_item(
     recovery_status: str,
     notes: str | None,
     actor_id: str,
+    refund_amount_ngn: Decimal | None = None,
 ) -> dict[str, Any]:
     item = repo.get_seized_item_by_id(tenant_id, item_id)
     if not item:
@@ -582,7 +647,31 @@ def update_seized_item(
     updated = repo.update_seized_item_status(tenant_id, item_id, recovery_status, notes=notes, actor_id=actor_id)
     if updated is None:
         raise RuntimeError("update_seized_item_status returned None unexpectedly")
-    return _fmt_seized(updated)
+
+    result = _fmt_seized(updated)
+
+    if recovery_status in ("recovered", "forfeited") and refund_amount_ngn is not None:
+        refund_row = refund_repo.create_refund_request(
+            tenant_id,
+            {
+                "tenant_id": tenant_id,
+                "customer_id": str(item["customer_id"]),
+                "billing_id": None,
+                "damage_claim_id": None,
+                "refund_type": "seized_item",
+                "amount_ngn": refund_amount_ngn,
+                "reason": f"Compensation for seized item {item_id}",
+                "status": "pending_review",
+                "customer_choice": None,
+                "requested_by": actor_id,
+            },
+        )
+        linked = repo.link_refund_to_seized_item(tenant_id, item_id, str(refund_row["id"]))
+        result["refund_request_id"] = str(refund_row["id"]) if refund_row else None
+        if linked is not None:
+            result["refund_request_id"] = str(linked.get("refund_request_id") or refund_row["id"])
+
+    return result
 
 
 # ---------------------------------------------------------------------------
@@ -596,7 +685,14 @@ def _fmt_claim(row: dict[str, Any]) -> dict[str, Any]:
         cartons = []
     return {
         "id": str(row["id"]),
+        "reference": row.get("reference"),
         "status": row["status"],
+        "container_id": str(row["container_id"]) if row.get("container_id") else None,
+        "container_number": row.get("container_number"),
+        "customer_id": str(row["customer_id"]) if row.get("customer_id") else None,
+        "customer_name": row.get("customer_name"),
+        "description": row.get("description"),
+        "inspection_method": row.get("inspection_method"),
         "cartons_affected": list(cartons),
         "upload_urls": None,
         "created_at": row.get("created_at"),

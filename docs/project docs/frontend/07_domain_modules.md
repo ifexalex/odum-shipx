@@ -731,3 +731,14 @@ in `ReleaseNoteDetail.test.tsx`.
 Both were found running the real billing → payment → release-note → pickup
 chain against the live local stack, not through code review — confirmed
 each fix by watching the record actually reach `picked_up` in the database.
+
+## refundTypeLabel() gains a fallback (2026-09-06)
+
+See `12_api_claims.md`'s and `14_api_refunds.md`'s matching entries for the
+full story — `create_refund_request_for_claim()` never set `refund_type`,
+and `refundTypeLabel()`'s switch had no default, so an unmapped value
+returned `undefined` and React rendered nothing: `RefundDetail.tsx`'s page
+`<h1>` was silently blank for every claim-triggered refund. Fixed at the
+source and defensively here (`'Refund request'` fallback), covered by a new
+case in `refundsRules.test.ts` — there was no existing test for this
+function at all before.

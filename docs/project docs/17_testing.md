@@ -551,3 +551,34 @@ unit tests mock the layer where the bug actually lived (a component's own
 error-formatting function) rather than exercising it. Matches the exact
 caveat already recorded in `13_api_payment_release.md`'s two earlier
 ground-truth fixes for the pickup endpoint.
+
+## claims-and-refunds.spec.ts (2026-09-06)
+
+Chains the full real business process — customer files a damage claim,
+staff inspects and resolves it as a refund, the resulting refund request
+goes through accounts review, and is either approved (tenant_admin, for the
+over-threshold case) or rejected. No claims or refunds existed in seed data
+at all before this spec created the first ones.
+
+**Found three real bugs, none from code review — from actually running the
+chain:**
+1. Filing a claim by container *number* (what a customer actually sees, per
+   the form's own placeholder) crashed every time — the backend only ever
+   accepted a raw UUID.
+2. The staff-approval refund threshold was completely dead code —
+   `nigeria_office_staff` could resolve a refund of any size with no
+   escalation, confirmed by resolving a ₦500,000 refund with zero rejection.
+3. Every claim-triggered refund's page title rendered blank —
+   `refund_type` was never set at the point of creation.
+
+Full account of all three in `12_api_claims.md`'s "Ground-truth gaps found"
+and `14_api_refunds.md`'s matching entry.
+
+**Same pattern as the billing/release-note chain before it:** every one of
+these was invisible to the existing unit suite, which mocks the exact layer
+where each bug lived (a repository function's own SQL, a request field the
+tests always populated by hand even though the real frontend never sends
+it, a switch statement's missing default). The fix in each case was
+confirmed by reading the real database afterward — a genuinely resolved
+`damage_claim`, a `refund_request` with the right `refund_type` and status
+— not by the test runner going green alone.
