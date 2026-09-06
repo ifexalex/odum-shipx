@@ -44,6 +44,77 @@ def _refund(**kwargs) -> dict:
 # ---------------------------------------------------------------------------
 
 
+class TestCreateRefundCustomerFlow:
+    """Ground-truth regression: RefundRequest.tsx's self-service "Request a
+    Refund" flow always 403'd — _CREATE_ROLES (handler.py) never included
+    CUSTOMER. Behind that, create_refund() used req.customer_id
+    unconditionally, but the frontend deliberately sends customer_id=""
+    with the comment "Server derives from JWT for customer role" — a
+    derivation that never existed. Both fixed together.
+    """
+
+    def _req(self, **overrides) -> MagicMock:
+        req = MagicMock()
+        req.customer_id = ""  # exactly what RefundRequest.tsx actually sends
+        req.billing_id = "billing-001"
+        req.damage_claim_id = None
+        req.refund_type = "overpayment"
+        req.amount_requested_ngn = Decimal("15000")
+        req.customer_choice = "immediate_refund"
+        req.notes = "e2e test"
+        for k, v in overrides.items():
+            setattr(req, k, v)
+        return req
+
+    def test_customer_id_is_derived_from_the_session_not_the_blank_request_field(self):
+        from services.refunds import service
+
+        req = self._req()
+        with (
+            patch.object(service.repo, "get_customer_by_user_id", return_value={"id": "real-customer-001"}),
+            patch.object(service.repo, "get_billing_by_id", return_value={"id": "billing-001", "customer_id": "real-customer-001"}),
+            patch.object(service.repo, "create_refund_request", return_value=_refund(customer_id="real-customer-001")) as mock_create,
+            patch("services.refunds.service.log_audit"),
+        ):
+            ctx = _ctx(UserRole.CUSTOMER)
+            service.create_refund(TENANT_ID, req, actor_id="user-1", ctx=ctx)
+
+        assert mock_create.call_args.args[1]["customer_id"] == "real-customer-001"
+
+    def test_customer_cannot_request_a_refund_against_another_customers_billing(self):
+        """Without this, a customer could request a refund against any
+        billing record in the tenant by guessing or enumerating ids."""
+        from services.refunds import service
+
+        req = self._req()
+        with (
+            patch.object(service.repo, "get_customer_by_user_id", return_value={"id": "real-customer-001"}),
+            patch.object(service.repo, "get_billing_by_id", return_value={"id": "billing-001", "customer_id": "someone-elses-customer-id"}),
+            patch.object(service.repo, "create_refund_request") as mock_create,
+        ):
+            ctx = _ctx(UserRole.CUSTOMER)
+            with pytest.raises(ResourceNotFoundError):
+                service.create_refund(TENANT_ID, req, actor_id="user-1", ctx=ctx)
+
+        mock_create.assert_not_called()
+
+    def test_staff_still_supplies_customer_id_directly(self):
+        """Non-customer callers (nigeria_office_staff creating a refund on a
+        customer's behalf) are unaffected — customer_id comes from the body."""
+        from services.refunds import service
+
+        req = self._req(customer_id="staff-provided-customer-001")
+        with (
+            patch.object(service.repo, "get_billing_by_id", return_value={"id": "billing-001", "customer_id": "staff-provided-customer-001"}),
+            patch.object(service.repo, "create_refund_request", return_value=_refund()) as mock_create,
+            patch("services.refunds.service.log_audit"),
+        ):
+            ctx = _ctx(UserRole.NIGERIA_OFFICE_STAFF)
+            service.create_refund(TENANT_ID, req, actor_id="user-1", ctx=ctx)
+
+        assert mock_create.call_args.args[1]["customer_id"] == "staff-provided-customer-001"
+
+
 class TestFmtRefund:
     def test_maps_amount_ngn_to_amount_requested_ngn(self):
         from services.refunds.service import _fmt_refund

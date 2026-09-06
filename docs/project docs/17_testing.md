@@ -582,3 +582,36 @@ it, a switch statement's missing default). The fix in each case was
 confirmed by reading the real database afterward — a genuinely resolved
 `damage_claim`, a `refund_request` with the right `refund_type` and status
 — not by the test runner going green alone.
+
+## Follow-up sweep after the claims/refunds chain (2026-09-06)
+
+Prompted by finding three real bugs in one chained flow, swept the codebase
+for the same *shapes* of bug elsewhere rather than only moving on to the
+next untested page:
+
+- **Other label-rendering switch statements with no default** (the exact
+  shape of the `refundTypeLabel` bug): found 10 more across `nigeria/`,
+  `customer/` pages and `releaseNotesRules.ts`. All are backed by `status`
+  columns that are `NOT NULL DEFAULT '...'` at the DB level — confirmed via
+  `information_schema.columns` — so none carry the same live risk
+  `refund_type` did (nullable, no default, no code-level fallback).
+  Left as-is; noted here so a future column-nullability change to one of
+  these doesn't quietly reopen the same failure mode.
+- **Other customer-facing free-text fields with number-or-UUID ambiguity**
+  (the shape of the claims `container_id` bug): none found — that was the
+  only one.
+- **Other places checking a request field the real frontend never
+  sends**: led directly to `customer-refund-request.spec.ts`'s finding
+  below — a second, worse instance of the same *class* of bug (a frontend
+  comment asserting server behavior that was never implemented).
+
+`customer-refund-request.spec.ts` — RefundRequest.tsx's self-service
+"Request a Refund" flow, reachable from every customer's billing page, had
+**never worked for any customer**: the endpoint's role check excluded
+`CUSTOMER` outright (a 403 on every attempt), and behind that,
+`customer_id` was read directly from a request field the frontend
+deliberately sends empty (per its own code comment, on the assumption the
+server would derive it from the session — it never did). Full account in
+`14_api_refunds.md`. Confirmed fixed by reading the resulting
+`refund_request` row in the database — correctly attributed to the
+submitting customer, not empty or mismatched.

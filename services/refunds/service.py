@@ -10,8 +10,11 @@ from datetime import UTC, datetime
 from decimal import Decimal
 from typing import Any
 
+from shared.audit import log_audit
 from shared.events import publish_event
 from shared.exceptions import (
+    ApprovalThresholdExceededError,
+    BusinessRuleViolationError,
     IllegalTransitionError,
     InsufficientPermissionsError,
     ResourceNotFoundError,
@@ -41,14 +44,37 @@ def create_refund(
     ctx: Any,
     request_id: str = "",
 ) -> dict[str, Any]:
-    """Create a new refund request."""
+    """Create a new refund request.
+
+    Ground-truth gap found live via e2e testing: this endpoint's own role
+    check (_CREATE_ROLES in handler.py) never included CUSTOMER, so
+    RefundRequest.tsx's self-service "Request a Refund" flow — reachable
+    from every customer's billing page — always 403'd with "Insufficient
+    permissions." Behind that, this function would have failed anyway: it
+    used req.customer_id unconditionally, but the frontend deliberately
+    sends customer_id="" with the comment "Server derives from JWT for
+    customer role" — a derivation that never existed here. Both are fixed
+    together: the role is now allowed, and a CUSTOMER caller's identity is
+    derived from ctx.user_id and verified to actually own the billing
+    record being refunded, the same pattern services/claims/service.py
+    uses for filing a claim.
+    """
+    if ctx.role == UserRole.CUSTOMER:
+        customer = repo.get_customer_by_user_id(tenant_id, ctx.user_id)
+        if not customer:
+            raise ResourceNotFoundError("customer", ctx.user_id)
+        customer_id = str(customer["id"])
+    else:
+        customer_id = req.customer_id
+
     if req.billing_id:
         billing = repo.get_billing_by_id(tenant_id, req.billing_id)
         if not billing:
             raise ResourceNotFoundError("billing", req.billing_id)
-        customer_id = req.customer_id
-    else:
-        customer_id = req.customer_id
+        if ctx.role == UserRole.CUSTOMER and str(billing["customer_id"]) != customer_id:
+            # Without this, a customer could request a refund against any
+            # billing record in the tenant by guessing/enumerating ids.
+            raise ResourceNotFoundError("billing", req.billing_id)
 
     if req.damage_claim_id:
         claim = repo.get_damage_claim_by_id(tenant_id, req.damage_claim_id)
@@ -75,6 +101,16 @@ def create_refund(
             "customer_choice": customer_choice,
             "requested_by": actor_id,
         },
+    )
+
+    log_audit(
+        tenant_id=tenant_id,
+        entity_type="refund_request",
+        entity_id=str(refund["id"]),
+        action="CREATE",
+        actor_id=actor_id,
+        actor_role=str(ctx.role),
+        after_state={"refund_type": refund_type, "amount_ngn": str(req.amount_requested_ngn), "status": "pending_review"},
     )
 
     return _fmt_refund(refund)
@@ -106,7 +142,23 @@ def get_refund(tenant_id: str, refund_id: str, ctx: Any) -> dict[str, Any]:
         if not customer or str(customer["id"]) != str(refund["customer_id"]):
             raise InsufficientPermissionsError("Customers may only view their own refund requests")
 
-    return _fmt_refund(refund)
+    result = _fmt_refund(refund)
+    try:
+        threshold_cfg = repo.get_refund_threshold_config(tenant_id)
+        staff_limit_usd = Decimal(str(threshold_cfg.get("staff_limit", 50)))
+        dollar_rate = Decimal(str(threshold_cfg.get("dollar_rate", 1550)))
+        staff_limit_ngn = staff_limit_usd * dollar_rate
+        amount = Decimal(str(refund["amount_ngn"]))
+        result["threshold"] = {
+            "staff_limit_usd": float(staff_limit_usd),
+            "staff_limit_ngn": float(staff_limit_ngn),
+            "dollar_rate": float(dollar_rate),
+            "exceeds_staff_limit": amount > staff_limit_ngn,
+        }
+    except Exception as exc:
+        logger.warning("Could not load threshold config for refund %s: %s", refund_id, exc)
+        result["threshold"] = None
+    return result
 
 
 # ---------------------------------------------------------------------------
@@ -162,6 +214,18 @@ def accounts_review(
         }
 
     updated = repo.update_refund_status(tenant_id, refund_id, new_status, extra=extra)
+
+    log_audit(
+        tenant_id=tenant_id,
+        entity_type="refund_request",
+        entity_id=refund_id,
+        action="STATUS_CHANGE",
+        actor_id=actor_id,
+        actor_role=str(ctx.role),
+        before_state={"status": "pending_review"},
+        after_state={"status": new_status, "debt_check_passed": req.debt_check_passed},
+    )
+
     return _fmt_refund(updated)
 
 
@@ -211,6 +275,30 @@ def approve_refund(
 
     amount_approved = Decimal(str(req.amount_approved_ngn))
 
+    # Enforce refund_threshold_usd.staff_limit from tenant config.
+    # Staff (nigeria_office_staff) cannot approve above the configured USD limit;
+    # only tenant_admin (head of finance) can override.
+    if ctx.role == UserRole.NIGERIA_OFFICE_STAFF:
+        try:
+            threshold_cfg = repo.get_refund_threshold_config(tenant_id)
+            staff_limit_usd = Decimal(str(threshold_cfg.get("staff_limit", 50)))
+            dollar_rate = Decimal(str(threshold_cfg.get("dollar_rate", 1550)))
+            staff_limit_ngn = staff_limit_usd * dollar_rate
+            if amount_approved > staff_limit_ngn:
+                raise ApprovalThresholdExceededError(
+                    f"Refund of {amount_approved:.0f} NGN exceeds the staff approval limit "
+                    f"({staff_limit_usd} USD / {staff_limit_ngn:.0f} NGN). "
+                    "Escalate to tenant_admin for approval.",
+                    staff_limit_usd=float(staff_limit_usd),
+                    staff_limit_ngn=float(staff_limit_ngn),
+                    dollar_rate=float(dollar_rate),
+                    amount_ngn=float(amount_approved),
+                )
+        except ApprovalThresholdExceededError:
+            raise
+        except Exception as exc:
+            logger.warning("Could not fetch refund threshold config for tenant %s: %s — skipping threshold check", tenant_id, exc)
+
     # Determine final status based on customer_choice
     customer_choice = refund.get("customer_choice") or ""
     final_status = "applied_as_credit" if customer_choice == "credit_next_shipment" else "processed"
@@ -247,6 +335,17 @@ def approve_refund(
             "approved_by": actor_id,
             "approved_at": now,
         },
+    )
+
+    log_audit(
+        tenant_id=tenant_id,
+        entity_type="refund_request",
+        entity_id=refund_id,
+        action="STATUS_CHANGE",
+        actor_id=actor_id,
+        actor_role=str(ctx.role),
+        before_state={"status": "pending_approval"},
+        after_state={"status": final_status, "amount_approved_ngn": str(amount_approved), "approval_level": required_level},
     )
 
     publish_event(
@@ -290,6 +389,7 @@ def reject_refund(
             allowed=list(_REJECTABLE_STATES),
         )
 
+    prev_status = refund["status"]
     updated = repo.update_refund_status(
         tenant_id,
         refund_id,
@@ -299,6 +399,18 @@ def reject_refund(
             "rejection_reason": rejection_reason,
         },
     )
+
+    log_audit(
+        tenant_id=tenant_id,
+        entity_type="refund_request",
+        entity_id=refund_id,
+        action="STATUS_CHANGE",
+        actor_id=actor_id,
+        actor_role=str(ctx.role),
+        before_state={"status": prev_status},
+        after_state={"status": "rejected"},
+    )
+
     return _fmt_refund(updated)
 
 
@@ -319,5 +431,13 @@ def _fmt_refund(row: dict[str, Any]) -> dict[str, Any]:
         "amount_requested_ngn": Decimal(str(row["amount_ngn"])),
         "amount_approved_ngn": amount_approved,
         "customer_choice": row.get("customer_choice"),
+        "customer_id": str(row["customer_id"]) if row.get("customer_id") else None,
+        "billing_id": str(row["billing_id"]) if row.get("billing_id") else None,
+        "damage_claim_id": str(row["damage_claim_id"]) if row.get("damage_claim_id") else None,
+        "reason": row.get("reason"),
+        "rejection_reason": row.get("rejection_reason"),
+        "approval_level": row.get("approval_level"),
+        "debt_check_passed": row.get("debt_check_passed"),
+        "debt_check_notes": row.get("debt_check_notes"),
         "created_at": row["created_at"],
     }

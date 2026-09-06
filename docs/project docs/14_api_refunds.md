@@ -14,7 +14,7 @@ Implement the Refund Lambda service: refund request creation (overpayment, CBM c
 
 | Method | Path | Roles |
 |---|---|---|
-| POST | `/v1/refunds` | system (auto), nigeria_office_staff |
+| POST | `/v1/refunds` | system (auto), nigeria_office_staff, customer (own billing only) |
 | GET | `/v1/refunds` | tenant_admin, nigeria_office_staff |
 | GET | `/v1/refunds/{id}` | tenant_admin, nigeria_office_staff, customer (own) |
 | PATCH | `/v1/refunds/{id}/review` | nigeria_office_staff (accounts team) |
@@ -111,6 +111,35 @@ On `customer_choice = 'credit_next_shipment'`:
 | `refund_request.damage_claim_id` | New: UUID FK → `damage_claim` |
 | `refund_request.debt_check_passed` | New: `BOOLEAN` |
 | `refund_request.debt_check_notes` | New: `TEXT` |
+
+## Ground-truth gap found (2026-09-06): customer self-service refund requests never worked at all
+
+`RefundRequest.tsx` — a complete, self-contained frontend page reachable
+from every customer's billing page ("Request a Refund") — has never
+actually worked for any customer. Two stacked failures:
+
+1. **The route's own role check excluded CUSTOMER entirely**
+   (`_CREATE_ROLES = (UserRole.NIGERIA_OFFICE_STAFF,)` in
+   `services/refunds/handler.py`). Every submission 403'd with
+   "Insufficient permissions for this operation," before any of the logic
+   below ever ran.
+2. **Behind that, `create_refund()` would have failed anyway.** It used
+   `req.customer_id` unconditionally — but `RefundRequest.tsx` deliberately
+   sends `customer_id: ''` with the comment *"Server derives from JWT for
+   customer role"*, a derivation that was never actually implemented
+   anywhere in this function.
+
+Found live running the real customer-facing form end to end, not from
+reading this file. Fixed at both layers: `CUSTOMER` added to
+`_CREATE_ROLES`; a `CUSTOMER` caller's identity is now derived from
+`ctx.user_id` via `get_customer_by_user_id()` (the same pattern
+`services/claims/service.py::file_claim` uses), with an added check that
+the billing record being refunded actually belongs to that customer —
+without it, a customer could request a refund against any billing record
+in the tenant by guessing or enumerating ids. Confirmed live: a real
+`refund_request` row correctly attributed to the submitting customer, not
+an empty or mismatched `customer_id`. Covered by
+`tests/unit/test_refunds.py::TestCreateRefundCustomerFlow`.
 
 ## Ground-truth gap found (2026-09-06): claim-triggered refunds had no refund_type
 

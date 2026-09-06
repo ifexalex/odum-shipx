@@ -36,7 +36,12 @@ patch_all()
 
 logger = logging.getLogger(__name__)
 
-_CREATE_ROLES = (UserRole.NIGERIA_OFFICE_STAFF,)
+# CUSTOMER added here (ground-truth gap found live) — RefundRequest.tsx's
+# self-service "Request a Refund" flow, reachable from every customer's
+# billing page, always 403'd on this check alone. See create_refund()'s
+# docstring in services/refunds/service.py for the full account, including
+# the customer_id-derivation bug that would have hit next.
+_CREATE_ROLES = (UserRole.NIGERIA_OFFICE_STAFF, UserRole.CUSTOMER)
 _LIST_ROLES = (UserRole.TENANT_ADMIN, UserRole.NIGERIA_OFFICE_STAFF)
 _READ_ROLES = (UserRole.TENANT_ADMIN, UserRole.NIGERIA_OFFICE_STAFF, UserRole.CUSTOMER)
 _REVIEW_ROLES = (UserRole.NIGERIA_OFFICE_STAFF,)
