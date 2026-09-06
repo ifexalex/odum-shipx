@@ -8,7 +8,7 @@
  * Requires local stack running. Uses seeded data from scripts/seed.py.
  */
 import { expect, test } from '@playwright/test'
-import { goToViaNav, switchRole } from '../support/roleSwitch'
+import { dataRows, goToViaNav, switchRole } from '../support/roleSwitch'
 
 test.describe('packing list self-approval', () => {
   test('approve/reject buttons are hidden on a packing list the current user created', async ({ page }) => {
@@ -23,7 +23,10 @@ test.describe('packing list self-approval', () => {
     // button (src/design/components/ViewLink.tsx). Clicking the <tr> itself
     // does nothing — it has no click handler, only the ~40px-wide View button
     // in the last cell does, and a bare row click lands nowhere near it.
-    const rowCount = await page.locator('table tbody tr').count()
+    // dataRows() (not plain `table tbody tr`) — the empty state is a real
+    // single-cell <tr>, so a bare count would never reach 0 here and this
+    // skip would never fire.
+    const rowCount = await dataRows(page).count()
 
     if (rowCount === 0) {
       test.skip(true, 'No packing lists seeded — run make stack first')
