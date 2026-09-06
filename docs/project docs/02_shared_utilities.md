@@ -56,7 +56,11 @@ PLATFORM_TENANT_ID = "PLATFORM"
 class TenantContext:
     """Represents the authenticated user's tenant scope."""
     tenant_id: str
-    user_id: str  # Cognito sub
+    user_id: str  # Cognito sub — used directly as created_by/approved_by/rejected_by
+                  # everywhere (UUID REFERENCES tenant_user(id)). There is no separate
+                  # resolution step, so tenant_user.id MUST be set to the Cognito sub
+                  # at creation time, not left to gen_random_uuid() — see
+                  # create_tenant_user() in services/tenant_management/repository.py.
     role: UserRole
     is_platform_admin: bool = field(init=False)
 
@@ -260,3 +264,64 @@ def log_audit(
 - [ ] `pagination.py` handles cursor encoding/decoding and query building
 - [ ] All functions have type hints
 - [x] `distributed_cache.py` — Redis-backed `DistributedCache` for tenant status, fail-soft on Redis errors
+
+
+## shared/tier_limits.py (updated 2026-07-09)
+
+`TIER_LIMITS` static defaults plus **runtime override resolution**: `get_effective_limits(tier, tenant_id=None)` merges static defaults → platform_settings `plan_limits` (per-tier, platform-wide) → platform_settings `quota_override:{tenant_id}` (per-tenant). `get_all_plan_limits()` powers the platform Plans editor. DB reads are lazy imports and **fail open** to the static defaults — quota enforcement is a soft commercial limit, so an infra failure must not block tenant operations (auth checks, by contrast, fail closed). Only `users`, `containers_per_month`, `storage_gb` may be overridden (`LIMIT_DIMENSIONS` allowlist).
+
+## shared/notifications.py — channel selection (updated 2026-09-06)
+
+`primary_channel(tenant_id, event_type, recipient) -> str` returns the channel that
+will actually carry a notification: WhatsApp when the recipient has a phone, the
+tenant permits it, and `SQS_WHATSAPP_QUEUE_URL` is configured; otherwise SMS;
+otherwise email. Email is a different medium rather than a worse SMS, so it always
+goes out alongside and is never returned here.
+
+`enqueue_notifications` uses it to pick the primary channel, and any caller that
+needs to **report** how something was delivered must call it too. It was extracted
+because `issue_customer_invite` carried its own copy hardcoded to `"sms"`, so after
+the switch to WhatsApp-first every invite told staff the link was sent by SMS while
+the message went out over WhatsApp.
+
+Both `enqueue_notification` and `enqueue_notifications` also take an optional
+`customer_id`, written onto the queued message and persisted to
+`notification_log.customer_id`. The WhatsApp→SMS fallback re-reads the recipient's
+phone from the customer record (the log deliberately stores only a masked contact),
+so without it the fallback cannot resolve a number and gives up silently. See
+`15_api_notifications.md` §"Ground-truth gaps found by draining a real notification".
+
+## shared/db.py — connection self-heal (added 2026-09-06)
+
+`get_connection()` now checks `_connection.get_transaction_status()` and calls
+`rollback()` if it's `TRANSACTION_STATUS_INERROR` before handing the connection
+to a caller, in addition to creating a fresh one when `None`/closed.
+
+**Ground-truth gap found live via e2e testing.** `shared/metering.py`'s
+`record_usage()` hit a duplicate-key race on `usage_record`'s
+`(tenant_id, metric_type, period_start, period_end)` unique constraint under
+rapid requests. That INSERT is wrapped by `execute_write_with_tenant`, which
+does roll back on its own failure — but the connection was still observed left
+in a failed-transaction state afterward, and every *subsequent unrelated*
+request on the same process then failed with
+`psycopg2.errors.InFailedSqlTransaction: current transaction is aborted,
+commands ignored until end of transaction block` — regardless of endpoint,
+tenant, or service module, since `_connection` is one module-level global
+shared by everything. Surfaced first as a genuine page crash
+("Internal server error") on `/platform/dashboard` in a new e2e smoke test,
+then reproduced hitting `/v1/tenants/me/quota`, `/v1/billing`, and
+`/v1/platform/dashboard` interchangeably in the same run — the scattered,
+seemingly-random pattern across unrelated endpoints was the signature that
+pointed at a shared poisoned resource rather than a per-endpoint bug.
+
+**Why fix `get_connection()` rather than chase the exact original trigger
+further:** in production this connection is reused across an entire warm
+Lambda container's lifetime — any single unrolled-back failure, from any
+current or future code path, would otherwise break every request on that
+container until AWS recycles it. Self-healing at the one place every caller
+already goes through is more robust than auditing every call site for a
+missing rollback, and doesn't depend on finding every future regression of
+the same shape. Verified: the exact e2e smoke sweep that surfaced the crash
+now runs clean end to end (`frontend/e2e/flows/smoke-navigation.spec.ts`).
+
+Covered by `tests/unit/test_db_connection_healing.py`.

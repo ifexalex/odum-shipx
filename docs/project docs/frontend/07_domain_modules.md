@@ -691,3 +691,16 @@ visible in `notification_log`; claimed one invite through the real `/invite/:tok
 as that customer to confirm shipment tracking renders; reused the same link (rejected), expired a
 second link by moving `expires_at` back (rejected with the friendly page), and resent a third (old
 token dead, new one worked). See `00_MASTER_PLAN.md` row 7.52 for the full verification log.
+
+## Dev role-switcher panel gains a stable id (2026-09-06)
+
+`RoleSwitcher.tsx`'s outer `<div>` now has `id="dev-role-switcher-panel"`
+alongside its CSS-module class. It's `position: fixed; bottom; right;
+z-index: 2000` — deliberately on top of everything so a role can be flipped
+from any screen — which means it can sit directly over a real button near
+that corner. A click there is delivered by the browser to whatever's topmost
+at those coordinates, silently the switcher rather than the button
+underneath, no error. `frontend/e2e/support/roleSwitch.ts`'s
+`switchRole()` now suppresses its pointer-events via this id once a role is
+set, since most tests never touch the switcher again afterward. Purely a
+test hook; no visual or behavioral change for real dev use.

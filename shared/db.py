@@ -79,6 +79,26 @@ def get_connection() -> psycopg2.extensions.connection:
             cursor_factory=psycopg2.extras.RealDictCursor,
         )
         _connection.autocommit = False
+    elif _connection.get_transaction_status() == psycopg2.extensions.TRANSACTION_STATUS_INERROR:
+        # Self-heal a connection left in a failed transaction by an earlier
+        # caller that raised past its own rollback (a raw get_connection()
+        # user outside execute_with_tenant/execute_write_with_tenant, or any
+        # future code path that doesn't roll back on error). Found live: a
+        # duplicate-key race in shared/metering.py's record_usage() under
+        # rapid concurrent-ish requests left every *subsequent* unrelated
+        # request on this warm container failing with
+        # "current transaction is aborted, commands ignored until end of
+        # transaction block" — not just the request that actually hit the
+        # constraint violation. In production this is a warm Lambda
+        # container reusing this same module-level connection across
+        # invocations, so one unrolled-back failure would otherwise break
+        # every request on that container until AWS recycles it.
+        logger.warning(
+            "Reused connection was left in a failed transaction — rolling back "
+            "before use. This means some earlier caller raised past an error "
+            "without rolling back; that call site should be fixed too."
+        )
+        _connection.rollback()
 
     return _connection
 
@@ -151,6 +171,33 @@ def execute_write_with_tenant(
             rows = _rows_to_dicts(cur)
             conn.commit()
             return rows[0] if rows else None
+    except Exception:
+        conn.rollback()
+        raise
+
+
+def execute_write_with_tenant_many(
+    tenant_id: str,
+    query: str,
+    params: Any = None,
+) -> list[dict[str, Any]]:
+    """Execute a multi-row INSERT/UPDATE/DELETE within a tenant scope.
+
+    Like `execute_write_with_tenant`, but for writes that affect (and
+    RETURN) more than one row, e.g. a bulk `UPDATE ... WHERE id = ANY(...)`.
+    Commits the transaction on success.
+
+    Returns:
+        All returned rows as dicts.
+    """
+    conn = get_connection()
+    try:
+        with conn.cursor() as cur:
+            _set_tenant(cur, tenant_id)
+            cur.execute(query, params)
+            rows = _rows_to_dicts(cur)
+            conn.commit()
+            return rows
     except Exception:
         conn.rollback()
         raise

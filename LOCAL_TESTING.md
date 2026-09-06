@@ -13,6 +13,8 @@ Run the full ShipX platform on your laptop — no AWS account needed.
 5. [Test with Postman](#5-test-with-postman)
 6. [Typical development workflow](#6-typical-development-workflow)
 7. [Inspect SQS queues and S3](#7-inspect-sqs-queues-and-s3)
+   - [Seeing a notification actually send](#seeing-a-notification-actually-send)
+   - [Test manifest for notification testing](#test-manifest-for-notification-testing)
 8. [Simulate EventBridge events](#8-simulate-eventbridge-events)
 9. [Validate Terraform modules](#9-validate-terraform-modules)
 10. [Run the test suite](#10-run-the-test-suite)
@@ -216,10 +218,14 @@ The local server does not validate JWTs. Instead, it reads three headers to simu
 | Header | Purpose | Default |
 |---|---|---|
 | `X-Tenant-ID` | Which tenant to act as | `aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa` |
-| `X-Role` | User's role | `nigeria_office_staff` |
+| `X-Role` | User's **primary/active** role | `nigeria_office_staff` |
+| `X-Roles` | (optional, migration 039) Comma-separated list of *every* role the user holds — multi-role staff support. Omit for a single-role user; defaults to `[X-Role]` when absent. | — |
 | `X-User-ID` | User's ID (used as `actor_id`) | `local-user-001` |
 
-These are already set as collection variables in the Postman collection.
+These are already set as collection variables in the Postman collection. `X-Roles` isn't
+wired into the collection's default variables (no multi-role request needs it out of the
+box) — add it manually to a request's headers to test as a multi-role user, e.g.
+`X-Role: nigeria_office_staff` + `X-Roles: nigeria_office_staff,warehouse_attendant`.
 
 ### 5.3 Available roles
 
@@ -324,6 +330,51 @@ aws --endpoint-url http://localhost:5100 s3 ls s3://logistics-assets --recursive
 ```
 
 ---
+
+## Seeing a notification actually send
+
+In AWS an SQS event-source mapping feeds the notification Lambdas. Nothing plays
+that role against Moto, so a locally enqueued notification sits in the queue and no
+provider is ever called — which looks identical to a silent failure.
+`scripts/drain_notifications.py` is that missing link: it dispatches queued messages
+through the real `sms_handler` / `whatsapp_handler` / `email_handler`, so the
+recipient allowlist, template rendering, and provider responses are all exercised
+for real.
+
+```bash
+python3 scripts/drain_notifications.py            # drain once and exit
+python3 scripts/drain_notifications.py --watch    # poll until interrupted
+python3 scripts/drain_notifications.py --peek     # show messages, consume none
+python3 scripts/drain_notifications.py --channel whatsapp
+```
+
+Then read the outcome from the log, which now records *why* a send failed:
+
+```sql
+SELECT channel, status, locale, retry_of, error_detail
+FROM notification_log ORDER BY created_at DESC LIMIT 5;
+```
+
+A WhatsApp row followed by an SMS row whose `retry_of` points at it is the
+fallback working.
+
+`CUSTOMER_PORTAL_BASE_URL` must be set or invite links render as a bare
+`/invite/{token}`.
+
+## Test manifest for notification testing
+
+`scripts/make_test_manifest.py` writes a forwarder-shaped workbook (metadata block,
+two-row header, totals footer, one carton row and one bale row) containing a single
+consignee — the tester's own contact. Imported manifests hold **real customer phone
+numbers**, so never re-import one to test notifications.
+
+```bash
+python3 scripts/make_test_manifest.py --out /tmp/test_manifest.xlsx --container TEST001
+```
+
+Note that invites are auto-issued only for customers an import *creates*. Re-importing
+a manifest whose consignee already exists issues nothing; use
+`POST /v1/customers/{id}/invite` to trigger the notification in that case.
 
 ## 8. Simulate EventBridge events
 
@@ -476,6 +527,29 @@ A previous server process is still running. Kill it:
 lsof -ti :3000 | xargs kill -9
 ```
 
+### `ResourceNotFoundException: User pool ... does not exist`
+
+The root `.env.local`'s `COGNITO_USER_POOL_ID`/`COGNITO_CLIENT_ID` don't match
+what Moto currently has — `bootstrap_local.sh` writes both automatically on
+every run, but anything that later **overwrites `.env.local` from an older
+version** (a `git checkout`, a stash pop, restoring a backup) silently
+reverts them back to stale values without touching Moto, which still has
+the pool bootstrap actually created. Frontend auth can still work fine (it
+reads `frontend/.env.local`'s `VITE_COGNITO_*`, a separate file) while every
+*backend* Cognito call — `AdminCreateUser` on invite accept/self-register
+being the one this actually breaks — fails.
+
+Confirm the mismatch, then fix and restart:
+
+```bash
+aws --endpoint-url http://localhost:5100 --region eu-west-1 cognito-idp list-user-pools --max-results 10
+grep COGNITO_USER_POOL_ID .env.local frontend/.env.local
+```
+
+If they disagree, either re-run `bash scripts/bootstrap_local.sh` (creates a
+fresh pool and rewrites both files) or manually copy the pool/client id Moto
+actually has into `.env.local`, then restart the server.
+
 ### `No handler registered for path: /v1/...`
 
 The path prefix is not in `_ROUTES` inside `scripts/local_server.py`. Add it:
@@ -607,3 +681,150 @@ Daily dev
 - **Lambda runtime** — handlers are called as plain Python functions
 - **API Gateway** — replaced by Flask routing in `local_server.py`
 - **RDS Proxy** — not needed; Python connects to Postgres directly
+
+---
+
+## 14. Frontend dev server
+
+The React SPA lives in `frontend/`. It has two auth modes, controlled by `VITE_ENVIRONMENT` in `frontend/.env.local`:
+
+### 14.1 Dev shim (default — fastest for backend testing)
+
+```
+VITE_ENVIRONMENT=local
+```
+
+`App.tsx` mounts `LocalAuthProvider` which skips Cognito entirely. A role-switcher dropdown in the bottom-right lets you flip between all 6 single-role dev identities **plus one multi-role identity, `nigeria_warehouse`** (`nigeria_office_staff` + `warehouse_attendant`, migration 039 — multi-role staff support), instantly. Auth headers (`X-Tenant-ID`, `X-Role`, `X-Roles`, `X-User-ID`) are set from `tokenStore.ts` and sent on every API request to `local_server.py`; `X-Roles` is only sent when the active dev identity holds more than one role.
+
+**Seeded tenant UUIDs are deterministic** — `scripts/seed.py` always inserts Acme Shipping Ltd with `id = 10000000-0000-0000-0000-000000000001` and its staff with matching fixed IDs (`0011`–`0014`, plus `0015` for the multi-role user below). `LocalAuthProvider.tsx`'s `DEMO_TENANT_ID` and `local_server.py`'s `DEFAULT_TENANT_ID` are hardcoded to this value — they survive `make stack` resets without needing manual updates.
+
+**Role-switch toggle (multi-role staff, migration 039):** selecting `nigeria_warehouse` in the dev role-switcher logs you in as a dev identity holding both roles. A second, separate control appears in the TopBar user menu (a `<select>` next to the notification bell, only rendered when `session.roles.length > 1`) — this is the *active/display* role toggle a real multi-role user gets, purely client-side (no request, no new token; see `06_routing_rbac_and_navigation.md`). Don't confuse the two: the dev role-switcher picks *which dev user you're logged in as* (changes `X-Role`/`X-Roles` sent to the backend); the TopBar toggle picks *which of that user's roles is active for nav/display* (backend never sees it change).
+
+#### 14.1.1 Volume/UI testing at scale
+
+`scripts/seed.py` only creates 2 containers for Acme — enough for auth testing, not enough to see how list/dashboard views behave under real load. For that, run:
+
+```bash
+make seed-stress
+# or: python scripts/seed_stress.py
+```
+
+This adds ~200 containers across ~50 customers to Acme Shipping Ltd, spanning the full container lifecycle (`loading` → `fully_released`, plus `cancelled`) and every billing status (`unpaid`, `partially_paid`, `paid`, `overpaid`, `waived`, `released_with_outstanding`), weighted toward the mid-pipeline stages for a realistic operational spread. It's additive — run `make seed` (or `make stack`) first — and safe to re-run (no-ops if the marker container `ACME9001` already exists). It also bumps Acme's `subscription_tier` to `enterprise` so the metering container-cap check doesn't block further container creation from the UI afterward. Since the dev role-switcher (§14.1) is hardcoded to Acme, the populated data is visible immediately after refreshing — no extra Cognito setup needed.
+
+### 14.2 Real Cognito-via-Moto login (exercises the actual /login screen)
+
+```
+VITE_ENVIRONMENT=staging   # any value ≠ 'local'
+VITE_COGNITO_USER_POOL_ID=<copy from backend .env.local COGNITO_USER_POOL_ID>
+VITE_COGNITO_CLIENT_ID=<copy from backend .env.local COGNITO_CLIENT_ID>
+VITE_COGNITO_ENDPOINT=http://localhost:5100
+```
+
+These values regenerate every `make bootstrap` / `make stack` — re-copy them each time.
+
+To create a tenant and admin user for real login:
+
+```bash
+# Provision tenant + admin user + cognito group
+python scripts/onboard_tenant.py \
+  --company-name "Demo Shipping Co" \
+  --email "admin@demo.com" \
+  --tier starter
+
+# Set a permanent password (the onboarding script prints a temp password;
+# the /login screen has no force-change-password UI yet)
+aws --endpoint-url=http://localhost:5100 cognito-idp admin-set-user-password \
+  --user-pool-id $COGNITO_USER_POOL_ID \
+  --username admin@demo.com \
+  --password 'DemoPass123!' --permanent
+```
+
+After that, `POST /v1/tenant/users` (authenticated as tenant_admin) can add staff with any role. Set permanent passwords for each with the same `admin-set-user-password` command.
+
+**Pre-seeded accounts** — `scripts/bootstrap_local.sh` already creates real Cognito logins for 3 tenants, each with a full staff set + 5 customers, plus one cross-tenant platform admin and one multi-role Acme staff member (29 accounts total). No `onboard_tenant.py` step needed for any of them. Password for every account is `Test1234!` (platform admin excepted — see below). Re-run `bash scripts/bootstrap_local.sh` after any Moto restart to recreate them all (Moto state is wiped every time, same as `make bootstrap` / `make stack`).
+
+Every tenant's staff **and** customers share that tenant's own email domain, so you can log in as any specific tenant, role, or customer and know at a glance which company they belong to:
+
+| Tenant | Domain | tenant_admin | china_office_staff | nigeria_office_staff | warehouse_attendant |
+|---|---|---|---|---|---|
+| Acme Shipping Ltd | `acmeshipping.com` | admin@ (Chidi Okafor) | china@ (Li Wei) | lagos@ (Emeka Eze) | warehouse@ (Tunde Bello) |
+| Global Cargo Co | `globalcargo.com` | admin@ (Aisha Suleiman) | china@ (Zhang Wei) | lagos@ (Ade Bankole) | warehouse@ (Ngozi Kalu) |
+| Demo Shipping Ltd | `demoshipping.com` | admin@ (Amara Okafor) | china@ (Kwame Asante) | lagos@ (Fatima Bello) | warehouse@ (Segun Dada) |
+
+**Multi-role staff (migration 039)** — one additional Acme account exercises real
+Cognito-login multi-role support (the fixed dev identity `nigeria_warehouse` in §14.1
+covers the header-shim path; this covers the real-JWT path): `amaka@acmeshipping.com`
+(Amaka Nwachukwu, password `Test1234!`) belongs to **both** the
+`{tenant_id}:nigeria_office_staff` and `{tenant_id}:warehouse_attendant` Cognito groups
+(`custom:role` = `nigeria_office_staff`, the primary). `scripts/seed.py` inserts the
+matching `tenant_user` row (fixed id `...-0015`) plus two `tenant_user_role` rows
+(`nigeria_office_staff` primary, `warehouse_attendant` secondary).
+
+5 customers per tenant (all `@`-suffixed with the tenant's domain, all with a linked `customer` row so the portal isn't empty):
+
+| Acme | Global Cargo | Demo Shipping |
+|---|---|---|
+| ngozi@ (Ngozi Adeyemi) | olumide@ (Olumide Adebayo) | funmi@ (Funmilayo Adeyemi) |
+| ibrahim@ (Ibrahim Musa) | chinwe@ (Chinwe Okoro) | emeka@ (Emeka Obi) |
+| chioma@ (Chioma Eze) | tunji@ (Tunji Bakare) | amaka@ (Amaka Chukwu) |
+| yusuf@ (Yusuf Musa) | grace@ (Grace Eze) | david@ (David Okon) |
+| blessing@ (Blessing Nwosu) | halima@ (Halima Yusuf) | zainab@ (Zainab Bello) |
+
+Fixed `tenant_user.id` UUIDs in `scripts/seed.py` match these emails 1:1 with the Cognito accounts (`10000000-…` for Acme, `30000000-…` for Global Cargo, `20000000-…` for Demo Shipping — see the ID scheme comment at the top of `seed.py`), so `local_server.py`'s `_resolve_user_id_by_email()` always resolves a real-Cognito login to the correct seeded DB row, and every `created_by`/`FK` write succeeds.
+
+**Impersonation ("Impersonate" on a platform tenant-detail page)** works in both auth modes — the backend mints a real HS256 token signed with `IMPERSONATION_SECRET` (set in `.env.local`; production uses `IMPERSONATION_SECRET_ARN` → Secrets Manager), and `local_server.py` maps the token's claims the same way the production REQUEST authorizer does. Impersonated sessions are read-only (mutations 422) and expire after 30 minutes.
+
+**Platform admin login** — one cross-tenant account, no tenant scope:
+
+| Email | Password | Cognito group |
+|---|---|---|
+| `platform-admin@shipx.co` | `Test1234!` | `platform_admin` (no tenant prefix) |
+
+There is deliberately no `tenant_user` row for this account — `tenant_user.tenant_id` is a `NOT NULL` FK to `tenant(id)` and its `role` CHECK constraint doesn't include `platform_admin`, so platform admins exist only as Cognito identities (`custom:tenant_id = "PLATFORM"` + `platform_admin` group), never as DB rows.
+
+**Why `VITE_COGNITO_ENDPOINT` is needed:** `CognitoClient.ts` points `amazon-cognito-identity-js` at Moto instead of real AWS, and switches the auth flow from `USER_SRP_AUTH` (default; Moto doesn't reliably emulate SRP) to `USER_PASSWORD_AUTH` (only when this env var is set — production is unaffected).
+
+**After `make bootstrap` / `make stack`:** re-copy `VITE_COGNITO_USER_POOL_ID` and `VITE_COGNITO_CLIENT_ID` from the backend `.env.local`, re-run `onboard_tenant.py`, and re-set permanent passwords. Moto state is wiped on every bootstrap.
+
+### 14.3 Start the frontend
+
+```bash
+cd frontend
+npm install
+npm run dev   # → http://localhost:5173
+```
+
+The dev server proxies nothing — it calls `http://localhost:3000` (local_server.py) directly via the API client's base URL config.
+
+
+## Customer self-registration in local dev
+
+`POST /v1/register` resolves the tenant from the **Host header** (custom domain, then subdomain slug). On `localhost:5173` neither resolves, so registration 404s locally unless you map a host alias to a seeded tenant slug (e.g. add `127.0.0.1 acme-shipping.localhost` to `/etc/hosts` and browse via that host) or test via Postman with an explicit `Host: acme-shipping.example.com` header matching the seeded tenant's slug.
+
+(Previously this route also 404'd everywhere, including here, because it was missing from `scripts/local_server.py`'s route table — fixed 2026-07-11; see below.)
+
+## Session persistence (page-reload-doesn't-log-you-out) in local dev
+
+`services/auth/handler.py`'s httpOnly-cookie refresh flow (`POST /v1/auth/session` / `/refresh` / `/logout`, see [docs/project docs/frontend/04_auth_and_session.md](docs/project%20docs/frontend/04_auth_and_session.md)) is exercised **only** by the real-Cognito login path (`SessionProvider`, `VITE_ENVIRONMENT != local`) — the default local-dev role-switcher path (`LocalAuthProvider`, `VITE_ENVIRONMENT=local`) bypasses `SessionProvider`/Cognito entirely and hardcodes `status: 'authenticated'`, so it was never affected by the reload-forces-relogin bug this closed and doesn't exercise these three routes at all.
+
+To test the cookie flow itself locally, follow "Real Cognito-via-Moto Login" in `04_auth_and_session.md` (`VITE_ENVIRONMENT=staging` + Moto-backed Cognito), then:
+- `scripts/local_server.py` now routes `/v1/auth/*` to `services/auth/handler.py` (added alongside the `/v1/register` fix above) and translates Flask's request cookies into the `event["cookies"]` array the handler reads, and the handler's `cookies` response field into real `Set-Cookie` headers — the same payload-format-2.0 shape API Gateway v2 uses in production.
+- Reloading `http://localhost:5173` after logging in should silently restore the session rather than bouncing to `/login`; DevTools → Application → Cookies should show `shipx_rt` scoped to `localhost:3000` with the `HttpOnly` flag set (`Secure` will still be set even over local `http://` — browsers accept `Secure` cookies on `localhost` as a documented exception, so this doesn't need disabling for local testing).
+
+## Online payments (Paystack) in local dev
+
+**Multi-tenant (2026-07-19):** there is no `PAYSTACK_SECRET_KEY` env var anymore — each tenant connects their own key through the app itself, same as a real tenant admin would. One-time setup per tenant you want to test payments against:
+
+```bash
+# As that tenant's admin (role-switcher or real login) — or via curl:
+curl -X PUT http://localhost:3000/v1/tenant/config/paystack \
+  -H "X-Tenant-ID: <tenant_id>" -H "X-Role: tenant_admin" -H "X-User-ID: <admin_user_id>" \
+  -H "Content-Type: application/json" \
+  -d '{"secret_key":"sk_test_…"}'
+```
+
+Or from the UI: sign in as that tenant's admin → **Admin → Config → Payments** → paste the key → **Connect Paystack**. Use **Test connection** to confirm Paystack actually accepts it (a real, harmless `GET /transaction` call — not just a shape check) before trying a real checkout.
+
+Once configured, that tenant's customer portal "Pay online" button (`/my-billing/{id}`) creates a real Paystack **test-mode** checkout and redirects to it. Pay with Paystack's standard test card `4084 0840 8408 4081` (any future expiry, CVV `408`, PIN `0000`, OTP `123456`). A tenant with nothing configured gets a clear `PAYMENT_GATEWAY_NOT_CONFIGURED` error instead — bank transfer stays available either way.
+
+**Webhook (payment confirmation):** Paystack can't reach `localhost`, so either simulate the callback (POST to `/v1/webhooks/payment` with `X-Paystack-Signature` = HMAC-SHA512 of the raw body using **that tenant's own** secret key — see the Postman request) or tunnel (e.g. `ngrok http 3000`) and set the tunnel URL + `/v1/webhooks/payment` as the webhook URL in the Paystack test dashboard. The webhook is the source of truth — the browser redirect to payment-success never records money. The handler resolves which tenant a webhook belongs to (via the billing reference) *before* checking the signature, then verifies against that specific tenant's key — see `07_api_tenant_management.md`'s "Multi-Tenant Paystack" design note if you're testing more than one tenant's payments side by side.
