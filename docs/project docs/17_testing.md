@@ -1151,3 +1151,9 @@ All four delegation tests follow `test_tracking.py::TestContainerStats`'s `patch
 ## ContainerDetail overview — top-shippers list (2026-10-01)
 
 - `frontend/src/pages/china/ContainerDetail.test.tsx`: with 20 customers the overview renders the **Top shippers by CBM** list (top 5 only — Customer 5+ absent), subtitle "20 customers on this container", and "View all →" switches to the packing-lists tab. Updated the cargo-summary and contact tests (contact now lives only on the packing-lists tab, not the overview).
+
+## Packing-list item entry + min-CBM + draft edit (2026-10-02)
+
+- `tests/unit/test_packing_list.py::TestMinCbmAndBaleSizing` (3): `apply_min_cbm` floors sub-minimum/None CBM and passes larger values through; `_bale_type_for` returns BIG/SMALL only for bales (threshold 0.3); `get_min_cbm_per_item` default 0.1 + config read + non-positive fallback. Plus a live end-to-end create (floored 0.1, SMALL/BIG BALE, dates, negatives → 422).
+- `frontend/src/pages/china/CreatePackingList.test.tsx` (+3): a 0.06-CBM bale floors to 0.100 with `min` + `SM BALE`; a 0.4-CBM bale shows `BIG BALE`; a draft opens prefilled with customer/container disabled and items loaded (uses `packingListApi.get`, never `create`). Updated the existing CBM tests' mock min to 0.001 and the step-2 readiness marker to "Line items".
+- `TestGetCbmRate`/`TestUpdateCbmRate`: patched `get_min_cbm_per_item` and asserted `min_cbm_per_item` in the responses; `CbmRateConfig.test.tsx` updated for the extra `min_cbm_per_item` field.

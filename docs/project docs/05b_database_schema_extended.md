@@ -374,6 +374,18 @@ ALTER TABLE container
     ADD COLUMN recommended_cbm NUMERIC(8,2);
 ```
 
+### Migration 052 — Packing-list loading/delivery dates
+
+Shipment-level dates captured in the create/edit packing-list wizard (per packing list, not per item — every item in a list loads/delivers together). Both nullable/optional.
+
+```sql
+ALTER TABLE packing_list
+    ADD COLUMN loading_date  DATE,
+    ADD COLUMN delivery_date DATE;
+```
+
+The item-entry enhancements (package type, bale sizing, minimum-CBM floor) reuse existing `packing_list_item` columns — `package_unit` and `bale_type` (migration 040) and `cbm` — so they need no migration. `bale_type` is now computed for bale items (`BIG BALE` ≥ 0.3 CBM, else `SMALL BALE`), and `cbm` is floored at the tenant's `min_cbm_per_item` (a `tenant_config` key, default 0.1 — no schema).
+
 ## Acceptance Criteria
 
 - [x] All 14 tables created with correct schemas

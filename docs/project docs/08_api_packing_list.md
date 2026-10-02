@@ -315,3 +315,16 @@ Reported by the user while investigating a separate missing notification on paym
 **Staff bell (2026-09-12):** submitting a packing list for approval (`submit_packing_list`, `bulk_submit_packing_lists`) now also writes a `staff_notification` row for `china_office_staff`/`tenant_admin` — the roles who can approve it. The bulk path passes `entity_id=None` rather than a comma-joined id list (a single-row UUID column can't hold several ids — see `15_api_notifications.md`). Full account there.
 
 **Customer bell (2026-09-12):** approving a packing list now also writes an in-app customer notification when the customer has a portal account, reusing the same `staff_notification` table as the staff bell above. Full account in `15_api_notifications.md`.
+
+## Item-entry enhancements: package type, bale sizing, min-CBM floor, dates, draft edit (2026-10-02)
+
+Create/edit wizard (`CreatePackingList.tsx`) and the `POST`/`PUT /v1/packing-lists` contract gained:
+
+- **Package type per item** — `PackingListItemInput.package_unit` (`carton` | `bag` | `pallet` | `bale` | `sack`, default `carton`). Reuses the existing `packing_list_item.package_unit` column and feeds CBM-rate bucketing (`shared/cbm_rate.normalize_package_unit`).
+- **Bale sizing** — for bale items the backend sets `packing_list_item.bale_type` to `BIG BALE` (effective CBM ≥ 0.3) or `SMALL BALE` (`services/packing_list/service.py::_bale_type_for`). The wizard shows an abbreviated `BIG BALE`/`SM BALE` badge live.
+- **Minimum CBM floor** — each line item's `cbm` is floored at the tenant's `min_cbm_per_item` (`shared/cbm_rate.apply_min_cbm`; default 0.1, configurable). A sub-0.1 parcel is stored/billed at the floor; the wizard shows the floored value with a `min` tag. The setting lives in `tenant_config` (`min_cbm_per_item`) and is surfaced on the CBM-rate admin page — see `07_api_tenant_management.md` (GET/PUT `/v1/tenant/cbm-rate` now carry `min_cbm_per_item`).
+- **Shipment dates** — `loading_date`/`delivery_date` on `CreatePackingListRequest`/`UpdatePackingListRequest` (migration 052), captured per packing list.
+- **Draft editing** — `canEditPackingList` drafts now open the wizard at `/packing-lists/:id/edit` (reuses the create flow via `PUT /v1/packing-lists/{id}`, which was already draft/rejected-only). Customer/container are fixed; items + dates are editable. A new **Edit** button on `PackingListDetail` for draft lists links here.
+- **Input hardening (frontend)** — the quantity fields (weights, L×W×H, declared value) block negatives and non-numeric keystrokes (`min=0` + keydown guard + `sanitizeNumber`); the backend already rejected them (`ge=0`/`gt=0` on the Pydantic model), so this is purely entry UX.
+
+Verified live: a 0.06-CBM bale floored to 0.100 shows `0.100 · min · SM BALE`; a 0.4-CBM bale shows `BIG BALE`; a draft opens prefilled with customer/container fixed; negative/alpha input rejected.

@@ -255,6 +255,10 @@ Returns SQL-computed counts so the admin customer list's and dashboard's stat ca
 
 Both queries run through `execute_with_tenant` (RLS-scoped). Consumed by the frontend as `customersApi.stats()` (`CustomerStats`, `customerKeys.stats()`).
 
+### Minimum CBM per item (2026-10-02)
+
+`GET /v1/tenant/cbm-rate` now also returns `min_cbm_per_item` (float, default 0.1), and `PUT /v1/tenant/cbm-rate` accepts an optional `min_cbm_per_item` (`> 0`; omit to leave unchanged). It's stored in its own `tenant_config` key (`min_cbm_per_item` = `{"value": …}`), separate from the rate config, and read by the packing-list service (`shared/cbm_rate.get_min_cbm_per_item`) to floor each line item's CBM — see `08_api_packing_list.md`. Surfaced on the CBM-rate admin page.
+
 ### Container capacity presets (2026-10-01)
 
 `GET /v1/tenant/container-capacities` returns the ten built-in presets (code constants, `is_custom: false`, synthetic `id: "default:<name>"`) merged with the tenant's custom rows (`is_custom: true`, UUID id), sorted by `capacity_cbm` descending. Each item: `{ id, name, capacity_cbm (float), recommended_cbm (float|null), is_custom }`. CBM values are serialized as floats (not Decimal strings) so the frontend can format them directly.

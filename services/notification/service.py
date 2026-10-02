@@ -131,6 +131,10 @@ def format_sms(
     try:
         return template.format_map(data)
     except Exception:
+        # A malformed template (bad placeholder/format spec) must never block a
+        # notification — fall back to a safe generic message, but surface the
+        # misconfiguration so it can be fixed.
+        logger.warning("SMS template render failed for event %s; using generic fallback", event_type)
         company = get_company_name(branding)
         return f"{company}: You have a notification regarding your shipment."
 

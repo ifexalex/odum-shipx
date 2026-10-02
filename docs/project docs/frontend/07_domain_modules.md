@@ -1163,3 +1163,17 @@ The overview's uncapped per-customer **table** (which would scroll endlessly for
 ### Follow-up: searchable customer picker on CreatePackingList (2026-10-02)
 
 Extended the searchable `Combobox` from the container picker to the **customer** picker on the packing-list wizard (step 1), replacing the native `<select>`. It filters on name **and** phone/email, and each option shows `phone · email` as meta — a tenant can have dozens/hundreds of customers, so type-to-find is the right UX (verified live: 50 customers, typing "chuk" narrows to 3). Test: `CreatePackingList.test.tsx` — the shared `selectFromCombobox` helper now drives both the Customer and Container pickers.
+
+## Packing-list item entry: validation, package type, bale sizing, min-CBM, dates, draft edit (2026-10-02)
+
+`CreatePackingList.tsx` (now also the draft-edit page via `/packing-lists/:id/edit`):
+
+- **Input hardening** — the quantity cells (Wt dispatch/actual kg, L × W × H cm, Declared USD) are `type="number" min={0}` with an `onKeyDown` guard blocking `e/E/+/-` and a `sanitizeNumber` that rejects negatives/non-numeric. (The backend already enforced `ge=0`/`gt=0`; this stops bad entry at the source.)
+- **Package type** — a per-row select (Carton / Bag / Pallet / Bale / Sack, default Carton), `PACKAGE_UNITS` / `PackageUnit` in `api/packingList.ts`.
+- **Bale sizing** — a live `BIG BALE`/`SM BALE` badge on bale rows (`baleSizeAbbr`, threshold 0.3 CBM), mirroring the backend `bale_type`.
+- **Minimum CBM** — the CBM cell shows the floored value (`applyMinCbm`, tenant `min_cbm_per_item`) with a `min` tag when a sub-minimum parcel is bumped up; totals + the live pricing estimate use the floored CBM. The admin sets the floor on the CBM-rate page (`CbmRateConfig.tsx`).
+- **Shipment dates** — Loading date + Delivery date fields in step 1 (optional).
+- **Draft editing** — a draft's detail page has an **Edit** button → the wizard loads it (`packingListApi.get`), with customer/container fixed and items/dates editable, saving via `packingListApi.update`. Submitting from there moves it to pending approval.
+- **Searchable container + customer pickers** (from the prior pass) carry over.
+
+Layout: the step-2 table was realigned with the new Type column and a compact CBM cell (value + min tag + bale badge); headers abbreviated (Wt disp./act., Decl.) to keep it on one row at desktop width. Verified live.

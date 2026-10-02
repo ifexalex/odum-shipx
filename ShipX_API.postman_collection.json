@@ -847,7 +847,7 @@
             ],
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"currency\": \"usd\",\n  \"rate_mode\": \"flat\",\n  \"carton_rate\": 45\n}"
+              "raw": "{\n  \"currency\": \"usd\",\n  \"rate_mode\": \"flat\",\n  \"carton_rate\": 45,\n  \"min_cbm_per_item\": 0.1\n}"
             },
             "url": {
               "raw": "{{base_url}}/v1/tenant/cbm-rate",

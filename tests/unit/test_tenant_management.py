@@ -681,11 +681,16 @@ class TestGetCbmRate:
             "bale_rate": Decimal("45"),
             "effective_from": "t0",
         }
-        with patch.object(service, "get_cbm_rate_config", return_value=config) as mock_cfg:
+        with (
+            patch.object(service, "get_cbm_rate_config", return_value=config) as mock_cfg,
+            patch.object(service, "get_min_cbm_per_item", return_value=Decimal("0.1")),
+        ):
             result = service.get_cbm_rate(TENANT_ID)
 
         mock_cfg.assert_called_once_with(TENANT_ID)
-        assert result == config
+        for key, value in config.items():
+            assert result[key] == value
+        assert result["min_cbm_per_item"] == 0.1
 
     def test_rates_are_floats_not_decimals(self):
         """Ground-truth bug caught live: shared/responses.py's success()
@@ -706,12 +711,16 @@ class TestGetCbmRate:
             "bale_rate": Decimal("45"),
             "effective_from": "t0",
         }
-        with patch.object(service, "get_cbm_rate_config", return_value=config):
+        with (
+            patch.object(service, "get_cbm_rate_config", return_value=config),
+            patch.object(service, "get_min_cbm_per_item", return_value=Decimal("0.1")),
+        ):
             result = service.get_cbm_rate(TENANT_ID)
 
         assert isinstance(result["carton_rate"], float)
         assert isinstance(result["bag_rate"], float)
         assert isinstance(result["bale_rate"], float)
+        assert isinstance(result["min_cbm_per_item"], float)
 
 
 class TestUpdateCbmRate:
@@ -731,6 +740,7 @@ class TestUpdateCbmRate:
 
         with (
             patch.object(service, "get_cbm_rate", return_value=current),
+            patch.object(service, "get_min_cbm_per_item", return_value=Decimal("0.1")),
             patch.object(service.repo, "upsert_config") as mock_upsert,
             patch.object(service.repo, "append_rate_history"),
             patch("services.tenant_management.service.log_audit"),
@@ -774,6 +784,7 @@ class TestUpdateCbmRate:
 
         with (
             patch.object(service, "get_cbm_rate", return_value=current),
+            patch.object(service, "get_min_cbm_per_item", return_value=Decimal("0.1")),
             patch.object(service.repo, "upsert_config"),
             patch.object(service.repo, "append_rate_history"),
             patch("services.tenant_management.service.log_audit"),
@@ -809,6 +820,7 @@ class TestUpdateCbmRate:
 
         with (
             patch.object(service, "get_cbm_rate", return_value=current),
+            patch.object(service, "get_min_cbm_per_item", return_value=Decimal("0.1")),
             patch.object(service.repo, "upsert_config") as mock_upsert,
             patch.object(service.repo, "append_rate_history"),
             patch("services.tenant_management.service.log_audit"),
@@ -842,6 +854,7 @@ class TestUpdateCbmRate:
 
         with (
             patch.object(service, "get_cbm_rate", return_value=current),
+            patch.object(service, "get_min_cbm_per_item", return_value=Decimal("0.1")),
             patch.object(service.repo, "upsert_config"),
             patch.object(service.repo, "append_rate_history") as mock_history,
             patch("services.tenant_management.service.log_audit"),
