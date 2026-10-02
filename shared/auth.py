@@ -16,6 +16,7 @@ from shared.exceptions import (
     TenantOffboardedError,
     TenantSuspendedError,
 )
+from shared.logging_config import bind_log_context
 from shared.tenant_context import PLATFORM_TENANT_ID, TenantContext, UserRole
 
 logger = logging.getLogger(__name__)
@@ -92,6 +93,13 @@ def get_tenant_context(event: dict[str, Any]) -> TenantContext:
         session_id=imp_session_id,
         read_only=read_only,
     )
+
+    # Bind trace context the moment identity is known, from this single
+    # chokepoint, so every downstream log line carries tenant_id/user_id
+    # without each handler wiring it. request_id is bound separately at the
+    # handler entry point, which also calls clear_log_context() first so a
+    # reused Lambda execution environment cannot leak the previous request.
+    bind_log_context(tenant_id=ctx.tenant_id, user_id=ctx.user_id)
 
     # Central read-only enforcement for impersonation sessions.
     # Checked here — the single chokepoint — so individual write handlers never

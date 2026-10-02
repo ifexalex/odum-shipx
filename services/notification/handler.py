@@ -23,7 +23,7 @@ from aws_xray_sdk.core import patch_all
 from shared.auth import get_tenant_context
 from shared.exceptions import LogisticsBaseError, ResourceNotFoundError
 from shared.idempotency import check_idempotency, store_idempotency
-from shared.logging_config import setup_logging
+from shared.logging_config import bind_log_context, clear_log_context, setup_logging
 from shared.metering import record_usage
 from shared.pagination import decode_cursor
 from shared.responses import created, error_response, paginated, success
@@ -65,6 +65,8 @@ def sms_handler(event: dict[str, Any], context: Any) -> dict[str, Any]:
     batch_item_failures = []
     for record in event.get("Records", []):
         msg_id = record.get("messageId", "unknown")
+        clear_log_context()
+        bind_log_context(request_id=msg_id)
         try:
             body = json.loads(record["body"])
             _process_sms(body)
@@ -77,6 +79,7 @@ def sms_handler(event: dict[str, Any], context: Any) -> dict[str, Any]:
 
 def _process_sms(body: dict[str, Any]) -> None:
     tenant_id = body.get("tenant_id", "")
+    bind_log_context(tenant_id=tenant_id or None)
     event_type = body.get("event_type", "")
     recipient = body.get("recipient") or {}
     phone = recipient.get("phone", "")
@@ -132,6 +135,8 @@ def whatsapp_handler(event: dict[str, Any], context: Any) -> dict[str, Any]:
     batch_item_failures = []
     for record in event.get("Records", []):
         msg_id = record.get("messageId", "unknown")
+        clear_log_context()
+        bind_log_context(request_id=msg_id)
         try:
             body = json.loads(record["body"])
             _process_whatsapp(body)
@@ -144,6 +149,7 @@ def whatsapp_handler(event: dict[str, Any], context: Any) -> dict[str, Any]:
 
 def _process_whatsapp(body: dict[str, Any]) -> None:
     tenant_id = body.get("tenant_id", "")
+    bind_log_context(tenant_id=tenant_id or None)
     event_type = body.get("event_type", "")
     recipient = body.get("recipient") or {}
     phone = recipient.get("phone", "")
@@ -212,6 +218,8 @@ def email_handler(event: dict[str, Any], context: Any) -> dict[str, Any]:
     batch_item_failures = []
     for record in event.get("Records", []):
         msg_id = record.get("messageId", "unknown")
+        clear_log_context()
+        bind_log_context(request_id=msg_id)
         try:
             body = json.loads(record["body"])
             _process_email(body)
@@ -224,6 +232,7 @@ def email_handler(event: dict[str, Any], context: Any) -> dict[str, Any]:
 
 def _process_email(body: dict[str, Any]) -> None:
     tenant_id = body.get("tenant_id", "")
+    bind_log_context(tenant_id=tenant_id or None)
     event_type = body.get("event_type", "")
     recipient = body.get("recipient") or {}
     to_email = recipient.get("email", "")
@@ -421,6 +430,8 @@ def http_handler(event: dict[str, Any], context: Any) -> dict[str, Any]:
     method = http.get("method", "")
     path = http.get("path", "")
     request_id = event.get("requestContext", {}).get("requestId") or str(_uuid.uuid4())
+    clear_log_context()
+    bind_log_context(request_id=request_id)
 
     try:
         tenant_ctx = get_tenant_context(event)

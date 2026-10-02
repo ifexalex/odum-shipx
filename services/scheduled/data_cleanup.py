@@ -21,7 +21,7 @@ from aws_xray_sdk.core import patch_all
 
 from shared.audit import log_audit
 from shared.db import execute_with_tenant, execute_write_with_tenant
-from shared.logging_config import setup_logging
+from shared.logging_config import bind_log_context, clear_log_context, setup_logging
 from shared.tenant_context import PLATFORM_TENANT_ID
 
 setup_logging()
@@ -100,6 +100,8 @@ def _get_cognito() -> Any:
 
 
 def lambda_handler(event: dict[str, Any], context: Any) -> dict[str, Any]:
+    clear_log_context()
+    bind_log_context(request_id=getattr(context, "aws_request_id", None))
     now = datetime.now(UTC)
     cutoff = now - timedelta(days=_RETENTION_DAYS)
 
@@ -108,6 +110,7 @@ def lambda_handler(event: dict[str, Any], context: Any) -> dict[str, Any]:
 
     for tenant in tenants:
         tenant_id = str(tenant["id"])
+        bind_log_context(tenant_id=tenant_id)
         try:
             _delete_tenant(tenant_id, tenant)
             deleted += 1

@@ -50,6 +50,11 @@ import urllib.error
 import urllib.request
 from typing import Any
 
+from shared.logging_config import bind_log_context, clear_log_context, setup_logging
+
+# Module-level init (runs once on cold start)
+setup_logging()
+
 logger = logging.getLogger(__name__)
 
 # Simple in-process cache for JWKS (refreshed on cold start only)
@@ -167,6 +172,8 @@ def lambda_handler(event: dict[str, Any], context: Any) -> dict[str, Any]:
     Returns an IAM policy document with principal + context claims injected
     into the request so downstream Lambdas can call get_tenant_context() as-is.
     """
+    clear_log_context()
+    bind_log_context(request_id=event.get("requestContext", {}).get("requestId") or getattr(context, "aws_request_id", None))
     method_arn = event.get("methodArn", "*")
     auth_header = (event.get("headers") or {}).get("authorization", "")
     if not auth_header.startswith("Bearer "):
@@ -184,6 +191,7 @@ def lambda_handler(event: dict[str, Any], context: Any) -> dict[str, Any]:
         if isinstance(groups, list):
             groups = ",".join(groups)
 
+        bind_log_context(tenant_id=tenant_id or None, user_id=sub or None)
         ctx: dict[str, Any] = {
             "sub": sub,
             "custom:tenant_id": tenant_id,
@@ -200,6 +208,8 @@ def lambda_handler(event: dict[str, Any], context: Any) -> dict[str, Any]:
 
         # Synthesise cognito:groups so get_tenant_context() parses role normally
         synthesised_groups = f"{tenant_id}:{role}"
+
+        bind_log_context(tenant_id=tenant_id or None, user_id=sub or None)
 
         ctx = {
             "sub": sub,

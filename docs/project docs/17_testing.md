@@ -197,6 +197,22 @@ def test_no_secrets_in_logs():
     """Verify structured logging never includes passwords, tokens, or secrets."""
 ```
 
+### Structured Logging Tests (`tests/unit/test_logging_config.py`)
+
+Covers `shared/logging_config.py` (see 00_CROSS_CUTTING_STANDARDS §3):
+
+```python
+class TestStructuredFormatter:
+    # core JSON schema, extra-field passthrough (duration_ms no longer dropped),
+    # non-JSON value serialisation (Decimal), exception capture
+
+class TestContextPropagation:
+    # bound request_id/tenant_id/user_id appear on every record;
+    # partial bind refines without clearing; explicit extra= wins over bound
+    # context; clear_log_context() prevents cross-invocation leakage;
+    # unbound fields serialise as null (not missing)
+```
+
 ### Impersonation Read-Only Tests (`tests/unit/test_auth.py` — `TestReadOnlyImpersonation`)
 
 Enforces the central read-only guard added to `get_tenant_context` (Task 1 — P0 security fix):

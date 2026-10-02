@@ -15,7 +15,7 @@ from typing import Any
 from aws_xray_sdk.core import patch_all
 
 from shared.db import execute_with_tenant, execute_write_with_tenant
-from shared.logging_config import setup_logging
+from shared.logging_config import bind_log_context, clear_log_context, setup_logging
 from shared.notifications import enqueue_notification
 from shared.tenant_context import PLATFORM_TENANT_ID
 
@@ -31,11 +31,14 @@ logger = logging.getLogger(__name__)
 
 
 def lambda_handler(event: dict[str, Any], context: Any) -> dict[str, Any]:
+    clear_log_context()
+    bind_log_context(request_id=getattr(context, "aws_request_id", None))
     tenants = _get_active_tenants()
     expired = errors = 0
 
     for tenant in tenants:
         tenant_id = str(tenant["id"])
+        bind_log_context(tenant_id=tenant_id)
         try:
             count = _process_tenant(tenant_id)
             expired += count

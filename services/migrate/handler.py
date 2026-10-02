@@ -18,6 +18,11 @@ import boto3
 from alembic import command
 from alembic.config import Config
 
+from shared.logging_config import setup_logging
+
+# Module-level init (runs once on cold start)
+setup_logging()
+
 logger = logging.getLogger(__name__)
 
 

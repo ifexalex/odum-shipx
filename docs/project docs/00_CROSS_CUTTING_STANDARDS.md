@@ -160,29 +160,64 @@ have passed a `fullmatch` allowlist — never a "contains"/"ends with"/"last seg
 
 ## 3. Structured Logging Standard
 
-All Lambda functions MUST use JSON structured logging:
+All Lambda functions MUST use JSON structured logging. The canonical
+implementation is `shared/logging_config.py` — do not re-implement a formatter
+per service. Every handler calls `setup_logging()` once at module load (cold
+start) and obtains a logger with `logging.getLogger(__name__)`.
 
-```python
-import logging
-import json
-import os
+Each line is a single-line JSON object carrying the core schema below, so it is
+directly queryable in CloudWatch Logs Insights (e.g.
+`filter tenant_id = "..." and level = "ERROR" | sort @timestamp`):
 
-class StructuredFormatter(logging.Formatter):
-    def format(self, record):
-        log_entry = {
-            "timestamp": self.formatTime(record),
-            "level": record.levelname,
-            "service": os.environ.get("SERVICE_NAME", "unknown"),
-            "environment": os.environ.get("ENVIRONMENT", "unknown"),
-            "request_id": getattr(record, "request_id", None),
-            "tenant_id": getattr(record, "tenant_id", None),
-            "message": record.getMessage(),
-            "logger": record.name,
-        }
-        if record.exc_info:
-            log_entry["exception"] = self.formatException(record.exc_info)
-        return json.dumps(log_entry, default=str)
+```json
+{
+  "timestamp": "2026-10-03T12:00:00+00:00",
+  "level": "ERROR",
+  "service": "billing",
+  "environment": "prod",
+  "request_id": "abc-123",
+  "tenant_id": "t-0001",
+  "user_id": "f7c9...",
+  "message": "Unhandled error",
+  "logger": "services.billing.handler",
+  "exception": "Traceback ..."
+}
 ```
+
+### 3.1 Trace-context propagation (`request_id` / `tenant_id` / `user_id`)
+
+Correlation IDs are **not** threaded through function signatures and are **not**
+re-specified via `extra={...}` at each call site. Instead they are bound once
+per invocation into request-scoped `contextvars` and injected onto every record
+by a `logging.Filter`:
+
+- `bind_log_context(request_id=..., tenant_id=..., user_id=...)` — only
+  non-None args are applied, so later calls refine the context.
+- `clear_log_context()` — resets all three.
+- `ContextFilter` — fills any field the caller did not set explicitly. An
+  explicit `extra={"tenant_id": ...}` on a single call still wins for that line.
+
+**Wiring contract (enforced across all handlers):**
+- API handlers call `clear_log_context()` then `bind_log_context(request_id=...)`
+  at entry (immediately after deriving `request_id`). `clear` runs at **entry**,
+  not in `finally`, so a reused Lambda execution environment cannot leak the
+  previous request's IDs, and the closing `← response` log line keeps full
+  context.
+- `get_tenant_context()` binds `tenant_id` + `user_id` from the single auth
+  chokepoint the moment identity is known — every downstream handler/service/
+  repository log line then carries them automatically.
+- Scheduled (EventBridge) jobs bind `request_id` from `context.aws_request_id`
+  at entry and `bind_log_context(tenant_id=...)` inside their per-tenant loop,
+  so a failure in one tenant's processing is attributable.
+- SQS consumers (notifications, metering) `clear` + bind `request_id` from the
+  SQS `messageId` per record, and bind `tenant_id` once the message body is
+  parsed.
+
+### 3.2 Custom fields
+
+Any caller-supplied `extra={...}` field not in the core schema (e.g.
+`duration_ms`, `event_type`, `status_code`) is passed through as a top-level
+JSON key so it stays queryable — it is **not** dropped.
 
 **Required log events:**
 - `INFO` — every request entry (method, path, tenant_id, user_role)
@@ -192,6 +227,10 @@ class StructuredFormatter(logging.Formatter):
 - `WARNING` — business rule violations, authorization failures
 - `ERROR` — unhandled exceptions, external service failures
 - `DEBUG` — SQL queries (only in dev, never in prod)
+
+**Never log PII** (email, phone, name, ID numbers) to CloudWatch — log only
+`tenant_id`, `user_id` (UUID), `request_id`, and non-PII metadata. See §11 for
+the masking rules applied to audit snapshots.
 
 ---
 

@@ -37,7 +37,7 @@ from typing import Any
 from aws_xray_sdk.core import patch_all
 
 from shared.exceptions import AuthenticationRequiredError, LogisticsBaseError, ResourceNotFoundError
-from shared.logging_config import setup_logging
+from shared.logging_config import bind_log_context, clear_log_context, setup_logging
 from shared.responses import error_response
 from shared.validation import parse_validated
 
@@ -67,6 +67,8 @@ _STANDARD_HEADERS = {
 def lambda_handler(event: dict[str, Any], context: Any) -> dict[str, Any]:
     start_time = time.time()
     request_id = event.get("requestContext", {}).get("requestId") or str(uuid.uuid4())
+    clear_log_context()
+    bind_log_context(request_id=request_id)
     http = event.get("requestContext", {}).get("http", {})
     method = http.get("method", "")
     path = http.get("path", "")

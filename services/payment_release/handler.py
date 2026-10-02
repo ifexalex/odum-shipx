@@ -37,7 +37,7 @@ from aws_xray_sdk.core import patch_all
 from shared.auth import get_tenant_context
 from shared.exceptions import LogisticsBaseError, ResourceNotFoundError
 from shared.idempotency import check_idempotency, store_idempotency
-from shared.logging_config import setup_logging
+from shared.logging_config import bind_log_context, clear_log_context, setup_logging
 from shared.metering import record_usage
 from shared.responses import created, error_response, success
 from shared.tenant_context import UserRole
@@ -118,6 +118,8 @@ _WAREHOUSE_WRITE_ROLES = (UserRole.TENANT_ADMIN,)
 def lambda_handler(event: dict[str, Any], context: Any) -> dict[str, Any]:
     start_time = time.time()
     request_id = event.get("requestContext", {}).get("requestId") or str(uuid.uuid4())
+    clear_log_context()
+    bind_log_context(request_id=request_id)
     http = event.get("requestContext", {}).get("http", {})
     method = http.get("method", "")
     path = http.get("path", "")

@@ -27,7 +27,7 @@ from aws_xray_sdk.core import patch_all
 from shared.auth import get_tenant_context
 from shared.exceptions import LogisticsBaseError, ResourceNotFoundError
 from shared.idempotency import check_idempotency, store_idempotency
-from shared.logging_config import setup_logging
+from shared.logging_config import bind_log_context, clear_log_context, setup_logging
 from shared.metering import record_usage
 from shared.pagination import decode_cursor
 from shared.responses import (
@@ -80,6 +80,8 @@ _WORKFLOW_ROLES = (
 def lambda_handler(event: dict[str, Any], context: Any) -> dict[str, Any]:
     start_time = time.time()
     request_id = event.get("requestContext", {}).get("requestId") or str(uuid.uuid4())
+    clear_log_context()
+    bind_log_context(request_id=request_id)
     http = event.get("requestContext", {}).get("http", {})
     method = http.get("method", "")
     path = http.get("path", "")
@@ -150,13 +152,7 @@ def _dispatch(
     parts = path.strip("/").split("/")
 
     # GET /v1/containers/{id}/packing-lists — sub-resource alias
-    if (
-        len(parts) >= 4
-        and parts[0] == "v1"
-        and parts[1] == "containers"
-        and parts[3] == "packing-lists"
-        and method == "GET"
-    ):
+    if len(parts) >= 4 and parts[0] == "v1" and parts[1] == "containers" and parts[3] == "packing-lists" and method == "GET":
         container_id = parts[2]
         return _container_packing_lists(event, method, ctx, request_id, container_id)
 
@@ -187,9 +183,7 @@ def _container_packing_lists(
         filters["customer_id"] = _qp(event, "customer_id")
     limit = int(_qp(event, "limit", 50))
     cursor = decode_cursor(_qp(event, "cursor"))
-    page, next_cursor, has_more, total = service.list_packing_lists(
-        ctx.tenant_id, filters, limit, cursor, ctx
-    )
+    page, next_cursor, has_more, total = service.list_packing_lists(ctx.tenant_id, filters, limit, cursor, ctx)
     return paginated(page, next_cursor, has_more, total_count=total, request_id=request_id)
 
 
@@ -305,12 +299,8 @@ def _packing_list_routes(
                 filters["created_before"] = _qp(event, "created_before")
             limit = int(_qp(event, "limit", 50))
             cursor = decode_cursor(_qp(event, "cursor"))
-            page, next_cursor, has_more, total = service.list_packing_lists(
-                tenant_id, filters, limit, cursor, ctx
-            )
-            return paginated(
-                page, next_cursor, has_more, total_count=total, request_id=request_id
-            )
+            page, next_cursor, has_more, total = service.list_packing_lists(tenant_id, filters, limit, cursor, ctx)
+            return paginated(page, next_cursor, has_more, total_count=total, request_id=request_id)
 
     else:
         if action is None:
@@ -401,4 +391,3 @@ def _health_response(request_id: str) -> dict[str, Any]:
             }
         ),
     }
-
