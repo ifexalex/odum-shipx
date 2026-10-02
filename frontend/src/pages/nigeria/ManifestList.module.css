@@ -1,0 +1,15 @@
+.banner {
+  margin-bottom: 16px;
+}
+
+.chips {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.tableWrap {
+  margin-top: 16px;
+}
+
+.statsRow { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 12px; margin-bottom: 16px; }

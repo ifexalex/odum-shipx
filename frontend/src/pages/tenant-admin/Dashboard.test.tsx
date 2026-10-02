@@ -2,6 +2,7 @@
  * 3.1 / audit gap B3 — tenant admin dashboard: greeting hero + summary line,
  * admin-only Active-customers / Open-claims stats, and a recent-containers table.
  */
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { render, screen, waitFor } from '@testing-library/react'
 import { MemoryRouter } from 'react-router-dom'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
@@ -18,13 +19,13 @@ import { Dashboard } from './Dashboard'
 
 vi.mock('../../api/tracking', async (importOriginal) => {
   const original = await importOriginal<typeof import('../../api/tracking')>()
-  return { ...original, containersApi: { ...original.containersApi, list: vi.fn() } }
+  return { ...original, containersApi: { ...original.containersApi, list: vi.fn(), stats: vi.fn() } }
 })
 vi.mock('../../api/billing', async (importOriginal) => {
   const original = await importOriginal<typeof import('../../api/billing')>()
   return {
     ...original,
-    billingApi: { ...original.billingApi, list: vi.fn(), recentPayments: vi.fn() },
+    billingApi: { ...original.billingApi, list: vi.fn(), recentPayments: vi.fn(), stats: vi.fn() },
     disputeApi: { ...original.disputeApi, list: vi.fn() },
   }
 })
@@ -42,11 +43,11 @@ vi.mock('../../api/packingList', async (importOriginal) => {
 })
 vi.mock('../../api/claims', async (importOriginal) => {
   const original = await importOriginal<typeof import('../../api/claims')>()
-  return { ...original, claimsApi: { ...original.claimsApi, list: vi.fn() } }
+  return { ...original, claimsApi: { ...original.claimsApi, list: vi.fn(), stats: vi.fn() } }
 })
 vi.mock('../../api/tenantManagement', async (importOriginal) => {
   const original = await importOriginal<typeof import('../../api/tenantManagement')>()
-  return { ...original, customersApi: { ...original.customersApi, list: vi.fn() } }
+  return { ...original, customersApi: { ...original.customersApi, list: vi.fn(), stats: vi.fn() } }
 })
 // PlanUsagePanel makes its own quota call — stub it out of this page test.
 vi.mock('../../shell/PlanUsagePanel', () => ({ PlanUsagePanel: () => null }))
@@ -56,7 +57,7 @@ const CONTAINER = {
   origin: 'Guangzhou', destination: 'Lagos', ship_date: null, estimated_arrival_date: '2026-08-14',
   actual_arrival_date: null, status: 'in_transit', notes: null, created_by: 's1',
   created_at: '2026-07-01', updated_at: '2026-07-01', vessel_name: null, voyage_number: null,
-  shipping_line: null, seal_number: null, container_type: null, created_by_name: null,
+  shipping_line: null, seal_number: null, container_type: null, capacity_cbm: null, recommended_cbm: null, created_by_name: null,
 }
 
 function renderDashboard(role: Session['role'] = 'tenant_admin') {
@@ -69,12 +70,15 @@ function renderDashboard(role: Session['role'] = 'tenant_admin') {
     session, status: 'authenticated',
     login: vi.fn(), logout: vi.fn(), startImpersonation: vi.fn(), exitImpersonation: vi.fn(), refreshNow: vi.fn(), setActiveRole: vi.fn(),
   }
+  const client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
   return render(
-    <SessionContext.Provider value={ctx}>
-      <MemoryRouter>
-        <Dashboard />
-      </MemoryRouter>
-    </SessionContext.Provider>,
+    <QueryClientProvider client={client}>
+      <SessionContext.Provider value={ctx}>
+        <MemoryRouter>
+          <Dashboard />
+        </MemoryRouter>
+      </SessionContext.Provider>
+    </QueryClientProvider>,
   )
 }
 
@@ -97,6 +101,22 @@ describe('Dashboard (B3)', () => {
       data: [{ status: 'filed' }, { status: 'under_inspection' }, { status: 'resolved' }],
       meta: { pagination: { has_more: false, next_cursor: null, total_count: 3 } },
     } as never)
+    // Server-side aggregates that now drive the stat cards + summary line.
+    vi.mocked(containersApi.stats).mockResolvedValue({
+      total: 1, loading: 0, sealed: 0, in_transit: 1, arrived: 0, customs_clearance: 0,
+      cleared: 0, at_warehouse: 0, fully_released: 0, cancelled: 0, cleared_30d: 0,
+    })
+    vi.mocked(billingApi.stats).mockResolvedValue({
+      outstanding_ngn: '0', paid_this_month_ngn: '0', overdue: 0, total: 0,
+      unpaid: 0, partially_paid: 0, paid: 0, overpaid: 0, waived: 0, released_with_outstanding: 0,
+    })
+    vi.mocked(claimsApi.stats).mockResolvedValue({
+      total: 3, open: 2, under_inspection: 1, resolved_30d: 0,
+      filed: 1, pending_resolution: 0, resolved: 1, closed: 0,
+    })
+    vi.mocked(customersApi.stats).mockResolvedValue({
+      total: 142, active: 142, anonymised: 0, with_whatsapp: 0, shipments: 0,
+    })
     const emptyList = {
       data: [], meta: { pagination: { has_more: false, next_cursor: null, total_count: 0 } },
     } as never
@@ -211,16 +231,23 @@ describe('Dashboard (B3)', () => {
     expect(screen.queryByText('Billing & Claims')).toBeNull()
   })
 
-  // §6.1 bottom row — incoming containers (still at sea, soonest ETA first)
+  // §6.1 bottom row — incoming containers (still at sea, soonest ETA first).
+  // The incoming list is now a dedicated server query (status=sealed,in_transit),
+  // so the mock filters by the status param the way the backend would.
   it('shows incoming containers for nigeria staff, excluding arrived ones', async () => {
-    vi.mocked(containersApi.list).mockResolvedValue({
-      data: [
-        CONTAINER, // in_transit → incoming
-        { ...CONTAINER, id: 'c2', container_number: 'HLBU9384712', status: 'sealed', estimated_arrival_date: '2026-07-20' },
-        { ...CONTAINER, id: 'c3', container_number: 'COSU7194820', status: 'at_warehouse' }, // already here
-      ],
-      meta: { pagination: { has_more: false, next_cursor: null, total_count: 3 } },
-    } as never)
+    const all = [
+      CONTAINER, // in_transit → incoming
+      { ...CONTAINER, id: 'c2', container_number: 'HLBU9384712', status: 'sealed', estimated_arrival_date: '2026-07-20' },
+      { ...CONTAINER, id: 'c3', container_number: 'COSU7194820', status: 'at_warehouse' }, // already here
+    ]
+    vi.mocked(containersApi.list).mockImplementation((params) => {
+      const statuses = params?.status?.split(',')
+      const data = statuses ? all.filter((c) => statuses.includes(c.status)) : all
+      return Promise.resolve({
+        data,
+        meta: { pagination: { has_more: false, next_cursor: null, total_count: data.length } },
+      }) as never
+    })
     renderDashboard('nigeria_office_staff')
     await screen.findByText(/Lead every shipment/)
     await waitFor(() => expect(screen.getByText('Incoming containers')).toBeInTheDocument())

@@ -1,0 +1,25 @@
+.footer {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-wrap: wrap;
+  gap: 8px 16px;
+  padding: 16px;
+  text-align: center;
+}
+
+.count {
+  font-size: 13px;
+  color: var(--color-ink-3);
+}
+
+.count strong {
+  color: var(--color-ink-2);
+  font-weight: 600;
+}
+
+.refine {
+  font-size: 13px;
+  color: var(--color-ink-4);
+  max-width: 46ch;
+}

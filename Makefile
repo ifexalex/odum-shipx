@@ -82,6 +82,11 @@ migrate:
 seed:
 	python scripts/seed.py
 
+# Adds ~200 containers / ~50 customers to Acme Shipping Ltd for volume/UI
+# testing. Additive — run after `make seed` (or `make stack`).
+seed-stress:
+	python scripts/seed_stress.py
+
 package-layer:
 	mkdir -p build/layer/python
 	pip install -r requirements-layer.txt -t build/layer/python --platform manylinux2014_aarch64 --only-binary=:all:

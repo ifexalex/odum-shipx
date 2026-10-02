@@ -1,0 +1,93 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Shipx · Section 2 — Platform Admin</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&family=Kumbh+Sans:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet" />
+<style>
+  html, body { margin: 0; padding: 0; height: 100%; background: #f0eee9; font-family: "Kumbh Sans", system-ui, sans-serif; }
+  *, *::before, *::after { box-sizing: border-box; }
+  #root { height: 100vh; }
+  input::placeholder, textarea::placeholder { color: #9aa0a6; }
+  button { font-family: inherit; }
+</style>
+<script src="https://unpkg.com/react@18.3.1/umd/react.development.js" integrity="sha384-hD6/rw4ppMLGNu3tX5cjIb+uRZ7UkRJ6BPkLpg4hAu/6onKUg4lLsHAs9EBPT82L" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.development.js" integrity="sha384-u6aeetuaXnQ38mYT8rp6sbXaQe3NL9t+IBXmnYxwkUI2Hw4bsp2Wvmx4yRQF1uAm" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/@babel/standalone@7.29.0/babel.min.js" integrity="sha384-m08KidiNqLdpJqLq95G/LEi8Qvjl/xUYll3QILypMoQ65QorJ9Lvtp2RXYGBFj1y" crossorigin="anonymous"></script>
+<script type="text/babel" src="design-canvas.jsx"></script>
+<script type="text/babel" src="browser-window.jsx"></script>
+<script type="text/babel" src="shared/components.jsx"></script>
+<script type="text/babel" src="shared/app-shell.jsx"></script>
+<script type="text/babel" src="platform/platform-screens.jsx"></script>
+</head>
+<body>
+<div id="root"></div>
+<script type="text/babel" data-presets="react">
+const Frame = ({url, w = 1440, h = 900, children}) => (
+  <ChromeWindow tabs={[{title: 'Shipx · ' + url.split('/').slice(-1)[0]}]} activeIndex={0} url={url} width={w} height={h}>
+    <div style={{width: w, height: h - 84, background: '#fff'}}>{children}</div>
+  </ChromeWindow>
+);
+
+const App = () => (
+  <DesignCanvas>
+    <DCSection id="dash" title="2.1 — Platform Dashboard" subtitle="Cross-tenant overview. Stats, tenant-health table, recent activity feed, and three quick-action tiles.">
+      <DCArtboard id="dash-overview" label="Dashboard · Default" width={1440} height={1280}>
+        <Frame url="shipx.co/platform/dashboard" h={1280}><PlatformDashboard /></Frame>
+      </DCArtboard>
+    </DCSection>
+
+    <DCSection id="tenants" title="2.2 — Tenant List" subtitle="All tenants across the platform with status, plan, and quota at a glance. Selectable rows with bulk actions.">
+      <DCArtboard id="tenants-list" label="Tenant list · 10 rows, one selected" width={1440} height={1080}>
+        <Frame url="shipx.co/platform/tenants" h={1080}><TenantList /></Frame>
+      </DCArtboard>
+    </DCSection>
+
+    <DCSection id="create" title="2.3 — Create Tenant" subtitle="Two-column form for company details + subscription. Success state confirms invite is sent.">
+      <DCArtboard id="create-form" label="Form · filled, ready to submit" width={1440} height={1200}>
+        <Frame url="shipx.co/platform/tenants/new" h={1200}><CreateTenant state="form" /></Frame>
+      </DCArtboard>
+      <DCArtboard id="create-success" label="Success · invite sent" width={1440} height={900}>
+        <Frame url="shipx.co/platform/tenants/new" h={900}><CreateTenant state="success" /></Frame>
+      </DCArtboard>
+    </DCSection>
+
+    <DCSection id="detail" title="2.4 — Tenant Detail" subtitle="Five tabs: Overview, Users, Usage & Billing, Configuration, Audit Log. Shown here: Overview, Usage, Audit.">
+      <DCArtboard id="detail-overview" label="Overview tab" width={1440} height={1180}>
+        <Frame url="shipx.co/platform/tenants/acme" h={1180}><TenantDetail tab="overview" /></Frame>
+      </DCArtboard>
+      <DCArtboard id="detail-users" label="Users tab" width={1440} height={1100}>
+        <Frame url="shipx.co/platform/tenants/acme/users" h={1100}><TenantDetail tab="users" /></Frame>
+      </DCArtboard>
+      <DCArtboard id="detail-usage" label="Usage & Billing tab" width={1440} height={1200}>
+        <Frame url="shipx.co/platform/tenants/acme/usage" h={1200}><TenantDetail tab="usage" /></Frame>
+      </DCArtboard>
+      <DCArtboard id="detail-config" label="Configuration tab" width={1440} height={1400}>
+        <Frame url="shipx.co/platform/tenants/acme/configuration" h={1400}><TenantDetail tab="config" /></Frame>
+      </DCArtboard>
+      <DCArtboard id="detail-audit" label="Audit Log tab" width={1440} height={1080}>
+        <Frame url="shipx.co/platform/tenants/acme/audit" h={1080}><TenantDetail tab="audit" /></Frame>
+      </DCArtboard>
+    </DCSection>
+
+    <DCSection id="settings" title="2.5 — Platform Settings" subtitle="General config, notification providers (SMS/WhatsApp/Email), and the subscription plan ladder.">
+      <DCArtboard id="settings-general" label="General" width={1440} height={900}>
+        <Frame url="shipx.co/platform/settings" h={900}><PlatformSettings active="general" /></Frame>
+      </DCArtboard>
+      <DCArtboard id="settings-notifications" label="Notification providers" width={1440} height={1180}>
+        <Frame url="shipx.co/platform/settings/notifications" h={1180}><PlatformSettings active="notifications" /></Frame>
+      </DCArtboard>
+      <DCArtboard id="settings-plans" label="Plans & Limits" width={1440} height={900}>
+        <Frame url="shipx.co/platform/settings/plans" h={900}><PlatformSettings active="plans" /></Frame>
+      </DCArtboard>
+    </DCSection>
+  </DesignCanvas>
+);
+
+ReactDOM.createRoot(document.getElementById('root')).render(<App />);
+</script>
+</body>
+</html>

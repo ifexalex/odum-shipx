@@ -38,7 +38,7 @@ def log_audit(
     entity_type: str,
     entity_id: str,
     action: str,
-    actor_id: str,
+    actor_id: str | None,
     actor_role: str,
     before_state: dict[str, Any] | None = None,
     after_state: dict[str, Any] | None = None,
@@ -54,8 +54,15 @@ def log_audit(
         entity_type: e.g. "packing_list", "claim", "tenant".
         entity_id: UUID of the affected entity.
         action: One of CREATE, UPDATE, DELETE, STATUS_CHANGE.
-        actor_id: Cognito sub of the user performing the action.
-        actor_role: Role string of the actor.
+        actor_id: Cognito sub of the user performing the action, or None for
+            a system-triggered action with no human actor (e.g. a webhook or
+            scheduled job) — audit_log.actor_id is a `UUID REFERENCES
+            tenant_user(id)` column, so a placeholder string like "system"
+            or "gateway" is not a valid value and silently fails the insert
+            (caught by this function's own try/except, logged as a WARNING,
+            never raised) rather than actually being recorded. Pass None,
+            not a placeholder, and use actor_role to say who/what it was.
+        actor_role: Role string of the actor (e.g. "system" for the case above).
         before_state: Dict snapshot of the entity before the change (optional).
         after_state: Dict snapshot of the entity after the change (optional).
         ip_address: Source IP address from the request (optional).

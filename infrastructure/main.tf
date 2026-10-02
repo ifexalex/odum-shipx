@@ -112,7 +112,9 @@ module "lambda" {
   event_bus_name           = module.eventbridge.event_bus_name
   cognito_user_pool_id     = module.cognito.user_pool_id
   cognito_user_pool_arn    = module.cognito.user_pool_arn
+  cognito_client_id        = module.cognito.client_id
   sqs_queue_arns           = module.sqs.queue_arns
+  sqs_queue_urls           = module.sqs.queue_urls
   ses_identity_arn         = module.ses.ses_identity_arn
   scheduled_rule_arns      = module.eventbridge.scheduled_rule_arns
   api_execution_arn        = module.api_gateway.execution_arn
@@ -144,4 +146,30 @@ module "iam_oidc" {
   project_name = var.project_name
   environment  = var.environment
   github_repo  = var.github_repo
+}
+
+# ---------------------------------------------------------------------------
+# Frontend hosting — S3 + CloudFront (Task FE-13)
+# Only deployed when route53_zone_id is provided; skipped for local dev.
+# ---------------------------------------------------------------------------
+module "cloudfront" {
+  count  = var.route53_zone_id != "" ? 1 : 0
+  source = "./modules/cloudfront"
+
+  providers = {
+    aws           = aws
+    aws.us_east_1 = aws.us_east_1
+  }
+
+  project_name    = var.project_name
+  environment     = var.environment
+  common_tags     = local.common_tags
+  domain_name     = var.domain_name
+  route53_zone_id = var.route53_zone_id
+  price_class     = var.frontend_price_class
+
+  # API Gateway domain for CSP connect-src — strip https:// prefix
+  api_gateway_domain = trimprefix(module.api_gateway.api_endpoint, "https://")
+  # Cognito domain pattern for CSP
+  cognito_domain = "cognito-idp.${var.aws_region}.amazonaws.com"
 }

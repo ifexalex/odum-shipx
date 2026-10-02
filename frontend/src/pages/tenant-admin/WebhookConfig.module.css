@@ -1,0 +1,201 @@
+/* Webhook configuration — renders inside ConfigLayout (shared config rail). */
+
+/* Enabled toggle in SectionHead action slot */
+.enabledRow {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.enabledLabel {
+  font-size: 12px;
+  font-weight: 600;
+}
+
+/* Signing secret */
+.secretLabel {
+  display: block;
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--color-ink-2);
+  margin-bottom: 6px;
+}
+
+.secretRow {
+  display: flex;
+  gap: 8px;
+}
+
+.secretDisplay {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  height: 40px;
+  padding: 0 14px;
+  background: var(--color-surface-muted);
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--color-line);
+}
+
+.secretHint {
+  margin-top: 6px;
+  font-size: 12px;
+  color: var(--color-ink-4);
+}
+
+/* Event toggle rows */
+.eventRow {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 0;
+  border-bottom: 1px solid var(--color-line);
+}
+
+.eventRow:last-child {
+  border-bottom: none;
+}
+
+.eventInfo { flex: 1; }
+
+.eventLabel {
+  display: block;
+  font-size: 13.5px;
+  font-weight: 600;
+  color: var(--color-ink);
+  margin-bottom: 2px;
+}
+
+/* Footer */
+.footer {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+/* New secret reveal banner */
+.newSecretBanner {
+  background: var(--color-success-soft);
+  border: 1px solid var(--color-success);
+  border-radius: var(--radius-md);
+  padding: 14px 16px;
+}
+
+.newSecretTop {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 10px;
+}
+
+.newSecretTitle {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--color-success-strong);
+}
+
+.newSecretRow {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  background: var(--color-surface);
+  border-radius: var(--radius-sm);
+  padding: 10px 14px;
+}
+
+/* Rotate confirm modal. Ground-truth gap found live: .modal used a fixed
+   `width: 480px` (not max-width) — genuinely wider than a phone viewport.
+   Mobile-first bottom sheet, see nigeria/ReleaseNoteDetail.module.css's
+   matching comment for the pattern reference. */
+.modalOverlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(11, 47, 13, 0.55);
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  z-index: 100;
+}
+
+.modal {
+  width: 100%;
+  background: var(--color-surface);
+  border-radius: 14px 14px 0 0;
+  box-shadow: var(--shadow-modal);
+  overflow: hidden;
+  max-height: 90vh;
+  display: flex;
+  flex-direction: column;
+}
+
+@container sxapp (min-width: 861px) {
+  .modalOverlay {
+    padding: 32px;
+  }
+  .modal {
+    width: 480px;
+    border-radius: 14px;
+  }
+}
+
+.modalHeader {
+  padding: 20px 24px;
+  border-bottom: 1px solid var(--color-line);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.modalTitle {
+  font-family: var(--font-display);
+  font-weight: 700;
+  font-size: 18px;
+  color: var(--color-ink);
+  margin: 0;
+}
+
+.modalBody {
+  padding: 20px 24px;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  overflow-y: auto;
+}
+
+.modalText {
+  font-size: 13px;
+  color: var(--color-ink-2);
+  line-height: 1.6;
+  margin: 0;
+}
+
+.modalFooter {
+  padding: 16px 24px;
+  border-top: 1px solid var(--color-line);
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.modalFooter > * {
+  min-height: 48px;
+  font-size: 1rem;
+}
+
+@container sxapp (min-width: 861px) {
+  .modalFooter > * {
+    min-height: 36px;
+    font-size: inherit;
+  }
+}
+
+.closeBtn {
+  background: transparent;
+  border: none;
+  padding: 6px;
+  cursor: pointer;
+  color: var(--color-ink-4);
+  border-radius: 6px;
+  display: flex;
+}

@@ -23,7 +23,11 @@ from shared.exceptions import (
     InsufficientPermissionsError,
     ResourceNotFoundError,
 )
+from shared.fx_rate import get_effective_dollar_rate
+from shared.notifications import enqueue_notifications
+from shared.staff_notifications import notify_staff
 from shared.tenant_context import UserRole
+from shared.validation import safe_filename
 
 from . import repository as repo
 
@@ -45,6 +49,11 @@ _URL_EXPIRY = 3600  # 1 hour
 
 # Valid source states for resolve_claim
 _RESOLVABLE_STATES = {"under_inspection", "inspection_complete", "pending_resolution"}
+
+# Container statuses reached before the cargo physically arrives in Nigeria —
+# a damage/loss claim can't be assessed against cargo that's still loading or
+# at sea. Mirrors CustomerStepper.tsx's first three tracking stages.
+_PRE_ARRIVAL_STATUSES = {"loading", "sealed", "in_transit"}
 
 
 # ---------------------------------------------------------------------------
@@ -90,12 +99,22 @@ def file_claim(
     container_id = repo.resolve_container_id(tenant_id, req.container_id)
     if not container_id:
         raise ResourceNotFoundError("container", req.container_id)
-    if ctx.role == UserRole.CUSTOMER and not repo.customer_has_cargo_in_container(
-        tenant_id, customer_id, container_id
-    ):
+    if ctx.role == UserRole.CUSTOMER and not repo.customer_has_cargo_in_container(tenant_id, customer_id, container_id):
         # Without this, a customer could file a claim against any container
         # in the tenant by guessing/enumerating numbers, not only their own.
         raise ResourceNotFoundError("container", req.container_id)
+
+    # Ground-truth gap found live: nothing stopped a claim being filed against
+    # cargo that hasn't reached Nigeria yet — damage/loss can only be observed
+    # once the container is unpacked/inspected here, not while it's still
+    # loading or at sea. `PRE_ARRIVAL_STATUSES` mirrors the first three stages
+    # of CustomerStepper.tsx's tracking timeline (frontend/src/pages/customer).
+    container_status = repo.get_container_status(tenant_id, container_id)
+    if container_status in _PRE_ARRIVAL_STATUSES:
+        raise BusinessRuleViolationError(
+            "A claim can't be filed until this container has arrived in Nigeria.",
+            rule_id="CONTAINER_NOT_ARRIVED",
+        )
 
     reference = repo.get_next_claim_reference(tenant_id)
     claim = repo.create_damage_claim(
@@ -136,7 +155,24 @@ def file_claim(
         request_id=request_id,
     )
 
+    if ctx.role == UserRole.CUSTOMER:
+        for role in ("nigeria_office_staff", "tenant_admin"):
+            notify_staff(
+                tenant_id=tenant_id,
+                event_type="damage_claim_filed",
+                entity_type="damage_claim",
+                entity_id=str(claim["id"]),
+                title="New damage claim filed",
+                body=f"Claim {reference} was filed and needs inspection.",
+                target_role=role,
+            )
+
     return _fmt_claim(claim)
+
+
+def get_claim_stats(tenant_id: str) -> dict[str, int]:
+    """Tenant-wide claim aggregates for the list stats row + status chips."""
+    return repo.get_claim_stats(tenant_id)
 
 
 def list_claims(
@@ -216,6 +252,7 @@ def start_inspection(
         after_state={"status": "under_inspection"},
         ip_address=ip_address,
     )
+    _notify_customer_claim_update(tenant_id, updated, "under_inspection")
     return _fmt_claim(updated)
 
 
@@ -274,7 +311,7 @@ def resolve_claim(
     if resolution_type == "refund" and req.amount_ngn:
         threshold_cfg = repo.get_tenant_config_value(tenant_id, "refund_threshold_usd") or {}
         staff_limit_usd = Decimal(str(threshold_cfg.get("staff_limit", 50)))
-        dollar_rate = repo.get_dollar_rate(tenant_id)
+        dollar_rate = get_effective_dollar_rate(tenant_id)["rate"]
         amount_usd = Decimal(str(req.amount_ngn)) / dollar_rate if dollar_rate > 0 else Decimal(0)
         if amount_usd > staff_limit_usd:
             if ctx.role != UserRole.TENANT_ADMIN:
@@ -353,6 +390,7 @@ def resolve_claim(
 
     if resolution is None:
         raise RuntimeError("create_claim_resolution returned None unexpectedly")
+    _notify_customer_claim_update(tenant_id, updated, "resolved", request_id)
     return {
         **_fmt_claim(updated),
         "resolution": _fmt_resolution(resolution),
@@ -380,7 +418,7 @@ def _resolve_claim_new_style(
     Skips approval threshold check and claim_resolution record creation;
     creates a refund_request when resolution_type == 'refund'.
     """
-    dollar_rate = repo.get_dollar_rate(tenant_id)
+    dollar_rate = get_effective_dollar_rate(tenant_id)["rate"]
     amount_ngn = req.settlement_amount_usd * dollar_rate
 
     # Look up associated billing (optional — may be None)
@@ -435,6 +473,7 @@ def _resolve_claim_new_style(
         ip_address=ip_address,
     )
 
+    _notify_customer_claim_update(tenant_id, updated, "resolved", request_id)
     return {
         **_fmt_claim(updated),
         "resolution_type": resolution_type,
@@ -464,6 +503,7 @@ def generate_presigned_url(
     if not claim:
         raise ResourceNotFoundError("damage_claim", claim_id)
 
+    filename = safe_filename(filename)
     file_key = f"{tenant_id}/claims/{claim_id}/{filename}"
 
     presigned = _s3_client.generate_presigned_post(
@@ -544,6 +584,7 @@ def log_missing_item(
     tenant_id: str,
     req: Any,
     actor_id: str,
+    ctx: Any,
 ) -> dict[str, Any]:
     item = repo.create_missing_item(
         tenant_id,
@@ -559,6 +600,16 @@ def log_missing_item(
     )
     if item is None:
         raise RuntimeError("create_missing_item returned None unexpectedly")
+
+    log_audit(
+        tenant_id=tenant_id,
+        entity_type="missing_item",
+        entity_id=str(item["id"]),
+        action="CREATE",
+        actor_id=actor_id,
+        actor_role=str(ctx.role),
+        after_state={"customer_id": req.customer_id, "carton_tags": req.carton_tags, "status": "reported"},
+    )
     return _fmt_missing(item)
 
 
@@ -568,6 +619,7 @@ def update_missing_item(
     status: str,
     notes: str | None,
     actor_id: str,
+    ctx: Any,
     refund_amount_ngn: Decimal | None = None,
 ) -> dict[str, Any]:
     item = repo.get_missing_item_by_id(tenant_id, item_id)
@@ -577,6 +629,17 @@ def update_missing_item(
     updated = repo.update_missing_item_status(tenant_id, item_id, status, notes=notes, actor_id=actor_id)
     if updated is None:
         raise RuntimeError("update_missing_item_status returned None unexpectedly")
+
+    log_audit(
+        tenant_id=tenant_id,
+        entity_type="missing_item",
+        entity_id=item_id,
+        action="UPDATE",
+        actor_id=actor_id,
+        actor_role=str(ctx.role),
+        before_state={"status": item["status"]},
+        after_state={"status": status, "notes": notes},
+    )
 
     result = _fmt_missing(updated)
 
@@ -596,6 +659,22 @@ def update_missing_item(
                 "requested_by": actor_id,
             },
         )
+        if refund_row is None:
+            raise RuntimeError("create_refund_request returned None unexpectedly")
+        log_audit(
+            tenant_id=tenant_id,
+            entity_type="refund_request",
+            entity_id=str(refund_row["id"]),
+            action="CREATE",
+            actor_id=actor_id,
+            actor_role=str(ctx.role),
+            after_state={
+                "customer_id": str(item["customer_id"]),
+                "amount_ngn": str(refund_amount_ngn),
+                "refund_type": "missing_item",
+                "source_missing_item_id": item_id,
+            },
+        )
         linked = repo.link_refund_to_missing_item(tenant_id, item_id, str(refund_row["id"]))
         result["refund_request_id"] = str(refund_row["id"]) if refund_row else None
         if linked is not None:
@@ -613,6 +692,7 @@ def log_seized_item(
     tenant_id: str,
     req: Any,
     actor_id: str,
+    ctx: Any,
 ) -> dict[str, Any]:
     item = repo.create_seized_item(
         tenant_id,
@@ -629,6 +709,16 @@ def log_seized_item(
     )
     if item is None:
         raise RuntimeError("create_seized_item returned None unexpectedly")
+
+    log_audit(
+        tenant_id=tenant_id,
+        entity_type="seized_item",
+        entity_id=str(item["id"]),
+        action="CREATE",
+        actor_id=actor_id,
+        actor_role=str(ctx.role),
+        after_state={"customer_id": req.customer_id, "container_id": req.container_id, "recovery_status": "seized"},
+    )
     return _fmt_seized(item)
 
 
@@ -638,6 +728,7 @@ def update_seized_item(
     recovery_status: str,
     notes: str | None,
     actor_id: str,
+    ctx: Any,
     refund_amount_ngn: Decimal | None = None,
 ) -> dict[str, Any]:
     item = repo.get_seized_item_by_id(tenant_id, item_id)
@@ -647,6 +738,17 @@ def update_seized_item(
     updated = repo.update_seized_item_status(tenant_id, item_id, recovery_status, notes=notes, actor_id=actor_id)
     if updated is None:
         raise RuntimeError("update_seized_item_status returned None unexpectedly")
+
+    log_audit(
+        tenant_id=tenant_id,
+        entity_type="seized_item",
+        entity_id=item_id,
+        action="UPDATE",
+        actor_id=actor_id,
+        actor_role=str(ctx.role),
+        before_state={"recovery_status": item["recovery_status"]},
+        after_state={"recovery_status": recovery_status, "notes": notes},
+    )
 
     result = _fmt_seized(updated)
 
@@ -666,6 +768,22 @@ def update_seized_item(
                 "requested_by": actor_id,
             },
         )
+        if refund_row is None:
+            raise RuntimeError("create_refund_request returned None unexpectedly")
+        log_audit(
+            tenant_id=tenant_id,
+            entity_type="refund_request",
+            entity_id=str(refund_row["id"]),
+            action="CREATE",
+            actor_id=actor_id,
+            actor_role=str(ctx.role),
+            after_state={
+                "customer_id": str(item["customer_id"]),
+                "amount_ngn": str(refund_amount_ngn),
+                "refund_type": "seized_item",
+                "source_seized_item_id": item_id,
+            },
+        )
         linked = repo.link_refund_to_seized_item(tenant_id, item_id, str(refund_row["id"]))
         result["refund_request_id"] = str(refund_row["id"]) if refund_row else None
         if linked is not None:
@@ -677,6 +795,52 @@ def update_seized_item(
 # ---------------------------------------------------------------------------
 # Internal formatters
 # ---------------------------------------------------------------------------
+
+
+def _notify_customer_claim_update(tenant_id: str, claim: dict[str, Any], status: str, request_id: str = "") -> None:
+    """Best-effort "your claim status changed" notification — same gap class
+    as payment_claim confirm/reject and billing's payment_due: a claim
+    status transition with no customer-facing signal at all. Never raises: a
+    notification outage must not fail the status-change request itself."""
+    try:
+        customer_id = claim.get("customer_id")
+        if not customer_id:
+            return
+        customer = repo.get_customer_contact(tenant_id, str(customer_id))
+        if not customer:
+            return
+        enqueue_notifications(
+            tenant_id=tenant_id,
+            event_type="damage_claim_update",
+            recipient={
+                "phone": customer.get("phone") or "",
+                "email": customer.get("email") or "",
+                "whatsapp": customer.get("whatsapp") or "",
+                "name": customer.get("name") or "",
+            },
+            template_data={"claim_reference": claim.get("reference") or "", "status": status},
+            locale=customer.get("locale", "en"),
+            request_id=request_id,
+            customer_id=str(customer_id),
+        )
+
+        # In-app customer bell — see payment_release/service.py's matching
+        # comment.
+        if customer.get("user_id"):
+            notify_staff(
+                tenant_id=tenant_id,
+                event_type="damage_claim_update",
+                entity_type="damage_claim",
+                entity_id=str(claim.get("id")) if claim.get("id") else None,
+                title="Claim status update",
+                body=f"Claim {claim.get('reference') or ''} is now {status}.",
+                target_user_id=str(customer["user_id"]),
+            )
+    except Exception:
+        logger.exception(
+            "Failed to enqueue damage_claim_update notification for claim %s",
+            claim.get("id"),
+        )
 
 
 def _fmt_claim(row: dict[str, Any]) -> dict[str, Any]:

@@ -113,6 +113,7 @@ _ROUTES = [
     ("/v1/packing-lists", "packing_list"),
     ("/v1/release-notes", "payment_release"),
     ("/v1/payments", "payment_release"),
+    ("/v1/warehouses", "payment_release"),
     ("/v1/containers", "tracking"),
     ("/v1/shipments", "tracking"),
     ("/v1/manifests", "manifest"),
@@ -157,8 +158,7 @@ def _resolve_user_id(user_id: str, tenant_id: str, role: str) -> str:
     try:
         rows = execute_with_tenant(
             tenant_id,
-            "SELECT id FROM tenant_user WHERE tenant_id = %s AND role = %s "
-            "ORDER BY created_at LIMIT 1",
+            "SELECT id FROM tenant_user WHERE tenant_id = %s AND role = %s " "ORDER BY created_at LIMIT 1",
             (tenant_id, role),
         )
     except Exception:
@@ -235,7 +235,7 @@ def _role_from_groups(groups_str: str, tenant_id: str) -> str | None:
     for group in groups_str.split(","):
         group = group.strip()
         if group.startswith(prefix):
-            return group[len(prefix):]
+            return group[len(prefix) :]
     return None
 
 
@@ -260,7 +260,6 @@ def _resolve_user_id_by_role(tenant_id: str, role: str | None) -> str | None:
     resolved = str(rows[0]["id"])
     _user_id_cache[cache_key] = resolved
     return resolved
-
 
 
 # ---------------------------------------------------------------------------
@@ -382,9 +381,7 @@ def _build_event() -> dict:
                 "method": request.method,
                 "path": request.path,
             },
-            "authorizer": {
-                "claims": claims_out
-            },
+            "authorizer": {"claims": claims_out},
             "identity": {"sourceIp": request.remote_addr or "127.0.0.1"},
         },
         "body": body_raw,
@@ -510,6 +507,35 @@ if __name__ == "__main__":
             f"local_server.py must only run with ENVIRONMENT=local or test, got '{_env}'. "
             "This server bypasses JWT auth and is unsafe in any shared environment."
         )
+
+    # Auto-drain the local notification queues, in a separate OS process.
+    #
+    # Ground-truth gap found live, reported by the user: they rejected a
+    # payment claim and saw no notification at all, either as staff or
+    # (separately, in a follow-up report) as the customer. The notification
+    # code was working correctly — it enqueued to SQS — but in AWS an
+    # event-source mapping feeds SQS straight into the notification Lambdas,
+    # and nothing plays that role against Moto locally, so a queued message
+    # just sits there until someone manually runs
+    # scripts/drain_notifications.py. Nobody testing the product would know
+    # to do that, so it looked exactly like a silent bug.
+    #
+    # This MUST be a separate process, not a background thread: threaded=False
+    # below is load-bearing (see its own comment) because shared/db.py's
+    # module-level connection singleton isn't thread-safe, and a poller
+    # thread sharing this process's connection would reintroduce the exact
+    # concurrent-access corruption that threaded=False was added to prevent.
+    # A subprocess gets its own interpreter and its own connection singleton,
+    # so it can poll continuously with zero risk to this process's DB state.
+    if os.environ.get("DISABLE_NOTIFICATION_DRAIN") != "true":
+        import subprocess
+
+        drain_script = os.path.join(PROJECT_ROOT, "scripts", "drain_notifications.py")
+        _drain_proc = subprocess.Popen([sys.executable, drain_script, "--watch"], cwd=PROJECT_ROOT)
+
+        import atexit
+
+        atexit.register(_drain_proc.terminate)
 
     port = int(os.environ.get("LOCAL_PORT", "3000"))
     print(

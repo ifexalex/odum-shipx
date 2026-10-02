@@ -19,8 +19,10 @@ Options:
 """
 
 import argparse
+import contextlib
 import json
 import os
+import re
 import secrets
 import string
 import sys
@@ -77,16 +79,19 @@ def _generate_temp_password(length: int = 16) -> str:
 
 def step_create_tenant(cur, company_name: str, email: str, phone: str | None, tier: str) -> dict:
     print(f"[1/5] Creating tenant record for '{company_name}'...")
+    # tenant.slug is NOT NULL + UNIQUE (migration 023) with no DB default —
+    # mirror the same backfill logic used in scripts/seed.py.
+    slug = re.sub(r"-+", "-", re.sub(r"[^a-z0-9]+", "-", company_name.lower())).strip("-")
     return _one(
         cur,
         """
         INSERT INTO tenant (
             company_name, primary_contact_email, primary_contact_phone,
-            subscription_tier, status
-        ) VALUES (%s, %s, %s, %s, 'active')
+            subscription_tier, status, slug
+        ) VALUES (%s, %s, %s, %s, 'active', %s)
         RETURNING *
         """,
-        (company_name, email, phone, tier),
+        (company_name, email, phone, tier, slug),
     )
 
 
@@ -120,19 +125,36 @@ def step_create_cognito_user(
     )
     sub = next(attr["Value"] for attr in resp["User"]["Attributes"] if attr["Name"] == "sub")
     print(f"      Cognito sub: {sub}")
+
+    # Roles are determined entirely by cognito:groups (shared/auth.py's
+    # _parse_roles()), never by the custom:role attribute set above — without
+    # this, the user falls back to UserRole.CUSTOMER on every login.
+    group_name = f"{tenant_id}:tenant_admin"
+    with contextlib.suppress(cognito_client.exceptions.GroupExistsException):
+        cognito_client.create_group(GroupName=group_name, UserPoolId=user_pool_id)
+    cognito_client.admin_add_user_to_group(
+        UserPoolId=user_pool_id,
+        Username=email,
+        GroupName=group_name,
+    )
+    print(f"      Added to group: {group_name}")
     return sub
 
 
 def step_create_tenant_user(cur, tenant_id: str, cognito_sub: str, email: str, admin_name: str) -> dict:
     print("[3/5] Creating tenant_user record...")
+    # id = cognito_sub (not gen_random_uuid()) — every created_by/approved_by
+    # FK points at tenant_user(id), and the JWT's `sub` claim becomes
+    # ctx.user_id directly with no separate resolution step. See the same
+    # note in services/tenant_management/repository.py's create_tenant_user().
     return _one(
         cur,
         """
-        INSERT INTO tenant_user (tenant_id, cognito_sub, email, full_name, role, status)
-        VALUES (%s, %s, %s, %s, 'tenant_admin', 'active')
+        INSERT INTO tenant_user (id, tenant_id, cognito_sub, email, full_name, role, status)
+        VALUES (%s, %s, %s, %s, %s, 'tenant_admin', 'active')
         RETURNING *
         """,
-        (tenant_id, cognito_sub, email, admin_name),
+        (cognito_sub, tenant_id, cognito_sub, email, admin_name),
     )
 
 

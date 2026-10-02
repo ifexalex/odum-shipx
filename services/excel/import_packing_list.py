@@ -1,13 +1,15 @@
 """Parse and validate a packing list .xlsx for import per spec §7.3."""
 from collections import defaultdict
-from datetime import date
-from decimal import Decimal, InvalidOperation
 from io import BytesIO
 from typing import Any
 
 import openpyxl
 
 from shared.exceptions import ValidationError
+
+from ._import_helpers import compute_cbm as _compute_cbm
+from ._import_helpers import parse_date as _parse_date
+from ._import_helpers import parse_positive_decimal as _parse_positive_decimal
 
 _EXPECTED_HEADERS = [
     "customer name",
@@ -19,41 +21,6 @@ _EXPECTED_HEADERS = [
     "height (cm)",
     "received date",
 ]
-
-
-def _parse_positive_decimal(value: Any, field: str, row: int) -> tuple[Decimal | None, dict[str, Any] | None]:
-    """Return (Decimal, None) on success or (None, error_dict) on failure."""
-    if value is None or str(value).strip() == "":
-        return None, None
-    try:
-        d = Decimal(str(value).strip())
-        if d < 0:
-            return None, {"row": row, "field": field, "value": str(value), "error": "Must be a positive number"}
-        return d, None
-    except InvalidOperation:
-        return None, {"row": row, "field": field, "value": str(value), "error": "Invalid number"}
-
-
-def _parse_date(value: Any, row: int) -> tuple[date | None, dict[str, Any] | None]:
-    if value is None or str(value).strip() == "":
-        return date.today(), None
-    if isinstance(value, date):
-        return value, None
-    raw = str(value).strip()
-    for fmt in ("%Y-%m-%d", "%d/%m/%Y", "%m/%d/%Y"):
-        try:
-            from datetime import datetime as dt
-
-            return dt.strptime(raw, fmt).date(), None
-        except ValueError:
-            pass
-    return None, {"row": row, "field": "Received Date", "value": raw, "error": "Invalid date format (use YYYY-MM-DD)"}
-
-
-def _compute_cbm(length: Decimal | None, width: Decimal | None, height: Decimal | None) -> Decimal:
-    if length is not None and width is not None and height is not None:
-        return (length * width * height) / Decimal("1000000")
-    return Decimal("0")
 
 
 def parse_packing_list_xlsx(

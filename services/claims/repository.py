@@ -14,8 +14,7 @@ Notes:
 """
 
 import logging
-from datetime import date
-from decimal import Decimal
+from datetime import UTC, date
 from typing import Any
 
 from shared.db import execute_with_tenant, execute_write_with_tenant
@@ -48,22 +47,26 @@ def get_customer_by_user_id(tenant_id: str, user_id: str) -> dict[str, Any] | No
     return rows[0] if rows else None
 
 
-def get_dollar_rate(tenant_id: str) -> Decimal:
-    """Return the current USD→NGN exchange rate from tenant_config."""
+def get_customer_contact(tenant_id: str, customer_id: str) -> dict[str, Any] | None:
+    """Contact info for enqueue_notifications — name/phone/email/whatsapp plus
+    the portal user's locale (defaults to 'en' for customers without one).
+    `user_id` (== tenant_user.id when the customer has a portal account, else
+    NULL) is included so callers can also target the in-app customer
+    notification bell via shared.staff_notifications.notify_staff — same
+    shape as tracking/repository.py::get_customers_for_container."""
     rows = execute_with_tenant(
         tenant_id,
         """
-        SELECT config_value FROM tenant_config
-        WHERE tenant_id = %s AND config_key = 'dollar_rate' LIMIT 1
+        SELECT c.id::text AS id, c.user_id, c.name, c.phone, c.email, c.whatsapp,
+            COALESCE(tu.locale, 'en') AS locale
+        FROM customer c
+        LEFT JOIN tenant_user tu ON tu.id = c.user_id AND tu.tenant_id = c.tenant_id
+        WHERE c.tenant_id = %s AND c.id = %s AND c.anonymised_at IS NULL
+        LIMIT 1
         """,
-        (tenant_id,),
+        (tenant_id, customer_id),
     )
-    if not rows:
-        return Decimal("1550")
-    val = rows[0]["config_value"]
-    if isinstance(val, dict):
-        return Decimal(str(val.get("rate", "1550")))
-    return Decimal(str(val))
+    return rows[0] if rows else None
 
 
 def get_billing_by_id(tenant_id: str, billing_id: str) -> dict[str, Any] | None:
@@ -121,6 +124,16 @@ def resolve_container_id(tenant_id: str, container_id_or_number: str) -> str | N
     return str(rows[0]["id"]) if rows else None
 
 
+def get_container_status(tenant_id: str, container_id: str) -> str | None:
+    """The container's current lifecycle status, or None if it no longer exists."""
+    rows = execute_with_tenant(
+        tenant_id,
+        "SELECT status FROM container WHERE tenant_id = %(tenant_id)s AND id = %(container_id)s LIMIT 1",
+        {"tenant_id": tenant_id, "container_id": container_id},
+    )
+    return str(rows[0]["status"]) if rows else None
+
+
 def customer_has_cargo_in_container(tenant_id: str, customer_id: str, container_id: str) -> bool:
     """True if this customer has at least one packing list on this container.
 
@@ -164,8 +177,9 @@ def get_damage_claim_by_id(tenant_id: str, claim_id: str) -> dict[str, Any] | No
 
 def get_next_claim_reference(tenant_id: str) -> str:
     """Generate the next DC reference for this tenant in DC-YYYYMMDD-NNN format."""
-    from datetime import datetime, timezone
-    date_str = datetime.now(tz=timezone.utc).strftime("%Y%m%d")
+    from datetime import datetime
+
+    date_str = datetime.now(tz=UTC).strftime("%Y%m%d")
     prefix = f"DC-{date_str}-"
     rows = execute_with_tenant(
         tenant_id,
@@ -193,10 +207,14 @@ def list_damage_claims(
     if filters.get("customer_id"):
         conditions.append("dc.customer_id = %(customer_id)s")
         extra["customer_id"] = filters["customer_id"]
+    if filters.get("created_after"):
+        conditions.append("dc.created_at >= %(created_after)s")
+        extra["created_after"] = filters["created_after"]
+    if filters.get("created_before"):
+        conditions.append("dc.created_at <= %(created_before)s")
+        extra["created_before"] = filters["created_before"]
     if filters.get("q"):
-        conditions.append(
-            "(dc.reference ILIKE %(q)s OR cu.name ILIKE %(q)s OR c.container_number ILIKE %(q)s)"
-        )
+        conditions.append("(dc.reference ILIKE %(q)s OR cu.name ILIKE %(q)s OR c.container_number ILIKE %(q)s)")
         extra["q"] = f"%{filters['q']}%"
 
     base = f"""
@@ -208,12 +226,40 @@ def list_damage_claims(
         LEFT JOIN container c  ON c.id  = dc.container_id AND c.tenant_id  = dc.tenant_id
         WHERE {' AND '.join(conditions)}
     """
-    query, params = build_paginated_query(
-        base, cursor, limit, sort_field=f"dc.{sort_field}", sort_direction=sort_direction
-    )
+    query, params = build_paginated_query(base, cursor, limit, sort_field=f"dc.{sort_field}", sort_direction=sort_direction)
     params.update(extra)
     rows = execute_with_tenant(tenant_id, query, params)
     return extract_page(rows, limit)
+
+
+def get_claim_stats(tenant_id: str) -> dict[str, int]:
+    """Tenant-wide damage-claim aggregates for the list stats row + status chips.
+
+    SQL-computed over the whole table so figures stay correct at scale (the
+    frontend previously counted a capped `limit: 500` sample).
+    """
+    rows = execute_with_tenant(
+        tenant_id,
+        """
+        SELECT
+            COUNT(*)                                                              AS total,
+            COUNT(*) FILTER (WHERE status IN ('filed', 'under_inspection',
+                                              'pending_resolution'))              AS open,
+            COUNT(*) FILTER (WHERE status = 'under_inspection')                   AS under_inspection,
+            COUNT(*) FILTER (WHERE status = 'resolved'
+                             AND created_at > now() - interval '30 days')         AS resolved_30d,
+            COUNT(*) FILTER (WHERE status = 'filed')                              AS filed,
+            COUNT(*) FILTER (WHERE status = 'pending_resolution')                 AS pending_resolution,
+            COUNT(*) FILTER (WHERE status = 'resolved')                           AS resolved,
+            COUNT(*) FILTER (WHERE status = 'closed')                             AS closed
+        FROM damage_claim
+        WHERE tenant_id = %s
+        """,
+        (tenant_id,),
+    )
+    row = rows[0] if rows else {}
+    keys = ("total", "open", "under_inspection", "resolved_30d", "filed", "pending_resolution", "resolved", "closed")
+    return {k: int(row.get(k) or 0) for k in keys}
 
 
 def update_claim_status(
@@ -401,9 +447,7 @@ def get_missing_item_by_id(tenant_id: str, item_id: str) -> dict[str, Any] | Non
     return rows[0] if rows else None
 
 
-def link_refund_to_missing_item(
-    tenant_id: str, item_id: str, refund_request_id: str
-) -> dict[str, Any] | None:
+def link_refund_to_missing_item(tenant_id: str, item_id: str, refund_request_id: str) -> dict[str, Any] | None:
     """Set refund_request_id on a missing_item row. Returns updated row."""
     return execute_write_with_tenant(
         tenant_id,
@@ -417,9 +461,7 @@ def link_refund_to_missing_item(
     )
 
 
-def link_refund_to_seized_item(
-    tenant_id: str, item_id: str, refund_request_id: str
-) -> dict[str, Any] | None:
+def link_refund_to_seized_item(tenant_id: str, item_id: str, refund_request_id: str) -> dict[str, Any] | None:
     """Set refund_request_id on a seized_item row. Returns updated row."""
     return execute_write_with_tenant(
         tenant_id,

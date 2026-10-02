@@ -1,0 +1,614 @@
+import { useCallback, useEffect, useRef, useState, type JSX } from 'react'
+import { useLocation, useNavigate, useParams } from 'react-router-dom'
+import { ApiError } from '../../api/client'
+import { billingApi, disputeApi, paymentClaimApi, type Billing, type PaymentClaim } from '../../api/billing'
+import { configApi, type BankTransferConfig } from '../../api/tenantManagement'
+import { Field } from '../../design/components'
+import { Badge, Banner, Button, Card, Kvp, Mono, StatCard, type BadgeVariant } from '../../design/components'
+import { SectionHead } from '../../shell/SectionHead'
+import { EvidenceUploader, type UploadedEvidence } from '../nigeria/EvidenceUploader'
+import styles from './customer.module.css'
+
+const STATUS_VARIANT: Record<Billing['payment_status'], BadgeVariant> = {
+  unpaid: 'error', partially_paid: 'warning', paid: 'success', overpaid: 'warning',
+  waived: 'neutral', released_with_outstanding: 'warning', cancelled: 'neutral',
+}
+
+function statusLabel(s: Billing['payment_status']): string {
+  const map: Record<Billing['payment_status'], string> = {
+    unpaid: 'Unpaid', partially_paid: 'Partially paid', paid: 'Paid',
+    overpaid: 'Overpaid', waived: 'Waived',
+    released_with_outstanding: 'Released (outstanding)', cancelled: 'Cancelled',
+  }
+  return map[s]
+}
+
+// Bank details shown when customer selects manual transfer. Ground-truth gap
+// found live: this used to be a single hardcoded account shown to every
+// tenant's customers regardless of who they were actually paying — a real
+// money-misdirection risk, not just an ambiguity. Now reads the tenant's own
+// configured account (tenant-admin's PaymentGatewayConfig.tsx).
+function BankTransferDetails({ config }: { config: BankTransferConfig | null }): JSX.Element {
+  if (!config) {
+    return (
+      <Banner variant="warning" title="Bank details not available yet">
+        Your shipping company hasn't set up bank transfer details yet. Contact them directly, or use
+        "Pay online" if available.
+      </Banner>
+    )
+  }
+  return (
+    <div className={styles.bankDetails}>
+      <strong>Bank:</strong> {config.bank_name}<br />
+      <strong>Account name:</strong> {config.account_name}<br />
+      <strong>Account number:</strong> {config.account_number}<br />
+      {config.sort_code && <><strong>Sort code:</strong> {config.sort_code}<br /></>}
+      <br />
+      <em>
+        {config.instructions ?? 'Use your billing reference as the payment description.'} Once you've
+        sent the transfer, use the button below to tell us and attach your receipt — staff can't confirm
+        a payment they don't know about.
+      </em>
+    </div>
+  )
+}
+
+// "I've made this payment" — the customer's manual-transfer confirmation,
+// with mandatory evidence. Found live: this step didn't exist at all before
+// — a customer had no way to tell the platform they'd paid, and staff had no
+// queue and no proof, only whatever they happened to notice in the bank
+// account.
+//
+// Only ever rendered when the caller (MyBillingDetail) has already
+// confirmed there's no pending claim for this billing — a pending claim
+// replaces this whole component with a top-level "awaiting confirmation"
+// banner instead, and a rejected one shows its reason above the payment
+// options rather than duplicating it in here. So this component is purely
+// the submission form itself.
+function PaymentClaimPanel({
+  billingId,
+  outstandingNgn,
+  onSubmitted,
+}: {
+  billingId: string
+  outstandingNgn: number
+  onSubmitted: (claim: PaymentClaim) => void
+}): JSX.Element {
+  const idempotencyKey = useRef(crypto.randomUUID())
+  const [showForm, setShowForm] = useState(false)
+  const [amount, setAmount] = useState(String(outstandingNgn))
+  const [note, setNote] = useState('')
+  const [evidence, setEvidence] = useState<UploadedEvidence | null>(null)
+  const [submitting, setSubmitting] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+
+  async function handleSubmit(): Promise<void> {
+    if (!evidence || Number(amount) <= 0) return
+    setSubmitting(true)
+    setError(null)
+    try {
+      const claim = await paymentClaimApi.submit(
+        billingId,
+        {
+          amount_ngn: Number(amount),
+          evidence_file_key: evidence.file_key,
+          evidence_file_name: evidence.filename,
+          customer_note: note.trim() || undefined,
+        },
+        idempotencyKey.current,
+      )
+      onSubmitted(claim)
+      setShowForm(false)
+      setEvidence(null)
+      setNote('')
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : 'Could not submit your payment claim.')
+    } finally {
+      setSubmitting(false)
+    }
+  }
+
+  return (
+    <div>
+      {!showForm ? (
+        <Button variant="secondary" onClick={() => setShowForm(true)}>
+          I've made this payment
+        </Button>
+      ) : (
+        <div className={styles.claimForm}>
+          {error && <Banner variant="error" title="Could not submit">{error}</Banner>}
+          <Field
+            label="Amount transferred (₦)"
+            name="claim_amount"
+            type="number"
+            required
+            value={amount}
+            onChange={(e) => setAmount(e.target.value)}
+          />
+          <div>
+            <label className={styles.selectLabel}>
+              Evidence of payment <span className={styles.required}>*</span>
+            </label>
+            <p style={{ fontSize: 12, color: 'var(--color-text-muted)', margin: '2px 0 8px' }}>
+              A screenshot or photo of your transfer receipt — required before you can submit.
+            </p>
+            {evidence ? (
+              <div className={styles.evidenceAttached}>
+                <Badge variant="success">Attached</Badge> {evidence.filename}
+                <button type="button" className={styles.removeEvidenceBtn} onClick={() => setEvidence(null)}>
+                  Remove
+                </button>
+              </div>
+            ) : (
+              <EvidenceUploader
+                getPresignedUrl={(f) => paymentClaimApi.getUploadUrl(billingId, f.name, f.type)}
+                onUploaded={setEvidence}
+              />
+            )}
+          </div>
+          <Field
+            label="Note"
+            name="claim_note"
+            multiline
+            optional
+            placeholder="e.g. Sent via GTBank mobile app"
+            value={note}
+            onChange={(e) => setNote(e.target.value)}
+          />
+          <div className={styles.formActions}>
+            <Button variant="ghost" onClick={() => { setShowForm(false); setEvidence(null); setError(null) }}>
+              Cancel
+            </Button>
+            <Button
+              variant="primary"
+              loading={submitting}
+              disabled={!evidence || Number(amount) <= 0}
+              onClick={() => void handleSubmit()}
+            >
+              Submit for review
+            </Button>
+          </div>
+        </div>
+      )}
+    </div>
+  )
+}
+
+// 10.4 — CbmDisputeModal (customer-screens.jsx:574): the customer disputes the
+// measured CBM with their own measurement + reason. One active dispute per
+// billing (backend guard DISPUTE_ALREADY_OPEN).
+function CbmDisputeModal({ billing, onCancel, onSuccess }: { billing: Billing; onCancel: () => void; onSuccess: () => void }): JSX.Element {
+  const [measuredCbm, setMeasuredCbm] = useState('')
+  const [reason, setReason] = useState('')
+  const [submitting, setSubmitting] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+
+  const canSubmit = Number(measuredCbm) > 0 && reason.trim().length > 0 && !submitting
+
+  async function handleSubmit(): Promise<void> {
+    setSubmitting(true)
+    setError(null)
+    try {
+      await disputeApi.file(billing.id, { disputed_cbm: measuredCbm, reason })
+      onSuccess()
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : 'Could not file the dispute.')
+    } finally {
+      setSubmitting(false)
+    }
+  }
+
+  return (
+    <div
+      style={{ position: 'fixed', inset: 0, background: 'rgba(11,47,13,0.55)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 200, padding: 16 }}
+      onClick={onCancel}
+    >
+      <div
+        style={{
+          background: 'var(--color-surface)', borderRadius: 14, padding: 24, width: '100%', maxWidth: 480,
+          display: 'flex', flexDirection: 'column', gap: 16, maxHeight: '90vh', overflowY: 'auto',
+        }}
+        onClick={(e) => e.stopPropagation()}
+        role="dialog"
+        aria-modal="true"
+      >
+        <h3 style={{ margin: 0, fontSize: '1rem', fontWeight: 700 }}>Dispute the CBM measurement</h3>
+        {error && <Banner variant="error" title="Could not file dispute">{error}</Banner>}
+        <Banner variant="info" title={`We measured ${Number(billing.total_cbm).toFixed(3)} CBM`}>
+          If your own measurement differs, file a dispute — our team acknowledges within 24 hours and
+          re-measures. Your invoice is adjusted automatically if the correction is upheld.
+        </Banner>
+        <Field
+          label="Your measured CBM"
+          name="disputed_cbm"
+          required
+          type="number"
+          placeholder={`e.g. ${Math.max(0, Number(billing.total_cbm) - 0.07).toFixed(2)}`}
+          value={measuredCbm}
+          onChange={(e) => setMeasuredCbm(e.target.value)}
+        />
+        <Field
+          label="Why do you believe the measurement is wrong?"
+          name="dispute_reason"
+          required
+          multiline
+          placeholder="e.g. I measured the cartons at pickup and totalled 0.86 CBM…"
+          value={reason}
+          onChange={(e) => setReason(e.target.value)}
+        />
+        <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
+          <Button variant="ghost" size="lg" onClick={onCancel} disabled={submitting}>Cancel</Button>
+          <Button variant="primary" size="lg" loading={submitting} disabled={!canSubmit} onClick={() => void handleSubmit()}>
+            File dispute
+          </Button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+export function MyBillingDetail(): JSX.Element {
+  const { id } = useParams<{ id: string }>()
+  const location = useLocation()
+  const navigate = useNavigate()
+  const stateBilling = (location.state as { billing?: Billing } | null)?.billing ?? null
+  const [billing, setBilling] = useState<Billing | null>(stateBilling)
+  const [loading, setLoading] = useState(stateBilling === null)
+  const [error, setError] = useState<string | null>(null)
+  const [showTransfer, setShowTransfer] = useState(false)
+  const [payLoading, setPayLoading] = useState(false)
+  const [payError, setPayError] = useState<string | null>(null)
+  const [invoiceLoading, setInvoiceLoading] = useState(false)
+  const [invoiceError, setInvoiceError] = useState<string | null>(null)
+  const [bankConfig, setBankConfig] = useState<BankTransferConfig | null>(null)
+  const [claims, setClaims] = useState<PaymentClaim[]>([])
+
+  useEffect(() => {
+    void configApi.getConfig().then((res) => setBankConfig(res.bank_transfer_config ?? null)).catch(() => setBankConfig(null))
+  }, [])
+
+  const billingId = billing?.id
+  useEffect(() => {
+    if (!billingId) return
+    void paymentClaimApi
+      .listForBilling(billingId)
+      .then((result) => {
+        setClaims(result)
+        // A customer who already submitted a claim (this session or a
+        // previous one) should see its status without re-clicking "Show
+        // bank details" first.
+        if (result.length > 0) setShowTransfer(true)
+      })
+      .catch(() => setClaims([]))
+  }, [billingId])
+
+  async function handleDownloadInvoice(): Promise<void> {
+    if (!billing) return
+    setInvoiceLoading(true)
+    setInvoiceError(null)
+    try {
+      await billingApi.export(billing.id, 'pdf')
+    } catch (err) {
+      setInvoiceError(err instanceof ApiError ? err.message : 'Could not download the invoice. Try again.')
+    } finally {
+      setInvoiceLoading(false)
+    }
+  }
+
+  // B12 — Paystack hosted checkout. The redirect is UX only; the webhook is
+  // the source of truth, so PaymentSuccess honestly says "being confirmed".
+  async function handlePayOnline(): Promise<void> {
+    if (!billing) return
+    setPayLoading(true)
+    setPayError(null)
+    try {
+      const callbackUrl = `${window.location.origin}/my-billing/${billing.id}/payment-success`
+      const result = await billingApi.initializePayment(billing.id, callbackUrl)
+      window.location.assign(result.authorization_url)
+    } catch (err) {
+      setPayError(err instanceof ApiError ? err.message : 'Could not start the payment. Try again or use bank transfer.')
+      setPayLoading(false)
+    }
+  }
+  const [showDispute, setShowDispute] = useState(false)
+  const [disputeFiled, setDisputeFiled] = useState(false)
+
+  const load = useCallback(async () => {
+    if (!id) return
+    setLoading(true)
+    setError(null)
+    try {
+      const result = await billingApi.list()
+      const found = result.data.find((b) => b.id === id) ?? null
+      if (!found) { setError('Billing record not found.'); return }
+      setBilling(found)
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : 'Could not load this billing record.')
+    } finally {
+      setLoading(false)
+    }
+  }, [id])
+
+  useEffect(() => {
+    if (stateBilling === null) void load()
+  }, [load, stateBilling])
+
+  if (loading && !billing) return <div style={{ padding: 32, color: 'var(--color-text-muted)' }}>Loading…</div>
+  if (error && !billing) return (
+    <div className={styles.page}>
+      <Banner variant="error">{error ?? 'Not found.'}</Banner>
+    </div>
+  )
+  if (!billing) return <></>
+
+  const outstanding = Number(billing.outstanding_ngn)
+  const isPaid = billing.payment_status === 'paid' || billing.payment_status === 'overpaid'
+  const needsPayment = outstanding > 0 && !isPaid
+  const pendingClaim = claims.find((c) => c.status === 'pending') ?? null
+  const latestClaim = claims[0] ?? null
+
+  return (
+    <div className={styles.page}>
+      <div className={styles.heroRow}>
+        <div>
+          <h1 className={styles.detailTitle}>{billing.container_number ?? billing.container_id}</h1>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 4 }}>
+            <Badge variant={STATUS_VARIANT[billing.payment_status]}>{statusLabel(billing.payment_status)}</Badge>
+            {billing.billed_at && (
+              <span style={{ fontSize: '0.8125rem', color: 'var(--color-text-muted)' }}>
+                Billed {billing.billed_at.slice(0, 10)}
+              </span>
+            )}
+          </div>
+        </div>
+        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+          {billing._active_disputes.length === 0 && !disputeFiled && billing.payment_status !== 'cancelled' && (
+            <Button variant="secondary" onClick={() => setShowDispute(true)}>
+              Dispute CBM
+            </Button>
+          )}
+          {needsPayment && (
+            <Button
+              variant="primary"
+              onClick={() => navigate(`/my-billing/${billing.id}/refund-request`)}
+            >
+              Request refund
+            </Button>
+          )}
+        </div>
+      </div>
+
+      {(disputeFiled || billing._active_disputes.length > 0) && (
+        <div style={{ marginBottom: 16 }}>
+          <Banner variant="info" title="CBM dispute open">
+            Your dispute is with our team — we acknowledge within 24 hours and re-measure. You&apos;ll be
+            notified of the outcome.
+          </Banner>
+        </div>
+      )}
+
+      <div className={styles.statsRow}>
+        <StatCard label="Total due" value={`₦${Number(billing.total_due_ngn).toLocaleString()}`} />
+        <StatCard label="Total paid" value={`₦${Number(billing.total_paid_ngn).toLocaleString()}`} />
+        <StatCard label="Outstanding" value={outstanding > 0 ? `₦${outstanding.toLocaleString()}` : '—'} />
+      </div>
+
+      {/* Breakdown */}
+      <SectionHead
+        title="Invoice breakdown"
+        action={
+          <Button variant="secondary" size="sm" loading={invoiceLoading} onClick={() => void handleDownloadInvoice()}>
+            Download invoice
+          </Button>
+        }
+      />
+      {invoiceError && (
+        <div style={{ marginBottom: 12 }}>
+          <Banner variant="error">{invoiceError}</Banner>
+        </div>
+      )}
+      <Card padding={20}>
+        <Kvp label="CBM" value={<Mono>{Number(billing.total_cbm).toFixed(3)}</Mono>} />
+        {/* A per-package-type invoice was actually priced against separate
+            carton/bag/bale rates — showing only the blended USD-equivalent
+            "Rate" line here would correspond to nothing the customer was
+            really charged against, so show the real breakdown instead. */}
+        {billing.cbm_rate_mode === 'per_package_type' && billing.cbm_breakdown ? (
+          (['carton', 'bag', 'bale'] as const).map((bucket) => {
+            const item = billing.cbm_breakdown![bucket]
+            if (Number(item.cbm) <= 0) return null
+            const sym = billing.cbm_rate_currency === 'NGN' ? '₦' : '$'
+            return (
+              <Kvp
+                key={bucket}
+                label={`${bucket.charAt(0).toUpperCase()}${bucket.slice(1)}s`}
+                value={<Mono>{Number(item.cbm).toFixed(3)} CBM × {sym}{Number(item.rate).toFixed(2)}</Mono>}
+              />
+            )
+          })
+        ) : (
+          <Kvp label="Rate" value={<Mono>${Number(billing.cbm_rate_usd).toFixed(2)} / CBM</Mono>} />
+        )}
+        <Kvp label="Exchange rate" value={<Mono>₦{Number(billing.dollar_rate).toLocaleString()} / $</Mono>} />
+        <Kvp label="Shipping cost (CBM subtotal)" value={<Mono>₦{Number(billing.subtotal_ngn).toLocaleString()}</Mono>} />
+        {/*
+          Itemized by real description, never a lump "Misc fees" line — a
+          customer looking at money owed should be able to tell exactly what
+          each charge is for. Ground-truth gap found live: this card used to
+          omit misc fees from the customer's own bill entirely (they were
+          silently folded into total_due_ngn with no visible line item at
+          all), and other customer surfaces that did show them used the
+          ambiguous lump label. See frontend/07_domain_modules.md.
+        */}
+        {billing.misc_fees.map((fee, i) => (
+          <Kvp key={i} label={fee.description} value={<Mono>₦{Number(fee.amount_ngn).toLocaleString()}</Mono>} />
+        ))}
+        {Number(billing.storage_fees_ngn) > 0 && (
+          <Kvp label="Storage fees" value={<Mono>₦{Number(billing.storage_fees_ngn).toLocaleString()}</Mono>} />
+        )}
+        {Number(billing.carryover_ngn) > 0 && (
+          <Kvp
+            label="Carryover applied from a previous shipment"
+            value={<Mono>+₦{Number(billing.carryover_ngn).toLocaleString()}</Mono>}
+          />
+        )}
+        {Number(billing.adjustments_ngn) !== 0 && (
+          <Kvp
+            label="CBM dispute adjustment"
+            value={
+              <Mono color="var(--color-success)">
+                −₦{Math.abs(Number(billing.adjustments_ngn)).toLocaleString()}
+              </Mono>
+            }
+          />
+        )}
+        <Kvp label="Total due" value={<Mono>₦{Number(billing.total_due_ngn).toLocaleString()}</Mono>} />
+        <Kvp
+          label="Total paid"
+          value={<Mono color="var(--color-success)">−₦{Number(billing.total_paid_ngn).toLocaleString()}</Mono>}
+        />
+        <Kvp
+          label="Outstanding"
+          value={
+            <Mono color={outstanding > 0 ? 'var(--color-error)' : 'var(--color-success)'}>
+              ₦{outstanding.toLocaleString()}
+            </Mono>
+          }
+          divider={false}
+        />
+      </Card>
+
+      {/* Payment options */}
+      {needsPayment && (
+        <>
+          <SectionHead title="Pay now" sub={`₦${outstanding.toLocaleString()} outstanding`} />
+
+          {/* A pending bank-transfer claim means money may already be on its
+              way — showing "Pay online" / bank-transfer instructions here too
+              would openly invite a second, real payment on top of it. Ground-
+              truth gap found live: the outstanding amount and "Pay online"
+              stayed fully active and clickable even after the customer had
+              already told us they'd paid, with nothing on the page saying so. */}
+          {pendingClaim ? (
+            <Card padding={20}>
+              <Banner variant="warning" title="Payment submitted — awaiting confirmation">
+                You told us you sent ₦{Number(pendingClaim.amount_ngn).toLocaleString()} on{' '}
+                {new Date(pendingClaim.submitted_at).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })}
+                {' '}(evidence: {pendingClaim.evidence_file_name}). Staff will confirm it against your evidence
+                shortly — the outstanding balance above will update automatically once they do. To avoid a
+                duplicate payment, "Pay online" is disabled while this claim is pending.
+              </Banner>
+            </Card>
+          ) : (
+            <>
+              {latestClaim?.status === 'rejected' && (
+                <div style={{ marginBottom: 16 }}>
+                  <Banner variant="error" title="Your last payment claim was rejected">
+                    {latestClaim.rejection_reason ?? 'Contact your shipping company for details.'} You can pay
+                    online or submit a new bank-transfer claim below.
+                  </Banner>
+                </div>
+              )}
+              <div className={styles.paymentOptions}>
+                {/* Pay online — Paystack hosted checkout (B12) */}
+                <div className={styles.paymentOption}>
+                  <p className={styles.paymentOptionTitle}>Pay online</p>
+                  <p className={styles.paymentOptionDesc}>
+                    Instant card, transfer, or USSD payment via Paystack. You'll be redirected to a
+                    secure checkout page.
+                  </p>
+                  {payError && (
+                    <div style={{ marginBottom: 10 }}>
+                      <Banner variant="error">{payError}</Banner>
+                    </div>
+                  )}
+                  <Button variant="accent" loading={payLoading} onClick={() => void handlePayOnline()}>
+                    Pay ₦{outstanding.toLocaleString()} online
+                  </Button>
+                  <p style={{ fontSize: '0.75rem', color: 'var(--color-text-muted)', marginTop: 6 }}>
+                    Payments are confirmed automatically — your release note is issued once settled.
+                  </p>
+                </div>
+
+                {/* Manual bank transfer */}
+                <div className={styles.paymentOption}>
+                  <p className={styles.paymentOptionTitle}>Manual bank transfer</p>
+                  <p className={styles.paymentOptionDesc}>
+                    Transfer to our account and staff will confirm your payment.
+                  </p>
+                  {showTransfer ? (
+                    <>
+                      <BankTransferDetails config={bankConfig} />
+                      <div style={{ marginTop: 12 }}>
+                        <PaymentClaimPanel
+                          billingId={billing.id}
+                          outstandingNgn={outstanding}
+                          onSubmitted={(claim) => setClaims((prev) => [claim, ...prev])}
+                        />
+                      </div>
+                    </>
+                  ) : (
+                    <Button variant="secondary" onClick={() => setShowTransfer(true)}>
+                      Show bank details
+                    </Button>
+                  )}
+                </div>
+              </div>
+            </>
+          )}
+        </>
+      )}
+
+      {isPaid && billing.outstanding_ngn !== '0' && Number(billing.outstanding_ngn) < 0 && (
+        <div className={styles.banner} style={{ marginTop: 16 }}>
+          <Banner variant="info" title="Overpayment">
+            You have overpaid by ₦{Math.abs(outstanding).toLocaleString()}. A refund or credit will be arranged by our team.
+          </Banner>
+        </div>
+      )}
+
+      {/* Payment history */}
+      {billing.payments.length > 0 && (
+        <>
+          <SectionHead title="Payment history" />
+          <Card padding={0}>
+            <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+              <thead>
+                <tr style={{ borderBottom: '1px solid var(--color-border)' }}>
+                  {['Amount', 'Method', 'Reference', 'Date'].map((h) => (
+                    <th key={h} style={{ padding: '10px 16px', textAlign: 'left', fontSize: '0.8125rem', color: 'var(--color-text-muted)', fontWeight: 600 }}>{h}</th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {billing.payments.map((p, i) => (
+                  <tr key={p.id} style={{ borderBottom: i < billing.payments.length - 1 ? '1px solid var(--color-border)' : 'none' }}>
+                    <td style={{ padding: '12px 16px' }}><Mono>₦{Number(p.amount_ngn).toLocaleString()}</Mono></td>
+                    <td style={{ padding: '12px 16px' }}>{p.payment_method ?? '—'}</td>
+                    <td style={{ padding: '12px 16px' }}><Mono>{p.payment_reference ?? '—'}</Mono></td>
+                    <td style={{ padding: '12px 16px' }}>{p.confirmed_at.slice(0, 10)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </Card>
+        </>
+      )}
+
+      <div className={styles.backLink}>
+        <Button variant="ghost" icon="arrowleft" onClick={() => navigate('/my-billing')}>Back to billing</Button>
+      </div>
+
+      {showDispute && (
+        <CbmDisputeModal
+          billing={billing}
+          onCancel={() => setShowDispute(false)}
+          onSuccess={() => {
+            setShowDispute(false)
+            setDisputeFiled(true)
+          }}
+        />
+      )}
+    </div>
+  )
+}

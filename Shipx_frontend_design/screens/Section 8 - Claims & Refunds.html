@@ -1,0 +1,110 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Shipx · Section 8 — Claims &amp; Refunds</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&family=Kumbh+Sans:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet" />
+<style>
+  html, body { margin: 0; padding: 0; height: 100%; background: #f0eee9; font-family: "Kumbh Sans", system-ui, sans-serif; }
+  *, *::before, *::after { box-sizing: border-box; }
+  #root { height: 100vh; }
+  input::placeholder, textarea::placeholder { color: #9aa0a6; }
+  button { font-family: inherit; }
+</style>
+<script src="https://unpkg.com/react@18.3.1/umd/react.development.js" integrity="sha384-hD6/rw4ppMLGNu3tX5cjIb+uRZ7UkRJ6BPkLpg4hAu/6onKUg4lLsHAs9EBPT82L" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.development.js" integrity="sha384-u6aeetuaXnQ38mYT8rp6sbXaQe3NL9t+IBXmnYxwkUI2Hw4bsp2Wvmx4yRQF1uAm" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/@babel/standalone@7.29.0/babel.min.js" integrity="sha384-m08KidiNqLdpJqLq95G/LEi8Qvjl/xUYll3QILypMoQ65QorJ9Lvtp2RXYGBFj1y" crossorigin="anonymous"></script>
+<script type="text/babel" src="design-canvas.jsx"></script>
+<script type="text/babel" src="browser-window.jsx"></script>
+<script type="text/babel" src="shared/components.jsx"></script>
+<script type="text/babel" src="shared/app-shell.jsx"></script>
+<script type="text/babel" src="platform/platform-screens.jsx"></script>
+<script type="text/babel" src="tenant/tenant-admin-screens.jsx"></script>
+<script type="text/babel" src="china/china-screens.jsx"></script>
+<script type="text/babel" src="nigeria/nigeria-screens.jsx"></script>
+<script type="text/babel" src="nigeria/billing-screens.jsx"></script>
+<script type="text/babel" src="nigeria/claims-refunds-screens.jsx"></script>
+</head>
+<body>
+<div id="root"></div>
+<script type="text/babel" data-presets="react">
+const Frame = ({url, w = 1440, h = 900, children}) => (
+  <ChromeWindow tabs={[{title: 'Shipx · ' + url.split('/').slice(-1)[0]}]} activeIndex={0} url={url} width={w} height={h}>
+    <div style={{width: w, height: h - 84, background: '#fff', position: 'relative', overflow: 'hidden'}}>{children}</div>
+  </ChromeWindow>
+);
+
+const App = () => (
+  <DesignCanvas>
+    <DCSection id="damage-list" title="8.1 — Damage Claims List" subtitle="Status-chip filtered list with inspection method badges and per-row contextual actions (Start inspection / Complete / Resolve).">
+      <DCArtboard id="damage-list" label="Damage claims list" width={1600} height={1100}>
+        <Frame url="shipx.co/claims" w={1600} h={1100}><DamageClaimsList /></Frame>
+      </DCArtboard>
+    </DCSection>
+
+    <DCSection id="damage-detail" title="8.2 — Damage Claim Detail" subtitle="Three states + 2 modals: filed (needs inspection), under inspection (delegate visit in progress), resolved (refund issued).">
+      <DCArtboard id="dc-filed" label="Filed · awaiting inspection" width={1600} height={1200}>
+        <Frame url="shipx.co/claims/DC-20260728-001" w={1600} h={1200}><DamageClaimDetail state="filed" /></Frame>
+      </DCArtboard>
+      <DCArtboard id="dc-inspection" label="Under inspection" width={1600} height={1200}>
+        <Frame url="shipx.co/claims/DC-20260728-001" w={1600} h={1200}><DamageClaimDetail state="inspection" /></Frame>
+      </DCArtboard>
+      <DCArtboard id="dc-resolved" label="Resolved · refund issued" width={1600} height={1300}>
+        <Frame url="shipx.co/claims/DC-20260728-001" w={1600} h={1300}><DamageClaimDetail state="resolved" /></Frame>
+      </DCArtboard>
+      <DCArtboard id="dc-inspect-modal" label="Start inspection modal" width={1600} height={1200}>
+        <Frame url="shipx.co/claims/DC-20260728-001" w={1600} h={1200}><DamageClaimDetail state="filed" withModal="inspection" /></Frame>
+      </DCArtboard>
+      <DCArtboard id="dc-resolve-modal" label="Resolve claim modal" width={1600} height={1200}>
+        <Frame url="shipx.co/claims/DC-20260728-001" w={1600} h={1200}><DamageClaimDetail state="inspection" withModal="resolve" /></Frame>
+      </DCArtboard>
+    </DCSection>
+
+    <DCSection id="missing" title="8.3 — Missing Items" subtitle="Cargo not in container at manifest verification. Status pipeline: reported → investigating → found_and_shipping OR confirmed_lost.">
+      <DCArtboard id="missing-list" label="Missing items list" width={1600} height={1100}>
+        <Frame url="shipx.co/claims/missing-items" w={1600} h={1100}><MissingItems /></Frame>
+      </DCArtboard>
+      <DCArtboard id="missing-modal" label="Log missing item modal" width={1600} height={1100}>
+        <Frame url="shipx.co/claims/missing-items" w={1600} h={1100}><MissingItems withModal /></Frame>
+      </DCArtboard>
+    </DCSection>
+
+    <DCSection id="seized" title="8.4 — Seized Items" subtitle="Customs-held cartons. Recovery workflow with reason capture and refund linkage when permanently lost.">
+      <DCArtboard id="seized-list" label="Seized items list" width={1600} height={1100}>
+        <Frame url="shipx.co/claims/seized-items" w={1600} h={1100}><SeizedItems /></Frame>
+      </DCArtboard>
+    </DCSection>
+
+    <DCSection id="refunds-list" title="8.5 — Refund Requests List" subtitle="3 refund types (Overpayment / CBM correction / Damage), 7 statuses spanning Pending review → Approved → Paid OR Applied as credit.">
+      <DCArtboard id="refunds-list" label="Refund requests list" width={1600} height={1100}>
+        <Frame url="shipx.co/refunds" w={1600} h={1100}><RefundRequestsList /></Frame>
+      </DCArtboard>
+    </DCSection>
+
+    <DCSection id="refund-detail" title="8.6 — Refund Detail + Workflow" subtitle="5-step approval stepper. Three states + 2 modals: pending review (auto debt check), reviewed (awaiting head of finance), approved (bank transfer initiated).">
+      <DCArtboard id="rf-pending-review" label="Pending accounts review" width={1600} height={1300}>
+        <Frame url="shipx.co/refunds/RF-20260730-014" w={1600} h={1300}><RefundDetail state="pending_review" /></Frame>
+      </DCArtboard>
+      <DCArtboard id="rf-reviewed" label="Reviewed · awaiting approval" width={1600} height={1300}>
+        <Frame url="shipx.co/refunds/RF-20260730-014" w={1600} h={1300}><RefundDetail state="reviewed" /></Frame>
+      </DCArtboard>
+      <DCArtboard id="rf-approved" label="Approved · refund initiated" width={1600} height={1300}>
+        <Frame url="shipx.co/refunds/RF-20260730-014" w={1600} h={1300}><RefundDetail state="approved" /></Frame>
+      </DCArtboard>
+      <DCArtboard id="rf-review-modal" label="Accounts review modal" width={1600} height={1300}>
+        <Frame url="shipx.co/refunds/RF-20260730-014" w={1600} h={1300}><RefundDetail state="pending_review" withModal="review" /></Frame>
+      </DCArtboard>
+      <DCArtboard id="rf-approve-modal" label="Approve refund modal" width={1600} height={1300}>
+        <Frame url="shipx.co/refunds/RF-20260730-014" w={1600} h={1300}><RefundDetail state="reviewed" withModal="approve" /></Frame>
+      </DCArtboard>
+    </DCSection>
+  </DesignCanvas>
+);
+
+ReactDOM.createRoot(document.getElementById('root')).render(<App />);
+</script>
+</body>
+</html>

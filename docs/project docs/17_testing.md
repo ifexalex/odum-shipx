@@ -468,6 +468,63 @@ RLS blocks a cross-tenant invite read; re-imported STL409 and confirmed invites 
 shipment's transit status; reuse/expiry/resend of the same token; self-signup via `/register/{slug}`
 end to end confirming the FK bug is gone. Full log in `00_MASTER_PLAN.md` row 7.52.
 
+## Backend debugging pass — tenant-isolation drift, SSRF, infrastructure contracts, lint/type gates (2026-09-23)
+
+**Tenant-isolation tests had drifted from the code.** Four tests failed on a clean checkout:
+`test_list_passes_jwt_tenant` (mock returned a 3-tuple; `service.list_packing_lists` has returned a 4-tuple
+`(page, next_cursor, has_more, total)` since the count feature), and three `test_db_isolation.py` cases that
+called through to a real DB (`KeyError: 'DATABASE_HOST'`) because later features added unmocked calls:
+`get_cbm_rate_config` / `get_effective_dollar_rate` / `repo.get_cbm_by_package_type` in `handle_payment_due`
+(module-level imports, so `patch.object(service.repo, …)` cannot intercept them — they must be patched at
+`services.billing.service.<name>`), `resolve_container_id` / `get_container_status` / `get_next_claim_reference`
+in `file_claim`, and `get_tenant_short` / `get_next_receipt_number` / `log_audit` in `confirm_payment`. Fixed by
+mocking them; the tests still assert what they exist to assert — that `tenant_id` is the first argument to
+every repo call.
+
+**New: `tests/unit/test_url_safety.py`** (44 cases) — `validate_public_https_url` (accepts public hosts; rejects
+http/file/ftp, embedded credentials, localhost/.internal/.local, RFC1918, link-local/metadata `169.254.169.254`,
+CGNAT, `0.0.0.0`, `::1`, `fe80::`, `fd00::`, IPv4-mapped private, and the numeric forms `2130706433`, `0x7f.1`,
+`127.1`), `resolve_public_ips` (a multi-record answer with one private record is refused; unresolvable is
+refused), `open_public_https` (no connection is attempted for a private target; redirects aren't followed; the
+connection goes to the validated IP with SNI on the hostname; falls back across validated IPs), webhook delivery
+(`fire_tenant_webhook` never raises or connects for an unsafe or malformed URL), and the
+`WebhookConfigRequest` save-time validator. Also verified once against real TLS (not in the suite — needs
+network): pinned-IP delivery succeeds, a redirect to the metadata IP surfaces as 302 and is not followed, and a
+hostname-mismatched certificate still fails verification.
+
+**New: `tests/unit/test_infrastructure_contracts.py`** (26 cases, file parsing only) — every frontend API call has
+an API Gateway route; every route targets a service key the lambda module actually exposes (catches the silent
+`active_routes` drop); route keys are unique; every Lambda `handler` in Terraform resolves to a function that
+exists in `services/`. Confirmed non-vacuous by running it against the pre-fix Terraform from git: it reported 22
+unroutable frontend calls, the orphaned metering route, and all three `notification.handler.lambda_handler`
+references.
+
+**New: `tests/unit/test_sort_injection.py`** (51 cases) — a **CRITICAL SQL injection** in `?sort=` on
+`GET /v1/billing|claims|containers`, found while auditing bandit's B608 findings: `build_paginated_query` validated
+only `sort_field.split(".")[-1]` against the allowlist but interpolated the whole string into `ORDER BY`, so
+`id,(select pg_sleep(5))::text,b.created_at` passed as `created_at` and ran (reproduced against Postgres: 2.2s vs
+0.1s; the existing regression test used `"injected; DROP TABLE"`, which has no trailing `.created_at` and so never
+exercised the bypass). Fixed at the choke point (`fullmatch` of `identifier[.identifier]` plus allowlisted column).
+Tests: 17 hostile payloads (each ending in a real allowlisted column so the *old* validator accepted them — stacked
+statement, subquery, `desc,id`, double dot, trailing newline/space/NUL, quoted identifier…) × with and without a
+cursor; legitimate aliased/negated fields still work; a non-allowlisted column is still refused; a hostile
+`sort_direction` cannot carry a payload; and, for billing (staff **and** customer), claims (staff **and** customer)
+and containers, the real handler → service → repository → builder chain returns `422` with `execute_with_tenant`
+wired to raise if any query is sent at all. Confirmed non-vacuous against the pre-fix `pagination.py` from git.
+
+**New: `tests/unit/test_safe_filename.py`** (33 cases) — `safe_filename` (traversal, backslash paths, quote/`filename*=`
+breakout, CRLF, bidi override, hidden/dot-only names, non-strings, length cap keeping the extension, and that Chinese
+and `IMG (1).jpg` names are preserved), each of the four upload flows (the S3 key **and** the stored name are the
+sanitised value, and an unusable name is a `422` before any S3 call), and both `Content-Disposition` builders for
+legacy unsafe rows.
+
+**Lint/type gates are now clean** (`make check`): `ruff` 89 → 0 (48 import-sort and 9 unused-import autofixes; SLA
+constants hoisted out of `_fmt_dispute`; dead local removed; four over-long lines wrapped; test-only
+`S105/S106/S107/N803/N814` added to `tests/**` per-file ignores in `pyproject.toml` — fixture strings and boto3-style
+kwargs, not credentials), `mypy` 31 → 0. The mypy pass also removed real hazards: an unguarded `None`
+dereference in the payment-verify race path (`current["status"]` when the billing row vanished), `Decimal | float`
+from `sum()` in the Bybit averaging, and count-based release maths that mypy showed could see `None`.
+
 ## Notification delivery tests (added 2026-09-06)
 
 `tests/unit/test_whatsapp_first.py` covers WhatsApp-first routing and the SMS
@@ -501,6 +558,27 @@ poisoning bug in `shared/db.py` (see `02_shared_utilities.md`'s "connection
 self-heal" entry) that was intermittently crashing arbitrary pages with
 "Internal server error" — fixed there, verified by re-running this exact
 sweep clean.
+
+## Frontend e2e — real login/logout lifecycle (2026-09-13)
+
+`frontend/e2e/flows/auth-logout.spec.ts` (new) drives a real Cognito-via-Moto
+login/logout/reload cycle against the running local stack — claim a real
+invite, log in with the resulting credentials, log out, and assert `/login`
+(not a still-authenticated dev-shim page); reload and confirm it stays there;
+navigate straight to a protected route and confirm the bounce-back; log back
+in and confirm it still works. Added alongside the `LocalAuthProvider` fix in
+`frontend/04_auth_and_session.md`'s "Explicit logout must not resurrect the
+dev-shim session" entry — the existing `flows/auth.spec.ts` only exercises the
+dev role-switcher, never a real Cognito login, so it could not have caught
+this bug at all.
+
+**Known flakiness, not a regression:** this file's 4 cases each mint a fresh
+invite via `mint_test_invite.py` (shelled out per test, same helper
+`customer-invite.spec.ts` already uses) — at the suite's default parallelism
+that setup step intermittently times out under concurrent DB/Moto load. All 4
+pass reliably run serially (`--workers=1`); this is a pre-existing property of
+the shared invite-minting helper under concurrency, not something this spec
+introduced.
 
 Also added: `manifest-import.spec.ts` (real `.xlsx` upload through Moto's S3
 endpoint), `customer-invite.spec.ts` (a real invite minted via
@@ -551,6 +629,135 @@ unit tests mock the layer where the bug actually lived (a component's own
 error-formatting function) rather than exercising it. Matches the exact
 caveat already recorded in `13_api_payment_release.md`'s two earlier
 ground-truth fixes for the pickup endpoint.
+
+## cbm-rate-config.spec.ts (2026-09-20)
+
+New e2e coverage for the CBM rate config page (currency + flat/per-package-
+type modes — full account in `frontend/07_domain_modules.md`'s "CBM rate"
+entry). Directly caught a real, otherwise-invisible bug: `get_cbm_rate`'s
+`Decimal` values serialized as JSON *strings* (`shared/responses.py`'s
+`success()` uses `json.dumps(..., default=str)`) while `update_cbm_rate`'s
+response (already `float`-cast) returned JSON *numbers* for the same
+field — the page crashed on load (`config.carton_rate.toFixed is not a
+function`) since the frontend types these as `number`. Every Vitest test
+for this page mocks `configApi.getCbmRate()` to return a plain JS number
+literal directly, so it never exercises real JSON serialization at all —
+this class of bug is structurally invisible to a mocked unit test and was
+only caught by loading the real page against the real backend. Two cases:
+loading in both modes without crashing, and a full `PUT` → reload → confirm
+persisted round-trip (restores the tenant's rate to its original value
+afterward so it doesn't drift shared config for other tests/manual use).
+
+## Release-note migration-041 fields + split e2e coverage (2026-09-20)
+
+`billing-payment-and-release.spec.ts` (above) predates all of the migration-041
+release-note field completeness work (2026-09-13) and only exercises the
+original carton-tag generate → pickup path — none of warehouse selection,
+document/invoice numbers, count-based release, the officer pickers, print
+view, PDF export, or split had any frontend e2e coverage until this pass.
+Full account of what was found and fixed (a count-based-release UI gap, a
+backend duplicate/over-release guard, a stale release-note-list query cache)
+in `frontend/07_domain_modules.md`'s "Release flow audit" entry and
+`13_api_payment_release.md`'s "Duplicate / over-release guard" section.
+
+New specs, both following the same real-seeded-data + `test.skip()`
+idempotency convention as `billing-payment-and-release.spec.ts` (a genuine
+run only succeeds once per fixture; re-runs correctly skip rather than
+fail):
+
+- `release-note-migration-fields.spec.ts` — count-based generation with
+  warehouse/document-number/invoice-numbers, detail-page field rendering,
+  pickup with the warehouse/CSO/accounting-officer pickers, print view
+  content, PDF export (a `download` event, not a `popup` — Chromium has no
+  PDF viewer plugin in this project's browser config, so `window.open` to a
+  PDF URL is treated as a file download; confirmed via trace inspection
+  before writing the assertion).
+- `release-note-split.spec.ts` — generate a two-tag release note, split one
+  tag into a child note, confirm the child shows up as a second row on the
+  list.
+
+**A real, repeatable race found writing these:** navigating to
+`/release-notes` and immediately checking `page.locator(...).count()` for a
+row can return 0 even though the row exists, because the list's data fetch
+starts on mount (a tick after the nav click resolves) while a one-shot
+`.count()` doesn't wait — it can catch the `Table` component's loading
+skeleton (5 blank `<tr>`s) instead. `page.waitForLoadState('networkidle')`
+does not reliably fix this (it can resolve in the brief window before the
+fetch even starts). Fixed everywhere this list is checked right after a nav,
+across all three release-note spec files, with an auto-retrying
+`expect(locator).toHaveCount(1, { timeout: 10_000 })` instead.
+
+## App-wide responsive pass — Table.tsx card view + responsive_smoke.spec.ts (2026-09-20)
+
+Full account of the pass this coverage belongs to (why it was needed, what
+was found, what changed) is in `frontend/07_domain_modules.md`'s "App-wide
+responsive pass" entry and `frontend/03_component_library.md`'s matching
+addendum.
+
+**`Table.test.tsx`** (7 → 15 cases): new `describe('mobile card view (width
+<= 860px)')` block covers card rendering when the wrapper's measured width is
+≤860px (stubbed via `HTMLElement.prototype.getBoundingClientRect`, since
+jsdom always reports an all-zero rect and never evaluates `@container`
+queries at all) — column 0 as card header, a trailing empty-title column as
+the action row, every other column as a label:value pair, the
+`hideInCard` escape hatch, `selected`/`suspended` row-state styling
+carrying through to the card, and the loading-skeleton/empty-state card
+variants. Plus one top-level case confirming the table markup still renders
+unchanged at a wide measured width (regression guard for the other 29 pages'
+existing `getByText()` row assertions, which would become ambiguous if both
+markups ever rendered at once). `frontend/src/test/setup.ts` gained a
+`ResizeObserver` polyfill (absent before this pass) since `Table.tsx`'s
+`useIsNarrow` hook needs one to measure its wrapper at all.
+
+**`CustomerTopNav.test.tsx`** (+4 cases, new `describe('mobile drawer
+(inside a CustShell)')` block): hamburger opens the drawer and shows the nav
+links a second time (once in the always-rendered horizontal bar, once in the
+drawer), clicking a drawer link closes the drawer and still navigates and
+marks the link active, clicking the overlay closes it, Escape closes it.
+Plus one new case confirming no hamburger renders when there's no
+`ShellDrawer` context (i.e. `CustomerTopNav` rendered standalone, outside a
+`CustShell`).
+
+**`e2e/flows/responsive_smoke.spec.ts`** (new, permanent — this started as a
+throwaway debugging script during the pass and was kept, since it's the only
+signal that actually caught the two overflow bugs below): all 5 cases run at
+a fixed 375×800 viewport against the real local stack, with a shared
+`assertNoHorizontalOverflow()` helper that scans every DOM element for
+`scrollWidth` exceeding `document.documentElement.clientWidth` and logs the
+worst 10 offenders before asserting none exist.
+
+- `BillingList` renders the `Table` card view (zero `<table>` elements) with
+  no overflow.
+- `BillingDetail`'s hero action-button row (up to 4 buttons) has no overflow.
+- `PackingListList`'s bulk-selection toolbar, triggered via a real row
+  checkbox click (not just loaded — the toolbar only renders once something
+  is selected), has no overflow.
+- Customer `Account` page has no overflow across all three tabs (Profile /
+  Notifications / Privacy).
+- The customer-portal hamburger opens the drawer, a drawer link navigates to
+  a different page, and the hamburger is present again there (confirms the
+  drawer isn't just visually present but actually wired to `ShellDrawer`
+  end-to-end).
+
+**Two real overflow bugs live-verified and fixed this way**, neither
+catchable by jsdom-based unit tests (jsdom has no layout engine and never
+evaluates `@container`/`@media` at all): `BillingList`'s stats row was a
+fixed `repeat(4, 1fr)` grid that stayed wider than the phone viewport even
+after the `Table` card view landed; `TopBar`'s injected page-action buttons
+(e.g. BillingList's Export/Generate-billing) didn't fit at 860px even with
+search/role-switcher/user-text already hidden, because `.topbar` had a fixed
+`height: 64px` with no way for a second action to wrap onto its own row.
+
+**Test-writing gotchas found using existing e2e support helpers at a mobile
+viewport** (worth flagging since `roleSwitch.ts`'s helpers predate any
+mobile-viewport test): `goToViaNav()` clicks the staff `Sidebar`'s nav
+buttons directly, which are hidden behind the mobile hamburger drawer at
+≤860px — it only works at the default desktop viewport. Mobile-viewport
+specs navigate via `page.goto(path)` instead. The customer-drawer's nav
+items (`CustNavLink`) and the `Check` selection primitive both render as
+`role="checkbox"`/plain `<button>`, not native `<input type="checkbox">` /
+`<a>` — `getByRole('checkbox')` / `getByRole('button', { name: ... })` are
+the correct queries, not a CSS-attribute selector or `getByRole('link')`.
 
 ## claims-and-refunds.spec.ts (2026-09-06)
 
@@ -615,3 +822,332 @@ server would derive it from the session — it never did). Full account in
 `14_api_refunds.md`. Confirmed fixed by reading the resulting
 `refund_request` row in the database — correctly attributed to the
 submitting customer, not empty or mismatched.
+
+## MyShipments.test.tsx (2026-09-06)
+
+Found live while testing the customer-invite login flow end to end (not by
+this spec — by hand, logged in as a real customer with 3 simultaneously
+active shipments): `MyShipments` only ever rendered `activeShipments[0]`
+as a single "Active shipment" feature card, silently dropping every other
+shipment still in transit from the page entirely — they weren't even
+listed in a table, since "Past shipments" only covers
+`fully_released`/`cancelled`. Fixed by rendering the same card once per
+active shipment in a stack instead of indexing into the array; see
+`frontend/07_domain_modules.md`'s matching entry. `MyShipments.test.tsx`
+(new) regression-guards both the plural case (3 active shipments → all 3
+cards render, `Active shipments (3)` heading) and the singular case (1
+active shipment → singular `Active shipment` heading, not the pluralized
+form with a count of one).
+
+## Claims could be filed before a shipment arrived (2026-09-06)
+
+Reported directly by the user, not found by a test. Neither
+`services/claims/service.py::file_claim` nor `MyClaimsNew.tsx`'s free-text
+container field checked whether the container had actually arrived — a
+customer could file (and staff would then investigate) a damage claim
+against cargo still `loading` or at sea. Full account in
+`12_api_claims.md` and `frontend/07_domain_modules.md`.
+
+Backend: `tests/unit/test_claims.py::TestClaimStateMachine` gained
+`test_cannot_file_claim_before_container_arrives` (parametrized over
+`loading`/`sealed`/`in_transit` — all raise `BusinessRuleViolationError`,
+`create_damage_claim` never called) and
+`test_can_file_claim_once_container_has_arrived` (parametrized over
+`arrived`/`customs_clearance`/`cleared`/`at_warehouse`/`fully_released` —
+all still succeed, proving the fix doesn't over-block). The two
+pre-existing tests that call `file_claim()` were updated to mock the new
+`repository.get_container_status()` call (an unmocked real DB call would
+otherwise `KeyError` on `DATABASE_HOST` under pytest — caught immediately
+by running the suite, not discovered later).
+
+Frontend: `MyClaimsNew.test.tsx` (new) covers the redesigned step 1 —
+zero eligible shipments shows the explanatory banner with no combobox and
+no submit button; a mix of statuses lists only the arrived ones in the
+dropdown; submitting sends the selected shipment's real container number,
+not a free-text value.
+
+Verified live end-to-end against the local stack, not just the test
+runner: `curl POST /v1/claims` for a `loading` container returned `422
+CONTAINER_NOT_ARRIVED`; the same call against an `at_warehouse` container
+returned `201`. Both test claims were deleted from the database afterward.
+
+## Billing money-clarity + manual-payment-claim flow (2026-09-06)
+
+Two related pieces of user feedback in the same session: "misc fees" doesn't
+say what it's for (plus a broader ask to check the same surface for other
+unclear-money issues), and a request to add a customer confirmation step
+with mandatory evidence for manual bank transfers. Full account in
+`frontend/07_domain_modules.md`, `07_api_tenant_management.md`,
+`13_api_payment_release.md`, and `19_excel_import_export.md`.
+
+**Backend, `tests/unit/test_payment_release.py`** — new `TestSubmitPaymentClaim`,
+`TestListPaymentClaims`, `TestConfirmPaymentClaim`, `TestRejectPaymentClaim`
+classes: ownership guard (a customer can't submit/list against another
+customer's billing, mirroring the exact shape of `12_api_claims.md`'s
+container-ownership fix), the fully-paid/waived billing guard, the
+one-pending-claim-per-billing conflict returning a clean 422 (not a raw
+`IntegrityError` 500 — found live during manual testing, see below), and
+`confirm_payment_claim()` proven to go through the *real* `confirm_payment()`
+function rather than mutating billing directly.
+
+**Backend, `tests/unit/test_excel.py`** — `test_invoice_names_each_fee_instead_of_a_bare_total`
+asserts the exported invoice's itemized fee string names each charge by
+description, and that the full breakdown columns (`total_cbm`,
+`cbm_rate_usd`, `subtotal_ngn`, `amount_paid_ngn`, …) are present — not the
+old 7-column bare-total export.
+
+**Backend, `tests/unit/test_tenant_management.py`** — `test_customer_can_read_config`
+(renamed from `test_customer_cannot_read_config` — a deliberate policy
+change, not a regression: `GET /v1/tenant/config` now allows `CUSTOMER`)
+and `test_update_tenant_config_saves_bank_transfer_config`.
+
+**Found live, not just in unit tests:** the first version of
+`create_payment_claim()`'s INSERT had no `ON CONFLICT` clause at all,
+relying on the partial unique index (`idx_payment_claim_one_pending_per_billing`)
+to reject a second pending claim — which it did, but as a raw
+`IntegrityError` surfacing to the caller as a bare `500`, not the intended
+`422 PAYMENT_CLAIM_ALREADY_PENDING`. Caught by manually exercising the
+duplicate-submission path against the real local stack (not by a unit test,
+since the mocked repository layer never touches a real constraint) — fixed
+with `ON CONFLICT (billing_id) WHERE status = 'pending' DO NOTHING RETURNING *`,
+then verified the corrected 422 live.
+
+**Frontend, `src/pages/customer/MyBillingDetail.test.tsx` and manual
+verification** — the existing test file continues to pass with the new
+`configApi.getConfig()`/`paymentClaimApi.listForBilling()` calls (both
+`.catch()`-guarded, so an unmocked call in tests degrades to an empty/null
+state rather than hanging or throwing). The full flow — real bank details
+from tenant config, mandatory evidence upload gating the submit button, and
+the resulting "pending review" status banner — was verified through an
+actual browser session against the local stack rather than only asserted in
+jsdom: logged in as a seeded customer, opened bank transfer details,
+uploaded a file, submitted, and confirmed the pending-claim banner rendered
+with the correct amount, date, and filename.
+
+## Payment-claim staff review + double-payment prevention (2026-09-07)
+
+Same-day follow-up after the user started using the payment-claim feature
+and asked how staff actually confirm one, then separately caught a real
+double-payment risk while reviewing the answer. Full account in
+`13_api_payment_release.md` and `frontend/07_domain_modules.md`.
+
+**Backend, `tests/unit/test_payment_release.py`** — new
+`TestGetPaymentClaimEvidenceUrl`: staff can view any claim's evidence,
+a customer can view their own, a customer cannot view another
+customer's (mirrors the exact ownership-guard shape used throughout this
+feature), unknown claim 404s.
+
+**Frontend, `src/pages/nigeria/BillingDetailPaymentClaims.test.tsx`** (new)
+— the staff-side review UI: a pending claim renders with Confirm/Reject;
+confirming calls `paymentClaimApi.confirm` and the billing view reflects
+the new paid status; rejecting is disabled until a reason is typed, then
+calls `paymentClaimApi.reject` with it; clicking the evidence filename
+opens the presigned URL via `window.open`; a billing with no claims at all
+renders no "Payment claims" section (positive-and-negative coverage, not
+just the happy path).
+
+**Frontend, `src/pages/customer/MyBillingDetailPaymentClaim.test.tsx`**
+(new) — regression-guards the double-payment fix directly: a pending claim
+hides both "Pay online" and "Show bank details" and shows the awaiting-
+confirmation banner; a rejected claim (nothing pending) shows the rejection
+reason *and* restores normal payment options; no claims at all renders
+normally. **This test caught a real bug before it shipped**: the first
+version rendered the rejection-reason banner twice (once new at the top
+level, once from the pre-existing `PaymentClaimPanel`, which auto-expands
+whenever the customer has any claim history) — `findByText` failed with
+"found multiple elements," not a false pass. Fixed by removing the
+now-redundant inner banner and its dead `pending`/`mostRecent` computation
+from `PaymentClaimPanel`, which only ever renders once the parent has
+already confirmed there's nothing pending.
+
+Verified live against the real API (not just mocks): `GET
+/v1/payments/{billing_id}/claims` as staff correctly returned the user's
+own real pending claims (submitted through the UI while testing this
+feature themselves), confirming the whole chain — real evidence in S3,
+real claim rows, real staff-role visibility — works end to end outside the
+test suite too.
+
+## Tenant-admin Activity Log + audit-log coverage gaps (2026-09-07)
+
+User feedback: "we need to ensure that we have log trail for everything,
+since it has to do with people's goods and money, so that the tenant admin
+can see every activity going on." Full account in
+`07_api_tenant_management.md`, `02_shared_utilities.md`, and
+`frontend/07_domain_modules.md`.
+
+**Backend, `test_tenant_management.py`** — `TestTenantActivityFeed` gained
+`test_entity_type_filter_passed_through` and
+`test_activity_rows_include_before_after_state`; new
+`test_deactivate_writes_audit_entry` on `TestChargeTypes`.
+
+**Backend, `test_claims.py`** — new `TestMissingSeizedItemAuditLogging` (5
+cases): `log_missing_item`/`update_missing_item`/`log_seized_item` each
+write the right `entity_type`/`action`, and the `refund_request` a
+compensation/recovery triggers gets its own separate audit entry with the
+right `entity_id`.
+
+**Backend, `test_billing.py`** — new `TestRejectDisputeAuditLogging`,
+confirming `reject_dispute` now logs like every other dispute transition.
+
+**Backend, `test_import_manifest.py`** — updated to pass the new required
+`ctx` parameter `process_manifest_import` needs for its audit-log call
+(a real signature change caught immediately by running the suite, not
+discovered later).
+
+**Frontend, `ActivityLog.test.tsx`** (new) — renders real activity rows;
+expanding "Details" shows the actual before/after JSON, not just that
+something changed; changing the record-type filter re-fetches with
+`entityType`; a row with no before/after state renders no Details button.
+
+**Found live while building this, not by code review:** `shared.audit.
+log_audit()` never raises on failure — by design, so audit logging can
+never break a primary operation — but that also means a broken call
+site fails completely silently, logged only as a WARNING nobody was
+watching. Two call sites (`payment_release/service.py::
+process_webhook_payment`, and a newly-written one in `billing/service.py::
+handle_payment_due`) passed a non-UUID placeholder string
+(`"gateway"`, `"system"`) into `actor_id`, a `UUID` column — every
+webhook-confirmed payment had **silently never been audit-logged** since
+that code existed. Reproduced directly against the real local DB
+(`invalid input syntax for type uuid: "gateway"`), then confirmed the fix
+(`actor_id=None`) writes a real row — this bug could not have been caught
+by a unit test alone, since the mocked repository layer never touches a
+real UUID column constraint.
+
+Verified live against the real local stack, not just unit tests: `GET
+/v1/tenant/activity?entity_type=payment_claim` returned the full real
+history built up over this session's testing (real customer submissions,
+a real staff confirmation) with correct `before_state`/`after_state`; the
+new page rendered it correctly through an actual browser session, filter
+dropdown and expandable diff both working.
+
+## Activity Log — real filtering, search, sort, categorization (2026-09-07)
+
+Same-day follow-up: the first Activity Log version's single "Record type"
+dropdown "lacks fully functional filtering, sorting and search... we need
+it to be properly categorized for easy filtering." Full account in
+`07_api_tenant_management.md` and `frontend/07_domain_modules.md`.
+
+**Backend, `test_tenant_management.py`** — `TestTenantActivityFeed` gained
+handler-level passthrough tests for the category/multi-entity_type filter,
+action filter, search query, date range, and sort direction (default and
+override). New `TestListTenantActivityFiltersRepository` asserts the actual
+SQL each filter produces against the real query string (`= ANY(...)` for
+multiple entity types, the exact ILIKE clause for search, both date-range
+bounds, `ORDER BY created_at ASC/DESC` for sort) and — the one that matters
+most for an audit trail — that combining filters produces `AND`, never a
+silent `OR` that would widen the result set past what the admin selected.
+
+**Frontend, `ActivityLog.test.tsx`** — rewritten around the real filter set:
+choosing a category sends every entity_type in it; picking a specific
+record type within a category narrows further; switching category clears
+a record-type selection that no longer belongs to it (and re-fetches with
+the new category's types); the action filter, the debounced search box,
+and the sort toggle each independently trigger a correctly-parameterized
+re-fetch; "Clear filters" resets category/record-type/action/search/date
+range together, verified by the resulting `configApi.activity()` call
+having no leftover filter values, not just by the visible option resetting.
+
+Verified live against the real local stack, not just mocks: Category →
+"Money" returned exactly the 7 money-related entity types and narrowed the
+Record-type dropdown to match; searching an actor's name isolated their
+entries; switching to "Oldest first" changed the first visible row from
+the newest real record to the oldest one.
+
+## Activity Log UX + information-boundary fixes (2026-09-07)
+
+Third same-day round of direct feedback: filter-bar alignment, "Details"
+opening in the wrong place, impersonation records leaking into a tenant's
+own view, and a systemic audit-log write failure found while fixing the
+Action filter. Full account in `07_api_tenant_management.md`,
+`02_shared_utilities.md`, and `frontend/07_domain_modules.md`.
+
+**Backend, `test_impersonation_audit.py`** (new) — `start_impersonation`/
+`end_impersonation` call `repository.insert_platform_audit`, never
+`shared.audit.log_audit`; a regression guard asserts the module doesn't
+even import `log_audit` anymore.
+
+**Backend, `test_tenant_management.py`** — new
+`TestTenantActivityExcludesPlatformOnlyRecords`: `impersonation_session`
+is excluded from `list_tenant_activity()`'s results with no filters
+applied, and — the case that actually matters — still excluded even when
+a caller explicitly asks for it via `?entity_type=impersonation_session`.
+
+**Frontend, `ActivityLog.test.tsx`** — new cases: a custom From/To range
+sends `createdAfter`/`createdBefore`; setting a custom date clears and
+overrides the day-preset selector; "Impersonation" appears in neither the
+Category nor Record-type dropdown options.
+
+**Found live while wiring up the Action filter, not by code review — the
+largest single finding of the day:** a grep across every `log_audit()`
+call site for action values outside `{CREATE, UPDATE, DELETE,
+STATUS_CHANGE}` (`audit_log.action`'s CHECK constraint) turned up **20**
+call sites across seven services silently failing on every call since
+they were written — `EXPORT`, `CANCEL`, `RETRY`, `BULK_APPROVE`, and
+sixteen others. Reproduced live (`invalid input syntax` was the wrong
+mental model here — this is `new row ... violates check constraint`, a
+different failure shape from the earlier `actor_id` bug but the identical
+silent-failure *pattern*), then fixed with migration 045 (drop the
+constraint, widen to VARCHAR(100), matching `platform_audit_log`'s
+already-unconstrained design) and confirmed the exact same repro call now
+writes a real row. No mocked unit test could have caught this — the bug
+lived entirely in a real Postgres constraint the mocked repository layer
+never touches, which is exactly why it had been invisible for as long as
+the code existed.
+
+Verified live end-to-end: the filter bar renders with every control's
+bottom edge level (screenshot-confirmed); clicking "Details" opens a
+centered modal regardless of which row was clicked; a custom "From"/"To"
+range correctly narrowed the visible rows to the selected window; the
+Category and Record-type dropdowns no longer list impersonation as an
+option.
+
+## Server-side stat endpoints — billing/claims/container/customer aggregates (2026-10-01)
+
+Production-readiness pass (task 7.82) moved stat cards off capped client samples onto SQL aggregate endpoints. Backend unit coverage added alongside each endpoint:
+
+- `tests/unit/test_billing.py` — `TestTenantReport` and `get_billing_stats` cases (outstanding/paid-this-month/overdue + per-status counts; the report's overview/claims/pipeline/top-customers/container-billing shape).
+- `tests/unit/test_claims.py` — `TestClaimStats` (open/under-inspection/resolved-30d + per-status counts, service delegation scoped by `tenant_id`).
+- `tests/unit/test_tracking.py` — `TestContainerStats` (per-status counts + `cleared_30d`, service delegation).
+- `tests/unit/test_tenant_management.py` — `TestCustomerStats`: service delegation passes `tenant_id`; repository maps its **two** `execute_with_tenant` calls (customer aggregate row + `packing_list` count) into one dict and scopes both queries to the tenant; empty-tenant returns all-zero.
+
+All four delegation tests follow `test_tracking.py::TestContainerStats`'s `patch.object(service.repo, …)` pattern. `GET /v1/customers/stats` was also verified live against direct SQL (70 total / 372 shipments on the Acme dev tenant). 1145 backend + 799 frontend unit tests pass.
+
+## Dashboard consistency follow-up — formatNgnCompact + Table cardBreakpoint (2026-10-01)
+
+- `frontend/src/lib/format.test.ts` (new): `formatNgnCompact` — millions/thousands collapse, full small amounts, zero/null/undefined/non-finite → `₦0`, sign preserved for negatives.
+- `frontend/src/design/components/Table.test.tsx` (+2): a custom `cardBreakpoint` keeps the table tabular above the threshold (776px vs a 600px override) and collapses it to cards below (375px). Drives a stubbed `getBoundingClientRect` width, same harness as the existing card-view cases.
+
+806 frontend unit tests pass.
+
+## Filter-bar consistency — Customers / Users / Activity Log (2026-10-01)
+
+- `ActivityLog.test.tsx`: Category is now a chip set (not a `<select>`), so the four category-interaction cases click `getByRole('button', { name: /^Money/ })` etc. instead of `selectOptions(getByLabelText('Category'), …)`; the Clear-filters case now asserts the reset via the Record-type select showing "All types" + the `entityTypes: undefined` query call; the impersonation-not-offered case checks no category chip names impersonation. Record type / Action / Sort keep their `<label htmlFor>` associations; search + date inputs keep their accessible names via `aria-label`.
+- `StaffUserList.test.tsx` / `AdminCustomerList.test.tsx`: unaffected — the search box is still found by placeholder, role/status chips by text.
+
+## Light / dark theme (2026-10-01)
+
+- `frontend/src/design/colorScheme.test.tsx` (5 cases): default = system resolving to the OS preference; cycle System → Light → Dark → System writing `data-theme`; explicit preference persists to localStorage; a stored preference is read on mount; works standalone without a provider.
+- `frontend/src/design/components/ThemeToggle.test.tsx` (1 case): clicking cycles the theme and updates the button's accessible label + `data-theme`.
+- `frontend/src/test/setup.ts`: added a default `window.matchMedia` mock (jsdom lacks it) so the color-scheme provider can resolve 'system'; a test overrides it to simulate a dark OS.
+
+812 frontend unit tests pass.
+
+## Container capacity presets + Combobox (2026-10-01)
+
+- `frontend/src/design/components/Combobox.test.tsx` (5): opens, filters by label and by meta text, empty state, disabled no-op, keyboard select. The option handler is on the `<li role="option">` (not an inner button) so a click on the row selects — a regression caught in review.
+- `frontend/src/pages/tenant-admin/ContainerCapacities.test.tsx` (4): default+custom listing with source badges, Remove only on custom, create delegates with coerced numbers, submit blocked when recommended > capacity.
+- `tests/unit/test_tenant_management.py::TestContainerCapacities` (8): defaults+custom merge sorted desc, create coercion/validation (missing name, non-positive capacity, recommended > capacity), delete-default rejected (422), delete-custom delegates, delete-missing 404.
+- `tests/unit/test_tracking.py::TestCreateContainer` (+2): capacity snapshot persisted; blank/zero capacity coerced to NULL (guards the NUMERIC(>0) CHECK).
+- Updated `CreateContainer.test.tsx` (QueryClientProvider + capacity mock) and `CreatePackingList.test.tsx` (Combobox selection helper) for the picker changes.
+
+1093 backend + 822 frontend unit tests pass.
+
+## Edit container capacity recommended CBM (2026-10-01)
+
+- `tests/unit/test_tenant_management.py::TestUpdateContainerCapacity` (8): default override persisted to `tenant_config`, over-capacity 422, unknown default 404, clearing reverts, list applies the override, custom full-field edit, custom over-capacity 422, missing custom 404.
+- `frontend/src/pages/tenant-admin/ContainerCapacities.test.tsx` (+2): editing a default locks name/capacity and PATCHes recommended only; editing a custom PATCHes all fields.
+
+## ContainerDetail overview — top-shippers list (2026-10-01)
+
+- `frontend/src/pages/china/ContainerDetail.test.tsx`: with 20 customers the overview renders the **Top shippers by CBM** list (top 5 only — Customer 5+ absent), subtitle "20 customers on this container", and "View all →" switches to the packing-lists tab. Updated the cargo-summary and contact tests (contact now lives only on the packing-lists tab, not the overview).

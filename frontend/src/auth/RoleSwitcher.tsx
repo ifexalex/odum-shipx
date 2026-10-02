@@ -1,5 +1,6 @@
 import type { JSX } from 'react'
 import { useLocalRole, type DevIdentityKey } from './LocalRoleContext'
+import { useSession } from './SessionContext'
 import styles from './RoleSwitcher.module.css'
 
 const IDENTITIES: DevIdentityKey[] = [
@@ -18,6 +19,14 @@ const IDENTITIES: DevIdentityKey[] = [
 // role-switch toggle (TopBar user menu) be exercised locally.
 export function RoleSwitcher(): JSX.Element {
   const { identity, setIdentity } = useLocalRole()
+  // After an explicit logout (LocalAuthProvider), status is genuinely
+  // 'unauthenticated' even though `identity` still remembers whatever dev
+  // role was last active — so re-picking that SAME option from the <select>
+  // would fire no onChange at all (its value never actually changes) and the
+  // switcher would look inert right after logging out. A distinct "logged
+  // out" placeholder value makes any real selection a genuine change.
+  const { status } = useSession()
+  const loggedOut = status === 'unauthenticated'
 
   return (
     // Stable id (not the hashed CSS-module class) so e2e tests can
@@ -31,9 +40,14 @@ export function RoleSwitcher(): JSX.Element {
       <select
         id="local-role-switcher"
         className={styles.select}
-        value={identity}
+        value={loggedOut ? '' : identity}
         onChange={(event) => setIdentity(event.target.value as DevIdentityKey)}
       >
+        {loggedOut && (
+          <option value="" disabled>
+            — logged out —
+          </option>
+        )}
         {IDENTITIES.map((id) => (
           <option key={id} value={id}>
             {id}

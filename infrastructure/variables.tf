@@ -77,3 +77,30 @@ variable "github_repo" {
   description = "GitHub repository in OWNER/REPO format for OIDC trust policy (e.g. ifexalex/odum-shipx)"
   type        = string
 }
+
+# ---------------------------------------------------------------------------
+# Frontend (CloudFront + S3) variables
+# ---------------------------------------------------------------------------
+
+variable "domain_name" {
+  description = "Root domain for the frontend (e.g. shipx.co). CloudFront serves both the apex and *.{domain_name} for tenant subdomains."
+  type        = string
+  default     = "shipx.co"
+}
+
+variable "route53_zone_id" {
+  description = "Route 53 hosted zone ID for the domain. Must exist before applying."
+  type        = string
+  default     = ""
+}
+
+variable "frontend_price_class" {
+  description = "CloudFront price class. PriceClass_100 (US/EU edges) is cheapest and covers the logistics ops audience."
+  type        = string
+  default     = "PriceClass_100"
+}
+
+# paystack_secret_key removed (2026-07-19) — multi-tenant Paystack: each
+# tenant connects their own key via PUT /v1/tenant/config/paystack, encrypted
+# in tenant_config. There is no platform-wide key to provision via Terraform
+# anymore. See services/payment_release/paystack.py's module docstring.

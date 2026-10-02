@@ -1,6 +1,8 @@
 import { useCallback, useEffect, useState, type JSX } from 'react'
 import { useLocation, useNavigate, useParams } from 'react-router-dom'
+import { useQueryClient } from '@tanstack/react-query'
 import { ApiError } from '../../api/client'
+import { releaseNoteKeys } from '../../api/keys'
 import { releaseNotesApi, type DelegateIdType, type PickupResult, type ReleaseNote, type RecordPickupInput } from '../../api/releaseNotes'
 import {
   canRecordPickup,
@@ -10,6 +12,8 @@ import {
   releaseTypeLabel,
 } from '../../api/releaseNotesRules'
 import { useSession } from '../../auth/useSession'
+import { useStaffList } from '../../hooks/useStaff'
+import { useWarehouses } from '../../hooks/useWarehouses'
 import {
   Action,
   Badge,
@@ -68,9 +72,16 @@ function RecordPickupModal({ note, onCancel, onSuccess }: RecordPickupModalProps
   const [delegatePhone, setDelegatePhone] = useState('')
   const [delegateIdType, setDelegateIdType] = useState<DelegateIdType>('national_id')
   const [delegateIdNumber, setDelegateIdNumber] = useState('')
+  const [warehouseId, setWarehouseId] = useState('')
+  const [csoId, setCsoId] = useState('')
+  const [accountingOfficerId, setAccountingOfficerId] = useState('')
   const [notes, setNotes] = useState('')
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState<string | null>(null)
+
+  const { data: warehouses = [] } = useWarehouses()
+  const { data: staffList } = useStaffList()
+  const staff = staffList ?? []
 
   const delegateFilled = !isDelegate || (
     delegateName.trim().length > 0 &&
@@ -94,6 +105,9 @@ function RecordPickupModal({ note, onCancel, onSuccess }: RecordPickupModalProps
       } else {
         body.collected_by_name = collectedByName.trim()
       }
+      if (warehouseId) body.warehouse_id = warehouseId
+      if (csoId) body.customer_service_officer_id = csoId
+      if (accountingOfficerId) body.accounting_officer_id = accountingOfficerId
       if (notes.trim()) body.notes = notes
       const result = await releaseNotesApi.recordPickup(note.id, body)
       onSuccess(result)
@@ -144,7 +158,8 @@ function RecordPickupModal({ note, onCancel, onSuccess }: RecordPickupModalProps
                 ID type <span style={{ color: 'var(--color-error)' }}>*</span>
               </label>
               <select
-                style={{ width: '100%', padding: '8px 12px', borderRadius: 8, border: '1px solid var(--color-border)', background: 'var(--color-surface)', fontSize: '0.875rem' }}
+                aria-label="ID type"
+                className={styles.rawSelect}
                 value={delegateIdType}
                 onChange={(e) => setDelegateIdType(e.target.value as DelegateIdType)}
               >
@@ -152,6 +167,62 @@ function RecordPickupModal({ note, onCancel, onSuccess }: RecordPickupModalProps
               </select>
             </div>
             <Field label="ID number" name="delegate_id_number" required value={delegateIdNumber} onChange={(e) => setDelegateIdNumber(e.target.value)} />
+          </>
+        )}
+
+        {/* Ground-truth gap found live, against a real paper "Goods Release
+            Note" reference: two further named sign-off lines exist alongside
+            the warehouse attendant (implicitly the acting user) — Customer
+            Service Officer and Accounting Officer. Optional: a small
+            warehouse doesn't necessarily split these duties out. */}
+        {warehouses.length > 0 && (
+          <div>
+            <label style={{ fontSize: '0.875rem', fontWeight: 600, display: 'block', marginBottom: 6 }}>
+              Warehouse / branch <span style={{ color: 'var(--color-text-muted)', fontWeight: 400 }}>Optional</span>
+            </label>
+            <select
+              aria-label="Warehouse / branch"
+              className={styles.rawSelect}
+              value={warehouseId}
+              onChange={(e) => setWarehouseId(e.target.value)}
+            >
+              <option value="">Use the note's own warehouse…</option>
+              {warehouses.map((w) => (
+                <option key={w.id} value={w.id}>{w.name}{w.is_default ? ' (default)' : ''}</option>
+              ))}
+            </select>
+          </div>
+        )}
+        {staff.length > 0 && (
+          <>
+            <div>
+              <label style={{ fontSize: '0.875rem', fontWeight: 600, display: 'block', marginBottom: 6 }}>
+                Customer Service Officer <span style={{ color: 'var(--color-text-muted)', fontWeight: 400 }}>Optional</span>
+              </label>
+              <select
+                aria-label="Customer Service Officer"
+                className={styles.rawSelect}
+                value={csoId}
+                onChange={(e) => setCsoId(e.target.value)}
+              >
+                <option value="">None</option>
+                {staff.map((u) => <option key={u.id} value={u.id}>{u.full_name}</option>)}
+              </select>
+            </div>
+            <div>
+              <label style={{ fontSize: '0.875rem', fontWeight: 600, display: 'block', marginBottom: 6 }}>
+                Accounting Officer <span style={{ color: 'var(--color-text-muted)', fontWeight: 400 }}>Optional</span>
+              </label>
+              <select
+                aria-label="Accounting Officer"
+                className={styles.rawSelect}
+                value={accountingOfficerId}
+                onChange={(e) => setAccountingOfficerId(e.target.value)}
+              >
+                <option value="">None</option>
+                {staff.map((u) => <option key={u.id} value={u.id}>{u.full_name}</option>)}
+              </select>
+            </div>
           </>
         )}
 
@@ -310,6 +381,7 @@ export function ReleaseNoteDetail(): JSX.Element {
   const { id } = useParams<{ id: string }>()
   const location = useLocation()
   const navigate = useNavigate()
+  const qc = useQueryClient()
   const { session } = useSession()
   const role = session?.role ?? 'nigeria_office_staff'
 
@@ -462,10 +534,41 @@ export function ReleaseNoteDetail(): JSX.Element {
         <SectionHead title="Release details" />
         <Card padding={20}>
           <Kvp label="Reference" value={<Mono>{note.reference_number}</Mono>} />
+          {note.physical_document_number && (
+            <Kvp label="Physical document no." value={<Mono>{note.physical_document_number}</Mono>} />
+          )}
           <Kvp label="Customer" value={note.customer_name ?? '—'} />
           <Kvp label="Container" value={note.container_number ? <Mono>{note.container_number}</Mono> : '—'} />
-          <Kvp label="Carton count" value={<Mono>{note.carton_count} / {note.total_cartons_for_customer} (customer total)</Mono>} />
-          <Kvp label="Issued" value={note.authorized_at.slice(0, 10)} divider={false} />
+          <Kvp
+            label="Carton count"
+            value={
+              note.package_unit
+                ? <Mono>{note.packages_released} of {note.total_cartons_for_customer} {note.package_unit}</Mono>
+                : <Mono>{note.carton_count} / {note.total_cartons_for_customer} (customer total)</Mono>
+            }
+          />
+          {note.packages_balance != null && note.packages_balance > 0 && (
+            <Kvp label="Balance remaining" value={<Mono>{note.packages_balance}</Mono>} />
+          )}
+          {note.packing_list_invoice_numbers.length > 0 && (
+            <Kvp label="Packing list invoice(s)" value={note.packing_list_invoice_numbers.join(', ')} />
+          )}
+          <Kvp label="Warehouse" value={note.warehouse_name ? `${note.warehouse_name}${note.warehouse_address ? ` — ${note.warehouse_address}` : ''}` : '—'} />
+          <Kvp label="Issued" value={note.authorized_at.slice(0, 10)} divider={!note.is_on_credit && !note.receipt_number} />
+          {note.is_on_credit && (
+            <Kvp
+              label="On credit"
+              value={`Yes${note.credit_granted_by_name ? ` — granted by ${note.credit_granted_by_name}` : ''}`}
+            />
+          )}
+          {note.receipt_number && <Kvp label="Receipt no." value={<Mono>{note.receipt_number}</Mono>} />}
+          {(Number(note.amount_paid_ngn) > 0 || Number(note.balance_ngn) > 0) && (
+            <Kvp
+              label="Payment"
+              value={`₦${Number(note.amount_paid_ngn).toLocaleString()} paid of ₦${Number(note.total_ngn).toLocaleString()} — ₦${Number(note.balance_ngn).toLocaleString()} outstanding`}
+            />
+          )}
+          {note.debt_due_date && <Kvp label="Debt payment due" value={note.debt_due_date} divider={false} />}
         </Card>
       </div>
 
@@ -502,6 +605,13 @@ export function ReleaseNoteDetail(): JSX.Element {
             if (result.release_note_status !== note.status) {
               setNote({ ...note, status: result.release_note_status })
             }
+            // Ground-truth gap found live: none of this page's mutations
+            // (pickup, split, reissue) ever invalidated the release-notes
+            // list query — with the 3-minute default staleTime
+            // (lib/queryClient.ts), the list kept showing pre-mutation data
+            // for up to 3 minutes after a pickup/split/reissue if it had
+            // already been fetched once in the same session.
+            void qc.invalidateQueries({ queryKey: releaseNoteKeys.all })
           }}
         />
       )}
@@ -512,6 +622,7 @@ export function ReleaseNoteDetail(): JSX.Element {
           onSuccess={(_child) => {
             setShowSplit(false)
             void load()
+            void qc.invalidateQueries({ queryKey: releaseNoteKeys.all })
           }}
         />
       )}
@@ -521,6 +632,7 @@ export function ReleaseNoteDetail(): JSX.Element {
           onCancel={() => setShowReissue(false)}
           onSuccess={(newNote) => {
             setShowReissue(false)
+            void qc.invalidateQueries({ queryKey: releaseNoteKeys.all })
             navigate(`/release-notes/${newNote.id}`, { state: { note: newNote } })
           }}
         />

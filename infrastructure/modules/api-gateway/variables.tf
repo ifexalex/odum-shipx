@@ -33,4 +33,13 @@ variable "cors_allow_origins" {
   description = "List of allowed CORS origins for the API"
   type        = list(string)
   default     = ["http://localhost:3000"]
+
+  # A wildcard origin combined with allow_credentials = true (set unconditionally
+  # below, for the /v1/auth/* httpOnly session cookie) is rejected by browsers at
+  # runtime anyway — fail the plan instead of shipping a CORS config that quietly
+  # never works.
+  validation {
+    condition     = !contains(var.cors_allow_origins, "*")
+    error_message = "cors_allow_origins must not contain \"*\" — this API sets allow_credentials = true, which browsers refuse to honor alongside a wildcard origin."
+  }
 }

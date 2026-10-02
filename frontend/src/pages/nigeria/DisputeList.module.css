@@ -1,0 +1,13 @@
+.banner {
+  margin-bottom: 16px;
+}
+
+.chips {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.tableWrap {
+  margin-top: 16px;
+}

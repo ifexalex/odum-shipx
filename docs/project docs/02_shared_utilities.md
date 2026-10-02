@@ -243,7 +243,7 @@ def log_audit(
     entity_type: str,
     entity_id: str,
     action: str,  # CREATE, UPDATE, DELETE, STATUS_CHANGE
-    actor_id: str,
+    actor_id: str | None,  # None for a system-triggered action — see below
     actor_role: str,
     before_state: dict | None = None,
     after_state: dict | None = None,
@@ -251,6 +251,10 @@ def log_audit(
 ) -> None:
     """Insert a record into audit_log table."""
 ```
+
+**Ground-truth gap found live (2026-09-07) while auditing log coverage across every service:** `audit_log.actor_id` is a `UUID REFERENCES tenant_user(id)` column, but two system-triggered call sites (`payment_release/service.py::process_webhook_payment` and, at the time, a newly-added one in `billing/service.py::handle_payment_due`) passed placeholder strings (`"gateway"`, `"system"`) instead of a real UUID or `None`. `log_audit()` never raises — any failure is caught and logged as a WARNING — so every webhook-confirmed payment (real money, gateway-triggered, no human actor) had **silently never been written to the audit trail** since that code was first written; the insert failed with `invalid input syntax for type uuid` on every single call, with nothing surfacing it. Confirmed live: reproduced the failure directly against the local DB, then confirmed the fix writes a real row. Fixed: `actor_id` is now typed `str | None`, and both system-triggered call sites pass `None` (with `actor_role="system"` saying who/what it was) instead of a placeholder string. **This is exactly the kind of gap `07_api_tenant_management.md`'s new Activity Log page (2026-09-07) exists to make visible and preventable** — before that page existed, there was no way for anyone to notice this had been silently failing.
+
+**A second, much larger instance of the identical failure mode, found the same day while wiring up the Activity Log's Action filter:** `audit_log.action` (migration 004) is `VARCHAR(30) CHECK (action IN ('CREATE', 'UPDATE', 'DELETE', 'STATUS_CHANGE'))`. A grep across every `log_audit()` call site found **20** passing a more descriptive verb the check doesn't allow — `EXPORT`, `CANCEL`, `RETRY`, `EXEMPT`, `DEACTIVATE`, `SELF_REGISTER`, `INVITE_ACCEPTED`, `DISCREPANCY_RESOLVED`, `WAIVE_STORAGE_FEES`, `APPLY_CARRYOVER`, `BULK_APPROVE`, `BULK_SUBMIT`, `BULK_REJECT`, `IMPERSONATION_START`, `IMPERSONATION_END`, and others — across billing, packing lists, tracking, manifest, notifications, excel exports, and tenant management. Every one of these calls has been silently failing since it was written. Migration 045 drops the CHECK constraint and widens the column to `VARCHAR(100)`, matching `platform_audit_log.action`'s already-looser design (that sibling table has never had a CHECK constraint and has taken free-text action verbs without incident) — a permanent fix, not a one-time backfill: any future action verb a developer chooses is valid immediately, with no migration required, closing this entire class of bug rather than just today's 20 instances.
 
 ## Acceptance Criteria
 
@@ -376,3 +380,126 @@ model-level error `"__root__"` instead. Covered by
 Every `services/*/handler.py` now imports this instead of defining its own
 copy — a future fix to this logic can no longer land in eight of nine files
 by accident.
+
+## shared/fx_rate.py + shared/ssl_context.py (added 2026-09-19)
+
+`shared/fx_rate.py` centralizes "the USD/NGN dollar rate" — previously four
+independent `tenant_config['dollar_rate']` readers (`tenant_management`,
+`billing`, `claims`, `refunds`), each with its own default-if-missing logic.
+The rate itself changed source: instead of a value a tenant_admin types in,
+the base rate is fetched live from Bybit's public P2P USDT/NGN order book,
+and a tenant only controls a markup (percentage or flat ₦) on top of it. See
+`07_api_tenant_management.md`'s Dollar Rate section for the full fetch/
+cache/fallback design (Redis `DistributedCache`, a circuit breaker via
+`shared/circuit_breaker.py`, and a `platform_settings`-persisted last-known-
+good fallback) and `00_MASTER_PLAN.md` for the feature's rollout, including
+a real bug caught live (raw `Decimal` values breaking `rate_history`'s
+`json.dumps()`, since it has no `default=str` the way `shared/audit.py`'s
+does).
+
+Public surface:
+- `get_effective_dollar_rate(tenant_id) -> dict` — the one function every
+  consumer should call. `{"rate", "base_rate", "markup_type",
+  "markup_value", "source", "fetched_at", "markup_updated_at"}`.
+- `get_base_market_rate() -> dict` — platform-wide, not tenant-scoped.
+- `compute_effective_rate(base_rate, markup_type, markup_value) -> Decimal` —
+  pure, exhaustively unit-tested (`tests/unit/test_fx_rate.py`).
+- `fetch_bybit_ngn_rate() -> Decimal` — the actual HTTP call, `urllib`-based
+  like `services/payment_release/paystack.py`, mean of the 5 cheapest online
+  sell-USDT ads (`side="1"` — verified live to be the cheaper, best-first
+  side of Bybit's order book).
+
+`shared/ssl_context.py::verified_ssl_context()` is a small extraction out of
+`paystack.py` (which had its own private `_ssl_context()` doing the exact
+same certifi-preferring, verification-never-disabled thing) — `fx_rate.py`
+needed the identical helper, and two real call sites justified sharing it
+rather than a second copy. `paystack.py` now imports it too.
+
+## shared/cbm_rate.py (added 2026-09-20)
+
+Mirrors `shared/fx_rate.py`'s role: the one place `services/billing` reads
+tenant CBM-pricing config from, via a direct `tenant_config` SQL read rather
+than importing `services.tenant_management`'s repository. Unlike the dollar
+rate, there's no external fetch/cache/circuit-breaker here — the CBM rate is
+entirely tenant-configured, not sourced from a market.
+
+Lets a tenant admin choose (1) the currency the rate is priced in (USD or
+NGN) and (2) whether it's one flat rate or three separate carton/bag/bale
+rates — modeled as **one code path, not two**: "flat" is simply the state
+where `carton_rate == bag_rate == bale_rate`; nothing in `compute_cbm_charge`
+branches on a `rate_mode` flag.
+
+Public surface:
+- `normalize_package_unit(unit: str | None) -> str` — maps a free-text
+  `packing_list_item.package_unit` to `"carton"`, `"bag"`, or `"bale"`; only
+  an exact (case-insensitive) match for "bag"/"bale" gets its own bucket,
+  everything else (carton, pallet, item, mixed, unspecified, null, or any
+  future free-text value) folds into `"carton"`.
+- `get_cbm_rate_config(tenant_id) -> dict` — `{"currency", "rate_mode",
+  "carton_rate", "bag_rate", "bale_rate", "effective_from"}`.
+  Backward-compatible at read time with the pre-2026-09-20 single-rate shape
+  (`{"rate_usd": ...}`, from any tenant provisioned before this feature) and
+  with a missing/never-configured row (defaults all three rates to 0, which
+  the caller's skip-guard treats the same as today's "missing rate → skip
+  billing" behavior) — no data migration needed for either case.
+- `compute_cbm_charge(cbm_by_unit: dict[str, Decimal], config: dict) -> dict`
+  — pure, exhaustively unit-tested (`tests/unit/test_cbm_rate.py`). Buckets
+  CBM by `normalize_package_unit`, prices each bucket at its own rate,
+  rounds each bucket's subtotal to 2dp *before* summing (so a displayed
+  breakdown always sums exactly to the displayed total). Returns
+  `{"amount": Decimal, "currency": str, "breakdown": {"carton": {"cbm",
+  "rate", "subtotal"}, "bag": {...}, "bale": {...}}}`.
+
+See `07_api_tenant_management.md`'s CBM Rate section and `11_api_billing.md`'s
+Billing Calculation section for the full design, including how `billing`'s
+pre-existing `cbm_rate_usd` column stays exact (no new rounding drift) for
+the common case where the tenant's three rates are all equal, and only
+falls back to a blended average when they genuinely differ.
+
+## shared/url_safety.py (added 2026-09-23)
+
+SSRF defence for outbound calls to **tenant-supplied** URLs — today only the
+tenant webhook (`shared/webhook.py`). A tenant admin controls
+`webhook_config.endpoint_url`, and the Lambda that fetches it runs inside the
+VPC next to Aurora and Redis. The old guard, a `^https://` regex on the
+request model, still allowed `https://169.254.169.254/...`,
+`https://10.x.x.x/...`, `https://localhost/...`, any hostname whose DNS record
+points at those, and any public server that answers with a redirect to one
+(`urllib` follows redirects). `test_fire_tenant_webhook` also returned
+`str(exc)`, turning connect errors into a port-scan oracle.
+
+Three layers, each usable on its own:
+
+| Function | Layer | Notes |
+|---|---|---|
+| `validate_public_https_url(url) -> (host, port)` | Syntactic, no I/O — safe in a Pydantic validator | https only; no embedded credentials; rejects `localhost`, `.local`/`.internal`/`.lan`/`.home.arpa`; IP literals must be globally routable, **including** the legacy numeric IPv4 forms a resolver accepts but `ipaddress` rejects (`2130706433`, `0x7f.1`, `127.1`) and IPv4-mapped IPv6 (`::ffff:10.0.0.1`) |
+| `resolve_public_ips(host, port) -> list[str]` | Delivery-time DNS check | Refuses if **any** resolved address is non-public — a multi-record answer is not accepted because one record is public. Re-run at delivery since DNS changes after save |
+| `open_public_https(req, timeout)` | `urlopen` replacement | Validates, resolves, then connects to the exact validated IP (TLS SNI + certificate verification stay on the original hostname, so a wrong-host cert still fails), ignores proxy env vars, and refuses redirects (a 3xx surfaces as `HTTPError`) so nothing can swap the target after the check |
+
+`UnsafeUrlError` (a `ValueError`) is raised before any connection is made.
+`WebhookConfigRequest.endpoint_url` runs the syntactic layer at save time;
+`shared/webhook.py` uses `open_public_https` for both `fire_tenant_webhook`
+(still never raises) and `test_fire_tenant_webhook` (returns the
+`UnsafeUrlError` message rather than a raw socket error). Verified against
+real TLS: pinned-IP delivery to a public endpoint succeeds, a redirect to the
+metadata address is refused, private/localhost targets are blocked, and a
+hostname-mismatched certificate still fails verification.
+
+Any future outbound call to a URL a tenant or customer can influence must go
+through this module — see `00_CROSS_CUTTING_STANDARDS.md` §8.4. Fixed-URL
+provider calls (Paystack, Bybit, Africa's Talking, Meta, JWKS) do not need it.
+
+## shared/validation.py — safe_filename() (added 2026-09-23)
+
+`safe_filename(name, *, default=None, max_length=100) -> str` reduces a client-supplied upload name to something safe to
+embed in an S3 key and in a `Content-Disposition` value: directory components (`/` and `\\`) dropped; every character
+outside Unicode word characters, `.`, `(`, `)`, space and `-` replaced with `_` (this removes quotes, semicolons,
+CR/LF/NUL and bidi-override characters such as U+202E, which renders `fdp.exe` as `exe.pdf`, while keeping CJK names);
+leading/trailing dots and spaces stripped (no hidden `.`/`..`); length capped with the extension preserved. A non-string
+or unusable name raises `ValidationError` (`422`) unless `default=` is given — the download paths pass a default
+(`"evidence"` / `"document"`) because rows written before the fix may hold an unsafe stored name.
+
+Used by the four presigned-upload flows — `claims.generate_presigned_url`, `manifest.generate_evidence_upload`,
+`tracking.generate_document_presigned_url`, `payment_release.generate_payment_claim_upload_url` — and by the two
+`ResponseContentDisposition` builders (payment-claim evidence, container documents). `services/excel` builds its own
+export names from a `_safe_name` helper over server-controlled values and is unaffected.

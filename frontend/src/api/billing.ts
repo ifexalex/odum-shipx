@@ -15,6 +15,7 @@
  */
 
 import { apiDownloadFile, apiRequest, apiRequestList, type ExportFormat } from './client'
+import type { PresignedResponse } from '../hooks/useFileUpload'
 
 // ---------------------------------------------------------------------------
 // Enums
@@ -90,7 +91,21 @@ export interface Billing {
   container_id: string
   container_number: string | null
   total_cbm: string
+  /** Always a USD-equivalent figure, whatever currency the tenant actually
+   *  priced this invoice in (cbm_rate_currency) — see cbm_breakdown for the
+   *  real per-package-type detail in that currency. */
   cbm_rate_usd: string
+  /** 'USD' | 'NGN' — the tenant's configured CBM currency at billing time. */
+  cbm_rate_currency?: string
+  /** 'flat' | 'per_package_type' — whether the tenant priced this invoice
+   *  with one rate or separate carton/bag/bale rates. */
+  cbm_rate_mode?: string
+  /** Per-package-type CBM/rate/subtotal, in cbm_rate_currency — always
+   *  present, but only worth rendering as a breakdown when cbm_rate_mode
+   *  is 'per_package_type' (flat invoices show the single rate line as
+   *  before). Becomes historical record only if a CBM dispute later
+   *  adjusts total_cbm (disputes are whole-invoice, never per-type). */
+  cbm_breakdown?: Record<'carton' | 'bag' | 'bale', { cbm: string; rate: string; subtotal: string }> | null
   dollar_rate: string
   subtotal_usd: string
   subtotal_ngn: string
@@ -125,14 +140,43 @@ export interface Carryover {
   created_at: string
 }
 
+export type PaymentClaimStatus = 'pending' | 'confirmed' | 'rejected'
+
+/**
+ * A customer's "I've made this payment" submission for a manual bank
+ * transfer — evidence is mandatory (services/payment_release/models.py's
+ * SubmitPaymentClaimRequest rejects a request without it), so a claim can
+ * never reach staff without proof attached.
+ */
+export interface PaymentClaim {
+  id: string
+  tenant_id: string
+  billing_id: string
+  customer_id: string
+  amount_ngn: string
+  evidence_file_key: string
+  evidence_file_name: string
+  customer_note: string | null
+  status: PaymentClaimStatus
+  rejection_reason: string | null
+  reviewed_by: string | null
+  reviewed_at: string | null
+  payment_record_id: string | null
+  submitted_at: string
+}
+
 // ---------------------------------------------------------------------------
 // Query params
 // ---------------------------------------------------------------------------
 
 export interface BillingListParams {
-  status?: PaymentStatus
+  /** Comma-separated for multi-select (Filters panel) — a single value is fine too. */
+  status?: PaymentStatus | string
   customer_id?: string
   q?: string
+  /** ISO date (YYYY-MM-DD) — filters on `billed_at`, inclusive. */
+  created_after?: string
+  created_before?: string
   cursor?: string
   limit?: number
   /** Column to sort by — must match shared/pagination.py's ALLOWED_SORT_FIELDS. */
@@ -155,6 +199,49 @@ export interface CarryoverListParams {
 }
 
 /** GET /v1/billing/payments row — §6.1 recent-payments dashboard feed (P2-5). */
+/** Period report aggregates from GET /v1/billing/report (SQL-computed). Money
+ *  fields are strings (Decimal-safe); the page parses them with Number(). */
+export interface TenantReport {
+  overview: {
+    total_revenue_ngn: string
+    total_cbm: string
+    revenue_paid: string
+    revenue_partially_paid: string
+    revenue_unpaid: string
+    revenue_released_with_outstanding: string
+    revenue_waived: string
+    containers_processed: number
+    active_customers: number
+  }
+  claims: { total: number; open: number; resolved: number }
+  container_pipeline: Array<{ week: string; cn: number; transit: number; arrived: number; released: number }>
+  top_customers: Array<{ name: string; amount: string }>
+  container_billing: Array<{
+    container_number: string
+    customers: number
+    cbm: string
+    billed: string
+    collected: string
+    outstanding: string
+    cbm_rate_usd: string
+    dollar_rate: string
+  }>
+}
+
+/** Tenant-wide billing aggregates from GET /v1/billing/stats (SQL-computed). */
+export interface BillingStats {
+  outstanding_ngn: string
+  paid_this_month_ngn: string
+  overdue: number
+  total: number
+  unpaid: number
+  partially_paid: number
+  paid: number
+  overpaid: number
+  waived: number
+  released_with_outstanding: number
+}
+
 export interface RecentPayment {
   id: string
   billing_id: string
@@ -202,6 +289,19 @@ export const billingApi = {
   listForCustomer: (customerId: string) =>
     apiRequest<Billing[]>({ method: 'GET', path: `/v1/billing/${customerId}` }),
 
+  /** Tenant-wide aggregates for the list stats row + status chips — staff only,
+   *  SQL-computed so it stays correct as billing grows past a single page. */
+  stats: () => apiRequest<BillingStats>({ method: 'GET', path: '/v1/billing/stats' }),
+
+  /** Period report aggregates for the TenantReports page — tenant-admin only,
+   *  SQL-computed (revenue, CBM, by-status, top customers, per-container). */
+  report: (params: { created_after?: string; created_before?: string } = {}) =>
+    apiRequest<TenantReport>({
+      method: 'GET',
+      path: '/v1/billing/report',
+      query: params as Record<string, string | undefined>,
+    }),
+
   /** Recent payments across all billings — staff only (§6.1 dashboard, P2-5). */
   recentPayments: (limit = 8) =>
     apiRequest<RecentPayment[]>({ method: 'GET', path: '/v1/billing/payments', query: { limit } }),
@@ -209,13 +309,39 @@ export const billingApi = {
   /**
    * B12 — customer Paystack checkout. Returns the hosted-checkout URL to
    * redirect to; the payment itself is recorded by the HMAC-verified gateway
-   * webhook (POST /v1/webhooks/payment), never by the redirect.
+   * webhook (POST /v1/webhooks/payment) — but see verifyPayment below for
+   * why that alone isn't enough.
    */
   initializePayment: (billingId: string, callbackUrl: string) =>
     apiRequest<{ authorization_url: string; reference: string; access_code: string; amount_ngn: string }>({
       method: 'POST',
       path: `/v1/payments/${billingId}/initialize`,
       body: { callback_url: callbackUrl },
+    }),
+
+  /**
+   * Ground-truth gap found live: the webhook above is the *primary* source
+   * of truth, but Paystack's servers can never reach a local dev URL at
+   * all, and even in production a webhook can be delayed or lost — a
+   * customer would see Paystack's own "successful" page, click "View
+   * invoice", and find the bill still unpaid with "Pay" still live. Called
+   * from PaymentSuccess.tsx with the `reference` Paystack appends to the
+   * callback URL — reconciles the payment directly against Paystack's own
+   * API instead of only ever trusting the redirect or waiting on a webhook.
+   * Safe to call more than once (e.g. a refreshed success page): the
+   * backend shares the exact same idempotent confirmation path the webhook
+   * uses.
+   */
+  verifyPayment: (billingId: string, reference: string) =>
+    apiRequest<{
+      gateway_status: string
+      new_payment_status?: string
+      outstanding_ngn?: string
+      release_note_available?: boolean
+    }>({
+      method: 'POST',
+      path: `/v1/payments/${billingId}/verify`,
+      body: { reference },
     }),
 
   recordPayment: (billingId: string, body: RecordPaymentInput, idempotencyKey: string) =>
@@ -265,6 +391,40 @@ export const billingApi = {
 
   waiveStorageFees: (billingId: string, reason: string) =>
     apiRequest<Billing>({ method: 'POST', path: `/v1/billing/${billingId}/storage-fees/waive`, body: { reason } }),
+}
+
+/**
+ * Manual bank-transfer payment claims — the customer's "I've made this
+ * payment" submission with mandatory evidence, reviewed by staff. See
+ * services/payment_release/service.py's payment-claim functions.
+ */
+export const paymentClaimApi = {
+  /** Presigned S3 POST for the evidence file — upload directly, then submit() with the returned file_key. */
+  getUploadUrl: (billingId: string, filename: string, contentType: string) =>
+    apiRequest<PresignedResponse>({
+      method: 'POST',
+      path: '/v1/payments/claims/presigned-url',
+      body: { billing_id: billingId, filename, content_type: contentType },
+    }),
+
+  submit: (
+    billingId: string,
+    body: { amount_ngn: number; evidence_file_key: string; evidence_file_name: string; customer_note?: string },
+    idempotencyKey: string,
+  ) => apiRequest<PaymentClaim>({ method: 'POST', path: `/v1/payments/${billingId}/claims`, body, idempotencyKey }),
+
+  listForBilling: (billingId: string) =>
+    apiRequest<PaymentClaim[]>({ method: 'GET', path: `/v1/payments/${billingId}/claims` }),
+
+  confirm: (claimId: string) =>
+    apiRequest<PaymentClaim>({ method: 'PATCH', path: `/v1/payments/claims/${claimId}/confirm` }),
+
+  reject: (claimId: string, reason: string) =>
+    apiRequest<PaymentClaim>({ method: 'PATCH', path: `/v1/payments/claims/${claimId}/reject`, body: { reason } }),
+
+  /** Presigned GET for the evidence file itself — staff need to actually see the receipt before confirming. */
+  getEvidenceUrl: (claimId: string) =>
+    apiRequest<{ url: string }>({ method: 'GET', path: `/v1/payments/claims/${claimId}/evidence-url` }),
 }
 
 export interface StorageFeeEntry {

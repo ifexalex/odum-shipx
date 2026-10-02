@@ -17,6 +17,7 @@ from shared.audit import log_audit
 from shared.db import execute_with_tenant
 from shared.logging_config import setup_logging
 from shared.notifications import enqueue_notification
+from shared.staff_notifications import notify_staff
 from shared.tenant_context import PLATFORM_TENANT_ID
 
 setup_logging()
@@ -114,11 +115,11 @@ def _notify_nigeria_staff(tenant_id: str, dispute: dict[str, Any]) -> None:
     staff = execute_with_tenant(
         tenant_id,
         """
-        SELECT tu.email, tu.phone_number
+        SELECT tu.email, tu.locale
         FROM tenant_user tu
         WHERE tu.tenant_id = %s
           AND tu.role = 'nigeria_office_staff'
-          AND tu.is_active = TRUE
+          AND tu.status = 'active'
         LIMIT 10
         """,
         (tenant_id,),
@@ -138,6 +139,7 @@ def _notify_nigeria_staff(tenant_id: str, dispute: dict[str, Any]) -> None:
                     recipient=staff_member["email"],
                     template_id="cbm_dispute_update",
                     template_vars=template_vars,
+                    locale=staff_member.get("locale", "en"),
                 )
             except Exception:
                 logger.warning(
@@ -145,6 +147,18 @@ def _notify_nigeria_staff(tenant_id: str, dispute: dict[str, Any]) -> None:
                     dispute["id"],
                     extra={"tenant_id": tenant_id},
                 )
+
+    # In-app bell, alongside the email above — a breach is exactly the kind
+    # of "needs your attention now" moment the staff bell exists for.
+    notify_staff(
+        tenant_id=tenant_id,
+        event_type="cbm_dispute_sla_breach",
+        entity_type="cbm_dispute",
+        entity_id=str(dispute["id"]),
+        title="CBM dispute SLA breach",
+        body=f"Dispute {dispute['id']} has been open over 24h with no action taken.",
+        target_role="nigeria_office_staff",
+    )
 
 
 # ---------------------------------------------------------------------------

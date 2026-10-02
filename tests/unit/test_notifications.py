@@ -164,3 +164,84 @@ class TestWhatsAppComponents:
 
         for event in NotificationEvent:
             assert event.value in WA_TEMPLATE_MAP, f"NotificationEvent.{event.name} missing from WA_TEMPLATE_MAP"
+
+
+TENANT_ID = "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa"
+
+
+class TestListLogsDateRangeRepository:
+    """GET /v1/notifications/log — `created_after`/`created_before`, added
+    alongside the same fix for GET /v1/billing (row 7.63) after the user
+    asked to check every page whose "calendar" filter button was dead UI."""
+
+    def test_created_after_and_before_filter_on_created_at(self):
+        from unittest.mock import patch
+
+        from services.notification import repository
+
+        with patch.object(repository, "execute_with_tenant", return_value=[]) as mock_exec:
+            repository.list_logs(
+                TENANT_ID,
+                {"created_after": "2026-09-01", "created_before": "2026-09-07"},
+                limit=20,
+                cursor=None,
+            )
+
+        query, params = mock_exec.call_args[0][1], mock_exec.call_args[0][2]
+        assert "created_at >= %(created_after)s" in query
+        assert "created_at <= %(created_before)s" in query
+        assert params["created_after"] == "2026-09-01"
+        assert params["created_before"] == "2026-09-07"
+
+    def test_no_date_filter_by_default(self):
+        from unittest.mock import patch
+
+        from services.notification import repository
+
+        with patch.object(repository, "execute_with_tenant", return_value=[]) as mock_exec:
+            repository.list_logs(TENANT_ID, {}, limit=20, cursor=None)
+
+        query = mock_exec.call_args[0][1]
+        assert "created_at >=" not in query
+        assert "created_at <=" not in query
+
+
+class TestNotificationLogHandlerDateRangeQueryParams:
+    def _event(self, query: dict | None = None) -> dict:
+        return {
+            "requestContext": {
+                "requestId": "req-notif-log-daterange-001",
+                "http": {"method": "GET", "path": "/v1/notifications/log"},
+                "authorizer": {"claims": {"sub": "user-1", "custom:tenant_id": TENANT_ID}},
+                "identity": {"sourceIp": "127.0.0.1"},
+            },
+            "headers": {},
+            "body": "{}",
+            "queryStringParameters": query or {},
+            "pathParameters": {},
+        }
+
+    def test_created_after_and_before_reach_the_service(self):
+        from unittest.mock import patch
+
+        from services.notification import handler, service
+
+        with (
+            patch("services.notification.handler.get_tenant_context", return_value=_ctx()),
+            patch.object(service, "list_logs", return_value=([], None, False)) as mock_list,
+        ):
+            resp = handler.http_handler(
+                self._event({"created_after": "2026-09-01", "created_before": "2026-09-07"}),
+                None,
+            )
+
+        assert resp["statusCode"] == 200
+        filters = mock_list.call_args[0][1]
+        assert filters["created_after"] == "2026-09-01"
+        assert filters["created_before"] == "2026-09-07"
+
+
+def _ctx():
+    from shared.tenant_context import TenantContext, UserRole
+
+    return TenantContext(tenant_id=TENANT_ID, user_id="user-1", role=UserRole.TENANT_ADMIN)

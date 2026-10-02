@@ -1,0 +1,22 @@
+.cell {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+}
+
+.text {
+  min-width: 0;
+}
+
+.name {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--color-ink);
+  line-height: 1.2;
+}
+
+.meta {
+  font-size: 11px;
+  color: var(--color-ink-4);
+  line-height: 1.3;
+}

@@ -17,6 +17,7 @@ from shared.db import execute_with_tenant, execute_write_with_tenant
 from shared.events import publish_event
 from shared.logging_config import setup_logging
 from shared.notifications import enqueue_notification
+from shared.staff_notifications import notify_staff
 from shared.tenant_context import PLATFORM_TENANT_ID
 
 setup_logging()
@@ -132,11 +133,11 @@ def _notify_escalation(tenant_id: str, dispute: dict[str, Any]) -> None:
     admins = execute_with_tenant(
         tenant_id,
         """
-        SELECT tu.email, tu.phone_number
+        SELECT tu.email, tu.locale
         FROM tenant_user tu
         WHERE tu.tenant_id = %s
           AND tu.role IN ('tenant_admin', 'china_office_staff')
-          AND tu.is_active = TRUE
+          AND tu.status = 'active'
         LIMIT 10
         """,
         (tenant_id,),
@@ -156,6 +157,7 @@ def _notify_escalation(tenant_id: str, dispute: dict[str, Any]) -> None:
                     recipient=admin["email"],
                     template_id="cbm_dispute_update",
                     template_vars=template_vars,
+                    locale=admin.get("locale", "en"),
                 )
             except Exception:
                 logger.warning(
@@ -163,6 +165,18 @@ def _notify_escalation(tenant_id: str, dispute: dict[str, Any]) -> None:
                     dispute["id"],
                     extra={"tenant_id": tenant_id},
                 )
+
+    # In-app bell, alongside the email above.
+    for role in ("china_office_staff", "tenant_admin"):
+        notify_staff(
+            tenant_id=tenant_id,
+            event_type="cbm_dispute_escalated",
+            entity_type="cbm_dispute",
+            entity_id=str(dispute["id"]),
+            title="CBM dispute escalated",
+            body=f"Dispute {dispute['id']} was auto-escalated after no action.",
+            target_role=role,
+        )
 
 
 # ---------------------------------------------------------------------------

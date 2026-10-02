@@ -1,0 +1,282 @@
+/* 4.1 — Company Settings (prototype tenant-config-screens.jsx).
+   Two-column grid: form · sticky live preview (the config sub-nav rail is
+   ConfigLayout's). Collapses with the app-shell container queries. */
+
+.grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 340px;
+  gap: 20px;
+  align-items: start;
+}
+
+.formCol {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+  min-width: 0;
+}
+
+.previewCol {
+  position: sticky;
+  top: 16px;
+  min-width: 0;
+}
+
+@container sxapp (max-width: 1240px) {
+  .grid {
+    grid-template-columns: 1fr;
+  }
+  .previewCol {
+    display: none;
+  }
+}
+
+/* ---- form ---- */
+.grid2 {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 14px;
+}
+@container sxapp (max-width: 560px) {
+  .grid2 {
+    grid-template-columns: 1fr;
+  }
+}
+
+.logoRow {
+  display: flex;
+  align-items: flex-start;
+  gap: 16px;
+  border: 1.5px dashed var(--color-line);
+  border-radius: var(--radius-md);
+  padding: 16px;
+  background: var(--color-surface-muted);
+  margin-bottom: 16px;
+}
+.logoTile {
+  width: 64px;
+  height: 64px;
+  border-radius: var(--radius-lg);
+  color: #fff;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 800;
+  font-size: 24px;
+  font-family: var(--font-display);
+  flex-shrink: 0;
+}
+.logoMeta {
+  flex: 1;
+  min-width: 0;
+}
+.logoTitle {
+  font-weight: 600;
+  color: var(--color-ink);
+  font-size: 14px;
+}
+.logoDesc {
+  font-size: 12px;
+  color: var(--color-ink-4);
+  margin-top: 4px;
+  line-height: 1.45;
+}
+.colorField {
+  width: 160px;
+  flex-shrink: 0;
+}
+@container sxapp (max-width: 560px) {
+  .logoRow {
+    flex-wrap: wrap;
+  }
+  .colorField {
+    width: 100%;
+  }
+}
+
+.saveBar {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+}
+
+/* ---- live preview ---- */
+.previewToggle {
+  display: flex;
+  background: var(--color-surface-muted);
+  border-radius: var(--radius-sm);
+  padding: 4px;
+  border: 1px solid var(--color-line-soft);
+}
+.previewTab {
+  flex: 1;
+  padding: 6px 10px;
+  background: transparent;
+  border-radius: 6px;
+  border: 0;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--color-ink-3);
+  cursor: pointer;
+  font-family: var(--font-body);
+}
+.previewTabActive {
+  background: var(--color-surface);
+  font-weight: 700;
+  color: var(--color-ink);
+  box-shadow: var(--shadow-rest);
+}
+
+.docPreview {
+  background: var(--color-surface);
+  border: 1px solid var(--color-line-soft);
+  border-radius: var(--radius-sm);
+  aspect-ratio: 210 / 297;
+  padding: 18px;
+  font-size: 9px;
+  color: var(--color-ink);
+  line-height: 1.4;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+.docHead {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 14px;
+  padding-bottom: 10px;
+  border-bottom: 1px solid var(--color-line-soft);
+}
+.docBrand {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+.docLogo {
+  width: 36px;
+  height: 36px;
+  border-radius: 6px;
+  color: #fff;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 800;
+  font-size: 14px;
+  font-family: var(--font-display);
+  flex-shrink: 0;
+}
+.docCompany {
+  font-family: var(--font-display);
+  font-weight: 800;
+  font-size: 11px;
+  line-height: 1.1;
+}
+.docTagline {
+  font-size: 7px;
+  color: var(--color-ink-4);
+  font-style: italic;
+  margin-top: 2px;
+}
+.docTitleBlock {
+  text-align: right;
+  flex-shrink: 0;
+}
+.docTitle {
+  font-family: var(--font-display);
+  font-weight: 800;
+  font-size: 11px;
+  letter-spacing: 0.04em;
+}
+.docRef {
+  font-family: var(--font-mono);
+  font-size: 7px;
+  color: var(--color-ink-3);
+  margin-top: 2px;
+}
+.docMetaGrid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+  font-size: 7.5px;
+  margin-bottom: 10px;
+}
+.docMetaLabel {
+  color: var(--color-ink-4);
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  font-size: 6.5px;
+  margin-bottom: 2px;
+}
+.docMetaStrong {
+  font-weight: 700;
+}
+.docMetaMono {
+  font-family: var(--font-mono);
+  color: var(--color-ink-2);
+}
+.docMetaDim {
+  color: var(--color-ink-3);
+}
+.docTableHead {
+  background: var(--color-surface-muted);
+  padding: 4px 6px;
+  display: grid;
+  grid-template-columns: 44px 1fr 32px;
+  gap: 4px;
+  font-size: 6.5px;
+  font-weight: 700;
+  color: var(--color-ink-3);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  border-radius: 3px;
+}
+.docTableRow {
+  display: grid;
+  grid-template-columns: 44px 1fr 32px;
+  gap: 4px;
+  font-size: 7px;
+  padding: 4px 6px;
+  border-bottom: 1px solid var(--color-line-soft);
+  color: var(--color-ink-2);
+}
+.right {
+  text-align: right;
+}
+.docTotals {
+  display: flex;
+  justify-content: flex-end;
+  font-size: 7.5px;
+  margin-top: 8px;
+  padding-top: 6px;
+  border-top: 1px solid var(--color-line-soft);
+  font-weight: 700;
+}
+.docQrRow {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  margin-top: 6px;
+  font-size: 7px;
+}
+.docQr {
+  width: 44px;
+  height: 44px;
+  flex-shrink: 0;
+  border-radius: 3px;
+  background:
+    repeating-linear-gradient(0deg, var(--color-ink) 0 3px, transparent 3px 6px),
+    repeating-linear-gradient(90deg, var(--color-ink) 0 3px, var(--color-surface) 3px 6px);
+  opacity: 0.85;
+}
+.docFooter {
+  margin-top: auto;
+  padding-top: 14px;
+  font-size: 6px;
+  color: var(--color-ink-4);
+  line-height: 1.6;
+  font-style: italic;
+}

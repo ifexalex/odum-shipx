@@ -32,6 +32,11 @@ class PackingListItemInput(BaseModel):
     height_cm: Decimal | None = Field(default=None, gt=Decimal("0"))
     received_date: date | None = None
     cbm: Decimal | None = None  # auto-computed below
+    declared_value_usd: Decimal | None = Field(default=None, ge=Decimal("0"))
+    # Package type: carton | bag | pallet | bale | sack (free-text-tolerant for
+    # manifest imports; the wizard constrains the choices). Drives bale sizing
+    # and CBM-rate bucketing.
+    package_unit: str | None = Field(default=None, max_length=30)
 
     @model_validator(mode="after")
     def compute_cbm(self) -> "PackingListItemInput":
@@ -49,6 +54,8 @@ class UpdatePackingListItemInput(BaseModel):
     width_cm: Decimal | None = Field(default=None, gt=Decimal("0"))
     height_cm: Decimal | None = Field(default=None, gt=Decimal("0"))
     received_date: date | None = None
+    declared_value_usd: Decimal | None = Field(default=None, ge=Decimal("0"))
+    package_unit: str | None = Field(default=None, max_length=30)
 
 
 class ItemRejection(BaseModel):
@@ -64,10 +71,14 @@ class ItemRejection(BaseModel):
 class CreatePackingListRequest(BaseModel):
     container_id: str
     customer_id: str
+    loading_date: date | None = None
+    delivery_date: date | None = None
     items: list[PackingListItemInput] = Field(default_factory=list)
 
 
 class UpdatePackingListRequest(BaseModel):
+    loading_date: date | None = None
+    delivery_date: date | None = None
     items: list[UpdatePackingListItemInput] = Field(min_length=1)
 
 
@@ -78,6 +89,20 @@ class ApprovePackingListRequest(BaseModel):
 class RejectPackingListRequest(BaseModel):
     comments: str = Field(min_length=1)
     item_rejections: list[ItemRejection] | None = None
+
+
+class BulkApproveRequest(BaseModel):
+    ids: list[str] = Field(min_length=1, max_length=100)
+    comments: str | None = None
+
+
+class BulkSubmitRequest(BaseModel):
+    ids: list[str] = Field(min_length=1, max_length=100)
+
+
+class BulkRejectRequest(BaseModel):
+    ids: list[str] = Field(min_length=1, max_length=100)
+    comments: str = Field(min_length=1)
 
 
 # ---------------------------------------------------------------------------

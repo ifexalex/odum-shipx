@@ -72,12 +72,31 @@ def _handle_sqs_batch(event: dict[str, Any]) -> dict[str, Any]:
 # ---------------------------------------------------------------------------
 
 
+def _health_response(request_id: str) -> dict[str, Any]:
+    import datetime
+    import json
+
+    return {
+        "statusCode": 200,
+        "headers": {"Content-Type": "application/json", "X-Request-Id": request_id},
+        "body": json.dumps(
+            {
+                "status": "healthy",
+                "timestamp": datetime.datetime.now(datetime.UTC).isoformat(),
+            }
+        ),
+    }
+
+
 def _handle_api(event: dict[str, Any], context: Any) -> dict[str, Any]:
     start_time = time.time()
     request_id = event.get("requestContext", {}).get("requestId") or str(uuid.uuid4())
     http = event.get("requestContext", {}).get("http", {})
     method = http.get("method", "")
     path = http.get("path", "")
+
+    if method == "GET" and path.strip("/") == "v1/health":
+        return _health_response(request_id)
 
     try:
         tenant_ctx = get_tenant_context(event)

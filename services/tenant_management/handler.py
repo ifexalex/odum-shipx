@@ -42,7 +42,7 @@ from .models import (
     PaystackConfigRequest,
     SuspendTenantRequest,
     UpdateCbmRateRequest,
-    UpdateDollarRateRequest,
+    UpdateDollarRateMarkupRequest,
     UpdateTenantConfigRequest,
     UpdateTenantRequest,
     UpdateTenantUserRequest,
@@ -195,11 +195,7 @@ def _dispatch(
             # rate + FX rate, and Nigeria staff preview the same when billing.
             # Least-privilege read-only widening — writes (PUT) stay tenant_admin
             # only (the blanket assert below still guards every other method/path).
-            if (
-                len(parts) == 3
-                and parts[2] in ("dollar-rate", "cbm-rate")
-                and method == "GET"
-            ):
+            if len(parts) == 3 and parts[2] in ("dollar-rate", "cbm-rate") and method == "GET":
                 ctx.assert_role(
                     UserRole.TENANT_ADMIN,
                     UserRole.CHINA_OFFICE_STAFF,
@@ -210,16 +206,46 @@ def _dispatch(
             # GET /v1/tenant/config (exact path, read-only) is readable by all
             # staff roles: printable documents (packing list / release note)
             # render the tenant's branding_config (company name, footer text),
-            # and warehouse/china/nigeria staff all print them. Safe to widen:
-            # the response already masks webhook_config.secret, and every write
-            # plus the webhook sub-routes stay behind the tenant_admin assert.
+            # and warehouse/china/nigeria staff all print them. Also readable
+            # by CUSTOMER — MyBillingDetail.tsx's "Manual bank transfer" panel
+            # needs this tenant's real bank_transfer_config, not a hardcoded
+            # one (ground-truth gap: it previously showed every tenant's
+            # customers the same hardcoded account). Safe to widen: the
+            # response already masks webhook_config.secret and strips
+            # paystack_config's secret key entirely, and every write plus the
+            # webhook sub-routes stay behind the tenant_admin assert.
             if len(parts) == 3 and parts[2] == "config" and method == "GET":
                 ctx.assert_role(
                     UserRole.TENANT_ADMIN,
                     UserRole.CHINA_OFFICE_STAFF,
                     UserRole.NIGERIA_OFFICE_STAFF,
                     UserRole.WAREHOUSE_ATTENDANT,
+                    UserRole.CUSTOMER,
                 )
+                return _tenant_admin_routes(event, parts, method, ctx, request_id, ip_address)
+
+            # GET /v1/tenant/users (list only — not create/edit/delete) is
+            # readable by nigeria_office_staff and warehouse_attendant too:
+            # RecordPickupModal needs to let a warehouse attendant pick the
+            # Customer Service Officer / Accounting Officer who co-signed a
+            # pickup, off the paper form's two further named sign-off lines
+            # — a name-only lookup, no secrets in the response. Every other
+            # /v1/tenant/users method/path stays behind the blanket
+            # tenant_admin assert below.
+            if len(parts) == 3 and parts[2] == "users" and method == "GET":
+                ctx.assert_role(
+                    UserRole.TENANT_ADMIN,
+                    UserRole.NIGERIA_OFFICE_STAFF,
+                    UserRole.WAREHOUSE_ATTENDANT,
+                )
+                return _tenant_admin_routes(event, parts, method, ctx, request_id, ip_address)
+
+            # GET /v1/tenant/container-capacities (list only) is readable by all
+            # staff roles: the China create-container form and the packing-list
+            # wizard show the capacity presets. Writes (POST/DELETE) stay behind
+            # the tenant_admin assert below.
+            if len(parts) == 3 and parts[2] == "container-capacities" and method == "GET":
+                ctx.assert_role(*_STAFF_ROLES)
                 return _tenant_admin_routes(event, parts, method, ctx, request_id, ip_address)
 
             ctx.assert_role(UserRole.TENANT_ADMIN)
@@ -292,9 +318,7 @@ def _handle_self_register(
         body = _parse_body(event)
         req = parse_validated(CustomerRegistrationRequest, body)
         host = (event.get("headers") or {}).get("host") or (event.get("headers") or {}).get("Host", "")
-        result = service.self_register_customer(
-            req, slug=slug, host=host, request_id=request_id, ip_address=ip_address
-        )
+        result = service.self_register_customer(req, slug=slug, host=host, request_id=request_id, ip_address=ip_address)
         return created(result, location=f"/v1/customers/{result['id']}", request_id=request_id)
     except LogisticsBaseError as exc:
         path = (event.get("requestContext", {}).get("http", {}) or {}).get("path", "/v1/register")
@@ -393,8 +417,8 @@ def _platform_routes(
 
     # /v1/platform/settings[/{kind}-gateway[/test]]
     if resource == "settings":
-        sub = parts[3] if len(parts) > 3 else None          # "sms-gateway" | "gateways" | None
-        sub_action = parts[4] if len(parts) > 4 else None   # "test"
+        sub = parts[3] if len(parts) > 3 else None  # "sms-gateway" | "gateways" | None
+        sub_action = parts[4] if len(parts) > 4 else None  # "test"
 
         # GET /v1/platform/settings/gateways — all three, secrets masked
         if sub == "gateways" and method == "GET":
@@ -540,22 +564,35 @@ def _tenant_admin_routes(
         return success(data, request_id=request_id)
 
     # GET /v1/tenant/activity — tenant-scoped audit feed (audit gap B6).
-    # Optional ?actor_id= narrows to one staff member (staff-profile 3.4).
+    # ?actor_id= narrows to one staff member (staff-profile 3.4).
+    # ?entity_type= narrows to one or more kinds of record — comma-separated
+    # for a category filter (e.g. every money-related type at once), same
+    # contract as GET /v1/containers's comma-separated ?status=.
+    # ?action=, ?q= (actor name or record id), ?created_after=/?created_before=,
+    # ?sort= (asc|desc) round out real filtering/search/sort for the
+    # tenant-admin Activity Log page.
     if resource == "activity" and method == "GET":
         from shared.pagination import decode_cursor
 
+        entity_type_param = _qp(event, "entity_type")
         page, next_cursor, has_more = service.list_tenant_activity(
             tenant_id,
             limit=int(_qp(event, "limit", 20)),
             cursor=decode_cursor(_qp(event, "cursor")),
             actor_id=_qp(event, "actor_id") or None,
+            entity_type=[t for t in entity_type_param.split(",") if t] if entity_type_param else None,
+            action=_qp(event, "action") or None,
+            q=_qp(event, "q") or None,
+            created_after=_qp(event, "created_after") or None,
+            created_before=_qp(event, "created_before") or None,
+            sort_direction=_qp(event, "sort", "desc"),
         )
         return paginated(page, next_cursor, has_more, request_id=request_id)
 
     # /v1/tenant/config[/webhook/(rotate-secret|test)][/paystack[/test]]
     if resource == "config":
-        config_sub = parts[3] if len(parts) > 3 else None       # "webhook" | "paystack"
-        config_action = parts[4] if len(parts) > 4 else None    # "rotate-secret" | "test"
+        config_sub = parts[3] if len(parts) > 3 else None  # "webhook" | "paystack"
+        config_action = parts[4] if len(parts) > 4 else None  # "rotate-secret" | "test"
 
         # POST /v1/tenant/config/webhook/rotate-secret
         if config_sub == "webhook" and config_action == "rotate-secret" and method == "POST":
@@ -603,7 +640,7 @@ def _tenant_admin_routes(
             return success(service.get_dollar_rate(tenant_id), request_id=request_id)
         if method == "PUT":
             body = _parse_body(event)
-            req = parse_validated(UpdateDollarRateRequest, body)
+            req = parse_validated(UpdateDollarRateMarkupRequest, body)
             result = service.update_dollar_rate(tenant_id, req, actor_id=ctx.user_id, ip_address=ip_address)
             return success(result, request_id=request_id)
 
@@ -724,6 +761,34 @@ def _tenant_admin_routes(
                 service.deactivate_charge_type(tenant_id, charge_type_id, actor_id=ctx.user_id, ip_address=ip_address)
                 return no_content(request_id=request_id)
 
+    # /v1/tenant/container-capacities[/{id}]
+    # GET is role-widened to all staff in the dispatcher; POST/DELETE are
+    # tenant_admin-only (blanket assert before this function).
+    if resource == "container-capacities":
+        capacity_id = parts[3] if len(parts) > 3 else None
+
+        if not capacity_id:
+            if method == "GET":
+                return success(service.list_container_capacities(tenant_id), request_id=request_id)
+            if method == "POST":
+                body = _parse_body(event)
+                result = service.create_container_capacity(tenant_id, body, actor_id=ctx.user_id, ip_address=ip_address)
+                return created(
+                    result,
+                    location=f"/v1/tenant/container-capacities/{result['id']}",
+                    request_id=request_id,
+                )
+        else:
+            if method == "PATCH":
+                body = _parse_body(event)
+                result = service.update_container_capacity(
+                    tenant_id, capacity_id, body, actor_id=ctx.user_id, ip_address=ip_address
+                )
+                return success(result, request_id=request_id)
+            if method == "DELETE":
+                service.delete_container_capacity(tenant_id, capacity_id, actor_id=ctx.user_id, ip_address=ip_address)
+                return no_content(request_id=request_id)
+
     # /v1/tenant/warehouses[/{id}]
     if resource == "warehouses":
         warehouse_id = parts[3] if len(parts) > 3 else None
@@ -769,6 +834,14 @@ def _customer_routes(
     customer_id = parts[2] if len(parts) > 2 else None
     action = parts[3] if len(parts) > 3 else None
     is_customer_role = ctx.role == UserRole.CUSTOMER
+
+    # GET /v1/customers/stats — tenant-wide customer aggregates for the list
+    # stats row (SQL-computed). Staff only; checked before the {id} branch.
+    if customer_id == "stats" and action is None:
+        if method == "GET":
+            ctx.assert_role(*_STAFF_ROLES)
+            return success(service.get_customer_stats(tenant_id), request_id=request_id)
+        raise ResourceNotFoundError("route", "/".join(parts))
 
     if not customer_id:
         # POST /v1/customers — staff only
@@ -865,9 +938,7 @@ def _customer_routes(
             # or resends (which invalidates any prior unconsumed one).
             if action == "invite" and method == "POST":
                 ctx.assert_role(*_STAFF_ROLES)
-                result = service.issue_customer_invite(
-                    tenant_id, customer_id, actor_id=ctx.user_id, request_id=request_id
-                )
+                result = service.issue_customer_invite(tenant_id, customer_id, actor_id=ctx.user_id, request_id=request_id)
                 return created(result, location=f"/v1/customers/{customer_id}", request_id=request_id)
 
             # GET /v1/customers/{id}/export — tenant_admin or the customer themselves
@@ -903,4 +974,3 @@ def _health_response(request_id: str) -> dict[str, Any]:
             }
         ),
     }
-

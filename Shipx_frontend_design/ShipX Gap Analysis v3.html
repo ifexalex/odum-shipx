@@ -1,0 +1,234 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>ShipX — Gap Analysis v3 (Re-check)</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  :root {
+    --navy:#0D2340; --navy-mid:#1A3F6F; --blue:#2563EB; --blue-light:#DBEAFE;
+    --orange:#F97316; --orange-lt:#FED7AA; --red:#DC2626; --red-lt:#FEE2E2;
+    --amber:#D97706; --amber-lt:#FEF3C7; --green:#16A34A; --green-lt:#DCFCE7;
+    --purple:#7C3AED; --purple-lt:#EDE9FE;
+    --n900:#111827; --n700:#374151; --n500:#6B7280; --n300:#D1D5DB; --n100:#F3F4F6; --n50:#F9FAFB;
+    --white:#FFFFFF; --page-bg:#F0EEE9;
+  }
+  html { font-size: 14px; }
+  body { font-family:'Inter',system-ui,sans-serif; background:var(--page-bg); color:var(--n900); line-height:1.6; }
+  .layout { display:flex; min-height:100vh; }
+  .sidebar { width:248px; flex-shrink:0; background:var(--navy); position:sticky; top:0; height:100vh; overflow-y:auto; display:flex; flex-direction:column; }
+  .sidebar-logo { padding:24px 20px 16px; border-bottom:1px solid rgba(255,255,255,0.08); }
+  .sidebar-logo .wordmark { font-size:18px; font-weight:700; color:#fff; letter-spacing:-0.3px; }
+  .sidebar-logo .doc-label { font-size:11px; color:rgba(255,255,255,0.4); margin-top:2px; text-transform:uppercase; letter-spacing:0.6px; }
+  .sidebar-nav { padding:12px 0; flex:1; }
+  .nav-section-label { padding:12px 20px 4px; font-size:10px; font-weight:600; text-transform:uppercase; letter-spacing:0.8px; color:rgba(255,255,255,0.35); }
+  .nav-item { display:flex; align-items:center; gap:8px; padding:7px 20px; font-size:13px; color:rgba(255,255,255,0.65); cursor:pointer; text-decoration:none; transition:color .12s; }
+  .nav-item:hover { color:#fff; }
+  .nav-item.active { color:#fff; background:rgba(255,255,255,0.07); border-left:2px solid var(--blue); padding-left:18px; }
+  .nav-dot { width:6px; height:6px; border-radius:50%; flex-shrink:0; }
+  .dot-red{background:var(--red);} .dot-amber{background:var(--amber);} .dot-blue{background:var(--blue);}
+  .dot-green{background:var(--green);} .dot-gray{background:var(--n500);}
+  .sidebar-meta { padding:16px 20px; border-top:1px solid rgba(255,255,255,0.08); font-size:11px; color:rgba(255,255,255,0.3); }
+  .main { flex:1; min-width:0; padding:40px 48px 80px; max-width:1040px; }
+  .report-header { margin-bottom:32px; padding-bottom:28px; border-bottom:1px solid var(--n300); }
+  .report-header .eyebrow { font-size:11px; font-weight:600; text-transform:uppercase; letter-spacing:0.8px; color:var(--n500); margin-bottom:8px; }
+  .report-header h1 { font-size:28px; font-weight:700; color:var(--navy); letter-spacing:-0.4px; margin-bottom:8px; }
+  .report-header .subtitle { font-size:15px; color:var(--n700); max-width:760px; }
+  .meta-row { display:flex; gap:24px; margin-top:16px; flex-wrap:wrap; }
+  .meta-pill { display:flex; align-items:center; gap:6px; font-size:12px; color:var(--n500); }
+  .meta-pill strong { color:var(--n700); }
+  .summary-grid { display:grid; grid-template-columns:repeat(4,1fr); gap:12px; margin-bottom:36px; }
+  .summary-card { background:var(--white); border:1px solid var(--n300); border-radius:8px; padding:16px; }
+  .summary-card .count { font-size:28px; font-weight:700; line-height:1; margin-bottom:4px; }
+  .summary-card .label { font-size:12px; color:var(--n500); font-weight:500; }
+  .count-red{color:var(--red);} .count-amber{color:var(--amber);} .count-green{color:var(--green);} .count-blue{color:var(--blue);}
+  .section { margin-bottom:44px; scroll-margin-top:24px; }
+  .section-header { display:flex; align-items:baseline; gap:12px; margin-bottom:8px; }
+  .section-header h2 { font-size:18px; font-weight:700; color:var(--navy); letter-spacing:-0.2px; }
+  .section-count { font-size:12px; font-weight:600; padding:2px 8px; border-radius:20px; }
+  .section-desc { font-size:14px; color:var(--n700); margin-bottom:16px; max-width:720px; }
+  .gap-list { display:flex; flex-direction:column; gap:10px; }
+  .gap-card { background:var(--white); border:1px solid var(--n300); border-radius:8px; overflow:hidden; }
+  .gap-body { padding:16px 18px; }
+  .gap-top { display:flex; align-items:flex-start; justify-content:space-between; gap:12px; margin-bottom:8px; }
+  .gap-title { font-size:14.5px; font-weight:600; color:var(--n900); line-height:1.4; }
+  .gap-badges { display:flex; gap:6px; flex-shrink:0; flex-wrap:wrap; }
+  .badge { display:inline-flex; align-items:center; gap:4px; font-size:11px; font-weight:600; padding:2px 8px; border-radius:4px; white-space:nowrap; text-transform:uppercase; letter-spacing:0.4px; }
+  .badge-red{background:var(--red-lt);color:var(--red);} .badge-amber{background:var(--amber-lt);color:var(--amber);}
+  .badge-blue{background:var(--blue-light);color:var(--blue);} .badge-green{background:var(--green-lt);color:var(--green);}
+  .badge-gray{background:var(--n100);color:var(--n500);} .badge-navy{background:var(--navy);color:#fff;}
+  .gap-desc { font-size:13px; color:var(--n700); line-height:1.6; margin-bottom:10px; }
+  .gap-detail { background:var(--n50); border:1px solid var(--n100); border-radius:6px; padding:10px 14px; font-size:12.5px; color:var(--n700); line-height:1.6; }
+  .gap-detail .detail-row { display:flex; gap:8px; margin-bottom:3px; }
+  .gap-detail .detail-row:last-child { margin-bottom:0; }
+  .detail-label { font-weight:600; color:var(--n500); min-width:88px; flex-shrink:0; font-size:11px; text-transform:uppercase; letter-spacing:0.3px; padding-top:1px; }
+  code { font-family:'JetBrains Mono',monospace; font-size:11.5px; background:var(--n100); padding:1px 5px; border-radius:3px; color:var(--navy-mid); }
+  .sev-critical{border-left:4px solid var(--red);} .sev-high{border-left:4px solid var(--orange);}
+  .sev-medium{border-left:4px solid var(--amber);} .sev-low{border-left:4px solid var(--n300);}
+  .divider { border:none; border-top:1px solid var(--n300); margin:36px 0; }
+  .closed-grid { display:grid; grid-template-columns:1fr 1fr; gap:8px; }
+  .closed-item { display:flex; align-items:flex-start; gap:10px; background:var(--white); border:1px solid var(--n300); border-left:4px solid var(--green); border-radius:8px; padding:12px 14px; }
+  .closed-check { width:18px; height:18px; border-radius:50%; background:var(--green); color:#fff; display:flex; align-items:center; justify-content:center; flex-shrink:0; font-size:11px; font-weight:700; margin-top:1px; }
+  .closed-item .ci-title { font-size:13px; font-weight:600; color:var(--n900); }
+  .closed-item .ci-sub { font-size:12px; color:var(--n500); margin-top:2px; }
+  .closed-item .ci-sub code { font-size:10.5px; }
+  .rec-table { width:100%; border-collapse:collapse; font-size:13px; }
+  .rec-table th { text-align:left; padding:8px 12px; font-size:11px; font-weight:600; text-transform:uppercase; letter-spacing:0.5px; color:var(--n500); border-bottom:2px solid var(--n300); background:var(--n50); }
+  .rec-table td { padding:10px 12px; border-bottom:1px solid var(--n100); vertical-align:top; color:var(--n700); }
+  .rec-table tr:last-child td { border-bottom:none; }
+  .rec-table td:first-child { font-weight:500; color:var(--n900); }
+  .priority-chip { display:inline-block; font-size:10px; font-weight:700; padding:2px 7px; border-radius:3px; text-transform:uppercase; letter-spacing:0.4px; }
+  .p1{background:var(--red-lt);color:var(--red);} .p2{background:var(--orange-lt);color:var(--orange);}
+  .p3{background:var(--amber-lt);color:var(--amber);}
+  .callout { background:#fff; border:1px solid var(--green); border-left:4px solid var(--green); border-radius:8px; padding:16px 18px; margin-bottom:20px; }
+  .callout .ct { font-size:14px; font-weight:700; color:var(--green); margin-bottom:6px; display:flex; align-items:center; gap:8px; }
+  .callout .cb { font-size:13px; color:var(--n700); line-height:1.6; }
+  @media (max-width:900px){ .sidebar{display:none;} .main{padding:24px 20px 60px;} .summary-grid,.closed-grid{grid-template-columns:1fr 1fr;} }
+</style>
+</head>
+<body>
+<div class="layout">
+  <nav class="sidebar">
+    <div class="sidebar-logo">
+      <div class="wordmark">ShipX</div>
+      <div class="doc-label">Gap Analysis · v3</div>
+    </div>
+    <div class="sidebar-nav">
+      <div class="nav-section-label">Overview</div>
+      <a class="nav-item active" href="#summary"><span class="nav-dot dot-blue"></span>Re-check summary</a>
+      <a class="nav-item" href="#closed"><span class="nav-dot dot-green"></span>Round 2 — closed</a>
+      <div class="nav-section-label">Still open</div>
+      <a class="nav-item" href="#locale"><span class="nav-dot dot-amber"></span>Scheduled locale seam</a>
+      <a class="nav-item" href="#carried"><span class="nav-dot dot-gray"></span>Open questions / carried</a>
+      <div class="nav-section-label">Plan</div>
+      <a class="nav-item" href="#recommendations"><span class="nav-dot dot-green"></span>Recommendations</a>
+    </div>
+    <div class="sidebar-meta">Re-checked June 17, 2026</div>
+  </nav>
+
+  <main class="main">
+    <div class="report-header" id="summary">
+      <div class="eyebrow">Third-pass review · backend</div>
+      <h1>Gap Analysis v3 — Re-check</h1>
+      <p class="subtitle">The three Round 2 backend items are all implemented — and the read-only impersonation guard was done the right way. This pass found one real remaining seam (the same locale-forwarding pattern, missed in the scheduled jobs) and two things to confirm.</p>
+      <div class="meta-row">
+        <span class="meta-pill"><strong>Round 2 closed:</strong> 3 of 3</span>
+        <span class="meta-pill"><strong>Still open:</strong> 1 seam + 2 to confirm</span>
+        <span class="meta-pill"><strong>Highest severity:</strong> Medium</span>
+      </div>
+    </div>
+
+    <div class="summary-grid">
+      <div class="summary-card"><div class="count count-green">3</div><div class="label">Round 2 items closed</div></div>
+      <div class="summary-card"><div class="count count-amber">1</div><div class="label">Real seam remaining</div></div>
+      <div class="summary-card"><div class="count count-blue">2</div><div class="label">To confirm</div></div>
+      <div class="summary-card"><div class="count count-green">0</div><div class="label">Critical / high</div></div>
+    </div>
+
+    <!-- CLOSED -->
+    <div class="section" id="closed">
+      <div class="section-header"><h2>Round 2 — closed</h2><span class="section-count badge badge-green">Verified in code</span></div>
+      <div class="callout">
+        <div class="ct">✓ The critical read-only impersonation gap is properly fixed</div>
+        <div class="cb">Enforced at a single chokepoint — <code>get_tenant_context()</code> calls <code>assert_not_read_only()</code> internally, so every write path is covered and no future handler can forget. There's even a meta-test (<code>test_auth.py</code>) that fails if that call is ever removed. This is the right design.</div>
+      </div>
+      <div class="closed-grid">
+        <div class="closed-item"><div class="closed-check">✓</div><div><div class="ci-title">Read-only impersonation enforced</div><div class="ci-sub">Central chokepoint in <code>shared/auth.py</code>; 403 <code>IMPERSONATION_READ_ONLY</code> on any mutating verb; meta-test guards the call site; stale doc checkbox corrected</div></div></div>
+        <div class="closed-item"><div class="closed-check">✓</div><div><div class="ci-title">Webhook config save</div><div class="ci-sub"><code>WebhookConfigRequest</code> + persist; <code>rotate-secret</code> (returns once) &amp; <code>test</code> endpoints; secret masked on read; events validated against <code>WebhookEventType</code> enum; audited</div></div></div>
+        <div class="closed-item"><div class="closed-check">✓</div><div><div class="ci-title">Staff locale write path</div><div class="ci-sub"><code>update_user</code> now permits <code>locale</code> (validated against <code>_SUPPORTED_LOCALES</code> en/zh) + self-service <code>PATCH /v1/tenant/me</code></div></div></div>
+        <div class="closed-item"><div class="closed-check">✓</div><div><div class="ci-title">Tracking notifications forward locale</div><div class="ci-sub"><code>tracking/service.py</code> passes <code>locale=customer.get('locale','en')</code> into <code>enqueue_notifications</code> — the correct pattern</div></div></div>
+      </div>
+    </div>
+
+    <hr class="divider" />
+
+    <!-- LOCALE SEAM -->
+    <div class="section" id="locale">
+      <div class="section-header"><h2>Scheduled-job notifications ignore locale</h2><span class="section-count badge badge-amber">Half-wired</span></div>
+      <p class="section-desc">The locale feature is fully built — columns, write paths, ZH templates, and correct forwarding in the tracking service. But the <strong>scheduled jobs</strong> never forward it, so every automated reminder still goes out in English regardless of the recipient's setting.</p>
+      <div class="gap-list">
+        <div class="gap-card sev-medium">
+          <div class="gap-body">
+            <div class="gap-top">
+              <div class="gap-title">Four scheduled jobs don't select or pass <code>locale</code></div>
+              <div class="gap-badges"><span class="badge badge-amber">Medium</span><span class="badge badge-navy">Backend</span></div>
+            </div>
+            <p class="gap-desc">Migration 026 added <code>locale</code> to <strong>both</strong> <code>customer</code> and <code>tenant_user</code>, and the SQS consumers already pick the ZH template when <code>locale == 'zh'</code>. But the scheduled jobs call <code>enqueue_notification(...)</code> with no <code>locale</code> arg, and their recipient-lookup queries don't even <code>SELECT</code> the locale column. Result: a Chinese-preference customer or staffer receives English for storage reminders, release-expiry notices, dispute escalations, and SLA alerts. This is the exact downstream gap flagged when the locale write path was added — fixed for tracking, missed for the scheduled tier.</p>
+            <div class="gap-detail">
+              <div class="detail-row"><span class="detail-label">Customer-facing</span><span><code>storage_reminders.py</code>, <code>release_expiry.py</code> — <code>_get_customer_contact</code> selects only <code>c.id, u.email, u.phone_number</code> (no <code>c.locale</code>)</span></div>
+              <div class="detail-row"><span class="detail-label">Staff-facing</span><span><code>dispute_escalation.py</code>, <code>sla_check.py</code> — select <code>tu.email, tu.phone_number</code> (no <code>tu.locale</code>)</span></div>
+              <div class="detail-row"><span class="detail-label">Fix</span><span>Add the locale column to each lookup query and pass <code>locale=</code> into every <code>enqueue_notification</code> call. Where a job notifies both customer and staff, use each recipient's own locale.</span></div>
+              <div class="detail-row"><span class="detail-label">Effort</span><span>Small — 4 files, query + call-site each. Added as Task 4 in the prompts file.</span></div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <hr class="divider" />
+
+    <!-- CARRIED / CONFIRM -->
+    <div class="section" id="carried">
+      <div class="section-header"><h2>To confirm / carried over</h2><span class="section-count badge badge-gray">Verify</span></div>
+      <div class="gap-list">
+        <div class="gap-card sev-low">
+          <div class="gap-body">
+            <div class="gap-top">
+              <div class="gap-title">Can a customer set their own language?</div>
+              <div class="gap-badges"><span class="badge badge-blue">Confirm</span><span class="badge badge-gray">Backend</span></div>
+            </div>
+            <p class="gap-desc">Customers are the main audience for storage-reminder and release-expiry notifications, and they now have a <code>customer.locale</code> column. Confirm the self-service <code>PATCH /v1/tenant/me</code> is reachable by the <code>customer</code> role (or that the customer portal exposes a language setting some other way). If not, the customer locale column is unreachable and ZH is never actually selectable by the people who receive the most messages.</p>
+          </div>
+        </div>
+        <div class="gap-card sev-low">
+          <div class="gap-body">
+            <div class="gap-top">
+              <div class="gap-title">Design-system spec vs. built screens</div>
+              <div class="gap-badges"><span class="badge badge-blue">Low</span><span class="badge badge-gray">Docs</span></div>
+            </div>
+            <p class="gap-desc">Still carried from v1/v2 unless addressed: the Section 0 spec (Inter, blue/orange) doesn't match the implemented screens (Manrope + Kumbh Sans, green + copper). Update the spec to match the screens.</p>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <hr class="divider" />
+
+    <!-- RECS -->
+    <div class="section" id="recommendations">
+      <div class="section-header"><h2>Recommended order</h2><span class="section-count badge badge-green">Prioritised</span></div>
+      <table class="rec-table">
+        <thead><tr><th style="width:38%">Action</th><th style="width:9%">Priority</th><th style="width:16%">Owner</th><th>Why</th></tr></thead>
+        <tbody>
+          <tr><td>Forward recipient <code>locale</code> from the 4 scheduled jobs (+ tests)</td><td><span class="priority-chip p2">P1</span></td><td>Backend</td><td>EN/ZH is fully built but inert for automated notifications — the largest volume of messages.</td></tr>
+          <tr><td>Confirm customers can set their own locale (<code>PATCH /v1/tenant/me</code> reachable by customer role)</td><td><span class="priority-chip p3">P2</span></td><td>Backend</td><td>Otherwise the customer locale column can never be populated.</td></tr>
+          <tr><td>Reconcile design-system spec with built screens</td><td><span class="priority-chip p3">P3</span></td><td>Design</td><td>Keeps the component-library doc trustworthy.</td></tr>
+        </tbody>
+      </table>
+      <p class="section-desc" style="margin-top:20px">Net: the backend is in good shape. No critical or high-severity gaps remain — the read-only security fix landed correctly. What's left is finishing the locale wiring into the scheduled tier and one access confirmation.</p>
+    </div>
+  </main>
+</div>
+<script>
+  const sections = document.querySelectorAll('.section, .report-header');
+  const navItems = document.querySelectorAll('.nav-item');
+  const obs = new IntersectionObserver((entries) => {
+    entries.forEach(e => { if (e.isIntersecting) {
+      navItems.forEach(n => n.classList.remove('active'));
+      const m = document.querySelector('.nav-item[href="#'+e.target.id+'"]');
+      if (m) m.classList.add('active');
+    }});
+  }, { rootMargin: '-20% 0px -70% 0px' });
+  sections.forEach(s => obs.observe(s));
+  navItems.forEach(n => n.addEventListener('click', e => {
+    e.preventDefault();
+    const t = document.querySelector(n.getAttribute('href'));
+    if (t) t.scrollIntoView({ behavior:'smooth', block:'start' });
+  }));
+</script>
+</body>
+</html>

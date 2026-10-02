@@ -8,7 +8,12 @@ output "api_lambda_arns" {
       k => "arn:aws:lambda:${data.aws_region.current.name}:${data.aws_caller_identity.current.account_id}:function:${var.project_name}-${v.name}-${var.environment}"
     },
     {
-      notification = "arn:aws:lambda:${data.aws_region.current.name}:${data.aws_caller_identity.current.account_id}:function:${var.project_name}-${local.notification_configs.notif_whatsapp.name}-${var.environment}"
+      # Dual-mode SQS/HTTP Lambda — serves GET /v1/platform/tenants/{id}/usage.
+      metering = "arn:aws:lambda:${data.aws_region.current.name}:${data.aws_caller_identity.current.account_id}:function:${var.project_name}-${local.metering_config.name}-${var.environment}"
+    },
+    {
+      for k, v in local.non_vpc_api_configs :
+      k => "arn:aws:lambda:${data.aws_region.current.name}:${data.aws_caller_identity.current.account_id}:function:${var.project_name}-${v.name}-${var.environment}"
     },
   )
 }

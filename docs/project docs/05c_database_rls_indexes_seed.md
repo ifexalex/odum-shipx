@@ -111,7 +111,7 @@ Steps:
 
 ## Acceptance Criteria
 
-- [x] RLS enabled on all 21 tenant-scoped tables
+- [x] RLS enabled on all tenant-scoped tables (24 as of migration 025: +container_document migration 022, +notification_template migration 024, +rate_history migration 025)
 - [x] Both SELECT and INSERT policies created
 - [x] `FORCE ROW LEVEL SECURITY` applied so RLS works for table owner too
 - [x] Application role `logistics_app` created with appropriate grants

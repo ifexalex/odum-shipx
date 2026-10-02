@@ -34,33 +34,95 @@ services/tenant_management/
 | PATCH | `/v1/platform/tenants/{id}/reactivate` | Re-onboard offboarded tenant (offboarded→active) | platform_admin |
 | GET | `/v1/platform/dashboard` | Cross-tenant metrics | platform_admin |
 | GET | `/v1/platform/audit-log` | Platform audit log | platform_admin |
+| POST | `/v1/platform/tenants/{id}/impersonate` | Start 30-min read-only impersonation session | platform_admin |
+| DELETE | `/v1/platform/impersonation/{session_id}` | End impersonation session | platform_admin |
 
 ### Tenant Admin Endpoints
 | Method | Path | Handler | Roles |
 |---|---|---|---|
-| GET | `/v1/tenant/config` | Get tenant config | tenant_admin |
-| PUT | `/v1/tenant/config` | Update branding + notifications | tenant_admin |
-| POST | `/v1/tenant/users` | Create user (+ Cognito) | tenant_admin |
-| GET | `/v1/tenant/users` | List tenant users | tenant_admin |
-| GET | `/v1/tenant/users/{id}` | Get user detail | tenant_admin |
-| PATCH | `/v1/tenant/users/{id}` | Update user | tenant_admin |
+| GET | `/v1/tenant/activity` | Tenant-scoped audit feed; `?actor_id=` narrows to one staff member, `?entity_type=` narrows to one kind of record; cursor-paginated; response includes `before_state`/`after_state` | tenant_admin |
+| GET | `/v1/tenant/config` | Get tenant config (webhook_config.secret masked to `****`; paystack_config.secret_key_encrypted stripped entirely) | all staff roles + customer (read widened 2026-07-11 for staff — printable documents render `branding_config` for whoever prints them; widened again 2026-09-06 for customer — `MyBillingDetail.tsx`'s bank-transfer panel needs `bank_transfer_config`) |
+| PUT | `/v1/tenant/config` | Update branding, notifications, webhook_config, and/or bank_transfer_config | tenant_admin |
+| POST | `/v1/tenant/config/webhook/rotate-secret` | Generate new HMAC signing secret; returns it once in plaintext | tenant_admin |
+| POST | `/v1/tenant/config/webhook/test` | Send a signed test event to the configured webhook URL; returns delivery result | tenant_admin |
+| PUT | `/v1/tenant/config/paystack` | Connect/replace this tenant's own Paystack secret key (encrypted at rest; always a full replace, never a partial merge) | tenant_admin |
+| DELETE | `/v1/tenant/config/paystack` | Disconnect Paystack — online payment reverts to bank-transfer-only until reconfigured | tenant_admin |
+| POST | `/v1/tenant/config/paystack/test` | Live connectivity check against the stored key (real Paystack API call, not shape-only) | tenant_admin |
+| POST | `/v1/tenant/users` | Create user (+ Cognito). **Breaking change (2026-07-20, migration 039):** body is `{email, full_name, roles, primary_role?}` — `role` (singular) removed | tenant_admin |
+| GET | `/v1/tenant/users` | List tenant users. Each row now also carries `roles: TenantUserRole[]` alongside the existing primary `role` | tenant_admin |
+| GET | `/v1/tenant/users/{id}` | Get user detail. Response adds `roles: TenantUserRole[]` (primary role always included) | tenant_admin |
+| PATCH | `/v1/tenant/users/{id}` | Update user (full_name, locale, and/or roles/primary_role). **Breaking change:** `role` (singular) removed, replaced by `roles`/`primary_role` | tenant_admin |
+| PATCH | `/v1/tenant/me` | Self-service locale update — any authenticated role | all authenticated |
 | DELETE | `/v1/tenant/users/{id}` | Deactivate user | tenant_admin |
-| GET | `/v1/tenant/dollar-rate` | Get current rate | tenant_admin |
-| PUT | `/v1/tenant/dollar-rate` | Update rate | tenant_admin |
+| POST | `/v1/tenant/users/{id}/resend-invite` | Resend Cognito temp-password email | tenant_admin |
+| POST | `/v1/tenant/users/{id}/reset-password` | Trigger Cognito password-reset email | tenant_admin |
+| GET | `/v1/tenant/dollar-rate` | Get effective rate (Bybit base + this tenant's markup) | tenant_admin, china_office_staff, nigeria_office_staff |
+| PUT | `/v1/tenant/dollar-rate` | Update this tenant's markup | tenant_admin |
+| GET | `/v1/tenant/cbm-rate` | Get current CBM rate (currency + carton/bag/bale rates) | tenant_admin, china_office_staff, nigeria_office_staff |
+| PUT | `/v1/tenant/cbm-rate` | Update CBM rate (currency + flat/per-package-type) | tenant_admin |
+| GET | `/v1/tenant/rate-history` | Paginated rate change audit (`?rate_type=dollar_rate\|cbm_rate`) | tenant_admin |
 | POST | `/v1/tenant/charge-types` | Create charge type | tenant_admin |
 | GET | `/v1/tenant/charge-types` | List charge types | tenant_admin |
 | PUT | `/v1/tenant/charge-types/{id}` | Update charge type | tenant_admin |
 | DELETE | `/v1/tenant/charge-types/{id}` | Deactivate charge type | tenant_admin |
+| GET | `/v1/tenant/container-capacities` | List capacity presets (10 defaults + custom, merged, sorted by capacity desc) | all staff roles (`_STAFF_ROLES`) — the create-container form + packing-list wizard need it |
+| POST | `/v1/tenant/container-capacities` | Add a custom capacity preset | tenant_admin |
+| PATCH | `/v1/tenant/container-capacities/{id}` | Edit recommended load (defaults: recommended only; custom: name/capacity/recommended) | tenant_admin |
+| DELETE | `/v1/tenant/container-capacities/{id}` | Remove a custom preset (`default:*` ids 422) | tenant_admin |
+
+**Charge type wire shape** (all four endpoints):
+```json
+{
+  "id": "uuid",
+  "name": "Customs examination",
+  "description": "Port examination fee",
+  "amount_ngn": "15000.00",
+  "is_active": true,
+  "usage_count": 7
+}
+```
+- `amount_ngn` is the wire field; it maps to the `charge_type.default_amount_ngn`
+  column (the service translates in both directions — send/read `amount_ngn`, never
+  `default_amount_ngn`). Create/update accept `{name, amount_ngn, description}`.
+- `usage_count` (list only) = count of `misc_charge` rows attributed to this type via
+  `misc_charge.charge_type_id` (migration 035). Set when a charge is added from a
+  configured type; free-form "other" charges are NULL/uncounted. Accurate from
+  migration 035 onward — older rows have NULL `charge_type_id`. Powers the §4.4
+  "Times used" column.
 
 ### Customer Endpoints
 | Method | Path | Handler | Roles |
 |---|---|---|---|
 | POST | `/v1/customers` | Create customer | tenant_admin, china_office_staff, nigeria_office_staff |
-| GET | `/v1/customers` | List customers (supports `?q=` search) | all staff roles |
+| GET | `/v1/customers` | List customers (supports `?q=` search) | staff roles; **customer role gets exactly `[own record]`** (doubles as the portal's "who am I" lookup) |
+| GET | `/v1/customers/stats` | Tenant-wide customer aggregates for stat cards | staff roles (`_STAFF_ROLES`) |
 | GET | `/v1/customers/{id}` | Get customer | all staff + customer (own only) |
-| PATCH | `/v1/customers/{id}` | Update customer | tenant_admin, staff roles |
-| DELETE | `/v1/customers/{id}` | GDPR anonymisation (Art. 17 — right to erasure) | tenant_admin |
-| GET | `/v1/customers/{id}/export` | GDPR data portability export (Art. 20) | tenant_admin |
+| PATCH | `/v1/customers/{id}` | Update customer | staff roles (full field set); **customer (own record — restricted to `phone`, `whatsapp`, `delivery_address`, `notification_consent`, `locale`; never name/email/contract/user_id)**. `locale` (`en`\|`zh`, else 422 `UNSUPPORTED_LOCALE`) selects the notification template language (P2-1) |
+| DELETE | `/v1/customers/{id}` | GDPR anonymisation (Art. 17 — right to erasure) | tenant_admin, **customer (own record — the data subject's own right)** |
+| GET | `/v1/customers/{id}/export` | GDPR data portability export (Art. 20) | tenant_admin, customer (own) |
+
+**Implementation notes (2026-07-11 — audit gap A1):** `branding_config` now has a canonical shape the frontend writes via `PUT /v1/tenant/config {branding}` and every consumer reads: `display_name`, `tagline`, `primary_color`, `warehouse_address`, `pickup_hours`, `pickup_phone`, `support_email`, `support_whatsapp`, `document_footer` (all optional; JSONB is free-form so no backend model change was needed — see `frontend/src/api/tenantManagement.ts` `BrandingConfig`). `GET /v1/tenant/config` (exact path, GET only) was widened to all staff roles so the printable packing list / release note can render the tenant's branding for whoever prints them; writes and the webhook sub-routes stay tenant_admin-only, and the guard is covered by `TestTenantConfigReadAccess` in `tests/unit/test_tenant_management.py`.
+
+**Implementation notes / ground-truth gaps found (2026-07-18 — platform admin impersonation was broken at four layers):** (1) `impersonation.py`'s `_get_tenant_admin()` selected non-existent columns `tu.user_id` / `tu.is_active` (real schema: `id` PK, `status` enum) — every `POST /v1/platform/tenants/{id}/impersonate` 500'd against the real DB; (2) `platform_audit_log.actor_id` had an FK to `tenant_user(id)`, but platform admins have no `tenant_user` row by design, so **every platform audit insert silently failed** (swallowed with a warning) and the platform audit-log page was permanently empty — FK dropped in migration 037 (same class as migration 014); (3) the frontend read `result.id_token` where the wire field is `token`; (4) `buildSession()` required `custom:tenant_id`/`cognito:groups` claims, but the raw impersonation token carries bare `tenant_id`/`role` — now accepted as a fallback shape. Also: `scripts/local_server.py` now maps impersonation-token claims the same way the production REQUEST authorizer does, and `LocalAuthProvider` implements `startImpersonation`/`exitImpersonation` (was a hard throw), so "Impersonate" works in both local auth modes. Full loop verified live: start → tenant-scoped read → write blocked 422 → end session.
+
+**Implementation notes / ground-truth gaps found (2026-07-09):** `GET /v1/customers` previously had **no role scoping** — any logged-in customer could list every customer's PII in the tenant (cross-customer data leak within a tenant). Fixed: customer role now receives only their own record, resolved via `customer.user_id = ctx.user_id` (`get_customer_for_user`). At the same time PATCH/DELETE were widened to support customer self-service (Account page 10.7): ownership is verified via the same `user_id` linkage, and PATCH's body is filtered to a safe self-service allowlist before hitting `update_customer`.
+
+### Platform Plans, Quota Overrides & Provider Gateways (added 2026-07-09)
+
+| Method | Path | Purpose | Roles |
+|---|---|---|---|
+| GET | `/v1/platform/plans` | All tiers with plan-level overrides applied | platform_admin |
+| PUT | `/v1/platform/plans/{tier}` | Override a tier's limits platform-wide (partial: only sent dimensions change) | platform_admin |
+| POST | `/v1/platform/tenants/{id}/quota-override` | Per-tenant limit override; empty body clears. Returns `effective_limits` | platform_admin |
+| GET | `/v1/platform/tenants/{id}/users` | Staff users of a tenant (TenantDetail Users tab) | platform_admin |
+| GET | `/v1/platform/tenants/{id}/config` | Read-only tenant config (webhook secret masked) | platform_admin |
+| GET | `/v1/platform/settings/gateways` | All three provider configs, secrets masked | platform_admin |
+| PUT | `/v1/platform/settings/{sms\|whatsapp\|email}-gateway` | Update provider config. A masked `****` secret in the body keeps the stored value | platform_admin |
+| POST | `/v1/platform/settings/{kind}-gateway/test` | Config-shape validation (required fields present) — **not** a live provider call | platform_admin |
+
+**Limit resolution** (see `shared/tier_limits.py::get_effective_limits`): static `TIER_LIMITS` defaults → platform_settings `plan_limits` overrides → platform_settings `quota_override:{tenant_id}`. Overrides are partial and **fail open** to static defaults on infra errors (quota is a commercial limit, not a security boundary). Both `services/metering` limit checks and `GET /v1/tenants/me/quota` resolve through this chain.
+
+**Gateway config contracts:** sms/Termii `{api_key*, sender_id}` · whatsapp/Meta `{access_token*, phone_number_id}` · email/Postmark `{server_token*, from_email}` (`*` = secret, masked on read; audit logs record field *names* only, never values).
 
 ## Key Business Logic
 
@@ -70,8 +132,8 @@ services/tenant_management/
 3. Create Cognito user for initial admin with `custom:tenant_id = {new_tenant_id}`
 4. Create Cognito group `{tenant_id}:tenant_admin`
 5. Add user to group
-6. Insert `tenant_user` record
-7. Insert default `tenant_config` records (dollar_rate, storage_fee, warehouse_address, cbm_rate, etc.)
+6. Insert `tenant_user` record — `id` is set explicitly to the Cognito `sub` returned in step 3, never left to `gen_random_uuid()`. `TenantContext.user_id` (every request's JWT `sub`) is used directly as `created_by`/`approved_by`/`rejected_by` with no resolution step, so this is load-bearing: if `id != cognito_sub`, every write by this user 500s on the FK.
+7. Insert default `tenant_config` records (dollar_rate_markup, storage_fee, warehouse_address, cbm_rate, etc.)
 8. Publish `TenantOnboarded` event
 9. Log to `platform_audit_log`
 10. Return tenant + admin user info
@@ -81,15 +143,50 @@ services/tenant_management/
 2. Update `tenant.status = 'suspended'`
 3. Publish `TenantSuspended` event
 4. Log to `platform_audit_log`
+5. Notify the tenant's primary contact (see below)
 - **Note:** Suspended tenants have all API requests blocked by auth middleware (403 TENANT_SUSPENDED)
 
+**Ground-truth gap found live, reported by the user (2026-09-09) while investigating a separate missing notification on payment-claim rejection — asked to check every notification in the app:** `tenant_onboarded`/`tenant_suspended` had full SMS/WhatsApp/email templates defined but no call site ever used either — `create_tenant` and `suspend_tenant` only published EventBridge events that were never wired into any routing rule. Both now call `enqueue_notifications` directly against the tenant's own `primary_contact_email`/`primary_contact_phone`, best-effort and never able to fail tenant creation/suspension itself. Full account in `15_api_notifications.md`. Tests: `TestCreateTenantNotifiesOnboarding`, and new cases in `TestSuspendTenant`, in `tests/unit/test_tenant_management.py`.
+
 ### User Creation (POST /tenant/users)
+**Breaking change (2026-07-20, migration 039 — multi-role staff support):** request body
+is now `{email, full_name, roles: TenantUserRole[], primary_role?: TenantUserRole}` —
+the previous singular `role` field is gone, no dual-path back-compat (no production
+tenants existed at the time of the change). `primary_role` defaults to `roles[0]` when
+omitted; if provided it must be a member of `roles` (422 otherwise).
+
 1. Validate request + check usage limits (starter: 10 users, business: 50)
-2. Create Cognito user with `custom:tenant_id`, temporary password
-3. Create or get Cognito group `{tenant_id}:{role}`
-4. Add user to group
-5. Insert `tenant_user` record
-6. If role == 'customer' and customer record exists with matching email, link `customer.user_id`
+2. Create Cognito user with `custom:tenant_id`, `custom:role` = primary role, temporary password
+3. Insert `tenant_user` record with `role` = primary role — same `id = cognito_sub` rule as tenant creation above
+4. `repository.set_user_roles()` — transactionally populate `tenant_user_role` with every role in `roles` (primary flagged `is_primary = TRUE`)
+5. `CognitoClient.sync_user_groups(email, tenant_id, roles)` — diffs current vs. desired `{tenant_id}:*` groups and adds/removes to match (N=1 case of the same operation used by role updates below; replaces the old single `create_group_if_not_exists` + `add_user_to_group` pair)
+6. If `'customer'` is one of `roles` and a customer record exists with matching email, link `customer.user_id` (set to the new `tenant_user.id`, i.e. also the Cognito sub)
+
+### Updating Roles (PATCH /tenant/users/{id})
+**Breaking change:** same `role` → `roles`/`primary_role` shape change as create. When
+`roles` is present in the PATCH body:
+1. `repository.set_user_roles()` replaces the user's `tenant_user_role` rows and mirrors
+   the new primary role into `tenant_user.role`, transactionally.
+2. `CognitoClient.sync_user_groups()` reconciles Cognito group membership to match —
+   **this is the fix for a real, pre-existing bug:** before this change, editing a
+   staff member's role updated the DB row and forced re-login
+   (`global_sign_out`), but never touched actual Cognito group membership (no
+   `remove_user_from_group` existed at all). A user re-derived their *old* role from
+   their *old*, untouched group after re-login — role changes had no real effect on
+   permissions. `sync_user_groups` is a genuine add/remove diff against
+   `admin_list_groups_for_user`, scoped to this tenant's `{tenant_id}:*` groups only
+   (never touches `platform_admin` or another tenant's groups).
+3. `custom:role` Cognito attribute is updated to the new primary role.
+4. `global_sign_out` is called — now it actually matters, since group membership
+   genuinely changed.
+
+Verified live against the local stack (Moto Cognito): seeded multi-role user
+`amaka@acmeshipping.com` (Acme tenant, `nigeria_office_staff` + `warehouse_attendant`)
+started with both Cognito groups; `PATCH /v1/tenant/users/{id} {"roles": ["warehouse_attendant"]}`
+removed the `nigeria_office_staff` group (confirmed via `admin-list-groups-for-user`
+before/after) and updated `custom:role`. A follow-up request gated to
+`nigeria_office_staff` correctly 403'd afterward; a request gated to
+`warehouse_attendant` still succeeded.
 
 ### Platform Admin Auth Structure
 Platform admin requests use a distinct JWT structure from tenant users:
@@ -138,6 +235,31 @@ Re-onboards an offboarded tenant under a **new agreement**. Distinct from `/acti
 
 ### POST /v1/customers — Field Aliases
 The create customer endpoint accepts `full_name` as an alias for the `name` field (normalised in the service layer). Both `{"name": "..."}` and `{"full_name": "..."}` are accepted.
+
+### GET /v1/tenant/dollar-rate + /v1/tenant/cbm-rate — staff read access
+Writes (`PUT`) to these two rate endpoints remain **tenant_admin only**, but the **`GET`** was widened to also allow `china_office_staff` and `nigeria_office_staff` (handler `_dispatch`, special-cased ahead of the blanket `assert_role(TENANT_ADMIN)` on the `/v1/tenant/*` section). Reason: the China packing-list wizard shows a live shipping-price estimate computed from the CBM rate × FX rate, and Nigeria staff preview the same when billing. Least-privilege read-only widening — a shipping rate is neither PII nor a secret. Every other `/v1/tenant/*` path/method is unchanged.
+
+### GET /v1/customers — derived `shipment_count`
+The customer **list** endpoint returns a derived `shipment_count` per row: a correlated `COUNT(*)` over `packing_list` for that customer (one packing list = one customer's cargo on one container = one lifetime shipment). Used by the packing-list wizard's customer picker card ("N shipments lifetime"). Not stored; computed in `list_customers` via a subquery-wrapped query so pagination cursors stay unambiguous. The single-record `GET /v1/customers/{id}` does not include it.
+
+### GET /v1/customers/stats — tenant-wide aggregates
+Returns SQL-computed counts so the admin customer list's and dashboard's stat cards stay correct beyond the first loaded page (data scales to tens of thousands of rows). Must be matched **before** the `/v1/customers/{id}` branch in `_customer_routes` (segment `"stats"` is not a UUID). Response body:
+
+```json
+{ "total": 70, "active": 68, "anonymised": 2, "with_whatsapp": 10, "shipments": 372 }
+```
+
+- `active` = `COUNT(*) FILTER (WHERE anonymised_at IS NULL)`, `anonymised` its complement.
+- `with_whatsapp` = `COUNT(*) FILTER (WHERE 'whatsapp' = ANY(notification_consent))`.
+- `shipments` = `COUNT(*)` over `packing_list` (lifetime shipments across all customers), a second tenant-scoped query.
+
+Both queries run through `execute_with_tenant` (RLS-scoped). Consumed by the frontend as `customersApi.stats()` (`CustomerStats`, `customerKeys.stats()`).
+
+### Container capacity presets (2026-10-01)
+
+`GET /v1/tenant/container-capacities` returns the ten built-in presets (code constants, `is_custom: false`, synthetic `id: "default:<name>"`) merged with the tenant's custom rows (`is_custom: true`, UUID id), sorted by `capacity_cbm` descending. Each item: `{ id, name, capacity_cbm (float), recommended_cbm (float|null), is_custom }`. CBM values are serialized as floats (not Decimal strings) so the frontend can format them directly.
+
+`POST` (tenant_admin) adds a custom preset — validates `name` (required, ≤100 chars), `capacity_cbm` (>0, ≤1000) and optional `recommended_cbm` (>0 and ≤ capacity). `PATCH /{id}` edits the recommended load: for a **custom** preset it updates the DB row (name/capacity/recommended all editable); for a **default** (`default:<name>` id) it stores a per-tenant override of just the recommended load in `tenant_config` under `container_capacity_overrides` (a `{name: recommended}` map applied in the list merge) — a default's name/capacity are physical constants and can't change, and `recommended_cbm: null` reverts a default to its built-in value. `DELETE /{id}` removes a custom preset; a `default:*` id returns 422 (`CAPACITY_DEFAULT_IMMUTABLE`). All audit-logged (`entity_type=container_capacity`). Consumed as `containerCapacitiesApi` (`list`/`create`/`update`/`remove`). The chosen preset's name + CBM are snapshotted onto the container at create time — see `10_api_tracking.md`.
 
 ### GDPR Endpoints
 
@@ -203,14 +325,34 @@ class CognitoClient:
             self.client.admin_update_user_attributes(
                 UserPoolId=self.user_pool_id, Username=username, UserAttributes=attrs
             )
+
+    # --- Added 2026-07-20 (migration 039 — multi-role staff support) -------
+    def remove_user_from_group(self, username: str, group_name: str) -> None:
+        """Remove a user from a Cognito group (admin_remove_user_from_group). Did not
+        exist before this change — role removal never actually revoked group membership."""
+        ...
+
+    def list_groups_for_user(self, username: str) -> set[str]:
+        """Every group the user currently belongs to (admin_list_groups_for_user, paginated)."""
+        ...
+
+    def sync_user_groups(self, username: str, tenant_id: str, roles: set[str]) -> None:
+        """Reconcile Cognito group membership to exactly match `roles`. Diffs against
+        list_groups_for_user(), scoped to this tenant's `{tenant_id}:*` groups only —
+        adds missing groups, removes unassigned ones. The actual fix for the group-sync
+        bug described below. N=1 (a single-role user) is just the common case."""
+        ...
 ```
 
 ### PATCH /tenant/users/{id} — Update User
-- Supports updating `full_name` and `role` only
+- Supports updating `full_name`, `locale`, and/or `roles`/`primary_role` (validated by
+  `UpdateTenantUserRequest`, replacing the old ad-hoc dict filter off the raw body)
+- **Breaking change (2026-07-20, migration 039):** the old singular `role` field is
+  gone — see "Updating Roles" above
 - Email (`username`) **cannot** be changed — it is the immutable Cognito username used as login credential
-- Both DB record and Cognito user attributes are updated in sync:
+- Both DB record and Cognito user attributes/groups are updated in sync:
   - `full_name` → Cognito `name` attribute
-  - `role` → Cognito `custom:role` attribute
+  - `roles`/`primary_role` → `tenant_user_role` rows + `tenant_user.role` (via `set_user_roles`) + Cognito `custom:role` attribute + Cognito group membership (via `sync_user_groups` — see "Updating Roles" above for the bug this fixes)
 
 ### GET /v1/platform/audit-log — Platform Audit Log
 
@@ -225,28 +367,410 @@ Query params:
 
 Response uses standard `paginated()` envelope: `{ "data": [...], "next_cursor": "...", "has_more": true }`.
 
-### Dollar Rate
-- **PUT** — Updates `tenant_config` with key `'dollar_rate'`; response includes `previous_rate` for audit visibility
-- **GET** — Returns current `rate`, `currency_pair`, and `effective_from`. Does **not** include `previous_rate` (only available in the PUT response)
-- Audit log the change
+### Dollar Rate — Bybit P2P base + per-tenant markup (2026-09-19)
+
+**The rate is no longer typed in directly.** The base USD/NGN rate tracks the real black-market rate via Bybit's public P2P USDT/NGN order book (`shared/fx_rate.py`); a tenant_admin only controls a markup layered on top of it (percentage, or a flat ₦ amount added to the rate). Every consumer that used to read `tenant_config['dollar_rate']` independently — billing (`handle_payment_due`), claims (NGN↔USD conversions), refunds (staff approval threshold) — now calls `shared.fx_rate.get_effective_dollar_rate(tenant_id)`, the single source of truth.
+
+**Bybit endpoint** (public, unauthenticated — the same call bybit.com's own P2P page makes; not part of Bybit's official signed v5 API, which is scoped to a merchant managing their own ads): `POST https://api2.bybit.com/fiat/otc/item/online`, body `{"tokenId":"USDT","currencyId":"NGN","side":"1",...}`. `side="1"` returns sell-USDT ads sorted ascending by price (cheapest first) — the rate at which Naira converts to dollars, verified live to be the lower of the two sides. The effective base rate is the mean of the cheapest 5 online ads.
+
+**Caching/fallback chain** (`shared/fx_rate.get_base_market_rate`), since every billing/claim/refund calculation would otherwise hit Bybit directly:
+1. Redis (`DistributedCache`, `fx_rate:ngn_usdt` key, 10-minute TTL) — the fast path almost every call hits.
+2. On a cache miss: a circuit-breaker-guarded (`get_circuit_breaker("bybit_p2p")`) live fetch. Success populates both the Redis cache and a platform-wide fallback row (`platform_settings` key `fx_bybit_ngn_rate` — migration 011's table, no RLS, platform-scoped, not tenant data since the black market doesn't vary by tenant).
+3. On fetch failure (Bybit down, circuit open): fall back to that persisted `platform_settings` row, however old, logged at WARNING.
+4. If that's also missing (a platform that has never successfully fetched a rate): a hardcoded constant, logged at ERROR. Billing/claims/refunds must never hard-block on a missing rate.
+
+No manual override exists (confirmed with the user) — the fallback chain above is the only safety net for a Bybit outage.
+
+- **GET /v1/tenant/dollar-rate** — Returns:
+  ```json
+  {
+    "rate": 1588.20,          // effective — base_rate with this tenant's markup applied; what customers are billed at
+    "base_rate": 1573.20,     // raw Bybit P2P rate, before markup
+    "markup_type": "flat",    // "percentage" | "flat"
+    "markup_value": 15.0,
+    "source": "bybit_p2p",
+    "fetched_at": "2026-09-19T12:27:57Z",   // when the underlying Bybit rate was last actually fetched (may be older than "now" — cache/fallback)
+    "currency_pair": "USD_NGN",
+    "effective_from": "2026-09-19T00:00:00Z" // when this tenant's markup was last changed — "" if never changed
+  }
+  ```
+- **PUT /v1/tenant/dollar-rate** — Body: `{ "markup_type": "percentage" | "flat", "markup_value": number }` (`UpdateDollarRateMarkupRequest`, both fields required, `markup_value >= 0` — a markup discounting below Bybit's own rate isn't a "markup"). Upserts `tenant_config['dollar_rate_markup']`, computes the resulting effective rate, appends a `rate_history` row (best-effort, swallowed on failure — values must be pre-cast to plain `float`/`str` before that call, since `repo.append_rate_history`'s `json.dumps()` has no `default=str` and raises on a raw `Decimal`; a real bug caught live during this feature's rollout, see `00_MASTER_PLAN.md`), audit-logs the change, and returns the same shape as GET plus `previous_rate`. tenant_admin only.
+- **`tenant_config['dollar_rate']`** (the old key) is no longer read anywhere — a tenant's existing row is harmless legacy data, left in place rather than migrated/deleted. New tenants get `dollar_rate_markup: {markup_type: "percentage", markup_value: 0}` instead (`DEFAULT_CONFIGS`) — zero markup passes Bybit's rate straight through, so no tenant's pricing silently jumps on rollout.
+
+### CBM Rate
+
+**2026-09-20 — currency choice + per-package-type rates.** A tenant admin can
+now choose (1) the currency the CBM freight rate is priced in (USD or NGN,
+previously USD-only) and (2) whether it's one flat rate or three separate
+rates for carton/bag/bale package types (`packing_list_item.package_unit`,
+a free-text column — pallet/item/mixed/unspecified/anything else bills at
+the carton rate). "Flat" is not a separate code path anywhere downstream —
+it's simply the state where `carton_rate == bag_rate == bale_rate`; the
+request validator (`UpdateCbmRateRequest._resolve_per_type_rates`) enforces
+this server-side whenever `rate_mode = "flat"`, ignoring whatever
+`bag_rate`/`bale_rate` the client sends.
+
+`tenant_config['cbm_rate_per_unit']` shape: `{"currency": "usd"|"ngn",
+"rate_mode": "flat"|"per_package_type", "carton_rate": number, "bag_rate":
+number, "bale_rate": number, "effective_from": iso8601}`. `shared/cbm_rate.py`
+(mirrors `shared/fx_rate.py`'s role) is backward-compatible with the
+pre-2026-09-20 shape (`{"rate_usd": number}`) at read time — no data
+migration was needed; an existing tenant's stored row is normalized on
+every read.
+
+- **GET /v1/tenant/cbm-rate** — Returns `{ "currency", "rate_mode",
+  "carton_rate", "bag_rate", "bale_rate", "effective_from" }`. Roles: same
+  as dollar-rate (`tenant_admin`, `china_office_staff`, `nigeria_office_staff`
+  — the China packing-list wizard's live pricing estimate needs it).
+- **PUT /v1/tenant/cbm-rate** — Body (`UpdateCbmRateRequest`):
+  `{ "currency": "usd"|"ngn", "rate_mode": "flat"|"per_package_type",
+  "carton_rate": number, "bag_rate"?: number, "bale_rate"?: number }`.
+  `bag_rate`/`bale_rate` are required when `rate_mode = "per_package_type"`,
+  ignored (forced equal to `carton_rate`) when `rate_mode = "flat"`. Upserts
+  `tenant_config`, appends a `rate_type="cbm_rate"` row to `rate_history`
+  (best-effort, values pre-cast to `float` — same `json.dumps` gotcha as
+  `dollar_rate_markup`, see above), audit-logs, and returns the same shape
+  as GET. tenant_admin only.
+- New tenants are seeded directly with the new shape (`DEFAULT_CONFIGS`):
+  `{currency: "usd", rate_mode: "flat", carton_rate: 45.00, bag_rate: 45.00,
+  bale_rate: 45.00}` — identical effective behavior to the pre-2026-09-20
+  default, just in the new shape.
+- **Billing** (`services/billing/service.py::handle_payment_due`) groups a
+  customer's approved-packing-list CBM by package type
+  (`repo.get_cbm_by_package_type`, `GROUP BY package_unit`) and prices each
+  bucket at its own rate (`shared/cbm_rate.py::compute_cbm_charge`) — see
+  `11_api_billing.md` for the full calculation and the `billing` table's new
+  `cbm_rate_currency`/`cbm_rate_mode`/`cbm_breakdown` columns.
+- **Ground-truth bug fixed in the same pass**: `rate_history`'s `rate_type`
+  for CBM changes has always been written as `"cbm_rate"` (this doc already
+  said so), but the frontend queried `"cbm_rate_per_unit"` (the
+  `tenant_config` *key*, not the `rate_history` *rate_type*) — so the CBM
+  Rate History table/chart on `CbmRateConfig.tsx` silently never matched any
+  row. Fixed frontend-side only (`frontend/src/api/tenantManagement.ts`).
+- **Ground-truth bug fixed in the same pass**: `get_cbm_rate`'s response
+  returned raw `Decimal` values, which `shared/responses.py`'s `success()`
+  serializes via `json.dumps(..., default=str)` — silently turning every
+  rate into a JSON *string*, inconsistent with `update_cbm_rate`'s response
+  (already `float`-cast) and, found live via a real browser hitting this
+  route, a frontend crash (`config.carton_rate.toFixed is not a function`,
+  since the frontend types these fields as `number`). `get_cbm_rate` now
+  casts to `float` before returning, matching `update_cbm_rate`'s existing
+  behavior. Note: `get_dollar_rate` has the identical latent issue
+  (`rate`/`base_rate`/`markup_value` are raw `Decimal`) — currently benign
+  only because `DollarRateConfig.tsx` happens to use `.toLocaleString()`
+  everywhere rather than `.toFixed()` (a string silently no-ops through
+  `.toLocaleString()`, so no crash, just unformatted display for a JSON
+  string vs. a number) — left unfixed here as out of scope for this task,
+  flagged for whoever next touches that endpoint.
+
+### Rate History
+**GET /v1/tenant/rate-history** — Paginated audit of rate changes (migration 025, `rate_history` table, RLS-enabled, append-only).
+
+Query params: `rate_type` (`dollar_rate` or `cbm_rate`), `limit`, `cursor`.
+
+Response: standard `paginated()` envelope. Each row: `id, tenant_id, rate_type, rate_value (JSONB), previous_value (JSONB), changed_by, effective_from, created_at`.
+
+### Session Invalidation on Role Change
+When `PATCH /v1/tenant/users/{id}` changes a user's `roles`, `update_user` calls `cognito.global_sign_out(email)` immediately after `sync_user_groups`/Cognito attribute updates (best-effort — failure is logged at WARNING and does not block the response). This prevents a demoted user's existing JWT from retaining elevated claims for up to 1 hour — and, since migration 039, actually matters: group membership genuinely changes now (previously the group was never touched, so re-login just re-derived the same old role regardless of sign-out).
+
+### Outbound Webhook
+Tenant admins configure an outbound HTTP webhook in `tenant_config` key `webhook_config`:
+```json
+{
+  "enabled": true,
+  "url": "https://erp.acme.com/hooks/shipx",
+  "secret": "hmac-secret-key",
+  "events": ["container.status_updated"]
+}
+```
+On each matching event, `shared/webhook.py` fires a signed POST (HMAC-SHA256, header `X-ShipX-Signature-256: sha256=<hex>`). Fire-and-forget — failures are logged at WARNING and never surface to the caller. Default `webhook_config` is disabled. Currently fires on `container.status_updated` from the tracking service.
+
+**Endpoint URL validation / SSRF hardening (2026-09-23).** `endpoint_url` is tenant-controlled and fetched from inside the VPC, so `^https://` was not enough (it allowed `https://169.254.169.254/…`, `https://10.x.x.x/…`, `https://localhost/…`, hostnames resolving to those, and redirects to them). Now:
+- **Save time** — `PUT /v1/tenant/config` rejects (`422`) non-https, embedded credentials, `localhost`/`.local`/`.internal`-style hosts, and any IP literal that isn't globally routable (incl. `2130706433`, `0x7f.1`, IPv4-mapped IPv6).
+- **Delivery time** — `shared/url_safety.open_public_https()` re-resolves the host and refuses if *any* address is private/reserved (DNS can change after save), connects to the validated IP with TLS verified against the original hostname, and does not follow redirects. A 3xx from the endpoint is treated as a delivery failure.
+- `POST /v1/tenant/config/webhook/test` returns the reason (`"Endpoint URL must not point at a private or reserved address"`) for a blocked target instead of a raw socket error, so it can't be used as an internal port-scan oracle.
+- Configs saved before this change are re-checked at delivery, so a previously-saved internal URL is inert.
+
+See `02_shared_utilities.md` (`shared/url_safety.py`) and `00_CROSS_CUTTING_STANDARDS.md` §8.4.
+
+### Multi-Tenant Paystack — Design Note (2026-07-19)
+
+**Problem.** Every tenant is a separate shipping company; their customers' payments must land in *that tenant's own* Paystack account, never a platform-wide one. The original implementation used a single `PAYSTACK_SECRET_KEY` Lambda env var (one Terraform variable, shared by every tenant) — a real commingling risk once any second real tenant went live, since a tenant who hadn't set up their own key would silently have payments processed against whoever's key happened to be configured platform-wide.
+
+**Storage.** A new `tenant_config` key, `paystack_config`:
+```json
+{
+  "enabled": true,
+  "secret_key_encrypted": "<KMS+Fernet ciphertext — shared/encryption.py>",
+  "last4": "3afb",
+  "environment": "test",
+  "configured_by": "<tenant_user id>",
+  "configured_at": "2026-07-19T02:06:40Z"
+}
+```
+`secret_key_encrypted` is **never** returned by `GET /v1/tenant/config` — not masked like `webhook_config.secret` (`****`), stripped from the response entirely. This is a deliberate departure from the `webhook_config` precedent (which stores its HMAC secret in plaintext): a Paystack secret key can move real money out of the tenant's account, whereas the webhook secret only signs outbound payloads ShipX itself sends — the blast radius is categorically different, so it gets the stronger `shared/encryption.py` (KMS + Fernet) protection already used for `pickup_record.id_number`, not the plaintext-JSONB shortcut.
+
+**No platform-wide fallback.** `initialize_online_payment()` resolves the calling tenant's own key via `repository.get_tenant_paystack_secret()`; if none is configured, it raises `PAYMENT_GATEWAY_NOT_CONFIGURED` (422) — bank transfer remains available, "Pay online" simply doesn't appear as a working option until the tenant connects their own account. There is no Terraform variable or Lambda env var to fall back to anymore — `paystack_secret_key` was removed from `infrastructure/variables.tf` / `modules/lambda`.
+
+**Webhook signature verification — the ordering had to invert.** `POST /v1/webhooks/payment` has no JWT (Paystack can't send one) and no `{tenant_id}` in its URL — one shared endpoint for every tenant. Previously: verify HMAC using the one global secret, *then* resolve which tenant the payment belongs to. With per-tenant keys there's no single secret to verify against up front, so the order flips:
+1. Parse the JSON body (no trust yet — just reading fields).
+2. Extract `billing_id` from the payment `reference` (a harmless string split).
+3. Look up `tenant_id` for that `billing_id` (`get_billing_tenant()`, `PLATFORM_TENANT_ID`-scoped — a read, not a trust decision).
+4. Fetch and decrypt *that* tenant's own Paystack key.
+5. **Only now** verify the HMAC signature — against that specific tenant's key.
+6. Only on success does `process_webhook_payment()` ever touch the database.
+
+This is a *stricter* invariant than the old single-secret world, not a weaker one: a signature is only ever accepted against the exact tenant its reference claims to belong to, so a leaked key from tenant B can never be replayed to forge a payment confirmation against tenant A's billing. The endpoint still returns `200` with an empty body on every rejection path (bad signature, unknown billing_id, tenant has no gateway configured) — same anti-timing-attack posture as before, now covering more rejection reasons. See `services/payment_release/webhook.py` and `handler.py::_webhook_routes` for the implementation; `services/payment_release/paystack.py`'s module docstring has the same design note.
+
+Flutterwave (unused — no frontend integration) was left on its original single env-var secret; out of scope for this migration.
+
+**Verified live** (not just unit tests): two tenants each configured with a different key; a webhook payload referencing tenant A's billing but signed with tenant B's key was correctly rejected (billing stayed unpaid); the same payload signed with tenant A's real key was correctly accepted (billing flipped to paid, correct amount). See `tests/unit/test_payment_webhook.py`, `tests/unit/test_payment_release.py::TestInitializeOnlinePayment`, `tests/unit/test_tenant_management.py::TestPaystackConfig`.
+
+### Manual Bank Transfer Configuration (added 2026-09-06)
+
+**Ground-truth gap found live, reported directly by the user:** `MyBillingDetail.tsx`'s "Manual bank transfer" payment option hardcoded a single tenant's bank account ("First Bank of Nigeria" / "Acme Shipping Ltd") and showed it to **every** tenant's customers — a Global Cargo Co customer transferring money would have been shown Acme's account details. Not just an ambiguity; a real money-misdirection risk.
+
+**Storage.** A new `tenant_config` key, `bank_transfer_config` (plain JSONB — nothing here is a secret, unlike `paystack_config`):
+```json
+{
+  "bank_name": "GTBank",
+  "account_name": "Acme Shipping Ltd",
+  "account_number": "0123456789",
+  "sort_code": null,
+  "instructions": "Use your invoice number as the payment description"
+}
+```
+Set via the existing generic `PUT /v1/tenant/config {bank_transfer_config}` (`BankTransferConfigRequest` in `services/tenant_management/models.py`) — no new route needed, following the same pattern `branding`/`notification_preferences` already use. Tenant-admin UI: a new "Manual bank transfer" card on `PaymentGatewayConfig.tsx`, alongside the Paystack connection card.
+
+**`GET /v1/tenant/config` widened to `CUSTOMER`** so `MyBillingDetail.tsx` can read the tenant's own account instead of a hardcoded one — safe, since the response already masks `webhook_config.secret` and strips `paystack_config`'s secret key entirely, and every *write* plus the webhook sub-routes stay behind the `tenant_admin` assert (only the exact-path `GET` branch was widened). Covered by `TestTenantConfigReadAccess::test_customer_can_read_config` in `tests/unit/test_tenant_management.py` (renamed from `test_customer_cannot_read_config` — this is a deliberate policy change, not a regression).
+
+A tenant with no `bank_transfer_config` set shows customers a clear "Your shipping company hasn't set up bank transfer details yet" message instead of silently falling back to anyone else's account.
+
+See `13_api_payment_release.md`'s "Payment Claims" section for the customer's "I've made this payment" + evidence flow that sits alongside this fix.
+
+### Cognito Resend-Invite / Reset-Password
+- **POST /v1/tenant/users/{id}/resend-invite** — Calls `admin_create_user` with `MessageAction=RESEND`; re-delivers the temporary-password email without creating a new account.
+- **POST /v1/tenant/users/{id}/reset-password** — Calls `admin_reset_user_password`; Cognito sends a verification-code reset email.
+
+Both are tenant_admin only.
 
 ### Tier Limits (from Task 03)
 - Starter: 10 users, 5 containers/month, 5 GB storage
 - Business: 50 users, 25 containers/month, 25 GB storage
 - Enterprise: unlimited (or very high limits)
 
+## Customer Self-Registration
+
+**POST /v1/register/{slug}** — Public endpoint (no JWT required). `POST /v1/register` (slug in the body's
+`slug` field, or Host-header resolution as a last-resort fallback) still works for backward compatibility.
+
+Customers register against the tenant identified by the `{slug}` path param — the frontend's
+`/register/:slug` company-specific signup link. Falls back to Host-header resolution (custom_domain, then
+subdomain slug) only when no slug is supplied at all, since the frontend calls a shared
+`VITE_API_BASE_URL` and never actually reaches the tenant's own host in practice (see ground-truth fix
+below).
+
+Request body:
+```json
+{
+  "name": "Ngozi Okonkwo",
+  "email": "ngozi@example.com",
+  "phone": "+2348012345678",
+  "whatsapp": "+2348012345678",
+  "notification_consent": ["sms", "email"]
+}
+```
+
+Guards: tenant must be `active`; email must not already exist in that tenant's customer table. Cognito
+sends a temporary password to the customer's email. `tenant.slug` (migration 023) is auto-derived from
+`company_name` at tenant creation. `phone`/`whatsapp` are normalised to E.164 (`shared/phone.py`) using
+the tenant's `destination_country` dial code before being stored.
+
+**Ground-truth gap found and fixed (2026-07-11):** this route existed in `tenant_management/handler.py` and was called by the frontend's `RegisterScreen.tsx`, but was missing from both `infrastructure/modules/api-gateway/main.tf`'s `public_routes` map and `scripts/local_server.py`'s `_ROUTES` table — self-registration would 404 in production (never provisioned in API Gateway) and in local dev alike. Added to both.
+
+**Ground-truth bug found and fixed (2026-08-28):** `self_register_customer` wrote the Cognito sub directly into `customer.user_id` — a column with `FOREIGN KEY REFERENCES tenant_user(id)`, verified against the live schema — and never created a `tenant_user` row. That write could never succeed against the real schema; self-registration had never actually worked. Fixed: the function now also creates the `tenant_user` row (`role='customer'`, `id` = the Cognito sub per the existing `id == cognito_sub` convention every other created-by/user chain relies on) and links `customer.user_id` to *that row's id*, not the bare sub. Regression test: `TestSelfRegisterCustomer.test_creates_tenant_user_and_links_customer_user_id` asserts `customer.user_id` resolves to a real `tenant_user`. Tenant resolution was also fixed at the same time: previously Host-header-only (unreachable — see the 2026-07-11 gap above still applying at the transport layer even once the route existed), now resolves from the explicit `{slug}` path param first.
+
+## Customer Account-Creation Invites
+
+Manifest import creates `customer` rows from the forwarder's file with only `name` + `phone` (no email, no
+way to log in). This mechanism issues an expiring, single-use link — delivered by SMS/WhatsApp, the only
+contact a manifest gives — that lets the customer set an email + password and claim a portal account.
+
+Implementation: `shared/invites.py` (token mint/hash/validity — mirrors `impersonation.py`'s session-row
+pattern, minus JWT signing) + `services/tenant_management/service.py` (`issue_customer_invite`,
+`get_customer_invite_public`, `accept_customer_invite`). Table: `customer_invite` (migration 042, §05a).
+
+**A random token, never a JWT.** Single-use revocation needs a server-side row regardless (to flip
+`consumed_at`), so a JWT buys nothing while adding claims that can't be withdrawn once issued.
+`secrets.token_urlsafe(32)`, stored only as a SHA-256 hash — a leaked `customer_invite` table gives no
+working links. 48-hour expiry. Issuing (or resending) first deletes any prior unconsumed invite for that
+customer — a resend invalidates the old link.
+
+| Method | Path | Auth | Purpose |
+|---|---|---|---|
+| POST | `/v1/customers/{id}/invite` | staff (any `_STAFF_ROLES`) | Issue or resend an invite. Never returns the raw token to staff — only `id`, `expires_at`, `sent_channel`, `sent_to_masked`. `sent_channel` is delegated to `shared/notifications.py::primary_channel` — it was hardcoded to `sms` and kept reporting SMS after the switch to WhatsApp-first, telling staff the link went out over a channel it never used. |
+| GET | `/v1/invites/{token}` | public | Claim-page preview — `company_name`, `customer_name`, `expires_at` only. 404 if unknown/expired/consumed (no distinction given to the caller — a leaked token search must not confirm which case it is). |
+| POST | `/v1/invites/{token}/accept` | public | Body `{email, password}`. Creates the Cognito login **and** the `tenant_user` row (the same FK the self-register fix above closes), links `customer.user_id`, stamps `consumed_at`. 404 if unknown/expired/consumed; 409 if the email is already registered for the tenant. |
+
+`issue_customer_invite` raises `BusinessRuleViolationError(rule_id="CUSTOMER_ALREADY_HAS_ACCOUNT")` if the
+customer already has a `user_id` — inviting is only for customers who cannot yet log in.
+`accept_customer_invite` is wrapped so a failed Cognito call leaves the invite unconsumed (the customer's
+link keeps working; they can retry).
+
+**Auto-issue on import**: `services/excel/service.py::process_manifest_import` issues an invite for every
+customer the import *created* (never matched ones — they may already have a login), best-effort in the
+same style as `record_usage` — a notification-side outage never fails the import itself.
+
+**Portability seam**: login creation goes through `cognito_client.py` only —
+`CognitoClient.create_user_with_password` (`MessageAction="SUPPRESS"` + `admin_set_user_password(...,
+Permanent=True)`, no temp-password email since the customer chooses their own password at claim time). No
+new module in this feature calls `boto3.client("cognito-idp")` directly.
+
+Staff UI: "Send account invite" / "Resend account invite" on `AdminCustomerDetail.tsx`'s hero, and an
+account-status indicator — *no login* / *invited, expires …* / *active* — on both `AdminCustomerList.tsx`
+and `AdminCustomerDetail.tsx`, backed by a new `pending_invite_expires_at` correlated-subquery column on
+`GET /v1/customers` and `GET /v1/customers/{id}`.
+
+## Session Persistence — `services/auth/` (added 2026-07-11)
+
+A separate, minimal Lambda service (not part of `tenant_management`) handling the httpOnly-cookie refresh-token flow that lets a page reload silently restore a session instead of forcing re-login. See [frontend/04_auth_and_session.md](frontend/04_auth_and_session.md) ("Token Refresh") and [frontend/11_security_and_compliance.md](frontend/11_security_and_compliance.md) ("Token Storage") for the full frontend-side flow and threat model.
+
+All three routes are public (`authorization_type = "NONE"`) — by definition, they run before any JWT exists or while one is being renewed:
+
+| Method | Path | Purpose |
+|---|---|---|
+| POST | `/v1/auth/session` | Persists a just-issued Cognito refresh token as a `Secure; HttpOnly; SameSite=Strict` cookie (`Path=/v1/auth`). Called once, immediately after a successful client-side Cognito login. |
+| POST | `/v1/auth/refresh` | Reads the cookie (attached automatically by the browser), exchanges it via Cognito's `InitiateAuth`/`REFRESH_TOKEN_AUTH` flow, returns a fresh `id_token` in the response body. Called on every app boot and on the API client's 401-recovery path. |
+| POST | `/v1/auth/logout` | Revokes the refresh token server-side (`RevokeToken` — invalidates it and every access/ID token issued from it) and clears the cookie. |
+
+Deliberately a separate, narrower Lambda from `tenant_management`: its IAM policy grants only `cognito-idp:InitiateAuth` and `cognito-idp:RevokeToken` on the user pool — the non-admin, non-destructive Cognito APIs. It cannot create, disable, delete, or read users (that stays scoped to `tenant_management`'s broader `cognito_admin` policy). It's also the one Lambda in this service tier not attached to the VPC — it never queries Aurora, so skipping the ENI attach avoids that cold-start cost on a path that sits on the critical render path of every page load.
+
+Cookie attributes (`services/auth/handler.py`): no `Domain` attribute (host-only scope — never sent to the frontend's own origin, only back to the API host that set it); `Max-Age` matches Cognito's `refresh_token_validity` (30 days, `infrastructure/modules/cognito/main.tf`). Requires `allow_credentials = true` on the API Gateway CORS config (`infrastructure/modules/api-gateway/main.tf`) — enforced via a Terraform variable validation block rejecting a wildcard `cors_allow_origins`, since browsers refuse credentialed cross-origin responses against a wildcard origin regardless.
+
+## Notification Template Management
+
+Tenant admins can customise per-event-type message copy:
+
+| Method | Path | Role |
+|---|---|---|
+| GET | `/v1/tenant/notification-templates` | `tenant_admin` |
+| GET | `/v1/tenant/notification-templates/{event_type}/{channel}` | `tenant_admin` |
+| PUT | `/v1/tenant/notification-templates/{event_type}/{channel}` | `tenant_admin` |
+
+`channel`: `sms`, `whatsapp`, `email`. Stored in `notification_template` table (migration 024, RLS-enabled). Embedded into SQS messages at enqueue time by `shared.notifications.enqueue_notifications`.
+
+## Tenant Activity Log (2026-09-07)
+
+**Ground-truth gap found live, reported directly by the user:** "we need to ensure that we have log trail for everything, since it has to do with people's goods and money, so that the tenant admin can see every activity going on." Two problems, both real:
+
+1. **The only surface was a small dashboard widget** (`shell/ActivityFeed.tsx`, ~8 rows, no filtering) — a tenant admin had no page to actually browse or search the audit trail, unlike platform admins, who already had a full `PlatformAuditLog.tsx` page for platform-level actions. Added `frontend/src/pages/tenant-admin/ActivityLog.tsx` (route `/admin/activity-log`, nav entry under Admin), modelled directly on that existing page: filters, cursor pagination, and an expandable before/after diff per row.
+2. **`GET /v1/tenant/activity`'s "lean projection" excluded `before_state`/`after_state` entirely** — "the feed only shows who/what/when" was fine for an 8-row dashboard widget, but is not an audit trail a tenant admin can actually verify a payment or refund against. `repository.list_tenant_activity()` now selects and returns both (`audit_log` already stores them; only `list_tenant_activity`'s hand-picked column list was excluding them).
+
+**Follow-up the same day — the first filter (a single "Record type" dropdown) wasn't real filtering/sorting/search, reported directly by the user.** `GET /v1/tenant/activity` gained the full set, all combinable (`AND`, never a silent `OR` that would widen what an admin thinks they're looking at):
+
+- `?entity_type=` now accepts **one or more** comma-separated values via `= ANY(%(entity_types)s)` — same contract as `GET /v1/containers`'s multi-status filter. This is what makes **categorization** real: the frontend groups every `entity_type` into six categories (Money, Goods & shipments, Customers, Staff & access, Settings, System) and sends every type in a category as one request when a category (not a specific type) is selected — "show me everything money-related" is a real query, not just a label.
+- `?action=` — `CREATE` / `UPDATE` / `DELETE` / `STATUS_CHANGE`.
+- `?q=` — matches the actor's name **or** the affected record's id (`u.full_name ILIKE %(q)s OR a.entity_id::text ILIKE %(q)s`). This is the actual "search" a money/goods audit trail needs: paste a `billing_id` or `payment_claim.id` to see every action ever taken on that one specific record, or type a name to see everything one person did.
+- `?created_after=` / `?created_before=` — ISO dates, same contract as the container list's date-range filter; the frontend uses the shared `DateRangeFilter` component (7/30/90-day presets).
+- `?sort=asc|desc` (default `desc`) — passed straight through to `build_paginated_query`'s existing `sort_direction` parameter, which already flips the cursor comparison operator correctly for either direction, so ascending pagination ("oldest first") works with no separate code path.
+
+**Auditing actual log *coverage* while building this turned up real gaps in the backend, not just the viewer** — several money- or goods-affecting writes had no `log_audit()` call at all, so even the new page would have shown nothing for them:
+
+- `billing.handle_payment_due` (creates the invoice itself — the money leaving no trace at all) — now logs `entity_type="billing"`.
+- `billing.reject_dispute` (every other dispute transition already logged; reject was the one exception) — now logs `entity_type="cbm_dispute"`.
+- `claims.log_missing_item` / `update_missing_item`, `claims.log_seized_item` / `update_seized_item`, and the `refund_request` each can trigger on compensation/recovery — none were logged at all. Now all four log, plus a separate entry for the triggered refund.
+- `excel.import_packing_list` and `excel.process_manifest_import` (bulk-creating containers/customers/packing lists/cartons — goods entering the system with zero trail) — each now writes **one summary entry**, not one per row, since a single import can create dozens of records.
+- `tenant_management.deactivate_charge_type` (create/update both logged; deactivate was the exception) — now logs.
+
+**A separate, more serious bug found while adding the `billing.handle_payment_due` entry — see `02_shared_utilities.md`'s matching write-up:** `shared.audit.log_audit()` never raises on failure, and two system-triggered call sites were passing a non-UUID placeholder string (`"gateway"`, `"system"`) into `actor_id`, a `UUID` column — every webhook-confirmed payment had **silently never been audit-logged** since that code existed, with nothing surfacing the failure. Fixed by passing `None` instead (a legitimate "no human actor" value the column already supports) and typing `log_audit`'s `actor_id` as `str | None`.
+
+Verified live against the real local stack: `GET /v1/tenant/activity?entity_type=payment_claim` correctly returns the full history for that entity type with real `before_state`/`after_state` (a real customer's claim submission → a real staff confirmation, both fully attributed); the new page renders it with a working filter dropdown and expandable diff. Confirmed the `log_audit` fix directly: reproduced the `invalid input syntax for type uuid: "gateway"` failure against the real DB, then confirmed passing `None` writes a real row.
+
+Tests: `TestTenantActivityFeed` (entity_type/action/search/date-range/sort param passthrough) and the new `TestListTenantActivityFiltersRepository` (asserting the actual SQL each filter produces, and that they combine with `AND`) in `test_tenant_management.py`; `TestMissingSeizedItemAuditLogging` (`test_claims.py`); `TestRejectDisputeAuditLogging` (`test_billing.py`); `ActivityLog.test.tsx` (frontend — category narrows record-type options and clears on category change, action/search/sort each re-fetch correctly, Clear filters resets everything together). See `17_testing.md` for the full list.
+
+Verified live against the real local stack: Category → "Money" correctly returned only the 7 money-related entity types and narrowed the Record-type dropdown to match; selecting a specific type within it narrowed further; searching "Emeka" correctly isolated that one actor's entries; switching sort to "Oldest first" correctly flipped the first row from the newest to the oldest real record.
+
+**Third same-day follow-up, three separate pieces of direct user feedback:**
+
+1. **Custom date range.** The day-preset `DateRangeFilter` alone isn't "fully functional" date filtering for an audit trail — added explicit "From"/"To" date inputs (`?created_after=`/`?created_before=` already existed on the backend from the filtering pass above; this is a frontend-only addition). A custom date always wins over the preset — picking one clears the other, so the two controls never silently disagree about what's actually being queried.
+2. **The "Details" modal opened in the wrong place.** It used to render as a block appended *after the entire table* — clicking it on any row but the last meant scrolling well past the rest of the list, and the diff's position moved depending on which row was clicked. Now a `Modal` (design system component), which opens in the same place regardless of which row was clicked and never disturbs the table's scroll position.
+3. **Impersonation records must not be visible to a tenant admin at all — reported directly, alongside a broader instruction that a platform admin must never see a tenant's sensitive financial data or logs.** Investigating turned up that `start_impersonation`/`end_impersonation` were writing `IMPERSONATION_START`/`IMPERSONATION_END` into the **tenant's own** `audit_log` (`entity_type="impersonation_session"`) — a platform-admin action performed *on* a tenant, not a tenant-side business event, and (per the bug found in the same investigation) never actually landing there anyway because `IMPERSONATION_START`/`END` aren't valid CHECK values (see `02_shared_utilities.md`'s widened writeup). Fixed properly, not just papered over in the UI: `services/tenant_management/impersonation.py` now calls `repository.insert_platform_audit()` instead of `shared.audit.log_audit()` — the same mechanism every other platform-level action already uses, visible only via `PlatformAuditLog.tsx`, never via a tenant's own `GET /v1/tenant/activity`. `list_tenant_activity()` also gained a hard `AND a.entity_type NOT IN ('impersonation_session')` clause on every query, unconditionally — belt-and-suspenders: a tenant admin cannot see one even if they explicitly ask for it by name in `?entity_type=`, and the exclusion holds even if a future call site regresses and writes one into the wrong table again. The frontend's Record-type dropdown no longer offers "Impersonation" as an option at all.
+
+   **The broader ask — platform admin should not see a tenant's financial information generally, not just this one log type — is a real, separate policy question about what an impersonation session (or any platform-admin view of a tenant) is allowed to read, not something to guess at unilaterally.** Flagged back to the user rather than assumed; not yet implemented pending their answer on scope (e.g., whether impersonation should be blocked from Billing/Refunds/Claims entirely, or whether specific fields should be masked while the rest of the page stays usable for support purposes).
+
+Tests: `TestImpersonationAudit` (`test_impersonation_audit.py`, new — confirms both functions call `insert_platform_audit`, not `log_audit`), `TestTenantActivityExcludesPlatformOnlyRecords` (`test_tenant_management.py` — the exclusion holds even when explicitly requested), plus new `ActivityLog.test.tsx` cases for the custom date range and the missing impersonation option.
+
+## Platform Admin Impersonation
+
+Platform admins can impersonate a tenant's Tenant Admin for read-only support/debugging. Implementation: `services/tenant_management/impersonation.py`.
+
+### How it works
+1. `POST /v1/platform/tenants/{id}/impersonate` — validates tenant is `active`, finds an active `tenant_admin` user, creates an `impersonation_session` row (migration 028), mints a short-lived HS256 JWT carrying `impersonated_by`, `session_id`, `read_only=true`. Returns the token + `expires_at`.
+2. The caller uses the impersonation token as a Bearer token in subsequent requests.
+3. The Lambda authorizer (`services/authorizer/handler.py`) detects the token type and validates it: verifies HS256 signature, checks the session is still active in DB. Synthesises `cognito:groups` so `get_tenant_context()` works unchanged.
+4. `shared/auth.py:get_tenant_context()` populates `TenantContext.impersonated_by`, `.session_id`, `.read_only=True`.
+5. `shared/auth.py:get_tenant_context()` calls `assert_not_read_only(ctx, method)` internally after building the context — this is the **single central chokepoint**. The HTTP method is read directly from `event.requestContext.http.method`. No individual write handler needs to call the guard; any future handler that calls `get_tenant_context()` is automatically protected. Non-GET/HEAD/OPTIONS requests with `read_only=True` raise `BusinessRuleViolationError(rule_id="IMPERSONATION_READ_ONLY")` (HTTP 403) before reaching business logic.
+6. `DELETE /v1/platform/impersonation/{session_id}` — ends the session; sets `ended_at` + `end_reason`; writes `IMPERSONATION_END` audit record.
+
+### Token format (HS256 JWT)
+```json
+{
+  "sub": "target_user_id",
+  "tenant_id": "target_tenant_id",
+  "role": "tenant_admin",
+  "impersonated_by": "platform_admin_user_id",
+  "session_id": "uuid",
+  "read_only": true,
+  "exp": 1234567890,
+  "iat": 1234567890
+}
+```
+Signing secret: `IMPERSONATION_SECRET_ARN` (Secrets Manager) or `IMPERSONATION_SECRET` env var (local dev).
+
+### Terraform changes required
+Replace the native Cognito JWT authorizer with a Lambda REQUEST authorizer pointing to `services/authorizer/handler.lambda_handler`. The authorizer Lambda needs:
+- VPC placement (DB access for session validation)
+- Env vars: `COGNITO_JWKS_URL`, `COGNITO_AUDIENCE`, `IMPERSONATION_SECRET_ARN`
+- IAM: `secretsmanager:GetSecretValue` on `IMPERSONATION_SECRET_ARN`
+
+### `impersonation_session` table (migration 028)
+Platform-scoped (no tenant RLS). Columns: `id, platform_admin_id, target_tenant_id, target_user_id, target_role, read_only, started_at, expires_at, ended_at, end_reason`.
+
 ## Acceptance Criteria
 
 - [x] All 25+ routes handled with correct role authorization
 - [x] Tenant creation provisions Cognito user + group + default config
+- [x] Tenant creation auto-generates `slug` from `company_name` (migration 023)
 - [x] Tenant suspension blocks all API access for that tenant
 - [x] User creation checks tier limits before provisioning
 - [x] Dollar rate updates recorded in tenant_config with audit trail
+- [x] Dollar rate changes append to `rate_history` (migration 025, best-effort)
+- [x] CBM rate has dedicated `GET/PUT /v1/tenant/cbm-rate` endpoints with history tracking
+- [x] `GET /v1/tenant/rate-history` returns paginated rate history (supports `?rate_type=dollar_rate|cbm_rate`)
+- [x] Role change calls `global_sign_out` to invalidate existing JWT immediately (best-effort)
+- [x] Outbound webhook fires on `container.status_updated` with HMAC-SHA256 signature
+- [x] `POST /v1/tenant/users/{id}/resend-invite` re-sends Cognito temp-password email
+- [x] `POST /v1/tenant/users/{id}/reset-password` triggers Cognito password reset
+- [x] `GET /v1/health` on all Lambdas (no JWT, returns `{"status":"healthy"}`)
 - [x] Customer search supports `?q=` parameter with ILIKE
 - [x] Platform dashboard aggregates cross-tenant metrics
 - [x] All mutations logged to audit_log or platform_audit_log
 - [x] Events published: TenantOnboarded, TenantSuspended
-- [x] PATCH user supports `full_name` and `role` with Cognito sync (email immutable)
+- [x] PATCH user supports `full_name`, `locale`, and/or `roles`/`primary_role` with Cognito sync (email immutable)
+- [x] Multi-role staff support (migration 039, 2026-07-20): `tenant_user` can hold more than one role; `POST`/`PATCH /v1/tenant/users` take `roles`/`primary_role` (breaking change — `role` singular removed, no dual-path back-compat); `TenantContext.assert_role()` does a set-intersection against the user's full `roles`, not just the active/primary role — verified against all 113 existing `assert_role`/`require_roles` call sites (count and call shapes unchanged)
+- [x] `CognitoClient.sync_user_groups()` fixes a real pre-existing bug: role changes previously never updated Cognito group membership, so they had no effect on permissions after re-login — verified live (Moto): removing a role via PATCH actually removes the corresponding Cognito group (`admin-list-groups-for-user` before/after), and a subsequent request gated to the removed role 403s
 - [x] GDPR: DELETE /customers/{id} anonymises PII in place (Art. 17)
 - [x] GDPR: GET /customers/{id}/export returns full data bundle (Art. 20)
 - [x] Platform admin JWT uses `PLATFORM` tenant and unprefixed `platform_admin` group
+- [x] POST /v1/register/{slug} — public self-registration resolved from the explicit path slug (falls back to Host-header slug/custom_domain only when no slug is supplied); creates the tenant_user row customer.user_id's FK requires (2026-08-28 fix — previously wrote the Cognito sub directly into that FK column and could never succeed)
+- [x] POST /v1/customers/{id}/invite, GET /v1/invites/{token}, POST /v1/invites/{token}/accept — customer account-creation invites (customer_invite table, migration 042); accept creates the same tenant_user row + link the self-register fix does; single-use, 48h expiry, resend invalidates the prior token
+- [x] GET/PUT /v1/tenant/notification-templates/{event_type}/{channel} — custom template management
+- [x] POST /v1/platform/tenants/{id}/impersonate — creates read-only 30-min impersonation session; mints HS256 JWT; audits IMPERSONATION_START; refuses if tenant not active or has no tenant_admin
+- [x] DELETE /v1/platform/impersonation/{session_id} — ends session; audits IMPERSONATION_END
+- [x] impersonation_session table (migration 028, platform-scoped, no RLS)
+- [x] Lambda authorizer (services/authorizer/handler.py) accepts both Cognito RS256 and ShipX HS256 impersonation tokens; synthesises cognito:groups for get_tenant_context() compatibility
+- [x] TenantContext.read_only enforced centrally: `get_tenant_context()` calls `assert_not_read_only()` internally (single chokepoint in `shared/auth.py`) — POST/PATCH/PUT/DELETE with `read_only=True` return 403 IMPERSONATION_READ_ONLY before any business logic; GET/HEAD/OPTIONS pass through; public/webhook routes unaffected (they bypass `get_tenant_context()` entirely)
+- [x] Webhook config save: PUT /v1/tenant/config accepts `webhook_config` (endpoint_url validated HTTPS, enabled, events validated against WebhookEventType enum); secret preserved on update, generated on first save, never returned in GET (masked to `****`)
+- [x] POST /v1/tenant/config/webhook/rotate-secret — generates cryptographically random 64-char hex secret via `secrets.token_hex(32)`; returns plaintext once; audited
+- [x] POST /v1/tenant/config/webhook/test — sends signed test event to configured URL using same HMAC-SHA256 path as real events; returns `{success, status_code, error}`
+- [x] Locale (EN/ZH): `tenant_user.locale` writable via PATCH /v1/tenant/users/{id} (tenant_admin) and PATCH /v1/tenant/me (any authenticated role); validated against `{"en","zh"}`; locale NOT synced to Cognito (DB-only); tracking service passes `locale` from `get_customers_for_container` to `enqueue_notifications` so ZH customers receive Chinese-language notifications

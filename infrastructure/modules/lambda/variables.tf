@@ -63,9 +63,20 @@ variable "cognito_user_pool_arn" {
   type        = string
 }
 
+variable "cognito_client_id" {
+  description = "Cognito App Client ID (public client, no secret — for the auth Lambda's refresh-token exchange)"
+  type        = string
+}
+
 variable "sqs_queue_arns" {
   description = "Map of queue name → SQS ARN (sms, whatsapp, email, metering)"
   type        = map(string)
+}
+
+variable "sqs_queue_urls" {
+  description = "Map of queue name → SQS URL (sms, whatsapp, email, metering). Injected as SQS_*_QUEUE_URL env vars for the notification producers."
+  type        = map(string)
+  default     = {}
 }
 
 variable "ses_identity_arn" {

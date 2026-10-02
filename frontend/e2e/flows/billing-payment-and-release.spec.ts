@@ -101,10 +101,10 @@ test.describe('billing payment and release note', () => {
 
     // On success the modal closes and a release note now exists for this
     // billing record. If those exact tags were already released by an
-    // earlier run, the backend rejects the duplicate — treat that as the
-    // "already done" case rather than a failure, and go find the note that
-    // exists instead of creating a new one.
-    const failedAlready = dialog.getByText(/already released|duplicate/i)
+    // earlier run, the backend's duplicate guard (generate_release_note's
+    // get_active_release_note_carton_tags check) rejects it with an error
+    // alert — treat that as the "already done" case rather than a failure.
+    const failedAlready = dialog.getByRole('alert')
     await Promise.race([
       expect(dialog).not.toBeVisible({ timeout: 10_000 }),
       expect(failedAlready).toBeVisible({ timeout: 10_000 }),
@@ -127,6 +127,10 @@ test.describe('billing payment and release note', () => {
     await switchRole(page, 'warehouse_attendant')
     await goToViaNav(page, /^release notes$/i)
     const noteRow = page.locator('table tbody tr').filter({ hasText: CUSTOMER_NAME }).first()
+    // The list's own fetch starts on mount, a tick after the nav click
+    // settles — a one-shot .count() can race the Table's loading skeleton
+    // (blank rows). toHaveCount retries until real rows render or time out.
+    await expect(noteRow).toHaveCount(1, { timeout: 10_000 }).catch(() => undefined)
     test.skip((await noteRow.count()) === 0, 'No release note found for this customer — run the generation test first')
 
     await noteRow.getByRole('button', { name: /^view$/i }).click()

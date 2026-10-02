@@ -1,0 +1,287 @@
+.loadingState {
+  padding: 48px;
+  text-align: center;
+  color: var(--color-text-muted);
+}
+
+/* Hero */
+.hero {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 16px;
+  margin-bottom: 24px;
+}
+
+.heroLeft {
+  display: flex;
+  align-items: flex-start;
+  gap: 16px;
+}
+
+.heroIcon {
+  width: 52px;
+  height: 52px;
+  border-radius: 12px;
+  background: var(--color-surface-muted);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--color-primary);
+  flex-shrink: 0;
+}
+
+.heroTitleRow {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.heroTitle {
+  font-family: var(--font-mono);
+  font-weight: 700;
+  font-size: 26px;
+  color: var(--color-ink);
+  margin: 0;
+  letter-spacing: -0.015em;
+  line-height: 1.15;
+}
+
+.heroMeta {
+  margin-top: 4px;
+  font-size: 13px;
+  color: var(--color-text-muted);
+}
+
+.heroActions {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  flex-shrink: 0;
+  align-items: center;
+}
+
+/* Stats — reflows to fewer columns as space shrinks instead of forcing
+   the page wider than its container on mobile (was a fixed 4-column grid). */
+.stats {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  gap: 16px;
+  margin-bottom: 24px;
+}
+
+/* Sections */
+.section {
+  margin-bottom: 24px;
+}
+
+/* Breakdown */
+.breakdown {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.breakdownRow {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-size: 14px;
+  padding-bottom: 8px;
+  border-bottom: 1px solid var(--color-border);
+}
+
+.breakdownRow:last-child {
+  border-bottom: none;
+  padding-bottom: 0;
+}
+
+.breakdownTotal {
+  font-weight: 600;
+  font-size: 15px;
+  padding-top: 8px;
+  border-top: 2px solid var(--color-border);
+  border-bottom: none;
+}
+
+/* Dispute cards */
+.disputeCard {
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  padding: 16px;
+  margin-bottom: 12px;
+  background: var(--color-surface);
+}
+
+.disputeHeader {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  margin-bottom: 12px;
+}
+
+.disputeMeta {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.disputeLabel {
+  font-weight: 600;
+  font-size: 14px;
+}
+
+.disputeNumbers {
+  display: flex;
+  gap: 16px;
+  font-size: 13px;
+  color: var(--color-text-muted);
+}
+
+.disputeError {
+  margin-bottom: 10px;
+}
+
+.disputeActions {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.inlineReject {
+  width: 100%;
+  margin-top: 8px;
+}
+
+.inlineRejectActions {
+  display: flex;
+  gap: 8px;
+  margin-top: 8px;
+}
+
+/* Back link */
+.backLink {
+  margin-top: 32px;
+}
+
+/* Modals — mobile-first bottom sheet, matching the proven pattern in
+   warehouse/WarehouseDashboard.module.css; upgrades to a centered dialog
+   at the same 860px convention every other shell breakpoint uses. */
+.modalOverlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(11, 47, 13, 0.55);
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  z-index: 200;
+}
+
+.modalPanel {
+  background: var(--color-surface);
+  border-radius: var(--radius-lg) var(--radius-lg) 0 0;
+  padding: 24px 20px;
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  box-shadow: var(--shadow-modal);
+  max-height: 90vh;
+  overflow-y: auto;
+}
+
+@container sxapp (min-width: 861px) {
+  .modalOverlay {
+    align-items: center;
+    padding: 16px;
+  }
+  .modalPanel {
+    border-radius: var(--radius-lg);
+    max-width: 480px;
+    padding: 28px;
+  }
+}
+
+.modalTitle {
+  font-size: 18px;
+  font-weight: 700;
+  margin: 0;
+}
+
+.modalBanner {
+  margin-bottom: 4px;
+}
+
+.modalActions {
+  display: flex;
+  gap: 8px;
+  justify-content: flex-end;
+  margin-top: 8px;
+}
+
+.modalActions > * {
+  min-height: 48px;
+  font-size: 1rem;
+}
+
+@container sxapp (min-width: 861px) {
+  .modalActions > * {
+    min-height: 36px;
+    font-size: inherit;
+  }
+}
+
+/* Outcome toggle */
+.outcomeToggle {
+  display: flex;
+  gap: 8px;
+}
+
+/* Select field */
+.selectField {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.selectLabel {
+  font-size: 13px;
+  font-weight: 500;
+}
+
+.required {
+  color: var(--color-error);
+  margin-left: 2px;
+}
+
+.optional {
+  color: var(--color-text-muted);
+  font-weight: 400;
+  font-size: 12px;
+  margin-left: 4px;
+}
+
+.select {
+  border: 1px solid var(--color-border);
+  border-radius: 6px;
+  padding: 8px 12px;
+  font-size: 14px;
+  background: var(--color-surface);
+  color: var(--color-text);
+  cursor: pointer;
+  min-height: 44px;
+}
+
+@container sxapp (max-width: 860px) {
+  .select {
+    font-size: 16px;
+  }
+}
+
+.emptyNote {
+  color: var(--color-text-muted);
+  font-size: 14px;
+  margin: 0;
+}

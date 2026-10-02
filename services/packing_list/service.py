@@ -11,6 +11,7 @@ from decimal import Decimal
 from typing import Any
 
 from shared.audit import log_audit
+from shared.cbm_rate import apply_min_cbm, get_min_cbm_per_item, normalize_package_unit
 from shared.events import publish_event
 from shared.exceptions import (
     BusinessRuleViolationError,
@@ -19,6 +20,8 @@ from shared.exceptions import (
     ResourceNotFoundError,
     SelfApprovalForbiddenError,
 )
+from shared.notifications import enqueue_notifications
+from shared.staff_notifications import notify_staff
 from shared.tenant_context import UserRole
 
 from . import repository as repo
@@ -70,6 +73,18 @@ def _compute_cbm(
     return Decimal("0")
 
 
+# Bales are sized by CBM: a bale at/above this threshold is a "big bale",
+# below it a "small bale" (abbreviated SM/BIG in the UI). Reported-threshold.
+_BIG_BALE_CBM = Decimal("0.3")
+
+
+def _bale_type_for(package_unit: str | None, cbm: Decimal) -> str | None:
+    """Big/small bale label for a bale line item, else None."""
+    if normalize_package_unit(package_unit) != "bale":
+        return None
+    return "BIG BALE" if cbm >= _BIG_BALE_CBM else "SMALL BALE"
+
+
 def _assemble_response(pl: dict[str, Any], items: list[dict[str, Any]]) -> dict[str, Any]:
     """Attach items and computed totals to a packing list row."""
     total_cbm = sum((i.get("cbm") or Decimal("0")) for i in items)
@@ -92,8 +107,11 @@ def _build_item_rows(
     tenant_short: str,
     container_number: str,
     carton_seq_start: int,
+    min_cbm: Decimal | None = None,
 ) -> list[dict[str, Any]]:
     """Generate item dicts with carton tags, tracking codes, and CBM values."""
+    if min_cbm is None:
+        min_cbm = get_min_cbm_per_item(tenant_id)
     rows: list[dict[str, Any]] = []
     seq = carton_seq_start
     # Cache tracking codes for (customer_id, received_date) within this batch
@@ -126,7 +144,11 @@ def _build_item_rows(
                 tracking_code = f"{date_prefix}-{trk_seq:03d}"
             tracking_cache[cache_key] = tracking_code
 
-        cbm = _compute_cbm(item.length_cm, item.width_cm, item.height_cm)
+        # Floor the line-item CBM at the tenant's minimum (default 0.1) — a
+        # tiny parcel still occupies handling/shipping space and bills at the
+        # floor. Applied to the stored cbm, so totals + billing use it too.
+        cbm = apply_min_cbm(_compute_cbm(item.length_cm, item.width_cm, item.height_cm), min_cbm)
+        package_unit = getattr(item, "package_unit", None)
         carton_tag = f"{tenant_short}-{container_number}-{seq:03d}"
 
         rows.append(
@@ -143,6 +165,8 @@ def _build_item_rows(
                 "height_cm": float(item.height_cm) if item.height_cm is not None else None,
                 "received_date": item_date,
                 "declared_value_usd": float(item.declared_value_usd) if item.declared_value_usd is not None else None,
+                "package_unit": (package_unit or "carton"),
+                "bale_type": _bale_type_for(package_unit, cbm),
             }
         )
         seq += 1
@@ -194,6 +218,8 @@ def create_packing_list(
             "customer_id": req.customer_id,
             "created_by": actor_id,
             "reference": reference,
+            "loading_date": req.loading_date,
+            "delivery_date": req.delivery_date,
         },
     )
     if pl is None:
@@ -318,6 +344,9 @@ def update_packing_list(
     )
     inserted_items = [r for r in repo.insert_packing_list_items(tenant_id, item_rows) if r is not None]
 
+    # Shipment-level dates are editable while the list is a draft/rejected.
+    repo.set_packing_list_dates(tenant_id, pl_id, req.loading_date, req.delivery_date)
+
     # If revising a rejected list, transition back to draft
     updated_pl: dict[str, Any]
     if current_status == "rejected":
@@ -378,6 +407,17 @@ def submit_packing_list(
         ip_address=ip_address,
     )
 
+    for role in ("china_office_staff", "tenant_admin"):
+        notify_staff(
+            tenant_id=tenant_id,
+            event_type="packing_list_submitted",
+            entity_type="packing_list",
+            entity_id=pl_id,
+            title="Packing list awaiting approval",
+            body=f"Packing list {pl.get('reference') or pl_id} needs approval.",
+            target_role=role,
+        )
+
     return _assemble_response(dict(updated), items)
 
 
@@ -431,7 +471,55 @@ def _apply_approval_side_effects(
         },
         request_id=request_id,
     )
+    _notify_customer_packing_list_approved(tenant_id, pl, request_id)
     return manifest_id, list(seen_codes)
+
+
+def _notify_customer_packing_list_approved(tenant_id: str, pl: dict[str, Any], request_id: str) -> None:
+    """Best-effort "your packing list was approved" notification — same gap
+    class as payment_claim confirm/reject: an approval with no customer-facing
+    signal at all. Never raises: a notification outage must not fail
+    approval itself (shared by the single-item and bulk approve paths, same
+    as the rest of _apply_approval_side_effects)."""
+    try:
+        customer_id = pl.get("customer_id")
+        if not customer_id:
+            return
+        customer = repo.get_customer_contact(tenant_id, str(customer_id))
+        if not customer:
+            return
+        enqueue_notifications(
+            tenant_id=tenant_id,
+            event_type="packing_list_approved",
+            recipient={
+                "phone": customer.get("phone") or "",
+                "email": customer.get("email") or "",
+                "whatsapp": customer.get("whatsapp") or "",
+                "name": customer.get("name") or "",
+            },
+            template_data={"reference": pl.get("reference") or ""},
+            locale=customer.get("locale", "en"),
+            request_id=request_id,
+            customer_id=str(customer_id),
+        )
+
+        # In-app customer bell — see payment_release/service.py's matching
+        # comment.
+        if customer.get("user_id"):
+            notify_staff(
+                tenant_id=tenant_id,
+                event_type="packing_list_approved",
+                entity_type="packing_list",
+                entity_id=str(pl.get("id")) if pl.get("id") else None,
+                title="Packing list approved",
+                body=f"Your packing list {pl.get('reference') or ''} has been approved.",
+                target_user_id=str(customer["user_id"]),
+            )
+    except Exception:
+        logger.exception(
+            "Failed to enqueue packing_list_approved notification for packing list %s",
+            pl.get("id"),
+        )
 
 
 def approve_packing_list(
@@ -459,9 +547,7 @@ def approve_packing_list(
     if updated is None:
         raise RuntimeError("approve_packing_list_row returned None unexpectedly")
 
-    manifest_id, _tracking_codes = _apply_approval_side_effects(
-        tenant_id, pl, actor_id, request_id
-    )
+    manifest_id, _tracking_codes = _apply_approval_side_effects(tenant_id, pl, actor_id, request_id)
     items = repo.get_items_by_packing_list(tenant_id, pl_id)
 
     log_audit(
@@ -598,6 +684,21 @@ def bulk_submit_packing_lists(
             after_state={"status": "pending_approval"},
             ip_address=ip_address,
         )
+        for role in ("china_office_staff", "tenant_admin"):
+            notify_staff(
+                tenant_id=tenant_id,
+                event_type="packing_list_submitted",
+                entity_type="packing_list",
+                # entity_id is a single-row UUID column — a bulk action has
+                # no one entity to link to, so this is left unset rather than
+                # passed a comma-joined id list (which log_audit's own
+                # BULK_APPROVE call does above, and which silently fails the
+                # same way: UUID columns reject a non-UUID string).
+                entity_id=None,
+                title="Packing lists awaiting approval",
+                body=f"{len(submittable_ids)} packing list(s) need approval.",
+                target_role=role,
+            )
 
     return {"succeeded": succeeded, "failed": failed, "total": len(req.ids)}
 

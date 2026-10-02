@@ -5,7 +5,9 @@ from decimal import Decimal
 from enum import StrEnum
 from typing import Any
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
+
+from shared.url_safety import UnsafeUrlError, validate_public_https_url
 
 # ---------------------------------------------------------------------------
 # Enums
@@ -75,19 +77,199 @@ class SuspendTenantRequest(BaseModel):
 
 
 class CreateTenantUserRequest(BaseModel):
+    """Create a staff/customer tenant_user.
+
+    Breaking change (2026-07-20): `role` (singular) → `roles` + `primary_role`,
+    the natural N=1 case of the general multi-role model — there are no
+    production tenants yet, so no dual-path back-compat is kept.
+    """
+
     email: str
     full_name: str = Field(min_length=1)
-    role: TenantUserRole
+    roles: list[TenantUserRole] = Field(min_length=1)
+    primary_role: TenantUserRole | None = None
+
+    @model_validator(mode="after")
+    def _default_and_validate_primary_role(self) -> "CreateTenantUserRequest":
+        if self.primary_role is None:
+            self.primary_role = self.roles[0]
+        elif self.primary_role not in self.roles:
+            raise ValueError("primary_role must be one of the assigned roles")
+        return self
+
+
+class UpdateTenantUserRequest(BaseModel):
+    """Partial update of a tenant_user — all fields optional.
+
+    Replaces the previous unvalidated raw-dict filter in handler.py. When
+    `roles` is present, `primary_role` (if also present) must be one of them;
+    if absent, it defaults to `roles[0]`.
+    """
+
+    full_name: str | None = Field(default=None, min_length=1)
+    locale: str | None = None
+    roles: list[TenantUserRole] | None = Field(default=None, min_length=1)
+    primary_role: TenantUserRole | None = None
+
+    @model_validator(mode="after")
+    def _default_and_validate_primary_role(self) -> "UpdateTenantUserRequest":
+        if self.roles is not None:
+            if self.primary_role is None:
+                self.primary_role = self.roles[0]
+            elif self.primary_role not in self.roles:
+                raise ValueError("primary_role must be one of the assigned roles")
+        elif self.primary_role is not None:
+            raise ValueError("primary_role requires roles to also be provided")
+        return self
+
+
+class WebhookEventType(StrEnum):
+    container_status_updated = "container.status_updated"
+    billing_payment_due = "billing.payment_due"
+    release_note_generated = "release_note.generated"
+    packing_list_approved = "packing_list.approved"
+
+
+class WebhookConfigRequest(BaseModel):
+    """Webhook configuration update.
+
+    The signing secret is managed server-side. Use the rotate-secret endpoint
+    to generate or rotate the HMAC-SHA256 signing key.
+    """
+
+    endpoint_url: str = Field(pattern=r"^https://")
+    enabled: bool
+    events: list[WebhookEventType] = Field(default_factory=list)
+
+    @field_validator("endpoint_url")
+    @classmethod
+    def _endpoint_must_be_public(cls, value: str) -> str:
+        # Syntactic SSRF check only (no DNS at validation time); the delivery
+        # path re-resolves and pins the address — see shared/url_safety.py.
+        try:
+            validate_public_https_url(value)
+        except UnsafeUrlError as exc:
+            raise ValueError(str(exc)) from exc
+        return value
+
+
+class BankTransferConfigRequest(BaseModel):
+    """This tenant's own bank account for the customer-facing manual
+    "Manual bank transfer" payment option (MyBillingDetail.tsx).
+
+    Ground-truth gap found live: the frontend previously hardcoded a single
+    tenant's bank details and showed them to every tenant's customers — a
+    Global Cargo customer transferring money would have been shown Acme's
+    account. This makes it a real per-tenant setting instead.
+    """
+
+    bank_name: str = Field(min_length=1, max_length=100)
+    account_name: str = Field(min_length=1, max_length=200)
+    account_number: str = Field(min_length=1, max_length=50)
+    sort_code: str | None = Field(default=None, max_length=20)
+    instructions: str | None = Field(default=None, max_length=500)
 
 
 class UpdateTenantConfigRequest(BaseModel):
     branding: dict[str, Any] | None = None
     notification_preferences: dict[str, Any] | None = None
+    webhook_config: WebhookConfigRequest | None = None
+    bank_transfer_config: BankTransferConfigRequest | None = None
 
 
-class UpdateDollarRateRequest(BaseModel):
-    rate: Decimal = Field(gt=Decimal("0"))
-    currency_pair: str = "USD_NGN"
+class PaystackConfigRequest(BaseModel):
+    """Connect this tenant's own Paystack account (audit gap: multi-tenant
+    payment gateway, 2026-07-19).
+
+    Unlike webhook_config, there is nothing to partially merge — a new key
+    always fully replaces whatever was stored (same posture as webhook
+    secret rotation). The key is validated for shape here; PUT
+    /v1/tenant/config/paystack/test proves it actually works against the
+    live Paystack API.
+    """
+
+    secret_key: str = Field(pattern=r"^sk_(test|live)_[A-Za-z0-9]{20,}$")
+
+
+class MarkupType(StrEnum):
+    percentage = "percentage"
+    flat = "flat"
+
+
+class UpdateDollarRateMarkupRequest(BaseModel):
+    """The dollar rate is no longer typed in directly — the base rate is
+    fetched live from Bybit's P2P order book (shared/fx_rate.py) and a
+    tenant only controls the markup layered on top of it. `ge=0` on both:
+    a markup discounting below Bybit's own rate isn't a "markup"."""
+
+    markup_type: MarkupType
+    markup_value: Decimal = Field(ge=Decimal("0"))
+
+
+class CbmRateCurrency(StrEnum):
+    usd = "usd"
+    ngn = "ngn"
+
+
+class CbmRateMode(StrEnum):
+    flat = "flat"
+    per_package_type = "per_package_type"
+
+
+class UpdateCbmRateRequest(BaseModel):
+    """CBM rate is priced per package type (carton/bag/bale) — "flat" is
+    just the case where all three rates are equal, enforced here rather
+    than as a separate code path downstream. Package types other than
+    carton/bag/bale (pallet, item, mixed, unspecified, or any other free-
+    text value) bill at the carton rate (shared/cbm_rate.py)."""
+
+    currency: CbmRateCurrency
+    rate_mode: CbmRateMode
+    carton_rate: Decimal = Field(gt=Decimal("0"))
+    bag_rate: Decimal | None = Field(default=None, gt=Decimal("0"))
+    bale_rate: Decimal | None = Field(default=None, gt=Decimal("0"))
+    # Minimum billable CBM per line item (floor applied at packing-list entry).
+    # Optional — omit to leave the current value unchanged.
+    min_cbm_per_item: Decimal | None = Field(default=None, gt=Decimal("0"))
+
+    @model_validator(mode="after")
+    def _resolve_per_type_rates(self) -> "UpdateCbmRateRequest":
+        if self.rate_mode == CbmRateMode.flat:
+            self.bag_rate = self.carton_rate
+            self.bale_rate = self.carton_rate
+        elif self.bag_rate is None or self.bale_rate is None:
+            raise ValueError("bag_rate and bale_rate are required when rate_mode is per_package_type")
+        return self
+
+
+class NotificationChannel(StrEnum):
+    sms = "sms"
+    email = "email"
+    whatsapp = "whatsapp"
+
+
+class UpsertNotificationTemplateRequest(BaseModel):
+    template_body: str = Field(min_length=1)
+    subject: str | None = None
+
+
+class CustomerRegistrationRequest(BaseModel):
+    name: str = Field(min_length=1)
+    email: str = Field(min_length=5)
+    phone: str = Field(min_length=1)
+    whatsapp: str | None = None
+    notification_consent: list[str] | None = None
+    # Optional so POST /v1/register (body-resolved tenant, kept for backward
+    # compatibility) keeps working; POST /v1/register/{slug} supplies the
+    # slug via the path instead and this field is ignored there.
+    slug: str | None = None
+
+
+class AcceptCustomerInviteRequest(BaseModel):
+    """Body for POST /v1/invites/{token}/accept — claims an invite."""
+
+    email: str = Field(min_length=5)
+    password: str = Field(min_length=8)
 
 
 # ---------------------------------------------------------------------------
@@ -118,7 +300,8 @@ class TenantUserResponse(BaseModel):
     id: str
     email: str
     full_name: str
-    role: TenantUserRole
+    role: TenantUserRole  # Primary role — kept for every existing single-role consumer
+    roles: list[TenantUserRole] = Field(default_factory=list)
     status: TenantUserStatus
     cognito_sub: str | None = None
     created_at: datetime
@@ -149,12 +332,3 @@ class TenantUsageResponse(BaseModel):
     limits: UsageLimitsNested
     api_calls: int = 0
     notifications: NotificationsNested
-
-
-class DollarRateResponse(BaseModel):
-    model_config = ConfigDict(from_attributes=True)
-
-    rate: Decimal
-    currency_pair: str
-    effective_from: datetime
-    previous_rate: Decimal | None = None

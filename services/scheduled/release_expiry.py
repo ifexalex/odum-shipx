@@ -109,6 +109,7 @@ def _notify_customer(tenant_id: str, note: dict[str, Any]) -> None:
         "reference_number": note.get("reference_number", ""),
         "valid_until": str(note.get("valid_until", "")),
     }
+    locale = customer.get("locale", "en")
 
     if customer.get("phone"):
         try:
@@ -118,6 +119,7 @@ def _notify_customer(tenant_id: str, note: dict[str, Any]) -> None:
                 recipient=customer["phone"],
                 template_id="release_note_generated",
                 template_vars=template_vars,
+                locale=locale,
             )
         except Exception:
             logger.warning(
@@ -134,6 +136,7 @@ def _notify_customer(tenant_id: str, note: dict[str, Any]) -> None:
                 recipient=customer["email"],
                 template_id="release_note_generated",
                 template_vars=template_vars,
+                locale=locale,
             )
         except Exception:
             logger.warning(
@@ -175,10 +178,9 @@ def _get_customer_contact(tenant_id: str, customer_id: str) -> dict[str, Any] | 
     rows = execute_with_tenant(
         tenant_id,
         """
-        SELECT c.id, u.email, u.phone_number AS phone
-        FROM customer c
-        JOIN users u ON u.id = c.user_id
-        WHERE c.tenant_id = %s AND c.id = %s
+        SELECT id, email, phone, locale
+        FROM customer
+        WHERE tenant_id = %s AND id = %s AND anonymised_at IS NULL
         LIMIT 1
         """,
         (tenant_id, customer_id),

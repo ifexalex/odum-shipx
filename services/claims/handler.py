@@ -157,6 +157,14 @@ def _dispatch(event: dict[str, Any], method: str, path: str, ctx: Any, request_i
         if sub == "seized-items":
             return _seized_item_routes(event, parts, method, ctx, request_id, ip_address)
 
+        # GET /v1/claims/stats — tenant-wide aggregates for the list stats row +
+        # status chips. Staff only (tenant-wide, not per-customer), SQL-computed.
+        if sub == "stats":
+            if method == "GET":
+                ctx.assert_role(UserRole.TENANT_ADMIN, UserRole.NIGERIA_OFFICE_STAFF)
+                return success(service.get_claim_stats(ctx.tenant_id), request_id=request_id)
+            raise ResourceNotFoundError("route", path)
+
         # sub is None or a claim UUID
         return _claim_routes(event, parts, method, ctx, request_id, ip_address, sub)
 
@@ -207,13 +215,22 @@ def _claim_routes(
             # Customer Profile's Claims tab (audit gap A2).
             if _qp(event, "customer_id"):
                 filters["customer_id"] = _qp(event, "customer_id")
+            if _qp(event, "created_after"):
+                filters["created_after"] = _qp(event, "created_after")
+            if _qp(event, "created_before"):
+                filters["created_before"] = _qp(event, "created_before")
             limit = int(_qp(event, "limit", 50))
             cursor = decode_cursor(_qp(event, "cursor"))
             sort_field = _qp(event, "sort") or "created_at"
             sort_direction = _qp(event, "direction") or "desc"
             page, next_cursor, has_more = service.list_claims(
-                tenant_id, ctx, filters, limit, cursor,
-                sort_field=sort_field, sort_direction=sort_direction,
+                tenant_id,
+                ctx,
+                filters,
+                limit,
+                cursor,
+                sort_field=sort_field,
+                sort_direction=sort_direction,
             )
             return paginated(page, next_cursor, has_more, request_id=request_id)
 
@@ -328,7 +345,7 @@ def _missing_item_routes(
             ctx.assert_role(*_STAFF_ROLES)
             body = _parse_body(event)
             req = parse_validated(LogMissingItemRequest, body)
-            result = service.log_missing_item(tenant_id, req, actor_id=ctx.user_id)
+            result = service.log_missing_item(tenant_id, req, actor_id=ctx.user_id, ctx=ctx)
             return created(
                 result,
                 location=f"/v1/claims/missing-items/{result['id']}",
@@ -354,7 +371,7 @@ def _missing_item_routes(
             raw_amount = body.get("refund_amount_ngn")
             refund_amount_ngn = Decimal(str(raw_amount)) if raw_amount is not None else None
             result = service.update_missing_item(
-                tenant_id, item_id, status, notes, actor_id=ctx.user_id, refund_amount_ngn=refund_amount_ngn
+                tenant_id, item_id, status, notes, actor_id=ctx.user_id, ctx=ctx, refund_amount_ngn=refund_amount_ngn
             )
             return success(result, request_id=request_id)
 
@@ -393,7 +410,7 @@ def _seized_item_routes(
             ctx.assert_role(*_STAFF_ROLES)
             body = _parse_body(event)
             req = parse_validated(LogSeizedItemRequest, body)
-            result = service.log_seized_item(tenant_id, req, actor_id=ctx.user_id)
+            result = service.log_seized_item(tenant_id, req, actor_id=ctx.user_id, ctx=ctx)
             return created(
                 result,
                 location=f"/v1/claims/seized-items/{result['id']}",
@@ -419,7 +436,7 @@ def _seized_item_routes(
             raw_amount = body.get("refund_amount_ngn")
             refund_amount_ngn = Decimal(str(raw_amount)) if raw_amount is not None else None
             result = service.update_seized_item(
-                tenant_id, item_id, recovery_status, notes, actor_id=ctx.user_id, refund_amount_ngn=refund_amount_ngn
+                tenant_id, item_id, recovery_status, notes, actor_id=ctx.user_id, ctx=ctx, refund_amount_ngn=refund_amount_ngn
             )
             return success(result, request_id=request_id)
 
@@ -462,4 +479,3 @@ def _health_response(request_id: str) -> dict[str, Any]:
             }
         ),
     }
-

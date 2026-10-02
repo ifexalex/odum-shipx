@@ -35,6 +35,16 @@ def _build_release_note_key(tenant_id: str, note_id: str, filename: str) -> str:
     return f"{tenant_id}/release-notes/{note_id}/{filename}"
 
 
+def _build_import_key(tenant_id: str, upload_id: str) -> str:
+    """Mirror how services.excel.generate_import_presigned_url builds keys.
+
+    No caller-supplied filename is embedded (unlike the other _build_*_key
+    helpers) — the key is always {tenant_id}/imports/{uuid}.xlsx, so there's
+    no filename-injection surface for this endpoint at all.
+    """
+    return f"{tenant_id}/imports/{upload_id}.xlsx"
+
+
 def _build_data_cleanup_prefix(tenant_id: str) -> str:
     """Top-level prefix deleted during tenant offboarding."""
     return f"{tenant_id}/"
@@ -62,12 +72,17 @@ class TestS3KeyStructure:
         key = _build_release_note_key(TENANT_A, "note-001", "release.pdf")
         assert key.startswith(TENANT_A)
 
+    def test_import_key_starts_with_tenant_id(self):
+        key = _build_import_key(TENANT_A, "11111111-1111-1111-1111-111111111111")
+        assert key.startswith(TENANT_A)
+
     def test_all_key_types_match_pattern(self):
         keys = [
             _build_evidence_key(TENANT_A, "claim-001", "photo.jpg"),
             _build_manifest_key(TENANT_A, "manifest-001", "doc.pdf"),
             _build_packing_list_key(TENANT_A, "pl-001", "list.xlsx"),
             _build_release_note_key(TENANT_A, "note-001", "note.pdf"),
+            _build_import_key(TENANT_A, "11111111-1111-1111-1111-111111111111"),
         ]
         for key in keys:
             assert _S3_KEY_PATTERN.match(key), f"Key {key!r} does not match expected pattern"
@@ -113,6 +128,10 @@ class TestCrossTenantS3Prevention:
         # And vice versa
         tenant_a_key = _build_evidence_key(TENANT_A, "claim-001", "photo.jpg")
         assert not tenant_a_key.startswith(prefix_b)
+
+    def test_import_key_tenant_a_does_not_start_with_tenant_b(self):
+        key = _build_import_key(TENANT_A, "11111111-1111-1111-1111-111111111111")
+        assert not key.startswith(TENANT_B)
 
     def test_uuid_tenant_ids_are_distinct_prefixes(self):
         """Two UUID-format tenant IDs produce non-overlapping prefixes."""
@@ -174,6 +193,14 @@ class TestS3KeyUniqueness:
         assert key_a != key_b
         assert key_a.startswith(TENANT_A)
         assert key_b.startswith(TENANT_B)
+
+    def test_import_key_unique_per_upload_even_for_same_tenant(self):
+        """Two imports for the same tenant must never collide on the same key."""
+        key_1 = _build_import_key(TENANT_A, "11111111-1111-1111-1111-111111111111")
+        key_2 = _build_import_key(TENANT_A, "22222222-2222-2222-2222-222222222222")
+        assert key_1 != key_2
+        assert key_1.startswith(TENANT_A)
+        assert key_2.startswith(TENANT_A)
 
     def test_presigned_url_scope_enforced_by_prefix(self):
         """Presigned URL generation scoped to tenant prefix can be verified."""

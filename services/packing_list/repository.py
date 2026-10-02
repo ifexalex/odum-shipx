@@ -12,10 +12,10 @@ Notes:
 """
 
 import logging
-from datetime import date
+from datetime import UTC, date, datetime
 from typing import Any
 
-from shared.db import execute_with_tenant, execute_write_with_tenant
+from shared.db import execute_with_tenant, execute_write_with_tenant, execute_write_with_tenant_many
 from shared.pagination import build_paginated_query, extract_page
 from shared.tenant_context import PLATFORM_TENANT_ID
 
@@ -54,6 +54,28 @@ def get_customer_by_user_id(tenant_id: str, user_id: str) -> dict[str, Any] | No
     return rows[0] if rows else None
 
 
+def get_customer_contact(tenant_id: str, customer_id: str) -> dict[str, Any] | None:
+    """Contact info for enqueue_notifications — name/phone/email/whatsapp plus
+    the portal user's locale (defaults to 'en' for customers without one).
+    `user_id` (== tenant_user.id when the customer has a portal account, else
+    NULL) is included so callers can also target the in-app customer
+    notification bell via shared.staff_notifications.notify_staff — same
+    shape as tracking/repository.py::get_customers_for_container."""
+    rows = execute_with_tenant(
+        tenant_id,
+        """
+        SELECT c.id::text AS id, c.user_id, c.name, c.phone, c.email, c.whatsapp,
+            COALESCE(tu.locale, 'en') AS locale
+        FROM customer c
+        LEFT JOIN tenant_user tu ON tu.id = c.user_id AND tu.tenant_id = c.tenant_id
+        WHERE c.tenant_id = %s AND c.id = %s AND c.anonymised_at IS NULL
+        LIMIT 1
+        """,
+        (tenant_id, customer_id),
+    )
+    return rows[0] if rows else None
+
+
 def get_tenant_short(tenant_id: str) -> str:
     """Return a 3-char uppercase prefix derived from the tenant's company name."""
     rows = execute_with_tenant(
@@ -86,6 +108,19 @@ def get_next_carton_sequence(tenant_id: str, container_id: str) -> int:
         (tenant_id, container_id),
     )
     return int(rows[0]["cnt"]) + 1 if rows else 1
+
+
+def get_next_pl_reference(tenant_id: str) -> str:
+    """Generate the next PL reference for this tenant in PL-YYYYMMDD-NNN format."""
+    date_str = datetime.now(tz=UTC).strftime("%Y%m%d")
+    prefix = f"PL-{date_str}-"
+    rows = execute_with_tenant(
+        tenant_id,
+        "SELECT COUNT(*) AS cnt FROM packing_list WHERE tenant_id = %s AND reference LIKE %s",
+        (tenant_id, prefix + "%"),
+    )
+    seq = (int(rows[0]["cnt"]) + 1) if rows else 1
+    return f"{prefix}{seq:03d}"
 
 
 def get_existing_tracking_code(tenant_id: str, customer_id: str, received_date: date) -> str | None:
@@ -132,11 +167,30 @@ def create_packing_list(tenant_id: str, data: dict[str, Any]) -> dict[str, Any] 
     return execute_write_with_tenant(
         tenant_id,
         """
-        INSERT INTO packing_list (tenant_id, container_id, customer_id, status, created_by)
-        VALUES (%(tenant_id)s, %(container_id)s, %(customer_id)s, 'draft', %(created_by)s)
+        INSERT INTO packing_list (
+            tenant_id, container_id, customer_id, status, created_by, reference,
+            loading_date, delivery_date
+        )
+        VALUES (
+            %(tenant_id)s, %(container_id)s, %(customer_id)s, 'draft', %(created_by)s, %(reference)s,
+            %(loading_date)s, %(delivery_date)s
+        )
         RETURNING *
         """,
-        data,
+        {**data, "loading_date": data.get("loading_date"), "delivery_date": data.get("delivery_date")},
+    )
+
+
+def set_packing_list_dates(tenant_id: str, pl_id: str, loading_date: Any, delivery_date: Any) -> dict[str, Any] | None:
+    return execute_write_with_tenant(
+        tenant_id,
+        """
+        UPDATE packing_list
+        SET loading_date = %(loading_date)s, delivery_date = %(delivery_date)s, updated_at = NOW()
+        WHERE tenant_id = %(tenant_id)s AND id = %(id)s
+        RETURNING *
+        """,
+        {"tenant_id": tenant_id, "id": pl_id, "loading_date": loading_date, "delivery_date": delivery_date},
     )
 
 
@@ -150,11 +204,12 @@ def insert_packing_list_items(tenant_id: str, items: list[dict[str, Any]]) -> li
             INSERT INTO packing_list_item (
                 packing_list_id, description, weight_dispatch_kg, weight_actual_kg,
                 carton_tag, tracking_code, cbm, length_cm, width_cm, height_cm,
-                received_date
+                received_date, declared_value_usd, package_unit, bale_type
             ) VALUES (
                 %(packing_list_id)s, %(description)s, %(weight_dispatch_kg)s,
                 %(weight_actual_kg)s, %(carton_tag)s, %(tracking_code)s, %(cbm)s,
-                %(length_cm)s, %(width_cm)s, %(height_cm)s, %(received_date)s
+                %(length_cm)s, %(width_cm)s, %(height_cm)s, %(received_date)s,
+                %(declared_value_usd)s, %(package_unit)s, %(bale_type)s
             ) RETURNING *
             """,
             item,
@@ -164,12 +219,34 @@ def insert_packing_list_items(tenant_id: str, items: list[dict[str, Any]]) -> li
 
 
 def get_packing_list_by_id(tenant_id: str, pl_id: str) -> dict[str, Any] | None:
+    # Ground-truth fix: this query never joined `container`, so the detail
+    # response had no container_number/container_status at all — the customer
+    # shipment-detail page (MyShipmentDetail.tsx) fell back to a fictional
+    # default status ('active' → "Preparing") regardless of the container's
+    # real state (e.g. at_warehouse / ready for pickup). list_packing_lists()
+    # already carries this same join; mirror it here.
     rows = execute_with_tenant(
         tenant_id,
         """
-        SELECT pl.*, c.name AS customer_name
+        SELECT pl.*,
+               c.name  AS customer_name,
+               c.phone AS customer_phone,
+               co.container_number,
+               co.status AS container_status,
+               tu_a.full_name AS approved_by_name,
+               tu_r.full_name AS rejected_by_name,
+               tu_c.full_name AS created_by_name
         FROM packing_list pl
-        LEFT JOIN customer c ON c.id = pl.customer_id AND c.tenant_id = pl.tenant_id
+        LEFT JOIN customer c
+               ON c.id = pl.customer_id AND c.tenant_id = pl.tenant_id
+        LEFT JOIN container co
+               ON co.id = pl.container_id AND co.tenant_id = pl.tenant_id
+        LEFT JOIN tenant_user tu_a
+               ON tu_a.id = pl.approved_by AND tu_a.tenant_id = pl.tenant_id
+        LEFT JOIN tenant_user tu_r
+               ON tu_r.id = pl.rejected_by AND tu_r.tenant_id = pl.tenant_id
+        LEFT JOIN tenant_user tu_c
+               ON tu_c.id = pl.created_by AND tu_c.tenant_id = pl.tenant_id
         WHERE pl.tenant_id = %s AND pl.id = %s
         LIMIT 1
         """,
@@ -187,12 +264,17 @@ def get_items_by_packing_list(tenant_id: str, pl_id: str) -> list[dict[str, Any]
     )
 
 
-def list_packing_lists(
-    tenant_id: str,
-    filters: dict[str, Any],
-    limit: int = 50,
-    cursor: dict[str, Any] | None = None,
-) -> tuple[list[dict[str, Any]], str | None, bool]:
+def _packing_list_predicates(tenant_id: str, filters: dict[str, Any]) -> tuple[str, str, dict[str, Any]]:
+    """Build the shared WHERE predicate for listing and counting packing lists.
+
+    Extracted so the list query and its total count can never drift apart —
+    a count computed from a different predicate than the rows it describes is
+    worse than no count at all.
+
+    Returns (where_clause, q_clause, params). `q_clause` is separate because it
+    references joined columns (customer, container) and so must be appended to
+    the joined inner query rather than to the pl-prefixed conditions.
+    """
     conditions = ["tenant_id = %(tenant_id)s"]
     extra: dict[str, Any] = {"tenant_id": tenant_id}
 
@@ -212,7 +294,105 @@ def list_packing_lists(
         conditions.append("created_at <= %(created_before)s")
         extra["created_before"] = filters["created_before"]
 
-    base = f"SELECT * FROM packing_list WHERE {' AND '.join(conditions)}"
+    q_clause = ""
+    if filters.get("q"):
+        # Matches the search box's own placeholder: reference, customer name,
+        # container. `reference` was missing, so searching for a PL number
+        # found nothing even once the filter was wired up.
+        q_clause = " AND (cu.name ILIKE %(q)s" " OR c.container_number ILIKE %(q)s" " OR pl.reference ILIKE %(q)s)"
+        extra["q"] = f"%{filters['q']}%"
+
+    where_clause = " AND ".join(f"pl.{cond}" for cond in conditions)
+    return where_clause, q_clause, extra
+
+
+def count_packing_lists(tenant_id: str, filters: dict[str, Any]) -> int:
+    """Total rows matching the same filters as list_packing_lists.
+
+    Powers "showing 50 of 68". Without a total the UI could only show a page of
+    50 with no hint that more existed, which read as "this container has 50
+    packing lists" when it had 68.
+    """
+    where_clause, q_clause, params = _packing_list_predicates(tenant_id, filters)
+    rows = execute_with_tenant(
+        tenant_id,
+        f"""
+        SELECT COUNT(*)::int AS total
+        FROM packing_list pl
+        LEFT JOIN container c  ON c.id  = pl.container_id AND c.tenant_id  = pl.tenant_id
+        LEFT JOIN customer  cu ON cu.id = pl.customer_id  AND cu.tenant_id = pl.tenant_id
+        WHERE {where_clause}{q_clause}
+        """,
+        params,
+    )
+    return int(rows[0]["total"]) if rows else 0
+
+
+def list_packing_lists(
+    tenant_id: str,
+    filters: dict[str, Any],
+    limit: int = 50,
+    cursor: dict[str, Any] | None = None,
+) -> tuple[list[dict[str, Any]], str | None, bool]:
+    where_clause, q_clause, extra = _packing_list_predicates(tenant_id, filters)
+
+    # Wrap the joined query in a subquery so build_paginated_query's cursor
+    # condition (AND id > ...) references the outer unambiguous columns instead
+    # of clashing with container.id in the inner JOIN.
+    inner = f"""
+        SELECT pl.*,
+               c.container_number,
+               c.status AS container_status,
+               c.estimated_arrival_date AS container_eta,
+               c.vessel_name,
+               c.voyage_number,
+               cu.name AS customer_name,
+               cu.phone AS customer_phone,
+               COALESCE(agg.carton_count, 0)    AS carton_count,
+               COALESCE(agg.package_count, 0)   AS package_count,
+               COALESCE(agg.package_mix, '{{}}'::jsonb) AS package_mix,
+               COALESCE(agg.total_cbm, 0)       AS total_cbm,
+               COALESCE(agg.total_weight_kg, 0) AS total_weight_kg
+        FROM packing_list pl
+        LEFT JOIN container c
+               ON c.id = pl.container_id AND c.tenant_id = pl.tenant_id
+        LEFT JOIN customer cu
+               ON cu.id = pl.customer_id AND cu.tenant_id = pl.tenant_id
+        LEFT JOIN (
+            -- Two levels on purpose: sum quantities per unit first, then fold
+            -- those into one row. jsonb_object_agg over the raw items would
+            -- collapse duplicate keys (two 'bale' rows -> one), silently
+            -- under-reporting the mix.
+            SELECT packing_list_id,
+                   -- ::int matters. COUNT() came back as a bigint (a JSON
+                   -- number), but SUM() over numeric comes back as Decimal and
+                   -- serialises as a *string* — the frontend then concatenated
+                   -- counts instead of adding them ("0" + "1" + "13" ...).
+                   SUM(row_count)::int                 AS carton_count,
+                   SUM(cbm_sum)                        AS total_cbm,
+                   SUM(weight_sum)                     AS total_weight_kg,
+                   -- Packages keyed by unit, e.g. 2 bale + 16 bag. A row is no
+                   -- longer one carton (migration 040 made it a bulk quantity),
+                   -- so a row count alone cannot tell staff whether they are
+                   -- looking at bales or cartons. Rows with no unit fall under
+                   -- 'unspecified' rather than dropping out of the totals.
+                   jsonb_object_agg(unit, qty)         AS package_mix,
+                   SUM(qty)::int                       AS package_count
+            FROM (
+                SELECT packing_list_id,
+                       COALESCE(NULLIF(package_unit, ''), 'unspecified') AS unit,
+                       COUNT(*)                                          AS row_count,
+                       COALESCE(SUM(cbm), 0)                             AS cbm_sum,
+                       COALESCE(SUM(weight_actual_kg), 0)                AS weight_sum,
+                       COALESCE(SUM(COALESCE(quantity, 1)), 0)::int      AS qty
+                FROM packing_list_item
+                GROUP BY packing_list_id, COALESCE(NULLIF(package_unit, ''), 'unspecified')
+            ) per_unit
+            GROUP BY packing_list_id
+        ) agg ON agg.packing_list_id = pl.id
+        WHERE {where_clause}{q_clause}
+    """
+    base = f"SELECT * FROM ({inner}) AS t WHERE 1=1"
     query, params = build_paginated_query(base, cursor, limit, sort_field="created_at")
     params.update(extra)
     rows = execute_with_tenant(tenant_id, query, params)
@@ -397,3 +577,62 @@ def upsert_shipment_tracking(tenant_id: str, tracking_code: str) -> None:
         """,
         {"tenant_id": tenant_id, "tracking_code": tracking_code},
     )
+
+
+# ---------------------------------------------------------------------------
+# Bulk operations
+# ---------------------------------------------------------------------------
+
+
+def get_packing_lists_by_ids(tenant_id: str, ids: list[str]) -> list[dict[str, Any]]:
+    """Fetch multiple packing lists by ID in one query."""
+    if not ids:
+        return []
+    rows = execute_with_tenant(
+        tenant_id,
+        """
+        SELECT pl.*,
+               cu.name AS customer_name
+        FROM packing_list pl
+        LEFT JOIN customer cu ON cu.id = pl.customer_id AND cu.tenant_id = pl.tenant_id
+        WHERE pl.tenant_id = %s AND pl.id = ANY(%s::uuid[])
+        """,
+        (tenant_id, ids),
+    )
+    return list(rows)
+
+
+def bulk_set_status(tenant_id: str, ids: list[str], status: str, actor_id: str) -> list[dict[str, Any]]:
+    """Set status (+ the matching actor column) on multiple packing lists atomically.
+
+    Only the transitions the bulk endpoints actually perform are allowed. This
+    used to branch `if approved / else rejected`, which silently coerced *any*
+    other status to 'rejected' — passing 'pending_approval' marked the rows
+    rejected instead. Unknown statuses now raise rather than guessing.
+    """
+    if not ids:
+        return []
+
+    if status == "approved":
+        set_clause = "status = 'approved', approved_by = %(actor_id)s"
+    elif status == "rejected":
+        set_clause = "status = 'rejected', rejected_by = %(actor_id)s"
+    elif status == "pending_approval":
+        # Submitting for review records no actor column — approved_by /
+        # rejected_by belong to the reviewer, who hasn't acted yet.
+        set_clause = "status = 'pending_approval'"
+    else:
+        raise ValueError(f"bulk_set_status does not support status: {status}")
+
+    rows = execute_write_with_tenant_many(
+        tenant_id,
+        f"""
+        UPDATE packing_list
+        SET {set_clause},
+            updated_at = NOW()
+        WHERE tenant_id = %(tenant_id)s AND id = ANY(%(ids)s::uuid[])
+        RETURNING *
+        """,
+        {"tenant_id": tenant_id, "ids": ids, "actor_id": actor_id},
+    )
+    return list(rows)

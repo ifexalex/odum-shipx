@@ -1,0 +1,72 @@
+import { useState } from 'react'
+
+const DAY_MS = 24 * 60 * 60 * 1000
+
+export interface DateRangeFilterState {
+  /** Preset "last N days", or null for "All time" — drives <DateRangeFilter>. */
+  daysBack: number | null
+  /** Exact custom dates (YYYY-MM-DD) — take precedence over the preset once set. */
+  dateFrom: string
+  dateTo: string
+  /** Resolved query params: custom date wins over the preset when both would apply. */
+  createdAfter: string | undefined
+  createdBefore: string | undefined
+  /** Picking a preset clears any custom dates, and vice versa, so the two
+   * controls can never silently fight over which one is "active". */
+  handlePreset: (days: number | null) => void
+  handleCustomFrom: (value: string) => void
+  handleCustomTo: (value: string) => void
+  /** True if any date filter (preset or custom) is currently applied. */
+  isActive: boolean
+  clear: () => void
+}
+
+/**
+ * useDateRangeFilter — the preset/custom-date-range logic shared by every
+ * list page's "When" filter (ActivityLog, ContainerList, BillingList,
+ * ClaimList, NotificationLog, TenantReports). Extracted after the same
+ * preset+custom pairing was hand-rolled per page; each page still renders
+ * its own <DateRangeFilter> + "From (custom)"/"To (custom)" inputs using
+ * this hook's state, since each page's surrounding filter-bar markup differs.
+ */
+export function useDateRangeFilter(): DateRangeFilterState {
+  const [daysBack, setDaysBack] = useState<number | null>(null)
+  const [dateFrom, setDateFrom] = useState('')
+  const [dateTo, setDateTo] = useState('')
+
+  const presetFrom = daysBack ? new Date(Date.now() - daysBack * DAY_MS).toISOString().slice(0, 10) : undefined
+  const createdAfter = dateFrom || presetFrom
+  const createdBefore = dateTo || undefined
+
+  function handlePreset(days: number | null): void {
+    setDaysBack(days)
+    setDateFrom('')
+    setDateTo('')
+  }
+  function handleCustomFrom(value: string): void {
+    setDateFrom(value)
+    setDaysBack(null)
+  }
+  function handleCustomTo(value: string): void {
+    setDateTo(value)
+    setDaysBack(null)
+  }
+  function clear(): void {
+    setDaysBack(null)
+    setDateFrom('')
+    setDateTo('')
+  }
+
+  return {
+    daysBack,
+    dateFrom,
+    dateTo,
+    createdAfter,
+    createdBefore,
+    handlePreset,
+    handleCustomFrom,
+    handleCustomTo,
+    isActive: !!(daysBack || dateFrom || dateTo),
+    clear,
+  }
+}

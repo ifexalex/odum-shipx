@@ -1,0 +1,5 @@
+.banner { margin-bottom: 16px; }
+.chips { display: flex; gap: 8px; flex-wrap: wrap; }
+.tableWrap { margin-top: 16px; }
+.partial { font-size: 0.75rem; color: var(--color-text-muted); }
+.statsRow { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 12px; margin-bottom: 16px; }

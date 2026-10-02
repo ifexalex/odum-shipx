@@ -1,0 +1,136 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Shipx · Section 16 — Gap Fixes</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&family=Kumbh+Sans:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet" />
+<style>
+  html, body { margin: 0; padding: 0; height: 100%; background: #f0eee9; font-family: "Kumbh Sans", system-ui, sans-serif; }
+  *, *::before, *::after { box-sizing: border-box; }
+  #root { height: 100vh; }
+  input::placeholder, textarea::placeholder { color: #9aa0a6; }
+  button { font-family: inherit; }
+</style>
+<script src="https://unpkg.com/react@18.3.1/umd/react.development.js" integrity="sha384-hD6/rw4ppMLGNu3tX5cjIb+uRZ7UkRJ6BPkLpg4hAu/6onKUg4lLsHAs9EBPT82L" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.development.js" integrity="sha384-u6aeetuaXnQ38mYT8rp6sbXaQe3NL9t+IBXmnYxwkUI2Hw4bsp2Wvmx4yRQF1uAm" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/@babel/standalone@7.29.0/babel.min.js" integrity="sha384-m08KidiNqLdpJqLq95G/LEi8Qvjl/xUYll3QILypMoQ65QorJ9Lvtp2RXYGBFj1y" crossorigin="anonymous"></script>
+<script type="text/babel" src="design-canvas.jsx"></script>
+<script type="text/babel" src="browser-window.jsx"></script>
+<script type="text/babel" src="shared/components.jsx"></script>
+<script type="text/babel" src="shared/app-shell.jsx"></script>
+<script type="text/babel" src="gapfix/gapfix-screens-a.jsx"></script>
+<script type="text/babel" src="gapfix/gapfix-screens-b.jsx"></script>
+<script type="text/babel" src="gapfix/gapfix-screens-c.jsx"></script>
+</head>
+<body>
+<div id="root"></div>
+<script type="text/babel" data-presets="react">
+const Frame = ({url, w = 1440, h = 900, children}) => (
+  <ChromeWindow tabs={[{title: 'Shipx · ' + url.split('/').slice(-1)[0]}]} activeIndex={0} url={url} width={w} height={h}>
+    <div style={{width: w, height: h - 84, background: '#fff', position: 'relative', overflow: 'hidden'}}>{children}</div>
+  </ChromeWindow>
+);
+
+const App = () => (
+  <DesignCanvas>
+
+    <DCSection id="public-tracking" title="16.1 — Public Tracking (no login)" subtitle="PRD Q2: tracking with code + phone, no account. Tenant-branded, no app sidebar. Closes the P1 gap — the backend route GET /v1/shipments/{code}?phone= had no UI.">
+      <DCArtboard id="pt-entry" label="Entry · code + phone" width={1024} height={760}>
+        <Frame url="acme.shipx.co/track" w={1024} h={760}><PublicTracking state="entry" /></Frame>
+      </DCArtboard>
+      <DCArtboard id="pt-result" label="Tracked · read-only stepper" width={1024} height={900}>
+        <Frame url="acme.shipx.co/track/SHX-2026-NGOZI-014" w={1024} h={900}><PublicTracking state="result" /></Frame>
+      </DCArtboard>
+    </DCSection>
+
+    <DCSection id="status-update" title="16.2 — China Office: Container Status Update" subtitle="Fixes the role error in Section 5.3 (was labelled 'Nigeria Office only'). China Office can advance China-side stages; Nigeria-onward stages are shown locked.">
+      <DCArtboard id="status-modal" label="Update status · China transitions" width={1100} height={840}>
+        <Frame url="shipx.co/containers/MSKU7654321" w={1100} h={840}><ContainerStatusUpdate /></Frame>
+      </DCArtboard>
+    </DCSection>
+
+    <DCSection id="create-container" title="16.3 — Create Container · format hint" subtitle="Surfaces the ISO 6346 container-number constraint (^[A-Z]{4}\\d{7}$) the backend enforces — prevents silent 422s.">
+      <DCArtboard id="cc-valid" label="Valid · format hint shown" width={1100} height={900}>
+        <Frame url="shipx.co/containers/new" w={1100} h={900}><CreateContainerFixed state="valid" /></Frame>
+      </DCArtboard>
+      <DCArtboard id="cc-error" label="Invalid · inline pattern error" width={1100} height={900}>
+        <Frame url="shipx.co/containers/new" w={1100} h={900}><CreateContainerFixed state="error" /></Frame>
+      </DCArtboard>
+    </DCSection>
+
+    <DCSection id="bulk-result" title="16.4 — Bulk Approve · partial-failure result" subtitle="Bulk endpoints return {succeeded, failed[]}. This is the missing result state for Section 5.6 — per-item failure reasons + retry.">
+      <DCArtboard id="bulk-partial" label="18 approved · 2 failed" width={1100} height={840}>
+        <Frame url="shipx.co/packing-lists" w={1100} h={840}><BulkResultState /></Frame>
+      </DCArtboard>
+    </DCSection>
+
+    <DCSection id="refund-threshold" title="16.5 — Refund Approve · threshold aware" subtitle="The backend hard-blocks staff above the $50 limit (APPROVAL_THRESHOLD_EXCEEDED). The approve modal now shows the limit and routes over-limit refunds to escalation.">
+      <DCArtboard id="rt-within" label="Within limit · approve" width={1024} height={840}>
+        <Frame url="shipx.co/refunds/RF-20260730-014" w={1024} h={840}><RefundApproveThreshold state="within" /></Frame>
+      </DCArtboard>
+      <DCArtboard id="rt-over" label="Over limit · escalate" width={1024} height={900}>
+        <Frame url="shipx.co/refunds/RF-20260730-014" w={1024} h={900}><RefundApproveThreshold state="over" /></Frame>
+      </DCArtboard>
+    </DCSection>
+
+    <DCSection id="webhook" title="16.6 — Outbound Webhook Configuration" subtitle="New tab under Tenant Admin config. The backend fully supports outbound webhooks (shared/webhook.py, HMAC-SHA256) but there was no UI to configure URL, secret, or events.">
+      <DCArtboard id="wh-config" label="Webhook config" width={1280} height={1080}>
+        <Frame url="shipx.co/admin/config/webhooks" w={1280} h={1080}><WebhookConfig /></Frame>
+      </DCArtboard>
+    </DCSection>
+
+    <DCSection id="storage" title="16.7 — Storage Fee · grace-period states" subtitle="scheduled/storage_fee.py accrues fees after a 14-day grace period, but no UI surfaced the countdown. Three banner states + the accrual log.">
+      <DCArtboard id="storage-banners" label="Grace → ending → accruing" width={1100} height={1080}>
+        <Frame url="shipx.co/billing/BL-20260728-001" w={1100} h={1080}><StorageFeeBanners /></Frame>
+      </DCArtboard>
+    </DCSection>
+
+    <DCSection id="weight" title="16.8 — Manifest Weight Reconciliation" subtitle="PATCH /v1/manifests/{id}/verify returns weight_discrepancies. Section 6.3 didn't surface them — here they are flagged in the verify view.">
+      <DCArtboard id="weight-report" label="Weight discrepancies flagged" width={1160} height={900}>
+        <Frame url="shipx.co/manifests/MF-20260415-001" w={1160} h={900}><WeightDiscrepancy /></Frame>
+      </DCArtboard>
+    </DCSection>
+
+    <DCSection id="dispute-sla" title="16.9 — CBM Dispute · SLA + auto-escalation" subtitle="PRD Q1: 7-day SLA, auto-escalate after 5 days (scheduled/dispute_escalation.py). Adds an SLA countdown and distinguishes system-escalated disputes.">
+      <DCArtboard id="sla-ticking" label="SLA ticking · 2 days left" width={1160} height={900}>
+        <Frame url="shipx.co/billing/disputes/DSP-20260712-003" w={1160} h={900}><DisputeSLA state="ticking" /></Frame>
+      </DCArtboard>
+      <DCArtboard id="sla-escalated" label="Auto-escalated by system" width={1160} height={940}>
+        <Frame url="shipx.co/billing/disputes/DSP-20260712-003" w={1160} h={940}><DisputeSLA state="escalated" /></Frame>
+      </DCArtboard>
+    </DCSection>
+
+    <DCSection id="rn-expired" title="16.10 — Release Note · expired state" subtitle="scheduled/release_expiry.py expires release notes. Section 9.2 had no expired variant — adds the EXPIRED stamp, re-issue path, and warehouse warning.">
+      <DCArtboard id="rne" label="Expired · re-issue path" width={1240} height={900}>
+        <Frame url="shipx.co/release-notes/RN-20260728-ABC123" w={1240} h={900}><ReleaseNoteExpired /></Frame>
+      </DCArtboard>
+    </DCSection>
+
+    <DCSection id="locale" title="16.11 — Staff Notification Language" subtitle="Migration 026 added tenant_user.locale (EN/ZH) but no UI set it. Language selector in the staff profile, mainly for China Office Staff.">
+      <DCArtboard id="locale-pref" label="EN / 中文 selector" width={1024} height={620}>
+        <Frame url="shipx.co/admin/users/wei-chen" w={1024} h={620}><LocalePreference /></Frame>
+      </DCArtboard>
+    </DCSection>
+
+    <DCSection id="impersonation" title="16.13 — Impersonation read-only banner" subtitle="Pairs with backend Task 1 (enforce read-only impersonation). Sticky banner + 30-min countdown + Exit control, and every mutating action disabled. The backend returns impersonated_by / read_only / session_id; this is what the platform admin sees.">
+      <DCArtboard id="imp-portal" label="Tenant portal · read-only session" width={1440} height={980}>
+        <Frame url="acme.shipx.co/admin/customers/ngozi" w={1440} h={980}><ImpersonatedPortal /></Frame>
+      </DCArtboard>
+    </DCSection>
+
+    <DCSection id="offboarded" title="16.12 — Tenant Offboarded (410) state" subtitle="When a tenant is offboarded the backend returns 410 on every request. This is the graceful full-page state users land on instead of a raw error.">
+      <DCArtboard id="off" label="Account closed" width={1024} height={760}>
+        <Frame url="acme.shipx.co" w={1024} h={760}><OffboardedScreen /></Frame>
+      </DCArtboard>
+    </DCSection>
+
+  </DesignCanvas>
+);
+
+ReactDOM.createRoot(document.getElementById('root')).render(<App />);
+</script>
+</body>
+</html>

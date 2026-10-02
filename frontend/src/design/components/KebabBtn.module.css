@@ -1,0 +1,9 @@
+.btn {
+  background: transparent;
+  border: 0;
+  padding: 4px;
+  cursor: pointer;
+  color: var(--color-ink-4);
+  border-radius: 4px;
+  display: flex;
+}

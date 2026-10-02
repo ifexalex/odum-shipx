@@ -1,0 +1,129 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Shipx · Section 1 — Authentication</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&family=Kumbh+Sans:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet" />
+<style>
+  html, body { margin: 0; padding: 0; height: 100%; background: #f0eee9; font-family: "Kumbh Sans", system-ui, sans-serif; }
+  *, *::before, *::after { box-sizing: border-box; }
+  #root { height: 100vh; }
+</style>
+<script src="https://unpkg.com/react@18.3.1/umd/react.development.js" integrity="sha384-hD6/rw4ppMLGNu3tX5cjIb+uRZ7UkRJ6BPkLpg4hAu/6onKUg4lLsHAs9EBPT82L" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.development.js" integrity="sha384-u6aeetuaXnQ38mYT8rp6sbXaQe3NL9t+IBXmnYxwkUI2Hw4bsp2Wvmx4yRQF1uAm" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/@babel/standalone@7.29.0/babel.min.js" integrity="sha384-m08KidiNqLdpJqLq95G/LEi8Qvjl/xUYll3QILypMoQ65QorJ9Lvtp2RXYGBFj1y" crossorigin="anonymous"></script>
+<script type="text/babel" src="design-canvas.jsx"></script>
+<script type="text/babel" src="browser-window.jsx"></script>
+<script type="text/babel" src="auth/auth-screens.jsx"></script>
+</head>
+<body>
+<div id="root"></div>
+<script type="text/babel" data-presets="react">
+const { useState } = React;
+
+// Browser frame wrapper sized to a desktop viewport
+const Frame = ({url, w = 1440, h = 900, children}) => (
+  <ChromeWindow tabs={[{title: 'Shipx · ' + url.split('/').slice(-1)[0]}]} activeIndex={0} url={url} width={w} height={h}>
+    <div style={{width: w, height: h - 84, background: '#fff'}}>{children}</div>
+  </ChromeWindow>
+);
+
+// Phone frame for mobile artboard
+const PhoneFrame = ({w = 390, h = 844, children}) => (
+  <div style={{
+    width: w + 16, height: h + 16, background: '#1c1b1c', borderRadius: 48, padding: 8,
+    boxShadow: '0 24px 60px rgba(0,0,0,0.3), 0 0 0 2px rgba(255,255,255,0.05) inset',
+  }}>
+    <div style={{width: w, height: h, borderRadius: 40, overflow: 'hidden', position: 'relative', background: '#fff'}}>
+      {/* status bar */}
+      <div style={{position: 'absolute', top: 0, left: 0, right: 0, height: 44, display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '0 28px 0 32px', zIndex: 10, color: '#fff'}}>
+        <span style={{fontFamily: 'system-ui', fontSize: 14, fontWeight: 600}}>9:41</span>
+        <div style={{display: 'flex', gap: 6, alignItems: 'center'}}>
+          <svg width="16" height="10" viewBox="0 0 16 10"><path d="M1 7L4 4M4 4L7 7M4 4V10M8 5L10 3M10 3L12 5M10 3V9M13 3L15 1" stroke="#fff" strokeWidth="1.5" strokeLinecap="round" /></svg>
+          <svg width="22" height="11" viewBox="0 0 22 11"><rect x="0.5" y="0.5" width="18" height="10" rx="2" stroke="#fff" fill="none" /><rect x="2" y="2" width="15" height="7" rx="1" fill="#fff" /><rect x="19" y="4" width="2" height="3" fill="#fff" /></svg>
+        </div>
+      </div>
+      {/* dynamic island */}
+      <div style={{position: 'absolute', top: 12, left: '50%', transform: 'translateX(-50%)', width: 120, height: 36, background: '#1c1b1c', borderRadius: 22, zIndex: 9}} />
+      {children}
+    </div>
+  </div>
+);
+
+const App = () => (
+  <DesignCanvas>
+    <DCSection id="login" title="1.1 — Login" subtitle="Five states: default, filled, loading, plus three distinct error messages from the spec.">
+      <DCArtboard id="login-default" label="Default — empty form" width={1440} height={900}>
+        <Frame url="shipx.co/login"><LoginScreen state="default" /></Frame>
+      </DCArtboard>
+      <DCArtboard id="login-filled" label="Filled — ready to submit" width={1440} height={900}>
+        <Frame url="shipx.co/login"><LoginScreen state="filled" /></Frame>
+      </DCArtboard>
+      <DCArtboard id="login-loading" label="Loading — sign-in in flight" width={1440} height={900}>
+        <Frame url="shipx.co/login"><LoginScreen state="loading" /></Frame>
+      </DCArtboard>
+      <DCArtboard id="login-error-creds" label="Error · invalid credentials" width={1440} height={900}>
+        <Frame url="shipx.co/login"><LoginScreen state="error-invalid" /></Frame>
+      </DCArtboard>
+      <DCArtboard id="login-error-suspended" label="Error · account suspended" width={1440} height={900}>
+        <Frame url="shipx.co/login"><LoginScreen state="error-suspended" /></Frame>
+      </DCArtboard>
+      <DCArtboard id="login-error-tenant" label="Error · tenant suspended" width={1440} height={900}>
+        <Frame url="shipx.co/login"><LoginScreen state="error-tenant" /></Frame>
+      </DCArtboard>
+    </DCSection>
+
+    <DCSection id="register" title="1.2 — Customer Self-Registration" subtitle="Public route /register — customer signup with consent capture.">
+      <DCArtboard id="register-default" label="Default — fields filled" width={1440} height={1050}>
+        <Frame url="shipx.co/register" h={1050}><RegisterScreen state="default" /></Frame>
+      </DCArtboard>
+      <DCArtboard id="register-validation" label="Validation errors inline" width={1440} height={1050}>
+        <Frame url="shipx.co/register" h={1050}><RegisterScreen state="validation" /></Frame>
+      </DCArtboard>
+      <DCArtboard id="register-success" label="Success — verify your email" width={1440} height={900}>
+        <Frame url="shipx.co/register"><RegisterScreen state="success" /></Frame>
+      </DCArtboard>
+    </DCSection>
+
+    <DCSection id="forgot" title="1.3 — Forgot Password" subtitle="Two-step flow: request reset link → check email.">
+      <DCArtboard id="forgot-form" label="Request reset link" width={1440} height={900}>
+        <Frame url="shipx.co/forgot-password"><ForgotPasswordScreen state="form" /></Frame>
+      </DCArtboard>
+      <DCArtboard id="forgot-sent" label="Check your email" width={1440} height={900}>
+        <Frame url="shipx.co/forgot-password"><ForgotPasswordScreen state="sent" /></Frame>
+      </DCArtboard>
+    </DCSection>
+
+    <DCSection id="reset" title="1.4 — Set New Password" subtitle="Reached via the token link in the reset email.">
+      <DCArtboard id="reset-form" label="Set new password" width={1440} height={900}>
+        <Frame url="shipx.co/reset-password?token=…"><SetPasswordScreen state="form" /></Frame>
+      </DCArtboard>
+      <DCArtboard id="reset-success" label="Success — redirecting" width={1440} height={900}>
+        <Frame url="shipx.co/reset-password?token=…"><SetPasswordScreen state="success" /></Frame>
+      </DCArtboard>
+    </DCSection>
+
+    <DCSection id="mobile" title="Mobile · Login" subtitle="On phones the brand panel collapses to a compact top bar. Same layout for all four flows.">
+      <DCArtboard id="mobile-login" label="Mobile login (iPhone)" width={420} height={880}>
+        <PhoneFrame><MobileLoginScreen /></PhoneFrame>
+      </DCArtboard>
+    </DCSection>
+
+    <DCSection id="responsive" title="1.5 — Responsive check" subtitle="The same LoginScreen and RegisterScreen components rendered fluid at narrow widths — the brand panel drops out below 920px and form grids stack below 560px.">
+      <DCArtboard id="login-tablet" label="Login · 834 tablet" width={834} height={900}>
+        <Frame url="shipx.co/login" w={834}><LoginScreen state="default" /></Frame>
+      </DCArtboard>
+      <DCArtboard id="register-phone" label="Register · 420 phone" width={420} height={1150}>
+        <Frame url="shipx.co/register" w={420} h={1150}><RegisterScreen state="default" /></Frame>
+      </DCArtboard>
+    </DCSection>
+  </DesignCanvas>
+);
+
+ReactDOM.createRoot(document.getElementById('root')).render(<App />);
+</script>
+</body>
+</html>

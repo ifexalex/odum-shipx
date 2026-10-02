@@ -1,0 +1,126 @@
+.fieldRoot {
+  margin-bottom: var(--space-md);
+}
+
+.label {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  font-family: var(--font-body);
+  font-weight: 500;
+  font-size: 13px;
+  color: var(--color-ink-2);
+  margin-bottom: 6px;
+}
+
+.required {
+  color: var(--color-error);
+  margin-left: 2px;
+}
+
+.optionalTag {
+  font-weight: 400;
+  color: var(--color-ink-4);
+  font-size: 12px;
+}
+
+.wrapper {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 40px;
+  background: var(--color-surface);
+  border: 1px solid var(--color-line);
+  border-radius: var(--radius-sm);
+  padding: 0 14px;
+}
+
+.wrapper:focus-within {
+  border: 2px solid var(--color-primary);
+  padding: 0 13px;
+  box-shadow: var(--shadow-focus-ring);
+}
+
+.wrapperError {
+  border-color: var(--color-error);
+}
+.wrapperError:focus-within {
+  border-color: var(--color-error);
+}
+
+.wrapperDisabled {
+  background: var(--color-page);
+}
+
+.multiline {
+  align-items: flex-start;
+  min-height: 88px;
+  padding: 10px 14px;
+}
+.multiline:focus-within {
+  padding: 9px 13px;
+}
+
+.input {
+  flex: 1;
+  border: 0;
+  outline: 0;
+  background: transparent;
+  font-family: var(--font-body);
+  font-size: 14px;
+  color: var(--color-ink);
+  height: 100%;
+  min-width: 0;
+}
+
+.textarea {
+  flex: 1;
+  border: 0;
+  outline: 0;
+  background: transparent;
+  resize: vertical;
+  font-family: var(--font-body);
+  font-size: 14px;
+  color: var(--color-ink);
+  padding: 0;
+  min-height: 64px;
+}
+
+.prefix {
+  color: var(--color-ink-4);
+  font-family: var(--font-mono);
+  font-size: 13px;
+}
+
+.suffix {
+  color: var(--color-ink-4);
+  font-size: 13px;
+}
+
+.errorMsg {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 6px;
+  font-size: 12px;
+  color: var(--color-error);
+  font-weight: 500;
+}
+
+.helper {
+  margin-top: 6px;
+  font-size: 12px;
+  color: var(--color-ink-4);
+}
+
+/* iOS Safari auto-zooms the whole page on focus into any input/textarea
+   with a computed font-size under 16px — `Field` backs nearly every form
+   and modal in the app, so this one rule fixes that everywhere at once.
+   Scoped to mobile only so desktop density is unchanged. */
+@container sxapp (max-width: 860px) {
+  .input,
+  .textarea {
+    font-size: 16px;
+  }
+}

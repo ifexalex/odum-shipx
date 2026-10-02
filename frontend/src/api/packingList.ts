@@ -1,0 +1,204 @@
+import { apiDownloadFile, apiRequest, apiRequestList, type ExportFormat } from './client'
+
+// Ground truth: services/packing_list/{service,repository}.py. The
+// PackingListResponse Pydantic model in models.py is unused for actual
+// serialization — handlers return the raw repository dict via
+// `_assemble_response()`, which spreads every DB column. That's why fields
+// like created_by/approved_by/approval_comments below aren't in the
+// documented response model but are real, present on every response, and
+// load-bearing for the self-approval-hiding rule (08_api_packing_list.md).
+export type PackingListStatus = 'draft' | 'pending_approval' | 'approved' | 'rejected'
+
+// weight_dispatch_kg/weight_actual_kg/cbm/length_cm/width_cm/height_cm/declared_value_usd
+// are DECIMAL columns in Postgres. shared/responses.py's json.dumps(body, default=str)
+// has no native Decimal encoder, so these always serialize as strings on the wire —
+// never trust `number` here, or .toFixed()/arithmetic on them will break at runtime.
+export interface PackingListItem {
+  id: string
+  packing_list_id: string
+  description: string
+  weight_dispatch_kg: string | null
+  weight_actual_kg: string | null
+  carton_tag: string | null
+  tracking_code: string | null
+  cbm: string | null
+  length_cm: string | null
+  width_cm: string | null
+  height_cm: string | null
+  received_date: string | null
+  declared_value_usd: string | null
+  // Bulk-package fields from a forwarder manifest import (migration 040).
+  // One row can be "16 bags", so quantity is not always 1.
+  quantity?: number | null
+  package_unit?: string | null
+  /** Verbatim source cell, e.g. "1PALLET(61items)" — kept when it was compound. */
+  quantity_raw?: string | null
+  /** Verbatim BALE TYPE, e.g. "BIG BALE"; package_unit collapses to 'bale'. */
+  bale_type?: string | null
+  bale_no?: string | null
+}
+
+export interface ItemRejectionEntry {
+  item_id: string
+  reason: string
+}
+
+export interface ApprovalCommentEntry {
+  actor_id: string
+  comments: string
+  item_rejections: ItemRejectionEntry[]
+  at: string
+}
+
+export interface PackingList {
+  id: string
+  tenant_id: string
+  reference?: string | null
+  container_id: string
+  container_number: string | null
+  container_status?: string | null
+  container_eta?: string | null
+  vessel_name?: string | null
+  voyage_number?: string | null
+  customer_id: string
+  customer_name?: string | null
+  customer_phone?: string | null
+  loading_date?: string | null
+  delivery_date?: string | null
+  /** Total packages (sums bulk quantities), unlike carton_count which counts rows. */
+  package_count?: number
+  /** Packages keyed by unit, e.g. { bale: 2, bag: 16 }. */
+  package_mix?: Record<string, number> | null
+  status: PackingListStatus
+  items: PackingListItem[]
+  total_cbm: string
+  total_weight_kg: string
+  carton_count: number
+  created_by: string | null
+  created_by_name?: string | null
+  approved_by: string | null
+  approved_by_name?: string | null
+  approved_at: string | null
+  rejected_by: string | null
+  rejected_by_name?: string | null
+  rejected_at: string | null
+  approval_comments: ApprovalCommentEntry[] | null
+  created_at: string
+  updated_at: string
+}
+
+/** Package types offered in the create/edit wizard. */
+export type PackageUnit = 'carton' | 'bag' | 'pallet' | 'bale' | 'sack'
+
+export const PACKAGE_UNITS: { value: PackageUnit; label: string }[] = [
+  { value: 'carton', label: 'Carton' },
+  { value: 'bag', label: 'Bag' },
+  { value: 'pallet', label: 'Pallet' },
+  { value: 'bale', label: 'Bale' },
+  { value: 'sack', label: 'Sack' },
+]
+
+export interface PackingListItemInput {
+  description: string
+  weight_dispatch_kg?: number
+  weight_actual_kg?: number
+  length_cm?: number
+  width_cm?: number
+  height_cm?: number
+  received_date?: string
+  declared_value_usd?: number
+  package_unit?: PackageUnit
+}
+
+export interface CreatePackingListInput {
+  container_id: string
+  customer_id: string
+  loading_date?: string
+  delivery_date?: string
+  items: PackingListItemInput[]
+}
+
+export interface UpdatePackingListItemInput extends PackingListItemInput {
+  id?: string
+}
+
+export interface UpdatePackingListInput {
+  loading_date?: string
+  delivery_date?: string
+  items: UpdatePackingListItemInput[]
+}
+
+export interface RejectPackingListInput {
+  comments: string
+  item_rejections?: ItemRejectionEntry[]
+}
+
+export interface BulkActionFailure {
+  id: string
+  reason: string
+}
+
+export interface BulkActionResult {
+  succeeded: string[]
+  failed: BulkActionFailure[]
+}
+
+export interface PackingListListParams {
+  cursor?: string
+  limit?: number
+  status?: string
+  container_id?: string
+  customer_id?: string
+  q?: string
+}
+
+export const packingListApi = {
+  list: (params: PackingListListParams = {}) =>
+    apiRequestList<PackingList>({
+      method: 'GET',
+      path: '/v1/packing-lists',
+      query: params as Record<string, string | number | undefined>,
+    }),
+
+  listByContainer: (containerId: string, params: Omit<PackingListListParams, 'container_id'> = {}) =>
+    apiRequestList<PackingList>({
+      method: 'GET',
+      path: `/v1/containers/${containerId}/packing-lists`,
+      query: params as Record<string, string | number | undefined>,
+    }),
+
+  get: (id: string) => apiRequest<PackingList>({ method: 'GET', path: `/v1/packing-lists/${id}` }),
+
+  create: (body: CreatePackingListInput, idempotencyKey: string) =>
+    apiRequest<PackingList>({ method: 'POST', path: '/v1/packing-lists', body, idempotencyKey }),
+
+  update: (id: string, body: UpdatePackingListInput) =>
+    apiRequest<PackingList>({ method: 'PUT', path: `/v1/packing-lists/${id}`, body }),
+
+  submit: (id: string) => apiRequest<PackingList>({ method: 'PATCH', path: `/v1/packing-lists/${id}/submit` }),
+
+  approve: (id: string, comments?: string) =>
+    apiRequest<PackingList>({ method: 'PATCH', path: `/v1/packing-lists/${id}/approve`, body: { comments } }),
+
+  reject: (id: string, body: RejectPackingListInput) =>
+    apiRequest<PackingList>({ method: 'PATCH', path: `/v1/packing-lists/${id}/reject`, body }),
+
+  // draft -> pending_approval. An import creates dozens of lists at once, so
+  // moving them forward one at a time is not workable.
+  bulkSubmit: (ids: string[]) =>
+    apiRequest<BulkActionResult>({ method: 'POST', path: '/v1/packing-lists/bulk-submit', body: { ids } }),
+
+  bulkApprove: (ids: string[], comments?: string) =>
+    apiRequest<BulkActionResult>({ method: 'POST', path: '/v1/packing-lists/bulk-approve', body: { ids, comments } }),
+
+  bulkReject: (ids: string[], comments: string) =>
+    apiRequest<BulkActionResult>({ method: 'POST', path: '/v1/packing-lists/bulk-reject', body: { ids, comments } }),
+
+  /** xlsx or csv export — triggers browser download. */
+  export: (id: string, format: Exclude<ExportFormat, 'pdf'>) =>
+    apiDownloadFile(`/v1/packing-lists/${id}/export`, format, `packing-list-${id}.${format}`),
+
+  /** PDF export — opens in new browser tab. */
+  pdf: (id: string) =>
+    apiDownloadFile(`/v1/packing-lists/${id}/pdf`, 'pdf', `packing-list-${id}.pdf`),
+}

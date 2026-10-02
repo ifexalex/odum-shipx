@@ -136,6 +136,8 @@ def _maybe_send_reminder(
         }
 
     sent = 0
+    locale = customer.get("locale", "en")
+
     if customer.get("phone"):
         try:
             enqueue_notification(
@@ -144,6 +146,7 @@ def _maybe_send_reminder(
                 recipient=customer["phone"],
                 template_id=template_id,
                 template_vars=template_vars,
+                locale=locale,
             )
             sent += 1
         except Exception:
@@ -161,6 +164,7 @@ def _maybe_send_reminder(
                 recipient=customer["email"],
                 template_id=template_id,
                 template_vars=template_vars,
+                locale=locale,
             )
             sent += 1
         except Exception:
@@ -249,10 +253,9 @@ def _get_customer_contact(tenant_id: str, customer_id: str) -> dict[str, Any] | 
     rows = execute_with_tenant(
         tenant_id,
         """
-        SELECT c.id, u.email, u.phone_number AS phone
-        FROM customer c
-        JOIN users u ON u.id = c.user_id
-        WHERE c.tenant_id = %s AND c.id = %s
+        SELECT id, email, phone, locale
+        FROM customer
+        WHERE tenant_id = %s AND id = %s AND anonymised_at IS NULL
         LIMIT 1
         """,
         (tenant_id, customer_id),

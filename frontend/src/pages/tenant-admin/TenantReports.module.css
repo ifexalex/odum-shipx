@@ -1,0 +1,254 @@
+/* Reflows to fewer columns as space shrinks instead of forcing the page
+   wider than its container on mobile (was a fixed 4-column grid). */
+.statsRow {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  gap: 16px;
+  margin-bottom: 24px;
+}
+
+.grid2 {
+  display: grid;
+  grid-template-columns: 1fr 1.2fr;
+  gap: 20px;
+}
+
+.tableHead {
+  padding: 18px 20px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  border-bottom: 1px solid var(--color-line);
+}
+
+/* Donut chart */
+.donutWrap {
+  display: flex;
+  align-items: center;
+  gap: 24px;
+}
+
+.donutOuter {
+  position: relative;
+  width: 160px;
+  height: 160px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.donutInner {
+  position: absolute;
+  inset: 28px;
+  border-radius: 50%;
+  background: var(--color-surface);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+}
+
+.donutLabel {
+  font-size: 10px;
+  color: var(--color-ink-4);
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+
+.donutTotal {
+  font-family: var(--font-display);
+  font-weight: 800;
+  font-size: 16px;
+  color: var(--color-ink);
+  letter-spacing: -0.01em;
+  margin-top: 2px;
+}
+
+.donutLegend { flex: 1; }
+
+.donutLegendRow {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 6px 0;
+}
+
+.donutDot {
+  width: 10px;
+  height: 10px;
+  border-radius: 3px;
+  flex-shrink: 0;
+}
+
+.donutLegendLabel {
+  flex: 1;
+  font-size: 13px;
+  color: var(--color-ink-2);
+}
+
+.donutPct {
+  font-size: 11px;
+  color: var(--color-ink-4);
+  width: 32px;
+  text-align: right;
+}
+
+/* Top customers */
+.topCustRow {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 7px 0;
+}
+
+.topCustName {
+  font-size: 12px;
+  color: var(--color-ink-2);
+  width: 130px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  flex-shrink: 0;
+}
+
+.topCustBar {
+  flex: 1;
+  height: 18px;
+  background: var(--color-page);
+  border-radius: 4px;
+  overflow: hidden;
+}
+
+.topCustFill {
+  height: 100%;
+  border-radius: 4px;
+  transition: width 0.3s ease;
+}
+
+/* Container pipeline chart */
+.pipelineWrap {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.pipelineBars {
+  display: flex;
+  align-items: flex-end;
+  gap: 8px;
+  height: 120px;
+}
+
+.pipelineCol {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  position: relative;
+}
+
+.pipelineBar {
+  width: 100%;
+  display: flex;
+  flex-direction: column-reverse;
+  border-radius: 4px 4px 0 0;
+  overflow: hidden;
+  background: var(--color-page);
+}
+
+.pipelineWeekLabel {
+  font-size: 10px;
+  color: var(--color-ink-4);
+  text-align: center;
+}
+
+.pipelineTotal {
+  position: absolute;
+  top: -16px;
+  font-size: 10px;
+  font-weight: 700;
+  color: var(--color-ink-3);
+}
+
+.pipelineLegend {
+  display: flex;
+  gap: 16px;
+  flex-wrap: wrap;
+}
+
+.pipelineLegendItem {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  color: var(--color-ink-3);
+}
+
+.pipelineDot {
+  width: 10px;
+  height: 10px;
+  border-radius: 2px;
+  flex-shrink: 0;
+}
+
+/* Claims summary — reflows to fewer columns as space shrinks instead of
+   forcing the page wider than its container on mobile (was a fixed
+   3-column grid). */
+.claimsGrid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  gap: 16px;
+  margin-bottom: 24px;
+}
+
+.claimCardHeader {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 14px;
+}
+
+.claimIcon {
+  width: 36px;
+  height: 36px;
+  border-radius: 10px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.claimCardTitle {
+  font-family: var(--font-display);
+  font-weight: 700;
+  font-size: 15px;
+  color: var(--color-ink);
+}
+
+.claimStats {
+  display: flex;
+  gap: 20px;
+}
+
+.claimStatVal {
+  font-family: var(--font-display);
+  font-weight: 700;
+  font-size: 22px;
+  color: var(--color-ink);
+  letter-spacing: -0.01em;
+}
+
+.claimStatLabel {
+  font-size: 11px;
+  color: var(--color-ink-4);
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  margin-top: 2px;
+}
+
+/* P2-6 — collapse the two-column report grid on narrow app frames */
+@container sxapp (max-width: 860px) {
+  .grid2 { grid-template-columns: 1fr; }
+}

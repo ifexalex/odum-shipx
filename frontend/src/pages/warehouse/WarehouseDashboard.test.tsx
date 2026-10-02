@@ -1,0 +1,135 @@
+import { render, screen, waitFor } from '@testing-library/react'
+import userEvent from '@testing-library/user-event'
+import { MemoryRouter, Route, Routes } from 'react-router-dom'
+import { beforeEach, describe, expect, it, vi } from 'vitest'
+import * as rnModule from '../../api/releaseNotes'
+import type { ReleaseNote, ReleaseNoteListParams } from '../../api/releaseNotes'
+import { SessionContext } from '../../auth/SessionContext'
+import type { Session } from '../../auth/types'
+import { WarehouseDashboard } from './WarehouseDashboard'
+
+const SESSION: Session = {
+  userId: 'u-wh', tenantId: 't-001', role: 'warehouse_attendant', roles: ['warehouse_attendant'],
+  name: 'Tunde Bello', email: 'warehouse@test.com',
+  isPlatformAdmin: false,
+  impersonatedBy: null,
+  sessionId: null,
+  readOnly: false,
+  expiresAt: Date.now() + 60_000,
+  tokenType: 'cognito',
+}
+
+function note(overrides: Partial<ReleaseNote>): ReleaseNote {
+  return {
+    id: 'rn1', reference_number: 'RN-20260716-ABC123', customer_name: 'Ngozi Okonkwo',
+    container_number: 'MSCU1234567', carton_count: 4, total_cartons_for_customer: 4,
+    is_partial_release: false, carton_tags: [], payment_status: 'paid', status: 'active',
+    authorized_at: new Date().toISOString(), warehouse_address: null,
+    packages_released: null, package_unit: null, packages_balance: null,
+    warehouse_name: null, warehouse_phone: null, is_on_credit: false,
+    credit_granted_by_name: null, receipt_number: null,
+    physical_document_number: null, packing_list_invoice_numbers: [],
+    amount_paid_ngn: '0', balance_ngn: '0', total_ngn: '0', debt_due_date: null,
+    ...overrides,
+  }
+}
+
+function ok(notes: ReleaseNote[], hasMore = false) {
+  return { data: notes, meta: { pagination: { has_more: hasMore, next_cursor: null, total_count: notes.length } } }
+}
+
+/** Route the 3 parallel list calls (active / picked_up / expired) by status. */
+function mockLists({ active = [], pickedUp = [], expired = [] }: { active?: ReleaseNote[]; pickedUp?: ReleaseNote[]; expired?: ReleaseNote[] }) {
+  return vi.spyOn(rnModule.releaseNotesApi, 'list').mockImplementation((params: ReleaseNoteListParams = {}) => {
+    if (params.reference) return Promise.resolve(ok([]))
+    if (params.status === 'picked_up') return Promise.resolve(ok(pickedUp))
+    if (params.status === 'expired') return Promise.resolve(ok(expired))
+    return Promise.resolve(ok(active))
+  })
+}
+
+function renderPage() {
+  return render(
+    <MemoryRouter>
+      <SessionContext.Provider value={{ session: SESSION, status: 'authenticated', login: vi.fn(), logout: vi.fn(), refreshNow: vi.fn(), setActiveRole: vi.fn(), startImpersonation: vi.fn(), exitImpersonation: vi.fn() }}>
+        <Routes>
+          <Route path="/" element={<WarehouseDashboard />} />
+          <Route path="/release-notes/:id" element={<div>Release note detail</div>} />
+        </Routes>
+      </SessionContext.Provider>
+    </MemoryRouter>,
+  )
+}
+
+describe('WarehouseDashboard', () => {
+  beforeEach(() => vi.restoreAllMocks())
+
+  it('renders dashboard title', () => {
+    mockLists({})
+    renderPage()
+    expect(screen.getByText('Warehouse')).toBeTruthy()
+  })
+
+  it('shows empty state when queue is empty', async () => {
+    mockLists({})
+    renderPage()
+    expect(await screen.findByText('All clear!')).toBeTruthy()
+  })
+
+  // P2-2 — real stats: completed-today counts picked_up notes with today's picked_up_at
+  it('counts completed-today from picked_up notes and shows the expired backlog', async () => {
+    mockLists({
+      active: [note({})],
+      pickedUp: [
+        note({ id: 'p1', status: 'picked_up', picked_up_at: new Date().toISOString() }),
+        note({ id: 'p2', status: 'picked_up', picked_up_at: new Date().toISOString() }),
+        note({ id: 'p3', status: 'picked_up', picked_up_at: '2026-01-01T10:00:00Z' }), // not today
+      ],
+      expired: [
+        note({ id: 'e1', status: 'expired' }),
+        note({ id: 'e2', status: 'expired' }),
+        note({ id: 'e3', status: 'expired' }),
+      ],
+    })
+    renderPage()
+
+    await waitFor(() => expect(screen.getByText('Completed today')).toBeInTheDocument())
+    // Distinct values: completed today = 2 (only today's pickups), expired = 3
+    expect(screen.getByText('2')).toBeInTheDocument()
+    expect(screen.getByText('3')).toBeInTheDocument()
+    expect(screen.getByText('Expired · not collected')).toBeInTheDocument()
+  })
+
+  // P2-2 — urgency: >24h-old notes get the Urgent chip
+  it('flags notes older than 24h as urgent', async () => {
+    mockLists({
+      active: [note({ authorized_at: new Date(Date.now() - 26 * 3600_000).toISOString() })],
+    })
+    renderPage()
+
+    await waitFor(() => expect(screen.getByText('Urgent')).toBeInTheDocument())
+    expect(screen.getByText(/1 urgent · 24h\+ old/)).toBeInTheDocument()
+  })
+
+  // P2-2 — scan-or-type lookup: active match opens the pickup sheet directly
+  it('opens the pickup sheet when a typed reference matches an active note', async () => {
+    mockLists({ active: [note({})] })
+    renderPage()
+    await waitFor(() => expect(screen.getByLabelText('Release note reference')).toBeInTheDocument())
+
+    await userEvent.type(screen.getByLabelText('Release note reference'), 'rn-20260716-abc123{Enter}')
+
+    // Pickup sheet opens (Confirm pickup button is its unique CTA)
+    expect(await screen.findByRole('button', { name: /Confirm pickup/ })).toBeInTheDocument()
+  })
+
+  it('shows an inline error when the reference matches nothing', async () => {
+    mockLists({ active: [note({})] })
+    renderPage()
+    await waitFor(() => expect(screen.getByLabelText('Release note reference')).toBeInTheDocument())
+
+    await userEvent.type(screen.getByLabelText('Release note reference'), 'RN-NOPE{Enter}')
+
+    expect(await screen.findByText(/No release note found for "RN-NOPE"/)).toBeInTheDocument()
+  })
+})

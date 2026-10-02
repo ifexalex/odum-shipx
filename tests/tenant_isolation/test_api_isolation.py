@@ -104,7 +104,7 @@ class TestPackingListApiTenantIsolation:
             patch("services.packing_list.handler.service") as mock_svc,
             patch("shared.metering.record_usage"),
         ):
-            mock_svc.list_packing_lists.return_value = ([], None, False)
+            mock_svc.list_packing_lists.return_value = ([], None, False, 0)
             resp = handler.lambda_handler(_event("GET", "/v1/packing-lists", TENANT_A), {})
 
         assert resp["statusCode"] == 200

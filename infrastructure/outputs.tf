@@ -132,3 +132,22 @@ output "permissions_boundary_arn" {
   description = "Lambda permissions boundary policy ARN"
   value       = module.iam_oidc.permissions_boundary_arn
 }
+
+# ---------------------------------------------------------------------------
+# Frontend hosting outputs (only populated when route53_zone_id is set)
+# ---------------------------------------------------------------------------
+
+output "frontend_bucket_name" {
+  description = "S3 bucket name for the frontend build artifacts — used by CI deploy step."
+  value       = length(module.cloudfront) > 0 ? module.cloudfront[0].s3_bucket_name : null
+}
+
+output "cloudfront_distribution_id" {
+  description = "CloudFront distribution ID — used by CI to invalidate /index.html after deploy."
+  value       = length(module.cloudfront) > 0 ? module.cloudfront[0].distribution_id : null
+}
+
+output "cloudfront_domain" {
+  description = "CloudFront distribution domain (e.g. d1abc.cloudfront.net)."
+  value       = length(module.cloudfront) > 0 ? module.cloudfront[0].distribution_domain : null
+}

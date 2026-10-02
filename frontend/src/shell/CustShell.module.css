@@ -1,0 +1,23 @@
+.shell {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  background: var(--color-page);
+  font-family: var(--font-body);
+  color: var(--color-ink);
+  /* Container-query context for customer pages — same name as the staff
+     shell (PageShell.module.css) so page CSS uses one query vocabulary. */
+  container-type: inline-size;
+  container-name: sxapp;
+}
+
+.main {
+  flex: 1;
+  overflow-y: auto;
+  padding: 32px 40px;
+}
+
+.inner {
+  max-width: 1180px;
+  margin: 0 auto;
+}

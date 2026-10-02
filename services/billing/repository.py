@@ -54,6 +54,28 @@ def get_customer_by_user_id(tenant_id: str, user_id: str) -> dict[str, Any] | No
     return rows[0] if rows else None
 
 
+def get_customer_contact(tenant_id: str, customer_id: str) -> dict[str, Any] | None:
+    """Contact info for enqueue_notifications — name/phone/email/whatsapp plus
+    the portal user's locale (defaults to 'en' for customers without one).
+    `user_id` (== tenant_user.id when the customer has a portal account, else
+    NULL) is included so callers can also target the in-app customer
+    notification bell via shared.staff_notifications.notify_staff — same
+    shape as tracking/repository.py::get_customers_for_container."""
+    rows = execute_with_tenant(
+        tenant_id,
+        """
+        SELECT c.id::text AS id, c.user_id, c.name, c.phone, c.email, c.whatsapp,
+            COALESCE(tu.locale, 'en') AS locale
+        FROM customer c
+        LEFT JOIN tenant_user tu ON tu.id = c.user_id AND tu.tenant_id = c.tenant_id
+        WHERE c.tenant_id = %s AND c.id = %s AND c.anonymised_at IS NULL
+        LIMIT 1
+        """,
+        (tenant_id, customer_id),
+    )
+    return rows[0] if rows else None
+
+
 # ---------------------------------------------------------------------------
 # Tenant config reads
 # ---------------------------------------------------------------------------
@@ -98,6 +120,31 @@ def get_cbm_and_carton_totals(tenant_id: str, customer_id: str, container_id: st
         (tenant_id, customer_id, container_id),
     )
     return rows[0] if rows else {"total_cbm": 0, "total_cartons": 0}
+
+
+def get_cbm_by_package_type(tenant_id: str, customer_id: str, container_id: str) -> dict[str, Any]:
+    """CBM from approved packing lists for customer+container, grouped by
+    raw `package_unit` — same scoping as get_cbm_and_carton_totals, but
+    bucketed so billing can apply a per-package-type rate. Buckets are
+    normalized by the caller (shared/cbm_rate.py::normalize_package_unit),
+    not here, since a raw package_unit value could be any free-text string."""
+    rows = execute_with_tenant(
+        tenant_id,
+        """
+        SELECT
+            pli.package_unit         AS package_unit,
+            COALESCE(SUM(pli.cbm), 0) AS total_cbm
+        FROM packing_list_item pli
+        JOIN packing_list pl ON pl.id = pli.packing_list_id
+        WHERE pl.tenant_id    = %s
+          AND pl.customer_id  = %s
+          AND pl.container_id = %s
+          AND pl.status       = 'approved'
+        GROUP BY pli.package_unit
+        """,
+        (tenant_id, customer_id, container_id),
+    )
+    return {row["package_unit"]: row["total_cbm"] for row in rows}
 
 
 def get_outstanding_carryovers(tenant_id: str, customer_id: str) -> list[dict[str, Any]]:
@@ -150,12 +197,14 @@ def create_billing(tenant_id: str, data: dict[str, Any]) -> dict[str, Any] | Non
         """
         INSERT INTO billing (
             tenant_id, customer_id, container_id, invoice_number,
-            total_cartons, total_cbm, cbm_rate_usd, subtotal_usd,
+            total_cartons, total_cbm, cbm_rate_usd, cbm_rate_currency,
+            cbm_rate_mode, cbm_breakdown, subtotal_usd,
             exchange_rate_ngn, subtotal_ngn, misc_charges_ngn,
             total_ngn, amount_paid_ngn, status, billed_at, created_by
         ) VALUES (
             %(tenant_id)s, %(customer_id)s, %(container_id)s, %(invoice_number)s,
-            %(total_cartons)s, %(total_cbm)s, %(cbm_rate_usd)s, %(subtotal_usd)s,
+            %(total_cartons)s, %(total_cbm)s, %(cbm_rate_usd)s, %(cbm_rate_currency)s,
+            %(cbm_rate_mode)s, %(cbm_breakdown)s::jsonb, %(subtotal_usd)s,
             %(exchange_rate_ngn)s, %(subtotal_ngn)s, %(misc_charges_ngn)s,
             %(total_ngn)s, %(amount_paid_ngn)s, %(status)s, %(billed_at)s, %(created_by)s
         ) RETURNING *
@@ -184,30 +233,269 @@ def list_billing_all(
     filters: dict[str, Any],
     limit: int = 50,
     cursor: dict[str, Any] | None = None,
+    sort_field: str = "created_at",
+    sort_direction: str = "DESC",
 ) -> tuple[list[dict[str, Any]], str | None, bool]:
-    """Paginated list of all billing records for a tenant."""
+    """Paginated list of all billing records for a tenant.
+
+    `sort_field` is a bare column name (e.g. "invoice_number", "billed_at"),
+    validated against shared.pagination.ALLOWED_SORT_FIELDS by
+    build_paginated_query — the "b." table-alias prefix is added here since
+    this query (unlike tracking's list_containers) sorts directly against the
+    aliased `billing b` table rather than a flattened subquery.
+    """
     from shared.pagination import build_paginated_query, extract_page
 
     conditions = ["b.tenant_id = %(tenant_id)s"]
     extra: dict[str, Any] = {"tenant_id": tenant_id}
 
     if filters.get("status"):
-        conditions.append("b.status = %(status)s")
-        extra["status"] = filters["status"]
+        # Accepts either a single status string or a list (Filters panel's
+        # multi-select sends several) — same ANY() idiom as
+        # tracking/repository.py::list_containers.
+        statuses = filters["status"]
+        if isinstance(statuses, str):
+            statuses = [statuses]
+        conditions.append("b.status = ANY(%(statuses)s)")
+        extra["statuses"] = list(statuses)
     if filters.get("customer_id"):
         conditions.append("b.customer_id = %(customer_id)s")
         extra["customer_id"] = filters["customer_id"]
+    if filters.get("created_after"):
+        conditions.append("b.billed_at >= %(created_after)s")
+        extra["created_after"] = filters["created_after"]
+    if filters.get("created_before"):
+        conditions.append("b.billed_at <= %(created_before)s")
+        extra["created_before"] = filters["created_before"]
+
+    if filters.get("q"):
+        conditions.append("(b.invoice_number ILIKE %(q)s OR cu.name ILIKE %(q)s OR c.container_number ILIKE %(q)s)")
+        extra["q"] = f"%{filters['q']}%"
 
     base = f"""
-        SELECT b.*, c.container_number
+        SELECT b.*, c.container_number, cu.name AS customer_name
         FROM billing b
-        LEFT JOIN container c ON c.id = b.container_id AND c.tenant_id = b.tenant_id
+        LEFT JOIN container c  ON c.id  = b.container_id  AND c.tenant_id  = b.tenant_id
+        LEFT JOIN customer  cu ON cu.id = b.customer_id   AND cu.tenant_id = b.tenant_id
         WHERE {' AND '.join(conditions)}
     """
-    query, params = build_paginated_query(base, cursor, limit, sort_field="b.created_at")
+    query, params = build_paginated_query(base, cursor, limit, sort_field=f"b.{sort_field}", sort_direction=sort_direction)
     params.update(extra)
     rows = execute_with_tenant(tenant_id, query, params)
     return extract_page(rows, limit)
+
+
+def get_tenant_report(
+    tenant_id: str,
+    created_after: str | None = None,
+    created_before: str | None = None,
+) -> dict[str, Any]:
+    """Period report aggregates for TenantReports, SQL-computed over the whole
+    table (the frontend previously summed a capped `limit: 500` sample of each
+    of billing/containers/claims, silently wrong past 500 in the period).
+
+    `container_billing` and `top_customers` are bounded (top-N by amount billed)
+    so the response stays small at tens of thousands of rows — a report reader
+    wants the largest, and narrower ranges surface the rest.
+    """
+    # Two forms of the same date predicate: bare (single-table queries) and
+    # b.-aliased (the joined billing queries). Only bound %(params)s — never
+    # interpolated values — go into the SQL.
+    params: dict[str, Any] = {"tenant_id": tenant_id}
+    bare = "tenant_id = %(tenant_id)s"
+    aliased = "b.tenant_id = %(tenant_id)s"
+    if created_after:
+        bare += " AND created_at >= %(created_after)s"
+        aliased += " AND b.created_at >= %(created_after)s"
+        params["created_after"] = created_after
+    if created_before:
+        bare += " AND created_at <= %(created_before)s"
+        aliased += " AND b.created_at <= %(created_before)s"
+        params["created_before"] = created_before
+
+    overview = execute_with_tenant(
+        tenant_id,
+        f"""
+        SELECT
+            COALESCE(SUM(total_ngn), 0)                                          AS total_revenue_ngn,
+            COALESCE(SUM(total_cbm), 0)                                          AS total_cbm,
+            COALESCE(SUM(total_ngn) FILTER (WHERE status = 'paid'), 0)           AS revenue_paid,
+            COALESCE(SUM(total_ngn) FILTER (WHERE status = 'partially_paid'), 0) AS revenue_partially_paid,
+            COALESCE(SUM(total_ngn) FILTER (WHERE status = 'unpaid'), 0)         AS revenue_unpaid,
+            COALESCE(SUM(total_ngn) FILTER (
+                WHERE status = 'released_with_outstanding'), 0)                  AS revenue_released_with_outstanding,
+            COALESCE(SUM(total_ngn) FILTER (WHERE status = 'waived'), 0)         AS revenue_waived
+        FROM billing
+        WHERE {bare}
+        """,
+        params,
+    )
+    ov = overview[0] if overview else {}
+
+    top_customers = execute_with_tenant(
+        tenant_id,
+        f"""
+        SELECT COALESCE(cu.name, 'Unknown') AS name, SUM(b.total_ngn) AS amount
+        FROM billing b
+        LEFT JOIN customer cu ON cu.id = b.customer_id AND cu.tenant_id = b.tenant_id
+        WHERE {aliased}
+        GROUP BY COALESCE(cu.name, 'Unknown')
+        ORDER BY amount DESC
+        LIMIT 20
+        """,
+        params,
+    )
+
+    container_billing = execute_with_tenant(
+        tenant_id,
+        f"""
+        SELECT
+            COALESCE(c.container_number, b.container_id::text) AS container_number,
+            COUNT(DISTINCT b.customer_id)                      AS customers,
+            COALESCE(SUM(b.total_cbm), 0)                      AS cbm,
+            COALESCE(SUM(b.total_ngn), 0)                      AS billed,
+            COALESCE(SUM(b.amount_paid_ngn), 0)               AS collected,
+            COALESCE(SUM(b.balance_ngn), 0)                   AS outstanding,
+            COALESCE(AVG(NULLIF(b.cbm_rate_usd, 0)), 0)       AS cbm_rate_usd,
+            COALESCE(AVG(NULLIF(b.exchange_rate_ngn, 0)), 0)  AS dollar_rate
+        FROM billing b
+        LEFT JOIN container c ON c.id = b.container_id AND c.tenant_id = b.tenant_id
+        WHERE {aliased}
+        GROUP BY COALESCE(c.container_number, b.container_id::text)
+        ORDER BY billed DESC
+        LIMIT 200
+        """,
+        params,
+    )
+
+    # Cross-table period counts (tenant-scoped via RLS).
+    containers_processed = execute_with_tenant(
+        tenant_id,
+        f"""
+        SELECT COUNT(*) AS n FROM container
+        WHERE {bare} AND status IN ('cleared', 'at_warehouse', 'fully_released')
+        """,
+        params,
+    )
+    claims = execute_with_tenant(
+        tenant_id,
+        f"""
+        SELECT
+            COUNT(*)                                                     AS total,
+            COUNT(*) FILTER (WHERE status IN ('filed', 'under_inspection',
+                                              'pending_resolution'))     AS open,
+            COUNT(*) FILTER (WHERE status = 'resolved')                  AS resolved
+        FROM damage_claim WHERE {bare}
+        """,
+        params,
+    )
+    customers = execute_with_tenant(
+        tenant_id,
+        "SELECT COUNT(*) AS n FROM customer WHERE tenant_id = %(tenant_id)s AND anonymised_at IS NULL",
+        {"tenant_id": tenant_id},
+    )
+
+    # 8-week container pipeline (fixed window, independent of the report range) —
+    # weekly per-status-group counts, aggregated in SQL so it doesn't need every
+    # container row client-side.
+    pipeline = execute_with_tenant(
+        tenant_id,
+        """
+        SELECT
+            to_char(date_trunc('week', created_at), 'MM-DD')                        AS week,
+            COUNT(*) FILTER (WHERE status IN ('loading', 'sealed'))                 AS cn,
+            COUNT(*) FILTER (WHERE status = 'in_transit')                           AS transit,
+            COUNT(*) FILTER (WHERE status IN ('arrived', 'customs_clearance', 'cleared')) AS arrived,
+            COUNT(*) FILTER (WHERE status IN ('at_warehouse', 'fully_released'))    AS released
+        FROM container
+        WHERE tenant_id = %(tenant_id)s AND created_at >= date_trunc('week', now()) - interval '7 weeks'
+        GROUP BY date_trunc('week', created_at)
+        ORDER BY date_trunc('week', created_at)
+        """,
+        {"tenant_id": tenant_id},
+    )
+
+    money = (
+        "total_revenue_ngn",
+        "total_cbm",
+        "revenue_paid",
+        "revenue_partially_paid",
+        "revenue_unpaid",
+        "revenue_released_with_outstanding",
+        "revenue_waived",
+    )
+    cl = claims[0] if claims else {}
+    return {
+        "overview": {
+            **{k: str(ov.get(k) or 0) for k in money},
+            "containers_processed": int((containers_processed[0] if containers_processed else {}).get("n") or 0),
+            "active_customers": int((customers[0] if customers else {}).get("n") or 0),
+        },
+        "claims": {k: int(cl.get(k) or 0) for k in ("total", "open", "resolved")},
+        "container_pipeline": [
+            {
+                "week": r["week"],
+                "cn": int(r["cn"] or 0),
+                "transit": int(r["transit"] or 0),
+                "arrived": int(r["arrived"] or 0),
+                "released": int(r["released"] or 0),
+            }
+            for r in pipeline
+        ],
+        "top_customers": [{"name": r["name"], "amount": str(r["amount"] or 0)} for r in top_customers],
+        "container_billing": [
+            {
+                "container_number": r["container_number"],
+                "customers": int(r["customers"] or 0),
+                "cbm": str(r["cbm"] or 0),
+                "billed": str(r["billed"] or 0),
+                "collected": str(r["collected"] or 0),
+                "outstanding": str(r["outstanding"] or 0),
+                "cbm_rate_usd": str(r["cbm_rate_usd"] or 0),
+                "dollar_rate": str(r["dollar_rate"] or 0),
+            }
+            for r in container_billing
+        ],
+    }
+
+
+def get_billing_stats(tenant_id: str) -> dict[str, Any]:
+    """Tenant-wide billing aggregates for the list stats row + status chips.
+
+    Computed in SQL over the whole table (not a fetched page) so the figures
+    stay correct as billing grows to tens of thousands — the frontend used to
+    sum a capped `limit: 500` sample, which silently under-reported past 500.
+    """
+    rows = execute_with_tenant(
+        tenant_id,
+        """
+        SELECT
+            COALESCE(SUM(balance_ngn) FILTER (
+                WHERE status NOT IN ('paid', 'waived', 'cancelled')), 0)          AS outstanding_ngn,
+            COALESCE(SUM(amount_paid_ngn) FILTER (
+                WHERE billed_at >= date_trunc('month', now())), 0)                AS paid_this_month_ngn,
+            COUNT(*) FILTER (
+                WHERE status NOT IN ('paid', 'waived', 'cancelled')
+                  AND balance_ngn > 0
+                  AND billed_at < now() - interval '30 days')                     AS overdue,
+            COUNT(*)                                                              AS total,
+            COUNT(*) FILTER (WHERE status = 'unpaid')                             AS unpaid,
+            COUNT(*) FILTER (WHERE status = 'partially_paid')                     AS partially_paid,
+            COUNT(*) FILTER (WHERE status = 'paid')                               AS paid,
+            COUNT(*) FILTER (WHERE status = 'overpaid')                           AS overpaid,
+            COUNT(*) FILTER (WHERE status = 'waived')                             AS waived,
+            COUNT(*) FILTER (WHERE status = 'released_with_outstanding')          AS released_with_outstanding
+        FROM billing
+        WHERE tenant_id = %s
+        """,
+        (tenant_id,),
+    )
+    row = rows[0] if rows else {}
+    counts = ("overdue", "total", "unpaid", "partially_paid", "paid", "overpaid", "waived", "released_with_outstanding")
+    result: dict[str, Any] = {k: int(row.get(k) or 0) for k in counts}
+    result["outstanding_ngn"] = str(row.get("outstanding_ngn") or 0)
+    result["paid_this_month_ngn"] = str(row.get("paid_this_month_ngn") or 0)
+    return result
 
 
 def list_billing_for_customer(
@@ -240,6 +528,87 @@ def list_billing_for_customer(
         ORDER BY b.created_at DESC
         """,
         (tenant_id, customer_id),
+    )
+
+
+# ---------------------------------------------------------------------------
+# Billing cancellation
+# ---------------------------------------------------------------------------
+
+
+def get_confirmed_payment_count(tenant_id: str, billing_id: str) -> int:
+    """Return number of confirmed payment_record rows for a billing."""
+    rows = execute_with_tenant(
+        tenant_id,
+        "SELECT COUNT(*) AS cnt FROM payment_record WHERE tenant_id = %s AND billing_id = %s",
+        (tenant_id, billing_id),
+    )
+    return int(rows[0]["cnt"]) if rows else 0
+
+
+def list_recent_payments(tenant_id: str, limit: int = 8) -> list[dict[str, Any]]:
+    """Most recent payments across all billing records, with customer name.
+
+    Feeds the Nigeria-ops dashboard "Recent payments" table (§6.1, P2-5).
+    """
+    return execute_with_tenant(
+        tenant_id,
+        """
+        SELECT p.id, p.billing_id, p.amount_ngn, p.payment_method,
+               p.reference_number, p.payment_date, p.created_at,
+               cu.name AS customer_name
+        FROM payment_record p
+        JOIN billing b ON b.id = p.billing_id AND b.tenant_id = p.tenant_id
+        LEFT JOIN customer cu ON cu.id = b.customer_id AND cu.tenant_id = b.tenant_id
+        WHERE p.tenant_id = %s
+        ORDER BY p.created_at DESC
+        LIMIT %s
+        """,
+        (tenant_id, limit),
+    )
+
+
+def get_active_release_note_count(tenant_id: str, billing_id: str) -> int:
+    """Return number of non-terminal release notes linked to this billing."""
+    rows = execute_with_tenant(
+        tenant_id,
+        """
+        SELECT COUNT(*) AS cnt FROM release_note
+        WHERE tenant_id = %s AND billing_id = %s
+          AND status NOT IN ('expired', 'cancelled')
+        """,
+        (tenant_id, billing_id),
+    )
+    return int(rows[0]["cnt"]) if rows else 0
+
+
+def cancel_billing(
+    tenant_id: str,
+    billing_id: str,
+    actor_id: str,
+    cancel_reason: str,
+) -> dict[str, Any] | None:
+    """Mark billing as cancelled; returns updated row or None on miss."""
+    return execute_write_with_tenant(
+        tenant_id,
+        """
+        UPDATE billing
+        SET status        = 'cancelled',
+            cancel_reason = %(cancel_reason)s,
+            cancelled_by  = %(actor_id)s,
+            cancelled_at  = NOW(),
+            updated_at    = NOW()
+        WHERE tenant_id = %(tenant_id)s
+          AND id        = %(id)s
+          AND status    = 'unpaid'
+        RETURNING *
+        """,
+        {
+            "tenant_id": tenant_id,
+            "id": billing_id,
+            "actor_id": actor_id,
+            "cancel_reason": cancel_reason,
+        },
     )
 
 
@@ -552,10 +921,11 @@ def add_misc_charge(tenant_id: str, data: dict[str, Any]) -> dict[str, Any] | No
         tenant_id,
         """
         INSERT INTO misc_charge (
-            billing_id, description, amount_ngn, amount_usd, charge_type, created_by
+            billing_id, description, amount_ngn, amount_usd,
+            charge_type, charge_type_id, created_by
         ) VALUES (
-            %(billing_id)s, %(description)s, %(amount_ngn)s,
-            %(amount_usd)s, %(charge_type)s, %(created_by)s
+            %(billing_id)s, %(description)s, %(amount_ngn)s, %(amount_usd)s,
+            %(charge_type)s, %(charge_type_id)s, %(created_by)s
         ) RETURNING *
         """,
         data,
@@ -633,6 +1003,51 @@ def get_storage_fees_for_billing(tenant_id: str, billing_id: str) -> list[dict[s
         """,
         (tenant_id, billing_id),
     )
+
+
+def waive_storage_fees_for_billing(
+    tenant_id: str,
+    billing_id: str,
+    actor_id: str,
+    reason: str,
+) -> dict[str, Any] | None:
+    """Mark all unwaived storage fee log entries as waived and void the linked misc charges.
+
+    Returns the updated billing row so the caller can return the fresh billing state.
+    Uses RETURNING to detect silent no-op (no rows updated).
+    """
+    # Delete the misc_charge rows that were created by the storage fee job
+    execute_write_with_tenant(
+        tenant_id,
+        """
+        DELETE FROM misc_charge
+        WHERE tenant_id = %(tenant_id)s
+          AND billing_id = %(billing_id)s
+          AND charge_type = 'storage_fee'
+        RETURNING id
+        """,
+        {"tenant_id": tenant_id, "billing_id": billing_id},
+    )
+    # Clear the misc_charge_id links and mark fees as waived via is_billed=false
+    # so the scheduler does not re-accrue them
+    execute_write_with_tenant(
+        tenant_id,
+        """
+        UPDATE storage_fee_log
+        SET misc_charge_id = NULL,
+            is_billed = FALSE
+        WHERE tenant_id = %(tenant_id)s AND billing_id = %(billing_id)s
+        RETURNING id
+        """,
+        {"tenant_id": tenant_id, "billing_id": billing_id},
+    )
+    # Return the refreshed billing row
+    rows = execute_with_tenant(
+        tenant_id,
+        "SELECT * FROM billing WHERE tenant_id = %s AND id = %s",
+        (tenant_id, billing_id),
+    )
+    return rows[0] if rows else None
 
 
 # ---------------------------------------------------------------------------

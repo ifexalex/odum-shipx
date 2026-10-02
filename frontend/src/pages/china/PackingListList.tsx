@@ -7,19 +7,7 @@ import { canApproveOrReject, explainBulkFailure, formatPackageMix, groupBulkFail
 import { useSession } from '../../auth/useSession'
 import { usePackingListList } from '../../hooks/usePackingLists'
 import { useTopBarSlot } from '../../shell/TopBarContext'
-import {
-  Badge,
-  Banner,
-  Button,
-  Card,
-  Chip,
-  Field,
-  Icon,
-  Mono,
-  Table,
-  ViewLink,
-  type BadgeVariant,
-} from '../../design/components'
+import { Badge, Banner, Button, Card, Chip, Field, Icon, Mono, Table, ViewLink, ListFooter, type BadgeVariant } from '../../design/components'
 import styles from './PackingListList.module.css'
 
 const STATUS_FILTERS: PackingListStatus[] = ['draft', 'pending_approval', 'approved', 'rejected']
@@ -402,13 +390,14 @@ export function PackingListList(): JSX.Element {
             onSelectAll={toggleAll}
           />
         </Card>
-        {hasMore && (
-          <div style={{ marginTop: 16, textAlign: 'center' }}>
-            <Button variant="secondary" onClick={loadMore} loading={isFetchingMore}>
-              Load more{totalCount > packingLists.length && ` · ${totalCount - packingLists.length} remaining`}
-            </Button>
-          </div>
-        )}
+        <ListFooter
+        shown={packingLists.length}
+        total={totalCount}
+        hasMore={hasMore}
+        loading={isFetchingMore}
+        onLoadMore={loadMore}
+        noun="packing lists"
+      />
       </div>
 
       {showRejectModal && (

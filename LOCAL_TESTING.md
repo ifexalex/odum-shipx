@@ -353,6 +353,20 @@ through the real `sms_handler` / `whatsapp_handler` / `email_handler`, so the
 recipient allowlist, template rendering, and provider responses are all exercised
 for real.
 
+**`make dev` / `python3 scripts/local_server.py` now runs this automatically** —
+the server spawns `scripts/drain_notifications.py --watch` as a background
+**process** on startup (terminated when the server stops), so a locally
+enqueued notification is drained within a couple of seconds with nothing to run
+by hand. Ground-truth gap found live: a user rejected a payment claim, checked
+as both the staff account and the customer account, and saw no notification
+either way — the enqueue itself had worked correctly, but nothing ever drained
+the queue, so it looked exactly like a silent bug. Deliberately a **process**,
+not a thread: `local_server.py`'s `app.run(..., threaded=False)` exists because
+`shared/db.py`'s module-level connection singleton isn't thread-safe, and a
+poller thread sharing the server's own connection would reintroduce that exact
+hazard. Set `DISABLE_NOTIFICATION_DRAIN=true` to turn it off and go back to
+draining by hand:
+
 ```bash
 python3 scripts/drain_notifications.py            # drain once and exit
 python3 scripts/drain_notifications.py --watch    # poll until interrupted
@@ -706,7 +720,9 @@ The React SPA lives in `frontend/`. It has two auth modes, controlled by `VITE_E
 VITE_ENVIRONMENT=local
 ```
 
-`App.tsx` mounts `LocalAuthProvider` which skips Cognito entirely. A role-switcher dropdown in the bottom-right lets you flip between all 6 single-role dev identities **plus one multi-role identity, `nigeria_warehouse`** (`nigeria_office_staff` + `warehouse_attendant`, migration 039 — multi-role staff support), instantly. Auth headers (`X-Tenant-ID`, `X-Role`, `X-Roles`, `X-User-ID`) are set from `tokenStore.ts` and sent on every API request to `local_server.py`; `X-Roles` is only sent when the active dev identity holds more than one role.
+`App.tsx` mounts `LocalAuthProvider`, which skips Cognito for the role-switcher dropdown in the bottom-right — flip between all 6 single-role dev identities **plus one multi-role identity, `nigeria_warehouse`** (`nigeria_office_staff` + `warehouse_attendant`, migration 039 — multi-role staff support), instantly. Auth headers (`X-Tenant-ID`, `X-Role`, `X-Roles`, `X-User-ID`) are set from `tokenStore.ts` and sent on every API request to `local_server.py`; `X-Roles` is only sent when the active dev identity holds more than one role.
+
+**The real `/login` screen also works here, with no env-var switch** — `LocalAuthProvider.login()` calls real Cognito (via Moto, same `VITE_COGNITO_*` vars as §14.2) and overlays that session on top of the role switcher (found and fixed 2026-09-06: it previously threw unconditionally, so no email/password login — including a customer who'd just claimed a real invite link — could ever succeed here; see `04_auth_and_session.md`'s ground-truth gaps). Use this to test the customer-invite claim → login → portal flow end-to-end without leaving the default dev mode. Switch away from the role switcher back to it any time by logging out.
 
 **Seeded tenant UUIDs are deterministic** — `scripts/seed.py` always inserts Acme Shipping Ltd with `id = 10000000-0000-0000-0000-000000000001` and its staff with matching fixed IDs (`0011`–`0014`, plus `0015` for the multi-role user below). `LocalAuthProvider.tsx`'s `DEMO_TENANT_ID` and `local_server.py`'s `DEFAULT_TENANT_ID` are hardcoded to this value — they survive `make stack` resets without needing manual updates.
 
@@ -722,6 +738,23 @@ make seed-stress
 ```
 
 This adds ~200 containers across ~50 customers to Acme Shipping Ltd, spanning the full container lifecycle (`loading` → `fully_released`, plus `cancelled`) and every billing status (`unpaid`, `partially_paid`, `paid`, `overpaid`, `waived`, `released_with_outstanding`), weighted toward the mid-pipeline stages for a realistic operational spread. It's additive — run `make seed` (or `make stack`) first — and safe to re-run (no-ops if the marker container `ACME9001` already exists). It also bumps Acme's `subscription_tier` to `enterprise` so the metering container-cap check doesn't block further container creation from the UI afterward. Since the dev role-switcher (§14.1) is hardcoded to Acme, the populated data is visible immediately after refreshing — no extra Cognito setup needed.
+
+#### 14.1.2 Running the Playwright e2e suite (`frontend/e2e/flows/`)
+
+Prerequisites, in order — each one bit a fresh checkout on 2026-09-23:
+
+1. `make up && make bootstrap` (Moto is stateless: without the `logistics-*` queues and the `logistics-events` bus every flow that publishes an event 500s — payment recording, release-note generation, claim filing, PDF export). `bootstrap` also rewrites the Cognito IDs in `.env.local` and `frontend/.env.local`, so **restart both dev servers afterwards**.
+2. `make stack` (or `make migrate seed` on an empty DB) **and `make seed-stress`** — the specs assume more than `seed.py`'s curated data: `container-list.spec.ts` expects ≥ 5 containers, the bulk packing-list specs need `draft`/`pending_approval` lists, and `manifest-verify-and-advance.spec.ts` needs a container with an approved packing list (otherwise the advance dialog correctly stays open showing "Container must have at least 1 approved packing list before sealing").
+3. API on `:3000` (`make dev`) and Vite on `:5173` (`cd frontend && npm run dev`).
+4. From `frontend/`, **source the root env** (the real-login specs shell out to `scripts/mint_test_invite.py`, which needs the DB vars) and **set `PW_E2E=local-stack`** (otherwise `playwright.config.ts` also tries to start `npm run preview` on `:4173` and fails with "Timed out waiting 60000ms from config.webServer"):
+
+```bash
+cd frontend
+set -a; source ../.env.local; set +a
+PW_E2E=local-stack npx playwright test --project=local-stack
+```
+
+Known noise: Moto doesn't implement Cognito `RevokeToken`, so the logout specs log `POST / 500` from `localhost:5100` — the auth handler treats revocation as best-effort and the specs still pass. `mint_test_invite.py` intermittently fails under 4-way parallelism (shared DB/Moto setup); re-run `auth-logout.spec.ts` / `customer-invite.spec.ts` with `--workers=1` before treating a failure there as real. Specs mobile-viewport (`responsive_smoke.spec.ts`) navigate with `page.goto()` — `goToViaNav()` clicks the staff sidebar, which is behind the hamburger at ≤ 860px.
 
 ### 14.2 Real Cognito-via-Moto login (exercises the actual /login screen)
 
@@ -817,9 +850,9 @@ The dev server proxies nothing — it calls `http://localhost:3000` (local_serve
 
 ## Session persistence (page-reload-doesn't-log-you-out) in local dev
 
-`services/auth/handler.py`'s httpOnly-cookie refresh flow (`POST /v1/auth/session` / `/refresh` / `/logout`, see [docs/project docs/frontend/04_auth_and_session.md](docs/project%20docs/frontend/04_auth_and_session.md)) is exercised **only** by the real-Cognito login path (`SessionProvider`, `VITE_ENVIRONMENT != local`) — the default local-dev role-switcher path (`LocalAuthProvider`, `VITE_ENVIRONMENT=local`) bypasses `SessionProvider`/Cognito entirely and hardcodes `status: 'authenticated'`, so it was never affected by the reload-forces-relogin bug this closed and doesn't exercise these three routes at all.
+`services/auth/handler.py`'s httpOnly-cookie refresh flow (`POST /v1/auth/session` / `/refresh` / `/logout`, see [docs/project docs/frontend/04_auth_and_session.md](docs/project%20docs/frontend/04_auth_and_session.md)) is exercised by any real Cognito login, in either auth mode: the real-Cognito-only path (`SessionProvider`, `VITE_ENVIRONMENT != local`), and — since the 2026-09-06 fix above — a real login through `LocalAuthProvider` (`VITE_ENVIRONMENT=local`) too, which now overlays a real `cognitoSession` and runs the identical `establishServerSession`/`silentRefresh` calls. The dev-identity role switcher itself still bypasses all of this and hardcodes `status: 'authenticated'` with no persistence step, same as before.
 
-To test the cookie flow itself locally, follow "Real Cognito-via-Moto Login" in `04_auth_and_session.md` (`VITE_ENVIRONMENT=staging` + Moto-backed Cognito), then:
+To test the cookie flow itself locally, either log in with real credentials on the default `/login` screen (§14.1) or follow "Real Cognito-via-Moto Login" in `04_auth_and_session.md` (`VITE_ENVIRONMENT=staging` + Moto-backed Cognito), then:
 - `scripts/local_server.py` now routes `/v1/auth/*` to `services/auth/handler.py` (added alongside the `/v1/register` fix above) and translates Flask's request cookies into the `event["cookies"]` array the handler reads, and the handler's `cookies` response field into real `Set-Cookie` headers — the same payload-format-2.0 shape API Gateway v2 uses in production.
 - Reloading `http://localhost:5173` after logging in should silently restore the session rather than bouncing to `/login`; DevTools → Application → Cookies should show `shipx_rt` scoped to `localhost:3000` with the `HttpOnly` flag set (`Secure` will still be set even over local `http://` — browsers accept `Secure` cookies on `localhost` as a documented exception, so this doesn't need disabling for local testing).
 

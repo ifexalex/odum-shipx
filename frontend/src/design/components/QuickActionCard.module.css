@@ -1,0 +1,65 @@
+.row {
+  display: flex;
+  gap: 14px;
+  align-items: flex-start;
+}
+
+.tile,
+.tileAccent {
+  width: 40px;
+  height: 40px;
+  border-radius: 10px;
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.tile {
+  background: var(--color-primary-soft);
+  color: var(--color-primary);
+}
+.tileAccent {
+  background: var(--color-accent);
+  color: #fff;
+}
+
+.body {
+  flex: 1;
+  min-width: 0;
+}
+
+.title {
+  font-family: var(--font-display);
+  font-weight: 700;
+  font-size: 15px;
+  margin: 0;
+  color: var(--color-ink);
+  letter-spacing: -0.005em;
+}
+
+.sub {
+  font-size: 13px;
+  color: var(--color-ink-3);
+  margin: 4px 0 12px;
+  line-height: 1.45;
+}
+
+.cta,
+.ctaAccent {
+  font-weight: 700;
+  font-size: 13px;
+  background: none;
+  border: 0;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-family: var(--font-body);
+  padding: 0;
+}
+.cta {
+  color: var(--color-primary);
+}
+.ctaAccent {
+  color: var(--color-accent-text);
+}

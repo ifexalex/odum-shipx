@@ -1,0 +1,32 @@
+.panel {
+  position: fixed;
+  bottom: var(--space-md);
+  right: var(--space-md);
+  z-index: 2000;
+  display: flex;
+  align-items: center;
+  gap: var(--space-sm);
+  background: var(--color-forest-dark);
+  border-radius: var(--radius-sm);
+  padding: 8px 12px;
+  box-shadow: var(--shadow-modal);
+  font-family: var(--font-body);
+}
+
+.label {
+  font-size: 10px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  font-weight: 700;
+  color: rgba(255, 255, 255, 0.5);
+}
+
+.select {
+  background: rgba(255, 255, 255, 0.08);
+  color: var(--color-on-brand);
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  border-radius: var(--radius-sm);
+  padding: 4px 8px;
+  font-family: var(--font-body);
+  font-size: 13px;
+}

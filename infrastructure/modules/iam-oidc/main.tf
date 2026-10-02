@@ -118,16 +118,18 @@ data "aws_iam_policy_document" "lambda_boundary" {
   }
 
   statement {
-    sid       = "S3Assets"
-    effect    = "Allow"
-    actions   = ["s3:GetObject", "s3:PutObject", "s3:DeleteObject", "s3:GetObjectVersion"]
+    sid    = "S3Assets"
+    effect = "Allow"
+    # DeleteObjectVersion: data_cleanup purges a tenant's versioned objects on
+    # offboarding (delete_objects on list_object_versions results).
+    actions   = ["s3:GetObject", "s3:PutObject", "s3:DeleteObject", "s3:GetObjectVersion", "s3:DeleteObjectVersion"]
     resources = ["arn:aws:s3:::${local.name_prefix}-assets-*/*"]
   }
 
   statement {
     sid       = "S3AssetsList"
     effect    = "Allow"
-    actions   = ["s3:ListBucket", "s3:GetBucketLocation"]
+    actions   = ["s3:ListBucket", "s3:ListBucketVersions", "s3:GetBucketLocation"]
     resources = ["arn:aws:s3:::${local.name_prefix}-assets-*"]
   }
 
@@ -157,9 +159,15 @@ data "aws_iam_policy_document" "lambda_boundary" {
     effect    = "Allow"
     actions   = ["kms:Decrypt", "kms:GenerateDataKey", "kms:DescribeKey"]
     resources = ["*"]
+    # kms:ResourceAliases matches on the key's aliases however the request
+    # references it. The previous kms:RequestAlias condition is only present
+    # when a request *names an alias*: shared/encryption.py passes the key ARN
+    # to GenerateDataKey and passes no key at all to Decrypt (the ciphertext
+    # embeds it), so that condition could never match and the boundary would
+    # have denied every field encrypt/decrypt in AWS.
     condition {
-      test     = "StringLike"
-      variable = "kms:RequestAlias"
+      test     = "ForAnyValue:StringLike"
+      variable = "kms:ResourceAliases"
       values   = ["alias/${local.name_prefix}-field-encryption-*"]
     }
   }
@@ -178,6 +186,9 @@ data "aws_iam_policy_document" "lambda_boundary" {
       "cognito-idp:AdminRemoveUserFromGroup",
       "cognito-idp:AdminUpdateUserAttributes",
       "cognito-idp:AdminResetUserPassword",
+      "cognito-idp:AdminSetUserPassword",
+      "cognito-idp:AdminUserGlobalSignOut",
+      "cognito-idp:CreateGroup",
       "cognito-idp:AdminInitiateAuth",
       "cognito-idp:AdminRespondToAuthChallenge",
       "cognito-idp:ListUsersInGroup",

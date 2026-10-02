@@ -1,0 +1,293 @@
+.loadingState {
+  padding: 40px;
+  text-align: center;
+  color: var(--color-ink-3);
+}
+
+.banner {
+  margin-bottom: 16px;
+}
+
+.hero {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 16px;
+  margin-bottom: 24px;
+}
+
+.heroLeft {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  min-width: 0;
+}
+
+.heroIcon {
+  width: 64px;
+  height: 64px;
+  border-radius: 14px;
+  background: var(--color-warning-soft);
+  color: var(--color-warning);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.heroTitleRow {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.heroTitle {
+  font-family: var(--font-mono);
+  font-weight: 700;
+  font-size: 26px;
+  color: var(--color-ink);
+  margin: 0;
+  letter-spacing: -0.015em;
+  line-height: 1.15;
+}
+
+.heroMeta {
+  font-size: 13px;
+  color: var(--color-ink-3);
+  margin-top: 4px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.heroActions {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  flex-shrink: 0;
+  align-items: center;
+}
+
+/* Reflows to fewer columns as space shrinks instead of forcing the page
+   wider than its container on mobile (was a fixed 4-column grid). */
+.statsRow {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  gap: 16px;
+  margin-bottom: 20px;
+}
+
+.itemsHead {
+  padding: 18px 20px;
+}
+
+.discrepancySection {
+  margin-top: 16px;
+}
+
+.tagChips {
+  display: flex;
+  gap: 4px;
+  flex-wrap: wrap;
+}
+
+.tagChip {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  padding: 2px 6px;
+  background: var(--color-success-soft);
+  color: var(--color-success);
+  border-radius: var(--radius-full);
+  font-weight: 600;
+}
+
+.tagMore {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  padding: 2px 6px;
+  background: var(--color-line-soft);
+  color: var(--color-ink-4);
+  border-radius: var(--radius-full);
+  font-weight: 600;
+}
+
+.backLink {
+  margin-top: 16px;
+}
+
+.modalOverlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(11, 47, 13, 0.55);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 100;
+  padding: 16px;
+  overflow-y: auto;
+}
+
+@container sxapp (min-width: 861px) {
+  .modalOverlay {
+    padding: 32px;
+  }
+}
+
+.modalPanel {
+  width: 640px;
+  max-width: 100%;
+  background: var(--color-surface);
+  border-radius: 14px;
+  box-shadow: var(--shadow-modal);
+  padding: 20px;
+}
+
+@container sxapp (min-width: 861px) {
+  .modalPanel {
+    padding: 24px;
+  }
+}
+
+.modalTitle {
+  font-family: var(--font-display);
+  font-weight: 700;
+  font-size: 18px;
+  color: var(--color-ink);
+  margin: 0 0 16px;
+}
+
+.modalBanner {
+  margin-bottom: 12px;
+}
+
+.modalBody {
+  font-size: 14px;
+  color: var(--color-ink-2);
+  line-height: 1.6;
+  margin: 0 0 20px;
+}
+
+.modalActions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+  margin-top: 16px;
+}
+
+.modalActions > * {
+  min-height: 48px;
+  font-size: 1rem;
+}
+
+@container sxapp (min-width: 861px) {
+  .modalActions > * {
+    min-height: 36px;
+    font-size: inherit;
+  }
+}
+
+.outcomeRow {
+  display: flex;
+  gap: 10px;
+  margin-bottom: 16px;
+}
+
+.discrepancyList {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.discrepancyCard {
+  border: 1px solid var(--color-line);
+  border-radius: 10px;
+  padding: 14px;
+  background: var(--color-page);
+}
+
+.discrepancyHead {
+  display: flex;
+  align-items: flex-end;
+  gap: 10px;
+  margin-bottom: 10px;
+}
+
+.selectField {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  flex: 1;
+}
+
+.selectLabel {
+  font-family: var(--font-body);
+  font-weight: 500;
+  font-size: 13px;
+  color: var(--color-ink-2);
+}
+
+.select {
+  height: 40px;
+  background: var(--color-surface);
+  border: 1px solid var(--color-line-soft);
+  border-radius: 8px;
+  padding: 0 12px;
+  font-family: var(--font-body);
+  font-size: 14px;
+  color: var(--color-ink);
+}
+
+.tagPicker {
+  margin-bottom: 10px;
+}
+
+.tagPickerLabel {
+  display: block;
+  font-size: 11px;
+  color: var(--color-ink-3);
+  margin-bottom: 6px;
+}
+
+.evidenceField {
+  margin-top: 12px;
+}
+
+.evidenceGallery {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+  gap: 10px;
+  padding: 16px;
+}
+
+.evidenceItem {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 12px;
+  border: 1px solid var(--color-line-soft);
+  border-radius: 10px;
+  text-decoration: none;
+  color: var(--color-ink-1);
+  transition: border-color 0.15s ease, background 0.15s ease;
+}
+
+.evidenceItem:hover {
+  border-color: var(--color-accent);
+  background: var(--color-surface-2);
+}
+
+.evidenceName {
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.evidenceMeta {
+  font-size: 11px;
+  color: var(--color-ink-3);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}

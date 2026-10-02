@@ -3,17 +3,20 @@
  * Shows summary stats from billing and containers via existing APIs.
  */
 
-import { useEffect, useMemo, useState, type JSX } from 'react'
+import { useEffect, useState, type JSX } from 'react'
 import { useNavigate } from 'react-router-dom'
+import { useQuery } from '@tanstack/react-query'
 import { billingApi, disputeApi, type CBMDispute, type RecentPayment } from '../../api/billing'
 import { claimsApi } from '../../api/claims'
 import { CONTAINER_STATUS_LABELS } from '../../api/containerRules'
+import { billingKeys, claimKeys, containerKeys, customerKeys } from '../../api/keys'
+import { formatNgnCompact } from '../../lib/format'
 import { manifestApi, type Manifest } from '../../api/manifest'
 import { ARRIVED_IN_NG } from '../../api/manifestRules'
 import { packingListApi, type PackingList } from '../../api/packingList'
 import { releaseNotesApi } from '../../api/releaseNotes'
 import { customersApi } from '../../api/tenantManagement'
-import { containersApi, type Container, type ContainerStatus } from '../../api/tracking'
+import { containersApi, type Container, type ContainerStats, type ContainerStatus } from '../../api/tracking'
 import { useSession } from '../../auth/useSession'
 import { Badge, Button, Card, Mono, QuickActionCard, StatCard, Table, UserCell, type BadgeVariant } from '../../design/components'
 import { ActivityFeed } from '../../shell/ActivityFeed'
@@ -38,9 +41,6 @@ function etaLabel(iso: string | null | undefined): string {
   return `${Math.round(days / 7)} wks`
 }
 
-// Containers still on their way to Nigeria, soonest ETA first.
-const INCOMING_STATUSES = new Set(['sealed', 'in_transit'])
-
 const CONTAINER_BADGE: Record<string, BadgeVariant> = {
   loading: 'neutral',
   sealed: 'info',
@@ -59,11 +59,22 @@ const KANBAN_STAGES: ContainerStatus[] = [
   'loading', 'sealed', 'in_transit', 'arrived', 'customs_clearance', 'cleared', 'at_warehouse', 'fully_released',
 ]
 
-function PipelineKanban({ containers, onOpen }: { containers: Container[]; onOpen: (id: string) => void }): JSX.Element {
+function PipelineKanban({
+  containers,
+  counts,
+  onOpen,
+}: {
+  containers: Container[]
+  counts: ContainerStats | undefined
+  onOpen: (id: string) => void
+}): JSX.Element {
   return (
     <div style={{ display: 'flex', gap: 12, overflowX: 'auto', paddingBottom: 8 }}>
       {KANBAN_STAGES.map((stage) => {
         const items = containers.filter((c) => c.status === stage)
+        // Accurate tenant-wide count from stats; cards are a bounded sample.
+        const total = counts?.[stage] ?? items.length
+        const shown = Math.min(items.length, 6)
         return (
           <div key={stage} style={{ minWidth: 190, flex: '0 0 190px' }}>
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '6px 4px', marginBottom: 8 }}>
@@ -71,7 +82,7 @@ function PipelineKanban({ containers, onOpen }: { containers: Container[]; onOpe
                 {CONTAINER_STATUS_LABELS[stage]}
               </span>
               <span style={{ fontSize: 11, fontFamily: 'var(--font-mono)', color: 'var(--color-ink-4)', background: 'var(--color-line-soft)', borderRadius: 999, padding: '1px 7px' }}>
-                {items.length}
+                {total}
               </span>
             </div>
             <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
@@ -96,8 +107,8 @@ function PipelineKanban({ containers, onOpen }: { containers: Container[]; onOpe
                   </div>
                 </button>
               ))}
-              {items.length > 6 && (
-                <span style={{ fontSize: 11, color: 'var(--color-ink-4)', padding: '2px 4px' }}>+{items.length - 6} more</span>
+              {total > shown && (
+                <span style={{ fontSize: 11, color: 'var(--color-ink-4)', padding: '2px 4px' }}>+{total - shown} more</span>
               )}
               {items.length === 0 && (
                 <div style={{ border: '1px dashed var(--color-line)', borderRadius: 10, padding: '12px 10px', fontSize: 11, color: 'var(--color-ink-4)', textAlign: 'center' }}>
@@ -115,13 +126,9 @@ function PipelineKanban({ containers, onOpen }: { containers: Container[]; onOpe
 export function Dashboard(): JSX.Element {
   const navigate = useNavigate()
   const { session } = useSession()
-  const [containerCount, setContainerCount] = useState<number | null>(null)
-  const [unpaidCount, setUnpaidCount] = useState<number | null>(null)
-  const [pendingBillingNgn, setPendingBillingNgn] = useState<number | null>(null)
   const [containers, setContainers] = useState<Container[]>([])
+  const [incoming, setIncoming] = useState<Container[]>([])
   const [pendingPls, setPendingPls] = useState<PackingList[]>([])
-  const [customerCount, setCustomerCount] = useState<number | null>(null)
-  const [openClaims, setOpenClaims] = useState<number | null>(null)
   // Nigeria ops action queues (6.1, P2-5)
   const [pendingManifests, setPendingManifests] = useState<Manifest[]>([])
   const [openDisputes, setOpenDisputes] = useState<CBMDispute[]>([])
@@ -131,52 +138,49 @@ export function Dashboard(): JSX.Element {
   const isAdmin = session?.role === 'tenant_admin'
   const isNigeria = session?.role === 'nigeria_office_staff'
 
+  // Tenant-wide aggregates — computed server-side so every figure stays
+  // correct no matter how many rows a list endpoint would return.
+  const { data: containerStats } = useQuery({
+    queryKey: containerKeys.stats(),
+    queryFn: containersApi.stats,
+  })
+  const { data: billingStats } = useQuery({
+    queryKey: billingKeys.stats(),
+    queryFn: billingApi.stats,
+  })
+  const { data: claimStats } = useQuery({
+    queryKey: claimKeys.stats(),
+    queryFn: claimsApi.stats,
+    enabled: isAdmin,
+  })
+  const { data: customerStats } = useQuery({
+    queryKey: customerKeys.stats(),
+    queryFn: customersApi.stats,
+    enabled: isAdmin,
+  })
+
+  // Recent-containers table + pipeline kanban cards — a bounded visual sample.
+  // The per-stage counts rendered in the kanban come from containerStats, not
+  // from this list, so they remain accurate beyond the sample size.
   useEffect(() => {
-    void (async () => {
-      try {
-        const [containersResult, billing] = await Promise.all([
-          containersApi.list({}),
-          billingApi.list({ status: 'unpaid' }),
-        ])
-        setContainers(containersResult.data)
-        setContainerCount(containersResult.data.length)
-        setUnpaidCount(billing.data.length)
-        const totalPending = billing.data.reduce((sum, b) => sum + Number(b.outstanding_ngn), 0)
-        setPendingBillingNgn(totalPending)
-      } catch {
-        // Non-fatal — stats are informational
-      }
-    })()
+    void containersApi.list({})
+      .then((r) => setContainers(r.data))
+      .catch(() => undefined)
   }, [])
 
-  // Admin-only extra stats (prototype 3.1) — non-fatal, degrade to "—".
+  // 6.1 "Incoming containers" — queried directly (still at sea, soonest ETA
+  // first; Postgres ASC sorts NULL ETAs last) so the list is correct at scale.
   useEffect(() => {
-    if (!isAdmin) return
-    void customersApi.list({ limit: 1 })
-      .then((r) => setCustomerCount(r.meta.pagination.total_count ?? r.data.length))
-      .catch(() => setCustomerCount(null))
-    void claimsApi.list({ limit: 100 })
-      .then((r) => setOpenClaims(r.data.filter((c) => c.status === 'filed' || c.status === 'under_inspection').length))
-      .catch(() => setOpenClaims(null))
-  }, [isAdmin])
-
-  // Container-status breakdown for the greeting summary line.
-  const summary = useMemo(() => {
-    const inTransit = containers.filter((c) => c.status === 'in_transit').length
-    const customs = containers.filter((c) => c.status === 'customs_clearance' || c.status === 'arrived').length
-    const ready = containers.filter((c) => c.status === 'at_warehouse').length
-    return { inTransit, customs, ready }
-  }, [containers])
-
-  // 6.1 "Incoming containers" — still at sea, soonest ETA first (no-ETA rows last).
-  const incoming = useMemo(
-    () =>
-      containers
-        .filter((c) => INCOMING_STATUSES.has(c.status))
-        .sort((a, b) => (a.estimated_arrival_date ?? '9999') < (b.estimated_arrival_date ?? '9999') ? -1 : 1)
-        .slice(0, 5),
-    [containers],
-  )
+    void containersApi
+      .list({
+        status: 'sealed,in_transit',
+        sort: 'estimated_arrival_date',
+        direction: 'asc',
+        limit: 5,
+      })
+      .then((r) => setIncoming(r.data))
+      .catch(() => undefined)
+  }, [])
 
   // Nigeria ops: packing-list approval queue (6.1)
   useEffect(() => {
@@ -210,8 +214,9 @@ export function Dashboard(): JSX.Element {
   }, [isNigeria])
 
   const firstName = session?.name?.split(' ')[0] ?? 'team'
+  const customsAwaiting = (containerStats?.customs_clearance ?? 0) + (containerStats?.arrived ?? 0)
   const summaryLine =
-    `${summary.inTransit} in transit · ${summary.customs} awaiting customs · ${summary.ready} ready for pickup`
+    `${containerStats?.in_transit ?? 0} in transit · ${customsAwaiting} awaiting customs · ${containerStats?.at_warehouse ?? 0} ready for pickup`
 
   return (
     <div>
@@ -227,15 +232,16 @@ export function Dashboard(): JSX.Element {
       </div>
 
       <div className={styles.statsRow}>
-        <StatCard label="Containers" value={containerCount ?? '—'} icon="container" />
-        <StatCard label="Unpaid billing" value={unpaidCount ?? '—'} icon="coin" />
+        <StatCard label="Containers" value={containerStats?.total ?? '—'} icon="container" />
+        <StatCard label="Unpaid billing" value={billingStats?.unpaid ?? '—'} icon="coin" />
         <StatCard
-          label="Outstanding (₦)"
-          value={pendingBillingNgn !== null ? `₦${pendingBillingNgn.toLocaleString()}` : '—'}
+          label="Outstanding"
+          value={billingStats ? formatNgnCompact(billingStats.outstanding_ngn) : '—'}
           icon="coin"
+          sublabel="unpaid + partial"
         />
-        {isAdmin && <StatCard label="Active customers" value={customerCount ?? '—'} icon="users" />}
-        {isAdmin && <StatCard label="Open claims" value={openClaims ?? '—'} icon="warn" sublabel={openClaims ? 'needs attention' : 'no active disputes'} />}
+        {isAdmin && <StatCard label="Active customers" value={customerStats?.active ?? '—'} icon="users" />}
+        {isAdmin && <StatCard label="Open claims" value={claimStats?.open ?? '—'} icon="warn" sublabel={claimStats?.open ? 'needs attention' : 'no active disputes'} />}
         {isNigeria && <StatCard label="Ready for pickup" value={readyForPickup ?? '—'} icon="package" sublabel="active release notes" />}
       </div>
 
@@ -244,7 +250,7 @@ export function Dashboard(): JSX.Element {
           <Card padding={20}>
             <SectionHead title="Container pipeline" sub="Every container by stage — click a card to open it" />
             <div style={{ height: 12 }} />
-            <PipelineKanban containers={containers.filter((c) => c.status !== 'cancelled')} onOpen={(id) => navigate(`/containers/${id}`)} />
+            <PipelineKanban containers={containers.filter((c) => c.status !== 'cancelled')} counts={containerStats} onOpen={(id) => navigate(`/containers/${id}`)} />
           </Card>
           {pendingPls.length > 0 && (
             <div style={{ marginTop: 16 }}>
@@ -258,6 +264,7 @@ export function Dashboard(): JSX.Element {
                 </div>
                 <Table
                   dense
+                  cardBreakpoint={600}
                   columns={[{ title: 'Ref' }, { title: 'Customer' }, { title: 'Cartons', align: 'right' }, { title: 'Status' }]}
                   rows={pendingPls.map((pl) => ({
                     cells: [
@@ -285,6 +292,7 @@ export function Dashboard(): JSX.Element {
                 </div>
                 <Table
                   dense
+                  cardBreakpoint={600}
                   columns={[{ title: 'Container' }, { title: 'Container status' }, { title: 'Cartons', align: 'right' }, { title: '', width: '60px' }]}
                   rows={pendingManifests.slice(0, 6).map((m) => ({
                     cells: [
@@ -313,6 +321,7 @@ export function Dashboard(): JSX.Element {
                 </div>
                 <Table
                   dense
+                  cardBreakpoint={600}
                   columns={[{ title: 'Submitted' }, { title: 'Original CBM', align: 'right' }, { title: 'Status' }]}
                   rows={openDisputes.slice(0, 5).map((d) => ({
                     cells: [
@@ -339,6 +348,7 @@ export function Dashboard(): JSX.Element {
                 </div>
                 <Table
                   dense
+                  cardBreakpoint={600}
                   columns={[{ title: 'Customer' }, { title: 'Amount (₦)', align: 'right' }, { title: 'Method' }, { title: 'Date' }]}
                   rows={recentPayments.map((p) => ({
                     cells: [
@@ -407,6 +417,7 @@ export function Dashboard(): JSX.Element {
             </div>
             <Table
               dense
+              cardBreakpoint={600}
               columns={[
                 { title: 'Container' },
                 { title: 'Status' },

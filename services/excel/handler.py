@@ -195,6 +195,7 @@ def _dispatch(
             container_id=req.container_id,
             file_key=req.file_key,
             actor_id=ctx.user_id,
+            ctx=ctx,
         )
         return created(result, location="/v1/packing-lists", request_id=request_id)
 
@@ -207,6 +208,7 @@ def _dispatch(
             tenant_id,
             file_key=req.file_key,
             actor_id=ctx.user_id,
+            ctx=ctx,
         )
         return created(result, location="/v1/packing-lists", request_id=request_id)
 
@@ -237,13 +239,7 @@ def _dispatch(
         return success(result, request_id=request_id)
 
     # GET /v1/payments/{id}/receipt/pdf
-    if (
-        resource == "payments"
-        and len(parts) == 5
-        and parts[3] == "receipt"
-        and parts[4] == "pdf"
-        and method == "GET"
-    ):
+    if resource == "payments" and len(parts) == 5 and parts[3] == "receipt" and parts[4] == "pdf" and method == "GET":
         ctx.assert_role(*_RECEIPT_PDF_ROLES)
         customer_user_id = ctx.user_id if ctx.role == UserRole.CUSTOMER else None
         result = service.export_receipt_pdf(

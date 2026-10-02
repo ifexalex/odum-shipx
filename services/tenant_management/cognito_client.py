@@ -74,6 +74,60 @@ class CognitoClient:
                 raise DuplicateResourceError("user", email) from exc
             raise ExternalServiceError("Cognito", str(exc)) from exc
 
+    def create_user_with_password(
+        self,
+        email: str,
+        full_name: str,
+        tenant_id: str,
+        role: str,
+        password: str,
+    ) -> str:
+        """Create a Cognito user with a caller-chosen permanent password and return the sub.
+
+        Used by flows where the person sets their own password at creation
+        time (customer invite acceptance) rather than receiving a Cognito
+        temp-password email — `MessageAction="SUPPRESS"` skips that email,
+        and `admin_set_user_password(..., Permanent=True)` sets the password
+        directly so no NEW_PASSWORD_REQUIRED challenge is needed on first
+        login.
+
+        Raises:
+            DuplicateResourceError: If a user with this email already exists.
+            ExternalServiceError: On any other Cognito failure.
+        """
+        try:
+            resp = self.client.admin_create_user(
+                UserPoolId=self.user_pool_id,
+                Username=email,
+                UserAttributes=[
+                    {"Name": "email", "Value": email},
+                    {"Name": "email_verified", "Value": "true"},
+                    {"Name": "name", "Value": full_name},
+                    {"Name": "custom:tenant_id", "Value": tenant_id},
+                    {"Name": "custom:role", "Value": role},
+                ],
+                MessageAction="SUPPRESS",
+            )
+            sub: str = next(a["Value"] for a in resp["User"]["Attributes"] if a["Name"] == "sub")
+            self.client.admin_set_user_password(
+                UserPoolId=self.user_pool_id,
+                Username=email,
+                Password=password,
+                Permanent=True,
+            )
+            logger.info(
+                "Cognito user created with password: tenant_id=%s role=%s sub=%s",
+                tenant_id,
+                role,
+                sub,
+            )
+            return sub
+        except ClientError as exc:
+            code = exc.response["Error"]["Code"]
+            if code == "UsernameExistsException":
+                raise DuplicateResourceError("user", email) from exc
+            raise ExternalServiceError("Cognito", str(exc)) from exc
+
     def update_user_attributes(
         self,
         username: str,
@@ -136,6 +190,30 @@ class CognitoClient:
         except ClientError as exc:
             raise ExternalServiceError("Cognito", str(exc)) from exc
 
+    def resend_invite(self, username: str) -> None:
+        """Resend the temporary-password invite email to an existing Cognito user."""
+        try:
+            self.client.admin_create_user(
+                UserPoolId=self.user_pool_id,
+                Username=username,
+                MessageAction="RESEND",
+                DesiredDeliveryMediums=["EMAIL"],
+            )
+            logger.info("Cognito invite resent for %s", username)
+        except ClientError as exc:
+            raise ExternalServiceError("Cognito", str(exc)) from exc
+
+    def reset_password(self, username: str) -> None:
+        """Trigger a Cognito-managed password-reset email for the user."""
+        try:
+            self.client.admin_reset_user_password(
+                UserPoolId=self.user_pool_id,
+                Username=username,
+            )
+            logger.info("Cognito password reset triggered for %s", username)
+        except ClientError as exc:
+            raise ExternalServiceError("Cognito", str(exc)) from exc
+
     # ------------------------------------------------------------------
     # Group management
     # ------------------------------------------------------------------
@@ -164,6 +242,53 @@ class CognitoClient:
             logger.info("Cognito user %s added to group %s", username, group_name)
         except ClientError as exc:
             raise ExternalServiceError("Cognito", str(exc)) from exc
+
+    def remove_user_from_group(self, username: str, group_name: str) -> None:
+        """Remove a Cognito user from a group."""
+        try:
+            self.client.admin_remove_user_from_group(
+                UserPoolId=self.user_pool_id,
+                Username=username,
+                GroupName=group_name,
+            )
+            logger.info("Cognito user %s removed from group %s", username, group_name)
+        except ClientError as exc:
+            if exc.response["Error"]["Code"] == "UserNotFoundException":
+                return
+            raise ExternalServiceError("Cognito", str(exc)) from exc
+
+    def list_groups_for_user(self, username: str) -> set[str]:
+        """Return the set of Cognito group names the user currently belongs to."""
+        try:
+            groups: set[str] = set()
+            paginator = self.client.get_paginator("admin_list_groups_for_user")
+            for page in paginator.paginate(Username=username, UserPoolId=self.user_pool_id):
+                groups.update(g["GroupName"] for g in page.get("Groups", []))
+            return groups
+        except ClientError as exc:
+            if exc.response["Error"]["Code"] == "UserNotFoundException":
+                return set()
+            raise ExternalServiceError("Cognito", str(exc)) from exc
+
+    def sync_user_groups(self, username: str, tenant_id: str, roles: set[str]) -> None:
+        """Reconcile a user's Cognito group membership to exactly match `roles`.
+
+        This is the actual fix for the long-standing group-sync bug: changing
+        a staff member's role in the DB previously never touched Cognito group
+        membership, so role changes had no real effect on permissions after
+        re-login. Diffs current groups (scoped to this tenant's `{tenant_id}:*`
+        groups only — never touches `platform_admin` or another tenant's
+        groups) against the desired role set and adds/removes as needed.
+        """
+        prefix = f"{tenant_id}:"
+        desired_groups = {f"{prefix}{role}" for role in roles}
+        current_groups = {g for g in self.list_groups_for_user(username) if g.startswith(prefix)}
+
+        for group_name in desired_groups - current_groups:
+            self.create_group_if_not_exists(group_name)
+            self.add_user_to_group(username, group_name)
+        for group_name in current_groups - desired_groups:
+            self.remove_user_from_group(username, group_name)
 
 
 # ---------------------------------------------------------------------------

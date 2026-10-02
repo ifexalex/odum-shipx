@@ -110,6 +110,11 @@
       "key": "tracking_code",
       "value": "SHX-00001",
       "type": "string"
+    },
+    {
+      "key": "warehouse_id",
+      "value": "",
+      "type": "string"
     }
   ],
   "item": [
@@ -772,7 +777,7 @@
             ],
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"rate\": 1650.00,\n  \"currency_pair\": \"USD_NGN\"\n}"
+              "raw": "{\n  \"markup_type\": \"flat\",\n  \"markup_value\": 15\n}"
             },
             "url": {
               "raw": "{{base_url}}/v1/tenant/dollar-rate",
@@ -783,6 +788,115 @@
                 "v1",
                 "tenant",
                 "dollar-rate"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Get CBM Rate",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "X-Tenant-ID",
+                "value": "{{tenant_id}}"
+              },
+              {
+                "key": "X-Role",
+                "value": "tenant_admin"
+              },
+              {
+                "key": "X-User-ID",
+                "value": "{{user_id}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/v1/tenant/cbm-rate",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "v1",
+                "tenant",
+                "cbm-rate"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Update CBM Rate (flat)",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "X-Tenant-ID",
+                "value": "{{tenant_id}}"
+              },
+              {
+                "key": "X-Role",
+                "value": "tenant_admin"
+              },
+              {
+                "key": "X-User-ID",
+                "value": "{{user_id}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"currency\": \"usd\",\n  \"rate_mode\": \"flat\",\n  \"carton_rate\": 45\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/v1/tenant/cbm-rate",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "v1",
+                "tenant",
+                "cbm-rate"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Update CBM Rate (by package type)",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "X-Tenant-ID",
+                "value": "{{tenant_id}}"
+              },
+              {
+                "key": "X-Role",
+                "value": "tenant_admin"
+              },
+              {
+                "key": "X-User-ID",
+                "value": "{{user_id}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"currency\": \"usd\",\n  \"rate_mode\": \"per_package_type\",\n  \"carton_rate\": 45,\n  \"bag_rate\": 45,\n  \"bale_rate\": 60\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/v1/tenant/cbm-rate",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "v1",
+                "tenant",
+                "cbm-rate"
               ]
             }
           }
@@ -1109,6 +1223,80 @@
           }
         },
         {
+          "name": "List Container Capacities",
+          "request": {
+            "method": "GET",
+            "header": [
+              { "key": "X-Tenant-ID", "value": "{{tenant_id}}" },
+              { "key": "X-Role", "value": "{{role}}" },
+              { "key": "X-User-ID", "value": "{{user_id}}" }
+            ],
+            "url": {
+              "raw": "{{base_url}}/v1/tenant/container-capacities",
+              "host": ["{{base_url}}"],
+              "path": ["v1", "tenant", "container-capacities"]
+            }
+          }
+        },
+        {
+          "name": "Create Container Capacity",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "X-Tenant-ID", "value": "{{tenant_id}}" },
+              { "key": "X-Role", "value": "tenant_admin" },
+              { "key": "X-User-ID", "value": "{{user_id}}" },
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"53' Megabox\",\n  \"capacity_cbm\": 95,\n  \"recommended_cbm\": 88\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/v1/tenant/container-capacities",
+              "host": ["{{base_url}}"],
+              "path": ["v1", "tenant", "container-capacities"]
+            }
+          }
+        },
+        {
+          "name": "Update Container Capacity (recommended)",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              { "key": "X-Tenant-ID", "value": "{{tenant_id}}" },
+              { "key": "X-Role", "value": "tenant_admin" },
+              { "key": "X-User-ID", "value": "{{user_id}}" },
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"recommended_cbm\": 72\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/v1/tenant/container-capacities/{{capacity_id}}",
+              "host": ["{{base_url}}"],
+              "path": ["v1", "tenant", "container-capacities", "{{capacity_id}}"]
+            }
+          }
+        },
+        {
+          "name": "Delete Container Capacity",
+          "request": {
+            "method": "DELETE",
+            "header": [
+              { "key": "X-Tenant-ID", "value": "{{tenant_id}}" },
+              { "key": "X-Role", "value": "tenant_admin" },
+              { "key": "X-User-ID", "value": "{{user_id}}" }
+            ],
+            "url": {
+              "raw": "{{base_url}}/v1/tenant/container-capacities/{{capacity_id}}",
+              "host": ["{{base_url}}"],
+              "path": ["v1", "tenant", "container-capacities", "{{capacity_id}}"]
+            }
+          }
+        },
+        {
           "name": "Update Charge Type",
           "request": {
             "method": "PUT",
@@ -1306,6 +1494,37 @@
                   "value": "",
                   "disabled": true
                 }
+              ]
+            }
+          }
+        },
+        {
+          "name": "Customer Stats",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "X-Tenant-ID",
+                "value": "{{tenant_id}}"
+              },
+              {
+                "key": "X-Role",
+                "value": "{{role}}"
+              },
+              {
+                "key": "X-User-ID",
+                "value": "{{user_id}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/v1/customers/stats",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "v1",
+                "customers",
+                "stats"
               ]
             }
           }
@@ -3631,6 +3850,86 @@
           }
         },
         {
+          "name": "Initialize Online Payment (Paystack)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "X-Tenant-ID",
+                "value": "{{tenant_id}}"
+              },
+              {
+                "key": "X-Role",
+                "value": "customer"
+              },
+              {
+                "key": "X-User-ID",
+                "value": "{{user_id}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"callback_url\": \"http://localhost:5173/my-billing/{{billing_id}}/payment-success\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/v1/payments/{{billing_id}}/initialize",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "v1",
+                "payments",
+                "{{billing_id}}",
+                "initialize"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Verify Online Payment (Paystack)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "X-Tenant-ID",
+                "value": "{{tenant_id}}"
+              },
+              {
+                "key": "X-Role",
+                "value": "customer"
+              },
+              {
+                "key": "X-User-ID",
+                "value": "{{user_id}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"reference\": \"{{billing_id}}.1\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/v1/payments/{{billing_id}}/verify",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "v1",
+                "payments",
+                "{{billing_id}}",
+                "verify"
+              ]
+            }
+          }
+        },
+        {
           "name": "Generate Release Note",
           "request": {
             "method": "POST",
@@ -3654,7 +3953,7 @@
             ],
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"billing_id\": \"{{billing_id}}\",\n  \"carton_tags\": [\"SHX-00001\", \"SHX-00002\"],\n  \"release_with_outstanding\": false,\n  \"approval_notes\": null\n}"
+              "raw": "{\n  \"billing_id\": \"{{billing_id}}\",\n  \"carton_tags\": [\"SHX-00001\", \"SHX-00002\"],\n  \"release_with_outstanding\": false,\n  \"approval_notes\": null,\n  \"warehouse_id\": \"{{warehouse_id}}\",\n  \"physical_document_number\": \"GRN-9001\",\n  \"packing_list_invoice_numbers\": [\"ACM-INV-20260906-0004\"]\n}"
             },
             "url": {
               "raw": "{{base_url}}/v1/release-notes",
@@ -3692,7 +3991,7 @@
             ],
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"billing_id\": \"{{billing_id}}\",\n  \"carton_tags\": [\"SHX-00001\"],\n  \"release_with_outstanding\": true,\n  \"approval_notes\": \"Approved by manager \u2014 customer to pay balance within 7 days\"\n}"
+              "raw": "{\n  \"billing_id\": \"{{billing_id}}\",\n  \"carton_tags\": [\"SHX-00001\"],\n  \"release_with_outstanding\": true,\n  \"approval_notes\": \"Approved by manager \u2014 customer to pay balance within 7 days\",\n  \"credit_granted_by_name\": \"Chidi Okafor\",\n  \"due_date\": \"2026-09-27\"\n}"
             },
             "url": {
               "raw": "{{base_url}}/v1/release-notes",
@@ -3761,7 +4060,7 @@
             ],
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"cartons_released\": 2,\n  \"is_delegate\": false,\n  \"notes\": \"Customer picked up in person\"\n}"
+              "raw": "{\n  \"cartons_released\": 2,\n  \"is_delegate\": false,\n  \"collected_by_name\": \"Ngozi Adeyemi\",\n  \"warehouse_id\": \"{{warehouse_id}}\",\n  \"notes\": \"Customer picked up in person\"\n}"
             },
             "url": {
               "raw": "{{base_url}}/v1/release-notes/{{release_note_id}}/release",
@@ -3813,6 +4112,106 @@
                 "release-notes",
                 "{{release_note_id}}",
                 "release"
+              ]
+            }
+          }
+        },
+        {
+          "name": "List Warehouses",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "X-Tenant-ID",
+                "value": "{{tenant_id}}"
+              },
+              {
+                "key": "X-Role",
+                "value": "tenant_admin"
+              },
+              {
+                "key": "X-User-ID",
+                "value": "{{user_id}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/v1/warehouses",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "v1",
+                "warehouses"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Create Warehouse",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "X-Tenant-ID",
+                "value": "{{tenant_id}}"
+              },
+              {
+                "key": "X-Role",
+                "value": "tenant_admin"
+              },
+              {
+                "key": "X-User-ID",
+                "value": "{{user_id}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Lagos Island\",\n  \"address\": \"3rd Floor, Capital Plaza, 27 Sokoto Road\",\n  \"city\": \"Lagos\",\n  \"state\": \"Lagos\",\n  \"phone\": \"07066171191\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/v1/warehouses",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "v1",
+                "warehouses"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Set Default Warehouse",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "X-Tenant-ID",
+                "value": "{{tenant_id}}"
+              },
+              {
+                "key": "X-Role",
+                "value": "tenant_admin"
+              },
+              {
+                "key": "X-User-ID",
+                "value": "{{user_id}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/v1/warehouses/{{warehouse_id}}/set-default",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "v1",
+                "warehouses",
+                "{{warehouse_id}}",
+                "set-default"
               ]
             }
           }

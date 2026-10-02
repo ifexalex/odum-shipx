@@ -130,7 +130,7 @@ Even though RLS and parameterized queries are the primary defense:
 - NEVER use f-strings or string concatenation for SQL
 - Always use `%s` placeholders with psycopg2
 - Validate all sort/filter column names against an allowlist
-- Sanitize any user input used in S3 key construction
+- Sanitize any user input used in S3 key construction — file names go through `shared.validation.safe_filename()` (fixed 2026-09-23: four upload flows embedded the raw client `filename` in the S3 key, and two download flows put the stored name inside `Content-Disposition: … filename="{name}"`, where a `"` breaks out of the quoted string and a bidi-override character spoofs the extension)
 
 ```python
 ALLOWED_SORT_FIELDS = {"created_at", "updated_at", "name", "status"}
@@ -141,6 +141,20 @@ def validate_sort_field(field: str) -> str:
         raise ValidationError(f"Invalid sort field: {clean}")
     return field
 ```
+
+**Validate the whole expression, not a part of it (CRITICAL SQL injection fixed 2026-09-23).** An identifier is
+interpolated into `ORDER BY`, so the check must cover *everything that gets interpolated*.
+`build_paginated_query` used to allow a table-aliased field (`b.created_at`) by validating only
+`field.split(".")[-1]` against the allowlist while interpolating the full string — so
+`?sort=id,(select pg_sleep(5))::text,b.created_at` (or `id;UPDATE …;--.created_at`) passed as
+`created_at` and executed (confirmed against Postgres: 2.2s vs 0.1s), reachable by any role that can list
+`GET /v1/billing|claims|containers` (customers can list their own billing). `shared/pagination.py` now
+requires `fullmatch` of `identifier` or `alias.identifier` (`_SORT_EXPRESSION_RE`) *and* an allowlisted
+column, at the single choke point every list endpoint uses; anything else is a `422`. `sort_direction` is
+normalised to `ASC`/`DESC`. Regression: `tests/unit/test_sort_injection.py` drives the real
+handler → service → repository → builder chain for all three endpoints with the DB layer wired to fail.
+Rule of thumb for review: any `f"…{x}…"` reaching SQL needs `x` to be a **literal chosen in code** or to
+have passed a `fullmatch` allowlist — never a "contains"/"ends with"/"last segment" check.
 
 ---
 
@@ -193,9 +207,10 @@ class StructuredFormatter(logging.Formatter):
 - **Local dev:** Redis 7 Alpine container on port 6379 (`shipx_redis` in `docker-compose.local.yml`). `REDIS_HOST=localhost` in `.env.local`.
 - **Production:** ElastiCache cluster endpoint injected as `REDIS_HOST` Lambda env var via Terraform.
 
-### 4.2 Tenant Configuration Cache — In-memory
-- Tenant config (dollar_rate, cbm_rate, storage_fee settings) is still cached **in-memory** per Lambda instance (`shared/cache.py`) with 60-second TTL.
-- These are read-heavy, write-rare values. Eventual consistency across instances is acceptable — the worst case is one extra DB read.
+### 4.2 Tenant Configuration Cache
+- **Stale-claim correction (2026-09-19):** this section previously claimed `dollar_rate`/`cbm_rate`/`storage_fee` were all cached in-memory via `shared/cache.py` with a 60s TTL. Verified against the actual code while building the Bybit-rate feature below: that was never true — `shared/cache.py`'s `Cache` class has exactly one caller in the whole codebase (`shared/notifications.py`), and every `cbm_rate_per_unit`/`storage_fee` read has always hit Postgres directly, every call, with no cache at all.
+- `dollar_rate` now genuinely is cached — but for a different reason and via a different mechanism than what was originally claimed here. The base rate is fetched live from Bybit's P2P order book (`shared/fx_rate.py`; see `07_api_tenant_management.md`'s Dollar Rate section), and that live fetch is what's cached — via `shared/distributed_cache.py`'s Redis-backed `DistributedCache` (10-minute TTL, key `fx_rate:ngn_usdt`, **not** tenant-scoped since the black-market rate itself doesn't vary by tenant), not `shared/cache.py`. This is about avoiding hammering an external API on every billing/claim/refund calculation, not about DB read load.
+- `cbm_rate_per_unit` and `storage_fee` remain genuinely uncached, direct-DB-read on every call, as they always have been — read-heavy, write-rare values where the extra DB read is cheap enough not to bother.
 
 ### 4.3 No Cache on Transactional Data
 - NEVER cache: billing, payments, packing lists, claims, refunds
@@ -377,6 +392,31 @@ Use CloudWatch Embedded Metrics Format for zero-cost metric emission from logs.
 - Each Lambda has its own IAM role
 - Permissions scoped to specific resources (not `*`)
 - Example: Claims Lambda gets `s3:PutObject` only on `arn:aws:s3:::logistics-assets-*/*/claims/*`
+- Every Lambda role carries the `permissions_boundary` from `infrastructure/modules/iam-oidc` — an
+  **allow-list intersection**. An inline grant is ineffective unless the boundary also allows the
+  action, so adding an AWS API call to the code means updating **both** the role policy in
+  `modules/lambda/main.tf` and the boundary. (Found 2026-09-23: the boundary's KMS statement was
+  conditioned on `kms:RequestAlias`, which is only present when a request names an alias — the code
+  passes a key ARN to `GenerateDataKey` and no key at all to `Decrypt`, so field encryption would have
+  been denied in AWS. Now `kms:ResourceAliases`, which matches however the key is referenced.)
+
+### 8.4 Outbound requests to tenant-supplied URLs (SSRF)
+- Never `urlopen()`/`requests.get()` a URL a tenant or customer can influence. Use
+  `shared/url_safety.open_public_https()` (see `02_shared_utilities.md`), and validate at the request
+  boundary with `validate_public_https_url()`.
+- Lambdas run inside the VPC beside Aurora/Redis: a `^https://` check alone is not a defence — block
+  private/loopback/link-local/CGNAT/reserved ranges (including numeric-IPv4 tricks and IPv4-mapped
+  IPv6), re-resolve DNS at delivery time, pin the connection to the validated IP, and never follow
+  redirects.
+- Don't echo raw socket errors from a probe endpoint back to the caller — connect-refused vs timeout
+  is an internal port-scan oracle.
+- Fixed-URL provider calls (Paystack, Bybit, Africa's Talking, Meta, Cognito JWKS) are exempt.
+
+### 8.5 Infrastructure/code contracts
+- `scripts/local_server.py` routes by path prefix, so drift between the application and Terraform is
+  invisible locally. `tests/unit/test_infrastructure_contracts.py` fails CI if a frontend call has no
+  API Gateway route, a route targets a service with no deployed Lambda, or a Lambda handler named in
+  Terraform doesn't exist in `services/`.
 
 ---
 

@@ -56,7 +56,7 @@ Stored in `refund_request.refund_type` (migration 009):
 `amount_approved_ngn` (migration 009) records the final approved payout amount.
 
 ### Staff Approval Threshold (BR-RF-005)
-When the approver is `nigeria_office_staff`, `approve_refund` reads `refund_threshold_usd.staff_limit` (default 50) and `dollar_rate.rate` (default 1550) from `tenant_config` via `repo.get_refund_threshold_config`. If `amount_approved_ngn > staff_limit × rate`, an `ApprovalThresholdExceededError` (`APPROVAL_THRESHOLD_EXCEEDED`, **HTTP 403**) is raised — the staff member must escalate to `tenant_admin`.
+When the approver is `nigeria_office_staff`, `approve_refund` reads `refund_threshold_usd.staff_limit` (default 50, from `tenant_config` via `repo.get_refund_threshold_config`) and the dollar rate via `shared.fx_rate.get_effective_dollar_rate(tenant_id)["rate"]` — **not** `tenant_config['dollar_rate']` (2026-09-19; that key is no longer read anywhere — see `07_api_tenant_management.md`'s Dollar Rate section). If `amount_approved_ngn > staff_limit × rate`, an `ApprovalThresholdExceededError` (`APPROVAL_THRESHOLD_EXCEEDED`, **HTTP 403**) is raised — the staff member must escalate to `tenant_admin`.
 
 The 403 body includes structured `threshold_details`:
 ```json

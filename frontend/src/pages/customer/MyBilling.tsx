@@ -1,0 +1,104 @@
+import { useCallback, useEffect, useState, type JSX } from 'react'
+import { useNavigate } from 'react-router-dom'
+import { ApiError } from '../../api/client'
+import { billingApi, type Billing } from '../../api/billing'
+import { Badge, Banner, Mono, type BadgeVariant } from '../../design/components'
+import { PageHeader } from '../../shell/PageHeader'
+import styles from './customer.module.css'
+
+const STATUS_VARIANT: Record<Billing['payment_status'], BadgeVariant> = {
+  unpaid: 'error',
+  partially_paid: 'warning',
+  paid: 'success',
+  overpaid: 'warning',
+  waived: 'neutral',
+  released_with_outstanding: 'warning',
+  cancelled: 'neutral',
+}
+
+function statusLabel(s: Billing['payment_status']): string {
+  switch (s) {
+    case 'unpaid': return 'Unpaid'
+    case 'partially_paid': return 'Partially paid'
+    case 'paid': return 'Paid'
+    case 'overpaid': return 'Overpaid'
+    case 'waived': return 'Waived'
+    case 'released_with_outstanding': return 'Released (outstanding)'
+    case 'cancelled': return 'Cancelled'
+  }
+}
+
+export function MyBilling(): JSX.Element {
+  const navigate = useNavigate()
+  const [records, setRecords] = useState<Billing[]>([])
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
+
+  const load = useCallback(async () => {
+    setLoading(true)
+    setError(null)
+    try {
+      const result = await billingApi.list()
+      setRecords(result.data)
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : 'Could not load billing records.')
+    } finally {
+      setLoading(false)
+    }
+  }, [])
+
+  useEffect(() => { void load() }, [load])
+
+  return (
+    <div className={styles.page}>
+      <PageHeader title="My Billing" subtitle="Your payment history and outstanding balances." />
+
+      {error && (
+        <div className={styles.banner}>
+          <Banner variant="error">{error}</Banner>
+        </div>
+      )}
+
+      {loading && <p style={{ color: 'var(--color-text-muted)' }}>Loading…</p>}
+
+      {!loading && records.length === 0 && (
+        <div className={styles.empty}>
+          <p className={styles.emptyTitle}>You're all caught up!</p>
+          <p>No billing records yet.</p>
+        </div>
+      )}
+
+      <div className={styles.cardList}>
+        {records.map((b) => {
+          const outstanding = Number(b.outstanding_ngn)
+          return (
+            <div
+              key={b.id}
+              className={styles.card}
+              onClick={() => navigate(`/my-billing/${b.id}`, { state: { billing: b } })}
+              role="button"
+              tabIndex={0}
+              onKeyDown={(e) => e.key === 'Enter' && navigate(`/my-billing/${b.id}`, { state: { billing: b } })}
+            >
+              <div className={styles.cardLeft}>
+                <p className={styles.cardTitle}>{b.container_number ?? b.container_id}</p>
+                <div className={styles.cardMeta}>
+                  <span>Total due: <Mono>₦{Number(b.total_due_ngn).toLocaleString()}</Mono></span>
+                  <span>Paid: <Mono>₦{Number(b.total_paid_ngn).toLocaleString()}</Mono></span>
+                </div>
+              </div>
+              <div className={styles.cardRight}>
+                <Badge variant={STATUS_VARIANT[b.payment_status]}>{statusLabel(b.payment_status)}</Badge>
+                {outstanding > 0 && (
+                  <span className={styles.amountSub} style={{ color: 'var(--color-error)' }}>
+                    ₦{outstanding.toLocaleString()} outstanding
+                  </span>
+                )}
+              </div>
+            </div>
+          )
+        })}
+      </div>
+    </div>
+  )
+}

@@ -71,6 +71,7 @@ GET    /v1/packing-lists/{id}              → packing_list Lambda
 PUT    /v1/packing-lists/{id}              → packing_list Lambda
 PATCH  /v1/packing-lists/{id}/approve      → packing_list Lambda
 PATCH  /v1/packing-lists/{id}/reject       → packing_list Lambda
+GET    /v1/containers/{id}/packing-lists   → packing_list Lambda  (sub-resource alias)
 
 POST   /v1/manifests                       → manifest Lambda
 GET    /v1/manifests                       → manifest Lambda
@@ -131,12 +132,73 @@ variable "lambda_arns" { type = map(string) }  # service_name → Lambda ARN
 variable "cors_allow_origins" { type = list(string) }
 ```
 
+## Per-Tenant Rate Limiting
+
+API Gateway usage plans enforce per-tenant throttling via API keys. Each tenant receives an API key mapped to a usage plan:
+
+| Tier | Burst limit (RPS) | Steady-state limit (RPS) | Monthly quota |
+|---|---|---|---|
+| starter | 10 | 5 | 100,000 |
+| business | 50 | 25 | 500,000 |
+| enterprise | 200 | 100 | unlimited |
+
+When a tenant exceeds their quota, API Gateway returns `429 Too Many Requests` before the Lambda is invoked. The app-level `UsageLimitExceededError` (429) supplements this for soft limits enforced in code (container limit, user count).
+
+Terraform resources:
+- `aws_api_gateway_usage_plan` per tier
+- `aws_api_gateway_api_key` per tenant (provisioned at tenant creation)
+- `aws_api_gateway_usage_plan_key` to link key → plan
+
+## Public Routes — Customer Account-Creation Invites (2026-09-01)
+
+Added to `local.public_routes` (`main.tf`) alongside `POST /v1/register`: `POST /v1/register/{slug}`
+(the primary tenant-scoped self-signup path — `POST /v1/register` is kept for backward compatibility,
+slug resolved from the body), `GET /v1/invites/{token}` (claim-page preview), `POST
+/v1/invites/{token}/accept` (claim). All `authorization_type = "NONE"` like the rest of `public_routes`
+— see `07_api_tenant_management.md` §"Customer Account-Creation Invites". Same ground-truth-gap class as
+the original `POST /v1/register` omission (2026-07-11): a handler route with no API Gateway route 404s
+in every real deployment while working in unit tests, since those mock the handler directly.
+
+## Route-table catch-up (2026-09-23)
+
+An audit comparing what the application serves against `local.all_routes` found **~80 served routes that
+API Gateway never declared**. `scripts/local_server.py` routes by path prefix, so all of them worked in
+local dev and would have returned 404 in AWS — the third occurrence of this ground-truth-gap class
+(`POST /v1/register` 2026-07-11, invites 2026-09-01). Now declared, grouped in `main.tf`:
+
+| Area | Routes added |
+|---|---|
+| Billing | `GET/POST /v1/billing`, `PATCH /v1/billing/{id}/cancel`, `…/apply-carryover`, `POST …/{billing-id}/storage-fees/waive` |
+| Claims | `POST /v1/claims/missing-items`, `POST /v1/claims/seized-items` |
+| Packing lists | `POST /v1/packing-lists/bulk-submit|bulk-approve|bulk-reject` |
+| Excel service | `POST /v1/manifests/import`; PDFs `GET /v1/packing-lists/{id}/pdf`, `/v1/release-notes/{id}/pdf`, `/v1/payments/{id}/receipt/pdf` |
+| Payments / warehouses | `POST /v1/payments/{billing-id}/verify`, `GET/POST /v1/warehouses`, `PATCH /v1/warehouses/{id}/set-default` |
+| Containers | `DELETE /v1/containers/{id}`, `…/cancel`, `…/events`, `…/documents` (+ `presigned-url`, `{doc-id}/download`) |
+| Tenant admin | `GET/PUT /v1/tenant/cbm-rate`, `GET /v1/tenant/rate-history`, `PATCH /v1/tenant/me`, `GET /v1/tenants/me/quota`, Paystack config (`PUT`/`DELETE`/`POST …/test`), webhook `rotate-secret`/`test`, notification-templates, `POST /v1/tenant/users/{id}/resend-invite|reset-password`, `POST /v1/customers/{id}/invite` |
+| Platform admin | `GET/PUT /v1/platform/plans`, `GET /v1/platform/settings/gateways`, `PUT`/`POST …/test` on `/v1/platform/settings/{gateway}`, `GET /v1/platform/tenants/{id}/config|users`, `POST …/quota-override|impersonate`, `DELETE /v1/platform/impersonation/{id}` |
+| Notifications | all 29 `/v1/notifications/*` routes (delivery log, staff + customer bells, banners, announcements) → new `notification_api` service key |
+
+**New service keys.** `notification_api` (`notification.handler.http_handler`) and `notification_webhook`
+(`notification.handler.webhook_handler`, now serving the public `GET/POST /v1/webhooks/whatsapp`) are
+VPC-attached API Lambdas — see `04e_terraform_lambda_monitoring.md`. Previously *no* Lambda served the
+notification HTTP surface, and the WhatsApp webhook was routed to an SQS consumer.
+
+**Silent-drop gotcha.** `active_routes` filters out any route whose service key isn't in `var.lambda_arns`
+with no error. `GET /v1/platform/tenants/{id}/usage` mapped to `metering`, which the lambda module never
+exposed (and had no invoke permission for), so that route had been silently inert. `metering` is now in
+`api_lambda_arns` with an `aws_lambda_permission`.
+
+**Guard.** `tests/unit/test_infrastructure_contracts.py` fails if a frontend API call has no route, a route
+targets a service key with no deployed Lambda, or a route key is duplicated.
+
 ## Acceptance Criteria
 
-- [ ] HTTP API (not REST API) created
-- [ ] JWT authorizer configured with Cognito User Pool
-- [ ] All routes defined matching the API specification
-- [ ] CORS configured for web client
-- [ ] Access logging enabled
-- [ ] Stage with auto-deploy and throttling
-- [ ] `terraform plan` succeeds
+- [x] Route table stays in sync with the application (enforced by `tests/unit/test_infrastructure_contracts.py`)
+- [x] HTTP API (not REST API) created
+- [x] JWT authorizer configured with Cognito User Pool
+- [x] All routes defined matching the API specification
+- [x] CORS configured for web client
+- [x] Access logging enabled
+- [x] Stage with auto-deploy and throttling
+- [x] Per-tenant usage plans with tier-based rate limits configured
+- [ ] `terraform plan` succeeds — `terraform validate` passes (2026-09-23); a real plan/apply against AWS is still outstanding

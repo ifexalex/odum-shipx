@@ -1,0 +1,473 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Shipx — China-to-Nigeria cargo, fully operationalized</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&family=Kumbh+Sans:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet" />
+<style>
+  :root {
+    --green: #1c7922; --green-strong: #155f1b; --green-deep: #14471a; --green-forest: #0b2f0d;
+    --green-flash: #2dc438; --green-soft: #d6f5da; --green-tint: #f3fcf4;
+    --copper: #9a3412; --copper-hover: #c2410c; --copper-soft: #fed7aa;
+    --ink: #1c1b1c; --ink-2: #374151; --ink-3: #666666; --ink-4: #6b7280;
+    --line: #e5e7eb; --line-strong: #cccccc; --page: #f3f4f6; --muted: #f9fafb; --surface: #fff;
+    --info: #2563eb; --role-china: #4f46e5; --warning: #d97706;
+    --display: 'Manrope', system-ui, sans-serif; --body: 'Kumbh Sans', system-ui, sans-serif; --mono: 'JetBrains Mono', monospace;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html { scroll-behavior: smooth; }
+  body { font-family: var(--body); background: var(--surface); color: var(--ink); -webkit-font-smoothing: antialiased; line-height: 1.6; }
+  a { text-decoration: none; color: inherit; }
+  .wrap { max-width: 1200px; margin: 0 auto; padding: 0 32px; }
+
+  /* ---- buttons ---- */
+  .btn { display: inline-flex; align-items: center; gap: 8px; font-family: var(--body); font-weight: 600; font-size: 15px; padding: 0 22px; height: 48px; border-radius: 10px; cursor: pointer; border: 1px solid transparent; transition: all .15s; white-space: nowrap; }
+  .btn-accent { background: var(--copper); color: #fff; }
+  .btn-accent:hover { background: var(--copper-hover); transform: translateY(-1px); }
+  .btn-ghost-light { background: rgba(255,255,255,0.08); color: #fff; border-color: rgba(255,255,255,0.2); }
+  .btn-ghost-light:hover { background: rgba(255,255,255,0.14); }
+  .btn-primary { background: var(--green); color: #fff; }
+  .btn-primary:hover { background: var(--green-strong); transform: translateY(-1px); }
+  .btn-secondary { background: #fff; color: var(--ink); border-color: var(--line-strong); }
+  .btn-secondary:hover { background: var(--muted); }
+  .btn-sm { height: 40px; font-size: 14px; padding: 0 16px; }
+
+  /* ---- nav ---- */
+  header.nav { position: sticky; top: 0; z-index: 50; background: rgba(11,47,13,0.85); backdrop-filter: blur(12px); border-bottom: 1px solid rgba(255,255,255,0.08); }
+  header.nav .wrap { display: flex; align-items: center; height: 68px; gap: 32px; }
+  .logo { display: flex; align-items: center; gap: 10px; }
+  .logo .mark { width: 30px; height: 30px; color: var(--green-flash); }
+  .logo .wm { font-family: var(--display); font-weight: 800; font-size: 22px; letter-spacing: -0.02em; color: #fff; }
+  .logo .wm em { color: var(--copper-soft); font-style: normal; }
+  nav.links { display: flex; gap: 28px; margin-left: 12px; }
+  nav.links a { color: rgba(255,255,255,0.7); font-size: 14px; font-weight: 500; transition: color .15s; }
+  nav.links a:hover { color: #fff; }
+  .nav-cta { margin-left: auto; display: flex; align-items: center; gap: 12px; }
+  .nav-cta .signin { color: rgba(255,255,255,0.85); font-size: 14px; font-weight: 600; }
+  @media (max-width: 860px) { nav.links { display: none; } }
+
+  /* ---- hero ---- */
+  .hero { background: radial-gradient(circle at 75% -10%, var(--green-deep) 0%, var(--green-forest) 60%); color: #fff; position: relative; overflow: hidden; }
+  .hero::before { content: ""; position: absolute; right: -10%; top: 10%; width: 600px; height: 600px; border-radius: 50%; background: radial-gradient(circle, rgba(45,196,56,0.12), transparent 65%); }
+  .hero .wrap { padding-top: 88px; padding-bottom: 96px; position: relative; z-index: 1; }
+  .eyebrow { display: inline-flex; align-items: center; gap: 8px; padding: 6px 14px; border-radius: 999px; background: rgba(45,196,56,0.14); border: 1px solid rgba(45,196,56,0.25); color: var(--green-flash); font-size: 13px; font-weight: 600; letter-spacing: 0.02em; margin-bottom: 28px; }
+  .eyebrow .dot { width: 7px; height: 7px; border-radius: 50%; background: var(--green-flash); box-shadow: 0 0 8px var(--green-flash); }
+  .hero h1 { font-family: var(--display); font-weight: 800; font-size: 64px; line-height: 1.02; letter-spacing: -0.035em; max-width: 880px; margin-bottom: 24px; }
+  .hero h1 em { color: var(--green-flash); font-style: normal; }
+  .hero .sub { font-size: 20px; line-height: 1.55; color: rgba(255,255,255,0.78); max-width: 600px; margin-bottom: 36px; }
+  .hero-cta { display: flex; gap: 14px; flex-wrap: wrap; align-items: center; }
+  .hero-cta .note { font-size: 13px; color: rgba(255,255,255,0.5); margin-left: 4px; }
+  .hero-stats { display: flex; gap: 48px; margin-top: 64px; padding-top: 40px; border-top: 1px solid rgba(255,255,255,0.12); flex-wrap: wrap; }
+  .hero-stats .stat .n { font-family: var(--display); font-weight: 800; font-size: 38px; letter-spacing: -0.02em; color: #fff; }
+  .hero-stats .stat .n em { color: var(--green-flash); font-style: normal; }
+  .hero-stats .stat .l { font-size: 13px; color: rgba(255,255,255,0.6); margin-top: 4px; }
+  @media (max-width: 760px) { .hero h1 { font-size: 42px; } .hero .sub { font-size: 17px; } }
+
+  /* ---- route strip ---- */
+  .route { background: var(--green-forest); padding: 28px 0; border-top: 1px solid rgba(255,255,255,0.06); }
+  .route .wrap { display: flex; align-items: center; justify-content: center; gap: 20px; flex-wrap: wrap; }
+  .route .node { display: flex; align-items: center; gap: 10px; color: #fff; }
+  .route .node .city { font-family: var(--display); font-weight: 700; font-size: 16px; }
+  .route .node .code { font-family: var(--mono); font-size: 12px; color: rgba(255,255,255,0.5); }
+  .route .line { flex: 1; max-width: 200px; height: 2px; background: linear-gradient(90deg, var(--green-flash), var(--copper)); position: relative; }
+  .route .line::after { content: "▸"; position: absolute; right: -4px; top: -10px; color: var(--copper); font-size: 14px; }
+  .route .pin { width: 36px; height: 36px; border-radius: 10px; display: flex; align-items: center; justify-content: center; }
+
+  /* ---- section shells ---- */
+  section.block { padding: 96px 0; }
+  .sec-head { text-align: center; max-width: 680px; margin: 0 auto 56px; }
+  .sec-tag { font-size: 13px; font-weight: 700; letter-spacing: 0.12em; text-transform: uppercase; color: var(--green); margin-bottom: 14px; }
+  .sec-head h2 { font-family: var(--display); font-weight: 800; font-size: 40px; line-height: 1.1; letter-spacing: -0.025em; margin-bottom: 16px; }
+  .sec-head p { font-size: 18px; color: var(--ink-3); line-height: 1.6; }
+  @media (max-width: 760px) { .sec-head h2 { font-size: 30px; } }
+
+  /* ---- problem/solution ---- */
+  .split { display: grid; grid-template-columns: 1fr 1fr; gap: 28px; align-items: stretch; }
+  .panel { border-radius: 16px; padding: 36px; }
+  .panel.problem { background: var(--muted); border: 1px solid var(--line); }
+  .panel.solution { background: linear-gradient(135deg, var(--green-forest), var(--green-deep)); color: #fff; }
+  .panel h3 { font-family: var(--display); font-weight: 700; font-size: 22px; margin-bottom: 20px; letter-spacing: -0.01em; }
+  .panel.problem h3 { color: var(--ink); }
+  .panel ul { list-style: none; display: flex; flex-direction: column; gap: 16px; }
+  .panel li { display: flex; gap: 12px; font-size: 15px; line-height: 1.5; }
+  .panel.problem li { color: var(--ink-2); }
+  .panel.solution li { color: rgba(255,255,255,0.85); }
+  .panel li .ic { width: 22px; height: 22px; border-radius: 6px; flex-shrink: 0; display: flex; align-items: center; justify-content: center; margin-top: 1px; }
+  .panel.problem li .ic { background: #fee2e2; color: #dc2626; }
+  .panel.solution li .ic { background: rgba(45,196,56,0.2); color: var(--green-flash); }
+  @media (max-width: 760px) { .split { grid-template-columns: 1fr; } }
+
+  /* ---- features grid ---- */
+  .features { display: grid; grid-template-columns: repeat(3, 1fr); gap: 24px; }
+  .feat { background: #fff; border: 1px solid var(--line); border-radius: 16px; padding: 28px; transition: box-shadow .18s, transform .18s; }
+  .feat:hover { box-shadow: 0 12px 32px rgba(11,47,13,0.1); transform: translateY(-3px); }
+  .feat .ic { width: 48px; height: 48px; border-radius: 12px; display: flex; align-items: center; justify-content: center; margin-bottom: 18px; }
+  .feat h3 { font-family: var(--display); font-weight: 700; font-size: 19px; letter-spacing: -0.01em; margin-bottom: 8px; }
+  .feat p { font-size: 14px; color: var(--ink-3); line-height: 1.55; }
+  @media (max-width: 860px) { .features { grid-template-columns: 1fr; } }
+
+  /* ---- roles ---- */
+  .roles-band { background: var(--green-tint); }
+  .roles { display: grid; grid-template-columns: repeat(3, 1fr); gap: 20px; }
+  .role-card { background: #fff; border: 1px solid var(--line); border-radius: 14px; padding: 24px; }
+  .role-card .badge { display: inline-flex; align-items: center; gap: 6px; padding: 4px 12px; border-radius: 999px; font-size: 11px; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase; margin-bottom: 14px; }
+  .role-card h4 { font-family: var(--display); font-weight: 700; font-size: 17px; margin-bottom: 6px; }
+  .role-card p { font-size: 13.5px; color: var(--ink-3); line-height: 1.5; }
+  @media (max-width: 860px) { .roles { grid-template-columns: 1fr 1fr; } }
+  @media (max-width: 560px) { .roles { grid-template-columns: 1fr; } }
+
+  /* ---- pricing ---- */
+  .pricing { display: grid; grid-template-columns: repeat(3, 1fr); gap: 24px; align-items: start; }
+  .price-card { background: #fff; border: 1px solid var(--line); border-radius: 18px; padding: 32px; position: relative; }
+  .price-card.featured { border: 2px solid var(--green); box-shadow: 0 16px 40px rgba(11,47,13,0.12); }
+  .price-card .pop { position: absolute; top: -13px; left: 50%; transform: translateX(-50%); background: var(--copper); color: #fff; font-size: 11px; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; padding: 5px 14px; border-radius: 999px; white-space: nowrap; }
+  .price-card .tier { font-family: var(--display); font-weight: 700; font-size: 20px; margin-bottom: 6px; }
+  .price-card .tier-sub { font-size: 13px; color: var(--ink-4); margin-bottom: 20px; min-height: 36px; }
+  .price-card .amt { font-family: var(--display); font-weight: 800; font-size: 40px; letter-spacing: -0.02em; }
+  .price-card .amt span { font-size: 15px; font-weight: 600; color: var(--ink-4); }
+  .price-card .amt-note { font-size: 12px; color: var(--ink-4); margin: 6px 0 24px; }
+  .price-card .plist { list-style: none; display: flex; flex-direction: column; gap: 12px; margin-bottom: 28px; }
+  .price-card .plist li { display: flex; gap: 10px; font-size: 14px; color: var(--ink-2); }
+  .price-card .plist .ic { color: var(--green); flex-shrink: 0; }
+  @media (max-width: 860px) { .pricing { grid-template-columns: 1fr; max-width: 440px; margin: 0 auto; } }
+
+  /* ---- CTA band ---- */
+  .cta-band { background: linear-gradient(135deg, var(--green-forest) 0%, var(--green-deep) 55%, var(--green-strong) 100%); color: #fff; border-radius: 24px; padding: 64px 48px; text-align: center; position: relative; overflow: hidden; }
+  .cta-band::before { content: ""; position: absolute; left: -80px; bottom: -120px; width: 420px; height: 420px; border-radius: 50%; background: radial-gradient(circle, rgba(45,196,56,0.14), transparent 65%); }
+  .cta-band h2 { font-family: var(--display); font-weight: 800; font-size: 40px; letter-spacing: -0.025em; margin-bottom: 16px; position: relative; z-index: 1; }
+  .cta-band p { font-size: 18px; color: rgba(255,255,255,0.78); max-width: 520px; margin: 0 auto 32px; position: relative; z-index: 1; }
+  .cta-band .hero-cta { justify-content: center; position: relative; z-index: 1; }
+  @media (max-width: 760px) { .cta-band h2 { font-size: 28px; } .cta-band { padding: 44px 24px; } }
+
+  /* ---- footer ---- */
+  footer.foot { background: var(--green-forest); color: rgba(255,255,255,0.6); padding: 64px 0 40px; margin-top: 96px; }
+  .foot-grid { display: grid; grid-template-columns: 2fr 1fr 1fr 1fr; gap: 32px; margin-bottom: 48px; }
+  .foot-grid .about { max-width: 280px; }
+  .foot-grid .about p { font-size: 14px; line-height: 1.6; margin-top: 16px; }
+  .foot-col h5 { font-size: 13px; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; color: rgba(255,255,255,0.4); margin-bottom: 16px; }
+  .foot-col a { display: block; font-size: 14px; color: rgba(255,255,255,0.7); padding: 6px 0; transition: color .15s; }
+  .foot-col a:hover { color: #fff; }
+  .foot-bottom { border-top: 1px solid rgba(255,255,255,0.1); padding-top: 28px; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 12px; font-size: 13px; }
+  .foot-bottom .by em { color: var(--green-flash); font-style: normal; font-weight: 600; }
+  @media (max-width: 760px) { .foot-grid { grid-template-columns: 1fr 1fr; } }
+</style>
+</head>
+<body>
+
+<!-- ============ NAV ============ -->
+<header class="nav">
+  <div class="wrap">
+    <a class="logo" href="#">
+      <svg class="mark" viewBox="0 0 100 100" fill="currentColor"><g transform="rotate(0 50 50)"><rect x="36" y="6" width="28" height="48" rx="14"/></g><g transform="rotate(120 50 50)"><rect x="36" y="6" width="28" height="48" rx="14"/></g><g transform="rotate(240 50 50)"><rect x="36" y="6" width="28" height="48" rx="14"/></g></svg>
+      <span class="wm">ship<em>x</em></span>
+    </a>
+    <nav class="links">
+      <a href="#how">How it works</a>
+      <a href="#features">Features</a>
+      <a href="#roles">For your team</a>
+      <a href="#pricing">Pricing</a>
+    </nav>
+    <div class="nav-cta">
+      <a class="signin" href="screens/Section 1 - Authentication.html">Sign in</a>
+      <a class="btn btn-accent btn-sm" href="#pricing">Start free trial</a>
+    </div>
+  </div>
+</header>
+
+<!-- ============ HERO ============ -->
+<div class="hero">
+  <div class="wrap">
+    <div class="eyebrow"><span class="dot"></span> Built for China → Nigeria freight forwarders</div>
+    <h1>Run your entire cargo operation on <em>one platform.</em></h1>
+    <p class="sub">Shipx gives shipping companies everything to move cargo from Guangzhou to Lagos — containers, packing lists, billing, customs, claims and customer tracking. One login for your whole team.</p>
+    <div class="hero-cta">
+      <a class="btn btn-accent" href="#pricing">Start your 30-day trial</a>
+      <a class="btn btn-ghost-light" href="#how">See how it works</a>
+      <span class="note">No card required · onboard in a day</span>
+    </div>
+    <div class="hero-stats">
+      <div class="stat"><div class="n">18–24<em>d</em></div><div class="l">Average transit, fully tracked</div></div>
+      <div class="stat"><div class="n">6</div><div class="l">Role-based portals in one app</div></div>
+      <div class="stat"><div class="n">100%</div><div class="l">Of billing on a live FX + CBM engine</div></div>
+    </div>
+  </div>
+</div>
+
+<!-- ============ ROUTE STRIP ============ -->
+<div class="route">
+  <div class="wrap">
+    <div class="node">
+      <div class="pin" style="background:rgba(79,70,229,0.2);color:#a5b4fc;"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="6" width="18" height="13" rx="1"/><path d="M7 6v13M11 6v13M15 6v13"/></svg></div>
+      <div><div class="city">Guangzhou</div><div class="code">CN-CAN · origin warehouse</div></div>
+    </div>
+    <div class="line"></div>
+    <div class="node">
+      <div class="pin" style="background:rgba(45,196,56,0.18);color:var(--green-flash);"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 16l1-2h16l1 2M5 16v2c0 1 1 2 2 2h10c1 0 2-1 2-2v-2M12 4v8M8 8h8"/></svg></div>
+      <div><div class="city">In transit</div><div class="code">live tracking · 6 stages</div></div>
+    </div>
+    <div class="line"></div>
+    <div class="node">
+      <div class="pin" style="background:rgba(154,52,18,0.25);color:var(--copper-soft);"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2h-4v-7H10v7H6a2 2 0 0 1-2-2z"/></svg></div>
+      <div><div class="city">Lagos</div><div class="code">NG-LOS · Tin Can Port</div></div>
+    </div>
+  </div>
+</div>
+
+<!-- ============ PROBLEM / SOLUTION ============ -->
+<section class="block">
+  <div class="wrap">
+    <div class="sec-head">
+      <div class="sec-tag">Why Shipx</div>
+      <h2>Stop running your business on WhatsApp and spreadsheets.</h2>
+      <p>Most China–Nigeria forwarders juggle a dozen disconnected tools. Shipx replaces all of it with one system your whole team — and your customers — actually log into.</p>
+    </div>
+    <div class="split">
+      <div class="panel problem">
+        <h3>The old way</h3>
+        <ul>
+          <li><span class="ic">✕</span> Packing lists in Excel, emailed back and forth, versions everywhere</li>
+          <li><span class="ic">✕</span> Billing calculated by hand — FX and CBM errors cost you money</li>
+          <li><span class="ic">✕</span> Customers call and message constantly: "where is my cargo?"</li>
+          <li><span class="ic">✕</span> No record of who changed what, when a dispute arises</li>
+          <li><span class="ic">✕</span> China office and Lagos office working off different numbers</li>
+        </ul>
+      </div>
+      <div class="panel solution">
+        <h3>The Shipx way</h3>
+        <ul>
+          <li><span class="ic">✓</span> Packing lists created once, approved in-app, locked to a container</li>
+          <li><span class="ic">✓</span> Billing auto-computed from live CBM × FX rates, every time</li>
+          <li><span class="ic">✓</span> Customers track their own cargo and pay online — fewer calls</li>
+          <li><span class="ic">✓</span> Every action audit-logged with before/after history</li>
+          <li><span class="ic">✓</span> One source of truth shared across both offices, in real time</li>
+        </ul>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============ FEATURES ============ -->
+<section class="block" id="features" style="background:var(--muted);">
+  <div class="wrap">
+    <div class="sec-head">
+      <div class="sec-tag">Everything in one place</div>
+      <h2>The full operation, end to end.</h2>
+      <p>From the moment cargo enters your Guangzhou warehouse to the customer's pickup in Lagos.</p>
+    </div>
+    <div class="features">
+      <div class="feat">
+        <div class="ic" style="background:var(--info);color:#fff;"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="6" width="18" height="13" rx="1"/><path d="M7 6v13M11 6v13M15 6v13"/></svg></div>
+        <h3>Containers &amp; tracking</h3>
+        <p>Create containers, track them through 8 stages from China warehouse to Lagos pickup, with a clear China-side / Nigeria-side handoff.</p>
+      </div>
+      <div class="feat">
+        <div class="ic" style="background:var(--green);color:#fff;"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 16V8a2 2 0 0 0-1-1.73L13 2.27a2 2 0 0 0-2 0L4 6.27A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/><path d="M3.27 7L12 12l8.73-5M12 22V12"/></svg></div>
+        <h3>Packing lists</h3>
+        <p>Carton-level capture with auto-CBM, an approval workflow, and bulk import from Excel when you're processing a whole container at once.</p>
+      </div>
+      <div class="feat">
+        <div class="ic" style="background:var(--copper);color:#fff;"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"/><path d="M12 6v12M9 9.5a2.5 2.5 0 0 1 5 0M9 14.5a2.5 2.5 0 0 0 5 0"/></svg></div>
+        <h3>Billing on autopilot</h3>
+        <p>Every bill computed from your configured CBM and USD→NGN rates. Misc charges, carryovers, storage fees and CBM disputes all handled.</p>
+      </div>
+      <div class="feat">
+        <div class="ic" style="background:var(--warning);color:#fff;"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2L2 22h20L12 2zM12 9v5M12 18h.01"/></svg></div>
+        <h3>Claims &amp; customs</h3>
+        <p>Log damage, missing items and seized goods. Verify manifests on arrival, manage customs clearance, and resolve disputes with a full paper trail.</p>
+      </div>
+      <div class="feat">
+        <div class="ic" style="background:var(--green-flash);color:var(--green-forest);"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><circle cx="12" cy="8" r="4"/><path d="M4 21a8 8 0 0 1 16 0"/></svg></div>
+        <h3>Customer self-service</h3>
+        <p>Your customers register, track shipments, see their bill, pay with Paystack, and file claims — without tying up your staff on the phone.</p>
+      </div>
+      <div class="feat">
+        <div class="ic" style="background:var(--ink-2);color:#fff;"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="6" width="18" height="13" rx="2"/><path d="M3 10h18"/></svg></div>
+        <h3>Release notes &amp; pickup</h3>
+        <p>Generate release notes the moment a bill is settled, with QR codes your warehouse scans to confirm pickup — partial releases included.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============ ROLES ============ -->
+<section class="block roles-band" id="roles">
+  <div class="wrap">
+    <div class="sec-head">
+      <div class="sec-tag">For your whole team</div>
+      <h2>One platform, every role.</h2>
+      <p>Each member of your team gets exactly the tools they need — and nothing they don't. You control who sees what.</p>
+    </div>
+    <div class="roles">
+      <div class="role-card">
+        <span class="badge" style="background:var(--green-soft);color:var(--green-deep);">Admin</span>
+        <h4>You, the owner</h4>
+        <p>Configure rates, branding and charge types. Invite staff, manage customers, and see business-wide reports and analytics.</p>
+      </div>
+      <div class="role-card">
+        <span class="badge" style="background:#e0e7ff;color:var(--role-china);">China Office</span>
+        <h4>Your Guangzhou team</h4>
+        <p>Receive cargo, build packing lists, load containers, and update China-side tracking stages as goods move toward the vessel.</p>
+      </div>
+      <div class="role-card">
+        <span class="badge" style="background:var(--copper-soft);color:var(--copper);">Nigeria Office</span>
+        <h4>Your Lagos team</h4>
+        <p>Verify manifests on arrival, clear customs, generate billing, resolve claims, and issue release notes to customers.</p>
+      </div>
+      <div class="role-card">
+        <span class="badge" style="background:#fef3c7;color:var(--warning);">Warehouse</span>
+        <h4>Pickup staff</h4>
+        <p>Scan a release note's QR code, confirm the customer's identity, and record the pickup — no training required.</p>
+      </div>
+      <div class="role-card">
+        <span class="badge" style="background:var(--green-soft);color:var(--green);">Customer</span>
+        <h4>Your clients</h4>
+        <p>A clean self-service portal to track cargo, view bills, pay online and file claims — branded as your company.</p>
+      </div>
+      <div class="role-card" style="background:var(--green-forest);border:none;">
+        <span class="badge" style="background:rgba(255,255,255,0.12);color:var(--green-flash);">Multi-tenant</span>
+        <h4 style="color:#fff;">Your own isolated space</h4>
+        <p style="color:rgba(255,255,255,0.7);">Your data, users, customers and branding stay completely separate from every other company on Shipx.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============ HOW IT WORKS ============ -->
+<section class="block" id="how">
+  <div class="wrap">
+    <div class="sec-head">
+      <div class="sec-tag">How it works</div>
+      <h2>Live in a day, not a quarter.</h2>
+      <p>No lengthy implementation. Sign up, set your rates, invite your team, and start moving cargo.</p>
+    </div>
+    <div class="features">
+      <div class="feat" style="text-align:left;">
+        <div class="ic" style="background:var(--green-tint);color:var(--green);font-family:var(--display);font-weight:800;font-size:20px;">1</div>
+        <h3>Create your account</h3>
+        <p>Sign up your company, upload your logo, and set your USD→NGN and CBM rates. Your branded portal is ready instantly.</p>
+      </div>
+      <div class="feat" style="text-align:left;">
+        <div class="ic" style="background:var(--green-tint);color:var(--green);font-family:var(--display);font-weight:800;font-size:20px;">2</div>
+        <h3>Invite your team</h3>
+        <p>Add your China office, Nigeria office and warehouse staff. Each lands in the right portal with the right permissions.</p>
+      </div>
+      <div class="feat" style="text-align:left;">
+        <div class="ic" style="background:var(--green-tint);color:var(--green);font-family:var(--display);font-weight:800;font-size:20px;">3</div>
+        <h3>Start shipping</h3>
+        <p>Create your first container, build packing lists, and watch billing, tracking and customer notifications run themselves.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============ PRICING ============ -->
+<section class="block" id="pricing" style="background:var(--muted);">
+  <div class="wrap">
+    <div class="sec-head">
+      <div class="sec-tag">Pricing</div>
+      <h2>Plans that grow with your cargo.</h2>
+      <p>Every plan includes all six role portals, customer self-service, and the billing engine. You only scale up limits as you grow.</p>
+    </div>
+    <div class="pricing">
+      <div class="price-card">
+        <div class="tier">Starter</div>
+        <div class="tier-sub">For solo operators getting off spreadsheets.</div>
+        <div class="amt">₦180k<span> / mo</span></div>
+        <div class="amt-note">billed monthly · 30-day free trial</div>
+        <ul class="plist">
+          <li><span class="ic">✓</span> Up to 10 staff users</li>
+          <li><span class="ic">✓</span> 20 containers / month</li>
+          <li><span class="ic">✓</span> 5 GB document storage</li>
+          <li><span class="ic">✓</span> SMS + WhatsApp + email alerts</li>
+        </ul>
+        <a class="btn btn-secondary" href="screens/Section 1 - Authentication.html" style="width:100%;justify-content:center;">Start free trial</a>
+      </div>
+      <div class="price-card featured">
+        <div class="pop">Most popular</div>
+        <div class="tier">Professional</div>
+        <div class="tier-sub">For established forwarders running steady volume.</div>
+        <div class="amt">₦480k<span> / mo</span></div>
+        <div class="amt-note">billed monthly · 30-day free trial</div>
+        <ul class="plist">
+          <li><span class="ic">✓</span> Up to 50 staff users</li>
+          <li><span class="ic">✓</span> 200 containers / month</li>
+          <li><span class="ic">✓</span> 10 GB document storage</li>
+          <li><span class="ic">✓</span> API access for integrations</li>
+          <li><span class="ic">✓</span> Priority support</li>
+        </ul>
+        <a class="btn btn-primary" href="screens/Section 1 - Authentication.html" style="width:100%;justify-content:center;">Start free trial</a>
+      </div>
+      <div class="price-card">
+        <div class="tier">Enterprise</div>
+        <div class="tier-sub">For large-volume operations with custom needs.</div>
+        <div class="amt">Custom</div>
+        <div class="amt-note">annual contract · white-glove onboarding</div>
+        <ul class="plist">
+          <li><span class="ic">✓</span> 100+ staff users</li>
+          <li><span class="ic">✓</span> 500+ containers / month</li>
+          <li><span class="ic">✓</span> 50 GB+ storage</li>
+          <li><span class="ic">✓</span> SSO &amp; dedicated support</li>
+        </ul>
+        <a class="btn btn-secondary" href="#" style="width:100%;justify-content:center;">Talk to sales</a>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============ CTA BAND ============ -->
+<section style="padding:0 0 40px;">
+  <div class="wrap">
+    <div class="cta-band">
+      <h2>Lead every shipment. Guangzhou to Lagos.</h2>
+      <p>Join the forwarders running their entire China–Nigeria operation on Shipx. Start free — your branded portal is ready in minutes.</p>
+      <div class="hero-cta">
+        <a class="btn btn-accent" href="#pricing">Start your 30-day trial</a>
+        <a class="btn btn-ghost-light" href="#how">Book a demo</a>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============ FOOTER ============ -->
+<footer class="foot">
+  <div class="wrap">
+    <div class="foot-grid">
+      <div class="about">
+        <a class="logo" href="#">
+          <svg class="mark" viewBox="0 0 100 100" fill="currentColor"><g transform="rotate(0 50 50)"><rect x="36" y="6" width="28" height="48" rx="14"/></g><g transform="rotate(120 50 50)"><rect x="36" y="6" width="28" height="48" rx="14"/></g><g transform="rotate(240 50 50)"><rect x="36" y="6" width="28" height="48" rx="14"/></g></svg>
+          <span class="wm">ship<em>x</em></span>
+        </a>
+        <p>The operating system for China–Nigeria cargo forwarders. Containers, billing, customs and customer tracking — in one platform.</p>
+      </div>
+      <div class="foot-col">
+        <h5>Product</h5>
+        <a href="#features">Features</a>
+        <a href="#roles">For your team</a>
+        <a href="#pricing">Pricing</a>
+        <a href="screens/Section 1 - Authentication.html">Sign in</a>
+      </div>
+      <div class="foot-col">
+        <h5>Company</h5>
+        <a href="#">About ODUM</a>
+        <a href="#">Careers</a>
+        <a href="#">Contact</a>
+      </div>
+      <div class="foot-col">
+        <h5>Legal</h5>
+        <a href="#">Terms of service</a>
+        <a href="#">Privacy (NDPR)</a>
+        <a href="#">Data processing</a>
+      </div>
+    </div>
+    <div class="foot-bottom">
+      <span>© 2026 Shipx · All rights reserved.</span>
+      <span class="by">A product by <em>ODUM</em></span>
+    </div>
+  </div>
+</footer>
+
+</body>
+</html>

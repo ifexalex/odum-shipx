@@ -307,3 +307,11 @@ imports moved off `draft`. Docstring corrected to match.
 `ImportPackingLists.tsx`'s wizard copy claimed imports create packing lists "in draft
 status" — also stale since the same 2026-08-30 change. Corrected to describe them as
 landing in pending approval.
+
+## Ground-truth gap found live (2026-09-09)
+
+Reported by the user while investigating a separate missing notification on payment-claim rejection — asked to check every notification in the app: `packing_list_approved` had full SMS/WhatsApp/email templates defined but no call site ever used it — approving a packing list (single-item or bulk) sent no notification to the customer at all, only an EventBridge `PackingListApproved` event that no consumer ever routed anywhere. Wired directly into `_apply_approval_side_effects` (shared by `approve_packing_list` and `bulk_approve_packing_lists`), best-effort and never able to fail approval itself. Full account in `15_api_notifications.md`. Tests: `TestApprovalNotifiesCustomer` in `tests/unit/test_packing_list.py`.
+
+**Staff bell (2026-09-12):** submitting a packing list for approval (`submit_packing_list`, `bulk_submit_packing_lists`) now also writes a `staff_notification` row for `china_office_staff`/`tenant_admin` — the roles who can approve it. The bulk path passes `entity_id=None` rather than a comma-joined id list (a single-row UUID column can't hold several ids — see `15_api_notifications.md`). Full account there.
+
+**Customer bell (2026-09-12):** approving a packing list now also writes an in-app customer notification when the customer has a portal account, reusing the same `staff_notification` table as the staff bell above. Full account in `15_api_notifications.md`.

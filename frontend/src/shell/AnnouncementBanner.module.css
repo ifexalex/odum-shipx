@@ -1,0 +1,33 @@
+.wrap {
+  animation:
+    slideDown 0.35s ease-out,
+    pulseGlow 1.6s ease-in-out 0.35s 2;
+  transform-origin: top center;
+}
+
+@keyframes slideDown {
+  from {
+    transform: translateY(-16px);
+    opacity: 0;
+  }
+  to {
+    transform: translateY(0);
+    opacity: 1;
+  }
+}
+
+@keyframes pulseGlow {
+  0%,
+  100% {
+    box-shadow: 0 0 0 0 var(--color-warning-soft);
+  }
+  50% {
+    box-shadow: 0 0 0 6px var(--color-warning-soft);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .wrap {
+    animation: none;
+  }
+}

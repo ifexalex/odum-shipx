@@ -12,22 +12,11 @@ from datetime import UTC, date, datetime
 from typing import Any
 
 from shared.exceptions import UsageLimitExceededError
+from shared.tier_limits import DEFAULT_TIER as _DEFAULT_TIER
 
 from . import repository as repo
 
 logger = logging.getLogger(__name__)
-
-# ---------------------------------------------------------------------------
-# Tier limit definitions (spec §3.5)
-# ---------------------------------------------------------------------------
-
-TIER_LIMITS: dict[str, dict[str, Any]] = {
-    "starter": {"users": 10, "containers_per_month": 5, "storage_gb": 5.0},
-    "business": {"users": 50, "containers_per_month": 25, "storage_gb": 25.0},
-    "enterprise": {"users": 999999, "containers_per_month": 999999, "storage_gb": 999999.0},
-}
-
-_DEFAULT_TIER = "starter"
 
 # Metric types that aggregate daily (period = today → today)
 _DAILY_METRICS = frozenset({"api_calls", "sms_sent", "whatsapp_sent", "emails_sent"})
@@ -43,9 +32,11 @@ _VALID_METRIC_TYPES = _DAILY_METRICS | _MONTHLY_METRICS
 
 
 def _get_limits(tenant_id: str) -> dict[str, Any]:
+    from shared.tier_limits import get_effective_limits
+
     tenant = repo.get_tenant_info(tenant_id)
     tier = (tenant or {}).get("subscription_tier") or _DEFAULT_TIER
-    return TIER_LIMITS.get(tier, TIER_LIMITS[_DEFAULT_TIER])
+    return get_effective_limits(tier, tenant_id)
 
 
 def _period_for_metric(metric_type: str, ref_date: date) -> tuple[date, date]:
@@ -156,7 +147,9 @@ def get_tenant_usage(tenant_id: str, period: str | None = None) -> dict[str, Any
 
     tenant = repo.get_tenant_info(tenant_id)
     tier = (tenant or {}).get("subscription_tier") or _DEFAULT_TIER
-    limits = TIER_LIMITS.get(tier, TIER_LIMITS[_DEFAULT_TIER])
+    from shared.tier_limits import get_effective_limits
+
+    limits = get_effective_limits(tier, tenant_id)
 
     records = repo.get_usage_records(tenant_id, period_start, period_end)
     metrics: dict[str, float] = {r["metric_type"]: float(r["total_value"]) for r in records}

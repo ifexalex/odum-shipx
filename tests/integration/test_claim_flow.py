@@ -141,7 +141,7 @@ class TestClaimResolutionCreatesRefund:
 
         with (
             patch.object(service.repo, "get_damage_claim_by_id", return_value=claim),
-            patch.object(service.repo, "get_dollar_rate", return_value=Decimal("1550")),
+            patch.object(service, "get_effective_dollar_rate", return_value={"rate": Decimal("1550")}),
             patch.object(service.repo, "update_claim_status", return_value=resolved),
             patch.object(service.repo, "create_refund_request_for_claim") as mock_create_refund,
             patch.object(service.repo, "get_billing_by_id", return_value=None),

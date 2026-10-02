@@ -1,0 +1,54 @@
+import { QueryClient } from '@tanstack/react-query'
+
+/**
+ * Singleton QueryClient shared across the app.
+ *
+ * staleTime strategy — matched to ShipX data volatility:
+ *
+ * Default (3 min): Containers, packing lists, billing, claims, manifests, refunds.
+ * These only change when a staff member explicitly acts. Mutations call invalidateQueries
+ * immediately, so the timer is just a safety net for data changed by *another user* on
+ * a different session. 3 minutes is generous — no shipping operation moves faster than that.
+ *
+ * Override to Infinity: Config (rates, webhook). Never changes without an explicit Save.
+ * Override to 5 min: Staff users, customers, platform tenants. Rarely change.
+ * Override to 30s: Notification log only — genuinely gets new entries from background SQS.
+ *
+ * refetchOnWindowFocus: false — logistics data doesn't change spontaneously. Tab switches
+ * should NOT fire DB queries. Mutations + invalidateQueries handle freshness correctly.
+ *
+ * IMPORTANT: queryClient.clear() is called on every tenant-context switch (login, logout,
+ * impersonation enter/exit) — wired in App.tsx via SessionProvider.onSessionChange.
+ */
+
+const THREE_MINUTES = 3 * 60 * 1000
+
+export const queryClient = new QueryClient({
+  defaultOptions: {
+    queries: {
+      staleTime: THREE_MINUTES,
+      gcTime: 10 * 60 * 1000,
+      retry: (failureCount, error) => {
+        // Never retry 4xx — they won't resolve on retry.
+        if (error instanceof Error && 'status' in error) {
+          const status = (error as unknown as { status: number }).status
+          if (status >= 400 && status < 500) return false
+        }
+        return failureCount < 1
+      },
+      refetchOnWindowFocus: false,
+    },
+    mutations: {
+      retry: false,
+    },
+  },
+})
+
+/** Use on config queries (dollar rate, CBM rate, webhook, notification templates). */
+export const STALE_FOREVER = Infinity
+
+/** Use on reference data (staff users, customers, platform tenants). */
+export const STALE_5_MIN = 5 * 60 * 1000
+
+/** Use on the notification log — new entries arrive from background SQS. */
+export const STALE_30S = 30_000

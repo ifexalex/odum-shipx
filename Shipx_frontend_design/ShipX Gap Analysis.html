@@ -1,0 +1,1050 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>ShipX — Design & Backend Gap Analysis</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  :root {
+    --navy:       #0D2340;
+    --navy-mid:   #1A3F6F;
+    --blue:       #2563EB;
+    --blue-light: #DBEAFE;
+    --orange:     #F97316;
+    --orange-lt:  #FED7AA;
+    --red:        #DC2626;
+    --red-lt:     #FEE2E2;
+    --amber:      #D97706;
+    --amber-lt:   #FEF3C7;
+    --green:      #16A34A;
+    --green-lt:   #DCFCE7;
+    --purple:     #7C3AED;
+    --purple-lt:  #EDE9FE;
+    --n900:       #111827;
+    --n700:       #374151;
+    --n500:       #6B7280;
+    --n300:       #D1D5DB;
+    --n100:       #F3F4F6;
+    --n50:        #F9FAFB;
+    --white:      #FFFFFF;
+    --page-bg:    #F0EEE9;
+  }
+
+  html { font-size: 14px; }
+  body {
+    font-family: 'Inter', system-ui, sans-serif;
+    background: var(--page-bg);
+    color: var(--n900);
+    line-height: 1.6;
+  }
+
+  /* ── Layout ── */
+  .layout { display: flex; min-height: 100vh; }
+
+  .sidebar {
+    width: 240px;
+    flex-shrink: 0;
+    background: var(--navy);
+    position: sticky;
+    top: 0;
+    height: 100vh;
+    overflow-y: auto;
+    display: flex;
+    flex-direction: column;
+  }
+
+  .sidebar-logo {
+    padding: 24px 20px 16px;
+    border-bottom: 1px solid rgba(255,255,255,0.08);
+  }
+  .sidebar-logo .wordmark {
+    font-size: 18px;
+    font-weight: 700;
+    color: #fff;
+    letter-spacing: -0.3px;
+  }
+  .sidebar-logo .doc-label {
+    font-size: 11px;
+    color: rgba(255,255,255,0.4);
+    margin-top: 2px;
+    text-transform: uppercase;
+    letter-spacing: 0.6px;
+  }
+
+  .sidebar-nav { padding: 12px 0; flex: 1; }
+  .nav-section-label {
+    padding: 12px 20px 4px;
+    font-size: 10px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.8px;
+    color: rgba(255,255,255,0.35);
+  }
+  .nav-item {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 7px 20px;
+    font-size: 13px;
+    color: rgba(255,255,255,0.65);
+    cursor: pointer;
+    text-decoration: none;
+    transition: color 0.12s;
+  }
+  .nav-item:hover { color: #fff; }
+  .nav-item.active {
+    color: #fff;
+    background: rgba(255,255,255,0.07);
+    border-left: 2px solid var(--blue);
+    padding-left: 18px;
+  }
+  .nav-dot {
+    width: 6px; height: 6px; border-radius: 50%;
+    flex-shrink: 0;
+  }
+  .dot-red    { background: var(--red); }
+  .dot-amber  { background: var(--amber); }
+  .dot-blue   { background: var(--blue); }
+  .dot-green  { background: var(--green); }
+  .dot-purple { background: var(--purple); }
+  .dot-gray   { background: var(--n500); }
+
+  .sidebar-meta {
+    padding: 16px 20px;
+    border-top: 1px solid rgba(255,255,255,0.08);
+    font-size: 11px;
+    color: rgba(255,255,255,0.3);
+  }
+
+  /* ── Main content ── */
+  .main { flex: 1; min-width: 0; padding: 40px 48px 80px; max-width: 1020px; }
+
+  /* ── Header ── */
+  .report-header {
+    margin-bottom: 40px;
+    padding-bottom: 28px;
+    border-bottom: 1px solid var(--n300);
+  }
+  .report-header .eyebrow {
+    font-size: 11px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.8px;
+    color: var(--n500);
+    margin-bottom: 8px;
+  }
+  .report-header h1 {
+    font-size: 28px;
+    font-weight: 700;
+    color: var(--navy);
+    letter-spacing: -0.4px;
+    margin-bottom: 8px;
+  }
+  .report-header .subtitle {
+    font-size: 15px;
+    color: var(--n700);
+  }
+  .meta-row {
+    display: flex;
+    gap: 24px;
+    margin-top: 16px;
+    flex-wrap: wrap;
+  }
+  .meta-pill {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 12px;
+    color: var(--n500);
+  }
+  .meta-pill strong { color: var(--n700); }
+
+  /* ── Summary cards ── */
+  .summary-grid {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 12px;
+    margin-bottom: 40px;
+  }
+  .summary-card {
+    background: var(--white);
+    border: 1px solid var(--n300);
+    border-radius: 8px;
+    padding: 16px;
+  }
+  .summary-card .count {
+    font-size: 28px;
+    font-weight: 700;
+    line-height: 1;
+    margin-bottom: 4px;
+  }
+  .summary-card .label {
+    font-size: 12px;
+    color: var(--n500);
+    font-weight: 500;
+  }
+  .count-red    { color: var(--red); }
+  .count-amber  { color: var(--amber); }
+  .count-blue   { color: var(--blue); }
+  .count-purple { color: var(--purple); }
+
+  /* ── Sections ── */
+  .section { margin-bottom: 48px; scroll-margin-top: 24px; }
+  .section-header {
+    display: flex;
+    align-items: baseline;
+    gap: 12px;
+    margin-bottom: 16px;
+  }
+  .section-header h2 {
+    font-size: 18px;
+    font-weight: 700;
+    color: var(--navy);
+    letter-spacing: -0.2px;
+  }
+  .section-header .section-count {
+    font-size: 12px;
+    font-weight: 600;
+    padding: 2px 8px;
+    border-radius: 20px;
+  }
+  .section-desc {
+    font-size: 14px;
+    color: var(--n700);
+    margin-bottom: 16px;
+    max-width: 680px;
+  }
+
+  /* ── Gap cards ── */
+  .gap-list { display: flex; flex-direction: column; gap: 10px; }
+
+  .gap-card {
+    background: var(--white);
+    border: 1px solid var(--n300);
+    border-radius: 8px;
+    overflow: hidden;
+  }
+  .gap-card-inner {
+    display: grid;
+    grid-template-columns: 4px 1fr;
+  }
+  .gap-accent { }
+
+  .gap-body { padding: 16px 18px; }
+
+  .gap-top {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 12px;
+    margin-bottom: 8px;
+  }
+  .gap-title {
+    font-size: 14px;
+    font-weight: 600;
+    color: var(--n900);
+    line-height: 1.4;
+  }
+  .gap-badges { display: flex; gap: 6px; flex-shrink: 0; flex-wrap: wrap; }
+
+  .badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    font-size: 11px;
+    font-weight: 600;
+    padding: 2px 8px;
+    border-radius: 4px;
+    white-space: nowrap;
+    text-transform: uppercase;
+    letter-spacing: 0.4px;
+  }
+  .badge-red    { background: var(--red-lt);    color: var(--red); }
+  .badge-amber  { background: var(--amber-lt);  color: var(--amber); }
+  .badge-blue   { background: var(--blue-light); color: var(--blue); }
+  .badge-green  { background: var(--green-lt);  color: var(--green); }
+  .badge-purple { background: var(--purple-lt); color: var(--purple); }
+  .badge-gray   { background: var(--n100);      color: var(--n500); }
+  .badge-navy   { background: var(--navy);      color: #fff; }
+
+  .gap-desc {
+    font-size: 13px;
+    color: var(--n700);
+    line-height: 1.6;
+    margin-bottom: 10px;
+  }
+
+  .gap-detail {
+    background: var(--n50);
+    border: 1px solid var(--n100);
+    border-radius: 6px;
+    padding: 10px 14px;
+    font-size: 12.5px;
+    color: var(--n700);
+    line-height: 1.6;
+  }
+  .gap-detail .detail-row {
+    display: flex;
+    gap: 8px;
+    margin-bottom: 3px;
+  }
+  .gap-detail .detail-row:last-child { margin-bottom: 0; }
+  .detail-label {
+    font-weight: 600;
+    color: var(--n500);
+    min-width: 90px;
+    flex-shrink: 0;
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 0.3px;
+    padding-top: 1px;
+  }
+
+  code {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 11.5px;
+    background: var(--n100);
+    padding: 1px 5px;
+    border-radius: 3px;
+    color: var(--navy-mid);
+  }
+
+  /* severity left border */
+  .sev-critical { border-left: 4px solid var(--red); }
+  .sev-high     { border-left: 4px solid var(--orange); }
+  .sev-medium   { border-left: 4px solid var(--amber); }
+  .sev-low      { border-left: 4px solid var(--n300); }
+
+  /* ── Divider ── */
+  .divider { border: none; border-top: 1px solid var(--n300); margin: 40px 0; }
+
+  /* ── Recommendations table ── */
+  .rec-table { width: 100%; border-collapse: collapse; font-size: 13px; }
+  .rec-table th {
+    text-align: left;
+    padding: 8px 12px;
+    font-size: 11px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    color: var(--n500);
+    border-bottom: 2px solid var(--n300);
+    background: var(--n50);
+  }
+  .rec-table td {
+    padding: 10px 12px;
+    border-bottom: 1px solid var(--n100);
+    vertical-align: top;
+    color: var(--n700);
+  }
+  .rec-table tr:last-child td { border-bottom: none; }
+  .rec-table tr:hover td { background: var(--n50); }
+  .rec-table td:first-child { font-weight: 500; color: var(--n900); }
+
+  .priority-chip {
+    display: inline-block;
+    font-size: 10px;
+    font-weight: 700;
+    padding: 2px 7px;
+    border-radius: 3px;
+    text-transform: uppercase;
+    letter-spacing: 0.4px;
+  }
+  .p1 { background: var(--red-lt);    color: var(--red); }
+  .p2 { background: var(--orange-lt); color: var(--orange); }
+  .p3 { background: var(--amber-lt);  color: var(--amber); }
+  .p4 { background: var(--n100);      color: var(--n500); }
+
+  /* ── Scrollspy active ── */
+  @media (max-width: 900px) {
+    .sidebar { display: none; }
+    .main { padding: 24px 20px 60px; }
+    .summary-grid { grid-template-columns: repeat(2, 1fr); }
+  }
+</style>
+</head>
+<body>
+<div class="layout">
+
+  <!-- ── Sidebar ── -->
+  <nav class="sidebar">
+    <div class="sidebar-logo">
+      <div class="wordmark">ShipX</div>
+      <div class="doc-label">Gap Analysis</div>
+    </div>
+    <div class="sidebar-nav">
+      <div class="nav-section-label">Overview</div>
+      <a class="nav-item active" href="#summary">
+        <span class="nav-dot dot-blue"></span>Summary
+      </a>
+
+      <div class="nav-section-label">Critical</div>
+      <a class="nav-item" href="#missing-screens">
+        <span class="nav-dot dot-red"></span>Missing Screens
+      </a>
+      <a class="nav-item" href="#missing-backend">
+        <span class="nav-dot dot-red"></span>Missing Backend
+      </a>
+
+      <div class="nav-section-label">Alignment</div>
+      <a class="nav-item" href="#api-design">
+        <span class="nav-dot dot-amber"></span>API ↔ Design Mismatches
+      </a>
+      <a class="nav-item" href="#roles">
+        <span class="nav-dot dot-amber"></span>Role &amp; Access Gaps
+      </a>
+      <a class="nav-item" href="#scheduled">
+        <span class="nav-dot dot-amber"></span>Scheduled Jobs Without UI
+      </a>
+
+      <div class="nav-section-label">Review</div>
+      <a class="nav-item" href="#recommendations">
+        <span class="nav-dot dot-green"></span>Recommendations
+      </a>
+    </div>
+    <div class="sidebar-meta">Generated June 2026</div>
+  </nav>
+
+  <!-- ── Main ── -->
+  <main class="main">
+
+    <!-- Header -->
+    <div class="report-header" id="summary">
+      <div class="eyebrow">Backend + Design Review</div>
+      <h1>ShipX — Gap Analysis</h1>
+      <p class="subtitle">Cross-referencing the backend codebase, design screens (Sections 1–15), the PRD, and the API contracts to identify what's missing, misaligned, or at risk before frontend build begins.</p>
+      <div class="meta-row">
+        <span class="meta-pill"><strong>Codebase:</strong> 12 Lambda services · 26 migrations · 9 scheduled jobs</span>
+        <span class="meta-pill"><strong>Design:</strong> 15 sections · ~85 artboards</span>
+        <span class="meta-pill"><strong>Gaps found:</strong> 22 items across 6 categories</span>
+      </div>
+    </div>
+
+    <!-- Summary cards -->
+    <div class="summary-grid">
+      <div class="summary-card">
+        <div class="count count-red">4</div>
+        <div class="label">Critical gaps</div>
+      </div>
+      <div class="summary-card">
+        <div class="count count-amber">8</div>
+        <div class="label">Design missing / incomplete</div>
+      </div>
+      <div class="summary-card">
+        <div class="count count-blue">5</div>
+        <div class="label">API ↔ Design mismatches</div>
+      </div>
+      <div class="summary-card">
+        <div class="count count-purple">5</div>
+        <div class="label">Scheduled jobs without UI</div>
+      </div>
+    </div>
+
+
+    <!-- ════════════════════════════════════════
+         SECTION 1 — MISSING SCREENS
+    ════════════════════════════════════════ -->
+    <div class="section" id="missing-screens">
+      <div class="section-header">
+        <h2>Missing Screens</h2>
+        <span class="section-count badge badge-red">Design gaps</span>
+      </div>
+      <p class="section-desc">Screens either not designed at all, or backend features that have no corresponding UI surface. These will block frontend implementation.</p>
+
+      <div class="gap-list">
+
+        <div class="gap-card sev-critical">
+          <div class="gap-body">
+            <div class="gap-top">
+              <div class="gap-title">Public unauthenticated tracking page</div>
+              <div class="gap-badges">
+                <span class="badge badge-red">Critical</span>
+                <span class="badge badge-gray">Design missing</span>
+              </div>
+            </div>
+            <p class="gap-desc">PRD Q2 explicitly states: "No customer login required for tracking (tracking code + phone verification)." The backend exposes <code>GET /v1/shipments/{code}?phone=</code> as a public route with no JWT requirement. However no design screen exists for this surface — there is no <code>/track/{code}</code> or public lookup page in any of the 15 design sections. Section 10 (Customer Portal) requires a login throughout.</p>
+            <div class="gap-detail">
+              <div class="detail-row"><span class="detail-label">Backend</span> <span><code>GET /v1/shipments/{code}?phone=</code> — implemented, no JWT, phone verification against customer record</span></div>
+              <div class="detail-row"><span class="detail-label">Design needed</span> <span>A standalone page (no sidebar, no auth) — tracking code entry + phone verify → read-only tracking stepper. Tenant-branded via subdomain. Mobile-first.</span></div>
+              <div class="detail-row"><span class="detail-label">Scope</span> <span>New screen. Can reuse the tracking stepper component from Section 10.1.</span></div>
+            </div>
+          </div>
+        </div>
+
+        <div class="gap-card sev-critical">
+          <div class="gap-body">
+            <div class="gap-top">
+              <div class="gap-title">Notification delivery log — no backend persistence or API</div>
+              <div class="gap-badges">
+                <span class="badge badge-red">Critical</span>
+                <span class="badge badge-navy">Backend missing</span>
+              </div>
+            </div>
+            <p class="gap-desc">Section 14.11 is a fully designed screen — notification log with channel filters, delivery status, retry button, and a gateway-response detail modal. The backend notification handlers (<code>sms_handler</code>, <code>whatsapp_handler</code>, <code>email_handler</code>) process SQS messages but only emit CloudWatch logs. There is no <code>notification_log</code> DB table, no <code>GET /v1/notifications/log</code> endpoint, and critically no retry endpoint. The WhatsApp delivery status webhook (<code>_handle_whatsapp_delivery_status</code>) parses status callbacks from Meta but only logs them — it never writes to a DB.</p>
+            <div class="gap-detail">
+              <div class="detail-row"><span class="detail-label">Design has</span> <span>Log list with channel/status/customer filters, detail modal with gateway response body, "Retry" action button</span></div>
+              <div class="detail-row"><span class="detail-label">Backend has</span> <span>CloudWatch logs only. No table. No API. No retry capability.</span></div>
+              <div class="detail-row"><span class="detail-label">Needed</span> <span>Migration for <code>notification_log</code> table. <code>GET /v1/notifications/log</code> endpoint in notification or tenant_management handler. Retry endpoint. Wire WhatsApp delivery callback to persist status.</span></div>
+            </div>
+          </div>
+        </div>
+
+        <div class="gap-card sev-critical">
+          <div class="gap-body">
+            <div class="gap-top">
+              <div class="gap-title">Platform Admin impersonation — designed but no backend</div>
+              <div class="gap-badges">
+                <span class="badge badge-red">Critical</span>
+                <span class="badge badge-navy">Backend missing</span>
+              </div>
+            </div>
+            <p class="gap-desc">PRD Q12 defines read-only Platform Admin impersonation of Tenant Admins with full audit controls (logged start/end, read-only session, 30-min auto-expiry). The Section 2.4 Tenant Detail design shows a "View as Tenant Admin" action button. There is no implementation in any handler — no <code>POST /v1/platform/tenants/{id}/impersonate</code>, no session token mechanism, and no impersonation audit trail in the codebase.</p>
+            <div class="gap-detail">
+              <div class="detail-row"><span class="detail-label">PRD ref</span> <span>Q12: read-only, audit-logged, 30-min expiry, platform_audit_log entry with start/end timestamps</span></div>
+              <div class="detail-row"><span class="detail-label">Design has</span> <span>"View as Tenant Admin" button in Section 2.4 tenant detail action bar</span></div>
+              <div class="detail-row"><span class="detail-label">Backend has</span> <span>Nothing. No endpoint, no impersonation token, no audit hook.</span></div>
+              <div class="detail-row"><span class="detail-label">Options</span> <span>Short-lived JWT with <code>impersonated_by</code> claim injected server-side, OR link to Cognito console (simpler but loses audit trail)</span></div>
+            </div>
+          </div>
+        </div>
+
+        <div class="gap-card sev-critical">
+          <div class="gap-body">
+            <div class="gap-top">
+              <div class="gap-title">PDF export — designed, zero backend implementation</div>
+              <div class="gap-badges">
+                <span class="badge badge-red">Critical</span>
+                <span class="badge badge-navy">Backend missing</span>
+              </div>
+            </div>
+            <p class="gap-desc">Section 14.12 shows production-quality A4 print layouts (794×1123px) for both packing lists and release notes, including a QR code on the release note and an APPROVED stamp on the packing list. The backend <code>services/excel/</code> has <code>export_packing_list.py</code>, <code>export_manifest.py</code>, and <code>export_billing.py</code> — all Excel. There is no PDF generation service, no QR code library, and no PDF Lambda route anywhere in the codebase.</p>
+            <div class="gap-detail">
+              <div class="detail-row"><span class="detail-label">Design has</span> <span>A4 packing list with APPROVED stamp; A4 release note with QR code + signature block (Section 14.12)</span></div>
+              <div class="detail-row"><span class="detail-label">Backend has</span> <span>Excel only (<code>openpyxl</code>). No <code>weasyprint</code>, <code>reportlab</code>, or equivalent in <code>requirements.txt</code>.</span></div>
+              <div class="detail-row"><span class="detail-label">Needed</span> <span>PDF Lambda route (<code>GET /v1/packing-lists/{id}/pdf</code>, <code>GET /v1/release-notes/{id}/pdf</code>), QR code generation (<code>qrcode</code> lib), S3 presigned download URL response</span></div>
+            </div>
+          </div>
+        </div>
+
+        <div class="gap-card sev-high">
+          <div class="gap-body">
+            <div class="gap-top">
+              <div class="gap-title">Outbound webhook configuration screen</div>
+              <div class="gap-badges">
+                <span class="badge badge-amber">High</span>
+                <span class="badge badge-gray">Design missing</span>
+              </div>
+            </div>
+            <p class="gap-desc">The backend fully implements outbound webhooks to tenant ERP/WMS systems — <code>shared/webhook.py</code> handles HMAC-SHA256 signing, and <code>webhook_config</code> (URL, secret, enabled flag, events list) is stored in <code>tenant_config</code>. Tenant Admin config screens (Section 4) cover: Company Settings, Dollar Rate, CBM Rate, Charge Types, Notification Templates — but there is no webhook configuration screen. Tenants with integrations have no UI to set this up.</p>
+            <div class="gap-detail">
+              <div class="detail-row"><span class="detail-label">Backend has</span> <span><code>webhook_config</code> in <code>DEFAULT_CONFIGS</code>, HMAC signing in <code>shared/webhook.py</code>, fires on <code>container.status_updated</code></span></div>
+              <div class="detail-row"><span class="detail-label">Design needed</span> <span>New nav item under Section 4 config: Webhook — URL input, secret generation/reveal toggle, enabled toggle, events checklist, test-fire button</span></div>
+            </div>
+          </div>
+        </div>
+
+        <div class="gap-card sev-high">
+          <div class="gap-body">
+            <div class="gap-top">
+              <div class="gap-title">Document download — upload exists, no download URL in API</div>
+              <div class="gap-badges">
+                <span class="badge badge-amber">High</span>
+                <span class="badge badge-navy">Backend incomplete</span>
+              </div>
+            </div>
+            <p class="gap-desc">Section 5.3 Container Detail → Documents tab shows a download button per uploaded document. The backend exposes <code>POST /v1/containers/{id}/documents/presigned-url</code> for S3 upload and <code>GET /v1/containers/{id}/documents</code> for listing. But the list endpoint returns document metadata — it doesn't return a signed download URL. There is no <code>GET /v1/containers/{id}/documents/{doc-id}/download</code> route, and the frontend cannot access S3 directly (private bucket, tenant-scoped prefix).</p>
+            <div class="gap-detail">
+              <div class="detail-row"><span class="detail-label">Missing</span> <span><code>GET /v1/containers/{id}/documents/{doc-id}/download</code> → returns short-lived S3 <code>GetObject</code> presigned URL</span></div>
+              <div class="detail-row"><span class="detail-label">Touches</span> <span><code>services/tracking/handler.py</code>, <code>services/tracking/service.py</code></span></div>
+            </div>
+          </div>
+        </div>
+
+        <div class="gap-card sev-high">
+          <div class="gap-body">
+            <div class="gap-top">
+              <div class="gap-title">Platform settings — notification provider credentials UI vs env vars</div>
+              <div class="gap-badges">
+                <span class="badge badge-amber">High</span>
+                <span class="badge badge-gray">Design/backend mismatch</span>
+              </div>
+            </div>
+            <p class="gap-desc">Section 2.5 Platform Settings shows a detailed "Notification Providers" panel — SMS gateway config (API key, from number), WhatsApp Business API config (phone number ID, access token), and a test-send button per channel. The backend stores all of these as Lambda environment variables set at deploy-time in Terraform. There is no <code>platform_settings</code> table API (Task 21 Part 4 defines it but the acceptance criteria tick is for a DB-backed API, not env vars). As designed, these would need to be runtime-configurable via API.</p>
+            <div class="gap-detail">
+              <div class="detail-row"><span class="detail-label">Design expects</span> <span>Runtime-editable via UI → stored in <code>platform_settings</code> table or Secrets Manager</span></div>
+              <div class="detail-row"><span class="detail-label">Backend reality</span> <span>Env vars set at deploy time: <code>AFRICA_TALKING_API_KEY</code>, <code>WHATSAPP_ACCESS_TOKEN</code>, etc. No API to update them.</span></div>
+              <div class="detail-row"><span class="detail-label">Decision needed</span> <span>Either (a) implement <code>platform_settings</code> API + Secrets Manager integration, or (b) scope down the design to "read-only status view + link to AWS Console"</span></div>
+            </div>
+          </div>
+        </div>
+
+        <div class="gap-card sev-medium">
+          <div class="gap-body">
+            <div class="gap-top">
+              <div class="gap-title">Locale / language preference — no UI to set it</div>
+              <div class="gap-badges">
+                <span class="badge badge-blue">Medium</span>
+                <span class="badge badge-gray">Design missing</span>
+              </div>
+            </div>
+            <p class="gap-desc">Migration 026 adds <code>tenant_user.locale VARCHAR(10) DEFAULT 'en'</code> for EN/ZH notification routing. China Office Staff would typically set this to <code>zh</code>. No design screen surfaces this preference — not in Section 3 (Staff User Profile), not in account settings of any portal. The locale silently defaults to English for all users.</p>
+            <div class="gap-detail">
+              <div class="detail-row"><span class="detail-label">Needed</span> <span>Language selector (EN / 中文) in staff profile/account settings — Section 3.4 Staff User Profile edit panel</span></div>
+            </div>
+          </div>
+        </div>
+
+      </div>
+    </div>
+
+    <hr class="divider" />
+
+    <!-- ════════════════════════════════════════
+         SECTION 2 — API ↔ DESIGN MISMATCHES
+    ════════════════════════════════════════ -->
+    <div class="section" id="api-design">
+      <div class="section-header">
+        <h2>API ↔ Design Mismatches</h2>
+        <span class="section-count badge badge-amber">Alignment gaps</span>
+      </div>
+      <p class="section-desc">Places where a backend contract, constraint, or response shape doesn't match what the design assumes — these will cause bugs or unexpected behavior during integration.</p>
+
+      <div class="gap-list">
+
+        <div class="gap-card sev-high">
+          <div class="gap-body">
+            <div class="gap-top">
+              <div class="gap-title">Design font stack contradicts design system spec</div>
+              <div class="gap-badges">
+                <span class="badge badge-amber">High</span>
+                <span class="badge badge-gray">Inconsistency</span>
+              </div>
+            </div>
+            <p class="gap-desc">The Section 0 design system foundation document specifies <strong>Inter</strong> as the font family. Every one of the 15 HTML design screens uses <strong>Manrope + Kumbh Sans + JetBrains Mono</strong>. This isn't a bug, but it means the design system spec and the implemented screens are out of sync. Any developer referencing Section 0 as the source of truth will build with the wrong font, and the design screens can't be used as a reference for the component library without reconciliation.</p>
+            <div class="gap-detail">
+              <div class="detail-row"><span class="detail-label">Spec says</span> <span>Inter (Google Fonts), fallback system-ui</span></div>
+              <div class="detail-row"><span class="detail-label">Screens use</span> <span>Manrope (headings/display), Kumbh Sans (body), JetBrains Mono (code/IDs)</span></div>
+              <div class="detail-row"><span class="detail-label">Action</span> <span>Update Section 0 spec to reflect Manrope/Kumbh Sans, OR update all screens to Inter. The screens are the stronger reference; update the spec.</span></div>
+            </div>
+          </div>
+        </div>
+
+        <div class="gap-card sev-high">
+          <div class="gap-body">
+            <div class="gap-top">
+              <div class="gap-title">Container number format constraint not surfaced in forms</div>
+              <div class="gap-badges">
+                <span class="badge badge-amber">High</span>
+                <span class="badge badge-gray">UX gap</span>
+              </div>
+            </div>
+            <p class="gap-desc">The backend enforces <code>pattern=r"^[A-Z]{4}\d{7}$"</code> on container numbers (e.g. <code>MSCU1234567</code>) per <code>00_CROSS_CUTTING_STANDARDS.md §2.1</code>. Section 5.2 Create Container shows a free-text input with no format hint, no validation message, and no monospace rendering. Users unfamiliar with ISO 6346 container codes will fail validation with a cryptic 422 error.</p>
+            <div class="gap-detail">
+              <div class="detail-row"><span class="detail-label">Backend</span> <span>Pydantic rejects non-matching values with <code>VALIDATION_ERROR</code> (422)</span></div>
+              <div class="detail-row"><span class="detail-label">Design fix</span> <span>Add format hint ("4 letters + 7 digits, e.g. MSCU1234567"), monospace input font, inline pattern validation on blur</span></div>
+            </div>
+          </div>
+        </div>
+
+        <div class="gap-card sev-high">
+          <div class="gap-body">
+            <div class="gap-top">
+              <div class="gap-title">Bulk approve/reject — no partial failure state designed</div>
+              <div class="gap-badges">
+                <span class="badge badge-amber">High</span>
+                <span class="badge badge-gray">Missing state</span>
+              </div>
+            </div>
+            <p class="gap-desc">The bulk approve/reject endpoints (<code>POST /v1/packing-lists/bulk-approve</code>) return a partial success response: <code>{"succeeded": [...], "failed": [{"id": "...", "reason": "..."}]}</code>. The design in Section 5.6 shows a bulk reject modal and a confirm action, but there is no designed state for the result where some items fail (e.g. self-approval blocked, wrong status). A user approving 20 packing lists and getting silent partial failure is a significant UX problem.</p>
+            <div class="gap-detail">
+              <div class="detail-row"><span class="detail-label">API response</span> <span><code>{"succeeded": [ids...], "failed": [{"id": "...", "reason": "..."}]}</code></span></div>
+              <div class="detail-row"><span class="detail-label">Design needed</span> <span>Post-bulk-action result state: "18 approved, 2 failed" with failed items listed with reasons. Inline in the table or a result modal.</span></div>
+            </div>
+          </div>
+        </div>
+
+        <div class="gap-card sev-medium">
+          <div class="gap-body">
+            <div class="gap-top">
+              <div class="gap-title">Weight reconciliation output not surfaced in manifest design</div>
+              <div class="gap-badges">
+                <span class="badge badge-blue">Medium</span>
+                <span class="badge badge-gray">Design gap</span>
+              </div>
+            </div>
+            <p class="gap-desc">The manifest verify endpoint (<code>PATCH /v1/manifests/{id}/verify</code>) returns a <code>weight_discrepancies</code> array flagging items where actual vs dispatch weight diverges by more than 5% or 0.1kg. Section 6.3 Manifest Detail shows a verify modal with a discrepancy form for missing/damaged cartons — but does not show the weight discrepancy report. Staff who verify manifests won't see automated weight flags.</p>
+            <div class="gap-detail">
+              <div class="detail-row"><span class="detail-label">API returns</span> <span><code>weight_discrepancies: [{item_id, carton_tag, dispatch_kg, actual_kg, delta_kg, delta_pct}]</code></span></div>
+              <div class="detail-row"><span class="detail-label">Design fix</span> <span>Add a "Weight Discrepancies" section in the manifest detail / verify result, showing flagged items in an amber alert card</span></div>
+            </div>
+          </div>
+        </div>
+
+        <div class="gap-card sev-medium">
+          <div class="gap-body">
+            <div class="gap-top">
+              <div class="gap-title">Refund threshold — no visual explanation of escalation rule</div>
+              <div class="gap-badges">
+                <span class="badge badge-blue">Medium</span>
+                <span class="badge badge-gray">UX gap</span>
+              </div>
+            </div>
+            <p class="gap-desc">The backend enforces a configurable refund approval threshold: Nigeria Office Staff are hard-blocked from approving refunds above <code>staff_limit</code> (default $50 USD). Section 8.6 Refund Detail shows a "5-step approval stepper" but doesn't explain why certain approvals escalate or show the current threshold. A staff member trying to approve a $75 refund will receive an opaque <code>APPROVAL_THRESHOLD_EXCEEDED</code> 403 error with no explanation in the UI.</p>
+            <div class="gap-detail">
+              <div class="detail-row"><span class="detail-label">Backend</span> <span>403 <code>APPROVAL_THRESHOLD_EXCEEDED</code> when Nigeria Staff tries to approve above <code>staff_limit × dollar_rate</code> NGN</span></div>
+              <div class="detail-row"><span class="detail-label">Design fix</span> <span>Show threshold amount in the approve modal ("Staff can approve up to ₦82,500 / $50. This refund requires Tenant Admin approval.") and disable the approve button for out-of-scope staff</span></div>
+            </div>
+          </div>
+        </div>
+
+      </div>
+    </div>
+
+    <hr class="divider" />
+
+    <!-- ════════════════════════════════════════
+         SECTION 3 — ROLE & ACCESS GAPS
+    ════════════════════════════════════════ -->
+    <div class="section" id="roles">
+      <div class="section-header">
+        <h2>Role &amp; Access Gaps</h2>
+        <span class="section-count badge badge-amber">Role mismatches</span>
+      </div>
+      <p class="section-desc">Cases where the design attributes actions to the wrong role, or where a role's permissions in the backend don't match what the design implies they can do.</p>
+
+      <div class="gap-list">
+
+        <div class="gap-card sev-high">
+          <div class="gap-body">
+            <div class="gap-top">
+              <div class="gap-title">China Office cannot update container status in the design</div>
+              <div class="gap-badges">
+                <span class="badge badge-amber">High</span>
+                <span class="badge badge-gray">Wrong role attribution</span>
+              </div>
+            </div>
+            <p class="gap-desc">Section 5.3 Container Detail describes the status update dropdown as <em>"Nigeria Office only."</em> The backend (<code>PATCH /v1/containers/{id}/status</code>) explicitly allows <code>china_office_staff</code> to update China-side stages: <code>received_at_china_warehouse</code>, <code>packed_in_container</code>, <code>in_transit</code>. Nigeria Office handles the arrival-onwards stages. The design incorrectly locks China Office out of status updates in their own portal — the "Update Status" control should be visible to both roles, filtered to their permitted transitions.</p>
+            <div class="gap-detail">
+              <div class="detail-row"><span class="detail-label">Backend</span> <span>China: <code>received_at_china_warehouse → packed_in_container → in_transit</code>. Nigeria: <code>arrived_nigeria → customs_clearance → cleared → ready_for_pickup → completed</code></span></div>
+              <div class="detail-row"><span class="detail-label">Fix</span> <span>Show status update control in Section 5.3 (China portal) with China-permitted transitions only. Remove "Nigeria Office only" label.</span></div>
+            </div>
+          </div>
+        </div>
+
+        <div class="gap-card sev-medium">
+          <div class="gap-body">
+            <div class="gap-top">
+              <div class="gap-title">NDPR mentioned in customer privacy tab — not implemented in backend</div>
+              <div class="gap-badges">
+                <span class="badge badge-blue">Medium</span>
+                <span class="badge badge-gray">Compliance gap</span>
+              </div>
+            </div>
+            <p class="gap-desc">Section 10.7 Customer Account → Privacy tab references both <strong>GDPR and NDPR</strong> (Nigeria Data Protection Regulation). The backend and PRD implement GDPR Art. 17 (erasure) and Art. 20 (portability). NDPR has its own consent and breach notification obligations distinct from GDPR. The backend currently has no NDPR-specific handling, and the <code>consent_given_at</code> / <code>notification_consent</code> fields are GDPR-aligned. If the platform processes Nigerian citizens' data, NDPR compliance should be explicitly scoped.</p>
+            <div class="gap-detail">
+              <div class="detail-row"><span class="detail-label">Action</span> <span>Either (a) confirm NDPR is sufficiently covered by the GDPR implementation for v1, and update design copy to reflect this, or (b) scope a separate NDPR compliance task</span></div>
+            </div>
+          </div>
+        </div>
+
+        <div class="gap-card sev-medium">
+          <div class="gap-body">
+            <div class="gap-top">
+              <div class="gap-title">Tenant offboarded (410) — no error screen designed</div>
+              <div class="gap-badges">
+                <span class="badge badge-blue">Medium</span>
+                <span class="badge badge-gray">Missing state</span>
+              </div>
+            </div>
+            <p class="gap-desc">When a tenant is offboarded, all their users' JWTs hit a <code>410 TENANT_OFFBOARDED</code> error on every request after the Redis cache is invalidated. The design has no screen for this state — no "Your account has been closed" page, no data export prompt, no graceful offboarding landing. Users will see a raw error or a blank screen.</p>
+            <div class="gap-detail">
+              <div class="detail-row"><span class="detail-label">Similar to</span> <span>Section 1.1 Login has "tenant suspended" error state — that pattern can extend to a full offboarded page</span></div>
+              <div class="detail-row"><span class="detail-label">Needed</span> <span>A full-page offboarded state (no sidebar): "This account has been closed. Contact ShipX support if you believe this is an error." + support email</span></div>
+            </div>
+          </div>
+        </div>
+
+      </div>
+    </div>
+
+    <hr class="divider" />
+
+    <!-- ════════════════════════════════════════
+         SECTION 4 — SCHEDULED JOBS WITHOUT UI
+    ════════════════════════════════════════ -->
+    <div class="section" id="scheduled">
+      <div class="section-header">
+        <h2>Scheduled Jobs Without UI</h2>
+        <span class="section-count badge badge-purple">Background processes</span>
+      </div>
+      <p class="section-desc">The backend has 7 scheduled jobs running automatically. Several have observable side-effects that users will encounter without any designed UI to explain or interact with them.</p>
+
+      <div class="gap-list">
+
+        <div class="gap-card sev-high">
+          <div class="gap-body">
+            <div class="gap-top">
+              <div class="gap-title">Storage fee accrual — no grace period countdown in design</div>
+              <div class="gap-badges">
+                <span class="badge badge-amber">High</span>
+                <span class="badge badge-gray">Missing UI state</span>
+              </div>
+            </div>
+            <p class="gap-desc"><code>scheduled/storage_fee.py</code> accrues daily storage fees after a 14-day grace period (per PRD Q7: ₦500/day/carton configurable). Reminders fire at day 7 and day 13. The design doesn't show: (1) a "grace period expires in X days" countdown on the release note or billing detail, (2) a storage fee accrual warning on the customer portal, or (3) the storage fee line items building up in the billing detail view after the grace period expires.</p>
+            <div class="gap-detail">
+              <div class="detail-row"><span class="detail-label">Affects</span> <span>Section 7.2 Billing Detail (storage fees tab exists but no countdown), Section 10.2 Shipment Detail, Section 9.2 Release Note Detail</span></div>
+              <div class="detail-row"><span class="detail-label">Needed</span> <span>Amber banner on billing/release note: "Storage fees begin accruing in X days (₦500/day/carton)". Red banner after grace period: "Storage fees are accruing — ₦X,XXX accumulated so far."</span></div>
+            </div>
+          </div>
+        </div>
+
+        <div class="gap-card sev-medium">
+          <div class="gap-body">
+            <div class="gap-top">
+              <div class="gap-title">CBM dispute auto-escalation — no visual distinction in design</div>
+              <div class="gap-badges">
+                <span class="badge badge-blue">Medium</span>
+                <span class="badge badge-gray">Missing state</span>
+              </div>
+            </div>
+            <p class="gap-desc"><code>scheduled/dispute_escalation.py</code> auto-escalates CBM disputes to Tenant Admin if China Office doesn't respond within 5 business days (PRD Q1: 7-day SLA). The design for Section 7 (Billing Disputes) doesn't distinguish between a manually-escalated dispute and a system-escalated one, and doesn't show any SLA countdown timer on the dispute detail.</p>
+            <div class="gap-detail">
+              <div class="detail-row"><span class="detail-label">Needed</span> <span>Dispute detail: SLA countdown chip ("Escalates in 2 days"), system-escalated badge (distinct from manual), escalation event in the dispute audit timeline</span></div>
+            </div>
+          </div>
+        </div>
+
+        <div class="gap-card sev-medium">
+          <div class="gap-body">
+            <div class="gap-top">
+              <div class="gap-title">Release note expiry — no expired state in design</div>
+              <div class="gap-badges">
+                <span class="badge badge-blue">Medium</span>
+                <span class="badge badge-gray">Missing state</span>
+              </div>
+            </div>
+            <p class="gap-desc"><code>scheduled/release_expiry.py</code> expires release notes after a configurable period. Section 9.1 Release Notes List shows an "Expired" status badge, but Section 9.2 Release Note Detail doesn't show what an expired release note looks like — no warning, no re-issue CTA, no explanation for the warehouse attendant of what to do when they scan an expired release note.</p>
+            <div class="gap-detail">
+              <div class="detail-row"><span class="detail-label">Needed</span> <span>Release note detail: "Expired" state variant — red header banner, "Request New Release Note" CTA (if outstanding balance still exists), warehouse view should show expired status prominently</span></div>
+            </div>
+          </div>
+        </div>
+
+        <div class="gap-card sev-low">
+          <div class="gap-body">
+            <div class="gap-top">
+              <div class="gap-title">SLA check job — monitoring output not exposed anywhere</div>
+              <div class="gap-badges">
+                <span class="badge badge-gray">Low</span>
+                <span class="badge badge-gray">Observability</span>
+              </div>
+            </div>
+            <p class="gap-desc"><code>scheduled/sla_check.py</code> monitors SLA compliance. Its output goes to CloudWatch only. The Tenant Admin dashboard (Section 3.1) and the Nigeria Office Dashboard (Section 6.1) would both benefit from an SLA health indicator — e.g. "2 disputes at risk of SLA breach" — but neither shows this.</p>
+            <div class="gap-detail">
+              <div class="detail-row"><span class="detail-label">Nice to have</span> <span>SLA at-risk count on the Nigeria Office urgent actions panel (Section 6.1) and the Tenant Admin reports page (Section 14.10)</span></div>
+            </div>
+          </div>
+        </div>
+
+        <div class="gap-card sev-low">
+          <div class="gap-body">
+            <div class="gap-top">
+              <div class="gap-title">Usage aggregation feeds reports — verify API wired to Section 14.10</div>
+              <div class="gap-badges">
+                <span class="badge badge-gray">Low</span>
+                <span class="badge badge-gray">Verify</span>
+              </div>
+            </div>
+            <p class="gap-desc"><code>scheduled/usage_aggregation.py</code> aggregates metered usage. Section 14.10 Tenant Reports shows business KPIs (containers, revenue, claims, CBM/billing table). The <code>GET /v1/tenant/reports</code> endpoint is marked complete in the docs but wasn't confirmed in a handler read. Verify this endpoint exists in <code>services/tenant_management/handler.py</code> before the frontend team attempts to integrate Section 14.10.</p>
+            <div class="gap-detail">
+              <div class="detail-row"><span class="detail-label">Action</span> <span>Grep <code>tenant_management/handler.py</code> for <code>reports</code> route. If missing, implement per Task 21 Part 5 spec.</span></div>
+            </div>
+          </div>
+        </div>
+
+      </div>
+    </div>
+
+    <hr class="divider" />
+
+    <!-- ════════════════════════════════════════
+         SECTION 5 — RECOMMENDATIONS
+    ════════════════════════════════════════ -->
+    <div class="section" id="recommendations">
+      <div class="section-header">
+        <h2>Recommended Action Plan</h2>
+        <span class="section-count badge badge-green">Prioritised</span>
+      </div>
+      <p class="section-desc">Ordered by impact on launch readiness. P1 items block frontend integration. P2 items create financial or compliance risk. P3 items degrade UX without blocking launch.</p>
+
+      <table class="rec-table">
+        <thead>
+          <tr>
+            <th style="width:28%">Gap</th>
+            <th style="width:8%">Priority</th>
+            <th style="width:20%">Owner</th>
+            <th>Recommended action</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>PDF export (packing list + release note)</td>
+            <td><span class="priority-chip p1">P1</span></td>
+            <td>Backend + Design</td>
+            <td>Add <code>weasyprint</code> or <code>reportlab</code> Lambda. Routes: <code>GET .../pdf</code>. QR code via <code>qrcode</code> lib. Returns S3 presigned download URL.</td>
+          </tr>
+          <tr>
+            <td>Public unauthenticated tracking page</td>
+            <td><span class="priority-chip p1">P1</span></td>
+            <td>Design</td>
+            <td>New screen: no sidebar, tracking code + phone entry, read-only stepper. Tenant-branded via subdomain slug. Reuse tracking stepper component from Section 10.1.</td>
+          </tr>
+          <tr>
+            <td>Notification delivery log persistence + API</td>
+            <td><span class="priority-chip p1">P1</span></td>
+            <td>Backend</td>
+            <td>Migration for <code>notification_log</code> table. <code>GET /v1/notifications/log</code> endpoint. Wire WhatsApp delivery status webhook to persist. Add retry endpoint.</td>
+          </tr>
+          <tr>
+            <td>Document download presigned URL</td>
+            <td><span class="priority-chip p1">P1</span></td>
+            <td>Backend</td>
+            <td>Add <code>GET /v1/containers/{id}/documents/{doc-id}/download</code> → S3 <code>GetObject</code> presigned URL (5-min TTL).</td>
+          </tr>
+          <tr>
+            <td>China Office status update in design</td>
+            <td><span class="priority-chip p1">P1</span></td>
+            <td>Design</td>
+            <td>Section 5.3: show "Update Status" dropdown for China Office, filtered to China-permitted transitions. Remove "Nigeria Office only" label.</td>
+          </tr>
+          <tr>
+            <td>Design font spec reconciliation</td>
+            <td><span class="priority-chip p1">P1</span></td>
+            <td>Design</td>
+            <td>Update Section 0 design system spec to reflect Manrope + Kumbh Sans + JetBrains Mono (matching all 15 implemented screens). This is the source of truth for the component library.</td>
+          </tr>
+          <tr>
+            <td>Container number format hint in create form</td>
+            <td><span class="priority-chip p2">P2</span></td>
+            <td>Design</td>
+            <td>Section 5.2: Add format hint, monospace input, inline pattern validation. Prevents silent 422 errors in production.</td>
+          </tr>
+          <tr>
+            <td>Bulk approve/reject partial failure state</td>
+            <td><span class="priority-chip p2">P2</span></td>
+            <td>Design</td>
+            <td>Section 5.6: Design a result modal showing succeeded/failed counts with per-item failure reasons.</td>
+          </tr>
+          <tr>
+            <td>Refund threshold UI — block + explain</td>
+            <td><span class="priority-chip p2">P2</span></td>
+            <td>Design</td>
+            <td>Section 8.6: Show threshold in approve modal, disable button for out-of-scope staff, surface "Requires Tenant Admin" state.</td>
+          </tr>
+          <tr>
+            <td>Platform Admin impersonation endpoint</td>
+            <td><span class="priority-chip p2">P2</span></td>
+            <td>Backend</td>
+            <td>Implement <code>POST /v1/platform/tenants/{id}/impersonate</code>: short-lived JWT with <code>impersonated_by</code> claim, read-only enforced, logged to <code>platform_audit_log</code>, 30-min auto-expiry.</td>
+          </tr>
+          <tr>
+            <td>Outbound webhook config screen</td>
+            <td><span class="priority-chip p2">P2</span></td>
+            <td>Design</td>
+            <td>New Section 4 config tab: Webhooks — URL, secret, enabled toggle, events checklist, test-fire button.</td>
+          </tr>
+          <tr>
+            <td>Storage fee grace period countdown</td>
+            <td><span class="priority-chip p2">P2</span></td>
+            <td>Design</td>
+            <td>Add amber/red banner to Section 7.2 Billing Detail, Section 9.2 Release Note Detail, and Section 10.2 Shipment Detail showing days until/since grace period.</td>
+          </tr>
+          <tr>
+            <td>Tenant offboarded (410) error screen</td>
+            <td><span class="priority-chip p3">P3</span></td>
+            <td>Design</td>
+            <td>Full-page offboarded state. Extend Section 1.1 Login error patterns.</td>
+          </tr>
+          <tr>
+            <td>Weight discrepancy in manifest verify</td>
+            <td><span class="priority-chip p3">P3</span></td>
+            <td>Design</td>
+            <td>Section 6.3: Add "Weight Discrepancies" amber card in verify result showing flagged items with delta values.</td>
+          </tr>
+          <tr>
+            <td>CBM dispute SLA countdown + auto-escalation badge</td>
+            <td><span class="priority-chip p3">P3</span></td>
+            <td>Design</td>
+            <td>Section 7: Add SLA countdown chip and "system escalated" badge to dispute detail. Add escalation event to dispute timeline.</td>
+          </tr>
+          <tr>
+            <td>Release note expiry state</td>
+            <td><span class="priority-chip p3">P3</span></td>
+            <td>Design</td>
+            <td>Section 9.2: Design expired state variant with red banner and "Request New Release Note" CTA.</td>
+          </tr>
+          <tr>
+            <td>Locale preference UI for China Office Staff</td>
+            <td><span class="priority-chip p3">P3</span></td>
+            <td>Design</td>
+            <td>Section 3.4 Staff User Profile: add language selector (EN / 中文) to edit panel.</td>
+          </tr>
+          <tr>
+            <td>Verify <code>GET /v1/tenant/reports</code> endpoint exists</td>
+            <td><span class="priority-chip p3">P3</span></td>
+            <td>Backend</td>
+            <td>Confirm route is in <code>tenant_management/handler.py</code>. If not, implement per Task 21 Part 5 spec before Section 14.10 frontend integration.</td>
+          </tr>
+          <tr>
+            <td>Platform notification provider settings (env vs API)</td>
+            <td><span class="priority-chip p3">P3</span></td>
+            <td>Product decision</td>
+            <td>Decide: implement <code>platform_settings</code> API + Secrets Manager integration (full Section 2.5), OR scope Section 2.5 design down to read-only status view for v1.</td>
+          </tr>
+          <tr>
+            <td>NDPR vs GDPR compliance scope</td>
+            <td><span class="priority-chip p3">P3</span></td>
+            <td>Legal + Backend</td>
+            <td>Confirm NDPR obligations. Update Section 10.7 design copy if GDPR implementation is sufficient for v1. Scope NDPR-specific work post-launch if needed.</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+
+  </main>
+</div>
+
+<script>
+  // Scrollspy for sidebar nav
+  const sections = document.querySelectorAll('.section, .report-header');
+  const navItems = document.querySelectorAll('.nav-item');
+
+  const obs = new IntersectionObserver((entries) => {
+    entries.forEach(e => {
+      if (e.isIntersecting) {
+        navItems.forEach(n => n.classList.remove('active'));
+        const id = e.target.id;
+        const match = document.querySelector(`.nav-item[href="#${id}"]`);
+        if (match) match.classList.add('active');
+      }
+    });
+  }, { rootMargin: '-20% 0px -70% 0px' });
+
+  sections.forEach(s => obs.observe(s));
+
+  // Smooth scroll
+  navItems.forEach(n => {
+    n.addEventListener('click', e => {
+      e.preventDefault();
+      const target = document.querySelector(n.getAttribute('href'));
+      if (target) target.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    });
+  });
+</script>
+</body>
+</html>

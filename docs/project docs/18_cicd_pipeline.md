@@ -226,6 +226,50 @@ jobs:
 
 ---
 
+### File: `.github/workflows/frontend-ci.yml`
+
+**Triggers:** PR/push to `main` touching `frontend/**` only (path-filtered — does not run on
+backend-only changes, and the backend `ci.yml` does not run on frontend-only changes).
+
+```yaml
+name: Frontend CI
+
+on:
+  pull_request:
+    branches: [main]
+    paths: ["frontend/**", ".github/workflows/frontend-ci.yml"]
+  push:
+    branches: [main]
+    paths: ["frontend/**", ".github/workflows/frontend-ci.yml"]
+
+jobs:
+  build-and-test:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: frontend
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - run: npm ci
+      - run: npm run typecheck
+      - run: npm run lint
+      - run: npm test
+      - run: npm run build
+      - run: npm audit --audit-level=high
+```
+
+No deploy job yet — static hosting (S3 + CloudFront) and the build/deploy pipeline for the
+`dist/` artifact are specified in `frontend/01_project_setup.md` →
+`docs/project docs/frontend/13_deployment_and_cicd.md`, added once the skeleton app ships
+(Phase 2 of the frontend build order).
+
+---
+
 ### File: `.github/workflows/deploy.yml`
 
 **Triggers:** `workflow_run` (dev, auto), `push: tags:` (staging/prod), `workflow_dispatch`

@@ -1,0 +1,27 @@
+.row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 10px 0;
+  gap: 16px;
+  border-bottom: 1px dashed var(--color-line);
+}
+
+.noDivider {
+  border-bottom: none;
+}
+
+.label {
+  font-size: 12px;
+  color: var(--color-ink-4);
+  font-weight: 500;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  flex-shrink: 0;
+}
+
+.value {
+  font-size: 13px;
+  color: var(--color-ink-2);
+  text-align: right;
+}

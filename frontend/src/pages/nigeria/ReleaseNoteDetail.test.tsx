@@ -1,8 +1,11 @@
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { MemoryRouter, Route, Routes } from 'react-router-dom'
 import { describe, expect, it, vi } from 'vitest'
 import * as rnModule from '../../api/releaseNotes'
+import { warehousesApi } from '../../api/warehouses'
+import { usersApi } from '../../api/tenantManagement'
 import { SessionContext } from '../../auth/SessionContext'
 import type { Session } from '../../auth/types'
 import { ReleaseNoteDetail } from './ReleaseNoteDetail'
@@ -35,12 +38,21 @@ const NOTE: rnModule.ReleaseNote = {
   is_partial_release: true, carton_tags: ['A', 'B', 'C'],
   payment_status: 'paid', status: 'active',
   authorized_at: '2026-07-04T10:00:00Z', warehouse_address: null,
+  packages_released: null, package_unit: null, packages_balance: null,
+  warehouse_name: null, warehouse_phone: null, is_on_credit: false,
+  credit_granted_by_name: null, receipt_number: null,
+  physical_document_number: null, packing_list_invoice_numbers: [],
+  amount_paid_ngn: '0', balance_ngn: '0', total_ngn: '0', debt_due_date: null,
 }
 
 function renderPage(session: Session, note = NOTE) {
   vi.spyOn(rnModule.releaseNotesApi, 'get').mockResolvedValue(note)
+  vi.spyOn(warehousesApi, 'list').mockResolvedValue([])
+  vi.spyOn(usersApi, 'list').mockResolvedValue([])
+  const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } })
   return render(
-    <MemoryRouter initialEntries={['/release-notes/rn-001']}>
+    <QueryClientProvider client={queryClient}>
+      <MemoryRouter initialEntries={['/release-notes/rn-001']}>
       <Routes>
         <Route
           path="/release-notes/:id"
@@ -51,7 +63,8 @@ function renderPage(session: Session, note = NOTE) {
           }
         />
       </Routes>
-    </MemoryRouter>,
+      </MemoryRouter>
+    </QueryClientProvider>,
   )
 }
 
@@ -88,6 +101,7 @@ describe('ReleaseNoteDetail', () => {
       .mockResolvedValue({
         release_note_id: NOTE.id, release_note_status: 'picked_up', pickup_record_id: 'pr-1',
         pickup_date: '2026-09-06', pickup_time: '10:00', attendant_name: 'Tunde',
+        customer_service_officer_name: null, accounting_officer_name: null,
         remaining_cartons: 0, shipment_status: null,
       })
     renderPage(WAREHOUSE_SESSION)

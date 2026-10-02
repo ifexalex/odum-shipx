@@ -1,0 +1,165 @@
+import { useState, type JSX } from 'react'
+import { ApiError } from '../../api/client'
+import { seizedItemsApi, type SeizedItem, type SeizedItemStatus, type UpdateSeizedItemInput } from '../../api/claims'
+import { canUpdateItem } from '../../api/claimsRules'
+import { useSeizedItemList } from '../../hooks/useItems'
+import { useSession } from '../../auth/useSession'
+import { Badge, Banner, Button, Card, Chip, Field, Mono, Table, ListFooter, type BadgeVariant } from '../../design/components'
+import { useTopBarSlot } from '../../shell/TopBarContext'
+import styles from './ItemList.module.css'
+
+const STATUS_FILTERS: SeizedItemStatus[] = [
+  'seized', 'recovery_in_progress', 'recovered', 'permanently_lost',
+]
+
+const STATUS_VARIANT: Record<SeizedItemStatus, BadgeVariant> = {
+  seized: 'error',
+  recovery_in_progress: 'warning',
+  recovered: 'success',
+  permanently_lost: 'neutral',
+}
+
+function statusLabel(s: SeizedItemStatus): string {
+  switch (s) {
+    case 'seized': return 'Seized'
+    case 'recovery_in_progress': return 'Recovery in progress'
+    case 'recovered': return 'Recovered'
+    case 'permanently_lost': return 'Permanently lost'
+  }
+}
+
+// ---------------------------------------------------------------------------
+// UpdateStatusModal
+// ---------------------------------------------------------------------------
+
+interface UpdateModalProps {
+  item: SeizedItem
+  onCancel: () => void
+  onSuccess: (updated: SeizedItem) => void
+}
+
+function UpdateModal({ item, onCancel, onSuccess }: UpdateModalProps): JSX.Element {
+  const [status, setStatus] = useState<SeizedItemStatus>(item.status)
+  const [notes, setNotes] = useState('')
+  const [submitting, setSubmitting] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+
+  async function handleSubmit(): Promise<void> {
+    setSubmitting(true)
+    setError(null)
+    try {
+      const body: UpdateSeizedItemInput = { recovery_status: status }
+      if (notes.trim()) body.notes = notes
+      const updated = await seizedItemsApi.update(item.id, body)
+      onSuccess(updated)
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : 'Could not update seized item.')
+    } finally {
+      setSubmitting(false)
+    }
+  }
+
+  return (
+    <div className={styles.overlay} onClick={onCancel}>
+      <div className={styles.panel} onClick={(e) => e.stopPropagation()} role="dialog" aria-modal="true">
+        <h3 className={styles.panelTitle}>Update seized item</h3>
+        {error && <div className={styles.panelBanner}><Banner variant="error" title="Action failed">{error}</Banner></div>}
+        <div className={styles.selectField}>
+          <label className={styles.selectLabel}>Recovery status <span className={styles.required}>*</span></label>
+          <select className={styles.select} value={status} onChange={(e) => setStatus(e.target.value as SeizedItemStatus)}>
+            {STATUS_FILTERS.map((s) => <option key={s} value={s}>{statusLabel(s)}</option>)}
+          </select>
+        </div>
+        <Field label="Notes" name="notes" multiline placeholder="Recovery notes, agency contact, reference…"
+          value={notes} onChange={(e) => setNotes(e.target.value)} />
+        <div className={styles.panelActions}>
+          <Button variant="ghost" onClick={onCancel} disabled={submitting}>Cancel</Button>
+          <Button variant="primary" loading={submitting} onClick={() => void handleSubmit()}>Save update</Button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+// ---------------------------------------------------------------------------
+// Page
+// ---------------------------------------------------------------------------
+
+export function SeizedItemList(): JSX.Element {
+  const { session } = useSession()
+  const role = session?.role ?? 'nigeria_office_staff'
+
+  const [statusFilter, setStatusFilter] = useState<SeizedItemStatus | null>(null)
+  const [editing, setEditing] = useState<SeizedItem | null>(null)
+  const { items, isLoading: loading, error, hasMore, loadMore, isFetchingMore, refetch, totalCount } = useSeizedItemList(
+    statusFilter ? { status: statusFilter } : {},
+  )
+
+  function handleUpdated(): void {
+    setEditing(null)
+    refetch()
+  }
+
+  const r = role as Parameters<typeof canUpdateItem>[0]
+
+  useTopBarSlot({ subtitle: 'Cargo detained by customs or security authorities.' })
+
+  return (
+    <div>
+
+      {error && (
+        <div className={styles.banner}>
+          <Banner variant="error" title="Couldn't load seized items">{error.message}</Banner>
+        </div>
+      )}
+
+      <Card padding={16}>
+        <div className={styles.chips}>
+          <Chip active={statusFilter === null} onClick={() => setStatusFilter(null)}>All</Chip>
+          {STATUS_FILTERS.map((s) => (
+            <Chip key={s} active={statusFilter === s} onClick={() => setStatusFilter(s)}>{statusLabel(s)}</Chip>
+          ))}
+        </div>
+      </Card>
+
+      <div className={styles.tableWrap}>
+        <Card padding={0}>
+          <Table
+            columns={[
+              { title: 'Reason / notes' },
+              { title: 'Carton tags' },
+              { title: 'Status' },
+              { title: 'Reported' },
+              { title: '', width: '80px' },
+            ]}
+            rows={items.map((item) => ({
+              cells: [
+                <span key="reason">{item.reason || '—'}</span>,
+                <Mono key="tags">{item.carton_tags.join(', ') || '—'}</Mono>,
+                <Badge key="status" variant={STATUS_VARIANT[item.status]}>{statusLabel(item.status)}</Badge>,
+                <span key="date">{item.created_at.slice(0, 10)}</span>,
+                canUpdateItem(r) && item.status !== 'recovered' && item.status !== 'permanently_lost' ? (
+                  <Button key="edit" variant="ghost" size="sm" onClick={() => setEditing(item)}>Update</Button>
+                ) : <span key="noop" />,
+              ],
+            }))}
+            loading={loading}
+            emptyState={!loading && items.length === 0 ? <span>✓ No seized items on record.</span> : undefined}
+          />
+        </Card>
+        <ListFooter
+        shown={items.length}
+        total={totalCount}
+        hasMore={hasMore}
+        loading={isFetchingMore}
+        onLoadMore={loadMore}
+        noun="seized items"
+      />
+      </div>
+
+      {editing && (
+        <UpdateModal item={editing} onCancel={() => setEditing(null)} onSuccess={handleUpdated} />
+      )}
+    </div>
+  )
+}

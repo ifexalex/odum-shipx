@@ -109,5 +109,5 @@ All events             → metering queue
 - [ ] EventBridge custom bus created
 - [ ] Routing rules correctly map events to appropriate SQS queues
 - [ ] Scheduled rules created for all 7 cron jobs
-- [ ] All outputs exported for Lambda module consumption
+- [ ] All outputs exported for Lambda module consumption — `queue_urls` is now wired through to the Lambda module (2026-09-23) as the `SQS_SMS_QUEUE_URL` / `SQS_WHATSAPP_QUEUE_URL` / `SQS_EMAIL_QUEUE_URL` env vars; it was exported but never consumed, so every enqueue was silently dropped in AWS (see `04e_terraform_lambda_monitoring.md`)
 - [ ] `terraform plan` succeeds

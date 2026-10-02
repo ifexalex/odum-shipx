@@ -5,9 +5,13 @@ tracking updates, billing event triggers, and customer-facing tracking lookup.
 """
 
 import logging
+import os
 from typing import Any
 
-from metering.service import check_container_limit
+import boto3
+
+from services.billing.service import handle_payment_due
+from services.metering.service import check_container_limit
 from shared.audit import log_audit
 from shared.events import publish_event
 from shared.exceptions import (
@@ -15,12 +19,38 @@ from shared.exceptions import (
     IllegalTransitionError,
     ResourceNotFoundError,
 )
+from shared.notifications import enqueue_notifications
+from shared.staff_notifications import notify_staff
 from shared.tenant_context import UserRole
+from shared.validation import safe_filename
+from shared.webhook import fire_tenant_webhook
 
 from . import repository as repo
 from .models import TrackingStage
 
+_S3 = boto3.client("s3")
+_BUCKET = os.environ.get("S3_BUCKET_NAME", "logistics-assets")
+_URL_EXPIRY = 900  # 15 minutes
+_MAX_FILE_SIZE = 20 * 1024 * 1024  # 20 MB
+_ALLOWED_DOCUMENT_TYPES = frozenset({"bill_of_lading", "customs_certificate", "insurance", "inspection_report", "other"})
+_ALLOWED_CONTENT_TYPES = frozenset({"application/pdf", "image/jpeg", "image/png", "image/webp", "application/octet-stream"})
+
 logger = logging.getLogger(__name__)
+
+
+def _positive_or_none(value: Any) -> float | None:
+    """Coerce a capacity/recommended CBM input to a positive float, else None.
+
+    Guards the NUMERIC(>0) CHECK on container.capacity_cbm/recommended_cbm —
+    blank, zero, negative or non-numeric input is stored as NULL (capacity
+    simply unknown) rather than raising.
+    """
+    try:
+        num = float(value)
+    except (TypeError, ValueError):
+        return None
+    return num if num > 0 else None
+
 
 # ---------------------------------------------------------------------------
 # State machine constants
@@ -98,6 +128,16 @@ def create_container(
             "estimated_arrival_date": data.get("estimated_arrival_date"),
             "notes": data.get("notes"),
             "created_by": actor_id,
+            # Vessel/voyage manifest details (migration 030) — all optional.
+            "vessel_name": data.get("vessel_name"),
+            "voyage_number": data.get("voyage_number"),
+            "shipping_line": data.get("shipping_line"),
+            "seal_number": data.get("seal_number"),
+            "container_type": data.get("container_type"),
+            # Capacity preset snapshot (migration 051) — denormalised so the
+            # utilization bar survives later edits/deletion of the preset.
+            "capacity_cbm": _positive_or_none(data.get("capacity_cbm")),
+            "recommended_cbm": _positive_or_none(data.get("recommended_cbm")),
         },
     )
     if row is None:
@@ -122,13 +162,113 @@ def get_container(tenant_id: str, container_id: str) -> dict[str, Any]:
     return container
 
 
+def delete_container(
+    tenant_id: str,
+    container_id: str,
+    actor_id: str,
+    request_id: str = "",
+    ip_address: str | None = None,
+) -> None:
+    """Hard-delete a container that was created by mistake.
+
+    Rules (enforced here and on the frontend):
+    - Status must be 'loading' (never sealed or beyond).
+    - No packing lists may exist on the container.
+    """
+    container = repo.get_container_by_id(tenant_id, container_id)
+    if not container:
+        raise ResourceNotFoundError("container", container_id)
+
+    if container["status"] != "loading":
+        raise BusinessRuleViolationError(
+            "Only containers in 'loading' status can be deleted.",
+            rule_id="CONTAINER_NOT_DELETABLE",
+        )
+
+    pl_count = repo.count_all_packing_lists(tenant_id, container_id)
+    if pl_count > 0:
+        raise BusinessRuleViolationError(
+            f"Cannot delete a container that has {pl_count} packing list(s). Cancel it instead.",
+            rule_id="CONTAINER_HAS_PACKING_LISTS",
+        )
+
+    repo.delete_container(tenant_id, container_id)
+    log_audit(
+        tenant_id=tenant_id,
+        actor_id=actor_id,
+        actor_role="china_office_staff",
+        action="DELETE",
+        entity_type="container",
+        entity_id=container_id,
+        before_state={"container_number": container.get("container_number"), "status": container.get("status")},
+        after_state=None,
+        ip_address=ip_address,
+    )
+
+
+def cancel_container(
+    tenant_id: str,
+    container_id: str,
+    actor_id: str,
+    notes: str | None = None,
+    request_id: str = "",
+    ip_address: str | None = None,
+) -> dict[str, Any]:
+    """Soft-cancel a container — sets status to 'cancelled', a terminal state.
+
+    Rules:
+    - Only 'loading' or 'sealed' containers can be cancelled (China-side only,
+      before the container goes to sea).
+    """
+    container = repo.get_container_by_id(tenant_id, container_id)
+    if not container:
+        raise ResourceNotFoundError("container", container_id)
+
+    if container["status"] not in ("loading", "sealed"):
+        raise BusinessRuleViolationError(
+            "Only containers in 'loading' or 'sealed' status can be cancelled.",
+            rule_id="CONTAINER_NOT_CANCELLABLE",
+        )
+
+    updated = repo.update_container_status(
+        tenant_id,
+        container_id,
+        "cancelled",
+        {"notes": notes} if notes else None,
+    )
+    if not updated:
+        raise RuntimeError("cancel_container returned None unexpectedly")
+
+    repo.insert_container_event(tenant_id, container_id, container["status"], "cancelled", actor_id, notes)
+
+    log_audit(
+        tenant_id=tenant_id,
+        actor_id=actor_id,
+        actor_role="china_office_staff",
+        action="CANCEL",
+        entity_type="container",
+        entity_id=container_id,
+        before_state={"status": container["status"]},
+        after_state={"status": "cancelled"},
+        ip_address=ip_address,
+    )
+    return updated
+
+
+def get_container_stats(tenant_id: str) -> dict[str, int]:
+    """Tenant-wide per-status container counts for the list stats row + chips."""
+    return repo.get_container_stats(tenant_id)
+
+
 def list_containers(
     tenant_id: str,
     filters: dict[str, Any],
     limit: int,
     cursor: dict[str, Any] | None,
+    sort_field: str = "created_at",
+    sort_direction: str = "DESC",
 ) -> tuple[list[dict[str, Any]], str | None, bool]:
-    return repo.list_containers(tenant_id, filters, limit, cursor)
+    return repo.list_containers(tenant_id, filters, limit, cursor, sort_field, sort_direction)
 
 
 def update_container_status(
@@ -178,6 +318,11 @@ def update_container_status(
                 "Container must have a manifest before sealing",
                 rule_id="NO_MANIFEST",
             )
+        if manifest.get("verification_status") != "verified":
+            raise BusinessRuleViolationError(
+                "The manifest must be verified before the container can be sealed",
+                rule_id="MANIFEST_NOT_VERIFIED",
+            )
 
     # in_transit requires ship_date
     if new_status == "in_transit" and not extra.get("ship_date"):
@@ -191,6 +336,15 @@ def update_container_status(
     if updated is None:
         raise RuntimeError("update_container_status returned None unexpectedly")
 
+    repo.insert_container_event(
+        tenant_id=tenant_id,
+        container_id=container_id,
+        from_status=current,
+        to_status=new_status,
+        actor_id=actor_id,
+        notes=extra.get("notes"),
+    )
+
     # Bulk tracking side effects
     tracking_status = _CONTAINER_TO_TRACKING_STATUS.get(new_status)
     stage_label = _CONTAINER_TO_STAGE_LABEL.get(new_status)
@@ -200,10 +354,122 @@ def update_container_status(
         repo.bulk_update_tracking_status(tenant_id, container_id, tracking_status)
         repo.bulk_insert_tracking_events(tenant_id, container_id, stage_label or "", notes, actor_id)
 
-    # Billing trigger when container cleared
+    # Container arrival notification when goods reach the warehouse
+    if new_status == "at_warehouse":
+        customers = repo.get_customers_for_container(tenant_id, container_id)
+        for customer in customers:
+            try:
+                enqueue_notifications(
+                    tenant_id=tenant_id,
+                    event_type="container_arrived",
+                    recipient={
+                        "phone": customer.get("phone", ""),
+                        "email": customer.get("email", ""),
+                        "whatsapp": customer.get("whatsapp", ""),
+                        "name": customer.get("name", ""),
+                    },
+                    template_data={"container_number": container.get("container_number", "")},
+                    locale=customer.get("locale", "en"),
+                    request_id=request_id,
+                )
+                # In-app customer bell — see payment_release/service.py's
+                # matching comment.
+                if customer.get("user_id"):
+                    notify_staff(
+                        tenant_id=tenant_id,
+                        event_type="container_arrived",
+                        entity_type="container",
+                        entity_id=container_id,
+                        title="Your goods have arrived",
+                        body=f"Container {container.get('container_number', '')} has arrived at the warehouse.",
+                        target_user_id=str(customer["user_id"]),
+                    )
+            except Exception:
+                logger.exception(
+                    "Failed to enqueue ContainerArrived notification for customer %s",
+                    customer["id"],
+                )
+
+    # Generic "your shipment status changed" notification for the other
+    # customer-visible pipeline transitions. `at_warehouse` has its own
+    # richer container_arrived notification above, and `cleared` is covered
+    # by handle_payment_due's own payment_due notification below (a bare
+    # "status changed" ping would be redundant with "here's what you owe").
+    # Ground-truth gap found live, reported by the user while investigating
+    # a separate missing notification on payment-claim rejection — asked to
+    # check every notification in the app: `shipment_update` was defined
+    # with full SMS/WhatsApp/email templates but no call site ever used it.
+    if new_status in {"in_transit", "arrived", "customs_clearance", "fully_released"}:
+        try:
+            customers = repo.get_customers_for_container(tenant_id, container_id)
+        except Exception:
+            logger.exception("Failed to fetch customers for shipment_update notification")
+            customers = []
+        for customer in customers:
+            try:
+                enqueue_notifications(
+                    tenant_id=tenant_id,
+                    event_type="shipment_update",
+                    recipient={
+                        "phone": customer.get("phone", ""),
+                        "email": customer.get("email", ""),
+                        "whatsapp": customer.get("whatsapp", ""),
+                        "name": customer.get("name", ""),
+                    },
+                    template_data={
+                        "tracking_code": container.get("container_number", ""),
+                        "status": new_status.replace("_", " "),
+                    },
+                    locale=customer.get("locale", "en"),
+                    request_id=request_id,
+                    customer_id=str(customer["id"]),
+                )
+                # In-app customer bell — see payment_release/service.py's
+                # matching comment.
+                if customer.get("user_id"):
+                    notify_staff(
+                        tenant_id=tenant_id,
+                        event_type="shipment_update",
+                        entity_type="container",
+                        entity_id=container_id,
+                        title="Shipment status update",
+                        body=f"Your shipment {container.get('container_number', '')} is now {new_status.replace('_', ' ')}.",
+                        target_user_id=str(customer["user_id"]),
+                    )
+            except Exception:
+                logger.exception(
+                    "Failed to enqueue shipment_update notification for customer %s",
+                    customer["id"],
+                )
+
+    # Billing trigger when container cleared.
+    #
+    # Ground-truth fix: billing/handler.py's EventBridge branch (source=
+    # logistics.tracking, detail-type=PaymentDue → auto-create billing) is
+    # never actually invoked — infrastructure/modules/eventbridge/main.tf's
+    # routing rules only fan PaymentDue out to the SMS/WhatsApp notification
+    # queues, there is no rule/target wiring EventBridge to invoke the billing
+    # Lambda itself. So a container could sail all the way through `cleared`
+    # → `at_warehouse` with zero billing rows ever created, in both local dev
+    # and production. Call the billing generation directly (cross-service
+    # import already has precedent — see check_container_limit above and
+    # claims/service.py's refunds import) so billing exists the moment the
+    # container clears, regardless of whether the event infra is ever fixed.
+    # The event publish stays: it's what the SMS/WhatsApp routing rules key
+    # off of for the "payment due" customer notification.
     if new_status == "cleared":
         customers = repo.get_customers_for_container(tenant_id, container_id)
         for customer in customers:
+            try:
+                handle_payment_due(
+                    tenant_id=tenant_id,
+                    container_id=container_id,
+                    customer_id=str(customer["id"]),
+                    container_number=container.get("container_number"),
+                    request_id=request_id,
+                )
+            except Exception:
+                logger.exception("Failed to generate billing for customer %s", customer["id"])
             try:
                 publish_event(
                     source="logistics.tracking",
@@ -234,6 +500,19 @@ def update_container_status(
         request_id=request_id,
     )
 
+    # Outbound webhook — fire-and-forget, best-effort
+    fire_tenant_webhook(
+        tenant_id=tenant_id,
+        event_type="container.status_updated",
+        payload={
+            "container_id": container_id,
+            "container_number": container.get("container_number"),
+            "from_status": current,
+            "to_status": new_status,
+        },
+        request_id=request_id,
+    )
+
     log_audit(
         tenant_id=tenant_id,
         entity_type="container",
@@ -247,6 +526,14 @@ def update_container_status(
     )
 
     return dict(updated)
+
+
+def get_container_events(tenant_id: str, container_id: str) -> list[dict[str, Any]]:
+    """Return the audit trail for a container's status history."""
+    container = repo.get_container_by_id(tenant_id, container_id)
+    if not container:
+        raise ResourceNotFoundError("container", container_id)
+    return repo.get_container_events(tenant_id, container_id)
 
 
 # ---------------------------------------------------------------------------
@@ -300,4 +587,138 @@ def get_shipment_by_code_and_phone(tracking_code: str, phone: str) -> dict[str, 
         "company_name": company_name,
         "stage_history": stage_history,
         "estimated_stages": None,
+    }
+
+
+# ---------------------------------------------------------------------------
+# Container document presigned URL
+# ---------------------------------------------------------------------------
+
+
+def generate_document_presigned_url(
+    tenant_id: str,
+    container_id: str,
+    filename: str,
+    content_type: str,
+    document_type: str,
+    actor_id: str,
+) -> dict[str, Any]:
+    """Generate an S3 presigned POST URL for uploading a container document.
+
+    Validates container exists and document_type is allowed.
+    S3 key is scoped to {tenant_id}/containers/{container_id}/ to enforce
+    tenant isolation.
+    """
+    if content_type not in _ALLOWED_CONTENT_TYPES:
+        from shared.exceptions import BusinessRuleViolationError
+
+        raise BusinessRuleViolationError(
+            f"content_type '{content_type}' not allowed. Allowed: {', '.join(sorted(_ALLOWED_CONTENT_TYPES))}",
+            rule_id="INVALID_CONTENT_TYPE",
+        )
+    if document_type not in _ALLOWED_DOCUMENT_TYPES:
+        from shared.exceptions import BusinessRuleViolationError
+
+        raise BusinessRuleViolationError(
+            f"document_type '{document_type}' not allowed. Allowed: {', '.join(sorted(_ALLOWED_DOCUMENT_TYPES))}",
+            rule_id="INVALID_DOCUMENT_TYPE",
+        )
+
+    container = repo.get_container_by_id(tenant_id, container_id)
+    if not container:
+        raise ResourceNotFoundError("container", container_id)
+
+    filename = safe_filename(filename)
+    s3_key = f"{tenant_id}/containers/{container_id}/{filename}"
+
+    presigned = _S3.generate_presigned_post(
+        Bucket=_BUCKET,
+        Key=s3_key,
+        Fields={"Content-Type": content_type},
+        Conditions=[
+            {"Content-Type": content_type},
+            ["content-length-range", 1, _MAX_FILE_SIZE],
+        ],
+        ExpiresIn=_URL_EXPIRY,
+    )
+
+    doc = repo.create_container_document(
+        tenant_id,
+        {
+            "tenant_id": tenant_id,
+            "container_id": container_id,
+            "document_type": document_type,
+            "s3_key": s3_key,
+            "filename": filename,
+            "content_type": content_type,
+            "uploaded_by": actor_id,
+        },
+    )
+
+    return {
+        "upload_url": presigned["url"],
+        "fields": presigned["fields"],
+        "document_id": str(doc["id"]) if doc else None,
+        "s3_key": s3_key,
+        "expires_in_seconds": _URL_EXPIRY,
+    }
+
+
+def list_container_documents(tenant_id: str, container_id: str) -> list[dict[str, Any]]:
+    """Return all uploaded documents for a container."""
+    container = repo.get_container_by_id(tenant_id, container_id)
+    if not container:
+        raise ResourceNotFoundError("container", container_id)
+    return repo.list_container_documents(tenant_id, container_id)
+
+
+def get_document_download_url(
+    tenant_id: str,
+    container_id: str,
+    doc_id: str,
+    actor_id: str,
+    actor_role: str,
+) -> dict[str, Any]:
+    """Generate a short-lived S3 presigned GET URL for a container document.
+
+    Returns 404 (never 403) for wrong-tenant/wrong-container docs to prevent
+    enumeration. S3 key is validated against the tenant prefix before use.
+    """
+    container = repo.get_container_by_id(tenant_id, container_id)
+    if not container:
+        raise ResourceNotFoundError("container_document", doc_id)
+
+    doc = repo.get_container_document_by_id(tenant_id, container_id, doc_id)
+    if not doc:
+        raise ResourceNotFoundError("container_document", doc_id)
+
+    s3_key: str = doc["s3_key"]
+    if not s3_key.startswith(f"{tenant_id}/"):
+        raise ResourceNotFoundError("container_document", doc_id)
+
+    presigned_url = _S3.generate_presigned_url(
+        "get_object",
+        Params={
+            "Bucket": _BUCKET,
+            "Key": s3_key,
+            "ResponseContentDisposition": f'attachment; filename="{safe_filename(doc["filename"], default="document")}"',
+        },
+        ExpiresIn=300,
+    )
+
+    log_audit(
+        tenant_id=tenant_id,
+        entity_type="container_document",
+        entity_id=str(doc["id"]),
+        action="EXPORT",
+        actor_id=actor_id,
+        actor_role=actor_role,
+        after_state={"doc_id": doc_id, "container_id": container_id, "filename": doc["filename"]},
+    )
+
+    return {
+        "download_url": presigned_url,
+        "filename": doc["filename"],
+        "content_type": doc.get("content_type"),
+        "expires_in_seconds": 300,
     }

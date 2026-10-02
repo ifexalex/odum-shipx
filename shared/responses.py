@@ -121,6 +121,8 @@ def error_response(
     }
     if instance:
         problem["instance"] = instance
+    if hasattr(error, "threshold_details") and error.threshold_details:
+        problem["threshold_details"] = error.threshold_details
 
     return {
         "statusCode": error.status_code,

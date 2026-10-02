@@ -15,7 +15,7 @@ Implement the Claims Lambda service: damage claim filing, inspection workflow, e
 | Method | Path | Roles |
 |---|---|---|
 | POST | `/v1/claims` | customer, nigeria_office_staff |
-| GET | `/v1/claims` | nigeria_office_staff, tenant_admin, customer (own) — sortable via `?sort=&direction=` |
+| GET | `/v1/claims` | nigeria_office_staff, tenant_admin, customer (own) — sortable via `?sort=&direction=` (`sort` must be one allowlisted identifier, else `422`; hardened 2026-09-23 — see `00_CROSS_CUTTING_STANDARDS.md` §2.2) |
 | GET | `/v1/claims/{id}` | same |
 | PATCH | `/v1/claims/{id}/inspect` | nigeria_office_staff |
 | PATCH | `/v1/claims/{id}/resolve` | nigeria_office_staff, tenant_admin |
@@ -75,6 +75,29 @@ detail. Covered by `tests/unit/test_claims.py::
 TestCreateRefundRequestForClaimSetsRefundType` and a new case in
 `refundsRules.test.ts`.
 
+**`POST /v1/claims` had no check on the container's arrival status — a
+claim could be filed against cargo still `loading` or `in_transit`, before
+it had even reached Nigeria.** Reported directly by the user. Damage or
+loss can only be observed once the container is physically unpacked and
+inspected here, so `file_claim()` now rejects (`422
+BUSINESS_RULE_VIOLATION`, `CONTAINER_NOT_ARRIVED`) unless the resolved
+container's status is one of `arrived`, `customs_clearance`, `cleared`,
+`at_warehouse`, `fully_released` — the check applies to both the customer
+and staff filing paths, since neither can meaningfully assess damage before
+arrival either. New `repository.get_container_status()`; the pre-arrival
+set (`_PRE_ARRIVAL_STATUSES`) mirrors `CustomerStepper.tsx`'s first three
+tracking stages. Covered by
+`tests/unit/test_claims.py::TestClaimStateMachine::test_cannot_file_claim_before_container_arrives`
+(parametrized over all three pre-arrival statuses) and
+`test_can_file_claim_once_container_has_arrived` (parametrized over all
+five arrived-or-later statuses, confirming the fix doesn't over-block).
+Also closed the matching frontend gap: `MyClaimsNew.tsx`'s free-text
+"Container ID or number" field let a customer type (or guess) any
+container regardless of status — replaced with a dropdown populated from
+the customer's own shipments, filtered to arrived ones only, so a
+non-arrived shipment is never offered in the first place rather than being
+submitted and rejected. See `frontend/07_domain_modules.md`.
+
 ## Damage Claim State Machine
 
 ```
@@ -107,6 +130,8 @@ filed → under_inspection → inspection_complete → pending_resolution → re
 6. Publish `DamageClaimResolved` event
 
 ### Presigned URL Generation (POST /uploads/presigned-url)
+
+**Upload file names are sanitised (2026-09-23).** The client's `filename` is passed through `shared.validation.safe_filename()` before it is used in the S3 key or stored: directory components dropped, anything outside Unicode word characters / `. ( ) space -` replaced with `_`, no leading/trailing dots, ≤100 chars with the extension kept (Chinese names like `装箱单.xlsx` survive). A name that reduces to nothing is a `422`. The download `Content-Disposition` is sanitised again on read, since rows written earlier may hold an unsafe name. See `00_CROSS_CUTTING_STANDARDS.md` §2.2.
 1. Validate claim_id exists in tenant scope
 2. Generate S3 presigned POST URL:
    - Key: `{tenant_id}/claims/{claim_id}/{filename}`
@@ -154,3 +179,13 @@ filed → under_inspection → inspection_complete → pending_resolution → re
 **Implementation note (2026-07-11):** `GET /v1/claims` accepts `customer_id` as a staff-side filter (admin Customer Profile Claims tab). For the customer role the service pins the filter to the caller's own record regardless of the param, so it cannot widen scope — covered by `TestListClaimsCustomerFilter`.
 
 **Implementation note (row 7.37):** `sort` defaults to `created_at`, `direction` defaults to `desc`. `list_damage_claims()` prefixes `sort_field` with the `dc.` table alias before calling `shared/pagination.py::build_paginated_query()` — same pattern as `billing/repository.py::list_billing_all()`'s `b.` prefix. The 'Claim ID' column renders `damage_claim.reference` (migration 033's human-readable `DC-YYYYMMDD-NNN` number, added to `ALLOWED_SORT_FIELDS`), not the raw UUID.
+
+**Ground-truth gap found live (2026-09-07):** the "Last 30 days" button on `ClaimList.tsx` was a static label with no `onClick` at all, and `GET /v1/claims` had no date-filter support to back it — found while checking every page with a "calendar" filter after the same dead-UI bug was fixed on `GET /v1/billing` (row 7.63). Added `created_after`/`created_before` (ISO date, inclusive) filtering on `damage_claim.created_at` — `list_damage_claims()` gains the same `dc.created_at >= / <=` conditions as `list_billing_all()`'s `billed_at` filter. Frontend now pairs a `DateRangeFilter` preset (7/30/90/all) with an exact custom From/To range via the shared `useDateRangeFilter` hook (extracted from `ActivityLog.tsx`'s original hand-rolled version) — a custom date always overrides and clears the preset. Verified live: `created_after=2099-01-01` correctly returns 0 of the tenant's 12 claims; `created_after=2020-01-01` returns all 12. Tests: `TestListClaimsDateRange` (2 cases) in `tests/unit/test_claims.py`; `ClaimList.test.tsx` gained 1 case.
+
+**Ground-truth gap found while auditing log coverage (2026-09-07):** `log_missing_item`, `update_missing_item`, `log_seized_item`, and `update_seized_item` had no `log_audit()` call at all — a genuinely missing/seized item (goods) being reported or resolved, and the `refund_request` compensation/recovery can trigger, left zero trail in the tenant's audit log. All four now log (`entity_type="missing_item"`/`"seized_item"`, plus a separate `"refund_request"` entry when compensation fires). Full account, including the other gaps found in the same pass, in `07_api_tenant_management.md`'s "Tenant Activity Log" section.
+
+**Ground-truth gap found live, reported by the user (2026-09-09) while investigating a separate missing notification on payment-claim rejection — asked to check every notification in the app:** `damage_claim_update` had full SMS/WhatsApp/email templates defined but no call site ever used it — a claim moving to `under_inspection` or `resolved` sent no notification to the customer at all. Wired into `start_inspection` and both `resolve_claim` paths (the old approval-threshold path and `_resolve_claim_new_style`), best-effort and never able to fail the status change itself. Full account in `15_api_notifications.md`. Tests: `TestClaimStatusChangeNotifications` in `tests/unit/test_claims.py`.
+
+**Staff bell (2026-09-12):** a customer filing a claim (`file_claim`) now also writes a `staff_notification` row for `nigeria_office_staff`/`tenant_admin` — only when the filer is the customer, not when staff file on a customer's behalf. Full account in `15_api_notifications.md`.
+
+**Customer bell (2026-09-12):** `start_inspection`/`resolve_claim`'s customer notification now also writes an in-app row when the customer has a portal account, reusing the same `staff_notification` table as the staff bell above. Full account in `15_api_notifications.md`.

@@ -1,0 +1,95 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Shipx · Section 7 — Billing Management</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&family=Kumbh+Sans:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet" />
+<style>
+  html, body { margin: 0; padding: 0; height: 100%; background: #f0eee9; font-family: "Kumbh Sans", system-ui, sans-serif; }
+  *, *::before, *::after { box-sizing: border-box; }
+  #root { height: 100vh; }
+  input::placeholder, textarea::placeholder { color: #9aa0a6; }
+  button { font-family: inherit; }
+</style>
+<script src="https://unpkg.com/react@18.3.1/umd/react.development.js" integrity="sha384-hD6/rw4ppMLGNu3tX5cjIb+uRZ7UkRJ6BPkLpg4hAu/6onKUg4lLsHAs9EBPT82L" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.development.js" integrity="sha384-u6aeetuaXnQ38mYT8rp6sbXaQe3NL9t+IBXmnYxwkUI2Hw4bsp2Wvmx4yRQF1uAm" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/@babel/standalone@7.29.0/babel.min.js" integrity="sha384-m08KidiNqLdpJqLq95G/LEi8Qvjl/xUYll3QILypMoQ65QorJ9Lvtp2RXYGBFj1y" crossorigin="anonymous"></script>
+<script type="text/babel" src="design-canvas.jsx"></script>
+<script type="text/babel" src="browser-window.jsx"></script>
+<script type="text/babel" src="shared/components.jsx"></script>
+<script type="text/babel" src="shared/app-shell.jsx"></script>
+<script type="text/babel" src="platform/platform-screens.jsx"></script>
+<script type="text/babel" src="tenant/tenant-admin-screens.jsx"></script>
+<script type="text/babel" src="china/china-screens.jsx"></script>
+<script type="text/babel" src="nigeria/nigeria-screens.jsx"></script>
+<script type="text/babel" src="nigeria/billing-screens.jsx"></script>
+</head>
+<body>
+<div id="root"></div>
+<script type="text/babel" data-presets="react">
+const Frame = ({url, w = 1440, h = 900, children}) => (
+  <ChromeWindow tabs={[{title: 'Shipx · ' + url.split('/').slice(-1)[0]}]} activeIndex={0} url={url} width={w} height={h}>
+    <div style={{width: w, height: h - 84, background: '#fff', position: 'relative', overflow: 'hidden'}}>{children}</div>
+  </ChromeWindow>
+);
+
+const App = () => (
+  <DesignCanvas>
+    <DCSection id="list" title="7.1 — Billing List" subtitle="42 outstanding · 7 statuses (unpaid, partial, paid, overpaid, waived, overdue, released w/ outstanding). Inline payment actions per row.">
+      <DCArtboard id="billing-list" label="Billing list · multiple statuses" width={1600} height={1180}>
+        <Frame url="shipx.co/billing" w={1600} h={1180}><BillingList /></Frame>
+      </DCArtboard>
+    </DCSection>
+
+    <DCSection id="detail" title="7.2 — Billing Detail + Modals" subtitle="Full breakdown including CBM calc, misc fees, carryover, dispute adjustment. Plus Record Payment and Add Charge modals.">
+      <DCArtboard id="billing-detail" label="Billing detail · partial paid" width={1600} height={1500}>
+        <Frame url="shipx.co/billing/BL-20260728-001" w={1600} h={1500}><BillingDetail /></Frame>
+      </DCArtboard>
+      <DCArtboard id="record-payment" label="Record payment modal" width={1600} height={1500}>
+        <Frame url="shipx.co/billing/BL-20260728-001" w={1600} h={1500}><BillingDetail withPaymentModal /></Frame>
+      </DCArtboard>
+      <DCArtboard id="add-charge" label="Add miscellaneous charge modal" width={1600} height={1500}>
+        <Frame url="shipx.co/billing/BL-20260728-001" w={1600} h={1500}><BillingDetail withChargeModal /></Frame>
+      </DCArtboard>
+      <DCArtboard id="apply-carryover" label="Apply carryover modal" width={1600} height={1500}>
+        <Frame url="shipx.co/billing/BL-20260728-001" w={1600} h={1500}><BillingDetail withCarryoverModal /></Frame>
+      </DCArtboard>
+      <DCArtboard id="release-outstanding" label="Release with outstanding balance" width={1600} height={1500}>
+        <Frame url="shipx.co/billing/BL-20260728-001" w={1600} h={1500}><BillingDetail withReleaseModal /></Frame>
+      </DCArtboard>
+      <DCArtboard id="storage-fees" label="Billing detail · storage fees section" width={1600} height={1700}>
+        <Frame url="shipx.co/billing/BL-20260728-001" w={1600} h={1700}><BillingDetail storage /></Frame>
+      </DCArtboard>
+    </DCSection>
+
+    <DCSection id="disputes" title="7.3 — CBM Disputes" subtitle="State pipeline: submitted → acknowledged → investigating → escalated/resolved. Side panel for the dispute detail.">
+      <DCArtboard id="disputes-list" label="CBM disputes list" width={1600} height={1100}>
+        <Frame url="shipx.co/billing/disputes" w={1600} h={1100}><CbmDisputes /></Frame>
+      </DCArtboard>
+      <DCArtboard id="dispute-panel" label="With detail side panel open" width={1600} height={1100}>
+        <Frame url="shipx.co/billing/disputes" w={1600} h={1100}><CbmDisputes withDetail /></Frame>
+      </DCArtboard>
+    </DCSection>
+
+    <DCSection id="carryovers" title="7.4 — Carryover Ledger" subtitle="Outstanding balances that auto-apply to next billing. Filterable by status; staff can exempt specific carryovers.">
+      <DCArtboard id="carryovers" label="Carryover ledger" width={1600} height={1100}>
+        <Frame url="shipx.co/billing/carryovers" w={1600} h={1100}><CarryoverLedger /></Frame>
+      </DCArtboard>
+    <DCSection id="responsive" title="7.5 — Responsive check" subtitle="Same components rendered fluid at tablet and phone widths — sidebar collapses to hamburger, stat grids stack, tables scroll with pinned first column.">
+      <DCArtboard id="billing-tablet" label="Billing list · 834 tablet" width={834} height={1180}>
+        <Frame url="shipx.co/billing" w={834} h={1180}><BillingList /></Frame>
+      </DCArtboard>
+      <DCArtboard id="billing-phone" label="Billing list · 420 phone" width={420} height={1180}>
+        <Frame url="shipx.co/billing" w={420} h={1180}><BillingList /></Frame>
+      </DCArtboard>
+    </DCSection>
+  </DesignCanvas>
+);
+
+ReactDOM.createRoot(document.getElementById('root')).render(<App />);
+</script>
+</body>
+</html>

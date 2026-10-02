@@ -47,9 +47,13 @@ class TestTenantHandlerDispatch:
                     "POST",
                     "/v1/tenants",
                     body={
-                        "name": "Test Tenant",
-                        "short_code": "TEST",
+                        "company_name": "Test Tenant",
                         "primary_contact_email": "admin@test.com",
+                        "subscription_tier": "starter",
+                        "initial_admin": {
+                            "email": "admin@test.com",
+                            "full_name": "Test Admin",
+                        },
                     },
                 ),
                 {},
@@ -159,7 +163,7 @@ class TestTenantSuspensionEffect:
         # Clear the tenant status cache so the DB is actually queried
         from shared import auth
 
-        auth._tenant_status_cache._cache.clear()
+        auth._tenant_status_cache.clear()
 
         with pytest.raises(TenantSuspendedError):
             get_tenant_context(event)

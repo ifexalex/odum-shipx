@@ -196,16 +196,28 @@ def _dispatch(event: dict[str, Any], method: str, path: str, ctx: Any, request_i
             ctx.assert_role(*_BILLING_READ_ROLES)
             filters = {}
             if _qp(event, "status"):
-                filters["status"] = _qp(event, "status")
+                # Comma-separated multi-select (Filters panel) — a single
+                # status is just a 1-element list, matched against
+                # ANY(%(statuses)s) in list_billing_all.
+                filters["status"] = [s for s in _qp(event, "status", "").split(",") if s]
             if _qp(event, "customer_id"):
                 filters["customer_id"] = _qp(event, "customer_id")
+            if _qp(event, "created_after"):
+                filters["created_after"] = _qp(event, "created_after")
+            if _qp(event, "created_before"):
+                filters["created_before"] = _qp(event, "created_before")
             limit = int(_qp(event, "limit", 50))
             cursor = decode_cursor(_qp(event, "cursor"))
             sort_field = _qp(event, "sort") or "created_at"
             sort_direction = _qp(event, "direction") or "desc"
             page, next_cursor, has_more = service.list_billing(
-                ctx.tenant_id, filters, limit, cursor, ctx=ctx,
-                sort_field=sort_field, sort_direction=sort_direction,
+                ctx.tenant_id,
+                filters,
+                limit,
+                cursor,
+                ctx=ctx,
+                sort_field=sort_field,
+                sort_direction=sort_direction,
             )
             return paginated(page, next_cursor, has_more, request_id=request_id)
         if method == "POST":
@@ -213,6 +225,34 @@ def _dispatch(event: dict[str, Any], method: str, path: str, ctx: Any, request_i
             body = _parse_body(event)
             result = service.generate_billing(ctx.tenant_id, body, actor_id=ctx.user_id, ctx=ctx)
             return created(result, location="/v1/billing", request_id=request_id)
+        raise ResourceNotFoundError("route", path)
+
+    # GET /v1/billing/stats — tenant-wide aggregates for the list stats row +
+    # status-chip counts. Staff only (a tenant-wide money summary is not for
+    # the customer role), and computed in SQL so it stays correct at scale.
+    if segment == "stats":
+        if method == "GET":
+            ctx.assert_role(UserRole.TENANT_ADMIN, UserRole.NIGERIA_OFFICE_STAFF)
+            return success(service.get_billing_stats(ctx.tenant_id), request_id=request_id)
+        raise ResourceNotFoundError("route", path)
+
+    # GET /v1/billing/report?created_after=&created_before= — period report
+    # aggregates for the TenantReports page (revenue, CBM, by-status, top
+    # customers, per-container billing). Tenant-admin only; SQL-computed.
+    if segment == "report":
+        if method == "GET":
+            # Same tenant-wide-aggregate data class as /billing/stats (which
+            # both staff roles already read); the reports *page* is tenant-admin
+            # gated in the UI route table.
+            ctx.assert_role(UserRole.TENANT_ADMIN, UserRole.NIGERIA_OFFICE_STAFF)
+            return success(
+                service.get_tenant_report(
+                    ctx.tenant_id,
+                    created_after=_qp(event, "created_after") or None,
+                    created_before=_qp(event, "created_before") or None,
+                ),
+                request_id=request_id,
+            )
         raise ResourceNotFoundError("route", path)
 
     # /v1/billing/carryovers[/{id}/exempt]
@@ -371,7 +411,7 @@ def _billing_routes(
                 resource_id,
                 reason=reason,
                 actor_id=ctx.user_id,
-                ip_address=ip_address,
+                ip_address=ip_address or "",
             )
             return success(result, request_id=request_id)
 
@@ -396,6 +436,7 @@ def _billing_routes(
             carryover_id = body.get("carryover_id", "")
             if not carryover_id:
                 from shared.exceptions import ValidationError
+
                 raise ValidationError("Request validation failed", field_errors={"carryover_id": "required"})
             result = service.apply_carryover(
                 tenant_id,
@@ -514,4 +555,3 @@ def _health_response(request_id: str) -> dict[str, Any]:
             }
         ),
     }
-

@@ -14,11 +14,11 @@ from shared.audit import log_audit
 from shared.events import publish_event
 from shared.exceptions import (
     ApprovalThresholdExceededError,
-    BusinessRuleViolationError,
     IllegalTransitionError,
     InsufficientPermissionsError,
     ResourceNotFoundError,
 )
+from shared.fx_rate import get_effective_dollar_rate
 from shared.tenant_context import UserRole
 
 from . import repository as repo
@@ -146,7 +146,7 @@ def get_refund(tenant_id: str, refund_id: str, ctx: Any) -> dict[str, Any]:
     try:
         threshold_cfg = repo.get_refund_threshold_config(tenant_id)
         staff_limit_usd = Decimal(str(threshold_cfg.get("staff_limit", 50)))
-        dollar_rate = Decimal(str(threshold_cfg.get("dollar_rate", 1550)))
+        dollar_rate = get_effective_dollar_rate(tenant_id)["rate"]
         staff_limit_ngn = staff_limit_usd * dollar_rate
         amount = Decimal(str(refund["amount_ngn"]))
         result["threshold"] = {
@@ -282,7 +282,7 @@ def approve_refund(
         try:
             threshold_cfg = repo.get_refund_threshold_config(tenant_id)
             staff_limit_usd = Decimal(str(threshold_cfg.get("staff_limit", 50)))
-            dollar_rate = Decimal(str(threshold_cfg.get("dollar_rate", 1550)))
+            dollar_rate = get_effective_dollar_rate(tenant_id)["rate"]
             staff_limit_ngn = staff_limit_usd * dollar_rate
             if amount_approved > staff_limit_ngn:
                 raise ApprovalThresholdExceededError(

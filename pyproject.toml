@@ -54,6 +54,11 @@ known-first-party = [
     "S310",  # URL open — test helpers calling local endpoints
     "E501",  # long lines in test assertions are acceptable
     "N806",  # uppercase variable in test helpers
+    "N803",  # boto3-style kwargs (QueueUrl, MessageBody) in fakes mirror the real SDK signature
+    "N814",  # aliasing exception classes (BRV) in test-local imports
+    "S105",  # hardcoded "password"/"token" strings are test fixtures, not real credentials
+    "S106",  # same, as keyword arguments
+    "S107",  # same, as function defaults
 ]
 "scripts/**/*.py" = [
     "S603",  # subprocess in internal scripts

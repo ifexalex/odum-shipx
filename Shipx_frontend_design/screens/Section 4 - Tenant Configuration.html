@@ -1,0 +1,77 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Shipx · Section 4 — Tenant Admin Configuration</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&family=Kumbh+Sans:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet" />
+<style>
+  html, body { margin: 0; padding: 0; height: 100%; background: #f0eee9; font-family: "Kumbh Sans", system-ui, sans-serif; }
+  *, *::before, *::after { box-sizing: border-box; }
+  #root { height: 100vh; }
+  input::placeholder, textarea::placeholder { color: #9aa0a6; }
+  button { font-family: inherit; }
+</style>
+<script src="https://unpkg.com/react@18.3.1/umd/react.development.js" integrity="sha384-hD6/rw4ppMLGNu3tX5cjIb+uRZ7UkRJ6BPkLpg4hAu/6onKUg4lLsHAs9EBPT82L" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.development.js" integrity="sha384-u6aeetuaXnQ38mYT8rp6sbXaQe3NL9t+IBXmnYxwkUI2Hw4bsp2Wvmx4yRQF1uAm" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/@babel/standalone@7.29.0/babel.min.js" integrity="sha384-m08KidiNqLdpJqLq95G/LEi8Qvjl/xUYll3QILypMoQ65QorJ9Lvtp2RXYGBFj1y" crossorigin="anonymous"></script>
+<script type="text/babel" src="design-canvas.jsx"></script>
+<script type="text/babel" src="browser-window.jsx"></script>
+<script type="text/babel" src="shared/components.jsx"></script>
+<script type="text/babel" src="shared/app-shell.jsx"></script>
+<script type="text/babel" src="platform/platform-screens.jsx"></script>
+<script type="text/babel" src="tenant/tenant-admin-screens.jsx"></script>
+<script type="text/babel" src="tenant/tenant-config-screens.jsx"></script>
+</head>
+<body>
+<div id="root"></div>
+<script type="text/babel" data-presets="react">
+const Frame = ({url, w = 1440, h = 900, children}) => (
+  <ChromeWindow tabs={[{title: 'Shipx · ' + url.split('/').slice(-1)[0]}]} activeIndex={0} url={url} width={w} height={h}>
+    <div style={{width: w, height: h - 84, background: '#fff', position: 'relative'}}>{children}</div>
+  </ChromeWindow>
+);
+
+const App = () => (
+  <DesignCanvas>
+    <DCSection id="company" title="4.1 — Company Settings" subtitle="Logo, name, warehouse address, contact info + a live document preview so admins see their branding render before saving.">
+      <DCArtboard id="company-settings" label="Company settings · live preview" width={1600} height={1400}>
+        <Frame url="shipx.co/admin/config" w={1600} h={1400}><CompanySettings /></Frame>
+      </DCArtboard>
+    </DCSection>
+
+    <DCSection id="dollar" title="4.2 — Dollar Rate" subtitle="Hero rate card with deltas vs prior periods, set-new-rate form with reason capture, 6-month rate trend chart, full audit history.">
+      <DCArtboard id="dollar-rate" label="Dollar rate page" width={1440} height={1600}>
+        <Frame url="shipx.co/admin/config/dollar-rate" h={1600}><DollarRatePage /></Frame>
+      </DCArtboard>
+    </DCSection>
+
+    <DCSection id="cbm" title="4.3 — CBM Rate" subtitle="Same anatomy and treatment as Dollar Rate. Live NGN equivalent computed using the current FX.">
+      <DCArtboard id="cbm-rate" label="CBM rate page" width={1440} height={1000}>
+        <Frame url="shipx.co/admin/config/cbm-rate" h={1000}><CbmRatePage /></Frame>
+      </DCArtboard>
+    </DCSection>
+
+    <DCSection id="charges" title="4.4 — Charge Types" subtitle="Table of misc charges with usage analytics. Modal opens to add or edit a charge type.">
+      <DCArtboard id="charges-list" label="Charge types list" width={1440} height={1200}>
+        <Frame url="shipx.co/admin/config/charges" h={1200}><ChargeTypesPage /></Frame>
+      </DCArtboard>
+      <DCArtboard id="charges-modal" label="Add/edit charge type modal" width={1440} height={1200}>
+        <Frame url="shipx.co/admin/config/charges" h={1200}><ChargeTypesPage withModal /></Frame>
+      </DCArtboard>
+    </DCSection>
+
+    <DCSection id="notif" title="4.5 — Notification Templates" subtitle="Channel toggles (SMS/WhatsApp/Email) + per-event templates with variable chips, segment counter, and a live WhatsApp preview.">
+      <DCArtboard id="notif-templates" label="Notifications · WhatsApp template open" width={1600} height={1400}>
+        <Frame url="shipx.co/admin/config/notifications" w={1600} h={1400}><NotificationTemplatesPage /></Frame>
+      </DCArtboard>
+    </DCSection>
+  </DesignCanvas>
+);
+
+ReactDOM.createRoot(document.getElementById('root')).render(<App />);
+</script>
+</body>
+</html>
