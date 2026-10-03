@@ -65,6 +65,8 @@ export interface PackingList {
   customer_phone?: string | null
   loading_date?: string | null
   delivery_date?: string | null
+  arrival_warehouse_id?: string | null
+  arrival_warehouse_name?: string | null
   /** Total packages (sums bulk quantities), unlike carton_count which counts rows. */
   package_count?: number
   /** Packages keyed by unit, e.g. { bale: 2, bag: 16 }. */
@@ -115,6 +117,7 @@ export interface CreatePackingListInput {
   customer_id: string
   loading_date?: string
   delivery_date?: string
+  arrival_warehouse_id?: string
   items: PackingListItemInput[]
 }
 
@@ -125,6 +128,7 @@ export interface UpdatePackingListItemInput extends PackingListItemInput {
 export interface UpdatePackingListInput {
   loading_date?: string
   delivery_date?: string
+  arrival_warehouse_id?: string
   items: UpdatePackingListItemInput[]
 }
 

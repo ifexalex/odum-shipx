@@ -6,7 +6,7 @@
 import { useEffect, useState, type JSX } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
-import { billingApi, disputeApi, type CBMDispute, type RecentPayment } from '../../api/billing'
+import { billingApi, disputeApi, type Billing, type CBMDispute } from '../../api/billing'
 import { claimsApi } from '../../api/claims'
 import { CONTAINER_STATUS_LABELS } from '../../api/containerRules'
 import { billingKeys, claimKeys, containerKeys, customerKeys } from '../../api/keys'
@@ -14,11 +14,12 @@ import { formatNgnCompact } from '../../lib/format'
 import { manifestApi, type Manifest } from '../../api/manifest'
 import { ARRIVED_IN_NG } from '../../api/manifestRules'
 import { packingListApi, type PackingList } from '../../api/packingList'
-import { releaseNotesApi } from '../../api/releaseNotes'
+import { releaseNotesApi, type ReleaseNote } from '../../api/releaseNotes'
 import { customersApi } from '../../api/tenantManagement'
-import { containersApi, type Container, type ContainerStats, type ContainerStatus } from '../../api/tracking'
+import { containersApi, type Container, type ContainerStatus } from '../../api/tracking'
 import { useSession } from '../../auth/useSession'
 import { Badge, Button, Card, Mono, QuickActionCard, StatCard, Table, UserCell, type BadgeVariant } from '../../design/components'
+import { ContainerPipeline } from './DashboardPipeline'
 import { ActivityFeed } from '../../shell/ActivityFeed'
 import { PlanUsagePanel } from '../../shell/PlanUsagePanel'
 import { SectionHead } from '../../shell/SectionHead'
@@ -29,16 +30,6 @@ function greeting(): string {
   if (h < 12) return 'Good morning'
   if (h < 17) return 'Good afternoon'
   return 'Good evening'
-}
-
-// 6.1 "Incoming containers" ETA chip: Today / N days / N wks (prototype IncomingRow).
-function etaLabel(iso: string | null | undefined): string {
-  if (!iso) return '—'
-  const days = Math.ceil((new Date(iso).getTime() - Date.now()) / 86_400_000)
-  if (days <= 0) return 'Today'
-  if (days === 1) return 'Tomorrow'
-  if (days < 14) return `${days} days`
-  return `${Math.round(days / 7)} wks`
 }
 
 const CONTAINER_BADGE: Record<string, BadgeVariant> = {
@@ -53,86 +44,17 @@ const CONTAINER_BADGE: Record<string, BadgeVariant> = {
   cancelled: 'neutral',
 }
 
-// 6.1 — NgOps container pipeline kanban (prototype nigeria-screens.jsx PipelineKanban).
-// One column per pipeline stage; cards navigate to the container.
-const KANBAN_STAGES: ContainerStatus[] = [
-  'loading', 'sealed', 'in_transit', 'arrived', 'customs_clearance', 'cleared', 'at_warehouse', 'fully_released',
-]
-
-function PipelineKanban({
-  containers,
-  counts,
-  onOpen,
-}: {
-  containers: Container[]
-  counts: ContainerStats | undefined
-  onOpen: (id: string) => void
-}): JSX.Element {
-  return (
-    <div style={{ display: 'flex', gap: 12, overflowX: 'auto', paddingBottom: 8 }}>
-      {KANBAN_STAGES.map((stage) => {
-        const items = containers.filter((c) => c.status === stage)
-        // Accurate tenant-wide count from stats; cards are a bounded sample.
-        const total = counts?.[stage] ?? items.length
-        const shown = Math.min(items.length, 6)
-        return (
-          <div key={stage} style={{ minWidth: 190, flex: '0 0 190px' }}>
-            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '6px 4px', marginBottom: 8 }}>
-              <span style={{ fontSize: 11, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.06em', color: 'var(--color-ink-3)' }}>
-                {CONTAINER_STATUS_LABELS[stage]}
-              </span>
-              <span style={{ fontSize: 11, fontFamily: 'var(--font-mono)', color: 'var(--color-ink-4)', background: 'var(--color-line-soft)', borderRadius: 999, padding: '1px 7px' }}>
-                {total}
-              </span>
-            </div>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-              {items.slice(0, 6).map((c) => (
-                <button
-                  key={c.id}
-                  type="button"
-                  onClick={() => onOpen(c.id)}
-                  style={{
-                    textAlign: 'left', cursor: 'pointer',
-                    background: 'var(--color-surface)', border: '1px solid var(--color-line-soft)',
-                    borderRadius: 10, padding: '10px 12px',
-                    boxShadow: '0 1px 2px rgba(11,47,13,0.04)',
-                    transition: 'transform .16s cubic-bezier(.2,.7,.3,1), box-shadow .16s, border-color .16s',
-                  }}
-                  onMouseEnter={(e) => { e.currentTarget.style.transform = 'translateY(-2px)'; e.currentTarget.style.boxShadow = '0 2px 6px rgba(11,47,13,0.08), 0 10px 24px -8px rgba(11,47,13,0.18)' }}
-                  onMouseLeave={(e) => { e.currentTarget.style.transform = ''; e.currentTarget.style.boxShadow = '0 1px 2px rgba(11,47,13,0.04)' }}
-                >
-                  <div style={{ fontFamily: 'var(--font-mono)', fontSize: 12.5, fontWeight: 600, color: 'var(--color-ink)' }}>{c.container_number}</div>
-                  <div style={{ fontSize: 11, color: 'var(--color-ink-4)', marginTop: 3 }}>
-                    {c.estimated_arrival_date ? `ETA ${c.estimated_arrival_date.slice(0, 10)}` : c.origin}
-                  </div>
-                </button>
-              ))}
-              {total > shown && (
-                <span style={{ fontSize: 11, color: 'var(--color-ink-4)', padding: '2px 4px' }}>+{total - shown} more</span>
-              )}
-              {items.length === 0 && (
-                <div style={{ border: '1px dashed var(--color-line)', borderRadius: 10, padding: '12px 10px', fontSize: 11, color: 'var(--color-ink-4)', textAlign: 'center' }}>
-                  Empty
-                </div>
-              )}
-            </div>
-          </div>
-        )
-      })}
-    </div>
-  )
-}
-
 export function Dashboard(): JSX.Element {
   const navigate = useNavigate()
   const { session } = useSession()
   const [containers, setContainers] = useState<Container[]>([])
-  const [incoming, setIncoming] = useState<Container[]>([])
   const [pendingPls, setPendingPls] = useState<PackingList[]>([])
   // Nigeria ops action queues (6.1, P2-5)
   const [pendingManifests, setPendingManifests] = useState<Manifest[]>([])
   const [openDisputes, setOpenDisputes] = useState<CBMDispute[]>([])
-  const [recentPayments, setRecentPayments] = useState<RecentPayment[]>([])
+  // Bottom two-column: money to collect (oldest outstanding) + goods to release.
+  const [outstanding, setOutstanding] = useState<Billing[]>([])
+  const [awaitingPickup, setAwaitingPickup] = useState<ReleaseNote[]>([])
   const [readyForPickup, setReadyForPickup] = useState<number | null>(null)
 
   const isAdmin = session?.role === 'tenant_admin'
@@ -159,28 +81,14 @@ export function Dashboard(): JSX.Element {
     enabled: isAdmin,
   })
 
-  // Recent-containers table + pipeline kanban cards — a bounded visual sample.
-  // The per-stage counts rendered in the kanban come from containerStats, not
-  // from this list, so they remain accurate beyond the sample size.
+  // Admin "Recent containers" table — a bounded visual sample. (Nigeria's
+  // pipeline section fetches its own complete, stage-filtered list.)
   useEffect(() => {
+    if (!isAdmin) return
     void containersApi.list({})
       .then((r) => setContainers(r.data))
       .catch(() => undefined)
-  }, [])
-
-  // 6.1 "Incoming containers" — queried directly (still at sea, soonest ETA
-  // first; Postgres ASC sorts NULL ETAs last) so the list is correct at scale.
-  useEffect(() => {
-    void containersApi
-      .list({
-        status: 'sealed,in_transit',
-        sort: 'estimated_arrival_date',
-        direction: 'asc',
-        limit: 5,
-      })
-      .then((r) => setIncoming(r.data))
-      .catch(() => undefined)
-  }, [])
+  }, [isAdmin])
 
   // Nigeria ops: packing-list approval queue (6.1)
   useEffect(() => {
@@ -205,12 +113,16 @@ export function Dashboard(): JSX.Element {
     void disputeApi.list({ status: 'submitted', limit: 10 })
       .then((r) => setOpenDisputes(r.data))
       .catch(() => setOpenDisputes([]))
-    void billingApi.recentPayments(6)
-      .then(setRecentPayments)
-      .catch(() => setRecentPayments([]))
+    // Money to collect — unpaid/partial billing, oldest billed first so the
+    // most overdue (and highest storage-fee risk) surfaces at the top.
+    void billingApi.list({ status: 'unpaid,partially_paid', sort: 'billed_at', direction: 'asc', limit: 6 })
+      .then((r) => setOutstanding(r.data))
+      .catch(() => setOutstanding([]))
+    // Goods to release — active release notes (released, not yet collected).
+    // One call drives both the "Ready for pickup" stat count and the list.
     void releaseNotesApi.list({ status: 'active', limit: 50 })
-      .then((r) => setReadyForPickup(r.data.length))
-      .catch(() => setReadyForPickup(null))
+      .then((r) => { setReadyForPickup(r.data.length); setAwaitingPickup(r.data) })
+      .catch(() => { setReadyForPickup(null); setAwaitingPickup([]) })
   }, [isNigeria])
 
   const firstName = session?.name?.split(' ')[0] ?? 'team'
@@ -231,8 +143,20 @@ export function Dashboard(): JSX.Element {
         <p style={{ fontSize: 14, color: 'var(--color-ink-3)', margin: '6px 0 0' }}>{summaryLine}</p>
       </div>
 
+      {/* Headline + financial KPIs. The per-stage operational counts
+          (in transit / arrived / customs / at warehouse …) live in the
+          Container pipeline rail below, so they're not duplicated here. */}
       <div className={styles.statsRow}>
         <StatCard label="Containers" value={containerStats?.total ?? '—'} icon="container" />
+        {isNigeria && (
+          <StatCard
+            label="Ready for pickup"
+            value={readyForPickup ?? '—'}
+            icon="package"
+            sublabel="active release notes"
+            accentColor="var(--color-primary)"
+          />
+        )}
         <StatCard label="Unpaid billing" value={billingStats?.unpaid ?? '—'} icon="coin" />
         <StatCard
           label="Outstanding"
@@ -242,16 +166,11 @@ export function Dashboard(): JSX.Element {
         />
         {isAdmin && <StatCard label="Active customers" value={customerStats?.active ?? '—'} icon="users" />}
         {isAdmin && <StatCard label="Open claims" value={claimStats?.open ?? '—'} icon="warn" sublabel={claimStats?.open ? 'needs attention' : 'no active disputes'} />}
-        {isNigeria && <StatCard label="Ready for pickup" value={readyForPickup ?? '—'} icon="package" sublabel="active release notes" />}
       </div>
 
       {isNigeria && (
         <div style={{ marginTop: 8, marginBottom: 20 }}>
-          <Card padding={20}>
-            <SectionHead title="Container pipeline" sub="Every container by stage — click a card to open it" />
-            <div style={{ height: 12 }} />
-            <PipelineKanban containers={containers.filter((c) => c.status !== 'cancelled')} counts={containerStats} onOpen={(id) => navigate(`/containers/${id}`)} />
-          </Card>
+          <ContainerPipeline counts={containerStats} />
           {pendingPls.length > 0 && (
             <div style={{ marginTop: 16 }}>
               <Card padding={0}>
@@ -335,69 +254,57 @@ export function Dashboard(): JSX.Element {
             </div>
           )}
 
-          {/* 6.1 bottom two-column — Recent payments + Incoming containers */}
+          {/* Bottom two-column — what Nigeria ops chases: money in + goods out. */}
           <div className={styles.dashGrid2} style={{ marginTop: 16 }}>
-            {recentPayments.length > 0 && (
+            {outstanding.length > 0 && (
               <Card padding={0}>
                 <div style={{ padding: '18px 20px' }}>
                   <SectionHead
-                    title="Recent payments"
-                    sub="Latest confirmed across all billings"
+                    title="Outstanding invoices"
+                    sub="Oldest unpaid first — chase these before storage fees mount"
                     action={<Button variant="secondary" size="sm" onClick={() => navigate('/billing')}>View all →</Button>}
                   />
                 </div>
                 <Table
                   dense
-                  cardBreakpoint={600}
-                  columns={[{ title: 'Customer' }, { title: 'Amount (₦)', align: 'right' }, { title: 'Method' }, { title: 'Date' }]}
-                  rows={recentPayments.map((p) => ({
+                  cardBreakpoint={420}
+                  columns={[{ title: 'Customer' }, { title: 'Container' }, { title: 'Outstanding (₦)', align: 'right' }, { title: '', width: '56px' }]}
+                  rows={outstanding.map((b) => ({
                     cells: [
-                      <UserCell key="cust" name={p.customer_name ?? '—'} email="" />,
-                      <Mono key="amt">₦{Number(p.amount_ngn).toLocaleString()}</Mono>,
-                      <span key="method" style={{ fontSize: 12, color: 'var(--color-ink-3)' }}>{p.payment_method?.replace(/_/g, ' ') ?? '—'}</span>,
-                      <span key="date" style={{ fontSize: 12, color: 'var(--color-ink-3)' }}>{p.payment_date ?? p.created_at.slice(0, 10)}</span>,
+                      <UserCell key="cust" name={b.customer_name ?? '—'} email="" />,
+                      <Mono key="ctn">{b.container_number ?? '—'}</Mono>,
+                      <Mono key="out" color="var(--color-error)">₦{Number(b.outstanding_ngn).toLocaleString()}</Mono>,
+                      <Button key="view" variant="ghost" size="sm" onClick={() => navigate(`/billing/${b.id}`)}>View</Button>,
                     ],
                   }))}
                 />
               </Card>
             )}
-            {incoming.length > 0 && (
+            {awaitingPickup.length > 0 && (
               <Card padding={0}>
                 <div style={{ padding: '18px 20px' }}>
                   <SectionHead
-                    title="Incoming containers"
-                    sub={`Next ${incoming.length} expected arrival${incoming.length === 1 ? '' : 's'}`}
-                    action={<Button variant="secondary" size="sm" onClick={() => navigate('/containers')}>View all →</Button>}
+                    title="Awaiting pickup"
+                    sub="Released — not yet collected by the customer"
+                    action={<Button variant="secondary" size="sm" onClick={() => navigate('/release-notes')}>View all →</Button>}
                   />
                 </div>
-                <div style={{ padding: '0 20px 16px' }}>
-                  {incoming.map((c, i) => (
-                    <button
-                      key={c.id}
-                      type="button"
-                      onClick={() => navigate(`/containers/${c.id}`)}
-                      style={{
-                        display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12,
-                        width: '100%', textAlign: 'left', padding: '10px 0', cursor: 'pointer',
-                        background: 'none', border: 0,
-                        borderTop: i > 0 ? '1px solid var(--color-line-soft)' : 'none',
-                      }}
-                    >
-                      <div style={{ minWidth: 0 }}>
-                        <Mono>{c.container_number}</Mono>
-                        <div style={{ fontSize: 11, color: 'var(--color-ink-4)', marginTop: 2 }}>
-                          {c.vessel_name ?? c.origin}
-                        </div>
-                      </div>
-                      <div style={{ textAlign: 'right', flexShrink: 0 }}>
-                        <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--color-ink)' }}>{etaLabel(c.estimated_arrival_date)}</div>
-                        <div style={{ fontSize: 11, color: 'var(--color-ink-4)', marginTop: 2 }}>
-                          {c.estimated_arrival_date?.slice(0, 10) ?? 'ETA unknown'}
-                        </div>
-                      </div>
-                    </button>
-                  ))}
-                </div>
+                <Table
+                  dense
+                  cardBreakpoint={420}
+                  columns={[{ title: 'Customer' }, { title: 'Container' }, { title: 'Cartons', align: 'right' }, { title: 'Status' }, { title: '', width: '56px' }]}
+                  rows={awaitingPickup.slice(0, 6).map((n) => ({
+                    cells: [
+                      <UserCell key="cust" name={n.customer_name ?? '—'} email="" />,
+                      <Mono key="ctn">{n.container_number ?? '—'}</Mono>,
+                      <Mono key="ctns">{n.total_cartons_for_customer}</Mono>,
+                      n.is_on_credit
+                        ? <Badge key="st" variant="warning">On credit</Badge>
+                        : <Badge key="st" variant="info">Ready</Badge>,
+                      <Button key="view" variant="ghost" size="sm" onClick={() => navigate(`/release-notes/${n.id}`)}>View</Button>,
+                    ],
+                  }))}
+                />
               </Card>
             )}
           </div>

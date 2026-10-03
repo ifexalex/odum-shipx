@@ -737,3 +737,48 @@ class TestMinCbmAndBaleSizing:
         # Non-positive / malformed falls back to the default.
         with patch.object(cr, "execute_with_tenant", return_value=[{"config_value": {"value": 0}}]):
             assert cr.get_min_cbm_per_item("t1") == Decimal("0.1")
+
+
+class TestResolveArrivalWarehouse:
+    """The packing-list arrival-warehouse resolver: validates an explicit id,
+    falls back to the tenant default, and tolerates a tenant with none."""
+
+    _TENANT = "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa"
+
+    def test_explicit_valid_id_returns_that_warehouse(self):
+        from unittest.mock import patch
+
+        from services.packing_list.service import _resolve_arrival_warehouse
+
+        row = {"id": "wh-1", "name": "Lagos"}
+        with patch("services.payment_release.repository.get_warehouse_by_id", return_value=row):
+            result = _resolve_arrival_warehouse(self._TENANT, "wh-1")
+        assert result["id"] == "wh-1"
+
+    def test_explicit_unknown_id_raises(self):
+        from unittest.mock import patch
+
+        from services.packing_list.service import _resolve_arrival_warehouse
+        from shared.exceptions import ResourceNotFoundError
+
+        with patch("services.payment_release.repository.get_warehouse_by_id", return_value=None):
+            with pytest.raises(ResourceNotFoundError):
+                _resolve_arrival_warehouse(self._TENANT, "nope")
+
+    def test_omitted_id_falls_back_to_default(self):
+        from unittest.mock import patch
+
+        from services.packing_list.service import _resolve_arrival_warehouse
+
+        default = {"id": "wh-default", "name": "HQ"}
+        with patch("services.payment_release.repository.get_default_warehouse", return_value=default):
+            result = _resolve_arrival_warehouse(self._TENANT, None)
+        assert result["id"] == "wh-default"
+
+    def test_omitted_id_with_no_default_returns_none(self):
+        from unittest.mock import patch
+
+        from services.packing_list.service import _resolve_arrival_warehouse
+
+        with patch("services.payment_release.repository.get_default_warehouse", return_value=None):
+            assert _resolve_arrival_warehouse(self._TENANT, None) is None

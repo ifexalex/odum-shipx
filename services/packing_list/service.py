@@ -36,6 +36,29 @@ from .models import (
 
 logger = logging.getLogger(__name__)
 
+
+def _resolve_arrival_warehouse(tenant_id: str, requested_id: str | None) -> dict[str, Any] | None:
+    """Resolve the packing list's destination warehouse row.
+
+    A caller-supplied id is validated to belong to this tenant (RLS-scoped read);
+    an unknown id raises. When omitted, the tenant's default warehouse is applied
+    so a list always records where the cargo is bound, matching the release-note
+    flow's own default-warehouse fallback. Returns None only when the tenant has
+    no default warehouse at all.
+    """
+    # Imported here (not at module scope) to avoid a package-level import cycle
+    # between the packing_list and payment_release services.
+    from services.payment_release import repository as release_repo
+
+    if requested_id:
+        warehouse = release_repo.get_warehouse_by_id(tenant_id, requested_id)
+        if not warehouse:
+            raise ResourceNotFoundError("warehouse", requested_id)
+        return dict(warehouse)
+    default = release_repo.get_default_warehouse(tenant_id)
+    return dict(default) if default else None
+
+
 # ---------------------------------------------------------------------------
 # State machine
 # ---------------------------------------------------------------------------
@@ -201,6 +224,10 @@ def create_packing_list(
     if not customer:
         raise ResourceNotFoundError("customer", req.customer_id)
 
+    # 2b. Resolve arrival warehouse (explicit id validated; else tenant default)
+    arrival_warehouse = _resolve_arrival_warehouse(tenant_id, req.arrival_warehouse_id)
+    arrival_warehouse_id = str(arrival_warehouse["id"]) if arrival_warehouse else None
+
     # 3. Derive tenant short code + container number
     tenant_short = repo.get_tenant_short(tenant_id)
     container_number = str(container.get("container_number") or "")
@@ -220,6 +247,7 @@ def create_packing_list(
             "reference": reference,
             "loading_date": req.loading_date,
             "delivery_date": req.delivery_date,
+            "arrival_warehouse_id": arrival_warehouse_id,
         },
     )
     if pl is None:
@@ -253,9 +281,10 @@ def create_packing_list(
         ip_address=ip_address,
     )
 
-    # Attach customer_name from the fetched customer record
+    # Attach customer_name + arrival_warehouse_name (RETURNING * has neither join)
     pl_dict = dict(pl)
     pl_dict["customer_name"] = customer.get("name")
+    pl_dict["arrival_warehouse_name"] = arrival_warehouse.get("name") if arrival_warehouse else None
     return _assemble_response(pl_dict, inserted_items)
 
 
@@ -346,6 +375,10 @@ def update_packing_list(
 
     # Shipment-level dates are editable while the list is a draft/rejected.
     repo.set_packing_list_dates(tenant_id, pl_id, req.loading_date, req.delivery_date)
+
+    # Arrival warehouse is editable too (explicit id validated; else default).
+    arrival_warehouse = _resolve_arrival_warehouse(tenant_id, req.arrival_warehouse_id)
+    repo.set_packing_list_warehouse(tenant_id, pl_id, str(arrival_warehouse["id"]) if arrival_warehouse else None)
 
     # If revising a rejected list, transition back to draft
     updated_pl: dict[str, Any]

@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState, type JSX } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { formatCbm } from '../../api/decimal'
-import { manifestApi, type VerificationStatus } from '../../api/manifest'
+import { manifestApi, orderedPackageMix, type Manifest, type VerificationStatus } from '../../api/manifest'
 import { isManifestOverdue as isOverdue } from '../../api/manifestRules'
 import { useManifestList } from '../../hooks/useManifests'
 import { Badge, Banner, Card, Chip, Mono, StatCard, Table, ViewLink, ListFooter, type BadgeVariant } from '../../design/components'
@@ -23,6 +23,32 @@ const STATUS_VARIANT: Record<VerificationStatus, BadgeVariant> = {
 function statusLabel(status: VerificationStatus): string {
   if (status === 'discrepancies_found') return 'Discrepancies found'
   return status[0]!.toUpperCase() + status.slice(1)
+}
+
+// Package breakdown per container — "120 ctn · 8 bale · 30 bag" — so staff see
+// what kinds of goods are inside, not just a single (misleading) carton count.
+function PackageMix({ manifest }: { manifest: Manifest }): JSX.Element {
+  const parts = orderedPackageMix(manifest.package_mix)
+  if (parts.length === 0) {
+    return <Mono>{manifest.total_cartons || '—'}</Mono>
+  }
+  return (
+    <span className={styles.mix}>
+      {parts.map((p, i) => (
+        <span key={p.unit} className={styles.mixPart}>
+          {i > 0 && <span className={styles.mixDot}>·</span>}
+          <Mono>{p.qty}</Mono>
+          <span className={styles.mixUnit}>{p.abbr}</span>
+        </span>
+      ))}
+    </span>
+  )
+}
+
+function fmtWeight(kg: string | null | undefined): string {
+  const n = Number(kg)
+  if (!kg || Number.isNaN(n) || n === 0) return '—'
+  return `${n.toLocaleString(undefined, { maximumFractionDigits: 0 })} kg`
 }
 
 type ManifestStats = Awaited<ReturnType<typeof manifestApi.stats>>
@@ -96,8 +122,9 @@ export function ManifestList(): JSX.Element {
             columns={[
               { title: 'Container' },
               { title: 'Customers', align: 'right' },
-              { title: 'Cartons', align: 'right' },
+              { title: 'Packages' },
               { title: 'CBM', align: 'right' },
+              { title: 'Weight', align: 'right' },
               { title: 'Status' },
               { title: '', width: '40px' },
             ]}
@@ -108,8 +135,9 @@ export function ManifestList(): JSX.Element {
                 cells: [
                   <Mono key="container">{mf.container_number ?? mf.container_id}</Mono>,
                   <Mono key="customers">{mf.total_customers}</Mono>,
-                  <Mono key="cartons">{mf.total_cartons}</Mono>,
+                  <PackageMix key="packages" manifest={mf} />,
                   <Mono key="cbm">{formatCbm(mf.total_cbm)}</Mono>,
+                  <span key="weight" style={{ fontSize: 12, color: 'var(--color-ink-3)' }}>{fmtWeight(mf.total_weight_kg)}</span>,
                   <span key="status" style={{ display: 'inline-flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
                     <Badge variant={STATUS_VARIANT[mf.verification_status]}>
                       {statusLabel(mf.verification_status)}

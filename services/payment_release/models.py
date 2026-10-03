@@ -134,6 +134,18 @@ class CreateWarehouseRequest(BaseModel):
     phone: str | None = None
 
 
+class UpdateWarehouseRequest(BaseModel):
+    """Partial edit of a warehouse's letterhead fields. Every field is optional;
+    only those sent are patched (service uses exclude_unset). is_default is not
+    editable here — promoting a default is the dedicated set-default route."""
+
+    name: str | None = Field(default=None, min_length=1, max_length=120)
+    address: str | None = None
+    city: str | None = None
+    state: str | None = None
+    phone: str | None = None
+
+
 # ---------------------------------------------------------------------------
 # Response models
 # ---------------------------------------------------------------------------

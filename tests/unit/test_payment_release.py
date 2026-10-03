@@ -2157,3 +2157,73 @@ class TestWarehouses:
 
         assert resp["statusCode"] == 200
         mock_set.assert_called_once_with(TENANT_ID, "wh-002", actor_id="user-1", actor_role="tenant_admin")
+
+
+class TestWarehouseUpdateAndDeactivate:
+    """Service-level behaviour for the admin warehouse edit/remove operations
+    added alongside the arrival-warehouse feature."""
+
+    def test_update_patches_only_sent_fields(self):
+        from services.payment_release import service
+        from services.payment_release.models import UpdateWarehouseRequest
+
+        existing = {"id": "wh-1", "name": "Lagos", "is_default": False, "is_active": True}
+        req = UpdateWarehouseRequest(phone="08099999999")  # name/city/etc omitted
+        with (
+            patch.object(service.repo, "get_warehouse_by_id", return_value=existing),
+            patch.object(service.repo, "update_warehouse", return_value={**existing, "phone": "08099999999"}) as mock_upd,
+            patch("services.payment_release.service.log_audit"),
+        ):
+            service.update_warehouse(TENANT_ID, "wh-1", req, actor_id="u", actor_role="tenant_admin")
+
+        # exclude_unset → only `phone` reaches the repo, nothing nulled.
+        assert mock_upd.call_args.args[2] == {"phone": "08099999999"}
+
+    def test_update_unknown_warehouse_raises(self):
+        from services.payment_release import service
+        from services.payment_release.models import UpdateWarehouseRequest
+        from shared.exceptions import ResourceNotFoundError
+
+        with patch.object(service.repo, "get_warehouse_by_id", return_value=None):
+            with pytest.raises(ResourceNotFoundError):
+                service.update_warehouse(
+                    TENANT_ID, "missing", UpdateWarehouseRequest(name="X"), actor_id="u", actor_role="tenant_admin"
+                )
+
+    def test_deactivate_default_is_refused(self):
+        from services.payment_release import service
+        from shared.exceptions import BusinessRuleViolationError
+
+        with patch.object(
+            service.repo, "get_warehouse_by_id", return_value={"id": "wh-1", "is_default": True, "is_active": True}
+        ):
+            with pytest.raises(BusinessRuleViolationError):
+                service.deactivate_warehouse(TENANT_ID, "wh-1", actor_id="u", actor_role="tenant_admin")
+
+    def test_deactivate_last_active_is_refused(self):
+        from services.payment_release import service
+        from shared.exceptions import BusinessRuleViolationError
+
+        with (
+            patch.object(
+                service.repo, "get_warehouse_by_id", return_value={"id": "wh-1", "is_default": False, "is_active": True}
+            ),
+            patch.object(service.repo, "count_active_warehouses", return_value=1),
+        ):
+            with pytest.raises(BusinessRuleViolationError):
+                service.deactivate_warehouse(TENANT_ID, "wh-1", actor_id="u", actor_role="tenant_admin")
+
+    def test_deactivate_non_default_succeeds(self):
+        from services.payment_release import service
+
+        existing = {"id": "wh-2", "is_default": False, "is_active": True}
+        with (
+            patch.object(service.repo, "get_warehouse_by_id", return_value=existing),
+            patch.object(service.repo, "count_active_warehouses", return_value=3),
+            patch.object(service.repo, "update_warehouse", return_value={**existing, "is_active": False}) as mock_upd,
+            patch("services.payment_release.service.log_audit"),
+        ):
+            result = service.deactivate_warehouse(TENANT_ID, "wh-2", actor_id="u", actor_role="tenant_admin")
+
+        assert mock_upd.call_args.args[2] == {"is_active": False}
+        assert result["is_active"] is False

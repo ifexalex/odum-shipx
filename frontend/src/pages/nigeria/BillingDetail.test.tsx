@@ -5,7 +5,7 @@ import { MemoryRouter, Route, Routes } from 'react-router-dom'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { SessionContext, type SessionContextValue } from '../../auth/SessionContext'
 import type { Session } from '../../auth/types'
-import { billingApi, disputeApi, paymentClaimApi } from '../../api/billing'
+import { billingApi, carryoverApi, disputeApi, paymentClaimApi } from '../../api/billing'
 import { BillingDetail } from './BillingDetail'
 
 vi.mock('../../api/billing', () => ({
@@ -45,6 +45,11 @@ function makeCtx(role = 'nigeria_office_staff'): SessionContextValue {
 
 const BILLING_STUB = {
   id: 'b1',
+  invoice_number: 'ACM-INV-0001',
+  customer_id: 'cust1',
+  customer_name: 'Amara Nnamani',
+  customer_phone: '+2348090000001',
+  customer_email: 'amara@example.com',
   container_id: 'c1',
   container_number: 'ACME001',
   total_cbm: '2.500000',
@@ -136,6 +141,34 @@ describe('BillingDetail', () => {
     renderPage('china_office_staff')
     await waitFor(() => expect(screen.getByText('ACME001')).toBeInTheDocument())
     expect(screen.queryByRole('button', { name: 'Record payment' })).not.toBeInTheDocument()
+  })
+
+  it('shows customer + invoice context and the outstanding balance in the record-payment modal', async () => {
+    renderPage()
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Record payment' })).toBeInTheDocument())
+    await userEvent.click(screen.getByRole('button', { name: 'Record payment' }))
+    const dialog = screen.getByRole('dialog')
+    expect(within(dialog).getByText('Amara Nnamani')).toBeInTheDocument()
+    expect(within(dialog).getByText('+2348090000001')).toBeInTheDocument()
+    expect(within(dialog).getByText('ACM-INV-0001')).toBeInTheDocument()
+    expect(within(dialog).getByText('Outstanding')).toBeInTheDocument()
+    // Amount is pre-filled with the outstanding balance.
+    expect(within(dialog).getByLabelText('Amount (₦)', { exact: false })).toHaveValue(174375)
+  })
+
+  it('scopes the carryover picker to the billing’s customer', async () => {
+    vi.mocked(carryoverApi.list).mockResolvedValue({
+      data: [],
+      meta: { pagination: { has_more: false, next_cursor: null, total_count: 0 } },
+    })
+    renderPage()
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Apply carryover' })).toBeInTheDocument())
+    await userEvent.click(screen.getByRole('button', { name: 'Apply carryover' }))
+    await waitFor(() =>
+      expect(carryoverApi.list).toHaveBeenCalledWith(
+        expect.objectContaining({ status: 'outstanding', customer_id: 'cust1' }),
+      ),
+    )
   })
 
   it('shows overpayment warning when entered amount exceeds outstanding', async () => {

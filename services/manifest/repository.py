@@ -24,15 +24,38 @@ logger = logging.getLogger(__name__)
 # ---------------------------------------------------------------------------
 
 
+# Per-manifest package breakdown by unit (carton/bag/pallet/bale/sack), summing
+# each item's quantity — a row is a bulk quantity since migration 040, so a row
+# count no longer equals a package count. Units left blank fall under
+# 'unspecified'. Built from the manifest's *approved* packing lists, matching
+# get_customer_summaries. Returns a JSONB map {unit: qty}, NULL when empty.
+_PACKAGE_MIX_LATERAL = """
+    LEFT JOIN LATERAL (
+        SELECT jsonb_object_agg(unit, qty) AS package_mix
+        FROM (
+            SELECT COALESCE(NULLIF(pli.package_unit, ''), 'unspecified') AS unit,
+                   SUM(COALESCE(pli.quantity, 1))::int                   AS qty
+            FROM packing_list pl
+            JOIN packing_list_item pli ON pli.packing_list_id = pl.id
+            WHERE pl.manifest_id = m.id
+              AND pl.tenant_id   = m.tenant_id
+              AND pl.status      = 'approved'
+            GROUP BY 1
+        ) per_unit
+    ) pm ON TRUE
+"""
+
+
 def get_manifest_by_id(tenant_id: str, manifest_id: str) -> dict[str, Any] | None:
-    """Fetch manifest row joined with container_number and container_status."""
+    """Fetch manifest row joined with container_number, container_status, package_mix."""
     rows = execute_with_tenant(
         tenant_id,
-        """
-        SELECT m.*, co.container_number, co.status AS container_status
+        f"""
+        SELECT m.*, co.container_number, co.status AS container_status, pm.package_mix
         FROM manifest m
         LEFT JOIN container co
                ON co.id = m.container_id AND co.tenant_id = m.tenant_id
+        {_PACKAGE_MIX_LATERAL}
         WHERE m.tenant_id = %s AND m.id = %s
         LIMIT 1
         """,
@@ -65,10 +88,11 @@ def list_manifests(
 
     where_clause = " AND ".join(f"m.{c}" for c in conditions)
     inner = f"""
-        SELECT m.*, co.container_number, co.status AS container_status
+        SELECT m.*, co.container_number, co.status AS container_status, pm.package_mix
         FROM manifest m
         LEFT JOIN container co
                ON co.id = m.container_id AND co.tenant_id = m.tenant_id
+        {_PACKAGE_MIX_LATERAL}
         WHERE {where_clause}
     """
     base = f"SELECT * FROM ({inner}) AS t WHERE 1=1"

@@ -6,9 +6,10 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { manifestApi, type Manifest } from '../../api/manifest'
 import { ManifestList } from './ManifestList'
 
-vi.mock('../../api/manifest', () => ({
-  manifestApi: { list: vi.fn(), stats: vi.fn() },
-}))
+vi.mock('../../api/manifest', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../../api/manifest')>()
+  return { ...actual, manifestApi: { list: vi.fn(), stats: vi.fn() } }
+})
 
 function renderPage() {
   return render(
@@ -29,6 +30,7 @@ function manifestStub(overrides: Partial<Manifest> = {}): Manifest {
     total_cartons: 64,
     total_weight_kg: '412.000',
     total_cbm: '8.420000',
+    package_mix: { carton: 50, bale: 8, bag: 6 },
     verification_status: 'pending',
     verified_by: null,
     verified_at: null,
@@ -62,6 +64,30 @@ describe('ManifestList', () => {
     await waitFor(() => expect(screen.getByText('HLBU9384712')).toBeInTheDocument())
     expect(screen.getByText('8.420')).toBeInTheDocument()
     expect(within(screen.getByRole('table')).getByText('Pending')).toBeInTheDocument()
+  })
+
+  it('shows the package breakdown (ctn/bale/bag) and total weight per container', async () => {
+    renderPage()
+    const row = (await screen.findByText('HLBU9384712')).closest('tr')!
+    // Each package unit's abbreviated label (counts like 8 collide with other
+    // columns, so assert the unique unit labels + the non-colliding counts).
+    expect(within(row).getByText('ctn')).toBeInTheDocument()
+    expect(within(row).getByText('bale')).toBeInTheDocument()
+    expect(within(row).getByText('bag')).toBeInTheDocument()
+    expect(within(row).getByText('50')).toBeInTheDocument()
+    expect(within(row).getByText('6')).toBeInTheDocument()
+    // Total weight column.
+    expect(within(row).getByText('412 kg')).toBeInTheDocument()
+  })
+
+  it('falls back to the carton count when no package mix is present', async () => {
+    vi.mocked(manifestApi.list).mockResolvedValue({
+      data: [manifestStub({ package_mix: null })],
+      meta: { pagination: { has_more: false, next_cursor: null, total_count: 1 } },
+    })
+    renderPage()
+    const row = within(await screen.findByRole('table')).getByText('HLBU9384712').closest('tr')!
+    expect(within(row).getByText('64')).toBeInTheDocument()
   })
 
   it('refetches with the verification_status filter when a chip is clicked', async () => {

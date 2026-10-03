@@ -125,6 +125,39 @@ describe('ContainerList', () => {
     await waitFor(() => expect(screen.getByText('MSCU1234567')).toBeInTheDocument())
   })
 
+  it('shows container utilization (packed CBM + % of capacity) when capacity is known', async () => {
+    vi.mocked(containersApi.list).mockResolvedValue({
+      data: [{ ...containerStub, capacity_cbm: '76.00', total_cbm_packed: '68.40' }],
+      meta: { pagination: { has_more: false, next_cursor: null, total_count: 1 } },
+    } as never)
+    renderPage('china_office_staff')
+    const row = (await screen.findByText('MSCU1234567')).closest('tr')!
+    expect(within(row).getByText('68.4')).toBeInTheDocument()
+    expect(within(row).getByText('90%')).toBeInTheDocument() // 68.4 / 76 ≈ 90%
+  })
+
+  it('falls back to the container-type capacity estimate when no preset is set', async () => {
+    // "40ft HC" → ~76 m³ estimate; 38.0 packed → 50%.
+    vi.mocked(containersApi.list).mockResolvedValue({
+      data: [{ ...containerStub, capacity_cbm: null, container_type: "40' High Cube (HC)", total_cbm_packed: '38.00' }],
+      meta: { pagination: { has_more: false, next_cursor: null, total_count: 1 } },
+    } as never)
+    renderPage('china_office_staff')
+    const row = (await screen.findByText('MSCU1234567')).closest('tr')!
+    expect(within(row).getByText('50%')).toBeInTheDocument()
+  })
+
+  it('shows just the packed CBM (no %) when capacity is unknown', async () => {
+    vi.mocked(containersApi.list).mockResolvedValue({
+      data: [{ ...containerStub, capacity_cbm: null, container_type: null, total_cbm_packed: '42.00' }],
+      meta: { pagination: { has_more: false, next_cursor: null, total_count: 1 } },
+    } as never)
+    renderPage('china_office_staff')
+    const row = (await screen.findByText('MSCU1234567')).closest('tr')!
+    expect(within(row).getByText('42.0')).toBeInTheDocument()
+    expect(within(row).queryByText(/%$/)).toBeNull()
+  })
+
   it('shows the create container action only for china_office_staff', async () => {
     vi.mocked(containersApi.list).mockResolvedValue({
       data: [],

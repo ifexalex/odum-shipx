@@ -54,6 +54,7 @@ from .models import (
     RejectPaymentClaimRequest,
     SplitReleaseNoteRequest,
     SubmitPaymentClaimRequest,
+    UpdateWarehouseRequest,
     VerifyOnlinePaymentRequest,
 )
 
@@ -488,6 +489,20 @@ def _warehouse_routes(event: dict[str, Any], parts: list[str], method: str, ctx:
     if warehouse_id and action == "set-default" and method == "PATCH":
         ctx.assert_role(*_WAREHOUSE_WRITE_ROLES)
         result = service.set_default_warehouse(ctx.tenant_id, warehouse_id, actor_id=ctx.user_id, actor_role=str(ctx.role))
+        return success(result, request_id=request_id)
+
+    # PATCH /v1/warehouses/{id} — edit letterhead fields
+    if warehouse_id and action is None and method == "PATCH":
+        ctx.assert_role(*_WAREHOUSE_WRITE_ROLES)
+        body = _parse_body(event)
+        req = parse_validated(UpdateWarehouseRequest, body)
+        result = service.update_warehouse(ctx.tenant_id, warehouse_id, req, actor_id=ctx.user_id, actor_role=str(ctx.role))
+        return success(result, request_id=request_id)
+
+    # DELETE /v1/warehouses/{id} — soft-deactivate
+    if warehouse_id and action is None and method == "DELETE":
+        ctx.assert_role(*_WAREHOUSE_WRITE_ROLES)
+        result = service.deactivate_warehouse(ctx.tenant_id, warehouse_id, actor_id=ctx.user_id, actor_role=str(ctx.role))
         return success(result, request_id=request_id)
 
     raise ResourceNotFoundError("route", "/".join(parts))

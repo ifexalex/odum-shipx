@@ -791,30 +791,10 @@ def _tenant_admin_routes(
                 service.delete_container_capacity(tenant_id, capacity_id, actor_id=ctx.user_id, ip_address=ip_address)
                 return no_content(request_id=request_id)
 
-    # /v1/tenant/warehouses[/{id}]
-    if resource == "warehouses":
-        warehouse_id = parts[3] if len(parts) > 3 else None
-
-        if not warehouse_id:
-            if method == "POST":
-                body = _parse_body(event)
-                result = service.create_warehouse(tenant_id, body, actor_id=ctx.user_id, ip_address=ip_address)
-                return created(
-                    result,
-                    location=f"/v1/tenant/warehouses/{result['id']}",
-                    request_id=request_id,
-                )
-            if method == "GET":
-                include_inactive = _qp(event, "include_inactive") in ("true", "1")
-                return success(service.list_warehouses(tenant_id, include_inactive), request_id=request_id)
-        else:
-            if method == "PATCH":
-                body = _parse_body(event)
-                result = service.update_warehouse(tenant_id, warehouse_id, body, actor_id=ctx.user_id, ip_address=ip_address)
-                return success(result, request_id=request_id)
-            if method == "DELETE":
-                service.deactivate_warehouse(tenant_id, warehouse_id, actor_id=ctx.user_id, ip_address=ip_address)
-                return no_content(request_id=request_id)
+    # Warehouse CRUD lives on the payment_release service's /v1/warehouses
+    # surface (the one the frontend uses); a duplicate /v1/tenant/warehouses
+    # implementation that lived here was removed — it was never wired to the
+    # frontend, Terraform, or Postman.
 
     raise ResourceNotFoundError("route", "/".join(parts))
 

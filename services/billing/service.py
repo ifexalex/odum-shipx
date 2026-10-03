@@ -28,6 +28,10 @@ from . import repository as repo
 
 logger = logging.getLogger(__name__)
 
+# Sub-kobo balance noise is treated as settled when recomputing payment status
+# (mirrors payment_release.service._TOLERANCE for the record-payment path).
+_CARRYOVER_TOLERANCE = Decimal("0.01")
+
 # ---------------------------------------------------------------------------
 # CBM dispute state machine
 # ---------------------------------------------------------------------------
@@ -355,6 +359,8 @@ def _enrich_billing(tenant_id: str, row: dict[str, Any]) -> dict[str, Any]:
         "invoice_number": row.get("invoice_number"),
         "customer_id": str(row["customer_id"]) if row.get("customer_id") else None,
         "customer_name": row.get("customer_name"),
+        "customer_phone": row.get("customer_phone"),
+        "customer_email": row.get("customer_email"),
         "container_id": str(row["container_id"]),
         "container_number": row.get("container_number"),
         "total_cbm": row["total_cbm"],
@@ -763,6 +769,27 @@ def apply_carryover(
     updated = repo.increment_billing_misc_fees(tenant_id, billing_id, carryover_amount)
     if updated is None:
         raise RuntimeError("increment_billing_misc_fees returned None unexpectedly")
+
+    # Adding carried-forward debt raises the total, so the balance (a generated
+    # column) grows — recompute the money status from it so a previously 'paid'
+    # record doesn't stay 'paid' while now owing more. Only the four money
+    # statuses are recomputed; 'released_with_outstanding' is a release state
+    # left untouched ('cancelled'/'waived' are already blocked above).
+    if billing["status"] in {"unpaid", "partially_paid", "paid", "overpaid"}:
+        new_balance = Decimal(str(updated["balance_ngn"]))
+        paid = Decimal(str(updated["amount_paid_ngn"]))
+        if abs(new_balance) <= _CARRYOVER_TOLERANCE:
+            new_status = "paid"
+        elif new_balance < -_CARRYOVER_TOLERANCE:
+            new_status = "overpaid"
+        elif paid > 0:
+            new_status = "partially_paid"
+        else:
+            new_status = "unpaid"
+        if new_status != billing["status"]:
+            restatused = repo.set_billing_status(tenant_id, billing_id, new_status)
+            if restatused is not None:
+                updated = restatused
 
     log_audit(
         tenant_id=tenant_id,

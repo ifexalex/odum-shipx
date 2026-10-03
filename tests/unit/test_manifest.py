@@ -336,3 +336,32 @@ class TestEvidenceUpload:
         assert ev["download_url"] == "https://s3/download"
         assert ev["file_name"] == "x.jpg"
         assert "file_key" not in ev  # internal key not leaked to the wire
+
+
+class TestManifestPackageMixQuery:
+    """The manifest list + detail queries carry a live package-mix breakdown
+    (carton/bale/bag/sack/pallet counts) aggregated from approved packing-list
+    items. Guards the SQL against accidental removal (mocked DB, so we inspect
+    the query string rather than run it)."""
+
+    def test_list_query_includes_package_mix_aggregation(self):
+        from services.manifest import repository as repo
+
+        with patch.object(repo, "execute_with_tenant", return_value=[]) as mock_exec:
+            repo.list_manifests(TENANT_ID, {}, limit=10, cursor=None)
+
+        sql = mock_exec.call_args.args[1]
+        assert "package_mix" in sql
+        assert "jsonb_object_agg" in sql
+        assert "pli.package_unit" in sql
+        assert "pl.status      = 'approved'" in sql
+
+    def test_detail_query_includes_package_mix_aggregation(self):
+        from services.manifest import repository as repo
+
+        with patch.object(repo, "execute_with_tenant", return_value=[]) as mock_exec:
+            repo.get_manifest_by_id(TENANT_ID, "mf-1")
+
+        sql = mock_exec.call_args.args[1]
+        assert "package_mix" in sql
+        assert "jsonb_object_agg" in sql

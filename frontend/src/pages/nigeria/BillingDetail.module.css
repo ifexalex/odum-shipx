@@ -53,6 +53,25 @@
   margin-top: 4px;
   font-size: 13px;
   color: var(--color-text-muted);
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 8px;
+  align-items: center;
+}
+
+.heroContacts {
+  margin-top: 6px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 14px;
+  font-size: 12.5px;
+  color: var(--color-text-muted);
+}
+
+.heroContact {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
 }
 
 .heroActions {
@@ -212,6 +231,80 @@
 
 .modalBanner {
   margin-bottom: 4px;
+}
+
+/* Record-payment context: who is paying + for what, before the inputs */
+.modalSub {
+  margin: -8px 0 4px;
+  font-size: 13px;
+  color: var(--color-ink-3);
+}
+.payCtx {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 14px 16px;
+  background: var(--color-surface-muted);
+  border: 1px solid var(--color-line-soft);
+  border-radius: var(--radius-md);
+}
+.payCtxCustomer {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.payCtxName {
+  font-weight: 700;
+  font-size: 14px;
+  color: var(--color-ink);
+}
+.payCtxContacts {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 14px;
+  font-size: 12.5px;
+  color: var(--color-ink-3);
+}
+.payCtxContact {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+}
+.payCtxMeta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 14px;
+  font-size: 12.5px;
+  color: var(--color-ink-3);
+  border-top: 1px solid var(--color-line-soft);
+  padding-top: 10px;
+}
+.paySummary {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 8px;
+  border-top: 1px solid var(--color-line-soft);
+  padding-top: 10px;
+}
+.paySummaryItem {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.paySummaryLabel {
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  color: var(--color-ink-4);
+}
+.paySummaryValue {
+  font-size: 15px;
+  font-weight: 700;
+  color: var(--color-ink);
+  font-variant-numeric: tabular-nums;
+}
+.paySummaryValueOutstanding {
+  color: var(--color-error);
 }
 
 .modalActions {

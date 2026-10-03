@@ -10,6 +10,7 @@ import {
 } from '../../api/packingList'
 import { containersApi, type Container } from '../../api/tracking'
 import { configApi, customersApi, type CbmRateCurrency, type Customer } from '../../api/tenantManagement'
+import { warehousesApi, type Warehouse } from '../../api/warehouses'
 import { useIdempotencyKey } from '../../api/useIdempotencyKey'
 import { Avatar, Badge, Banner, Button, Card, Combobox, Field, Icon, Kvp, Mono } from '../../design/components'
 import { PageHeader } from '../../shell/PageHeader'
@@ -84,6 +85,8 @@ export function CreatePackingList(): JSX.Element {
   const [containers, setContainers] = useState<Container[]>([])
   const [customerId, setCustomerId] = useState('')
   const [containerId, setContainerId] = useState('')
+  const [warehouses, setWarehouses] = useState<Warehouse[]>([])
+  const [arrivalWarehouseId, setArrivalWarehouseId] = useState('')
   const [loadingDate, setLoadingDate] = useState('')
   const [deliveryDate, setDeliveryDate] = useState('')
   // Minimum billable CBM per item (tenant setting) — tiny parcels are floored
@@ -109,12 +112,20 @@ export function CreatePackingList(): JSX.Element {
       try {
         // Only 'loading' containers can receive new packing lists — sealed/in-transit
         // containers are closed to additions (enforced by the backend too).
-        const [customerResult, containerResult] = await Promise.all([
+        const [customerResult, containerResult, warehouseResult] = await Promise.all([
           customersApi.list(),
           containersApi.list({ status: 'loading' }),
+          warehousesApi.list().catch(() => [] as Warehouse[]),
         ])
         setCustomers(customerResult.data)
         setContainers(containerResult.data)
+        setWarehouses(warehouseResult)
+        // Pre-select the tenant's default warehouse on a fresh create. On edit,
+        // loadDraftForEdit sets the saved value instead (don't clobber it).
+        if (!isEdit) {
+          const def = warehouseResult.find((w) => w.is_default)
+          if (def) setArrivalWarehouseId((prev) => prev || def.id)
+        }
       } catch (err) {
         setError(err instanceof ApiError ? err.message : 'Could not load customers or containers.')
       }
@@ -142,6 +153,7 @@ export function CreatePackingList(): JSX.Element {
         }
         setCustomerId(pl.customer_id)
         setContainerId(pl.container_id)
+        setArrivalWarehouseId(pl.arrival_warehouse_id ?? '')
         setLoadingDate(pl.loading_date ?? '')
         setDeliveryDate(pl.delivery_date ?? '')
         setItems(
@@ -228,6 +240,7 @@ export function CreatePackingList(): JSX.Element {
         const updated = await packingListApi.update(editId!, {
           loading_date: loadingDate || undefined,
           delivery_date: deliveryDate || undefined,
+          arrival_warehouse_id: arrivalWarehouseId || undefined,
           items,
         })
         targetId = updated.id
@@ -238,6 +251,7 @@ export function CreatePackingList(): JSX.Element {
             customer_id: customerId,
             loading_date: loadingDate || undefined,
             delivery_date: deliveryDate || undefined,
+            arrival_warehouse_id: arrivalWarehouseId || undefined,
             items,
           },
           key,
@@ -333,6 +347,37 @@ export function CreatePackingList(): JSX.Element {
               />
               <span className={styles.fieldHelper}>
                 {isEdit ? 'Fixed for this draft' : 'Only containers in Loading status are eligible'}
+              </span>
+            </div>
+          </div>
+
+          <div className={styles.spacerLg} />
+          <SectionHead title="Arrival warehouse" sub="Which destination warehouse this customer's goods are bound for." />
+          <div className={styles.spacerSm} />
+          <div className={styles.grid2}>
+            <div className={styles.selectField}>
+              <label className={styles.selectLabel} htmlFor="warehouseSelect">
+                Arrival warehouse
+              </label>
+              <Combobox
+                id="warehouseSelect"
+                ariaLabel="Arrival warehouse"
+                options={warehouses.map((w) => ({
+                  value: w.id,
+                  label: w.name,
+                  meta: [w.city, w.state].filter(Boolean).join(', ') || undefined,
+                }))}
+                value={arrivalWarehouseId}
+                onChange={setArrivalWarehouseId}
+                disabled={warehouses.length === 0}
+                placeholder={
+                  warehouses.length === 0 ? 'No warehouses configured' : 'Search or select a warehouse…'
+                }
+                searchPlaceholder="Search by name or city…"
+                emptyText="No warehouse matches"
+              />
+              <span className={styles.fieldHelper}>
+                Defaults to your default warehouse — change it per shipment if needed.
               </span>
             </div>
           </div>

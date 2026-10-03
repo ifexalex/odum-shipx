@@ -7,7 +7,9 @@ import {
   canCancelContainer,
   canDeleteContainer,
   containerAdvanceRequirementHint,
+  containerCapacityCbm,
   nextContainerStatus,
+  utilizationLevel,
 } from '../../api/containerRules'
 import { formatCbm } from '../../api/decimal'
 import { packingListApi, type PackingList } from '../../api/packingList'
@@ -146,28 +148,14 @@ function ContainerStepper({ current }: { current: ContainerStatus }): JSX.Elemen
   )
 }
 
-// Approximate usable capacity (m³) by container type, for the utilization bar.
-// Fallback only — containers created with a capacity preset carry an exact
-// capacity_cbm (migration 051). Matched loosely on the free-text container_type
-// for older containers. Returns null when unknown, so the bar is hidden rather
-// than showing a fabricated %.
-function containerCapacityCbm(type: string | null): number | null {
-  if (!type) return null
-  const t = type.toLowerCase()
-  if (t.includes('45')) return 86
-  if (t.includes('hc') || t.includes('high cube')) return 76
-  if (t.includes('40')) return 67
-  if (t.includes('20')) return 33
-  return null
-}
-
 // Utilization colour by *absolute* packed CBM (business rule, not % of
-// capacity): ≥70 well-loaded (green), 65–69 acceptable (yellow), <65
-// under-utilized (red — includes the stated "50 and below"). See
-// 10_api_tracking.md.
+// capacity): ≥70 green, 65–69 yellow, <65 red. Shared level logic +
+// capacity estimate live in api/containerRules.ts; this maps the level to this
+// page's CSS-module fill classes. See 10_api_tracking.md.
 function utilizationColorClass(packedCbm: number): string {
-  if (packedCbm >= 70) return styles.utilFillGreen!
-  if (packedCbm >= 65) return styles.utilFillYellow!
+  const level = utilizationLevel(packedCbm)
+  if (level === 'green') return styles.utilFillGreen!
+  if (level === 'yellow') return styles.utilFillYellow!
   return styles.utilFillRed!
 }
 

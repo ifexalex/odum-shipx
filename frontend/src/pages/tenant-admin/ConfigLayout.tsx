@@ -19,6 +19,7 @@ const SUB_NAV: { icon: IconName; label: string; desc: string; path: string }[] =
   { icon: 'package', label: 'CBM rate', desc: 'Price per cubic metre', path: '/admin/config/cbm-rate' },
   { icon: 'card', label: 'Charge types', desc: 'Custom misc charges', path: '/admin/config/charge-types' },
   { icon: 'container', label: 'Container capacities', desc: 'Capacity presets', path: '/admin/config/container-capacities' },
+  { icon: 'building', label: 'Warehouses', desc: 'Arrival / branch locations', path: '/admin/config/warehouses' },
   { icon: 'bell', label: 'Notifications', desc: 'SMS · WhatsApp · Email', path: '/admin/config/notifications' },
   { icon: 'log', label: 'Webhooks', desc: 'Outbound integrations', path: '/admin/config/webhooks' },
   { icon: 'coin', label: 'Payments', desc: 'Connect your Paystack account', path: '/admin/config/payments' },

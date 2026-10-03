@@ -7,14 +7,18 @@ import { SessionContext, type SessionContextValue } from '../../auth/SessionCont
 import type { Session, UserRole } from '../../auth/types'
 import { ManifestDetail } from './ManifestDetail'
 
-vi.mock('../../api/manifest', () => ({
-  manifestApi: {
-    get: vi.fn(),
-    verify: vi.fn(),
-    resolveDiscrepancy: vi.fn(),
-    getEvidenceUploadUrl: vi.fn(),
-  },
-}))
+vi.mock('../../api/manifest', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../../api/manifest')>()
+  return {
+    ...actual,
+    manifestApi: {
+      get: vi.fn(),
+      verify: vi.fn(),
+      resolveDiscrepancy: vi.fn(),
+      getEvidenceUploadUrl: vi.fn(),
+    },
+  }
+})
 
 function makeSession(role: UserRole): Session {
   return {

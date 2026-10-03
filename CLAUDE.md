@@ -61,6 +61,7 @@ Follow [PEP 8](https://peps.python.org/pep-0008/) as the baseline, extended by t
 - **No mutable default arguments**: use `None` as default and initialise inside the function body.
 - **`None` checks**: use `is None` / `is not None`, never `== None`.
 - **`__all__`**: not required unless a module is a public API surface.
+- **All other google style guide must be followed**
 
 These rules apply to all new and modified code. Do not reformat unchanged surrounding code.
 

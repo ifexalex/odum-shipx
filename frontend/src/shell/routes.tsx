@@ -47,6 +47,7 @@ import { DollarRateConfig } from '../pages/tenant-admin/DollarRateConfig'
 import { CbmRateConfig } from '../pages/tenant-admin/CbmRateConfig'
 import { ChargeTypes } from '../pages/tenant-admin/ChargeTypes'
 import { ContainerCapacities } from '../pages/tenant-admin/ContainerCapacities'
+import { Warehouses } from '../pages/tenant-admin/Warehouses'
 import { NotificationLog } from '../pages/tenant-admin/NotificationLog'
 import { NotificationTemplates } from '../pages/tenant-admin/NotificationTemplates'
 import { PaymentGatewayConfig } from '../pages/tenant-admin/PaymentGatewayConfig'
@@ -153,6 +154,7 @@ const STAFF_SCREENS: Record<string, JSX.Element> = {
   '/admin/config/cbm-rate': <ConfigLayout><CbmRateConfig /></ConfigLayout>,
   '/admin/config/charge-types': <ConfigLayout><ChargeTypes /></ConfigLayout>,
   '/admin/config/container-capacities': <ConfigLayout><ContainerCapacities /></ConfigLayout>,
+  '/admin/config/warehouses': <ConfigLayout><Warehouses /></ConfigLayout>,
   '/admin/config/notifications': <ConfigLayout><NotificationTemplates /></ConfigLayout>,
   '/admin/config/webhooks': <ConfigLayout><WebhookConfig /></ConfigLayout>,
   '/admin/config/payments': <ConfigLayout><PaymentGatewayConfig /></ConfigLayout>,

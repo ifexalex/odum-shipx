@@ -273,7 +273,8 @@ def list_billing_all(
         extra["q"] = f"%{filters['q']}%"
 
     base = f"""
-        SELECT b.*, c.container_number, cu.name AS customer_name
+        SELECT b.*, c.container_number,
+               cu.name AS customer_name, cu.phone AS customer_phone, cu.email AS customer_email
         FROM billing b
         LEFT JOIN container c  ON c.id  = b.container_id  AND c.tenant_id  = b.tenant_id
         LEFT JOIN customer  cu ON cu.id = b.customer_id   AND cu.tenant_id = b.tenant_id
@@ -629,10 +630,26 @@ def mark_carryovers_applied(tenant_id: str, carryover_ids: list[str], billing_id
             applied_at        = NOW(),
             updated_at        = NOW()
         WHERE tenant_id = %(tenant_id)s
-          AND id        = ANY(%(ids)s)
+          AND id        = ANY(%(ids)s::uuid[])
         RETURNING id
         """,
         {"tenant_id": tenant_id, "billing_id": billing_id, "ids": carryover_ids},
+    )
+
+
+def set_billing_status(tenant_id: str, billing_id: str, status: str) -> dict[str, Any] | None:
+    """Set a billing record's payment status (money-status recompute after a
+    total change such as an applied carryover). RETURNING * so callers get the
+    fresh row incl. the generated balance_ngn."""
+    return execute_write_with_tenant(
+        tenant_id,
+        """
+        UPDATE billing
+        SET status = %(status)s, updated_at = NOW()
+        WHERE tenant_id = %(tenant_id)s AND id = %(id)s
+        RETURNING *
+        """,
+        {"tenant_id": tenant_id, "id": billing_id, "status": status},
     )
 
 
@@ -646,7 +663,7 @@ def mark_credit_refunds_applied(tenant_id: str, refund_ids: list[str]) -> None:
         SET status     = 'completed',
             updated_at = NOW()
         WHERE tenant_id = %(tenant_id)s
-          AND id        = ANY(%(ids)s)
+          AND id        = ANY(%(ids)s::uuid[])
         RETURNING id
         """,
         {"tenant_id": tenant_id, "ids": refund_ids},

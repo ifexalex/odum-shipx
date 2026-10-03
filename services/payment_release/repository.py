@@ -170,6 +170,39 @@ def set_default_warehouse(tenant_id: str, warehouse_id: str) -> dict[str, Any] |
     )[-1]
 
 
+_WAREHOUSE_EDITABLE_FIELDS = ("name", "address", "city", "state", "phone", "is_active")
+
+
+def update_warehouse(tenant_id: str, warehouse_id: str, updates: dict[str, Any]) -> dict[str, Any] | None:
+    """Patch a warehouse's editable fields. Keys are allowlisted against
+    _WAREHOUSE_EDITABLE_FIELDS (never interpolated raw) so the SET clause is
+    injection-safe. is_default is deliberately NOT editable here — promoting a
+    default is the separate, atomic set_default_warehouse path."""
+    fields = {k: v for k, v in updates.items() if k in _WAREHOUSE_EDITABLE_FIELDS}
+    if not fields:
+        return get_warehouse_by_id(tenant_id, warehouse_id)
+    set_clause = ", ".join(f"{col} = %({col})s" for col in fields)
+    params = {**fields, "tenant_id": tenant_id, "id": warehouse_id}
+    return execute_write_with_tenant(
+        tenant_id,
+        f"""
+        UPDATE warehouse SET {set_clause}, updated_at = NOW()
+        WHERE tenant_id = %(tenant_id)s AND id = %(id)s
+        RETURNING *
+        """,
+        params,
+    )
+
+
+def count_active_warehouses(tenant_id: str) -> int:
+    rows = execute_with_tenant(
+        tenant_id,
+        "SELECT COUNT(*) AS cnt FROM warehouse WHERE tenant_id = %s AND is_active",
+        (tenant_id,),
+    )
+    return int(rows[0]["cnt"]) if rows else 0
+
+
 def get_tenant_config_value(tenant_id: str, config_key: str) -> dict[str, Any] | None:
     """Return the JSONB config_value dict for a given key, or None."""
     rows = execute_with_tenant(

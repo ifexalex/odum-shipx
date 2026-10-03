@@ -208,6 +208,11 @@ def _dispatch(event: dict[str, Any], method: str, path: str, ctx: Any, request_i
                 filters["created_after"] = _qp(event, "created_after")
             if _qp(event, "created_before"):
                 filters["created_before"] = _qp(event, "created_before")
+            if _qp(event, "q"):
+                # Free-text search over invoice_number / customer name /
+                # container_number (ILIKE in list_billing_all). The frontend
+                # BillingList search box sends ?q= — it was silently dropped.
+                filters["q"] = _qp(event, "q")
             limit = int(_qp(event, "limit", 50))
             cursor = decode_cursor(_qp(event, "cursor"))
             sort_field = _qp(event, "sort") or "created_at"

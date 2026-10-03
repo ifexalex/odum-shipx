@@ -461,6 +461,32 @@ class TestApplyCarryover:
             assert result["carryover_amount_ngn"] == Decimal("5000.00")
             assert result["new_total_ngn"] == Decimal("105000")
 
+    def test_applying_to_a_paid_billing_recomputes_status_to_partially_paid(self):
+        # Adding carried-forward debt to a fully-paid record means it now owes
+        # again — the status must not stay 'paid'.
+        from services.billing import service
+
+        billing = _billing(
+            status="paid",
+            total_ngn=Decimal("100000"),
+            amount_paid_ngn=Decimal("100000"),
+            balance_ngn=Decimal("0"),
+        )
+        carryover = _carryover()
+        updated = {**billing, "total_ngn": Decimal("105000"), "balance_ngn": Decimal("5000")}
+
+        with (
+            patch.object(service.repo, "get_billing_by_id", return_value=billing),
+            patch.object(service.repo, "get_carryover_by_id", return_value=carryover),
+            patch.object(service.repo, "mark_carryovers_applied"),
+            patch.object(service.repo, "increment_billing_misc_fees", return_value=updated),
+            patch.object(service.repo, "set_billing_status", return_value={**updated, "status": "partially_paid"}) as mock_status,
+            patch("services.billing.service.log_audit"),
+        ):
+            service.apply_carryover(TENANT_ID, "billing-001", "carryover-001", actor_id="u")
+
+        mock_status.assert_called_once_with(TENANT_ID, "billing-001", "partially_paid")
+
     def test_billing_not_found_raises(self):
         from services.billing import service
         from shared.exceptions import ResourceNotFoundError
@@ -908,6 +934,21 @@ class TestBillingListHandlerQueryParams:
         filters = mock_list.call_args.args[1]
         assert "created_after" not in filters
         assert "created_before" not in filters
+
+    def test_search_query_param_reaches_the_service(self):
+        # Regression: the ?q= search param from BillingList was silently dropped
+        # by the handler, so the search box never did anything.
+        from services.billing import handler, service
+
+        with (
+            patch("services.billing.handler.get_tenant_context", return_value=_ctx(UserRole.NIGERIA_OFFICE_STAFF)),
+            patch.object(service, "list_billing", return_value=([], None, False)) as mock_list,
+        ):
+            resp = handler.lambda_handler(self._event({"q": "INV-2026"}), None)
+
+        assert resp["statusCode"] == 200
+        filters = mock_list.call_args.args[1]
+        assert filters["q"] == "INV-2026"
 
 
 class TestHandlePaymentDueNotification:

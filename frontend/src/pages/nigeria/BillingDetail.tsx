@@ -288,15 +288,19 @@ const PAYMENT_METHODS = ['bank_transfer', 'cash', 'online', 'card', 'other']
 
 function RecordPaymentModal({ billing, onCancel, onSuccess }: RecordPaymentModalProps): JSX.Element {
   const idempotencyKey = useRef(crypto.randomUUID())
-  const [amount, setAmount] = useState('')
+  const outstanding = Number(billing.outstanding_ngn)
+  // Pre-fill with the outstanding balance — the common case is recording the
+  // full amount due; staff can edit down for a partial payment.
+  const [amount, setAmount] = useState(outstanding > 0 ? String(outstanding) : '')
   const [method, setMethod] = useState('')
   const [reference, setReference] = useState('')
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
-  const outstanding = Number(billing.outstanding_ngn)
   const enteredAmount = Number(amount)
   const isOverpayment = enteredAmount > 0 && enteredAmount > outstanding
+  const ngn = (v: string | number | null | undefined): string =>
+    v == null ? '—' : `₦${Number(v).toLocaleString('en-NG', { maximumFractionDigits: 0 })}`
 
   async function handleSubmit(): Promise<void> {
     setSubmitting(true)
@@ -320,6 +324,57 @@ function RecordPaymentModal({ billing, onCancel, onSuccess }: RecordPaymentModal
     <div className={styles.modalOverlay} onClick={onCancel}>
       <div className={styles.modalPanel} onClick={(e) => e.stopPropagation()} role="dialog" aria-modal="true">
         <h3 className={styles.modalTitle}>Record payment</h3>
+        <p className={styles.modalSub}>
+          Confirm the amount received and who it’s from before recording.
+        </p>
+
+        {/* Context: who is paying + for what, so staff verify before recording */}
+        <div className={styles.payCtx}>
+          <div className={styles.payCtxCustomer}>
+            <Icon name="user" size={16} color="var(--color-ink-3)" />
+            <span className={styles.payCtxName}>{billing.customer_name ?? 'Unknown customer'}</span>
+          </div>
+          {(billing.customer_phone || billing.customer_email) && (
+            <div className={styles.payCtxContacts}>
+              {billing.customer_phone && (
+                <span className={styles.payCtxContact}>
+                  <Icon name="phone" size={12} color="var(--color-ink-4)" />
+                  {billing.customer_phone}
+                </span>
+              )}
+              {billing.customer_email && (
+                <span className={styles.payCtxContact}>
+                  <Icon name="mail" size={12} color="var(--color-ink-4)" />
+                  {billing.customer_email}
+                </span>
+              )}
+            </div>
+          )}
+          <div className={styles.payCtxMeta}>
+            <span>Invoice <Mono>{billing.invoice_number ?? '—'}</Mono></span>
+            <span>Container <Mono>{billing.container_number ?? '—'}</Mono></span>
+            <span>
+              Status <Badge variant={STATUS_VARIANT[billing.payment_status]}>{statusLabel(billing.payment_status)}</Badge>
+            </span>
+          </div>
+          <div className={styles.paySummary}>
+            <div className={styles.paySummaryItem}>
+              <span className={styles.paySummaryLabel}>Total due</span>
+              <span className={styles.paySummaryValue}>{ngn(billing.total_due_ngn)}</span>
+            </div>
+            <div className={styles.paySummaryItem}>
+              <span className={styles.paySummaryLabel}>Already paid</span>
+              <span className={styles.paySummaryValue}>{ngn(billing.total_paid_ngn)}</span>
+            </div>
+            <div className={styles.paySummaryItem}>
+              <span className={styles.paySummaryLabel}>Outstanding</span>
+              <span className={[styles.paySummaryValue, styles.paySummaryValueOutstanding].join(' ')}>
+                {ngn(billing.outstanding_ngn)}
+              </span>
+            </div>
+          </div>
+        </div>
+
         {error && (
           <div className={styles.modalBanner}>
             <Banner variant="error" title="Action failed">{error}</Banner>
@@ -1172,9 +1227,14 @@ export function BillingDetail(): JSX.Element {
   async function loadCarryovers(): Promise<void> {
     if (!billing) return
     try {
-      // Billing is per-container (not per-customer), so no customer_id filter —
-      // load all outstanding credits and let the staff member pick.
-      const result = await carryoverApi.list({ status: 'outstanding' })
+      // A carryover can only be applied to a billing for the SAME customer
+      // (the backend rejects a mismatch, BR-CARRYOVER-003). Scope the list to
+      // this billing's customer so the picker only offers applicable credits
+      // instead of every customer's — picking a mismatch always failed.
+      const result = await carryoverApi.list({
+        status: 'outstanding',
+        ...(billing.customer_id ? { customer_id: billing.customer_id } : {}),
+      })
       setCarryovers(result.data)
     } catch {
       // non-fatal — user can still see the modal with empty state
@@ -1292,11 +1352,29 @@ export function BillingDetail(): JSX.Element {
           </div>
           <div>
             <div className={styles.heroTitleRow}>
-              <h1 className={styles.heroTitle}>{billing.container_number ?? billing.container_id}</h1>
+              <h1 className={styles.heroTitle}>{billing.customer_name ?? 'Billing record'}</h1>
               <Badge variant={STATUS_VARIANT[billing.payment_status]}>{statusLabel(billing.payment_status)}</Badge>
             </div>
-            {billing.billed_at && (
-              <div className={styles.heroMeta}>Billed {billing.billed_at.slice(0, 10)}</div>
+            <div className={styles.heroMeta}>
+              {billing.invoice_number && <span><Mono>{billing.invoice_number}</Mono></span>}
+              <span>· Container <Mono>{billing.container_number ?? billing.container_id}</Mono></span>
+              {billing.billed_at && <span>· Billed {billing.billed_at.slice(0, 10)}</span>}
+            </div>
+            {(billing.customer_phone || billing.customer_email) && (
+              <div className={styles.heroContacts}>
+                {billing.customer_phone && (
+                  <span className={styles.heroContact}>
+                    <Icon name="phone" size={12} color="var(--color-ink-4)" />
+                    {billing.customer_phone}
+                  </span>
+                )}
+                {billing.customer_email && (
+                  <span className={styles.heroContact}>
+                    <Icon name="mail" size={12} color="var(--color-ink-4)" />
+                    {billing.customer_email}
+                  </span>
+                )}
+              </div>
             )}
           </div>
         </div>

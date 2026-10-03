@@ -1173,3 +1173,17 @@ All four delegation tests follow `test_tracking.py::TestContainerStats`'s `patch
 - `tests/unit/test_packing_list.py::TestMinCbmAndBaleSizing` (3): `apply_min_cbm` floors sub-minimum/None CBM and passes larger values through; `_bale_type_for` returns BIG/SMALL only for bales (threshold 0.3); `get_min_cbm_per_item` default 0.1 + config read + non-positive fallback. Plus a live end-to-end create (floored 0.1, SMALL/BIG BALE, dates, negatives → 422).
 - `frontend/src/pages/china/CreatePackingList.test.tsx` (+3): a 0.06-CBM bale floors to 0.100 with `min` + `SM BALE`; a 0.4-CBM bale shows `BIG BALE`; a draft opens prefilled with customer/container disabled and items loaded (uses `packingListApi.get`, never `create`). Updated the existing CBM tests' mock min to 0.001 and the step-2 readiness marker to "Line items".
 - `TestGetCbmRate`/`TestUpdateCbmRate`: patched `get_min_cbm_per_item` and asserted `min_cbm_per_item` in the responses; `CbmRateConfig.test.tsx` updated for the extra `min_cbm_per_item` field.
+
+### Nigeria-ops dashboard pipeline (2026-10-03)
+
+- `frontend/src/pages/tenant-admin/DashboardPipeline.test.tsx` (6): every stage + "All active" tile renders with its count (no 6-card cap / h-scroll kanban); the default view fetches the full active list (`status=loading,…,fully_released`); selecting a stage refetches the complete list filtered to that stage (`status=at_warehouse`); the search box passes `?q=` (debounced); the "Arriving" ETA chips apply `eta_after`/`eta_before` (incl. the overdue upper-bound-only case); the container row carries route + packing-list count + a View action.
+- `Dashboard.test.tsx` updated: asserts the new **Outstanding invoices** + **Awaiting pickup** cards (replacing the old recent-payments / incoming-containers cards).
+
+### Manifest package-type breakdown (2026-10-03)
+
+- `tests/unit/test_manifest.py::TestManifestPackageMixQuery` (2): the list + detail repo queries carry the `package_mix` aggregation (`jsonb_object_agg` over `pli.package_unit`, approved packing lists only) — a SQL-string guard, since the suite mocks the DB.
+- `frontend/src/pages/nigeria/ManifestList.test.tsx` (+2): the row renders the package breakdown (`ctn`/`bale`/`bag` + counts) and total weight (`412 kg`); falls back to the carton count when `package_mix` is null. (Both manifest test files' `vi.mock('../../api/manifest')` now spread `importOriginal` so the new `orderedPackageMix` export resolves.)
+
+### Container utilization column (2026-10-03)
+
+- `frontend/src/pages/china/ContainerList.test.tsx` (+3): renders packed CBM + "% of capacity" when an exact `capacity_cbm` is set (68.4 / 76 → 90%); falls back to the container-type capacity estimate ("40' High Cube (HC)" → ~76 → 50% at 38 CBM); shows just the packed CBM with no % when capacity is unknown. Shared helpers (`containerCapacityCbm`, `utilizationLevel`) live in `api/containerRules.ts`.

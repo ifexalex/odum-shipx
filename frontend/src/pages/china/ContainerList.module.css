@@ -241,3 +241,38 @@
 .filtersPanelClear:hover {
   color: var(--color-error);
 }
+
+/* Utilization cell — packed CBM + a capacity fill bar (ContainerList) */
+.utilCell {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 92px;
+}
+.utilTop {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+}
+.utilPct {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--color-ink-3);
+  font-variant-numeric: tabular-nums;
+}
+.utilTrack {
+  height: 5px;
+  background: var(--color-line-soft);
+  border-radius: 3px;
+  overflow: hidden;
+}
+.utilFill {
+  height: 100%;
+  border-radius: 3px;
+  transition: width 0.2s ease;
+}
+/* Colour by the absolute-CBM business rule (≥70 green, 65–69 yellow, <65 red) */
+.utilGreen { background: var(--color-success); }
+.utilYellow { background: var(--color-warning); }
+.utilRed { background: var(--color-error); }

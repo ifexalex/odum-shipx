@@ -74,6 +74,10 @@ export interface Manifest {
   total_cartons: number
   total_weight_kg: string
   total_cbm: string
+  /** Package breakdown by unit for the container, summing each item's quantity:
+   *  e.g. { carton: 120, bale: 8, bag: 30 }. Null/absent when the manifest has
+   *  no approved packing-list items yet. See PACKAGE_UNIT_ORDER/ABBR below. */
+  package_mix?: Record<string, number> | null
   verification_status: VerificationStatus
   verified_by: string | null
   verified_at: string | null
@@ -87,6 +91,33 @@ export interface Manifest {
   evidence?: ManifestEvidence[]
   created_at: string
   updated_at: string
+}
+
+// Canonical display order + short labels for the package-mix breakdown.
+export const PACKAGE_UNIT_ORDER = ['carton', 'bale', 'bag', 'sack', 'pallet', 'unspecified'] as const
+export const PACKAGE_UNIT_ABBR: Record<string, string> = {
+  carton: 'ctn',
+  bale: 'bale',
+  bag: 'bag',
+  sack: 'sack',
+  pallet: 'plt',
+  unspecified: 'pkg',
+}
+
+/** Ordered, non-zero entries of a package_mix map for display. Unknown units
+ *  (shouldn't occur) sort last but are still shown with their raw label. */
+export function orderedPackageMix(
+  mix: Record<string, number> | null | undefined,
+): { unit: string; abbr: string; qty: number }[] {
+  if (!mix) return []
+  const known = PACKAGE_UNIT_ORDER as readonly string[]
+  return Object.entries(mix)
+    .filter(([, qty]) => qty > 0)
+    .sort(([a], [b]) => {
+      const ia = known.indexOf(a), ib = known.indexOf(b)
+      return (ia === -1 ? 99 : ia) - (ib === -1 ? 99 : ib)
+    })
+    .map(([unit, qty]) => ({ unit, abbr: PACKAGE_UNIT_ABBR[unit] ?? unit, qty }))
 }
 
 export interface DiscrepancyInput {

@@ -386,6 +386,18 @@ ALTER TABLE packing_list
 
 The item-entry enhancements (package type, bale sizing, minimum-CBM floor) reuse existing `packing_list_item` columns — `package_unit` and `bale_type` (migration 040) and `cbm` — so they need no migration. `bale_type` is now computed for bale items (`BIG BALE` ≥ 0.3 CBM, else `SMALL BALE`), and `cbm` is floored at the tenant's `min_cbm_per_item` (a `tenant_config` key, default 0.1 — no schema).
 
+### Migration 053 — Packing-list arrival warehouse
+
+Records the destination warehouse (from the migration-041 `warehouse` table) a packing list's goods are bound for. Nullable — existing lists keep NULL. `ON DELETE SET NULL` is belt-and-braces; warehouses are soft-deactivated (`is_active = FALSE`), never hard-deleted, so the FK target normally survives and the name still resolves.
+
+```sql
+ALTER TABLE packing_list
+    ADD COLUMN arrival_warehouse_id UUID REFERENCES warehouse(id) ON DELETE SET NULL;
+CREATE INDEX idx_packing_list_arrival_warehouse ON packing_list(arrival_warehouse_id);
+```
+
+Resolution is server-side (`services/packing_list/service.py::_resolve_arrival_warehouse`): an explicit id is tenant-validated; when omitted it defaults to the tenant's `is_default` warehouse. Warehouse CRUD lives on `/v1/warehouses` (payment_release) — see `13_api_payment_release.md`.
+
 ## Acceptance Criteria
 
 - [x] All 14 tables created with correct schemas

@@ -142,27 +142,21 @@ describe('Dashboard (B3)', () => {
     expect(screen.getByText('Open claims')).toBeInTheDocument()
   })
 
-  it('renders a payment with no method recorded, rather than crashing', async () => {
-    // Regression: RecordPaymentInput.payment_method is optional, and the DB
-    // column is nullable (migration 008 dropped NOT NULL specifically for
-    // this) — but the frontend type lied and called payment_method.replace()
-    // directly, throwing "Cannot read properties of null" and blanking the
-    // whole page for any tenant with even one such payment. tsc missed it
-    // because the wrong type said `string`, not `string | null`.
-    vi.mocked(billingApi.recentPayments).mockResolvedValue([
-      {
-        id: 'p1', billing_id: 'b1', customer_name: 'Ngozi Okonkwo', amount_ngn: '50000.00',
-        payment_method: null, reference_number: null, payment_date: '2026-07-16',
-        created_at: '2026-07-16T09:00:00Z',
-      },
-    ])
+  it('shows the Outstanding invoices card (money to chase) for nigeria staff', async () => {
+    // Replaced the passive "Recent payments" log with the actionable list of
+    // what still needs collecting — oldest unpaid first.
+    vi.mocked(billingApi.list).mockResolvedValue({
+      data: [
+        { id: 'b1', customer_name: 'Ngozi Okonkwo', container_number: 'MSCU1234567', outstanding_ngn: '50000.00', payment_status: 'unpaid' },
+      ],
+      meta: { pagination: { has_more: false, next_cursor: null, total_count: 1 } },
+    } as never)
 
     renderDashboard('nigeria_office_staff')
     await screen.findByText(/Lead every shipment/)
 
-    expect(screen.getByText('Recent payments')).toBeInTheDocument()
+    await waitFor(() => expect(screen.getByText('Outstanding invoices')).toBeInTheDocument())
     expect(screen.getByText('₦50,000')).toBeInTheDocument()
-    expect(screen.getByText('—')).toBeInTheDocument()
   })
 
   it('renders the recent-containers table for admins', async () => {
@@ -181,7 +175,7 @@ describe('Dashboard (B3)', () => {
   })
 
   // P2-5 — §6.1 Nigeria ops action queues
-  it('shows the manifest-verification queue, disputes queue, and recent payments for nigeria staff', async () => {
+  it('shows the manifest-verification queue, disputes queue, and outstanding invoices for nigeria staff', async () => {
     vi.mocked(manifestApi.list).mockResolvedValue({
       data: [
         // Arrived in NG → in the queue
@@ -195,9 +189,10 @@ describe('Dashboard (B3)', () => {
       data: [{ id: 'd1', original_cbm: '2.14', status: 'submitted', submitted_at: '2026-07-15T10:00:00Z' }],
       meta: { pagination: { has_more: false, next_cursor: null, total_count: 1 } },
     } as never)
-    vi.mocked(billingApi.recentPayments).mockResolvedValue([
-      { id: 'p1', billing_id: 'b1', customer_name: 'Ngozi Okonkwo', amount_ngn: '50000.00', payment_method: 'bank_transfer', reference_number: null, payment_date: '2026-07-16', created_at: '2026-07-16T09:00:00Z' },
-    ])
+    vi.mocked(billingApi.list).mockResolvedValue({
+      data: [{ id: 'b1', customer_name: 'Ngozi Okonkwo', container_number: 'ACME0001', outstanding_ngn: '50000.00', payment_status: 'partially_paid' }],
+      meta: { pagination: { has_more: false, next_cursor: null, total_count: 1 } },
+    } as never)
     vi.mocked(releaseNotesApi.list).mockResolvedValue({
       data: [{ id: 'rn1' }, { id: 'rn2' }],
       meta: { pagination: { has_more: false, next_cursor: null, total_count: 2 } },
@@ -208,12 +203,12 @@ describe('Dashboard (B3)', () => {
 
     await waitFor(() => expect(screen.getByText('Containers awaiting manifest verification')).toBeInTheDocument())
     // Only the arrived container is queued — the in-transit one is filtered out.
-    // (MSCU1234567 also appears in the pipeline kanban, hence getAllByText.)
+    // (MSCU1234567 also appears in the pipeline table, hence getAllByText.)
     expect(screen.getAllByText('MSCU1234567').length).toBeGreaterThan(0)
     expect(screen.queryByText('HLBU9384712')).toBeNull()
 
     expect(screen.getByText('CBM disputes need response')).toBeInTheDocument()
-    expect(screen.getByText('Recent payments')).toBeInTheDocument()
+    expect(screen.getByText('Outstanding invoices')).toBeInTheDocument()
     expect(screen.getByText('₦50,000')).toBeInTheDocument()
     expect(screen.getByText('Ready for pickup')).toBeInTheDocument()
   })
@@ -231,26 +226,20 @@ describe('Dashboard (B3)', () => {
     expect(screen.queryByText('Billing & Claims')).toBeNull()
   })
 
-  // §6.1 bottom row — incoming containers (still at sea, soonest ETA first).
-  // The incoming list is now a dedicated server query (status=sealed,in_transit),
-  // so the mock filters by the status param the way the backend would.
-  it('shows incoming containers for nigeria staff, excluding arrived ones', async () => {
-    const all = [
-      CONTAINER, // in_transit → incoming
-      { ...CONTAINER, id: 'c2', container_number: 'HLBU9384712', status: 'sealed', estimated_arrival_date: '2026-07-20' },
-      { ...CONTAINER, id: 'c3', container_number: 'COSU7194820', status: 'at_warehouse' }, // already here
-    ]
-    vi.mocked(containersApi.list).mockImplementation((params) => {
-      const statuses = params?.status?.split(',')
-      const data = statuses ? all.filter((c) => statuses.includes(c.status)) : all
-      return Promise.resolve({
-        data,
-        meta: { pagination: { has_more: false, next_cursor: null, total_count: data.length } },
-      }) as never
-    })
+  // §6.1 bottom row — "Awaiting pickup" (active release notes: goods released,
+  // not yet collected) replaced the passive "Incoming containers" ETA list.
+  it('shows the Awaiting pickup card for nigeria staff', async () => {
+    vi.mocked(releaseNotesApi.list).mockResolvedValue({
+      data: [
+        { id: 'rn1', reference_number: 'RN-001', customer_name: 'Chidi Okafor', container_number: 'ACME0007', total_cartons_for_customer: 12, is_on_credit: true },
+        { id: 'rn2', reference_number: 'RN-002', customer_name: 'Ada Eze', container_number: 'ACME0008', total_cartons_for_customer: 4, is_on_credit: false },
+      ],
+      meta: { pagination: { has_more: false, next_cursor: null, total_count: 2 } },
+    } as never)
     renderDashboard('nigeria_office_staff')
     await screen.findByText(/Lead every shipment/)
-    await waitFor(() => expect(screen.getByText('Incoming containers')).toBeInTheDocument())
-    expect(screen.getByText('Next 2 expected arrivals')).toBeInTheDocument()
+    await waitFor(() => expect(screen.getByText('Awaiting pickup')).toBeInTheDocument())
+    expect(screen.getByText('Chidi Okafor')).toBeInTheDocument()
+    expect(screen.getByText('On credit')).toBeInTheDocument()
   })
 })

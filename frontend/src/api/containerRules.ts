@@ -81,3 +81,32 @@ export function containerAdvanceRequirementHint(target: ContainerStatus): string
   if (target === 'in_transit') return 'Requires a ship date.'
   return null
 }
+
+// ---------------------------------------------------------------------------
+// Container utilization (shared by ContainerList + ContainerDetail)
+// ---------------------------------------------------------------------------
+
+/** Approximate usable capacity (m³) by free-text container type — a fallback
+ *  for containers created before capacity presets (migration 051), which carry
+ *  an exact `capacity_cbm`. Returns null when the type is unknown, so callers
+ *  hide the bar rather than show a fabricated %. */
+export function containerCapacityCbm(type: string | null | undefined): number | null {
+  if (!type) return null
+  const t = type.toLowerCase()
+  if (t.includes('45')) return 86
+  if (t.includes('hc') || t.includes('high cube')) return 76
+  if (t.includes('40')) return 67
+  if (t.includes('20')) return 33
+  return null
+}
+
+export type UtilizationLevel = 'green' | 'yellow' | 'red'
+
+/** Business rule (7.84): a container is well-loaded by *absolute* packed CBM,
+ *  not % of capacity — ≥70 green, 65–69 yellow, <65 red (the stated "50 and
+ *  below" falls in red). Tuned to the standard 40ft container. */
+export function utilizationLevel(packedCbm: number): UtilizationLevel {
+  if (packedCbm >= 70) return 'green'
+  if (packedCbm >= 65) return 'yellow'
+  return 'red'
+}

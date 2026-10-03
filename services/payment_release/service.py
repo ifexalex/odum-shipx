@@ -979,6 +979,70 @@ def set_default_warehouse(tenant_id: str, warehouse_id: str, actor_id: str, acto
     return dict(updated)
 
 
+def update_warehouse(tenant_id: str, warehouse_id: str, req: Any, actor_id: str, actor_role: str) -> dict[str, Any]:
+    from shared.exceptions import ResourceNotFoundError
+
+    existing = repo.get_warehouse_by_id(tenant_id, warehouse_id)
+    if not existing:
+        raise ResourceNotFoundError("warehouse", warehouse_id)
+
+    # Only the fields the caller actually sent (exclude_unset) are patched, so a
+    # PATCH that omits a field leaves it untouched rather than nulling it.
+    updates = req.model_dump(exclude_unset=True) if hasattr(req, "model_dump") else dict(req)
+    row = repo.update_warehouse(tenant_id, warehouse_id, updates)
+    if row is None:
+        raise RuntimeError("update_warehouse returned None unexpectedly")
+
+    log_audit(
+        tenant_id=tenant_id,
+        entity_type="warehouse",
+        entity_id=warehouse_id,
+        action="UPDATE",
+        actor_id=actor_id,
+        actor_role=actor_role,
+        after_state=updates,
+    )
+    return dict(row)
+
+
+def deactivate_warehouse(tenant_id: str, warehouse_id: str, actor_id: str, actor_role: str) -> dict[str, Any]:
+    """Soft-remove a warehouse (is_active = FALSE). Never hard-deleted: historical
+    release notes / pickups / packing lists may reference it. Two guards keep the
+    tenant operable: the default warehouse can't be removed (reassign the default
+    first), and the last active warehouse can't be removed (release-note
+    generation must always resolve one)."""
+    from shared.exceptions import BusinessRuleViolationError, ResourceNotFoundError
+
+    existing = repo.get_warehouse_by_id(tenant_id, warehouse_id)
+    if not existing:
+        raise ResourceNotFoundError("warehouse", warehouse_id)
+    if existing.get("is_default"):
+        raise BusinessRuleViolationError(
+            "The default warehouse cannot be removed — set another warehouse as default first.",
+            rule_id="WAREHOUSE_DEFAULT_IMMUTABLE",
+        )
+    if existing.get("is_active") and repo.count_active_warehouses(tenant_id) <= 1:
+        raise BusinessRuleViolationError(
+            "At least one active warehouse is required.",
+            rule_id="WAREHOUSE_LAST_ACTIVE",
+        )
+
+    row = repo.update_warehouse(tenant_id, warehouse_id, {"is_active": False})
+    if row is None:
+        raise RuntimeError("deactivate_warehouse returned None unexpectedly")
+
+    log_audit(
+        tenant_id=tenant_id,
+        entity_type="warehouse",
+        entity_id=warehouse_id,
+        action="UPDATE",
+        actor_id=actor_id,
+        actor_role=actor_role,
+        after_state={"is_active": False},
+    )
+    return dict(row)
+
+
 # ---------------------------------------------------------------------------
 # Release note read
 # ---------------------------------------------------------------------------

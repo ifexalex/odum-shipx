@@ -32,8 +32,27 @@ Implement the Payment & Release Lambda service: payment confirmation, release no
 | POST | `/v1/release-notes/{id}/reissue` | tenant_admin, nigeria_office_staff |
 | GET | `/v1/warehouses` | tenant_admin, nigeria_office_staff, warehouse_attendant |
 | POST | `/v1/warehouses` | tenant_admin |
+| PATCH | `/v1/warehouses/{id}` | tenant_admin — edit letterhead fields (name/address/city/state/phone) |
 | PATCH | `/v1/warehouses/{id}/set-default` | tenant_admin |
+| DELETE | `/v1/warehouses/{id}` | tenant_admin — soft-deactivate (`is_active = false`) |
 | POST | `/v1/webhooks/payment` | No JWT — HMAC signature (Paystack / Flutterwave) |
+
+**Warehouse management (admin config page `Warehouses.tsx`).** `/v1/warehouses`
+is the single warehouse surface (a duplicate `/v1/tenant/warehouses` in the
+tenant-management service was removed — it was never wired to the frontend,
+Terraform, or Postman). Behaviour:
+- **POST** — a tenant's *first* warehouse is auto-promoted to default (otherwise
+  `get_default_warehouse()` stays null and release-note generation resolves no
+  warehouse). Later creates are non-default.
+- **PATCH `/{id}`** — `UpdateWarehouseRequest`, all fields optional; only fields
+  sent are patched (`exclude_unset`), so an omitted field is untouched, not
+  nulled. `is_default` is NOT editable here — use the set-default route.
+- **PATCH `/{id}/set-default`** — atomically moves the one-default-per-tenant
+  flag (`idx_warehouse_one_default` partial unique index).
+- **DELETE `/{id}`** — soft-deactivate, never hard-delete (historical release
+  notes / pickups / packing lists may reference it). Refused (422) when the
+  target is the default (`WAREHOUSE_DEFAULT_IMMUTABLE` — reassign default first)
+  or the last active warehouse (`WAREHOUSE_LAST_ACTIVE`).
 
 ## Payment Confirmation (POST /payments/{billing-id}/confirm)
 

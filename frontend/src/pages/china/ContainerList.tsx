@@ -3,7 +3,7 @@ import { useCallback, useEffect, useMemo, useState, type JSX } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { containerKeys } from '../../api/keys'
 import { STALE_5_MIN } from '../../lib/queryClient'
-import { CONTAINER_STATUS_LABELS } from '../../api/containerRules'
+import { CONTAINER_STATUS_LABELS, containerCapacityCbm, utilizationLevel } from '../../api/containerRules'
 import { containersApi, type Container, type ContainerStatus } from '../../api/tracking'
 import { Badge, Banner, Button, Card, Chip, DateRangeFilter, Icon, KebabBtn, Mono, StatCard, Table, ListFooter, type TableRow } from '../../design/components'
 import { useSession } from '../../auth/useSession'
@@ -107,10 +107,41 @@ function etaRangeFor(preset: EtaPresetKey | null): { etaAfter?: string; etaBefor
   return { etaAfter: daysAgoIso(0), etaBefore: daysFromNowIso(Number(preset)) }
 }
 
+const UTIL_FILL_CLASS: Record<ReturnType<typeof utilizationLevel>, string> = {
+  green: styles.utilGreen!,
+  yellow: styles.utilYellow!,
+  red: styles.utilRed!,
+}
+
+// Packed CBM + a capacity fill bar. The bar's width is packed/capacity (visual
+// fullness); its colour is the business "well-loaded" signal (absolute CBM, so
+// a green bar means an economically-loaded container, not simply a full one).
+function UtilizationCell({ container }: { container: Container }): JSX.Element {
+  const packed = container.total_cbm_packed != null ? Number(container.total_cbm_packed) : null
+  if (packed == null || packed <= 0) {
+    return <span className={styles.dimText}>—</span>
+  }
+  const capacity = container.capacity_cbm != null ? Number(container.capacity_cbm) : containerCapacityCbm(container.container_type)
+  const pct = capacity && capacity > 0 ? Math.round((packed / capacity) * 100) : null
+  const fillClass = UTIL_FILL_CLASS[utilizationLevel(packed)]
+  return (
+    <div className={styles.utilCell}>
+      <div className={styles.utilTop}>
+        <Mono color="var(--color-ink)">{packed.toFixed(1)}</Mono>
+        {pct != null && <span className={styles.utilPct}>{pct}%</span>}
+      </div>
+      {pct != null && (
+        <div className={styles.utilTrack} title={`${packed.toFixed(1)} / ${capacity} CBM`}>
+          <div className={[styles.utilFill, fillClass].join(' ')} style={{ width: `${Math.min(pct, 100)}%` }} />
+        </div>
+      )}
+    </div>
+  )
+}
+
 function containerRow(container: Container, onView: () => void): TableRow {
   const plTotal = container.packing_list_count ?? 0
   const plApproved = container.approved_packing_list_count ?? 0
-  const cbm = container.total_cbm_packed
 
   const originCode = ORIGIN_CODE[container.origin] ?? container.origin
   const destCode = DEST_CODE[container.destination] ?? container.destination
@@ -139,10 +170,9 @@ function containerRow(container: Container, onView: () => void): TableRow {
       <Mono key="pls" color={plTotal === 0 ? 'var(--color-ink-4)' : plApproved === plTotal && plTotal > 0 ? 'var(--color-success)' : 'var(--color-ink)'}>
         {plApproved} / {plTotal}
       </Mono>,
-      // CBM total
-      <Mono key="cbm" color={cbm ? 'var(--color-ink)' : 'var(--color-ink-4)'}>
-        {cbm ? Number(cbm).toFixed(2) : '—'}
-      </Mono>,
+      // Utilization — packed CBM + a fill bar (vs capacity) coloured by the
+      // absolute-CBM business rule. Bar hidden when capacity is unknown.
+      <UtilizationCell key="util" container={container} />,
       <Mono key="eta" color={etaColor(container)}>{etaLabel(container)}</Mono>,
       <KebabBtn key="actions" label={`Open ${container.container_number}`} onClick={onView} />,
     ],
@@ -414,7 +444,7 @@ export function ContainerList(): JSX.Element {
               { title: 'Route' },
               { title: 'Status' },
               { title: 'Packing lists', align: 'right' },
-              { title: 'CBM', align: 'right' },
+              { title: 'Utilization' },
               { title: 'ETA', sortable: true },
               { title: '', width: '40px' },
             ]}

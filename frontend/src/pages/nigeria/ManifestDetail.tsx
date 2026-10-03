@@ -4,6 +4,7 @@ import { ApiError } from '../../api/client'
 import { formatCbm } from '../../api/decimal'
 import {
   manifestApi,
+  orderedPackageMix,
   type DiscrepancyInput,
   type Manifest,
   type ManifestMissingItem,
@@ -386,6 +387,11 @@ export function ManifestDetail(): JSX.Element {
   const canResolve = session ? canResolveDiscrepancy(manifest, session.role) : false
   const canRevoke = session ? canRevokeVerification(manifest, session.role) : false
 
+  // Package breakdown by unit — a single carton count hides bales/bags/etc.
+  const packageMixParts = orderedPackageMix(manifest.package_mix)
+  const packageTotal = packageMixParts.reduce((sum, p) => sum + p.qty, 0) || manifest.total_cartons
+  const packageMixLabel = packageMixParts.map((p) => `${p.qty} ${p.abbr}`).join(' · ')
+
   async function handleRevoke(): Promise<void> {
     if (!manifest) return
     setRevoking(true)
@@ -418,8 +424,8 @@ export function ManifestDetail(): JSX.Element {
             </div>
             <div className={styles.heroMeta}>
               <span>
-                {manifest.total_customers} customers · {manifest.total_cartons} cartons · {formatCbm(manifest.total_cbm)}{' '}
-                CBM
+                {manifest.total_customers} customers · {packageTotal} packages
+                {packageMixLabel ? ` (${packageMixLabel})` : ''} · {formatCbm(manifest.total_cbm)} CBM
               </span>
             </div>
           </div>
@@ -479,7 +485,7 @@ export function ManifestDetail(): JSX.Element {
 
       <div className={styles.statsRow}>
         <StatCard label="Total customers" value={manifest.total_customers} icon="users" />
-        <StatCard label="Total cartons" value={manifest.total_cartons} icon="package" />
+        <StatCard label="Packages" value={packageTotal} icon="package" sublabel={packageMixLabel || undefined} />
         <StatCard label="Total CBM" value={formatCbm(manifest.total_cbm)} icon="container" />
         <StatCard label="Total weight" value={`${manifest.total_weight_kg} kg`} icon="package" />
       </div>

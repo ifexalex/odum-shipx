@@ -28,12 +28,22 @@ export interface CreateWarehouseInput {
   phone?: string
 }
 
+export type UpdateWarehouseInput = Partial<CreateWarehouseInput>
+
 export const warehousesApi = {
   list: () => apiRequest<Warehouse[]>({ method: 'GET', path: '/v1/warehouses' }),
 
   create: (body: CreateWarehouseInput) =>
     apiRequest<Warehouse>({ method: 'POST', path: '/v1/warehouses', body }),
 
+  update: (id: string, body: UpdateWarehouseInput) =>
+    apiRequest<Warehouse>({ method: 'PATCH', path: `/v1/warehouses/${id}`, body }),
+
   setDefault: (id: string) =>
     apiRequest<Warehouse>({ method: 'PATCH', path: `/v1/warehouses/${id}/set-default` }),
+
+  // Soft-deactivate (is_active = false). The backend refuses to remove the
+  // default or the last active warehouse.
+  deactivate: (id: string) =>
+    apiRequest<Warehouse>({ method: 'DELETE', path: `/v1/warehouses/${id}` }),
 }

@@ -1,8 +1,8 @@
 {
   "info": {
     "_postman_id": "shipx-local-v1",
-    "name": "ShipX Logistics API \u2014 Local",
-    "description": "Local development Postman collection for ShipX Logistics Platform.\n\n## Setup\n1. Start local services + bootstrap + migrate + seed: `make stack`\n2. Start API server: `make dev`\n3. Import this collection into Postman\n\n## Auth\nAuth is simulated via request headers (no JWT needed locally):\n- `X-Tenant-ID`: tenant UUID\n- `X-Role`: role name\n- `X-User-ID`: user UUID\n\n## Available Roles\n- `nigeria_office_staff` \u2014 back-office staff (default)\n- `tenant_admin` \u2014 tenant administrator\n- `warehouse_attendant` \u2014 warehouse staff\n- `customer` \u2014 customer\n- `china_office_staff` \u2014 China-side staff\n- `platform_admin` \u2014 platform superadmin\n\n## Workflow\n1. Create a Customer\n2. Create a Container\n3. Create a Packing List for the customer + container\n4. Submit \u2192 Approve packing list (manifest auto-created)\n5. Verify manifest\n6. Generate billing \u2192 Confirm payment\n7. Generate release note \u2192 Record pickup",
+    "name": "ShipX Logistics API — Local",
+    "description": "Local development Postman collection for ShipX Logistics Platform.\n\n## Setup\n1. Start local services + bootstrap + migrate + seed: `make stack`\n2. Start API server: `make dev`\n3. Import this collection into Postman\n\n## Auth\nAuth is simulated via request headers (no JWT needed locally):\n- `X-Tenant-ID`: tenant UUID\n- `X-Role`: role name\n- `X-User-ID`: user UUID\n\n## Available Roles\n- `nigeria_office_staff` — back-office staff (default)\n- `tenant_admin` — tenant administrator\n- `warehouse_attendant` — warehouse staff\n- `customer` — customer\n- `china_office_staff` — China-side staff\n- `platform_admin` — platform superadmin\n\n## Workflow\n1. Create a Customer\n2. Create a Container\n3. Create a Packing List for the customer + container\n4. Submit → Approve packing list (manifest auto-created)\n5. Verify manifest\n6. Generate billing → Confirm payment\n7. Generate release note → Record pickup",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
   },
   "variable": [
@@ -612,7 +612,7 @@
                 "usage"
               ]
             },
-            "description": "GET /v1/platform/tenants/{id}/usage \u2014 per-tenant API usage breakdown (platform_admin)"
+            "description": "GET /v1/platform/tenants/{id}/usage — per-tenant API usage breakdown (platform_admin)"
           }
         }
       ]
@@ -1045,7 +1045,7 @@
                 "{{user_mgmt_id}}"
               ]
             },
-            "description": "Update a tenant user's full_name and/or role.\n\nSupported fields:\n- `full_name` (string): display name \u2014 synced to Cognito `name` attribute\n- `role` (string): new role \u2014 synced to Cognito `custom:role` attribute\n\nEmail cannot be changed (Cognito login username is immutable)."
+            "description": "Update a tenant user's full_name and/or role.\n\nSupported fields:\n- `full_name` (string): display name — synced to Cognito `name` attribute\n- `role` (string): new role — synced to Cognito `custom:role` attribute\n\nEmail cannot be changed (Cognito login username is immutable)."
           }
         },
         {
@@ -1227,14 +1227,29 @@
           "request": {
             "method": "GET",
             "header": [
-              { "key": "X-Tenant-ID", "value": "{{tenant_id}}" },
-              { "key": "X-Role", "value": "{{role}}" },
-              { "key": "X-User-ID", "value": "{{user_id}}" }
+              {
+                "key": "X-Tenant-ID",
+                "value": "{{tenant_id}}"
+              },
+              {
+                "key": "X-Role",
+                "value": "{{role}}"
+              },
+              {
+                "key": "X-User-ID",
+                "value": "{{user_id}}"
+              }
             ],
             "url": {
               "raw": "{{base_url}}/v1/tenant/container-capacities",
-              "host": ["{{base_url}}"],
-              "path": ["v1", "tenant", "container-capacities"]
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "v1",
+                "tenant",
+                "container-capacities"
+              ]
             }
           }
         },
@@ -1243,10 +1258,22 @@
           "request": {
             "method": "POST",
             "header": [
-              { "key": "X-Tenant-ID", "value": "{{tenant_id}}" },
-              { "key": "X-Role", "value": "tenant_admin" },
-              { "key": "X-User-ID", "value": "{{user_id}}" },
-              { "key": "Content-Type", "value": "application/json" }
+              {
+                "key": "X-Tenant-ID",
+                "value": "{{tenant_id}}"
+              },
+              {
+                "key": "X-Role",
+                "value": "tenant_admin"
+              },
+              {
+                "key": "X-User-ID",
+                "value": "{{user_id}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
             ],
             "body": {
               "mode": "raw",
@@ -1254,8 +1281,14 @@
             },
             "url": {
               "raw": "{{base_url}}/v1/tenant/container-capacities",
-              "host": ["{{base_url}}"],
-              "path": ["v1", "tenant", "container-capacities"]
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "v1",
+                "tenant",
+                "container-capacities"
+              ]
             }
           }
         },
@@ -1264,10 +1297,22 @@
           "request": {
             "method": "PATCH",
             "header": [
-              { "key": "X-Tenant-ID", "value": "{{tenant_id}}" },
-              { "key": "X-Role", "value": "tenant_admin" },
-              { "key": "X-User-ID", "value": "{{user_id}}" },
-              { "key": "Content-Type", "value": "application/json" }
+              {
+                "key": "X-Tenant-ID",
+                "value": "{{tenant_id}}"
+              },
+              {
+                "key": "X-Role",
+                "value": "tenant_admin"
+              },
+              {
+                "key": "X-User-ID",
+                "value": "{{user_id}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
             ],
             "body": {
               "mode": "raw",
@@ -1275,8 +1320,15 @@
             },
             "url": {
               "raw": "{{base_url}}/v1/tenant/container-capacities/{{capacity_id}}",
-              "host": ["{{base_url}}"],
-              "path": ["v1", "tenant", "container-capacities", "{{capacity_id}}"]
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "v1",
+                "tenant",
+                "container-capacities",
+                "{{capacity_id}}"
+              ]
             }
           }
         },
@@ -1285,14 +1337,30 @@
           "request": {
             "method": "DELETE",
             "header": [
-              { "key": "X-Tenant-ID", "value": "{{tenant_id}}" },
-              { "key": "X-Role", "value": "tenant_admin" },
-              { "key": "X-User-ID", "value": "{{user_id}}" }
+              {
+                "key": "X-Tenant-ID",
+                "value": "{{tenant_id}}"
+              },
+              {
+                "key": "X-Role",
+                "value": "tenant_admin"
+              },
+              {
+                "key": "X-User-ID",
+                "value": "{{user_id}}"
+              }
             ],
             "url": {
               "raw": "{{base_url}}/v1/tenant/container-capacities/{{capacity_id}}",
-              "host": ["{{base_url}}"],
-              "path": ["v1", "tenant", "container-capacities", "{{capacity_id}}"]
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "v1",
+                "tenant",
+                "container-capacities",
+                "{{capacity_id}}"
+              ]
             }
           }
         },
@@ -1339,7 +1407,7 @@
                 "{{charge_type_id}}"
               ]
             },
-            "description": "PUT /v1/tenant/charge-types/{id} \u2014 update a charge type (tenant_admin)"
+            "description": "PUT /v1/tenant/charge-types/{id} — update a charge type (tenant_admin)"
           }
         },
         {
@@ -1372,7 +1440,7 @@
                 "{{charge_type_id}}"
               ]
             },
-            "description": "DELETE /v1/tenant/charge-types/{id} \u2014 deactivate a charge type; returns 204 (tenant_admin)"
+            "description": "DELETE /v1/tenant/charge-types/{id} — deactivate a charge type; returns 204 (tenant_admin)"
           }
         },
         {
@@ -1405,7 +1473,7 @@
                 "{{staff_user_id}}"
               ]
             },
-            "description": "DELETE /v1/tenant/users/{id} \u2014 deactivate a tenant user; returns 204 (tenant_admin)"
+            "description": "DELETE /v1/tenant/users/{id} — deactivate a tenant user; returns 204 (tenant_admin)"
           }
         }
       ]
@@ -1628,7 +1696,7 @@
                 "{{customer_id}}"
               ]
             },
-            "description": "Anonymise a customer record (GDPR Art. 17 \u2014 Right to Erasure).\n\nNulls all PII fields (name, email, phone, whatsapp, address, contract_details) and sets `anonymised_at`. The UUID shell is kept for FK integrity.\n\nRequires: `tenant_admin` role."
+            "description": "Anonymise a customer record (GDPR Art. 17 — Right to Erasure).\n\nNulls all PII fields (name, email, phone, whatsapp, address, contract_details) and sets `anonymised_at`. The UUID shell is kept for FK integrity.\n\nRequires: `tenant_admin` role."
           },
           "response": []
         },
@@ -1662,7 +1730,7 @@
                 "export"
               ]
             },
-            "description": "Export all personal data held for a customer (GDPR Art. 20 \u2014 Right to Portability).\n\nReturns a machine-readable JSON object containing:\n- `customer`: profile data\n- `billing_summary`: invoice history\n- `shipments`: shipment tracking records\n- `claims`: damage/missing/seized item claims\n- `exported_at`: ISO timestamp\n\nRequires: `tenant_admin` role."
+            "description": "Export all personal data held for a customer (GDPR Art. 20 — Right to Portability).\n\nReturns a machine-readable JSON object containing:\n- `customer`: profile data\n- `billing_summary`: invoice history\n- `shipments`: shipment tracking records\n- `claims`: damage/missing/seized item claims\n- `exported_at`: ISO timestamp\n\nRequires: `tenant_admin` role."
           },
           "response": []
         }
@@ -1884,7 +1952,7 @@
           }
         },
         {
-          "name": "Public \u2014 Track Shipment",
+          "name": "Public — Track Shipment",
           "request": {
             "method": "GET",
             "header": [],
@@ -1905,14 +1973,14 @@
                 }
               ]
             },
-            "description": "Public endpoint \u2014 no auth required. Customer looks up shipment by tracking code + phone number."
+            "description": "Public endpoint — no auth required. Customer looks up shipment by tracking code + phone number."
           }
         }
       ]
     },
     {
       "name": "5. Packing Lists",
-      "description": "Packing list lifecycle: draft \u2192 submitted \u2192 approved/rejected \u2192 manifest auto-created on approval.",
+      "description": "Packing list lifecycle: draft → submitted → approved/rejected → manifest auto-created on approval.",
       "item": [
         {
           "name": "Create Packing List",
@@ -1942,7 +2010,7 @@
             ],
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"container_id\": \"{{container_id}}\",\n  \"customer_id\": \"{{customer_id}}\",\n  \"items\": [\n    {\n      \"description\": \"Electronics - Phone Cases\",\n      \"weight_dispatch_kg\": 12.5,\n      \"weight_actual_kg\": 12.3,\n      \"length_cm\": 60,\n      \"width_cm\": 40,\n      \"height_cm\": 30,\n      \"received_date\": \"2026-02-20\"\n    },\n    {\n      \"description\": \"Clothing - T-Shirts\",\n      \"weight_dispatch_kg\": 8.0,\n      \"weight_actual_kg\": 7.8,\n      \"length_cm\": 50,\n      \"width_cm\": 35,\n      \"height_cm\": 25,\n      \"received_date\": \"2026-02-20\"\n    }\n  ]\n}"
+              "raw": "{\n  \"container_id\": \"{{container_id}}\",\n  \"customer_id\": \"{{customer_id}}\",\n  \"arrival_warehouse_id\": \"{{warehouse_id}}\",\n  \"items\": [\n    {\n      \"description\": \"Electronics - Phone Cases\",\n      \"weight_dispatch_kg\": 12.5,\n      \"weight_actual_kg\": 12.3,\n      \"length_cm\": 60,\n      \"width_cm\": 40,\n      \"height_cm\": 30,\n      \"received_date\": \"2026-02-20\"\n    },\n    {\n      \"description\": \"Clothing - T-Shirts\",\n      \"weight_dispatch_kg\": 8.0,\n      \"weight_actual_kg\": 7.8,\n      \"length_cm\": 50,\n      \"width_cm\": 35,\n      \"height_cm\": 25,\n      \"received_date\": \"2026-02-20\"\n    }\n  ]\n}"
             },
             "url": {
               "raw": "{{base_url}}/v1/packing-lists",
@@ -2077,7 +2145,7 @@
             ],
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"items\": [\n    {\n      \"description\": \"Electronics - Phone Cases (Updated)\",\n      \"weight_dispatch_kg\": 12.5,\n      \"weight_actual_kg\": 12.3,\n      \"length_cm\": 60,\n      \"width_cm\": 40,\n      \"height_cm\": 30,\n      \"received_date\": \"2026-02-20\"\n    }\n  ]\n}"
+              "raw": "{\n  \"arrival_warehouse_id\": \"{{warehouse_id}}\",\n  \"items\": [\n    {\n      \"description\": \"Electronics - Phone Cases (Updated)\",\n      \"weight_dispatch_kg\": 12.5,\n      \"weight_actual_kg\": 12.3,\n      \"length_cm\": 60,\n      \"width_cm\": 40,\n      \"height_cm\": 30,\n      \"received_date\": \"2026-02-20\"\n    }\n  ]\n}"
             },
             "url": {
               "raw": "{{base_url}}/v1/packing-lists/{{packing_list_id}}",
@@ -2247,7 +2315,7 @@
                 "reject"
               ]
             },
-            "description": "PATCH /v1/packing-lists/{id}/reject \u2014 reject a submitted packing list (tenant_admin); status \u2192 rejected"
+            "description": "PATCH /v1/packing-lists/{id}/reject — reject a submitted packing list (tenant_admin); status → rejected"
           }
         }
       ]
@@ -2379,7 +2447,7 @@
           }
         },
         {
-          "name": "Verify Manifest \u2014 With Discrepancies",
+          "name": "Verify Manifest — With Discrepancies",
           "request": {
             "method": "PATCH",
             "header": [
@@ -2469,6 +2537,12 @@
                 {
                   "key": "cursor",
                   "value": "",
+                  "disabled": true
+                },
+                {
+                  "key": "q",
+                  "value": "",
+                  "description": "Free-text search: invoice number, customer name, or container number",
                   "disabled": true
                 }
               ]
@@ -3093,7 +3167,7 @@
                 "exempt"
               ]
             },
-            "description": "PATCH /v1/billing/carryovers/{id}/exempt \u2014 mark a carryover as exempted (tenant_admin)"
+            "description": "PATCH /v1/billing/carryovers/{id}/exempt — mark a carryover as exempted (tenant_admin)"
           }
         },
         {
@@ -3120,7 +3194,7 @@
             ],
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"billing_id\": \"{{billing_id}}\",\n  \"reason\": \"CBM measurement discrepancy \u2014 re-measured at warehouse\",\n  \"customer_measured_cbm\": 0.45\n}",
+              "raw": "{\n  \"billing_id\": \"{{billing_id}}\",\n  \"reason\": \"CBM measurement discrepancy — re-measured at warehouse\",\n  \"customer_measured_cbm\": 0.45\n}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -3138,7 +3212,7 @@
                 "disputes"
               ]
             },
-            "description": "POST /v1/billing/disputes \u2014 staff-created CBM dispute (billing_id in body; tenant_admin or nigeria_office_staff)"
+            "description": "POST /v1/billing/disputes — staff-created CBM dispute (billing_id in body; tenant_admin or nigeria_office_staff)"
           }
         },
         {
@@ -3185,7 +3259,7 @@
                 "reject"
               ]
             },
-            "description": "PATCH /v1/billing/disputes/{id}/reject \u2014 reject a CBM dispute with a reason (tenant_admin or nigeria_office_staff)"
+            "description": "PATCH /v1/billing/disputes/{id}/reject — reject a CBM dispute with a reason (tenant_admin or nigeria_office_staff)"
           }
         }
       ]
@@ -3433,7 +3507,7 @@
           }
         },
         {
-          "name": "Missing Items \u2014 List",
+          "name": "Missing Items — List",
           "request": {
             "method": "GET",
             "header": [
@@ -3485,7 +3559,7 @@
           }
         },
         {
-          "name": "Missing Items \u2014 Log",
+          "name": "Missing Items — Log",
           "request": {
             "method": "POST",
             "header": [
@@ -3524,7 +3598,7 @@
           }
         },
         {
-          "name": "Missing Items \u2014 Get",
+          "name": "Missing Items — Get",
           "request": {
             "method": "GET",
             "header": [
@@ -3556,7 +3630,7 @@
           }
         },
         {
-          "name": "Missing Items \u2014 Update",
+          "name": "Missing Items — Update",
           "request": {
             "method": "PATCH",
             "header": [
@@ -3596,7 +3670,7 @@
           }
         },
         {
-          "name": "Seized Items \u2014 List",
+          "name": "Seized Items — List",
           "request": {
             "method": "GET",
             "header": [
@@ -3648,7 +3722,7 @@
           }
         },
         {
-          "name": "Seized Items \u2014 Log",
+          "name": "Seized Items — Log",
           "request": {
             "method": "POST",
             "header": [
@@ -3687,7 +3761,7 @@
           }
         },
         {
-          "name": "Seized Items \u2014 Get",
+          "name": "Seized Items — Get",
           "request": {
             "method": "GET",
             "header": [
@@ -3719,7 +3793,7 @@
           }
         },
         {
-          "name": "Seized Items \u2014 Update",
+          "name": "Seized Items — Update",
           "request": {
             "method": "PATCH",
             "header": [
@@ -3800,7 +3874,7 @@
                 "presigned-url"
               ]
             },
-            "description": "POST /v1/uploads/presigned-url \u2014 generate an S3 presigned PUT URL for uploading claim evidence photos"
+            "description": "POST /v1/uploads/presigned-url — generate an S3 presigned PUT URL for uploading claim evidence photos"
           }
         }
       ]
@@ -3968,7 +4042,7 @@
           }
         },
         {
-          "name": "Generate Release Note \u2014 Partial (with outstanding)",
+          "name": "Generate Release Note — Partial (with outstanding)",
           "request": {
             "method": "POST",
             "header": [
@@ -3991,7 +4065,7 @@
             ],
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"billing_id\": \"{{billing_id}}\",\n  \"carton_tags\": [\"SHX-00001\"],\n  \"release_with_outstanding\": true,\n  \"approval_notes\": \"Approved by manager \u2014 customer to pay balance within 7 days\",\n  \"credit_granted_by_name\": \"Chidi Okafor\",\n  \"due_date\": \"2026-09-27\"\n}"
+              "raw": "{\n  \"billing_id\": \"{{billing_id}}\",\n  \"carton_tags\": [\"SHX-00001\"],\n  \"release_with_outstanding\": true,\n  \"approval_notes\": \"Approved by manager — customer to pay balance within 7 days\",\n  \"credit_granted_by_name\": \"Chidi Okafor\",\n  \"due_date\": \"2026-09-27\"\n}"
             },
             "url": {
               "raw": "{{base_url}}/v1/release-notes",
@@ -4077,7 +4151,7 @@
           }
         },
         {
-          "name": "Record Pickup \u2014 By Delegate",
+          "name": "Record Pickup — By Delegate",
           "request": {
             "method": "PATCH",
             "header": [
@@ -4215,12 +4289,91 @@
               ]
             }
           }
+        },
+        {
+          "name": "Update Warehouse",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "X-Tenant-ID",
+                "value": "{{tenant_id}}"
+              },
+              {
+                "key": "X-Role",
+                "value": "tenant_admin"
+              },
+              {
+                "key": "X-User-ID",
+                "value": "{{user_id}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"phone\": \"08099999999\",\n  \"address\": \"Updated address\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{base_url}}/v1/warehouses/{{warehouse_id}}",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "v1",
+                "warehouses",
+                "{{warehouse_id}}"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Deactivate Warehouse",
+          "request": {
+            "method": "DELETE",
+            "header": [
+              {
+                "key": "X-Tenant-ID",
+                "value": "{{tenant_id}}"
+              },
+              {
+                "key": "X-Role",
+                "value": "tenant_admin"
+              },
+              {
+                "key": "X-User-ID",
+                "value": "{{user_id}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/v1/warehouses/{{warehouse_id}}",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "v1",
+                "warehouses",
+                "{{warehouse_id}}"
+              ]
+            }
+          }
         }
       ]
     },
     {
       "name": "10. Refunds",
-      "description": "Refund request workflow: create \u2192 accounts review \u2192 approve/reject.\nTypes: overpayment | cbm_correction | damage_or_loss",
+      "description": "Refund request workflow: create → accounts review → approve/reject.\nTypes: overpayment | cbm_correction | damage_or_loss",
       "item": [
         {
           "name": "Create Refund Request",
@@ -4246,7 +4399,7 @@
             ],
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"customer_id\": \"{{customer_id}}\",\n  \"billing_id\": \"{{billing_id}}\",\n  \"refund_type\": \"overpayment\",\n  \"amount_requested_ngn\": 15000.00,\n  \"customer_choice\": \"credit_next_shipment\",\n  \"notes\": \"Customer paid \u20a6265,000 but billing total was \u20a6250,000\"\n}"
+              "raw": "{\n  \"customer_id\": \"{{customer_id}}\",\n  \"billing_id\": \"{{billing_id}}\",\n  \"refund_type\": \"overpayment\",\n  \"amount_requested_ngn\": 15000.00,\n  \"customer_choice\": \"credit_next_shipment\",\n  \"notes\": \"Customer paid ₦265,000 but billing total was ₦250,000\"\n}"
             },
             "url": {
               "raw": "{{base_url}}/v1/refunds",
@@ -4261,7 +4414,7 @@
           }
         },
         {
-          "name": "Create Refund \u2014 Damage/Loss Claim",
+          "name": "Create Refund — Damage/Loss Claim",
           "request": {
             "method": "POST",
             "header": [
@@ -4421,7 +4574,7 @@
           }
         },
         {
-          "name": "Accounts Review \u2014 Rejected (has debt)",
+          "name": "Accounts Review — Rejected (has debt)",
           "request": {
             "method": "PATCH",
             "header": [
@@ -4444,7 +4597,7 @@
             ],
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"debt_check_passed\": false,\n  \"debt_check_notes\": \"Customer has \u20a645,000 outstanding carryover from container MSCU9876543\"\n}"
+              "raw": "{\n  \"debt_check_passed\": false,\n  \"debt_check_notes\": \"Customer has ₦45,000 outstanding carryover from container MSCU9876543\"\n}"
             },
             "url": {
               "raw": "{{base_url}}/v1/refunds/{{refund_id}}/review",
@@ -4501,7 +4654,7 @@
           }
         },
         {
-          "name": "Approve Refund \u2014 Head of Finance (CBM/large damage)",
+          "name": "Approve Refund — Head of Finance (CBM/large damage)",
           "request": {
             "method": "PATCH",
             "header": [
@@ -4604,7 +4757,7 @@
             ],
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"reason\": \"Payment amount verified as correct \u2014 no overpayment found\"\n}",
+              "raw": "{\n  \"reason\": \"Payment amount verified as correct — no overpayment found\"\n}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -4623,7 +4776,7 @@
                 "reject"
               ]
             },
-            "description": "PATCH /v1/refunds/{id}/reject \u2014 reject a pending_review or pending_approval refund (tenant_admin or nigeria_office_staff)"
+            "description": "PATCH /v1/refunds/{id}/reject — reject a pending_review or pending_approval refund (tenant_admin or nigeria_office_staff)"
           }
         }
       ]
@@ -4661,7 +4814,7 @@
                 "export"
               ]
             },
-            "description": "GET /v1/packing-lists/{id}/export \u2014 generate presigned S3 download URL for packing list XLSX"
+            "description": "GET /v1/packing-lists/{id}/export — generate presigned S3 download URL for packing list XLSX"
           }
         },
         {
@@ -4694,7 +4847,7 @@
                 "export"
               ]
             },
-            "description": "GET /v1/manifests/{id}/export \u2014 generate presigned S3 download URL for manifest XLSX"
+            "description": "GET /v1/manifests/{id}/export — generate presigned S3 download URL for manifest XLSX"
           }
         },
         {
@@ -4727,7 +4880,7 @@
                 "export"
               ]
             },
-            "description": "GET /v1/billing/{id}/export \u2014 generate presigned S3 download URL for billing record XLSX"
+            "description": "GET /v1/billing/{id}/export — generate presigned S3 download URL for billing record XLSX"
           }
         },
         {
@@ -4761,7 +4914,7 @@
                 "export"
               ]
             },
-            "description": "GET /v1/containers/{id}/billing/export \u2014 export all billing records for a container as XLSX"
+            "description": "GET /v1/containers/{id}/billing/export — export all billing records for a container as XLSX"
           }
         },
         {
@@ -4806,7 +4959,7 @@
                 "import"
               ]
             },
-            "description": "POST /v1/packing-lists/import \u2014 import packing list items from a pre-uploaded S3 XLSX file (china_office_staff)"
+            "description": "POST /v1/packing-lists/import — import packing list items from a pre-uploaded S3 XLSX file (china_office_staff)"
           }
         }
       ]
@@ -4857,7 +5010,7 @@
                 }
               ]
             },
-            "description": "GET /v1/webhooks/whatsapp \u2014 Meta webhook verification challenge. Returns hub.challenge on success (200 text/plain)."
+            "description": "GET /v1/webhooks/whatsapp — Meta webhook verification challenge. Returns hub.challenge on success (200 text/plain)."
           }
         },
         {
@@ -4902,7 +5055,7 @@
                 "whatsapp"
               ]
             },
-            "description": "POST /v1/webhooks/whatsapp \u2014 Incoming Meta delivery status webhook. Logs status; always returns 200."
+            "description": "POST /v1/webhooks/whatsapp — Incoming Meta delivery status webhook. Logs status; always returns 200."
           }
         }
       ]

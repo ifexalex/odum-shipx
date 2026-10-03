@@ -169,15 +169,33 @@ def create_packing_list(tenant_id: str, data: dict[str, Any]) -> dict[str, Any] 
         """
         INSERT INTO packing_list (
             tenant_id, container_id, customer_id, status, created_by, reference,
-            loading_date, delivery_date
+            loading_date, delivery_date, arrival_warehouse_id
         )
         VALUES (
             %(tenant_id)s, %(container_id)s, %(customer_id)s, 'draft', %(created_by)s, %(reference)s,
-            %(loading_date)s, %(delivery_date)s
+            %(loading_date)s, %(delivery_date)s, %(arrival_warehouse_id)s
         )
         RETURNING *
         """,
-        {**data, "loading_date": data.get("loading_date"), "delivery_date": data.get("delivery_date")},
+        {
+            "loading_date": data.get("loading_date"),
+            "delivery_date": data.get("delivery_date"),
+            "arrival_warehouse_id": data.get("arrival_warehouse_id"),
+            **data,
+        },
+    )
+
+
+def set_packing_list_warehouse(tenant_id: str, pl_id: str, warehouse_id: str | None) -> dict[str, Any] | None:
+    return execute_write_with_tenant(
+        tenant_id,
+        """
+        UPDATE packing_list
+        SET arrival_warehouse_id = %(warehouse_id)s, updated_at = NOW()
+        WHERE tenant_id = %(tenant_id)s AND id = %(id)s
+        RETURNING *
+        """,
+        {"tenant_id": tenant_id, "id": pl_id, "warehouse_id": warehouse_id},
     )
 
 
@@ -233,6 +251,7 @@ def get_packing_list_by_id(tenant_id: str, pl_id: str) -> dict[str, Any] | None:
                c.phone AS customer_phone,
                co.container_number,
                co.status AS container_status,
+               w.name AS arrival_warehouse_name,
                tu_a.full_name AS approved_by_name,
                tu_r.full_name AS rejected_by_name,
                tu_c.full_name AS created_by_name
@@ -241,6 +260,8 @@ def get_packing_list_by_id(tenant_id: str, pl_id: str) -> dict[str, Any] | None:
                ON c.id = pl.customer_id AND c.tenant_id = pl.tenant_id
         LEFT JOIN container co
                ON co.id = pl.container_id AND co.tenant_id = pl.tenant_id
+        LEFT JOIN warehouse w
+               ON w.id = pl.arrival_warehouse_id AND w.tenant_id = pl.tenant_id
         LEFT JOIN tenant_user tu_a
                ON tu_a.id = pl.approved_by AND tu_a.tenant_id = pl.tenant_id
         LEFT JOIN tenant_user tu_r
@@ -348,6 +369,7 @@ def list_packing_lists(
                c.voyage_number,
                cu.name AS customer_name,
                cu.phone AS customer_phone,
+               w.name AS arrival_warehouse_name,
                COALESCE(agg.carton_count, 0)    AS carton_count,
                COALESCE(agg.package_count, 0)   AS package_count,
                COALESCE(agg.package_mix, '{{}}'::jsonb) AS package_mix,
@@ -358,6 +380,8 @@ def list_packing_lists(
                ON c.id = pl.container_id AND c.tenant_id = pl.tenant_id
         LEFT JOIN customer cu
                ON cu.id = pl.customer_id AND cu.tenant_id = pl.tenant_id
+        LEFT JOIN warehouse w
+               ON w.id = pl.arrival_warehouse_id AND w.tenant_id = pl.tenant_id
         LEFT JOIN (
             -- Two levels on purpose: sum quantities per unit first, then fold
             -- those into one row. jsonb_object_agg over the raw items would

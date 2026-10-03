@@ -88,6 +88,8 @@ export interface Billing {
   invoice_number?: string | null
   customer_id?: string | null
   customer_name?: string | null
+  customer_phone?: string | null
+  customer_email?: string | null
   container_id: string
   container_number: string | null
   total_cbm: string

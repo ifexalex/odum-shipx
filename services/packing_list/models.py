@@ -73,12 +73,16 @@ class CreatePackingListRequest(BaseModel):
     customer_id: str
     loading_date: date | None = None
     delivery_date: date | None = None
+    # Destination warehouse the cargo is bound for. Omitted → the tenant's
+    # default warehouse is applied server-side.
+    arrival_warehouse_id: str | None = None
     items: list[PackingListItemInput] = Field(default_factory=list)
 
 
 class UpdatePackingListRequest(BaseModel):
     loading_date: date | None = None
     delivery_date: date | None = None
+    arrival_warehouse_id: str | None = None
     items: list[UpdatePackingListItemInput] = Field(min_length=1)
 
 

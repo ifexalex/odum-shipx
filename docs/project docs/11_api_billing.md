@@ -14,7 +14,7 @@ Implement the Billing Lambda service: auto-billing on customs clearance, CBM-bas
 
 | Method | Path | Roles |
 |---|---|---|
-| GET | `/v1/billing` | tenant_admin, nigeria_office_staff, customer (own only, force-scoped server-side) — paginated list, filterable by `?status=` / `?customer_id=` (staff only — a customer's `customer_id` filter is always overridden to their own); sortable via `?sort=&direction=` |
+| GET | `/v1/billing` | tenant_admin, nigeria_office_staff, customer (own only, force-scoped server-side) — paginated list, filterable by `?status=` / `?customer_id=` (staff only — a customer's `customer_id` filter is always overridden to their own) / `?q=` (free-text over invoice_number, customer name, container_number) / `?created_after=&created_before=` (over `billed_at`); sortable via `?sort=&direction=` |
 | GET | `/v1/billing/{customer-id}` | tenant_admin, nigeria_office_staff, customer (own only) |
 | POST | `/v1/billing/{id}/dispute` | customer |
 | GET | `/v1/billing/{id}/disputes` | nigeria_office_staff, tenant_admin, customer (own) |
@@ -70,6 +70,23 @@ Ground-truth gap found live, reported by the user: "let's double check the billi
 | `created_before` | ISO date (`YYYY-MM-DD`) | filters `b.billed_at <= %(created_before)s` |
 
 Fixed by wiring `BillingList.tsx`'s calendar button to the shared `DateRangeFilter` component (against `billed_at`, since that's the column the 'Billed' column and its sort already use — not `created_at`) and building a real Filters panel with a granular multi-select over `PaymentStatus`, following the exact `china/ContainerList.tsx` pattern (`filtersWrap`/`filtersPanel`/`toggleStatus`/`clearAllFilters`). The single-select status chips and the panel's multi-select share one `activeStatuses` array so the two entry points can never silently combine.
+
+### GET /v1/billing — `?q=` search was silently dropped + record-payment context (2026-10-03)
+
+Reported live: "billing filters and search… not working properly." Two issues:
+
+1. **Search did nothing.** `BillingList.tsx`'s search box sends `?q=`, and `list_billing_all()` already had the `ILIKE` predicate (`b.invoice_number`/`cu.name`/`c.container_number`), but **`handler.py` never read the `q` query param** into `filters` — so it was discarded before reaching the service. Fixed by parsing `q` in the `GET /v1/billing` branch (the one line between `created_before` and `limit`). Regression test: `TestBillingHandlerQueryParams::test_search_query_param_reaches_the_service`. Verified live: `?q=Amara` → 6 matches, `?q=INV-S-0309` → 1, container number → container-scoped, nonsense → 0.
+2. **Record-payment modal lacked context.** The modal showed only Amount/Method/Reference — nothing about *who* is paying or *what* for. `list_billing_all()` now also selects `cu.phone AS customer_phone, cu.email AS customer_email` (and `_enrich_billing` passes them through), so the list/detail response carries the customer's contact. The `RecordPaymentModal` (`BillingDetail.tsx`) now leads with a context card: customer name + phone + email, invoice number, container, status badge, and a Total due / Already paid / Outstanding summary; the amount field pre-fills with the outstanding balance (editable for partials). New response keys: `customer_phone`, `customer_email` (nullable).
+
+### PATCH /v1/billing/{id}/apply-carryover — 500 (uuid cast) + status recompute + detail context (2026-10-03)
+
+Reported live: "carry over payment seems not to be working." Three issues:
+
+1. **Apply always 500'd.** `repo.mark_carryovers_applied()` and `mark_credit_refunds_applied()` compared a `uuid` PK against a **bound Python-string array** — `AND id = ANY(%(ids)s)` → `psycopg2 UndefinedFunction: operator does not exist: uuid = text`. Every manual carryover application raised a 500 (and the same function on the billing-generation auto-apply path and the CBM-dispute credit-refund path shared the latent fault). Fixed with an explicit `::uuid[]` cast on the bound array. **Unit tests can't catch this** — they mock `execute_write_with_tenant`, so the SQL never runs; verified live instead (apply → 200, ledger row flips to `applied` with `target_billing_id`/`applied_at`, billing total/balance updated).
+2. **Status not recomputed.** Applying carried-forward debt raises `total_ngn`, so the generated `balance_ngn` grows — but `status` was never recomputed, leaving a formerly-`paid` record `paid` while now owing. `apply_carryover` now recomputes the money status (`unpaid`/`partially_paid`/`paid`/`overpaid`) from the fresh balance via the new `repo.set_billing_status()`, for the four money statuses only (`released_with_outstanding` left untouched; `cancelled`/`waived` already blocked). New test `test_applying_to_a_paid_billing_recomputes_status_to_partially_paid`.
+3. **Picker offered un-appliable credits + thin detail header.** The "Apply carryover" modal loaded **every customer's** outstanding carryovers, but `apply_carryover` rejects a customer mismatch (`BR-CARRYOVER-003`) — so most picks 422'd. `loadCarryovers()` now scopes to `customer_id: billing.customer_id`. Separately, the `BillingDetail` hero now leads with the **customer name** (was the container number) plus invoice number, container, and the customer's phone/email (same fields added in the 7.88 note above).
+
+Note on semantics: a carryover is **outstanding debt carried forward** to the next shipment (migration 003's `carryover_ledger` — "outstanding balance carried forward"), so applying one *increases* the target invoice. Overpayments are a separate path (`create_overpayment_refund_request`), not carryovers.
 
 Verified live against the real local stack: `GET /v1/billing?status=unpaid,released_with_outstanding` returned exactly the 3 matching records out of 4 total; `created_after=2099-01-01` returned 0; `created_after=2020-01-01` returned only the 1 record with a non-null `billed_at`. Tests: `TestListBillingAllRepositoryFilters` (5 cases) and `TestBillingListHandlerQueryParams` (3 cases) in `tests/unit/test_billing.py`; `BillingList.test.tsx` gained 3 cases covering the date filter, the multi-select panel, and Clear all filters.
 

@@ -240,6 +240,7 @@ export function PackingListDetail(): JSX.Element {
             <div className={styles.heroMeta}>
               <Mono>{pl.container_number ?? pl.container_id}</Mono>
               <span>· {packageSummary} · {formatCbm(pl.total_cbm)} CBM</span>
+              {pl.arrival_warehouse_name && <span>· To {pl.arrival_warehouse_name}</span>}
               <span>· Submitted {pl.created_at.slice(0, 10)}</span>
             </div>
           </div>

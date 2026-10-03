@@ -65,6 +65,7 @@ export const routeTable: RouteDef[] = [
   { path: '/admin/config/cbm-rate', allow: ['tenant_admin'], title: 'CBM Rate', layout: 'staff' },
   { path: '/admin/config/charge-types', allow: ['tenant_admin'], title: 'Charge Types', layout: 'staff' },
   { path: '/admin/config/container-capacities', allow: ['tenant_admin'], title: 'Container Capacities', layout: 'staff' },
+  { path: '/admin/config/warehouses', allow: ['tenant_admin'], title: 'Warehouses', layout: 'staff' },
   { path: '/admin/config/notifications', allow: ['tenant_admin'], title: 'Notification Templates', layout: 'staff' },
   { path: '/admin/config/webhooks', allow: ['tenant_admin'], title: 'Webhook Configuration', layout: 'staff' },
   { path: '/admin/config/payments', allow: ['tenant_admin'], title: 'Payment Gateway', layout: 'staff' },

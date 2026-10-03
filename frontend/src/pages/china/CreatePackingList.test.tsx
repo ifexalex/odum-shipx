@@ -17,6 +17,14 @@ vi.mock('../../api/packingList', async (importOriginal) => {
 vi.mock('../../api/tracking', () => ({
   containersApi: { list: vi.fn() },
 }))
+vi.mock('../../api/warehouses', () => ({
+  warehousesApi: {
+    list: vi.fn().mockResolvedValue([
+      { id: 'wh1', name: 'Lagos — Trade Fair', city: 'Lagos', state: 'Lagos', address: null, phone: null, is_default: true },
+      { id: 'wh2', name: 'Aba — Ariaria', city: 'Aba', state: 'Abia', address: null, phone: null, is_default: false },
+    ]),
+  },
+}))
 vi.mock('../../api/tenantManagement', () => ({
   customersApi: { list: vi.fn() },
   configApi: {
@@ -309,6 +317,16 @@ describe('CreatePackingList', () => {
     const [body, idemKey] = vi.mocked(packingListApi.create).mock.calls[0]!
     expect(body.container_id).toBe('c1')
     expect(body.customer_id).toBe('cust1')
+    // The default warehouse is pre-selected and sent without the user touching it.
+    expect(body.arrival_warehouse_id).toBe('wh1')
     expect(typeof idemKey).toBe('string')
+  })
+
+  it('pre-selects the default arrival warehouse on step 1', async () => {
+    renderPage()
+    // The default warehouse (wh1) label shows as the picker's selected value.
+    await waitFor(() =>
+      expect(screen.getByLabelText('Arrival warehouse')).toHaveTextContent('Lagos — Trade Fair'),
+    )
   })
 })
