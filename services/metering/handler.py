@@ -16,18 +16,17 @@ import time
 import uuid
 from typing import Any
 
-from aws_xray_sdk.core import patch_all
-
 from shared.auth import get_tenant_context
 from shared.exceptions import LogisticsBaseError, ResourceNotFoundError
 from shared.logging_config import bind_log_context, clear_log_context, setup_logging
+from shared.observability import init_tracing
 from shared.responses import error_response, success
 from shared.tenant_context import UserRole
 
 from . import service
 
 setup_logging()
-patch_all()
+init_tracing()
 
 logger = logging.getLogger(__name__)
 

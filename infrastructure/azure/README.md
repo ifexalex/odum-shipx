@@ -108,8 +108,10 @@ and `EmailProvider` (transactional email → `aws/ses.py`). Presigned uploads us
 **cloud-neutral PUT contract** that both S3 and Azure Blob satisfy. The matching
 Azure adapters (`azure/{keyvault,blob,keyvault_secrets,eventgrid,servicebus,acs_email}.py`)
 are built alongside their Terraform modules (#2, #6). See
-`docs/project docs/02_shared_utilities.md` → "shared/providers/". The remaining
-boto3 touchpoints (Cognito, X-Ray) follow the same pattern as they are migrated.
+`docs/project docs/02_shared_utilities.md` → "shared/providers/". X-Ray tracing
+is likewise behind a shim (`shared/observability.py::init_tracing`, a no-op off
+AWS). The one remaining boto3 touchpoint is **Cognito** (auth), the stickiest —
+token claims + user migration to Entra, not a clean adapter swap.
 
 **Key dependency:** #8 (compute) needs the backend packaged as a **container**
 (it already runs under Flask in `scripts/local_server.py`, so this is a wrapper,

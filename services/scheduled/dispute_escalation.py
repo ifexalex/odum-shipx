@@ -11,17 +11,16 @@ import logging
 from datetime import UTC, datetime
 from typing import Any
 
-from aws_xray_sdk.core import patch_all
-
 from shared.db import execute_with_tenant, execute_write_with_tenant
 from shared.events import publish_event
 from shared.logging_config import bind_log_context, clear_log_context, setup_logging
 from shared.notifications import enqueue_notification
+from shared.observability import init_tracing
 from shared.staff_notifications import notify_staff
 from shared.tenant_context import PLATFORM_TENANT_ID
 
 setup_logging()
-patch_all()
+init_tracing()
 
 logger = logging.getLogger(__name__)
 

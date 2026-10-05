@@ -552,11 +552,20 @@ read once in `shared/providers/__init__.py`.
 - **Azure adapters** (`shared/providers/azure/{keyvault,blob,keyvault_secrets,eventgrid,servicebus,acs_email}.py`) land
   with the Azure Terraform stack; the factory's azure branches reference them behind `# type: ignore[import-not-found]`
   until then.
-- **Still on boto3 directly** (next increments, same pattern): Cognito (`services/auth`, `services/tenant_management`)
-  and the X-Ray `patch_all()` shim. Cognito→Entra is the stickiest (token claims + user migration). SQS/Service Bus and
-  SES/ACS are consumed as *producers* via the ports above; the SQS **consumer** side is the Lambda event-source trigger
-  (`services/notification/handler.py`, `services/metering/handler.py`) — on Azure that becomes a Functions Service Bus
-  trigger binding, handled by the entry adapter, not a boto3 call.
+- **Still on boto3 directly** (next increment, same pattern): Cognito (`services/auth`, `services/tenant_management`) —
+  the stickiest (token claims + user migration). SQS/Service Bus and SES/ACS are consumed as *producers* via the ports
+  above; the SQS **consumer** side is the Lambda event-source trigger (`services/notification/handler.py`,
+  `services/metering/handler.py`) — on Azure that becomes a Functions Service Bus trigger binding, handled by the entry
+  adapter, not a boto3 call.
+
+## shared/observability.py — tracing shim (added 2026-10-05)
+
+`init_tracing()` replaces the direct `from aws_xray_sdk.core import patch_all; patch_all()` that sat at module load in
+all 19 Lambda entry points (every `services/*/handler.py` + the `services/scheduled/*` jobs). On AWS it calls
+`patch_all()` (X-Ray instrumentation of boto3/psycopg2/requests, unchanged); on any other cloud it is a no-op, since
+tracing there is wired at the platform level (e.g. Azure Application Insights auto-instrumentation) rather than
+in-process. Selected by `CLOUD_PROVIDER` (from `shared/providers`). Call it once next to `setup_logging()` at module
+load. This removes the hard `aws_xray_sdk` import from the handlers' startup path on non-AWS clouds.
 - **Tests:** `tests/unit/test_encryption.py` (KeyProvider via a fake), `tests/unit/test_storage_provider.py`
   (S3StorageProvider against moto + the factory wiring).
 

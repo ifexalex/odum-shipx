@@ -15,13 +15,12 @@ import time
 import uuid
 from typing import Any
 
-from aws_xray_sdk.core import patch_all
-
 from shared.auth import get_tenant_context
 from shared.exceptions import LogisticsBaseError, ResourceNotFoundError
 from shared.idempotency import check_idempotency, store_idempotency
 from shared.logging_config import bind_log_context, clear_log_context, setup_logging
 from shared.metering import record_usage
+from shared.observability import init_tracing
 from shared.pagination import decode_cursor
 from shared.responses import created, error_response, paginated, success
 from shared.tenant_context import UserRole
@@ -32,7 +31,7 @@ from .models import AccountsReviewRequest, ApproveRefundRequest, CreateRefundReq
 
 # Module-level init (runs once on cold start)
 setup_logging()
-patch_all()
+init_tracing()
 
 logger = logging.getLogger(__name__)
 

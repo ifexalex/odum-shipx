@@ -1204,3 +1204,7 @@ All four delegation tests follow `test_tracking.py::TestContainerStats`'s `patch
 
 - **`tests/unit/test_queue_email_providers.py`** (4): `SqsQueueProvider.send` round-trips a body through a moto queue; `SesEmailProvider.send` maps to the SES `send_email` Source/Destination/Message structure (stubbed client); factory wiring (default → AWS adapters) + singleton caching.
 - **Migrated mocks** — the notification tests moved from patching the removed `_get_sqs()` + asserting boto3 `send_message(QueueUrl=…, MessageBody=…)` to patching `get_queue_provider` and asserting `send(destination=…, body=…)`: `test_whatsapp_first.py` (whole suite — note the SMS-fallback cases patch `services.notification.service.get_queue_provider`, since the fallback/retry call the provider imported into the *service* module, while `enqueue_notifications` cases patch `shared.notifications.get_queue_provider`), `test_notification_guard.py`, and `test_scheduled_jobs.py` (locale-passthrough capture rewritten to `send(*, destination, body)`).
+
+### Cloud-portability — X-Ray tracing shim (2026-10-05)
+
+- No test changes needed. All 19 Lambda entry points replaced `from aws_xray_sdk.core import patch_all; patch_all()` with `shared/observability.py::init_tracing()` (no-op when `CLOUD_PROVIDER != "aws"`). `conftest.py` already stubs the `aws_xray_sdk` modules, so the lazy import inside `init_tracing` resolves to the stub under test exactly as the direct import did — handler-import and `init_tracing()` smoke-verified; full suite green (1150).

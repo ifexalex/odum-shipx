@@ -34,10 +34,9 @@ import time
 import uuid
 from typing import Any
 
-from aws_xray_sdk.core import patch_all
-
 from shared.exceptions import AuthenticationRequiredError, LogisticsBaseError, ResourceNotFoundError
 from shared.logging_config import bind_log_context, clear_log_context, setup_logging
+from shared.observability import init_tracing
 from shared.responses import error_response
 from shared.validation import parse_validated
 
@@ -45,7 +44,7 @@ from . import cognito_refresh
 from .models import EstablishSessionRequest
 
 setup_logging()
-patch_all()
+init_tracing()
 
 logger = logging.getLogger(__name__)
 
