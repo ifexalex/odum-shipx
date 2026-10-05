@@ -15,9 +15,15 @@ services/tenant_management/
 ├── handler.py        # Lambda entry, route dispatch
 ├── service.py        # Business logic
 ├── repository.py     # All SQL queries
-├── cognito_client.py # Cognito user provisioning
+├── cognito_client.py # Cognito user provisioning (see portability note below)
 └── models.py         # Already defined in Task 03
 ```
+
+**Cloud-portability (2026-10-05):** `cognito_client.py` is the one remaining
+AWS-specific touchpoint not yet behind a `shared/providers/` port — Cognito doesn't map
+1:1 to Entra (different user/group/claim model + a user-account migration). The planned
+`IdentityProvider` port, Cognito→Entra claim mapping, and migration strategy are scoped
+in **ADR-004** (`docs/adr/004-cognito-to-entra-portability.md`). No code change yet.
 
 ## API Routes Handled
 
