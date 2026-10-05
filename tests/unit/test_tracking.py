@@ -327,7 +327,7 @@ class TestUpdateContainerStatus:
 
         # Ground-truth fix: billing must be generated synchronously here — the
         # EventBridge PaymentDue event above is never wired to invoke the
-        # billing Lambda (infrastructure/modules/eventbridge/main.tf only
+        # billing Lambda (infrastructure/aws/modules/eventbridge/main.tf only
         # fans it out to SMS/WhatsApp queues), so without this direct call a
         # cleared container would carry zero billing records forever.
         assert mock_handle_payment_due.call_count == 2

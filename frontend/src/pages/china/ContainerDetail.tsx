@@ -16,7 +16,7 @@ import { packingListApi, type PackingList } from '../../api/packingList'
 import {
   containerDocumentsApi,
   containersApi,
-  uploadToPresignedPost,
+  uploadToPresignedUrl,
   type Container,
   type ContainerDocument,
   type ContainerDocumentType,
@@ -406,7 +406,7 @@ function DocumentsTab({ containerId, containerNumber }: { containerId: string; c
         content_type: file.type || 'application/octet-stream',
         document_type: docType,
       })
-      await uploadToPresignedPost(presigned, file)
+      await uploadToPresignedUrl(presigned, file)
       setShowUpload(false)
       setFile(null)
       await loadDocs()

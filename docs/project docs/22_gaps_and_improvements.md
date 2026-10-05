@@ -114,7 +114,7 @@ Work through these iteratively — check off each item when implemented and upda
 - [x] **API rate limiting per tenant**
   - Usage is metered but not enforced. A runaway or compromised tenant can overwhelm the DB.
   - Configure API Gateway usage plan + throttling per tenant; raise `UsageLimitExceededError` (429) when exceeded.
-  - _Touches_: `infrastructure/modules/api-gateway/`, `04c_terraform_api_gateway.md`
+  - _Touches_: `infrastructure/aws/modules/api-gateway/`, `04c_terraform_api_gateway.md`
 
 - [x] **Rate history (dollar rate + CBM rate changes)**
   - `tenant_config` stores only the current rate. Historical billing rows capture the rate used at invoice time, but there's no dedicated audit table of rate changes.

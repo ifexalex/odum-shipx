@@ -16,7 +16,7 @@ _ENV = {
 def _queued_channels(mock_sqs) -> list[str]:
     import json
 
-    return [json.loads(c.kwargs["MessageBody"])["channel"] for c in mock_sqs.return_value.send_message.call_args_list]
+    return [json.loads(c.kwargs["body"])["channel"] for c in mock_sqs.return_value.send.call_args_list]
 
 
 class TestWhatsAppFirstRouting:
@@ -28,7 +28,7 @@ class TestWhatsAppFirstRouting:
             patch.object(notifications, "should_notify", return_value=True),
             patch.object(notifications, "_get_custom_template", return_value=None),
             patch.object(notifications, "execute_with_tenant", return_value=[]),
-            patch.object(notifications, "_get_sqs") as mock_sqs,
+            patch.object(notifications, "get_queue_provider") as mock_sqs,
         ):
             notifications.enqueue_notifications(
                 TENANT_ID,
@@ -53,7 +53,7 @@ class TestWhatsAppFirstRouting:
             patch.object(notifications, "should_notify", return_value=True),
             patch.object(notifications, "_get_custom_template", return_value=None),
             patch.object(notifications, "execute_with_tenant", return_value=[]),
-            patch.object(notifications, "_get_sqs") as mock_sqs,
+            patch.object(notifications, "get_queue_provider") as mock_sqs,
         ):
             notifications.enqueue_notifications(
                 TENANT_ID,
@@ -74,7 +74,7 @@ class TestWhatsAppFirstRouting:
             patch.object(notifications, "should_notify", side_effect=_only_whatsapp_muted),
             patch.object(notifications, "_get_custom_template", return_value=None),
             patch.object(notifications, "execute_with_tenant", return_value=[]),
-            patch.object(notifications, "_get_sqs") as mock_sqs,
+            patch.object(notifications, "get_queue_provider") as mock_sqs,
         ):
             notifications.enqueue_notifications(
                 TENANT_ID,
@@ -105,12 +105,12 @@ class TestSmsFallback:
             patch("services.notification.repository.get_log_for_fallback", return_value=self._log_row()),
             patch("services.notification.repository.fallback_already_sent", return_value=False),
             patch("services.notification.repository.get_customer_phone", return_value="+2348031234567"),
-            patch("shared.notifications._get_sqs") as mock_sqs,
+            patch("services.notification.service.get_queue_provider") as mock_sqs,
         ):
             assert service.trigger_sms_fallback(TENANT_ID, "log-wa-1", "whatsapp_undelivered") is True
         import json
 
-        body = json.loads(mock_sqs.return_value.send_message.call_args.kwargs["MessageBody"])
+        body = json.loads(mock_sqs.return_value.send.call_args.kwargs["body"])
         assert body["channel"] == "sms"
         # retry_of links the SMS to the WhatsApp row it replaces — this is the
         # double-send guard's key.
@@ -126,10 +126,10 @@ class TestSmsFallback:
             patch("services.notification.repository.get_log_for_fallback", return_value=self._log_row()),
             patch("services.notification.repository.fallback_already_sent", return_value=True),
             patch("services.notification.repository.get_customer_phone", return_value="+2348031234567"),
-            patch("shared.notifications._get_sqs") as mock_sqs,
+            patch("services.notification.service.get_queue_provider") as mock_sqs,
         ):
             assert service.trigger_sms_fallback(TENANT_ID, "log-wa-1", "whatsapp_rejected") is False
-        mock_sqs.return_value.send_message.assert_not_called()
+        mock_sqs.return_value.send.assert_not_called()
 
     def test_fallback_still_respects_the_non_production_guard(self):
         from services.notification import service
@@ -140,10 +140,10 @@ class TestSmsFallback:
             patch("services.notification.repository.get_log_for_fallback", return_value=self._log_row()),
             patch("services.notification.repository.fallback_already_sent", return_value=False),
             patch("services.notification.repository.get_customer_phone", return_value="+2348031234567"),
-            patch("shared.notifications._get_sqs") as mock_sqs,
+            patch("services.notification.service.get_queue_provider") as mock_sqs,
         ):
             assert service.trigger_sms_fallback(TENANT_ID, "log-wa-1", "whatsapp_rejected") is False
-        mock_sqs.return_value.send_message.assert_not_called()
+        mock_sqs.return_value.send.assert_not_called()
 
     def test_no_phone_on_the_customer_is_handled_quietly(self):
         from services.notification import service
@@ -153,10 +153,10 @@ class TestSmsFallback:
             patch("services.notification.repository.get_log_for_fallback", return_value=self._log_row()),
             patch("services.notification.repository.fallback_already_sent", return_value=False),
             patch("services.notification.repository.get_customer_phone", return_value=None),
-            patch("shared.notifications._get_sqs") as mock_sqs,
+            patch("services.notification.service.get_queue_provider") as mock_sqs,
         ):
             assert service.trigger_sms_fallback(TENANT_ID, "log-wa-1", "whatsapp_rejected") is False
-        mock_sqs.return_value.send_message.assert_not_called()
+        mock_sqs.return_value.send.assert_not_called()
 
 
 class TestWhatsAppTemplateLanguage:
@@ -281,7 +281,7 @@ class TestFallbackInputsArePersisted:
             patch.object(notifications, "should_notify", return_value=True),
             patch.object(notifications, "_get_custom_template", return_value=None),
             patch.object(notifications, "execute_with_tenant", return_value=[]),
-            patch.object(notifications, "_get_sqs") as mock_sqs,
+            patch.object(notifications, "get_queue_provider") as mock_sqs,
         ):
             notifications.enqueue_notifications(
                 TENANT_ID,
@@ -292,7 +292,7 @@ class TestFallbackInputsArePersisted:
             )
         import json
 
-        bodies = [json.loads(c.kwargs["MessageBody"]) for c in mock_sqs.return_value.send_message.call_args_list]
+        bodies = [json.loads(c.kwargs["body"]) for c in mock_sqs.return_value.send.call_args_list]
         # Without this the WhatsApp consumer writes a notification_log row with
         # customer_id NULL, and trigger_sms_fallback cannot resolve a phone —
         # the fallback gives up silently and the customer gets nothing.

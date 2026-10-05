@@ -19,7 +19,7 @@ Create the Terraform module for Amazon Cognito — the single shared User Pool f
 
 ## Deliverables
 
-### File: `infrastructure/modules/cognito/main.tf`
+### File: `infrastructure/aws/modules/cognito/main.tf`
 
 **Resources:**
 - `aws_cognito_user_pool` — "logistics-users-{env}"
@@ -44,7 +44,7 @@ Create the Terraform module for Amazon Cognito — the single shared User Pool f
 
 **Outputs:** user_pool_id, user_pool_arn, client_id, user_pool_domain
 
-### File: `infrastructure/modules/cognito/variables.tf`
+### File: `infrastructure/aws/modules/cognito/variables.tf`
 
 ```hcl
 variable "project_name" { type = string }

@@ -9,7 +9,7 @@
 #   3. GitHub Actions OIDC provider
 #   4. IAM permissions-boundary policy  (caps Lambda execution role blast radius)
 #   5. IAM deploy roles  (one per environment, OIDC-trusted, scoped operator policy)
-#   6. Patches infrastructure/environments/*.backend.hcl with real account ID
+#   6. Patches infrastructure/aws/environments/*.backend.hcl with real account ID
 #
 # USAGE:
 #   ./scripts/bootstrap_aws.sh GITHUB_ORG/REPO [AWS_REGION]
@@ -83,7 +83,7 @@ info "Step 1/6 — Patching backend.hcl files..."
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 
 for env in dev staging prod; do
-  file="${REPO_ROOT}/infrastructure/environments/${env}.backend.hcl"
+  file="${REPO_ROOT}/infrastructure/aws/environments/${env}.backend.hcl"
   if grep -q "ACCOUNT_ID" "${file}" 2>/dev/null; then
     sed -i.bak "s/ACCOUNT_ID/${ACCOUNT_ID}/g" "${file}" && rm -f "${file}.bak"
     ok "Patched ${env}.backend.hcl"
@@ -722,7 +722,7 @@ cat <<SUMMARY
   NEXT STEPS:
 
   1. Commit the patched backend configs:
-       git add infrastructure/environments/{dev,staging,prod}.backend.hcl
+       git add infrastructure/aws/environments/{dev,staging,prod}.backend.hcl
        git commit -m "chore: bootstrap AWS account ID in backend configs"
 
   2. Set GitHub Environment secrets (Settings → Environments):
@@ -731,7 +731,7 @@ cat <<SUMMARY
        Environment "prod"    → AWS_DEPLOY_ROLE_ARN = ${PROD_ROLE}
 
   3. Initialise Terraform:
-       cd infrastructure
+       cd infrastructure/aws
        terraform init -backend-config=environments/dev.backend.hcl
        terraform plan -var-file=environments/dev.tfvars
 

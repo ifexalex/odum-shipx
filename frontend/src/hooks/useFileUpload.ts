@@ -30,7 +30,10 @@ export interface UploadResult {
 
 export interface PresignedResponse {
   upload_url: string
-  fields: Record<string, string>
+  // Cloud-neutral PUT upload contract (AWS presigned-PUT / Azure Blob SAS).
+  // Optional for backward-compatibility with any cached response; defaults to PUT.
+  upload_method?: string
+  upload_headers?: Record<string, string>
   file_key: string
   evidence_id?: string | null
 }
@@ -94,13 +97,6 @@ export function useFileUpload({
         const xhr = new XMLHttpRequest()
         xhrRef.current = xhr
 
-        const formData = new FormData()
-        // S3 POST-policy fields must come before the file
-        for (const [key, value] of Object.entries(presigned.fields)) {
-          formData.append(key, value)
-        }
-        formData.append('file', file)
-
         // Only show progress bar for files above threshold — small files flash too fast
         if (file.size >= UPLOAD_PROGRESS_THRESHOLD) {
           xhr.upload.onprogress = (evt) => {
@@ -142,8 +138,12 @@ export function useFileUpload({
         }
 
         setStatus('uploading')
-        xhr.open('POST', presigned.upload_url)
-        xhr.send(formData)
+        // Normalized PUT contract: raw file body + signed headers (Content-Type).
+        xhr.open(presigned.upload_method ?? 'PUT', presigned.upload_url)
+        for (const [header, value] of Object.entries(presigned.upload_headers ?? { 'Content-Type': file.type })) {
+          xhr.setRequestHeader(header, value)
+        }
+        xhr.send(file)
       })
     },
     [getPresignedUrl, onSuccess, onError],

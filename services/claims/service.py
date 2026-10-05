@@ -6,12 +6,9 @@ missing/seized items.
 """
 
 import logging
-import os
 from datetime import UTC, date, datetime
 from decimal import Decimal
 from typing import Any
-
-import boto3
 
 from services.refunds import repository as refund_repo
 from shared.audit import log_audit
@@ -25,6 +22,7 @@ from shared.exceptions import (
 )
 from shared.fx_rate import get_effective_dollar_rate
 from shared.notifications import enqueue_notifications
+from shared.providers import get_storage_provider
 from shared.staff_notifications import notify_staff
 from shared.tenant_context import UserRole
 from shared.validation import safe_filename
@@ -34,11 +32,9 @@ from . import repository as repo
 logger = logging.getLogger(__name__)
 
 # ---------------------------------------------------------------------------
-# S3 configuration (module-level client — reused across warm invocations)
+# S3 configuration
 # ---------------------------------------------------------------------------
 
-_s3_client = boto3.client("s3")
-_BUCKET = os.environ.get("S3_BUCKET_NAME", "logistics-assets")
 _ALLOWED_CONTENT_TYPES = frozenset({"image/jpeg", "image/png", "application/pdf"})
 _MAX_FILE_SIZE = 10 * 1024 * 1024  # 10 MB
 _URL_EXPIRY = 3600  # 1 hour
@@ -506,16 +502,7 @@ def generate_presigned_url(
     filename = safe_filename(filename)
     file_key = f"{tenant_id}/claims/{claim_id}/{filename}"
 
-    presigned = _s3_client.generate_presigned_post(
-        Bucket=_BUCKET,
-        Key=file_key,
-        Fields={"Content-Type": content_type},
-        Conditions=[
-            {"Content-Type": content_type},
-            ["content-length-range", 1, _MAX_FILE_SIZE],
-        ],
-        ExpiresIn=_URL_EXPIRY,
-    )
+    ticket = get_storage_provider().presigned_upload(file_key, content_type=content_type, expires_in=_URL_EXPIRY)
 
     evidence = repo.create_claim_evidence(
         {
@@ -529,8 +516,7 @@ def generate_presigned_url(
     )
 
     return {
-        "upload_url": presigned["url"],
-        "fields": presigned["fields"],
+        **ticket.as_response(),
         "evidence_id": str(evidence["id"]) if evidence else None,
         "file_key": file_key,
     }

@@ -1187,3 +1187,20 @@ All four delegation tests follow `test_tracking.py::TestContainerStats`'s `patch
 ### Container utilization column (2026-10-03)
 
 - `frontend/src/pages/china/ContainerList.test.tsx` (+3): renders packed CBM + "% of capacity" when an exact `capacity_cbm` is set (68.4 / 76 → 90%); falls back to the container-type capacity estimate ("40' High Cube (HC)" → ~76 → 50% at 38 CBM); shows just the packed CBM with no % when capacity is unknown. Shared helpers (`containerCapacityCbm`, `utilizationLevel`) live in `api/containerRules.ts`.
+
+### Cloud-portability ports — crypto + object storage (2026-10-05)
+
+- **`tests/unit/test_encryption.py`** (6): field encrypt/decrypt round-trip via a fake `KeyProvider`, `None` passthrough, dev plaintext-fallback when unconfigured, envelope format (`base64(enc_key || "||" || ciphertext)`), and the factory default (`CLOUD_PROVIDER=aws` → `KmsKeyProvider`, satisfies the `KeyProvider` protocol).
+- **`tests/unit/test_storage_provider.py`** (9): `S3StorageProvider` exercised against **moto** (real S3 behaviour) — put/get round-trip, `object_size` (HEAD + None-when-absent), `presigned_upload` is a PUT `UploadTicket` with the Content-Type header + correct `.as_response()` wire shape, `presigned_get_url` signs the key and passes through `response_content_disposition`, `delete_prefix` removes only the matching tenant prefix and counts them; plus factory wiring (default cloud → `S3StorageProvider`, per-bucket caching).
+- **Migrated patch sites** (the services no longer hold a module-level `_s3_client`/`_S3`): `test_safe_filename.py`, `test_manifest.py`, `test_payment_release.py`, `test_import_manifest.py` now patch `service.get_storage_provider` and assert on the `StorageProvider` interface (`presigned_upload(key, …)`, `presigned_get_url(key, …, response_content_disposition=…)`, `get_object → bytes`) instead of boto3 call kwargs.
+- **Frontend** `uploads.test.ts` / `excel.test.ts` / `manifest.test.ts`: assert the new cloud-neutral **PUT** upload contract (`fetch(upload_url, { method:'PUT', headers: upload_headers, body: file })`) rather than a multipart `FormData` POST.
+
+### Cloud-portability ports — secrets + event publishing (2026-10-05)
+
+- **`tests/unit/test_secrets_event_providers.py`** (5): `SecretsManagerProvider.get_secret` returns the raw secret string (moto round-trip); `EventBridgeProvider.publish` succeeds against a real moto bus and raises `ExternalServiceError` when `put_events` reports `FailedEntryCount` (stubbed client); factory wiring (default cloud → AWS adapters) + singleton caching for both.
+- No existing test needed rewriting: `publish_event` is patched at each service's import site (`conftest.py::mock_publish_event` + per-service `patch("…service.publish_event")`), the DB tests force local-mode (`DB_SECRET_ARN=""`) so they never hit the secrets provider, and `test_impersonation_audit.py` patches the unchanged `_get_signing_secret`.
+
+### Cloud-portability ports — queue (SQS) + email (SES) (2026-10-05)
+
+- **`tests/unit/test_queue_email_providers.py`** (4): `SqsQueueProvider.send` round-trips a body through a moto queue; `SesEmailProvider.send` maps to the SES `send_email` Source/Destination/Message structure (stubbed client); factory wiring (default → AWS adapters) + singleton caching.
+- **Migrated mocks** — the notification tests moved from patching the removed `_get_sqs()` + asserting boto3 `send_message(QueueUrl=…, MessageBody=…)` to patching `get_queue_provider` and asserting `send(destination=…, body=…)`: `test_whatsapp_first.py` (whole suite — note the SMS-fallback cases patch `services.notification.service.get_queue_provider`, since the fallback/retry call the provider imported into the *service* module, while `enqueue_notifications` cases patch `shared.notifications.get_queue_provider`), `test_notification_guard.py`, and `test_scheduled_jobs.py` (locale-passthrough capture rewritten to `send(*, destination, body)`).

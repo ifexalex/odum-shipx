@@ -675,7 +675,7 @@ def _inject_db_password() -> None:
     os.environ["DATABASE_PASSWORD"] = secret["password"]
 ```
 
-Terraform resources in `infrastructure/modules/lambda/main.tf`:
+Terraform resources in `infrastructure/aws/modules/lambda/main.tf`:
 - `aws_cloudwatch_log_group.migrate`
 - `aws_iam_role.migrate` (permissions boundary attached)
 - `aws_iam_role_policy.migrate_db_access` — `secretsmanager:GetSecretValue` on `DB_SECRET_ARN`,
@@ -750,7 +750,7 @@ In repo **Settings → Rules → New ruleset**:
 ### Initialise Terraform
 
 ```bash
-cd infrastructure
+cd infrastructure/aws
 terraform init -backend-config=environments/dev.backend.hcl
 terraform plan -var-file=environments/dev.tfvars
 ```
@@ -817,7 +817,7 @@ even a compromised deploy role cannot create an admin role.
 - [x] Tool versions pinned: ruff, mypy, bandit, safety, Trivy (SHA), Terraform (1.7.5)
 - [x] Coverage report uploaded to Codecov
 - [x] `scripts/bootstrap_aws.sh` — idempotent one-time setup (S3 state, DynamoDB, OIDC, IAM roles)
-- [x] `infrastructure/modules/iam-oidc/` — Terraform module manages OIDC + deploy roles post-bootstrap
+- [x] `infrastructure/aws/modules/iam-oidc/` — Terraform module manages OIDC + deploy roles post-bootstrap
 - [x] Permissions boundary on all Lambda execution roles prevents privilege escalation
 
 ---

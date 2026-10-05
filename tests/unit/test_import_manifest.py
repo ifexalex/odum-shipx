@@ -131,21 +131,13 @@ class TestQuantityUnitParsing:
 
 
 class TestProcessManifestImport:
-    def _s3_get_object(self, buf: BytesIO):
-        class _Body:
-            def read(self):
-                buf.seek(0)
-                return buf.read()
-
-        return {"Body": _Body()}
-
     def test_auto_creates_new_container_and_customers(self):
         from services.excel import service
 
         buf = _build_combined_workbook()
 
         with (
-            patch.object(service, "_s3_client") as mock_s3,
+            patch.object(service, "get_storage_provider") as mock_gsp,
             patch.object(service.repo, "find_container_by_number", return_value=None) as mock_find_container,
             patch.object(
                 service.repo,
@@ -175,7 +167,7 @@ class TestProcessManifestImport:
             patch.object(service.repo, "insert_manifest_items") as mock_insert_items,
             patch("services.tenant_management.service.issue_customer_invite") as mock_issue_invite,
         ):
-            mock_s3.get_object.return_value = self._s3_get_object(buf)
+            mock_gsp.return_value.get_object.return_value = buf.getvalue()
 
             result = service.process_manifest_import(
                 TENANT_ID, file_key=f"{TENANT_ID}/imports/test.xlsx", actor_id="actor-1", ctx=_ctx()
@@ -202,7 +194,7 @@ class TestProcessManifestImport:
         existing_container = {"id": "container-existing", "container_number": "STL377"}
 
         with (
-            patch.object(service, "_s3_client") as mock_s3,
+            patch.object(service, "get_storage_provider") as mock_gsp,
             patch.object(service.repo, "find_container_by_number", return_value=existing_container),
             patch.object(service.repo, "create_container") as mock_create_container,
             patch.object(service.repo, "get_tenant_destination_country", return_value="Nigeria"),
@@ -220,7 +212,7 @@ class TestProcessManifestImport:
             patch.object(service.repo, "insert_manifest_items"),
             patch("services.tenant_management.service.issue_customer_invite") as mock_issue_invite,
         ):
-            mock_s3.get_object.return_value = self._s3_get_object(buf)
+            mock_gsp.return_value.get_object.return_value = buf.getvalue()
 
             result = service.process_manifest_import(
                 TENANT_ID, file_key=f"{TENANT_ID}/imports/test.xlsx", actor_id="actor-1", ctx=_ctx()
@@ -241,7 +233,7 @@ class TestProcessManifestImport:
         buf = _build_combined_workbook()
 
         with (
-            patch.object(service, "_s3_client") as mock_s3,
+            patch.object(service, "get_storage_provider") as mock_gsp,
             patch.object(service.repo, "find_container_by_number", return_value={"id": "container-1"}),
             patch.object(service.repo, "create_container"),
             patch.object(service.repo, "get_tenant_destination_country", return_value="Nigeria"),
@@ -260,7 +252,7 @@ class TestProcessManifestImport:
             patch.object(service.repo, "insert_manifest_items") as mock_insert_items,
             patch("services.tenant_management.service.issue_customer_invite"),
         ):
-            mock_s3.get_object.return_value = self._s3_get_object(buf)
+            mock_gsp.return_value.get_object.return_value = buf.getvalue()
 
             result = service.process_manifest_import(
                 TENANT_ID, file_key=f"{TENANT_ID}/imports/test.xlsx", actor_id="actor-1", ctx=_ctx()

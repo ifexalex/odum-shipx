@@ -503,3 +503,63 @@ Used by the four presigned-upload flows — `claims.generate_presigned_url`, `ma
 `tracking.generate_document_presigned_url`, `payment_release.generate_payment_claim_upload_url` — and by the two
 `ResponseContentDisposition` builders (payment-claim evidence, container documents). `services/excel` builds its own
 export names from a `_safe_name` helper over server-controlled values and is unaffected.
+
+## shared/providers/ — cloud-portability ports (added 2026-10-05)
+
+Ports-and-adapters layer that keeps `services/` and the rest of `shared/` free of cloud SDKs, so ShipX can be
+deployed to **AWS or Azure** by switching one env var. The active cloud is `CLOUD_PROVIDER` (`aws` default | `azure`),
+read once in `shared/providers/__init__.py`.
+
+- **`shared/providers/base.py`** — the interfaces (`typing.Protocol`):
+  - `KeyProvider` — envelope-encryption key ops (`generate_data_key` / `decrypt_data_key`). Consumed by
+    `shared/encryption.py`; AWS adapter `shared/providers/aws/kms.py` (`KmsKeyProvider`).
+  - `StorageProvider` — object storage (`presigned_get_url`, `presigned_upload`, `put_object`, `get_object`,
+    `object_size`, `delete_prefix`). AWS adapter `shared/providers/aws/s3.py` (`S3StorageProvider`). `presigned_upload`
+    returns an `UploadTicket` (`url`, `method="PUT"`, `headers`) — the **cloud-neutral PUT upload contract** both S3
+    (presigned PUT) and Azure Blob (SAS PUT) satisfy, replacing the old S3 presigned-POST `{url, fields}` form. Its
+    `.as_response()` is spread into every presigned-upload endpoint's JSON (`{upload_url, upload_method, upload_headers}`).
+  - `SecretsProvider` — `get_secret(secret_id) -> str` returning the raw secret string (callers that store JSON parse
+    it themselves). AWS adapter `shared/providers/aws/secrets.py` (`SecretsManagerProvider`); Azure → Key Vault secrets.
+    Consumed by `shared/db.py` (DB password), `services/tenant_management/impersonation.py` (HS256 signing key),
+    `services/migrate/handler.py` (DB password for Alembic).
+  - `EventProvider` — `publish(source, detail_type, detail, bus_name)`; raises `ExternalServiceError` on delivery
+    failure. The envelope (event_id / occurred_at / tenant_id / payload) is still built in `shared/events.py`; only the
+    delivery is cloud-specific. AWS adapter `shared/providers/aws/eventbridge.py` (`EventBridgeProvider`, `put_events` +
+    `FailedEntryCount` handling); Azure → Event Grid.
+  - `QueueProvider` — `send(destination, body)` where `destination` is an opaque queue reference the caller resolves
+    from config (SQS queue URL on AWS, Service Bus queue name on Azure). AWS adapter `shared/providers/aws/sqs.py`
+    (`SqsQueueProvider`, `send_message`); Azure → Service Bus. Consumed by `shared/notifications.py`
+    (`enqueue_notification` / event-notification fan-out) and `services/notification/service.py` (SMS fallback + retry).
+  - `EmailProvider` — `send(sender, to_email, subject, html_body, text_body)`; raises on hard failure so the caller's
+    log/retry path runs. AWS adapter `shared/providers/aws/ses.py` (`SesEmailProvider`, SES `send_email`); Azure →
+    Communication Services. Consumed by `services/notification/service.py::send_email`.
+- **Factories** (`shared/providers/__init__.py`):
+  - `get_key_provider()` → `KeyProvider | None` (None = field encryption not configured; preserves the dev
+    plaintext-fallback in `shared/encryption.py`).
+  - `get_storage_provider(bucket=None)` → `StorageProvider`, cached per bucket. `None` resolves the default assets
+    bucket (`S3_BUCKET_NAME`); an explicit name is used for the GDPR `TENANT_DATA_BUCKET` purge in
+    `services/scheduled/data_cleanup.py`.
+  - `get_secrets_provider()` → `SecretsProvider` (cached singleton).
+  - `get_event_provider()` → `EventProvider` (cached singleton).
+  - `get_queue_provider()` → `QueueProvider` (cached singleton).
+  - `get_email_provider()` → `EmailProvider` (cached singleton).
+- **Migrated call sites** (no longer touch `boto3` directly): storage — `services/manifest`, `services/excel`,
+  `services/claims`, `services/payment_release`, `services/tracking`, `services/scheduled/data_cleanup`; secrets —
+  `shared/db.py`, `services/tenant_management/impersonation.py`, `services/migrate/handler.py`; events — `shared/events.py`;
+  queue — `shared/notifications.py`, `services/notification/service.py`; email — `services/notification/service.py`.
+  `delete_prefix` encapsulates the version-aware S3 purge (current objects + non-current versions + delete-markers) for
+  GDPR Art. 17 immediate erasure.
+- **Azure adapters** (`shared/providers/azure/{keyvault,blob,keyvault_secrets,eventgrid,servicebus,acs_email}.py`) land
+  with the Azure Terraform stack; the factory's azure branches reference them behind `# type: ignore[import-not-found]`
+  until then.
+- **Still on boto3 directly** (next increments, same pattern): Cognito (`services/auth`, `services/tenant_management`)
+  and the X-Ray `patch_all()` shim. Cognito→Entra is the stickiest (token claims + user migration). SQS/Service Bus and
+  SES/ACS are consumed as *producers* via the ports above; the SQS **consumer** side is the Lambda event-source trigger
+  (`services/notification/handler.py`, `services/metering/handler.py`) — on Azure that becomes a Functions Service Bus
+  trigger binding, handled by the entry adapter, not a boto3 call.
+- **Tests:** `tests/unit/test_encryption.py` (KeyProvider via a fake), `tests/unit/test_storage_provider.py`
+  (S3StorageProvider against moto + the factory wiring).
+
+**Trade-off recorded:** the S3 presigned-POST `content-length-range` enforced max upload size at the edge; a presigned
+PUT cannot. Size is now enforced client-side (`useFileUpload.ts`) and should be re-verified server-side via
+`StorageProvider.object_size` on any flow that gains a post-upload confirm step.

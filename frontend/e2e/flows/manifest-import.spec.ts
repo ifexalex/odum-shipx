@@ -2,8 +2,9 @@
  * E2E — forwarder manifest import wizard (china_office_staff).
  *
  * Exercises the real upload path: Playwright picks a genuine .xlsx file,
- * the app POSTs it to Moto's S3-compatible presigned URL (no mocking), then
- * calls POST /v1/manifests/import against the real local Flask server.
+ * the app PUTs it to Moto's S3-compatible presigned URL (cloud-neutral PUT
+ * contract, no mocking), then calls POST /v1/manifests/import against the real
+ * local Flask server.
  *
  * The fixture (e2e/fixtures/e2e-test-manifest.xlsx, built by
  * scripts/make_test_manifest.py) carries only the tester's own contact —

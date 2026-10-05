@@ -20,9 +20,9 @@ from pathlib import Path
 import pytest
 
 ROOT = Path(__file__).resolve().parents[2]
-API_GATEWAY_TF = ROOT / "infrastructure/modules/api-gateway/main.tf"
-LAMBDA_TF = ROOT / "infrastructure/modules/lambda/main.tf"
-LAMBDA_OUTPUTS_TF = ROOT / "infrastructure/modules/lambda/outputs.tf"
+API_GATEWAY_TF = ROOT / "infrastructure/aws/modules/api-gateway/main.tf"
+LAMBDA_TF = ROOT / "infrastructure/aws/modules/lambda/main.tf"
+LAMBDA_OUTPUTS_TF = ROOT / "infrastructure/aws/modules/lambda/outputs.tf"
 FRONTEND_API_DIR = ROOT / "frontend/src/api"
 
 _ROUTE_RE = re.compile(r'"(GET|POST|PUT|PATCH|DELETE) (/[^"]*)"\s*=\s*"(\w+)"')

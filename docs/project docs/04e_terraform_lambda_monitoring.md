@@ -57,7 +57,7 @@ Create Terraform modules for all Lambda functions, their IAM roles/policies, Lam
 
 ## Deliverables
 
-### Module: `infrastructure/modules/lambda/main.tf`
+### Module: `infrastructure/aws/modules/lambda/main.tf`
 
 **For each Lambda:**
 - `aws_lambda_function` with:

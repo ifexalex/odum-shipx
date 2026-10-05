@@ -1556,27 +1556,29 @@ class TestGetPaymentClaimEvidenceUrl:
     def test_staff_can_view_evidence_for_any_claim(self):
         from services.payment_release import service
 
+        storage = MagicMock()
+        storage.presigned_get_url.return_value = "https://s3.example.com/signed"
         with (
             patch.object(service.repo, "get_payment_claim_by_id", return_value=_claim()),
             patch.object(service.repo, "get_billing_by_id", return_value=_billing()),
-            patch.object(
-                service._s3_client, "generate_presigned_url", return_value="https://s3.example.com/signed"
-            ) as mock_presign,
+            patch.object(service, "get_storage_provider", return_value=storage),
         ):
             result = service.get_payment_claim_evidence_url(TENANT_ID, "claim-001", ctx=_ctx(UserRole.NIGERIA_OFFICE_STAFF))
 
         assert result["url"] == "https://s3.example.com/signed"
-        assert mock_presign.call_args.kwargs["Params"]["Key"] == _claim()["evidence_file_key"]
+        assert storage.presigned_get_url.call_args.args[0] == _claim()["evidence_file_key"]
 
     def test_customer_can_view_own_claim_evidence(self):
         from services.payment_release import service
 
         billing = _billing(customer_id="customer-001")
+        storage = MagicMock()
+        storage.presigned_get_url.return_value = "https://s3.example.com/signed"
         with (
             patch.object(service.repo, "get_payment_claim_by_id", return_value=_claim()),
             patch.object(service.repo, "get_billing_by_id", return_value=billing),
             patch.object(service.repo, "get_customer_by_user_id", return_value={"id": "customer-001"}),
-            patch.object(service._s3_client, "generate_presigned_url", return_value="https://s3.example.com/signed"),
+            patch.object(service, "get_storage_provider", return_value=storage),
         ):
             result = service.get_payment_claim_evidence_url(TENANT_ID, "claim-001", ctx=_ctx(UserRole.CUSTOMER))
 

@@ -60,7 +60,7 @@ Since deploys are just an S3 sync, rollback is: re-deploy the previous build art
 
 ## Implementation Notes
 
-### Terraform module: `infrastructure/modules/cloudfront/`
+### Terraform module: `infrastructure/aws/modules/cloudfront/`
 - Private S3 bucket with versioning + AES256 SSE; public access blocked entirely.
 - `aws_cloudfront_origin_access_control` (OAC, not the deprecated OAI) — S3 bucket policy grants `s3:GetObject` only to the distribution.
 - ACM wildcard cert (`shipx.co` + `*.shipx.co`) provisioned in `us-east-1` with DNS validation via Route 53.
@@ -71,7 +71,7 @@ Since deploys are just an S3 sync, rollback is: re-deploy the previous build art
 - Module is gated by `count = var.route53_zone_id != "" ? 1 : 0` — skipped cleanly in local dev where no domain is registered.
 
 ### Provider alias for us-east-1
-`infrastructure/providers.tf` now includes `provider "aws" { alias = "us_east_1" }`. The cloudfront module declares `configuration_aliases = [aws.us_east_1]` and the root wires it with `providers = { aws.us_east_1 = aws.us_east_1 }`.
+`infrastructure/aws/providers.tf` now includes `provider "aws" { alias = "us_east_1" }`. The cloudfront module declares `configuration_aliases = [aws.us_east_1]` and the root wires it with `providers = { aws.us_east_1 = aws.us_east_1 }`.
 
 ### CI/CD pipeline: `.github/workflows/frontend-ci.yml`
 **PR (build-and-test job):** `npm ci` → typecheck → lint → test → build → `npm audit --audit-level=high` → security greps. Uploads `dist/` as a numbered artifact (30-day retention) for rollback.

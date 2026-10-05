@@ -11,6 +11,7 @@ from unittest.mock import MagicMock, patch
 import pytest
 
 from shared.exceptions import ValidationError
+from shared.providers.base import UploadTicket
 from shared.tenant_context import TenantContext, UserRole
 from shared.validation import safe_filename
 
@@ -64,48 +65,52 @@ HOSTILE = '../../bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb/claims/x/evil".png'
 EXPECTED = "evil_.png"
 
 
-def _presigned():
-    s3 = MagicMock()
-    s3.generate_presigned_post.return_value = {"url": "https://s3.example/upload", "fields": {"k": "v"}}
-    return s3
+def _storage():
+    """Fake StorageProvider — records the key/disposition the service passes."""
+    storage = MagicMock()
+    storage.presigned_upload.return_value = UploadTicket(
+        url="https://s3.example/upload", method="PUT", headers={"Content-Type": "image/png"}
+    )
+    storage.presigned_get_url.return_value = "https://s3.example/get"
+    return storage
 
 
 class TestUploadFlowsSanitiseTheKeyAndTheStoredName:
     def test_claim_evidence(self):
         from services.claims import service
 
-        s3 = _presigned()
+        storage = _storage()
         with (
-            patch.object(service, "_s3_client", s3),
+            patch.object(service, "get_storage_provider", return_value=storage),
             patch.object(service.repo, "get_damage_claim_by_id", return_value={"id": "c1"}),
             patch.object(service.repo, "create_claim_evidence", return_value={"id": "e1"}) as create,
         ):
             result = service.generate_presigned_url(TENANT, "c1", HOSTILE, "image/png", "user-1")
 
         assert result["file_key"] == f"{TENANT}/claims/c1/{EXPECTED}"
-        assert s3.generate_presigned_post.call_args.kwargs["Key"] == result["file_key"]
+        assert storage.presigned_upload.call_args.args[0] == result["file_key"]
         assert create.call_args.args[0]["file_name"] == EXPECTED
 
     def test_manifest_evidence(self):
         from services.manifest import service
 
-        s3 = _presigned()
+        storage = _storage()
         with (
-            patch.object(service, "_s3_client", s3),
+            patch.object(service, "get_storage_provider", return_value=storage),
             patch.object(service.repo, "get_manifest_by_id", return_value={"id": "m1"}),
             patch.object(service.repo, "create_manifest_evidence", return_value={"id": "e1"}) as create,
         ):
             service.generate_evidence_upload(TENANT, "m1", HOSTILE, "image/png", "user-1")
 
-        assert s3.generate_presigned_post.call_args.kwargs["Key"] == f"{TENANT}/manifests/m1/{EXPECTED}"
+        assert storage.presigned_upload.call_args.args[0] == f"{TENANT}/manifests/m1/{EXPECTED}"
         assert create.call_args.args[1]["file_name"] == EXPECTED
 
     def test_container_document(self):
         from services.tracking import service
 
-        s3 = _presigned()
+        storage = _storage()
         with (
-            patch.object(service, "_S3", s3),
+            patch.object(service, "get_storage_provider", return_value=storage),
             patch.object(service.repo, "get_container_by_id", return_value={"id": "k1"}),
             patch.object(service.repo, "create_container_document", return_value={"id": "d1"}) as create,
         ):
@@ -114,32 +119,33 @@ class TestUploadFlowsSanitiseTheKeyAndTheStoredName:
             )
 
         assert result["s3_key"] == f"{TENANT}/containers/k1/{EXPECTED}"
+        assert storage.presigned_upload.call_args.args[0] == result["s3_key"]
         assert create.call_args.args[1]["filename"] == EXPECTED
 
     def test_payment_claim_evidence(self):
         from services.payment_release import service
 
-        s3 = _presigned()
+        storage = _storage()
         ctx = TenantContext(tenant_id=TENANT, user_id="user-1", role=UserRole.NIGERIA_OFFICE_STAFF)
         with (
-            patch.object(service, "_s3_client", s3),
+            patch.object(service, "get_storage_provider", return_value=storage),
             patch.object(service.repo, "get_billing_by_id", return_value={"id": "b1", "customer_id": "cu1"}),
         ):
             result = service.generate_payment_claim_upload_url(TENANT, "b1", HOSTILE, "image/png", ctx)
 
         assert result["file_key"] == f"{TENANT}/payment-claims/b1/{EXPECTED}"
 
-    def test_unusable_filename_is_a_422_before_any_s3_call(self):
+    def test_unusable_filename_is_a_422_before_any_storage_call(self):
         from services.claims import service
 
-        s3 = _presigned()
+        storage = _storage()
         with (
-            patch.object(service, "_s3_client", s3),
+            patch.object(service, "get_storage_provider", return_value=storage),
             patch.object(service.repo, "get_damage_claim_by_id", return_value={"id": "c1"}),
             pytest.raises(ValidationError),
         ):
             service.generate_presigned_url(TENANT, "c1", "..", "image/png", "user-1")
-        s3.generate_presigned_post.assert_not_called()
+        storage.presigned_upload.assert_not_called()
 
 
 class TestDownloadHeadersAreSafeForLegacyRows:
@@ -148,8 +154,7 @@ class TestDownloadHeadersAreSafeForLegacyRows:
     def test_payment_claim_evidence_content_disposition(self):
         from services.payment_release import service
 
-        s3 = MagicMock()
-        s3.generate_presigned_url.return_value = "https://s3.example/get"
+        storage = _storage()
         ctx = TenantContext(tenant_id=TENANT, user_id="user-1", role=UserRole.NIGERIA_OFFICE_STAFF)
         claim = {
             "id": "cl1",
@@ -158,31 +163,30 @@ class TestDownloadHeadersAreSafeForLegacyRows:
             "evidence_file_name": "x\"; filename*=UTF-8''evil.html",
         }
         with (
-            patch.object(service, "_s3_client", s3),
+            patch.object(service, "get_storage_provider", return_value=storage),
             patch.object(service.repo, "get_payment_claim_by_id", return_value=claim),
             patch.object(service.repo, "get_billing_by_id", return_value={"id": "b1", "customer_id": "cu1"}),
         ):
             service.get_payment_claim_evidence_url(TENANT, "cl1", ctx)
 
-        disposition = s3.generate_presigned_url.call_args.kwargs["Params"]["ResponseContentDisposition"]
+        disposition = storage.presigned_get_url.call_args.kwargs["response_content_disposition"]
         assert disposition.count('"') == 2  # only the two quotes we add ourselves
         assert "filename*" not in disposition
 
     def test_container_document_content_disposition(self):
         from services.tracking import service
 
-        s3 = MagicMock()
-        s3.generate_presigned_url.return_value = "https://s3.example/get"
+        storage = _storage()
         doc = {"id": "d1", "s3_key": f"{TENANT}/containers/k1/x.pdf", "filename": 'x".pdf\r\nX-Evil: 1'}
         with (
-            patch.object(service, "_S3", s3),
+            patch.object(service, "get_storage_provider", return_value=storage),
             patch.object(service.repo, "get_container_by_id", return_value={"id": "k1"}),
             patch.object(service.repo, "get_container_document_by_id", return_value=doc),
             patch.object(service, "log_audit"),
         ):
             service.get_document_download_url(TENANT, "k1", "d1", "user-1", "tenant_admin")
 
-        disposition = s3.generate_presigned_url.call_args.kwargs["Params"]["ResponseContentDisposition"]
+        disposition = storage.presigned_get_url.call_args.kwargs["response_content_disposition"]
         assert disposition.count('"') == 2
         assert "\r" not in disposition
         assert "\n" not in disposition

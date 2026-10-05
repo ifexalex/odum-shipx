@@ -321,7 +321,7 @@ terraform {
 }
 ```
 
-### 6.2 Remote State Backend (`infrastructure/backend.tf`)
+### 6.2 Remote State Backend (`infrastructure/aws/backend.tf`)
 ```hcl
 terraform {
   backend "s3" {
@@ -431,7 +431,7 @@ Use CloudWatch Embedded Metrics Format for zero-cost metric emission from logs.
 - Each Lambda has its own IAM role
 - Permissions scoped to specific resources (not `*`)
 - Example: Claims Lambda gets `s3:PutObject` only on `arn:aws:s3:::logistics-assets-*/*/claims/*`
-- Every Lambda role carries the `permissions_boundary` from `infrastructure/modules/iam-oidc` — an
+- Every Lambda role carries the `permissions_boundary` from `infrastructure/aws/modules/iam-oidc` — an
   **allow-list intersection**. An inline grant is ineffective unless the boundary also allows the
   action, so adding an AWS API call to the code means updating **both** the role policy in
   `modules/lambda/main.tf` and the boundary. (Found 2026-09-23: the boundary's KMS statement was
@@ -456,6 +456,16 @@ Use CloudWatch Embedded Metrics Format for zero-cost metric emission from logs.
   invisible locally. `tests/unit/test_infrastructure_contracts.py` fails CI if a frontend call has no
   API Gateway route, a route targets a service with no deployed Lambda, or a Lambda handler named in
   Terraform doesn't exist in `services/`.
+
+### 8.6 Edge protection (DDoS / WAF)
+- **Frontend (CloudFront):** AWS Shield Standard is automatic (L3/L4). A WAFv2 Web ACL
+  (`infrastructure/aws/modules/cloudfront/main.tf`, scope `CLOUDFRONT`/us-east-1) adds L7 defence —
+  a per-IP rate limit (`var.waf_rate_limit`, default 2000/5min) plus AWS managed rule groups
+  (IP reputation, common rule set, known-bad-inputs). Full deployment + tuning steps and the
+  attack-protection posture live in `docs/runbook.md` → "Frontend Deployment & Go-Live".
+- **API (API Gateway HTTP v2):** WAFv2 can't attach to HTTP APIs; protected by Shield Standard,
+  stage throttling (50 req/s, burst 100), Lambda concurrency caps, and per-tenant metering. Full
+  L7 WAF on the API needs a CloudFront front — a documented follow-up, not required for launch.
 
 ---
 

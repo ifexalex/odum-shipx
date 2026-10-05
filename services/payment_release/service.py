@@ -6,12 +6,9 @@ carryover ledger creation when releasing with outstanding balances.
 """
 
 import logging
-import os
 from datetime import UTC, date, datetime, timedelta
 from decimal import Decimal
 from typing import Any
-
-import boto3
 
 from shared.audit import log_audit
 from shared.events import publish_event
@@ -22,6 +19,7 @@ from shared.exceptions import (
     ResourceNotFoundError,
 )
 from shared.notifications import enqueue_notifications
+from shared.providers import get_storage_provider
 from shared.staff_notifications import notify_staff
 from shared.tenant_context import UserRole
 from shared.validation import safe_filename
@@ -34,12 +32,9 @@ logger = logging.getLogger(__name__)
 _TOLERANCE = Decimal("0.01")
 
 # ---------------------------------------------------------------------------
-# S3 configuration for payment-claim evidence (module-level client — reused
-# across warm invocations, same pattern as services/claims/service.py)
+# S3 configuration for payment-claim evidence
 # ---------------------------------------------------------------------------
 
-_s3_client = boto3.client("s3")
-_BUCKET = os.environ.get("S3_BUCKET_NAME", "logistics-assets")
 _ALLOWED_CONTENT_TYPES = frozenset({"image/jpeg", "image/png", "application/pdf"})
 _MAX_FILE_SIZE = 10 * 1024 * 1024  # 10 MB
 _URL_EXPIRY = 3600  # 1 hour
@@ -200,18 +195,9 @@ def generate_payment_claim_upload_url(
     filename = safe_filename(filename)
     file_key = f"{tenant_id}/payment-claims/{billing_id}/{filename}"
 
-    presigned = _s3_client.generate_presigned_post(
-        Bucket=_BUCKET,
-        Key=file_key,
-        Fields={"Content-Type": content_type},
-        Conditions=[
-            {"Content-Type": content_type},
-            ["content-length-range", 1, _MAX_FILE_SIZE],
-        ],
-        ExpiresIn=_URL_EXPIRY,
-    )
+    ticket = get_storage_provider().presigned_upload(file_key, content_type=content_type, expires_in=_URL_EXPIRY)
 
-    return {"file_key": file_key, "upload_url": presigned["url"], "fields": presigned["fields"]}
+    return {"file_key": file_key, **ticket.as_response()}
 
 
 def submit_payment_claim(
@@ -330,17 +316,8 @@ def get_payment_claim_evidence_url(tenant_id: str, claim_id: str, ctx: Any) -> d
     if not file_key.startswith(f"{tenant_id}/"):
         raise ResourceNotFoundError("payment_claim", claim_id)
 
-    url = _s3_client.generate_presigned_url(
-        "get_object",
-        Params={
-            "Bucket": _BUCKET,
-            "Key": file_key,
-            "ResponseContentDisposition": (
-                f'inline; filename="{safe_filename(claim["evidence_file_name"], default="evidence")}"'
-            ),
-        },
-        ExpiresIn=300,
-    )
+    disposition = f'inline; filename="{safe_filename(claim["evidence_file_name"], default="evidence")}"'
+    url = get_storage_provider().presigned_get_url(file_key, expires_in=300, response_content_disposition=disposition)
     return {"url": url}
 
 

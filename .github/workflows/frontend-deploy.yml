@@ -1,0 +1,137 @@
+name: Frontend Deploy (AWS or Azure)
+
+# Cloud-selectable frontend deployment. Pick the target with the `cloud` input;
+# the same built dist/ is published to either AWS (S3 + CloudFront) or Azure
+# (Blob $web + Front Door). ShipX runs on one cloud at a time — this just
+# chooses which one this deploy targets.
+#
+# Required secrets (set per GitHub Environment):
+#   Shared build:
+#     VITE_COGNITO_USER_POOL_ID, VITE_COGNITO_CLIENT_ID
+#     VITE_API_BASE_URL            (AWS backend URL; default)
+#     AZURE_VITE_API_BASE_URL      (Azure backend URL; optional — falls back to VITE_API_BASE_URL)
+#   AWS deploy (cloud=aws):
+#     FRONTEND_DEPLOY_ROLE_ARN     (OIDC role: s3:PutObject + cloudfront:CreateInvalidation)
+#     FRONTEND_S3_BUCKET, FRONTEND_CLOUDFRONT_ID
+#   Azure deploy (cloud=azure):
+#     AZURE_CLIENT_ID, AZURE_TENANT_ID, AZURE_SUBSCRIPTION_ID   (OIDC federated SP)
+#        → the SP needs "Storage Blob Data Contributor" on the storage account
+#          and a role allowing `az afd endpoint purge` on the Front Door profile.
+#     AZURE_FRONTEND_STORAGE_ACCOUNT, AZURE_FRONTEND_FRONTDOOR_PROFILE,
+#     AZURE_FRONTEND_FRONTDOOR_ENDPOINT, AZURE_RESOURCE_GROUP
+#        (all from `terraform -chdir=infrastructure/azure output`)
+
+on:
+  workflow_dispatch:
+    inputs:
+      cloud:
+        description: "Target cloud"
+        type: choice
+        options: [aws, azure]
+        default: aws
+      environment:
+        description: "Environment"
+        type: choice
+        options: [prod, staging, dev]
+        default: prod
+
+concurrency:
+  group: frontend-deploy-${{ inputs.cloud }}-${{ inputs.environment }}
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+  id-token: write # OIDC for both AWS assume-role and Azure login
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    environment: ${{ inputs.environment }}
+    defaults:
+      run:
+        working-directory: frontend
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - run: npm ci
+
+      - name: Build (${{ inputs.cloud }} / ${{ inputs.environment }})
+        run: npm run build
+        env:
+          # Point the SPA at the chosen cloud's backend. AZURE_VITE_API_BASE_URL
+          # lets Azure use a different API host; falls back to VITE_API_BASE_URL.
+          VITE_API_BASE_URL: ${{ (inputs.cloud == 'azure' && secrets.AZURE_VITE_API_BASE_URL) || secrets.VITE_API_BASE_URL }}
+          VITE_COGNITO_USER_POOL_ID: ${{ secrets.VITE_COGNITO_USER_POOL_ID }}
+          VITE_COGNITO_CLIENT_ID: ${{ secrets.VITE_COGNITO_CLIENT_ID }}
+          VITE_ENVIRONMENT: ${{ inputs.environment }}
+
+      # ----------------------------------------------------------------- AWS
+      - name: AWS — configure credentials (OIDC)
+        if: inputs.cloud == 'aws'
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.FRONTEND_DEPLOY_ROLE_ARN }}
+          aws-region: eu-west-1
+
+      - name: AWS — sync hashed assets (immutable)
+        if: inputs.cloud == 'aws'
+        run: |
+          aws s3 sync dist/ s3://${{ secrets.FRONTEND_S3_BUCKET }} \
+            --delete --exclude "index.html" \
+            --cache-control "max-age=31536000,immutable" --metadata-directive REPLACE
+
+      - name: AWS — upload index.html (no-cache)
+        if: inputs.cloud == 'aws'
+        run: |
+          aws s3 cp dist/index.html s3://${{ secrets.FRONTEND_S3_BUCKET }}/index.html \
+            --cache-control "no-cache,no-store,must-revalidate" --metadata-directive REPLACE
+
+      - name: AWS — invalidate CloudFront /index.html
+        if: inputs.cloud == 'aws'
+        run: |
+          aws cloudfront create-invalidation \
+            --distribution-id ${{ secrets.FRONTEND_CLOUDFRONT_ID }} --paths "/index.html"
+
+      # --------------------------------------------------------------- Azure
+      - name: Azure — login (OIDC)
+        if: inputs.cloud == 'azure'
+        uses: azure/login@v2
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Azure — upload hashed assets (immutable)
+        if: inputs.cloud == 'azure'
+        run: |
+          az storage blob upload-batch \
+            --account-name "${{ secrets.AZURE_FRONTEND_STORAGE_ACCOUNT }}" --auth-mode login \
+            --destination '$web' --source dist \
+            --content-cache 'public, max-age=31536000, immutable' --overwrite
+
+      - name: Azure — upload index.html (no-cache)
+        if: inputs.cloud == 'azure'
+        run: |
+          az storage blob upload \
+            --account-name "${{ secrets.AZURE_FRONTEND_STORAGE_ACCOUNT }}" --auth-mode login \
+            --container-name '$web' --name index.html --file dist/index.html \
+            --content-cache 'no-cache, no-store, must-revalidate' --overwrite
+
+      - name: Azure — purge Front Door /index.html
+        if: inputs.cloud == 'azure'
+        run: |
+          az afd endpoint purge \
+            --resource-group "${{ secrets.AZURE_RESOURCE_GROUP }}" \
+            --profile-name "${{ secrets.AZURE_FRONTEND_FRONTDOOR_PROFILE }}" \
+            --endpoint-name "${{ secrets.AZURE_FRONTEND_FRONTDOOR_ENDPOINT }}" \
+            --content-paths '/index.html'
+
+      - name: Summary
+        run: echo "✅ Frontend deployed to ${{ inputs.cloud }} (${{ inputs.environment }}) — commit ${{ github.sha }}"

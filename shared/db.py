@@ -16,9 +16,10 @@ import logging
 import os
 from typing import Any
 
-import boto3
 import psycopg2
 import psycopg2.extras
+
+from shared.providers import get_secrets_provider
 
 logger = logging.getLogger(__name__)
 
@@ -46,11 +47,8 @@ def _get_db_password() -> str:
         logger.debug("DB password read from DATABASE_PASSWORD env var (local mode)")
         return _cached_password
 
-    region = os.environ.get("AWS_REGION", "eu-west-1")
-    client = boto3.client("secretsmanager", region_name=region)
-    secret = client.get_secret_value(SecretId=secret_arn)
-    _cached_password = json.loads(secret["SecretString"])["password"]
-    logger.debug("DB password fetched from Secrets Manager")
+    _cached_password = json.loads(get_secrets_provider().get_secret(secret_arn))["password"]
+    logger.debug("DB password fetched from the secrets provider")
     return _cached_password
 
 

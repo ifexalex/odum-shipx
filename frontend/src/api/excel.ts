@@ -46,11 +46,12 @@ export interface ManifestImportResult {
 // Backed by services/excel/service.py's generate_import_presigned_url() —
 // an S3 POST-policy upload scoped to {tenant_id}/imports/{uuid}.xlsx, added
 // specifically to unblock this wizard (no generic upload endpoint existed
-// before). `fields` must be submitted as multipart form fields ahead of the
-// file itself, per S3's POST policy contract.
+// before). Cloud-neutral PUT contract: the file is the raw request body and
+// `upload_headers` (Content-Type) are sent as request headers.
 export interface ImportPresignedUrlResponse {
   upload_url: string
-  fields: Record<string, string>
+  upload_method?: string
+  upload_headers?: Record<string, string>
   file_key: string
 }
 

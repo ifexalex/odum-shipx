@@ -8,16 +8,18 @@ Standardize the two file-transfer patterns the app needs: browser → S3 (upload
 
 Tasks 05, 07.
 
-## Uploads: S3 Presigned URLs
+## Uploads: Presigned URLs
 
-The backend never proxies file bytes through Lambda — it issues a presigned URL, the browser uploads directly to S3.
+The backend never proxies file bytes through Lambda — it issues a presigned URL, the browser uploads directly to object storage.
+
+**Cloud-neutral PUT contract (2026-10-05).** Every presigned-upload endpoint returns `{ upload_url, upload_method: "PUT", upload_headers, ...key }` and the browser does a single **PUT** with the raw file as the body and `upload_headers` (Content-Type) as request headers. This replaced the old S3 presigned-POST (`{ upload_url, fields }` + multipart `FormData`). The PUT shape is the one both AWS (presigned PUT) and Azure (Blob SAS PUT) satisfy, so `useFileUpload.ts` runs unchanged on either cloud — see the backend `StorageProvider` port in `02_shared_utilities.md`. Consequence: the server no longer enforces max file size at the edge (the S3 POST `content-length-range` had no PUT equivalent), so the client-side size check in `useFileUpload.ts` is now the primary guard.
 
 **Flow (used identically for claim evidence and container documents):**
 
 1. Frontend calls `POST /v1/uploads/presigned-url` (claims) or `POST /v1/containers/{id}/documents/presigned-url` (tracking) with file metadata (filename, content-type, size).
-2. Backend validates the request is tenant-scoped, returns `{ upload_url, fields?, key }` (S3 presigned POST or PUT — confirm which from the actual handler response shape before implementing; do not assume).
-3. Frontend uploads the raw file directly to `upload_url` via `fetch`/`XMLHttpRequest` (use `XMLHttpRequest` if you need upload progress events — `fetch` doesn't expose upload progress).
-4. On S3 success, frontend confirms the upload to the backend (if a confirmation endpoint exists) or simply references `key` in the next mutation (e.g. attaching evidence to a claim).
+2. Backend validates the request is tenant-scoped, returns `{ upload_url, upload_method, upload_headers, ...key }`.
+3. Frontend PUTs the raw file to `upload_url` with `upload_headers`, via `fetch`/`XMLHttpRequest` (use `XMLHttpRequest` if you need upload progress events — `fetch` doesn't expose upload progress).
+4. On success, frontend references `key` in the next mutation (e.g. attaching evidence to a claim).
 
 **Build one `useFileUpload()` hook** shared by:
 - `CustomerFileClaim` (claim evidence, step 2)

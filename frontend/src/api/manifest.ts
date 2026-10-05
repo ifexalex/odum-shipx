@@ -59,7 +59,8 @@ export interface ManifestEvidence {
 // Presigned-upload contract — mirrors claims' PresignedUploadResponse.
 export interface ManifestEvidenceUploadResponse {
   upload_url: string
-  fields: Record<string, string>
+  upload_method?: string
+  upload_headers?: Record<string, string>
   evidence_id: string | null
   file_key: string
 }

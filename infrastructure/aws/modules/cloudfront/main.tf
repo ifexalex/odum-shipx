@@ -201,6 +201,126 @@ resource "aws_cloudfront_cache_policy" "no_cache" {
 }
 
 # ---------------------------------------------------------------------------
+# WAFv2 Web ACL — layer-7 protection for the CloudFront distribution.
+# Scope CLOUDFRONT ⇒ must live in us-east-1 (same constraint as the ACM cert).
+# CloudFront also gets AWS Shield Standard automatically (free L3/L4 DDoS);
+# this adds the application layer: a per-IP rate limit + AWS-managed rule sets.
+# ---------------------------------------------------------------------------
+
+resource "aws_wafv2_web_acl" "frontend" {
+  provider    = aws.us_east_1
+  name        = "${local.name_prefix}-frontend-waf"
+  description = "ShipX frontend CloudFront protection (${var.environment})"
+  scope       = "CLOUDFRONT"
+  tags        = var.common_tags
+
+  default_action {
+    allow {}
+  }
+
+  # 1. Per-IP rate limit — the primary layer-7 DDoS / brute-force control.
+  rule {
+    name     = "rate-limit"
+    priority = 1
+
+    action {
+      block {}
+    }
+
+    statement {
+      rate_based_statement {
+        limit              = var.waf_rate_limit
+        aggregate_key_type = "IP"
+      }
+    }
+
+    visibility_config {
+      cloudwatch_metrics_enabled = true
+      metric_name                = "${local.name_prefix}-waf-rate-limit"
+      sampled_requests_enabled   = true
+    }
+  }
+
+  # 2. Amazon IP reputation list — blocks IPs AWS tracks as bots / recon /
+  #    DDoS sources before they consume any further rules.
+  rule {
+    name     = "aws-ip-reputation"
+    priority = 2
+
+    override_action {
+      none {}
+    }
+
+    statement {
+      managed_rule_group_statement {
+        vendor_name = "AWS"
+        name        = "AWSManagedRulesAmazonIpReputationList"
+      }
+    }
+
+    visibility_config {
+      cloudwatch_metrics_enabled = true
+      metric_name                = "${local.name_prefix}-waf-ip-reputation"
+      sampled_requests_enabled   = true
+    }
+  }
+
+  # 3. Core rule set — common web exploits (XSS, LFI, protocol/size abuse).
+  #    Safe on a static-asset origin (GET/HEAD/OPTIONS only; no large POSTs).
+  rule {
+    name     = "aws-common"
+    priority = 3
+
+    override_action {
+      none {}
+    }
+
+    statement {
+      managed_rule_group_statement {
+        vendor_name = "AWS"
+        name        = "AWSManagedRulesCommonRuleSet"
+      }
+    }
+
+    visibility_config {
+      cloudwatch_metrics_enabled = true
+      metric_name                = "${local.name_prefix}-waf-common"
+      sampled_requests_enabled   = true
+    }
+  }
+
+  # 4. Known bad inputs — known exploit signatures (e.g. Log4Shell, path
+  #    traversal, host-header injection).
+  rule {
+    name     = "aws-known-bad-inputs"
+    priority = 4
+
+    override_action {
+      none {}
+    }
+
+    statement {
+      managed_rule_group_statement {
+        vendor_name = "AWS"
+        name        = "AWSManagedRulesKnownBadInputsRuleSet"
+      }
+    }
+
+    visibility_config {
+      cloudwatch_metrics_enabled = true
+      metric_name                = "${local.name_prefix}-waf-known-bad-inputs"
+      sampled_requests_enabled   = true
+    }
+  }
+
+  visibility_config {
+    cloudwatch_metrics_enabled = true
+    metric_name                = "${local.name_prefix}-frontend-waf"
+    sampled_requests_enabled   = true
+  }
+}
+
+# ---------------------------------------------------------------------------
 # CloudFront distribution
 # ---------------------------------------------------------------------------
 
@@ -211,6 +331,7 @@ resource "aws_cloudfront_distribution" "frontend" {
   default_root_object = "index.html"
   price_class         = var.price_class
   aliases             = local.domain_aliases
+  web_acl_id          = aws_wafv2_web_acl.frontend.arn
   comment             = "ShipX frontend (${var.environment})"
   tags                = var.common_tags
 

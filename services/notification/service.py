@@ -17,24 +17,11 @@ import urllib.parse
 import urllib.request
 from typing import Any
 
-import boto3
+from shared.providers import get_email_provider, get_queue_provider
 
 from .tenant_branding import get_company_name, get_primary_color
 
 logger = logging.getLogger(__name__)
-
-# ---------------------------------------------------------------------------
-# Module-level boto3 client (reused across warm invocations)
-# ---------------------------------------------------------------------------
-
-_ses_client = None
-
-
-def _get_ses() -> Any:
-    global _ses_client
-    if _ses_client is None:
-        _ses_client = boto3.client("ses", region_name=os.environ.get("AWS_REGION", "eu-west-1"))
-    return _ses_client
 
 
 # ---------------------------------------------------------------------------
@@ -544,16 +531,12 @@ def send_email(
     from_address = os.environ.get("SES_FROM_ADDRESS", "notifications@logistics.example.com")
 
     try:
-        _get_ses().send_email(
-            Source=from_address,
-            Destination={"ToAddresses": [to_email]},
-            Message={
-                "Subject": {"Data": subject, "Charset": "UTF-8"},
-                "Body": {
-                    "Html": {"Data": html_body, "Charset": "UTF-8"},
-                    "Text": {"Data": text_body, "Charset": "UTF-8"},
-                },
-            },
+        get_email_provider().send(
+            sender=from_address,
+            to_email=to_email,
+            subject=subject,
+            html_body=html_body,
+            text_body=text_body,
         )
         logger.info(
             "Email sent",
@@ -562,7 +545,7 @@ def send_email(
         return True
     except Exception:
         logger.exception(
-            "SES send_email failed",
+            "Email send failed",
             extra={"tenant_id": tenant_id, "to": to_email},
         )
         raise
@@ -711,7 +694,7 @@ def trigger_sms_fallback(tenant_id: str, whatsapp_log_id: str, reason: str) -> b
         logger.warning("SMS fallback: SQS_SMS_QUEUE_URL not set")
         return False
 
-    from shared.notifications import _get_sqs, is_recipient_allowed
+    from shared.notifications import is_recipient_allowed
 
     recipient = {"phone": phone, "name": log_row.get("recipient_name")}
     # The non-production recipient guard applies to fallbacks too — a dev
@@ -732,7 +715,7 @@ def trigger_sms_fallback(tenant_id: str, whatsapp_log_id: str, reason: str) -> b
         "_fallback_reason": reason,
     }
     try:
-        _get_sqs().send_message(QueueUrl=queue_url, MessageBody=_json.dumps(body, default=str))
+        get_queue_provider().send(destination=queue_url, body=_json.dumps(body, default=str))
     except Exception:
         logger.exception("SMS fallback enqueue failed for log %s", whatsapp_log_id)
         return False
@@ -792,12 +775,7 @@ def retry_notification(
         }
     )
 
-    import boto3 as _boto3
-
-    _boto3.client("sqs", region_name=os.environ.get("AWS_REGION", "eu-west-1")).send_message(
-        QueueUrl=queue_url,
-        MessageBody=sqs_body,
-    )
+    get_queue_provider().send(destination=queue_url, body=sqs_body)
 
     new_row = repo.insert_log(
         tenant_id,

@@ -48,7 +48,7 @@ def refresh_id_token(refresh_token: str) -> RefreshResult:
     """Exchange a Cognito refresh token for a fresh ID/access token pair.
 
     Uses the non-admin `initiate_auth` API (not `admin_initiate_auth`) — the
-    app client is public with no secret (infrastructure/modules/cognito/main.tf),
+    app client is public with no secret (infrastructure/aws/modules/cognito/main.tf),
     so this needs no AWS-side admin permissions beyond cognito-idp:InitiateAuth
     scoped to the user pool.
 

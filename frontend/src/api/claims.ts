@@ -215,7 +215,8 @@ export const seizedItemsApi = {
 
 export interface PresignedUploadResponse {
   upload_url: string
-  fields: Record<string, string>
+  upload_method?: string
+  upload_headers?: Record<string, string>
   evidence_id: string | null
   file_key: string
 }

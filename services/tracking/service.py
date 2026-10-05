@@ -5,10 +5,7 @@ tracking updates, billing event triggers, and customer-facing tracking lookup.
 """
 
 import logging
-import os
 from typing import Any
-
-import boto3
 
 from services.billing.service import handle_payment_due
 from services.metering.service import check_container_limit
@@ -20,6 +17,7 @@ from shared.exceptions import (
     ResourceNotFoundError,
 )
 from shared.notifications import enqueue_notifications
+from shared.providers import get_storage_provider
 from shared.staff_notifications import notify_staff
 from shared.tenant_context import UserRole
 from shared.validation import safe_filename
@@ -28,8 +26,6 @@ from shared.webhook import fire_tenant_webhook
 from . import repository as repo
 from .models import TrackingStage
 
-_S3 = boto3.client("s3")
-_BUCKET = os.environ.get("S3_BUCKET_NAME", "logistics-assets")
 _URL_EXPIRY = 900  # 15 minutes
 _MAX_FILE_SIZE = 20 * 1024 * 1024  # 20 MB
 _ALLOWED_DOCUMENT_TYPES = frozenset({"bill_of_lading", "customs_certificate", "insurance", "inspection_report", "other"})
@@ -446,7 +442,7 @@ def update_container_status(
     #
     # Ground-truth fix: billing/handler.py's EventBridge branch (source=
     # logistics.tracking, detail-type=PaymentDue → auto-create billing) is
-    # never actually invoked — infrastructure/modules/eventbridge/main.tf's
+    # never actually invoked — infrastructure/aws/modules/eventbridge/main.tf's
     # routing rules only fan PaymentDue out to the SMS/WhatsApp notification
     # queues, there is no rule/target wiring EventBridge to invoke the billing
     # Lambda itself. So a container could sail all the way through `cleared`
@@ -631,16 +627,7 @@ def generate_document_presigned_url(
     filename = safe_filename(filename)
     s3_key = f"{tenant_id}/containers/{container_id}/{filename}"
 
-    presigned = _S3.generate_presigned_post(
-        Bucket=_BUCKET,
-        Key=s3_key,
-        Fields={"Content-Type": content_type},
-        Conditions=[
-            {"Content-Type": content_type},
-            ["content-length-range", 1, _MAX_FILE_SIZE],
-        ],
-        ExpiresIn=_URL_EXPIRY,
-    )
+    ticket = get_storage_provider().presigned_upload(s3_key, content_type=content_type, expires_in=_URL_EXPIRY)
 
     doc = repo.create_container_document(
         tenant_id,
@@ -656,8 +643,7 @@ def generate_document_presigned_url(
     )
 
     return {
-        "upload_url": presigned["url"],
-        "fields": presigned["fields"],
+        **ticket.as_response(),
         "document_id": str(doc["id"]) if doc else None,
         "s3_key": s3_key,
         "expires_in_seconds": _URL_EXPIRY,
@@ -696,15 +682,8 @@ def get_document_download_url(
     if not s3_key.startswith(f"{tenant_id}/"):
         raise ResourceNotFoundError("container_document", doc_id)
 
-    presigned_url = _S3.generate_presigned_url(
-        "get_object",
-        Params={
-            "Bucket": _BUCKET,
-            "Key": s3_key,
-            "ResponseContentDisposition": f'attachment; filename="{safe_filename(doc["filename"], default="document")}"',
-        },
-        ExpiresIn=300,
-    )
+    disposition = f'attachment; filename="{safe_filename(doc["filename"], default="document")}"'
+    presigned_url = get_storage_provider().presigned_get_url(s3_key, expires_in=300, response_content_disposition=disposition)
 
     log_audit(
         tenant_id=tenant_id,

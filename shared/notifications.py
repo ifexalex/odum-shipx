@@ -29,10 +29,9 @@ import logging
 import os
 from typing import Any, cast
 
-import boto3
-
 from shared.cache import Cache
 from shared.db import execute_with_tenant
+from shared.providers import get_queue_provider
 from shared.tenant_context import PLATFORM_TENANT_ID
 
 logger = logging.getLogger(__name__)
@@ -40,25 +39,12 @@ logger = logging.getLogger(__name__)
 # 60-second cache for tenant notification preferences
 _prefs_cache: Cache = Cache(default_ttl=60)
 
-# Module-level SQS client (reused across warm invocations)
-_sqs_client = None
-
 # Maps channel name → environment variable holding the queue URL
 _QUEUE_URL_ENV: dict[str, str] = {
     "sms": "SQS_SMS_QUEUE_URL",
     "whatsapp": "SQS_WHATSAPP_QUEUE_URL",
     "email": "SQS_EMAIL_QUEUE_URL",
 }
-
-
-def _get_sqs() -> Any:
-    global _sqs_client
-    if _sqs_client is None:
-        _sqs_client = boto3.client(
-            "sqs",
-            region_name=os.environ.get("AWS_REGION", "eu-west-1"),
-        )
-    return _sqs_client
 
 
 def _get_notification_prefs(tenant_id: str) -> dict[str, Any]:
@@ -155,7 +141,7 @@ def enqueue_notification(
         }
     )
 
-    _get_sqs().send_message(QueueUrl=queue_url, MessageBody=message_body)
+    get_queue_provider().send(destination=queue_url, body=message_body)
     logger.info(
         "Notification enqueued",
         extra={
@@ -388,7 +374,7 @@ def enqueue_notifications(
             if template_override:
                 body["template_override"] = template_override
 
-            _get_sqs().send_message(QueueUrl=queue_url, MessageBody=json.dumps(body))
+            get_queue_provider().send(destination=queue_url, body=json.dumps(body))
             logger.info(
                 "Event notification enqueued: %s via %s for tenant %s",
                 event_type,

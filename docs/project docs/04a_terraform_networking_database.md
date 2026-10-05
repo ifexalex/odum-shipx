@@ -33,7 +33,7 @@ VPC (10.0.0.0/16)
 
 ## Deliverables
 
-### File: `infrastructure/modules/networking/main.tf`
+### File: `infrastructure/aws/modules/networking/main.tf`
 
 **Resources to create:**
 - `aws_vpc` — 10.0.0.0/16, enable_dns_hostnames = true
@@ -53,7 +53,7 @@ VPC (10.0.0.0/16)
 
 **Outputs:** vpc_id, private_subnet_ids, public_subnet_ids, lambda_security_group_id, aurora_security_group_id, db_subnet_group_name
 
-### File: `infrastructure/modules/networking/variables.tf`
+### File: `infrastructure/aws/modules/networking/variables.tf`
 
 ```hcl
 variable "project_name" { type = string }
@@ -62,7 +62,7 @@ variable "vpc_cidr" { type = string, default = "10.0.0.0/16" }
 variable "availability_zones" { type = list(string), default = ["eu-west-1a", "eu-west-1b"] }
 ```
 
-### File: `infrastructure/modules/aurora/main.tf`
+### File: `infrastructure/aws/modules/aurora/main.tf`
 
 **Resources to create:**
 - `aws_rds_cluster` — Aurora Serverless v2, PostgreSQL 15.4, engine_mode = "provisioned"
@@ -88,7 +88,7 @@ variable "availability_zones" { type = list(string), default = ["eu-west-1a", "e
 
 **Outputs:** cluster_endpoint, reader_endpoint, rds_proxy_endpoint, db_name, db_secret_arn, cluster_arn
 
-### File: `infrastructure/modules/aurora/variables.tf`
+### File: `infrastructure/aws/modules/aurora/variables.tf`
 
 ```hcl
 variable "project_name" { type = string }
@@ -103,7 +103,7 @@ variable "max_acu" { type = number, default = 4 }
 variable "auto_pause" { type = bool, default = true }
 ```
 
-### File: `infrastructure/environments/dev.tfvars`
+### File: `infrastructure/aws/environments/dev.tfvars`
 
 ```hcl
 project_name       = "logistics"
@@ -114,7 +114,7 @@ max_acu            = 2
 deletion_protection = false
 ```
 
-### File: `infrastructure/environments/prod.tfvars`
+### File: `infrastructure/aws/environments/prod.tfvars`
 
 ```hcl
 project_name       = "logistics"
@@ -127,7 +127,7 @@ deletion_protection = true
 
 ## ElastiCache Redis — Distributed Tenant Status Cache
 
-Module: `infrastructure/modules/elasticache/`
+Module: `infrastructure/aws/modules/elasticache/`
 
 | Resource | Detail |
 |---|---|

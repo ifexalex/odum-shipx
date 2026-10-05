@@ -22,3 +22,8 @@ output "certificate_arn" {
   description = "ACM certificate ARN (us-east-1)."
   value       = aws_acm_certificate.frontend.arn
 }
+
+output "waf_web_acl_arn" {
+  description = "WAFv2 Web ACL ARN protecting the CloudFront distribution."
+  value       = aws_wafv2_web_acl.frontend.arn
+}

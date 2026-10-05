@@ -464,7 +464,7 @@ aws --endpoint-url http://localhost:5100 sqs receive-message \
 Run `terraform test` to validate module structure without touching real AWS. Tests use Terraform's built-in `mock_provider` — no AWS credentials needed.
 
 ```bash
-cd infrastructure
+cd infrastructure/aws
 terraform test
 ```
 
@@ -476,7 +476,7 @@ tests/sqs.tftest.hcl... pass
 Success! 5 passed, 0 failed.
 ```
 
-Test files live in `infrastructure/tests/`. Add new `.tftest.hcl` files for any module you want to validate.
+Test files live in `infrastructure/aws/tests/`. Add new `.tftest.hcl` files for any module you want to validate.
 
 ---
 

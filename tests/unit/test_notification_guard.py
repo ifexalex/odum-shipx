@@ -39,7 +39,7 @@ class TestRecipientGuard:
 
         with (
             patch.dict(os.environ, {"ENVIRONMENT": "local", "NOTIFICATION_ALLOWLIST": ""}, clear=False),
-            patch.object(notifications, "_get_sqs") as mock_sqs,
+            patch.object(notifications, "get_queue_provider") as mock_sqs,
         ):
             notifications.enqueue_notifications(
                 tenant_id="t-1",

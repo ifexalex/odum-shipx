@@ -39,7 +39,7 @@ services/excel/
 | GET | `/v1/manifests/{id}/export` | china_office_staff, tenant_admin, nigeria_office_staff | Export manifest (`?format=xlsx\|csv\|pdf`) |
 | GET | `/v1/billing/{id}/export` | tenant_admin, nigeria_office_staff, customer (own only) | Export billing (`?format=xlsx\|csv\|pdf`) — the `pdf` format doubles as the customer's downloadable invoice |
 | GET | `/v1/containers/{id}/billing/export` | tenant_admin, nigeria_office_staff | Export all billing for a container (`?format=xlsx\|csv\|pdf`) |
-| POST | `/v1/packing-lists/import/presigned-url` | china_office_staff | Get an S3 POST-policy presigned URL for an import .xlsx (`content_type` must be the xlsx MIME type). Reused unchanged by the manifest import flow below — there is no second presigned-url endpoint. |
+| POST | `/v1/packing-lists/import/presigned-url` | china_office_staff | Get a cloud-neutral **PUT** presigned URL for an import .xlsx (`content_type` must be the xlsx MIME type); returns `{ upload_url, upload_method, upload_headers, file_key }`. Reused unchanged by the manifest import flow below — there is no second presigned-url endpoint. |
 | POST | `/v1/packing-lists/import` | china_office_staff | Import packing list from .xlsx (exact header, pre-existing container + customers required) |
 | POST | `/v1/manifests/import` | china_office_staff | Import a China-side freight-forwarder manifest .xlsx (flexible header matching; auto-creates container/customers/packing lists) — see "Manifest Import" below |
 
@@ -326,8 +326,8 @@ def process_import(tenant_id: str, container_id: str, file_buffer: BytesIO) -> I
 ### Import Request Flow
 
 1. Client calls `POST /v1/packing-lists/import/presigned-url` with `{ "content_type": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" }`
-2. Lambda validates the content type and returns an S3 POST-policy: `{ "upload_url": "...", "fields": {...}, "file_key": "{tenant_id}/imports/{uuid}.xlsx" }`
-3. Client submits a multipart form (the returned `fields`, then the file itself, appended last) directly to `upload_url`
+2. Lambda validates the content type and returns a cloud-neutral PUT ticket: `{ "upload_url": "...", "upload_method": "PUT", "upload_headers": { "Content-Type": "..." }, "file_key": "{tenant_id}/imports/{uuid}.xlsx" }` (was an S3 POST-policy `{ upload_url, fields }` before 2026-10-05 — see the cloud-portability note in `09_api_manifest.md`)
+3. Client **PUTs** the raw file to `upload_url` with the returned `upload_headers` (no multipart form)
 4. Client calls `POST /v1/packing-lists/import` with `{ "container_id": "uuid", "file_key": "s3-key" }`
 5. Lambda downloads the file from S3, processes it, returns the result
 

@@ -22,12 +22,12 @@ On success, the authorizer returns an IAM policy + context dict with:
       - claims.read_only       (impersonation only)
 
 Terraform changes required to adopt this authorizer:
-  1. In infrastructure/modules/api-gateway/main.tf:
+  1. In infrastructure/aws/modules/api-gateway/main.tf:
      - Replace the existing `aws_apigatewayv2_authorizer.cognito` (type JWT)
        with a new `aws_apigatewayv2_authorizer.custom` (type REQUEST) pointing
        to this Lambda ARN with enableSimpleResponses = false.
      - Add `aws_lambda_permission` to allow API GW to invoke the authorizer Lambda.
-  2. Create a new Lambda in infrastructure/modules/lambda/main.tf:
+  2. Create a new Lambda in infrastructure/aws/modules/lambda/main.tf:
      - handler: services/authorizer/handler.lambda_handler
      - env vars: COGNITO_JWKS_URL, COGNITO_AUDIENCE (user pool client ID),
                  IMPERSONATION_SECRET_ARN

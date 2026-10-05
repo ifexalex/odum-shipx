@@ -133,13 +133,13 @@ filed → under_inspection → inspection_complete → pending_resolution → re
 
 **Upload file names are sanitised (2026-09-23).** The client's `filename` is passed through `shared.validation.safe_filename()` before it is used in the S3 key or stored: directory components dropped, anything outside Unicode word characters / `. ( ) space -` replaced with `_`, no leading/trailing dots, ≤100 chars with the extension kept (Chinese names like `装箱单.xlsx` survive). A name that reduces to nothing is a `422`. The download `Content-Disposition` is sanitised again on read, since rows written earlier may hold an unsafe name. See `00_CROSS_CUTTING_STANDARDS.md` §2.2.
 1. Validate claim_id exists in tenant scope
-2. Generate S3 presigned POST URL:
+2. Generate a cloud-neutral presigned **PUT** URL (via `StorageProvider`, 2026-10-05 — was S3 presigned-POST; see the cloud-portability note in `09_api_manifest.md`):
    - Key: `{tenant_id}/claims/{claim_id}/{filename}`
    - Expires in 1 hour
-   - Max file size: 10MB
+   - Max file size: 10MB (enforced client-side; PUT cannot enforce at the edge)
    - Allowed content types: image/jpeg, image/png, application/pdf
 3. Insert `claim_evidence` record
-4. Return upload URL + fields
+4. Return `{ upload_url, upload_method: "PUT", upload_headers, evidence_id, file_key }` — the browser PUTs the raw file to `upload_url` with `upload_headers`
 
 ### Missing Items (POST /claims/missing-items)
 - Create `missing_item` record linked to manifest

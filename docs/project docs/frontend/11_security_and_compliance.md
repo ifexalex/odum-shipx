@@ -74,8 +74,8 @@ These enforce the rules at the code-search level so they can't regress in future
 `services/auth/handler.py` sets the refresh-token cookie as `shipx_rt=<token>; Path=/v1/auth; Max-Age=2592000; HttpOnly; Secure; SameSite=Strict`:
 - `Path=/v1/auth` — never sent to any other API route, including ones an attacker-controlled response could otherwise coax the browser into revealing via error messages/logging.
 - No `Domain` attribute — defaults to host-only scope (the API's own host, e.g. `api.shipx.co`), never widened to `.shipx.co`; the frontend origin never needs to read this cookie (or any cookie) itself.
-- `SameSite=Strict` — safe here specifically because this cookie is only ever used by same-site `fetch()` calls, never a top-level cross-site navigation; combined with CORS `allow_credentials` pinned to explicit, non-wildcard origins (`infrastructure/modules/api-gateway/main.tf`), this is two independent layers blocking any CSRF-style forged request from a third-party origin.
-- `Max-Age=2592000` (30 days) — matches Cognito's `refresh_token_validity` (`infrastructure/modules/cognito/main.tf`); a stale cookie past that window is rejected by Cognito's own `REFRESH_TOKEN_AUTH` flow regardless.
+- `SameSite=Strict` — safe here specifically because this cookie is only ever used by same-site `fetch()` calls, never a top-level cross-site navigation; combined with CORS `allow_credentials` pinned to explicit, non-wildcard origins (`infrastructure/aws/modules/api-gateway/main.tf`), this is two independent layers blocking any CSRF-style forged request from a third-party origin.
+- `Max-Age=2592000` (30 days) — matches Cognito's `refresh_token_validity` (`infrastructure/aws/modules/cognito/main.tf`); a stale cookie past that window is rejected by Cognito's own `REFRESH_TOKEN_AUTH` flow regardless.
 
 ### Error reporting / Sentry
 Not added — no Sentry or equivalent configured. If added in future, the `beforeSend` PII scrub requirement applies (see spec above). Left open until a decision is made.
@@ -85,7 +85,7 @@ Not added — no Sentry or equivalent configured. If added in future, the `befor
 - [x] Access/ID tokens never touch `localStorage`/`sessionStorage` — `tokenStore.ts` is module-level memory; `MemoryStorage` for Cognito. CI grep check added in `frontend-ci.yml` to enforce going forward (see the ground-truth gap noted below re: that check's current false-positive rate).
 - [x] The refresh token never touches `localStorage`/`sessionStorage`, or any JS-readable storage at all — persisted server-side as an `HttpOnly` cookie (`services/auth/handler.py`); `tokenStore.ts`'s `ActiveAuth` type structurally has no field to hold one client-side.
 - [x] No `dangerouslySetInnerHTML` renders tenant- or user-supplied content — confirmed zero uses; CI grep check added.
-- [x] CSP and security headers configured at the CloudFront response-headers-policy level — **done**: `infrastructure/modules/cloudfront/main.tf` response-headers policy (CSP + HSTS + X-Frame-Options etc.).
+- [x] CSP and security headers configured at the CloudFront response-headers-policy level — **done**: `infrastructure/aws/modules/cloudfront/main.tf` response-headers policy (CSP + HSTS + X-Frame-Options etc.).
 - [x] A test simulates an impersonation tenant-switch and asserts the query cache is clean — **done**: `src/test/cache-isolation.test.tsx` (logout, impersonation enter, impersonation exit all clear the cache; no tenantId in query keys).
 - [x] GDPR anonymise flow enforces exact "ANONYMISE" text match client-side — `confirmText === 'ANONYMISE'` in `AdminCustomerDetail`.
 - [ ] If error reporting is added, a `beforeSend` PII scrub is in place — **N/A (no Sentry configured yet)**.

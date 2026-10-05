@@ -46,6 +46,7 @@ from typing import Any
 
 from shared.db import execute_with_tenant, execute_write_with_tenant
 from shared.exceptions import BusinessRuleViolationError, ResourceNotFoundError
+from shared.providers import get_secrets_provider
 from shared.tenant_context import PLATFORM_TENANT_ID
 
 logger = logging.getLogger(__name__)
@@ -62,12 +63,7 @@ def _get_signing_secret() -> str:
     """Return the HS256 signing secret from Secrets Manager or env fallback."""
     secret_arn = os.environ.get("IMPERSONATION_SECRET_ARN", "")
     if secret_arn:
-        import boto3
-
-        region = os.environ.get("AWS_REGION", "eu-west-1")
-        client = boto3.client("secretsmanager", region_name=region)
-        secret = client.get_secret_value(SecretId=secret_arn)
-        return str(json.loads(secret["SecretString"])["secret"])
+        return str(json.loads(get_secrets_provider().get_secret(secret_arn))["secret"])
 
     secret = os.environ.get("IMPERSONATION_SECRET", "")
     if not secret:

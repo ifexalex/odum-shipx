@@ -500,11 +500,11 @@ class TestScheduledLocaleForwarding:
 
         captured = {}
 
-        def fake_send(QueueUrl, MessageBody):
-            captured["body"] = json.loads(MessageBody)
+        def fake_send(*, destination, body):
+            captured["body"] = json.loads(body)
 
-        mock_sqs = MagicMock()
-        mock_sqs.send_message.side_effect = fake_send
+        mock_queue = MagicMock()
+        mock_queue.send.side_effect = fake_send
 
         import os
 
@@ -512,7 +512,7 @@ class TestScheduledLocaleForwarding:
 
         with (
             patch("shared.notifications._get_notification_prefs", return_value={}),
-            patch("shared.notifications._get_sqs", return_value=mock_sqs),
+            patch("shared.notifications.get_queue_provider", return_value=mock_queue),
         ):
             from shared.notifications import enqueue_notification
 

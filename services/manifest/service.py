@@ -5,13 +5,11 @@ This service provides read access and the verification workflow.
 """
 
 import logging
-import os
 from typing import Any
-
-import boto3
 
 from shared.audit import log_audit
 from shared.exceptions import BusinessRuleViolationError, ResourceNotFoundError
+from shared.providers import get_storage_provider
 from shared.validation import safe_filename
 
 from . import repository as repo
@@ -25,8 +23,6 @@ _WEIGHT_DISCREPANCY_THRESHOLD_PCT = 0.05
 _WEIGHT_DISCREPANCY_MIN_KG = 0.1
 
 # S3-backed verification evidence (mirrors services/claims/service.py limits).
-_s3_client = boto3.client("s3")
-_BUCKET = os.environ.get("S3_BUCKET_NAME", "logistics-assets")
 _ALLOWED_CONTENT_TYPES = frozenset({"image/jpeg", "image/png", "application/pdf"})
 _MAX_FILE_SIZE = 10 * 1024 * 1024  # 10 MB
 _URL_EXPIRY = 3600  # 1 hour
@@ -34,11 +30,7 @@ _URL_EXPIRY = 3600  # 1 hour
 
 def _serialize_evidence(row: dict[str, Any]) -> dict[str, Any]:
     """Evidence row → wire shape with a short-lived presigned GET download URL."""
-    download_url = _s3_client.generate_presigned_url(
-        "get_object",
-        Params={"Bucket": _BUCKET, "Key": row["file_key"]},
-        ExpiresIn=_URL_EXPIRY,
-    )
+    download_url = get_storage_provider().presigned_get_url(row["file_key"], expires_in=_URL_EXPIRY)
     return {
         "id": str(row["id"]),
         "file_name": row["file_name"],
@@ -231,16 +223,7 @@ def generate_evidence_upload(
     filename = safe_filename(filename)
     file_key = f"{tenant_id}/manifests/{manifest_id}/{filename}"
 
-    presigned = _s3_client.generate_presigned_post(
-        Bucket=_BUCKET,
-        Key=file_key,
-        Fields={"Content-Type": content_type},
-        Conditions=[
-            {"Content-Type": content_type},
-            ["content-length-range", 1, _MAX_FILE_SIZE],
-        ],
-        ExpiresIn=_URL_EXPIRY,
-    )
+    ticket = get_storage_provider().presigned_upload(file_key, content_type=content_type, expires_in=_URL_EXPIRY)
 
     evidence = repo.create_manifest_evidence(
         tenant_id,
@@ -256,8 +239,7 @@ def generate_evidence_upload(
     )
 
     return {
-        "upload_url": presigned["url"],
-        "fields": presigned["fields"],
+        **ticket.as_response(),
         "evidence_id": str(evidence["id"]) if evidence else None,
         "file_key": file_key,
     }

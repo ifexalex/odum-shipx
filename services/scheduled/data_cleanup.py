@@ -22,6 +22,7 @@ from aws_xray_sdk.core import patch_all
 from shared.audit import log_audit
 from shared.db import execute_with_tenant, execute_write_with_tenant
 from shared.logging_config import bind_log_context, clear_log_context, setup_logging
+from shared.providers import get_storage_provider
 from shared.tenant_context import PLATFORM_TENANT_ID
 
 setup_logging()
@@ -72,16 +73,8 @@ _SPECIAL_DELETES: list[tuple[str, str]] = [
     ),
 ]
 
-# Module-level boto3 clients
-_s3_client = None
+# Module-level boto3 clients (object storage is accessed via get_storage_provider)
 _cognito_client = None
-
-
-def _get_s3() -> Any:
-    global _s3_client
-    if _s3_client is None:
-        _s3_client = boto3.client("s3", region_name=os.environ.get("AWS_REGION", "eu-west-1"))
-    return _s3_client
 
 
 def _get_cognito() -> Any:
@@ -207,41 +200,17 @@ def _delete_tenant(tenant_id: str, tenant: dict[str, Any]) -> None:
 def _delete_s3_prefix(tenant_id: str) -> None:
     bucket = os.environ.get("TENANT_DATA_BUCKET", "")
     if not bucket:
-        logger.warning("TENANT_DATA_BUCKET not set — S3 cleanup skipped for %s", tenant_id)
+        logger.warning("TENANT_DATA_BUCKET not set — object-storage cleanup skipped for %s", tenant_id)
         return
 
-    prefix = f"{tenant_id}/"
-    s3 = _get_s3()
-
+    # delete_prefix purges current objects plus non-current versions and
+    # delete-markers (GDPR Art. 17 immediate erasure, not lifecycle-deferred).
     try:
-        # Delete current object versions
-        paginator = s3.get_paginator("list_objects_v2")
-        total_deleted = 0
-        for page in paginator.paginate(Bucket=bucket, Prefix=prefix):
-            objects = page.get("Contents", [])
-            if objects:
-                s3.delete_objects(
-                    Bucket=bucket,
-                    Delete={"Objects": [{"Key": obj["Key"]} for obj in objects]},
-                )
-                total_deleted += len(objects)
-
-        # Also delete all non-current versions and delete markers (GDPR Art. 17).
-        # S3 versioning means deleted objects remain in version history; this ensures
-        # they are fully purged immediately rather than waiting for lifecycle rules.
-        version_paginator = s3.get_paginator("list_object_versions")
-        for page in version_paginator.paginate(Bucket=bucket, Prefix=prefix):
-            to_delete = [
-                {"Key": v["Key"], "VersionId": v["VersionId"]} for v in page.get("Versions", []) + page.get("DeleteMarkers", [])
-            ]
-            if to_delete:
-                s3.delete_objects(Bucket=bucket, Delete={"Objects": to_delete})
-                total_deleted += len(to_delete)
-
+        total_deleted = get_storage_provider(bucket).delete_prefix(f"{tenant_id}/")
         if total_deleted:
-            logger.info("Deleted %d S3 objects/versions for tenant %s", total_deleted, tenant_id)
+            logger.info("Deleted %d storage objects/versions for tenant %s", total_deleted, tenant_id)
     except Exception:
-        logger.exception("S3 cleanup failed for tenant %s", tenant_id)
+        logger.exception("Object-storage cleanup failed for tenant %s", tenant_id)
         # Non-fatal — continue with Cognito + DB deletion
 
 

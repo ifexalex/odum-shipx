@@ -1,0 +1,68 @@
+# ---------------------------------------------------------------------------
+# LEAN DEMO PROFILE — a minimal, short-lived AWS deployment to produce a live
+# link (e.g. for a Founders Hub application), then `terraform destroy`.
+#
+#   cp demo.tfvars.example demo.tfvars   # then edit
+#   terraform apply -var-file=demo.tfvars
+#   ... get the link, submit the application ...
+#   terraform destroy -var-file=demo.tfvars
+#
+# HONEST COST: this is NOT free. Aurora Serverless v2, ElastiCache, the VPC
+# interface endpoints, and RDS Proxy are not AWS-Free-Tier-eligible and are not
+# toggle-able off in this stack. Even stripped to one AZ the floor is
+# ~$100–150/month, so treat this as "run for a few weeks, then destroy".
+# For a genuinely near-$0 demo link, see "Cheaper alternative" at the bottom.
+# ---------------------------------------------------------------------------
+
+project_name = "shipx"
+environment  = "demo"
+
+aws_region = "eu-west-1"
+
+# Single AZ halves the interface-endpoint cost (~$112 → ~$56/mo) and makes
+# Aurora single-AZ. Fine for a throwaway demo; NOT for production.
+availability_zones = ["eu-west-1a"]
+
+# Aurora floor: smallest serverless window.
+min_acu = 0.5
+max_acu = 1
+
+# Cheapest cache node (already the default).
+elasticache_node_type = "cache.t4g.micro"
+
+# Let `terraform destroy` tear everything down cleanly after the demo.
+deletion_protection = false
+
+# Leave route53_zone_id EMPTY → the CloudFront/S3/ACM/WAF frontend module is
+# count-gated off (saves the WAF + distribution cost). Serve the demo SPA via
+# S3 static-website hosting or AWS Amplify Hosting instead (see below).
+route53_zone_id = ""
+domain_name     = "demo.invalid"
+
+# Required contacts (use your own).
+ses_from_email = "noreply@your-domain.example"
+alerts_email   = "you@your-domain.example"
+github_repo    = "ifexalex/odum-shipx"
+
+cors_allow_origins = ["*"] # demo only — lock this down for real use
+
+# ---------------------------------------------------------------------------
+# Cheaper alternative (near-$0) for just a demo LINK
+# ---------------------------------------------------------------------------
+# The visible demo is the frontend. To get a credible URL for ~$0 without the
+# production data-plane cost, deploy the SPA on a free static host and point it
+# at a minimal backend:
+#
+#   Frontend (free/near-free):
+#     cd frontend && npm run build
+#     # AWS Amplify Hosting (generous free tier) OR S3 static-website hosting
+#     # (pennies) OR Vercel/Netlify/Cloudflare Pages (free) — any serves dist/.
+#
+#   Backend (free-tier for 12 months, instead of Aurora/Redis/endpoints):
+#     • RDS PostgreSQL db.t3.micro, single-AZ  (Free Tier eligible — NOT Aurora)
+#     • Lambda + API Gateway                   (Free Tier: 1M req + 400k GB-s)
+#     • Skip ElastiCache + VPC interface endpoints (the app fails open to DB)
+#
+# This diverges from the production Terraform but gets a working, hosted demo
+# for roughly $0–10/month — enough to attach to the Founders Hub application.
+# ---------------------------------------------------------------------------

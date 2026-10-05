@@ -64,7 +64,7 @@ describe('manifestApi', () => {
 
   it('getEvidenceUploadUrl() POSTs /evidence with filename, content_type and label', async () => {
     fetchMock.mockResolvedValue(
-      jsonResponse({ data: { upload_url: 'https://s3', fields: {}, evidence_id: 'ev1', file_key: 'k' } }),
+      jsonResponse({ data: { upload_url: 'https://s3', upload_method: 'PUT', upload_headers: { 'Content-Type': 'image/jpeg' }, evidence_id: 'ev1', file_key: 'k' } }),
     )
     await manifestApi.getEvidenceUploadUrl('mf1', 'damage.jpg', 'image/jpeg', 'Missing — Acme (SHX-1)')
     const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit]

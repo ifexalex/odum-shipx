@@ -33,9 +33,11 @@ evidence flow). Request body:
 ```json
 { "filename": "damage.jpg", "content_type": "image/jpeg", "label": "Damaged — Acme (SHX-00001)" }
 ```
-- `content_type` must be one of `image/jpeg`, `image/png`, `application/pdf` (else 422 `INVALID_CONTENT_TYPE`); max 10 MB (enforced in the S3 POST policy).
+- `content_type` must be one of `image/jpeg`, `image/png`, `application/pdf` (else 422 `INVALID_CONTENT_TYPE`); max 10 MB (enforced client-side — see the cloud-portability note below).
 - `label` (optional) is a human descriptor stored on the row — the frontend sets it from the discrepancy's customer + type + carton tags.
-- Records a `manifest_evidence` row (migration 036) and returns `{ upload_url, fields, evidence_id, file_key }`. The browser then POSTs the file straight to S3 with `upload_url` + `fields`. The S3 key is `{tenant_id}/manifests/{manifest_id}/{filename}` (tenant isolation).
+- Records a `manifest_evidence` row (migration 036) and returns `{ upload_url, upload_method, upload_headers, evidence_id, file_key }`. The browser then **PUTs** the raw file to `upload_url` with the returned `upload_headers` (Content-Type). The S3 key is `{tenant_id}/manifests/{manifest_id}/{filename}` (tenant isolation).
+
+**Cloud-neutral upload contract (2026-10-05).** All presigned-upload endpoints (manifest evidence, claims, container documents, payment-claim evidence, Excel import) now return a normalized **PUT** ticket — `{ upload_url, upload_method: "PUT", upload_headers }` — instead of the old S3 presigned-POST `{ upload_url, fields }`. This is the single browser-upload shape both AWS (presigned PUT) and Azure (Blob SAS PUT) satisfy, via the `StorageProvider` port (`shared/providers/`); see `02_shared_utilities.md`. Trade-off: the S3 POST `content-length-range` enforced max size at the edge; a presigned PUT cannot, so size is enforced client-side in `useFileUpload.ts` and should be re-verified server-side (`StorageProvider.object_size`) on any flow that later gains a post-upload confirm step.
 
 **Upload file names are sanitised (2026-09-23).** The client's `filename` is passed through `shared.validation.safe_filename()` before it is used in the S3 key or stored: directory components dropped, anything outside Unicode word characters / `. ( ) space -` replaced with `_`, no leading/trailing dots, ≤100 chars with the extension kept (Chinese names like `装箱单.xlsx` survive). A name that reduces to nothing is a `422`. The download `Content-Disposition` is sanitised again on read, since rows written earlier may hold an unsafe name. See `00_CROSS_CUTTING_STANDARDS.md` §2.2.
 

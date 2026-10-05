@@ -22,30 +22,37 @@ describe('uploadImportFile', () => {
     vi.stubGlobal('fetch', fetchMock)
   })
 
-  it('requests a presigned URL, posts the file, and returns the file_key', async () => {
+  it('requests a presigned URL, PUTs the file body with signed headers, and returns the file_key', async () => {
     vi.mocked(excelApi.getImportPresignedUrl).mockResolvedValue({
-      upload_url: 'https://logistics-assets.s3.amazonaws.com/',
-      fields: { key: 't1/imports/abc.xlsx', policy: 'p', signature: 's', AWSAccessKeyId: 'ak' },
+      upload_url: 'https://logistics-assets.s3.amazonaws.com/t1/imports/abc.xlsx?sig=1',
+      upload_method: 'PUT',
+      upload_headers: { 'Content-Type': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' },
       file_key: 't1/imports/abc.xlsx',
     })
-    fetchMock.mockResolvedValue(new Response(null, { status: 204 }))
+    fetchMock.mockResolvedValue(new Response(null, { status: 200 }))
 
     const fileKey = await uploadImportFile(makeFile())
 
     expect(excelApi.getImportPresignedUrl).toHaveBeenCalledWith(
       'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
     )
-    expect(fetchMock).toHaveBeenCalledWith('https://logistics-assets.s3.amazonaws.com/', expect.objectContaining({ method: 'POST' }))
-    const body = fetchMock.mock.calls[0]?.[1]?.body as FormData
-    expect(body.get('key')).toBe('t1/imports/abc.xlsx')
-    expect(body.get('file')).toBeInstanceOf(File)
+    expect(fetchMock).toHaveBeenCalledWith(
+      'https://logistics-assets.s3.amazonaws.com/t1/imports/abc.xlsx?sig=1',
+      expect.objectContaining({
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' },
+      }),
+    )
+    const body = fetchMock.mock.calls[0]?.[1]?.body
+    expect(body).toBeInstanceOf(File)
     expect(fileKey).toBe('t1/imports/abc.xlsx')
   })
 
-  it('throws UploadFailedError when S3 rejects the upload', async () => {
+  it('throws UploadFailedError when storage rejects the upload', async () => {
     vi.mocked(excelApi.getImportPresignedUrl).mockResolvedValue({
       upload_url: 'https://logistics-assets.s3.amazonaws.com/',
-      fields: {},
+      upload_method: 'PUT',
+      upload_headers: {},
       file_key: 't1/imports/abc.xlsx',
     })
     fetchMock.mockResolvedValue(new Response(null, { status: 403 }))

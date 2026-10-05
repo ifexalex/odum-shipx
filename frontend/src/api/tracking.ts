@@ -165,7 +165,8 @@ export interface ContainerDocument {
 
 export interface DocumentPresignedUpload {
   upload_url: string
-  fields: Record<string, string>
+  upload_method?: string
+  upload_headers?: Record<string, string>
   document_id: string | null
   s3_key: string
   expires_in_seconds: number
@@ -182,7 +183,7 @@ export const containerDocumentsApi = {
       body,
     }),
 
-  /** Short-lived (5 min) S3 GET URL with attachment disposition. */
+  /** Short-lived (5 min) GET URL with attachment disposition. */
   downloadUrl: (containerId: string, docId: string) =>
     apiRequest<{ download_url: string }>({
       method: 'GET',
@@ -190,11 +191,12 @@ export const containerDocumentsApi = {
     }),
 }
 
-/** Uploads the file to S3 using the presigned POST — no auth header, S3 direct. */
-export async function uploadToPresignedPost(presigned: DocumentPresignedUpload, file: File): Promise<void> {
-  const form = new FormData()
-  Object.entries(presigned.fields).forEach(([k, v]) => form.append(k, v))
-  form.append('file', file)
-  const res = await fetch(presigned.upload_url, { method: 'POST', body: form })
-  if (!res.ok) throw new Error(`S3 upload failed (${res.status})`)
+/** Uploads the file directly to storage via the presigned PUT URL (no auth header). */
+export async function uploadToPresignedUrl(presigned: DocumentPresignedUpload, file: File): Promise<void> {
+  const res = await fetch(presigned.upload_url, {
+    method: presigned.upload_method ?? 'PUT',
+    headers: presigned.upload_headers ?? { 'Content-Type': file.type },
+    body: file,
+  })
+  if (!res.ok) throw new Error(`Upload failed (${res.status})`)
 }

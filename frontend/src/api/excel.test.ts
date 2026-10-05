@@ -36,7 +36,7 @@ describe('excelApi', () => {
   it('getImportPresignedUrl() POSTs content_type to the presigned-url endpoint', async () => {
     fetchMock.mockResolvedValue(
       jsonResponse({
-        data: { upload_url: 'https://logistics-assets.s3.amazonaws.com/', fields: { key: 't1/imports/x.xlsx' }, file_key: 't1/imports/x.xlsx' },
+        data: { upload_url: 'https://logistics-assets.s3.amazonaws.com/t1/imports/x.xlsx', upload_method: 'PUT', upload_headers: { 'Content-Type': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' }, file_key: 't1/imports/x.xlsx' },
       }),
     )
     const result = await excelApi.getImportPresignedUrl(

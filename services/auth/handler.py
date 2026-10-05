@@ -51,7 +51,7 @@ logger = logging.getLogger(__name__)
 
 _COOKIE_NAME = "shipx_rt"
 _COOKIE_PATH = "/v1/auth"
-# Matches Cognito's refresh_token_validity (infrastructure/modules/cognito/main.tf) — the
+# Matches Cognito's refresh_token_validity (infrastructure/aws/modules/cognito/main.tf) — the
 # cookie's lifetime should never exceed the token's own validity, but capping it here too
 # means a stale cookie value from a rotated Cognito config still expires client-side on schedule.
 _COOKIE_MAX_AGE_SECONDS = 60 * 60 * 24 * 30

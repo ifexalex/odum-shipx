@@ -7,7 +7,8 @@ on:
   push:
     branches: [main]
     paths:
-      - "infrastructure/**"
+      - "infrastructure/aws/**"
+      - "infrastructure/common/**"
   workflow_dispatch:
     inputs:
       environment:
@@ -49,11 +50,11 @@ jobs:
           terraform_version: "1.7.5"
 
       - name: Terraform Init
-        working-directory: infrastructure
+        working-directory: infrastructure/aws
         run: terraform init -backend-config=environments/dev.backend.hcl
 
       - name: Import bootstrap resources (idempotent)
-        working-directory: infrastructure
+        working-directory: infrastructure/aws
         run: |
           ACCOUNT_ID=$(aws sts get-caller-identity --query Account --output text)
           TFVARS="-var-file=environments/dev.tfvars"
@@ -77,19 +78,19 @@ jobs:
           import_once 'module.iam_oidc.aws_iam_role.deploy["prod"]'    logistics-github-deploy-prod
 
       - name: Terraform Format Check
-        working-directory: infrastructure
+        working-directory: infrastructure/aws
         run: terraform fmt -check -recursive
 
       - name: Terraform Validate
-        working-directory: infrastructure
+        working-directory: infrastructure/aws
         run: terraform validate
 
       - name: Terraform Plan
-        working-directory: infrastructure
+        working-directory: infrastructure/aws
         run: terraform plan -var-file=environments/dev.tfvars -out=tfplan
 
       - name: Terraform Apply
-        working-directory: infrastructure
+        working-directory: infrastructure/aws
         run: terraform apply tfplan
 
   # ── Staging — gated by dev success + GitHub Environment approval ─────────
@@ -117,23 +118,23 @@ jobs:
           terraform_version: "1.7.5"
 
       - name: Terraform Init
-        working-directory: infrastructure
+        working-directory: infrastructure/aws
         run: terraform init -backend-config=environments/staging.backend.hcl
 
       - name: Terraform Format Check
-        working-directory: infrastructure
+        working-directory: infrastructure/aws
         run: terraform fmt -check -recursive
 
       - name: Terraform Validate
-        working-directory: infrastructure
+        working-directory: infrastructure/aws
         run: terraform validate
 
       - name: Terraform Plan
-        working-directory: infrastructure
+        working-directory: infrastructure/aws
         run: terraform plan -var-file=environments/staging.tfvars -out=tfplan
 
       - name: Terraform Apply
-        working-directory: infrastructure
+        working-directory: infrastructure/aws
         run: terraform apply tfplan
 
   # ── Prod — gated by staging success + GitHub Environment approval ─────────
@@ -158,21 +159,21 @@ jobs:
           terraform_version: "1.7.5"
 
       - name: Terraform Init
-        working-directory: infrastructure
+        working-directory: infrastructure/aws
         run: terraform init -backend-config=environments/prod.backend.hcl
 
       - name: Terraform Format Check
-        working-directory: infrastructure
+        working-directory: infrastructure/aws
         run: terraform fmt -check -recursive
 
       - name: Terraform Validate
-        working-directory: infrastructure
+        working-directory: infrastructure/aws
         run: terraform validate
 
       - name: Terraform Plan
-        working-directory: infrastructure
+        working-directory: infrastructure/aws
         run: terraform plan -var-file=environments/prod.tfvars -out=tfplan
 
       - name: Terraform Apply
-        working-directory: infrastructure
+        working-directory: infrastructure/aws
         run: terraform apply tfplan

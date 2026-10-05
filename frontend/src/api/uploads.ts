@@ -13,19 +13,17 @@ export class UploadFailedError extends Error {
   }
 }
 
-/** Uploads `file` via an S3 POST-policy presigned URL and returns the resulting file_key. */
+/** Uploads `file` via a presigned PUT URL (cloud-neutral) and returns the resulting file_key. */
 export async function uploadImportFile(file: File): Promise<string> {
   const contentType = file.type || XLSX_CONTENT_TYPE
-  const { upload_url, fields, file_key } = await excelApi.getImportPresignedUrl(contentType)
+  const { upload_url, upload_method, upload_headers, file_key } =
+    await excelApi.getImportPresignedUrl(contentType)
 
-  const formData = new FormData()
-  for (const [key, value] of Object.entries(fields)) {
-    formData.append(key, value)
-  }
-  // The file field must be appended last — required by S3's POST policy contract.
-  formData.append('file', file)
-
-  const response = await fetch(upload_url, { method: 'POST', body: formData })
+  const response = await fetch(upload_url, {
+    method: upload_method ?? 'PUT',
+    headers: upload_headers ?? { 'Content-Type': contentType },
+    body: file,
+  })
   if (!response.ok) {
     throw new UploadFailedError(response.status)
   }

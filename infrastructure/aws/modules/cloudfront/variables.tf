@@ -38,3 +38,9 @@ variable "price_class" {
   type        = string
   default     = "PriceClass_100"
 }
+
+variable "waf_rate_limit" {
+  description = "WAF rate-based rule: max requests per IP per 5-minute window before blocking (layer-7 DDoS / brute-force). Raise for offices behind a shared NAT IP; lower to tighten."
+  type        = number
+  default     = 2000
+}

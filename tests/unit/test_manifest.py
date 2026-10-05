@@ -13,6 +13,13 @@ def _ctx(role: UserRole = UserRole.NIGERIA_OFFICE_STAFF) -> TenantContext:
     return TenantContext(tenant_id=TENANT_ID, user_id="user-1", role=role)
 
 
+def _download_storage() -> MagicMock:
+    """Fake StorageProvider returning a fixed presigned GET URL."""
+    storage = MagicMock()
+    storage.presigned_get_url.return_value = "https://s3/download"
+    return storage
+
+
 def _manifest(**kw) -> dict:
     base = {
         "id": "manifest-001",
@@ -256,13 +263,17 @@ class TestListManifests:
 
 
 class TestEvidenceUpload:
-    def test_generates_presigned_post_and_records_row(self):
+    def test_generates_presigned_upload_and_records_row(self):
         from services.manifest import service
+        from shared.providers.base import UploadTicket
 
-        presigned = {"url": "https://s3.example/bucket", "fields": {"key": "k"}}
+        storage = MagicMock()
+        storage.presigned_upload.return_value = UploadTicket(
+            url="https://s3.example/bucket", method="PUT", headers={"Content-Type": "image/jpeg"}
+        )
         with (
             patch.object(service.repo, "get_manifest_by_id", return_value=_manifest()),
-            patch.object(service._s3_client, "generate_presigned_post", return_value=presigned) as mock_post,
+            patch.object(service, "get_storage_provider", return_value=storage),
             patch.object(service.repo, "create_manifest_evidence", return_value={"id": "ev-1"}) as mock_create,
         ):
             result = service.generate_evidence_upload(
@@ -275,13 +286,14 @@ class TestEvidenceUpload:
             )
 
         # Tenant-isolated S3 key prefix.
-        assert mock_post.call_args.kwargs["Key"] == f"{TENANT_ID}/manifests/manifest-001/damage.jpg"
+        assert storage.presigned_upload.call_args.args[0] == f"{TENANT_ID}/manifests/manifest-001/damage.jpg"
         # Evidence row captured the label + key.
         stored = mock_create.call_args[0][1]
         assert stored["file_key"] == f"{TENANT_ID}/manifests/manifest-001/damage.jpg"
         assert stored["label"] == "Carton ABC-123"
         assert result["evidence_id"] == "ev-1"
-        assert result["upload_url"] == presigned["url"]
+        assert result["upload_url"] == "https://s3.example/bucket"
+        assert result["upload_method"] == "PUT"
 
     def test_rejects_disallowed_content_type(self):
         from services.manifest import service
@@ -327,7 +339,7 @@ class TestEvidenceUpload:
             patch.object(service.repo, "get_items_with_weights_for_manifest", return_value=[]),
             patch.object(service.repo, "get_missing_items_for_manifest", return_value=[]),
             patch.object(service.repo, "list_manifest_evidence", return_value=[evidence_row]),
-            patch.object(service._s3_client, "generate_presigned_url", return_value="https://s3/download"),
+            patch.object(service, "get_storage_provider", return_value=_download_storage()),
         ):
             result = service.get_manifest(TENANT_ID, "manifest-001")
 

@@ -60,6 +60,93 @@ If all metrics are green at 5 minutes, deployment is complete — no further act
 
 ---
 
+## Frontend Deployment & Go-Live
+
+The frontend is a static Vite/React SPA served as **S3 (private) + CloudFront (CDN)** — the cost-effective, scalable, resilient, highly-available pattern. All of it is in Terraform (`infrastructure/aws/modules/cloudfront/`) and CI (`.github/workflows/frontend-ci.yml`); the design is complete, so go-live is **provisioning + DNS/cert + secrets**, not new code.
+
+> **Azure alternative:** the same SPA can deploy to **Blob static site + Front Door Standard** — see `infrastructure/azure/` (root stack + `modules/frontend`) and its `README.md`. Same `frontend/dist/` artifact, different target cloud. Cost: `docs/azure_cost_model.md`.
+
+> **Backend cloud portability (`CLOUD_PROVIDER`):** the backend selects its cloud at runtime via the `CLOUD_PROVIDER` env var (`aws` default | `azure`). Cloud SDKs live only behind the ports in `shared/providers/` — `KeyProvider` (crypto/KMS), `StorageProvider` (object storage), `SecretsProvider` (Secrets Manager), `EventProvider` (EventBridge), `QueueProvider` (SQS), `EmailProvider` (SES) — each with an AWS adapter today. Presigned uploads use a cloud-neutral **PUT** contract (`{ upload_url, upload_method, upload_headers }`) that both S3 and Azure Blob satisfy. To port a touchpoint to Azure: add the `shared/providers/azure/*` adapter and set `CLOUD_PROVIDER=azure` + the Azure-side env vars (`ENCRYPTION_KEY_VAULT_KEY_ID`, `BLOB_CONTAINER_NAME`, …). Remaining boto3 touchpoints (Cognito, X-Ray) are migrated incrementally behind the same pattern. See `docs/project docs/02_shared_utilities.md` → "shared/providers/" and `infrastructure/azure/README.md`.
+
+```
+Browser ──TLS──▶ CloudFront (global edge, PriceClass_100)
+                   │  OAC (signed origin reads)
+                   ▼
+                 S3 bucket (private, versioned, SSE)  ← CI `aws s3 sync dist/`
+```
+
+**Why this meets the four goals** (for reference):
+- **Cost** — no servers; S3 pennies/GB + CloudFront egress; `PriceClass_100` (US/EU edges only); hashed assets cached `immutable` for 1 year so origin GETs + invalidations are near-zero (only `/index.html` is invalidated per deploy). Scales to ~$0 at idle.
+- **Scalable** — CloudFront absorbs any spike with no capacity planning; S3 throughput is effectively unlimited.
+- **Resilient** — S3 11-nines durability + versioning (instant rollback); CI uploads hashed assets first and `index.html` last so no user ever gets a half-updated app; private bucket + OAC (no public exposure).
+- **HA** — S3 + CloudFront are multi-AZ/global managed services; no single server to fail. SPA deep-links survive via `custom_error_response` 403/404 → `/index.html` (200).
+
+### What's already implemented (verified)
+- Private, versioned, SSE-encrypted S3 origin; all public access blocked; CloudFront reads via **OAC**.
+- CloudFront: HTTP/2+3, IPv6, `redirect-to-https`, TLS1.2_2021, compression, security-headers policy incl. CSP (`connect-src` scoped to the API Gateway + Cognito domains), cache policies (immutable assets vs. no-cache `index.html`), SPA fallback.
+- **ACM cert in us-east-1** (CloudFront requirement) via the `aws.us_east_1` provider alias, DNS-validated through Route 53 — handled automatically by the module.
+- Route 53 apex + `*.domain` wildcard A-alias records (wildcard backs tenant subdomains).
+- **WAFv2 Web ACL** attached to the distribution (rate limit + AWS IP reputation + common rule set + known-bad-inputs) — see "DDoS & attack protection" below.
+- CI deploy job (`deploy`): OIDC auth (no static keys), gated to `push` on `main` + a `production` GitHub Environment (approval-capable), builds with prod `VITE_*`, syncs assets `immutable`, uploads `index.html` `no-cache`, invalidates `/index.html`.
+- Module outputs: `distribution_id`, `distribution_domain`, `s3_bucket_name`, `s3_bucket_arn`, `waf_web_acl_arn`.
+
+> **Note:** the Terraform has **not been `apply`'d** yet (see "Open infrastructure decisions"), and the CloudFront module is **gated on `route53_zone_id`** (`count = var.route53_zone_id != "" ? 1 : 0`) — it creates nothing until a hosted zone is supplied.
+
+### One-time go-live — prerequisites
+1. **Register / delegate the domain** and create a **Route 53 hosted zone** for it. Note the zone ID.
+2. Set these in the prod tfvars (or TF Cloud/CI variables):
+   - `domain_name` = e.g. `app.shipx.example`
+   - `route53_zone_id` = the hosted-zone ID from step 1
+   - `frontend_price_class` = `PriceClass_100` (default; bump to `PriceClass_200/All` only if you need edges beyond US/EU)
+3. **OIDC deploy role** (`infrastructure/aws/modules/iam-oidc`): ensure the GitHub Actions deploy role used for the frontend has `s3:PutObject`/`s3:DeleteObject` on the frontend bucket and `cloudfront:CreateInvalidation` on the distribution. (The frontend workflow reads `FRONTEND_DEPLOY_ROLE_ARN` separately from the backend's `AWS_DEPLOY_ROLE_ARN` — either extend the existing role's policy to cover the frontend bucket/distribution, or add a dedicated role.)
+
+### One-time go-live — provision
+```bash
+cd infrastructure/aws
+terraform plan  -var-file=prod.tfvars   # review: S3 bucket, CloudFront dist, ACM cert, Route53 records
+terraform apply -var-file=prod.tfvars   # ACM DNS validation can take a few minutes
+terraform output                        # grab cloudfront distribution_id + s3_bucket_name
+```
+
+### One-time go-live — CI secrets (GitHub → repo/Environment `production`)
+| Secret | Value |
+|---|---|
+| `FRONTEND_DEPLOY_ROLE_ARN` | OIDC role ARN (s3:PutObject + cloudfront:CreateInvalidation) |
+| `FRONTEND_S3_BUCKET` | `terraform output … s3_bucket_name` |
+| `FRONTEND_CLOUDFRONT_ID` | `terraform output … distribution_id` |
+| `VITE_API_BASE_URL` | prod API Gateway URL |
+| `VITE_COGNITO_USER_POOL_ID` / `VITE_COGNITO_CLIENT_ID` | prod Cognito |
+| `VITE_ENVIRONMENT` | `production` |
+
+### First + ongoing deploys
+- **First deploy:** push to `main` (or re-run the `frontend-ci` workflow). The `deploy` job builds with the prod `VITE_*`, syncs to S3, invalidates `/index.html`. Verify at `https://<domain_name>` — hard-refresh, confirm a deep link (e.g. `/admin/users`) loads, and that API/Cognito calls succeed (CSP allows only the configured domains).
+- **Ongoing:** every push to `main` touching `frontend/**` redeploys automatically (path-filtered; backend-only changes don't trigger it).
+
+### Rollback
+- Fastest: re-run the `frontend-ci` workflow on the last-good commit (rebuilds + re-syncs).
+- Or restore prior object versions from the versioned bucket, then `aws cloudfront create-invalidation --paths "/index.html"`.
+
+### DDoS & attack protection (what's in place)
+The frontend has defence in depth across layers:
+- **AWS Shield Standard** — automatic + free on every CloudFront distribution; absorbs L3/L4 (network/transport) DDoS (SYN floods, reflection, etc.). No config needed.
+- **WAFv2 Web ACL** (`aws_wafv2_web_acl.frontend`, scope `CLOUDFRONT`, us-east-1) — now attached via `web_acl_id`. Rules, in order:
+  1. **Rate limit** (`var.waf_rate_limit`, default 2000 req/IP/5min) → **block** — the primary layer-7 DDoS / brute-force control. Raise for offices behind a shared NAT; lower to tighten.
+  2. **Amazon IP reputation list** — blocks known bot/recon/DDoS source IPs.
+  3. **Common rule set** — XSS, LFI, protocol/size abuse (safe on this static-asset origin).
+  4. **Known bad inputs** — known exploit signatures (Log4Shell, path traversal, host-header injection).
+  - Each rule + the ACL emit CloudWatch metrics with sampled requests (tune thresholds / spot false positives from the WAF console). Cost ≈ $5/mo (ACL) + ~$1/rule/mo + $0.60 per million requests.
+- **Private origin** — S3 is reachable only via CloudFront OAC; there is no public bucket URL to attack directly.
+
+**API layer (API Gateway + Lambda):** the API is an **HTTP API (v2)**, which **cannot take a WAFv2 ACL directly** (WAF supports REST/v1 APIs, ALB, AppSync, Cognito, CloudFront — not HTTP APIs). Its protections today: **Shield Standard** (automatic), **stage throttling** (`throttling_rate_limit = 50` req/s, `throttling_burst_limit = 100` in `api-gateway/main.tf`), Lambda reserved-concurrency ceilings, and per-tenant metering/quota. If you later want full L7 WAF on the API, the standard pattern is to **front API Gateway with its own CloudFront distribution** and attach a `REGIONAL`→`CLOUDFRONT` WAF there (a deliberate follow-up, not required for launch).
+
+**Monitoring:** add a CloudWatch alarm on the WAF `BlockedRequests` metric (sudden spikes = an active attack or a too-tight rate limit); sampled requests in the WAF console show what's being blocked.
+
+### Other hardening (optional)
+- Code-split the ~937 kB single JS chunk for faster first paint (known item, not a blocker).
+- For high-value launches under sustained attack, **AWS Shield Advanced** (paid) adds L7 DDoS cost protection + a response team.
+
+---
+
 ## Hotfix Procedure (break-glass)
 
 Use when a critical bug is in prod and cannot wait for the normal tag-based release cycle.
@@ -122,7 +209,7 @@ aws lambda wait function-updated --function-name logistics-billing-prod
 Re-apply the previous infrastructure state:
 
 ```bash
-cd infrastructure
+cd infrastructure/aws
 terraform apply -var-file=environments/prod.tfvars -target=module.lambda
 ```
 

@@ -18,7 +18,7 @@ Create the Terraform module for Amazon API Gateway HTTP API with JWT authorizer 
 
 ## Deliverables
 
-### File: `infrastructure/modules/api-gateway/main.tf`
+### File: `infrastructure/aws/modules/api-gateway/main.tf`
 
 **Resources:**
 - `aws_apigatewayv2_api` — "logistics-api-{env}", protocol_type = "HTTP"
@@ -120,7 +120,7 @@ Use `for_each` or dynamic blocks to reduce repetition.
 
 **Outputs:** api_endpoint, api_id, execution_arn (for Lambda permissions)
 
-### File: `infrastructure/modules/api-gateway/variables.tf`
+### File: `infrastructure/aws/modules/api-gateway/variables.tf`
 
 ```hcl
 variable "project_name" { type = string }

@@ -2,18 +2,16 @@
 import csv
 import io
 import logging
-import os
 import re
 import uuid
 from datetime import date, datetime, timedelta
 from io import BytesIO
 from typing import Any
 
-import boto3
-
 from shared.audit import log_audit
 from shared.exceptions import BusinessRuleViolationError, ResourceNotFoundError
 from shared.phone import dial_code_for_country, normalize_phone
+from shared.providers import get_storage_provider
 
 from . import repository as repo
 from .export_billing import generate_billing_xlsx
@@ -27,8 +25,6 @@ from .import_packing_list import parse_packing_list_xlsx
 
 logger = logging.getLogger(__name__)
 
-_s3_client = boto3.client("s3")
-_BUCKET = os.environ.get("S3_BUCKET_NAME", "logistics-assets")
 _PRESIGNED_EXPIRY = 3600  # 1 hour
 
 
@@ -53,17 +49,9 @@ def _upload_and_presign(tenant_id: str, filename: str, buf: BytesIO, fmt: str = 
     today = date.today().strftime("%Y-%m-%d")
     key = f"{tenant_id}/exports/{today}/{filename}"
     file_bytes = buf.getvalue()
-    _s3_client.put_object(
-        Bucket=_BUCKET,
-        Key=key,
-        Body=file_bytes,
-        ContentType=_CONTENT_TYPES.get(fmt, _CONTENT_TYPES["xlsx"]),
-    )
-    download_url = _s3_client.generate_presigned_url(
-        "get_object",
-        Params={"Bucket": _BUCKET, "Key": key},
-        ExpiresIn=_PRESIGNED_EXPIRY,
-    )
+    storage = get_storage_provider()
+    storage.put_object(key, file_bytes, content_type=_CONTENT_TYPES.get(fmt, _CONTENT_TYPES["xlsx"]))
+    download_url = storage.presigned_get_url(key, expires_in=_PRESIGNED_EXPIRY)
     expires_at = (datetime.utcnow() + timedelta(seconds=_PRESIGNED_EXPIRY)).strftime("%Y-%m-%dT%H:%M:%SZ")
     return {
         "filename": filename,
@@ -395,11 +383,7 @@ def export_packing_list_pdf(
     result["expires_in_seconds"] = 300
     # Override the presigned URL expiry to 5 minutes (task requirement)
     key = f"{tenant_id}/exports/{date.today().strftime('%Y-%m-%d')}/{stem}.pdf"
-    result["download_url"] = _s3_client.generate_presigned_url(
-        "get_object",
-        Params={"Bucket": _BUCKET, "Key": key},
-        ExpiresIn=300,
-    )
+    result["download_url"] = get_storage_provider().presigned_get_url(key, expires_in=300)
 
     log_audit(
         tenant_id=tenant_id,
@@ -451,11 +435,7 @@ def export_release_note_pdf(
     result = _upload_and_presign(tenant_id, f"{stem}.pdf", buf, fmt="pdf")
     result["expires_in_seconds"] = 300
     key = f"{tenant_id}/exports/{date.today().strftime('%Y-%m-%d')}/{stem}.pdf"
-    result["download_url"] = _s3_client.generate_presigned_url(
-        "get_object",
-        Params={"Bucket": _BUCKET, "Key": key},
-        ExpiresIn=300,
-    )
+    result["download_url"] = get_storage_provider().presigned_get_url(key, expires_in=300)
 
     log_audit(
         tenant_id=tenant_id,
@@ -504,11 +484,7 @@ def export_receipt_pdf(
     result = _upload_and_presign(tenant_id, f"{stem}.pdf", buf, fmt="pdf")
     result["expires_in_seconds"] = 300
     key = f"{tenant_id}/exports/{date.today().strftime('%Y-%m-%d')}/{stem}.pdf"
-    result["download_url"] = _s3_client.generate_presigned_url(
-        "get_object",
-        Params={"Bucket": _BUCKET, "Key": key},
-        ExpiresIn=300,
-    )
+    result["download_url"] = get_storage_provider().presigned_get_url(key, expires_in=300)
 
     log_audit(
         tenant_id=tenant_id,
@@ -548,20 +524,10 @@ def generate_import_presigned_url(tenant_id: str, content_type: str) -> dict[str
 
     file_key = f"{tenant_id}/imports/{uuid.uuid4()}.xlsx"
 
-    presigned = _s3_client.generate_presigned_post(
-        Bucket=_BUCKET,
-        Key=file_key,
-        Fields={"Content-Type": content_type},
-        Conditions=[
-            {"Content-Type": content_type},
-            ["content-length-range", 1, _IMPORT_MAX_FILE_SIZE],
-        ],
-        ExpiresIn=_IMPORT_URL_EXPIRY,
-    )
+    ticket = get_storage_provider().presigned_upload(file_key, content_type=content_type, expires_in=_IMPORT_URL_EXPIRY)
 
     return {
-        "upload_url": presigned["url"],
-        "fields": presigned["fields"],
+        **ticket.as_response(),
         "file_key": file_key,
     }
 
@@ -585,9 +551,8 @@ def import_packing_list(
 
         raise ValidationError(f"file_key must be under the tenant prefix '{expected_prefix}'")
 
-    # 2. Download file from S3
-    s3_obj = _s3_client.get_object(Bucket=_BUCKET, Key=file_key)
-    file_buffer = BytesIO(s3_obj["Body"].read())
+    # 2. Download file from object storage
+    file_buffer = BytesIO(get_storage_provider().get_object(file_key))
 
     # 2. Pre-fetch customers (name → id mapping)
     customers = repo.get_tenant_customers(tenant_id)
@@ -764,8 +729,7 @@ def process_manifest_import(
 
         raise ValidationError(f"file_key must be under the tenant prefix '{expected_prefix}'")
 
-    s3_obj = _s3_client.get_object(Bucket=_BUCKET, Key=file_key)
-    file_buffer = BytesIO(s3_obj["Body"].read())
+    file_buffer = BytesIO(get_storage_provider().get_object(file_key))
 
     container_metadata, rows, errors, total_rows = parse_manifest_xlsx(file_buffer)
 
