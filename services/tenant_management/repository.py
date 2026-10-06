@@ -43,7 +43,7 @@ _USER_UPDATE_FIELDS = frozenset(
 )
 # NOTE: "role" is deliberately excluded — primary role changes must go through
 # set_user_roles() (which also mirrors into tenant_user.role transactionally)
-# so Cognito group membership stays in sync via CognitoClient.sync_user_groups().
+# so identity-group membership stays in sync via IdentityProvider.sync_user_groups().
 # A bare `role` key here would let a role change bypass that sync.
 
 _SUPPORTED_LOCALES: frozenset[str] = frozenset({"en", "zh"})

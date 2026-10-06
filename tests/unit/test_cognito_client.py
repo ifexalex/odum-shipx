@@ -1,4 +1,4 @@
-"""Unit tests for services.tenant_management.cognito_client — group management.
+"""Unit tests for shared.providers.aws.cognito (CognitoIdentityProvider) — group management.
 
 Uses a real (moto-mocked) Cognito user pool rather than a MagicMock so these
 tests exercise the actual boto3 call shapes (admin_add_user_to_group /
@@ -27,7 +27,7 @@ def cognito_env(monkeypatch):
 @pytest.fixture
 def client(cognito_env):
     with mock_aws():
-        from services.tenant_management.cognito_client import CognitoClient
+        from shared.providers.aws.cognito import CognitoIdentityProvider
 
         idp = boto3.client("cognito-idp", region_name="us-east-1")
         pool = idp.create_user_pool(PoolName="test-pool")
@@ -41,7 +41,7 @@ def client(cognito_env):
             MessageAction="SUPPRESS",
         )
 
-        yield CognitoClient()
+        yield CognitoIdentityProvider()
 
 
 class TestRemoveUserFromGroup:
@@ -182,3 +182,25 @@ class TestCreateUserWithPassword:
                 role="customer",
                 password="Sup3rSecret!",
             )
+
+
+class TestIdentityProviderPort:
+    def test_adapter_satisfies_the_port(self, client):
+        from shared.providers.base import IdentityProvider
+
+        assert isinstance(client, IdentityProvider)
+
+    def test_factory_default_cloud_returns_cognito(self, cognito_env, monkeypatch):
+        with mock_aws():
+            boto3.client("cognito-idp", region_name="us-east-1").create_user_pool(PoolName="p")
+            os.environ["COGNITO_USER_POOL_ID"] = "us-east-1_test"
+
+            import shared.providers as providers
+            from shared.providers.aws.cognito import CognitoIdentityProvider
+
+            monkeypatch.setattr(providers, "CLOUD_PROVIDER", "aws")
+            monkeypatch.setattr(providers, "_identity_provider", None)
+
+            provider = providers.get_identity_provider()
+            assert isinstance(provider, CognitoIdentityProvider)
+            assert provider is providers.get_identity_provider()  # cached singleton

@@ -1208,3 +1208,8 @@ All four delegation tests follow `test_tracking.py::TestContainerStats`'s `patch
 ### Cloud-portability — X-Ray tracing shim (2026-10-05)
 
 - No test changes needed. All 19 Lambda entry points replaced `from aws_xray_sdk.core import patch_all; patch_all()` with `shared/observability.py::init_tracing()` (no-op when `CLOUD_PROVIDER != "aws"`). `conftest.py` already stubs the `aws_xray_sdk` modules, so the lazy import inside `init_tracing` resolves to the stub under test exactly as the direct import did — handler-import and `init_tracing()` smoke-verified; full suite green (1150).
+
+### Cloud-portability — IdentityProvider port (ADR-004 Phase 1, 2026-10-06)
+
+- **`tests/unit/test_cognito_client.py`** (now 15, +2): re-pointed from `services.tenant_management.cognito_client.CognitoClient` to `shared.providers.aws.cognito.CognitoIdentityProvider` (same moto-backed group-management regression tests, byte-identical adapter); added `TestIdentityProviderPort` — the adapter satisfies the `IdentityProvider` protocol, and the factory returns a cached `CognitoIdentityProvider` on the default cloud.
+- **`tests/unit/test_tenant_management.py`**: the 18 Cognito mock sites moved from patching `service.get_cognito_client` to `service.get_identity_provider` — a target rename only; the mocked method names (`create_user`, `sync_user_groups`, …) are unchanged since the port mirrors the old class surface. Full suite green (1152).

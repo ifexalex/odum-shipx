@@ -167,3 +167,67 @@ class EmailProvider(Protocol):
     def send(self, *, sender: str, to_email: str, subject: str, html_body: str, text_body: str) -> None:
         """Send one multipart (HTML + text) email. Raise on delivery failure."""
         ...
+
+
+@runtime_checkable
+class IdentityProvider(Protocol):
+    """User/role provisioning behind a cloud-neutral port.
+
+    The *management* side of identity — create/disable/update users and reconcile
+    their role grants. AWS → Cognito user-pool admin APIs; Azure → Entra (MS
+    Graph). The authN side (JWT verification + claim shape) is a separate concern
+    handled at the authorizer; see ADR-004. Email is the stable user identifier
+    (`username`), per the "email immutable" constraint.
+    """
+
+    def create_user(self, email: str, full_name: str, tenant_id: str, role: str) -> str:
+        """Provision a user who receives an invite to set their password. Returns the user id (`sub`)."""
+        ...
+
+    def create_user_with_password(self, email: str, full_name: str, tenant_id: str, role: str, password: str) -> str:
+        """Provision a user with a caller-chosen permanent password (no invite email). Returns the user id."""
+        ...
+
+    def update_user_attributes(self, username: str, full_name: str | None = None, role: str | None = None) -> None:
+        """Update a user's mutable attributes (display name, primary role)."""
+        ...
+
+    def disable_user(self, username: str) -> None:
+        """Deactivate a user account."""
+        ...
+
+    def enable_user(self, username: str) -> None:
+        """Re-activate a previously disabled user account."""
+        ...
+
+    def global_sign_out(self, username: str) -> None:
+        """Invalidate all of a user's active sessions. Missing user is a no-op."""
+        ...
+
+    def resend_invite(self, username: str) -> None:
+        """Re-send the password-setup invite to an existing user."""
+        ...
+
+    def reset_password(self, username: str) -> None:
+        """Trigger a provider-managed password-reset email."""
+        ...
+
+    def create_group_if_not_exists(self, group_name: str) -> None:
+        """Ensure a role group exists (idempotent)."""
+        ...
+
+    def add_user_to_group(self, username: str, group_name: str) -> None:
+        """Grant a user membership of a role group."""
+        ...
+
+    def remove_user_from_group(self, username: str, group_name: str) -> None:
+        """Revoke a user's membership of a role group. Missing user is a no-op."""
+        ...
+
+    def list_groups_for_user(self, username: str) -> set[str]:
+        """Return the set of role groups a user currently belongs to."""
+        ...
+
+    def sync_user_groups(self, username: str, tenant_id: str, roles: set[str]) -> None:
+        """Reconcile a user's role groups to exactly `roles`, scoped to this tenant's `{tenant_id}:*`."""
+        ...

@@ -102,7 +102,7 @@ class TestCreateTenantNotifiesOnboarding:
         service, tenant, admin_user, mock_cognito = self._run()
 
         with (
-            patch.object(service, "get_cognito_client", return_value=mock_cognito),
+            patch.object(service, "get_identity_provider", return_value=mock_cognito),
             patch.object(service.repo, "create_tenant", return_value=tenant),
             patch.object(service.repo, "create_tenant_user", return_value=admin_user),
             patch.object(service.repo, "upsert_config"),
@@ -121,7 +121,7 @@ class TestCreateTenantNotifiesOnboarding:
         service, tenant, admin_user, mock_cognito = self._run()
 
         with (
-            patch.object(service, "get_cognito_client", return_value=mock_cognito),
+            patch.object(service, "get_identity_provider", return_value=mock_cognito),
             patch.object(service.repo, "create_tenant", return_value=tenant),
             patch.object(service.repo, "create_tenant_user", return_value=admin_user),
             patch.object(service.repo, "upsert_config"),
@@ -166,7 +166,7 @@ class TestCreateTenantDefaultWarehouse:
         service, tenant, admin_user, mock_cognito = self._run()
 
         with (
-            patch.object(service, "get_cognito_client", return_value=mock_cognito),
+            patch.object(service, "get_identity_provider", return_value=mock_cognito),
             patch.object(service.repo, "create_tenant", return_value=tenant),
             patch.object(service.repo, "create_tenant_user", return_value=admin_user),
             patch.object(service.repo, "upsert_config"),
@@ -186,7 +186,7 @@ class TestCreateTenantDefaultWarehouse:
         service, tenant, admin_user, mock_cognito = self._run()
 
         with (
-            patch.object(service, "get_cognito_client", return_value=mock_cognito),
+            patch.object(service, "get_identity_provider", return_value=mock_cognito),
             patch.object(service.repo, "create_tenant", return_value=tenant),
             patch.object(service.repo, "create_tenant_user", return_value=admin_user),
             patch.object(service.repo, "upsert_config"),
@@ -924,7 +924,7 @@ class TestCreateUser:
             patch.object(service.repo, "create_tenant_user", return_value=user),
             patch.object(service.repo, "set_user_roles", return_value={**user, "roles": ["nigeria_office_staff"]}),
             patch.object(service.repo, "link_customer_user"),
-            patch("services.tenant_management.service.get_cognito_client", return_value=cognito),
+            patch("services.tenant_management.service.get_identity_provider", return_value=cognito),
             patch("services.tenant_management.service.log_audit"),
             patch("services.tenant_management.service.record_usage"),
         ):
@@ -964,7 +964,7 @@ class TestCreateUser:
             patch.object(service.repo, "get_user_by_email", return_value=None),
             patch.object(service.repo, "create_tenant_user", return_value=user),
             patch.object(service.repo, "set_user_roles") as mock_set_roles,
-            patch("services.tenant_management.service.get_cognito_client", return_value=cognito),
+            patch("services.tenant_management.service.get_identity_provider", return_value=cognito),
             patch("services.tenant_management.service.log_audit"),
             patch("services.tenant_management.service.record_usage"),
         ):
@@ -1005,7 +1005,7 @@ class TestCreateUser:
             patch.object(service.repo, "create_tenant_user", return_value=user),
             patch.object(service.repo, "set_user_roles", return_value=user),
             patch.object(service.repo, "link_customer_user") as mock_link,
-            patch("services.tenant_management.service.get_cognito_client", return_value=cognito),
+            patch("services.tenant_management.service.get_identity_provider", return_value=cognito),
             patch("services.tenant_management.service.log_audit"),
             patch("services.tenant_management.service.record_usage"),
         ):
@@ -1040,7 +1040,7 @@ class TestDeactivateUser:
         with (
             patch.object(service.repo, "get_user_by_id", return_value=user),
             patch.object(service.repo, "set_user_status", return_value=deactivated),
-            patch("services.tenant_management.service.get_cognito_client", return_value=cognito),
+            patch("services.tenant_management.service.get_identity_provider", return_value=cognito),
             patch("services.tenant_management.service.log_audit"),
         ):
             result = service.deactivate_user(TENANT_ID, "user-001", actor_id="admin")
@@ -1065,7 +1065,7 @@ class TestDeactivateUser:
 class TestUpdateUserRoles:
     def test_roles_update_calls_set_user_roles_and_syncs_cognito_groups(self):
         """The actual regression test for the group-sync bug: a role change
-        must reach CognitoClient.sync_user_groups, not just the DB."""
+        must reach IdentityProvider.sync_user_groups, not just the DB."""
         from services.tenant_management import service
 
         existing = _user(id="user-001", role="nigeria_office_staff")
@@ -1075,7 +1075,7 @@ class TestUpdateUserRoles:
         with (
             patch.object(service, "get_user", return_value=existing),
             patch.object(service.repo, "set_user_roles", return_value=updated) as mock_set_roles,
-            patch.object(service, "get_cognito_client", return_value=cognito),
+            patch.object(service, "get_identity_provider", return_value=cognito),
             patch("shared.audit.log_audit"),
         ):
             result = service.update_user(TENANT_ID, "user-001", {"roles": ["warehouse_attendant"]}, actor_id="admin-1")
@@ -1100,7 +1100,7 @@ class TestUpdateUserRoles:
         with (
             patch.object(service, "get_user", return_value=existing),
             patch.object(service.repo, "set_user_roles", return_value=updated) as mock_set_roles,
-            patch.object(service, "get_cognito_client", return_value=cognito),
+            patch.object(service, "get_identity_provider", return_value=cognito),
             patch("shared.audit.log_audit"),
         ):
             service.update_user(
@@ -1127,7 +1127,7 @@ class TestUpdateUserRoles:
         with (
             patch.object(service, "get_user", return_value=existing),
             patch.object(service.repo, "set_user_roles", return_value=existing) as mock_set_roles,
-            patch.object(service, "get_cognito_client", return_value=cognito),
+            patch.object(service, "get_identity_provider", return_value=cognito),
             patch("shared.audit.log_audit"),
         ):
             service.update_user(
@@ -1158,7 +1158,7 @@ class TestUpdateUserRoles:
             patch.object(service, "get_user", return_value=existing),
             patch.object(service.repo, "update_user", return_value={**existing, "full_name": "New Name"}),
             patch.object(service.repo, "set_user_roles", return_value=existing),
-            patch.object(service, "get_cognito_client", return_value=cognito),
+            patch.object(service, "get_identity_provider", return_value=cognito),
             patch("shared.audit.log_audit"),
         ):
             service.update_user(
@@ -1183,7 +1183,7 @@ class TestUpdateUserRoles:
         with (
             patch.object(service, "get_user", return_value=existing),
             patch.object(service.repo, "update_user", return_value={**existing, "full_name": "New Name"}),
-            patch.object(service, "get_cognito_client", return_value=cognito),
+            patch.object(service, "get_identity_provider", return_value=cognito),
             patch("shared.audit.log_audit"),
         ):
             service.update_user(TENANT_ID, "user-001", {"full_name": "New Name"}, actor_id="admin-1")
@@ -1288,7 +1288,7 @@ class TestSelfRegisterCustomer:
             patch.object(service.repo, "get_customer_by_email", return_value=None),
             patch.object(service.repo, "create_tenant_user", return_value=portal_user) as mock_create_user,
             patch.object(service.repo, "create_customer", return_value=created_customer) as mock_create_customer,
-            patch("services.tenant_management.service.get_cognito_client", return_value=cognito),
+            patch("services.tenant_management.service.get_identity_provider", return_value=cognito),
             patch("services.tenant_management.service.log_audit"),
             patch("shared.notifications.enqueue_notifications"),
         ):
@@ -1322,7 +1322,7 @@ class TestSelfRegisterCustomer:
             patch.object(service.repo, "get_customer_by_email", return_value=None),
             patch.object(service.repo, "create_tenant_user", return_value={"id": "tu-001"}),
             patch.object(service.repo, "create_customer", return_value={"id": "cust-001"}),
-            patch("services.tenant_management.service.get_cognito_client", return_value=cognito),
+            patch("services.tenant_management.service.get_identity_provider", return_value=cognito),
             patch("services.tenant_management.service.log_audit"),
             patch("shared.notifications.enqueue_notifications"),
         ):
@@ -1497,7 +1497,7 @@ class TestAcceptCustomerInvite:
             patch("shared.invites.get_invite_by_token", return_value=self._invite()),
             patch.object(service.repo, "get_customer_by_id", return_value=self._customer()),
             patch.object(service.repo, "get_customer_by_email", return_value=None),
-            patch("services.tenant_management.service.get_cognito_client", return_value=cognito),
+            patch("services.tenant_management.service.get_identity_provider", return_value=cognito),
             patch.object(service.repo, "create_tenant_user", return_value=portal_user) as mock_create_user,
             patch.object(
                 service.repo,
@@ -2042,7 +2042,7 @@ class TestLocale:
         with (
             patch.object(service, "get_user", return_value=existing),
             patch.object(service.repo, "update_user", return_value=updated),
-            patch.object(service, "get_cognito_client"),
+            patch.object(service, "get_identity_provider"),
             patch("shared.audit.log_audit"),
         ):
             result = service.update_user(TENANT_ID, "user-001", {"locale": "zh"}, actor_id="admin-1")
@@ -2071,7 +2071,7 @@ class TestLocale:
         with (
             patch.object(service, "get_user", return_value=existing),
             patch.object(service.repo, "update_user", return_value=updated),
-            patch.object(service, "get_cognito_client", return_value=mock_cognito),
+            patch.object(service, "get_identity_provider", return_value=mock_cognito),
             patch("shared.audit.log_audit"),
         ):
             service.update_user(TENANT_ID, "user-001", {"locale": "zh"}, actor_id="admin-1")

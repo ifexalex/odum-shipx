@@ -1,6 +1,6 @@
 # ADR-004: Cognito → Entra Portability (IdentityProvider port + user migration)
 
-**Status:** Proposed (plan only — no code changed yet)
+**Status:** Accepted — Phase 1 implemented (2026-10-06); phases 2–5 pending an Azure go/no-go
 
 **Builds on** ADR-003 (Tenant-Aware Authentication with Cognito Custom Claims, in
 `system_design_logistics_management.md`): ADR-003 chose a single Cognito pool with
@@ -107,10 +107,13 @@ data loss, since Cognito is untouched until decommission).
 
 ## Rollout phases
 
-1. **Port management ops** — `IdentityProvider` over `cognito_client.py` (AWS adapter =
-   current behaviour; ~10 test files re-pointed from the `CognitoClient` mock to the
-   port). No behaviour change on AWS. *(This is the only part that's a mechanical,
-   low-risk adapter swap; it can land independently of any Azure decision.)*
+1. **Port management ops** — ✅ **done (2026-10-06, master-plan 7.102).** `IdentityProvider`
+   port in `shared/providers/base.py`; `cognito_client.py` moved to the AWS adapter
+   `shared/providers/aws/cognito.py` (`CognitoIdentityProvider`, byte-identical) and the
+   old module deleted; `services/tenant_management/service.py` calls
+   `get_identity_provider()`; `azure/entra.py` is the pending Azure adapter. No behaviour
+   change on AWS (1152 tests green). This was the only mechanically-safe part and landed
+   independently of any Azure decision.
 2. **Claim adapter** — extract claim reads in `shared/auth.py` behind a cloud-keyed
    mapper; authorizer verifier list becomes `[cognito, entra?, impersonation]`.
 3. **Entra adapter + Terraform** — `azure/entra.py` (Graph) + `infrastructure/azure`

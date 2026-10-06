@@ -11,6 +11,7 @@ import os
 from shared.providers.base import (
     EmailProvider,
     EventProvider,
+    IdentityProvider,
     KeyProvider,
     QueueProvider,
     SecretsProvider,
@@ -30,6 +31,7 @@ _secrets_provider: SecretsProvider | None = None
 _event_provider: EventProvider | None = None
 _queue_provider: QueueProvider | None = None
 _email_provider: EmailProvider | None = None
+_identity_provider: IdentityProvider | None = None
 
 
 def get_key_provider() -> KeyProvider | None:
@@ -166,3 +168,20 @@ def get_email_provider() -> EmailProvider:
 
         _email_provider = SesEmailProvider()
     return _email_provider
+
+
+def get_identity_provider() -> IdentityProvider:
+    """Return the user/role provisioning provider for the active cloud (cached singleton)."""
+    global _identity_provider
+    if _identity_provider is not None:
+        return _identity_provider
+
+    if CLOUD_PROVIDER == "azure":
+        from shared.providers.azure.entra import EntraIdentityProvider
+
+        _identity_provider = EntraIdentityProvider()
+    else:
+        from shared.providers.aws.cognito import CognitoIdentityProvider
+
+        _identity_provider = CognitoIdentityProvider()
+    return _identity_provider

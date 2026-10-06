@@ -27,11 +27,11 @@ from shared.exceptions import (
 )
 from shared.fx_rate import get_effective_dollar_rate
 from shared.metering import record_usage
+from shared.providers import get_identity_provider
 from shared.tenant_context import PLATFORM_TENANT_ID
 from shared.webhook import test_fire_tenant_webhook
 
 from . import repository as repo
-from .cognito_client import get_cognito_client
 from .models import (
     AcceptCustomerInviteRequest,
     CreateTenantRequest,
@@ -164,7 +164,7 @@ def create_tenant(
       5. Publish TenantOnboarded event
       6. Log to platform_audit_log
     """
-    cognito = get_cognito_client()
+    cognito = get_identity_provider()
 
     # 1. Create tenant — slug derived from company_name; unique constraint handled at DB level
     base_slug = _generate_slug(req.company_name)
@@ -379,9 +379,9 @@ def offboard_tenant(
     # and refresh tokens cannot be used to obtain new tokens after offboarding.
     # Best-effort: a Cognito outage must not roll back the offboarding itself.
     try:
-        from services.tenant_management.cognito_client import get_cognito_client
+        from shared.providers import get_identity_provider
 
-        cognito = get_cognito_client()
+        cognito = get_identity_provider()
         for user in repo.list_users(tenant_id):
             email: str = user.get("email", "")
             if email:
@@ -1054,7 +1054,7 @@ def create_user(
     primary_role_value = req.primary_role.value if req.primary_role is not None else role_values[0]
 
     # Provision Cognito
-    cognito = get_cognito_client()
+    cognito = get_identity_provider()
     cognito_sub = cognito.create_user(
         email=req.email,
         full_name=req.full_name,
@@ -1164,7 +1164,7 @@ def update_user(
             raise RuntimeError("update_user returned None unexpectedly")
         updated = result
 
-    cognito = get_cognito_client()
+    cognito = get_identity_provider()
 
     # Sync mutable Cognito attributes (name, primary role) — username/email is immutable
     if "full_name" in updates or new_primary is not None:
@@ -1211,7 +1211,7 @@ def deactivate_user(
     if existing["status"] == "deactivated":
         raise BusinessRuleViolationError("User is already deactivated")
 
-    cognito = get_cognito_client()
+    cognito = get_identity_provider()
     if existing.get("email"):
         cognito.disable_user(existing["email"])
 
@@ -1235,14 +1235,14 @@ def deactivate_user(
 def resend_user_invite(tenant_id: str, user_id: str) -> None:
     """Resend the Cognito temporary-password email for an existing staff user."""
     user = get_user(tenant_id, user_id)
-    cognito = get_cognito_client()
+    cognito = get_identity_provider()
     cognito.resend_invite(user["email"])
 
 
 def reset_user_password(tenant_id: str, user_id: str) -> None:
     """Trigger a Cognito-managed password-reset email for a staff user."""
     user = get_user(tenant_id, user_id)
-    cognito = get_cognito_client()
+    cognito = get_identity_provider()
     cognito.reset_password(user["email"])
 
 
@@ -1937,7 +1937,7 @@ def self_register_customer(
     whatsapp = normalize_phone(req.whatsapp, dial_code) if req.whatsapp else None
 
     # Provision Cognito user (sends temp-password email via Cognito)
-    cognito = get_cognito_client()
+    cognito = get_identity_provider()
     cognito_sub = cognito.create_user(
         email=req.email,
         full_name=req.name,
@@ -2182,7 +2182,7 @@ def accept_customer_invite(
     if repo.get_customer_by_email(tenant_id, req.email):
         raise DuplicateResourceError("customer", req.email)
 
-    cognito = get_cognito_client()
+    cognito = get_identity_provider()
     cognito_sub = cognito.create_user_with_password(
         email=req.email,
         full_name=str(customer.get("name") or ""),

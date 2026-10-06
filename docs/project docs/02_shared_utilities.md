@@ -533,6 +533,11 @@ read once in `shared/providers/__init__.py`.
   - `EmailProvider` — `send(sender, to_email, subject, html_body, text_body)`; raises on hard failure so the caller's
     log/retry path runs. AWS adapter `shared/providers/aws/ses.py` (`SesEmailProvider`, SES `send_email`); Azure →
     Communication Services. Consumed by `services/notification/service.py::send_email`.
+  - `IdentityProvider` — user/role provisioning (14 methods: create/create-with-password, update attrs, enable/disable,
+    global sign-out, resend-invite, reset-password, group create/add/remove/list, `sync_user_groups`). AWS adapter
+    `shared/providers/aws/cognito.py` (`CognitoIdentityProvider`, the former `cognito_client.py`, byte-identical);
+    Azure → Entra/MS Graph. Consumed by `services/tenant_management/service.py`. This is the **management** side of
+    identity only; the authN side (JWT verify + claim shape) is separate — see **ADR-004**. Phase 1 of that ADR.
 - **Factories** (`shared/providers/__init__.py`):
   - `get_key_provider()` → `KeyProvider | None` (None = field encryption not configured; preserves the dev
     plaintext-fallback in `shared/encryption.py`).
@@ -543,20 +548,24 @@ read once in `shared/providers/__init__.py`.
   - `get_event_provider()` → `EventProvider` (cached singleton).
   - `get_queue_provider()` → `QueueProvider` (cached singleton).
   - `get_email_provider()` → `EmailProvider` (cached singleton).
+  - `get_identity_provider()` → `IdentityProvider` (cached singleton).
 - **Migrated call sites** (no longer touch `boto3` directly): storage — `services/manifest`, `services/excel`,
   `services/claims`, `services/payment_release`, `services/tracking`, `services/scheduled/data_cleanup`; secrets —
   `shared/db.py`, `services/tenant_management/impersonation.py`, `services/migrate/handler.py`; events — `shared/events.py`;
-  queue — `shared/notifications.py`, `services/notification/service.py`; email — `services/notification/service.py`.
-  `delete_prefix` encapsulates the version-aware S3 purge (current objects + non-current versions + delete-markers) for
-  GDPR Art. 17 immediate erasure.
-- **Azure adapters** (`shared/providers/azure/{keyvault,blob,keyvault_secrets,eventgrid,servicebus,acs_email}.py`) land
-  with the Azure Terraform stack; the factory's azure branches reference them behind `# type: ignore[import-not-found]`
-  until then.
-- **Still on boto3 directly** (next increment, same pattern): Cognito (`services/auth`, `services/tenant_management`) —
-  the stickiest (token claims + user migration). SQS/Service Bus and SES/ACS are consumed as *producers* via the ports
-  above; the SQS **consumer** side is the Lambda event-source trigger (`services/notification/handler.py`,
-  `services/metering/handler.py`) — on Azure that becomes a Functions Service Bus trigger binding, handled by the entry
-  adapter, not a boto3 call.
+  queue — `shared/notifications.py`, `services/notification/service.py`; email — `services/notification/service.py`;
+  identity (user/role mgmt) — `services/tenant_management/service.py` (the former `cognito_client.py` moved to the AWS
+  adapter and was deleted). `delete_prefix` encapsulates the version-aware S3 purge (current objects + non-current
+  versions + delete-markers) for GDPR Art. 17 immediate erasure.
+- **Azure adapters** (`shared/providers/azure/{keyvault,blob,keyvault_secrets,eventgrid,servicebus,acs_email,entra}.py`)
+  land with the Azure Terraform stack; the factory's azure branches reference them (import resolves at call time only
+  when `CLOUD_PROVIDER=azure`).
+- **Still on boto3 directly** (the authN remainder — see ADR-004 phases 2–5, not a clean adapter swap): the authorizer's
+  JWT/JWKS verification (`services/authorizer/handler.py`) + claim shape in `shared/auth.py`; token refresh
+  (`services/auth/cognito_refresh.py`, `initiate_auth`/`revoke_token`); and the GDPR Cognito user-purge in
+  `services/scheduled/data_cleanup.py` (`list_users` + `admin_delete_user`). SQS/Service Bus and SES/ACS are consumed as
+  *producers* via the ports above; the SQS **consumer** side is the Lambda event-source trigger
+  (`services/notification/handler.py`, `services/metering/handler.py`) — on Azure that becomes a Functions Service Bus
+  trigger binding, handled by the entry adapter, not a boto3 call.
 
 ## shared/observability.py — tracing shim (added 2026-10-05)
 
