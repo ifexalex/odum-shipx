@@ -380,3 +380,53 @@ class TestReadOnlyImpersonation:
         assert "assert_not_read_only" in source, (
             "get_tenant_context must call assert_not_read_only — " "central enforcement was removed"
         )
+
+
+class TestCognitoClaimsMapper:
+    """The claims mapper is the only cloud-specific part of claim reading
+    (ADR-004 Phase 2); auth.py keeps the {tenant_id}:{role} interpretation."""
+
+    def _mapper(self):
+        from shared.providers.aws.cognito_claims import CognitoClaimsMapper
+
+        return CognitoClaimsMapper()
+
+    def test_extracts_logical_fields_from_cognito_claims(self):
+        m = self._mapper()
+        claims = {
+            "sub": "user-1",
+            "custom:tenant_id": TENANT_ID,
+            "cognito:groups": f"{TENANT_ID}:tenant_admin",
+            "custom:role": "tenant_admin",
+        }
+        assert m.user_id(claims) == "user-1"
+        assert m.tenant_id(claims) == TENANT_ID
+        assert m.groups(claims) == [f"{TENANT_ID}:tenant_admin"]
+        assert m.primary_role(claims) == "tenant_admin"
+
+    def test_groups_handles_http_v2_bracket_form_and_missing(self):
+        m = self._mapper()
+        assert m.groups({"cognito:groups": f"[{TENANT_ID}:a,{TENANT_ID}:b]"}) == [
+            f"{TENANT_ID}:a",
+            f"{TENANT_ID}:b",
+        ]
+        assert m.groups({}) == []
+
+    def test_missing_fields_are_empty_or_none(self):
+        m = self._mapper()
+        assert m.user_id({}) == ""
+        assert m.tenant_id({}) == ""
+        assert m.primary_role({}) is None
+
+    def test_factory_default_cloud_returns_cognito_mapper(self, monkeypatch):
+        import shared.providers as providers
+        from shared.providers.aws.cognito_claims import CognitoClaimsMapper
+        from shared.providers.base import ClaimsMapper
+
+        monkeypatch.setattr(providers, "CLOUD_PROVIDER", "aws")
+        monkeypatch.setattr(providers, "_claims_mapper", None)
+
+        mapper = providers.get_claims_mapper()
+        assert isinstance(mapper, CognitoClaimsMapper)
+        assert isinstance(mapper, ClaimsMapper)
+        assert mapper is providers.get_claims_mapper()  # cached singleton

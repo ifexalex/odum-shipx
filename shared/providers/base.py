@@ -231,3 +231,33 @@ class IdentityProvider(Protocol):
     def sync_user_groups(self, username: str, tenant_id: str, roles: set[str]) -> None:
         """Reconcile a user's role groups to exactly `roles`, scoped to this tenant's `{tenant_id}:*`."""
         ...
+
+
+@runtime_checkable
+class ClaimsMapper(Protocol):
+    """Translate a verified JWT's raw claims into ShipX's logical identity fields.
+
+    Only the claim *names/shape* are cloud-specific — Cognito's `custom:tenant_id`
+    / `cognito:groups` / `custom:role` vs Entra's extension attributes + role
+    claims. The downstream *interpretation* (the `{tenant_id}:{role}` group format,
+    the `platform_admin` special case, the primary-role fallback) stays in
+    `shared/auth.py` and is cloud-agnostic. An Entra mapper therefore normalizes
+    its claims into the same canonical shapes these methods return (notably
+    `groups()` → `{tenant_id}:{role}` strings), so `auth.py` never changes.
+    """
+
+    def user_id(self, claims: dict[str, Any]) -> str:
+        """The stable user id (Cognito `sub` / Entra `oid`); empty string if absent."""
+        ...
+
+    def tenant_id(self, claims: dict[str, Any]) -> str:
+        """The tenant UUID claim; empty string if absent."""
+        ...
+
+    def groups(self, claims: dict[str, Any]) -> list[str]:
+        """Role-group names in canonical `{tenant_id}:{role}` form (plus `platform_admin`)."""
+        ...
+
+    def primary_role(self, claims: dict[str, Any]) -> str | None:
+        """The user's primary-role claim value, or None if absent."""
+        ...

@@ -1213,3 +1213,8 @@ All four delegation tests follow `test_tracking.py::TestContainerStats`'s `patch
 
 - **`tests/unit/test_cognito_client.py`** (now 15, +2): re-pointed from `services.tenant_management.cognito_client.CognitoClient` to `shared.providers.aws.cognito.CognitoIdentityProvider` (same moto-backed group-management regression tests, byte-identical adapter); added `TestIdentityProviderPort` — the adapter satisfies the `IdentityProvider` protocol, and the factory returns a cached `CognitoIdentityProvider` on the default cloud.
 - **`tests/unit/test_tenant_management.py`**: the 18 Cognito mock sites moved from patching `service.get_cognito_client` to `service.get_identity_provider` — a target rename only; the mocked method names (`create_user`, `sync_user_groups`, …) are unchanged since the port mirrors the old class surface. Full suite green (1152).
+
+### Cloud-portability — ClaimsMapper (ADR-004 Phase 2, 2026-10-06)
+
+- **`tests/unit/test_auth.py::TestCognitoClaimsMapper`** (+4): `CognitoClaimsMapper` extracts `user_id`/`tenant_id`/`groups`/`primary_role` from Cognito claims, handles the HTTP-API-v2 `[a,b]` bracket form and missing claims, and the factory returns a cached `CognitoClaimsMapper` satisfying the `ClaimsMapper` protocol on the default cloud.
+- The existing `_parse_roles` / `_parse_primary_role` / `get_tenant_context` tests were **not** changed: they pass Cognito-shaped claims and the default mapper reads exactly the same keys, so the interpretation layer's behaviour is byte-identical. Full suite green (1156).

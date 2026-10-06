@@ -17,6 +17,7 @@ from shared.exceptions import (
     TenantSuspendedError,
 )
 from shared.logging_config import bind_log_context
+from shared.providers import get_claims_mapper
 from shared.tenant_context import PLATFORM_TENANT_ID, TenantContext, UserRole
 
 logger = logging.getLogger(__name__)
@@ -60,8 +61,9 @@ def get_tenant_context(event: dict[str, Any]) -> TenantContext:
         if not claims:
             raise AuthenticationRequiredError()
 
-        user_id: str = claims.get("sub", "")
-        tenant_id: str = claims.get("custom:tenant_id", "")
+        mapper = get_claims_mapper()
+        user_id: str = mapper.user_id(claims)
+        tenant_id: str = mapper.tenant_id(claims)
 
         if not user_id or not tenant_id:
             raise AuthenticationRequiredError()
@@ -129,36 +131,19 @@ def assert_not_read_only(ctx: Any, method: str) -> None:
         )
 
 
-def _extract_groups(claims: dict[str, Any]) -> list[str]:
-    """Parse the raw `cognito:groups` claim into a list of group name strings.
-
-    Handles both comma-separated string and JSON array string. API Gateway
-    HTTP API v2 passes cognito:groups as "[group1,group2]" — unquoted values,
-    not valid JSON. json.loads raises ValueError; fall back to stripping brackets.
-    """
-    groups_raw: str = claims.get("cognito:groups", "") or ""
-
-    if groups_raw.startswith("["):
-        import json
-
-        try:
-            return json.loads(groups_raw)  # type: ignore[no-any-return]
-        except ValueError:
-            inner = groups_raw.strip("[]")
-            return [g.strip() for g in inner.split(",") if g.strip()]
-    return [g.strip() for g in groups_raw.split(",") if g.strip()]
-
-
 def _parse_roles(claims: dict[str, Any], tenant_id: str) -> frozenset[UserRole]:
-    """Extract every assigned role from the cognito:groups claim.
+    """Extract every assigned role from the identity provider's group claim.
 
     Groups format: "{tenant_id}:{role}" e.g. "abc-123:tenant_admin"
     Platform admins belong to the "platform_admin" group (no tenant prefix).
     Falls back to {UserRole.CUSTOMER} if no matching group is found. Unlike
     the single-role parsing this replaces, every matching group is kept —
     not just the first — so staff can hold more than one role at once.
+
+    The raw claim shape is read by the cloud's `ClaimsMapper`; this function
+    keeps the cloud-agnostic `{tenant_id}:{role}` interpretation.
     """
-    groups = _extract_groups(claims)
+    groups = get_claims_mapper().groups(claims)
 
     # Platform admin group has no tenant prefix
     if "platform_admin" in groups:
@@ -176,14 +161,14 @@ def _parse_roles(claims: dict[str, Any], tenant_id: str) -> frozenset[UserRole]:
 def _parse_primary_role(claims: dict[str, Any], roles: frozenset[UserRole]) -> UserRole:
     """Determine the user's primary/active role.
 
-    Read from the `custom:role` claim (kept in sync with `tenant_user.role`
+    Read from the primary-role claim (kept in sync with `tenant_user.role`
     by the tenant management service on every role change). Falls back to a
     deterministic member of `roles` if the claim is absent, stale, or names a
-    role the user no longer holds — Cognito's `cognito:groups` claim carries
-    no ordering guarantee, so "first matching group" (the pre-multi-role
-    behavior) is replaced with a stable, reproducible choice.
+    role the user no longer holds — the group claim carries no ordering
+    guarantee, so "first matching group" (the pre-multi-role behavior) is
+    replaced with a stable, reproducible choice.
     """
-    primary_claim = claims.get("custom:role")
+    primary_claim = get_claims_mapper().primary_role(claims)
     if primary_claim in _VALID_ROLES:
         primary = UserRole(primary_claim)
         if primary in roles:

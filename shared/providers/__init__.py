@@ -9,6 +9,7 @@ plaintext with a warning).
 import os
 
 from shared.providers.base import (
+    ClaimsMapper,
     EmailProvider,
     EventProvider,
     IdentityProvider,
@@ -32,6 +33,7 @@ _event_provider: EventProvider | None = None
 _queue_provider: QueueProvider | None = None
 _email_provider: EmailProvider | None = None
 _identity_provider: IdentityProvider | None = None
+_claims_mapper: ClaimsMapper | None = None
 
 
 def get_key_provider() -> KeyProvider | None:
@@ -185,3 +187,20 @@ def get_identity_provider() -> IdentityProvider:
 
         _identity_provider = CognitoIdentityProvider()
     return _identity_provider
+
+
+def get_claims_mapper() -> ClaimsMapper:
+    """Return the JWT claims mapper for the active cloud (cached singleton)."""
+    global _claims_mapper
+    if _claims_mapper is not None:
+        return _claims_mapper
+
+    if CLOUD_PROVIDER == "azure":
+        from shared.providers.azure.entra_claims import EntraClaimsMapper
+
+        _claims_mapper = EntraClaimsMapper()
+    else:
+        from shared.providers.aws.cognito_claims import CognitoClaimsMapper
+
+        _claims_mapper = CognitoClaimsMapper()
+    return _claims_mapper

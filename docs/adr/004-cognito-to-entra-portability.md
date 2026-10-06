@@ -1,6 +1,6 @@
 # ADR-004: Cognito → Entra Portability (IdentityProvider port + user migration)
 
-**Status:** Accepted — Phase 1 implemented (2026-10-06); phases 2–5 pending an Azure go/no-go
+**Status:** Accepted — Phases 1–2 implemented (2026-10-06, AWS-only); phases 3–5 need an Azure tenant to build/test/migrate against
 
 **Builds on** ADR-003 (Tenant-Aware Authentication with Cognito Custom Claims, in
 `system_design_logistics_management.md`): ADR-003 chose a single Cognito pool with
@@ -114,17 +114,26 @@ data loss, since Cognito is untouched until decommission).
    `get_identity_provider()`; `azure/entra.py` is the pending Azure adapter. No behaviour
    change on AWS (1152 tests green). This was the only mechanically-safe part and landed
    independently of any Azure decision.
-2. **Claim adapter** — extract claim reads in `shared/auth.py` behind a cloud-keyed
-   mapper; authorizer verifier list becomes `[cognito, entra?, impersonation]`.
+2. **Claim adapter** — ✅ **done (2026-10-06, master-plan 7.103).** `ClaimsMapper` port
+   (`shared/providers/base.py`) + AWS adapter `shared/providers/aws/cognito_claims.py`
+   (`CognitoClaimsMapper`, holds the `sub`/`custom:tenant_id`/`cognito:groups`/`custom:role`
+   reads + bracket-parsing); `shared/auth.py` now reads logical fields via
+   `get_claims_mapper()` and keeps only the cloud-agnostic `{tenant_id}:{role}`
+   interpretation. AWS-only, no behaviour change (1156 tests green) — done without Azure,
+   so `auth.py` never needs editing again for the cutover; the Entra mapper is one new
+   file. *(Still pending: the authorizer's verifier list gains an Entra verifier — that's
+   Phase 3, since it needs Entra's JWKS/issuer.)*
 3. **Entra adapter + Terraform** — `azure/entra.py` (Graph) + `infrastructure/azure`
    Entra External ID tenant, app registration, extension attributes, claims-mapping.
 4. **User migration** — bulk-provision + invite (above), behind a one-shot script.
 5. **Dual-run → cutover → decommission Cognito.**
 
 ## Consequences
-- Phase 1 is safe to do now and removes the last direct `boto3.client("cognito-idp")`
-  from the services, matching the other six providers — but on its own it does **not**
-  achieve auth portability (that needs phases 2–5).
+- Phases 1–2 are done AWS-only and make the codebase **seam-ready**: identity management
+  is behind `IdentityProvider` and the Cognito claim shape is behind `ClaimsMapper`, so
+  `services/tenant_management/service.py` and `shared/auth.py` are cloud-agnostic and
+  won't need editing for the cutover. They do **not** by themselves achieve auth
+  portability — that still needs phases 3–5, which require an actual Azure tenant.
 - Entra External ID (CIAM) vs Azure AD B2C is an **open question for the business**
   (B2C is legacy/being superseded by External ID; recommend External ID). The claim
   mechanism (extension attributes + claims-mapping policy or a custom claims provider)
