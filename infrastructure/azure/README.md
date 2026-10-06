@@ -18,7 +18,7 @@ Azure (e.g. to use Founders Hub credits) without re-architecting.
 | Cache | ElastiCache | Azure Cache for Redis | ⏳ |
 | Auth | Cognito | Entra External ID | ⏳ |
 | Queues / events / email | SQS / EventBridge / SES | Service Bus / Event Grid / ACS | ⏳ |
-| Secrets / crypto | Secrets Manager + KMS | Key Vault | ⏳ |
+| Secrets / crypto | Secrets Manager + KMS | **Key Vault (`KeyVaultSecretsProvider` + `KeyVaultKeyProvider`)** — app adapters done, mocked-SDK tested | 🔨 |
 
 ## Frontend module (what's here now)
 

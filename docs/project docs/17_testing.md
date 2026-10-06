@@ -1227,3 +1227,7 @@ All four delegation tests follow `test_tracking.py::TestContainerStats`'s `patch
 ### Azure Service Bus provider — mocked SDK (2026-10-06)
 
 - **`tests/unit/test_azure_servicebus_provider.py`** (3): `ServiceBusQueueProvider.send` targets the right queue and constructs a real `ServiceBusMessage(body)` (asserted via `str(msg)`), protocol conformance, and the factory returning it when `CLOUD_PROVIDER=azure`. Uses a stubbed Service Bus client rather than the emulator — the SB emulator needs a SQL Edge sidecar and is arm64-finicky, and the adapter is send-only, so the mocked SDK gives the same rigor as the SES stub. Full e2e against the emulator is a documented follow-up.
+
+### Azure Key Vault providers — mocked SDK (2026-10-06)
+
+- **`tests/unit/test_azure_keyvault_provider.py`** (8): `KeyVaultKeyProvider` (envelope via RSA-OAEP wrap/unwrap) — generate returns a 32-byte key + wrapped blob, generate→decrypt round-trips, non-32-byte unwrap raises, and — the real-coverage case — a full `shared/encryption.py` `encrypt_field`/`decrypt_field` round-trip with only the Key-Vault wrap stubbed (the Fernet envelope is real). `KeyVaultSecretsProvider.get_secret` returns the raw secret value. Both factory selections (`CLOUD_PROVIDER=azure`). Stubbed Key Vault clients — no official emulator exists.

@@ -569,10 +569,13 @@ read once in `shared/providers/__init__.py`.
   `x-ms-blob-type: BlockBlob` header so the frontend's one PUT path works unchanged). `shared/providers/azure/servicebus.py`
   (`ServiceBusQueueProvider`) is implemented and **mocked-SDK tested** (`tests/unit/test_azure_servicebus_provider.py` —
   verifies real `ServiceBusMessage` construction + queue targeting; Service Bus's emulator needs a SQL Edge sidecar and
-  is arm64-finicky, so full e2e is a follow-up). The rest
-  (`{keyvault,keyvault_secrets,eventgrid,acs_email,entra,entra_claims}.py`) land with their Azure Terraform modules; the
-  factory's azure branches reference them (import resolves at call time only when `CLOUD_PROVIDER=azure`). Azure runtime
-  deps are pinned in `requirements-azure.txt` (pulled into `requirements-dev.txt`; kept out of the AWS Lambda bundle).
+  is arm64-finicky, so full e2e is a follow-up). `shared/providers/azure/keyvault.py` (`KeyVaultKeyProvider`, envelope via RSA-OAEP key wrap/unwrap — Key Vault has no
+  KMS-style data-key gen, so the 32-byte key is generated locally and wrapped) and `azure/keyvault_secrets.py`
+  (`KeyVaultSecretsProvider`) are implemented and **mocked-SDK tested** (`tests/unit/test_azure_keyvault_provider.py` —
+  incl. a real `shared/encryption.py` Fernet-envelope round-trip with only the Key-Vault wrap stubbed). The rest
+  (`{eventgrid,acs_email,entra,entra_claims}.py`) land with their Azure Terraform modules; the factory's azure branches
+  reference them (import resolves at call time only when `CLOUD_PROVIDER=azure`). Azure runtime deps are pinned in
+  `requirements-azure.txt` (pulled into `requirements-dev.txt`; kept out of the AWS Lambda bundle).
 - **Still on boto3 directly** (the authN *execution* remainder — see ADR-004 phases 3–5, which need an actual Azure
   tenant, not a code sweep): the authorizer's JWT/JWKS *verification* (`services/authorizer/handler.py` — env-driven
   `COGNITO_JWKS_URL`/`COGNITO_AUDIENCE`, ports by pointing at Entra's JWKS); token refresh
