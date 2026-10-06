@@ -17,7 +17,8 @@ Azure (e.g. to use Founders Hub credits) without re-architecting.
 | Database | Aurora Serverless v2 | PostgreSQL Flexible Server | ⏳ |
 | Cache | ElastiCache | Azure Cache for Redis | ⏳ |
 | Auth | Cognito | Entra External ID | ⏳ |
-| Queues / events / email | SQS / EventBridge / SES | Service Bus / Event Grid / ACS | ⏳ |
+| Events | EventBridge | **Event Grid (`EventGridProvider`)** — app adapter done, mocked-SDK tested | 🔨 |
+| Email | SES | **ACS Email (`AcsEmailProvider`)** — app adapter done, mocked-SDK tested | 🔨 |
 | Secrets / crypto | Secrets Manager + KMS | **Key Vault (`KeyVaultSecretsProvider` + `KeyVaultKeyProvider`)** — app adapters done, mocked-SDK tested | 🔨 |
 
 ## Frontend module (what's here now)

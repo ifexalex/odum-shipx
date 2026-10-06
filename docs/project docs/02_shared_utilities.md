@@ -572,10 +572,12 @@ read once in `shared/providers/__init__.py`.
   is arm64-finicky, so full e2e is a follow-up). `shared/providers/azure/keyvault.py` (`KeyVaultKeyProvider`, envelope via RSA-OAEP key wrap/unwrap — Key Vault has no
   KMS-style data-key gen, so the 32-byte key is generated locally and wrapped) and `azure/keyvault_secrets.py`
   (`KeyVaultSecretsProvider`) are implemented and **mocked-SDK tested** (`tests/unit/test_azure_keyvault_provider.py` —
-  incl. a real `shared/encryption.py` Fernet-envelope round-trip with only the Key-Vault wrap stubbed). The rest
-  (`{eventgrid,acs_email,entra,entra_claims}.py`) land with their Azure Terraform modules; the factory's azure branches
-  reference them (import resolves at call time only when `CLOUD_PROVIDER=azure`). Azure runtime deps are pinned in
-  `requirements-azure.txt` (pulled into `requirements-dev.txt`; kept out of the AWS Lambda bundle).
+  incl. a real `shared/encryption.py` Fernet-envelope round-trip with only the Key-Vault wrap stubbed). `shared/providers/azure/eventgrid.py` (`EventGridProvider`, EventBridge `detail_type`→Event Grid `event_type`,
+  `source`→`subject`; normalizes SDK errors to `ExternalServiceError`) and `azure/acs_email.py` (`AcsEmailProvider`, ACS
+  `begin_send`) are implemented and **mocked-SDK tested** (`tests/unit/test_azure_eventgrid_acs_providers.py`). The only
+  remaining adapters are **identity** (`entra.py`, `entra_claims.py`) — ADR-004 phases 3–5, which need a real Entra
+  tenant. All other azure branches resolve at call time only when `CLOUD_PROVIDER=azure`. Azure runtime deps are pinned
+  in `requirements-azure.txt` (pulled into `requirements-dev.txt`; kept out of the AWS Lambda bundle).
 - **Still on boto3 directly** (the authN *execution* remainder — see ADR-004 phases 3–5, which need an actual Azure
   tenant, not a code sweep): the authorizer's JWT/JWKS *verification* (`services/authorizer/handler.py` — env-driven
   `COGNITO_JWKS_URL`/`COGNITO_AUDIENCE`, ports by pointing at Entra's JWKS); token refresh

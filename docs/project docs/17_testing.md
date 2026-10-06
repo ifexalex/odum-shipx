@@ -1231,3 +1231,7 @@ All four delegation tests follow `test_tracking.py::TestContainerStats`'s `patch
 ### Azure Key Vault providers — mocked SDK (2026-10-06)
 
 - **`tests/unit/test_azure_keyvault_provider.py`** (8): `KeyVaultKeyProvider` (envelope via RSA-OAEP wrap/unwrap) — generate returns a 32-byte key + wrapped blob, generate→decrypt round-trips, non-32-byte unwrap raises, and — the real-coverage case — a full `shared/encryption.py` `encrypt_field`/`decrypt_field` round-trip with only the Key-Vault wrap stubbed (the Fernet envelope is real). `KeyVaultSecretsProvider.get_secret` returns the raw secret value. Both factory selections (`CLOUD_PROVIDER=azure`). Stubbed Key Vault clients — no official emulator exists.
+
+### Azure Event Grid + ACS email providers — mocked SDK (2026-10-06)
+
+- **`tests/unit/test_azure_eventgrid_acs_providers.py`** (7): `EventGridProvider.publish` maps `source`→`subject` / `detail_type`→`event_type` / `detail`→`data` on a real `EventGridEvent`, and normalizes any SDK error to `ExternalServiceError`; `AcsEmailProvider.send` builds the ACS message shape (`senderAddress` / `recipients.to` / `content.{subject,html,plainText}`); both factory selections. Stubbed SDK clients — neither service has a local emulator.
