@@ -1,0 +1,6 @@
+# Azure runtime dependencies — installed only when deploying to Azure
+# (CLOUD_PROVIDER=azure). Kept out of requirements.txt / requirements-layer.txt
+# so the AWS Lambda bundle stays lean. See docs/adr/004-cognito-to-entra-portability.md
+# and infrastructure/azure/README.md.
+azure-storage-blob==12.31.0
+azure-identity==1.26.0

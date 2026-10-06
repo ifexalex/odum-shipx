@@ -12,6 +12,7 @@ Azure (e.g. to use Founders Hub credits) without re-architecting.
 | Frontend hosting / CDN | S3 + CloudFront | **Blob static website + Front Door Standard** | ✅ |
 | WAF / DDoS | CloudFront WAF | Cloudflare (recommended) / Front Door Premium | ⏳ |
 | Backend compute | Lambda | Container Apps / Functions | ⏳ |
+| Object storage | S3 | **Blob (`BlobStorageProvider`)** — app adapter done, Azurite-tested | 🔨 |
 | Database | Aurora Serverless v2 | PostgreSQL Flexible Server | ⏳ |
 | Cache | ElastiCache | Azure Cache for Redis | ⏳ |
 | Auth | Cognito | Entra External ID | ⏳ |
@@ -119,6 +120,27 @@ not a rewrite). Containerizing is what lets the same image run on Azure Containe
 Apps *and* AWS Fargate — the move that makes the backend as portable as the
 frontend already is. #9 (auth) is the stickiest (token claims + user migration);
 keep the IdP behind an interface so it's swappable.
+
+## Local testing (Azurite — the Azure "local stack")
+
+There's no single LocalStack-for-Azure, but the pieces with official emulators are
+wired into the same dev stack as `moto`:
+
+```bash
+docker compose -f docker-compose.local.yml up -d azurite   # Blob/Queue/Table on :10000-2
+```
+
+The **Blob** `StorageProvider` adapter (`shared/providers/azure/blob.py`) is
+integration-tested against Azurite in `tests/unit/test_azure_blob_provider.py` —
+real SAS PUT/GET round-trips, not mocks (the Azure analogue of the moto-backed
+`test_storage_provider.py`). Those tests **skip automatically** when Azurite isn't
+on `:10000`, so the suite stays green without it; bring Azurite up to run them.
+Dev deps come from `requirements-azure.txt` (pulled in by `requirements-dev.txt`).
+
+What has a local emulator: Blob/Queue/Table (**Azurite**), Postgres (plain
+Postgres, already in the stack), Functions (`func` core tools). What does **not**
+and needs a free test resource/tenant: Key Vault, Event Grid, ACS email, and —
+critically — **Entra** (identity). See ADR-004.
 
 ## Notes
 - Storage account names are globally unique, lowercase, ≤24 chars — the module
