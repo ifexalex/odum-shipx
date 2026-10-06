@@ -566,11 +566,13 @@ read once in `shared/providers/__init__.py`.
   GDPR Art. 17 immediate erasure.
 - **Azure adapters:** `shared/providers/azure/blob.py` (`BlobStorageProvider`) is **implemented and Azurite-tested**
   (`tests/unit/test_azure_blob_provider.py` — real SAS PUT/GET round-trips; the upload ticket carries the Azure-required
-  `x-ms-blob-type: BlockBlob` header so the frontend's one PUT path works unchanged). The rest
-  (`{keyvault,keyvault_secrets,eventgrid,servicebus,acs_email,entra,entra_claims}.py`) land with their Azure Terraform
-  modules; the factory's azure branches reference them (import resolves at call time only when `CLOUD_PROVIDER=azure`).
-  Azure runtime deps are pinned in `requirements-azure.txt` (pulled into `requirements-dev.txt`; kept out of the AWS
-  Lambda bundle).
+  `x-ms-blob-type: BlockBlob` header so the frontend's one PUT path works unchanged). `shared/providers/azure/servicebus.py`
+  (`ServiceBusQueueProvider`) is implemented and **mocked-SDK tested** (`tests/unit/test_azure_servicebus_provider.py` —
+  verifies real `ServiceBusMessage` construction + queue targeting; Service Bus's emulator needs a SQL Edge sidecar and
+  is arm64-finicky, so full e2e is a follow-up). The rest
+  (`{keyvault,keyvault_secrets,eventgrid,acs_email,entra,entra_claims}.py`) land with their Azure Terraform modules; the
+  factory's azure branches reference them (import resolves at call time only when `CLOUD_PROVIDER=azure`). Azure runtime
+  deps are pinned in `requirements-azure.txt` (pulled into `requirements-dev.txt`; kept out of the AWS Lambda bundle).
 - **Still on boto3 directly** (the authN *execution* remainder — see ADR-004 phases 3–5, which need an actual Azure
   tenant, not a code sweep): the authorizer's JWT/JWKS *verification* (`services/authorizer/handler.py` — env-driven
   `COGNITO_JWKS_URL`/`COGNITO_AUDIENCE`, ports by pointing at Entra's JWKS); token refresh

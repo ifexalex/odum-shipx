@@ -13,6 +13,7 @@ Azure (e.g. to use Founders Hub credits) without re-architecting.
 | WAF / DDoS | CloudFront WAF | Cloudflare (recommended) / Front Door Premium | ⏳ |
 | Backend compute | Lambda | Container Apps / Functions | ⏳ |
 | Object storage | S3 | **Blob (`BlobStorageProvider`)** — app adapter done, Azurite-tested | 🔨 |
+| Queue | SQS | **Service Bus (`ServiceBusQueueProvider`)** — app adapter done, mocked-SDK tested | 🔨 |
 | Database | Aurora Serverless v2 | PostgreSQL Flexible Server | ⏳ |
 | Cache | ElastiCache | Azure Cache for Redis | ⏳ |
 | Auth | Cognito | Entra External ID | ⏳ |
