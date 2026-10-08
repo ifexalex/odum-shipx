@@ -65,15 +65,18 @@ Tag protection ruleset (configure in repo **Settings → Rules**):
 | **dev** | `dev` | none (auto) | CI success on `main` → auto | AWS: `logistics/dev` · Azure: `azure/dev` | `AWS_DEPLOY_ROLE_ARN`, `API_BASE_URL`, `AZURE_CLIENT_ID/TENANT_ID/SUBSCRIPTION_ID` |
 | **staging** | `staging` | required reviewers | `v*.*.*-rc*` tag | AWS: `logistics/staging` · Azure: `azure/staging` | same set, staging values |
 | **prod** | `prod` | required reviewers + tag protection | `v*.*.*` tag | AWS: `logistics/prod` · Azure: `azure/prod` | same set, prod values |
-| **demo** | — (manual) | — | **manual only** (`terraform apply -var-file=demo.tfvars` → `destroy`) | AWS: `logistics/demo` | n/a (local `az login`/`aws` creds) |
+| **demo** | `demo` | none (dispatch-only) | **`workflow_dispatch` only** (standalone, not in the chain) | AWS: `logistics/demo` · Azure: `azure/demo` | same set, demo values |
 | **local** | — | — | LocalStack / `make stack` | local | n/a |
 
-- Both clouds use the **same GitHub Environments** (`dev`/`staging`/`prod`), so one set of
+- Both clouds use the **same GitHub Environments** (`dev`/`staging`/`prod`/`demo`), so one set of
   protection rules + reviewers gates AWS and Azure alike. The frontend workflows share them too
   (standardized on `prod`, not `production`).
-- **demo** is a deliberate manual throwaway (lean single-AZ profile in `demo.tfvars.example`,
-  different sizing) — intentionally *not* in the automated promotion chain; apply + `destroy` by
-  hand for a short-lived link.
+- **demo** is a real, committed, fully-wired environment (`environments/demo.{tfvars,backend.hcl}`
+  in both roots, a `logistics-github-deploy-demo` OIDC role, and `demo` jobs in `terraform.yml` /
+  `terraform-azure.yml` / `deploy.yml` / `frontend-deploy.yml`) — but kept **out of the automated
+  promotion chain**: it only runs via `workflow_dispatch`, for a short-lived link you then
+  `terraform destroy`. It is lean (max_acu=1, `route53_zone_id=""` → no CloudFront/WAF) but uses
+  the same `logistics` naming + schema as the other envs (no more copy-me `.example`).
 - Runtime: **Python 3.13** across CI, the Lambda layer build, the Terraform `runtime`, the
   deploy `--compatible-runtimes`, and mypy (aligned 2026-10-08).
 
@@ -739,16 +742,18 @@ The script is **idempotent** — safe to re-run.
 | IAM deploy role (dev) | `logistics-github-deploy-dev` |
 | IAM deploy role (staging) | `logistics-github-deploy-staging` |
 | IAM deploy role (prod) | `logistics-github-deploy-prod` |
+| IAM deploy role (demo) | `logistics-github-deploy-demo` |
 
 ### Set GitHub Environment Secrets
 
 After bootstrap, set the following secrets in each GitHub Environment (Settings → Environments):
 
-**`AWS_DEPLOY_ROLE_ARN`** — all three environments:
+**`AWS_DEPLOY_ROLE_ARN`** — one per GitHub Environment:
 ```
 dev     → arn:aws:iam::{ACCOUNT_ID}:role/logistics-github-deploy-dev
 staging → arn:aws:iam::{ACCOUNT_ID}:role/logistics-github-deploy-staging
 prod    → arn:aws:iam::{ACCOUNT_ID}:role/logistics-github-deploy-prod
+demo    → arn:aws:iam::{ACCOUNT_ID}:role/logistics-github-deploy-demo
 ```
 
 **`API_BASE_URL`** — all three environments (the read-only smoke now runs on prod too, 2026-10-08):

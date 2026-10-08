@@ -28,7 +28,7 @@ locals {
 
   # Trust subjects per environment:
   # dev   — trusted from main branch push OR GitHub Environment "dev"
-  # staging/prod — only from their respective GitHub Environments (manual dispatch)
+  # staging/prod/demo — only from their respective GitHub Environments (manual dispatch)
   env_trust_subjects = {
     dev = [
       "repo:${var.github_repo}:ref:refs/heads/main",
@@ -36,6 +36,7 @@ locals {
     ]
     staging = ["repo:${var.github_repo}:environment:staging"]
     prod    = ["repo:${var.github_repo}:environment:prod"]
+    demo    = ["repo:${var.github_repo}:environment:demo"]
   }
 }
 

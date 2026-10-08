@@ -82,7 +82,7 @@ BOUNDARY_ARN="arn:aws:iam::${ACCOUNT_ID}:policy/${BOUNDARY_POLICY_NAME}"
 info "Step 1/6 — Patching backend.hcl files..."
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 
-for env in dev staging prod; do
+for env in dev staging prod demo; do
   file="${REPO_ROOT}/infrastructure/aws/environments/${env}.backend.hcl"
   if grep -q "ACCOUNT_ID" "${file}" 2>/dev/null; then
     sed -i.bak "s/ACCOUNT_ID/${ACCOUNT_ID}/g" "${file}" && rm -f "${file}.bak"

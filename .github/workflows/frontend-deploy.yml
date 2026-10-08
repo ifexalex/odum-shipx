@@ -32,7 +32,7 @@ on:
       environment:
         description: "Environment"
         type: choice
-        options: [prod, staging, dev]
+        options: [prod, staging, dev, demo]
         default: prod
 
 concurrency:
