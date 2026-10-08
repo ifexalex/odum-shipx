@@ -17,8 +17,13 @@ target_metadata = None
 
 
 def get_url() -> str:
+    # Pin the driver to psycopg2 explicitly: SQLAlchemy 2.1 changed the default
+    # DBAPI for `postgresql://` from psycopg2 to psycopg (v3), which this project
+    # does not install (it uses psycopg2-binary). Without the `+psycopg2` the
+    # migrate step fails with "No module named 'psycopg'" under SQLAlchemy >= 2.1
+    # — in CI and in the production migrate Lambda alike.
     return (
-        f"postgresql://{os.environ['DATABASE_USER']}:{os.environ['DATABASE_PASSWORD']}"
+        f"postgresql+psycopg2://{os.environ['DATABASE_USER']}:{os.environ['DATABASE_PASSWORD']}"
         f"@{os.environ['DATABASE_HOST']}:{os.environ.get('DATABASE_PORT', '5432')}"
         f"/{os.environ['DATABASE_NAME']}"
     )
