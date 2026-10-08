@@ -75,7 +75,7 @@ jobs:
       # ----------------------------------------------------------------- AWS
       - name: AWS — configure credentials (OIDC)
         if: inputs.cloud == 'aws'
-        uses: aws-actions/configure-aws-credentials@v4
+        uses: aws-actions/configure-aws-credentials@v6
         with:
           role-to-assume: ${{ secrets.FRONTEND_DEPLOY_ROLE_ARN }}
           aws-region: eu-west-1
