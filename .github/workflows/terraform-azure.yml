@@ -1,0 +1,145 @@
+name: Terraform (Azure)
+
+# Azure analogue of terraform.yml. Triggered on Azure infra changes to main;
+# dev -> staging -> prod, each gated by its GitHub Environment (required
+# reviewers on staging/prod). Auth is OIDC federated credentials (no secrets):
+# the deploy identity is an Entra app registration with a federated credential
+# per environment subject. One-time setup + state bootstrap in
+# infrastructure/azure/README.md.
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "infrastructure/azure/**"
+      - "infrastructure/common/**"
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: "Environment to apply (runs from the selected one through prod)"
+        required: true
+        type: choice
+        options: [dev, staging, prod]
+
+# Queue infra changes — never cancel a Terraform apply mid-run.
+concurrency:
+  group: terraform-azure-${{ github.ref }}
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+env:
+  # Terraform azurerm provider + backend use OIDC; GitHub supplies the id-token.
+  ARM_USE_OIDC: "true"
+  ARM_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
+  ARM_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
+  ARM_SUBSCRIPTION_ID: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+
+jobs:
+  # ── Dev — auto-applies on every Azure infra change ───────────────────────
+  terraform-dev:
+    if: >-
+      github.event_name == 'push' ||
+      (github.event_name == 'workflow_dispatch' && inputs.environment == 'dev')
+    runs-on: ubuntu-latest
+    environment: dev
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: azure/login@v2
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+      - uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: "1.7.5"
+      - name: Terraform Init
+        working-directory: infrastructure/azure
+        run: terraform init -backend-config=environments/dev.backend.hcl
+      - name: Terraform Format Check
+        working-directory: infrastructure/azure
+        run: terraform fmt -check -recursive
+      - name: Terraform Validate
+        working-directory: infrastructure/azure
+        run: terraform validate
+      - name: Terraform Plan
+        working-directory: infrastructure/azure
+        run: terraform plan -var-file=environments/dev.tfvars -out=tfplan
+      - name: Terraform Apply
+        working-directory: infrastructure/azure
+        run: terraform apply tfplan
+
+  # ── Staging — gated by dev success + GitHub Environment approval ─────────
+  terraform-staging:
+    needs: terraform-dev
+    if: >-
+      github.event_name == 'push' ||
+      (github.event_name == 'workflow_dispatch' && (inputs.environment == 'dev' || inputs.environment == 'staging'))
+    runs-on: ubuntu-latest
+    environment: staging
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: azure/login@v2
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+      - uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: "1.7.5"
+      - name: Terraform Init
+        working-directory: infrastructure/azure
+        run: terraform init -backend-config=environments/staging.backend.hcl
+      - name: Terraform Format Check
+        working-directory: infrastructure/azure
+        run: terraform fmt -check -recursive
+      - name: Terraform Validate
+        working-directory: infrastructure/azure
+        run: terraform validate
+      - name: Terraform Plan
+        working-directory: infrastructure/azure
+        run: terraform plan -var-file=environments/staging.tfvars -out=tfplan
+      - name: Terraform Apply
+        working-directory: infrastructure/azure
+        run: terraform apply tfplan
+
+  # ── Prod — gated by staging success + GitHub Environment approval ─────────
+  terraform-prod:
+    needs: terraform-staging
+    runs-on: ubuntu-latest
+    environment: prod
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: azure/login@v2
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+      - uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: "1.7.5"
+      - name: Terraform Init
+        working-directory: infrastructure/azure
+        run: terraform init -backend-config=environments/prod.backend.hcl
+      - name: Terraform Format Check
+        working-directory: infrastructure/azure
+        run: terraform fmt -check -recursive
+      - name: Terraform Validate
+        working-directory: infrastructure/azure
+        run: terraform validate
+      - name: Terraform Plan
+        working-directory: infrastructure/azure
+        run: terraform plan -var-file=environments/prod.tfvars -out=tfplan
+      - name: Terraform Apply
+        working-directory: infrastructure/azure
+        run: terraform apply tfplan

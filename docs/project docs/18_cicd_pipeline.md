@@ -58,6 +58,25 @@ Tag protection ruleset (configure in repo **Settings → Rules**):
   escape hatch (explicit `run_id` required)
 - Rollback is `git tag -f v1.2.3-rc1 <prev-sha> && git push --force-tag` — no CI run ID lookup
 
+### Environment wiring matrix (at a glance)
+
+| Environment | GitHub Env | Protection | Trigger → deploy | Backend tfstate | Required env secrets |
+|---|---|---|---|---|---|
+| **dev** | `dev` | none (auto) | CI success on `main` → auto | AWS: `logistics/dev` · Azure: `azure/dev` | `AWS_DEPLOY_ROLE_ARN`, `API_BASE_URL`, `AZURE_CLIENT_ID/TENANT_ID/SUBSCRIPTION_ID` |
+| **staging** | `staging` | required reviewers | `v*.*.*-rc*` tag | AWS: `logistics/staging` · Azure: `azure/staging` | same set, staging values |
+| **prod** | `prod` | required reviewers + tag protection | `v*.*.*` tag | AWS: `logistics/prod` · Azure: `azure/prod` | same set, prod values |
+| **demo** | — (manual) | — | **manual only** (`terraform apply -var-file=demo.tfvars` → `destroy`) | AWS: `logistics/demo` | n/a (local `az login`/`aws` creds) |
+| **local** | — | — | LocalStack / `make stack` | local | n/a |
+
+- Both clouds use the **same GitHub Environments** (`dev`/`staging`/`prod`), so one set of
+  protection rules + reviewers gates AWS and Azure alike. The frontend workflows share them too
+  (standardized on `prod`, not `production`).
+- **demo** is a deliberate manual throwaway (lean single-AZ profile in `demo.tfvars.example`,
+  different sizing) — intentionally *not* in the automated promotion chain; apply + `destroy` by
+  hand for a short-lived link.
+- Runtime: **Python 3.13** across CI, the Lambda layer build, the Terraform `runtime`, the
+  deploy `--compatible-runtimes`, and mypy (aligned 2026-10-08).
+
 ---
 
 ## Deliverables
@@ -732,10 +751,11 @@ staging → arn:aws:iam::{ACCOUNT_ID}:role/logistics-github-deploy-staging
 prod    → arn:aws:iam::{ACCOUNT_ID}:role/logistics-github-deploy-prod
 ```
 
-**`API_BASE_URL`** — dev and staging only (no smoke in prod):
+**`API_BASE_URL`** — all three environments (the read-only smoke now runs on prod too, 2026-10-08):
 ```
 dev     → https://<api-id>.execute-api.eu-west-1.amazonaws.com/dev
 staging → https://<api-id>.execute-api.eu-west-1.amazonaws.com/staging
+prod    → https://<api-id>.execute-api.eu-west-1.amazonaws.com/prod
 ```
 
 ### Configure Tag Protection Ruleset
@@ -772,6 +792,74 @@ terraform import 'module.iam_oidc.aws_iam_role.deploy["prod"]'    logistics-gith
 ```
 
 Run `terraform plan -var-file=environments/dev.tfvars` — should show **0 changes** after import.
+
+---
+
+## Azure deployment pipeline (`terraform-azure.yml`, added 2026-10-08)
+
+The Azure portability stack (`infrastructure/azure/`) has its own Terraform pipeline mirroring
+the AWS one: push to `main` touching `infrastructure/azure/**` or `infrastructure/common/**`
+runs dev → staging → prod, each gated by its GitHub Environment. Auth is **OIDC federated
+credentials** (no stored client secret), same zero-secret posture as AWS.
+
+### 1. One-time Terraform state bootstrap (manual)
+
+The azurerm backend needs a storage account for state. Create it once (names are globally
+unique — pick your own and put it in `environments/*.backend.hcl`):
+
+```bash
+az group create -n shipx-tfstate-rg -l northeurope
+az storage account create -n shipxtfstate<suffix> -g shipx-tfstate-rg -l northeurope \
+  --sku Standard_LRS --min-tls-version TLS1_2 --allow-blob-public-access false
+az storage container create -n tfstate --account-name shipxtfstate<suffix> --auth-mode login
+```
+
+Then set `storage_account_name` in each `infrastructure/azure/environments/{env}.backend.hcl`.
+
+### 2. OIDC federated identity (manual)
+
+Create one Entra app registration for CI and a **federated credential per GitHub Environment
+subject**, then grant it rights on the subscription + the tfstate container:
+
+```bash
+APP_ID=$(az ad app create --display-name shipx-github-deploy --query appId -o tsv)
+az ad sp create --id "$APP_ID"
+SUB=$(az account show --query id -o tsv)
+
+for env in dev staging prod; do
+  az ad app federated-credential create --id "$APP_ID" --parameters "{
+    \"name\": \"gh-$env\",
+    \"issuer\": \"https://token.actions.githubusercontent.com\",
+    \"subject\": \"repo:ifexalex/odum-shipx:environment:$env\",
+    \"audiences\": [\"api://AzureADTokenExchange\"]
+  }"
+done
+
+# Contributor to provision resources + Storage Blob Data Contributor for tfstate.
+az role assignment create --assignee "$APP_ID" --role Contributor --scope "/subscriptions/$SUB"
+az role assignment create --assignee "$APP_ID" --role "Storage Blob Data Contributor" \
+  --scope "/subscriptions/$SUB/resourceGroups/shipx-tfstate-rg"
+```
+
+> Scope `Contributor` down to the app's resource groups for prod; subscription-wide is fine for
+> a throwaway/free test account.
+
+### 3. GitHub Environment secrets (Azure)
+
+Set in each GitHub Environment (dev/staging/prod) — the same three, pointing at your tenant/sub:
+
+```
+AZURE_CLIENT_ID        → <app registration appId>
+AZURE_TENANT_ID        → <your Entra tenant id>
+AZURE_SUBSCRIPTION_ID  → <your subscription id>
+```
+
+(The frontend Azure deploy — `frontend-deploy.yml` with `cloud=azure` — additionally needs the
+`AZURE_FRONTEND_*`, `AZURE_RESOURCE_GROUP` secrets from `terraform -chdir=infrastructure/azure
+output`.)
+
+`workflow_dispatch` on **Actions → "Terraform (Azure)"** applies a chosen env on demand; a push
+to `main` touching the Azure infra runs the full dev→staging→prod chain.
 
 ### Security Design
 

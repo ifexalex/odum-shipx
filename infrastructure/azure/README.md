@@ -33,12 +33,26 @@ URL immediately.
 
 ## Deploy
 
+Two ways: the **CI pipeline** (recommended for dev/staging/prod) or a **manual apply** (ad-hoc).
+
+### CI pipeline — `.github/workflows/terraform-azure.yml`
+
+Mirrors the AWS `terraform.yml`: push to `main` touching `infrastructure/azure/**` runs
+dev → staging → prod (each gated by its GitHub Environment), or run it on demand from
+**Actions → "Terraform (Azure)"**. Auth is OIDC federated creds (no secrets). State lives in an
+azurerm backend (per-env `environments/*.backend.hcl`). **One-time state bootstrap + the Entra
+OIDC app + GitHub secrets are in `docs/project docs/18_cicd_pipeline.md` → "Azure deployment
+pipeline".** Terraform state backend configs: `environments/{dev,staging,prod}.backend.hcl`;
+per-env vars: `environments/{dev,staging,prod}.tfvars`.
+
+### Manual apply
+
 Prereqs: `az login` (or set `ARM_SUBSCRIPTION_ID` / SP env vars), Terraform ≥ 1.7.
 
 ```bash
 cd infrastructure/azure
-terraform init
-terraform apply -var 'environment=prod' -var 'api_base_url=https://<your-api-host>'
+terraform init -backend-config=environments/dev.backend.hcl   # or -backend=false for a throwaway
+terraform apply -var-file=environments/dev.tfvars
 terraform output                       # frontend_url, storage account, Front Door names
 ```
 

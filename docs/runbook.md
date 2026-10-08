@@ -44,7 +44,12 @@ git tag v1.2.3 <sha>
 git push origin v1.2.3
 ```
 
-The `deploy-prod` job requires `smoke-staging` to have passed on the same workflow run.
+The `deploy-prod` job requires `smoke-staging` to have passed on the same workflow run. A
+read-only `smoke-prod` job (GET /health + unauthenticated-401 checks + 2s SLA) then runs after
+the prod deploy and fails the pipeline loudly if prod came up unhealthy.
+
+> **Azure infra** has its own pipeline (`terraform-azure.yml`, dev→staging→prod, OIDC) — see
+> `docs/project docs/18_cicd_pipeline.md` → "Azure deployment pipeline".
 
 ### Post-prod observation window
 
@@ -87,7 +92,7 @@ Browser ──TLS──▶ CloudFront (global edge, PriceClass_100)
 - **ACM cert in us-east-1** (CloudFront requirement) via the `aws.us_east_1` provider alias, DNS-validated through Route 53 — handled automatically by the module.
 - Route 53 apex + `*.domain` wildcard A-alias records (wildcard backs tenant subdomains).
 - **WAFv2 Web ACL** attached to the distribution (rate limit + AWS IP reputation + common rule set + known-bad-inputs) — see "DDoS & attack protection" below.
-- CI deploy job (`deploy`): OIDC auth (no static keys), gated to `push` on `main` + a `production` GitHub Environment (approval-capable), builds with prod `VITE_*`, syncs assets `immutable`, uploads `index.html` `no-cache`, invalidates `/index.html`.
+- CI deploy job (`deploy`): OIDC auth (no static keys), gated to `push` on `main` + the `prod` GitHub Environment (approval-capable; shared with the backend so one set of reviewers gates both), builds with prod `VITE_*`, syncs assets `immutable`, uploads `index.html` `no-cache`, invalidates `/index.html`.
 - Module outputs: `distribution_id`, `distribution_domain`, `s3_bucket_name`, `s3_bucket_arn`, `waf_web_acl_arn`.
 
 > **Note:** the Terraform has **not been `apply`'d** yet (see "Open infrastructure decisions"), and the CloudFront module is **gated on `route53_zone_id`** (`count = var.route53_zone_id != "" ? 1 : 0`) — it creates nothing until a hosted zone is supplied.

@@ -175,3 +175,17 @@ jobs:
             && needs.resolve-artifact.outputs.run_id
             || inputs.run_id }}
     secrets: inherit
+
+  # ── Prod post-deploy smoke ──────────────────────────────────────────────
+  # The smoke suite is entirely read-only (GET /health, unauthenticated-401
+  # checks, response-time SLA) — safe to run against prod. Fails the pipeline
+  # loudly if a deploy left prod unhealthy, rather than waiting on alarms.
+  smoke-prod:
+    needs: deploy-prod
+    if: always() && needs.deploy-prod.result == 'success'
+    permissions:
+      contents: read
+    uses: ./.github/workflows/_smoke-test.yml
+    with:
+      environment: prod
+    secrets: inherit

@@ -1,0 +1,29 @@
+version: 2
+updates:
+  # GitHub Actions — keep pinned action versions current (security + maintenance).
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+    open-pull-requests-limit: 5
+    commit-message:
+      prefix: "ci"
+
+  # Python backend — CLAUDE.md requires exact pins + CVE gating; Dependabot
+  # proposes the bumps, CI (pip-audit/safety + tests) gates them.
+  - package-ecosystem: "pip"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+    open-pull-requests-limit: 5
+    commit-message:
+      prefix: "deps"
+
+  # Frontend npm.
+  - package-ecosystem: "npm"
+    directory: "/frontend"
+    schedule:
+      interval: "weekly"
+    open-pull-requests-limit: 5
+    commit-message:
+      prefix: "deps(frontend)"

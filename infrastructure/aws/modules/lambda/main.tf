@@ -162,7 +162,7 @@ resource "aws_lambda_layer_version" "shared" {
   layer_name          = "${local.name_prefix}-shared"
   filename            = data.archive_file.shared_layer_code.output_path
   source_code_hash    = data.archive_file.shared_layer_code.output_base64sha256
-  compatible_runtimes = ["python3.12"]
+  compatible_runtimes = ["python3.13"]
 }
 
 # ---------------------------------------------------------------------------
@@ -455,7 +455,7 @@ resource "aws_lambda_function" "vpc_api" {
   for_each         = local.vpc_api_configs
   function_name    = "${var.project_name}-${each.value.name}-${var.environment}"
   role             = aws_iam_role.lambda[each.key].arn
-  runtime          = "python3.12"
+  runtime          = "python3.13"
   handler          = each.value.handler
   memory_size      = each.value.memory
   timeout          = each.value.timeout
@@ -489,7 +489,7 @@ resource "aws_lambda_function" "vpc_api" {
 resource "aws_lambda_function" "metering" {
   function_name    = "${var.project_name}-${local.metering_config.name}-${var.environment}"
   role             = aws_iam_role.lambda["metering"].arn
-  runtime          = "python3.12"
+  runtime          = "python3.13"
   handler          = local.metering_config.handler
   memory_size      = local.metering_config.memory
   timeout          = local.metering_config.timeout
@@ -519,7 +519,7 @@ resource "aws_lambda_function" "notification" {
   for_each         = local.notification_configs
   function_name    = "${var.project_name}-${each.value.name}-${var.environment}"
   role             = aws_iam_role.lambda[each.key].arn
-  runtime          = "python3.12"
+  runtime          = "python3.13"
   handler          = each.value.handler
   memory_size      = each.value.memory
   timeout          = each.value.timeout
@@ -548,7 +548,7 @@ resource "aws_lambda_function" "non_vpc_api" {
   for_each         = local.non_vpc_api_configs
   function_name    = "${var.project_name}-${each.value.name}-${var.environment}"
   role             = aws_iam_role.lambda[each.key].arn
-  runtime          = "python3.12"
+  runtime          = "python3.13"
   handler          = each.value.handler
   memory_size      = each.value.memory
   timeout          = each.value.timeout
@@ -577,7 +577,7 @@ resource "aws_lambda_function" "scheduled_job" {
   for_each         = local.scheduled_configs
   function_name    = "${var.project_name}-${each.value.name}-${var.environment}"
   role             = aws_iam_role.lambda[each.key].arn
-  runtime          = "python3.12"
+  runtime          = "python3.13"
   handler          = each.value.handler
   memory_size      = each.value.memory
   timeout          = each.value.timeout
@@ -722,7 +722,7 @@ resource "aws_iam_role_policy" "migrate_db_access" {
 resource "aws_lambda_function" "migrate" {
   function_name = "${var.project_name}-migrate-${var.environment}"
   role          = aws_iam_role.migrate.arn
-  runtime       = "python3.12"
+  runtime       = "python3.13"
   handler       = "handler.lambda_handler"
   memory_size   = 256
   timeout       = 300
