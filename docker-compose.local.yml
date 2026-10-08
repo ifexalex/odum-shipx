@@ -36,9 +36,9 @@ services:
       retries: 10
 
   # ─── Azurite (Azure Blob/Queue/Table emulator) — Azure portability target ──
-  # Microsoft's official local Azure Storage emulator. Mirrors `moto` for the
-  # Azure stack: lets the azure/ provider adapters be integration-tested locally
-  # without a real Azure subscription. Well-known dev credentials (public):
+  # Microsoft's official local Azure Storage emulator. Optional: the pytest suite
+  # is fully mocked and does NOT need it — it's used only by scripts/azure_smoke.py
+  # for live SAS round-trips without a real Azure subscription. Public dev creds:
   #   AccountName=devstoreaccount1  (standard Azurite account)
   azurite:
     image: mcr.microsoft.com/azure-storage/azurite:latest

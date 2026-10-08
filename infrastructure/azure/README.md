@@ -132,12 +132,12 @@ wired into the same dev stack as `moto`:
 docker compose -f docker-compose.local.yml up -d azurite   # Blob/Queue/Table on :10000-2
 ```
 
-The **Blob** `StorageProvider` adapter (`shared/providers/azure/blob.py`) is
-integration-tested against Azurite in `tests/unit/test_azure_blob_provider.py` —
-real SAS PUT/GET round-trips, not mocks (the Azure analogue of the moto-backed
-`test_storage_provider.py`). Those tests **skip automatically** when Azurite isn't
-on `:10000`, so the suite stays green without it; bring Azurite up to run them.
-Dev deps come from `requirements-azure.txt` (pulled in by `requirements-dev.txt`).
+The **pytest suite is fully mocked** and never touches Azurite or a real cloud —
+`tests/unit/test_azure_blob_provider.py` uses an in-memory SDK fake. Azurite (and
+a real account) are exercised only by **`scripts/azure_smoke.py`**, which does
+live SAS PUT/GET round-trips when pointed at either (via
+`AZURE_STORAGE_CONNECTION_STRING`). Dev deps come from `requirements-azure.txt`
+(pulled in by `requirements-dev.txt`).
 
 What has a local emulator: Blob/Queue/Table (**Azurite**), Postgres (plain
 Postgres, already in the stack), Functions (`func` core tools). What does **not**
@@ -164,17 +164,18 @@ export BLOB_CONTAINER_NAME=$(terraform output -raw blob_container_name)
 export AZURE_KEY_VAULT_URL=$(terraform output -raw key_vault_url)
 export ENCRYPTION_KEY_VAULT_KEY_ID=$(terraform output -raw encryption_key_vault_key_id)
 
-# Verify — these now hit YOUR Azure, not Azurite/mocks:
+# Verify against YOUR Azure — the pytest suite is fully mocked and never calls a
+# real cloud, so real-resource proof is this standalone script (not pytest):
 cd ../..
-python -m pytest tests/unit/test_azure_blob_provider.py \
-                 tests/unit/test_azure_keyvault_provider.py -v
+python scripts/azure_smoke.py
 ```
 
-With `AZURE_STORAGE_CONNECTION_STRING` set, the Blob tests target your real
-storage account (SAS PUT→201, SAS GET→200); with the vault vars set, the
-`TestAgainstRealKeyVault` cases run real RSA wrap/unwrap + secret reads (they
-skip otherwise). Tear down with `terraform destroy` when done (the test vault
-has purge-protection off so it fully deletes).
+`scripts/azure_smoke.py` runs whatever its env is configured for and prints each
+real call: a live SAS **PUT→201** then **GET→200** against your storage account,
+real RSA **wrap/unwrap** against your Key Vault key, and a **secret read**
+(`shipx-smoke-secret` → `ok`). Checks whose env vars are absent are skipped, not
+failed. Tear down with `terraform destroy` when done (the test vault has
+purge-protection off so it fully deletes).
 
 ## Notes
 - Storage account names are globally unique, lowercase, ≤24 chars — the module

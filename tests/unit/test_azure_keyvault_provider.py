@@ -5,7 +5,6 @@ same rigor as the SES/Service-Bus stubs. The crypto test still exercises the rea
 `shared/encryption.py` Fernet envelope (only the Key-Vault wrap/unwrap is stubbed),
 so the envelope round-trip is genuinely validated end-to-end.
 """
-import os
 from types import SimpleNamespace
 
 import pytest
@@ -105,41 +104,5 @@ class TestFactorySelectsAzureKeyVault:
         assert provider is providers.get_secrets_provider()  # cached singleton
 
 
-# ---------------------------------------------------------------------------
-# Real Key Vault integration — runs only when pointed at an actual vault
-# (needs `az login` for DefaultAzureCredential). Verifies the KeyProvider +
-# SecretsProvider against the resources the keyvault Terraform module creates:
-#   export AZURE_KEY_VAULT_URL=$(terraform -chdir=infrastructure/azure output -raw key_vault_url)
-#   export ENCRYPTION_KEY_VAULT_KEY_ID=$(terraform -chdir=infrastructure/azure output -raw encryption_key_vault_key_id)
-# ---------------------------------------------------------------------------
-_REAL_VAULT = os.environ.get("AZURE_KEY_VAULT_URL", "")
-_REAL_KEY_ID = os.environ.get("ENCRYPTION_KEY_VAULT_KEY_ID", "")
-
-
-@pytest.mark.skipif(
-    not (_REAL_VAULT and _REAL_KEY_ID),
-    reason="AZURE_KEY_VAULT_URL / ENCRYPTION_KEY_VAULT_KEY_ID not set (no real vault)",
-)
-class TestAgainstRealKeyVault:
-    def test_secret_round_trips(self):
-        from shared.providers.azure.keyvault_secrets import KeyVaultSecretsProvider
-
-        name = os.environ.get("AZURE_KEYVAULT_SMOKE_SECRET", "shipx-smoke-secret")
-        assert KeyVaultSecretsProvider().get_secret(name) == "ok"
-
-    def test_envelope_key_wrap_unwrap_round_trips(self):
-        from shared.providers.azure.keyvault import KeyVaultKeyProvider
-
-        provider = KeyVaultKeyProvider(_REAL_KEY_ID)
-        plaintext, wrapped = provider.generate_data_key()
-        assert len(plaintext) == 32
-        assert provider.decrypt_data_key(wrapped) == plaintext
-
-    def test_integrates_with_the_real_fernet_envelope(self, monkeypatch):
-        from shared import encryption
-        from shared.providers.azure.keyvault import KeyVaultKeyProvider
-
-        monkeypatch.setattr(encryption, "get_key_provider", lambda: KeyVaultKeyProvider(_REAL_KEY_ID))
-        token = encryption.encrypt_field("id-number-12345")
-        assert token != "id-number-12345"
-        assert encryption.decrypt_field(token) == "id-number-12345"
+# Real Key Vault round-trips (RSA wrap/unwrap + secret read against a live vault)
+# are verified by scripts/azure_smoke.py, not pytest — the suite stays mocked.

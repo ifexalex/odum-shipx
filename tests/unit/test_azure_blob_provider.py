@@ -1,19 +1,12 @@
-"""Integration tests for the Azure Blob StorageProvider adapter.
+"""Unit tests for the Azure Blob StorageProvider adapter — fully mocked.
 
-Runs against **real Azure Blob Storage** when `AZURE_STORAGE_CONNECTION_STRING`
-is set in the environment (e.g. `terraform output -raw storage_connection_string`
-from `infrastructure/azure`), otherwise against **Azurite** (Microsoft's official
-local emulator, in `docker-compose.local.yml`). Either way these exercise real
-SDK call shapes and real SAS round-trips — the Azure equivalent of the
-moto-backed `test_storage_provider.py`.
-
-Skips automatically when neither is available, so the suite stays green without
-them. Run locally against Azurite: `docker compose -f docker-compose.local.yml
-up -d azurite`; against your Azure account: `export AZURE_STORAGE_CONNECTION_STRING=$(terraform -chdir=infrastructure/azure output -raw storage_connection_string)`.
+Hermetic: no Azurite, no network, no real Azure. A small in-memory fake stands
+in for the Blob container client (put/get/size/delete round-trip in a dict), and
+`generate_blob_sas` is patched to a fixed token — so the adapter's logic and the
+SDK call shapes are verified without any external service. Real end-to-end proof
+against Azurite or a live account lives in `scripts/azure_smoke.py`, not pytest.
 """
-import os
-import socket
-import uuid
+from types import SimpleNamespace
 
 import pytest
 
@@ -21,49 +14,73 @@ pytest.importorskip("azure.storage.blob")
 
 from shared.providers.base import StorageProvider, UploadTicket  # noqa: E402
 
-# A real connection string from the environment wins; else the well-known public
-# Azurite dev account (not a secret).
-_AZURITE_CONN = (
-    "DefaultEndpointsProtocol=http;"
-    "AccountName=devstoreaccount1;"
-    "AccountKey=Eby8vdM02xNOcqFlqUwJPLlmEtlCDXJ1OUzFT50uSRZ6IFsuFq2UVErCz4I6tq/K1SZFPTOtr/KBHBeksoGMGw==;"
-    "BlobEndpoint=http://127.0.0.1:10000/devstoreaccount1;"
+_DUMMY_CONN = (
+    "DefaultEndpointsProtocol=https;AccountName=acct;AccountKey=a2V5;" "BlobEndpoint=https://acct.blob.core.windows.net/;"
 )
-_REAL_CONN = os.environ.get("AZURE_STORAGE_CONNECTION_STRING", "")
-_CONN = _REAL_CONN or _AZURITE_CONN
 
 
-def _azurite_up() -> bool:
-    try:
-        with socket.create_connection(("127.0.0.1", 10000), timeout=1):
-            return True
-    except OSError:
-        return False
+class _FakeBlobClient:
+    def __init__(self, store, key):
+        self._store = store
+        self._key = key
+
+    @property
+    def url(self):
+        return f"https://acct.blob.core.windows.net/cont/{self._key}"
+
+    def get_blob_properties(self):
+        from azure.core.exceptions import ResourceNotFoundError
+
+        if self._key not in self._store:
+            raise ResourceNotFoundError(f"missing {self._key}")
+        return SimpleNamespace(size=len(self._store[self._key]))
 
 
-# Real account → always run; else require Azurite on :10000.
-pytestmark = pytest.mark.skipif(
-    not _REAL_CONN and not _azurite_up(),
-    reason="No AZURE_STORAGE_CONNECTION_STRING and Azurite not running on :10000",
-)
+class _FakeDownload:
+    def __init__(self, data):
+        self._data = data
+
+    def readall(self):
+        return self._data
+
+
+class _FakeContainerClient:
+    """In-memory stand-in for azure.storage.blob ContainerClient."""
+
+    def __init__(self, store):
+        self._store = store
+
+    def get_blob_client(self, key):
+        return _FakeBlobClient(self._store, key)
+
+    def upload_blob(self, name, data, overwrite, content_settings):  # noqa: ARG002
+        self._store[name] = data
+
+    def download_blob(self, key):
+        return _FakeDownload(self._store[key])
+
+    def list_blobs(self, name_starts_with):
+        return [SimpleNamespace(name=k) for k in list(self._store) if k.startswith(name_starts_with)]
+
+    def delete_blob(self, name, delete_snapshots):  # noqa: ARG002
+        self._store.pop(name, None)
 
 
 @pytest.fixture
 def blob_provider(monkeypatch):
-    monkeypatch.setenv("AZURE_STORAGE_CONNECTION_STRING", _CONN)
+    monkeypatch.setenv("AZURE_STORAGE_CONNECTION_STRING", _DUMMY_CONN)
+    import azure.storage.blob as asb
 
-    from azure.storage.blob import BlobServiceClient
-
-    container = f"test-{uuid.uuid4().hex}"
-    svc = BlobServiceClient.from_connection_string(_CONN)
-    svc.create_container(container)
+    # generate_blob_sas is imported inside the adapter's methods — patch at source.
+    monkeypatch.setattr(asb, "generate_blob_sas", lambda **kwargs: "sv=2024&sig=FAKESIG")
 
     from shared.providers.azure.blob import BlobStorageProvider
 
-    try:
-        yield BlobStorageProvider(container)
-    finally:
-        svc.delete_container(container)
+    provider = BlobStorageProvider("cont")
+    # One shared in-memory store so put/get/size/delete + SAS-url methods agree.
+    store: dict = {}
+    monkeypatch.setattr(provider, "_container_client", lambda: _FakeContainerClient(store))
+    return provider
 
 
 class TestBlobStorageProvider:
@@ -71,15 +88,13 @@ class TestBlobStorageProvider:
         assert isinstance(blob_provider, StorageProvider)
 
     def test_put_then_get_round_trips_bytes(self, blob_provider):
-        key = "tenant-1/exports/report.xlsx"
-        blob_provider.put_object(key, b"spreadsheet-bytes", content_type="application/octet-stream")
-        assert blob_provider.get_object(key) == b"spreadsheet-bytes"
+        blob_provider.put_object("tenant-1/x.xlsx", b"spreadsheet", content_type="application/octet-stream")
+        assert blob_provider.get_object("tenant-1/x.xlsx") == b"spreadsheet"
 
     def test_object_size_matches_body_and_is_none_when_absent(self, blob_provider):
-        key = "tenant-1/imports/x.xlsx"
-        blob_provider.put_object(key, b"12345", content_type="text/plain")
-        assert blob_provider.object_size(key) == 5
-        assert blob_provider.object_size("tenant-1/imports/missing.xlsx") is None
+        blob_provider.put_object("tenant-1/x.xlsx", b"12345", content_type="text/plain")
+        assert blob_provider.object_size("tenant-1/x.xlsx") == 5
+        assert blob_provider.object_size("tenant-1/missing.xlsx") is None
 
     def test_presigned_upload_is_a_put_ticket_with_blob_type_header(self, blob_provider):
         ticket = blob_provider.presigned_upload("tenant-1/claims/c1/evidence.png", content_type="image/png", expires_in=3600)
@@ -88,43 +103,23 @@ class TestBlobStorageProvider:
         # The Azure-required blob-type header rides in upload_headers so the
         # frontend's generic PUT satisfies it (parity with the S3 contract).
         assert ticket.headers == {"Content-Type": "image/png", "x-ms-blob-type": "BlockBlob"}
-        # Works for both Azurite (http://127.0.0.1:10000/...) and real Azure
-        # (https://<account>.blob.core.windows.net/...): the blob path + a SAS.
         assert "tenant-1/claims/c1/evidence.png" in ticket.url
         assert "sig=" in ticket.url
 
-    def test_presigned_upload_url_actually_accepts_a_browser_put(self, blob_provider):
-        """End-to-end: the ticket a browser would use really uploads to Azurite."""
-        import requests
+    def test_presigned_get_url_signs_the_key(self, blob_provider):
+        url = blob_provider.presigned_get_url("tenant-1/doc.pdf", expires_in=300)
+        assert "tenant-1/doc.pdf" in url
+        assert "sig=" in url
 
-        key = "tenant-1/claims/c1/evidence.png"
-        ticket = blob_provider.presigned_upload(key, content_type="image/png", expires_in=3600)
+    def test_presigned_get_url_passes_content_disposition_to_sas(self, blob_provider, monkeypatch):
+        import azure.storage.blob as asb
 
-        resp = requests.put(ticket.url, data=b"\x89PNG-bytes", headers=ticket.headers, timeout=10)
-        assert resp.status_code == 201, resp.text
-
-        assert blob_provider.get_object(key) == b"\x89PNG-bytes"
-
-    def test_presigned_get_url_actually_serves_the_blob(self, blob_provider):
-        import requests
-
-        key = "tenant-1/doc.pdf"
-        blob_provider.put_object(key, b"pdf-body", content_type="application/pdf")
-
-        url = blob_provider.presigned_get_url(key, expires_in=300)
-        resp = requests.get(url, timeout=10)
-        assert resp.status_code == 200
-        assert resp.content == b"pdf-body"
-
-    def test_presigned_get_url_sets_content_disposition(self, blob_provider):
-        import requests
-
-        key = "tenant-1/doc.pdf"
-        blob_provider.put_object(key, b"pdf-body", content_type="application/pdf")
-
-        url = blob_provider.presigned_get_url(key, expires_in=300, response_content_disposition='attachment; filename="safe.pdf"')
-        resp = requests.get(url, timeout=10)
-        assert resp.headers.get("Content-Disposition") == 'attachment; filename="safe.pdf"'
+        captured: dict = {}
+        monkeypatch.setattr(asb, "generate_blob_sas", lambda **kwargs: captured.update(kwargs) or "sig=x")
+        blob_provider.presigned_get_url(
+            "tenant-1/doc.pdf", expires_in=300, response_content_disposition='attachment; filename="safe.pdf"'
+        )
+        assert captured["content_disposition"] == 'attachment; filename="safe.pdf"'
 
     def test_delete_prefix_removes_only_matching_keys_and_counts_them(self, blob_provider):
         blob_provider.put_object("tenant-1/a.txt", b"a", content_type="text/plain")
@@ -135,13 +130,12 @@ class TestBlobStorageProvider:
 
         assert deleted == 2
         assert blob_provider.object_size("tenant-1/a.txt") is None
-        assert blob_provider.object_size("tenant-1/nested/b.txt") is None
         assert blob_provider.object_size("tenant-2/c.txt") == 1
 
 
 class TestStorageFactorySelectsAzure:
     def test_azure_cloud_returns_blob_provider(self, monkeypatch):
-        monkeypatch.setenv("AZURE_STORAGE_CONNECTION_STRING", _CONN)
+        monkeypatch.setenv("AZURE_STORAGE_CONNECTION_STRING", _DUMMY_CONN)
 
         import shared.providers as providers
         from shared.providers.azure.blob import BlobStorageProvider

@@ -203,11 +203,11 @@ Keep this terminal open. The server stays running while you use Postman.
 | `shipx_azurite` | Azure Storage emulator (Blob/Queue/Table) — portability tests | 10000-10002 |
 | `shipx_adminer` | Web-based DB viewer | 8080 |
 
-> **Azurite (Azure portability):** optional — only needed to run the Azure provider
-> adapter integration tests (e.g. `tests/unit/test_azure_blob_provider.py`), which
-> **skip** when it isn't running. Start it with
-> `docker compose -f docker-compose.local.yml up -d azurite`. It's the Azure sibling
-> of `moto`; see `infrastructure/azure/README.md` → "Local testing".
+> **Azurite (Azure portability):** optional — the **pytest suite is fully mocked and
+> does not need it**. It's used only by `scripts/azure_smoke.py` for live SAS
+> round-trips against a local Azure Storage emulator. Start it with
+> `docker compose -f docker-compose.local.yml up -d azurite`; see
+> `infrastructure/azure/README.md` → "Local testing".
 
 > **Note:** Moto is stateless — SQS queues and S3 buckets are lost when the container restarts. Re-run `make bootstrap` (or `make stack`) after every `make up`.
 >
