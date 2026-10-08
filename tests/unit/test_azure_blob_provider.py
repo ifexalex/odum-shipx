@@ -1,13 +1,17 @@
-"""Integration tests for the Azure Blob StorageProvider adapter against Azurite.
+"""Integration tests for the Azure Blob StorageProvider adapter.
 
-Azurite (Microsoft's official local Azure Storage emulator, in
-`docker-compose.local.yml`) stands in for real Azure Blob Storage, so these
-exercise real SDK call shapes and real SAS round-trips — the Azure equivalent of
-the moto-backed `test_storage_provider.py`. Skipped automatically when Azurite is
-not reachable on :10000, so the suite stays green without it.
+Runs against **real Azure Blob Storage** when `AZURE_STORAGE_CONNECTION_STRING`
+is set in the environment (e.g. `terraform output -raw storage_connection_string`
+from `infrastructure/azure`), otherwise against **Azurite** (Microsoft's official
+local emulator, in `docker-compose.local.yml`). Either way these exercise real
+SDK call shapes and real SAS round-trips — the Azure equivalent of the
+moto-backed `test_storage_provider.py`.
 
-Run locally: `docker compose -f docker-compose.local.yml up -d azurite`.
+Skips automatically when neither is available, so the suite stays green without
+them. Run locally against Azurite: `docker compose -f docker-compose.local.yml
+up -d azurite`; against your Azure account: `export AZURE_STORAGE_CONNECTION_STRING=$(terraform -chdir=infrastructure/azure output -raw storage_connection_string)`.
 """
+import os
 import socket
 import uuid
 
@@ -17,13 +21,16 @@ pytest.importorskip("azure.storage.blob")
 
 from shared.providers.base import StorageProvider, UploadTicket  # noqa: E402
 
-# Well-known public Azurite dev account (not a secret).
+# A real connection string from the environment wins; else the well-known public
+# Azurite dev account (not a secret).
 _AZURITE_CONN = (
     "DefaultEndpointsProtocol=http;"
     "AccountName=devstoreaccount1;"
     "AccountKey=Eby8vdM02xNOcqFlqUwJPLlmEtlCDXJ1OUzFT50uSRZ6IFsuFq2UVErCz4I6tq/K1SZFPTOtr/KBHBeksoGMGw==;"
     "BlobEndpoint=http://127.0.0.1:10000/devstoreaccount1;"
 )
+_REAL_CONN = os.environ.get("AZURE_STORAGE_CONNECTION_STRING", "")
+_CONN = _REAL_CONN or _AZURITE_CONN
 
 
 def _azurite_up() -> bool:
@@ -34,17 +41,21 @@ def _azurite_up() -> bool:
         return False
 
 
-pytestmark = pytest.mark.skipif(not _azurite_up(), reason="Azurite not running on :10000")
+# Real account → always run; else require Azurite on :10000.
+pytestmark = pytest.mark.skipif(
+    not _REAL_CONN and not _azurite_up(),
+    reason="No AZURE_STORAGE_CONNECTION_STRING and Azurite not running on :10000",
+)
 
 
 @pytest.fixture
 def blob_provider(monkeypatch):
-    monkeypatch.setenv("AZURE_STORAGE_CONNECTION_STRING", _AZURITE_CONN)
+    monkeypatch.setenv("AZURE_STORAGE_CONNECTION_STRING", _CONN)
 
     from azure.storage.blob import BlobServiceClient
 
     container = f"test-{uuid.uuid4().hex}"
-    svc = BlobServiceClient.from_connection_string(_AZURITE_CONN)
+    svc = BlobServiceClient.from_connection_string(_CONN)
     svc.create_container(container)
 
     from shared.providers.azure.blob import BlobStorageProvider
@@ -77,7 +88,10 @@ class TestBlobStorageProvider:
         # The Azure-required blob-type header rides in upload_headers so the
         # frontend's generic PUT satisfies it (parity with the S3 contract).
         assert ticket.headers == {"Content-Type": "image/png", "x-ms-blob-type": "BlockBlob"}
-        assert ticket.url.startswith("http://127.0.0.1:10000/")
+        # Works for both Azurite (http://127.0.0.1:10000/...) and real Azure
+        # (https://<account>.blob.core.windows.net/...): the blob path + a SAS.
+        assert "tenant-1/claims/c1/evidence.png" in ticket.url
+        assert "sig=" in ticket.url
 
     def test_presigned_upload_url_actually_accepts_a_browser_put(self, blob_provider):
         """End-to-end: the ticket a browser would use really uploads to Azurite."""
@@ -127,7 +141,7 @@ class TestBlobStorageProvider:
 
 class TestStorageFactorySelectsAzure:
     def test_azure_cloud_returns_blob_provider(self, monkeypatch):
-        monkeypatch.setenv("AZURE_STORAGE_CONNECTION_STRING", _AZURITE_CONN)
+        monkeypatch.setenv("AZURE_STORAGE_CONNECTION_STRING", _CONN)
 
         import shared.providers as providers
         from shared.providers.azure.blob import BlobStorageProvider

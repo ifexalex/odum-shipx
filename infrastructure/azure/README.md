@@ -12,14 +12,14 @@ Azure (e.g. to use Founders Hub credits) without re-architecting.
 | Frontend hosting / CDN | S3 + CloudFront | **Blob static website + Front Door Standard** | ✅ |
 | WAF / DDoS | CloudFront WAF | Cloudflare (recommended) / Front Door Premium | ⏳ |
 | Backend compute | Lambda | Container Apps / Functions | ⏳ |
-| Object storage | S3 | **Blob (`BlobStorageProvider`)** — app adapter done, Azurite-tested | 🔨 |
+| Object storage | S3 | **Blob (`BlobStorageProvider`)** — adapter + `modules/storage` Terraform; Azurite- & real-account-testable | 🔨 |
 | Queue | SQS | **Service Bus (`ServiceBusQueueProvider`)** — app adapter done, mocked-SDK tested | 🔨 |
 | Database | Aurora Serverless v2 | PostgreSQL Flexible Server | ⏳ |
 | Cache | ElastiCache | Azure Cache for Redis | ⏳ |
 | Auth | Cognito | Entra External ID | ⏳ |
 | Events | EventBridge | **Event Grid (`EventGridProvider`)** — app adapter done, mocked-SDK tested | 🔨 |
 | Email | SES | **ACS Email (`AcsEmailProvider`)** — app adapter done, mocked-SDK tested | 🔨 |
-| Secrets / crypto | Secrets Manager + KMS | **Key Vault (`KeyVaultSecretsProvider` + `KeyVaultKeyProvider`)** — app adapters done, mocked-SDK tested | 🔨 |
+| Secrets / crypto | Secrets Manager + KMS | **Key Vault (`KeyVaultSecretsProvider` + `KeyVaultKeyProvider`)** — adapters + `modules/keyvault` Terraform; real-account-verifiable | 🔨 |
 
 ## Frontend module (what's here now)
 
@@ -143,6 +143,38 @@ What has a local emulator: Blob/Queue/Table (**Azurite**), Postgres (plain
 Postgres, already in the stack), Functions (`func` core tools). What does **not**
 and needs a free test resource/tenant: Key Vault, Event Grid, ACS email, and —
 critically — **Entra** (identity). See ADR-004.
+
+## Backend adapter targets — provision + verify against real Azure
+
+The `storage` and `keyvault` modules create the real resources behind
+`shared/providers/azure/{blob,keyvault,keyvault_secrets}.py`. Sized to free/cheap
+tiers (Standard LRS storage; Standard Key Vault — per-op pennies). Provision and
+then run the **same adapter tests** against the real resources (no emulator):
+
+```bash
+az login                      # DefaultAzureCredential + Terraform auth
+cd infrastructure/azure
+terraform init
+# Just the adapter targets (skips Front Door):
+terraform apply -target=module.storage -target=module.keyvault
+
+# Point the adapters at the real resources:
+export AZURE_STORAGE_CONNECTION_STRING=$(terraform output -raw storage_connection_string)
+export BLOB_CONTAINER_NAME=$(terraform output -raw blob_container_name)
+export AZURE_KEY_VAULT_URL=$(terraform output -raw key_vault_url)
+export ENCRYPTION_KEY_VAULT_KEY_ID=$(terraform output -raw encryption_key_vault_key_id)
+
+# Verify — these now hit YOUR Azure, not Azurite/mocks:
+cd ../..
+python -m pytest tests/unit/test_azure_blob_provider.py \
+                 tests/unit/test_azure_keyvault_provider.py -v
+```
+
+With `AZURE_STORAGE_CONNECTION_STRING` set, the Blob tests target your real
+storage account (SAS PUT→201, SAS GET→200); with the vault vars set, the
+`TestAgainstRealKeyVault` cases run real RSA wrap/unwrap + secret reads (they
+skip otherwise). Tear down with `terraform destroy` when done (the test vault
+has purge-protection off so it fully deletes).
 
 ## Notes
 - Storage account names are globally unique, lowercase, ≤24 chars — the module
