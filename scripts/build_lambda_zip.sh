@@ -25,14 +25,17 @@ mkdir -p "$PKG_DIR"
 # 2. Install Python dependencies into the package root (Lambda expects them there)
 echo ""
 echo "--- Installing Python dependencies ---"
-pip3 install \
+# Export the pinned runtime deps from the uv lock, then install for the arm64
+# Lambda target (python3.13 runtime → manylinux_2_28).
+uv export --frozen --no-hashes --no-emit-project --no-default-groups \
+  --project "$PROJECT_ROOT" -o "$PROJECT_ROOT/build/runtime-reqs.txt"
+uv pip install \
   --quiet \
   --target "$PKG_DIR" \
-  --platform manylinux2014_aarch64 \
-  --implementation cp \
-  --python-version 3.12 \
-  --only-binary=:all: \
-  -r "$PROJECT_ROOT/requirements.txt"
+  --python-platform aarch64-manylinux_2_28 \
+  --python-version 3.13 \
+  --only-binary :all: \
+  -r "$PROJECT_ROOT/build/runtime-reqs.txt"
 
 # 3. Copy services/ and shared/ code (handler modules)
 echo ""

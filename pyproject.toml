@@ -4,7 +4,67 @@ version = "1.0.0"
 description = "Multi-tenant Logistics & Cargo Management System"
 requires-python = ">=3.13"
 
+# Runtime dependencies — the third-party packages the app imports at runtime and
+# that are bundled into the shared Lambda layer. Managed by uv; uv.lock is the
+# single source of truth (fully resolved + hash-locked). Exact pins per the
+# CLAUDE.md dependency standard.
+dependencies = [
+    "aws-xray-sdk==2.14.0",
+    "boto3==1.34.0",
+    "cryptography==50.0.2",
+    "openpyxl==3.1.2",
+    "psycopg2-binary==2.9.11",
+    "pydantic==2.12.5",
+    "redis==5.0.3",
+    "reportlab==4.1.0",
+]
+
+[project.optional-dependencies]
+# Azure portability SDKs — installed only when deploying to Azure
+# (CLOUD_PROVIDER=azure) via `uv sync --extra azure`. Kept out of the default
+# set so the AWS Lambda bundle stays lean. See docs/adr/004-...-entra-....
+azure = [
+    "azure-communication-email==1.1.0",
+    "azure-eventgrid==4.22.1",
+    "azure-identity==1.26.0",
+    "azure-keyvault-keys==4.11.3",
+    "azure-keyvault-secrets==4.11.3",
+    "azure-servicebus==7.14.3",
+    "azure-storage-blob==12.31.0",
+]
+
+[dependency-groups]
+# Dev/test/lint/local-dev tooling (PEP 735 groups — not shipped to Lambda).
+# `uv sync` installs these by default.
+dev = [
+    "alembic==1.13.0",
+    "bandit==1.7.7",
+    "flask==3.1.3",
+    "flask-cors==6.0.2",
+    "locust==2.24.0",
+    "moto[all]==5.0.0",
+    "mypy==1.19.1",
+    "pytest==8.3.5",
+    "pytest-asyncio==0.23.8",
+    "pytest-cov==4.1.0",
+    "pytest-timeout==2.2.0",
+    "requests==2.34.2",
+    "ruff==0.2.0",
+    "safety==3.7.0",
+]
+# Extra packages the shared Lambda layer bundles beyond `dependencies` (alembic
+# for the migrate Lambda). The layer = project runtime deps + this group; the CI
+# layer build does `uv export --group layer` then installs for arm64.
+layer = ["alembic==1.13.0"]
+
+[tool.uv]
+# This is a deployed application, not a distributable package — uv manages the
+# environment but never builds/installs the project itself.
+package = false
+
 [tool.ruff]
+# ruff 0.2.0's newest known target is py312; the runtime is 3.13 (see mypy +
+# the Lambda runtime). py312 is a safe lower bound for the lint ruleset.
 target-version = "py312"
 line-length = 130
 exclude = [

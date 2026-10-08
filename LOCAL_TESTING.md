@@ -96,17 +96,16 @@ source .venv/bin/activate          # macOS / Linux
 
 ### 3.3 Install Python dependencies
 
-```bash
-pip install --upgrade pip
-pip install -r requirements.txt
-pip install flask                  # needed only for local_server.py
-```
-
-If you also run tests:
+Dependencies are managed with **uv** (install it once: `pip install uv` or
+`curl -LsSf https://astral.sh/uv/install.sh | sh`). `uv sync` creates a `.venv`
+and installs the locked deps — runtime + dev tools + flask (for `local_server.py`):
 
 ```bash
-pip install -r requirements-dev.txt
+uv sync --extra azure        # runtime + dev group + azure SDKs; omit --extra azure for AWS-only
 ```
+
+Then either prefix commands with `uv run` (e.g. `uv run pytest`, `uv run python scripts/...`)
+or activate the venv: `source .venv/bin/activate`.
 
 ### 3.4 Create your local env file
 
@@ -662,9 +661,8 @@ Prerequisites
 
 First-time setup
 [ ] cd /path/to/shipx
-[ ] python3 -m venv .venv && source .venv/bin/activate
-[ ] pip install -r requirements.txt && pip install flask
-[ ] pip install -r requirements-dev.txt       ← for running tests
+[ ] pip install uv                            ← once (or the astral install script)
+[ ] uv sync --extra azure                     ← creates .venv + installs locked deps (runtime + dev + azure)
 
 Start the stack (one command)
 [ ] make stack                                ← up + bootstrap + migrate + seed

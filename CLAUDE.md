@@ -96,9 +96,14 @@ Security review checklist (required for PRs touching auth, billing, payments, or
 - [ ] Sensitive fields masked in audit log snapshots
 
 ### Dependency Management
-- All versions must be **pinned exactly** in `requirements.txt` (e.g. `openpyxl==3.1.2`). No `>=` or `~=`.
-- Run `pip audit` in CI; fail the build on HIGH or CRITICAL CVEs.
-- Dependency updates require a dedicated PR with changelog review.
+- Dependencies are managed with **uv**. Declare them in `pyproject.toml` (`[project.dependencies]`
+  runtime, `[project.optional-dependencies].azure`, `[dependency-groups]` dev/layer) with **exact
+  pins** (e.g. `openpyxl==3.1.2`). No `>=` or `~=`. The committed **`uv.lock`** is the source of
+  truth (fully resolved + hash-locked) — run `uv lock` / `uv sync`; never hand-edit `uv.lock`.
+- Run the dependency CVE scan in CI (`safety` over `uv export`); fail the build on HIGH/CRITICAL.
+- Dependency updates require a dedicated PR with changelog review (Dependabot opens them).
+- The Lambda layer / zips are built by exporting the locked deps (`uv export`) and installing for
+  the arm64 python3.13 target (`uv pip install --python-platform aarch64-manylinux_2_28`).
 
 ### Incident Response SLA
 | Severity | Patch Within |
