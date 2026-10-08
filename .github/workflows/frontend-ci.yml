@@ -1,0 +1,268 @@
+name: Frontend CI
+
+on:
+  pull_request:
+    branches: [main]
+    paths: ["frontend/**", ".github/workflows/frontend-ci.yml"]
+  push:
+    branches: [main]
+    paths: ["frontend/**", ".github/workflows/frontend-ci.yml"]
+
+concurrency:
+  group: frontend-ci-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+  id-token: write   # needed for OIDC → AWS assume-role on deploy
+
+defaults:
+  run:
+    working-directory: frontend
+
+jobs:
+  build-and-test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - run: npm ci
+      - run: npm run typecheck
+      - run: npm run lint
+      - run: npm test
+      - run: npm run build
+      - name: Dependency vulnerability scan
+        run: npm audit --audit-level=high
+
+      # Security checks — these grep the source tree and fail the build if
+      # a violation is found. They catch regressions that TypeScript can't.
+      - name: "Security: no localStorage/sessionStorage in auth layer"
+        run: |
+          if grep -rn --include="*.ts" --include="*.tsx" \
+            "localStorage\|sessionStorage" src/auth/; then
+            echo "❌ Token storage violation: localStorage/sessionStorage found in src/auth/"
+            echo "   Tokens must stay in memory only (11_security_and_compliance.md)."
+            exit 1
+          fi
+          echo "✅ No localStorage/sessionStorage in src/auth/"
+
+      - name: "Security: no dangerouslySetInnerHTML in app code"
+        run: |
+          if grep -rn --include="*.tsx" \
+            "dangerouslySetInnerHTML" src/; then
+            echo "❌ XSS risk: dangerouslySetInnerHTML found in src/"
+            echo "   Render tenant-supplied content as escaped React nodes (11_security_and_compliance.md)."
+            exit 1
+          fi
+          echo "✅ No dangerouslySetInnerHTML in src/"
+
+      # Design-system: pages must not hardcode a hex colour that a design token
+      # already defines (03_component_library.md). One-off layout inline styles
+      # (flex/gap/margin) are fine; duplicating a token colour is not — use
+      # var(--color-*). Excludes SVG illustration attributes and the print pages
+      # (deliberately fixed print colours, rendered shell-less).
+      - name: "Design: no token-duplicating hex colours in pages"
+        run: |
+          TOKENS='#(1c7922|14471a|155f1b|2dc438|d6f5da|f3fcf4|0b2f0d|9a3412|7c2d12|c2410c|fed7aa|1c1b1c|374151|666666|6b7280|16a34a|d97706|dc2626|2563eb|7c3aed|4f46e5|ede9fe)'
+          HITS=$(grep -rnoiE "$TOKENS" src/pages --include="*.tsx" \
+            | grep -v "src/pages/print/" \
+            | grep -v "\.test\." \
+            | grep -viE "fill=|stopColor|<svg|<path|<circle|<rect|routeGrad|KolaMark|illustration" || true)
+          if [ -n "$HITS" ]; then
+            echo "❌ Token-duplicating hex colour(s) in page code — use var(--color-*):"
+            echo "$HITS"
+            exit 1
+          fi
+          echo "✅ No token-duplicating hex colours in pages"
+
+      # Upload built dist/ as an artifact so the deploy job can use it
+      # and so any prior build can be re-deployed from CI artifacts for rollback.
+      - name: Upload build artifact
+        if: github.ref == 'refs/heads/main'
+        uses: actions/upload-artifact@v4
+        with:
+          name: frontend-dist-${{ github.sha }}
+          path: frontend/dist/
+          retention-days: 30   # keep 30 days of builds for rollback
+
+  # ──────────────────────────────────────────────────────────────────────────
+  # Playwright smoke — runs the built artifact through a headless browser with
+  # no backend. Fast, self-contained (Playwright manages `npm run preview`).
+  # ──────────────────────────────────────────────────────────────────────────
+  e2e-smoke:
+    runs-on: ubuntu-latest
+    needs: build-and-test
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - run: npm ci
+      - run: npx playwright install --with-deps chromium
+      - run: npm run build
+      - name: Run smoke e2e
+        run: npx playwright test --project=smoke
+      - uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: playwright-smoke-report
+          path: frontend/playwright-report/
+          retention-days: 7
+
+  # ──────────────────────────────────────────────────────────────────────────
+  # Playwright local-stack — the meaningful e2e flows (auth, impersonation,
+  # packing-list, public-tracking) against the real Flask API + Postgres + Moto,
+  # driven through LocalAuthProvider's role switcher (no Cognito). Boots the full
+  # stack, seeds it, starts the Vite dev server, then runs the flows project.
+  # ──────────────────────────────────────────────────────────────────────────
+  e2e-local-stack:
+    runs-on: ubuntu-latest
+    needs: build-and-test
+    defaults:
+      run:
+        working-directory: .          # backend tooling runs from the repo root
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+
+      - name: Install backend deps
+        run: pip install -r requirements-dev.txt
+
+      - name: Start local stack (Postgres + Moto + Redis)
+        run: make up
+
+      - name: Bootstrap AWS resources (SQS/EventBridge/S3 in Moto)
+        run: make bootstrap
+
+      - name: Migrate + seed database
+        run: |
+          set -a; source .env.local; set +a
+          PYTHONPATH=. python3 scripts/reset_db.py
+          PYTHONPATH=. python3 scripts/migrate.py
+          PYTHONPATH=. python3 scripts/seed.py
+
+      - name: Start Flask API server (background)
+        run: |
+          set -a; source .env.local; set +a
+          PYTHONPATH=. nohup python3 scripts/local_server.py > flask.log 2>&1 &
+          npx --yes wait-on http://localhost:3000/health --timeout 60000
+
+      - name: Install frontend deps + Playwright browser
+        working-directory: frontend
+        run: |
+          npm ci
+          npx playwright install --with-deps chromium
+
+      - name: Start Vite dev server (background, local-auth mode)
+        working-directory: frontend
+        env:
+          VITE_ENVIRONMENT: local
+        run: |
+          nohup npm run dev -- --port 5173 > vite.log 2>&1 &
+          npx --yes wait-on http://localhost:5173 --timeout 60000
+
+      - name: Run local-stack e2e flows
+        working-directory: frontend
+        env:
+          PW_E2E: local-stack           # skip Playwright's managed preview server
+        run: npx playwright test --project=local-stack
+
+      - uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: playwright-local-stack-report
+          path: |
+            frontend/playwright-report/
+            flask.log
+            frontend/vite.log
+          retention-days: 7
+
+  # ──────────────────────────────────────────────────────────────────────────
+  # Deploy job — only runs on merge to main
+  # Requires GitHub Actions secrets:
+  #   FRONTEND_DEPLOY_ROLE_ARN     — IAM role ARN with s3:PutObject + cloudfront:CreateInvalidation
+  #   FRONTEND_S3_BUCKET           — S3 bucket name (output of Terraform: frontend_bucket_name)
+  #   FRONTEND_CLOUDFRONT_ID       — CloudFront distribution ID (output: cloudfront_distribution_id)
+  #   VITE_API_BASE_URL            — API Gateway base URL for this environment
+  #   VITE_COGNITO_USER_POOL_ID    — Cognito User Pool ID
+  #   VITE_COGNITO_CLIENT_ID       — Cognito App Client ID
+  #   VITE_ENVIRONMENT             — "staging" or "production"
+  # ──────────────────────────────────────────────────────────────────────────
+  deploy:
+    runs-on: ubuntu-latest
+    needs: build-and-test
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+    environment: prod   # GitHub Environment (shared with backend) — approval gate + secrets
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - run: npm ci
+
+      # Build with production env vars from GitHub Actions secrets
+      - name: Build for deployment
+        run: npm run build
+        env:
+          VITE_API_BASE_URL:         ${{ secrets.VITE_API_BASE_URL }}
+          VITE_COGNITO_USER_POOL_ID: ${{ secrets.VITE_COGNITO_USER_POOL_ID }}
+          VITE_COGNITO_CLIENT_ID:    ${{ secrets.VITE_COGNITO_CLIENT_ID }}
+          VITE_ENVIRONMENT:          ${{ secrets.VITE_ENVIRONMENT }}
+
+      - name: Configure AWS credentials (OIDC)
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.FRONTEND_DEPLOY_ROLE_ARN }}
+          aws-region: eu-west-1
+
+      # Sync hashed assets first with long-term cache headers.
+      # Exclude index.html — upload it last so a user mid-session always
+      # gets either the old or new index.html, never a mix.
+      - name: Sync hashed assets (long cache)
+        run: |
+          aws s3 sync dist/ s3://${{ secrets.FRONTEND_S3_BUCKET }} \
+            --delete \
+            --exclude "index.html" \
+            --cache-control "max-age=31536000,immutable" \
+            --metadata-directive REPLACE
+
+      - name: Upload index.html (no-cache)
+        run: |
+          aws s3 cp dist/index.html s3://${{ secrets.FRONTEND_S3_BUCKET }}/index.html \
+            --cache-control "no-cache,no-store,must-revalidate" \
+            --metadata-directive REPLACE
+
+      # Invalidate only /index.html — hashed filenames mean other assets
+      # are already differentiated by name; a full /* invalidation is only
+      # needed if non-hashed paths change (run manually when needed).
+      - name: Invalidate CloudFront /index.html
+        run: |
+          aws cloudfront create-invalidation \
+            --distribution-id ${{ secrets.FRONTEND_CLOUDFRONT_ID }} \
+            --paths "/index.html"
+
+      - name: Deployment summary
+        run: |
+          echo "✅ Frontend deployed"
+          echo "   Commit:       ${{ github.sha }}"
+          echo "   Bucket:       ${{ secrets.FRONTEND_S3_BUCKET }}"
+          echo "   Distribution: ${{ secrets.FRONTEND_CLOUDFRONT_ID }}"

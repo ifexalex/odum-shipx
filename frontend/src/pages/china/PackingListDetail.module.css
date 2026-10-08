@@ -1,0 +1,276 @@
+.loadingState {
+  padding: 40px;
+  text-align: center;
+  color: var(--color-ink-3);
+}
+
+.banner {
+  margin-bottom: 16px;
+}
+
+.hero {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 16px;
+  margin-bottom: 24px;
+}
+
+.heroLeft {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  min-width: 0;
+}
+
+.heroIcon {
+  width: 64px;
+  height: 64px;
+  border-radius: 14px;
+  background: var(--color-success-soft);
+  color: var(--color-success);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.heroTitleRow {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.heroTitle {
+  font-family: var(--font-display);
+  font-weight: 700;
+  font-size: 26px;
+  color: var(--color-ink);
+  margin: 0;
+  letter-spacing: -0.015em;
+  line-height: 1.15;
+}
+
+.heroMeta {
+  font-size: 13px;
+  color: var(--color-ink-3);
+  margin-top: 4px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.heroActions {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  flex-shrink: 0;
+  align-items: center;
+}
+
+.itemsHead {
+  padding: 18px 20px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.totalsRow {
+  padding: 14px 20px;
+  border-top: 2px solid var(--color-line);
+  background: var(--color-primary-tint);
+  display: flex;
+  gap: 16px;
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--color-ink);
+}
+
+.totalsLabel {
+  font-weight: 500;
+  color: var(--color-ink-4);
+}
+
+.backLink {
+  margin-top: 16px;
+}
+
+.newItemTag {
+  font-style: normal;
+  font-size: 11px;
+  color: var(--color-primary);
+  background: color-mix(in srgb, var(--color-primary) 10%, transparent);
+  padding: 2px 6px;
+  border-radius: 4px;
+}
+
+.removeRow {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border: none;
+  background: none;
+  cursor: pointer;
+  border-radius: 4px;
+  color: var(--color-text-muted);
+  transition: background 0.15s, color 0.15s;
+}
+
+.removeRow:hover:not(:disabled) {
+  background: var(--color-error-soft);
+  color: var(--color-error);
+}
+
+.removeRow:disabled {
+  opacity: 0.3;
+  cursor: not-allowed;
+}
+
+.tagReadOnly {
+  font-family: var(--font-mono, monospace);
+  font-size: 12px;
+  color: var(--color-text-muted);
+  white-space: nowrap;
+}
+
+/* Inputs rendered inside Table cells inherit the cell's padding/border;
+   they only need their own border, font, and sizing. */
+.cellInput {
+  width: 100%;
+  min-width: 140px;
+  height: 30px;
+  border: 1px solid var(--color-line);
+  border-radius: 4px;
+  padding: 0 8px;
+  font-size: 13px;
+  font-family: var(--font-body);
+  background: var(--color-surface);
+  color: var(--color-ink);
+}
+
+.cellInput:focus {
+  outline: none;
+  border-color: var(--color-primary);
+}
+
+.cellInputNumber {
+  width: 72px;
+  height: 30px;
+  border: 1px solid var(--color-line);
+  border-radius: 4px;
+  padding: 0 6px;
+  font-size: 13px;
+  font-family: var(--font-mono, monospace);
+  text-align: right;
+  background: var(--color-surface);
+  color: var(--color-ink);
+}
+
+.cellInputNumber:focus {
+  outline: none;
+  border-color: var(--color-primary);
+}
+
+.dimRow {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  justify-content: center;
+}
+
+.dimInput {
+  width: 52px;
+  height: 30px;
+  border: 1px solid var(--color-line);
+  border-radius: 4px;
+  padding: 0 4px;
+  font-size: 13px;
+  font-family: var(--font-mono, monospace);
+  text-align: center;
+  background: var(--color-surface);
+  color: var(--color-ink);
+}
+
+.dimInput:focus {
+  outline: none;
+  border-color: var(--color-primary);
+}
+
+.flagOk {
+  font-size: 12px;
+  color: var(--color-ink-4);
+}
+
+.editActions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+  padding: 12px 20px 16px;
+}
+
+/* Ground-truth gap found live: .modalPanel used a fixed `width: 480px`
+   (not max-width) — genuinely wider than a phone viewport. Mobile-first
+   bottom sheet, see nigeria/ReleaseNoteDetail.module.css's matching
+   comment for the pattern reference. */
+.modalOverlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(11, 47, 13, 0.55);
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  z-index: 100;
+}
+
+.modalPanel {
+  width: 100%;
+  background: var(--color-surface);
+  border-radius: 14px 14px 0 0;
+  box-shadow: var(--shadow-modal);
+  padding: 24px 20px;
+  max-height: 90vh;
+  overflow-y: auto;
+}
+
+@container sxapp (min-width: 861px) {
+  .modalOverlay {
+    padding: 32px;
+  }
+  .modalPanel {
+    width: 480px;
+    border-radius: 14px;
+    padding: 24px;
+  }
+}
+
+.modalTitle {
+  font-family: var(--font-display);
+  font-weight: 700;
+  font-size: 18px;
+  color: var(--color-ink);
+  margin: 0 0 16px;
+}
+
+.modalActions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+  margin-top: 8px;
+}
+
+.modalActions > * {
+  min-height: 48px;
+  font-size: 1rem;
+}
+
+@container sxapp (min-width: 861px) {
+  .modalActions > * {
+    min-height: 36px;
+    font-size: inherit;
+  }
+}

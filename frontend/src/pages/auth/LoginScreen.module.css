@@ -1,0 +1,248 @@
+.shell {
+  display: flex;
+  height: 100%;
+  min-height: 720px;
+  background: var(--color-surface);
+  font-family: var(--font-body);
+  color: var(--color-ink);
+}
+
+.brandPanel {
+  width: 40%;
+  min-width: 360px;
+  background: radial-gradient(circle at 20% 100%, var(--color-primary-deep) 0%, var(--color-forest-dark) 60%);
+  color: var(--color-on-brand);
+  padding: 40px 48px;
+  display: flex;
+  flex-direction: column;
+  position: relative;
+  overflow: hidden;
+}
+
+.glow {
+  position: absolute;
+  top: -120px;
+  right: -120px;
+  width: 360px;
+  height: 360px;
+  border-radius: 50%;
+  background: radial-gradient(circle, color-mix(in srgb, var(--color-primary-bright) 13%, transparent), transparent 60%);
+  pointer-events: none;
+}
+
+.brandTop {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.brandByLine {
+  font-family: var(--font-body);
+  font-size: 11px;
+  color: rgba(255, 255, 255, 0.5);
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  font-weight: 600;
+}
+
+.tagline {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  max-width: 460px;
+  position: relative;
+  z-index: 1;
+}
+
+.illustration {
+  position: relative;
+  width: 100%;
+  max-width: 360px;
+  aspect-ratio: 1 / 1;
+  margin: 0 auto;
+}
+
+.heroHeading {
+  font-family: var(--font-display);
+  font-weight: 800;
+  font-size: 36px;
+  line-height: 1.1;
+  letter-spacing: -0.025em;
+  margin: 28px 0 14px;
+  color: var(--color-on-brand);
+}
+
+.heroAccent {
+  color: var(--color-primary-bright);
+}
+
+.heroSub {
+  font-family: var(--font-body);
+  font-size: 15px;
+  line-height: 1.55;
+  color: rgba(255, 255, 255, 0.72);
+  margin: 0;
+  max-width: 380px;
+}
+
+.brandFooter {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding-top: 24px;
+  border-top: 1px solid rgba(255, 255, 255, 0.1);
+  position: relative;
+  z-index: 1;
+}
+
+.footerCopy {
+  font-size: 11px;
+  color: rgba(255, 255, 255, 0.4);
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  font-weight: 600;
+}
+
+.statusRow {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.statusDot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--color-primary-bright);
+  box-shadow: 0 0 8px var(--color-primary-bright);
+}
+
+.statusText {
+  font-size: 11px;
+  color: rgba(255, 255, 255, 0.5);
+  letter-spacing: 0.1em;
+  font-weight: 600;
+}
+
+.formPanel {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 56px 32px;
+  overflow: auto;
+}
+
+.formWrap {
+  width: 100%;
+  max-width: 440px;
+}
+
+.formHead {
+  margin-bottom: 28px;
+}
+
+.formTitle {
+  font-family: var(--font-display);
+  font-weight: 700;
+  font-size: 28px;
+  letter-spacing: -0.018em;
+  color: var(--color-ink);
+  margin: 0 0 6px;
+}
+
+.formSub {
+  font-size: 14px;
+  color: var(--color-ink-3);
+  margin: 0;
+  line-height: 1.5;
+}
+
+.rowBetween {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin: 4px 0 24px;
+}
+
+.rememberLabel {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  cursor: pointer;
+  font-size: 13px;
+  color: var(--color-ink-2);
+  font-weight: 500;
+}
+
+.link {
+  color: var(--color-primary);
+  font-weight: 600;
+  font-size: 13px;
+  text-decoration: none;
+  background: none;
+  border: none;
+  cursor: pointer;
+  padding: 0;
+}
+
+.trailingButton {
+  display: inline-flex;
+  background: none;
+  border: none;
+  padding: 0;
+  margin: 0;
+  cursor: pointer;
+  color: var(--color-ink-4);
+}
+.trailingButton:focus-visible {
+  outline: none;
+  box-shadow: var(--shadow-focus-ring);
+}
+
+.divider {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin: 20px 0;
+  color: var(--color-ink-4);
+  font-size: 12px;
+  font-weight: 500;
+}
+.dividerLine {
+  flex: 1;
+  height: 1px;
+  background: var(--color-line);
+}
+.dividerText {
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+}
+
+.footerLine {
+  text-align: center;
+  font-size: 13px;
+  color: var(--color-ink-3);
+  margin: 0;
+}
+
+.footerLinkStrong {
+  color: var(--color-primary);
+  font-weight: 700;
+  text-decoration: none;
+  background: none;
+  border: none;
+  cursor: pointer;
+  padding: 0;
+  font-size: 13px;
+}
+
+/* Prototype (auth-screens.jsx @container sxauth): brand panel hides at 920px,
+   two-column form grids collapse at 560px. The auth frame is full-viewport, so
+   media queries are equivalent to the prototype's container queries here. */
+@media (max-width: 920px) {
+  .brandPanel {
+    display: none;
+  }
+}

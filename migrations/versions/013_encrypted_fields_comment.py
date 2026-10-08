@@ -27,7 +27,7 @@ Encryption scheme:
        base64-encoded before storage. No plaintext key material ever touches the DB.
 
 KMS key: alias/{project_name}-field-encryption-{environment}
-Terraform: infrastructure/modules/kms/main.tf
+Terraform: infrastructure/aws/modules/kms/main.tf
 
 Revision ID: 013
 Revises: 012

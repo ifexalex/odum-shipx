@@ -1,0 +1,186 @@
+.topnav {
+  background: var(--color-primary);
+  color: var(--color-on-brand);
+  height: 72px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 32px;
+  font-family: var(--font-body);
+  flex-shrink: 0;
+  box-shadow: var(--shadow-rest);
+}
+
+.brand {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.links {
+  display: flex;
+  gap: 4px;
+  align-items: center;
+}
+
+.navLink {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  height: 40px;
+  padding: 0 16px;
+  border-radius: var(--radius-full);
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  color: rgba(255, 255, 255, 0.75);
+  font-family: var(--font-body);
+  font-weight: 500;
+  font-size: 14px;
+}
+
+.navLinkActive {
+  background: rgba(255, 255, 255, 0.15);
+  color: var(--color-on-brand);
+  font-weight: 700;
+}
+
+.badge {
+  background: var(--color-accent);
+  color: var(--color-on-brand);
+  border-radius: var(--radius-full);
+  padding: 1px 7px;
+  font-size: 10px;
+  font-weight: 700;
+  min-width: 18px;
+  text-align: center;
+}
+
+.right {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.bellWrap {
+  position: relative;
+  display: inline-flex;
+}
+
+.iconButton {
+  position: relative;
+  width: 38px;
+  height: 38px;
+  border-radius: var(--radius-full);
+  background: rgba(255, 255, 255, 0.1);
+  border: none;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  color: var(--color-on-brand);
+}
+
+.notifBadge {
+  position: absolute;
+  top: -2px;
+  right: -2px;
+  background: var(--color-accent);
+  color: var(--color-on-brand);
+  border-radius: 999px;
+  font-size: 10px;
+  font-weight: 700;
+  min-width: 18px;
+  height: 18px;
+  padding: 0 5px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: 2px solid var(--color-primary);
+  line-height: 1;
+}
+
+/* Hamburger — hidden on desktop; shown under the 860px container query
+   where the horizontal .links row is replaced by the drawer, mirroring
+   TopBar.module.css's staff-side hamburger exactly. */
+.hamburger {
+  display: none;
+  width: 38px;
+  height: 38px;
+  border-radius: var(--radius-md);
+  background: rgba(255, 255, 255, 0.1);
+  border: none;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  padding: 0;
+  flex-shrink: 0;
+  margin-right: 4px;
+}
+.hamburger:focus-visible {
+  outline: none;
+  box-shadow: var(--shadow-focus-ring);
+}
+
+.drawerOverlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(11, 47, 13, 0.55);
+  z-index: 120;
+}
+
+.drawerPanel {
+  height: 100%;
+  width: min(80vw, 300px);
+  background: var(--color-surface);
+  box-shadow: var(--shadow-modal);
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 20px 12px;
+  animation: drawerIn 0.18s ease-out;
+}
+
+@keyframes drawerIn {
+  from {
+    transform: translateX(-100%);
+  }
+  to {
+    transform: translateX(0);
+  }
+}
+
+.drawerBrand {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 0 12px 16px;
+  color: var(--color-primary);
+}
+
+/* Dark-on-light nav links inside the drawer panel, overriding the
+   light-on-primary-color styling .navLink/.navLinkActive use in the
+   horizontal bar — same classes, different visual context. */
+.drawerPanel .navLink {
+  color: var(--color-ink-2);
+  justify-content: flex-start;
+  width: 100%;
+  height: 48px;
+  border-radius: var(--radius-md);
+}
+.drawerPanel .navLinkActive {
+  background: var(--color-primary-soft);
+  color: var(--color-primary-deep);
+}
+
+@container sxapp (max-width: 860px) {
+  .topnav {
+    padding: 0 16px;
+  }
+  .hamburger {
+    display: inline-flex;
+  }
+  .links {
+    display: none;
+  }
+}

@@ -1,0 +1,38 @@
+.banner {
+  margin-bottom: 16px;
+}
+
+.chips {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.tableWrap {
+  margin-top: 16px;
+}
+
+.statsRow { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 12px; margin-bottom: 16px; }
+
+/* Package-mix cell — "120 ctn · 8 bale · 30 bag" */
+.mix {
+  display: inline-flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 2px 6px;
+}
+.mixPart {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 3px;
+}
+.mixDot {
+  color: var(--color-ink-4);
+  margin-right: 3px;
+}
+.mixUnit {
+  font-size: 11px;
+  color: var(--color-ink-4);
+  text-transform: uppercase;
+  letter-spacing: 0.02em;
+}

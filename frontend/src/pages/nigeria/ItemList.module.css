@@ -1,0 +1,26 @@
+.banner { margin-bottom: 16px; }
+.chips { display: flex; gap: 6px; flex-wrap: wrap; }
+.tableWrap { margin-top: 16px; }
+
+/* Modal */
+.overlay {
+  position: fixed; inset: 0; background: rgba(11,47,13,0.55);
+  display: flex; align-items: center; justify-content: center; z-index: 200; padding: 16px;
+}
+.panel {
+  background: var(--color-surface); border-radius: var(--radius-lg); padding: 28px;
+  width: 100%; max-width: 440px; display: flex; flex-direction: column; gap: 16px;
+  box-shadow: var(--shadow-modal);
+}
+.panelTitle { font-size: 18px; font-weight: 700; margin: 0; }
+.panelBanner { margin-bottom: 4px; }
+.panelActions { display: flex; gap: 8px; justify-content: flex-end; margin-top: 8px; }
+
+.selectField { display: flex; flex-direction: column; gap: 6px; }
+.selectLabel { font-size: 13px; font-weight: 500; }
+.required { color: var(--color-error); margin-left: 2px; }
+.select {
+  border: 1px solid var(--color-border); border-radius: var(--radius-sm);
+  padding: 8px 12px; font-size: 14px;
+  background: var(--color-surface); color: var(--color-text); cursor: pointer;
+}

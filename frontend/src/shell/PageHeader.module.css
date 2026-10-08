@@ -1,0 +1,50 @@
+.header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--space-md);
+  margin-bottom: var(--space-lg);
+}
+
+.titleBlock {
+  flex: 1;
+  min-width: 0;
+}
+
+.eyebrow {
+  font-size: 11px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  font-weight: 600;
+  color: var(--color-primary);
+  margin-bottom: 6px;
+}
+
+.title {
+  font-family: var(--font-display);
+  font-weight: 700;
+  font-size: 26px;
+  margin: 0;
+  color: var(--color-ink);
+  letter-spacing: -0.015em;
+  line-height: 1.15;
+}
+
+.subtitle {
+  margin: 6px 0 0;
+  font-size: 14px;
+  color: var(--color-ink-3);
+}
+
+.actions {
+  display: flex;
+  gap: var(--space-sm);
+  flex-shrink: 0;
+}
+
+/* Stack title over actions on narrow shells (prototype .sx-pagehead). */
+@container sxapp (max-width: 560px) {
+  .header {
+    flex-direction: column;
+  }
+}

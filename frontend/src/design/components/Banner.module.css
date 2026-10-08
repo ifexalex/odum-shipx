@@ -1,0 +1,61 @@
+.banner {
+  display: flex;
+  gap: 12px;
+  align-items: flex-start;
+  border-radius: var(--radius-sm);
+  padding: 14px 16px;
+  font-size: 13px;
+  line-height: 1.5;
+  border: 1px solid var(--banner-border);
+  border-left: 4px solid var(--banner-accent);
+  background: var(--banner-bg);
+  color: var(--banner-fg);
+}
+
+.info {
+  --banner-bg: var(--color-info-soft);
+  --banner-fg: var(--color-info-strong);
+  --banner-accent: var(--color-info);
+  --banner-border: color-mix(in srgb, var(--color-info) 20%, transparent);
+}
+.success {
+  --banner-bg: var(--color-success-soft);
+  --banner-fg: var(--color-success-strong);
+  --banner-accent: var(--color-success);
+  --banner-border: color-mix(in srgb, var(--color-success) 20%, transparent);
+}
+.warning {
+  --banner-bg: var(--color-warning-soft);
+  --banner-fg: var(--color-warning-strong);
+  --banner-accent: var(--color-warning);
+  --banner-border: color-mix(in srgb, var(--color-warning) 20%, transparent);
+}
+.error {
+  --banner-bg: var(--color-error-soft);
+  --banner-fg: var(--color-error-strong);
+  --banner-accent: var(--color-error);
+  --banner-border: color-mix(in srgb, var(--color-error) 20%, transparent);
+}
+
+.body {
+  flex: 1;
+}
+
+.title {
+  font-weight: 700;
+  margin-bottom: 2px;
+}
+
+.dismiss {
+  background: none;
+  border: none;
+  padding: 0;
+  margin: 0;
+  cursor: pointer;
+  color: inherit;
+  display: inline-flex;
+}
+.dismiss:focus-visible {
+  outline: none;
+  box-shadow: var(--shadow-focus-ring);
+}

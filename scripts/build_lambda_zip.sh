@@ -3,15 +3,15 @@
 # Terraform's archive_file only zips source files; this script creates a full
 # deployment package that LocalStack (and CI/CD) can run directly.
 #
-# Output: infrastructure/modules/lambda/.builds/package/ (source tree + deps)
-#         infrastructure/modules/lambda/.builds/services.zip (final ZIP)
+# Output: infrastructure/aws/modules/lambda/.builds/package/ (source tree + deps)
+#         infrastructure/aws/modules/lambda/.builds/services.zip (final ZIP)
 #
 # Usage: bash scripts/build_lambda_zip.sh
 
 set -euo pipefail
 
 PROJECT_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-BUILD_DIR="$PROJECT_ROOT/infrastructure/modules/lambda/.builds"
+BUILD_DIR="$PROJECT_ROOT/infrastructure/aws/modules/lambda/.builds"
 PKG_DIR="$BUILD_DIR/package"
 
 echo "=== Building Lambda deployment package ==="

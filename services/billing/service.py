@@ -4,12 +4,14 @@ Handles auto-billing on container clearance, CBM dispute lifecycle,
 carryover/credit application, and billing recalculation on dispute resolution.
 """
 
+import json
 import logging
 from datetime import UTC, date, datetime
 from decimal import ROUND_HALF_UP, Decimal
 from typing import Any
 
 from shared.audit import log_audit
+from shared.cbm_rate import compute_cbm_charge, get_cbm_rate_config
 from shared.events import publish_event
 from shared.exceptions import (
     BusinessRuleViolationError,
@@ -17,11 +19,18 @@ from shared.exceptions import (
     InsufficientPermissionsError,
     ResourceNotFoundError,
 )
+from shared.fx_rate import get_effective_dollar_rate
+from shared.notifications import enqueue_notifications
+from shared.staff_notifications import notify_staff
 from shared.tenant_context import UserRole
 
 from . import repository as repo
 
 logger = logging.getLogger(__name__)
+
+# Sub-kobo balance noise is treated as settled when recomputing payment status
+# (mirrors payment_release.service._TOLERANCE for the record-payment path).
+_CARRYOVER_TOLERANCE = Decimal("0.01")
 
 # ---------------------------------------------------------------------------
 # CBM dispute state machine
@@ -39,6 +48,11 @@ _DISPUTE_ALLOWED_TARGET_STATES = {
     "resolved_adjusted",
     "resolved_no_change",
 }
+
+# SLA windows (must match scheduled-job defaults in sla_check.py + dispute_escalation.py)
+_DISPUTE_ACKNOWLEDGE_HOURS = 24
+_DISPUTE_INVESTIGATE_DAYS = 5
+_DISPUTE_RESOLVE_DAYS = 7
 
 
 # ---------------------------------------------------------------------------
@@ -58,18 +72,21 @@ def handle_payment_due(
     Called from the EventBridge handler — fire and return; errors are logged
     but should not crash the event processor.
     """
-    # 1. Fetch pricing config
-    cbm_cfg = repo.get_tenant_config_value(tenant_id, "cbm_rate_per_unit") or {}
-    dollar_cfg = repo.get_tenant_config_value(tenant_id, "dollar_rate") or {}
+    # 1. Fetch pricing config. Dollar rate is Bybit's live P2P base rate plus
+    # this tenant's markup (shared/fx_rate.py). CBM rate is the tenant's
+    # currency + carton/bag/bale rate config (shared/cbm_rate.py) — "flat"
+    # is just the case where all three rates happen to be equal, so the
+    # math below never branches on rate_mode itself.
+    cbm_config = get_cbm_rate_config(tenant_id)
+    dollar_rate = get_effective_dollar_rate(tenant_id)["rate"]
 
-    cbm_rate_usd = Decimal(str(cbm_cfg.get("rate_usd", 0)))
-    dollar_rate = Decimal(str(dollar_cfg.get("rate", 0)))
-
-    if cbm_rate_usd <= 0 or dollar_rate <= 0:
+    if (cbm_config["carton_rate"] <= 0 and cbm_config["bag_rate"] <= 0 and cbm_config["bale_rate"] <= 0) or dollar_rate <= 0:
         logger.warning(
-            "Skipping billing for customer %s — missing tenant config " "(cbm_rate_usd=%s, dollar_rate=%s)",
+            "Skipping billing for customer %s — missing tenant config (cbm_rates=%s/%s/%s, dollar_rate=%s)",
             customer_id,
-            cbm_rate_usd,
+            cbm_config["carton_rate"],
+            cbm_config["bag_rate"],
+            cbm_config["bale_rate"],
             dollar_rate,
         )
         return
@@ -87,9 +104,35 @@ def handle_payment_due(
         )
         return
 
-    # 3. Calculate subtotals
-    subtotal_usd = (total_cbm * cbm_rate_usd).quantize(Decimal("0.01"), ROUND_HALF_UP)
-    subtotal_ngn = (subtotal_usd * dollar_rate).quantize(Decimal("0.01"), ROUND_HALF_UP)
+    # 3. Calculate subtotals — group CBM by package type (carton/bag/bale,
+    # anything unrecognized folds into carton) and price each bucket at its
+    # own rate, in whichever currency the tenant configured.
+    cbm_by_unit = repo.get_cbm_by_package_type(tenant_id, customer_id, container_id)
+    charge = compute_cbm_charge(cbm_by_unit, cbm_config)
+
+    if charge["currency"] == "ngn":
+        subtotal_ngn = charge["amount"]
+        subtotal_usd = (subtotal_ngn / dollar_rate).quantize(Decimal("0.01"), ROUND_HALF_UP)
+    else:
+        subtotal_usd = charge["amount"]
+        subtotal_ngn = (subtotal_usd * dollar_rate).quantize(Decimal("0.01"), ROUND_HALF_UP)
+
+    # cbm_rate_usd: the snapshotted per-invoice rate other code (CBM dispute
+    # resolution, exports, staff/customer UI) treats as ground truth via
+    # `total_cbm * cbm_rate_usd == subtotal_usd`. Computed exactly (no
+    # rounding drift) whenever there's genuinely one effective rate — the
+    # common case, flat or coincidentally-equal per-type rates — and only
+    # falls back to the blended average for a genuine multi-rate mix, where
+    # no single "the rate" exists to report exactly.
+    if cbm_config["carton_rate"] == cbm_config["bag_rate"] == cbm_config["bale_rate"]:
+        single_rate = cbm_config["carton_rate"]
+        cbm_rate_usd = (
+            single_rate
+            if cbm_config["currency"] == "usd"
+            else (single_rate / dollar_rate).quantize(Decimal("0.0001"), ROUND_HALF_UP)
+        )
+    else:
+        cbm_rate_usd = (subtotal_usd / total_cbm).quantize(Decimal("0.0001"), ROUND_HALF_UP) if total_cbm > 0 else Decimal("0")
 
     # 4. Carryovers (add to total)
     carryovers = repo.get_outstanding_carryovers(tenant_id, customer_id)
@@ -120,6 +163,9 @@ def handle_payment_due(
             "total_cartons": total_cartons,
             "total_cbm": total_cbm,
             "cbm_rate_usd": cbm_rate_usd,
+            "cbm_rate_currency": charge["currency"].upper(),
+            "cbm_rate_mode": cbm_config["rate_mode"],
+            "cbm_breakdown": json.dumps(charge["breakdown"], default=str),
             "subtotal_usd": subtotal_usd,
             "exchange_rate_ngn": dollar_rate,
             "subtotal_ngn": subtotal_ngn,
@@ -158,17 +204,122 @@ def handle_payment_due(
         },
         request_id=request_id,
     )
+
+    # System-triggered (fired from the tracking service's cleared-container
+    # event, not a human action) — still a real invoice charging a real
+    # customer real money, so it belongs in the tenant's audit trail same as
+    # any staff-initiated billing action. Ground-truth gap found while
+    # auditing log coverage: this was the one billing-money write with no
+    # audit_log entry at all. actor_id=None, not a placeholder string —
+    # audit_log.actor_id is a UUID FK column, and a non-UUID string here
+    # would silently fail the insert (found live; see the matching fix in
+    # payment_release/service.py::process_webhook_payment).
+    log_audit(
+        tenant_id=tenant_id,
+        entity_type="billing",
+        entity_id=billing_id,
+        action="CREATE",
+        actor_id=None,
+        actor_role="system",
+        after_state={
+            "customer_id": customer_id,
+            "container_id": container_id,
+            "invoice_number": invoice_number,
+            "total_ngn": str(total_ngn),
+            "carryover_applied_ngn": str(carryover_ngn),
+            "credits_applied_ngn": str(credits_ngn),
+        },
+    )
     logger.info(
         "Billing %s created for customer %s / container %s",
         billing_id,
         customer_id,
         container_id,
     )
+    _notify_customer_payment_due(tenant_id, customer_id, container_number, total_ngn, request_id)
+
+
+def _notify_customer_payment_due(
+    tenant_id: str,
+    customer_id: str,
+    container_number: str | None,
+    total_ngn: Decimal,
+    request_id: str,
+) -> None:
+    """Best-effort "your invoice is ready" notification — a real invoice
+    charging a real customer real money with no notification at all is the
+    same silent gap that let a payment-claim rejection go unnoticed (see
+    payment_release/service.py). Never raises: a notification outage must
+    not fail billing generation itself."""
+    try:
+        customer = repo.get_customer_contact(tenant_id, customer_id)
+        if not customer:
+            return
+        warehouse_cfg = repo.get_tenant_config_value(tenant_id, "warehouse_address") or {}
+        address_parts = [warehouse_cfg.get("address"), warehouse_cfg.get("city"), warehouse_cfg.get("state")]
+        warehouse_address = ", ".join(p for p in address_parts if p) or "our warehouse"
+        enqueue_notifications(
+            tenant_id=tenant_id,
+            event_type="payment_due",
+            recipient={
+                "phone": customer.get("phone") or "",
+                "email": customer.get("email") or "",
+                "whatsapp": customer.get("whatsapp") or "",
+                "name": customer.get("name") or "",
+            },
+            template_data={
+                "container_number": container_number or "",
+                "currency": "NGN",
+                "amount": str(total_ngn),
+                "warehouse_address": warehouse_address,
+            },
+            locale=customer.get("locale", "en"),
+            request_id=request_id,
+            customer_id=customer_id,
+        )
+
+        # In-app customer bell — see payment_release/service.py's matching
+        # comment: SMS/WhatsApp/email above can each fail for reasons
+        # entirely outside this app, and only a customer with a portal
+        # account (customer.user_id set) can receive this.
+        if customer.get("user_id"):
+            notify_staff(
+                tenant_id=tenant_id,
+                event_type="payment_due",
+                entity_type="billing",
+                title="New invoice ready",
+                body=f"Container {container_number or ''}: NGN {total_ngn} due.",
+                target_user_id=str(customer["user_id"]),
+            )
+    except Exception:
+        logger.exception(
+            "Failed to enqueue payment_due notification for customer %s",
+            customer_id,
+        )
 
 
 # ---------------------------------------------------------------------------
 # GET billing for customer
 # ---------------------------------------------------------------------------
+
+
+def get_billing_stats(tenant_id: str) -> dict[str, Any]:
+    """Tenant-wide billing aggregates for the list stats row + status chips.
+
+    SQL-computed over the whole table so the figures are correct at any scale
+    (the frontend previously summed a capped `limit: 500` sample).
+    """
+    return repo.get_billing_stats(tenant_id)
+
+
+def get_tenant_report(
+    tenant_id: str,
+    created_after: str | None = None,
+    created_before: str | None = None,
+) -> dict[str, Any]:
+    """Period report aggregates for the TenantReports page — SQL-computed so the
+    financial figures are correct at scale (previously summed a capped sample)."""
+    return repo.get_tenant_report(tenant_id, created_after, created_before)
 
 
 def get_billing_for_customer(
@@ -205,10 +356,18 @@ def _enrich_billing(tenant_id: str, row: dict[str, Any]) -> dict[str, Any]:
 
     return {
         "id": str(row["id"]),
+        "invoice_number": row.get("invoice_number"),
+        "customer_id": str(row["customer_id"]) if row.get("customer_id") else None,
+        "customer_name": row.get("customer_name"),
+        "customer_phone": row.get("customer_phone"),
+        "customer_email": row.get("customer_email"),
         "container_id": str(row["container_id"]),
         "container_number": row.get("container_number"),
         "total_cbm": row["total_cbm"],
         "cbm_rate_usd": row["cbm_rate_usd"],
+        "cbm_rate_currency": row.get("cbm_rate_currency", "USD"),
+        "cbm_rate_mode": row.get("cbm_rate_mode", "flat"),
+        "cbm_breakdown": row.get("cbm_breakdown"),
         "dollar_rate": row["exchange_rate_ngn"],
         "subtotal_usd": row["subtotal_usd"],
         "subtotal_ngn": row["subtotal_ngn"],
@@ -345,6 +504,7 @@ def add_misc_charge(
             "amount_ngn": amount_ngn,
             "amount_usd": amount_usd,
             "charge_type": data.get("charge_type", "other"),
+            "charge_type_id": data.get("charge_type_id") or None,
             "created_by": actor_id,
         },
     )
@@ -443,6 +603,51 @@ def list_storage_fees(
     return [_fmt_storage_fee(r) for r in rows]
 
 
+def waive_storage_fees(
+    tenant_id: str,
+    billing_id: str,
+    reason: str,
+    actor_id: str,
+    ip_address: str = "",
+) -> dict[str, Any]:
+    """Waive all storage fees on a billing record.
+
+    Removes the misc_charge rows created by the daily storage-fee job and
+    resets the log entries so the scheduler will not re-accrue them. Returns
+    the refreshed billing record so the UI can update totals immediately.
+
+    Roles allowed: tenant_admin, nigeria_office_staff (checked in handler).
+    """
+    billing = repo.get_billing_by_id(tenant_id, billing_id)
+    if not billing:
+        raise ResourceNotFoundError("billing", billing_id)
+
+    payment_status = billing.get("payment_status") or billing.get("status")
+    if payment_status in {"cancelled", "waived"}:
+        raise BusinessRuleViolationError(
+            f"Cannot waive storage fees on a billing record with status '{payment_status}'.",
+            rule_id="BILLING_NOT_WAIVEABLE",
+        )
+
+    updated = repo.waive_storage_fees_for_billing(tenant_id, billing_id, actor_id, reason)
+    if not updated:
+        raise ResourceNotFoundError("billing", billing_id)
+
+    log_audit(
+        tenant_id=tenant_id,
+        entity_type="billing",
+        entity_id=billing_id,
+        action="WAIVE_STORAGE_FEES",
+        actor_id=actor_id,
+        actor_role="staff",
+        before_state={"storage_fees_ngn": str(billing.get("storage_fees_ngn", 0))},
+        after_state={"storage_fees_ngn": "0", "reason": reason},
+        ip_address=ip_address,
+    )
+
+    return _enrich_billing(tenant_id, dict(updated))
+
+
 # ---------------------------------------------------------------------------
 # Billing list / generate
 # ---------------------------------------------------------------------------
@@ -453,10 +658,48 @@ def list_billing(
     filters: dict[str, Any],
     limit: int,
     cursor: dict[str, Any] | None,
+    ctx: Any = None,
+    sort_field: str = "created_at",
+    sort_direction: str = "DESC",
 ) -> tuple[list[dict[str, Any]], str | None, bool]:
-    """List all billing records for a tenant (paginated)."""
-    rows, next_cursor, has_more = repo.list_billing_all(tenant_id, filters, limit, cursor)
+    """List billing records for a tenant (paginated).
+
+    Ground-truth fix (2026-07-19): this backs GET /v1/billing, which
+    _BILLING_READ_ROLES allows the customer role to call — but had no
+    ownership scoping at all, so any customer could list every other
+    customer's billing (amounts, payment status) in the tenant just by
+    hitting the endpoint with no filters. CUSTOMER role is now force-scoped
+    to their own customer_id, same enforcement as get_billing_for_customer()
+    — any customer_id they pass is overridden, not merely validated, so
+    there's no way to request someone else's records.
+    """
+    if ctx is not None and ctx.role == UserRole.CUSTOMER:
+        customer = repo.get_customer_by_user_id(tenant_id, ctx.user_id)
+        if not customer:
+            return [], None, False
+        filters = {**filters, "customer_id": str(customer["id"])}
+
+    rows, next_cursor, has_more = repo.list_billing_all(
+        tenant_id, filters, limit, cursor, sort_field=sort_field, sort_direction=sort_direction
+    )
     return [_enrich_billing(tenant_id, dict(r)) for r in rows], next_cursor, has_more
+
+
+def list_recent_payments(tenant_id: str, limit: int = 8) -> list[dict[str, Any]]:
+    """Most recent payments across all billings (§6.1 dashboard feed, P2-5)."""
+    return [
+        {
+            "id": str(p["id"]),
+            "billing_id": str(p["billing_id"]),
+            "customer_name": p.get("customer_name"),
+            "amount_ngn": str(p["amount_ngn"]),
+            "payment_method": p["payment_method"],
+            "reference_number": p.get("reference_number"),
+            "payment_date": str(p["payment_date"]) if p.get("payment_date") else None,
+            "created_at": p.get("created_at"),
+        }
+        for p in repo.list_recent_payments(tenant_id, limit)
+    ]
 
 
 def generate_billing(
@@ -477,6 +720,150 @@ def generate_billing(
     )
     # Return minimal confirmation
     return {"container_id": container_id, "customer_id": customer_id, "status": "generated"}
+
+
+def apply_carryover(
+    tenant_id: str,
+    billing_id: str,
+    carryover_id: str,
+    actor_id: str,
+    ip_address: str | None = None,
+) -> dict[str, Any]:
+    """Manually apply an outstanding carryover to a billing record.
+
+    Guards:
+      - Billing must exist and not be cancelled or waived.
+      - Carryover must be 'outstanding' and belong to the same customer as the billing.
+    Updates billing totals: adds carryover amount to total_ngn and recalculates balance.
+    """
+    billing = repo.get_billing_by_id(tenant_id, billing_id)
+    if not billing:
+        raise ResourceNotFoundError("billing", billing_id)
+
+    if billing["status"] in {"cancelled", "waived"}:
+        raise BusinessRuleViolationError(
+            f"Cannot apply carryover to a '{billing['status']}' billing.",
+            rule_id="BR-CARRYOVER-001",
+        )
+
+    carryover = repo.get_carryover_by_id(tenant_id, carryover_id)
+    if not carryover:
+        raise ResourceNotFoundError("carryover_ledger", carryover_id)
+
+    if carryover["status"] != "outstanding":
+        raise BusinessRuleViolationError(
+            f"Carryover is '{carryover['status']}' — only 'outstanding' entries can be applied.",
+            rule_id="BR-CARRYOVER-002",
+        )
+
+    if str(carryover["customer_id"]) != str(billing["customer_id"]):
+        raise BusinessRuleViolationError(
+            "Carryover customer does not match billing customer.",
+            rule_id="BR-CARRYOVER-003",
+        )
+
+    carryover_amount = Decimal(str(carryover["carryover_amount_ngn"]))
+
+    # Apply: mark carryover as applied, add amount to billing total
+    repo.mark_carryovers_applied(tenant_id, [carryover_id], billing_id)
+    updated = repo.increment_billing_misc_fees(tenant_id, billing_id, carryover_amount)
+    if updated is None:
+        raise RuntimeError("increment_billing_misc_fees returned None unexpectedly")
+
+    # Adding carried-forward debt raises the total, so the balance (a generated
+    # column) grows — recompute the money status from it so a previously 'paid'
+    # record doesn't stay 'paid' while now owing more. Only the four money
+    # statuses are recomputed; 'released_with_outstanding' is a release state
+    # left untouched ('cancelled'/'waived' are already blocked above).
+    if billing["status"] in {"unpaid", "partially_paid", "paid", "overpaid"}:
+        new_balance = Decimal(str(updated["balance_ngn"]))
+        paid = Decimal(str(updated["amount_paid_ngn"]))
+        if abs(new_balance) <= _CARRYOVER_TOLERANCE:
+            new_status = "paid"
+        elif new_balance < -_CARRYOVER_TOLERANCE:
+            new_status = "overpaid"
+        elif paid > 0:
+            new_status = "partially_paid"
+        else:
+            new_status = "unpaid"
+        if new_status != billing["status"]:
+            restatused = repo.set_billing_status(tenant_id, billing_id, new_status)
+            if restatused is not None:
+                updated = restatused
+
+    log_audit(
+        tenant_id=tenant_id,
+        entity_type="billing",
+        entity_id=billing_id,
+        action="APPLY_CARRYOVER",
+        actor_id=actor_id,
+        actor_role=str(UserRole.TENANT_ADMIN),
+        before_state={"total_ngn": str(billing["total_ngn"]), "status": billing["status"]},
+        after_state={"total_ngn": str(updated["total_ngn"]), "carryover_id_applied": carryover_id},
+        ip_address=ip_address,
+    )
+
+    return {
+        "billing_id": billing_id,
+        "carryover_id": carryover_id,
+        "carryover_amount_ngn": carryover_amount,
+        "new_total_ngn": Decimal(str(updated["total_ngn"])),
+        "new_balance_ngn": Decimal(str(updated.get("balance_ngn", 0))),
+    }
+
+
+def cancel_billing(
+    tenant_id: str,
+    billing_id: str,
+    cancel_reason: str,
+    actor_id: str,
+    ip_address: str | None = None,
+) -> dict[str, Any]:
+    """Void an unpaid billing record.
+
+    Guards:
+      - Billing must be in 'unpaid' status (no partial/full payments).
+      - No active (non-terminal) release notes may reference this billing.
+    """
+    billing = repo.get_billing_by_id(tenant_id, billing_id)
+    if not billing:
+        raise ResourceNotFoundError("billing", billing_id)
+
+    if billing["status"] != "unpaid":
+        raise BusinessRuleViolationError(
+            f"Cannot cancel billing in status '{billing['status']}'. Only 'unpaid' invoices may be cancelled.",
+            rule_id="BR-BL-CANCEL-001",
+        )
+
+    if repo.get_confirmed_payment_count(tenant_id, billing_id) > 0:
+        raise BusinessRuleViolationError(
+            "Cannot cancel billing that has confirmed payment records.",
+            rule_id="BR-BL-CANCEL-002",
+        )
+
+    if repo.get_active_release_note_count(tenant_id, billing_id) > 0:
+        raise BusinessRuleViolationError(
+            "Cannot cancel billing with an active release note.",
+            rule_id="BR-BL-CANCEL-003",
+        )
+
+    updated = repo.cancel_billing(tenant_id, billing_id, actor_id, cancel_reason)
+    if not updated:
+        raise ResourceNotFoundError("billing", billing_id)
+
+    log_audit(
+        tenant_id=tenant_id,
+        entity_type="billing",
+        entity_id=billing_id,
+        action="CANCEL",
+        actor_id=actor_id,
+        actor_role=str(UserRole.TENANT_ADMIN),
+        before_state={"status": billing["status"]},
+        after_state={"status": "cancelled", "cancel_reason": cancel_reason},
+        ip_address=ip_address,
+    )
+
+    return dict(updated)
 
 
 # ---------------------------------------------------------------------------
@@ -531,6 +918,20 @@ def reject_dispute(
     updated = repo.set_dispute_status(tenant_id, dispute_id, "rejected", {"resolution_notes": reason, "resolved_by": actor_id})
     if updated is None:
         raise RuntimeError("set_dispute_status returned None unexpectedly")
+
+    # Ground-truth gap found while auditing log coverage: every other
+    # dispute-status transition (acknowledge/escalate/resolve) logs this —
+    # reject was the one silently missing.
+    log_audit(
+        tenant_id=tenant_id,
+        entity_type="cbm_dispute",
+        entity_id=dispute_id,
+        action="STATUS_CHANGE",
+        actor_id=actor_id,
+        actor_role=str(ctx.role),
+        before_state={"status": dispute["status"]},
+        after_state={"status": "rejected", "resolution_notes": reason},
+    )
     return _fmt_dispute(updated)
 
 
@@ -608,6 +1009,16 @@ def file_cbm_dispute(
     )
     if dispute is None:
         raise RuntimeError("create_cbm_dispute returned None unexpectedly")
+    for role in ("nigeria_office_staff", "tenant_admin"):
+        notify_staff(
+            tenant_id=tenant_id,
+            event_type="cbm_dispute_filed",
+            entity_type="cbm_dispute",
+            entity_id=str(dispute["id"]),
+            title="New CBM dispute filed",
+            body=f"A CBM dispute was filed on billing {billing_id}.",
+            target_role=role,
+        )
     return _fmt_dispute(dispute)
 
 
@@ -783,13 +1194,29 @@ def resolve_dispute(
 
 
 def _fmt_dispute(row: dict[str, Any]) -> dict[str, Any]:
+    from datetime import timedelta
+
+    status = row["status"]
+    submitted_at = row.get("created_at")
+    acknowledged_at = row.get("acknowledged_at")
+
+    acknowledge_due_by = (submitted_at + timedelta(hours=_DISPUTE_ACKNOWLEDGE_HOURS)) if submitted_at else None
+    investigate_due_by = (acknowledged_at + timedelta(days=_DISPUTE_INVESTIGATE_DAYS)) if acknowledged_at else None
+    resolve_due_by = (acknowledged_at + timedelta(days=_DISPUTE_RESOLVE_DAYS)) if acknowledged_at else None
+    auto_escalated_at = row.get("updated_at") if status in {"escalated_china", "escalated"} else None
+
     return {
         "id": str(row["id"]),
         "billing_id": str(row["billing_id"]),
         "original_cbm": row.get("disputed_cbm"),
         "corrected_cbm": row.get("agreed_cbm"),
-        "status": row["status"],
-        "submitted_at": row.get("created_at"),
+        "status": status,
+        "submitted_at": submitted_at,
+        "acknowledged_at": acknowledged_at,
+        "acknowledge_due_by": acknowledge_due_by,
+        "investigate_due_by": investigate_due_by,
+        "resolve_due_by": resolve_due_by,
+        "auto_escalated_at": auto_escalated_at,
     }
 
 

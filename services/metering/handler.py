@@ -16,18 +16,17 @@ import time
 import uuid
 from typing import Any
 
-from aws_xray_sdk.core import patch_all
-
 from shared.auth import get_tenant_context
 from shared.exceptions import LogisticsBaseError, ResourceNotFoundError
-from shared.logging_config import setup_logging
+from shared.logging_config import bind_log_context, clear_log_context, setup_logging
+from shared.observability import init_tracing
 from shared.responses import error_response, success
 from shared.tenant_context import UserRole
 
 from . import service
 
 setup_logging()
-patch_all()
+init_tracing()
 
 logger = logging.getLogger(__name__)
 
@@ -38,6 +37,8 @@ logger = logging.getLogger(__name__)
 
 
 def lambda_handler(event: dict[str, Any], context: Any) -> dict[str, Any]:
+    clear_log_context()
+    bind_log_context(request_id=getattr(context, "aws_request_id", None))
     # Detect SQS batch trigger
     if "Records" in event and event["Records"] and event["Records"][0].get("eventSource") == "aws:sqs":
         return _handle_sqs_batch(event)
@@ -72,12 +73,33 @@ def _handle_sqs_batch(event: dict[str, Any]) -> dict[str, Any]:
 # ---------------------------------------------------------------------------
 
 
+def _health_response(request_id: str) -> dict[str, Any]:
+    import datetime
+    import json
+
+    return {
+        "statusCode": 200,
+        "headers": {"Content-Type": "application/json", "X-Request-Id": request_id},
+        "body": json.dumps(
+            {
+                "status": "healthy",
+                "timestamp": datetime.datetime.now(datetime.UTC).isoformat(),
+            }
+        ),
+    }
+
+
 def _handle_api(event: dict[str, Any], context: Any) -> dict[str, Any]:
     start_time = time.time()
     request_id = event.get("requestContext", {}).get("requestId") or str(uuid.uuid4())
+    clear_log_context()
+    bind_log_context(request_id=request_id)
     http = event.get("requestContext", {}).get("http", {})
     method = http.get("method", "")
     path = http.get("path", "")
+
+    if method == "GET" and path.strip("/") == "v1/health":
+        return _health_response(request_id)
 
     try:
         tenant_ctx = get_tenant_context(event)

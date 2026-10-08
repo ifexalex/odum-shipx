@@ -1,0 +1,160 @@
+.page { padding: 0 0 48px; }
+.banner { margin-bottom: 16px; }
+
+/* Greeting */
+.greeting { margin-bottom: 28px; }
+
+.greetingEyebrow {
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--color-accent-text);
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  margin-bottom: 4px;
+}
+
+.greetingTitle {
+  font-family: var(--font-display);
+  font-weight: 700;
+  font-size: 28px;
+  color: var(--color-ink);
+  margin: 0;
+  letter-spacing: -0.02em;
+  line-height: 1.15;
+}
+
+.greetingSub {
+  font-size: 14px;
+  color: var(--color-ink-3);
+  margin: 6px 0 0;
+}
+
+.sectionSpacer { height: 12px; }
+
+/* Stack of active-shipment cards — one per shipment still in transit, not just the latest */
+.activeList {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+  margin-bottom: 28px;
+}
+
+/* Active shipment card */
+.activeCardHeader {
+  padding: 24px;
+  background: linear-gradient(135deg, var(--color-primary-tint) 0%, var(--color-surface) 60%);
+  border-bottom: 1px solid var(--color-line);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  flex-wrap: wrap;
+}
+
+.activeCardLeft {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+}
+
+.shipIcon {
+  width: 56px;
+  height: 56px;
+  border-radius: 12px;
+  background: var(--color-info-soft);
+  color: var(--color-info);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.activeCardRef {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.activeCardMeta {
+  font-size: 12px;
+  color: var(--color-ink-3);
+  margin-top: 2px;
+}
+
+/* ETA block */
+.activeCardEta {
+  text-align: right;
+}
+
+.etaLabel {
+  font-size: 11px;
+  color: var(--color-ink-4);
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+
+.etaDate {
+  font-family: var(--font-display);
+  font-weight: 700;
+  font-size: 18px;
+  color: var(--color-primary);
+  margin-top: 2px;
+  letter-spacing: -0.01em;
+}
+
+.etaSub {
+  font-size: 11px;
+  color: var(--color-ink-4);
+}
+
+/* Stepper area */
+.stepperWrap {
+  padding: 20px 24px 16px;
+  border-bottom: 1px solid var(--color-line);
+}
+
+/* Stats + CTA footer — a row on desktop, stacking the CTA full-width below
+   the stats once they no longer fit alongside it (was a fixed
+   repeat(4, 1fr) auto grid that visibly clipped on a phone). */
+.activeCardFooter {
+  padding: 20px 24px;
+  display: flex;
+  align-items: center;
+  gap: 20px;
+  flex-wrap: wrap;
+}
+
+.footerStats {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(90px, 1fr));
+  gap: 16px;
+  flex: 1;
+  min-width: 220px;
+}
+
+.footerCta {
+  flex-shrink: 0;
+}
+
+@container sxapp (max-width: 860px) {
+  .footerCta {
+    width: 100%;
+  }
+}
+
+/* Empty state */
+.empty {
+  text-align: center;
+  padding: 64px 32px;
+  color: var(--color-ink-3);
+}
+
+.emptyTitle {
+  font-family: var(--font-display);
+  font-size: 20px;
+  font-weight: 700;
+  color: var(--color-ink);
+  margin: 0 0 8px;
+}

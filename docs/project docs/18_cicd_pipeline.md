@@ -58,6 +58,28 @@ Tag protection ruleset (configure in repo **Settings → Rules**):
   escape hatch (explicit `run_id` required)
 - Rollback is `git tag -f v1.2.3-rc1 <prev-sha> && git push --force-tag` — no CI run ID lookup
 
+### Environment wiring matrix (at a glance)
+
+| Environment | GitHub Env | Protection | Trigger → deploy | Backend tfstate | Required env secrets |
+|---|---|---|---|---|---|
+| **dev** | `dev` | none (auto) | CI success on `main` → auto | AWS: `logistics/dev` · Azure: `azure/dev` | `AWS_DEPLOY_ROLE_ARN`, `API_BASE_URL`, `AZURE_CLIENT_ID/TENANT_ID/SUBSCRIPTION_ID` |
+| **staging** | `staging` | required reviewers | `v*.*.*-rc*` tag | AWS: `logistics/staging` · Azure: `azure/staging` | same set, staging values |
+| **prod** | `prod` | required reviewers + tag protection | `v*.*.*` tag | AWS: `logistics/prod` · Azure: `azure/prod` | same set, prod values |
+| **demo** | `demo` | none (dispatch-only) | **`workflow_dispatch` only** (standalone, not in the chain) | AWS: `logistics/demo` · Azure: `azure/demo` | same set, demo values |
+| **local** | — | — | LocalStack / `make stack` | local | n/a |
+
+- Both clouds use the **same GitHub Environments** (`dev`/`staging`/`prod`/`demo`), so one set of
+  protection rules + reviewers gates AWS and Azure alike. The frontend workflows share them too
+  (standardized on `prod`, not `production`).
+- **demo** is a real, committed, fully-wired environment (`environments/demo.{tfvars,backend.hcl}`
+  in both roots, a `logistics-github-deploy-demo` OIDC role, and `demo` jobs in `terraform.yml` /
+  `terraform-azure.yml` / `deploy.yml` / `frontend-deploy.yml`) — but kept **out of the automated
+  promotion chain**: it only runs via `workflow_dispatch`, for a short-lived link you then
+  `terraform destroy`. It is lean (max_acu=1, `route53_zone_id=""` → no CloudFront/WAF) but uses
+  the same `logistics` naming + schema as the other envs (no more copy-me `.example`).
+- Runtime: **Python 3.13** across CI, the Lambda layer build, the Terraform `runtime`, the
+  deploy `--compatible-runtimes`, and mypy (aligned 2026-10-08).
+
 ---
 
 ## Deliverables
@@ -223,6 +245,50 @@ jobs:
           retention-days: 30
           if-no-files-found: error
 ```
+
+---
+
+### File: `.github/workflows/frontend-ci.yml`
+
+**Triggers:** PR/push to `main` touching `frontend/**` only (path-filtered — does not run on
+backend-only changes, and the backend `ci.yml` does not run on frontend-only changes).
+
+```yaml
+name: Frontend CI
+
+on:
+  pull_request:
+    branches: [main]
+    paths: ["frontend/**", ".github/workflows/frontend-ci.yml"]
+  push:
+    branches: [main]
+    paths: ["frontend/**", ".github/workflows/frontend-ci.yml"]
+
+jobs:
+  build-and-test:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: frontend
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - run: npm ci
+      - run: npm run typecheck
+      - run: npm run lint
+      - run: npm test
+      - run: npm run build
+      - run: npm audit --audit-level=high
+```
+
+No deploy job yet — static hosting (S3 + CloudFront) and the build/deploy pipeline for the
+`dist/` artifact are specified in `frontend/01_project_setup.md` →
+`docs/project docs/frontend/13_deployment_and_cicd.md`, added once the skeleton app ships
+(Phase 2 of the frontend build order).
 
 ---
 
@@ -631,7 +697,7 @@ def _inject_db_password() -> None:
     os.environ["DATABASE_PASSWORD"] = secret["password"]
 ```
 
-Terraform resources in `infrastructure/modules/lambda/main.tf`:
+Terraform resources in `infrastructure/aws/modules/lambda/main.tf`:
 - `aws_cloudwatch_log_group.migrate`
 - `aws_iam_role.migrate` (permissions boundary attached)
 - `aws_iam_role_policy.migrate_db_access` — `secretsmanager:GetSecretValue` on `DB_SECRET_ARN`,
@@ -676,22 +742,25 @@ The script is **idempotent** — safe to re-run.
 | IAM deploy role (dev) | `logistics-github-deploy-dev` |
 | IAM deploy role (staging) | `logistics-github-deploy-staging` |
 | IAM deploy role (prod) | `logistics-github-deploy-prod` |
+| IAM deploy role (demo) | `logistics-github-deploy-demo` |
 
 ### Set GitHub Environment Secrets
 
 After bootstrap, set the following secrets in each GitHub Environment (Settings → Environments):
 
-**`AWS_DEPLOY_ROLE_ARN`** — all three environments:
+**`AWS_DEPLOY_ROLE_ARN`** — one per GitHub Environment:
 ```
 dev     → arn:aws:iam::{ACCOUNT_ID}:role/logistics-github-deploy-dev
 staging → arn:aws:iam::{ACCOUNT_ID}:role/logistics-github-deploy-staging
 prod    → arn:aws:iam::{ACCOUNT_ID}:role/logistics-github-deploy-prod
+demo    → arn:aws:iam::{ACCOUNT_ID}:role/logistics-github-deploy-demo
 ```
 
-**`API_BASE_URL`** — dev and staging only (no smoke in prod):
+**`API_BASE_URL`** — all three environments (the read-only smoke now runs on prod too, 2026-10-08):
 ```
 dev     → https://<api-id>.execute-api.eu-west-1.amazonaws.com/dev
 staging → https://<api-id>.execute-api.eu-west-1.amazonaws.com/staging
+prod    → https://<api-id>.execute-api.eu-west-1.amazonaws.com/prod
 ```
 
 ### Configure Tag Protection Ruleset
@@ -706,7 +775,7 @@ In repo **Settings → Rules → New ruleset**:
 ### Initialise Terraform
 
 ```bash
-cd infrastructure
+cd infrastructure/aws
 terraform init -backend-config=environments/dev.backend.hcl
 terraform plan -var-file=environments/dev.tfvars
 ```
@@ -728,6 +797,74 @@ terraform import 'module.iam_oidc.aws_iam_role.deploy["prod"]'    logistics-gith
 ```
 
 Run `terraform plan -var-file=environments/dev.tfvars` — should show **0 changes** after import.
+
+---
+
+## Azure deployment pipeline (`terraform-azure.yml`, added 2026-10-08)
+
+The Azure portability stack (`infrastructure/azure/`) has its own Terraform pipeline mirroring
+the AWS one: push to `main` touching `infrastructure/azure/**` or `infrastructure/common/**`
+runs dev → staging → prod, each gated by its GitHub Environment. Auth is **OIDC federated
+credentials** (no stored client secret), same zero-secret posture as AWS.
+
+### 1. One-time Terraform state bootstrap (manual)
+
+The azurerm backend needs a storage account for state. Create it once (names are globally
+unique — pick your own and put it in `environments/*.backend.hcl`):
+
+```bash
+az group create -n shipx-tfstate-rg -l northeurope
+az storage account create -n shipxtfstate<suffix> -g shipx-tfstate-rg -l northeurope \
+  --sku Standard_LRS --min-tls-version TLS1_2 --allow-blob-public-access false
+az storage container create -n tfstate --account-name shipxtfstate<suffix> --auth-mode login
+```
+
+Then set `storage_account_name` in each `infrastructure/azure/environments/{env}.backend.hcl`.
+
+### 2. OIDC federated identity (manual)
+
+Create one Entra app registration for CI and a **federated credential per GitHub Environment
+subject**, then grant it rights on the subscription + the tfstate container:
+
+```bash
+APP_ID=$(az ad app create --display-name shipx-github-deploy --query appId -o tsv)
+az ad sp create --id "$APP_ID"
+SUB=$(az account show --query id -o tsv)
+
+for env in dev staging prod; do
+  az ad app federated-credential create --id "$APP_ID" --parameters "{
+    \"name\": \"gh-$env\",
+    \"issuer\": \"https://token.actions.githubusercontent.com\",
+    \"subject\": \"repo:ifexalex/odum-shipx:environment:$env\",
+    \"audiences\": [\"api://AzureADTokenExchange\"]
+  }"
+done
+
+# Contributor to provision resources + Storage Blob Data Contributor for tfstate.
+az role assignment create --assignee "$APP_ID" --role Contributor --scope "/subscriptions/$SUB"
+az role assignment create --assignee "$APP_ID" --role "Storage Blob Data Contributor" \
+  --scope "/subscriptions/$SUB/resourceGroups/shipx-tfstate-rg"
+```
+
+> Scope `Contributor` down to the app's resource groups for prod; subscription-wide is fine for
+> a throwaway/free test account.
+
+### 3. GitHub Environment secrets (Azure)
+
+Set in each GitHub Environment (dev/staging/prod) — the same three, pointing at your tenant/sub:
+
+```
+AZURE_CLIENT_ID        → <app registration appId>
+AZURE_TENANT_ID        → <your Entra tenant id>
+AZURE_SUBSCRIPTION_ID  → <your subscription id>
+```
+
+(The frontend Azure deploy — `frontend-deploy.yml` with `cloud=azure` — additionally needs the
+`AZURE_FRONTEND_*`, `AZURE_RESOURCE_GROUP` secrets from `terraform -chdir=infrastructure/azure
+output`.)
+
+`workflow_dispatch` on **Actions → "Terraform (Azure)"** applies a chosen env on demand; a push
+to `main` touching the Azure infra runs the full dev→staging→prod chain.
 
 ### Security Design
 
@@ -773,7 +910,7 @@ even a compromised deploy role cannot create an admin role.
 - [x] Tool versions pinned: ruff, mypy, bandit, safety, Trivy (SHA), Terraform (1.7.5)
 - [x] Coverage report uploaded to Codecov
 - [x] `scripts/bootstrap_aws.sh` — idempotent one-time setup (S3 state, DynamoDB, OIDC, IAM roles)
-- [x] `infrastructure/modules/iam-oidc/` — Terraform module manages OIDC + deploy roles post-bootstrap
+- [x] `infrastructure/aws/modules/iam-oidc/` — Terraform module manages OIDC + deploy roles post-bootstrap
 - [x] Permissions boundary on all Lambda execution roles prevents privilege escalation
 
 ---

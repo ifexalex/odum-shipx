@@ -1,0 +1,214 @@
+# Task FE-02 — Design Tokens & Theming
+
+## Objective
+
+Port the approved design system (`Shipx_frontend_design/`) into a real CSS custom-properties file plus a TypeScript mirror, and define how per-tenant branding (`tenant.branding_config`) overrides the base theme at runtime.
+
+## Depends On
+
+Task 01.
+
+## Source
+
+- `Shipx_frontend_design/uploads/DESIGN.md` — written spec
+- `Shipx_frontend_design/Shipx Design System.html` — token reference (`<style>` block + token object `T` used throughout every `.jsx` mockup)
+- `Shipx_frontend_design/screens/shared/components.jsx`, `app-shell.jsx` — tokens as consumed in components
+- `Shipx_frontend_design/assets/odum-mark.svg` — logo asset
+- `Shipx_frontend_design/uploads/Odum Brand Guideline Brief (1).pdf`, `odum-brand.pdf` — full brand rules (logo clear-space, do/don't)
+
+**Branding note:** the product is **"ShipX"** standalone inside the app. "Odum" is the parent-brand co-mark shown only on marketing-adjacent surfaces (login screen, public tracking page, footer) as a small "by Odum" lockup — never inside the authenticated app shell.
+
+## Token Set
+
+Port these as CSS custom properties on `:root` in `src/design/tokens.css`, and as a parallel `theme.ts` object for any place a JS value is needed (e.g. computed chart colors).
+
+### Color
+
+```css
+:root {
+  /* Brand */
+  --color-primary: #1C7922;        /* Odum Green — buttons, links, active states */
+  --color-primary-deep: #14471A;   /* button active */
+  --color-primary-strong: #155F1B; /* button hover */
+  --color-primary-bright: #2DC438; /* focus rings, progress, "Green Flash" */
+  --color-primary-soft: #D6F5DA;   /* selected row bg */
+  --color-primary-tint: #F3FCF4;   /* hover row bg */
+
+  --color-forest-dark: #0B2F0D;    /* sidebar background — never navy */
+
+  --color-accent: #9A3412;         /* Kola Copper — ONE highest-stakes CTA per screen only */
+  --color-accent-deep: #7C2D12;
+  --color-accent-hover: #C2410C;
+  --color-accent-soft: #FED7AA;
+
+  /* Neutrals (warm gray, never pure black) */
+  --color-ink: #1C1B1C;
+  --color-ink-2: #374151;
+  --color-ink-3: #666666;
+  --color-ink-4: #6B7280;
+  --color-line: #CCCCCC;
+  --color-line-soft: #E5E7EB;
+  --color-surface: #FFFFFF;
+  --color-surface-muted: #F9FAFB;
+  --color-page: #F3F4F6;
+
+  /* Status */
+  --color-success: #16A34A;       --color-success-strong: #14532D; --color-success-soft: #DCFCE7;
+  --color-warning: #D97706;       --color-warning-strong: #7C2D0E; --color-warning-soft: #FEF3C7;
+  --color-error:   #DC2626;       --color-error-strong:   #991B1B; --color-error-soft:   #FEE2E2;
+  --color-info:    #2563EB;       --color-info-strong:    #1E3A8A; --color-info-soft:    #DBEAFE;
+
+  /* Role accents — used for sidebar badges, avatars, role chips */
+  --color-role-platform:  #7C3AED;
+  --color-role-admin:     #1C7922;
+  --color-role-china:     #4F46E5;
+  --color-role-nigeria:   #9A3412;
+  --color-role-warehouse: #D97706;
+  --color-role-customer:  #2DC438;
+  --color-role-platform-soft: #EDE9FE; /* added in FE-03: purple Badge variant background (platform role badge) */
+
+  /* Typography */
+  --font-display: "Averta", "Manrope", sans-serif;   /* Averta is commercial-licensed; Manrope is the open fallback used in the mockups */
+  --font-body: "Kumbh Sans", sans-serif;
+  --font-mono: "JetBrains Mono", monospace;
+
+  /* Spacing — strict 4px base */
+  --space-xs: 4px;  --space-sm: 8px;  --space-md: 16px;
+  --space-lg: 24px; --space-xl: 32px; --space-2xl: 48px; --space-3xl: 64px;
+
+  /* Layout */
+  --sidebar-width: 240px;
+  --sidebar-width-collapsed: 64px;
+  --content-max-width: 1280px;
+
+  /* Radius — see mixing rule below */
+  --radius-none: 0px; --radius-sm: 8px; --radius-md: 10px;
+  --radius-lg: 14px;  --radius-xl: 12px; --radius-full: 9999px;
+
+  /* Shadows — tinted with Forest Dark, never pure black */
+  --shadow-rest:  0 1px 3px rgba(11,47,13,0.08), 0 1px 2px rgba(11,47,13,0.05);
+  --shadow-hover: 0 4px 12px rgba(11,47,13,0.10), 0 2px 4px rgba(11,47,13,0.06);
+  --shadow-modal: 0 10px 25px rgba(11,47,13,0.18);
+  --shadow-focus-ring: 0 0 0 3px rgba(45,196,56,0.35);
+  --scrim-modal: rgba(11,47,13,0.55);
+}
+```
+
+### Type Scale
+
+| Token | Size | Weight | Line height | Use |
+|---|---|---|---|---|
+| `display-lg` | 32px | 700 | 1.25 | One hero heading per page, max |
+| `display-md` | 24px | 700 | 1.33 | Section/page titles |
+| `headline-lg` | 20px | 600 | 1.4 | Card/modal titles |
+| `headline-md` | 16px | 600 | 1.5 | Subsection titles |
+| `body-lg` | 16px | 400 | 1.5 | Prose |
+| `body-md` | 14px | 400 | 1.43 | Default — table cells, descriptions |
+| `body-sm` | 12px | 400 | 1.33 | Captions, metadata |
+| `label-md` | 14px | 500 | 1.43 | Button text, form labels |
+| `label-sm` | 12px | 600 | 1.33 | Uppercase status badges, tags (`letter-spacing: 0.04em`) |
+| `mono` | 13px | 400 | 1.54 | Tracking codes, container numbers, monetary amounts — **always** use mono for these so table columns align |
+
+### Hard Rules (carried from the brand brief — don't relitigate these in PR review, they're settled)
+
+- Never italicize. Use weight contrast instead.
+- Kola Copper (`--color-accent`) is reserved for **one** highest-stakes action per screen (payment confirmation, release-note generation, irreversible actions). If a screen has two CTAs that both feel critical, demote one to primary green.
+- Mix border radii freely *across* component families (a `full` badge inside an `md` card is fine) but never *within* one family (don't mix `sm` and `md` buttons in the same view).
+- Form inputs keep a visible 1px `--color-line` border at rest — never invisible-until-focus.
+- No zebra-striping on tables. Use `--color-line-soft` row dividers only.
+- Contrast targets are already verified by the brand brief: primary-on-white 4.96:1, accent-on-white 5.76:1 — don't introduce new color pairs without checking WCAG AA.
+
+## Tenant Branding Override
+
+`tenant.branding_config` (JSONB, returned by `GET /v1/tenant/config`) carries at minimum:
+
+```json
+{ "company_name": "Acme Logistics", "display_name": "Acme Logistics", "primary_color": "#1A5276" }
+```
+
+At runtime, after the authenticated session resolves `tenant_id` and fetches config:
+
+1. If `primary_color` is set, override `--color-primary` (and derive `--color-primary-deep` / `--color-primary-strong` / `--color-primary-soft` / `--color-primary-tint` programmatically — e.g. HSL lightness shift — rather than requiring the tenant to supply 5 shades).
+2. Render `company_name` in the sidebar brand slot in place of the ShipX wordmark for tenant-scoped staff/customer views (`TenantBrand` pattern in the mockups — see `screens/shared/app-shell.jsx`).
+3. Platform Admin views and the login screen always use the canonical ShipX/Odum brand — tenant overrides only apply once a tenant context is resolved.
+4. **Never** let a tenant override `--color-error` / `--color-success` / `--color-warning` / `--color-info` — status colors stay consistent across tenants so staff moving between tenants (or platform admin impersonating) aren't misled by a relabeled status color.
+
+Implementation: a `ThemeProvider` that writes CSS custom property overrides onto a scoped `<div data-tenant-theme>` wrapper (not `:root`, so the platform admin shell and any pre-auth screen keep the canonical palette even while a tenant theme is loaded elsewhere, e.g. inside an impersonation iframe-equivalent view).
+
+## Logo Assets
+
+- Copy `Shipx_frontend_design/assets/odum-mark.svg` into `frontend/public/` and `src/design/components/` as a React component (`<KolaMark />`, ported from `screens/shared/components.jsx`).
+- Minimum render size: 16px (favicon floor).
+- Clear space: one lobe-width on all sides.
+- Don'ts (enforce in code review, not just docs): never recolor lobes individually, never stretch/skew/rotate, never place on busy photo backgrounds without a solid scrim.
+
+## Responsive Breakpoint Convention
+
+**Added 2026-09-20** (previously informal, never written down — codified during
+the app-wide responsive pass).
+
+- **860px is the one mobile breakpoint** used everywhere new responsive work
+  touches. Both app shells (`PageShell.module.css` for staff/admin,
+  `CustShell.module.css` for the customer portal) declare
+  `container-type: inline-size; container-name: sxapp` on their shell root, so
+  every descendant component queries the **shell's own measured width**, not
+  the browser viewport, via `@container sxapp (max-width: 860px) { ... }`.
+  This is deliberate: a docked sidebar (240px) changes the available content
+  width independently of the browser window, and container queries key off
+  the actual space a component has, not the outer viewport.
+- Write mobile styles unqueried and wrap the **desktop** upgrade in
+  `@container sxapp (min-width: 861px)` for anything that is mobile-first by
+  construction (the canonical bottom-sheet modal pattern — see
+  `03_component_library.md`'s Modal section). Write mobile styles inside
+  `@container sxapp (max-width: 860px)` for anything that is desktop-first
+  (most existing page layouts, stat grids, hero rows).
+- Fall back to an equivalent `@media` query only for content rendered outside
+  either shell (there is essentially none today — every authenticated route
+  renders inside `PageShell` or `CustShell`).
+- 44×44px minimum touch target, ≥16px input font-size (prevents iOS Safari's
+  auto-zoom on focus), and `max-height: 90vh; overflow-y: auto` on any modal
+  panel are the three mobile hygiene rules applied wherever a modal or form
+  input was touched in the 2026-09-20 pass — see `Field.module.css` and the
+  modal pattern in `03_component_library.md`.
+
+## Acceptance Criteria
+
+- [x] `src/design/tokens.css` defines every token above as a CSS custom property on `:root`
+- [x] `src/design/theme.ts` exports the same values typed for JS consumption (charts, computed styles)
+- [x] `<KolaMark />` and `<ShipxWordmark />` components ported and rendering correctly at 16px–64px
+- [x] `ThemeProvider` applies tenant `primary_color` override scoped to the authenticated app shell, without affecting the login screen or Platform Admin views (scoped to `[data-tenant-theme]`, not `:root`; derivation in `deriveBrandShades.ts`)
+- [x] Status colors (`success`/`warning`/`error`/`info`) are confirmed non-overridable by tenant config (write a test asserting this) — see `ThemeProvider.test.tsx`
+- [x] A visual smoke test (Storybook or a `/design-preview` dev-only route) renders the full palette, type scale, and radius/shadow tokens for design QA sign-off before component work begins — `src/design/DesignPreview.tsx`, mounted dev-only in `App.tsx`
+
+## Implementation notes / ground-truth gaps found
+
+- **tokens.css semantic-aliases syntax bug (found & fixed 2026-07-10)**: the semantic-alias declarations (`--color-text`, `--color-text-muted`, `--color-border`, `--color-*-muted`) were appended after `:root`'s closing brace with no selector of their own. Per CSS error-recovery, the parser consumed the orphan declarations *and* the next rule as one invalid qualified rule — and the next rule was the global `* { box-sizing: border-box }` reset. Consequences until the fix: (1) the entire app silently rendered with `content-box` sizing (e.g. `.wrap`-style containers with `max-width` + padding rendered 64px wider than the prototypes intended); (2) the alias tokens never existed, so the 11 page stylesheets referencing them fell back to inherited values; (3) every `npm run build` emitted an esbuild `css-syntax-error` warning that had been ignored. Fix: wrapped the aliases in their own `:root {}` block. Discovered while pixel-diffing the marketing landing page against `Shipx Landing Page v2.html` — the implementation was 64px wider than the prototype despite identical CSS.
+
+## Light / Dark theme (2026-10-01)
+
+The app ships light and dark themes, driven entirely by the CSS custom properties in `src/design/tokens.css`.
+
+**Mechanism.** The active scheme is resolved to an explicit value in JS (`src/design/colorScheme.tsx`) and written to `document.documentElement` as `data-theme="light|dark"`. A matching pre-paint script in `index.html` applies the same attribute before React mounts, so there is no light-mode flash on first load. Because 'system' is resolved in JS (reading `prefers-color-scheme`), `tokens.css` needs only a single `:root[data-theme="dark"]` block, not a duplicated media query.
+
+**Preference model.** `useColorScheme()` exposes `{ preference, resolved, setPreference, cycle }`. `preference` is `'light' | 'dark' | 'system'` (default `'system'`, persisted to `localStorage['shipx-color-scheme']`); `resolved` is the actual `'light' | 'dark'` in effect. In `'system'` mode the provider re-resolves when the OS flips. `useColorScheme()` has a functional standalone fallback, so a `<ThemeToggle>` still works when a component is rendered without `ColorSchemeProvider` (e.g. isolated component tests). The `<ColorSchemeProvider>` wraps the app in `main.tsx`; the `<ThemeToggle>` control lives in both `TopBar` (staff) and `CustomerTopNav` (customer) and cycles System → Light → Dark.
+
+**What flips vs. what holds.** Only surfaces, ink, lines, shadows and the soft/tint *fill* variants flip in dark mode. Brand/status/role **hues** stay recognisable — their `-soft` backgrounds go dark and their `-strong` (badge-text) variants go light so contrast holds. Two tokens exist specifically to survive the flip:
+- `--color-on-brand` (always white) — text/icons that sit on a brand/accent/dark surface (buttons, chips, sidebar, the login brand panel). Never use `--color-surface` for on-colored text, since surface becomes dark.
+- `--color-primary-on-soft` (dark green in light, bright green in dark) — primary text/icon on a `--color-primary-soft` fill (stat-card icon chips, granted consent pills), so it isn't green-on-green in dark.
+
+**Adding new UI.** Use tokens, never hardcoded `#fff`/`#000`/hex backgrounds — those don't flip. For text on a colored/dark element use `--color-on-brand`. `color-scheme` is set per theme so native controls (scrollbars, date pickers) match.
+
+### Tenant brand shades are scheme-aware (fix, 2026-10-01)
+
+`deriveBrandShades(hex, scheme)` takes the active scheme. A tenant's `soft` (selected-row bg) and `tint` (hover-row bg) are near-white in light mode; in dark mode they're derived as dark, lightly-saturated versions of the brand hue instead. `ThemeProvider` passes `useColorScheme().resolved` and re-derives when the scheme flips. Without this, the brand-derived *light* tint was applied inline on `[data-tenant-theme]`, overriding the dark `:root[data-theme="dark"]` token — so a hovered/selected table row rendered a blinding near-white band in dark mode (reported live). `base`/`deep`/`strong` (solid buttons, white text) are scheme-independent.
+
+### Dark-mode contrast fixes (2026-10-01)
+
+A WCAG contrast audit of the dark palette found a few combinations below usable thresholds. Fixed **dark-only** (each new token's light value equals what the element used before, so light mode is byte-identical):
+
+- **`<Mono>` text was dark-on-dark (critical).** `Mono` defaulted its color to the static `colors.ink` (#1c1b1c) from `theme.ts` instead of the CSS token — so uncoloured monospace values (container numbers, totals, CBM, counts) rendered ~1.0 contrast on a dark surface, effectively invisible. Changed the default to `var(--color-ink)` (flips to light in dark; identical in light). Components that read colours from `theme.ts` (the static JS mirror) do **not** respond to dark mode — `Mono` was the only text case; the remaining `theme.ts` colour reads are brand logos on always-dark panels.
+- **Accent badge + brand monogram** (copper text on copper-soft) was ~1.6 contrast. New `--color-accent-on-soft` (light `#7c2d12`, dark `#f0a67e`) used by `Badge.accent`, `TenantBrand` and the packing-list preview monogram.
+- **Accent eyebrow labels** (`QuickActionCard` CTA, customer greeting) were ~2.3. New `--color-accent-text` (light `#9a3412`, dark `#eb9a70`).
+- **Platform / purple badge** (impersonation audit, carryover "applied") was ~2.6. New `--color-role-platform-text` (light `#7c3aed`, dark `#b99af2`).
+
+Left as acceptable: primary-coloured links/text (~3.1–3.4 on dark) — a single `--color-primary` can't satisfy both "link text on dark" and "white text on a primary button", and it's tenant-overridable, so splitting it is deferred; the green reads as interactive and passes large-text AA. `success`-button white text (~2.7) matches the same marginal choice already shipped in light mode.

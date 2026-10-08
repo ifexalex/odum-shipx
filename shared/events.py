@@ -16,26 +16,15 @@ Event envelope format (§ task 02):
   }
 """
 
-import json
 import logging
 import os
 import uuid
 from datetime import UTC, datetime
 from typing import Any
 
-import boto3
+from shared.providers import get_event_provider
 
 logger = logging.getLogger(__name__)
-
-# Module-level client reused across warm Lambda invocations
-_events_client = None
-
-
-def _get_client() -> Any:
-    global _events_client
-    if _events_client is None:
-        _events_client = boto3.client("events", region_name=os.environ.get("AWS_REGION", "eu-west-1"))
-    return _events_client
 
 
 def publish_event(
@@ -70,33 +59,19 @@ def publish_event(
 
     bus_name = os.environ.get("EVENT_BUS_NAME", "logistics-events")
 
-    entry = {
-        "Source": source,
-        "DetailType": detail_type,
-        "Detail": json.dumps(detail, default=str),
-        "EventBusName": bus_name,
-    }
-
-    client = _get_client()
-    response = client.put_events(Entries=[entry])
-
-    failed = response.get("FailedEntryCount", 0)
-    if failed:
-        error_code = response["Entries"][0].get("ErrorCode", "Unknown")
-        error_msg = response["Entries"][0].get("ErrorMessage", "")
+    try:
+        get_event_provider().publish(source=source, detail_type=detail_type, detail=detail, bus_name=bus_name)
+    except Exception as exc:
         logger.error(
-            "EventBridge publish failed",
+            "Event publish failed",
             extra={
                 "event_id": event_id,
                 "source": source,
                 "detail_type": detail_type,
-                "error_code": error_code,
-                "error_message": error_msg,
+                "error_message": str(exc),
             },
         )
-        from shared.exceptions import ExternalServiceError
-
-        raise ExternalServiceError("EventBridge", f"{error_code}: {error_msg}")
+        raise
 
     logger.info(
         "Event published",

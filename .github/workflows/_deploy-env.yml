@@ -71,7 +71,7 @@ jobs:
           LAYER_ARN=$(aws lambda publish-layer-version \
             --layer-name logistics-shared-${{ inputs.environment }} \
             --zip-file fileb://build/shared-layer.zip \
-            --compatible-runtimes python3.12 \
+            --compatible-runtimes python3.13 \
             --compatible-architectures arm64 \
             --query 'LayerVersionArn' \
             --output text)

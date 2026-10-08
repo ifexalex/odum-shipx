@@ -10,6 +10,7 @@ the next page query to use inequality filters rather than OFFSET.
 import base64
 import json
 import logging
+import re
 from typing import Any
 
 from shared.exceptions import ValidationError
@@ -20,6 +21,25 @@ _DEFAULT_LIMIT = 20
 _MAX_LIMIT = 100
 
 # Allowlist for sort field names — prevents SQL injection via sort parameter (§2.2)
+#
+# Ground-truth fix (row 7.37): `departure_date`, `arrival_date`, and
+# `total_amount_ngn` never matched any real column on any table in the schema
+# (see migrations/versions/002_core_operational_tables.py) — they were dead
+# allowlist entries that could never be exercised by build_paginated_query.
+# Replaced with the columns the newly-wired Table sort UI actually needs:
+# `estimated_arrival_date` (container.eta), `invoice_number`/`billed_at`
+# (billing), `reference` (damage_claim's human-readable claim number).
+# The *entire* sort expression must be one identifier, optionally prefixed by a
+# single table alias ("created_at" or "b.created_at"). This is interpolated
+# straight into ORDER BY and the cursor comparison, so it cannot be validated by
+# looking at only part of the string: the allowlist check below used to inspect
+# just the segment after the last "." while the whole string was interpolated, so
+# `id,(select pg_sleep(5))::text,b.created_at` (or `id;UPDATE …;--.created_at`)
+# passed as "created_at" and executed. Reachable by any role that can list, via
+# GET /v1/billing|claims|containers?sort=… (customers can call the billing list).
+# `fullmatch`, not `$` — `$` also matches before a trailing newline.
+_SORT_EXPRESSION_RE = re.compile(r"[A-Za-z_][A-Za-z0-9_]*(?:\.[A-Za-z_][A-Za-z0-9_]*)?")
+
 ALLOWED_SORT_FIELDS: set[str] = {
     "created_at",
     "updated_at",
@@ -27,9 +47,10 @@ ALLOWED_SORT_FIELDS: set[str] = {
     "status",
     "reference_number",
     "container_number",
-    "total_amount_ngn",
-    "departure_date",
-    "arrival_date",
+    "estimated_arrival_date",
+    "invoice_number",
+    "billed_at",
+    "reference",
 }
 
 
@@ -118,7 +139,10 @@ def build_paginated_query(
         Tuple of (modified_query, params_dict).
     """
     clean_field = sort_field.lstrip("-")
-    # Allow table-aliased fields like "b.created_at" — validate column part only
+    # Allow table-aliased fields like "b.created_at", but only as a single
+    # identifier (or alias.identifier) — see _SORT_EXPRESSION_RE.
+    if _SORT_EXPRESSION_RE.fullmatch(clean_field) is None:
+        raise ValidationError("Invalid sort field")
     col_name = clean_field.split(".")[-1]
     if col_name not in ALLOWED_SORT_FIELDS:
         raise ValidationError(f"Invalid sort field: {col_name}")

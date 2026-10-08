@@ -22,15 +22,26 @@ Create Terraform modules for all Lambda functions, their IAM roles/policies, Lam
 | `logistics-claims-{env}` | python3.12 | 256MB | 30s | API Gateway | Yes |
 | `logistics-payment-release-{env}` | python3.12 | 256MB | 30s | API Gateway | Yes |
 | `logistics-refunds-{env}` | python3.12 | 256MB | 30s | API Gateway | Yes |
-| `logistics-metering-{env}` | python3.12 | 256MB | 60s | SQS (metering queue) | Yes |
+| `logistics-excel-{env}` | python3.12 | 256MB | 60s | API Gateway | Yes |
+| `logistics-notif-api-{env}` | python3.12 | 256MB | 30s | API Gateway (`/v1/notifications/*`) — `notification.handler.http_handler` (added 2026-09-23) | Yes |
+| `logistics-notif-webhook-{env}` | python3.12 | 256MB | 15s | API Gateway (public `/v1/webhooks/whatsapp`) — `notification.handler.webhook_handler` (added 2026-09-23) | Yes |
+| `logistics-metering-{env}` | python3.12 | 256MB | 60s | SQS (metering queue) **and** API Gateway (`GET /v1/platform/tenants/{id}/usage`) — dual-mode handler | Yes |
 
 ### Non-VPC Lambdas (external API calls, no DB):
 
 | Function Name | Runtime | Memory | Timeout | Trigger |
 |---|---|---|---|---|
-| `logistics-notif-sms-{env}` | python3.12 | 256MB | 60s | SQS (sms queue) |
-| `logistics-notif-whatsapp-{env}` | python3.12 | 256MB | 60s | SQS (whatsapp queue) |
-| `logistics-notif-email-{env}` | python3.12 | 256MB | 60s | SQS (email queue) |
+| `logistics-notif-sms-{env}` | python3.12 | 256MB | 60s | SQS (sms queue) — `notification.handler.sms_handler` |
+| `logistics-notif-whatsapp-{env}` | python3.12 | 256MB | 60s | SQS (whatsapp queue) — `notification.handler.whatsapp_handler` |
+| `logistics-notif-email-{env}` | python3.12 | 256MB | 60s | SQS (email queue) — `notification.handler.email_handler` |
+
+> **Known gap — needs an architecture decision (2026-09-23).** These were specified as "no DB" (hence non-VPC,
+> no NAT), but since migration 027 they write `notification_log` rows (`log_queued`/`log_sent`/`log_failed`,
+> best-effort) and meter usage — both need Aurora. From outside the VPC those calls fail after
+> `connect_timeout=5s` each: sends still go out, but delivery-log rows and usage metering are lost, and up to
+> ~15s per message against a 60s timeout with `batch_size = 10` risks timed-out batches being redelivered
+> (duplicate sends). Moving them into the VPC needs NAT egress for Africa's Talking/Meta, which the design
+> deliberately avoided ("no NAT in v1"). See `docs/runbook.md` → *Open infrastructure decisions*.
 
 ### Scheduled Lambdas (cron jobs, need DB):
 
@@ -46,7 +57,7 @@ Create Terraform modules for all Lambda functions, their IAM roles/policies, Lam
 
 ## Deliverables
 
-### Module: `infrastructure/modules/lambda/main.tf`
+### Module: `infrastructure/aws/modules/lambda/main.tf`
 
 **For each Lambda:**
 - `aws_lambda_function` with:
@@ -98,11 +109,53 @@ Create Terraform modules for all Lambda functions, their IAM roles/policies, Lam
 
 - `aws_sns_topic` — "logistics-alerts-{env}" (email subscription for dev team)
 
+## Lambda module corrections (2026-09-23)
+
+A code-vs-Terraform audit found the module had drifted well behind the application. Fixed in
+`modules/lambda`, `modules/iam-oidc`, root `main.tf`:
+
+1. **Notification handlers pointed at a function that doesn't exist.** All three SQS consumers had
+   `handler = "notification.handler.lambda_handler"`; `services/notification/handler.py` defines
+   `sms_handler`, `whatsapp_handler`, `email_handler`, `http_handler`, `webhook_handler` — no
+   `lambda_handler`. Every invocation would have failed with `Runtime.HandlerNotFound`.
+2. **No Lambda served the notification HTTP API.** Added VPC-attached `notif-api` (`http_handler`) and
+   `notif-webhook` (`webhook_handler`); the WhatsApp webhook was previously routed to an SQS consumer.
+   Both need only Aurora + SQS (reachable in-VPC via the interface endpoint), so neither needs NAT.
+3. **Producers could never enqueue.** `SQS_SMS/WHATSAPP/EMAIL_QUEUE_URL` were never set (so
+   `enqueue_notification` logged "Queue URL env var not set — notification dropped" and returned), and no
+   role had `sqs:SendMessage`. Root now passes `module.sqs.queue_urls` → `var.sqs_queue_urls` → the common
+   env; `sqs_send_notifications` grants send on the three notification queues to every API, scheduled and
+   consumer Lambda (the WhatsApp consumer falls back to the SMS queue).
+4. **`metering` unreachable from API Gateway** — added to `api_lambda_arns` + `aws_lambda_permission.apigw_metering`.
+5. **Missing IAM grants, derived from the code's actual boto3 calls:**
+   - `s3_documents` — `tracking`, `payment_release`, `manifest`, `excel` presign uploads/downloads (only
+     `claims` had S3 access; a presigned URL is authorised as the signing role).
+   - `data_cleanup_purge` — S3 list/version/delete + Cognito `ListUsers`/`AdminDeleteUser` for tenant offboarding.
+   - `cognito_admin` — added `AdminRemoveUserFromGroup`, `AdminUpdateUserAttributes`, `AdminResetUserPassword`,
+     `AdminSetUserPassword`, `AdminUserGlobalSignOut`, `CreateGroup` (used by `cognito_client.py`).
+   - `kms_field_encryption` — added `tenant_management` (encrypts each tenant's Paystack secret key).
+6. **Permissions boundary (`modules/iam-oidc`)** is an allow-list intersection, so the above would have been
+   silently ineffective for actions it lacked. Added `s3:DeleteObjectVersion`, `s3:ListBucketVersions`,
+   `cognito-idp:AdminSetUserPassword|AdminUserGlobalSignOut|CreateGroup`, and replaced the KMS condition
+   `kms:RequestAlias` (only present when a request names an alias — the code uses a key ARN for
+   `GenerateDataKey` and no key for `Decrypt`, so it could never match) with
+   `ForAnyValue:StringLike kms:ResourceAliases`.
+
+**Verification limits.** `terraform validate` passes and `tests/unit/test_infrastructure_contracts.py` asserts the
+route/handler/service-key contracts, but no `terraform plan`/`apply` has been run against AWS. After applying,
+confirm with `aws iam simulate-principal-policy` (KMS and S3-version actions especially) and a smoke call to
+`GET /v1/notifications/staff/unread-count`.
+
+**Not changed (still open — see `docs/runbook.md`):** NAT/egress for Paystack, Bybit and the SMS/WhatsApp
+providers; adopting the custom Lambda authorizer (`services/authorizer`, needed for impersonation); provisioning
+of provider credentials (`AFRICASTALKING_*`, `META_WHATSAPP_*`, `WHATSAPP_VERIFY_TOKEN`), which are env-only and
+set nowhere in Terraform.
+
 ## Acceptance Criteria
 
 - [ ] All Lambda functions created with correct runtime, memory, timeout
 - [ ] VPC-attached Lambdas in private subnets with Lambda security group
-- [ ] Notification Lambdas outside VPC (no NAT Gateway needed)
+- [ ] ~~Notification Lambdas outside VPC (no NAT Gateway needed)~~ — the SQS consumers still are, but they need Aurora for `notification_log`/metering; see the Known gap above. The notification *HTTP* Lambdas are VPC-attached by design
 - [ ] Shared Lambda Layer created and attached to all functions
 - [ ] IAM roles follow least-privilege (each Lambda gets only needed permissions)
 - [ ] SQS event source mappings for notification + metering Lambdas

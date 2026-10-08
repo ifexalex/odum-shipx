@@ -1,0 +1,314 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>ShipX — Gap Analysis v2 (Re-check)</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  :root {
+    --navy:#0D2340; --navy-mid:#1A3F6F; --blue:#2563EB; --blue-light:#DBEAFE;
+    --orange:#F97316; --orange-lt:#FED7AA; --red:#DC2626; --red-lt:#FEE2E2;
+    --amber:#D97706; --amber-lt:#FEF3C7; --green:#16A34A; --green-lt:#DCFCE7;
+    --purple:#7C3AED; --purple-lt:#EDE9FE;
+    --n900:#111827; --n700:#374151; --n500:#6B7280; --n300:#D1D5DB; --n100:#F3F4F6; --n50:#F9FAFB;
+    --white:#FFFFFF; --page-bg:#F0EEE9;
+  }
+  html { font-size: 14px; }
+  body { font-family:'Inter',system-ui,sans-serif; background:var(--page-bg); color:var(--n900); line-height:1.6; }
+  .layout { display:flex; min-height:100vh; }
+  .sidebar { width:248px; flex-shrink:0; background:var(--navy); position:sticky; top:0; height:100vh; overflow-y:auto; display:flex; flex-direction:column; }
+  .sidebar-logo { padding:24px 20px 16px; border-bottom:1px solid rgba(255,255,255,0.08); }
+  .sidebar-logo .wordmark { font-size:18px; font-weight:700; color:#fff; letter-spacing:-0.3px; }
+  .sidebar-logo .doc-label { font-size:11px; color:rgba(255,255,255,0.4); margin-top:2px; text-transform:uppercase; letter-spacing:0.6px; }
+  .sidebar-nav { padding:12px 0; flex:1; }
+  .nav-section-label { padding:12px 20px 4px; font-size:10px; font-weight:600; text-transform:uppercase; letter-spacing:0.8px; color:rgba(255,255,255,0.35); }
+  .nav-item { display:flex; align-items:center; gap:8px; padding:7px 20px; font-size:13px; color:rgba(255,255,255,0.65); cursor:pointer; text-decoration:none; transition:color .12s; }
+  .nav-item:hover { color:#fff; }
+  .nav-item.active { color:#fff; background:rgba(255,255,255,0.07); border-left:2px solid var(--blue); padding-left:18px; }
+  .nav-dot { width:6px; height:6px; border-radius:50%; flex-shrink:0; }
+  .dot-red{background:var(--red);} .dot-amber{background:var(--amber);} .dot-blue{background:var(--blue);}
+  .dot-green{background:var(--green);} .dot-purple{background:var(--purple);} .dot-gray{background:var(--n500);}
+  .sidebar-meta { padding:16px 20px; border-top:1px solid rgba(255,255,255,0.08); font-size:11px; color:rgba(255,255,255,0.3); }
+  .main { flex:1; min-width:0; padding:40px 48px 80px; max-width:1040px; }
+  .report-header { margin-bottom:32px; padding-bottom:28px; border-bottom:1px solid var(--n300); }
+  .report-header .eyebrow { font-size:11px; font-weight:600; text-transform:uppercase; letter-spacing:0.8px; color:var(--n500); margin-bottom:8px; }
+  .report-header h1 { font-size:28px; font-weight:700; color:var(--navy); letter-spacing:-0.4px; margin-bottom:8px; }
+  .report-header .subtitle { font-size:15px; color:var(--n700); max-width:760px; }
+  .meta-row { display:flex; gap:24px; margin-top:16px; flex-wrap:wrap; }
+  .meta-pill { display:flex; align-items:center; gap:6px; font-size:12px; color:var(--n500); }
+  .meta-pill strong { color:var(--n700); }
+  .summary-grid { display:grid; grid-template-columns:repeat(4,1fr); gap:12px; margin-bottom:36px; }
+  .summary-card { background:var(--white); border:1px solid var(--n300); border-radius:8px; padding:16px; }
+  .summary-card .count { font-size:28px; font-weight:700; line-height:1; margin-bottom:4px; }
+  .summary-card .label { font-size:12px; color:var(--n500); font-weight:500; }
+  .count-red{color:var(--red);} .count-amber{color:var(--amber);} .count-green{color:var(--green);} .count-blue{color:var(--blue);}
+  .section { margin-bottom:44px; scroll-margin-top:24px; }
+  .section-header { display:flex; align-items:baseline; gap:12px; margin-bottom:8px; }
+  .section-header h2 { font-size:18px; font-weight:700; color:var(--navy); letter-spacing:-0.2px; }
+  .section-count { font-size:12px; font-weight:600; padding:2px 8px; border-radius:20px; }
+  .section-desc { font-size:14px; color:var(--n700); margin-bottom:16px; max-width:720px; }
+  .gap-list { display:flex; flex-direction:column; gap:10px; }
+  .gap-card { background:var(--white); border:1px solid var(--n300); border-radius:8px; overflow:hidden; }
+  .gap-body { padding:16px 18px; }
+  .gap-top { display:flex; align-items:flex-start; justify-content:space-between; gap:12px; margin-bottom:8px; }
+  .gap-title { font-size:14.5px; font-weight:600; color:var(--n900); line-height:1.4; }
+  .gap-badges { display:flex; gap:6px; flex-shrink:0; flex-wrap:wrap; }
+  .badge { display:inline-flex; align-items:center; gap:4px; font-size:11px; font-weight:600; padding:2px 8px; border-radius:4px; white-space:nowrap; text-transform:uppercase; letter-spacing:0.4px; }
+  .badge-red{background:var(--red-lt);color:var(--red);} .badge-amber{background:var(--amber-lt);color:var(--amber);}
+  .badge-blue{background:var(--blue-light);color:var(--blue);} .badge-green{background:var(--green-lt);color:var(--green);}
+  .badge-purple{background:var(--purple-lt);color:var(--purple);} .badge-gray{background:var(--n100);color:var(--n500);}
+  .badge-navy{background:var(--navy);color:#fff;}
+  .gap-desc { font-size:13px; color:var(--n700); line-height:1.6; margin-bottom:10px; }
+  .gap-detail { background:var(--n50); border:1px solid var(--n100); border-radius:6px; padding:10px 14px; font-size:12.5px; color:var(--n700); line-height:1.6; }
+  .gap-detail .detail-row { display:flex; gap:8px; margin-bottom:3px; }
+  .gap-detail .detail-row:last-child { margin-bottom:0; }
+  .detail-label { font-weight:600; color:var(--n500); min-width:88px; flex-shrink:0; font-size:11px; text-transform:uppercase; letter-spacing:0.3px; padding-top:1px; }
+  code { font-family:'JetBrains Mono',monospace; font-size:11.5px; background:var(--n100); padding:1px 5px; border-radius:3px; color:var(--navy-mid); }
+  .sev-critical{border-left:4px solid var(--red);} .sev-high{border-left:4px solid var(--orange);}
+  .sev-medium{border-left:4px solid var(--amber);} .sev-low{border-left:4px solid var(--n300);}
+  .divider { border:none; border-top:1px solid var(--n300); margin:36px 0; }
+  /* closed list */
+  .closed-grid { display:grid; grid-template-columns:1fr 1fr; gap:8px; }
+  .closed-item { display:flex; align-items:flex-start; gap:10px; background:var(--white); border:1px solid var(--n300); border-left:4px solid var(--green); border-radius:8px; padding:12px 14px; }
+  .closed-check { width:18px; height:18px; border-radius:50%; background:var(--green); color:#fff; display:flex; align-items:center; justify-content:center; flex-shrink:0; font-size:11px; font-weight:700; margin-top:1px; }
+  .closed-item .ci-title { font-size:13px; font-weight:600; color:var(--n900); }
+  .closed-item .ci-sub { font-size:12px; color:var(--n500); margin-top:2px; }
+  .closed-item .ci-sub code { font-size:10.5px; }
+  /* rec table */
+  .rec-table { width:100%; border-collapse:collapse; font-size:13px; }
+  .rec-table th { text-align:left; padding:8px 12px; font-size:11px; font-weight:600; text-transform:uppercase; letter-spacing:0.5px; color:var(--n500); border-bottom:2px solid var(--n300); background:var(--n50); }
+  .rec-table td { padding:10px 12px; border-bottom:1px solid var(--n100); vertical-align:top; color:var(--n700); }
+  .rec-table tr:last-child td { border-bottom:none; }
+  .rec-table td:first-child { font-weight:500; color:var(--n900); }
+  .priority-chip { display:inline-block; font-size:10px; font-weight:700; padding:2px 7px; border-radius:3px; text-transform:uppercase; letter-spacing:0.4px; }
+  .p1{background:var(--red-lt);color:var(--red);} .p2{background:var(--orange-lt);color:var(--orange);}
+  .p3{background:var(--amber-lt);color:var(--amber);} .p4{background:var(--n100);color:var(--n500);}
+  .callout { background:#fff; border:1px solid var(--red); border-left:4px solid var(--red); border-radius:8px; padding:16px 18px; margin-bottom:20px; }
+  .callout .ct { font-size:14px; font-weight:700; color:var(--red); margin-bottom:6px; display:flex; align-items:center; gap:8px; }
+  .callout .cb { font-size:13px; color:var(--n700); line-height:1.6; }
+  @media (max-width:900px){ .sidebar{display:none;} .main{padding:24px 20px 60px;} .summary-grid,.closed-grid{grid-template-columns:1fr 1fr;} }
+</style>
+</head>
+<body>
+<div class="layout">
+  <nav class="sidebar">
+    <div class="sidebar-logo">
+      <div class="wordmark">ShipX</div>
+      <div class="doc-label">Gap Analysis · v2</div>
+    </div>
+    <div class="sidebar-nav">
+      <div class="nav-section-label">Overview</div>
+      <a class="nav-item active" href="#summary"><span class="nav-dot dot-blue"></span>Re-check summary</a>
+      <a class="nav-item" href="#closed"><span class="nav-dot dot-green"></span>Now closed</a>
+      <div class="nav-section-label">Still open</div>
+      <a class="nav-item" href="#critical"><span class="nav-dot dot-red"></span>Critical — read-only guard</a>
+      <a class="nav-item" href="#backend"><span class="nav-dot dot-amber"></span>Backend seams</a>
+      <a class="nav-item" href="#frontend"><span class="nav-dot dot-amber"></span>Frontend seams</a>
+      <a class="nav-item" href="#carried"><span class="nav-dot dot-gray"></span>Carried over</a>
+      <div class="nav-section-label">Plan</div>
+      <a class="nav-item" href="#recommendations"><span class="nav-dot dot-green"></span>Recommendations</a>
+    </div>
+    <div class="sidebar-meta">Re-checked June 17, 2026</div>
+  </nav>
+
+  <main class="main">
+    <div class="report-header" id="summary">
+      <div class="eyebrow">Second-pass review · backend + frontend</div>
+      <h1>Gap Analysis v2 — Re-check</h1>
+      <p class="subtitle">After the gap-fix round: the four P1/P2 backend items and most of the designed screens now exist in code. This pass confirms what closed and surfaces the seams that opened where features got built but not fully wired end-to-end.</p>
+      <div class="meta-row">
+        <span class="meta-pill"><strong>Closed since v1:</strong> 6 of the headline gaps</span>
+        <span class="meta-pill"><strong>New / still open:</strong> 5 items</span>
+        <span class="meta-pill"><strong>Highest severity:</strong> 1 critical (security)</span>
+      </div>
+    </div>
+
+    <div class="summary-grid">
+      <div class="summary-card"><div class="count count-green">6</div><div class="label">Gaps closed</div></div>
+      <div class="summary-card"><div class="count count-red">1</div><div class="label">Critical (security)</div></div>
+      <div class="summary-card"><div class="count count-amber">3</div><div class="label">Half-wired seams</div></div>
+      <div class="summary-card"><div class="count count-blue">1</div><div class="label">Integration / docs</div></div>
+    </div>
+
+    <!-- CLOSED -->
+    <div class="section" id="closed">
+      <div class="section-header"><h2>Now closed</h2><span class="section-count badge badge-green">Verified in code</span></div>
+      <p class="section-desc">Confirmed present and correctly structured (handler → service → repository, migrations, audit, RLS) in the current codebase.</p>
+      <div class="closed-grid">
+        <div class="closed-item"><div class="closed-check">✓</div><div><div class="ci-title">PDF export</div><div class="ci-sub"><code>excel/export_packing_list_pdf.py</code> + <code>export_release_note_pdf.py</code>, 5-min presigned GET, QR on release note</div></div></div>
+        <div class="closed-item"><div class="closed-check">✓</div><div><div class="ci-title">Notification delivery log</div><div class="ci-sub">Migration 027 + repo + <code>http_handler</code> (list / get / retry) + WhatsApp delivery-status callbacks wired</div></div></div>
+        <div class="closed-item"><div class="closed-check">✓</div><div><div class="ci-title">Document download</div><div class="ci-sub"><code>GET /v1/containers/{id}/documents/{doc-id}/download</code> → presigned GET in tracking</div></div></div>
+        <div class="closed-item"><div class="closed-check">✓</div><div><div class="ci-title">Impersonation (backend)</div><div class="ci-sub">Migration 028 + <code>impersonation.py</code> + custom <code>services/authorizer/</code> accepting both token types</div></div></div>
+        <div class="closed-item"><div class="closed-check">✓</div><div><div class="ci-title">Public tracking UI</div><div class="ci-sub">Gap-fix <code>PublicTracking</code> screen against the existing public <code>GET /v1/shipments/{code}?phone=</code></div></div></div>
+        <div class="closed-item"><div class="closed-check">✓</div><div><div class="ci-title">Notification log UI integrated</div><div class="ci-sub">Built into Section 14.11 (reports-screens.jsx) with channel/status filters + retry + detail modal</div></div></div>
+      </div>
+    </div>
+
+    <hr class="divider" />
+
+    <!-- CRITICAL -->
+    <div class="section" id="critical">
+      <div class="section-header"><h2>Critical — the read-only impersonation guard is never invoked</h2><span class="section-count badge badge-red">Security</span></div>
+      <div class="callout">
+        <div class="ct">⚠ Impersonation is not actually read-only at runtime</div>
+        <div class="cb">The guard exists and the docs mark it done — but no write handler calls it. A "read-only" impersonation session can currently mutate tenant data.</div>
+      </div>
+      <div class="gap-list">
+        <div class="gap-card sev-critical">
+          <div class="gap-body">
+            <div class="gap-top">
+              <div class="gap-title">Mutating handlers don't call <code>assert_not_read_only()</code></div>
+              <div class="gap-badges"><span class="badge badge-red">Critical</span><span class="badge badge-navy">Backend</span></div>
+            </div>
+            <p class="gap-desc">The plumbing is all there: the authorizer injects <code>read_only=true</code> + <code>impersonated_by</code>, <code>shared/auth.py</code> populates <code>TenantContext.read_only</code>, and <code>assert_not_read_only(ctx, method)</code> is defined to raise <code>IMPERSONATION_READ_ONLY</code> on any non-GET. But a full-codebase search shows the guard has <strong>zero call sites</strong> — it is never imported or called by tracking, billing, claims, refunds, packing_list, manifest, payment_release, or the tenant_management write routes. So despite the read-only contract (PRD Q12), an impersonation token can POST/PATCH/DELETE freely.</p>
+            <div class="gap-detail">
+              <div class="detail-row"><span class="detail-label">Defined</span><span><code>shared/auth.py:95</code> — <code>assert_not_read_only(ctx, method)</code></span></div>
+              <div class="detail-row"><span class="detail-label">Called by</span><span>nothing (only referenced in docs, which mark it <code>[x]</code> complete — the checkbox is wrong)</span></div>
+              <div class="detail-row"><span class="detail-label">Fix</span><span>Call <code>assert_not_read_only(ctx, method)</code> at the top of every write dispatch (or centralise it in a shared router/decorator so no handler can forget). Add a test asserting an impersonation token gets 403 on a POST.</span></div>
+              <div class="detail-row"><span class="detail-label">Impact</span><span>Until wired, the headline safety property of impersonation is unenforced — a support session could alter billing, approve refunds, change config.</span></div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <hr class="divider" />
+
+    <!-- BACKEND SEAMS -->
+    <div class="section" id="backend">
+      <div class="section-header"><h2>Backend seams — built but not reachable</h2><span class="section-count badge badge-amber">Half-wired</span></div>
+      <p class="section-desc">Features whose storage + downstream consumers exist, but with no write path — so the matching UI can't actually persist anything.</p>
+      <div class="gap-list">
+
+        <div class="gap-card sev-high">
+          <div class="gap-body">
+            <div class="gap-top">
+              <div class="gap-title">Webhook config has no save endpoint</div>
+              <div class="gap-badges"><span class="badge badge-amber">High</span><span class="badge badge-navy">Backend</span></div>
+            </div>
+            <p class="gap-desc"><code>webhook_config</code> is seeded in <code>DEFAULT_CONFIGS</code> and the outbound webhook fires from tracking via <code>fire_tenant_webhook</code>. But <code>UpdateTenantConfigRequest</code> only accepts <code>branding</code> and <code>notification_preferences</code>, and <code>update_tenant_config()</code> writes only those two keys. There is no way to set the URL, secret, enabled flag, or events list through the API — so the new Webhook config screen (gap-fix B2) has nothing to call.</p>
+            <div class="gap-detail">
+              <div class="detail-row"><span class="detail-label">Evidence</span><span><code>tenant_management/models.py:83</code> (request model) + <code>service.py:453</code> (only branding/notification_preferences persisted)</span></div>
+              <div class="detail-row"><span class="detail-label">Fix</span><span>Add <code>webhook_config</code> to <code>UpdateTenantConfigRequest</code> (validate URL, events enum) and persist it in <code>update_tenant_config()</code>; add a test-fire endpoint to back the screen's "Send test event" button.</span></div>
+            </div>
+          </div>
+        </div>
+
+        <div class="gap-card sev-high">
+          <div class="gap-body">
+            <div class="gap-top">
+              <div class="gap-title">Staff locale (EN/ZH) cannot be set</div>
+              <div class="gap-badges"><span class="badge badge-amber">High</span><span class="badge badge-navy">Backend</span></div>
+            </div>
+            <p class="gap-desc">Migration 026 added <code>tenant_user.locale</code> and the notification stack fully honours it — <code>enqueue_notifications</code> passes <code>locale</code> through SQS and the handlers select ZH templates when <code>locale == 'zh'</code>. But <code>update_user()</code> whitelists only <code>full_name</code> and <code>role</code>, so locale can never be written. The EN/ZH feature is dead on the write side: every user stays at the <code>'en'</code> default, and the Locale Preference screen (gap-fix A6) has no field to PATCH.</p>
+            <div class="gap-detail">
+              <div class="detail-row"><span class="detail-label">Evidence</span><span><code>tenant_management/handler.py:448</code> — <code>updates = {k:v ... if k in ("full_name","role")}</code></span></div>
+              <div class="detail-row"><span class="detail-label">Also verify</span><span>that the notification callers (e.g. tracking's <code>container_arrived</code>) look up the recipient's <code>locale</code> and pass it into <code>enqueue_notifications</code> — otherwise it defaults to <code>'en'</code> even once settable.</span></div>
+              <div class="detail-row"><span class="detail-label">Fix</span><span>Add <code>locale</code> to the permitted <code>update_user</code> fields (validate against EN/ZH) and to the customer profile if customers can choose language.</span></div>
+            </div>
+          </div>
+        </div>
+
+      </div>
+    </div>
+
+    <hr class="divider" />
+
+    <!-- FRONTEND SEAMS -->
+    <div class="section" id="frontend">
+      <div class="section-header"><h2>Frontend seams</h2><span class="section-count badge badge-amber">UI gaps</span></div>
+      <div class="gap-list">
+
+        <div class="gap-card sev-medium">
+          <div class="gap-body">
+            <div class="gap-top">
+              <div class="gap-title">No read-only banner inside an impersonated session</div>
+              <div class="gap-badges"><span class="badge badge-amber">Medium</span><span class="badge badge-gray">Frontend</span></div>
+            </div>
+            <p class="gap-desc">The platform screen has a "View as Tenant Admin" button (platform-screens.jsx:526) and the backend returns <code>impersonated_by</code> / <code>read_only</code> / <code>session_id</code> in context. But once inside the tenant portal there's no persistent impersonation banner, no 30-minute session countdown, no "Exit impersonation" control, and mutating actions aren't visibly disabled. A platform admin can't tell they're impersonating, and (combined with the critical guard gap) nothing stops them clicking a write action.</p>
+            <div class="gap-detail">
+              <div class="detail-row"><span class="detail-label">Needed</span><span>A sticky top banner ("Viewing as Tenant Admin · read-only · ends in 28:14 · Exit"), disabled state on all primary/destructive buttons, and a clean exit that calls <code>DELETE /v1/platform/impersonation/{session_id}</code>.</span></div>
+              <div class="detail-row"><span class="detail-label">Note</span><span>The app needs a way to read the current impersonation state — decode the token claims client-side, or add a small <code>/v1/session</code> echo endpoint.</span></div>
+            </div>
+          </div>
+        </div>
+
+        <div class="gap-card sev-low">
+          <div class="gap-body">
+            <div class="gap-top">
+              <div class="gap-title">11 gap-fix screens remain only in the Section 16 showcase</div>
+              <div class="gap-badges"><span class="badge badge-blue">Low</span><span class="badge badge-gray">Integration</span></div>
+            </div>
+            <p class="gap-desc">The notification log was grafted into its home (Section 14.11). The other gap-fix screens — public tracking, China status update, container-number hint, bulk partial result, refund threshold modal, webhook config, storage-fee banners, weight discrepancy, dispute SLA, expired release note, locale preference — still live only in <code>gapfix/</code> and the Section 16 canvas. That's fine as a review showcase, but they aren't wired into Sections 4–9 where users actually reach them.</p>
+            <div class="gap-detail">
+              <div class="detail-row"><span class="detail-label">Decision</span><span>Either keep Section 16 as the canonical gap-fix showcase, or graft each screen into its home section (e.g. status-update into Section 5 China, webhook tab into Section 4 config, public tracking as its own route shell).</span></div>
+            </div>
+          </div>
+        </div>
+
+      </div>
+    </div>
+
+    <hr class="divider" />
+
+    <!-- CARRIED OVER -->
+    <div class="section" id="carried">
+      <div class="section-header"><h2>Carried over from v1</h2><span class="section-count badge badge-gray">Verify</span></div>
+      <div class="gap-list">
+        <div class="gap-card sev-low">
+          <div class="gap-body">
+            <div class="gap-top">
+              <div class="gap-title">Design-system spec still diverges from the built screens</div>
+              <div class="gap-badges"><span class="badge badge-blue">Low</span><span class="badge badge-gray">Docs</span></div>
+            </div>
+            <p class="gap-desc">Round 1 flagged that the Section 0 spec (Inter, blue/orange) doesn't match the implemented screens (Manrope + Kumbh Sans, green + copper). Unless the spec has since been updated, this is still open — the component library's source-of-truth doc and the actual screens disagree on both font and color.</p>
+            <div class="gap-detail">
+              <div class="detail-row"><span class="detail-label">Fix</span><span>Update the Section 0 / design-system doc to match the screens (the screens are the stronger reference).</span></div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <hr class="divider" />
+
+    <!-- RECOMMENDATIONS -->
+    <div class="section" id="recommendations">
+      <div class="section-header"><h2>Recommended order</h2><span class="section-count badge badge-green">Prioritised</span></div>
+      <table class="rec-table">
+        <thead><tr><th style="width:34%">Action</th><th style="width:9%">Priority</th><th style="width:16%">Owner</th><th>Why now</th></tr></thead>
+        <tbody>
+          <tr><td>Wire <code>assert_not_read_only()</code> into every write dispatch (+ test)</td><td><span class="priority-chip p1">P1</span></td><td>Backend</td><td>Security — impersonation is mutating-capable today; the control is built but inert.</td></tr>
+          <tr><td>Add <code>webhook_config</code> to the config update model + persistence + test-fire route</td><td><span class="priority-chip p2">P2</span></td><td>Backend</td><td>The webhook UI exists with no endpoint to save to; integration is otherwise complete.</td></tr>
+          <tr><td>Allow <code>locale</code> in <code>update_user</code> (and confirm callers pass recipient locale)</td><td><span class="priority-chip p2">P2</span></td><td>Backend</td><td>EN/ZH notifications are fully built but unreachable without a write path.</td></tr>
+          <tr><td>Impersonation read-only banner + session countdown + exit + disabled writes</td><td><span class="priority-chip p2">P2</span></td><td>Frontend</td><td>Pairs with the P1 guard so platform admins can see and exit the session.</td></tr>
+          <tr><td>Decide Section 16 showcase vs. graft screens into home sections</td><td><span class="priority-chip p3">P3</span></td><td>Design</td><td>Functional cosmetics — affects discoverability, not capability.</td></tr>
+          <tr><td>Reconcile design-system spec with built screens</td><td><span class="priority-chip p3">P3</span></td><td>Design</td><td>Keeps the component-library doc trustworthy as the team scales.</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </main>
+</div>
+<script>
+  const sections = document.querySelectorAll('.section, .report-header');
+  const navItems = document.querySelectorAll('.nav-item');
+  const obs = new IntersectionObserver((entries) => {
+    entries.forEach(e => { if (e.isIntersecting) {
+      navItems.forEach(n => n.classList.remove('active'));
+      const m = document.querySelector('.nav-item[href="#'+e.target.id+'"]');
+      if (m) m.classList.add('active');
+    }});
+  }, { rootMargin: '-20% 0px -70% 0px' });
+  sections.forEach(s => obs.observe(s));
+  navItems.forEach(n => n.addEventListener('click', e => {
+    e.preventDefault();
+    const t = document.querySelector(n.getAttribute('href'));
+    if (t) t.scrollIntoView({ behavior:'smooth', block:'start' });
+  }));
+</script>
+</body>
+</html>

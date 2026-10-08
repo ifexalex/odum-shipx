@@ -16,14 +16,13 @@ import logging
 from datetime import date, timedelta
 from typing import Any
 
-from aws_xray_sdk.core import patch_all
-
 from shared.db import execute_with_tenant, execute_write_with_tenant
-from shared.logging_config import setup_logging
+from shared.logging_config import bind_log_context, clear_log_context, setup_logging
+from shared.observability import init_tracing
 from shared.tenant_context import PLATFORM_TENANT_ID
 
 setup_logging()
-patch_all()
+init_tracing()
 
 logger = logging.getLogger(__name__)
 
@@ -34,6 +33,8 @@ logger = logging.getLogger(__name__)
 
 
 def lambda_handler(event: dict[str, Any], context: Any) -> dict[str, Any]:
+    clear_log_context()
+    bind_log_context(request_id=getattr(context, "aws_request_id", None))
     # Aggregate all completed days (yesterday and earlier) — never today,
     # since today's records are still accumulating.
     yesterday = date.today() - timedelta(days=1)
@@ -43,6 +44,7 @@ def lambda_handler(event: dict[str, Any], context: Any) -> dict[str, Any]:
 
     for tenant in tenants:
         tenant_id = str(tenant["id"])
+        bind_log_context(tenant_id=tenant_id)
         try:
             count = _aggregate_tenant(tenant_id, up_to=yesterday)
             aggregated += count

@@ -19,18 +19,19 @@ import json
 import logging
 import time
 import uuid
+from decimal import Decimal
 from typing import Any
-
-from aws_xray_sdk.core import patch_all
 
 from shared.auth import get_tenant_context
 from shared.exceptions import LogisticsBaseError, ResourceNotFoundError
 from shared.idempotency import check_idempotency, store_idempotency
-from shared.logging_config import setup_logging
+from shared.logging_config import bind_log_context, clear_log_context, setup_logging
 from shared.metering import record_usage
+from shared.observability import init_tracing
 from shared.pagination import decode_cursor
 from shared.responses import created, error_response, paginated, success
 from shared.tenant_context import UserRole
+from shared.validation import parse_validated
 
 from . import service
 from .models import (
@@ -43,7 +44,7 @@ from .models import (
 
 # Module-level init (runs once on cold start)
 setup_logging()
-patch_all()
+init_tracing()
 
 logger = logging.getLogger(__name__)
 
@@ -76,10 +77,15 @@ _STAFF_ROLES = (UserRole.NIGERIA_OFFICE_STAFF,)
 def lambda_handler(event: dict[str, Any], context: Any) -> dict[str, Any]:
     start_time = time.time()
     request_id = event.get("requestContext", {}).get("requestId") or str(uuid.uuid4())
+    clear_log_context()
+    bind_log_context(request_id=request_id)
     http = event.get("requestContext", {}).get("http", {})
     method = http.get("method", "")
     path = http.get("path", "")
     ip_address = event.get("requestContext", {}).get("identity", {}).get("sourceIp")
+
+    if method == "GET" and path.strip("/") == "v1/health":
+        return _health_response(request_id)
 
     try:
         tenant_ctx = get_tenant_context(event)
@@ -152,6 +158,14 @@ def _dispatch(event: dict[str, Any], method: str, path: str, ctx: Any, request_i
         if sub == "seized-items":
             return _seized_item_routes(event, parts, method, ctx, request_id, ip_address)
 
+        # GET /v1/claims/stats — tenant-wide aggregates for the list stats row +
+        # status chips. Staff only (tenant-wide, not per-customer), SQL-computed.
+        if sub == "stats":
+            if method == "GET":
+                ctx.assert_role(UserRole.TENANT_ADMIN, UserRole.NIGERIA_OFFICE_STAFF)
+                return success(service.get_claim_stats(ctx.tenant_id), request_id=request_id)
+            raise ResourceNotFoundError("route", path)
+
         # sub is None or a claim UUID
         return _claim_routes(event, parts, method, ctx, request_id, ip_address, sub)
 
@@ -174,7 +188,7 @@ def _claim_routes(
         if method == "POST":
             ctx.assert_role(*_CLAIM_ROLES)
             body = _parse_body(event)
-            req = _parse_validated(FileDamageClaimRequest, body)
+            req = parse_validated(FileDamageClaimRequest, body)
             customer_id_override = body.get("customer_id") if ctx.role != UserRole.CUSTOMER else None
             result = service.file_claim(
                 tenant_id,
@@ -196,9 +210,29 @@ def _claim_routes(
             filters = {}
             if _qp(event, "status"):
                 filters["status"] = _qp(event, "status")
+            # Staff-only in effect: for the customer role, list_claims always
+            # overwrites customer_id with the caller's own record, so this
+            # param cannot widen what a customer can see. Used by the admin
+            # Customer Profile's Claims tab (audit gap A2).
+            if _qp(event, "customer_id"):
+                filters["customer_id"] = _qp(event, "customer_id")
+            if _qp(event, "created_after"):
+                filters["created_after"] = _qp(event, "created_after")
+            if _qp(event, "created_before"):
+                filters["created_before"] = _qp(event, "created_before")
             limit = int(_qp(event, "limit", 50))
             cursor = decode_cursor(_qp(event, "cursor"))
-            page, next_cursor, has_more = service.list_claims(tenant_id, ctx, filters, limit, cursor)
+            sort_field = _qp(event, "sort") or "created_at"
+            sort_direction = _qp(event, "direction") or "desc"
+            page, next_cursor, has_more = service.list_claims(
+                tenant_id,
+                ctx,
+                filters,
+                limit,
+                cursor,
+                sort_field=sort_field,
+                sort_direction=sort_direction,
+            )
             return paginated(page, next_cursor, has_more, request_id=request_id)
 
     else:
@@ -214,7 +248,7 @@ def _claim_routes(
             if action == "inspect" and method == "PATCH":
                 ctx.assert_role(*_INSPECT_ROLES)
                 body = _parse_body(event)
-                req = _parse_validated(StartInspectionRequest, body)
+                req = parse_validated(StartInspectionRequest, body)
                 result = service.start_inspection(
                     tenant_id,
                     claim_id,
@@ -228,7 +262,7 @@ def _claim_routes(
             if action == "resolve" and method == "PATCH":
                 ctx.assert_role(*_RESOLVE_ROLES)
                 body = _parse_body(event)
-                req = _parse_validated(ResolveClaimRequest, body)
+                req = parse_validated(ResolveClaimRequest, body)
                 result = service.resolve_claim(
                     tenant_id,
                     claim_id,
@@ -311,8 +345,8 @@ def _missing_item_routes(
         if method == "POST":
             ctx.assert_role(*_STAFF_ROLES)
             body = _parse_body(event)
-            req = _parse_validated(LogMissingItemRequest, body)
-            result = service.log_missing_item(tenant_id, req, actor_id=ctx.user_id)
+            req = parse_validated(LogMissingItemRequest, body)
+            result = service.log_missing_item(tenant_id, req, actor_id=ctx.user_id, ctx=ctx)
             return created(
                 result,
                 location=f"/v1/claims/missing-items/{result['id']}",
@@ -335,7 +369,11 @@ def _missing_item_routes(
                 from shared.exceptions import BusinessRuleViolationError
 
                 raise BusinessRuleViolationError("status is required", rule_id="MISSING_STATUS")
-            result = service.update_missing_item(tenant_id, item_id, status, notes, actor_id=ctx.user_id)
+            raw_amount = body.get("refund_amount_ngn")
+            refund_amount_ngn = Decimal(str(raw_amount)) if raw_amount is not None else None
+            result = service.update_missing_item(
+                tenant_id, item_id, status, notes, actor_id=ctx.user_id, ctx=ctx, refund_amount_ngn=refund_amount_ngn
+            )
             return success(result, request_id=request_id)
 
     raise ResourceNotFoundError("route", "/".join(parts))
@@ -372,8 +410,8 @@ def _seized_item_routes(
         if method == "POST":
             ctx.assert_role(*_STAFF_ROLES)
             body = _parse_body(event)
-            req = _parse_validated(LogSeizedItemRequest, body)
-            result = service.log_seized_item(tenant_id, req, actor_id=ctx.user_id)
+            req = parse_validated(LogSeizedItemRequest, body)
+            result = service.log_seized_item(tenant_id, req, actor_id=ctx.user_id, ctx=ctx)
             return created(
                 result,
                 location=f"/v1/claims/seized-items/{result['id']}",
@@ -396,7 +434,11 @@ def _seized_item_routes(
                 from shared.exceptions import BusinessRuleViolationError
 
                 raise BusinessRuleViolationError("recovery_status is required", rule_id="MISSING_STATUS")
-            result = service.update_seized_item(tenant_id, item_id, recovery_status, notes, actor_id=ctx.user_id)
+            raw_amount = body.get("refund_amount_ngn")
+            refund_amount_ngn = Decimal(str(raw_amount)) if raw_amount is not None else None
+            result = service.update_seized_item(
+                tenant_id, item_id, recovery_status, notes, actor_id=ctx.user_id, ctx=ctx, refund_amount_ngn=refund_amount_ngn
+            )
             return success(result, request_id=request_id)
 
     raise ResourceNotFoundError("route", "/".join(parts))
@@ -419,15 +461,22 @@ def _qp(event: dict[str, Any], key: str, default: Any = None) -> Any:
     return (event.get("queryStringParameters") or {}).get(key, default)
 
 
-def _parse_validated(model_class: Any, body: dict[str, Any]) -> Any:
-    from pydantic import ValidationError as PydanticValidationError
+# ---------------------------------------------------------------------------
+# Health check (no auth)
+# ---------------------------------------------------------------------------
 
-    try:
-        return model_class(**body)
-    except PydanticValidationError as exc:
-        from shared.exceptions import ValidationError
 
-        raise ValidationError(
-            "Request validation failed",
-            field_errors={str(e["loc"][-1]): e["msg"] for e in exc.errors()},
-        ) from exc
+def _health_response(request_id: str) -> dict[str, Any]:
+    import datetime
+    import json as _json
+
+    return {
+        "statusCode": 200,
+        "headers": {"Content-Type": "application/json", "X-Request-Id": request_id},
+        "body": _json.dumps(
+            {
+                "status": "healthy",
+                "timestamp": datetime.datetime.now(datetime.UTC).isoformat(),
+            }
+        ),
+    }

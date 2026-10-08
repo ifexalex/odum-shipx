@@ -1,0 +1,362 @@
+.wrap {
+  max-width: 900px;
+  margin: 0 auto;
+}
+
+.spacer {
+  height: 20px;
+}
+
+.spacerLg {
+  height: 20px;
+}
+
+.banner {
+  margin-bottom: 16px;
+}
+
+.steps {
+  display: flex;
+  padding: 8px;
+}
+
+.stepWrap {
+  display: flex;
+  align-items: center;
+}
+
+.step {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 14px 16px;
+  border-radius: 10px;
+}
+
+.stepActive {
+  background: var(--color-primary-tint);
+}
+
+.stepCircle {
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  background: var(--color-page);
+  border: 2px solid var(--color-line-soft);
+  color: var(--color-ink-4);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 700;
+  font-size: 14px;
+  flex-shrink: 0;
+}
+
+.stepDone {
+  background: var(--color-success);
+  border-color: var(--color-success);
+}
+
+.stepCurrent {
+  background: var(--color-primary);
+  border-color: var(--color-primary);
+  color: var(--color-on-brand);
+}
+
+.stepLabel {
+  font-family: var(--font-display);
+  font-weight: 700;
+  font-size: 14px;
+  color: var(--color-ink);
+}
+
+.stepSub {
+  font-size: 11px;
+  color: var(--color-ink-4);
+  margin-top: 1px;
+}
+
+.selectField {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-bottom: 16px;
+}
+
+.selectLabel {
+  font-family: var(--font-body);
+  font-weight: 500;
+  font-size: 13px;
+  color: var(--color-ink-2);
+}
+
+.required {
+  color: var(--color-error);
+  margin-left: 2px;
+}
+
+.select {
+  height: 48px;
+  background: var(--color-surface);
+  border: 1px solid var(--color-line-soft);
+  border-radius: 8px;
+  padding: 0 12px;
+  font-family: var(--font-body);
+  font-size: 14px;
+  color: var(--color-ink);
+}
+
+.dropzone {
+  position: relative;
+  border: 2px dashed var(--color-line-soft);
+  border-radius: 12px;
+  padding: 48px 20px;
+  background: var(--color-page);
+  text-align: center;
+  cursor: pointer;
+  margin-bottom: 16px;
+}
+
+.dropzoneActive {
+  border-color: var(--color-primary);
+  background: var(--color-primary-tint);
+}
+
+.dropzoneIcon {
+  width: 56px;
+  height: 56px;
+  margin: 0 auto 14px;
+  border-radius: 14px;
+  background: var(--color-primary);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.dropzoneTitle {
+  font-family: var(--font-display);
+  font-weight: 700;
+  font-size: 17px;
+  color: var(--color-ink);
+}
+
+.dropzoneSub {
+  font-size: 13px;
+  color: var(--color-ink-3);
+  margin-top: 4px;
+}
+
+.hiddenInput {
+  position: absolute;
+  inset: 0;
+  opacity: 0;
+  cursor: pointer;
+}
+
+.selectedFile {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 14px;
+  background: var(--color-surface);
+  border: 1px solid var(--color-success);
+  border-radius: 10px;
+}
+
+.selectedFileIcon {
+  width: 40px;
+  height: 40px;
+  border-radius: 8px;
+  background: var(--color-success-soft);
+  color: var(--color-success);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.selectedFileText {
+  flex: 1;
+}
+
+.selectedFileName {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--color-ink);
+}
+
+.selectedFileMeta {
+  font-size: 12px;
+  color: var(--color-ink-4);
+}
+
+.removeFile {
+  background: transparent;
+  border: 0;
+  color: var(--color-error);
+  font-weight: 600;
+  font-size: 13px;
+  cursor: pointer;
+}
+
+.actionsRow {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-top: 20px;
+}
+
+.summaryRow {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 8px 0;
+  border-bottom: 1px dashed var(--color-line);
+  font-size: 13px;
+}
+
+.summaryLabel {
+  color: var(--color-ink-4);
+  font-weight: 600;
+  text-transform: uppercase;
+  font-size: 11px;
+  letter-spacing: 0.06em;
+}
+
+/* Reflows to fewer columns as space shrinks instead of forcing the page
+   wider than its container on mobile (was a fixed 4-column grid). */
+.statsGrid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(130px, 1fr));
+  gap: 12px;
+}
+
+.statTile {
+  padding: 14px;
+  background: var(--color-page);
+  border: 1px solid var(--color-line);
+  border-radius: 8px;
+}
+
+.statLabel {
+  font-size: 11px;
+  color: var(--color-ink-3);
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.statValue {
+  font-family: var(--font-display);
+  font-weight: 700;
+  font-size: 24px;
+  color: var(--color-ink);
+  margin-top: 4px;
+}
+
+.errorSection {
+  margin-top: 16px;
+}
+
+.tableHead {
+  padding: 18px 20px;
+}
+
+.errorTable {
+  width: 100%;
+  border-collapse: collapse;
+  font-family: var(--font-body);
+  font-size: 13px;
+}
+
+.errorTable th {
+  background: var(--color-page);
+  border-bottom: 1px solid var(--color-line);
+  padding: 10px 14px;
+  text-align: left;
+  font-size: 10px;
+  font-weight: 700;
+  color: var(--color-ink-3);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.errorTable td {
+  padding: 10px 14px;
+  border-bottom: 1px solid var(--color-line);
+  color: var(--color-ink-2);
+}
+
+/* Import-type selector (forwarder manifest vs ShipX template) */
+.modeGrid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+  gap: 12px;
+  margin-bottom: 20px;
+}
+
+.modeCard {
+  display: flex;
+  gap: 12px;
+  align-items: flex-start;
+  padding: 16px;
+  text-align: left;
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: 10px;
+  cursor: pointer;
+  transition: border-color 0.15s ease, background 0.15s ease;
+}
+
+.modeCard:hover {
+  border-color: var(--color-ink-4);
+}
+
+.modeCardActive {
+  border-color: var(--color-primary);
+  background: var(--color-primary-tint, rgb(37 99 235 / 6%));
+}
+
+.modeRadio {
+  display: inline-flex;
+  flex: 0 0 auto;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 18px;
+  margin-top: 2px;
+  background: transparent;
+  border: 2px solid var(--color-ink-4);
+  border-radius: 50%;
+}
+
+.modeCardActive .modeRadio {
+  background: var(--color-primary);
+  border-color: var(--color-primary);
+}
+
+.modeText {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.modeTitle {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--color-ink);
+}
+
+.modeSub {
+  font-size: 12.5px;
+  line-height: 1.45;
+  color: var(--color-ink-3);
+}
+
+.summaryMuted {
+  font-size: 13px;
+  font-style: italic;
+  color: var(--color-ink-3);
+}

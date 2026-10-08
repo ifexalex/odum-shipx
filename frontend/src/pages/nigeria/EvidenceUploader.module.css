@@ -1,0 +1,68 @@
+.uploader {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-top: 4px;
+}
+
+.hiddenInput {
+  display: none;
+}
+
+.uploadRow {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.hint {
+  font-size: 12px;
+  color: var(--color-ink-4);
+}
+
+/* Determinate progress bar */
+.progressWrap {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.progressTrack {
+  flex: 1;
+  height: 6px;
+  background: var(--color-line);
+  border-radius: 999px;
+  overflow: hidden;
+}
+
+.progressBar {
+  height: 100%;
+  background: var(--color-primary);
+  border-radius: 999px;
+  transition: width 0.15s ease;
+}
+
+.progressLabel {
+  font-size: 11px;
+  font-family: var(--font-mono);
+  color: var(--color-ink-4);
+  width: 32px;
+  text-align: right;
+  flex-shrink: 0;
+}
+
+.error {
+  margin-top: 4px;
+}
+
+.fileList {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin-top: 2px;
+}
+
+.fileItem {
+  font-size: 13px;
+  color: var(--color-success);
+}

@@ -1,0 +1,1663 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Shipx Design System</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&family=Kumbh+Sans:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+/* ============================================================
+   SHIPX DESIGN SYSTEM — Tokens
+   Shipx is a sub-brand of ODUM. Inherits ODUM's green family,
+   the kola-nut icon, and the Averta/Kumbh type system.
+   Shipx-specific: Kola Copper accent, shipping motion vocabulary.
+   ============================================================ */
+:root {
+  /* Greens (Odum spine) */
+  --green-flash: #2dc438;     /* Pantone 15-0146 — bright accent */
+  --green: #1c7922;            /* Primary brand green */
+  --green-strong: #155f1b;
+  --green-deep: #14471a;
+  --green-forest: #0b2f0d;     /* Sidebars, deep brand */
+  --green-soft: #d6f5da;
+  --green-tint: #f3fcf4;
+
+  /* Kola Copper (Shipx accent) */
+  --copper: #9a3412;
+  --copper-hover: #c2410c;
+  --copper-deep: #7c2d12;
+  --copper-soft: #fed7aa;
+
+  /* Neutrals (warm) */
+  --ink: #1c1b1c;              /* Odum Black */
+  --ink-2: #374151;
+  --ink-3: #666666;            /* Odum Dark Grey */
+  --ink-4: #6b7280;
+  --line: #e5e7eb;
+  --line-strong: #cccccc;      /* Odum Grey */
+  --page: #f3f4f6;
+  --muted: #f9fafb;
+  --surface: #ffffff;
+
+  /* Status */
+  --success: #16a34a;
+  --success-strong: #14532d;
+  --success-soft: #dcfce7;
+  --warning: #d97706;
+  --warning-strong: #7c2d0e;
+  --warning-soft: #fef3c7;
+  --error: #dc2626;
+  --error-strong: #991b1b;
+  --error-soft: #fee2e2;
+  --info: #2563eb;
+  --info-strong: #1e3a8a;
+  --info-soft: #dbeafe;
+
+  /* Role accents */
+  --role-platform: #7c3aed;
+  --role-china: #4f46e5;
+
+  /* Radii */
+  --r-sm: 10px;
+  --r-md: 12px;
+  --r-lg: 18px;
+  --r-xl: 16px;
+  --r-full: 9999px;
+
+  /* Shadows (green-tinted, layered) */
+  --shadow-rest: 0 1px 2px rgba(11,47,13,0.04), 0 4px 16px rgba(11,47,13,0.06);
+  --shadow-hover: 0 2px 6px rgba(11,47,13,0.08), 0 12px 32px rgba(11,47,13,0.10);
+  --shadow-modal: 0 8px 24px rgba(11,47,13,0.12), 0 28px 64px rgba(11,47,13,0.22);
+  --ring: 0 0 0 3px rgba(45,196,56,0.30), 0 0 0 1px rgba(28,121,34,0.55);
+
+  /* Type */
+  --display: 'Manrope', 'Averta', system-ui, -apple-system, sans-serif;
+  --body: 'Kumbh Sans', system-ui, -apple-system, sans-serif;
+  --mono: 'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, monospace;
+}
+
+* { box-sizing: border-box; }
+html, body { margin: 0; padding: 0; }
+body {
+  font-family: var(--body);
+  font-size: 16px;
+  line-height: 1.5;
+  color: var(--ink);
+  background: var(--page);
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+
+/* ============================================================
+   LAYOUT — sticky nav + content
+   ============================================================ */
+.app {
+  display: grid;
+  grid-template-columns: 260px 1fr;
+  min-height: 100vh;
+}
+
+aside.nav {
+  position: sticky;
+  top: 0;
+  height: 100vh;
+  background: var(--green-forest);
+  color: #cfd9d1;
+  padding: 32px 24px;
+  overflow-y: auto;
+}
+aside.nav .brand {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 32px;
+}
+aside.nav .brand .mark { width: 32px; height: 32px; color: var(--green-flash); }
+aside.nav .brand .wm { font-family: var(--display); font-weight: 800; font-size: 22px; color: #fff; letter-spacing: -0.01em; }
+aside.nav .brand .wm em { color: var(--green-flash); font-style: normal; }
+aside.nav .brand small { display:block; font-family: var(--body); font-size: 10px; letter-spacing: 0.18em; text-transform: uppercase; color: rgba(255,255,255,0.5); font-weight: 600; margin-top: 2px;}
+aside.nav .group {
+  font-family: var(--body);
+  font-size: 11px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: rgba(255,255,255,0.45);
+  font-weight: 600;
+  margin: 24px 0 8px;
+}
+aside.nav a {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 12px;
+  color: var(--line-strong);
+  text-decoration: none;
+  font-size: 14px;
+  border-radius: var(--r-sm);
+  font-weight: 500;
+  position: relative;
+}
+aside.nav a:hover { color: #fff; background: rgba(255,255,255,0.04); }
+aside.nav a .num { font-family: var(--mono); font-size: 11px; color: rgba(255,255,255,0.4); width: 22px; }
+
+main {
+  padding: 64px 80px;
+  max-width: 1240px;
+}
+
+/* ============================================================
+   TYPE PRIMITIVES
+   ============================================================ */
+.display-lg { font-family: var(--display); font-weight: 800; font-size: 56px; line-height: 1.05; letter-spacing: -0.02em; color: var(--ink); }
+.display-md { font-family: var(--display); font-weight: 700; font-size: 32px; line-height: 1.2; letter-spacing: -0.01em; color: var(--ink); }
+.headline-lg { font-family: var(--display); font-weight: 600; font-size: 20px; line-height: 1.4; color: var(--ink); }
+.headline-md { font-family: var(--display); font-weight: 600; font-size: 16px; line-height: 1.5; color: var(--ink); }
+.body-lg { font-family: var(--body); font-size: 16px; line-height: 1.6; color: var(--ink-2); }
+.body-md { font-family: var(--body); font-size: 14px; line-height: 1.5; color: var(--ink-2); }
+.body-sm { font-family: var(--body); font-size: 12px; line-height: 1.4; color: var(--ink-3); }
+.label-md { font-family: var(--body); font-weight: 500; font-size: 14px; }
+.label-sm { font-family: var(--body); font-weight: 600; font-size: 11px; letter-spacing: 0.08em; text-transform: uppercase; color: var(--ink-3); }
+.mono { font-family: var(--mono); font-size: 13px; }
+
+/* ============================================================
+   SECTION CHROME
+   ============================================================ */
+section { margin-bottom: 96px; scroll-margin-top: 32px; }
+section > header { margin-bottom: 32px; padding-bottom: 16px; border-bottom: 1px solid var(--line); display: flex; align-items: baseline; gap: 16px;}
+section > header .num { font-family: var(--mono); font-size: 12px; color: var(--green); font-weight: 600; padding: 4px 10px; background: var(--green-tint); border-radius: var(--r-full); }
+section > header h2 { font-family: var(--display); font-weight: 700; font-size: 28px; margin: 0; letter-spacing: -0.015em; }
+section > header p { font-family: var(--body); font-size: 15px; color: var(--ink-3); margin: 0; flex: 1; max-width: 460px;}
+
+.card { background: var(--surface); border: 1px solid var(--line); border-radius: var(--r-md); padding: 24px; box-shadow: var(--shadow-rest); }
+.row-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 24px; }
+.row-3 { display: grid; grid-template-columns: repeat(3, 1fr); gap: 24px; }
+.row-4 { display: grid; grid-template-columns: repeat(4, 1fr); gap: 16px; }
+.stack-md { display: flex; flex-direction: column; gap: 16px; }
+.stack-lg { display: flex; flex-direction: column; gap: 24px; }
+.hsep { height: 1px; background: var(--line); margin: 24px 0; border: 0; }
+
+/* ============================================================
+   HERO
+   ============================================================ */
+.hero {
+  background: linear-gradient(135deg, #0b2f0d 0%, #14471a 60%, #155f1b 100%);
+  color: #fff;
+  border-radius: var(--r-lg);
+  padding: 56px 56px 64px;
+  margin-bottom: 64px;
+  position: relative;
+  overflow: hidden;
+  box-shadow: var(--shadow-modal);
+}
+.hero::before {
+  content: "";
+  position: absolute;
+  right: -120px;
+  top: -120px;
+  width: 480px;
+  height: 480px;
+  background: radial-gradient(circle, rgba(45,196,56,0.18), transparent 60%);
+  pointer-events: none;
+}
+.hero .kicker { display: inline-flex; align-items: center; gap: 10px; padding: 6px 12px; border-radius: var(--r-full); background: rgba(45,196,56,0.15); color: var(--green-flash); font-size: 12px; font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase; }
+.hero .kicker .dot { width: 6px; height: 6px; border-radius: 50%; background: var(--green-flash); }
+.hero h1 { font-family: var(--display); font-weight: 800; font-size: 72px; line-height: 1; letter-spacing: -0.035em; margin: 24px 0 16px; color: #fff;}
+.hero h1 em { color: var(--green-flash); font-style: normal; }
+.hero p { font-size: 18px; line-height: 1.55; color: rgba(255,255,255,0.78); max-width: 620px; margin: 0;}
+.hero .meta { display: flex; gap: 40px; margin-top: 48px; padding-top: 32px; border-top: 1px solid rgba(255,255,255,0.12); position: relative; z-index: 2; }
+.hero .meta div { font-family: var(--body); font-size: 12px; color: rgba(255,255,255,0.5); text-transform: uppercase; letter-spacing: 0.1em; font-weight: 600; }
+.hero .meta div strong { display: block; font-family: var(--display); font-size: 15px; color: #fff; text-transform: none; letter-spacing: 0; font-weight: 600; margin-top: 4px; }
+
+/* ============================================================
+   COLOR
+   ============================================================ */
+.swatch { background: var(--surface); border-radius: var(--r-md); overflow: hidden; border: 1px solid var(--line); }
+.swatch .chip { height: 96px; position: relative; }
+.swatch .chip .role { position: absolute; bottom: 8px; left: 12px; font-size: 10px; font-weight: 700; letter-spacing: 0.1em; text-transform: uppercase; color: rgba(255,255,255,0.85); }
+.swatch .chip .role.dark { color: rgba(28,27,28,0.7); }
+.swatch .meta { padding: 12px 14px; }
+.swatch .meta .name { font-family: var(--display); font-weight: 600; font-size: 14px; }
+.swatch .meta .hex { font-family: var(--mono); font-size: 11px; color: var(--ink-3); margin-top: 2px; }
+.palette-row { display: grid; grid-template-columns: repeat(6, 1fr); gap: 12px; }
+.palette-row.three { grid-template-columns: repeat(3, 1fr); }
+
+/* ============================================================
+   TYPE specimen
+   ============================================================ */
+.type-specimen { display: grid; grid-template-columns: 80px 1fr 160px; gap: 24px; align-items: baseline; padding: 20px 0; border-bottom: 1px dashed var(--line); }
+.type-specimen:last-child { border-bottom: 0; }
+.type-specimen .label { font-family: var(--mono); font-size: 11px; color: var(--ink-4); text-transform: uppercase; letter-spacing: 0.08em; }
+.type-specimen .meta { font-family: var(--mono); font-size: 11px; color: var(--ink-4); text-align: right; }
+.type-specimen .sample { color: var(--ink); }
+
+/* ============================================================
+   SPACING / RADII
+   ============================================================ */
+.spacing-row { display: flex; align-items: center; gap: 16px; padding: 12px 0; border-bottom: 1px dashed var(--line); }
+.spacing-row:last-child { border-bottom: 0; }
+.spacing-row .bar { background: var(--green); height: 16px; border-radius: 3px; }
+.spacing-row .name { font-family: var(--display); font-weight: 600; width: 80px; font-size: 14px;}
+.spacing-row .val { font-family: var(--mono); font-size: 12px; color: var(--ink-3); width: 60px;}
+.spacing-row .use { font-size: 13px; color: var(--ink-3); flex: 1; }
+
+.radii { display: grid; grid-template-columns: repeat(5, 1fr); gap: 16px;}
+.radii .item { text-align: center; }
+.radii .box { background: var(--green); height: 88px; box-shadow: var(--shadow-rest); }
+.radii .nm { font-family: var(--display); font-weight: 600; font-size: 14px; margin-top: 10px;}
+.radii .vl { font-family: var(--mono); font-size: 11px; color: var(--ink-3);}
+
+/* ============================================================
+   SHADOWS
+   ============================================================ */
+.shadow-demo { background: #fff; border-radius: var(--r-md); padding: 24px; }
+.shadow-demo .name { font-family: var(--display); font-weight: 600; font-size: 14px;}
+.shadow-demo .val { font-family: var(--mono); font-size: 10px; color: var(--ink-4); margin-top: 6px; word-break: break-all; line-height: 1.6;}
+
+/* ============================================================
+   COMPONENTS — buttons, inputs, badges, etc.
+   ============================================================ */
+.btn { display: inline-flex; align-items: center; gap: 8px; font-family: var(--body); font-weight: 500; font-size: 14px; padding: 0 16px; height: 36px; border-radius: var(--r-sm); cursor: pointer; border: 1px solid transparent; transition: all .16s cubic-bezier(.2,.7,.3,1); }
+.btn:focus { outline: none; box-shadow: var(--ring); }
+.btn:hover:not([disabled]) { transform: translateY(-1px); }
+.btn:active:not([disabled]) { transform: translateY(0); }
+.btn-primary { background: linear-gradient(180deg, #229329 0%, var(--green) 100%); color: #fff; box-shadow: 0 1px 2px rgba(11,47,13,0.3), inset 0 1px 0 rgba(255,255,255,0.14); }
+.btn-primary:hover { background: linear-gradient(180deg, #24a02c 0%, var(--green-strong) 100%); box-shadow: 0 6px 14px rgba(11,47,13,0.22), inset 0 1px 0 rgba(255,255,255,0.14); }
+.btn-primary:active { background: var(--green-deep); }
+.btn-accent { background: linear-gradient(180deg, #b13e15 0%, var(--copper) 100%); color: #fff; box-shadow: 0 1px 2px rgba(124,45,18,0.3), inset 0 1px 0 rgba(255,255,255,0.14); }
+.btn-accent:hover { background: linear-gradient(180deg, var(--copper-hover) 0%, #a83a0e 100%); box-shadow: 0 6px 14px rgba(124,45,18,0.25), inset 0 1px 0 rgba(255,255,255,0.14); }
+.btn-accent:active { background: var(--copper-deep); }
+.btn-secondary { background: var(--surface); color: var(--ink); border-color: var(--line-strong); box-shadow: 0 1px 2px rgba(11,47,13,0.05); }
+.btn-secondary:hover { background: var(--muted); border-color: var(--ink-4); box-shadow: 0 4px 10px rgba(11,47,13,0.10); }
+.btn-ghost { background: transparent; color: var(--green); }
+.btn-ghost:hover { background: var(--green-tint); }
+.btn-danger { background: linear-gradient(180deg, #e33434 0%, var(--error) 100%); color: #fff; box-shadow: 0 1px 2px rgba(153,27,27,0.3), inset 0 1px 0 rgba(255,255,255,0.14); }
+.btn-danger:hover { background: var(--error-strong); }
+.btn[disabled] { opacity: .5; cursor: not-allowed; }
+.btn-sm { height: 28px; padding: 0 12px; font-size: 13px; }
+.btn-lg { height: 44px; padding: 0 20px; font-size: 15px; }
+
+.input { display: block; width: 100%; height: 40px; padding: 0 14px; font-family: var(--body); font-size: 14px; color: var(--ink); background: var(--surface); border: 1px solid var(--line-strong); border-radius: var(--r-sm); }
+.input:focus { outline: none; border-color: var(--green); box-shadow: var(--ring); }
+.input.error { border-color: var(--error); }
+.field { display: block; }
+.field label { display: block; font-weight: 500; font-size: 13px; color: var(--ink-2); margin-bottom: 6px; }
+.field .helper { font-size: 12px; color: var(--ink-4); margin-top: 6px; }
+.field .err { font-size: 12px; color: var(--error); margin-top: 6px; }
+
+.badge { display: inline-flex; align-items: center; gap: 6px; font-family: var(--body); font-weight: 600; font-size: 11px; letter-spacing: 0.06em; text-transform: uppercase; padding: 4px 10px; border-radius: var(--r-full); }
+.badge .dot { width: 6px; height: 6px; border-radius: 50%; background: currentColor; }
+.b-success { background: var(--success-soft); color: var(--success-strong); }
+.b-warning { background: var(--warning-soft); color: var(--warning-strong); }
+.b-error { background: var(--error-soft); color: var(--error-strong); }
+.b-info { background: var(--info-soft); color: var(--info-strong); }
+.b-accent { background: var(--copper-soft); color: var(--copper-deep); }
+.b-neutral { background: var(--line); color: var(--ink-3); }
+
+.stat-card { background: #fff; border-radius: var(--r-xl); padding: 24px; border: 1px solid var(--line); box-shadow: var(--shadow-rest); }
+.stat-card .lbl { font-family: var(--body); font-size: 12px; color: var(--ink-3); text-transform: uppercase; letter-spacing: 0.08em; font-weight: 600;}
+.stat-card .num { font-family: var(--display); font-weight: 700; font-size: 36px; margin: 8px 0; color: var(--ink); letter-spacing: -0.02em;}
+.stat-card .trend { display: inline-flex; align-items: center; gap: 4px; font-size: 12px; font-weight: 600; }
+.stat-card .trend.up { color: var(--success); }
+.stat-card .trend.down { color: var(--error); }
+
+/* sidebar nav demo */
+.demo-sidebar { background: linear-gradient(180deg, #0b2f0d 0%, #0d3810 62%, #10431a 100%); border-radius: var(--r-md); padding: 16px 0; color: #cfd9d1; min-height: 320px; }
+.demo-sidebar .group { font-family: var(--body); font-size: 10px; letter-spacing: 0.14em; text-transform: uppercase; color: rgba(255,255,255,0.4); font-weight: 600; padding: 12px 20px 6px;}
+.demo-sidebar .navi { display: flex; align-items: center; gap: 12px; padding: 10px 20px; font-size: 14px; color: var(--line-strong); position: relative; }
+.demo-sidebar .navi svg { width: 16px; height: 16px;}
+.demo-sidebar .navi.active { background: linear-gradient(180deg, rgba(255,255,255,0.10), rgba(255,255,255,0.06)); color: #fff; box-shadow: inset 0 1px 0 rgba(255,255,255,0.08); }
+.demo-sidebar .navi.active::before { content:""; position: absolute; left: 0; top: 8px; bottom: 8px; width: 3px; background: var(--green-flash); }
+
+/* table */
+.tbl { width: 100%; border-collapse: collapse; font-family: var(--body); font-size: 13px;}
+.tbl th { text-align: left; padding: 12px 16px; font-size: 11px; text-transform: uppercase; letter-spacing: 0.08em; color: var(--ink-3); font-weight: 600; border-bottom: 1px solid var(--line); background: var(--muted); }
+.tbl td { padding: 14px 16px; border-bottom: 1px solid var(--line); color: var(--ink-2); }
+.tbl tr:hover td { background: var(--green-tint); }
+.tbl td .mono-cell { font-family: var(--mono); font-size: 12px; color: var(--ink); }
+
+/* modal mock */
+.modal-mock { background: #0b2f0d8c; backdrop-filter: blur(2px); border-radius: var(--r-md); padding: 48px 24px; display: flex; justify-content: center; align-items: flex-start; min-height: 340px;}
+.modal-mock .modal { background: #fff; border-radius: var(--r-lg); width: 480px; max-width: 100%; padding: 24px; box-shadow: var(--shadow-modal); }
+.modal-mock .modal h3 { font-family: var(--display); font-weight: 700; font-size: 22px; margin: 0 0 4px;}
+.modal-mock .modal p { font-size: 14px; color: var(--ink-3); margin: 0 0 20px;}
+.modal-mock .modal .actions { display: flex; gap: 8px; justify-content: flex-end; margin-top: 24px;}
+
+/* toast */
+.toast { background: #fff; border-radius: var(--r-md); padding: 14px 16px 14px 18px; box-shadow: var(--shadow-modal); display: flex; gap: 12px; align-items: flex-start; position: relative; overflow: hidden; max-width: 360px;}
+.toast::before { content: ""; position: absolute; left: 0; top: 0; bottom: 0; width: 4px; }
+.toast.t-success::before { background: var(--success);}
+.toast.t-warning::before { background: var(--warning);}
+.toast.t-error::before { background: var(--error);}
+.toast.t-info::before { background: var(--info);}
+.toast .ic { width: 20px; height: 20px; flex-shrink: 0; margin-top: 2px;}
+.toast.t-success .ic { color: var(--success);}
+.toast.t-warning .ic { color: var(--warning);}
+.toast.t-error .ic { color: var(--error);}
+.toast.t-info .ic { color: var(--info);}
+.toast .ttl { font-weight: 600; font-size: 14px; color: var(--ink); margin-bottom: 2px;}
+.toast .sub { font-size: 12px; color: var(--ink-3); line-height: 1.4;}
+
+/* tracking timeline */
+.track { padding: 24px; }
+.track .step { display: grid; grid-template-columns: 32px 1fr 100px; gap: 16px; padding: 8px 0; position: relative; }
+.track .step .dot-wrap { position: relative; display: flex; justify-content: center; padding-top: 4px;}
+.track .step .dot-wrap::before { content: ""; position: absolute; top: 18px; bottom: -16px; left: 50%; width: 2px; background: var(--line); transform: translateX(-50%); }
+.track .step:last-child .dot-wrap::before { display: none; }
+.track .step .dot { width: 16px; height: 16px; border-radius: 50%; background: var(--line); border: 3px solid #fff; box-shadow: 0 0 0 1px var(--line); z-index: 1;}
+.track .step.done .dot { background: var(--success); box-shadow: 0 0 0 1px var(--success);}
+.track .step.current .dot { background: var(--green-flash); box-shadow: 0 0 0 1px var(--green-flash), 0 0 0 6px rgba(45,196,56,0.2); }
+.track .step .ttl { font-weight: 600; font-size: 14px; color: var(--ink); }
+.track .step .sub { font-size: 12px; color: var(--ink-3); margin-top: 2px;}
+.track .step .when { font-family: var(--mono); font-size: 11px; color: var(--ink-4); text-align: right; padding-top: 4px;}
+.track .step.future .ttl { color: var(--ink-4); font-weight: 500;}
+
+/* code sample */
+.code { background: #0b2f0d; color: #d6f5da; border-radius: var(--r-md); padding: 20px 24px; font-family: var(--mono); font-size: 13px; line-height: 1.65; overflow-x: auto;}
+.code .k { color: var(--green-flash); }
+.code .s { color: #fed7aa; }
+.code .c { color: rgba(255,255,255,0.4); font-style: italic;}
+.code .p { color: #93c5fd;}
+
+/* label preview */
+.label-card { background: #fff; border: 2px dashed var(--line-strong); border-radius: var(--r-sm); padding: 18px; font-family: var(--mono); font-size: 11px;}
+.label-card .row { display: flex; justify-content: space-between; align-items: flex-start; gap: 16px;}
+.label-card .barcode { height: 44px; background: repeating-linear-gradient(to right, #000 0 2px, transparent 2px 4px, #000 4px 7px, transparent 7px 9px, #000 9px 11px, transparent 11px 14px); margin: 12px 0 4px;}
+.label-card .barcode-num { letter-spacing: 0.2em; font-size: 10px; color: var(--ink-3); text-align: center;}
+.label-card hr { border: 0; border-top: 1px dashed var(--line-strong); margin: 10px 0;}
+
+/* address block */
+.addr { font-size: 13px; line-height: 1.5; color: var(--ink-2); }
+.addr .nm { font-weight: 600; color: var(--ink); }
+.addr .mono { font-family: var(--mono); font-size: 11px; color: var(--ink-3); margin-top: 4px;}
+
+/* do/don't */
+.dd { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+.dd .do, .dd .dont { border-radius: var(--r-md); padding: 16px 20px; font-size: 14px; line-height: 1.5; }
+.dd .do { background: var(--success-soft); color: var(--success-strong); border-left: 4px solid var(--success);}
+.dd .dont { background: var(--error-soft); color: var(--error-strong); border-left: 4px solid var(--error);}
+.dd b { display: block; font-weight: 700; margin-bottom: 4px;}
+
+/* logo lockup demos */
+.logo-frame { background: var(--surface); border: 1px solid var(--line); border-radius: var(--r-md); padding: 40px; display: flex; align-items: center; justify-content: center; min-height: 200px; box-shadow: var(--shadow-rest);}
+.logo-frame.dark { background: var(--green-forest); }
+.logo-frame.bright { background: var(--green-flash); }
+.logo-frame .lockup { display: flex; align-items: center; gap: 14px;}
+.logo-frame .lockup .mark { width: 44px; height: 44px; }
+.logo-frame .lockup .wm { font-family: var(--display); font-weight: 800; font-size: 36px; letter-spacing: -0.02em; }
+.logo-frame.dark .lockup .wm, .logo-frame.dark .lockup .sub { color: #fff;}
+.logo-frame.bright .lockup .wm, .logo-frame.bright .lockup .sub { color: var(--green-forest);}
+.logo-frame .lockup .wm em { color: var(--copper); font-style: normal;}
+.logo-frame.dark .lockup .wm em { color: var(--green-flash);}
+.logo-frame.bright .lockup .wm em { color: var(--green-forest);}
+.logo-frame .lockup .sub { font-size: 11px; letter-spacing: 0.2em; text-transform: uppercase; color: var(--ink-3); font-weight: 600; margin-top: 2px;}
+
+/* clear space diagram */
+.clearspace { background: var(--muted); border-radius: var(--r-md); padding: 32px; position: relative; display: flex; justify-content: center; align-items: center; min-height: 220px;}
+.clearspace .container { position: relative; padding: 32px;}
+.clearspace .container::before { content: ""; position: absolute; inset: 0; border: 1px dashed var(--green); border-radius: 4px;}
+.clearspace .container::after { content: "x"; position: absolute; right: -16px; top: -12px; font-family: var(--mono); font-size: 12px; color: var(--green); background: var(--muted); padding: 0 4px;}
+.clearspace .inner-mark { width: 72px; height: 72px; color: var(--green); }
+
+/* motion grid */
+.motion { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px;}
+.motion .m-card { background: #fff; border-radius: var(--r-md); padding: 20px; border: 1px solid var(--line);}
+.motion .m-card .ttl { font-family: var(--display); font-weight: 600; font-size: 15px; margin-bottom: 4px;}
+.motion .m-card .sub { font-size: 12px; color: var(--ink-3); margin-bottom: 12px;}
+.motion .m-card .demo { height: 60px; background: var(--muted); border-radius: var(--r-sm); position: relative; overflow: hidden;}
+.motion .m-card .ball { position: absolute; left: 8px; top: 50%; transform: translateY(-50%); width: 24px; height: 24px; border-radius: 50%; background: var(--green); }
+@keyframes slide-ease { 0%, 10% { transform: translate(0, -50%); } 60%, 100% { transform: translate(220px, -50%); } }
+.motion .m-card.ease .ball { animation: slide-ease 2.4s cubic-bezier(0.4, 0, 0.2, 1) infinite; }
+@keyframes slide-spring { 0%, 10% { transform: translate(0, -50%);} 65% { transform: translate(240px, -50%);} 75% { transform: translate(220px, -50%);} 100% { transform: translate(220px, -50%);} }
+.motion .m-card.spring .ball { animation: slide-spring 2.6s cubic-bezier(0.34, 1.56, 0.64, 1) infinite;}
+@keyframes pulse { 0%, 100% { box-shadow: 0 0 0 0 rgba(45,196,56,0.5);} 50% { box-shadow: 0 0 0 14px rgba(45,196,56,0);}}
+.motion .m-card.pulse .ball { background: var(--green-flash); animation: pulse 1.6s ease-in-out infinite; left: 50%; transform: translate(-50%, -50%); }
+
+/* micro-interaction + glass specimens */
+.micro { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; margin-top: 24px; }
+.micro .m-card .demo { display: flex; align-items: center; justify-content: center; min-height: 76px; }
+.demo-lift { transition: transform .16s cubic-bezier(.2,.7,.3,1), box-shadow .16s, filter .16s; }
+.demo-lift:hover { transform: translateY(-2px); filter: brightness(1.05); box-shadow: 0 8px 20px rgba(11,47,13,0.20); }
+.demo-lift:active { transform: translateY(0); filter: brightness(0.97); }
+.demo-rowcard { width: 100%; border: 1px solid var(--line); border-radius: var(--r-sm); overflow: hidden; background: #fff; font-size: 12px; }
+.demo-rowcard .r { padding: 8px 12px; border-bottom: 1px solid var(--line); transition: background .12s; cursor: pointer; }
+.demo-rowcard .r:last-child { border-bottom: 0; }
+.demo-rowcard .r:hover { background: #f6faf6; }
+.demo-kanban { background: #fff; border: 1px solid var(--line); border-radius: var(--r-md); padding: 10px 14px; font-size: 12px; cursor: pointer; box-shadow: var(--shadow-rest); transition: transform .16s cubic-bezier(.2,.7,.3,1), box-shadow .16s, border-color .16s; }
+.demo-kanban:hover { transform: translateY(-2px); box-shadow: var(--shadow-hover); border-color: rgba(28,121,34,0.35); }
+.glass-stage { background: linear-gradient(135deg, var(--green-forest), var(--green-deep)); border-radius: var(--r-md); padding: 28px; display: flex; gap: 16px; align-items: center; }
+.glass-chip { backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px); background: rgba(255,255,255,0.08); border: 1px solid rgba(255,255,255,0.16); box-shadow: inset 0 1px 0 rgba(255,255,255,0.10); border-radius: var(--r-md); color: #fff; padding: 12px 18px; font-size: 13px; font-weight: 600; }
+.glass-chip.lite { background: rgba(255,255,255,0.82); color: var(--ink); border-color: rgba(255,255,255,0.6); }
+
+footer.foot { padding: 48px 80px; border-top: 1px solid var(--line); color: var(--ink-4); font-size: 12px; background: var(--muted); display: flex; justify-content: space-between;}
+
+/* responsive bits */
+@media (max-width: 1100px) {
+  .app { grid-template-columns: 1fr; }
+  aside.nav { position: static; height: auto; }
+  main { padding: 32px 24px;}
+  .hero { padding: 32px;}
+  .hero h1 { font-size: 48px;}
+  .palette-row { grid-template-columns: repeat(3, 1fr);}
+  .radii { grid-template-columns: repeat(3, 1fr);}
+  .row-3, .row-4, .motion { grid-template-columns: 1fr 1fr;}
+}
+</style>
+</head>
+<body>
+
+<div class="app">
+
+<!-- ============== SIDE NAV ============== -->
+<aside class="nav">
+  <div class="brand">
+    <svg class="mark" viewBox="0 0 100 100" fill="currentColor"><g transform="rotate(0 50 50)"><rect x="36" y="6" width="28" height="48" rx="14"/></g><g transform="rotate(120 50 50)"><rect x="36" y="6" width="28" height="48" rx="14"/></g><g transform="rotate(240 50 50)"><rect x="36" y="6" width="28" height="48" rx="14"/></g></svg>
+    <div>
+      <div class="wm">ship<em>x</em></div>
+      <small>An ODUM product</small>
+    </div>
+  </div>
+
+  <div class="group">Foundations</div>
+  <a href="#brand"><span class="num">01</span> Brand</a>
+  <a href="#logo"><span class="num">02</span> Logo &amp; Icon</a>
+  <a href="#color"><span class="num">03</span> Color</a>
+  <a href="#type"><span class="num">04</span> Typography</a>
+  <a href="#spacing"><span class="num">05</span> Spacing &amp; Layout</a>
+  <a href="#shape"><span class="num">06</span> Shape &amp; Elevation</a>
+
+  <div class="group">Components</div>
+  <a href="#buttons"><span class="num">07</span> Buttons</a>
+  <a href="#inputs"><span class="num">08</span> Inputs &amp; Forms</a>
+  <a href="#badges"><span class="num">09</span> Badges &amp; Status</a>
+  <a href="#cards"><span class="num">10</span> Cards &amp; Stats</a>
+  <a href="#navtbl"><span class="num">11</span> Nav &amp; Tables</a>
+  <a href="#overlays"><span class="num">12</span> Modals &amp; Toasts</a>
+
+  <div class="group">Patterns</div>
+  <a href="#shipping"><span class="num">13</span> Shipping Patterns</a>
+  <a href="#api"><span class="num">14</span> Developer Surfaces</a>
+
+  <div class="group">Guidance</div>
+  <a href="#voice"><span class="num">15</span> Voice &amp; Tone</a>
+  <a href="#motion"><span class="num">16</span> Motion</a>
+</aside>
+
+<!-- ============== MAIN ============== -->
+<main>
+
+  <!-- HERO -->
+  <div class="hero">
+    <span class="kicker"><span class="dot"></span> Design System · v0.1 · May 2026</span>
+    <h1>ship<em>x</em>.</h1>
+    <p>The visual and interaction system for ODUM's logistics platform. Built for operators who move cargo across continents, customers tracking shipments, and developers integrating the API — one coherent surface, three audiences.</p>
+    <div class="meta">
+      <div>Parent brand<strong>ODUM</strong></div>
+      <div>Primary platforms<strong>Web · Mobile · iOS · Android · API</strong></div>
+      <div>Anchor color<strong>Odum Green #1C7922</strong></div>
+      <div>Accent<strong>Kola Copper #9A3412</strong></div>
+    </div>
+  </div>
+
+  <!-- ============== 01 BRAND ============== -->
+  <section id="brand">
+    <header>
+      <span class="num">01</span>
+      <h2>Brand</h2>
+      <p>How Shipx sits inside the ODUM family — and where it earns its own voice.</p>
+    </header>
+
+    <div class="row-2">
+      <div class="card">
+        <div class="label-sm" style="color:var(--green);">Positioning</div>
+        <h3 class="display-md" style="margin: 12px 0 12px;">The operational arm of ODUM.</h3>
+        <p class="body-lg">If ODUM is "the lion of the business world" — bold, decisive, culturally rooted — Shipx is that posture turned into <em>throughput</em>. Engineered. Precise. Always in motion. The brand carries ODUM's full weight while specializing for the logistics surface: dense data, time pressure, multi-role collaboration across continents.</p>
+      </div>
+      <div class="card">
+        <div class="label-sm" style="color:var(--green);">Sub-brand relationship</div>
+        <h3 class="display-md" style="margin: 12px 0 12px;">Shared spine. Specialized accent.</h3>
+        <ul class="body-lg" style="padding-left: 18px; margin: 0;">
+          <li><strong>Inherits from ODUM:</strong> the kola-nut icon, Odum Green family, Averta/Kumbh type system, beveled shape vocabulary, voice of confident leadership.</li>
+          <li><strong>Specialized for Shipx:</strong> Kola Copper CTA accent, motion-forward interactions, shipping-specific patterns (tracking, address blocks, API surfaces), role accents for multi-tenant portals.</li>
+        </ul>
+      </div>
+    </div>
+
+    <div style="margin-top: 24px;" class="row-3">
+      <div class="card">
+        <div class="label-sm">Audience 01</div>
+        <h4 class="headline-lg" style="margin: 8px 0 6px;">Logistics operators</h4>
+        <p class="body-md">Internal staff in Lagos &amp; Guangzhou clearing shipments, generating release notes, resolving discrepancies. Live in dense tables. Need scanability above all.</p>
+      </div>
+      <div class="card">
+        <div class="label-sm">Audience 02</div>
+        <h4 class="headline-lg" style="margin: 8px 0 6px;">Customers shipping cargo</h4>
+        <p class="body-md">SMBs and individuals tracking a container or carton. Reach the product mostly on mobile. Need confidence: where is it, when does it arrive, what do I owe.</p>
+      </div>
+      <div class="card">
+        <div class="label-sm">Audience 03</div>
+        <h4 class="headline-lg" style="margin: 8px 0 6px;">Developers integrating</h4>
+        <p class="body-md">Partners hitting our API to embed Shipx in their checkout, marketplace, or ERP. Need rigor: predictable shapes, clear errors, code samples that paste cleanly.</p>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============== 02 LOGO ============== -->
+  <section id="logo">
+    <header>
+      <span class="num">02</span>
+      <h2>Logo &amp; Icon</h2>
+      <p>The ODUM kola-nut is carried over verbatim. The Shipx wordmark anchors the lockup.</p>
+    </header>
+
+    <div class="row-2">
+      <div class="card">
+        <div class="label-sm" style="color:var(--green);">The ODUM mark</div>
+        <h3 class="headline-lg" style="margin: 10px 0 14px;">Three-lobed kola nut (Oji Ikenga)</h3>
+        <div style="display:flex; align-items:center; gap: 32px; padding: 16px 0;">
+          <div style="width: 120px; height: 120px; color: var(--green);">
+            <svg viewBox="0 0 100 100" fill="currentColor" style="width:100%;height:100%;"><g transform="rotate(0 50 50)"><rect x="36" y="6" width="28" height="48" rx="14"/></g><g transform="rotate(120 50 50)"><rect x="36" y="6" width="28" height="48" rx="14"/></g><g transform="rotate(240 50 50)"><rect x="36" y="6" width="28" height="48" rx="14"/></g></svg>
+          </div>
+          <div class="body-md">
+            <p style="margin: 0 0 8px;"><strong>Body · Mind · Spirit.</strong> Rooted in Igbo symbolism, the three lobes represent the complete being — strength, balance, responsibility. Beveled rounded corners soften geometric structure without surrendering it.</p>
+            <p style="margin:0;">In Shipx, the mark stands unchanged. Use it at scales from <span class="mono">16px</span> (favicon) to print without modification.</p>
+          </div>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="label-sm" style="color:var(--green);">The Shipx wordmark</div>
+        <h3 class="headline-lg" style="margin: 10px 0 14px;">"ship<em style="color:var(--copper);font-style:normal;">x</em>" — lowercase, Manrope ExtraBold</h3>
+        <p class="body-md" style="margin-bottom: 16px;">Lowercase for approachability; ExtraBold for the lion's confidence. The <strong style="color:var(--copper);">x</strong> takes the Kola Copper accent — it's both the brand's punctuation and the visual ligature that connects "ship" to ODUM's earth-toned heritage.</p>
+        <div style="background: var(--muted); border-radius: var(--r-sm); padding: 24px; display: flex; align-items: center; justify-content: center; gap: 14px;">
+          <svg viewBox="0 0 100 100" fill="var(--green)" style="width:36px;height:36px;"><g transform="rotate(0 50 50)"><rect x="36" y="6" width="28" height="48" rx="14"/></g><g transform="rotate(120 50 50)"><rect x="36" y="6" width="28" height="48" rx="14"/></g><g transform="rotate(240 50 50)"><rect x="36" y="6" width="28" height="48" rx="14"/></g></svg>
+          <div style="font-family: var(--display); font-weight: 800; font-size: 42px; letter-spacing: -0.02em;">ship<em style="color:var(--copper);font-style:normal;">x</em></div>
+        </div>
+      </div>
+    </div>
+
+    <h3 class="headline-lg" style="margin: 40px 0 16px;">Lockups in context</h3>
+    <div class="row-3">
+      <div class="logo-frame">
+        <div class="lockup">
+          <svg class="mark" viewBox="0 0 100 100" fill="var(--green)"><g transform="rotate(0 50 50)"><rect x="36" y="6" width="28" height="48" rx="14"/></g><g transform="rotate(120 50 50)"><rect x="36" y="6" width="28" height="48" rx="14"/></g><g transform="rotate(240 50 50)"><rect x="36" y="6" width="28" height="48" rx="14"/></g></svg>
+          <div>
+            <div class="wm">ship<em>x</em></div>
+            <div class="sub">an ODUM product</div>
+          </div>
+        </div>
+      </div>
+      <div class="logo-frame dark">
+        <div class="lockup">
+          <svg class="mark" viewBox="0 0 100 100" fill="var(--green-flash)"><g transform="rotate(0 50 50)"><rect x="36" y="6" width="28" height="48" rx="14"/></g><g transform="rotate(120 50 50)"><rect x="36" y="6" width="28" height="48" rx="14"/></g><g transform="rotate(240 50 50)"><rect x="36" y="6" width="28" height="48" rx="14"/></g></svg>
+          <div>
+            <div class="wm">ship<em>x</em></div>
+            <div class="sub" style="color: rgba(255,255,255,0.6);">an ODUM product</div>
+          </div>
+        </div>
+      </div>
+      <div class="logo-frame bright">
+        <div class="lockup">
+          <svg class="mark" viewBox="0 0 100 100" fill="var(--green-forest)"><g transform="rotate(0 50 50)"><rect x="36" y="6" width="28" height="48" rx="14"/></g><g transform="rotate(120 50 50)"><rect x="36" y="6" width="28" height="48" rx="14"/></g><g transform="rotate(240 50 50)"><rect x="36" y="6" width="28" height="48" rx="14"/></g></svg>
+          <div>
+            <div class="wm">ship<em>x</em></div>
+            <div class="sub" style="color: rgba(11,47,13,0.7);">an ODUM product</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <h3 class="headline-lg" style="margin: 40px 0 16px;">Clear space</h3>
+    <div class="row-2">
+      <div class="card">
+        <div class="clearspace">
+          <div class="container">
+            <svg class="inner-mark" viewBox="0 0 100 100" fill="currentColor"><g transform="rotate(0 50 50)"><rect x="36" y="6" width="28" height="48" rx="14"/></g><g transform="rotate(120 50 50)"><rect x="36" y="6" width="28" height="48" rx="14"/></g><g transform="rotate(240 50 50)"><rect x="36" y="6" width="28" height="48" rx="14"/></g></svg>
+          </div>
+        </div>
+        <p class="body-md" style="margin-top: 16px;"><strong>Minimum clear space</strong> equals the width of one lobe (<span class="mono">x</span>) on all sides of the mark or lockup. Never crowd the kola-nut against other elements.</p>
+      </div>
+      <div class="card">
+        <div class="dd">
+          <div class="do"><b>Do</b>Use the kola-nut on green, white, near-black, or Kola Copper.</div>
+          <div class="dont"><b>Don't</b>Recolor the lobes individually or break the trefoil rotation.</div>
+          <div class="do"><b>Do</b>Pair the mark with the Shipx wordmark in horizontal lockups.</div>
+          <div class="dont"><b>Don't</b>Render the mark on busy photo backgrounds without a solid scrim.</div>
+          <div class="do"><b>Do</b>Maintain at least 16px height for legibility (favicon use only).</div>
+          <div class="dont"><b>Don't</b>Stretch, skew, rotate, or apply effects (drop shadow, glow, bevel).</div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============== 03 COLOR ============== -->
+  <section id="color">
+    <header>
+      <span class="num">03</span>
+      <h2>Color</h2>
+      <p>An Odum-green spine, a single Shipx accent, a disciplined neutral grey, and a tight functional palette.</p>
+    </header>
+
+    <h3 class="headline-lg" style="margin-bottom: 12px;">Odum Greens — primary family</h3>
+    <p class="body-md" style="margin-bottom: 20px;">Used for primary actions, links, active states, brand surfaces. The Green Flash bright tone is reserved for focus rings, progress indicators, and the moments that need to <em>land</em>.</p>
+    <div class="palette-row">
+      <div class="swatch">
+        <div class="chip" style="background: var(--green-deep);"><span class="role">Deepest</span></div>
+        <div class="meta"><div class="name">Forest Deep</div><div class="hex">#14471A</div></div>
+      </div>
+      <div class="swatch">
+        <div class="chip" style="background: var(--green-strong);"><span class="role">Hover</span></div>
+        <div class="meta"><div class="name">Green Strong</div><div class="hex">#155F1B</div></div>
+      </div>
+      <div class="swatch">
+        <div class="chip" style="background: var(--green);"><span class="role">Primary</span></div>
+        <div class="meta"><div class="name">Odum Green</div><div class="hex">#1C7922</div></div>
+      </div>
+      <div class="swatch">
+        <div class="chip" style="background: var(--green-flash);"><span class="role dark">Flash</span></div>
+        <div class="meta"><div class="name">Green Flash</div><div class="hex">#2DC438</div></div>
+      </div>
+      <div class="swatch">
+        <div class="chip" style="background: var(--green-soft);"><span class="role dark">Soft</span></div>
+        <div class="meta"><div class="name">Green Soft</div><div class="hex">#D6F5DA</div></div>
+      </div>
+      <div class="swatch">
+        <div class="chip" style="background: var(--green-tint); border: 1px solid var(--line);"><span class="role dark">Tint</span></div>
+        <div class="meta"><div class="name">Green Tint</div><div class="hex">#F3FCF4</div></div>
+      </div>
+    </div>
+
+    <h3 class="headline-lg" style="margin: 40px 0 12px;">Forest Dark &amp; Kola Copper</h3>
+    <p class="body-md" style="margin-bottom: 20px;">Forest Dark anchors sidebars and dark surfaces — never use navy. Kola Copper is the <em>single CTA driver</em>: reserved for "Confirm Payment," "Generate Release Note," and one-of-a-kind conversion moments.</p>
+    <div class="palette-row">
+      <div class="swatch">
+        <div class="chip" style="background: var(--green-forest);"><span class="role">Sidebar</span></div>
+        <div class="meta"><div class="name">Forest Dark</div><div class="hex">#0B2F0D</div></div>
+      </div>
+      <div class="swatch">
+        <div class="chip" style="background: var(--copper-deep);"><span class="role">Pressed</span></div>
+        <div class="meta"><div class="name">Copper Deep</div><div class="hex">#7C2D12</div></div>
+      </div>
+      <div class="swatch">
+        <div class="chip" style="background: var(--copper);"><span class="role">CTA</span></div>
+        <div class="meta"><div class="name">Kola Copper</div><div class="hex">#9A3412</div></div>
+      </div>
+      <div class="swatch">
+        <div class="chip" style="background: var(--copper-hover);"><span class="role">Hover</span></div>
+        <div class="meta"><div class="name">Copper Hover</div><div class="hex">#C2410C</div></div>
+      </div>
+      <div class="swatch">
+        <div class="chip" style="background: var(--copper-soft);"><span class="role dark">Soft</span></div>
+        <div class="meta"><div class="name">Copper Soft</div><div class="hex">#FED7AA</div></div>
+      </div>
+      <div class="swatch">
+        <div class="chip" style="background: var(--ink);"><span class="role">Ink</span></div>
+        <div class="meta"><div class="name">Odum Black</div><div class="hex">#1C1B1C</div></div>
+      </div>
+    </div>
+
+    <h3 class="headline-lg" style="margin: 40px 0 12px;">Neutrals — warm grey family</h3>
+    <p class="body-md" style="margin-bottom: 20px;">Runs warm to harmonize with the green primary. Pure black (<span class="mono">#000</span>) is forbidden — <span class="mono">#1C1B1C</span> is the floor.</p>
+    <div class="palette-row">
+      <div class="swatch"><div class="chip" style="background: var(--ink-2);"><span class="role">Strong</span></div><div class="meta"><div class="name">Neutral Strong</div><div class="hex">#374151</div></div></div>
+      <div class="swatch"><div class="chip" style="background: var(--ink-3);"><span class="role">Mid</span></div><div class="meta"><div class="name">Odum Grey</div><div class="hex">#666666</div></div></div>
+      <div class="swatch"><div class="chip" style="background: var(--ink-4);"><span class="role">Soft</span></div><div class="meta"><div class="name">Neutral Soft</div><div class="hex">#6B7280</div></div></div>
+      <div class="swatch"><div class="chip" style="background: var(--line-strong);"><span class="role dark">Line</span></div><div class="meta"><div class="name">Line</div><div class="hex">#CCCCCC</div></div></div>
+      <div class="swatch"><div class="chip" style="background: var(--line);"><span class="role dark">Soft line</span></div><div class="meta"><div class="name">Line Soft</div><div class="hex">#E5E7EB</div></div></div>
+      <div class="swatch"><div class="chip" style="background: var(--page); border: 1px solid var(--line);"><span class="role dark">Page</span></div><div class="meta"><div class="name">Page</div><div class="hex">#F3F4F6</div></div></div>
+    </div>
+
+    <h3 class="headline-lg" style="margin: 40px 0 12px;">Status palette</h3>
+    <p class="body-md" style="margin-bottom: 20px;">Each status has a strong tone (text on light), a base tone (icons, indicators), and a soft tone (backgrounds for badges &amp; banners).</p>
+    <div class="row-4">
+      <div class="card" style="padding: 16px;">
+        <div style="height: 8px; background: var(--success); border-radius: var(--r-full); margin-bottom: 12px;"></div>
+        <div class="label-sm" style="color: var(--success-strong);">Success</div>
+        <div style="display: flex; gap: 6px; margin-top: 10px;">
+          <div style="flex:1; height: 22px; background: var(--success-strong); border-radius: 4px;"></div>
+          <div style="flex:1; height: 22px; background: var(--success); border-radius: 4px;"></div>
+          <div style="flex:1; height: 22px; background: var(--success-soft); border-radius: 4px;"></div>
+        </div>
+        <div class="mono" style="font-size: 10px; color: var(--ink-4); margin-top: 8px;">#14532D · #16A34A · #DCFCE7</div>
+      </div>
+      <div class="card" style="padding: 16px;">
+        <div style="height: 8px; background: var(--warning); border-radius: var(--r-full); margin-bottom: 12px;"></div>
+        <div class="label-sm" style="color: var(--warning-strong);">Warning</div>
+        <div style="display: flex; gap: 6px; margin-top: 10px;">
+          <div style="flex:1; height: 22px; background: var(--warning-strong); border-radius: 4px;"></div>
+          <div style="flex:1; height: 22px; background: var(--warning); border-radius: 4px;"></div>
+          <div style="flex:1; height: 22px; background: var(--warning-soft); border-radius: 4px;"></div>
+        </div>
+        <div class="mono" style="font-size: 10px; color: var(--ink-4); margin-top: 8px;">#7C2D0E · #D97706 · #FEF3C7</div>
+      </div>
+      <div class="card" style="padding: 16px;">
+        <div style="height: 8px; background: var(--error); border-radius: var(--r-full); margin-bottom: 12px;"></div>
+        <div class="label-sm" style="color: var(--error-strong);">Error</div>
+        <div style="display: flex; gap: 6px; margin-top: 10px;">
+          <div style="flex:1; height: 22px; background: var(--error-strong); border-radius: 4px;"></div>
+          <div style="flex:1; height: 22px; background: var(--error); border-radius: 4px;"></div>
+          <div style="flex:1; height: 22px; background: var(--error-soft); border-radius: 4px;"></div>
+        </div>
+        <div class="mono" style="font-size: 10px; color: var(--ink-4); margin-top: 8px;">#991B1B · #DC2626 · #FEE2E2</div>
+      </div>
+      <div class="card" style="padding: 16px;">
+        <div style="height: 8px; background: var(--info); border-radius: var(--r-full); margin-bottom: 12px;"></div>
+        <div class="label-sm" style="color: var(--info-strong);">Info</div>
+        <div style="display: flex; gap: 6px; margin-top: 10px;">
+          <div style="flex:1; height: 22px; background: var(--info-strong); border-radius: 4px;"></div>
+          <div style="flex:1; height: 22px; background: var(--info); border-radius: 4px;"></div>
+          <div style="flex:1; height: 22px; background: var(--info-soft); border-radius: 4px;"></div>
+        </div>
+        <div class="mono" style="font-size: 10px; color: var(--ink-4); margin-top: 8px;">#1E3A8A · #2563EB · #DBEAFE</div>
+      </div>
+    </div>
+
+    <h3 class="headline-lg" style="margin: 40px 0 12px;">Role accents</h3>
+    <p class="body-md" style="margin-bottom: 20px;">Used in multi-role portals so a Platform Admin instantly knows they're <em>not</em> looking at the China Office view. Never used as primary actions — strictly orientation.</p>
+    <div class="palette-row three">
+      <div class="swatch">
+        <div class="chip" style="background: var(--role-platform);"><span class="role">Platform Admin</span></div>
+        <div class="meta"><div class="name">Role · Platform</div><div class="hex">#7C3AED</div></div>
+      </div>
+      <div class="swatch">
+        <div class="chip" style="background: var(--role-china);"><span class="role">China Office</span></div>
+        <div class="meta"><div class="name">Role · China</div><div class="hex">#4F46E5</div></div>
+      </div>
+      <div class="swatch">
+        <div class="chip" style="background: var(--copper);"><span class="role">Nigeria Office</span></div>
+        <div class="meta"><div class="name">Role · Nigeria</div><div class="hex">#9A3412</div></div>
+      </div>
+    </div>
+
+    <div class="dd" style="margin-top: 32px;">
+      <div class="do"><b>Do</b>Use Kola Copper for the single most important action per screen. Pair with Odum Green primary buttons for secondary actions.</div>
+      <div class="dont"><b>Don't</b>Place Kola Copper and the Warning amber next to each other — too close on the warm spectrum.</div>
+      <div class="do"><b>Do</b>Tint shadows with Forest Dark RGB so depth reads cohesively on green canvases.</div>
+      <div class="dont"><b>Don't</b>Invent new greens. The six-step Odum family covers every UI need.</div>
+    </div>
+  </section>
+
+  <!-- ============== 04 TYPOGRAPHY ============== -->
+  <section id="type">
+    <header>
+      <span class="num">04</span>
+      <h2>Typography</h2>
+      <p>Averta for display. Kumbh Sans for body. JetBrains Mono for codes &amp; tracking numbers.</p>
+    </header>
+
+    <div class="row-2">
+      <div class="card">
+        <div class="label-sm" style="color: var(--green);">Display · Averta (Kostas Bartsokas)</div>
+        <p style="font-family: var(--display); font-weight: 800; font-size: 64px; line-height: 0.95; letter-spacing: -0.025em; margin: 16px 0;">Aa Bb Cc</p>
+        <p class="body-md">Averta carries the Odum identity — its geometric construction and open counters in <em>d, u, m</em> echo the wordmark. Use it sparingly but boldly; headlines should <em>land</em>.</p>
+        <p class="body-sm" style="margin-top: 8px;"><strong>Licensing:</strong> Commercial via Type Department. Fallback: <span class="mono">Manrope</span> (free, geometric) — used here.</p>
+      </div>
+      <div class="card">
+        <div class="label-sm" style="color: var(--green);">Body · Kumbh Sans (Saurabh Sharma)</div>
+        <p style="font-family: var(--body); font-weight: 700; font-size: 64px; line-height: 0.95; letter-spacing: -0.015em; margin: 16px 0;">Aa Bb Cc</p>
+        <p class="body-md">The workhorse. Stays legible at small sizes — essential for dense logistics tables and form-heavy screens. Free via Google Fonts; complete weight range.</p>
+        <p class="body-sm" style="margin-top: 8px;"><strong>Use for:</strong> all body copy, labels, table cells, helper text, button text.</p>
+      </div>
+    </div>
+
+    <div class="card" style="margin-top: 24px;">
+      <div class="label-sm" style="color: var(--green);">Mono · JetBrains Mono</div>
+      <p style="font-family: var(--mono); font-weight: 500; font-size: 32px; letter-spacing: 0.02em; margin: 16px 0 8px;">SHX-2026-Q3-04792</p>
+      <p class="body-md">Use for any tracking code, container number, monetary amount, or tabular figure — operators scan these character-by-character.</p>
+    </div>
+
+    <h3 class="headline-lg" style="margin: 40px 0 16px;">Type scale</h3>
+    <div class="card" style="padding: 8px 24px;">
+      <div class="type-specimen">
+        <div class="label">display-lg</div>
+        <div class="sample" style="font-family: var(--display); font-weight: 800; font-size: 32px; line-height: 1.25; letter-spacing: -0.01em;">Lead every shipment.</div>
+        <div class="meta">32 / 40 · 700</div>
+      </div>
+      <div class="type-specimen">
+        <div class="label">display-md</div>
+        <div class="sample" style="font-family: var(--display); font-weight: 700; font-size: 24px; line-height: 1.33; letter-spacing: -0.005em;">Container SHX-04792 cleared customs.</div>
+        <div class="meta">24 / 32 · 700</div>
+      </div>
+      <div class="type-specimen">
+        <div class="label">headline-lg</div>
+        <div class="sample" style="font-family: var(--display); font-weight: 600; font-size: 20px; line-height: 1.4;">Lagos Tin Can Port — Bay 4</div>
+        <div class="meta">20 / 28 · 600</div>
+      </div>
+      <div class="type-specimen">
+        <div class="label">headline-md</div>
+        <div class="sample" style="font-family: var(--display); font-weight: 600; font-size: 16px; line-height: 1.5;">Shipment details</div>
+        <div class="meta">16 / 24 · 600</div>
+      </div>
+      <div class="type-specimen">
+        <div class="label">body-lg</div>
+        <div class="sample" style="font-family: var(--body); font-size: 16px; line-height: 1.5;">Your consolidated cargo from Guangzhou is en route to Lagos and currently clearing transit at Apapa.</div>
+        <div class="meta">16 / 24 · 400</div>
+      </div>
+      <div class="type-specimen">
+        <div class="label">body-md</div>
+        <div class="sample" style="font-family: var(--body); font-size: 14px; line-height: 1.43;">Default copy for tables, descriptions, modal body text, and dashboard helper paragraphs.</div>
+        <div class="meta">14 / 20 · 400</div>
+      </div>
+      <div class="type-specimen">
+        <div class="label">body-sm</div>
+        <div class="sample" style="font-family: var(--body); font-size: 12px; line-height: 1.33; color: var(--ink-3);">Helper text, captions, timestamps and metadata.</div>
+        <div class="meta">12 / 16 · 400</div>
+      </div>
+      <div class="type-specimen">
+        <div class="label">label-md</div>
+        <div class="sample" style="font-family: var(--body); font-weight: 500; font-size: 14px;">Container number</div>
+        <div class="meta">14 / 20 · 500</div>
+      </div>
+      <div class="type-specimen">
+        <div class="label">label-sm</div>
+        <div class="sample" style="font-family: var(--body); font-weight: 600; font-size: 12px; letter-spacing: 0.04em; text-transform: uppercase;">In transit</div>
+        <div class="meta">12 / 16 · 600 · UC</div>
+      </div>
+      <div class="type-specimen">
+        <div class="label">mono</div>
+        <div class="sample" style="font-family: var(--mono); font-size: 13px;">CMAU-704819-2 · ₦2,840,500.00</div>
+        <div class="meta">13 / 20 · 400</div>
+      </div>
+    </div>
+
+    <div class="dd" style="margin-top: 32px;">
+      <div class="do"><b>Do</b>Use weight contrast for emphasis — <strong>label-md 500</strong> next to body-md 400 reads instantly.</div>
+      <div class="dont"><b>Don't</b>Italicize. Ever. The Odum voice is upright and bold — emphasis comes from weight, not slant.</div>
+      <div class="do"><b>Do</b>Set tracking codes and monetary amounts in mono so column alignment holds.</div>
+      <div class="dont"><b>Don't</b>Stack two display-lg headings on the same screen. One hero per page.</div>
+    </div>
+  </section>
+
+  <!-- ============== 05 SPACING ============== -->
+  <section id="spacing">
+    <header>
+      <span class="num">05</span>
+      <h2>Spacing &amp; Layout</h2>
+      <p>A strict 4-point grid. Every dimension is a multiple of 4 — no exceptions.</p>
+    </header>
+
+    <div class="card">
+      <div class="spacing-row"><div class="name">xs</div><div class="val">4px</div><div class="bar" style="width: 4px;"></div><div class="use">Tight inline gaps, icon-to-text, dot indicators</div></div>
+      <div class="spacing-row"><div class="name">sm</div><div class="val">8px</div><div class="bar" style="width: 8px;"></div><div class="use">Icon gutters, toast stack gap, button gap</div></div>
+      <div class="spacing-row"><div class="name">md</div><div class="val">16px</div><div class="bar" style="width: 16px;"></div><div class="use">Component-internal padding, form field spacing</div></div>
+      <div class="spacing-row"><div class="name">lg</div><div class="val">24px</div><div class="bar" style="width: 24px;"></div><div class="use">Card padding, between cards, gutters</div></div>
+      <div class="spacing-row"><div class="name">xl</div><div class="val">32px</div><div class="bar" style="width: 32px;"></div><div class="use">Between major sections within a page</div></div>
+      <div class="spacing-row"><div class="name">2xl</div><div class="val">48px</div><div class="bar" style="width: 48px;"></div><div class="use">Page-level breathing room, hero padding</div></div>
+      <div class="spacing-row"><div class="name">3xl</div><div class="val">64px</div><div class="bar" style="width: 64px;"></div><div class="use">Top of page, between unrelated regions</div></div>
+    </div>
+
+    <h3 class="headline-lg" style="margin: 40px 0 16px;">Layout grid</h3>
+    <div class="row-3">
+      <div class="card">
+        <div class="label-sm">Sidebar width</div>
+        <p class="display-md" style="margin: 8px 0 4px;">240<span style="font-size: 18px; color: var(--ink-3);"> px</span></p>
+        <p class="body-sm">Fixed on desktop. Collapses to 64px icon-only at tablet width. Replaced by bottom nav on mobile.</p>
+      </div>
+      <div class="card">
+        <div class="label-sm">Content max-width</div>
+        <p class="display-md" style="margin: 8px 0 4px;">1280<span style="font-size: 18px; color: var(--ink-3);"> px</span></p>
+        <p class="body-sm">Main content cap. Wider only for dense table views where horizontal scrolling is acceptable.</p>
+      </div>
+      <div class="card">
+        <div class="label-sm">Breakpoints</div>
+        <p class="display-md" style="margin: 8px 0 4px; font-size: 24px;">768 · 1024 · 1280</p>
+        <p class="body-sm">Mobile · tablet · desktop · wide. Mobile-first; sidebar collapses progressively.</p>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============== 06 SHAPE & ELEVATION ============== -->
+  <section id="shape">
+    <header>
+      <span class="num">06</span>
+      <h2>Shape &amp; Elevation</h2>
+      <p>Beveled-but-bold radii echo the kola-nut mark. Shadows tint forest-green, never pure black.</p>
+    </header>
+
+    <h3 class="headline-lg" style="margin-bottom: 16px;">Radii</h3>
+    <div class="card">
+      <div class="radii">
+        <div class="item"><div class="box" style="border-radius: 0;"></div><div class="nm">none</div><div class="vl">0px · table cells</div></div>
+        <div class="item"><div class="box" style="border-radius: 8px;"></div><div class="nm">sm</div><div class="vl">8px · buttons, inputs</div></div>
+        <div class="item"><div class="box" style="border-radius: 10px;"></div><div class="nm">md</div><div class="vl">10px · cards</div></div>
+        <div class="item"><div class="box" style="border-radius: 12px;"></div><div class="nm">xl</div><div class="vl">12px · stat tiles</div></div>
+        <div class="item"><div class="box" style="border-radius: 14px;"></div><div class="nm">lg</div><div class="vl">14px · modals</div></div>
+      </div>
+      <hr class="hsep" />
+      <div style="display: flex; align-items: center; gap: 24px;">
+        <div style="width: 88px; height: 88px; background: var(--green-flash); border-radius: 9999px;"></div>
+        <div>
+          <div class="headline-md">full · 9999px</div>
+          <div class="body-md" style="color: var(--ink-3);">Badges, pills, status chips, indicator dots. Fully rounded — echoes the open counters of the Odum wordmark.</div>
+        </div>
+      </div>
+    </div>
+
+    <h3 class="headline-lg" style="margin: 40px 0 16px;">Elevation</h3>
+    <div class="row-4">
+      <div class="shadow-demo" style="box-shadow: var(--shadow-rest);">
+        <div class="name">Rest</div>
+        <div class="val">0 1px 3px rgba(11,47,13,.08), 0 1px 2px rgba(11,47,13,.05)</div>
+      </div>
+      <div class="shadow-demo" style="box-shadow: var(--shadow-hover);">
+        <div class="name">Hover</div>
+        <div class="val">0 4px 12px rgba(11,47,13,.10), 0 2px 4px rgba(11,47,13,.06)</div>
+      </div>
+      <div class="shadow-demo" style="box-shadow: var(--shadow-modal);">
+        <div class="name">Modal</div>
+        <div class="val">0 10px 25px rgba(11,47,13,.18)</div>
+      </div>
+      <div class="shadow-demo" style="box-shadow: var(--ring); border: 1px solid var(--green);">
+        <div class="name">Focus ring</div>
+        <div class="val">0 0 0 3px rgba(45,196,56,.35)</div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============== 07 BUTTONS ============== -->
+  <section id="buttons">
+    <header>
+      <span class="num">07</span>
+      <h2>Buttons</h2>
+      <p>Five variants. Three sizes. Use Accent (Kola Copper) for one — and only one — action per screen.</p>
+    </header>
+
+    <div class="card">
+      <div class="label-sm" style="margin-bottom: 16px;">Variants</div>
+      <div style="display: flex; gap: 12px; flex-wrap: wrap; align-items: center;">
+        <button class="btn btn-primary">Confirm shipment</button>
+        <button class="btn btn-accent">Generate release note</button>
+        <button class="btn btn-secondary">Cancel</button>
+        <button class="btn btn-ghost">View details</button>
+        <button class="btn btn-danger">Delete shipment</button>
+        <button class="btn btn-primary" disabled>Disabled</button>
+      </div>
+
+      <hr class="hsep">
+
+      <div class="label-sm" style="margin-bottom: 16px;">Sizes — 28 · 36 · 44</div>
+      <div style="display: flex; gap: 12px; flex-wrap: wrap; align-items: center;">
+        <button class="btn btn-primary btn-sm">Small</button>
+        <button class="btn btn-primary">Medium (default)</button>
+        <button class="btn btn-primary btn-lg">Large</button>
+      </div>
+
+      <hr class="hsep">
+
+      <div class="label-sm" style="margin-bottom: 16px;">With icon</div>
+      <div style="display: flex; gap: 12px; flex-wrap: wrap; align-items: center;">
+        <button class="btn btn-primary"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg>New shipment</button>
+        <button class="btn btn-accent"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><polyline points="20 6 9 17 4 12"/></svg>Confirm payment</button>
+        <button class="btn btn-secondary">Export <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M7 10l5 5 5-5M12 15V3"/></svg></button>
+      </div>
+    </div>
+
+    <div class="dd" style="margin-top: 24px;">
+      <div class="do"><b>Do</b>Use Kola Copper Accent for the highest-stakes action per screen — payment, release, irreversible confirm.</div>
+      <div class="dont"><b>Don't</b>Place two Accent buttons in the same view. If both feel critical, one is actually Primary.</div>
+    </div>
+  </section>
+
+  <!-- ============== 08 INPUTS ============== -->
+  <section id="inputs">
+    <header>
+      <span class="num">08</span>
+      <h2>Inputs &amp; Forms</h2>
+      <p>1px line at rest, 2px green border on focus, error state replaces helper text.</p>
+    </header>
+
+    <div class="card">
+      <div class="row-3">
+        <div class="field">
+          <label>Container number</label>
+          <input class="input" placeholder="e.g. CMAU-704819-2" />
+          <div class="helper">ISO 6346 format. We validate the check digit.</div>
+        </div>
+        <div class="field">
+          <label>Origin port</label>
+          <input class="input" value="Guangzhou (CNGZG)" />
+          <div class="helper">Auto-suggests from your shipper history.</div>
+        </div>
+        <div class="field">
+          <label>Recipient phone</label>
+          <input class="input error" value="+234 0801" />
+          <div class="err">Phone number must be 11 digits after the country code.</div>
+        </div>
+      </div>
+
+      <hr class="hsep">
+
+      <div class="row-3">
+        <div class="field">
+          <label>Shipment type</label>
+          <select class="input">
+            <option>FCL — Full container load</option>
+            <option>LCL — Consolidated cargo</option>
+            <option>Air freight — Express</option>
+          </select>
+          <div class="helper">FCL ships in 18–24 days. LCL adds 5–7 for consolidation.</div>
+        </div>
+        <div class="field">
+          <label>Declared value <span style="color: var(--ink-4); font-weight: 400;">(USD)</span></label>
+          <div style="position: relative;">
+            <span style="position: absolute; left: 14px; top: 50%; transform: translateY(-50%); color: var(--ink-4); font-family: var(--mono); font-size: 13px;">$</span>
+            <input class="input" style="padding-left: 28px;" value="12,840.00" />
+          </div>
+          <div class="helper">Used for customs duty calculation.</div>
+        </div>
+        <div class="field">
+          <label>Notes <span style="color: var(--ink-4); font-weight: 400;">(optional)</span></label>
+          <textarea class="input" style="height: 80px; padding: 10px 14px; resize: vertical;" placeholder="Handling instructions, fragile items..."></textarea>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============== 09 BADGES ============== -->
+  <section id="badges">
+    <header>
+      <span class="num">09</span>
+      <h2>Badges &amp; Status</h2>
+      <p>Pill-shaped, uppercase, with a small filled dot. Mapped consistently across the product.</p>
+    </header>
+
+    <div class="card">
+      <h4 class="headline-md" style="margin: 0 0 12px;">Shipment status mapping</h4>
+      <div style="display: flex; gap: 8px; flex-wrap: wrap;">
+        <span class="badge b-success"><span class="dot"></span>Cleared</span>
+        <span class="badge b-success"><span class="dot"></span>Delivered</span>
+        <span class="badge b-success"><span class="dot"></span>Picked up</span>
+        <span class="badge b-info"><span class="dot"></span>In transit</span>
+        <span class="badge b-info"><span class="dot"></span>Processing</span>
+        <span class="badge b-info"><span class="dot"></span>Acknowledged</span>
+        <span class="badge b-warning"><span class="dot"></span>Pending</span>
+        <span class="badge b-warning"><span class="dot"></span>Under inspection</span>
+        <span class="badge b-warning"><span class="dot"></span>Draft</span>
+        <span class="badge b-accent"><span class="dot"></span>Discrepancy</span>
+        <span class="badge b-accent"><span class="dot"></span>Investigating</span>
+        <span class="badge b-error"><span class="dot"></span>Rejected</span>
+        <span class="badge b-error"><span class="dot"></span>Cancelled</span>
+        <span class="badge b-error"><span class="dot"></span>Overdue</span>
+        <span class="badge b-neutral"><span class="dot"></span>Expired</span>
+        <span class="badge b-neutral"><span class="dot"></span>Closed</span>
+      </div>
+
+      <hr class="hsep">
+
+      <h4 class="headline-md" style="margin: 0 0 12px;">Status decoding</h4>
+      <table class="tbl">
+        <thead><tr><th>Color</th><th>Meaning</th><th>Examples</th></tr></thead>
+        <tbody>
+          <tr><td><span class="badge b-success"><span class="dot"></span>Success</span></td><td>Done. Verified. Resolved.</td><td>Paid · Cleared · Picked up · Verified · Active</td></tr>
+          <tr><td><span class="badge b-info"><span class="dot"></span>Info</span></td><td>In motion. Acknowledged. Working.</td><td>In transit · Processing · Acknowledged</td></tr>
+          <tr><td><span class="badge b-warning"><span class="dot"></span>Warning</span></td><td>Waiting on a step that <em>will</em> resolve.</td><td>Pending · Draft · Under inspection</td></tr>
+          <tr><td><span class="badge b-accent"><span class="dot"></span>Accent</span></td><td>Active human review needed.</td><td>Discrepancy · Investigating</td></tr>
+          <tr><td><span class="badge b-error"><span class="dot"></span>Error</span></td><td>Failed, blocked, or out of time.</td><td>Rejected · Cancelled · Suspended · Seized · Overdue</td></tr>
+          <tr><td><span class="badge b-neutral"><span class="dot"></span>Neutral</span></td><td>Inactive. Out of scope.</td><td>Inactive · Expired · Closed</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <!-- ============== 10 CARDS ============== -->
+  <section id="cards">
+    <header>
+      <span class="num">10</span>
+      <h2>Cards &amp; Stat Tiles</h2>
+      <p>Cards use radius-md and resting shadow. Stat tiles use radius-xl for monumental numbers.</p>
+    </header>
+
+    <div class="row-4">
+      <div class="stat-card">
+        <div class="lbl">Active shipments</div>
+        <div class="num">1,284</div>
+        <div class="trend up">▲ 12.4% vs last month</div>
+      </div>
+      <div class="stat-card">
+        <div class="lbl">Cleared this week</div>
+        <div class="num">328</div>
+        <div class="trend up">▲ 8.1% vs last week</div>
+      </div>
+      <div class="stat-card">
+        <div class="lbl">Pending inspection</div>
+        <div class="num">42</div>
+        <div class="trend down">▼ 18% — down is good</div>
+      </div>
+      <div class="stat-card">
+        <div class="lbl">Avg. transit time</div>
+        <div class="num" style="font-family: var(--mono); font-size: 28px;">19.2<span style="font-size: 16px; color: var(--ink-3); font-family: var(--display); margin-left: 4px;">days</span></div>
+        <div class="trend up" style="color: var(--success);">▼ 1.6 days faster</div>
+      </div>
+    </div>
+
+    <h3 class="headline-lg" style="margin: 40px 0 16px;">Content card</h3>
+    <div class="card">
+      <div style="display: flex; align-items: flex-start; justify-content: space-between; gap: 16px;">
+        <div>
+          <div style="display: flex; align-items: center; gap: 10px; margin-bottom: 4px;">
+            <span class="mono" style="color: var(--ink-3); font-size: 12px;">SHX-2026-Q3-04792</span>
+            <span class="badge b-info"><span class="dot"></span>In transit</span>
+          </div>
+          <h4 class="display-md" style="margin: 4px 0 6px;">Consolidated electronics — 12 cartons</h4>
+          <div class="body-md" style="color: var(--ink-3);">Guangzhou Baiyun → Lagos Tin Can · LCL · ETA 14 Aug 2026</div>
+        </div>
+        <button class="btn btn-secondary btn-sm">Track</button>
+      </div>
+      <hr class="hsep">
+      <div style="display: grid; grid-template-columns: repeat(4, 1fr); gap: 24px;">
+        <div><div class="label-sm">Weight</div><div class="mono" style="margin-top: 4px;">284.6 kg</div></div>
+        <div><div class="label-sm">Volume</div><div class="mono" style="margin-top: 4px;">2.14 CBM</div></div>
+        <div><div class="label-sm">Declared</div><div class="mono" style="margin-top: 4px;">$12,840.00</div></div>
+        <div><div class="label-sm">Duties due</div><div class="mono" style="margin-top: 4px; color: var(--copper-deep); font-weight: 600;">₦1,842,500</div></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============== 11 NAV & TABLES ============== -->
+  <section id="navtbl">
+    <header>
+      <span class="num">11</span>
+      <h2>Navigation &amp; Tables</h2>
+      <p>Dark-green sidebar with bright-green active accent. Tables stay dense — no zebra stripes.</p>
+    </header>
+
+    <div class="row-2">
+      <div>
+        <div class="label-sm" style="margin-bottom: 12px;">Sidebar (desktop)</div>
+        <div class="demo-sidebar">
+          <div class="group">Operations</div>
+          <div class="navi">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg>
+            Dashboard
+          </div>
+          <div class="navi active">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 9l9-6 9 6v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="3 9 12 14 21 9"/></svg>
+            Shipments
+          </div>
+          <div class="navi">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3a14 14 0 0 1 0 18M12 3a14 14 0 0 0 0 18"/></svg>
+            Tracking
+          </div>
+          <div class="navi">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
+            Documents
+          </div>
+          <div class="group">Finance</div>
+          <div class="navi">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"/><path d="M12 6v12M9 9.5a2.5 2.5 0 0 1 5 0M9 14.5a2.5 2.5 0 0 0 5 0"/></svg>
+            Invoices
+          </div>
+          <div class="navi">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="6" width="18" height="13" rx="2"/><path d="M3 10h18"/></svg>
+            Payments
+          </div>
+        </div>
+      </div>
+
+      <div>
+        <div class="label-sm" style="margin-bottom: 12px;">Mobile bottom nav</div>
+        <div style="background: var(--surface); border-radius: var(--r-md); padding: 12px 0; box-shadow: var(--shadow-rest); border: 1px solid var(--line); display: flex; justify-content: space-around;">
+          <div style="display: flex; flex-direction: column; align-items: center; gap: 4px; color: var(--ink-3);">
+            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg>
+            <span style="font-size: 10px; font-weight: 500;">Home</span>
+          </div>
+          <div style="display: flex; flex-direction: column; align-items: center; gap: 4px; color: var(--green); position: relative;">
+            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 9l9-6 9 6v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></svg>
+            <span style="font-size: 10px; font-weight: 600;">Ship</span>
+            <div style="position: absolute; top: -8px; width: 24px; height: 3px; background: var(--green); border-radius: 999px;"></div>
+          </div>
+          <div style="display: flex; flex-direction: column; align-items: center; gap: 4px; color: var(--ink-3);">
+            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"/><path d="M3 12h18"/></svg>
+            <span style="font-size: 10px; font-weight: 500;">Track</span>
+          </div>
+          <div style="display: flex; flex-direction: column; align-items: center; gap: 4px; color: var(--ink-3);">
+            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="7" r="4"/><path d="M5 21a7 7 0 0 1 14 0"/></svg>
+            <span style="font-size: 10px; font-weight: 500;">Account</span>
+          </div>
+        </div>
+        <p class="body-sm" style="margin-top: 12px;">Bottom nav replaces the sidebar at &lt;768px. Max 5 destinations. Active state: green icon + 3px green bar above.</p>
+      </div>
+    </div>
+
+    <h3 class="headline-lg" style="margin: 40px 0 16px;">Table</h3>
+    <div class="card" style="padding: 0; overflow: hidden;">
+      <table class="tbl">
+        <thead>
+          <tr>
+            <th>Shipment</th>
+            <th>Route</th>
+            <th>Status</th>
+            <th>Weight</th>
+            <th>ETA</th>
+            <th style="text-align:right;">Value</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td><span class="mono-cell">SHX-04792</span><div class="body-sm" style="margin-top:2px;">12 cartons · electronics</div></td>
+            <td>CN-GZG → NG-LOS</td>
+            <td><span class="badge b-info"><span class="dot"></span>In transit</span></td>
+            <td><span class="mono-cell">284.6 kg</span></td>
+            <td><span class="mono-cell">14 Aug 2026</span></td>
+            <td style="text-align:right;"><span class="mono-cell">$12,840.00</span></td>
+          </tr>
+          <tr>
+            <td><span class="mono-cell">SHX-04788</span><div class="body-sm" style="margin-top:2px;">FCL · automotive parts</div></td>
+            <td>CN-SHA → NG-LOS</td>
+            <td><span class="badge b-warning"><span class="dot"></span>Under inspection</span></td>
+            <td><span class="mono-cell">12,400 kg</span></td>
+            <td><span class="mono-cell">18 Aug 2026</span></td>
+            <td style="text-align:right;"><span class="mono-cell">$48,200.00</span></td>
+          </tr>
+          <tr>
+            <td><span class="mono-cell">SHX-04781</span><div class="body-sm" style="margin-top:2px;">LCL · textiles</div></td>
+            <td>CN-GZG → NG-LOS</td>
+            <td><span class="badge b-accent"><span class="dot"></span>Discrepancy</span></td>
+            <td><span class="mono-cell">680.2 kg</span></td>
+            <td><span class="mono-cell">11 Aug 2026</span></td>
+            <td style="text-align:right;"><span class="mono-cell">$8,420.00</span></td>
+          </tr>
+          <tr>
+            <td><span class="mono-cell">SHX-04774</span><div class="body-sm" style="margin-top:2px;">Air · documents</div></td>
+            <td>CN-PEK → NG-LOS</td>
+            <td><span class="badge b-success"><span class="dot"></span>Delivered</span></td>
+            <td><span class="mono-cell">3.4 kg</span></td>
+            <td><span class="mono-cell">02 Aug 2026</span></td>
+            <td style="text-align:right;"><span class="mono-cell">$240.00</span></td>
+          </tr>
+          <tr>
+            <td><span class="mono-cell">SHX-04766</span><div class="body-sm" style="margin-top:2px;">FCL · machinery</div></td>
+            <td>CN-NGB → NG-LOS</td>
+            <td><span class="badge b-error"><span class="dot"></span>Overdue</span></td>
+            <td><span class="mono-cell">8,200 kg</span></td>
+            <td><span class="mono-cell">28 Jul 2026</span></td>
+            <td style="text-align:right;"><span class="mono-cell">$31,500.00</span></td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+    <p class="body-sm" style="margin-top: 12px;">No zebra stripes. 1px <code class="mono">--line</code> separator between rows. Hover: <code class="mono">--green-tint</code> background. Mono font for IDs, weights, dates and amounts so column alignment holds.</p>
+  </section>
+
+  <!-- ============== 12 MODALS & TOASTS ============== -->
+  <section id="overlays">
+    <header>
+      <span class="num">12</span>
+      <h2>Modals &amp; Toasts</h2>
+      <p>Overlays sit on a forest-green scrim, never black. Toasts auto-dismiss 4s success/info, 7s warning/error.</p>
+    </header>
+
+    <div class="row-2">
+      <div>
+        <div class="label-sm" style="margin-bottom: 12px;">Modal — confirm action</div>
+        <div class="modal-mock">
+          <div class="modal">
+            <h3>Confirm payment of ₦1,842,500</h3>
+            <p>This pays duties for shipment SHX-04792. Funds debit immediately and cannot be reversed once customs releases the cargo.</p>
+            <div style="background: var(--green-tint); border-radius: var(--r-sm); padding: 12px 14px; font-size: 13px; color: var(--green-deep);"><strong>Release note</strong> will be generated and emailed to operations@yourco.com upon settlement.</div>
+            <div class="actions">
+              <button class="btn btn-ghost">Cancel</button>
+              <button class="btn btn-accent">Confirm payment</button>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div>
+        <div class="label-sm" style="margin-bottom: 12px;">Toasts</div>
+        <div class="stack-md">
+          <div class="toast t-success">
+            <svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
+            <div><div class="ttl">Payment confirmed</div><div class="sub">Release note SHX-04792 emailed to operations.</div></div>
+          </div>
+          <div class="toast t-info">
+            <svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><circle cx="12" cy="12" r="9"/><path d="M12 16v-4M12 8h.01"/></svg>
+            <div><div class="ttl">Shipment acknowledged in Guangzhou</div><div class="sub">Container queued for loading 12 Aug.</div></div>
+          </div>
+          <div class="toast t-warning">
+            <svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><path d="M12 2L2 22h20L12 2zM12 9v5M12 18h.01"/></svg>
+            <div><div class="ttl">Inspection delay — 24 hours</div><div class="sub">Customs scheduled re-screening for 13 Aug 08:00.</div></div>
+          </div>
+          <div class="toast t-error">
+            <svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><circle cx="12" cy="12" r="9"/><path d="M9 9l6 6M15 9l-6 6"/></svg>
+            <div><div class="ttl">Payment failed</div><div class="sub">Bank declined — try a different card or contact support.</div></div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============== 13 SHIPPING PATTERNS ============== -->
+  <section id="shipping">
+    <header>
+      <span class="num">13</span>
+      <h2>Shipping Patterns</h2>
+      <p>Domain-specific compositions: tracking timeline, address block, label preview.</p>
+    </header>
+
+    <div class="row-2">
+      <div>
+        <div class="label-sm" style="margin-bottom: 12px;">Tracking timeline</div>
+        <div class="card track" style="padding: 0;">
+          <div style="padding: 20px 24px 12px; border-bottom: 1px solid var(--line);">
+            <div class="mono" style="font-size: 12px; color: var(--ink-3);">SHX-2026-Q3-04792</div>
+            <h4 class="headline-lg" style="margin: 4px 0 0;">Consolidated electronics</h4>
+            <div class="body-md" style="color: var(--ink-3);">Guangzhou → Lagos · 12 cartons · 284.6 kg</div>
+          </div>
+          <div style="padding: 16px 24px 24px;">
+            <div class="step done">
+              <div class="dot-wrap"><div class="dot"></div></div>
+              <div><div class="ttl">Picked up in Guangzhou</div><div class="sub">Baiyun warehouse · sealed for consolidation</div></div>
+              <div class="when">28 Jul · 14:22</div>
+            </div>
+            <div class="step done">
+              <div class="dot-wrap"><div class="dot"></div></div>
+              <div><div class="ttl">Loaded onto vessel</div><div class="sub">MV Eastern Lion · voyage 248E</div></div>
+              <div class="when">31 Jul · 09:08</div>
+            </div>
+            <div class="step current">
+              <div class="dot-wrap"><div class="dot"></div></div>
+              <div><div class="ttl">In transit — Indian Ocean</div><div class="sub">On schedule · ETA Lagos 14 Aug</div></div>
+              <div class="when">Now</div>
+            </div>
+            <div class="step future">
+              <div class="dot-wrap"><div class="dot"></div></div>
+              <div><div class="ttl">Arrive Tin Can Port</div><div class="sub">Bay 4 · expected berth window 08:00–14:00</div></div>
+              <div class="when">14 Aug</div>
+            </div>
+            <div class="step future">
+              <div class="dot-wrap"><div class="dot"></div></div>
+              <div><div class="ttl">Clear customs &amp; release</div><div class="sub">Duty payable: ₦1,842,500</div></div>
+              <div class="when">16 Aug</div>
+            </div>
+            <div class="step future">
+              <div class="dot-wrap"><div class="dot"></div></div>
+              <div><div class="ttl">Delivered</div><div class="sub">Last-mile via Shipx delivery network</div></div>
+              <div class="when">18 Aug</div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div>
+        <div class="label-sm" style="margin-bottom: 12px;">Address block</div>
+        <div class="card">
+          <div class="row-2">
+            <div>
+              <div class="label-sm" style="color: var(--ink-4);">From</div>
+              <div class="addr" style="margin-top: 8px;">
+                <div class="nm">Guangzhou Electronics Co.</div>
+                <div>Building 4, Baiyun Logistics Park</div>
+                <div>Renhe Town, Baiyun District</div>
+                <div>Guangzhou, Guangdong 510470</div>
+                <div>China</div>
+                <div class="mono">+86 20 8612 4400</div>
+              </div>
+            </div>
+            <div>
+              <div class="label-sm" style="color: var(--ink-4);">To</div>
+              <div class="addr" style="margin-top: 8px;">
+                <div class="nm">Eze Logistics &amp; Co. Ltd</div>
+                <div>14 Adeniran Ogunsanya Street</div>
+                <div>Surulere, Lagos 101241</div>
+                <div>Nigeria</div>
+                <div class="mono">+234 802 415 0922</div>
+                <div class="mono">RC 1842519</div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="label-sm" style="margin: 24px 0 12px;">Shipping label preview</div>
+        <div class="label-card">
+          <div class="row">
+            <div>
+              <div style="font-weight: 700; color: var(--ink); font-family: var(--display); font-size: 14px;">ship<em style="color: var(--copper); font-style: normal;">x</em></div>
+              <div style="margin-top: 6px;">SHX-2026-Q3-04792</div>
+              <div style="color: var(--ink-3);">LCL · 12 cartons · 284.6 kg</div>
+            </div>
+            <svg viewBox="0 0 100 100" fill="var(--ink)" style="width:32px;height:32px;"><g transform="rotate(0 50 50)"><rect x="36" y="6" width="28" height="48" rx="14"/></g><g transform="rotate(120 50 50)"><rect x="36" y="6" width="28" height="48" rx="14"/></g><g transform="rotate(240 50 50)"><rect x="36" y="6" width="28" height="48" rx="14"/></g></svg>
+          </div>
+          <hr>
+          <div style="font-size: 9px; color: var(--ink-3); text-transform: uppercase; letter-spacing: 0.12em;">Ship to</div>
+          <div style="font-weight: 700; color: var(--ink); margin-top: 2px;">EZE LOGISTICS &amp; CO. LTD</div>
+          <div>14 ADENIRAN OGUNSANYA, SURULERE</div>
+          <div>LAGOS 101241, NIGERIA</div>
+          <div class="barcode"></div>
+          <div class="barcode-num">SHX 2026 Q3 04792 NG LOS</div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============== 14 API / DEV ============== -->
+  <section id="api">
+    <header>
+      <span class="num">14</span>
+      <h2>Developer Surfaces</h2>
+      <p>Documentation, API responses, and error states for partners integrating Shipx.</p>
+    </header>
+
+    <div class="row-2">
+      <div>
+        <div class="label-sm" style="margin-bottom: 12px;">Code sample · creating a shipment</div>
+        <div class="code">
+<span class="c">// POST https://api.shipx.odum.co/v1/shipments</span>
+
+<span class="k">const</span> shipment = <span class="k">await</span> shipx.shipments.create({
+  origin: <span class="s">"CN-GZG"</span>,
+  destination: <span class="s">"NG-LOS"</span>,
+  mode: <span class="s">"LCL"</span>,
+  packages: [
+    { weight_kg: <span class="p">42.5</span>, volume_cbm: <span class="p">0.18</span> },
+    { weight_kg: <span class="p">38.0</span>, volume_cbm: <span class="p">0.16</span> },
+  ],
+  declared_value: { amount: <span class="p">12840</span>, currency: <span class="s">"USD"</span> },
+});
+
+<span class="c">// → { id: "shx_04792", status: "pending", ... }</span>
+        </div>
+      </div>
+
+      <div>
+        <div class="label-sm" style="margin-bottom: 12px;">API response shape</div>
+        <div class="code">
+{
+  <span class="s">"id"</span>: <span class="s">"shx_04792"</span>,
+  <span class="s">"reference"</span>: <span class="s">"SHX-2026-Q3-04792"</span>,
+  <span class="s">"status"</span>: <span class="s">"in_transit"</span>,
+  <span class="s">"origin"</span>: { <span class="s">"port"</span>: <span class="s">"CN-GZG"</span> },
+  <span class="s">"destination"</span>: { <span class="s">"port"</span>: <span class="s">"NG-LOS"</span> },
+  <span class="s">"eta"</span>: <span class="s">"2026-08-14T08:00:00Z"</span>,
+  <span class="s">"tracking_url"</span>: <span class="s">"https://shipx.odum.co/t/shx_04792"</span>,
+  <span class="s">"webhook_events"</span>: [
+    <span class="s">"shipment.acknowledged"</span>,
+    <span class="s">"shipment.in_transit"</span>,
+    <span class="s">"shipment.cleared"</span>,
+    <span class="s">"shipment.delivered"</span>
+  ]
+}
+        </div>
+      </div>
+    </div>
+
+    <div class="row-2" style="margin-top: 24px;">
+      <div class="card">
+        <div class="label-sm" style="color: var(--error);">Error state — predictable shape</div>
+        <h4 class="headline-md" style="margin: 8px 0 12px;">Every error includes <code class="mono">code</code>, <code class="mono">message</code>, <code class="mono">field</code>, and <code class="mono">docs_url</code>.</h4>
+        <div class="code" style="background: #2a1010; color: #fed7aa;">
+{
+  <span style="color:#fca5a5;">"error"</span>: {
+    <span style="color:#fca5a5;">"code"</span>: <span style="color:#fed7aa;">"invalid_container_format"</span>,
+    <span style="color:#fca5a5;">"message"</span>: <span style="color:#fed7aa;">"Container number failed ISO 6346 check digit."</span>,
+    <span style="color:#fca5a5;">"field"</span>: <span style="color:#fed7aa;">"packages[0].container"</span>,
+    <span style="color:#fca5a5;">"docs_url"</span>: <span style="color:#fed7aa;">"https://docs.shipx.odum.co/errors/invalid_container_format"</span>
+  }
+}
+        </div>
+      </div>
+      <div class="card">
+        <div class="label-sm" style="color: var(--green);">Empty state — developer dashboard</div>
+        <div style="background: var(--muted); border-radius: var(--r-md); padding: 40px 24px; text-align: center; margin-top: 12px;">
+          <svg viewBox="0 0 100 100" fill="var(--green)" style="width:48px;height:48px;opacity:0.4;"><g transform="rotate(0 50 50)"><rect x="36" y="6" width="28" height="48" rx="14"/></g><g transform="rotate(120 50 50)"><rect x="36" y="6" width="28" height="48" rx="14"/></g><g transform="rotate(240 50 50)"><rect x="36" y="6" width="28" height="48" rx="14"/></g></svg>
+          <h4 class="headline-md" style="margin: 12px 0 6px;">No shipments yet</h4>
+          <p class="body-sm" style="max-width: 280px; margin: 0 auto 16px;">Ship your first cargo via the API or paste a tracking number to mirror an existing shipment.</p>
+          <button class="btn btn-primary btn-sm">Read the quickstart</button>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============== 15 VOICE ============== -->
+  <section id="voice">
+    <header>
+      <span class="num">15</span>
+      <h2>Voice &amp; Tone</h2>
+      <p>Active, ownership-driven, confident. Heritage of the lion — engineered for the operator.</p>
+    </header>
+
+    <div class="row-2">
+      <div class="card">
+        <div class="label-sm" style="color: var(--green);">We sound like</div>
+        <ul class="body-lg" style="padding-left: 18px;">
+          <li>Active, not passive: <em>"Lead every shipment"</em>, not <em>"Shipments can be tracked"</em>.</li>
+          <li>Specific, not generic: <em>"Container SHX-04792 cleared customs"</em>, not <em>"Status updated"</em>.</li>
+          <li>Calmly authoritative — the lion doesn't shout.</li>
+          <li>Plain English over jargon, but never dumbed-down for operators.</li>
+        </ul>
+      </div>
+      <div class="card">
+        <div class="label-sm" style="color: var(--copper);">We don't sound like</div>
+        <ul class="body-lg" style="padding-left: 18px;">
+          <li>Over-friendly: no exclamation marks, no "Oops!", no emoji.</li>
+          <li>Corporate-vague: no "leverage", "synergy", "best-in-class".</li>
+          <li>Apologetic: errors are direct and tell the user what to do next.</li>
+          <li>Trend-chasing: no slang, no "fire", no "vibes".</li>
+        </ul>
+      </div>
+    </div>
+
+    <h3 class="headline-lg" style="margin: 40px 0 16px;">Copy in context</h3>
+    <div class="card" style="padding: 0;">
+      <table class="tbl">
+        <thead><tr><th>Context</th><th style="color: var(--error);">Don't</th><th style="color: var(--success);">Do</th></tr></thead>
+        <tbody>
+          <tr><td>Primary CTA</td><td>Submit form</td><td>Confirm shipment</td></tr>
+          <tr><td>Empty state</td><td>Nothing here yet 😢</td><td>Ship your first cargo to see it here.</td></tr>
+          <tr><td>Error message</td><td>Oops! Something went wrong.</td><td>Bank declined the payment. Try a different card or contact support.</td></tr>
+          <tr><td>Success toast</td><td>Great job! 🎉</td><td>Payment confirmed. Release note emailed.</td></tr>
+          <tr><td>Dashboard header</td><td>Welcome back, Adaeze!</td><td>Lead every shipment, Adaeze.</td></tr>
+          <tr><td>Confirmation modal</td><td>Are you sure you want to delete?</td><td>Delete shipment SHX-04792? This can't be undone.</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <!-- ============== 16 MOTION ============== -->
+  <section id="motion">
+    <header>
+      <span class="num">16</span>
+      <h2>Motion</h2>
+      <p>Motion implies cargo in motion — direct, decisive, never decorative.</p>
+    </header>
+
+    <div class="motion">
+      <div class="m-card ease">
+        <div class="ttl">Ease — primary</div>
+        <div class="sub">cubic-bezier(0.4, 0, 0.2, 1) · 240ms</div>
+        <div class="demo"><div class="ball"></div></div>
+        <p class="body-sm" style="margin-top: 12px;">Default for panels, drawers, modal entry. Confident in, settled at rest.</p>
+      </div>
+      <div class="m-card spring">
+        <div class="ttl">Spring — feedback</div>
+        <div class="sub">cubic-bezier(0.34, 1.56, 0.64, 1) · 420ms</div>
+        <div class="demo"><div class="ball"></div></div>
+        <p class="body-sm" style="margin-top: 12px;">Reserved for arrival moments — toasts landing, stat numbers ticking up.</p>
+      </div>
+      <div class="m-card pulse">
+        <div class="ttl">Pulse — live</div>
+        <div class="sub">ease-in-out · 1.6s loop</div>
+        <div class="demo"><div class="ball"></div></div>
+        <p class="body-sm" style="margin-top: 12px;">Currently active step on the tracking timeline. The only loop in the system.</p>
+      </div>
+    </div>
+
+    <div class="card" style="margin-top: 24px;">
+      <div class="row-3">
+        <div>
+          <div class="label-sm">Durations</div>
+          <p class="body-md" style="margin-top: 8px;"><strong class="mono">120ms</strong> — micro (hover, ripple)<br/><strong class="mono">240ms</strong> — UI (panel, modal)<br/><strong class="mono">420ms</strong> — feedback (toast spring)<br/><strong class="mono">1600ms</strong> — live indicators (loop)</p>
+        </div>
+        <div>
+          <div class="label-sm">When motion arrives</div>
+          <p class="body-md" style="margin-top: 8px;">Always purposeful. Motion signals <em>direction</em> — where something came from, where it's going. A toast slides in from the top-right because that's where the bell icon lives.</p>
+        </div>
+        <div>
+          <div class="label-sm">Reduced motion</div>
+          <p class="body-md" style="margin-top: 8px;">All animations honor <code class="mono">prefers-reduced-motion</code>. Springs collapse to fades, pulses stay static. Function never depends on motion.</p>
+        </div>
+      </div>
+    </div>
+    <div class="micro">
+      <div class="m-card" style="background:#fff;border-radius:var(--r-md);padding:20px;border:1px solid var(--line);">
+        <div class="ttl">Hover lift — buttons</div>
+        <div class="sub">translateY(-1px) + brightness(1.06) · 160ms</div>
+        <div class="demo"><button class="btn btn-primary demo-lift">Hover me</button></div>
+        <p class="body-sm" style="margin-top: 12px;">All solid buttons lift on hover and settle on press. Shadow deepens with the lift.</p>
+      </div>
+      <div class="m-card" style="background:#fff;border-radius:var(--r-md);padding:20px;border:1px solid var(--line);">
+        <div class="ttl">Row highlight — tables</div>
+        <div class="sub">background #f6faf6 · 120ms</div>
+        <div class="demo"><div class="demo-rowcard"><div class="r">CTN-20260618-004 · 12 customers</div><div class="r">CTN-20260618-005 · 8 customers</div><div class="r">CTN-20260618-006 · 15 customers</div></div></div>
+        <p class="body-sm" style="margin-top: 12px;">Unselected rows tint green-white on hover. Selected and flagged rows keep their state color.</p>
+      </div>
+      <div class="m-card" style="background:#fff;border-radius:var(--r-md);padding:20px;border:1px solid var(--line);">
+        <div class="ttl">Card raise — kanban</div>
+        <div class="sub">translateY(-2px) + shadow-hover · 160ms</div>
+        <div class="demo"><div class="demo-kanban"><strong class="mono">HLBU 9384712</strong><br/>8 customers · 41.2 CBM</div></div>
+        <p class="body-sm" style="margin-top: 12px;">Interactive cards raise 2px with a green-tinted border on hover — the universal “clickable” cue.</p>
+      </div>
+    </div>
+
+    <div class="card" style="margin-top: 24px;">
+      <div class="label-sm" style="margin-bottom:12px;">Glass surfaces</div>
+      <div class="glass-stage">
+        <span class="glass-chip">Dark glass — nav on brand</span>
+        <span class="glass-chip lite">Light glass — app top bar</span>
+      </div>
+      <p class="body-sm" style="margin-top: 12px;">Two sanctioned glass recipes: dark (<code class="mono">rgba(255,255,255,0.08)</code> + blur 12–18px, on forest green) and light (<code class="mono">rgba(255,255,255,0.82)</code> + blur 14px, for sticky app chrome). Never stack glass on glass.</p>
+    </div>
+  </section>
+
+</main>
+</div>
+
+<footer class="foot">
+  <div>Shipx Design System · v0.1 · May 2026</div>
+  <div>Built on the ODUM brand foundation · An ODUM product</div>
+</footer>
+
+<script>
+// Scroll-spy: highlight active nav item
+(function() {
+  const links = document.querySelectorAll('aside.nav a');
+  const sections = [...document.querySelectorAll('main section')].map(s => ({ el: s, id: s.id }));
+  function update() {
+    const y = window.scrollY + 120;
+    let current = sections[0]?.id;
+    for (const s of sections) {
+      if (s.el.offsetTop <= y) current = s.id;
+    }
+    links.forEach(a => {
+      a.style.background = a.getAttribute('href') === '#' + current ? 'rgba(255,255,255,0.06)' : '';
+      a.style.color = a.getAttribute('href') === '#' + current ? '#fff' : '';
+    });
+  }
+  window.addEventListener('scroll', update, { passive: true });
+  update();
+})();
+</script>
+
+</body>
+</html>

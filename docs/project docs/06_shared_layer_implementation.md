@@ -75,6 +75,24 @@ def execute_write_with_tenant(tenant_id: str, query: str, params: dict | None = 
         conn.rollback()
         raise
 
+def execute_write_with_tenant_many(tenant_id: str, query: str, params: dict | None = None) -> list[dict]:
+    """Execute a multi-row INSERT/UPDATE/DELETE within tenant scope. Returns every affected row.
+
+    Use for bulk writes (`WHERE id = ANY(...)`) — `execute_write_with_tenant` only
+    returns the first row, and `execute_with_tenant` never commits.
+    """
+    conn = get_connection()
+    try:
+        with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
+            cur.execute("SET LOCAL app.current_tenant_id = %s", (tenant_id,))
+            cur.execute(query, params or {})
+            results = cur.fetchall() if cur.description else []
+        conn.commit()
+        return [dict(row) for row in results]
+    except Exception:
+        conn.rollback()
+        raise
+
 def execute_transaction(tenant_id: str, operations: list[tuple[str, dict]]) -> list:
     """Execute multiple queries in a single transaction."""
     conn = get_connection()
@@ -239,10 +257,23 @@ def lambda_handler(event: dict, context) -> dict:
 - [ ] `cache.py`: TTL-based in-memory cache with per-key expiry
 - [ ] `circuit_breaker.py`: Tracks failures, opens circuit after threshold, recovers after timeout
 - [ ] `metering.py`: `record_usage()` publishes UsageRecorded events
-- [ ] `notifications.py`: `enqueue_notifications()` checks preferences before SQS enqueue
+- [x] `notifications.py`: `enqueue_notifications()` checks preferences before SQS enqueue; looks up `notification_template` per channel and embeds custom copy as `template_override` in SQS payload
+- [x] `notifications.py`: `enqueue_notification()` (singular) accepts `locale: str = "en"` and includes it in the SQS message body so notification Lambdas select the correct template language
+- [x] `webhook.py`: `fire_tenant_webhook()` signs outbound HTTP POST with HMAC-SHA256 (`X-ShipX-Signature-256: sha256=<hex>`); `test_fire_tenant_webhook()` sends a test event and returns `{success, status_code, error}`
+- [x] `fx_rate.py` (2026-09-19): `get_effective_dollar_rate(tenant_id)` centralizes what used to be four independent `tenant_config['dollar_rate']` readers; base rate fetched live from Bybit's public P2P order book (`fetch_bybit_ngn_rate()`, circuit-breaker guarded), cached in Redis (`DistributedCache`, 10 min TTL) with a `platform_settings`-persisted last-known-good fallback for outages; `ssl_context.py::verified_ssl_context()` shares a small TLS-context helper with `paystack.py` rather than duplicating it a second time. See `02_shared_utilities.md`.
+- [x] `cbm_rate.py` (2026-09-20): `get_cbm_rate_config(tenant_id)` + `compute_cbm_charge(cbm_by_unit, config)` centralize CBM freight pricing — a tenant admin picks a currency (USD/NGN) and either one flat rate or separate carton/bag/bale rates ("flat" is just the case where all three are equal, one code path, no mode branching in the money math). `normalize_package_unit()` folds any package type other than exact "bag"/"bale" into the carton bucket. Backward-compatible at read time with the pre-2026-09-20 single-rate shape — no data migration. See `02_shared_utilities.md`.
 - [ ] `logging_config.py`: Structured JSON formatter with service, environment, request_id, tenant_id
 - [ ] Handler pattern includes X-Ray tracing initialization
 - [ ] Handler pattern includes idempotency key handling for POST
 - [ ] Handler pattern includes request timing and structured logging
 - [ ] All modules have comprehensive logging
 - [ ] All functions have type hints
+
+### `shared/url_safety.py` — added 2026-09-23
+
+New shared module (SSRF guard for tenant-supplied webhook URLs). Full contract in
+[02_shared_utilities.md](02_shared_utilities.md#sharedurl_safetypy-added-2026-09-23).
+`shared/webhook.py` now delivers through `open_public_https()` instead of
+`urllib.request.urlopen()`, and builds the signed request inside its `try` so a
+malformed URL stored before this validation existed can no longer raise out of
+`fire_tenant_webhook` (documented as never raising).

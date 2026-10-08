@@ -6,6 +6,7 @@ from unittest.mock import MagicMock, patch
 import pytest
 
 from shared.exceptions import (
+    ApprovalThresholdExceededError,
     IllegalTransitionError,
     InsufficientPermissionsError,
     ResourceNotFoundError,
@@ -42,6 +43,87 @@ def _refund(**kwargs) -> dict:
 # ---------------------------------------------------------------------------
 # _fmt_refund formatter
 # ---------------------------------------------------------------------------
+
+
+class TestCreateRefundCustomerFlow:
+    """Ground-truth regression: RefundRequest.tsx's self-service "Request a
+    Refund" flow always 403'd — _CREATE_ROLES (handler.py) never included
+    CUSTOMER. Behind that, create_refund() used req.customer_id
+    unconditionally, but the frontend deliberately sends customer_id=""
+    with the comment "Server derives from JWT for customer role" — a
+    derivation that never existed. Both fixed together.
+    """
+
+    def _req(self, **overrides) -> MagicMock:
+        req = MagicMock()
+        req.customer_id = ""  # exactly what RefundRequest.tsx actually sends
+        req.billing_id = "billing-001"
+        req.damage_claim_id = None
+        req.refund_type = "overpayment"
+        req.amount_requested_ngn = Decimal("15000")
+        req.customer_choice = "immediate_refund"
+        req.notes = "e2e test"
+        for k, v in overrides.items():
+            setattr(req, k, v)
+        return req
+
+    def test_customer_id_is_derived_from_the_session_not_the_blank_request_field(self):
+        from services.refunds import service
+
+        req = self._req()
+        with (
+            patch.object(service.repo, "get_customer_by_user_id", return_value={"id": "real-customer-001"}),
+            patch.object(
+                service.repo, "get_billing_by_id", return_value={"id": "billing-001", "customer_id": "real-customer-001"}
+            ),
+            patch.object(
+                service.repo, "create_refund_request", return_value=_refund(customer_id="real-customer-001")
+            ) as mock_create,
+            patch("services.refunds.service.log_audit"),
+        ):
+            ctx = _ctx(UserRole.CUSTOMER)
+            service.create_refund(TENANT_ID, req, actor_id="user-1", ctx=ctx)
+
+        assert mock_create.call_args.args[1]["customer_id"] == "real-customer-001"
+
+    def test_customer_cannot_request_a_refund_against_another_customers_billing(self):
+        """Without this, a customer could request a refund against any
+        billing record in the tenant by guessing or enumerating ids."""
+        from services.refunds import service
+
+        req = self._req()
+        with (
+            patch.object(service.repo, "get_customer_by_user_id", return_value={"id": "real-customer-001"}),
+            patch.object(
+                service.repo, "get_billing_by_id", return_value={"id": "billing-001", "customer_id": "someone-elses-customer-id"}
+            ),
+            patch.object(service.repo, "create_refund_request") as mock_create,
+        ):
+            ctx = _ctx(UserRole.CUSTOMER)
+            with pytest.raises(ResourceNotFoundError):
+                service.create_refund(TENANT_ID, req, actor_id="user-1", ctx=ctx)
+
+        mock_create.assert_not_called()
+
+    def test_staff_still_supplies_customer_id_directly(self):
+        """Non-customer callers (nigeria_office_staff creating a refund on a
+        customer's behalf) are unaffected — customer_id comes from the body."""
+        from services.refunds import service
+
+        req = self._req(customer_id="staff-provided-customer-001")
+        with (
+            patch.object(
+                service.repo,
+                "get_billing_by_id",
+                return_value={"id": "billing-001", "customer_id": "staff-provided-customer-001"},
+            ),
+            patch.object(service.repo, "create_refund_request", return_value=_refund()) as mock_create,
+            patch("services.refunds.service.log_audit"),
+        ):
+            ctx = _ctx(UserRole.NIGERIA_OFFICE_STAFF)
+            service.create_refund(TENANT_ID, req, actor_id="user-1", ctx=ctx)
+
+        assert mock_create.call_args.args[1]["customer_id"] == "staff-provided-customer-001"
 
 
 class TestFmtRefund:
@@ -113,6 +195,37 @@ class TestGetRefund:
         with patch.object(service.repo, "get_refund_request_by_id", return_value=None):
             with pytest.raises(ResourceNotFoundError):
                 service.get_refund(TENANT_ID, "nonexistent", _ctx(UserRole.TENANT_ADMIN))
+
+    def test_threshold_uses_the_effective_bybit_plus_markup_dollar_rate(self):
+        # Ground-truth change: the dollar rate used to convert staff_limit
+        # (USD) into a NGN threshold is no longer a tenant_config value —
+        # it's shared.fx_rate.get_effective_dollar_rate (Bybit base + this
+        # tenant's markup).
+        from services.refunds import service
+
+        refund = _refund(amount_ngn=Decimal("100000.00"))
+        with (
+            patch.object(service.repo, "get_refund_request_by_id", return_value=refund),
+            patch.object(service.repo, "get_refund_threshold_config", return_value={"staff_limit": 50}),
+            patch.object(service, "get_effective_dollar_rate", return_value={"rate": Decimal("1600.00")}),
+        ):
+            result = service.get_refund(TENANT_ID, "refund-001", _ctx(UserRole.NIGERIA_OFFICE_STAFF))
+
+        assert result["threshold"]["dollar_rate"] == 1600.00
+        assert result["threshold"]["staff_limit_ngn"] == 80000.00
+        assert result["threshold"]["exceeds_staff_limit"] is True  # 100,000 > 80,000
+
+    def test_threshold_is_none_when_the_rate_lookup_fails(self):
+        from services.refunds import service
+
+        refund = _refund()
+        with (
+            patch.object(service.repo, "get_refund_request_by_id", return_value=refund),
+            patch.object(service.repo, "get_refund_threshold_config", side_effect=RuntimeError("db down")),
+        ):
+            result = service.get_refund(TENANT_ID, "refund-001", _ctx(UserRole.NIGERIA_OFFICE_STAFF))
+
+        assert result["threshold"] is None
 
 
 # ---------------------------------------------------------------------------
@@ -290,6 +403,66 @@ class TestApproveRefund:
                 TENANT_ID, "refund-001", self._approve_req(), actor_id="u", ctx=_ctx(UserRole.NIGERIA_OFFICE_STAFF)
             )
             assert result["status"] == "applied_as_credit"
+
+    def test_nigeria_staff_blocked_above_threshold_using_effective_dollar_rate(self):
+        # staff_limit=50 USD * effective rate 1600 = 80,000 NGN ceiling.
+        from services.refunds import service
+
+        refund = _refund(status="pending_approval", refund_type="overpayment", amount_ngn=Decimal("100000.00"))
+        with (
+            patch.object(service.repo, "get_refund_request_by_id", return_value=refund),
+            patch.object(service.repo, "get_refund_threshold_config", return_value={"staff_limit": 50}),
+            patch.object(service, "get_effective_dollar_rate", return_value={"rate": Decimal("1600.00")}),
+        ):
+            with pytest.raises(ApprovalThresholdExceededError):
+                service.approve_refund(
+                    TENANT_ID, "refund-001", self._approve_req("90000.00"), actor_id="u", ctx=_ctx(UserRole.NIGERIA_OFFICE_STAFF)
+                )
+
+    def test_nigeria_staff_allowed_at_or_below_threshold(self):
+        from services.refunds import service
+
+        refund = _refund(
+            status="pending_approval",
+            refund_type="overpayment",
+            amount_ngn=Decimal("70000.00"),
+            customer_choice="immediate_refund",
+            billing_id=None,
+        )
+        updated = _refund(status="processed")
+        with (
+            patch.object(service.repo, "get_refund_request_by_id", return_value=refund),
+            patch.object(service.repo, "get_refund_threshold_config", return_value={"staff_limit": 50}),
+            patch.object(service, "get_effective_dollar_rate", return_value={"rate": Decimal("1600.00")}),
+            patch.object(service.repo, "update_refund_status", return_value=updated),
+            patch("services.refunds.service.publish_event"),
+        ):
+            result = service.approve_refund(
+                TENANT_ID, "refund-001", self._approve_req("70000.00"), actor_id="u", ctx=_ctx(UserRole.NIGERIA_OFFICE_STAFF)
+            )
+        assert result["status"] == "processed"
+
+    def test_tenant_admin_can_override_above_staff_threshold(self):
+        from services.refunds import service
+
+        refund = _refund(
+            status="pending_approval",
+            refund_type="overpayment",
+            amount_ngn=Decimal("100000.00"),
+            customer_choice="immediate_refund",
+            billing_id=None,
+        )
+        updated = _refund(status="processed")
+        with (
+            patch.object(service.repo, "get_refund_request_by_id", return_value=refund),
+            patch.object(service.repo, "update_refund_status", return_value=updated),
+            patch("services.refunds.service.publish_event"),
+        ):
+            # tenant_admin never hits the staff-limit branch at all.
+            result = service.approve_refund(
+                TENANT_ID, "refund-001", self._approve_req("100000.00"), actor_id="u", ctx=_ctx(UserRole.TENANT_ADMIN)
+            )
+        assert result["status"] == "processed"
 
     def test_raises_illegal_transition_if_not_pending_approval(self):
         from services.refunds import service

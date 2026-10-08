@@ -229,6 +229,50 @@ ALTER TABLE usage_record ADD CONSTRAINT uq_usage_tenant_metric_period
   UNIQUE (tenant_id, metric_type, period_start);
 ```
 
+## Implementation notes / ground-truth gaps found
+
+**`record_usage()` was a plain INSERT, not the upsert this doc specifies
+(2026-09-06).** The spec above and migration 010's own docstring both
+document `ON CONFLICT (tenant_id, metric_type, period_start) DO UPDATE SET
+value = usage_record.value + EXCLUDED.value` — but `shared/metering.py`'s
+actual `record_usage()` never used it. Effect: the *first* write for a given
+`(tenant_id, metric_type, period_start)` succeeded; every subsequent one hit
+`uq_usage_tenant_metric_period` and was silently dropped (the function fails
+open by design). This isn't a rare race — for `api_calls`, every tenant's
+usage counter was capped at 1 per day, every day, since the first successful
+call each day permanently blocked every later one via the constraint.
+Tier-limit enforcement reading these totals (`shared/tier_limits.py`) has
+therefore never seen real usage past the first request of the day for any
+metric.
+
+**A second, separate cause of the same symptom found in the same investigation:**
+`record_usage("PLATFORM", ...)` — every platform-admin request — failed with
+`InvalidTextRepresentation`, since `usage_record.tenant_id` is a UUID column
+and the platform-admin sentinel is the literal string `"PLATFORM"`. Fixed by
+skipping metering entirely for that sentinel: platform_admin has no tier
+limits to meter against in the first place, so there was nothing to record.
+
+**The actual root cause, found last:** neither bug above should have been
+able to corrupt anything outside its own request — both are correctly rolled
+back by `execute_write_with_tenant`. They kept doing so anyway because
+`scripts/local_server.py`'s dev server runs multi-threaded by Flask's own
+default, and `shared/db.py`'s single module-level connection has no lock —
+two concurrent requests really were racing on one psycopg2 connection. Fixed
+by making the dev server single-threaded (`LOCAL_TESTING.md`), which also
+happens to match real Lambda's one-invocation-per-container execution model.
+
+Found via e2e testing, not a metering-focused investigation: the resulting
+`IntegrityError`, though itself correctly rolled back, was observed leaving
+the shared DB connection in a failed-transaction state afterward — breaking
+*every subsequent unrelated request* on the same process with
+`psycopg2.errors.InFailedSqlTransaction`. Since this constraint is hit on
+essentially every request after the first each day, that was the normal
+steady state, not an edge case, and it's what a new e2e smoke sweep
+(`frontend/e2e/flows/smoke-navigation.spec.ts`) caught as a scattered
+"Internal server error" across unrelated pages. `shared/db.py`'s
+`get_connection()` now self-heals a poisoned connection regardless of cause,
+but this fix removes the actual trigger. Covered by `tests/unit/test_metering.py`.
+
 ## Acceptance Criteria
 
 - [x] SQS consumer processes batches of UsageRecorded events

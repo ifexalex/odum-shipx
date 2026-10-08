@@ -14,7 +14,7 @@ Implement the Refund Lambda service: refund request creation (overpayment, CBM c
 
 | Method | Path | Roles |
 |---|---|---|
-| POST | `/v1/refunds` | system (auto), nigeria_office_staff |
+| POST | `/v1/refunds` | system (auto), nigeria_office_staff, customer (own billing only) |
 | GET | `/v1/refunds` | tenant_admin, nigeria_office_staff |
 | GET | `/v1/refunds/{id}` | tenant_admin, nigeria_office_staff, customer (own) |
 | PATCH | `/v1/refunds/{id}/review` | nigeria_office_staff (accounts team) |
@@ -55,6 +55,37 @@ Stored in `refund_request.refund_type` (migration 009):
 
 `amount_approved_ngn` (migration 009) records the final approved payout amount.
 
+### Staff Approval Threshold (BR-RF-005)
+When the approver is `nigeria_office_staff`, `approve_refund` reads `refund_threshold_usd.staff_limit` (default 50, from `tenant_config` via `repo.get_refund_threshold_config`) and the dollar rate via `shared.fx_rate.get_effective_dollar_rate(tenant_id)["rate"]` — **not** `tenant_config['dollar_rate']` (2026-09-19; that key is no longer read anywhere — see `07_api_tenant_management.md`'s Dollar Rate section). If `amount_approved_ngn > staff_limit × rate`, an `ApprovalThresholdExceededError` (`APPROVAL_THRESHOLD_EXCEEDED`, **HTTP 403**) is raised — the staff member must escalate to `tenant_admin`.
+
+The 403 body includes structured `threshold_details`:
+```json
+{
+  "error_code": "APPROVAL_THRESHOLD_EXCEEDED",
+  "threshold_details": {
+    "staff_limit_usd": 50,
+    "staff_limit_ngn": 77500,
+    "dollar_rate": 1550,
+    "amount_ngn": 120000
+  }
+}
+```
+
+`GET /v1/refunds/{id}` includes a `threshold` object in the response (populated from the same tenant config) so the frontend can pre-render the approval limit meter without waiting for a 403:
+```json
+{
+  "threshold": {
+    "staff_limit_usd": 50,
+    "staff_limit_ngn": 77500,
+    "dollar_rate": 1550,
+    "exceeds_staff_limit": true
+  }
+}
+```
+`threshold` is `null` if the config read fails.
+
+Falls back silently if the config read fails (infra error), so the threshold is enforced best-effort. This does not bypass the role-level authority checks in BR-RF-003 (both checks apply independently).
+
 ### Invoice Adjustment (BR-RF-004)
 `customer_choice` values (migration 009): `immediate_refund`, `credit_next_shipment`
 
@@ -81,11 +112,55 @@ On `customer_choice = 'credit_next_shipment'`:
 | `refund_request.debt_check_passed` | New: `BOOLEAN` |
 | `refund_request.debt_check_notes` | New: `TEXT` |
 
+## Ground-truth gap found (2026-09-06): customer self-service refund requests never worked at all
+
+`RefundRequest.tsx` — a complete, self-contained frontend page reachable
+from every customer's billing page ("Request a Refund") — has never
+actually worked for any customer. Two stacked failures:
+
+1. **The route's own role check excluded CUSTOMER entirely**
+   (`_CREATE_ROLES = (UserRole.NIGERIA_OFFICE_STAFF,)` in
+   `services/refunds/handler.py`). Every submission 403'd with
+   "Insufficient permissions for this operation," before any of the logic
+   below ever ran.
+2. **Behind that, `create_refund()` would have failed anyway.** It used
+   `req.customer_id` unconditionally — but `RefundRequest.tsx` deliberately
+   sends `customer_id: ''` with the comment *"Server derives from JWT for
+   customer role"*, a derivation that was never actually implemented
+   anywhere in this function.
+
+Found live running the real customer-facing form end to end, not from
+reading this file. Fixed at both layers: `CUSTOMER` added to
+`_CREATE_ROLES`; a `CUSTOMER` caller's identity is now derived from
+`ctx.user_id` via `get_customer_by_user_id()` (the same pattern
+`services/claims/service.py::file_claim` uses), with an added check that
+the billing record being refunded actually belongs to that customer —
+without it, a customer could request a refund against any billing record
+in the tenant by guessing or enumerating ids. Confirmed live: a real
+`refund_request` row correctly attributed to the submitting customer, not
+an empty or mismatched `customer_id`. Covered by
+`tests/unit/test_refunds.py::TestCreateRefundCustomerFlow`.
+
+## Ground-truth gap found (2026-09-06): claim-triggered refunds had no refund_type
+
+`services/claims/repository.py::create_refund_request_for_claim()` — the only
+path that creates a `refund_request` from a resolved damage claim — never set
+`refund_type`, though migration 009's CHECK constraint added `damage_or_loss`
+specifically for this case. Every such refund had `refund_type` `NULL`, and
+the frontend's `refundTypeLabel()` had no fallback for an unmapped value —
+`RefundDetail.tsx`'s page `<h1>` silently rendered blank. Found live running
+the real customer-claim → staff-resolve → refund chain end to end, not from
+inspecting this file directly — see `12_api_claims.md`'s matching entry for
+the full account. Fixed at the source (the INSERT now sets
+`'damage_or_loss'`) and defensively in the frontend label function.
+
 ## Acceptance Criteria
 
 - [x] All 3 refund types handled (`overpayment`, `cbm_correction`, `damage_or_loss`)
 - [x] Accounts review with debt offset logic (`debt_check_passed`, `debt_check_notes`)
 - [x] Approval authority enforced by role and amount (`manager` / `head_of_finance`)
+- [x] Staff approval threshold enforced: `nigeria_office_staff` capped at `refund_threshold_usd.staff_limit × dollar_rate` NGN (BR-RF-005); raises `ApprovalThresholdExceededError` (HTTP 403, `APPROVAL_THRESHOLD_EXCEEDED`) with structured `threshold_details` on breach
+- [x] `GET /v1/refunds/{id}` includes `threshold` object for frontend pre-computation of approval limit meter
 - [x] Billing adjustments recalculate correctly
 - [x] Credit-next-shipment tracked (`applied_as_credit` status)
 - [x] Events: RefundApproved

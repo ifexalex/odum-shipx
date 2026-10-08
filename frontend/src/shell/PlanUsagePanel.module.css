@@ -1,0 +1,60 @@
+/* 15.4A — per-dimension plan-usage bars (audit gap B9). */
+
+.row {
+  display: grid;
+  grid-template-columns: 150px minmax(0, 1fr) 130px 80px;
+  gap: 16px;
+  align-items: center;
+  padding: 11px 0;
+  border-bottom: 1px solid var(--color-line-soft);
+}
+
+.row:last-of-type {
+  border-bottom: none;
+}
+
+.rowLabel {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--color-ink);
+}
+
+.track {
+  height: 8px;
+  background: var(--color-line-soft);
+  border-radius: 4px;
+  overflow: hidden;
+}
+
+.fill {
+  height: 100%;
+  border-radius: 4px;
+}
+
+.pctCell {
+  text-align: right;
+}
+
+.pctQuiet {
+  font-size: 12px;
+  color: var(--color-ink-4);
+  font-family: var(--font-mono);
+}
+
+.metaLine {
+  margin-top: 12px;
+  padding-top: 12px;
+  border-top: 1px dashed var(--color-line-soft);
+  font-size: 12px;
+  color: var(--color-ink-4);
+}
+
+@container sxapp (max-width: 560px) {
+  .row {
+    grid-template-columns: 1fr 80px;
+  }
+  .track {
+    grid-column: 1 / -1;
+    order: 3;
+  }
+}

@@ -56,7 +56,11 @@ PLATFORM_TENANT_ID = "PLATFORM"
 class TenantContext:
     """Represents the authenticated user's tenant scope."""
     tenant_id: str
-    user_id: str  # Cognito sub
+    user_id: str  # Cognito sub — used directly as created_by/approved_by/rejected_by
+                  # everywhere (UUID REFERENCES tenant_user(id)). There is no separate
+                  # resolution step, so tenant_user.id MUST be set to the Cognito sub
+                  # at creation time, not left to gen_random_uuid() — see
+                  # create_tenant_user() in services/tenant_management/repository.py.
     role: UserRole
     is_platform_admin: bool = field(init=False)
 
@@ -239,7 +243,7 @@ def log_audit(
     entity_type: str,
     entity_id: str,
     action: str,  # CREATE, UPDATE, DELETE, STATUS_CHANGE
-    actor_id: str,
+    actor_id: str | None,  # None for a system-triggered action — see below
     actor_role: str,
     before_state: dict | None = None,
     after_state: dict | None = None,
@@ -247,6 +251,10 @@ def log_audit(
 ) -> None:
     """Insert a record into audit_log table."""
 ```
+
+**Ground-truth gap found live (2026-09-07) while auditing log coverage across every service:** `audit_log.actor_id` is a `UUID REFERENCES tenant_user(id)` column, but two system-triggered call sites (`payment_release/service.py::process_webhook_payment` and, at the time, a newly-added one in `billing/service.py::handle_payment_due`) passed placeholder strings (`"gateway"`, `"system"`) instead of a real UUID or `None`. `log_audit()` never raises — any failure is caught and logged as a WARNING — so every webhook-confirmed payment (real money, gateway-triggered, no human actor) had **silently never been written to the audit trail** since that code was first written; the insert failed with `invalid input syntax for type uuid` on every single call, with nothing surfacing it. Confirmed live: reproduced the failure directly against the local DB, then confirmed the fix writes a real row. Fixed: `actor_id` is now typed `str | None`, and both system-triggered call sites pass `None` (with `actor_role="system"` saying who/what it was) instead of a placeholder string. **This is exactly the kind of gap `07_api_tenant_management.md`'s new Activity Log page (2026-09-07) exists to make visible and preventable** — before that page existed, there was no way for anyone to notice this had been silently failing.
+
+**A second, much larger instance of the identical failure mode, found the same day while wiring up the Activity Log's Action filter:** `audit_log.action` (migration 004) is `VARCHAR(30) CHECK (action IN ('CREATE', 'UPDATE', 'DELETE', 'STATUS_CHANGE'))`. A grep across every `log_audit()` call site found **20** passing a more descriptive verb the check doesn't allow — `EXPORT`, `CANCEL`, `RETRY`, `EXEMPT`, `DEACTIVATE`, `SELF_REGISTER`, `INVITE_ACCEPTED`, `DISCREPANCY_RESOLVED`, `WAIVE_STORAGE_FEES`, `APPLY_CARRYOVER`, `BULK_APPROVE`, `BULK_SUBMIT`, `BULK_REJECT`, `IMPERSONATION_START`, `IMPERSONATION_END`, and others — across billing, packing lists, tracking, manifest, notifications, excel exports, and tenant management. Every one of these calls has been silently failing since it was written. Migration 045 drops the CHECK constraint and widens the column to `VARCHAR(100)`, matching `platform_audit_log.action`'s already-looser design (that sibling table has never had a CHECK constraint and has taken free-text action verbs without incident) — a permanent fix, not a one-time backfill: any future action verb a developer chooses is valid immediately, with no migration required, closing this entire class of bug rather than just today's 20 instances.
 
 ## Acceptance Criteria
 
@@ -260,3 +268,338 @@ def log_audit(
 - [ ] `pagination.py` handles cursor encoding/decoding and query building
 - [ ] All functions have type hints
 - [x] `distributed_cache.py` — Redis-backed `DistributedCache` for tenant status, fail-soft on Redis errors
+
+
+## shared/tier_limits.py (updated 2026-07-09)
+
+`TIER_LIMITS` static defaults plus **runtime override resolution**: `get_effective_limits(tier, tenant_id=None)` merges static defaults → platform_settings `plan_limits` (per-tier, platform-wide) → platform_settings `quota_override:{tenant_id}` (per-tenant). `get_all_plan_limits()` powers the platform Plans editor. DB reads are lazy imports and **fail open** to the static defaults — quota enforcement is a soft commercial limit, so an infra failure must not block tenant operations (auth checks, by contrast, fail closed). Only `users`, `containers_per_month`, `storage_gb` may be overridden (`LIMIT_DIMENSIONS` allowlist).
+
+## shared/notifications.py — channel selection (updated 2026-09-06)
+
+`primary_channel(tenant_id, event_type, recipient) -> str` returns the channel that
+will actually carry a notification: WhatsApp when the recipient has a phone, the
+tenant permits it, and `SQS_WHATSAPP_QUEUE_URL` is configured; otherwise SMS;
+otherwise email. Email is a different medium rather than a worse SMS, so it always
+goes out alongside and is never returned here.
+
+`enqueue_notifications` uses it to pick the primary channel, and any caller that
+needs to **report** how something was delivered must call it too. It was extracted
+because `issue_customer_invite` carried its own copy hardcoded to `"sms"`, so after
+the switch to WhatsApp-first every invite told staff the link was sent by SMS while
+the message went out over WhatsApp.
+
+Both `enqueue_notification` and `enqueue_notifications` also take an optional
+`customer_id`, written onto the queued message and persisted to
+`notification_log.customer_id`. The WhatsApp→SMS fallback re-reads the recipient's
+phone from the customer record (the log deliberately stores only a masked contact),
+so without it the fallback cannot resolve a number and gives up silently. See
+`15_api_notifications.md` §"Ground-truth gaps found by draining a real notification".
+
+## Local dev server made single-threaded (2026-09-06) — the actual root cause
+
+`scripts/local_server.py`'s `app.run()` now passes `threaded=False` explicitly.
+
+**This is the real root cause of the connection-self-heal issue below**, not
+just one contributing trigger. Flask's own `run()` docstring says *"Threaded
+mode is enabled by default"* — the local dev server had been processing
+concurrent requests on separate Python threads all along, every one of them
+sharing `shared/db.py`'s single module-level `_connection` with no lock. Two
+browser XHRs firing in parallel (any page that fetches several endpoints at
+once — a dashboard is exactly that) could genuinely interleave `cur.execute()`
+calls from different threads on the *same* psycopg2 connection, corrupting
+its transaction state in ways no amount of per-call rollback discipline can
+prevent. Every fix below (the metering upsert, the self-heal, the PLATFORM
+sentinel skip) narrowed *a* trigger; none of them could fully stop the
+corruption while two threads could still race on one connection. Confirmed:
+the platform dashboard, which reliably crashed 1-in-3 runs before, passed 20
+consecutive times after this change with zero
+`InFailedSqlTransaction` occurrences in the log.
+
+Real AWS Lambda never has this hazard — a single container processes one
+invocation at a time, never two concurrently — so `threaded=False` here is
+also the more faithful match to production's actual execution model, not a
+workaround that trades correctness for speed. (It does mean the local server
+now genuinely serializes concurrent page-load fetches, same as Lambda would
+via cold starts / separate containers per concurrent request in practice.)
+
+## shared/db.py — connection self-heal (added 2026-09-06)
+
+`get_connection()` now checks `_connection.get_transaction_status()` and calls
+`rollback()` if it's `TRANSACTION_STATUS_INERROR` before handing the connection
+to a caller, in addition to creating a fresh one when `None`/closed.
+
+**Ground-truth gap found live via e2e testing.** `shared/metering.py`'s
+`record_usage()` hit a duplicate-key race on `usage_record`'s
+`(tenant_id, metric_type, period_start, period_end)` unique constraint under
+rapid requests. That INSERT is wrapped by `execute_write_with_tenant`, which
+does roll back on its own failure — but the connection was still observed left
+in a failed-transaction state afterward, and every *subsequent unrelated*
+request on the same process then failed with
+`psycopg2.errors.InFailedSqlTransaction: current transaction is aborted,
+commands ignored until end of transaction block` — regardless of endpoint,
+tenant, or service module, since `_connection` is one module-level global
+shared by everything. Surfaced first as a genuine page crash
+("Internal server error") on `/platform/dashboard` in a new e2e smoke test,
+then reproduced hitting `/v1/tenants/me/quota`, `/v1/billing`, and
+`/v1/platform/dashboard` interchangeably in the same run — the scattered,
+seemingly-random pattern across unrelated endpoints was the signature that
+pointed at a shared poisoned resource rather than a per-endpoint bug.
+
+**Why fix `get_connection()` rather than chase the exact original trigger
+further:** in production this connection is reused across an entire warm
+Lambda container's lifetime — any single unrolled-back failure, from any
+current or future code path, would otherwise break every request on that
+container until AWS recycles it. Self-healing at the one place every caller
+already goes through is more robust than auditing every call site for a
+missing rollback, and doesn't depend on finding every future regression of
+the same shape. Verified: the exact e2e smoke sweep that surfaced the crash
+now runs clean end to end (`frontend/e2e/flows/smoke-navigation.spec.ts`).
+
+Covered by `tests/unit/test_db_connection_healing.py`.
+
+## shared/validation.py — parse_validated() (added 2026-09-06)
+
+`parse_validated(model_class, body)` parses a request body dict into a Pydantic
+model, raising the app's `ValidationError` (not a raw `pydantic.ValidationError`)
+on failure. Consolidates nine byte-for-byte-identical `_parse_validated()`
+copies across `services/*/handler.py` (plus a tenth, differently-shaped
+instance inline in `services/auth/handler.py`).
+
+**Real bug found by having nine copies, fixed by having one.** Every copy
+built `field_errors` with `str(e["loc"][-1]): e["msg"]` — correct for a
+per-field pydantic error, but a `@model_validator` cross-field check reports
+an error with an **empty** `loc` tuple (it isn't about one field), and
+`()[-1]` raises `IndexError`. That turned a validation failure that should
+be a clean 422 into a raw, undiagnosable 500 for any endpoint using a
+model-level validator — found live via e2e testing
+(`RecordPickupRequest`'s "collected_by_name is required when is_delegate is
+false"; see `13_api_payment_release.md`). `parse_validated()` keys a
+model-level error `"__root__"` instead. Covered by
+`tests/unit/test_shared_validation.py`.
+
+Every `services/*/handler.py` now imports this instead of defining its own
+copy — a future fix to this logic can no longer land in eight of nine files
+by accident.
+
+## shared/fx_rate.py + shared/ssl_context.py (added 2026-09-19)
+
+`shared/fx_rate.py` centralizes "the USD/NGN dollar rate" — previously four
+independent `tenant_config['dollar_rate']` readers (`tenant_management`,
+`billing`, `claims`, `refunds`), each with its own default-if-missing logic.
+The rate itself changed source: instead of a value a tenant_admin types in,
+the base rate is fetched live from Bybit's public P2P USDT/NGN order book,
+and a tenant only controls a markup (percentage or flat ₦) on top of it. See
+`07_api_tenant_management.md`'s Dollar Rate section for the full fetch/
+cache/fallback design (Redis `DistributedCache`, a circuit breaker via
+`shared/circuit_breaker.py`, and a `platform_settings`-persisted last-known-
+good fallback) and `00_MASTER_PLAN.md` for the feature's rollout, including
+a real bug caught live (raw `Decimal` values breaking `rate_history`'s
+`json.dumps()`, since it has no `default=str` the way `shared/audit.py`'s
+does).
+
+Public surface:
+- `get_effective_dollar_rate(tenant_id) -> dict` — the one function every
+  consumer should call. `{"rate", "base_rate", "markup_type",
+  "markup_value", "source", "fetched_at", "markup_updated_at"}`.
+- `get_base_market_rate() -> dict` — platform-wide, not tenant-scoped.
+- `compute_effective_rate(base_rate, markup_type, markup_value) -> Decimal` —
+  pure, exhaustively unit-tested (`tests/unit/test_fx_rate.py`).
+- `fetch_bybit_ngn_rate() -> Decimal` — the actual HTTP call, `urllib`-based
+  like `services/payment_release/paystack.py`, mean of the 5 cheapest online
+  sell-USDT ads (`side="1"` — verified live to be the cheaper, best-first
+  side of Bybit's order book).
+
+`shared/ssl_context.py::verified_ssl_context()` is a small extraction out of
+`paystack.py` (which had its own private `_ssl_context()` doing the exact
+same certifi-preferring, verification-never-disabled thing) — `fx_rate.py`
+needed the identical helper, and two real call sites justified sharing it
+rather than a second copy. `paystack.py` now imports it too.
+
+## shared/cbm_rate.py (added 2026-09-20)
+
+Mirrors `shared/fx_rate.py`'s role: the one place `services/billing` reads
+tenant CBM-pricing config from, via a direct `tenant_config` SQL read rather
+than importing `services.tenant_management`'s repository. Unlike the dollar
+rate, there's no external fetch/cache/circuit-breaker here — the CBM rate is
+entirely tenant-configured, not sourced from a market.
+
+Lets a tenant admin choose (1) the currency the rate is priced in (USD or
+NGN) and (2) whether it's one flat rate or three separate carton/bag/bale
+rates — modeled as **one code path, not two**: "flat" is simply the state
+where `carton_rate == bag_rate == bale_rate`; nothing in `compute_cbm_charge`
+branches on a `rate_mode` flag.
+
+Public surface:
+- `normalize_package_unit(unit: str | None) -> str` — maps a free-text
+  `packing_list_item.package_unit` to `"carton"`, `"bag"`, or `"bale"`; only
+  an exact (case-insensitive) match for "bag"/"bale" gets its own bucket,
+  everything else (carton, pallet, item, mixed, unspecified, null, or any
+  future free-text value) folds into `"carton"`.
+- `get_cbm_rate_config(tenant_id) -> dict` — `{"currency", "rate_mode",
+  "carton_rate", "bag_rate", "bale_rate", "effective_from"}`.
+  Backward-compatible at read time with the pre-2026-09-20 single-rate shape
+  (`{"rate_usd": ...}`, from any tenant provisioned before this feature) and
+  with a missing/never-configured row (defaults all three rates to 0, which
+  the caller's skip-guard treats the same as today's "missing rate → skip
+  billing" behavior) — no data migration needed for either case.
+- `compute_cbm_charge(cbm_by_unit: dict[str, Decimal], config: dict) -> dict`
+  — pure, exhaustively unit-tested (`tests/unit/test_cbm_rate.py`). Buckets
+  CBM by `normalize_package_unit`, prices each bucket at its own rate,
+  rounds each bucket's subtotal to 2dp *before* summing (so a displayed
+  breakdown always sums exactly to the displayed total). Returns
+  `{"amount": Decimal, "currency": str, "breakdown": {"carton": {"cbm",
+  "rate", "subtotal"}, "bag": {...}, "bale": {...}}}`.
+
+See `07_api_tenant_management.md`'s CBM Rate section and `11_api_billing.md`'s
+Billing Calculation section for the full design, including how `billing`'s
+pre-existing `cbm_rate_usd` column stays exact (no new rounding drift) for
+the common case where the tenant's three rates are all equal, and only
+falls back to a blended average when they genuinely differ.
+
+## shared/url_safety.py (added 2026-09-23)
+
+SSRF defence for outbound calls to **tenant-supplied** URLs — today only the
+tenant webhook (`shared/webhook.py`). A tenant admin controls
+`webhook_config.endpoint_url`, and the Lambda that fetches it runs inside the
+VPC next to Aurora and Redis. The old guard, a `^https://` regex on the
+request model, still allowed `https://169.254.169.254/...`,
+`https://10.x.x.x/...`, `https://localhost/...`, any hostname whose DNS record
+points at those, and any public server that answers with a redirect to one
+(`urllib` follows redirects). `test_fire_tenant_webhook` also returned
+`str(exc)`, turning connect errors into a port-scan oracle.
+
+Three layers, each usable on its own:
+
+| Function | Layer | Notes |
+|---|---|---|
+| `validate_public_https_url(url) -> (host, port)` | Syntactic, no I/O — safe in a Pydantic validator | https only; no embedded credentials; rejects `localhost`, `.local`/`.internal`/`.lan`/`.home.arpa`; IP literals must be globally routable, **including** the legacy numeric IPv4 forms a resolver accepts but `ipaddress` rejects (`2130706433`, `0x7f.1`, `127.1`) and IPv4-mapped IPv6 (`::ffff:10.0.0.1`) |
+| `resolve_public_ips(host, port) -> list[str]` | Delivery-time DNS check | Refuses if **any** resolved address is non-public — a multi-record answer is not accepted because one record is public. Re-run at delivery since DNS changes after save |
+| `open_public_https(req, timeout)` | `urlopen` replacement | Validates, resolves, then connects to the exact validated IP (TLS SNI + certificate verification stay on the original hostname, so a wrong-host cert still fails), ignores proxy env vars, and refuses redirects (a 3xx surfaces as `HTTPError`) so nothing can swap the target after the check |
+
+`UnsafeUrlError` (a `ValueError`) is raised before any connection is made.
+`WebhookConfigRequest.endpoint_url` runs the syntactic layer at save time;
+`shared/webhook.py` uses `open_public_https` for both `fire_tenant_webhook`
+(still never raises) and `test_fire_tenant_webhook` (returns the
+`UnsafeUrlError` message rather than a raw socket error). Verified against
+real TLS: pinned-IP delivery to a public endpoint succeeds, a redirect to the
+metadata address is refused, private/localhost targets are blocked, and a
+hostname-mismatched certificate still fails verification.
+
+Any future outbound call to a URL a tenant or customer can influence must go
+through this module — see `00_CROSS_CUTTING_STANDARDS.md` §8.4. Fixed-URL
+provider calls (Paystack, Bybit, Africa's Talking, Meta, JWKS) do not need it.
+
+## shared/validation.py — safe_filename() (added 2026-09-23)
+
+`safe_filename(name, *, default=None, max_length=100) -> str` reduces a client-supplied upload name to something safe to
+embed in an S3 key and in a `Content-Disposition` value: directory components (`/` and `\\`) dropped; every character
+outside Unicode word characters, `.`, `(`, `)`, space and `-` replaced with `_` (this removes quotes, semicolons,
+CR/LF/NUL and bidi-override characters such as U+202E, which renders `fdp.exe` as `exe.pdf`, while keeping CJK names);
+leading/trailing dots and spaces stripped (no hidden `.`/`..`); length capped with the extension preserved. A non-string
+or unusable name raises `ValidationError` (`422`) unless `default=` is given — the download paths pass a default
+(`"evidence"` / `"document"`) because rows written before the fix may hold an unsafe stored name.
+
+Used by the four presigned-upload flows — `claims.generate_presigned_url`, `manifest.generate_evidence_upload`,
+`tracking.generate_document_presigned_url`, `payment_release.generate_payment_claim_upload_url` — and by the two
+`ResponseContentDisposition` builders (payment-claim evidence, container documents). `services/excel` builds its own
+export names from a `_safe_name` helper over server-controlled values and is unaffected.
+
+## shared/providers/ — cloud-portability ports (added 2026-10-05)
+
+Ports-and-adapters layer that keeps `services/` and the rest of `shared/` free of cloud SDKs, so ShipX can be
+deployed to **AWS or Azure** by switching one env var. The active cloud is `CLOUD_PROVIDER` (`aws` default | `azure`),
+read once in `shared/providers/__init__.py`.
+
+- **`shared/providers/base.py`** — the interfaces (`typing.Protocol`):
+  - `KeyProvider` — envelope-encryption key ops (`generate_data_key` / `decrypt_data_key`). Consumed by
+    `shared/encryption.py`; AWS adapter `shared/providers/aws/kms.py` (`KmsKeyProvider`).
+  - `StorageProvider` — object storage (`presigned_get_url`, `presigned_upload`, `put_object`, `get_object`,
+    `object_size`, `delete_prefix`). AWS adapter `shared/providers/aws/s3.py` (`S3StorageProvider`). `presigned_upload`
+    returns an `UploadTicket` (`url`, `method="PUT"`, `headers`) — the **cloud-neutral PUT upload contract** both S3
+    (presigned PUT) and Azure Blob (SAS PUT) satisfy, replacing the old S3 presigned-POST `{url, fields}` form. Its
+    `.as_response()` is spread into every presigned-upload endpoint's JSON (`{upload_url, upload_method, upload_headers}`).
+  - `SecretsProvider` — `get_secret(secret_id) -> str` returning the raw secret string (callers that store JSON parse
+    it themselves). AWS adapter `shared/providers/aws/secrets.py` (`SecretsManagerProvider`); Azure → Key Vault secrets.
+    Consumed by `shared/db.py` (DB password), `services/tenant_management/impersonation.py` (HS256 signing key),
+    `services/migrate/handler.py` (DB password for Alembic).
+  - `EventProvider` — `publish(source, detail_type, detail, bus_name)`; raises `ExternalServiceError` on delivery
+    failure. The envelope (event_id / occurred_at / tenant_id / payload) is still built in `shared/events.py`; only the
+    delivery is cloud-specific. AWS adapter `shared/providers/aws/eventbridge.py` (`EventBridgeProvider`, `put_events` +
+    `FailedEntryCount` handling); Azure → Event Grid.
+  - `QueueProvider` — `send(destination, body)` where `destination` is an opaque queue reference the caller resolves
+    from config (SQS queue URL on AWS, Service Bus queue name on Azure). AWS adapter `shared/providers/aws/sqs.py`
+    (`SqsQueueProvider`, `send_message`); Azure → Service Bus. Consumed by `shared/notifications.py`
+    (`enqueue_notification` / event-notification fan-out) and `services/notification/service.py` (SMS fallback + retry).
+  - `EmailProvider` — `send(sender, to_email, subject, html_body, text_body)`; raises on hard failure so the caller's
+    log/retry path runs. AWS adapter `shared/providers/aws/ses.py` (`SesEmailProvider`, SES `send_email`); Azure →
+    Communication Services. Consumed by `services/notification/service.py::send_email`.
+  - `IdentityProvider` — user/role provisioning (14 methods: create/create-with-password, update attrs, enable/disable,
+    global sign-out, resend-invite, reset-password, group create/add/remove/list, `sync_user_groups`). AWS adapter
+    `shared/providers/aws/cognito.py` (`CognitoIdentityProvider`, the former `cognito_client.py`, byte-identical);
+    Azure → Entra/MS Graph. Consumed by `services/tenant_management/service.py`. This is the **management** side of
+    identity only; the authN side (JWT verify + claim shape) is separate — see **ADR-004**. Phase 1 of that ADR.
+  - `ClaimsMapper` — reads ShipX's logical identity fields (`user_id`, `tenant_id`, `groups`, `primary_role`) out of a
+    verified JWT's raw claims. Only the claim *names/shape* are cloud-specific (Cognito `sub`/`custom:tenant_id`/
+    `cognito:groups`/`custom:role`); the `{tenant_id}:{role}` interpretation + `platform_admin` + primary-role fallback
+    stay in `shared/auth.py`. AWS adapter `shared/providers/aws/cognito_claims.py` (`CognitoClaimsMapper`, holds the
+    `cognito:groups` bracket-parsing); Azure → Entra (normalizes its role claims into the same `{tenant_id}:{role}`
+    canonical form so `auth.py` never changes). Consumed by `shared/auth.py`. **ADR-004 Phase 2.**
+- **Factories** (`shared/providers/__init__.py`):
+  - `get_key_provider()` → `KeyProvider | None` (None = field encryption not configured; preserves the dev
+    plaintext-fallback in `shared/encryption.py`).
+  - `get_storage_provider(bucket=None)` → `StorageProvider`, cached per bucket. `None` resolves the default assets
+    bucket (`S3_BUCKET_NAME`); an explicit name is used for the GDPR `TENANT_DATA_BUCKET` purge in
+    `services/scheduled/data_cleanup.py`.
+  - `get_secrets_provider()` → `SecretsProvider` (cached singleton).
+  - `get_event_provider()` → `EventProvider` (cached singleton).
+  - `get_queue_provider()` → `QueueProvider` (cached singleton).
+  - `get_email_provider()` → `EmailProvider` (cached singleton).
+  - `get_identity_provider()` → `IdentityProvider` (cached singleton).
+  - `get_claims_mapper()` → `ClaimsMapper` (cached singleton).
+- **Migrated call sites** (no longer touch `boto3` directly): storage — `services/manifest`, `services/excel`,
+  `services/claims`, `services/payment_release`, `services/tracking`, `services/scheduled/data_cleanup`; secrets —
+  `shared/db.py`, `services/tenant_management/impersonation.py`, `services/migrate/handler.py`; events — `shared/events.py`;
+  queue — `shared/notifications.py`, `services/notification/service.py`; email — `services/notification/service.py`;
+  identity (user/role mgmt) — `services/tenant_management/service.py` (the former `cognito_client.py` moved to the AWS
+  adapter and was deleted); claim reading — `shared/auth.py` (Cognito claim names now behind `ClaimsMapper`).
+  `delete_prefix` encapsulates the version-aware S3 purge (current objects + non-current versions + delete-markers) for
+  GDPR Art. 17 immediate erasure.
+- **Azure adapters:** `shared/providers/azure/blob.py` (`BlobStorageProvider`) is **implemented and Azurite-tested**
+  (`tests/unit/test_azure_blob_provider.py` — real SAS PUT/GET round-trips; the upload ticket carries the Azure-required
+  `x-ms-blob-type: BlockBlob` header so the frontend's one PUT path works unchanged). `shared/providers/azure/servicebus.py`
+  (`ServiceBusQueueProvider`) is implemented and **mocked-SDK tested** (`tests/unit/test_azure_servicebus_provider.py` —
+  verifies real `ServiceBusMessage` construction + queue targeting; Service Bus's emulator needs a SQL Edge sidecar and
+  is arm64-finicky, so full e2e is a follow-up). `shared/providers/azure/keyvault.py` (`KeyVaultKeyProvider`, envelope via RSA-OAEP key wrap/unwrap — Key Vault has no
+  KMS-style data-key gen, so the 32-byte key is generated locally and wrapped) and `azure/keyvault_secrets.py`
+  (`KeyVaultSecretsProvider`) are implemented and **mocked-SDK tested** (`tests/unit/test_azure_keyvault_provider.py` —
+  incl. a real `shared/encryption.py` Fernet-envelope round-trip with only the Key-Vault wrap stubbed). `shared/providers/azure/eventgrid.py` (`EventGridProvider`, EventBridge `detail_type`→Event Grid `event_type`,
+  `source`→`subject`; normalizes SDK errors to `ExternalServiceError`) and `azure/acs_email.py` (`AcsEmailProvider`, ACS
+  `begin_send`) are implemented and **mocked-SDK tested** (`tests/unit/test_azure_eventgrid_acs_providers.py`). The only
+  remaining adapters are **identity** (`entra.py`, `entra_claims.py`) — ADR-004 phases 3–5, which need a real Entra
+  tenant. All other azure branches resolve at call time only when `CLOUD_PROVIDER=azure`. Azure runtime deps are pinned
+  in `requirements-azure.txt` (pulled into `requirements-dev.txt`; kept out of the AWS Lambda bundle).
+- **Still on boto3 directly** (the authN *execution* remainder — see ADR-004 phases 3–5, which need an actual Azure
+  tenant, not a code sweep): the authorizer's JWT/JWKS *verification* (`services/authorizer/handler.py` — env-driven
+  `COGNITO_JWKS_URL`/`COGNITO_AUDIENCE`, ports by pointing at Entra's JWKS); token refresh
+  (`services/auth/cognito_refresh.py`, `initiate_auth`/`revoke_token`); and the GDPR Cognito user-purge in
+  `services/scheduled/data_cleanup.py` (`list_users` + `admin_delete_user`). The claim *shape* that used to live inline
+  in `shared/auth.py` is now behind `ClaimsMapper` (Phase 2 done), so `auth.py` itself is cloud-agnostic. SQS/Service Bus
+  and SES/ACS are consumed as
+  *producers* via the ports above; the SQS **consumer** side is the Lambda event-source trigger
+  (`services/notification/handler.py`, `services/metering/handler.py`) — on Azure that becomes a Functions Service Bus
+  trigger binding, handled by the entry adapter, not a boto3 call.
+
+## shared/observability.py — tracing shim (added 2026-10-05)
+
+`init_tracing()` replaces the direct `from aws_xray_sdk.core import patch_all; patch_all()` that sat at module load in
+all 19 Lambda entry points (every `services/*/handler.py` + the `services/scheduled/*` jobs). On AWS it calls
+`patch_all()` (X-Ray instrumentation of boto3/psycopg2/requests, unchanged); on any other cloud it is a no-op, since
+tracing there is wired at the platform level (e.g. Azure Application Insights auto-instrumentation) rather than
+in-process. Selected by `CLOUD_PROVIDER` (from `shared/providers`). Call it once next to `setup_logging()` at module
+load. This removes the hard `aws_xray_sdk` import from the handlers' startup path on non-AWS clouds.
+- **Tests:** `tests/unit/test_encryption.py` (KeyProvider via a fake), `tests/unit/test_storage_provider.py`
+  (S3StorageProvider against moto + the factory wiring).
+
+**Trade-off recorded:** the S3 presigned-POST `content-length-range` enforced max upload size at the edge; a presigned
+PUT cannot. Size is now enforced client-side (`useFileUpload.ts`) and should be re-verified server-side via
+`StorageProvider.object_size` on any flow that gains a post-upload confirm step.

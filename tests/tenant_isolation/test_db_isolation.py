@@ -63,18 +63,26 @@ class TestBillingDbIsolation:
             "customer_id": "cust-001",
         }
 
+        cbm_config = {
+            "currency": "usd",
+            "rate_mode": "flat",
+            "carton_rate": Decimal("45"),
+            "bag_rate": Decimal("45"),
+            "bale_rate": Decimal("45"),
+            "effective_from": "",
+        }
+
         with (
-            patch.object(
-                service.repo,
-                "get_tenant_config_value",
-                side_effect=[
-                    {"rate_usd": 45},  # cbm_rate_per_unit
-                    {"rate": 1550},  # dollar_rate
-                ],
-            ),
+            # get_cbm_rate_config / get_effective_dollar_rate are plain
+            # functions imported into services.billing.service (shared/
+            # cbm_rate.py, shared/fx_rate.py), not service.repo methods —
+            # patch.object(service.repo, ...) can't intercept them.
+            patch("services.billing.service.get_cbm_rate_config", return_value=cbm_config),
+            patch("services.billing.service.get_effective_dollar_rate", return_value={"rate": Decimal("1550")}),
             patch.object(
                 service.repo, "get_cbm_and_carton_totals", return_value={"total_cbm": Decimal("5"), "total_cartons": 10}
             ),
+            patch.object(service.repo, "get_cbm_by_package_type", return_value={"carton": Decimal("5")}),
             patch.object(service.repo, "get_outstanding_carryovers", return_value=[]),
             patch.object(service.repo, "get_pending_credit_refunds", return_value=[]),
             patch.object(service.repo, "get_tenant_short", return_value="ACME"),
@@ -160,6 +168,9 @@ class TestClaimsDbIsolation:
         req.description = "Damage"
 
         with (
+            patch.object(service.repo, "resolve_container_id", return_value="cont-001"),
+            patch.object(service.repo, "get_container_status", return_value="unpacking"),
+            patch.object(service.repo, "get_next_claim_reference", return_value="CLM-0001"),
             patch.object(service.repo, "create_damage_claim", return_value=claim) as mock_create,
             patch("services.claims.service.log_audit"),
             patch("services.claims.service.publish_event"),
@@ -235,9 +246,12 @@ class TestPaymentReleaseDbIsolation:
 
         with (
             patch.object(service.repo, "get_billing_by_id", return_value=billing) as mock_get,
+            patch.object(service.repo, "get_tenant_short", return_value="ACME"),
+            patch.object(service.repo, "get_next_receipt_number", return_value=1),
             patch.object(service.repo, "create_payment_record", return_value={"id": "pay-001"}),
             patch.object(service.repo, "update_billing_payment", return_value=updated),
             patch("services.payment_release.service.publish_event"),
+            patch("services.payment_release.service.log_audit"),
         ):
             service.confirm_payment(TENANT_A, "billing-001", req, actor_id="u", ctx=ctx)
 

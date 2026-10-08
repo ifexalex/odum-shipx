@@ -1,0 +1,560 @@
+.loadingState {
+  padding: 40px;
+  text-align: center;
+  color: var(--color-ink-3);
+}
+
+.banner {
+  margin-bottom: 16px;
+}
+
+.hero {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 16px;
+  margin-bottom: 24px;
+}
+
+.heroLeft {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  min-width: 0;
+}
+
+.heroIcon {
+  width: 64px;
+  height: 64px;
+  border-radius: 14px;
+  background: var(--color-info-soft);
+  color: var(--color-info);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.heroTitleRow {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.heroTitle {
+  font-family: var(--font-mono);
+  font-weight: 700;
+  font-size: 26px;
+  color: var(--color-ink);
+  margin: 0;
+  letter-spacing: -0.015em;
+  line-height: 1.15;
+}
+
+.heroMeta {
+  font-size: 13px;
+  color: var(--color-ink-3);
+  margin-top: 4px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.heroActions {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  flex-shrink: 0;
+  align-items: center;
+}
+
+.tabSpacer {
+  height: 20px;
+}
+
+.stepperSpacer {
+  height: 20px;
+}
+
+.gridSpacer {
+  height: 20px;
+}
+
+.grid2 {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 20px;
+}
+
+.tableHead {
+  padding: 18px 20px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.viewAllLink {
+  background: none;
+  border: none;
+  padding: 0;
+  cursor: pointer;
+  font-family: var(--font-body);
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--color-primary);
+}
+
+/* Cargo summary tiles (2×2) */
+.summaryGrid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+  margin-top: 12px;
+}
+
+.summaryTile {
+  padding: 14px;
+  background: var(--color-surface-muted);
+  border: 1px solid var(--color-line);
+  border-radius: var(--radius-sm);
+}
+
+.summaryLabel {
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--color-ink-3);
+}
+
+.summaryValue {
+  font-family: var(--font-display);
+  font-weight: 700;
+  font-size: 22px;
+  letter-spacing: -0.01em;
+  color: var(--color-ink);
+  margin-top: 4px;
+  line-height: 1.1;
+}
+
+.summaryValueAccent {
+  color: var(--color-success);
+}
+
+.summarySub {
+  font-size: 11px;
+  color: var(--color-ink-4);
+  margin-top: 2px;
+}
+
+/* Utilization bar */
+.utilBox {
+  margin-top: 12px;
+  padding: 14px;
+  background: var(--color-primary-tint);
+  border: 1px solid color-mix(in srgb, var(--color-primary) 20%, transparent);
+  border-radius: var(--radius-sm);
+}
+
+.utilHead {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 6px;
+}
+
+.utilLabel {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--color-primary-deep);
+}
+
+.utilPct {
+  font-family: var(--font-mono, monospace);
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--color-primary);
+}
+
+.utilTrack {
+  height: 6px;
+  background: var(--color-line-soft);
+  border-radius: 3px;
+  overflow: hidden;
+}
+
+.utilFill {
+  height: 100%;
+  background: var(--color-primary);
+  border-radius: 3px;
+  transition: width 0.2s ease;
+}
+/* Colour by absolute packed CBM (business rule): ≥70 green, 65–69 yellow,
+   <65 red. Uses status tokens so both light and dark themes stay legible. */
+.utilFillGreen {
+  background: var(--color-success);
+}
+.utilFillYellow {
+  background: var(--color-warning);
+}
+.utilFillRed {
+  background: var(--color-error);
+}
+
+.utilSub {
+  font-size: 11px;
+  color: var(--color-ink-3);
+  margin-top: 6px;
+}
+
+/* Recent events list */
+.eventList {
+  padding: 0 20px 8px;
+}
+
+.eventRow {
+  display: flex;
+  gap: 12px;
+  align-items: flex-start;
+  padding: 10px 0;
+  border-bottom: 1px dashed var(--color-line);
+}
+
+.eventRowLast {
+  border-bottom: none;
+}
+
+.eventIcon {
+  width: 28px;
+  height: 28px;
+  border-radius: var(--radius-sm);
+  /* background + color are set inline per-event via style prop */
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.eventBody {
+  flex: 1;
+  min-width: 0;
+}
+
+.eventTitle {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--color-ink);
+  line-height: 1.3;
+}
+
+.eventSub {
+  font-size: 12px;
+  color: var(--color-ink-3);
+  margin-top: 2px;
+}
+
+.eventWhen {
+  font-size: 11px;
+  color: var(--color-ink-4);
+  font-family: var(--font-mono, monospace);
+  flex-shrink: 0;
+}
+
+.eventEmpty {
+  padding: 24px 0;
+  text-align: center;
+  font-size: 13px;
+  color: var(--color-ink-4);
+}
+
+.metaText {
+  font-size: 12px;
+  color: var(--color-ink-3);
+  white-space: nowrap;
+}
+
+.stepper {
+  display: flex;
+  align-items: flex-start;
+  gap: 4px;
+  position: relative;
+}
+
+.step {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  position: relative;
+}
+
+/* Horizontal connecting line to the previous step */
+.stepLine {
+  position: absolute;
+  top: 14px;
+  right: 50%;
+  width: 100%;
+  height: 2px;
+  z-index: 0;
+}
+
+.stepDot {
+  width: 30px;
+  height: 30px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  position: relative;
+  z-index: 1;
+  flex-shrink: 0;
+}
+
+/* Inner dot shown on the current step */
+.stepDotInner {
+  display: block;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+}
+
+.stepText {
+  margin-top: 8px;
+  text-align: center;
+}
+
+.stepLabel {
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--color-ink-4);
+  letter-spacing: 0.02em;
+  line-height: 1.2;
+}
+
+.stepLabelActive {
+  color: var(--color-ink);
+}
+
+.stepSub {
+  font-size: 10px;
+  color: var(--color-ink-4);
+  margin-top: 1px;
+}
+
+.stepNow {
+  display: inline-flex;
+  align-items: center;
+  margin-top: 6px;
+  padding: 2px 8px;
+  border-radius: 9999px;
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: #fff;
+}
+
+.eventTs {
+  font-family: var(--font-mono, monospace);
+  font-size: 12px;
+  color: var(--color-ink-3);
+  white-space: nowrap;
+}
+
+.eventNote {
+  font-size: 12px;
+  color: var(--color-ink-3);
+}
+
+/* Status change cell: "loading → sealed" */
+.statusChange {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+}
+
+.statusFrom {
+  color: var(--color-ink-3);
+}
+
+.statusArrow {
+  color: var(--color-ink-4);
+  font-size: 11px;
+}
+
+.statusTo {
+  color: var(--color-success);
+  font-weight: 600;
+}
+
+/* Ground-truth gap found live: .modalPanel used a fixed `width: 480px`
+   (not max-width) — genuinely wider than a phone viewport. Mobile-first
+   bottom sheet, see nigeria/ReleaseNoteDetail.module.css's matching
+   comment for the pattern reference. */
+.modalOverlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(11, 47, 13, 0.55);
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  z-index: 100;
+}
+
+.modalPanel {
+  width: 100%;
+  background: var(--color-surface);
+  border-radius: 14px 14px 0 0;
+  box-shadow: var(--shadow-modal);
+  padding: 24px 20px;
+  max-height: 90vh;
+  overflow-y: auto;
+}
+
+@container sxapp (min-width: 861px) {
+  .modalOverlay {
+    padding: 32px;
+  }
+  .modalPanel {
+    width: 480px;
+    border-radius: 14px;
+    padding: 24px;
+  }
+}
+
+.modalTitle {
+  font-family: var(--font-display);
+  font-weight: 700;
+  font-size: 18px;
+  color: var(--color-ink);
+  margin: 0 0 16px;
+}
+
+.modalBanner {
+  margin-bottom: 16px;
+}
+
+.modalBody {
+  font-size: 14px;
+  color: var(--color-ink-2);
+  line-height: 1.6;
+  margin: 0 0 20px;
+}
+
+.modalActions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+  margin-top: 8px;
+}
+
+.modalActions > * {
+  min-height: 48px;
+  font-size: 1rem;
+}
+
+@container sxapp (min-width: 861px) {
+  .modalActions > * {
+    min-height: 36px;
+    font-size: inherit;
+  }
+}
+
+/* 6.4 / A5 — advance-status confirm step summary */
+.advanceSummary {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 14px 16px;
+  background: var(--color-surface-muted);
+  border: 1px solid var(--color-line-soft);
+  border-radius: var(--radius-md);
+}
+.advanceSummaryArrow {
+  font-size: 14px;
+  color: var(--color-ink-2);
+}
+.advanceSummaryMeta {
+  font-size: 12px;
+  color: var(--color-ink-4);
+}
+
+/* P2-6 — collapse two-column detail grids on narrow app frames */
+@container sxapp (max-width: 860px) {
+  .grid2 { grid-template-columns: 1fr; }
+  .summaryGrid { grid-template-columns: 1fr; }
+}
+
+/* Top shippers by CBM — compact ranked list on the container overview,
+   replacing the uncapped per-customer table (scales to 60–100+ customers). */
+.shipperList {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  padding: 4px 2px 2px;
+}
+.shipperRow {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.shipperBody {
+  flex: 1;
+  min-width: 0;
+}
+.shipperTop {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 10px;
+}
+.shipperName {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--color-ink);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.shipperCbm {
+  font-size: 12px;
+  color: var(--color-ink-3);
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+.shipperBarRow {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 5px;
+}
+.shipperBarTrack {
+  flex: 1;
+  height: 6px;
+  background: var(--color-line-soft);
+  border-radius: 3px;
+  overflow: hidden;
+}
+.shipperBarFill {
+  height: 100%;
+  background: var(--color-primary);
+  border-radius: 3px;
+  transition: width 0.2s ease;
+}
+.shipperPct {
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+  color: var(--color-ink-4);
+  width: 32px;
+  text-align: right;
+  flex-shrink: 0;
+}
+.shipperEmpty {
+  padding: 16px 2px;
+  font-size: 13px;
+  color: var(--color-ink-3);
+}

@@ -11,16 +11,16 @@ import logging
 from datetime import UTC, datetime
 from typing import Any
 
-from aws_xray_sdk.core import patch_all
-
 from shared.db import execute_with_tenant, execute_write_with_tenant
 from shared.events import publish_event
-from shared.logging_config import setup_logging
+from shared.logging_config import bind_log_context, clear_log_context, setup_logging
 from shared.notifications import enqueue_notification
+from shared.observability import init_tracing
+from shared.staff_notifications import notify_staff
 from shared.tenant_context import PLATFORM_TENANT_ID
 
 setup_logging()
-patch_all()
+init_tracing()
 
 logger = logging.getLogger(__name__)
 
@@ -33,11 +33,14 @@ _DEFAULT_ESCALATE_DAYS = 5
 
 
 def lambda_handler(event: dict[str, Any], context: Any) -> dict[str, Any]:
+    clear_log_context()
+    bind_log_context(request_id=getattr(context, "aws_request_id", None))
     tenants = _get_active_tenants()
     escalated = errors = 0
 
     for tenant in tenants:
         tenant_id = str(tenant["id"])
+        bind_log_context(tenant_id=tenant_id)
         try:
             count = _process_tenant(tenant_id)
             escalated += count
@@ -132,11 +135,11 @@ def _notify_escalation(tenant_id: str, dispute: dict[str, Any]) -> None:
     admins = execute_with_tenant(
         tenant_id,
         """
-        SELECT tu.email, tu.phone_number
+        SELECT tu.email, tu.locale
         FROM tenant_user tu
         WHERE tu.tenant_id = %s
           AND tu.role IN ('tenant_admin', 'china_office_staff')
-          AND tu.is_active = TRUE
+          AND tu.status = 'active'
         LIMIT 10
         """,
         (tenant_id,),
@@ -156,6 +159,7 @@ def _notify_escalation(tenant_id: str, dispute: dict[str, Any]) -> None:
                     recipient=admin["email"],
                     template_id="cbm_dispute_update",
                     template_vars=template_vars,
+                    locale=admin.get("locale", "en"),
                 )
             except Exception:
                 logger.warning(
@@ -163,6 +167,18 @@ def _notify_escalation(tenant_id: str, dispute: dict[str, Any]) -> None:
                     dispute["id"],
                     extra={"tenant_id": tenant_id},
                 )
+
+    # In-app bell, alongside the email above.
+    for role in ("china_office_staff", "tenant_admin"):
+        notify_staff(
+            tenant_id=tenant_id,
+            event_type="cbm_dispute_escalated",
+            entity_type="cbm_dispute",
+            entity_id=str(dispute["id"]),
+            title="CBM dispute escalated",
+            body=f"Dispute {dispute['id']} was auto-escalated after no action.",
+            target_role=role,
+        )
 
 
 # ---------------------------------------------------------------------------

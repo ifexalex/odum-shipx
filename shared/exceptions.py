@@ -124,16 +124,25 @@ class InsufficientPermissionsError(LogisticsBaseError):
 
 
 class ApprovalThresholdExceededError(LogisticsBaseError):
-    def __init__(self, message_or_amount: float | str, threshold: float = 0, required_role: str = "") -> None:
-        if isinstance(message_or_amount, str) and not threshold:
-            message = message_or_amount
-        else:
-            message = f"Amount ${message_or_amount} exceeds threshold ${threshold}. Requires {required_role}."
+    def __init__(
+        self,
+        message: str,
+        staff_limit_usd: float = 0,
+        staff_limit_ngn: float = 0,
+        dollar_rate: float = 0,
+        amount_ngn: float = 0,
+    ) -> None:
         super().__init__(
             message=message,
             error_code="APPROVAL_THRESHOLD_EXCEEDED",
             status_code=403,
         )
+        self.threshold_details = {
+            "staff_limit_usd": staff_limit_usd,
+            "staff_limit_ngn": staff_limit_ngn,
+            "dollar_rate": dollar_rate,
+            "amount_ngn": amount_ngn,
+        }
 
 
 class ExternalServiceError(LogisticsBaseError):

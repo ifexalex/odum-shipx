@@ -12,7 +12,7 @@ import json
 import logging
 from typing import Any
 
-from shared.db import execute_with_tenant, execute_write_with_tenant
+from shared.db import execute_transaction, execute_with_tenant, execute_write_with_tenant
 from shared.tenant_context import PLATFORM_TENANT_ID
 
 logger = logging.getLogger(__name__)
@@ -38,9 +38,15 @@ _TENANT_UPDATE_FIELDS = frozenset(
 _USER_UPDATE_FIELDS = frozenset(
     {
         "full_name",
-        "role",
+        "locale",
     }
 )
+# NOTE: "role" is deliberately excluded — primary role changes must go through
+# set_user_roles() (which also mirrors into tenant_user.role transactionally)
+# so identity-group membership stays in sync via IdentityProvider.sync_user_groups().
+# A bare `role` key here would let a role change bypass that sync.
+
+_SUPPORTED_LOCALES: frozenset[str] = frozenset({"en", "zh"})
 
 _CUSTOMER_UPDATE_FIELDS = frozenset(
     {
@@ -49,10 +55,12 @@ _CUSTOMER_UPDATE_FIELDS = frozenset(
         "email",
         "whatsapp",
         "address",
+        "delivery_address",
         "contract_details",
         "user_id",  # Link customer to a tenant_user (portal account)
         "notification_consent",  # GDPR Art. 6 — channel opt-in list (e.g. ['sms', 'email'])
         "consent_given_at",  # Timestamp of explicit consent
+        "locale",  # Notification language (migration 029) — read by tracking→notification flow
     }
 )
 
@@ -64,6 +72,31 @@ _CHARGE_TYPE_UPDATE_FIELDS = frozenset(
         "is_active",
     }
 )
+
+_WAREHOUSE_UPDATE_FIELDS = frozenset(
+    {
+        "name",
+        "address",
+        "city",
+        "state",
+        "phone",
+        "is_default",
+        "is_active",
+    }
+)
+
+# Aggregates every assigned role for a tenant_user into a `roles` array
+# column, falling back to the primary `role` column for rows without any
+# tenant_user_role entries (defensive — the migration 039 backfill should
+# make that impossible, but a fallback here costs nothing).
+_ROLES_AGG_SELECT = """
+    COALESCE(
+        (SELECT array_agg(tur.role ORDER BY tur.role)
+         FROM tenant_user_role tur
+         WHERE tur.tenant_user_id = tu.id AND tur.tenant_id = tu.tenant_id),
+        ARRAY[tu.role]
+    ) AS roles
+"""
 
 
 def _build_set_clause(updates: dict[str, Any], allowed: frozenset[str]) -> tuple[str, dict[str, Any]]:
@@ -89,14 +122,32 @@ def create_tenant(data: dict[str, Any]) -> dict[str, Any] | None:
         """
         INSERT INTO tenant (
             company_name, primary_contact_email, primary_contact_phone,
-            origin_country, destination_country, subscription_tier, status
+            origin_country, destination_country, subscription_tier, status, slug
         ) VALUES (
             %(company_name)s, %(primary_contact_email)s, %(primary_contact_phone)s,
-            %(origin_country)s, %(destination_country)s, %(subscription_tier)s, 'active'
+            %(origin_country)s, %(destination_country)s, %(subscription_tier)s, 'active', %(slug)s
         ) RETURNING *
         """,
         data,
     )
+
+
+def get_tenant_by_slug(slug: str) -> dict[str, Any] | None:
+    rows = execute_with_tenant(
+        PLATFORM_TENANT_ID,
+        "SELECT * FROM tenant WHERE slug = %s LIMIT 1",
+        (slug,),
+    )
+    return rows[0] if rows else None
+
+
+def get_tenant_by_custom_domain(custom_domain: str) -> dict[str, Any] | None:
+    rows = execute_with_tenant(
+        PLATFORM_TENANT_ID,
+        "SELECT * FROM tenant WHERE custom_domain = %s LIMIT 1",
+        (custom_domain,),
+    )
+    return rows[0] if rows else None
 
 
 def get_tenant_by_id(tenant_id: str) -> dict[str, Any] | None:
@@ -111,7 +162,19 @@ def get_tenant_by_id(tenant_id: str) -> dict[str, Any] | None:
 def list_tenants(limit: int = 50, cursor: dict[str, Any] | None = None) -> list[dict[str, Any]]:
     from shared.pagination import build_paginated_query, extract_page
 
-    base = "SELECT * FROM tenant WHERE 1=1"
+    # user_count matches the quota semantics exactly (active tenant_user rows —
+    # see metering's count_active_tenant_users) so the platform tenant list can
+    # show "users x/limit" without a per-tenant usage round-trip (audit gap B2).
+    base = """
+        SELECT t.*, u.user_count
+        FROM tenant t
+        LEFT JOIN LATERAL (
+            SELECT COUNT(*) AS user_count
+            FROM tenant_user tu
+            WHERE tu.tenant_id = t.id AND tu.status = 'active'
+        ) u ON TRUE
+        WHERE 1=1
+    """
     query, params = build_paginated_query(base, cursor, limit, sort_field="created_at")
     rows = execute_with_tenant(PLATFORM_TENANT_ID, query, params)
     page, _, _ = extract_page(rows, limit)
@@ -203,19 +266,35 @@ def upsert_config(tenant_id: str, key: str, value: dict[str, Any], updated_by: s
     )
 
 
+def delete_config(tenant_id: str, key: str) -> dict[str, Any] | None:
+    """Remove a tenant_config row entirely (e.g. unconfiguring Paystack)."""
+    return execute_write_with_tenant(
+        tenant_id,
+        "DELETE FROM tenant_config WHERE tenant_id = %(tenant_id)s AND config_key = %(key)s RETURNING *",
+        {"tenant_id": tenant_id, "key": key},
+    )
+
+
 # ---------------------------------------------------------------------------
 # Tenant user operations — tenant RLS scope
 # ---------------------------------------------------------------------------
 
 
 def create_tenant_user(tenant_id: str, data: dict[str, Any]) -> dict[str, Any] | None:
+    # id is set explicitly to cognito_sub (always a UUID) rather than left to
+    # gen_random_uuid() — every created_by/approved_by/rejected_by FK points
+    # at tenant_user(id), and shared/auth.py's TenantContext.user_id is the
+    # raw Cognito sub straight off the JWT, with no separate resolution step.
+    # If id != cognito_sub, every write by a real (non-seeded) user 500s with
+    # an FK violation. customer.user_id is also set to tenant_user.id
+    # (see link_customer_user) so this keeps that chain consistent too.
     return execute_write_with_tenant(
         tenant_id,
         """
         INSERT INTO tenant_user (
-            tenant_id, cognito_sub, email, full_name, role, status, created_by
+            id, tenant_id, cognito_sub, email, full_name, role, status, created_by
         ) VALUES (
-            %(tenant_id)s, %(cognito_sub)s, %(email)s, %(full_name)s,
+            %(cognito_sub)s, %(tenant_id)s, %(cognito_sub)s, %(email)s, %(full_name)s,
             %(role)s, 'active', %(created_by)s
         ) RETURNING *
         """,
@@ -226,8 +305,17 @@ def create_tenant_user(tenant_id: str, data: dict[str, Any]) -> dict[str, Any] |
 def get_user_by_id(tenant_id: str, user_id: str) -> dict[str, Any] | None:
     rows = execute_with_tenant(
         tenant_id,
-        "SELECT * FROM tenant_user WHERE tenant_id = %s AND id = %s LIMIT 1",
+        f"SELECT tu.*, {_ROLES_AGG_SELECT} FROM tenant_user tu WHERE tu.tenant_id = %s AND tu.id = %s LIMIT 1",
         (tenant_id, user_id),
+    )
+    return rows[0] if rows else None
+
+
+def get_user_by_cognito_sub(tenant_id: str, cognito_sub: str) -> dict[str, Any] | None:
+    rows = execute_with_tenant(
+        tenant_id,
+        "SELECT * FROM tenant_user WHERE tenant_id = %s AND cognito_sub = %s LIMIT 1",
+        (tenant_id, cognito_sub),
     )
     return rows[0] if rows else None
 
@@ -244,7 +332,12 @@ def get_user_by_email(tenant_id: str, email: str) -> dict[str, Any] | None:
 def list_users(tenant_id: str) -> list[dict[str, Any]]:
     return execute_with_tenant(
         tenant_id,
-        "SELECT * FROM tenant_user WHERE tenant_id = %s ORDER BY created_at DESC",
+        f"""
+        SELECT tu.*, {_ROLES_AGG_SELECT}
+        FROM tenant_user tu
+        WHERE tu.tenant_id = %s
+        ORDER BY tu.created_at DESC
+        """,
         (tenant_id,),
     )
 
@@ -258,6 +351,72 @@ def update_user(tenant_id: str, user_id: str, updates: dict[str, Any]) -> dict[s
         f"UPDATE tenant_user SET {set_clause}, updated_at = NOW() WHERE tenant_id = %(tenant_id)s AND id = %(id)s RETURNING *",
         params,
     )
+
+
+def get_user_roles(tenant_id: str, user_id: str) -> list[str]:
+    """Return every role assigned to a user, primary role first."""
+    rows = execute_with_tenant(
+        tenant_id,
+        """
+        SELECT role FROM tenant_user_role
+        WHERE tenant_id = %s AND tenant_user_id = %s
+        ORDER BY is_primary DESC, role
+        """,
+        (tenant_id, user_id),
+    )
+    return [row["role"] for row in rows]
+
+
+def set_user_roles(
+    tenant_id: str,
+    user_id: str,
+    roles: list[str],
+    primary_role: str,
+    assigned_by: str | None = None,
+) -> dict[str, Any] | None:
+    """Transactionally replace a user's `tenant_user_role` rows and mirror
+    `primary_role` into `tenant_user.role`.
+
+    `tenant_user.role` stays the single source of truth for every existing
+    query that reads it directly (reports, staff-detail summary, badges) —
+    this keeps it in sync on every role change instead of letting it drift
+    from the now-authoritative `tenant_user_role` table.
+
+    Returns the updated tenant_user row, or None if the user doesn't exist.
+    """
+    delete_query = (
+        "DELETE FROM tenant_user_role WHERE tenant_id = %(tenant_id)s AND tenant_user_id = %(user_id)s",
+        {"tenant_id": tenant_id, "user_id": user_id},
+    )
+    insert_queries = [
+        (
+            """
+            INSERT INTO tenant_user_role (tenant_user_id, tenant_id, role, is_primary, assigned_by)
+            VALUES (%(user_id)s, %(tenant_id)s, %(role)s, %(is_primary)s, %(assigned_by)s)
+            """,
+            {
+                "user_id": user_id,
+                "tenant_id": tenant_id,
+                "role": role,
+                "is_primary": role == primary_role,
+                "assigned_by": assigned_by,
+            },
+        )
+        for role in roles
+    ]
+    update_query = (
+        """
+        UPDATE tenant_user SET role = %(role)s, updated_at = NOW()
+        WHERE tenant_id = %(tenant_id)s AND id = %(user_id)s
+        RETURNING *
+        """,
+        {"role": primary_role, "tenant_id": tenant_id, "user_id": user_id},
+    )
+    results = execute_transaction(tenant_id, [delete_query, *insert_queries, update_query])
+    updated = results[-1]
+    if updated is not None:
+        updated["roles"] = sorted(roles)
+    return updated
 
 
 def set_user_status(tenant_id: str, user_id: str, status: str) -> dict[str, Any] | None:
@@ -281,6 +440,33 @@ def count_active_users(tenant_id: str) -> int:
     return int(rows[0]["cnt"]) if rows else 0
 
 
+def count_containers_this_month(tenant_id: str) -> int:
+    """Count containers created in the current calendar month."""
+    rows = execute_with_tenant(
+        tenant_id,
+        """
+        SELECT COUNT(*) AS cnt
+        FROM container
+        WHERE tenant_id = %s
+          AND date_trunc('month', created_at) = date_trunc('month', NOW())
+        """,
+        (tenant_id,),
+    )
+    return int(rows[0]["cnt"]) if rows else 0
+
+
+def get_subscription_tier(tenant_id: str) -> str:
+    """Return the tenant's current subscription_tier (default 'starter')."""
+    rows = execute_with_tenant(
+        PLATFORM_TENANT_ID,
+        "SELECT subscription_tier FROM tenant WHERE id = %s LIMIT 1",
+        (tenant_id,),
+    )
+    if rows and rows[0].get("subscription_tier"):
+        return str(rows[0]["subscription_tier"])
+    return "starter"
+
+
 # ---------------------------------------------------------------------------
 # Customer operations — tenant RLS scope
 # ---------------------------------------------------------------------------
@@ -291,12 +477,13 @@ def create_customer(tenant_id: str, data: dict[str, Any]) -> dict[str, Any] | No
         tenant_id,
         """
         INSERT INTO customer (
-            tenant_id, name, phone, email, whatsapp, address, contract_details,
-            notification_consent, consent_given_at
+            tenant_id, name, phone, email, whatsapp, address, delivery_address,
+            contract_details, notification_consent, consent_given_at, user_id
         )
         VALUES (
-            %(tenant_id)s, %(name)s, %(phone)s, %(email)s, %(whatsapp)s, %(address)s, %(contract_details)s,
-            %(notification_consent)s, %(consent_given_at)s
+            %(tenant_id)s, %(name)s, %(phone)s, %(email)s, %(whatsapp)s, %(address)s,
+            %(delivery_address)s::jsonb, %(contract_details)s,
+            %(notification_consent)s, %(consent_given_at)s, %(user_id)s
         )
         RETURNING *
         """,
@@ -307,20 +494,73 @@ def create_customer(tenant_id: str, data: dict[str, Any]) -> dict[str, Any] | No
             "email": data.get("email"),
             "whatsapp": data.get("whatsapp"),
             "address": data.get("address"),
+            "delivery_address": json.dumps(data["delivery_address"]) if data.get("delivery_address") else None,
             "contract_details": data.get("contract_details"),
             "notification_consent": data.get("notification_consent", []),
             "consent_given_at": data.get("consent_given_at"),
+            "user_id": data.get("user_id"),
         },
     )
+
+
+# Correlated subquery for the account-status indicator (AdminCustomerList /
+# AdminCustomerDetail): the expiry of this customer's current unconsumed
+# invite, if any — lets staff tell "no login" apart from "invited, expires
+# …" apart from "active" (has user_id) without a separate round trip.
+_PENDING_INVITE_EXPIRES_AT = """
+    (SELECT ci.expires_at FROM customer_invite ci
+     WHERE ci.customer_id = c.id AND ci.tenant_id = c.tenant_id
+       AND ci.consumed_at IS NULL AND ci.expires_at > NOW()
+     ORDER BY ci.created_at DESC LIMIT 1) AS pending_invite_expires_at
+"""
 
 
 def get_customer_by_id(tenant_id: str, customer_id: str) -> dict[str, Any] | None:
     rows = execute_with_tenant(
         tenant_id,
-        "SELECT * FROM customer WHERE tenant_id = %s AND id = %s LIMIT 1",
+        f"SELECT c.*, {_PENDING_INVITE_EXPIRES_AT} FROM customer c WHERE c.tenant_id = %s AND c.id = %s LIMIT 1",
         (tenant_id, customer_id),
     )
     return rows[0] if rows else None
+
+
+def get_customer_by_user_id(tenant_id: str, user_id: str) -> dict[str, Any] | None:
+    """Resolve a customer record from the portal account's Cognito sub."""
+    rows = execute_with_tenant(
+        tenant_id,
+        "SELECT * FROM customer WHERE tenant_id = %s AND user_id = %s LIMIT 1",
+        (tenant_id, user_id),
+    )
+    return rows[0] if rows else None
+
+
+def get_customer_stats(tenant_id: str) -> dict[str, int]:
+    """Tenant-wide customer aggregates for the list stats row — SQL-computed so
+    the figures stay correct at scale (the frontend previously counted only the
+    loaded page). `shipments` is the tenant's total packing-list count, matching
+    how list_customers derives per-customer shipment_count."""
+    rows = execute_with_tenant(
+        tenant_id,
+        """
+        SELECT
+            COUNT(*)                                                 AS total,
+            COUNT(*) FILTER (WHERE anonymised_at IS NOT NULL)        AS anonymised,
+            COUNT(*) FILTER (WHERE anonymised_at IS NULL)            AS active,
+            COUNT(*) FILTER (WHERE 'whatsapp' = ANY(notification_consent)) AS with_whatsapp
+        FROM customer
+        WHERE tenant_id = %s
+        """,
+        (tenant_id,),
+    )
+    shipments = execute_with_tenant(
+        tenant_id,
+        "SELECT COUNT(*) AS n FROM packing_list WHERE tenant_id = %s",
+        (tenant_id,),
+    )
+    row = rows[0] if rows else {}
+    result = {k: int(row.get(k) or 0) for k in ("total", "anonymised", "active", "with_whatsapp")}
+    result["shipments"] = int((shipments[0] if shipments else {}).get("n") or 0)
+    return result
 
 
 def list_customers(
@@ -331,17 +571,25 @@ def list_customers(
 ) -> tuple[list[dict[str, Any]], str | None, bool]:
     from shared.pagination import build_paginated_query, extract_page
 
+    # shipment_count = lifetime packing lists for the customer (one PL = one
+    # customer's cargo on one container = one shipment). Correlated subquery is
+    # wrapped below so the pagination cursor references unambiguous outer columns.
+    shipment_count = (
+        "(SELECT COUNT(*) FROM packing_list pl" " WHERE pl.customer_id = c.id AND pl.tenant_id = c.tenant_id) AS shipment_count"
+    )
     if q:
         pattern = f"%{q}%"
-        base = (
-            "SELECT * FROM customer WHERE tenant_id = %(tenant_id)s"
-            " AND (name ILIKE %(q)s OR phone ILIKE %(q)s OR email ILIKE %(q)s)"
+        inner = (
+            f"SELECT c.*, {shipment_count}, {_PENDING_INVITE_EXPIRES_AT} FROM customer c"
+            " WHERE c.tenant_id = %(tenant_id)s"
+            " AND (c.name ILIKE %(q)s OR c.phone ILIKE %(q)s OR c.email ILIKE %(q)s)"
         )
         extra: dict[str, Any] = {"tenant_id": tenant_id, "q": pattern}
     else:
-        base = "SELECT * FROM customer WHERE tenant_id = %(tenant_id)s"
+        inner = f"SELECT c.*, {shipment_count}, {_PENDING_INVITE_EXPIRES_AT} FROM customer c" " WHERE c.tenant_id = %(tenant_id)s"
         extra = {"tenant_id": tenant_id}
 
+    base = f"SELECT * FROM ({inner}) AS t WHERE 1=1"
     query, params = build_paginated_query(base, cursor, limit, sort_field="created_at")
     params.update(extra)
     rows = execute_with_tenant(tenant_id, query, params)
@@ -442,6 +690,15 @@ def get_customer_full_export_data(tenant_id: str, customer_id: str) -> dict[str,
     }
 
 
+def get_customer_by_email(tenant_id: str, email: str) -> dict[str, Any] | None:
+    rows = execute_with_tenant(
+        tenant_id,
+        "SELECT id FROM customer WHERE tenant_id = %s AND email = %s AND anonymised_at IS NULL LIMIT 1",
+        (tenant_id, email),
+    )
+    return rows[0] if rows else None
+
+
 def link_customer_user(tenant_id: str, customer_email: str, user_id: str) -> None:
     """Set customer.user_id for the customer record matching the given email."""
     execute_write_with_tenant(
@@ -479,9 +736,19 @@ def create_charge_type(tenant_id: str, data: dict[str, Any]) -> dict[str, Any] |
 
 
 def list_charge_types(tenant_id: str) -> list[dict[str, Any]]:
+    # usage_count: misc charges attributed back to this configured type via the
+    # charge_type_id FK (migration 035). A charge_type.id belongs to exactly one
+    # tenant, so the correlated count is inherently tenant-scoped.
     return execute_with_tenant(
         tenant_id,
-        "SELECT * FROM charge_type WHERE tenant_id = %s ORDER BY name ASC",
+        """
+        SELECT c.*,
+               (SELECT COUNT(*) FROM misc_charge mc
+                 WHERE mc.charge_type_id = c.id) AS usage_count
+        FROM charge_type c
+        WHERE c.tenant_id = %s
+        ORDER BY c.name ASC
+        """,
         (tenant_id,),
     )
 
@@ -503,6 +770,70 @@ def update_charge_type(tenant_id: str, charge_type_id: str, updates: dict[str, A
         tenant_id,
         f"UPDATE charge_type SET {set_clause}, updated_at = NOW() WHERE tenant_id = %(tenant_id)s AND id = %(id)s RETURNING *",
         params,
+    )
+
+
+# ---------------------------------------------------------------------------
+# Container capacity presets (custom) — tenant RLS scope. The ten well-known
+# presets are code constants merged in by the service; only custom ones persist.
+# ---------------------------------------------------------------------------
+
+
+def create_container_capacity(tenant_id: str, data: dict[str, Any]) -> dict[str, Any] | None:
+    return execute_write_with_tenant(
+        tenant_id,
+        """
+        INSERT INTO container_capacity (tenant_id, name, capacity_cbm, recommended_cbm, created_by)
+        VALUES (%(tenant_id)s, %(name)s, %(capacity_cbm)s, %(recommended_cbm)s, %(created_by)s)
+        RETURNING *
+        """,
+        {
+            "tenant_id": tenant_id,
+            "name": data.get("name"),
+            "capacity_cbm": data.get("capacity_cbm"),
+            "recommended_cbm": data.get("recommended_cbm"),
+            "created_by": data.get("created_by"),
+        },
+    )
+
+
+def list_container_capacities(tenant_id: str) -> list[dict[str, Any]]:
+    return execute_with_tenant(
+        tenant_id,
+        "SELECT * FROM container_capacity WHERE tenant_id = %s ORDER BY capacity_cbm DESC, name ASC",
+        (tenant_id,),
+    )
+
+
+def get_container_capacity_by_id(tenant_id: str, capacity_id: str) -> dict[str, Any] | None:
+    rows = execute_with_tenant(
+        tenant_id,
+        "SELECT * FROM container_capacity WHERE tenant_id = %s AND id = %s LIMIT 1",
+        (tenant_id, capacity_id),
+    )
+    return rows[0] if rows else None
+
+
+def update_container_capacity(tenant_id: str, capacity_id: str, updates: dict[str, Any]) -> dict[str, Any] | None:
+    # Column names come from a fixed allowlist, never from caller input, so the
+    # interpolated SET clause carries no injection surface.
+    allowed = {k: v for k, v in updates.items() if k in ("name", "capacity_cbm", "recommended_cbm")}
+    if not allowed:
+        return get_container_capacity_by_id(tenant_id, capacity_id)
+    set_clause = ", ".join(f"{k} = %({k})s" for k in allowed)
+    params = {**allowed, "tenant_id": tenant_id, "id": capacity_id}
+    return execute_write_with_tenant(
+        tenant_id,
+        f"UPDATE container_capacity SET {set_clause} WHERE tenant_id = %(tenant_id)s AND id = %(id)s RETURNING *",
+        params,
+    )
+
+
+def delete_container_capacity(tenant_id: str, capacity_id: str) -> dict[str, Any] | None:
+    return execute_write_with_tenant(
+        tenant_id,
+        "DELETE FROM container_capacity WHERE tenant_id = %s AND id = %s RETURNING id",
+        (tenant_id, capacity_id),
     )
 
 
@@ -545,6 +876,97 @@ def get_dashboard_stats() -> dict[str, Any]:
         "total_users": int(user_rows[0]["total_users"] if user_rows else 0),
         "total_containers": int(container_rows[0]["total_containers"] if container_rows else 0),
     }
+
+
+def list_tenant_activity(
+    tenant_id: str,
+    limit: int = 20,
+    cursor: dict[str, Any] | None = None,
+    actor_id: str | None = None,
+    entity_type: str | list[str] | None = None,
+    action: str | None = None,
+    q: str | None = None,
+    created_after: str | None = None,
+    created_before: str | None = None,
+    sort_direction: str = "desc",
+) -> tuple[list[dict[str, Any]], str | None, bool]:
+    """Tenant-scoped activity feed from audit_log (audit gap B6).
+
+    Includes before_state/after_state — a tenant admin auditing money or
+    goods movement (a payment claim confirmed, a misc charge added, a
+    storage fee waived) needs to see *what* changed, not just that
+    something did. The original "lean projection, no JSON blobs" framing
+    was fine for the small dashboard widget this was built for, but is not
+    an audit trail a tenant admin can actually verify anything against —
+    see the dedicated `frontend/src/pages/tenant-admin/ActivityLog.tsx`
+    page, which is. Joined to tenant_user for the actor's display name.
+    Filtered to the tenant via RLS + explicit predicate.
+
+    Filters, all optional and combinable (found live to be genuinely needed
+    — a category dropdown alone isn't "filtering" for a money/goods audit
+    trail without a way to narrow by date, actor, action, or a specific
+    record):
+      - actor_id: one staff member (staff-profile activity table, 3.4).
+      - entity_type: one kind of record ("payment_claim"), or several at
+        once (a category grouping, e.g. every money-related type) — a
+        single string or a list; uses idx_audit_log_entity either way via
+        `= ANY(...)`, same pattern as tracking's container status filter.
+      - action: CREATE / UPDATE / DELETE / STATUS_CHANGE.
+      - q: free-text search — matches the actor's name OR the record's id,
+        so pasting a UUID finds every action ever taken on that specific
+        record (the actual "search" a money/goods audit needs), and typing
+        a name finds everything one person did.
+      - created_after / created_before: ISO date strings, same contract as
+        `GET /v1/containers`'s date-range filter.
+      - sort_direction: "asc" or "desc" (default desc — newest first).
+    """
+    from shared.pagination import build_paginated_query, extract_page
+
+    # Wrap the join in a subquery so the pagination clause's bare `id` /
+    # `created_at` references (build_paginated_query) are unambiguous — the
+    # audit_log ⋈ tenant_user join otherwise has two `id` columns.
+    # Reported directly by the user: a platform admin's own actions on this
+    # tenant (impersonation start/end) are not a tenant-side business event
+    # and must never be visible to that tenant's own admins, regardless of
+    # what filters they request. Belt-and-suspenders — impersonation is now
+    # logged to platform_audit_log instead (see impersonation.py), so this
+    # should never match a real row, but a tenant admin must not be able to
+    # query their way to one even if a future call site regresses.
+    conditions = " AND a.entity_type NOT IN ('impersonation_session')"
+    extra: dict[str, Any] = {"tenant_id": tenant_id}
+    if actor_id:
+        conditions += " AND a.actor_id = %(actor_id)s"
+        extra["actor_id"] = actor_id
+    if entity_type:
+        entity_types = [entity_type] if isinstance(entity_type, str) else list(entity_type)
+        conditions += " AND a.entity_type = ANY(%(entity_types)s)"
+        extra["entity_types"] = entity_types
+    if action:
+        conditions += " AND a.action = %(action)s"
+        extra["action"] = action
+    if created_after:
+        conditions += " AND a.created_at >= %(created_after)s"
+        extra["created_after"] = created_after
+    if created_before:
+        conditions += " AND a.created_at <= %(created_before)s"
+        extra["created_before"] = created_before
+    if q:
+        conditions += " AND (u.full_name ILIKE %(q)s OR a.entity_id::text ILIKE %(q)s)"
+        extra["q"] = f"%{q}%"
+
+    inner = f"""
+        SELECT a.id, a.action, a.entity_type, a.entity_id, a.actor_id,
+               a.actor_role, a.before_state, a.after_state, a.created_at,
+               u.full_name AS actor_name
+        FROM audit_log a
+        LEFT JOIN tenant_user u ON u.id = a.actor_id AND u.tenant_id = a.tenant_id
+        WHERE a.tenant_id = %(tenant_id)s{conditions}
+    """
+    base = f"SELECT * FROM ({inner}) AS t WHERE 1=1"
+    query, params = build_paginated_query(base, cursor, limit, sort_field="created_at", sort_direction=sort_direction.upper())
+    params.update(extra)
+    rows = execute_with_tenant(tenant_id, query, params)
+    return extract_page(rows, limit)
 
 
 def list_platform_audit_log(
@@ -744,3 +1166,117 @@ def get_tenant_report_data(tenant_id: str, period: str) -> dict[str, Any]:
             "resolved_this_month": int(disputes_data["resolved_this_month"]),
         },
     }
+
+
+# ---------------------------------------------------------------------------
+# Notification templates — tenant RLS scope
+# ---------------------------------------------------------------------------
+
+
+# ---------------------------------------------------------------------------
+# Rate history — tenant RLS scope
+# ---------------------------------------------------------------------------
+
+
+def append_rate_history(
+    tenant_id: str,
+    rate_type: str,
+    rate_value: dict[str, Any],
+    previous_value: dict[str, Any] | None,
+    changed_by: str | None,
+) -> None:
+    execute_write_with_tenant(
+        tenant_id,
+        """
+        INSERT INTO rate_history (tenant_id, rate_type, rate_value, previous_value, changed_by)
+        VALUES (%(tenant_id)s, %(rate_type)s, %(rate_value)s::jsonb, %(previous_value)s::jsonb, %(changed_by)s)
+        RETURNING id
+        """,
+        {
+            "tenant_id": tenant_id,
+            "rate_type": rate_type,
+            "rate_value": json.dumps(rate_value),
+            "previous_value": json.dumps(previous_value) if previous_value else None,
+            "changed_by": changed_by,
+        },
+    )
+
+
+def list_rate_history(
+    tenant_id: str,
+    rate_type: str | None = None,
+    limit: int = 50,
+    cursor: dict[str, Any] | None = None,
+) -> tuple[list[dict[str, Any]], str | None, bool]:
+    from shared.pagination import build_paginated_query, extract_page
+
+    conditions = ["tenant_id = %(tenant_id)s"]
+    extra: dict[str, Any] = {"tenant_id": tenant_id}
+    if rate_type:
+        conditions.append("rate_type = %(rate_type)s")
+        extra["rate_type"] = rate_type
+
+    base = f"SELECT * FROM rate_history WHERE {' AND '.join(conditions)}"
+    query, params = build_paginated_query(base, cursor, limit, sort_field="created_at")
+    params.update(extra)
+    rows = execute_with_tenant(tenant_id, query, params)
+    return extract_page(rows, limit)
+
+
+# ---------------------------------------------------------------------------
+# Notification templates — tenant RLS scope
+# ---------------------------------------------------------------------------
+
+
+def list_notification_templates(tenant_id: str) -> list[dict[str, Any]]:
+    return execute_with_tenant(
+        tenant_id,
+        """
+        SELECT * FROM notification_template
+        WHERE tenant_id = %s
+        ORDER BY event_type, channel
+        """,
+        (tenant_id,),
+    )
+
+
+def get_notification_template(
+    tenant_id: str,
+    event_type: str,
+    channel: str,
+) -> dict[str, Any] | None:
+    rows = execute_with_tenant(
+        tenant_id,
+        """
+        SELECT * FROM notification_template
+        WHERE tenant_id = %s AND event_type = %s AND channel = %s
+        LIMIT 1
+        """,
+        (tenant_id, event_type, channel),
+    )
+    return rows[0] if rows else None
+
+
+def upsert_notification_template(
+    tenant_id: str,
+    data: dict[str, Any],
+) -> dict[str, Any] | None:
+    return execute_write_with_tenant(
+        tenant_id,
+        """
+        INSERT INTO notification_template (
+            tenant_id, event_type, channel, template_body, subject, updated_by
+        ) VALUES (
+            %(tenant_id)s, %(event_type)s, %(channel)s,
+            %(template_body)s, %(subject)s, %(updated_by)s
+        )
+        ON CONFLICT (tenant_id, event_type, channel)
+        DO UPDATE SET
+            template_body = EXCLUDED.template_body,
+            subject       = EXCLUDED.subject,
+            updated_by    = EXCLUDED.updated_by,
+            updated_at    = NOW()
+        RETURNING *
+        """,
+        data,
+    )

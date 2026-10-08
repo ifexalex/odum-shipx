@@ -1,0 +1,209 @@
+.banner { margin-bottom: 16px; }
+.section { margin-top: 24px; }
+.tableWrap { margin-top: 16px; }
+.chips { display: flex; gap: 8px; flex-wrap: wrap; }
+.formCard { background: var(--color-surface); border: 1px solid var(--color-border); border-radius: var(--radius-md); padding: 24px; display: flex; flex-direction: column; gap: 16px; max-width: 560px; }
+.formActions { display: flex; gap: 8px; justify-content: flex-end; }
+.grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+@container sxapp (max-width: 860px) { .grid2 { grid-template-columns: 1fr; } }
+.statsRow { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 12px; margin-bottom: 24px; }
+
+/* GDPR anonymise */
+.gdprBanner { background: var(--color-error-muted); border: 1px solid var(--color-error); border-radius: 8px; padding: 12px 16px; margin-bottom: 16px; }
+.gdprBannerTitle { font-weight: 700; color: var(--color-error); font-size: 0.875rem; margin: 0 0 4px; }
+.gdprBannerBody { font-size: 0.8125rem; color: var(--color-text); margin: 0; }
+
+/* SMS counter */
+.templateCard { background: var(--color-surface); border: 1px solid var(--color-border); border-radius: var(--radius-md); padding: 20px; display: flex; flex-direction: column; gap: 12px; margin-bottom: 12px; }
+.templateHeader { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 8px; }
+.templateEventType { font-weight: 700; font-size: 0.9375rem; }
+.smsCounter { font-size: 0.75rem; font-family: var(--font-mono); }
+.smsCounterOk { color: var(--color-text-muted); }
+.smsCounterWarn { color: var(--color-warning); font-weight: 600; }
+.smsCounterError { color: var(--color-error); font-weight: 600; }
+
+/* Modal — mobile-first bottom sheet, see
+   nigeria/ReleaseNoteDetail.module.css's matching comment for the
+   pattern reference. Shared by AdminCustomerList/StaffUserList's modals. */
+.modalOverlay { position: fixed; inset: 0; background: rgba(11,47,13,0.55); display: flex; align-items: flex-end; justify-content: center; z-index: 200; }
+.modalPanel { background: var(--color-surface); border-radius: var(--radius-lg) var(--radius-lg) 0 0; padding: 24px 20px; width: 100%; display: flex; flex-direction: column; gap: 16px; box-shadow: var(--shadow-modal); max-height: 90vh; overflow-y: auto; }
+.modalTitle { font-size: 1rem; font-weight: 700; margin: 0; }
+.modalBanner { margin: 0; }
+.modalActions { display: flex; gap: 8px; justify-content: flex-end; }
+.modalActions > * { min-height: 48px; font-size: 1rem; }
+
+@container sxapp (min-width: 861px) {
+  .modalOverlay { align-items: center; padding: 16px; }
+  .modalPanel { border-radius: var(--radius-lg); max-width: 480px; padding: 24px; }
+  .modalActions > * { min-height: 36px; font-size: inherit; }
+}
+
+/* Confirm input */
+.confirmInput { font-family: var(--font-mono); font-size: 1rem; letter-spacing: 0.05em; }
+.confirmHint { font-size: 0.8125rem; color: var(--color-text-muted); margin: 0; }
+
+/* Config page */
+.configGrid { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 12px; margin-top: 16px; }
+.configCard { display: flex; flex-direction: column; padding: 20px; background: var(--color-surface); border: 1px solid var(--color-border); border-radius: var(--radius-md); gap: 8px; cursor: pointer; transition: border-color 0.15s; text-decoration: none; color: inherit; }
+.configCard:hover { border-color: var(--color-primary); }
+.configCardTitle { font-weight: 700; font-size: 0.9375rem; margin: 0; }
+.configCardDesc { font-size: 0.8125rem; color: var(--color-text-muted); margin: 0; }
+.configCardValue { font-family: var(--font-mono); font-size: 0.875rem; color: var(--color-primary); font-weight: 700; margin: 0; }
+
+/* Customer profile hero + tabs (3.6 / audit gap A2) */
+.customerHero {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 20px;
+  flex-wrap: wrap;
+}
+.customerHeroId {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  min-width: 0;
+}
+.customerHeroTitleRow {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+.customerHeroName {
+  font-family: var(--font-display);
+  font-weight: 700;
+  font-size: 26px;
+  color: var(--color-ink);
+  margin: 0;
+  letter-spacing: -0.02em;
+  line-height: 1.15;
+}
+.customerHeroMeta {
+  font-size: 13px;
+  color: var(--color-ink-3);
+  margin-top: 4px;
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+}
+.customerHeroMetaItem {
+  display: inline-flex;
+  align-items: center;
+}
+.customerHeroDot {
+  color: var(--color-line);
+  margin: 0 8px;
+}
+.profileGrid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 20px;
+  margin-bottom: 20px;
+}
+@container sxapp (max-width: 860px) {
+  .profileGrid {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* Two-column split for admin dashboard (usage panel + activity feed) */
+.dashCols {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 340px;
+  gap: 20px;
+  align-items: start;
+}
+@container sxapp (max-width: 1080px) {
+  .dashCols {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* Equal two-column row — §6.1 Nigeria dashboard bottom (payments + incoming) */
+/* Two side by side when both fit; a lone card (e.g. nothing awaiting pickup)
+   spans the full width instead of being stranded at half, and they stack on
+   narrow screens — all via one auto-fit rule. */
+.dashGrid2 {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(440px, 1fr));
+  gap: 20px;
+  align-items: start;
+}
+@container sxapp (max-width: 520px) {
+  .dashGrid2 {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* ---------------------------------------------------------------------------
+   Shared filter-bar pattern — one consistent look across the tenant-admin
+   list pages (Customers, Users, Activity Log), matching nigeria/BillingList's
+   established chips + 36px search + 36px controls layout. Every control sits
+   at CONTROL_HEIGHT (36px) so their bottom edges line up with the chips and
+   each other, instead of a tall Field search floating next to short chips.
+   --------------------------------------------------------------------------- */
+.filterRow {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+.searchWrap {
+  flex: 1;
+  min-width: 220px;
+  height: 36px;
+  background: var(--color-page);
+  border: 1px solid var(--color-line);
+  border-radius: var(--radius-sm);
+  display: flex;
+  align-items: center;
+  padding: 0 12px;
+  gap: 8px;
+}
+.searchInput {
+  flex: 1;
+  border: none;
+  outline: none;
+  background: transparent;
+  font-family: var(--font-body);
+  font-size: 13px;
+  color: var(--color-ink);
+  min-width: 0;
+}
+.searchInput::placeholder {
+  color: var(--color-ink-4);
+}
+
+/* Secondary control row (Activity Log): compact, labelled selects/date inputs
+   that all align on the same 36px baseline as the chips + search above. */
+.filterControls {
+  display: flex;
+  align-items: center;
+  gap: 10px 16px;
+  flex-wrap: wrap;
+  margin-top: 12px;
+}
+.controlGroup {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.controlLabel {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--color-ink-3);
+  white-space: nowrap;
+}
+.control {
+  height: 36px;
+  box-sizing: border-box;
+  padding: 0 10px;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--color-line);
+  background: var(--color-surface);
+  font-family: var(--font-body);
+  font-size: 13px;
+  color: var(--color-ink);
+}

@@ -35,11 +35,16 @@ def create_container(tenant_id: str, data: dict[str, Any]) -> dict[str, Any] | N
         """
         INSERT INTO container (
             tenant_id, container_number, parcel_number, origin, destination,
-            estimated_arrival_date, notes, created_by
+            estimated_arrival_date, notes, created_by,
+            vessel_name, voyage_number, shipping_line, seal_number, container_type,
+            capacity_cbm, recommended_cbm
         ) VALUES (
             %(tenant_id)s, %(container_number)s, %(parcel_number)s,
             %(origin)s, %(destination)s, %(estimated_arrival_date)s,
-            %(notes)s, %(created_by)s
+            %(notes)s, %(created_by)s,
+            %(vessel_name)s, %(voyage_number)s, %(shipping_line)s,
+            %(seal_number)s, %(container_type)s,
+            %(capacity_cbm)s, %(recommended_cbm)s
         ) RETURNING *
         """,
         data,
@@ -49,7 +54,22 @@ def create_container(tenant_id: str, data: dict[str, Any]) -> dict[str, Any] | N
 def get_container_by_id(tenant_id: str, container_id: str) -> dict[str, Any] | None:
     rows = execute_with_tenant(
         tenant_id,
-        "SELECT * FROM container WHERE tenant_id = %s AND id = %s LIMIT 1",
+        """
+        SELECT c.*,
+               tu.full_name AS created_by_name,
+               (SELECT COUNT(*) FROM packing_list pl
+                WHERE pl.container_id = c.id AND pl.tenant_id = c.tenant_id) AS packing_list_count,
+               (SELECT COUNT(*) FROM packing_list pl
+                WHERE pl.container_id = c.id AND pl.tenant_id = c.tenant_id
+                  AND pl.status = 'approved') AS approved_packing_list_count,
+               (SELECT COALESCE(SUM(pli.cbm), 0)
+                FROM packing_list_item pli
+                JOIN packing_list pl2 ON pl2.id = pli.packing_list_id
+                WHERE pl2.container_id = c.id AND pl2.tenant_id = c.tenant_id) AS total_cbm_packed
+        FROM container c
+        LEFT JOIN tenant_user tu ON tu.id = c.created_by AND tu.tenant_id = c.tenant_id
+        WHERE c.tenant_id = %s AND c.id = %s LIMIT 1
+        """,
         (tenant_id, container_id),
     )
     return rows[0] if rows else None
@@ -60,22 +80,116 @@ def list_containers(
     filters: dict[str, Any],
     limit: int = 50,
     cursor: dict[str, Any] | None = None,
+    sort_field: str = "created_at",
+    sort_direction: str = "DESC",
 ) -> tuple[list[dict[str, Any]], str | None, bool]:
     conditions = ["tenant_id = %(tenant_id)s"]
     extra: dict[str, Any] = {"tenant_id": tenant_id}
 
     if filters.get("status"):
-        conditions.append("status = %(status)s")
-        extra["status"] = filters["status"]
+        # Accepts either a single status string or a list (Filters panel's
+        # multi-select sends several) — always parameterized via ANY(), same
+        # idiom as billing/repository.py::mark_carryovers_applied's `id =
+        # ANY(%(ids)s)`. Never string-interpolated.
+        statuses = filters["status"]
+        if isinstance(statuses, str):
+            statuses = [statuses]
+        conditions.append("status = ANY(%(statuses)s)")
+        extra["statuses"] = list(statuses)
+    if filters.get("created_after"):
+        conditions.append("created_at >= %(created_after)s")
+        extra["created_after"] = filters["created_after"]
+    if filters.get("created_before"):
+        conditions.append("created_at <= %(created_before)s")
+        extra["created_before"] = filters["created_before"]
+    if filters.get("eta_after"):
+        conditions.append("estimated_arrival_date >= %(eta_after)s")
+        extra["eta_after"] = filters["eta_after"]
+    if filters.get("eta_before"):
+        conditions.append("estimated_arrival_date <= %(eta_before)s")
+        extra["eta_before"] = filters["eta_before"]
+
+    # Free-text search across container number, vessel name, and voyage number.
+    # Appended separately from `conditions` below (which get blanket-prefixed
+    # with "c.") since this is already a compound multi-column OR expression —
+    # folding it into `conditions` would double-prefix it into invalid SQL
+    # (e.g. "c.(c.container_number ILIKE ...)"). See services/packing_list/
+    # repository.py::list_packing_lists for the same q_clause pattern.
+    q_clause = ""
     if filters.get("q"):
-        conditions.append("container_number ILIKE %(q)s")
+        q_clause = " AND (c.container_number ILIKE %(q)s" " OR c.vessel_name ILIKE %(q)s" " OR c.voyage_number ILIKE %(q)s)"
         extra["q"] = f"%{filters['q']}%"
 
-    base = f"SELECT * FROM container WHERE {' AND '.join(conditions)}"
-    query, params = build_paginated_query(base, cursor, limit, sort_field="created_at")
+    # Wrap the correlated packing-list aggregates in a subquery so
+    # build_paginated_query's cursor condition (AND id > ...) references the
+    # outer unambiguous columns instead of clashing with packing_list.id.
+    where_clause = " AND ".join(f"c.{cond}" for cond in conditions)
+    inner = f"""
+        SELECT c.*,
+               (SELECT COUNT(*) FROM packing_list pl
+                WHERE pl.container_id = c.id AND pl.tenant_id = c.tenant_id) AS packing_list_count,
+               (SELECT COUNT(*) FROM packing_list pl
+                WHERE pl.container_id = c.id AND pl.tenant_id = c.tenant_id
+                  AND pl.status = 'approved') AS approved_packing_list_count,
+               (SELECT COALESCE(SUM(pli.cbm), 0)
+                FROM packing_list_item pli
+                JOIN packing_list pl2 ON pl2.id = pli.packing_list_id
+                WHERE pl2.container_id = c.id AND pl2.tenant_id = c.tenant_id) AS total_cbm_packed
+        FROM container c
+        WHERE {where_clause}{q_clause}
+    """
+    base = f"SELECT * FROM ({inner}) AS t WHERE 1=1"
+    query, params = build_paginated_query(base, cursor, limit, sort_field=sort_field, sort_direction=sort_direction)
     params.update(extra)
     rows = execute_with_tenant(tenant_id, query, params)
     return extract_page(rows, limit)
+
+
+def get_container_stats(tenant_id: str) -> dict[str, int]:
+    """Tenant-wide per-status container counts for the list stats row + chips.
+
+    SQL-computed over the whole table so figures stay correct at scale (the
+    frontend previously counted a capped `limit: 200` sample). Groups (Active,
+    Cleared, …) are summed client-side from these per-status counts; the
+    date-scoped `cleared_30d` is computed here since it needs a created_at
+    predicate.
+    """
+    rows = execute_with_tenant(
+        tenant_id,
+        """
+        SELECT
+            COUNT(*)                                                    AS total,
+            COUNT(*) FILTER (WHERE status = 'loading')                  AS loading,
+            COUNT(*) FILTER (WHERE status = 'sealed')                   AS sealed,
+            COUNT(*) FILTER (WHERE status = 'in_transit')               AS in_transit,
+            COUNT(*) FILTER (WHERE status = 'arrived')                  AS arrived,
+            COUNT(*) FILTER (WHERE status = 'customs_clearance')        AS customs_clearance,
+            COUNT(*) FILTER (WHERE status = 'cleared')                  AS cleared,
+            COUNT(*) FILTER (WHERE status = 'at_warehouse')             AS at_warehouse,
+            COUNT(*) FILTER (WHERE status = 'fully_released')           AS fully_released,
+            COUNT(*) FILTER (WHERE status = 'cancelled')               AS cancelled,
+            COUNT(*) FILTER (WHERE status IN ('cleared', 'at_warehouse', 'fully_released')
+                             AND created_at >= now() - interval '30 days')  AS cleared_30d
+        FROM container
+        WHERE tenant_id = %s
+        """,
+        (tenant_id,),
+    )
+    row = rows[0] if rows else {}
+    keys = (
+        "total",
+        "loading",
+        "sealed",
+        "in_transit",
+        "arrived",
+        "customs_clearance",
+        "cleared",
+        "at_warehouse",
+        "fully_released",
+        "cancelled",
+        "cleared_30d",
+    )
+    return {k: int(row.get(k) or 0) for k in keys}
 
 
 def update_container_status(
@@ -113,6 +227,25 @@ def update_container_status(
 # ---------------------------------------------------------------------------
 
 
+def count_all_packing_lists(tenant_id: str, container_id: str) -> int:
+    """Count all packing lists for a container regardless of status."""
+    rows = execute_with_tenant(
+        tenant_id,
+        "SELECT COUNT(*) AS cnt FROM packing_list WHERE tenant_id = %s AND container_id = %s",
+        (tenant_id, container_id),
+    )
+    return int(rows[0]["cnt"]) if rows else 0
+
+
+def delete_container(tenant_id: str, container_id: str) -> dict[str, Any] | None:
+    """Hard-delete a container. Caller must verify preconditions (status + no PLs)."""
+    return execute_write_with_tenant(
+        tenant_id,
+        "DELETE FROM container WHERE tenant_id = %s AND id = %s RETURNING *",
+        (tenant_id, container_id),
+    )
+
+
 def count_approved_packing_lists(tenant_id: str, container_id: str) -> int:
     rows = execute_with_tenant(
         tenant_id,
@@ -128,7 +261,7 @@ def count_approved_packing_lists(tenant_id: str, container_id: str) -> int:
 def get_manifest_for_container(tenant_id: str, container_id: str) -> dict[str, Any] | None:
     rows = execute_with_tenant(
         tenant_id,
-        "SELECT id FROM manifest WHERE tenant_id = %s AND container_id = %s LIMIT 1",
+        "SELECT id, verification_status FROM manifest WHERE tenant_id = %s AND container_id = %s LIMIT 1",
         (tenant_id, container_id),
     )
     return rows[0] if rows else None
@@ -211,13 +344,21 @@ def bulk_insert_tracking_events(
 
 
 def get_customers_for_container(tenant_id: str, container_id: str) -> list[dict[str, Any]]:
-    """Return distinct customers with approved packing lists for this container."""
+    """Return distinct customers with approved packing lists for this container.
+
+    Includes the portal user's locale (from tenant_user) so callers can pass the
+    correct EN/ZH template to enqueue_notifications. Defaults to 'en' for customers
+    without a portal account. `user_id` is included so callers can also target
+    the in-app customer notification bell (shared.staff_notifications.notify_staff).
+    """
     return execute_with_tenant(
         tenant_id,
         """
-        SELECT DISTINCT c.id::text AS id, c.name, c.phone
+        SELECT DISTINCT c.id::text AS id, c.user_id, c.name, c.phone, c.email, c.whatsapp,
+            COALESCE(tu.locale, 'en') AS locale
         FROM customer c
         JOIN packing_list pl ON pl.customer_id = c.id AND pl.tenant_id = c.tenant_id
+        LEFT JOIN tenant_user tu ON tu.id = c.user_id AND tu.tenant_id = c.tenant_id
         WHERE pl.container_id = %s AND pl.tenant_id = %s AND pl.status = 'approved'
         """,
         (container_id, tenant_id),
@@ -332,3 +473,106 @@ def get_tracking_events(shipment_tracking_id: str) -> list[dict[str, Any]]:
         """,
         (shipment_tracking_id,),
     )
+
+
+def insert_container_event(
+    tenant_id: str,
+    container_id: str,
+    from_status: str,
+    to_status: str,
+    actor_id: str | None,
+    notes: str | None = None,
+) -> None:
+    """Append an audit event for a container status change.
+
+    container_event has no RLS — use PLATFORM_TENANT_ID scope.
+    """
+    execute_write_with_tenant(
+        PLATFORM_TENANT_ID,
+        """
+        INSERT INTO container_event (tenant_id, container_id, from_status, to_status, actor_id, notes)
+        VALUES (%(tenant_id)s, %(container_id)s, %(from_status)s, %(to_status)s, %(actor_id)s, %(notes)s)
+        RETURNING id
+        """,
+        {
+            "tenant_id": tenant_id,
+            "container_id": container_id,
+            "from_status": from_status,
+            "to_status": to_status,
+            "actor_id": actor_id,
+            "notes": notes,
+        },
+    )
+
+
+def get_container_events(tenant_id: str, container_id: str) -> list[dict[str, Any]]:
+    """Return ordered container_event history with actor display name and role.
+
+    No RLS on container_event — query scoped via WHERE clause instead.
+    LEFT JOIN tenant_user so events survive if the actor account is deleted.
+    """
+    return execute_with_tenant(
+        PLATFORM_TENANT_ID,
+        """
+        SELECT
+            ce.*,
+            tu.full_name  AS actor_name,
+            tu.role  AS actor_role
+        FROM container_event ce
+        LEFT JOIN tenant_user tu
+            ON tu.id = ce.actor_id::uuid AND tu.tenant_id = ce.tenant_id
+        WHERE ce.tenant_id = %s AND ce.container_id = %s
+        ORDER BY ce.created_at ASC
+        """,
+        (tenant_id, container_id),
+    )
+
+
+# ---------------------------------------------------------------------------
+# Container documents — tenant RLS scope
+# ---------------------------------------------------------------------------
+
+
+def create_container_document(tenant_id: str, data: dict[str, Any]) -> dict[str, Any] | None:
+    return execute_write_with_tenant(
+        tenant_id,
+        """
+        INSERT INTO container_document (
+            tenant_id, container_id, document_type, s3_key, filename,
+            content_type, uploaded_by
+        ) VALUES (
+            %(tenant_id)s, %(container_id)s, %(document_type)s, %(s3_key)s,
+            %(filename)s, %(content_type)s, %(uploaded_by)s
+        ) RETURNING *
+        """,
+        data,
+    )
+
+
+def list_container_documents(tenant_id: str, container_id: str) -> list[dict[str, Any]]:
+    return execute_with_tenant(
+        tenant_id,
+        """
+        SELECT * FROM container_document
+        WHERE tenant_id = %s AND container_id = %s
+        ORDER BY created_at DESC
+        """,
+        (tenant_id, container_id),
+    )
+
+
+def get_container_document_by_id(
+    tenant_id: str,
+    container_id: str,
+    doc_id: str,
+) -> dict[str, Any] | None:
+    rows = execute_with_tenant(
+        tenant_id,
+        """
+        SELECT * FROM container_document
+        WHERE tenant_id = %s AND container_id = %s AND id = %s
+        LIMIT 1
+        """,
+        (tenant_id, container_id, doc_id),
+    )
+    return rows[0] if rows else None

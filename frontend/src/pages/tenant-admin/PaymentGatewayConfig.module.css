@@ -1,0 +1,140 @@
+/* Payment gateway (Paystack) configuration — renders inside ConfigLayout. */
+
+.badgeLive,
+.badgeTest,
+.badgeUnconfigured {
+  font-size: 12px;
+  font-weight: 700;
+  padding: 4px 10px;
+  border-radius: 999px;
+}
+.badgeLive {
+  background: var(--color-success-soft);
+  color: var(--color-success-strong);
+}
+.badgeTest {
+  background: var(--color-warning-soft);
+  color: var(--color-warning-strong);
+}
+.badgeUnconfigured {
+  background: var(--color-surface-muted);
+  color: var(--color-ink-4);
+}
+
+.statusRow {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  height: 40px;
+  padding: 0 14px;
+  background: var(--color-surface-muted);
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--color-line);
+}
+.statusRow > :nth-child(2) {
+  flex: 1;
+}
+
+.footer {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-top: 20px;
+}
+
+/* Ground-truth gap found live: this was a hard-coded inline
+   `gridTemplateColumns: '1fr 1fr'` — inline styles can't be targeted by a
+   media/container query at all, so it stayed 2 columns even when
+   narrower than the fields inside it could comfortably fit. */
+.bankGrid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: 16px;
+}
+
+/* Disconnect confirm modal — same shape as WebhookConfig's rotate modal.
+   Ground-truth gap found live: .modal used a fixed `width: 480px` (not
+   max-width) — genuinely wider than a phone viewport. Mobile-first bottom
+   sheet, see nigeria/ReleaseNoteDetail.module.css's matching comment for
+   the pattern reference. */
+.modalOverlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(11, 47, 13, 0.55);
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  z-index: 100;
+}
+
+.modal {
+  width: 100%;
+  background: var(--color-surface);
+  border-radius: 14px 14px 0 0;
+  box-shadow: var(--shadow-modal);
+  overflow: hidden;
+  max-height: 90vh;
+  display: flex;
+  flex-direction: column;
+}
+
+@container sxapp (min-width: 861px) {
+  .modalOverlay {
+    padding: 32px;
+  }
+  .modal {
+    width: 480px;
+    border-radius: 14px;
+  }
+}
+
+.modalHeader {
+  padding: 20px 24px;
+  border-bottom: 1px solid var(--color-line);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.modalTitle {
+  font-family: var(--font-display);
+  font-weight: 700;
+  font-size: 18px;
+  color: var(--color-ink);
+  margin: 0;
+}
+
+.modalBody {
+  padding: 20px 24px;
+  overflow-y: auto;
+}
+
+.modalFooter {
+  padding: 16px 24px;
+  border-top: 1px solid var(--color-line);
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.modalFooter > * {
+  min-height: 48px;
+  font-size: 1rem;
+}
+
+@container sxapp (min-width: 861px) {
+  .modalFooter > * {
+    min-height: 36px;
+    font-size: inherit;
+  }
+}
+
+.closeBtn {
+  background: transparent;
+  border: none;
+  padding: 6px;
+  cursor: pointer;
+  color: var(--color-ink-4);
+  border-radius: 6px;
+  display: flex;
+}

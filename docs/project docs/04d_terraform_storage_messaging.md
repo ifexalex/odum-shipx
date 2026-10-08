@@ -10,7 +10,7 @@ Create Terraform modules for file storage (S3), message queues (SQS), event bus 
 
 ## Deliverables
 
-### Module: `infrastructure/modules/s3/main.tf`
+### Module: `infrastructure/aws/modules/s3/main.tf`
 
 **Resources:**
 - `aws_s3_bucket` — "logistics-assets-{env}-{account_id}"
@@ -33,7 +33,7 @@ Create Terraform modules for file storage (S3), message queues (SQS), event bus 
 
 ---
 
-### Module: `infrastructure/modules/sqs/main.tf`
+### Module: `infrastructure/aws/modules/sqs/main.tf`
 
 **Queues to create (each with a DLQ):**
 
@@ -54,7 +54,7 @@ Create Terraform modules for file storage (S3), message queues (SQS), event bus 
 
 ---
 
-### Module: `infrastructure/modules/eventbridge/main.tf`
+### Module: `infrastructure/aws/modules/eventbridge/main.tf`
 
 **Resources:**
 - `aws_cloudwatch_event_bus` — "logistics-events-{env}"
@@ -93,7 +93,7 @@ All events             → metering queue
 
 ---
 
-### Module: `infrastructure/modules/ses/` (if needed, or inline)
+### Module: `infrastructure/aws/modules/ses/` (if needed, or inline)
 
 **Resources (minimal for v1):**
 - Verify a domain or email for SES sending
@@ -109,5 +109,5 @@ All events             → metering queue
 - [ ] EventBridge custom bus created
 - [ ] Routing rules correctly map events to appropriate SQS queues
 - [ ] Scheduled rules created for all 7 cron jobs
-- [ ] All outputs exported for Lambda module consumption
+- [ ] All outputs exported for Lambda module consumption — `queue_urls` is now wired through to the Lambda module (2026-09-23) as the `SQS_SMS_QUEUE_URL` / `SQS_WHATSAPP_QUEUE_URL` / `SQS_EMAIL_QUEUE_URL` env vars; it was exported but never consumed, so every enqueue was silently dropped in AWS (see `04e_terraform_lambda_monitoring.md`)
 - [ ] `terraform plan` succeeds

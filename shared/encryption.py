@@ -1,76 +1,56 @@
 """Field-level encryption for sensitive PII columns.
 
-Uses AWS KMS to generate a per-value data key, then encrypts with Fernet
-(AES-128-CBC + HMAC-SHA256). The encrypted data key is stored alongside the
-ciphertext so decryption can always recover the plaintext without storing
-the key separately.
+Generates a per-value 32-byte data key via the configured cloud KeyProvider
+(AWS KMS today; Azure Key Vault behind the same interface), then encrypts with
+Fernet (AES-128-CBC + HMAC-SHA256). The encrypted data key is stored alongside
+the ciphertext so decryption can always recover the plaintext.
 
-Encrypted values are base64-encoded strings safe to store in TEXT columns.
+Encrypted values are base64-encoded strings safe to store in TEXT columns. The
+envelope format is `base64(encrypted_data_key || fernet_ciphertext)` — unchanged
+from the original KMS-only implementation, so existing ciphertext stays readable.
 
 Usage:
     from shared.encryption import encrypt_field, decrypt_field
+    stored    = encrypt_field(plaintext_id_number)   # on write
+    plaintext = decrypt_field(stored)                # on read
 
-    # On write:
-    stored = encrypt_field(plaintext_id_number)
-
-    # On read:
-    plaintext = decrypt_field(stored)
-
-Environment:
-    ENCRYPTION_KMS_KEY_ID — ARN or alias of the KMS key used for data key generation.
-    If unset (e.g. in local dev), values are stored unencrypted with a warning.
+Configuration (via shared/providers):
+    CLOUD_PROVIDER=aws   → ENCRYPTION_KMS_KEY_ID        (KMS key ARN/alias)
+    CLOUD_PROVIDER=azure → ENCRYPTION_KEY_VAULT_KEY_ID  (Key Vault key id)
+    If unset (e.g. local dev), values are stored unencrypted with a warning.
 """
 
 import base64
 import logging
-import os
-from typing import Any
+
+from shared.providers import get_key_provider
 
 logger = logging.getLogger(__name__)
 
-_KMS_KEY_ID = os.environ.get("ENCRYPTION_KMS_KEY_ID", "")
-
-# Separator between the encrypted KMS data key and the Fernet ciphertext.
-# Using b"||" — safe since base64url does not contain |.
+# Separator between the encrypted data key and the Fernet ciphertext.
+# b"||" is safe — base64url does not contain "|".
 _SEP = b"||"
-
-_kms_client = None
-
-
-def _get_kms() -> Any:
-    global _kms_client
-    if _kms_client is None:
-        import boto3
-
-        _kms_client = boto3.client("kms", region_name=os.environ.get("AWS_REGION", "eu-west-1"))
-    return _kms_client
 
 
 def encrypt_field(plaintext: str | None) -> str | None:
-    """Encrypt a plaintext string using KMS + Fernet.
+    """Encrypt a plaintext string with a provider data key + Fernet.
 
-    Returns a base64-encoded token that can be stored in a TEXT column.
-    If ENCRYPTION_KMS_KEY_ID is not configured, returns plaintext unchanged
-    (development fallback — logs a warning).
+    Returns a base64-encoded token for a TEXT column. When no key provider is
+    configured, returns the plaintext unchanged (dev fallback — logs a warning).
     """
     if plaintext is None:
         return None
-    if not _KMS_KEY_ID:
-        logger.warning("ENCRYPTION_KMS_KEY_ID not set — storing sensitive field unencrypted")
+    provider = get_key_provider()
+    if provider is None:
+        logger.warning("Field encryption not configured — storing sensitive field unencrypted")
         return plaintext
     try:
         from cryptography.fernet import Fernet
 
-        kms = _get_kms()
-        resp = kms.generate_data_key(KeyId=_KMS_KEY_ID, KeySpec="AES_256")
-        # AES_256 yields exactly 32 bytes; raise explicitly to catch any KMS API change early.
-        if len(resp["Plaintext"]) != 32:
-            raise RuntimeError(f"KMS AES_256 data key must be exactly 32 bytes, got {len(resp['Plaintext'])}")
-        fernet_key = base64.urlsafe_b64encode(resp["Plaintext"])
-        f = Fernet(fernet_key)
+        plain_key, enc_key = provider.generate_data_key()
+        f = Fernet(base64.urlsafe_b64encode(plain_key))
         ciphertext = f.encrypt(plaintext.encode("utf-8"))
-        # Combine encrypted KMS data key + ciphertext
-        combined = resp["CiphertextBlob"] + _SEP + ciphertext
+        combined = enc_key + _SEP + ciphertext
         return base64.b64encode(combined).decode("ascii")
     except Exception as exc:
         logger.error("Field encryption failed: %s", exc)
@@ -80,12 +60,13 @@ def encrypt_field(plaintext: str | None) -> str | None:
 def decrypt_field(token: str | None) -> str | None:
     """Decrypt a token produced by encrypt_field.
 
-    If ENCRYPTION_KMS_KEY_ID is not configured, returns token unchanged
-    (mirrors the development fallback in encrypt_field).
+    When no key provider is configured, returns the token unchanged (mirrors the
+    dev fallback in encrypt_field).
     """
     if token is None:
         return None
-    if not _KMS_KEY_ID:
+    provider = get_key_provider()
+    if provider is None:
         return token
     try:
         from cryptography.fernet import Fernet
@@ -94,12 +75,8 @@ def decrypt_field(token: str | None) -> str | None:
         sep_idx = raw.index(_SEP)
         enc_key = raw[:sep_idx]
         ciphertext = raw[sep_idx + len(_SEP) :]
-        kms = _get_kms()
-        resp = kms.decrypt(CiphertextBlob=enc_key)
-        if len(resp["Plaintext"]) != 32:
-            raise RuntimeError(f"KMS decrypted data key must be exactly 32 bytes, got {len(resp['Plaintext'])}")
-        fernet_key = base64.urlsafe_b64encode(resp["Plaintext"])
-        f = Fernet(fernet_key)
+        plain_key = provider.decrypt_data_key(enc_key)
+        f = Fernet(base64.urlsafe_b64encode(plain_key))
         plaintext: bytes = f.decrypt(ciphertext)
         return plaintext.decode("utf-8")
     except Exception as exc:

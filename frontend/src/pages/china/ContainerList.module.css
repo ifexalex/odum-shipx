@@ -1,0 +1,278 @@
+.banner {
+  margin-bottom: 16px;
+}
+
+/* Page-level actions sit above the stats row, right-aligned, matching
+   the TopBar actions placement in the design spec */
+.actionsRow {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-bottom: 20px;
+}
+
+/* Reflows to fewer columns as space shrinks instead of forcing the page
+   wider than its container on mobile (was a fixed 5-column grid). */
+.statsRow {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  gap: 16px;
+  margin-bottom: 20px;
+}
+
+/* Single-row filter bar: chips · search · buttons */
+.filterRow {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.chips {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+/* Faded count badge inside chip label */
+.chipCount {
+  opacity: 0.55;
+  margin-left: 4px;
+  font-weight: 500;
+}
+
+/* Styled search field with icon, matching the design */
+.searchWrap {
+  flex: 1;
+  min-width: 220px;
+  height: 36px;
+  background: var(--color-page);
+  border: 1px solid var(--color-line);
+  border-radius: var(--radius-sm);
+  display: flex;
+  align-items: center;
+  padding: 0 12px;
+  gap: 8px;
+}
+
+.searchInput {
+  flex: 1;
+  border: none;
+  outline: none;
+  background: transparent;
+  font-family: var(--font-body);
+  font-size: 13px;
+  color: var(--color-ink);
+}
+
+.searchInput::placeholder {
+  color: var(--color-ink-4);
+}
+
+.tableWrap {
+  margin-top: 16px;
+}
+
+.loadMore {
+  display: flex;
+  justify-content: center;
+  padding: 16px;
+}
+
+/* Route cell: color-coded origin → destination */
+.routeCell {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.routeArrow {
+  font-size: 11px;
+  color: var(--color-ink-4);
+}
+
+.vesselCell {
+  min-width: 0;
+}
+
+.vesselName {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--color-ink);
+  line-height: 1.25;
+  white-space: nowrap;
+}
+
+.vesselVoy {
+  font-size: 11px;
+  color: var(--color-ink-4);
+  font-family: var(--font-mono, monospace);
+  margin-top: 1px;
+}
+
+.dimText {
+  font-size: 13px;
+  color: var(--color-ink-4);
+}
+
+/* "Filters" popover — see DateRangeFilter for the shared calendar-button
+   variant of this same pattern (overlay + absolute dropdown). */
+.filtersWrap {
+  position: relative;
+  display: inline-flex;
+}
+
+/* Exact custom date range, alongside the "last N days" preset button —
+   presets alone can't answer "everything on this one specific day". */
+.customDateWrap {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  height: 36px;
+}
+
+.customDateLabel {
+  font-size: 12px;
+  color: var(--color-ink-3);
+}
+
+.customDateInput {
+  height: 36px;
+  box-sizing: border-box;
+  padding: 0 8px;
+  background: var(--color-page);
+  border: 1px solid var(--color-line);
+  border-radius: var(--radius-sm);
+  font-family: var(--font-body);
+  font-size: 13px;
+  color: var(--color-ink);
+}
+
+.filtersOverlay {
+  position: fixed;
+  inset: 0;
+  z-index: 9;
+}
+
+.filtersPanel {
+  position: absolute;
+  top: calc(100% + 4px);
+  right: 0;
+  background: var(--color-surface);
+  border: 1px solid var(--color-line);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-lg);
+  z-index: 10;
+  min-width: 240px;
+  padding: 10px;
+}
+
+/* Status multi-select — 9 options is taller than a typical dropdown, so it
+   scrolls within the panel instead of pushing "Arriving"/"Clear all filters"
+   off-screen. */
+.filtersPanelScroll {
+  max-height: 216px;
+  overflow-y: auto;
+}
+
+.filtersPanelHeader {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--color-ink);
+  padding: 2px 6px 8px;
+}
+
+.filtersPanelLabel {
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  color: var(--color-ink-4);
+  padding: 4px 6px;
+}
+
+.filtersPanelItem {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 8px 6px;
+  background: none;
+  border: none;
+  border-radius: var(--radius-sm);
+  font-family: var(--font-body);
+  font-size: 13px;
+  color: var(--color-ink-2);
+  cursor: pointer;
+  text-align: left;
+}
+
+.filtersPanelItem:hover {
+  background: var(--color-primary-tint);
+}
+
+.filtersPanelItemActive {
+  color: var(--color-ink);
+  font-weight: 600;
+}
+
+.checkSlot {
+  display: inline-flex;
+  width: 13px;
+  flex-shrink: 0;
+}
+
+.filtersPanelClear {
+  width: 100%;
+  margin-top: 6px;
+  padding: 8px 6px;
+  background: none;
+  border: none;
+  border-top: 1px solid var(--color-line);
+  border-radius: 0;
+  font-family: var(--font-body);
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--color-ink-3);
+  cursor: pointer;
+  text-align: left;
+}
+
+.filtersPanelClear:hover {
+  color: var(--color-error);
+}
+
+/* Utilization cell — packed CBM + a capacity fill bar (ContainerList) */
+.utilCell {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 92px;
+}
+.utilTop {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+}
+.utilPct {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--color-ink-3);
+  font-variant-numeric: tabular-nums;
+}
+.utilTrack {
+  height: 5px;
+  background: var(--color-line-soft);
+  border-radius: 3px;
+  overflow: hidden;
+}
+.utilFill {
+  height: 100%;
+  border-radius: 3px;
+  transition: width 0.2s ease;
+}
+/* Colour by the absolute-CBM business rule (≥70 green, 65–69 yellow, <65 red) */
+.utilGreen { background: var(--color-success); }
+.utilYellow { background: var(--color-warning); }
+.utilRed { background: var(--color-error); }

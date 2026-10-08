@@ -13,6 +13,8 @@ Routes:
   GET   /v1/billing/{billing-id}/disputes            — nigeria_office_staff, tenant_admin, customer (own)
   PATCH /v1/billing/disputes/{dispute-id}/acknowledge — nigeria_office_staff
   PATCH /v1/billing/disputes/{dispute-id}/resolve    — nigeria_office_staff, china_office_staff, tenant_admin
+  PATCH /v1/billing/{billing-id}/cancel              — tenant_admin, nigeria_office_staff
+  PATCH /v1/billing/{billing-id}/apply-carryover     — tenant_admin, nigeria_office_staff
 
 EventBridge:
   source=logistics.tracking, detail-type=PaymentDue → auto-create billing
@@ -24,22 +26,23 @@ import time
 import uuid
 from typing import Any
 
-from aws_xray_sdk.core import patch_all
-
 from shared.auth import get_tenant_context
 from shared.exceptions import LogisticsBaseError, ResourceNotFoundError
-from shared.logging_config import setup_logging
+from shared.idempotency import check_idempotency, store_idempotency
+from shared.logging_config import bind_log_context, clear_log_context, setup_logging
 from shared.metering import record_usage
+from shared.observability import init_tracing
 from shared.pagination import decode_cursor
 from shared.responses import created, error_response, no_content, paginated, success
 from shared.tenant_context import UserRole
+from shared.validation import parse_validated
 
 from . import service
-from .models import FileCBMDisputeRequest, ResolveCBMDisputeRequest
+from .models import CancelBillingRequest, ExemptCarryoverRequest, FileCBMDisputeRequest, ResolveCBMDisputeRequest
 
 # Module-level init (runs once on cold start)
 setup_logging()
-patch_all()
+init_tracing()
 
 logger = logging.getLogger(__name__)
 
@@ -66,10 +69,12 @@ _RESOLVE_ROLES = (
 )
 _CARRYOVER_READ_ROLES = (UserRole.TENANT_ADMIN, UserRole.NIGERIA_OFFICE_STAFF)
 _CARRYOVER_EXEMPT_ROLES = (UserRole.TENANT_ADMIN,)
+_CARRYOVER_APPLY_ROLES = (UserRole.TENANT_ADMIN, UserRole.NIGERIA_OFFICE_STAFF)
 _CHARGE_WRITE_ROLES = (UserRole.TENANT_ADMIN, UserRole.NIGERIA_OFFICE_STAFF)
 _CHARGE_READ_ROLES = (UserRole.TENANT_ADMIN, UserRole.NIGERIA_OFFICE_STAFF, UserRole.CUSTOMER)
 _CHARGE_DELETE_ROLES = (UserRole.TENANT_ADMIN,)
 _STORAGE_FEE_READ_ROLES = (UserRole.TENANT_ADMIN, UserRole.NIGERIA_OFFICE_STAFF, UserRole.CUSTOMER)
+_CANCEL_BILLING_ROLES = (UserRole.TENANT_ADMIN, UserRole.NIGERIA_OFFICE_STAFF)
 
 
 # ---------------------------------------------------------------------------
@@ -85,10 +90,15 @@ def lambda_handler(event: dict[str, Any], context: Any) -> dict[str, Any]:
     # API Gateway HTTP
     start_time = time.time()
     request_id = event.get("requestContext", {}).get("requestId") or str(uuid.uuid4())
+    clear_log_context()
+    bind_log_context(request_id=request_id)
     http = event.get("requestContext", {}).get("http", {})
     method = http.get("method", "")
     path = http.get("path", "")
     ip_address = event.get("requestContext", {}).get("identity", {}).get("sourceIp")
+
+    if method == "GET" and path.strip("/") == "v1/health":
+        return _health_response(request_id)
 
     try:
         tenant_ctx = get_tenant_context(event)
@@ -99,7 +109,18 @@ def lambda_handler(event: dict[str, Any], context: Any) -> dict[str, Any]:
             extra={"request_id": request_id, "tenant_id": tenant_ctx.tenant_id},
         )
 
+        idempotency_key = None
+        if method == "POST":
+            idempotency_key = (event.get("headers") or {}).get("idempotency-key")
+            cached = check_idempotency(idempotency_key, tenant_ctx.tenant_id)
+            if cached:
+                return cached
+
         response = _dispatch(event, method, path, tenant_ctx, request_id, ip_address)
+
+        if method == "POST" and idempotency_key and response.get("statusCode", 500) < 400:
+            store_idempotency(idempotency_key, response, tenant_ctx.tenant_id)
+
         record_usage(tenant_ctx.tenant_id, "api_calls", request_id=request_id)
         return response
 
@@ -176,18 +197,68 @@ def _dispatch(event: dict[str, Any], method: str, path: str, ctx: Any, request_i
             ctx.assert_role(*_BILLING_READ_ROLES)
             filters = {}
             if _qp(event, "status"):
-                filters["status"] = _qp(event, "status")
+                # Comma-separated multi-select (Filters panel) — a single
+                # status is just a 1-element list, matched against
+                # ANY(%(statuses)s) in list_billing_all.
+                filters["status"] = [s for s in _qp(event, "status", "").split(",") if s]
             if _qp(event, "customer_id"):
                 filters["customer_id"] = _qp(event, "customer_id")
+            if _qp(event, "created_after"):
+                filters["created_after"] = _qp(event, "created_after")
+            if _qp(event, "created_before"):
+                filters["created_before"] = _qp(event, "created_before")
+            if _qp(event, "q"):
+                # Free-text search over invoice_number / customer name /
+                # container_number (ILIKE in list_billing_all). The frontend
+                # BillingList search box sends ?q= — it was silently dropped.
+                filters["q"] = _qp(event, "q")
             limit = int(_qp(event, "limit", 50))
             cursor = decode_cursor(_qp(event, "cursor"))
-            page, next_cursor, has_more = service.list_billing(ctx.tenant_id, filters, limit, cursor)
+            sort_field = _qp(event, "sort") or "created_at"
+            sort_direction = _qp(event, "direction") or "desc"
+            page, next_cursor, has_more = service.list_billing(
+                ctx.tenant_id,
+                filters,
+                limit,
+                cursor,
+                ctx=ctx,
+                sort_field=sort_field,
+                sort_direction=sort_direction,
+            )
             return paginated(page, next_cursor, has_more, request_id=request_id)
         if method == "POST":
-            ctx.assert_role(*_BILLING_READ_ROLES)
+            ctx.assert_role(*_CHARGE_WRITE_ROLES)
             body = _parse_body(event)
             result = service.generate_billing(ctx.tenant_id, body, actor_id=ctx.user_id, ctx=ctx)
             return created(result, location="/v1/billing", request_id=request_id)
+        raise ResourceNotFoundError("route", path)
+
+    # GET /v1/billing/stats — tenant-wide aggregates for the list stats row +
+    # status-chip counts. Staff only (a tenant-wide money summary is not for
+    # the customer role), and computed in SQL so it stays correct at scale.
+    if segment == "stats":
+        if method == "GET":
+            ctx.assert_role(UserRole.TENANT_ADMIN, UserRole.NIGERIA_OFFICE_STAFF)
+            return success(service.get_billing_stats(ctx.tenant_id), request_id=request_id)
+        raise ResourceNotFoundError("route", path)
+
+    # GET /v1/billing/report?created_after=&created_before= — period report
+    # aggregates for the TenantReports page (revenue, CBM, by-status, top
+    # customers, per-container billing). Tenant-admin only; SQL-computed.
+    if segment == "report":
+        if method == "GET":
+            # Same tenant-wide-aggregate data class as /billing/stats (which
+            # both staff roles already read); the reports *page* is tenant-admin
+            # gated in the UI route table.
+            ctx.assert_role(UserRole.TENANT_ADMIN, UserRole.NIGERIA_OFFICE_STAFF)
+            return success(
+                service.get_tenant_report(
+                    ctx.tenant_id,
+                    created_after=_qp(event, "created_after") or None,
+                    created_before=_qp(event, "created_before") or None,
+                ),
+                request_id=request_id,
+            )
         raise ResourceNotFoundError("route", path)
 
     # /v1/billing/carryovers[/{id}/exempt]
@@ -197,6 +268,17 @@ def _dispatch(event: dict[str, Any], method: str, path: str, ctx: Any, request_i
     # /v1/billing/disputes[/{dispute_id}/{action}]
     if segment == "disputes":
         return _dispute_action_routes(event, parts, method, ctx, request_id, ip_address)
+
+    # GET /v1/billing/payments — recent payments across all billings (§6.1
+    # dashboard feed, P2-5). Staff only — a tenant-wide money feed is not for
+    # the customer role.
+    if segment == "payments":
+        if method == "GET":
+            ctx.assert_role(UserRole.TENANT_ADMIN, UserRole.NIGERIA_OFFICE_STAFF)
+            limit = min(int(_qp(event, "limit", 8)), 50)
+            results = service.list_recent_payments(ctx.tenant_id, limit)
+            return success(results, request_id=request_id)
+        raise ResourceNotFoundError("route", path)
 
     # /v1/billing/{resource_id}[/{action}[/{sub_id}]]
     resource_id = segment
@@ -231,11 +313,11 @@ def _carryover_routes(
         # PATCH /v1/billing/carryovers/{id}/exempt
         ctx.assert_role(*_CARRYOVER_EXEMPT_ROLES)
         body = _parse_body(event)
-        notes = body.get("notes")
+        req = parse_validated(ExemptCarryoverRequest, body)
         result = service.exempt_carryover(
             tenant_id,
             carryover_id,
-            notes,
+            req.notes,
             actor_id=ctx.user_id,
             ip_address=ip_address,
         )
@@ -270,7 +352,7 @@ def _billing_routes(
             # POST /v1/billing/{billing-id}/dispute
             ctx.assert_role(UserRole.CUSTOMER)
             body = _parse_body(event)
-            req = _parse_validated(FileCBMDisputeRequest, body)
+            req = parse_validated(FileCBMDisputeRequest, body)
             result = service.file_cbm_dispute(
                 tenant_id,
                 resource_id,
@@ -325,6 +407,52 @@ def _billing_routes(
             results = service.list_storage_fees(tenant_id, resource_id, ctx)
             return success(results, request_id=request_id)
 
+        if action == "storage-fees" and sub_id == "waive" and method == "POST":
+            # POST /v1/billing/{billing-id}/storage-fees/waive
+            ctx.assert_role(UserRole.TENANT_ADMIN, UserRole.NIGERIA_OFFICE_STAFF)
+            body = _parse_body(event)
+            reason = body.get("reason", "")
+            result = service.waive_storage_fees(
+                tenant_id,
+                resource_id,
+                reason=reason,
+                actor_id=ctx.user_id,
+                ip_address=ip_address or "",
+            )
+            return success(result, request_id=request_id)
+
+        if action == "cancel" and method == "PATCH":
+            # PATCH /v1/billing/{billing-id}/cancel
+            ctx.assert_role(*_CANCEL_BILLING_ROLES)
+            body = _parse_body(event)
+            req = parse_validated(CancelBillingRequest, body)
+            result = service.cancel_billing(
+                tenant_id,
+                resource_id,
+                req.cancel_reason,
+                actor_id=ctx.user_id,
+                ip_address=ip_address,
+            )
+            return success(result, request_id=request_id)
+
+        if action == "apply-carryover" and method == "PATCH":
+            # PATCH /v1/billing/{billing-id}/apply-carryover
+            ctx.assert_role(*_CARRYOVER_APPLY_ROLES)
+            body = _parse_body(event)
+            carryover_id = body.get("carryover_id", "")
+            if not carryover_id:
+                from shared.exceptions import ValidationError
+
+                raise ValidationError("Request validation failed", field_errors={"carryover_id": "required"})
+            result = service.apply_carryover(
+                tenant_id,
+                resource_id,
+                carryover_id,
+                actor_id=ctx.user_id,
+                ip_address=ip_address,
+            )
+            return success(result, request_id=request_id)
+
     raise ResourceNotFoundError("route", "/".join(parts))
 
 
@@ -369,7 +497,7 @@ def _dispute_action_routes(
     if action == "resolve" and method == "PATCH":
         ctx.assert_role(*_RESOLVE_ROLES)
         body = _parse_body(event)
-        req = _parse_validated(ResolveCBMDisputeRequest, body)
+        req = parse_validated(ResolveCBMDisputeRequest, body)
         result = service.resolve_dispute(
             tenant_id,
             dispute_id,
@@ -414,15 +542,22 @@ def _qp(event: dict[str, Any], key: str, default: Any = None) -> Any:
     return (event.get("queryStringParameters") or {}).get(key, default)
 
 
-def _parse_validated(model_class: Any, body: dict[str, Any]) -> Any:
-    from pydantic import ValidationError as PydanticValidationError
+# ---------------------------------------------------------------------------
+# Health check (no auth)
+# ---------------------------------------------------------------------------
 
-    try:
-        return model_class(**body)
-    except PydanticValidationError as exc:
-        from shared.exceptions import ValidationError
 
-        raise ValidationError(
-            "Request validation failed",
-            field_errors={str(e["loc"][-1]): e["msg"] for e in exc.errors()},
-        ) from exc
+def _health_response(request_id: str) -> dict[str, Any]:
+    import datetime
+    import json as _json
+
+    return {
+        "statusCode": 200,
+        "headers": {"Content-Type": "application/json", "X-Request-Id": request_id},
+        "body": _json.dumps(
+            {
+                "status": "healthy",
+                "timestamp": datetime.datetime.now(datetime.UTC).isoformat(),
+            }
+        ),
+    }

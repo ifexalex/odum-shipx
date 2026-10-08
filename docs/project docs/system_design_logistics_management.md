@@ -82,6 +82,8 @@
 - Platform Admin users have a special `tenant_id = PLATFORM` value granting cross-tenant access
 - JWT claims validated at API Gateway level before reaching Lambda
 
+**Portability note (2026-10-05):** this auth model is kept but made cloud-portable — see **ADR-004** (`docs/adr/004-cognito-to-entra-portability.md`) for the `IdentityProvider` port + Cognito→Entra claim-mapping and user-migration plan. The rest of the backend already runs on cloud-neutral ports (`shared/providers/`, `CLOUD_PROVIDER`); Cognito is the one remaining AWS-specific touchpoint.
+
 ---
 
 ## 2. High-Level Architecture

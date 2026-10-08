@@ -1,8 +1,15 @@
 """Database seed script — populates dev/staging environments with initial data.
 
-Creates two test tenants with realistic cargo-shipping data:
-  - Tenant A: "Acme Shipping Ltd"    (starter tier, 2 containers)
-  - Tenant B: "Global Cargo Co"     (business tier, 1 container)
+Creates three test tenants, each with a full staff set (tenant_admin,
+china_office_staff, nigeria_office_staff, warehouse_attendant) and 5
+customers — all sharing that tenant's own email domain, so real-Cognito
+login testing (LOCAL_TESTING.md §14.2, via scripts/bootstrap_local.sh) can
+sign in as any specific tenant, staff, or customer account. Acme additionally
+gets one multi-role staff member (nigeria_office_staff + warehouse_attendant,
+migration 039) to exercise the role-switch toggle and Cognito group-sync fix:
+  - Tenant A: "Acme Shipping Ltd"   (starter tier,  @acmeshipping.com,  2 containers)
+  - Tenant B: "Global Cargo Co"     (business tier, @globalcargo.com,   1 container)
+  - Tenant C: "Demo Shipping Ltd"   (business tier, @demoshipping.com,  1 container)
 
 Usage:
     DATABASE_HOST=localhost DATABASE_NAME=logistics \\
@@ -11,6 +18,7 @@ Usage:
 """
 
 import os
+import re
 import sys
 from datetime import date, timedelta
 from decimal import Decimal
@@ -53,21 +61,57 @@ def _one(cur, sql, params=None) -> dict:
 # ---------------------------------------------------------------------------
 
 
-def create_tenant(cur, company_name: str, email: str, phone: str, tier: str) -> dict:
+def create_tenant(cur, company_name: str, email: str, phone: str, tier: str, tenant_id: str | None = None) -> dict:
+    # tenant.slug is NOT NULL + UNIQUE (migration 023) — mirror its backfill
+    # logic (lowercase, non-alnum -> hyphen, trim) since there's no DB default.
+    slug = re.sub(r"-+", "-", re.sub(r"[^a-z0-9]+", "-", company_name.lower())).strip("-")
+    if tenant_id:
+        return _one(
+            cur,
+            """
+            INSERT INTO tenant (
+                id, company_name, primary_contact_email, primary_contact_phone,
+                subscription_tier, status, slug
+            ) VALUES (%s, %s, %s, %s, %s, 'active', %s)
+            RETURNING *
+            """,
+            (tenant_id, company_name, email, phone, tier, slug),
+        )
     return _one(
         cur,
         """
         INSERT INTO tenant (
             company_name, primary_contact_email, primary_contact_phone,
-            subscription_tier, status
-        ) VALUES (%s, %s, %s, %s, 'active')
+            subscription_tier, status, slug
+        ) VALUES (%s, %s, %s, %s, 'active', %s)
         RETURNING *
         """,
-        (company_name, email, phone, tier),
+        (company_name, email, phone, tier, slug),
     )
 
 
-def create_user(cur, tenant_id: str, email: str, name: str, role: str, created_by=None) -> dict:
+def create_user(
+    cur,
+    tenant_id: str,
+    email: str,
+    name: str,
+    role: str,
+    created_by: str | None = None,
+    user_id: str | None = None,
+) -> dict:
+    # user_id is set to a fixed UUID when known so that id = cognito_sub holds
+    # for seeded users — TenantContext.user_id is the raw Cognito sub with no
+    # resolution step, so any created_by / approved_by FK must use this id.
+    if user_id:
+        return _one(
+            cur,
+            """
+            INSERT INTO tenant_user (id, tenant_id, email, full_name, role, status, created_by)
+            VALUES (%s, %s, %s, %s, %s, 'active', %s)
+            RETURNING *
+            """,
+            (user_id, tenant_id, email, name, role, created_by),
+        )
     return _one(
         cur,
         """
@@ -76,6 +120,31 @@ def create_user(cur, tenant_id: str, email: str, name: str, role: str, created_b
         RETURNING *
         """,
         (tenant_id, email, name, role, created_by),
+    )
+
+
+def create_user_role(
+    cur,
+    tenant_user_id: str,
+    tenant_id: str,
+    role: str,
+    is_primary: bool,
+    assigned_by: str | None = None,
+) -> None:
+    """Insert a tenant_user_role row (migration 039 — multi-role staff support).
+
+    Only called explicitly for the one multi-role seed user below — every
+    single-role seeded user relies on repository.py's COALESCE fallback to
+    `ARRAY[tenant_user.role]` when it has no tenant_user_role rows, same as
+    any pre-existing tenant_user row would after the migration's backfill.
+    """
+    cur.execute(
+        """
+        INSERT INTO tenant_user_role (tenant_user_id, tenant_id, role, is_primary, assigned_by)
+        VALUES (%s, %s, %s, %s, %s)
+        ON CONFLICT (tenant_user_id, role) DO NOTHING
+        """,
+        (tenant_user_id, tenant_id, role, is_primary, assigned_by),
     )
 
 
@@ -92,15 +161,19 @@ def create_config(cur, tenant_id: str, key: str, value: dict) -> None:
     )
 
 
-def create_customer(cur, tenant_id: str, name: str, phone: str, email: str, address: str) -> dict:
+def create_customer(cur, tenant_id: str, name: str, phone: str, email: str, address: str, user_id: str | None = None) -> dict:
+    # user_id links the customer row to a tenant_user login — required for every
+    # customer-portal flow that resolves the caller via customer.user_id
+    # (my-shipments, my-billing, pay-online initialize, claims). Without it the
+    # local role-switcher customer sees an empty portal.
     return _one(
         cur,
         """
-        INSERT INTO customer (tenant_id, name, phone, email, address)
-        VALUES (%s, %s, %s, %s, %s)
+        INSERT INTO customer (tenant_id, name, phone, email, address, user_id)
+        VALUES (%s, %s, %s, %s, %s, %s)
         RETURNING *
         """,
-        (tenant_id, name, phone, email, address),
+        (tenant_id, name, phone, email, address, user_id),
     )
 
 
@@ -146,17 +219,31 @@ def create_manifest(
 
 
 def create_packing_list(
-    cur, tenant_id: str, container_id: str, manifest_id: str, customer_id: str, status: str, created_by: str
+    cur,
+    tenant_id: str,
+    container_id: str,
+    manifest_id: str,
+    customer_id: str,
+    status: str,
+    created_by: str,
+    reference: str | None = None,
 ) -> dict:
+    if reference is None:
+        # Derive a stable reference from the row count so far for this tenant.
+        row = _one(cur, "SELECT COUNT(*) AS cnt FROM packing_list WHERE tenant_id = %s", (tenant_id,))
+        seq = int(row["cnt"]) + 1
+        from datetime import date as _date
+
+        reference = f"PL-{_date.today().strftime('%Y%m%d')}-{seq:03d}"
     return _one(
         cur,
         """
         INSERT INTO packing_list (
-            tenant_id, container_id, manifest_id, customer_id, status, created_by
-        ) VALUES (%s, %s, %s, %s, %s, %s)
+            tenant_id, container_id, manifest_id, customer_id, status, created_by, reference
+        ) VALUES (%s, %s, %s, %s, %s, %s, %s)
         RETURNING *
         """,
-        (tenant_id, container_id, manifest_id, customer_id, status, created_by),
+        (tenant_id, container_id, manifest_id, customer_id, status, created_by, reference),
     )
 
 
@@ -257,6 +344,60 @@ def create_payment(
 # ---------------------------------------------------------------------------
 
 
+# Fixed well-known UUIDs for all three dev-seed tenants so that
+# LocalAuthProvider.tsx's DEMO_TENANT_ID and local_server.py's
+# DEFAULT_TENANT_ID always match, and so scripts/bootstrap_local.sh's
+# Cognito users line up 1:1 with these tenant_user rows by email —
+# regardless of how many times `make stack` is run.
+#
+# Uniform per-tenant numbering scheme (all three tenants follow this):
+#   xx11 tenant_admin · xx12 china_office_staff · xx13 nigeria_office_staff
+#   xx14 warehouse_attendant · xx21-xx25 customers 1-5
+#
+# Each tenant's staff + customers all share that tenant's own email
+# domain (acmeshipping.com / globalcargo.com / demoshipping.com) so
+# real-Cognito-login testing (LOCAL_TESTING.md §14.2) can log in as any
+# specific tenant or customer account, all under one platform admin.
+ACME_TENANT_ID = "10000000-0000-0000-0000-000000000001"
+ACME_ADMIN_ID = "10000000-0000-0000-0000-000000000011"
+ACME_CHINA_ID = "10000000-0000-0000-0000-000000000012"
+ACME_NIGERIA_ID = "10000000-0000-0000-0000-000000000013"
+ACME_WH_ID = "10000000-0000-0000-0000-000000000014"
+# Multi-role staff (migration 039) — Nigeria office staff + warehouse attendant,
+# so the role-switch toggle and Cognito group-sync fix have a real login to
+# exercise beyond the local-only LocalAuthProvider 'nigeria_warehouse' identity.
+ACME_NIGERIA_WH_ID = "10000000-0000-0000-0000-000000000015"
+ACME_CUST1_ID = "10000000-0000-0000-0000-000000000021"
+ACME_CUST2_ID = "10000000-0000-0000-0000-000000000022"
+ACME_CUST3_ID = "10000000-0000-0000-0000-000000000023"
+ACME_CUST4_ID = "10000000-0000-0000-0000-000000000024"
+ACME_CUST5_ID = "10000000-0000-0000-0000-000000000025"
+
+# Fixed UUIDs for Global Cargo Co — stable across make stack resets.
+GCCO_TENANT_ID = "30000000-0000-0000-0000-000000000001"
+GCCO_ADMIN_ID = "30000000-0000-0000-0000-000000000011"
+GCCO_CHINA_ID = "30000000-0000-0000-0000-000000000012"
+GCCO_NIGERIA_ID = "30000000-0000-0000-0000-000000000013"
+GCCO_WH_ID = "30000000-0000-0000-0000-000000000014"
+GCCO_CUST1_ID = "30000000-0000-0000-0000-000000000021"
+GCCO_CUST2_ID = "30000000-0000-0000-0000-000000000022"
+GCCO_CUST3_ID = "30000000-0000-0000-0000-000000000023"
+GCCO_CUST4_ID = "30000000-0000-0000-0000-000000000024"
+GCCO_CUST5_ID = "30000000-0000-0000-0000-000000000025"
+
+# Fixed UUIDs for Demo Shipping Ltd — stable across make stack resets.
+DEMO_TENANT_ID = "20000000-0000-0000-0000-000000000001"
+DEMO_ADMIN_ID = "20000000-0000-0000-0000-000000000011"
+DEMO_CHINA_ID = "20000000-0000-0000-0000-000000000012"
+DEMO_NIGERIA_ID = "20000000-0000-0000-0000-000000000013"
+DEMO_WH_ID = "20000000-0000-0000-0000-000000000014"
+DEMO_CUST1_ID = "20000000-0000-0000-0000-000000000021"
+DEMO_CUST2_ID = "20000000-0000-0000-0000-000000000022"
+DEMO_CUST3_ID = "20000000-0000-0000-0000-000000000023"
+DEMO_CUST4_ID = "20000000-0000-0000-0000-000000000024"
+DEMO_CUST5_ID = "20000000-0000-0000-0000-000000000025"
+
+
 def seed_tenant_a(cur) -> dict:
     """Acme Shipping Ltd — starter tier, 2 containers, varied billing states."""
     today = date.today()
@@ -268,18 +409,44 @@ def seed_tenant_a(cur) -> dict:
         email="admin@acmeshipping.com",
         phone="+2348011111111",
         tier="starter",
+        tenant_id=ACME_TENANT_ID,
     )
     tid = str(tenant["id"])
     print(f"  tenant_id: {tid}")
 
-    # Users
-    admin = create_user(cur, tid, "admin@acmeshipping.com", "Chidi Okafor", "tenant_admin")
-    china_staff = create_user(cur, tid, "china@acmeshipping.com", "Li Wei", "china_office_staff", admin["id"])
-    ng_staff = create_user(cur, tid, "lagos@acmeshipping.com", "Emeka Eze", "nigeria_office_staff", admin["id"])
-    warehouse = create_user(cur, tid, "warehouse@acmeshipping.com", "Tunde Bello", "warehouse_attendant", admin["id"])
-    create_user(cur, tid, "customer1@example.com", "Ngozi Adeyemi", "customer", admin["id"])
-    create_user(cur, tid, "customer2@example.com", "Ibrahim Musa", "customer", admin["id"])
-    print(f"  users: {admin['id']} (admin), {china_staff['id']} (china), {ng_staff['id']} (ng), {warehouse['id']} (wh)")
+    # Users — fixed IDs so local_server.py's _resolve_user_id always finds
+    # these rows, and DEMO_TENANT_ID in LocalAuthProvider.tsx stays stable.
+    admin = create_user(cur, tid, "admin@acmeshipping.com", "Chidi Okafor", "tenant_admin", user_id=ACME_ADMIN_ID)
+    china_staff = create_user(
+        cur, tid, "china@acmeshipping.com", "Li Wei", "china_office_staff", admin["id"], user_id=ACME_CHINA_ID
+    )
+    ng_staff = create_user(
+        cur, tid, "lagos@acmeshipping.com", "Emeka Eze", "nigeria_office_staff", admin["id"], user_id=ACME_NIGERIA_ID
+    )
+    warehouse = create_user(
+        cur, tid, "warehouse@acmeshipping.com", "Tunde Bello", "warehouse_attendant", admin["id"], user_id=ACME_WH_ID
+    )
+    # Multi-role staff member — primary role (mirrored to tenant_user.role) is
+    # nigeria_office_staff, secondary is warehouse_attendant. See LOCAL_TESTING.md
+    # §14 for how to log in as this user and exercise the role-switch toggle.
+    ng_wh_staff = create_user(
+        cur, tid, "amaka@acmeshipping.com", "Amaka Nwachukwu", "nigeria_office_staff", admin["id"], user_id=ACME_NIGERIA_WH_ID
+    )
+    create_user_role(cur, ng_wh_staff["id"], tid, "nigeria_office_staff", is_primary=True, assigned_by=admin["id"])
+    create_user_role(cur, ng_wh_staff["id"], tid, "warehouse_attendant", is_primary=False, assigned_by=admin["id"])
+    # 5 customer logins, all @acmeshipping.com — one tenant_user + one linked
+    # customer row each (see create_customer below), so every one of them can
+    # log in as a customer and see their own portal.
+    cust1_user = create_user(cur, tid, "ngozi@acmeshipping.com", "Ngozi Adeyemi", "customer", admin["id"], user_id=ACME_CUST1_ID)
+    cust2_user = create_user(cur, tid, "ibrahim@acmeshipping.com", "Ibrahim Musa", "customer", admin["id"], user_id=ACME_CUST2_ID)
+    cust3_user = create_user(cur, tid, "chioma@acmeshipping.com", "Chioma Eze", "customer", admin["id"], user_id=ACME_CUST3_ID)
+    cust4_user = create_user(cur, tid, "yusuf@acmeshipping.com", "Yusuf Musa", "customer", admin["id"], user_id=ACME_CUST4_ID)
+    cust5_user = create_user(
+        cur, tid, "blessing@acmeshipping.com", "Blessing Nwosu", "customer", admin["id"], user_id=ACME_CUST5_ID
+    )
+    print(
+        f"  users: {admin['id']} (admin), {china_staff['id']} (china), {ng_staff['id']} (ng), {warehouse['id']} (wh), {ng_wh_staff['id']} (ng+wh multi-role)"
+    )
 
     # Configs
     create_config(cur, tid, "dollar_rate", {"rate": 1550.00, "currency_pair": "USD_NGN", "effective_from": str(today)})
@@ -290,10 +457,32 @@ def seed_tenant_a(cur) -> dict:
     create_config(cur, tid, "dispute_escalation", {"enabled": True, "auto_escalate_days": 5})
     create_config(cur, tid, "reminder_days", {"storage_first_reminder": 7, "storage_final_reminder": 13})
 
-    # Customers
-    cust1 = create_customer(cur, tid, "Ngozi Adeyemi", "+2348022222222", "ngozi@example.com", "5 Okonkwo Street, Aba")
-    cust2 = create_customer(cur, tid, "Ibrahim Musa", "+2348033333333", "ibrahim@example.com", "12 Kano Road, Kaduna")
-    print(f"  customers: {cust1['id']}, {cust2['id']}")
+    # 5 customer profiles, all @acmeshipping.com, each linked via user_id to
+    # the tenant_user row created above — every one of them is a real login.
+    cust1 = create_customer(
+        cur, tid, "Ngozi Adeyemi", "+2348022222222", "ngozi@acmeshipping.com", "5 Okonkwo Street, Aba", user_id=cust1_user["id"]
+    )
+    cust2 = create_customer(
+        cur, tid, "Ibrahim Musa", "+2348033333333", "ibrahim@acmeshipping.com", "12 Kano Road, Kaduna", user_id=cust2_user["id"]
+    )
+    cust3 = create_customer(
+        cur, tid, "Chioma Eze", "+2348034567890", "chioma@acmeshipping.com", "7 Eze Close, Enugu", user_id=cust3_user["id"]
+    )
+    cust4 = create_customer(
+        cur, tid, "Yusuf Musa", "+2348023456789", "yusuf@acmeshipping.com", "22 Musa Avenue, Kano", user_id=cust4_user["id"]
+    )
+    cust5 = create_customer(
+        cur,
+        tid,
+        "Blessing Nwosu",
+        "+2348045678901",
+        "blessing@acmeshipping.com",
+        "31 Nwosu Crescent, Aba",
+        user_id=cust5_user["id"],
+    )
+    print(
+        f"  customers: {cust1['id']} (Ngozi), {cust2['id']} (Ibrahim), {cust3['id']} (Chioma), {cust4['id']} (Yusuf), {cust5['id']} (Blessing)"
+    )
 
     # Container 1 — fully released (historical)
     ship1 = today - timedelta(days=90)
@@ -404,16 +593,30 @@ def seed_tenant_b(cur) -> dict:
         email="admin@globalcargo.com",
         phone="+2348044444444",
         tier="business",
+        tenant_id=GCCO_TENANT_ID,
     )
     tid = str(tenant["id"])
     print(f"  tenant_id: {tid}")
 
-    # Users
-    admin = create_user(cur, tid, "admin@globalcargo.com", "Aisha Suleiman", "tenant_admin")
-    china1 = create_user(cur, tid, "china1@globalcargo.com", "Zhang Wei", "china_office_staff", admin["id"])
-    china2 = create_user(cur, tid, "china2@globalcargo.com", "Wang Fang", "china_office_staff", admin["id"])
-    create_user(cur, tid, "customer@globalcargo.com", "Olumide Adebayo", "customer", admin["id"])
-    print(f"  users: {admin['id']} (admin), {china1['id']}, {china2['id']} (china)")
+    # Users — full staff set (same shape as Acme/Demo) so every role is
+    # testable against this tenant too.
+    admin = create_user(cur, tid, "admin@globalcargo.com", "Aisha Suleiman", "tenant_admin", user_id=GCCO_ADMIN_ID)
+    china1 = create_user(cur, tid, "china@globalcargo.com", "Zhang Wei", "china_office_staff", admin["id"], user_id=GCCO_CHINA_ID)
+    ng_staff = create_user(
+        cur, tid, "lagos@globalcargo.com", "Ade Bankole", "nigeria_office_staff", admin["id"], user_id=GCCO_NIGERIA_ID
+    )
+    warehouse = create_user(
+        cur, tid, "warehouse@globalcargo.com", "Ngozi Kalu", "warehouse_attendant", admin["id"], user_id=GCCO_WH_ID
+    )
+    # 5 customer logins, all @globalcargo.com.
+    cust1_user = create_user(
+        cur, tid, "olumide@globalcargo.com", "Olumide Adebayo", "customer", admin["id"], user_id=GCCO_CUST1_ID
+    )
+    cust2_user = create_user(cur, tid, "chinwe@globalcargo.com", "Chinwe Okoro", "customer", admin["id"], user_id=GCCO_CUST2_ID)
+    cust3_user = create_user(cur, tid, "tunji@globalcargo.com", "Tunji Bakare", "customer", admin["id"], user_id=GCCO_CUST3_ID)
+    cust4_user = create_user(cur, tid, "grace@globalcargo.com", "Grace Eze", "customer", admin["id"], user_id=GCCO_CUST4_ID)
+    cust5_user = create_user(cur, tid, "halima@globalcargo.com", "Halima Yusuf", "customer", admin["id"], user_id=GCCO_CUST5_ID)
+    print(f"  users: {admin['id']} (admin), {china1['id']} (china), {ng_staff['id']} (ng), {warehouse['id']} (wh)")
 
     # Configs — higher rate, storage fee disabled
     create_config(cur, tid, "dollar_rate", {"rate": 1580.00, "currency_pair": "USD_NGN", "effective_from": str(today)})
@@ -422,9 +625,32 @@ def seed_tenant_b(cur) -> dict:
     create_config(cur, tid, "warehouse_address", {"address": "8 Broad Street", "city": "Lagos", "state": "Lagos"})
     create_config(cur, tid, "refund_threshold_usd", {"staff_limit": 100, "requires_manager_above": 100})
 
-    # Customer
-    cust1 = create_customer(cur, tid, "Olumide Adebayo", "+2348055555555", "olumide@example.com", "3 Victoria Island, Lagos")
-    print(f"  customers: {cust1['id']}")
+    # 5 customer profiles, all @globalcargo.com, each linked via user_id to
+    # the tenant_user row created above.
+    cust1 = create_customer(
+        cur,
+        tid,
+        "Olumide Adebayo",
+        "+2348055555555",
+        "olumide@globalcargo.com",
+        "3 Victoria Island, Lagos",
+        user_id=cust1_user["id"],
+    )
+    cust2 = create_customer(
+        cur, tid, "Chinwe Okoro", "+2348056666666", "chinwe@globalcargo.com", "18 Okoro Street, Onitsha", user_id=cust2_user["id"]
+    )
+    cust3 = create_customer(
+        cur, tid, "Tunji Bakare", "+2348057777777", "tunji@globalcargo.com", "4 Bakare Close, Ibadan", user_id=cust3_user["id"]
+    )
+    cust4 = create_customer(
+        cur, tid, "Grace Eze", "+2348058888888", "grace@globalcargo.com", "27 Eze Road, Enugu", user_id=cust4_user["id"]
+    )
+    cust5 = create_customer(
+        cur, tid, "Halima Yusuf", "+2348059999999", "halima@globalcargo.com", "9 Yusuf Avenue, Kano", user_id=cust5_user["id"]
+    )
+    print(
+        f"  customers: {cust1['id']} (Olumide), {cust2['id']} (Chinwe), {cust3['id']} (Tunji), {cust4['id']} (Grace), {cust5['id']} (Halima)"
+    )
 
     # Container — in_transit
     ship_date = date.today() - timedelta(days=10)
@@ -458,7 +684,81 @@ def seed_tenant_b(cur) -> dict:
     )
 
     print(f"  container: {con1['id']} (in_transit)")
-    return {"tenant": tenant, "admin": admin, "customers": [cust1]}
+    return {"tenant": tenant, "admin": admin, "customers": [cust1, cust2, cust3, cust4, cust5]}
+
+
+def seed_tenant_demo(cur) -> dict:
+    """Demo Shipping Ltd — business tier, one loading container for testing."""
+    today = date.today()
+    print("\n--- Tenant C: Demo Shipping Ltd ---")
+
+    tenant = create_tenant(
+        cur,
+        company_name="Demo Shipping Ltd",
+        email="admin@demoshipping.com",
+        phone="+2348099999999",
+        tier="business",
+        tenant_id=DEMO_TENANT_ID,
+    )
+    tid = str(tenant["id"])
+    print(f"  tenant_id: {tid}")
+
+    admin = create_user(cur, tid, "admin@demoshipping.com", "Amara Okafor", "tenant_admin", user_id=DEMO_ADMIN_ID)
+    china = create_user(
+        cur, tid, "china@demoshipping.com", "Kwame Asante", "china_office_staff", admin["id"], user_id=DEMO_CHINA_ID
+    )
+    nigeria = create_user(
+        cur, tid, "lagos@demoshipping.com", "Fatima Bello", "nigeria_office_staff", admin["id"], user_id=DEMO_NIGERIA_ID
+    )
+    create_user(cur, tid, "warehouse@demoshipping.com", "Segun Dada", "warehouse_attendant", admin["id"], user_id=DEMO_WH_ID)
+    # 5 customer logins, all @demoshipping.com.
+    cust1_user = create_user(
+        cur, tid, "funmi@demoshipping.com", "Funmilayo Adeyemi", "customer", admin["id"], user_id=DEMO_CUST1_ID
+    )
+    cust2_user = create_user(cur, tid, "emeka@demoshipping.com", "Emeka Obi", "customer", admin["id"], user_id=DEMO_CUST2_ID)
+    cust3_user = create_user(cur, tid, "amaka@demoshipping.com", "Amaka Chukwu", "customer", admin["id"], user_id=DEMO_CUST3_ID)
+    cust4_user = create_user(cur, tid, "david@demoshipping.com", "David Okon", "customer", admin["id"], user_id=DEMO_CUST4_ID)
+    cust5_user = create_user(cur, tid, "zainab@demoshipping.com", "Zainab Bello", "customer", admin["id"], user_id=DEMO_CUST5_ID)
+    print(f"  users: {admin['id']} (admin), {china['id']} (china), {nigeria['id']} (ng)")
+
+    create_config(cur, tid, "dollar_rate", {"rate": 1600.00, "currency_pair": "USD_NGN", "effective_from": str(today)})
+    create_config(cur, tid, "cbm_rate_per_unit", {"rate_usd": 48.00})
+    create_config(cur, tid, "storage_fee", {"enabled": True, "grace_period_days": 14, "daily_fee_per_carton_ngn": 500})
+    create_config(cur, tid, "warehouse_address", {"address": "3 Marina Road", "city": "Lagos", "state": "Lagos"})
+    create_config(cur, tid, "refund_threshold_usd", {"staff_limit": 75, "requires_manager_above": 75})
+
+    # 5 customer profiles, all @demoshipping.com, each linked via user_id to
+    # the tenant_user row created above.
+    cust1 = create_customer(
+        cur,
+        tid,
+        "Funmilayo Adeyemi",
+        "+2348011122233",
+        "funmi@demoshipping.com",
+        "14 Adeyemi Lane, Lagos",
+        user_id=cust1_user["id"],
+    )
+    cust2 = create_customer(
+        cur, tid, "Emeka Obi", "+2348044455566", "emeka@demoshipping.com", "9 Obi Street, Onitsha", user_id=cust2_user["id"]
+    )
+    cust3 = create_customer(
+        cur, tid, "Amaka Chukwu", "+2348044455577", "amaka@demoshipping.com", "16 Chukwu Avenue, Aba", user_id=cust3_user["id"]
+    )
+    cust4 = create_customer(
+        cur, tid, "David Okon", "+2348044455588", "david@demoshipping.com", "2 Okon Street, Uyo", user_id=cust4_user["id"]
+    )
+    cust5 = create_customer(
+        cur, tid, "Zainab Bello", "+2348044455599", "zainab@demoshipping.com", "40 Bello Road, Kano", user_id=cust5_user["id"]
+    )
+    print(
+        f"  customers: {cust1['id']} (Funmilayo), {cust2['id']} (Emeka), {cust3['id']} (Amaka), {cust4['id']} (David), {cust5['id']} (Zainab)"
+    )
+
+    # One container currently loading — so china staff can add packing lists immediately
+    con1 = create_container(cur, tid, "DEMO001001", "loading", str(china["id"]))
+    print(f"  container: {con1['id']} (loading)")
+
+    return {"tenant": tenant, "admin": admin, "customers": [cust1, cust2, cust3, cust4, cust5]}
 
 
 def main() -> None:
@@ -471,11 +771,13 @@ def main() -> None:
             # In production, use the logistics_app role and set app.current_tenant_id.
             result_a = seed_tenant_a(cur)
             result_b = seed_tenant_b(cur)
+            result_c = seed_tenant_demo(cur)
 
         conn.commit()
         print("\n=== Seed complete ===")
         print(f"Tenant A ({result_a['tenant']['company_name']}): {result_a['tenant']['id']}")
         print(f"Tenant B ({result_b['tenant']['company_name']}): {result_b['tenant']['id']}")
+        print(f"Tenant C ({result_c['tenant']['company_name']}): {result_c['tenant']['id']}")
         print("\nTo test RLS cross-tenant isolation:")
         print("  SET app.current_tenant_id = '<tenant_a_id>';")
         print("  SELECT count(*) FROM customer;  -- should return only Tenant A rows")

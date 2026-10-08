@@ -1,0 +1,71 @@
+.shell {
+  display: flex;
+  height: 100%;
+  background: var(--color-page);
+  font-family: var(--font-body);
+  color: var(--color-ink);
+  /* Responsive foundation — children (sidebar, topbar, tables, grids) respond to
+     this container's width, not the viewport (prototype .sx-appframe). */
+  container-type: inline-size;
+  container-name: sxapp;
+}
+
+.main {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.content {
+  flex: 1;
+  overflow-y: auto;
+  padding: var(--space-xl);
+  max-width: var(--content-max-width);
+  width: 100%;
+  margin: 0 auto;
+  box-sizing: border-box;
+}
+
+/* Docked sidebar wrapper — display:contents so the sidebar participates in the
+   shell flex directly; hidden under 860px where the drawer takes over. */
+.docked {
+  display: contents;
+}
+
+/* Mobile drawer — same Sidebar element rendered in an overlay panel. */
+.drawerOverlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(11, 47, 13, 0.55);
+  z-index: 120;
+  display: none;
+}
+
+.drawerPanel {
+  height: 100%;
+  width: var(--sidebar-width);
+  box-shadow: var(--shadow-modal);
+  animation: drawerIn 0.18s ease-out;
+}
+
+@keyframes drawerIn {
+  from {
+    transform: translateX(-100%);
+  }
+  to {
+    transform: translateX(0);
+  }
+}
+
+@container sxapp (max-width: 860px) {
+  .docked {
+    display: none;
+  }
+  .drawerOverlay {
+    display: block;
+  }
+  .content {
+    padding: 16px;
+  }
+}

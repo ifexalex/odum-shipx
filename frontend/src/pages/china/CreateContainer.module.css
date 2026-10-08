@@ -1,0 +1,58 @@
+.wrap {
+  max-width: 720px;
+  margin: 0 auto;
+}
+
+.banner {
+  margin-bottom: 16px;
+}
+
+.spacerLg {
+  height: 16px;
+}
+
+.spacerSm {
+  height: 12px;
+}
+
+.grid2 {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 14px;
+}
+
+.actions {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 20px 0 0;
+}
+
+/* P2-6 — collapse the two-column form grid on narrow app frames */
+@container sxapp (max-width: 860px) {
+  .grid2 { grid-template-columns: 1fr; }
+}
+
+/* Capacity combobox label/helper — mirrors the shared Field component so the
+   capacity picker lines up with the other labelled inputs on the form. */
+.capacityLabel {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  font-family: var(--font-body);
+  font-weight: 500;
+  font-size: 13px;
+  color: var(--color-ink-2);
+  margin-bottom: 6px;
+}
+.optionalTag {
+  font-weight: 400;
+  color: var(--color-ink-4);
+  font-size: 12px;
+}
+.capacityHelper {
+  display: block;
+  margin-top: 6px;
+  font-size: 12px;
+  color: var(--color-ink-4);
+}

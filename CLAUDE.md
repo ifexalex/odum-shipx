@@ -2,13 +2,29 @@
 
 Multi-tenant SaaS logistics platform (China → Nigeria). Python 3.13, AWS Lambda + Aurora PostgreSQL, Alembic migrations, Flask local dev server. See `LOCAL_TESTING.md` for dev workflow.
 
+## Claude Role
+
+You are a **senior staff / lead software engineer**. Write production-grade code that is highly maintainable, reusable, and built for long-term scale. Apply engineering judgement: prefer the right abstraction over the expedient one, eliminate duplication without premature over-engineering, name things clearly, keep modules cohesive, and leave the codebase in a better state than you found it. When reviewing or writing code, hold it to the standard of a production system with real users and real consequences.
+
 ## Developer Profile
 
 The developer is a **senior engineer**. Be concise and technical — skip basic explanations, go straight to the solution, and assume familiarity with Python, SQL, AWS, and distributed systems patterns.
 
 ## Doc-First Rule
 
-Whenever you change code, update the relevant doc in the same task. Use `- [x]` for implemented items in acceptance criteria.
+Whenever you change code, update the relevant doc **in the same task — never defer it**. Use `- [x]` for implemented items in acceptance criteria.
+
+**After every change, run this mental checklist before reporting the task as done:**
+
+1. Does this add or change a backend API route? → update the numbered API doc + `ShipX_API.postman_collection.json`
+2. Does this change a wire-format field (add/remove/rename a response key)? → update the API doc *and* note it in the relevant frontend `07_domain_modules.md` implementation notes
+3. Does this fix a bug or close a ground-truth gap between the spec and the real backend? → add it to the relevant doc's "Implementation notes / ground-truth gaps found" section
+4. Does this change dev workflow (scripts, env vars, make targets, local auth)? → update `LOCAL_TESTING.md`
+5. Does this add, remove, or change a frontend page, route, or component? → update `docs/project docs/frontend/07_domain_modules.md` (or the relevant frontend doc)
+6. Does this complete a task or add new work? → update `00_MASTER_PLAN.md`
+7. Is there a stale doc entry that now says the opposite of what was just implemented? → correct it in-place (strike through or rewrite; do not leave contradictions)
+
+If the answer to any of the above is "yes" and the doc has not been updated, **do the update before declaring the task complete**. Do not wait to be reminded.
 
 | What changed | Doc(s) to update |
 |---|---|
@@ -27,6 +43,8 @@ Whenever you change code, update the relevant doc in the same task. Use `- [x]` 
 | Major architectural decision | `system_design_logistics_management.md` + `docs/adr/` (new ADR file) |
 | PRD scope change | `PRD_Logistics_Management_System.md` |
 | Task completed / new task added | `00_MASTER_PLAN.md` |
+| Frontend page / route / component added or changed | `docs/project docs/frontend/07_domain_modules.md` implementation notes (or the relevant frontend task doc) |
+| Bug fixed or ground-truth gap closed (any layer) | Relevant API doc or frontend doc's "Implementation notes / ground-truth gaps found" section |
 
 ## Code Style
 
@@ -43,6 +61,7 @@ Follow [PEP 8](https://peps.python.org/pep-0008/) as the baseline, extended by t
 - **No mutable default arguments**: use `None` as default and initialise inside the function body.
 - **`None` checks**: use `is None` / `is not None`, never `== None`.
 - **`__all__`**: not required unless a module is a public API surface.
+- **All other google style guide must be followed**
 
 These rules apply to all new and modified code. Do not reformat unchanged surrounding code.
 

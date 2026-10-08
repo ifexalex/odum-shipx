@@ -13,6 +13,13 @@ def _ctx(role: UserRole = UserRole.NIGERIA_OFFICE_STAFF) -> TenantContext:
     return TenantContext(tenant_id=TENANT_ID, user_id="user-1", role=role)
 
 
+def _download_storage() -> MagicMock:
+    """Fake StorageProvider returning a fixed presigned GET URL."""
+    storage = MagicMock()
+    storage.presigned_get_url.return_value = "https://s3/download"
+    return storage
+
+
 def _manifest(**kw) -> dict:
     base = {
         "id": "manifest-001",
@@ -41,11 +48,15 @@ class TestGetManifest:
         with (
             patch.object(service.repo, "get_manifest_by_id", return_value=manifest),
             patch.object(service.repo, "get_customer_summaries", return_value=customers),
+            patch.object(service.repo, "get_items_with_weights_for_manifest", return_value=[]),
+            patch.object(service.repo, "get_missing_items_for_manifest", return_value=[]),
+            patch.object(service.repo, "list_manifest_evidence", return_value=[]),
         ):
             result = service.get_manifest(TENANT_ID, "manifest-001")
 
         assert result["id"] == "manifest-001"
         assert result["customers"] == customers
+        assert result["evidence"] == []
 
     def test_not_found_raises(self):
         from services.manifest import service
@@ -105,6 +116,7 @@ class TestVerifyManifest:
             patch.object(service.repo, "get_manifest_by_id", return_value=manifest),
             patch.object(service.repo, "set_manifest_verified", return_value=updated) as mock_verify,
             patch.object(service.repo, "get_customer_summaries", return_value=customers),
+            patch.object(service.repo, "get_items_with_weights_for_manifest", return_value=[]),
             patch("services.manifest.service.log_audit"),
         ):
             result = service.verify_manifest(TENANT_ID, "manifest-001", self._req("verified"), actor_id="u", ctx=_ctx())
@@ -135,6 +147,7 @@ class TestVerifyManifest:
             patch.object(service.repo, "get_item_by_carton_tag", return_value=item),
             patch.object(service.repo, "create_missing_item") as mock_create,
             patch.object(service.repo, "get_customer_summaries", return_value=customers),
+            patch.object(service.repo, "get_items_with_weights_for_manifest", return_value=[]),
             patch("services.manifest.service.log_audit"),
         ):
             service.verify_manifest(TENANT_ID, "manifest-001", req, actor_id="u", ctx=_ctx())
@@ -166,6 +179,7 @@ class TestVerifyManifest:
             patch.object(service.repo, "set_manifest_discrepancies_found", return_value=updated),
             patch.object(service.repo, "create_missing_item") as mock_create,
             patch.object(service.repo, "get_customer_summaries", return_value=[]),
+            patch.object(service.repo, "get_items_with_weights_for_manifest", return_value=[]),
             patch("services.manifest.service.log_audit"),
         ):
             service.verify_manifest(TENANT_ID, "manifest-001", req, actor_id="u", ctx=_ctx())
@@ -193,6 +207,7 @@ class TestVerifyManifest:
             patch.object(service.repo, "get_item_by_carton_tag", return_value=None),
             patch.object(service.repo, "create_missing_item") as mock_create,
             patch.object(service.repo, "get_customer_summaries", return_value=[]),
+            patch.object(service.repo, "get_items_with_weights_for_manifest", return_value=[]),
             patch("services.manifest.service.log_audit"),
         ):
             service.verify_manifest(TENANT_ID, "manifest-001", req, actor_id="u", ctx=_ctx())
@@ -212,6 +227,7 @@ class TestVerifyManifest:
             patch.object(service.repo, "get_manifest_by_id", return_value=manifest),
             patch.object(service.repo, "set_manifest_verified", return_value=updated),
             patch.object(service.repo, "get_customer_summaries", return_value=[]),
+            patch.object(service.repo, "get_items_with_weights_for_manifest", return_value=[]),
             patch("services.manifest.service.log_audit") as mock_audit,
         ):
             service.verify_manifest(TENANT_ID, "manifest-001", self._req("verified"), actor_id="auditor", ctx=_ctx())
@@ -239,3 +255,125 @@ class TestListManifests:
         mock_list.assert_called_once_with(TENANT_ID, {}, 20, None)
         assert len(result) == 1
         assert not has_more
+
+
+# ---------------------------------------------------------------------------
+# Verification evidence upload (F-D3, §6.3)
+# ---------------------------------------------------------------------------
+
+
+class TestEvidenceUpload:
+    def test_generates_presigned_upload_and_records_row(self):
+        from services.manifest import service
+        from shared.providers.base import UploadTicket
+
+        storage = MagicMock()
+        storage.presigned_upload.return_value = UploadTicket(
+            url="https://s3.example/bucket", method="PUT", headers={"Content-Type": "image/jpeg"}
+        )
+        with (
+            patch.object(service.repo, "get_manifest_by_id", return_value=_manifest()),
+            patch.object(service, "get_storage_provider", return_value=storage),
+            patch.object(service.repo, "create_manifest_evidence", return_value={"id": "ev-1"}) as mock_create,
+        ):
+            result = service.generate_evidence_upload(
+                TENANT_ID,
+                "manifest-001",
+                filename="damage.jpg",
+                content_type="image/jpeg",
+                actor_id="user-1",
+                label="Carton ABC-123",
+            )
+
+        # Tenant-isolated S3 key prefix.
+        assert storage.presigned_upload.call_args.args[0] == f"{TENANT_ID}/manifests/manifest-001/damage.jpg"
+        # Evidence row captured the label + key.
+        stored = mock_create.call_args[0][1]
+        assert stored["file_key"] == f"{TENANT_ID}/manifests/manifest-001/damage.jpg"
+        assert stored["label"] == "Carton ABC-123"
+        assert result["evidence_id"] == "ev-1"
+        assert result["upload_url"] == "https://s3.example/bucket"
+        assert result["upload_method"] == "PUT"
+
+    def test_rejects_disallowed_content_type(self):
+        from services.manifest import service
+
+        with pytest.raises(BusinessRuleViolationError):
+            service.generate_evidence_upload(
+                TENANT_ID,
+                "manifest-001",
+                filename="malware.exe",
+                content_type="application/x-msdownload",
+                actor_id="user-1",
+            )
+
+    def test_missing_manifest_raises_not_found(self):
+        from services.manifest import service
+
+        with (
+            patch.object(service.repo, "get_manifest_by_id", return_value=None),
+            pytest.raises(ResourceNotFoundError),
+        ):
+            service.generate_evidence_upload(
+                TENANT_ID,
+                "nope",
+                filename="x.png",
+                content_type="image/png",
+                actor_id="user-1",
+            )
+
+    def test_get_manifest_serializes_evidence_with_download_url(self):
+        from services.manifest import service
+
+        evidence_row = {
+            "id": "ev-1",
+            "file_key": f"{TENANT_ID}/manifests/m/x.jpg",
+            "file_name": "x.jpg",
+            "file_type": "image/jpeg",
+            "label": "note",
+            "created_at": "2026-07-13T00:00:00Z",
+        }
+        with (
+            patch.object(service.repo, "get_manifest_by_id", return_value=_manifest()),
+            patch.object(service.repo, "get_customer_summaries", return_value=[]),
+            patch.object(service.repo, "get_items_with_weights_for_manifest", return_value=[]),
+            patch.object(service.repo, "get_missing_items_for_manifest", return_value=[]),
+            patch.object(service.repo, "list_manifest_evidence", return_value=[evidence_row]),
+            patch.object(service, "get_storage_provider", return_value=_download_storage()),
+        ):
+            result = service.get_manifest(TENANT_ID, "manifest-001")
+
+        assert len(result["evidence"]) == 1
+        ev = result["evidence"][0]
+        assert ev["download_url"] == "https://s3/download"
+        assert ev["file_name"] == "x.jpg"
+        assert "file_key" not in ev  # internal key not leaked to the wire
+
+
+class TestManifestPackageMixQuery:
+    """The manifest list + detail queries carry a live package-mix breakdown
+    (carton/bale/bag/sack/pallet counts) aggregated from approved packing-list
+    items. Guards the SQL against accidental removal (mocked DB, so we inspect
+    the query string rather than run it)."""
+
+    def test_list_query_includes_package_mix_aggregation(self):
+        from services.manifest import repository as repo
+
+        with patch.object(repo, "execute_with_tenant", return_value=[]) as mock_exec:
+            repo.list_manifests(TENANT_ID, {}, limit=10, cursor=None)
+
+        sql = mock_exec.call_args.args[1]
+        assert "package_mix" in sql
+        assert "jsonb_object_agg" in sql
+        assert "pli.package_unit" in sql
+        assert "pl.status      = 'approved'" in sql
+
+    def test_detail_query_includes_package_mix_aggregation(self):
+        from services.manifest import repository as repo
+
+        with patch.object(repo, "execute_with_tenant", return_value=[]) as mock_exec:
+            repo.get_manifest_by_id(TENANT_ID, "mf-1")
+
+        sql = mock_exec.call_args.args[1]
+        assert "package_mix" in sql
+        assert "jsonb_object_agg" in sql

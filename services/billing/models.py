@@ -18,6 +18,7 @@ class PaymentStatus(StrEnum):
     overpaid = "overpaid"
     waived = "waived"
     released_with_outstanding = "released_with_outstanding"
+    cancelled = "cancelled"
 
 
 class CBMDisputeStatus(StrEnum):
@@ -33,6 +34,14 @@ class CBMDisputeStatus(StrEnum):
 # ---------------------------------------------------------------------------
 # Request models
 # ---------------------------------------------------------------------------
+
+
+class CancelBillingRequest(BaseModel):
+    cancel_reason: str = Field(min_length=1, max_length=500)
+
+
+class ExemptCarryoverRequest(BaseModel):
+    notes: str | None = Field(default=None, max_length=1000)
 
 
 class FileCBMDisputeRequest(BaseModel):
@@ -82,6 +91,12 @@ class CarryoverRecord(BaseModel):
 # ---------------------------------------------------------------------------
 
 
+class CbmBreakdownItem(BaseModel):
+    cbm: Decimal
+    rate: Decimal
+    subtotal: Decimal
+
+
 class BillingResponse(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
@@ -90,6 +105,13 @@ class BillingResponse(BaseModel):
     container_number: str | None = None
     total_cbm: Decimal
     cbm_rate_usd: Decimal
+    # cbm_rate_usd is always a USD-equivalent figure regardless of these —
+    # cbm_rate_currency/cbm_rate_mode describe how the tenant actually
+    # configured pricing at billing time, cbm_breakdown the per-package-type
+    # (carton/bag/bale) detail in that currency (see shared/cbm_rate.py).
+    cbm_rate_currency: str = "USD"
+    cbm_rate_mode: str = "flat"
+    cbm_breakdown: dict[str, CbmBreakdownItem] | None = None
     dollar_rate: Decimal
     subtotal_usd: Decimal
     subtotal_ngn: Decimal

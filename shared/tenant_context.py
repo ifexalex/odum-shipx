@@ -22,17 +22,28 @@ class TenantContext:
 
     tenant_id: str
     user_id: str  # Cognito sub
-    role: UserRole
+    role: UserRole  # Primary role — used for nav/display and as the single-role fallback
+    # Full set of roles assigned to this user (multi-role staff support).
+    # Falls back to {role} in __post_init__ when left empty, so any code path
+    # that constructs a TenantContext without populating it (e.g. tests) never
+    # regresses to "no roles = no permissions".
+    roles: frozenset[UserRole] = field(default_factory=frozenset)
+    # Impersonation metadata — non-None only when a platform admin is impersonating
+    impersonated_by: str | None = None
+    session_id: str | None = None
+    read_only: bool = False
     is_platform_admin: bool = field(init=False)
 
     def __post_init__(self) -> None:
         object.__setattr__(self, "is_platform_admin", self.tenant_id == PLATFORM_TENANT_ID)
+        if not self.roles:
+            object.__setattr__(self, "roles", frozenset({self.role}))
 
     def assert_role(self, *allowed_roles: UserRole) -> None:
-        """Raise InsufficientPermissionsError if user doesn't have one of the allowed roles."""
+        """Raise InsufficientPermissionsError if none of the user's roles are allowed."""
         from shared.exceptions import InsufficientPermissionsError
 
-        if self.role not in allowed_roles:
+        if not (self.roles & set(allowed_roles)):
             raise InsufficientPermissionsError(
                 action="this operation",
                 required_role=" or ".join(r.value for r in allowed_roles),

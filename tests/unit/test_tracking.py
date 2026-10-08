@@ -89,6 +89,49 @@ class TestCreateContainer:
 
         assert result["container_number"] == "CONT-001"
 
+    def test_persists_capacity_snapshot(self):
+        from services.tracking import service
+
+        row = _container()
+        with (
+            patch.object(service.repo, "create_container", return_value=row) as m,
+            patch("services.tracking.service.log_audit"),
+            patch("services.tracking.service.check_container_limit"),
+        ):
+            service.create_container(
+                TENANT_ID,
+                {
+                    "container_number": "CONT-001",
+                    "container_type": "40' High Cube (HC)",
+                    "capacity_cbm": 76,
+                    "recommended_cbm": 70,
+                },
+                actor_id="u",
+            )
+        sent = m.call_args[0][1]
+        assert sent["capacity_cbm"] == 76.0
+        assert sent["recommended_cbm"] == 70.0
+        assert sent["container_type"] == "40' High Cube (HC)"
+
+    def test_blank_capacity_stored_as_none(self):
+        from services.tracking import service
+
+        row = _container()
+        with (
+            patch.object(service.repo, "create_container", return_value=row) as m,
+            patch("services.tracking.service.log_audit"),
+            patch("services.tracking.service.check_container_limit"),
+        ):
+            service.create_container(
+                TENANT_ID,
+                {"container_number": "CONT-001", "capacity_cbm": "", "recommended_cbm": 0},
+                actor_id="u",
+            )
+        sent = m.call_args[0][1]
+        # Guards the NUMERIC(>0) CHECK — blank/zero becomes NULL, not a 422.
+        assert sent["capacity_cbm"] is None
+        assert sent["recommended_cbm"] is None
+
 
 # ---------------------------------------------------------------------------
 # get_container
@@ -129,10 +172,13 @@ class TestUpdateContainerStatus:
             patch.object(service.repo, "get_container_by_id", return_value=container),
             patch.object(service.repo, "update_container_status", return_value=updated),
             patch.object(service.repo, "count_approved_packing_lists", return_value=1),
-            patch.object(service.repo, "get_manifest_for_container", return_value={"id": "m-001"}),
+            patch.object(
+                service.repo, "get_manifest_for_container", return_value={"id": "m-001", "verification_status": "verified"}
+            ),
             patch.object(service.repo, "bulk_update_tracking_status"),
             patch.object(service.repo, "bulk_insert_tracking_events"),
             patch.object(service.repo, "get_customers_for_container", return_value=[]),
+            patch.object(service.repo, "insert_container_event"),
             patch("services.tracking.service.publish_event"),
             patch("services.tracking.service.log_audit"),
         ):
@@ -265,7 +311,9 @@ class TestUpdateContainerStatus:
             patch.object(service.repo, "bulk_update_tracking_status"),
             patch.object(service.repo, "bulk_insert_tracking_events"),
             patch.object(service.repo, "get_customers_for_container", return_value=customers),
+            patch.object(service.repo, "insert_container_event"),
             patch("services.tracking.service.publish_event") as mock_publish,
+            patch("services.tracking.service.handle_payment_due") as mock_handle_payment_due,
             patch("services.tracking.service.log_audit"),
         ):
             service.update_container_status(
@@ -276,6 +324,46 @@ class TestUpdateContainerStatus:
         event_types = [c[1]["detail_type"] for c in mock_publish.call_args_list]
         assert event_types.count("PaymentDue") == 2
         assert "ContainerStatusUpdated" in event_types
+
+        # Ground-truth fix: billing must be generated synchronously here — the
+        # EventBridge PaymentDue event above is never wired to invoke the
+        # billing Lambda (infrastructure/aws/modules/eventbridge/main.tf only
+        # fans it out to SMS/WhatsApp queues), so without this direct call a
+        # cleared container would carry zero billing records forever.
+        assert mock_handle_payment_due.call_count == 2
+        called_customer_ids = {c.kwargs["customer_id"] for c in mock_handle_payment_due.call_args_list}
+        assert called_customer_ids == {"cust-001", "cust-002"}
+        for call in mock_handle_payment_due.call_args_list:
+            assert call.kwargs["tenant_id"] == TENANT_ID
+            assert call.kwargs["container_id"] == "container-001"
+
+    def test_cleared_still_publishes_events_when_billing_generation_fails(self):
+        """A billing-generation failure for one customer must not block the
+        PaymentDue notification event or the other customers' billing."""
+        from services.tracking import service
+
+        container = _container(status="customs_clearance")
+        updated = {**container, "status": "cleared"}
+        customers = [{"id": "cust-001", "name": "Alice"}, {"id": "cust-002", "name": "Bob"}]
+
+        with (
+            patch.object(service.repo, "get_container_by_id", return_value=container),
+            patch.object(service.repo, "update_container_status", return_value=updated),
+            patch.object(service.repo, "bulk_update_tracking_status"),
+            patch.object(service.repo, "bulk_insert_tracking_events"),
+            patch.object(service.repo, "get_customers_for_container", return_value=customers),
+            patch.object(service.repo, "insert_container_event"),
+            patch("services.tracking.service.publish_event") as mock_publish,
+            patch("services.tracking.service.handle_payment_due", side_effect=RuntimeError("boom")) as mock_handle_payment_due,
+            patch("services.tracking.service.log_audit"),
+        ):
+            service.update_container_status(
+                TENANT_ID, "container-001", "cleared", extra={}, actor_id="u", ctx=_ctx(UserRole.NIGERIA_OFFICE_STAFF)
+            )
+
+        assert mock_handle_payment_due.call_count == 2
+        event_types = [c[1]["detail_type"] for c in mock_publish.call_args_list]
+        assert event_types.count("PaymentDue") == 2
 
 
 # ---------------------------------------------------------------------------
@@ -309,6 +397,199 @@ class TestTrackingStageMapping:
 # ---------------------------------------------------------------------------
 # list_shipments — customer isolation
 # ---------------------------------------------------------------------------
+
+
+class TestListContainersRepository:
+    """Regression coverage for services/tracking/repository.py::list_containers
+    SQL construction. The `q` free-text filter used to be folded into the
+    blanket-prefixed `conditions` list, producing invalid SQL of the shape
+    `c.(c.container_number ILIKE ...)` — a syntax error on every request that
+    used the container search box (table search bar and header search alike).
+    """
+
+    def test_q_filter_produces_valid_where_clause(self):
+        from services.tracking import repository
+
+        with patch.object(repository, "execute_with_tenant", return_value=[]) as mock_exec:
+            repository.list_containers(TENANT_ID, {"q": "MSCU"}, limit=50, cursor=None)
+
+        query = mock_exec.call_args[0][1]
+        assert "c.(c." not in query
+        assert "(c.container_number ILIKE %(q)s" in query
+        assert "OR c.vessel_name ILIKE %(q)s" in query
+        assert "OR c.voyage_number ILIKE %(q)s" in query
+
+    def test_status_filter_scoped_to_alias(self):
+        from services.tracking import repository
+
+        with patch.object(repository, "execute_with_tenant", return_value=[]) as mock_exec:
+            repository.list_containers(TENANT_ID, {"status": "sealed"}, limit=50, cursor=None)
+
+        query = mock_exec.call_args[0][1]
+        params = mock_exec.call_args[0][2]
+        assert "c.status = ANY(%(statuses)s)" in query
+        assert params["statuses"] == ["sealed"]
+
+    def test_status_filter_accepts_a_list_for_the_filters_panel_multi_select(self):
+        """Filters panel status multi-select sends several statuses at once —
+        handler.py splits the comma-separated `status` query param into a list
+        before it reaches the repo. Must produce a single parameterized
+        ANY(...) clause, never a string-interpolated IN (...)."""
+        from services.tracking import repository
+
+        with patch.object(repository, "execute_with_tenant", return_value=[]) as mock_exec:
+            repository.list_containers(TENANT_ID, {"status": ["sealed", "in_transit", "cleared"]}, limit=50, cursor=None)
+
+        query = mock_exec.call_args[0][1]
+        params = mock_exec.call_args[0][2]
+        assert "c.status = ANY(%(statuses)s)" in query
+        assert params["statuses"] == ["sealed", "in_transit", "cleared"]
+
+    def test_created_after_and_before_filters_added(self):
+        from services.tracking import repository
+
+        with patch.object(repository, "execute_with_tenant", return_value=[]) as mock_exec:
+            repository.list_containers(
+                TENANT_ID,
+                {"created_after": "2026-06-01", "created_before": "2026-07-01"},
+                limit=50,
+                cursor=None,
+            )
+
+        query = mock_exec.call_args[0][1]
+        params = mock_exec.call_args[0][2]
+        assert "c.created_at >= %(created_after)s" in query
+        assert "c.created_at <= %(created_before)s" in query
+        assert params["created_after"] == "2026-06-01"
+        assert params["created_before"] == "2026-07-01"
+
+    def test_eta_after_and_before_filters_added(self):
+        """Filters panel's "Arriving" preset — ETA range is distinct from the
+        `created_after`/`created_before` "date created" filter (row 7.36)."""
+        from services.tracking import repository
+
+        with patch.object(repository, "execute_with_tenant", return_value=[]) as mock_exec:
+            repository.list_containers(
+                TENANT_ID,
+                {"eta_after": "2026-07-19", "eta_before": "2026-08-18"},
+                limit=50,
+                cursor=None,
+            )
+
+        query = mock_exec.call_args[0][1]
+        params = mock_exec.call_args[0][2]
+        assert "c.estimated_arrival_date >= %(eta_after)s" in query
+        assert "c.estimated_arrival_date <= %(eta_before)s" in query
+        assert params["eta_after"] == "2026-07-19"
+        assert params["eta_before"] == "2026-08-18"
+
+    def test_sort_field_defaults_to_created_at(self):
+        from services.tracking import repository
+
+        with patch.object(repository, "execute_with_tenant", return_value=[]) as mock_exec:
+            repository.list_containers(TENANT_ID, {}, limit=50, cursor=None)
+
+        query = mock_exec.call_args[0][1]
+        assert "ORDER BY created_at DESC" in query
+
+    def test_sort_field_container_number_ascending(self):
+        from services.tracking import repository
+
+        with patch.object(repository, "execute_with_tenant", return_value=[]) as mock_exec:
+            repository.list_containers(
+                TENANT_ID,
+                {},
+                limit=50,
+                cursor=None,
+                sort_field="container_number",
+                sort_direction="asc",
+            )
+
+        query = mock_exec.call_args[0][1]
+        assert "ORDER BY container_number ASC" in query
+
+    def test_sort_field_estimated_arrival_date(self):
+        from services.tracking import repository
+
+        with patch.object(repository, "execute_with_tenant", return_value=[]) as mock_exec:
+            repository.list_containers(
+                TENANT_ID,
+                {},
+                limit=50,
+                cursor=None,
+                sort_field="estimated_arrival_date",
+                sort_direction="asc",
+            )
+
+        query = mock_exec.call_args[0][1]
+        assert "ORDER BY estimated_arrival_date ASC" in query
+
+    def test_invalid_sort_field_rejected(self):
+        from services.tracking import repository
+        from shared.exceptions import ValidationError
+
+        with patch.object(repository, "execute_with_tenant", return_value=[]):
+            with pytest.raises(ValidationError):
+                repository.list_containers(TENANT_ID, {}, limit=50, cursor=None, sort_field="notes")
+
+
+class TestContainersHandlerQueryParams:
+    """GET /v1/containers — handler-level parsing of the Filters panel's
+    comma-separated multi-status param and the Table sort/direction params."""
+
+    def _event(self, query: dict | None = None) -> dict:
+        return {
+            "requestContext": {
+                "requestId": "req-containers-001",
+                "http": {"method": "GET", "path": "/v1/containers"},
+                "authorizer": {"claims": {"sub": "user-1", "custom:tenant_id": TENANT_ID}},
+                "identity": {"sourceIp": "127.0.0.1"},
+            },
+            "headers": {},
+            "body": "{}",
+            "queryStringParameters": query or {},
+            "pathParameters": {},
+        }
+
+    def test_comma_separated_status_becomes_a_list_filter(self):
+        from services.tracking import handler, service
+
+        with (
+            patch("services.tracking.handler.get_tenant_context", return_value=_ctx(UserRole.CHINA_OFFICE_STAFF)),
+            patch.object(service.repo, "list_containers", return_value=([], None, False)) as mock_list,
+        ):
+            resp = handler.lambda_handler(self._event({"status": "sealed,in_transit,cleared"}), None)
+
+        assert resp["statusCode"] == 200
+        filters = mock_list.call_args[0][1]
+        assert filters["status"] == ["sealed", "in_transit", "cleared"]
+
+    def test_sort_and_direction_query_params_reach_the_repo(self):
+        from services.tracking import handler, service
+
+        with (
+            patch("services.tracking.handler.get_tenant_context", return_value=_ctx(UserRole.CHINA_OFFICE_STAFF)),
+            patch.object(service.repo, "list_containers", return_value=([], None, False)) as mock_list,
+        ):
+            resp = handler.lambda_handler(self._event({"sort": "container_number", "direction": "asc"}), None)
+
+        assert resp["statusCode"] == 200
+        assert mock_list.call_args.args[4] == "container_number"
+        assert mock_list.call_args.args[5] == "asc"
+
+    def test_eta_range_query_params_reach_the_repo(self):
+        from services.tracking import handler, service
+
+        with (
+            patch("services.tracking.handler.get_tenant_context", return_value=_ctx(UserRole.CHINA_OFFICE_STAFF)),
+            patch.object(service.repo, "list_containers", return_value=([], None, False)) as mock_list,
+        ):
+            resp = handler.lambda_handler(self._event({"eta_after": "2026-07-19", "eta_before": "2026-08-18"}), None)
+
+        assert resp["statusCode"] == 200
+        filters = mock_list.call_args[0][1]
+        assert filters["eta_after"] == "2026-07-19"
+        assert filters["eta_before"] == "2026-08-18"
 
 
 class TestListShipments:
@@ -407,3 +688,365 @@ class TestGetShipmentByCodeAndPhone:
             result = service.get_shipment_by_code_and_phone("TK-001", "+234801")
 
         assert result["company_name"] == "Branded Logistics"
+
+
+# ---------------------------------------------------------------------------
+# Container event audit trail
+# ---------------------------------------------------------------------------
+
+import sys
+from unittest.mock import MagicMock as _MagicMock
+
+# Stub metering so tracking.service can be imported without the full services/ tree
+_metering_stub = _MagicMock()
+_metering_stub.service.check_container_limit = _MagicMock(return_value=None)
+sys.modules.setdefault("metering", _metering_stub)
+sys.modules.setdefault("metering.service", _metering_stub.service)
+
+
+class TestContainerEvents:
+    def test_get_container_events_returns_ordered_history(self):
+        from services.tracking import service
+
+        container = {"id": "container-001", "status": "cleared"}
+        events = [
+            {"id": "ev-1", "from_status": "loading", "to_status": "sealed", "actor_id": "u", "created_at": None},
+            {"id": "ev-2", "from_status": "sealed", "to_status": "in_transit", "actor_id": "u", "created_at": None},
+        ]
+
+        with (
+            patch.object(service.repo, "get_container_by_id", return_value=container),
+            patch.object(service.repo, "get_container_events", return_value=events),
+        ):
+            result = service.get_container_events("tenant-1", "container-001")
+            assert len(result) == 2
+            assert result[0]["to_status"] == "sealed"
+            assert result[1]["to_status"] == "in_transit"
+
+    def test_get_container_events_container_not_found_raises(self):
+        from services.tracking import service
+        from shared.exceptions import ResourceNotFoundError
+
+        with patch.object(service.repo, "get_container_by_id", return_value=None):
+            with pytest.raises(ResourceNotFoundError):
+                service.get_container_events("tenant-1", "nonexistent")
+
+    def test_update_container_status_writes_event(self):
+        """Every successful status transition must append a container_event row."""
+        from services.tracking import service
+        from shared.tenant_context import TenantContext, UserRole
+
+        ctx = TenantContext(tenant_id="tenant-1", user_id="actor-1", role=UserRole.CHINA_OFFICE_STAFF)
+        container = {"id": "container-001", "status": "loading", "container_number": "ACME-001"}
+        updated = {**container, "status": "sealed"}
+
+        with (
+            patch.object(service.repo, "get_container_by_id", return_value=container),
+            patch.object(service.repo, "count_approved_packing_lists", return_value=1),
+            patch.object(
+                service.repo, "get_manifest_for_container", return_value={"id": "manifest-1", "verification_status": "verified"}
+            ),
+            patch.object(service.repo, "update_container_status", return_value=updated),
+            patch.object(service.repo, "insert_container_event") as mock_event,
+            patch.object(service.repo, "bulk_update_tracking_status"),
+            patch.object(service.repo, "bulk_insert_tracking_events"),
+            patch("services.tracking.service.publish_event"),
+            patch("services.tracking.service.log_audit"),
+        ):
+            service.update_container_status("tenant-1", "container-001", "sealed", {}, actor_id="actor-1", ctx=ctx)
+            mock_event.assert_called_once_with(
+                tenant_id="tenant-1",
+                container_id="container-001",
+                from_status="loading",
+                to_status="sealed",
+                actor_id="actor-1",
+                notes=None,
+            )
+
+    def test_update_container_status_event_captures_notes(self):
+        """Notes from extra dict are forwarded to insert_container_event."""
+        from services.tracking import service
+        from shared.tenant_context import TenantContext, UserRole
+
+        ctx = TenantContext(tenant_id="tenant-1", user_id="actor-1", role=UserRole.NIGERIA_OFFICE_STAFF)
+        container = {"id": "container-001", "status": "arrived", "container_number": "ACME-001"}
+        updated = {**container, "status": "customs_clearance"}
+
+        with (
+            patch.object(service.repo, "get_container_by_id", return_value=container),
+            patch.object(service.repo, "update_container_status", return_value=updated),
+            patch.object(service.repo, "insert_container_event") as mock_event,
+            patch.object(service.repo, "bulk_update_tracking_status"),
+            patch.object(service.repo, "bulk_insert_tracking_events"),
+            patch("services.tracking.service.publish_event"),
+            patch("services.tracking.service.log_audit"),
+        ):
+            service.update_container_status(
+                "tenant-1", "container-001", "customs_clearance", {"notes": "Passed inspection"}, actor_id="actor-1", ctx=ctx
+            )
+            _, kwargs = mock_event.call_args
+            assert kwargs["notes"] == "Passed inspection"
+
+
+class TestShipmentUpdateNotification:
+    """Ground-truth gap found live, reported by the user while investigating
+    a separate missing notification on payment-claim rejection — asked to
+    check every notification in the app. `shipment_update` had full SMS/
+    WhatsApp/email templates defined but no call site ever used it — the
+    customer-visible status transitions (in_transit, arrived,
+    customs_clearance, fully_released) sent no notification at all."""
+
+    def _transition(self, from_status: str, new_status: str):
+        from services.tracking import service
+        from shared.tenant_context import TenantContext, UserRole
+
+        # TENANT_ADMIN is allowed to transition from any stage — avoids
+        # threading the right china/nigeria/warehouse role per from_status.
+        ctx = TenantContext(tenant_id="tenant-1", user_id="actor-1", role=UserRole.TENANT_ADMIN)
+        container = {"id": "container-001", "status": from_status, "container_number": "ACME-001"}
+        updated = {**container, "status": new_status}
+        customer = {
+            "id": "cust-1",
+            "name": "Ngozi",
+            "phone": "+2348012345678",
+            "email": "n@x.com",
+            "whatsapp": None,
+            "locale": "en",
+        }
+        extra = {"ship_date": "2026-09-09"} if new_status == "in_transit" else {}
+
+        with (
+            patch.object(service.repo, "get_container_by_id", return_value=container),
+            patch.object(service.repo, "update_container_status", return_value=updated),
+            patch.object(service.repo, "insert_container_event"),
+            patch.object(service.repo, "bulk_update_tracking_status"),
+            patch.object(service.repo, "bulk_insert_tracking_events"),
+            patch.object(service.repo, "get_customers_for_container", return_value=[customer]) as mock_customers,
+            patch("services.tracking.service.publish_event"),
+            patch("services.tracking.service.log_audit"),
+            patch("services.tracking.service.enqueue_notifications") as mock_notify,
+        ):
+            service.update_container_status("tenant-1", "container-001", new_status, extra, actor_id="actor-1", ctx=ctx)
+        return mock_customers, mock_notify
+
+    def test_in_transit_notifies_the_customer(self):
+        _, mock_notify = self._transition("sealed", "in_transit")
+        mock_notify.assert_called_once()
+        assert mock_notify.call_args.kwargs["event_type"] == "shipment_update"
+        assert mock_notify.call_args.kwargs["template_data"]["status"] == "in transit"
+        assert mock_notify.call_args.kwargs["customer_id"] == "cust-1"
+
+    def test_customs_clearance_notifies_the_customer(self):
+        _, mock_notify = self._transition("arrived", "customs_clearance")
+        mock_notify.assert_called_once()
+        assert mock_notify.call_args.kwargs["template_data"]["status"] == "customs clearance"
+
+    def test_fully_released_notifies_the_customer(self):
+        _, mock_notify = self._transition("at_warehouse", "fully_released")
+        mock_notify.assert_called_once()
+        assert mock_notify.call_args.kwargs["template_data"]["status"] == "fully released"
+
+    def test_cleared_does_not_send_a_redundant_shipment_update(self):
+        """`cleared` is covered by handle_payment_due's own payment_due
+        notification (called separately) — a bare "status changed" ping
+        here would be redundant with "here's what you owe"."""
+
+        with patch("services.tracking.service.handle_payment_due"):
+            _, mock_notify = self._transition("customs_clearance", "cleared")
+        mock_notify.assert_not_called()
+
+    def test_a_customer_fetch_failure_does_not_fail_the_transition(self):
+        from services.tracking import service
+        from shared.tenant_context import TenantContext, UserRole
+
+        ctx = TenantContext(tenant_id="tenant-1", user_id="actor-1", role=UserRole.TENANT_ADMIN)
+        container = {"id": "container-001", "status": "sealed", "container_number": "ACME-001"}
+        updated = {**container, "status": "in_transit"}
+
+        with (
+            patch.object(service.repo, "get_container_by_id", return_value=container),
+            patch.object(service.repo, "update_container_status", return_value=updated),
+            patch.object(service.repo, "insert_container_event"),
+            patch.object(service.repo, "bulk_update_tracking_status"),
+            patch.object(service.repo, "bulk_insert_tracking_events"),
+            patch.object(service.repo, "get_customers_for_container", side_effect=RuntimeError("db down")),
+            patch("services.tracking.service.publish_event"),
+            patch("services.tracking.service.log_audit"),
+        ):
+            result = service.update_container_status(
+                "tenant-1",
+                "container-001",
+                "in_transit",
+                {"ship_date": "2026-09-09"},
+                actor_id="actor-1",
+                ctx=ctx,
+            )
+
+        assert result["status"] == "in_transit"
+
+    def test_shipment_update_also_notifies_the_customer_in_app_when_they_have_a_portal_account(self):
+        """Ground-truth follow-up, reported live by the user: SMS/WhatsApp/
+        email can each fail for reasons entirely outside this app, and the
+        customer portal itself showed nothing until they happened to open
+        the specific shipment page."""
+        from services.tracking import service
+        from shared.tenant_context import TenantContext, UserRole
+
+        ctx = TenantContext(tenant_id="tenant-1", user_id="actor-1", role=UserRole.TENANT_ADMIN)
+        container = {"id": "container-001", "status": "sealed", "container_number": "ACME-001"}
+        updated = {**container, "status": "in_transit"}
+        customer = {
+            "id": "cust-1",
+            "user_id": "portal-user-001",
+            "name": "Ngozi",
+            "phone": "+2348012345678",
+            "email": "n@x.com",
+            "whatsapp": None,
+            "locale": "en",
+        }
+
+        with (
+            patch.object(service.repo, "get_container_by_id", return_value=container),
+            patch.object(service.repo, "update_container_status", return_value=updated),
+            patch.object(service.repo, "insert_container_event"),
+            patch.object(service.repo, "bulk_update_tracking_status"),
+            patch.object(service.repo, "bulk_insert_tracking_events"),
+            patch.object(service.repo, "get_customers_for_container", return_value=[customer]),
+            patch("services.tracking.service.publish_event"),
+            patch("services.tracking.service.log_audit"),
+            patch("services.tracking.service.enqueue_notifications"),
+            patch("services.tracking.service.notify_staff") as mock_notify_staff,
+        ):
+            service.update_container_status(
+                "tenant-1",
+                "container-001",
+                "in_transit",
+                {"ship_date": "2026-09-09"},
+                actor_id="actor-1",
+                ctx=ctx,
+            )
+
+        mock_notify_staff.assert_called_once()
+        assert mock_notify_staff.call_args.kwargs["target_user_id"] == "portal-user-001"
+        assert mock_notify_staff.call_args.kwargs["event_type"] == "shipment_update"
+
+    def test_no_in_app_shipment_update_for_a_customer_with_no_portal_account(self):
+        with patch("services.tracking.service.notify_staff") as mock_notify_staff:
+            self._transition("sealed", "in_transit")
+
+        mock_notify_staff.assert_not_called()
+
+
+class TestContainerArrivedNotification:
+    """Ground-truth follow-up, reported live by the user: SMS/WhatsApp/email
+    can each fail for reasons entirely outside this app, and the customer
+    portal itself showed nothing until they happened to open the specific
+    shipment page — same gap class as shipment_update above."""
+
+    def test_arrival_notifies_the_customer_in_app_when_they_have_a_portal_account(self):
+        from services.tracking import service
+        from shared.tenant_context import TenantContext, UserRole
+
+        ctx = TenantContext(tenant_id="tenant-1", user_id="actor-1", role=UserRole.TENANT_ADMIN)
+        container = {"id": "container-001", "status": "cleared", "container_number": "ACME-001"}
+        updated = {**container, "status": "at_warehouse"}
+        customer = {
+            "id": "cust-1",
+            "user_id": "portal-user-001",
+            "name": "Ngozi",
+            "phone": "+2348012345678",
+            "email": "n@x.com",
+            "whatsapp": None,
+            "locale": "en",
+        }
+
+        with (
+            patch.object(service.repo, "get_container_by_id", return_value=container),
+            patch.object(service.repo, "update_container_status", return_value=updated),
+            patch.object(service.repo, "insert_container_event"),
+            patch.object(service.repo, "bulk_update_tracking_status"),
+            patch.object(service.repo, "bulk_insert_tracking_events"),
+            patch.object(service.repo, "get_customers_for_container", return_value=[customer]),
+            patch("services.tracking.service.publish_event"),
+            patch("services.tracking.service.log_audit"),
+            patch("services.tracking.service.enqueue_notifications"),
+            patch("services.tracking.service.notify_staff") as mock_notify_staff,
+        ):
+            service.update_container_status(
+                "tenant-1",
+                "container-001",
+                "at_warehouse",
+                {},
+                actor_id="actor-1",
+                ctx=ctx,
+            )
+
+        mock_notify_staff.assert_called_once()
+        assert mock_notify_staff.call_args.kwargs["target_user_id"] == "portal-user-001"
+        assert mock_notify_staff.call_args.kwargs["event_type"] == "container_arrived"
+
+    def test_no_in_app_notification_for_a_customer_with_no_portal_account(self):
+        from services.tracking import service
+        from shared.tenant_context import TenantContext, UserRole
+
+        ctx = TenantContext(tenant_id="tenant-1", user_id="actor-1", role=UserRole.TENANT_ADMIN)
+        container = {"id": "container-001", "status": "cleared", "container_number": "ACME-001"}
+        updated = {**container, "status": "at_warehouse"}
+        customer = {
+            "id": "cust-1",
+            "name": "Ngozi",
+            "phone": "+2348012345678",
+            "email": "n@x.com",
+            "whatsapp": None,
+            "locale": "en",
+        }
+
+        with (
+            patch.object(service.repo, "get_container_by_id", return_value=container),
+            patch.object(service.repo, "update_container_status", return_value=updated),
+            patch.object(service.repo, "insert_container_event"),
+            patch.object(service.repo, "bulk_update_tracking_status"),
+            patch.object(service.repo, "bulk_insert_tracking_events"),
+            patch.object(service.repo, "get_customers_for_container", return_value=[customer]),
+            patch("services.tracking.service.publish_event"),
+            patch("services.tracking.service.log_audit"),
+            patch("services.tracking.service.enqueue_notifications"),
+            patch("services.tracking.service.notify_staff") as mock_notify_staff,
+        ):
+            service.update_container_status(
+                "tenant-1",
+                "container-001",
+                "at_warehouse",
+                {},
+                actor_id="actor-1",
+                ctx=ctx,
+            )
+
+        mock_notify_staff.assert_not_called()
+
+
+class TestContainerStats:
+    """GET /v1/containers/stats + /v1/billing/report-style aggregation delegation."""
+
+    def test_container_stats_delegates_with_tenant_id(self):
+        from unittest.mock import patch
+
+        from services.tracking import service
+
+        stub = {
+            "total": 205,
+            "loading": 25,
+            "sealed": 16,
+            "in_transit": 40,
+            "arrived": 17,
+            "customs_clearance": 20,
+            "cleared": 30,
+            "at_warehouse": 36,
+            "fully_released": 17,
+            "cancelled": 4,
+            "cleared_30d": 83,
+        }
+        with patch.object(service.repo, "get_container_stats", return_value=stub) as m:
+            result = service.get_container_stats("aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa")
+        assert m.call_args[0][0] == "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa"
+        assert result["total"] == 205

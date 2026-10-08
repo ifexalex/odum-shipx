@@ -267,7 +267,7 @@ pydantic==2.6.0
 aws-xray-sdk==2.14.0
 ```
 
-### `infrastructure/versions.tf`
+### `infrastructure/aws/versions.tf`
 
 ```hcl
 terraform {
@@ -285,7 +285,7 @@ terraform {
 }
 ```
 
-### `infrastructure/backend.tf`
+### `infrastructure/aws/backend.tf`
 
 ```hcl
 terraform {
@@ -300,7 +300,7 @@ terraform {
 }
 ```
 
-### `infrastructure/environments/dev.backend.hcl`
+### `infrastructure/aws/environments/dev.backend.hcl`
 
 ```hcl
 bucket         = "logistics-terraform-state-ACCOUNT_ID"
@@ -310,7 +310,7 @@ dynamodb_table = "logistics-terraform-locks"
 encrypt        = true
 ```
 
-### `infrastructure/locals.tf`
+### `infrastructure/aws/locals.tf`
 
 ```hcl
 locals {
@@ -646,8 +646,8 @@ def setup_logging() -> logging.Logger:
 - [ ] `Makefile` has targets for install, lint, security-scan, test-unit, test-integration, test-isolation, test-all, migrate, seed, package-layer (ARM64), clean
 - [ ] `shared/exceptions.py` has all 13 error types matching the error catalog in `00_CROSS_CUTTING_STANDARDS.md`
 - [ ] `shared/logging_config.py` emits structured JSON logs
-- [ ] `infrastructure/versions.tf` pins Terraform >= 1.7 and AWS provider ~> 5.40
-- [ ] `infrastructure/backend.tf` configured for S3 + DynamoDB remote state
-- [ ] `infrastructure/locals.tf` has common_tags and name_prefix
+- [ ] `infrastructure/aws/versions.tf` pins Terraform >= 1.7 and AWS provider ~> 5.40
+- [ ] `infrastructure/aws/backend.tf` configured for S3 + DynamoDB remote state
+- [ ] `infrastructure/aws/locals.tf` has common_tags and name_prefix
 - [ ] `.editorconfig` enforces consistent formatting
 - [ ] `ruff check .` passes with no errors on the scaffolding

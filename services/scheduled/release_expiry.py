@@ -12,15 +12,14 @@ import logging
 from datetime import date
 from typing import Any
 
-from aws_xray_sdk.core import patch_all
-
 from shared.db import execute_with_tenant, execute_write_with_tenant
-from shared.logging_config import setup_logging
+from shared.logging_config import bind_log_context, clear_log_context, setup_logging
 from shared.notifications import enqueue_notification
+from shared.observability import init_tracing
 from shared.tenant_context import PLATFORM_TENANT_ID
 
 setup_logging()
-patch_all()
+init_tracing()
 
 logger = logging.getLogger(__name__)
 
@@ -31,11 +30,14 @@ logger = logging.getLogger(__name__)
 
 
 def lambda_handler(event: dict[str, Any], context: Any) -> dict[str, Any]:
+    clear_log_context()
+    bind_log_context(request_id=getattr(context, "aws_request_id", None))
     tenants = _get_active_tenants()
     expired = errors = 0
 
     for tenant in tenants:
         tenant_id = str(tenant["id"])
+        bind_log_context(tenant_id=tenant_id)
         try:
             count = _process_tenant(tenant_id)
             expired += count
@@ -109,6 +111,7 @@ def _notify_customer(tenant_id: str, note: dict[str, Any]) -> None:
         "reference_number": note.get("reference_number", ""),
         "valid_until": str(note.get("valid_until", "")),
     }
+    locale = customer.get("locale", "en")
 
     if customer.get("phone"):
         try:
@@ -118,6 +121,7 @@ def _notify_customer(tenant_id: str, note: dict[str, Any]) -> None:
                 recipient=customer["phone"],
                 template_id="release_note_generated",
                 template_vars=template_vars,
+                locale=locale,
             )
         except Exception:
             logger.warning(
@@ -134,6 +138,7 @@ def _notify_customer(tenant_id: str, note: dict[str, Any]) -> None:
                 recipient=customer["email"],
                 template_id="release_note_generated",
                 template_vars=template_vars,
+                locale=locale,
             )
         except Exception:
             logger.warning(
@@ -175,10 +180,9 @@ def _get_customer_contact(tenant_id: str, customer_id: str) -> dict[str, Any] | 
     rows = execute_with_tenant(
         tenant_id,
         """
-        SELECT c.id, u.email, u.phone_number AS phone
-        FROM customer c
-        JOIN users u ON u.id = c.user_id
-        WHERE c.tenant_id = %s AND c.id = %s
+        SELECT id, email, phone, locale
+        FROM customer
+        WHERE tenant_id = %s AND id = %s AND anonymised_at IS NULL
         LIMIT 1
         """,
         (tenant_id, customer_id),

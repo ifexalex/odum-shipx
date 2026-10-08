@@ -7,14 +7,15 @@ on:
   push:
     branches: [main]
     paths:
-      - "infrastructure/**"
+      - "infrastructure/aws/**"
+      - "infrastructure/common/**"
   workflow_dispatch:
     inputs:
       environment:
-        description: "Environment to apply (runs all envs sequentially from the selected one)"
+        description: "Environment to apply (dev/staging/prod run sequentially from the selected one; demo is standalone)"
         required: true
         type: choice
-        options: [dev, staging, prod]
+        options: [dev, staging, prod, demo]
 
 # Queue infra changes — never cancel a Terraform apply mid-run.
 concurrency:
@@ -49,11 +50,11 @@ jobs:
           terraform_version: "1.7.5"
 
       - name: Terraform Init
-        working-directory: infrastructure
+        working-directory: infrastructure/aws
         run: terraform init -backend-config=environments/dev.backend.hcl
 
       - name: Import bootstrap resources (idempotent)
-        working-directory: infrastructure
+        working-directory: infrastructure/aws
         run: |
           ACCOUNT_ID=$(aws sts get-caller-identity --query Account --output text)
           TFVARS="-var-file=environments/dev.tfvars"
@@ -75,21 +76,22 @@ jobs:
           import_once 'module.iam_oidc.aws_iam_role.deploy["dev"]'     logistics-github-deploy-dev
           import_once 'module.iam_oidc.aws_iam_role.deploy["staging"]' logistics-github-deploy-staging
           import_once 'module.iam_oidc.aws_iam_role.deploy["prod"]'    logistics-github-deploy-prod
+          import_once 'module.iam_oidc.aws_iam_role.deploy["demo"]'    logistics-github-deploy-demo
 
       - name: Terraform Format Check
-        working-directory: infrastructure
+        working-directory: infrastructure/aws
         run: terraform fmt -check -recursive
 
       - name: Terraform Validate
-        working-directory: infrastructure
+        working-directory: infrastructure/aws
         run: terraform validate
 
       - name: Terraform Plan
-        working-directory: infrastructure
+        working-directory: infrastructure/aws
         run: terraform plan -var-file=environments/dev.tfvars -out=tfplan
 
       - name: Terraform Apply
-        working-directory: infrastructure
+        working-directory: infrastructure/aws
         run: terraform apply tfplan
 
   # ── Staging — gated by dev success + GitHub Environment approval ─────────
@@ -117,23 +119,23 @@ jobs:
           terraform_version: "1.7.5"
 
       - name: Terraform Init
-        working-directory: infrastructure
+        working-directory: infrastructure/aws
         run: terraform init -backend-config=environments/staging.backend.hcl
 
       - name: Terraform Format Check
-        working-directory: infrastructure
+        working-directory: infrastructure/aws
         run: terraform fmt -check -recursive
 
       - name: Terraform Validate
-        working-directory: infrastructure
+        working-directory: infrastructure/aws
         run: terraform validate
 
       - name: Terraform Plan
-        working-directory: infrastructure
+        working-directory: infrastructure/aws
         run: terraform plan -var-file=environments/staging.tfvars -out=tfplan
 
       - name: Terraform Apply
-        working-directory: infrastructure
+        working-directory: infrastructure/aws
         run: terraform apply tfplan
 
   # ── Prod — gated by staging success + GitHub Environment approval ─────────
@@ -158,21 +160,90 @@ jobs:
           terraform_version: "1.7.5"
 
       - name: Terraform Init
-        working-directory: infrastructure
+        working-directory: infrastructure/aws
         run: terraform init -backend-config=environments/prod.backend.hcl
 
       - name: Terraform Format Check
-        working-directory: infrastructure
+        working-directory: infrastructure/aws
         run: terraform fmt -check -recursive
 
       - name: Terraform Validate
-        working-directory: infrastructure
+        working-directory: infrastructure/aws
         run: terraform validate
 
       - name: Terraform Plan
-        working-directory: infrastructure
+        working-directory: infrastructure/aws
         run: terraform plan -var-file=environments/prod.tfvars -out=tfplan
 
       - name: Terraform Apply
-        working-directory: infrastructure
+        working-directory: infrastructure/aws
+        run: terraform apply tfplan
+
+  # ── Demo — standalone, dispatch-only (NOT in the dev→staging→prod chain) ──
+  # A short-lived throwaway env for a live link; apply on demand, then destroy.
+  # Mirrors terraform-dev (incl. the bootstrap-resource import) against the demo
+  # state + tfvars.
+  terraform-demo:
+    if: github.event_name == 'workflow_dispatch' && inputs.environment == 'demo'
+    runs-on: ubuntu-latest
+    environment: demo
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_DEPLOY_ROLE_ARN }}
+          aws-region: eu-west-1
+
+      - uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: "1.7.5"
+
+      - name: Terraform Init
+        working-directory: infrastructure/aws
+        run: terraform init -backend-config=environments/demo.backend.hcl
+
+      - name: Import bootstrap resources (idempotent)
+        working-directory: infrastructure/aws
+        run: |
+          ACCOUNT_ID=$(aws sts get-caller-identity --query Account --output text)
+          TFVARS="-var-file=environments/demo.tfvars"
+
+          import_once() {
+            local addr="$1" id="$2"
+            if terraform state show "$addr" &>/dev/null; then
+              echo "  ✓ $addr already in state — skipping"
+            else
+              echo "  → importing $addr"
+              terraform import $TFVARS "$addr" "$id"
+            fi
+          }
+
+          import_once module.iam_oidc.aws_iam_openid_connect_provider.github \
+            "arn:aws:iam::${ACCOUNT_ID}:oidc-provider/token.actions.githubusercontent.com"
+          import_once module.iam_oidc.aws_iam_policy.permissions_boundary \
+            "arn:aws:iam::${ACCOUNT_ID}:policy/logistics-lambda-permissions-boundary"
+          import_once 'module.iam_oidc.aws_iam_role.deploy["dev"]'     logistics-github-deploy-dev
+          import_once 'module.iam_oidc.aws_iam_role.deploy["staging"]' logistics-github-deploy-staging
+          import_once 'module.iam_oidc.aws_iam_role.deploy["prod"]'    logistics-github-deploy-prod
+          import_once 'module.iam_oidc.aws_iam_role.deploy["demo"]'    logistics-github-deploy-demo
+
+      - name: Terraform Format Check
+        working-directory: infrastructure/aws
+        run: terraform fmt -check -recursive
+
+      - name: Terraform Validate
+        working-directory: infrastructure/aws
+        run: terraform validate
+
+      - name: Terraform Plan
+        working-directory: infrastructure/aws
+        run: terraform plan -var-file=environments/demo.tfvars -out=tfplan
+
+      - name: Terraform Apply
+        working-directory: infrastructure/aws
         run: terraform apply tfplan

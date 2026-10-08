@@ -16,6 +16,8 @@ from shared.exceptions import (
     TenantOffboardedError,
     TenantSuspendedError,
 )
+from shared.logging_config import bind_log_context
+from shared.providers import get_claims_mapper
 from shared.tenant_context import PLATFORM_TENANT_ID, TenantContext, UserRole
 
 logger = logging.getLogger(__name__)
@@ -31,29 +33,43 @@ _tenant_status_cache: DistributedCache = DistributedCache(default_ttl=15, key_pr
 def get_tenant_context(event: dict[str, Any]) -> TenantContext:
     """Extract and validate tenant context from an API Gateway proxy event.
 
-    Reads JWT claims injected by Cognito authorizer at:
-        event["requestContext"]["authorizer"]["claims"]
+    Reads JWT claims injected by the authorizer at:
+        event["requestContext"]["authorizer"]["claims"]   (REST API v1 / local)
+        event["requestContext"]["authorizer"]["jwt"]["claims"]  (HTTP API v2 JWT)
+        event["requestContext"]["authorizer"]["<key>"]   (REQUEST authorizer context)
 
     Cognito JWT claim structure:
         sub               → user_id
         custom:tenant_id  → tenant_id
         cognito:groups    → comma-separated list of "{tenant_id}:{role}" strings
+
+    Impersonation tokens additionally carry:
+        impersonated_by   → platform_admin user_id
+        session_id        → impersonation_session.id
+        read_only         → "true"
     """
     try:
         authorizer: dict[str, Any] = event.get("requestContext", {}).get("authorizer", {})
         # HTTP API v2 JWT authorizer: requestContext.authorizer.jwt.claims
         # REST API v1 / local simulation: requestContext.authorizer.claims
-        claims: dict[str, Any] = authorizer.get("jwt", {}).get("claims", {}) or authorizer.get("claims", {})
+        # REQUEST authorizer: context fields are at requestContext.authorizer directly
+        claims: dict[str, Any] = (
+            authorizer.get("jwt", {}).get("claims", {})
+            or authorizer.get("claims", {})
+            or (authorizer if authorizer.get("sub") else {})
+        )
         if not claims:
             raise AuthenticationRequiredError()
 
-        user_id: str = claims.get("sub", "")
-        tenant_id: str = claims.get("custom:tenant_id", "")
+        mapper = get_claims_mapper()
+        user_id: str = mapper.user_id(claims)
+        tenant_id: str = mapper.tenant_id(claims)
 
         if not user_id or not tenant_id:
             raise AuthenticationRequiredError()
 
-        role = _parse_role(claims, tenant_id)
+        roles = _parse_roles(claims, tenant_id)
+        role = _parse_primary_role(claims, roles)
 
     except AuthenticationRequiredError:
         raise
@@ -65,45 +81,99 @@ def get_tenant_context(event: dict[str, Any]) -> TenantContext:
     if tenant_id != PLATFORM_TENANT_ID:
         _check_tenant_active(tenant_id)
 
-    return TenantContext(tenant_id=tenant_id, user_id=user_id, role=role)
+    impersonated_by: str | None = claims.get("impersonated_by") or None
+    imp_session_id: str | None = claims.get("session_id") or None
+    read_only_raw = str(claims.get("read_only", "false")).lower()
+    read_only = read_only_raw == "true" and bool(impersonated_by)
+
+    ctx = TenantContext(
+        tenant_id=tenant_id,
+        user_id=user_id,
+        role=role,
+        roles=roles,
+        impersonated_by=impersonated_by,
+        session_id=imp_session_id,
+        read_only=read_only,
+    )
+
+    # Bind trace context the moment identity is known, from this single
+    # chokepoint, so every downstream log line carries tenant_id/user_id
+    # without each handler wiring it. request_id is bound separately at the
+    # handler entry point, which also calls clear_log_context() first so a
+    # reused Lambda execution environment cannot leak the previous request.
+    bind_log_context(tenant_id=ctx.tenant_id, user_id=ctx.user_id)
+
+    # Central read-only enforcement for impersonation sessions.
+    # Checked here — the single chokepoint — so individual write handlers never
+    # need to call assert_not_read_only() and cannot accidentally omit it.
+    # EventBridge/SQS events have no requestContext.http.method and never carry
+    # impersonation tokens, so ctx.read_only is always False for those paths.
+    if ctx.read_only:
+        http_method = event.get("requestContext", {}).get("http", {}).get("method", "") or event.get("httpMethod", "")
+        assert_not_read_only(ctx, http_method)
+
+    return ctx
 
 
-def _parse_role(claims: dict[str, Any], tenant_id: str) -> UserRole:
-    """Extract role from cognito:groups claim.
+def assert_not_read_only(ctx: Any, method: str) -> None:
+    """Raise BusinessRuleViolationError if this is a read-only impersonation session
+    and the HTTP method is mutating.
+
+    Call this at the top of any handler that performs writes, before business logic.
+    This is the safety net for impersonated sessions that bypass per-endpoint checks.
+    """
+    if getattr(ctx, "read_only", False) and method not in ("GET", "HEAD", "OPTIONS"):
+        from shared.exceptions import BusinessRuleViolationError
+
+        raise BusinessRuleViolationError(
+            "Impersonation sessions are read-only — mutating requests are not allowed",
+            rule_id="IMPERSONATION_READ_ONLY",
+        )
+
+
+def _parse_roles(claims: dict[str, Any], tenant_id: str) -> frozenset[UserRole]:
+    """Extract every assigned role from the identity provider's group claim.
 
     Groups format: "{tenant_id}:{role}" e.g. "abc-123:tenant_admin"
     Platform admins belong to the "platform_admin" group (no tenant prefix).
-    Falls back to UserRole.CUSTOMER if no matching group is found.
+    Falls back to {UserRole.CUSTOMER} if no matching group is found. Unlike
+    the single-role parsing this replaces, every matching group is kept —
+    not just the first — so staff can hold more than one role at once.
+
+    The raw claim shape is read by the cloud's `ClaimsMapper`; this function
+    keeps the cloud-agnostic `{tenant_id}:{role}` interpretation.
     """
-    groups_raw: str = claims.get("cognito:groups", "") or ""
-
-    # Handle both comma-separated string and JSON array string.
-    # API Gateway HTTP API v2 passes cognito:groups as "[group1,group2]" — unquoted values,
-    # not valid JSON. json.loads raises ValueError; fall back to stripping brackets.
-    if groups_raw.startswith("["):
-        import json
-
-        try:
-            groups: list[str] = json.loads(groups_raw)
-        except ValueError:
-            inner = groups_raw.strip("[]")
-            groups = [g.strip() for g in inner.split(",") if g.strip()]
-    else:
-        groups = [g.strip() for g in groups_raw.split(",") if g.strip()]
+    groups = get_claims_mapper().groups(claims)
 
     # Platform admin group has no tenant prefix
     if "platform_admin" in groups:
-        return UserRole.PLATFORM_ADMIN
+        return frozenset({UserRole.PLATFORM_ADMIN})
 
-    # Find first group that matches "{tenant_id}:{role}"
+    # Collect every group that matches "{tenant_id}:{role}"
     prefix = f"{tenant_id}:"
-    for group in groups:
-        if group.startswith(prefix):
-            role_str = group[len(prefix) :]
-            if role_str in _VALID_ROLES:
-                return UserRole(role_str)
+    roles = {
+        UserRole(group[len(prefix) :]) for group in groups if group.startswith(prefix) and group[len(prefix) :] in _VALID_ROLES
+    }
 
-    return UserRole.CUSTOMER
+    return frozenset(roles) if roles else frozenset({UserRole.CUSTOMER})
+
+
+def _parse_primary_role(claims: dict[str, Any], roles: frozenset[UserRole]) -> UserRole:
+    """Determine the user's primary/active role.
+
+    Read from the primary-role claim (kept in sync with `tenant_user.role`
+    by the tenant management service on every role change). Falls back to a
+    deterministic member of `roles` if the claim is absent, stale, or names a
+    role the user no longer holds — the group claim carries no ordering
+    guarantee, so "first matching group" (the pre-multi-role behavior) is
+    replaced with a stable, reproducible choice.
+    """
+    primary_claim = get_claims_mapper().primary_role(claims)
+    if primary_claim in _VALID_ROLES:
+        primary = UserRole(primary_claim)
+        if primary in roles:
+            return primary
+    return min(roles)
 
 
 def _check_tenant_active(tenant_id: str) -> None:
@@ -111,7 +181,7 @@ def _check_tenant_active(tenant_id: str) -> None:
     TenantOffboardedError if not.
 
     Results are cached for 60 seconds per tenant to avoid a DB hit on every
-    request. Silently passes if the DB is unavailable (fail-open).
+    request. Raises ServiceUnavailableError if the DB is unavailable (fail-closed).
     """
     # Check cache first
     cached_status = _tenant_status_cache.get(tenant_id)

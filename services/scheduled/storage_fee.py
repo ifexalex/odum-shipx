@@ -14,15 +14,14 @@ from datetime import date
 from decimal import Decimal
 from typing import Any
 
-from aws_xray_sdk.core import patch_all
-
 from shared.db import execute_with_tenant, execute_write_with_tenant
 from shared.events import publish_event
-from shared.logging_config import setup_logging
+from shared.logging_config import bind_log_context, clear_log_context, setup_logging
+from shared.observability import init_tracing
 from shared.tenant_context import PLATFORM_TENANT_ID
 
 setup_logging()
-patch_all()
+init_tracing()
 
 logger = logging.getLogger(__name__)
 
@@ -36,11 +35,14 @@ _DEFAULT_DAILY_RATE_NGN = Decimal("500")
 
 
 def lambda_handler(event: dict[str, Any], context: Any) -> dict[str, Any]:
+    clear_log_context()
+    bind_log_context(request_id=getattr(context, "aws_request_id", None))
     tenants = _get_active_tenants()
     processed = skipped = errors = 0
 
     for tenant in tenants:
         tenant_id = str(tenant["id"])
+        bind_log_context(tenant_id=tenant_id)
         try:
             fees_accrued = _process_tenant(tenant_id)
             processed += 1

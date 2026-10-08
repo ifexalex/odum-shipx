@@ -1,0 +1,104 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Shipx · Section 5 — China Office Staff</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&family=Kumbh+Sans:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet" />
+<style>
+  html, body { margin: 0; padding: 0; height: 100%; background: #f0eee9; font-family: "Kumbh Sans", system-ui, sans-serif; }
+  *, *::before, *::after { box-sizing: border-box; }
+  #root { height: 100vh; }
+  input::placeholder, textarea::placeholder { color: #9aa0a6; }
+  button { font-family: inherit; }
+</style>
+<script src="https://unpkg.com/react@18.3.1/umd/react.development.js" integrity="sha384-hD6/rw4ppMLGNu3tX5cjIb+uRZ7UkRJ6BPkLpg4hAu/6onKUg4lLsHAs9EBPT82L" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.development.js" integrity="sha384-u6aeetuaXnQ38mYT8rp6sbXaQe3NL9t+IBXmnYxwkUI2Hw4bsp2Wvmx4yRQF1uAm" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/@babel/standalone@7.29.0/babel.min.js" integrity="sha384-m08KidiNqLdpJqLq95G/LEi8Qvjl/xUYll3QILypMoQ65QorJ9Lvtp2RXYGBFj1y" crossorigin="anonymous"></script>
+<script type="text/babel" src="design-canvas.jsx"></script>
+<script type="text/babel" src="browser-window.jsx"></script>
+<script type="text/babel" src="shared/components.jsx"></script>
+<script type="text/babel" src="shared/app-shell.jsx"></script>
+<script type="text/babel" src="platform/platform-screens.jsx"></script>
+<script type="text/babel" src="tenant/tenant-admin-screens.jsx"></script>
+<script type="text/babel" src="china/china-screens.jsx"></script>
+</head>
+<body>
+<div id="root"></div>
+<script type="text/babel" data-presets="react">
+const Frame = ({url, w = 1440, h = 900, children}) => (
+  <ChromeWindow tabs={[{title: 'Shipx · ' + url.split('/').slice(-1)[0]}]} activeIndex={0} url={url} width={w} height={h}>
+    <div style={{width: w, height: h - 84, background: '#fff', position: 'relative'}}>{children}</div>
+  </ChromeWindow>
+);
+
+const App = () => (
+  <DesignCanvas>
+    <DCSection id="containers" title="5.1 — Container List" subtitle="Pipeline at-a-glance with status chips, search, and a dense table built for China Office operators.">
+      <DCArtboard id="container-list" label="Container list · one selected" width={1440} height={1100}>
+        <Frame url="shipx.co/containers" h={1100}><ContainerList /></Frame>
+      </DCArtboard>
+    </DCSection>
+
+    <DCSection id="create-container" title="5.2 — Create Container" subtitle="Single-column form for container number, vessel/voyage, route, schedule.">
+      <DCArtboard id="create-container" label="Create container form" width={1440} height={1200}>
+        <Frame url="shipx.co/containers/new" h={1200}><CreateContainer /></Frame>
+      </DCArtboard>
+    </DCSection>
+
+    <DCSection id="container-detail" title="5.3 — Container Detail" subtitle="Hero · tracking stepper (China stages in blue, Nigeria in green) · packing lists, manifest, tracking sub-tabs.">
+      <DCArtboard id="container-overview" label="Container · Overview tab" width={1440} height={1400}>
+        <Frame url="shipx.co/containers/mscu1234567" h={1400}><ContainerDetail tab="overview" /></Frame>
+      </DCArtboard>
+      <DCArtboard id="container-pls" label="Container · Packing lists tab" width={1440} height={900}>
+        <Frame url="shipx.co/containers/mscu1234567/packing-lists" h={900}><ContainerDetail tab="pls" /></Frame>
+      </DCArtboard>
+      <DCArtboard id="container-tracking" label="Container · Tracking tab" width={1440} height={1000}>
+        <Frame url="shipx.co/containers/mscu1234567/tracking" h={1000}><ContainerDetail tab="tracking" /></Frame>
+      </DCArtboard>
+      <DCArtboard id="container-docs" label="Container · Documents + upload modal" width={1440} height={900}>
+        <Frame url="shipx.co/containers/mscu1234567/documents" h={900}><ContainerDetail tab="docs" withDocsModal /></Frame>
+      </DCArtboard>
+    </DCSection>
+
+    <DCSection id="create-pl" title="5.4 — Create Packing List (3-step wizard)" subtitle="Step 1 details · Step 2 carton items with auto-CBM · Step 3 review with document preview.">
+      <DCArtboard id="pl-step-1" label="Step 1 · Customer + container" width={1440} height={1000}>
+        <Frame url="shipx.co/packing-lists/new" h={1000}><CreatePackingList step={1} /></Frame>
+      </DCArtboard>
+      <DCArtboard id="pl-step-2" label="Step 2 · Carton items + live pricing" width={1440} height={1100}>
+        <Frame url="shipx.co/packing-lists/new" h={1100}><CreatePackingList step={2} /></Frame>
+      </DCArtboard>
+      <DCArtboard id="pl-step-3" label="Step 3 · Review + submit" width={1440} height={1300}>
+        <Frame url="shipx.co/packing-lists/new" h={1300}><CreatePackingList step={3} /></Frame>
+      </DCArtboard>
+    </DCSection>
+
+    <DCSection id="pl-detail" title="5.5 — Packing List Detail" subtitle="Three states: approved (locked), pending (with approve/reject actions), rejected (with per-item flags).">
+      <DCArtboard id="pl-approved" label="Approved (locked)" width={1440} height={900}>
+        <Frame url="shipx.co/packing-lists/PL-20260415-001" h={900}><PackingListDetail state="approved" /></Frame>
+      </DCArtboard>
+      <DCArtboard id="pl-pending" label="Pending approval" width={1440} height={900}>
+        <Frame url="shipx.co/packing-lists/PL-20260415-001" h={900}><PackingListDetail state="pending" /></Frame>
+      </DCArtboard>
+      <DCArtboard id="pl-rejected" label="Rejected · per-item flags" width={1440} height={900}>
+        <Frame url="shipx.co/packing-lists/PL-20260415-001" h={900}><PackingListDetail state="rejected" /></Frame>
+      </DCArtboard>
+    </DCSection>
+
+    <DCSection id="pl-list" title="5.6 — Packing List List + Bulk Actions" subtitle="Standard list view + bulk-approve/bulk-reject contextual action bar when multiple rows are selected.">
+      <DCArtboard id="pl-list" label="All packing lists" width={1440} height={1000}>
+        <Frame url="shipx.co/packing-lists" h={1000}><PackingListList /></Frame>
+      </DCArtboard>
+      <DCArtboard id="pl-list-bulk" label="With 4 rows selected · bulk bar" width={1440} height={1000}>
+        <Frame url="shipx.co/packing-lists" h={1000}><PackingListList withBulk /></Frame>
+      </DCArtboard>
+    </DCSection>
+  </DesignCanvas>
+);
+
+ReactDOM.createRoot(document.getElementById('root')).render(<App />);
+</script>
+</body>
+</html>

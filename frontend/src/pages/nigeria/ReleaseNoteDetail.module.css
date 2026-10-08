@@ -1,0 +1,82 @@
+/* hero */
+.hero {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 16px;
+  margin-bottom: 24px;
+}
+.heroLeft { display: flex; gap: 16px; align-items: flex-start; }
+.heroIcon { width: 52px; height: 52px; border-radius: 12px; background: var(--color-surface-muted); display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
+.heroTitleRow { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.heroTitle {
+  font-family: var(--font-mono);
+  font-weight: 700;
+  font-size: 26px;
+  color: var(--color-ink);
+  margin: 0;
+  letter-spacing: -0.015em;
+  line-height: 1.15;
+}
+.heroMeta { font-size: 0.8125rem; color: var(--color-text-muted); margin-top: 4px; }
+.heroActions {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  flex-shrink: 0;
+  align-items: center;
+}
+
+/* carton tags */
+.tagGrid { display: flex; flex-wrap: wrap; gap: 8px; padding: 4px 0; }
+.tag { padding: 4px 10px; border-radius: 6px; background: var(--color-surface-muted); font-family: var(--font-mono); font-size: 0.8125rem; border: 1px solid var(--color-border); }
+.tagSelected { background: var(--color-primary-muted); border-color: var(--color-primary); color: var(--color-primary); cursor: pointer; }
+.tagClickable { cursor: pointer; }
+.tagClickable:hover { border-color: var(--color-primary); }
+
+/* layout */
+.section { margin-top: 20px; }
+.statsRow { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 12px; margin-top: 20px; }
+.loadingState { padding: 48px; text-align: center; color: var(--color-text-muted); }
+.banner { margin-bottom: 16px; }
+.backLink { margin-top: 24px; }
+
+/* pickup success banner */
+.successBanner { margin-top: 20px; }
+
+/* modal — mobile-first bottom sheet, matching the proven pattern in
+   warehouse/WarehouseDashboard.module.css (its own copy of this exact
+   pickup-recording feature). Ground-truth gap found live: this file's
+   RecordPickupModal is a near-duplicate of WarehouseDashboard's PickupSheet
+   — same action, same backend call — but had none of its mobile treatment
+   (44/48px touch targets, bottom sheet, full-width buttons) until now. */
+.modalOverlay { position: fixed; inset: 0; background: rgba(11,47,13,0.55); display: flex; align-items: flex-end; justify-content: center; z-index: 200; }
+.modalPanel { background: var(--color-surface); border-radius: var(--radius-lg) var(--radius-lg) 0 0; padding: 24px 20px; width: 100%; display: flex; flex-direction: column; gap: 16px; box-shadow: var(--shadow-modal); max-height: 90vh; overflow-y: auto; }
+.modalTitle { font-size: 1rem; font-weight: 700; margin: 0; }
+.modalBanner { margin: 0; }
+.modalActions { display: flex; gap: 8px; justify-content: flex-end; }
+.modalActions > * { min-height: 48px; font-size: 1rem; }
+
+@container sxapp (min-width: 861px) {
+  .modalOverlay { align-items: center; padding: 16px; }
+  .modalPanel { border-radius: var(--radius-lg); max-width: 480px; padding: 24px; }
+  .modalActions > * { min-height: 36px; font-size: inherit; }
+}
+
+/* delegate toggle */
+.delegateToggle { display: flex; align-items: center; gap: 10px; cursor: pointer; font-size: 0.875rem; min-height: 44px; }
+
+/* Raw <select>s in RecordPickupModal (delegate ID type, warehouse, CSO,
+   accounting officer) — these bypass the shared Field component entirely,
+   so they need their own iOS-zoom fix (Field.module.css's same rule can't
+   reach them). */
+.rawSelect { width: 100%; padding: 8px 12px; border-radius: 8px; border: 1px solid var(--color-border); background: var(--color-surface); font-size: 0.875rem; min-height: 44px; }
+
+@container sxapp (max-width: 860px) {
+  .rawSelect { font-size: 16px; }
+}
+
+/* split tag picker */
+.splitInstruction { font-size: 0.8125rem; color: var(--color-text-muted); margin: 0; }
+.splitCount { font-size: 0.8125rem; font-weight: 600; color: var(--color-primary); }

@@ -1,0 +1,104 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Shipx · Section 10 — Customer Portal</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&family=Kumbh+Sans:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet" />
+<style>
+  html, body { margin: 0; padding: 0; height: 100%; background: #f0eee9; font-family: "Kumbh Sans", system-ui, sans-serif; }
+  *, *::before, *::after { box-sizing: border-box; }
+  #root { height: 100vh; }
+  input::placeholder, textarea::placeholder { color: #9aa0a6; }
+  button { font-family: inherit; }
+  @keyframes pulse { 0%, 100% { box-shadow: 0 0 0 0 rgba(45,196,56,0.5); } 50% { box-shadow: 0 0 0 6px rgba(45,196,56,0); } }
+</style>
+<script src="https://unpkg.com/react@18.3.1/umd/react.development.js" integrity="sha384-hD6/rw4ppMLGNu3tX5cjIb+uRZ7UkRJ6BPkLpg4hAu/6onKUg4lLsHAs9EBPT82L" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.development.js" integrity="sha384-u6aeetuaXnQ38mYT8rp6sbXaQe3NL9t+IBXmnYxwkUI2Hw4bsp2Wvmx4yRQF1uAm" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/@babel/standalone@7.29.0/babel.min.js" integrity="sha384-m08KidiNqLdpJqLq95G/LEi8Qvjl/xUYll3QILypMoQ65QorJ9Lvtp2RXYGBFj1y" crossorigin="anonymous"></script>
+<script type="text/babel" src="design-canvas.jsx"></script>
+<script type="text/babel" src="browser-window.jsx"></script>
+<script type="text/babel" src="shared/components.jsx"></script>
+<script type="text/babel" src="shared/app-shell.jsx"></script>
+<script type="text/babel" src="platform/platform-screens.jsx"></script>
+<script type="text/babel" src="tenant/tenant-admin-screens.jsx"></script>
+<script type="text/babel" src="china/china-screens.jsx"></script>
+<script type="text/babel" src="customer/customer-screens.jsx"></script>
+</head>
+<body>
+<div id="root"></div>
+<script type="text/babel" data-presets="react">
+const Frame = ({url, w = 1280, h = 900, children}) => (
+  <ChromeWindow tabs={[{title: 'Shipx · ' + url.split('/').slice(-1)[0]}]} activeIndex={0} url={url} width={w} height={h}>
+    <div style={{width: w, height: h - 84, background: '#fff', position: 'relative', overflow: 'hidden'}}>{children}</div>
+  </ChromeWindow>
+);
+
+const App = () => (
+  <DesignCanvas>
+    <DCSection id="shipments" title="10.1 — My Shipments (Customer home)" subtitle="Customer-facing portal — green top nav, no sidebar. Feature card for the active shipment with a customer-friendly tracking stepper, plus a past-shipments table.">
+      <DCArtboard id="cust-shipments" label="My shipments" width={1280} height={1180}>
+        <Frame url="shipx.co/my-shipments" w={1280} h={1180}><CustomerShipments /></Frame>
+      </DCArtboard>
+    </DCSection>
+
+    <DCSection id="detail" title="10.2 — Shipment Detail" subtitle="Tracking, my cartons, billing summary with pay CTA, documents, and a prompt to file a claim.">
+      <DCArtboard id="cust-shipment-detail" label="Shipment detail" width={1280} height={1280}>
+        <Frame url="shipx.co/my-shipments/SHX-2026-NGOZI-014" w={1280} h={1280}><CustomerShipmentDetail /></Frame>
+      </DCArtboard>
+    </DCSection>
+
+    <DCSection id="billing" title="10.3 + 10.4 — Billing + Detail" subtitle="Outstanding-balance hero, active billing card, settled-records accordion. Detail shows the cost breakdown + a Paystack pay panel + bank-transfer notify + dispute entry.">
+      <DCArtboard id="cust-billing" label="Billing overview" width={1280} height={1100}>
+        <Frame url="shipx.co/my-billing" w={1280} h={1100}><CustomerBilling /></Frame>
+      </DCArtboard>
+      <DCArtboard id="cust-billing-detail" label="Billing detail · pay panel" width={1280} height={1100}>
+        <Frame url="shipx.co/my-billing/BL-20260728-001" w={1280} h={1100}><CustomerBillingDetail /></Frame>
+      </DCArtboard>
+      <DCArtboard id="cust-dispute-modal" label="File CBM dispute modal" width={1280} height={1100}>
+        <Frame url="shipx.co/my-billing/BL-20260728-001" w={1280} h={1100}><CustomerBillingDetail withDisputeModal /></Frame>
+      </DCArtboard>
+    </DCSection>
+
+    <DCSection id="claims" title="10.5 + 10.6 — Claims + File a Claim" subtitle="Card-based claims list (4 statuses) and the 3-step file-a-claim wizard: damage details → photo upload → review & submit.">
+      <DCArtboard id="cust-claims" label="My claims · 10 total" width={1280} height={1080}>
+        <Frame url="shipx.co/my-claims" w={1280} h={1080}><CustomerClaims /></Frame>
+      </DCArtboard>
+      <DCArtboard id="cust-file-1" label="File claim · Step 1 details" width={1280} height={1100}>
+        <Frame url="shipx.co/my-claims/new" w={1280} h={1100}><CustomerFileClaim step={1} /></Frame>
+      </DCArtboard>
+      <DCArtboard id="cust-file-2" label="File claim · Step 2 photos" width={1280} height={1100}>
+        <Frame url="shipx.co/my-claims/new" w={1280} h={1100}><CustomerFileClaim step={2} /></Frame>
+      </DCArtboard>
+      <DCArtboard id="cust-file-3" label="File claim · Step 3 review" width={1280} height={1000}>
+        <Frame url="shipx.co/my-claims/new" w={1280} h={1000}><CustomerFileClaim step={3} /></Frame>
+      </DCArtboard>
+    </DCSection>
+
+    <DCSection id="account" title="10.7 — Account" subtitle="Profile (email locked), notification channel preferences with delivery rates, and a privacy tab covering data export + NDPR/GDPR right-to-erasure.">
+      <DCArtboard id="cust-profile" label="Account · Profile" width={1280} height={900}>
+        <Frame url="shipx.co/account" w={1280} h={900}><CustomerAccount tab="profile" /></Frame>
+      </DCArtboard>
+      <DCArtboard id="cust-notifs" label="Account · Notifications" width={1280} height={1100}>
+        <Frame url="shipx.co/account/notifications" w={1280} h={1100}><CustomerAccount tab="notifications" /></Frame>
+      </DCArtboard>
+      <DCArtboard id="cust-privacy" label="Account · Privacy (NDPR/GDPR)" width={1280} height={950}>
+        <Frame url="shipx.co/account/privacy" w={1280} h={950}><CustomerAccount tab="privacy" /></Frame>
+      </DCArtboard>
+    <DCSection id="responsive" title="10.8 — Responsive check" subtitle="Same components rendered fluid at tablet and phone widths — grids stack, tables scroll with pinned first column.">
+      <DCArtboard id="cust-shipments-tablet" label="My shipments · 834 tablet" width={834} height={1180}>
+        <Frame url="shipx.co/my-shipments" w={834} h={1180}><CustomerShipments /></Frame>
+      </DCArtboard>
+      <DCArtboard id="cust-shipments-phone" label="My shipments · 420 phone" width={420} height={1280}>
+        <Frame url="shipx.co/my-shipments" w={420} h={1280}><CustomerShipments /></Frame>
+      </DCArtboard>
+    </DCSection>
+  </DesignCanvas>
+);
+
+ReactDOM.createRoot(document.getElementById('root')).render(<App />);
+</script>
+</body>
+</html>

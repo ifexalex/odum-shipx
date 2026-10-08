@@ -1,0 +1,77 @@
+.root {
+  position: relative;
+  display: inline-flex;
+}
+
+.splitGroup {
+  display: flex;
+  align-items: stretch;
+}
+
+/* Separate the chevron visually from the primary button */
+.splitGroup > :first-child button,
+.splitGroup > :first-child {
+  border-top-right-radius: 0 !important;
+  border-bottom-right-radius: 0 !important;
+}
+
+.chevron {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  border: 1px solid var(--color-line);
+  border-left: none;
+  border-radius: 0 var(--radius-sm) var(--radius-sm) 0;
+  background: var(--color-surface);
+  cursor: pointer;
+  padding: 0;
+  transition: background 0.1s;
+}
+
+.chevron:hover:not(:disabled) {
+  background: var(--color-surface-muted);
+}
+
+.chevron:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 9;
+}
+
+.dropdown {
+  position: absolute;
+  top: calc(100% + 4px);
+  right: 0;
+  background: var(--color-surface);
+  border: 1px solid var(--color-line);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-lg);
+  z-index: 10;
+  min-width: 160px;
+  overflow: hidden;
+}
+
+.dropdownItem {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  padding: 10px 14px;
+  background: none;
+  border: none;
+  font-family: var(--font-body);
+  font-size: 13px;
+  color: var(--color-ink-2);
+  cursor: pointer;
+  text-align: left;
+}
+
+.dropdownItem:hover {
+  background: var(--color-primary-tint);
+}

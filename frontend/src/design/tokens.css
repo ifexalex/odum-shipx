@@ -1,0 +1,207 @@
+/*
+ * Odum/ShipX design tokens — ported from Shipx_frontend_design/uploads/DESIGN.md
+ * and screens/shared/components.jsx (token object `T`).
+ * Tenant overrides are applied at runtime by ThemeProvider, scoped to a
+ * `[data-tenant-theme]` element — never on :root — so the login screen and
+ * Platform Admin shell always keep the canonical palette.
+ */
+:root {
+  /* Brand */
+  --color-primary: #1c7922; /* Odum Green — buttons, links, active states */
+  --color-primary-deep: #14471a; /* button active */
+  --color-primary-strong: #155f1b; /* button hover */
+  --color-primary-bright: #2dc438; /* focus rings, progress, "Green Flash" */
+  --color-primary-soft: #d6f5da; /* selected row bg */
+  --color-primary-tint: #f3fcf4; /* hover row bg */
+  --color-primary-on-soft: #155f1b; /* primary text/icon ON a primary-soft fill (stat-card icons, consent pills) — goes light in dark mode so it isn't green-on-green */
+
+  --color-forest-dark: #0b2f0d; /* sidebar background — never navy */
+
+  /* Text that sits on a brand/accent/dark surface (buttons, chips, sidebar,
+     the login brand panel). Always near-white in BOTH themes — never flips
+     with --color-surface, which becomes dark in dark mode. */
+  --color-on-brand: #ffffff;
+
+  --color-accent: #9a3412; /* Kola Copper — ONE highest-stakes CTA per screen only */
+  --color-accent-deep: #7c2d12;
+  --color-accent-hover: #c2410c;
+  --color-accent-soft: #fed7aa;
+  --color-accent-on-soft: #7c2d12; /* accent text/icon ON an accent-soft fill (accent badge, brand monogram) — goes light in dark */
+  --color-accent-text: #9a3412; /* accent text on a normal surface (eyebrow labels) — goes light in dark */
+
+  /* Neutrals (warm gray, never pure black) */
+  --color-ink: #1c1b1c;
+  --color-ink-2: #374151;
+  --color-ink-3: #666666;
+  --color-ink-4: #6b7280;
+  --color-line: #cccccc;
+  --color-line-soft: #e5e7eb;
+  --color-surface: #ffffff;
+  --color-surface-muted: #f9fafb;
+  --color-page: #f3f4f6;
+
+  /* Status — never overridable by tenant config, see ThemeProvider.tsx */
+  --color-success: #16a34a;
+  --color-success-strong: #14532d;
+  --color-success-soft: #dcfce7;
+  --color-warning: #d97706;
+  --color-warning-strong: #7c2d0e;
+  --color-warning-soft: #fef3c7;
+  --color-error: #dc2626;
+  --color-error-strong: #991b1b;
+  --color-error-soft: #fee2e2;
+  --color-info: #2563eb;
+  --color-info-strong: #1e3a8a;
+  --color-info-soft: #dbeafe;
+
+  /* Role accents — used for sidebar badges, avatars, role chips */
+  --color-role-platform: #7c3aed;
+  --color-role-admin: #1c7922;
+  --color-role-china: #4f46e5;
+  --color-role-nigeria: #9a3412;
+  --color-role-warehouse: #d97706;
+  --color-role-customer: #2dc438;
+  --color-role-platform-soft: #ede9fe; /* purple Badge variant background */
+  --color-role-platform-text: #7c3aed; /* platform/purple badge text ON role-platform-soft — goes light in dark */
+
+  /* Typography */
+  --font-display: 'Averta', 'Manrope', sans-serif; /* Averta is commercial-licensed; Manrope is the open fallback loaded in index.html */
+  --font-body: 'Kumbh Sans', sans-serif;
+  --font-mono: 'JetBrains Mono', monospace;
+
+  /* Spacing — strict 4px base */
+  --space-xs: 4px;
+  --space-sm: 8px;
+  --space-md: 16px;
+  --space-lg: 24px;
+  --space-xl: 32px;
+  --space-2xl: 48px;
+  --space-3xl: 64px;
+
+  /* Layout */
+  --sidebar-width: 240px;
+  --sidebar-width-collapsed: 64px;
+  --content-max-width: 1280px;
+
+  /* Radius — mix freely across component families, never within one */
+  --radius-none: 0px;
+  --radius-sm: 8px;
+  --radius-md: 10px;
+  --radius-lg: 14px;
+  --radius-xl: 12px;
+  --radius-full: 9999px;
+
+  /* Shadows — tinted with Forest Dark, never pure black */
+  --shadow-rest: 0 1px 3px rgba(11, 47, 13, 0.08), 0 1px 2px rgba(11, 47, 13, 0.05);
+  --shadow-hover: 0 4px 12px rgba(11, 47, 13, 0.1), 0 2px 4px rgba(11, 47, 13, 0.06);
+  --shadow-modal: 0 10px 25px rgba(11, 47, 13, 0.18);
+  --shadow-focus-ring: 0 0 0 3px rgba(45, 196, 56, 0.35);
+  --scrim-modal: rgba(11, 47, 13, 0.55);
+
+  color-scheme: light;
+}
+
+/*
+ * Dark theme.
+ *
+ * The app's active scheme is resolved to an explicit value in JS
+ * (src/design/colorScheme.ts) and written to <html data-theme="light|dark">
+ * — including a pre-paint inline script in index.html to avoid a flash — so
+ * "system" preference is handled there and this file needs a single dark
+ * block, not a duplicated prefers-color-scheme media query.
+ *
+ * Only surfaces, ink, lines, shadows and the soft/tint "fill" variants flip.
+ * Brand/status/role HUES stay recognisable; their soft backgrounds go dark
+ * and their strong (badge-text) variants go light so contrast holds. Buttons
+ * and other on-brand text use --color-on-brand (stays white), never
+ * --color-surface, so they survive the surface flip.
+ */
+:root[data-theme='dark'] {
+  color-scheme: dark;
+
+  /* Surfaces & neutrals (warm-dark, never pure black) */
+  --color-ink: #eef2ee;
+  --color-ink-2: #c7cec7;
+  --color-ink-3: #9ba59b;
+  --color-ink-4: #828d82;
+  --color-line: #333c34;
+  --color-line-soft: #272f28;
+  --color-surface: #181d19;
+  --color-surface-muted: #1f2621;
+  --color-page: #0f1310;
+
+  /* Brand — base/deep/strong/bright keep working with white button text;
+     only the near-white fills flip to dark greens. */
+  --color-primary-soft: #18381e; /* selected row bg */
+  --color-primary-tint: #141b15; /* hover row bg */
+  --color-primary-on-soft: #5bd069; /* bright green — legible on the dark primary-soft fill */
+
+  --color-accent-soft: #3a2113;
+  /* Copper/purple badge + eyebrow text go light so they're legible on dark
+     (the dark accent-deep / role-platform were ~1.6–2.6 contrast — unreadable). */
+  --color-accent-on-soft: #f0a67e;
+  --color-accent-text: #eb9a70;
+  --color-role-platform-text: #b99af2;
+
+  /* Status — brighter bases (legible as text/dots on dark), dark soft
+     backgrounds, light strong (badge-text) variants. */
+  --color-success: #26b35b;
+  --color-success-strong: #7fe3a6;
+  --color-success-soft: #113122;
+  --color-warning: #e3971f;
+  --color-warning-strong: #f3cd78;
+  --color-warning-soft: #35290f;
+  --color-error: #ef5a5a;
+  --color-error-strong: #f6a9a9;
+  --color-error-soft: #3a1d1d;
+  --color-info: #4f8df5;
+  --color-info-strong: #aecbfb;
+  --color-info-soft: #16294b;
+
+  /* Role accents — keep hues; lighten the darkest (Nigeria copper) and the
+     platform soft fill for dark backgrounds. */
+  --color-role-nigeria: #d2693f;
+  --color-role-platform-soft: #291f4a;
+
+  /* Shadows read as depth on dark via black, not forest tint. */
+  --shadow-rest: 0 1px 3px rgba(0, 0, 0, 0.4), 0 1px 2px rgba(0, 0, 0, 0.3);
+  --shadow-hover: 0 4px 12px rgba(0, 0, 0, 0.45), 0 2px 4px rgba(0, 0, 0, 0.35);
+  --shadow-modal: 0 10px 25px rgba(0, 0, 0, 0.6);
+  --scrim-modal: rgba(0, 0, 0, 0.66);
+}
+
+/*
+ * Semantic aliases — more readable shorthand for page-level CSS.
+ * These resolve to the canonical Odum tokens above; the raw tokens
+ * remain authoritative. Use either name; prefer the canonical names
+ * in new component CSS.
+ */
+:root {
+  --color-text: var(--color-ink);
+  --color-text-muted: var(--color-ink-4);
+  --color-border: var(--color-line-soft);
+  --color-primary-muted: var(--color-primary-soft);
+  --color-error-muted: var(--color-error-soft);
+  --color-success-muted: var(--color-success-soft);
+  --color-warning-muted: var(--color-warning-soft);
+  --color-info-muted: var(--color-info-soft);
+}
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+}
+
+body {
+  margin: 0;
+  font-family: var(--font-body);
+  color: var(--color-ink);
+  background: var(--color-page);
+}

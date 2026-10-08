@@ -64,6 +64,8 @@ For each cbm_dispute with status = 'submitted':
     Send reminder notification to Nigeria Office Staff
 ```
 
+**Staff bell (2026-09-12):** both jobs' "Notify ..." steps above were email-only until now — each also writes a `staff_notification` row (`cbm_dispute_sla_breach`/`cbm_dispute_escalated`) so the same reminder shows up in the TopBar bell, not just an inbox. Full account in `15_api_notifications.md`.
+
 ## File: `services/scheduled/storage_reminders.py`
 
 ```

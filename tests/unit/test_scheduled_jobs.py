@@ -218,14 +218,18 @@ class TestReleaseExpiry:
 
 class TestStorageReminders:
     def _note(self, days_old: int) -> dict:
-        # Use real "now" so that (date.today() - created_at.date()).days == days_old
-        created_at = datetime.now(UTC) - timedelta(days=days_old)
+        # Anchor to local date.today() (what _maybe_send_reminder receives as
+        # `today`) — deriving from now(UTC) overshoots days_since by one when
+        # the local date is ahead of UTC (00:00–01:00 WAT nightly flake).
+        from datetime import time
+
+        created_date = date.today() - timedelta(days=days_old)
         return {
             "id": "note-001",
             "customer_id": "customer-001",
             "reference_number": "RN-001",
             "total_cartons": 10,
-            "created_at": created_at,
+            "created_at": datetime.combine(created_date, time(12, 0), tzinfo=UTC),
         }
 
     def test_first_reminder_sent_on_day_7(self):
@@ -255,3 +259,270 @@ class TestStorageReminders:
         with patch("services.scheduled.storage_reminders._sum_cartons_picked", return_value=10):
             sent = _maybe_send_reminder(TENANT_ID, note, date.today(), 7, 13, 14)
             assert sent == 0
+
+
+# ---------------------------------------------------------------------------
+# Locale forwarding in scheduled notifications
+# ---------------------------------------------------------------------------
+
+
+class TestScheduledLocaleForwarding:
+    """Verify that scheduled jobs pass the recipient's locale to enqueue_notification."""
+
+    def _note(self, days_old: int, customer_id: str = "cust-001") -> dict:
+        from datetime import UTC, date, datetime, time, timedelta
+
+        # Anchor to the same clock the assertions use (local date.today(), which
+        # _maybe_send_reminder receives as `today`). Deriving from
+        # datetime.now(UTC) made days_since come out one day high whenever the
+        # local date was ahead of UTC (e.g. 00:00–01:00 WAT) — a nightly flake.
+        created_date = date.today() - timedelta(days=days_old)
+        return {
+            "id": "note-001",
+            "customer_id": customer_id,
+            "reference_number": "ACME-RN-001",
+            "total_cartons": 5,
+            "valid_until": "2026-01-01",
+            "created_at": datetime.combine(created_date, time(12, 0), tzinfo=UTC),
+        }
+
+    def test_storage_reminder_sends_zh_locale_for_zh_customer(self):
+        from unittest.mock import patch
+
+        from services.scheduled.storage_reminders import _maybe_send_reminder
+
+        note = self._note(days_old=7)
+        customer = {"id": "cust-001", "email": "ng@example.com", "phone": "+2348012345678", "locale": "zh"}
+
+        enqueued = []
+
+        def capture_enqueue(**kwargs):
+            enqueued.append(kwargs)
+            return True
+
+        with (
+            patch("services.scheduled.storage_reminders._get_customer_contact", return_value=customer),
+            patch("services.scheduled.storage_reminders._sum_cartons_picked", return_value=0),
+            patch("services.scheduled.storage_reminders.enqueue_notification", side_effect=capture_enqueue),
+        ):
+            _maybe_send_reminder(TENANT_ID, note, __import__("datetime").date.today(), 7, 13, 14)
+
+        assert len(enqueued) == 2
+        for call_kwargs in enqueued:
+            assert call_kwargs["locale"] == "zh", f"Expected locale='zh', got {call_kwargs.get('locale')!r}"
+
+    def test_storage_reminder_sends_en_locale_for_en_customer(self):
+        from unittest.mock import patch
+
+        from services.scheduled.storage_reminders import _maybe_send_reminder
+
+        note = self._note(days_old=7)
+        customer = {"id": "cust-001", "email": "ng@example.com", "phone": "", "locale": "en"}
+        enqueued = []
+
+        with (
+            patch("services.scheduled.storage_reminders._get_customer_contact", return_value=customer),
+            patch("services.scheduled.storage_reminders._sum_cartons_picked", return_value=0),
+            patch(
+                "services.scheduled.storage_reminders.enqueue_notification", side_effect=lambda **kw: enqueued.append(kw) or True
+            ),
+        ):
+            _maybe_send_reminder(TENANT_ID, note, __import__("datetime").date.today(), 7, 13, 14)
+
+        for call_kwargs in enqueued:
+            assert call_kwargs["locale"] == "en"
+
+    def test_storage_reminder_defaults_locale_to_en_when_missing(self):
+        from unittest.mock import patch
+
+        from services.scheduled.storage_reminders import _maybe_send_reminder
+
+        note = self._note(days_old=7)
+        # Customer row without locale key
+        customer = {"id": "cust-001", "email": "ng@example.com", "phone": ""}
+        enqueued = []
+
+        with (
+            patch("services.scheduled.storage_reminders._get_customer_contact", return_value=customer),
+            patch("services.scheduled.storage_reminders._sum_cartons_picked", return_value=0),
+            patch(
+                "services.scheduled.storage_reminders.enqueue_notification", side_effect=lambda **kw: enqueued.append(kw) or True
+            ),
+        ):
+            _maybe_send_reminder(TENANT_ID, note, __import__("datetime").date.today(), 7, 13, 14)
+
+        for call_kwargs in enqueued:
+            assert call_kwargs.get("locale", "en") == "en"
+
+    def test_release_expiry_sends_zh_locale_for_zh_customer(self):
+        from unittest.mock import patch
+
+        from services.scheduled.release_expiry import _notify_customer
+
+        note = self._note(days_old=0)
+        customer = {"id": "cust-001", "email": "cn@example.com", "phone": "+8613012345678", "locale": "zh"}
+        enqueued = []
+
+        with (
+            patch("services.scheduled.release_expiry._get_customer_contact", return_value=customer),
+            patch("services.scheduled.release_expiry.enqueue_notification", side_effect=lambda **kw: enqueued.append(kw) or True),
+        ):
+            _notify_customer(TENANT_ID, note)
+
+        assert len(enqueued) == 2
+        for call_kwargs in enqueued:
+            assert call_kwargs["locale"] == "zh"
+
+    def test_dispute_escalation_sends_zh_locale_for_zh_admin(self):
+        from unittest.mock import patch
+
+        from services.scheduled.dispute_escalation import _notify_escalation
+
+        dispute = {
+            "id": "dispute-001",
+            "billing_id": "billing-001",
+            "customer_id": "cust-001",
+            "disputed_cbm": "10.5",
+        }
+        admins = [{"email": "admin@acme.com", "locale": "zh"}]
+        enqueued = []
+
+        with (
+            patch("services.scheduled.dispute_escalation.execute_with_tenant", return_value=admins),
+            patch(
+                "services.scheduled.dispute_escalation.enqueue_notification", side_effect=lambda **kw: enqueued.append(kw) or True
+            ),
+        ):
+            _notify_escalation(TENANT_ID, dispute)
+
+        assert len(enqueued) == 1
+        assert enqueued[0]["locale"] == "zh"
+
+    def test_dispute_escalation_also_writes_the_in_app_staff_notification(self):
+        """Ground-truth follow-up to the payment-claim-rejection notification
+        bug: this event previously only sent an email — no signal in the
+        TopBar bell, which now exists as a real feed."""
+        from unittest.mock import patch
+
+        from services.scheduled.dispute_escalation import _notify_escalation
+
+        dispute = {"id": "dispute-001", "billing_id": "billing-001", "customer_id": "cust-001", "disputed_cbm": "10.5"}
+
+        with (
+            patch("services.scheduled.dispute_escalation.execute_with_tenant", return_value=[]),
+            patch("services.scheduled.dispute_escalation.notify_staff") as mock_notify,
+        ):
+            _notify_escalation(TENANT_ID, dispute)
+
+        assert mock_notify.call_count == 2
+        roles = {c.kwargs["target_role"] for c in mock_notify.call_args_list}
+        assert roles == {"china_office_staff", "tenant_admin"}
+        assert all(c.kwargs["event_type"] == "cbm_dispute_escalated" for c in mock_notify.call_args_list)
+        assert all(c.kwargs["entity_id"] == "dispute-001" for c in mock_notify.call_args_list)
+
+    def test_sla_check_sends_locale_for_nigeria_staff(self):
+        from unittest.mock import patch
+
+        from services.scheduled.sla_check import _notify_nigeria_staff
+
+        dispute = {
+            "id": "dispute-001",
+            "billing_id": "billing-001",
+            "customer_id": "cust-001",
+            "disputed_cbm": "10.5",
+        }
+        staff = [{"email": "nigstaff@acme.com", "locale": "en"}]
+        enqueued = []
+
+        with (
+            patch("services.scheduled.sla_check.execute_with_tenant", return_value=staff),
+            patch("services.scheduled.sla_check.enqueue_notification", side_effect=lambda **kw: enqueued.append(kw) or True),
+        ):
+            _notify_nigeria_staff(TENANT_ID, dispute)
+
+        assert len(enqueued) == 1
+        assert enqueued[0]["locale"] == "en"
+
+    def test_sla_breach_also_writes_the_in_app_staff_notification(self):
+        """Ground-truth follow-up to the payment-claim-rejection notification
+        bug: this event previously only sent an email — no signal in the
+        TopBar bell, which now exists as a real feed."""
+        from unittest.mock import patch
+
+        from services.scheduled.sla_check import _notify_nigeria_staff
+
+        dispute = {"id": "dispute-001", "billing_id": "billing-001", "customer_id": "cust-001", "disputed_cbm": "10.5"}
+
+        with (
+            patch("services.scheduled.sla_check.execute_with_tenant", return_value=[]),
+            patch("services.scheduled.sla_check.notify_staff") as mock_notify,
+        ):
+            _notify_nigeria_staff(TENANT_ID, dispute)
+
+        mock_notify.assert_called_once()
+        assert mock_notify.call_args.kwargs["event_type"] == "cbm_dispute_sla_breach"
+        assert mock_notify.call_args.kwargs["target_role"] == "nigeria_office_staff"
+        assert mock_notify.call_args.kwargs["entity_id"] == "dispute-001"
+
+    def test_customer_contact_query_includes_locale(self):
+        """Regression: _get_customer_contact must SELECT locale."""
+        import inspect
+
+        from services.scheduled.release_expiry import _get_customer_contact as expiry_contact
+        from services.scheduled.storage_reminders import _get_customer_contact
+
+        for fn in (_get_customer_contact, expiry_contact):
+            source = inspect.getsource(fn)
+            assert "locale" in source, f"{fn.__module__}._get_customer_contact must SELECT locale"
+
+    def test_staff_query_includes_locale_in_escalation(self):
+        """Regression: _notify_escalation must SELECT tu.locale from tenant_user."""
+        import inspect
+
+        from services.scheduled.dispute_escalation import _notify_escalation
+
+        source = inspect.getsource(_notify_escalation)
+        assert "locale" in source
+
+    def test_staff_query_includes_locale_in_sla(self):
+        """Regression: _notify_nigeria_staff must SELECT tu.locale from tenant_user."""
+        import inspect
+
+        from services.scheduled.sla_check import _notify_nigeria_staff
+
+        source = inspect.getsource(_notify_nigeria_staff)
+        assert "locale" in source
+
+    def test_enqueue_notification_includes_locale_in_sqs_payload(self):
+        """enqueue_notification must include locale in the SQS message body."""
+        import json
+        from unittest.mock import MagicMock, patch
+
+        captured = {}
+
+        def fake_send(*, destination, body):
+            captured["body"] = json.loads(body)
+
+        mock_queue = MagicMock()
+        mock_queue.send.side_effect = fake_send
+
+        import os
+
+        os.environ["SQS_EMAIL_QUEUE_URL"] = "https://sqs.test/email"
+
+        with (
+            patch("shared.notifications._get_notification_prefs", return_value={}),
+            patch("shared.notifications.get_queue_provider", return_value=mock_queue),
+        ):
+            from shared.notifications import enqueue_notification
+
+            enqueue_notification(
+                tenant_id=TENANT_ID,
+                channel="email",
+                recipient="test@example.com",
+                template_id="test_template",
+                template_vars={},
+                locale="zh",
+            )
+
+        assert captured["body"]["locale"] == "zh"
