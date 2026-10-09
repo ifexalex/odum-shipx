@@ -1235,3 +1235,13 @@ All four delegation tests follow `test_tracking.py::TestContainerStats`'s `patch
 ### Azure Event Grid + ACS email providers — mocked SDK (2026-10-06)
 
 - **`tests/unit/test_azure_eventgrid_acs_providers.py`** (7): `EventGridProvider.publish` maps `source`→`subject` / `detail_type`→`event_type` / `detail`→`data` on a real `EventGridEvent`, and normalizes any SDK error to `ExternalServiceError`; `AcsEmailProvider.send` builds the ACS message shape (`senderAddress` / `recipients.to` / `content.{subject,html,plainText}`); both factory selections. Stubbed SDK clients — neither service has a local emulator.
+
+### Compute portability — container edge (ADR-005, 2026-10-09)
+
+Fully mocked — no gunicorn, Service Bus, JWKS, DB, or Azure SDK is touched.
+
+- **`tests/unit/test_auth_verify.py`** (9): `shared/auth_verify.build_authorizer_claims` — the OIDC branch projects the Cognito-shaped context and flattens a list-valued `cognito:groups` to CSV; falls through to the impersonation branch; returns `None` when both strategies fail or the token is empty. `verify_oidc_jwt` returns `None` without a JWKS URL and on a bogus token; `OIDC_*` env takes precedence over `COGNITO_*` with fallback.
+- **`tests/unit/test_http_routing.py`** (19): `resolve_service` for every special case (excel export/pdf/import, container `/packing-lists` sub-resource, platform `/usage`→metering, GDPR `/customers/{id}/export` stays tenant_management, query-string stripping, unrouted→None) and `is_public_route` (health, public tracking with path param vs authenticated list, both webhook methods, invite/register/auth-session routes, method + segment-count discrimination).
+- **`tests/unit/test_http_app.py`** (8): the container HTTP app via Flask test client with `build_authorizer_claims`/`invoke_handler` patched — `/health` 200 unauthenticated; authenticated route 401 without a token and invokes the handler with the verified claims in the event when present; unrouted→404; handler exception→500; public route skips verification and carries no authorizer context; OPTIONS preflight→204.
+- **`tests/unit/test_queue_worker.py`** (7): `process_message` wraps a Service Bus body into a single-record SQS-shaped event and propagates handler errors (for abandon/retry); `_QUEUE_CONFIG` covers sms/whatsapp/email/metering; `run_worker` guards unknown queue key + missing queue-name/connection-string env; argparse rejects an unknown queue.
+- **`tests/unit/test_scheduled_run.py`** (5): `run_job` returns 0 on success (invoking the job's `lambda_handler` with a traceable event) / 1 on handler failure / raises on an unknown job; every advertised job name imports and exposes `lambda_handler`; argparse rejects an unknown job.

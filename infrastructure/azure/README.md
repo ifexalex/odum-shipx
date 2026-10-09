@@ -11,7 +11,7 @@ Azure (e.g. to use Founders Hub credits) without re-architecting.
 |---|---|---|---|
 | Frontend hosting / CDN | S3 + CloudFront | **Blob static website + Front Door Standard** | ✅ |
 | WAF / DDoS | CloudFront WAF | Cloudflare (recommended) / Front Door Premium | ⏳ |
-| Backend compute | Lambda | Container Apps / Functions | ⏳ |
+| Backend compute | Lambda | **Container Apps** (`Dockerfile` — api/worker/job) | 🔨 container built; Terraform pending |
 | Object storage | S3 | **Blob (`BlobStorageProvider`)** — adapter + `modules/storage` Terraform; Azurite- & real-account-testable | 🔨 |
 | Queue | SQS | **Service Bus (`ServiceBusQueueProvider`)** — app adapter done, mocked-SDK tested | 🔨 |
 | Database | Aurora Serverless v2 | PostgreSQL Flexible Server | ⏳ |
@@ -112,7 +112,7 @@ Built in order of tractability (infra-only first; app-coupled pieces last):
 | 5 | VPC + endpoints | VNet + subnets + Private/Service Endpoints | — | ⏳ |
 | 6 | SQS / EventBridge / SES | Service Bus / Event Grid / Communication Services | — | 🔨 app side done (ports in place); Azure adapters + Terraform pending |
 | 7 | Monitoring (CloudWatch) | Log Analytics + App Insights + alerts | — | ⏳ |
-| 8 | Lambda + API Gateway | **Container Apps** (ingress = API) | **backend containerized** | ⏳ |
+| 8 | Lambda + API Gateway | **Container Apps** (ingress = API) | **backend containerized** | 🔨 image done (ADR-005); Terraform pending |
 | 9 | Cognito | Entra External ID | app claim-mapping behind an interface | ⏳ |
 
 **Application portability (already landed, cloud-agnostic — not Terraform):** the
@@ -130,12 +130,29 @@ is likewise behind a shim (`shared/observability.py::init_tracing`, a no-op off
 AWS). The one remaining boto3 touchpoint is **Cognito** (auth), the stickiest —
 token claims + user migration to Entra, not a clean adapter swap.
 
-**Key dependency:** #8 (compute) needs the backend packaged as a **container**
-(it already runs under Flask in `scripts/local_server.py`, so this is a wrapper,
-not a rewrite). Containerizing is what lets the same image run on Azure Container
-Apps *and* AWS Fargate — the move that makes the backend as portable as the
-frontend already is. #9 (auth) is the stickiest (token claims + user migration);
-keep the IdP behind an interface so it's swappable.
+**Key dependency:** #8 (compute) needs the backend packaged as a **container** —
+**done** (ADR-005). The repo-root `Dockerfile` builds one image whose entrypoint
+(`docker-entrypoint.sh`) selects the workload: `api` (gunicorn → `services/http_app`),
+`worker --queue <k>` (Service Bus consumer → `services/queue_worker`), `job --job <n>`
+(cron → `services/scheduled/run.py`), or `migrate`. The HTTP app verifies real tokens
+in-process via `shared/auth_verify.py` (the same code the AWS authorizer runs) and routes
+via `shared/http_routing.py` (shared with the dev server + mirrored by API Gateway). What
+remains for #8 is the **Terraform** — Container Apps Environment + ACR + the three
+workloads + env wiring (`CLOUD_PROVIDER=azure` + the adapter connection strings). #9 (auth)
+is the stickiest (token claims + user migration); the IdP is behind the `IdentityProvider`
+port already (ADR-004).
+
+### Backend container (local build/run)
+
+```bash
+docker build -t shipx-backend .
+docker run -p 8080:8080 -e CLOUD_PROVIDER=azure shipx-backend api   # → GET /health 200
+docker run shipx-backend worker --queue sms                          # Service Bus consumer
+docker run shipx-backend job --job release_expiry                    # one cron job, then exit
+```
+
+gunicorn runs **processes, 1 thread each** (the `shared/db.py` connection singleton is not
+thread-safe — same reason the dev server is single-threaded). Scale with replicas, not threads.
 
 ## Local testing (Azurite — the Azure "local stack")
 

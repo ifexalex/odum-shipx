@@ -54,6 +54,22 @@ local_server.py :3000     ← Flask app that routes HTTP → Lambda handler func
             └── Redis :6379         ← tenant status distributed cache
 ```
 
+`local_server.py` resolves HTTP paths to handlers via `shared/http_routing.py` — the same
+route table the production container (`services/http_app`) and API Gateway use. It differs from
+production only in auth: it trusts `X-Role`/`X-User-ID` headers, whereas the container verifies a
+real token with the same code the AWS authorizer runs (`shared/auth_verify.py`).
+
+**Running the backend as a container (the Azure compute path, ADR-005):** the repo-root `Dockerfile`
+builds one image whose entrypoint selects the workload. Useful for verifying the production HTTP app
+locally (real token verification, not the `X-Role` shim):
+
+```bash
+docker build -t shipx-backend .
+docker run -p 8080:8080 -e CLOUD_PROVIDER=azure shipx-backend api   # gunicorn; GET /health → 200
+docker run shipx-backend worker --queue sms                          # Service Bus consumer
+docker run shipx-backend job --job release_expiry                    # one cron job, then exit
+```
+
 ---
 
 ## 2. Prerequisites
