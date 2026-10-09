@@ -14,6 +14,13 @@ gating for staging and production — no stored AWS credentials (OIDC), immutabl
 > --python-platform aarch64-manylinux_2_28` (python3.13). Deps live in `pyproject.toml` + `uv.lock`;
 > there are no `requirements*.txt` files. The **`.github/workflows/*.yml` files are the source of
 > truth** — any YAML inlined in this doc below is illustrative and may show the earlier pip form.
+>
+> **Python pinned to 3.13 via `.python-version`:** `requires-python = ">=3.13"` would otherwise let
+> uv resolve the newest interpreter on the runner (e.g. 3.15), for which native wheels
+> (`pydantic-core`) don't exist yet → a from-source build that fails against the installed PyO3. The
+> committed `.python-version` (`3.13`) pins every `uv sync` (CI + local) to the project's actual
+> runtime, matching the Lambda/Container-Apps runtime + mypy. No `requires-python`/lock change (so
+> `uv sync --frozen` in the Dockerfile stays valid).
 
 ## Depends On
 
