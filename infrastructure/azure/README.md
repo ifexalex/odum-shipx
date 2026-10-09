@@ -12,13 +12,15 @@ Azure (e.g. to use Founders Hub credits) without re-architecting.
 | Frontend hosting / CDN | S3 + CloudFront | **Blob static website + Front Door Standard** | ✅ |
 | WAF / DDoS | CloudFront WAF | Cloudflare (recommended) / Front Door Premium | ⏳ |
 | Backend compute | Lambda | **Container Apps** (`Dockerfile` — api/worker/job) | 🔨 container built; Terraform pending |
-| Object storage | S3 | **Blob (`BlobStorageProvider`)** — adapter + `modules/storage` Terraform; Azurite- & real-account-testable | 🔨 |
-| Queue | SQS | **Service Bus (`ServiceBusQueueProvider`)** — app adapter done, mocked-SDK tested | 🔨 |
-| Database | Aurora Serverless v2 | PostgreSQL Flexible Server | ⏳ |
-| Cache | ElastiCache | Azure Cache for Redis | ⏳ |
+| Networking | VPC + subnets | **VNet + delegated subnets (`modules/networking`)** | ✅ Terraform |
+| Object storage | S3 | **Blob (`BlobStorageProvider`)** — adapter + `modules/storage` Terraform; Azurite- & real-account-testable | ✅ |
+| Queue | SQS | **Service Bus (`ServiceBusQueueProvider`)** — adapter + `modules/servicebus` Terraform | ✅ |
+| Database | Aurora Serverless v2 | **PostgreSQL Flexible Server (`modules/postgres`)** — VNet-integrated, private | ✅ Terraform |
+| Cache | ElastiCache | **Azure Cache for Redis (`modules/redis`)** | ✅ Terraform |
 | Auth | Cognito | Entra External ID | ⏳ |
-| Events | EventBridge | **Event Grid (`EventGridProvider`)** — app adapter done, mocked-SDK tested | 🔨 |
-| Email | SES | **ACS Email (`AcsEmailProvider`)** — app adapter done, mocked-SDK tested | 🔨 |
+| Events | EventBridge | **Event Grid (`EventGridProvider`)** — adapter + `modules/eventgrid` Terraform | ✅ |
+| Email | SES | **ACS Email (`AcsEmailProvider`)** — adapter + `modules/acs` Terraform | ✅ |
+| Monitoring | CloudWatch | **Log Analytics + App Insights (`modules/monitoring`)** | ✅ Terraform |
 | Secrets / crypto | Secrets Manager + KMS | **Key Vault (`KeyVaultSecretsProvider` + `KeyVaultKeyProvider`)** — adapters + `modules/keyvault` Terraform; real-account-verifiable | 🔨 |
 
 ## Frontend module (what's here now)
@@ -98,6 +100,33 @@ chosen by a pipeline variable:
   Blob+Front Door. Required secrets are listed at the top of that workflow
   (`AZURE_*` come from `terraform -chdir=infrastructure/azure output`).
 
+## Data + messaging layer (Phase 2)
+
+Seven modules mirror the AWS data/messaging stack. Each output maps 1:1 to an adapter env var;
+the Phase-3 Container Apps module wires them (secrets via Key Vault references). All provision
+from one `terraform apply` on the root.
+
+| Module | Azure resource | Mirrors AWS | Outputs → env |
+|---|---|---|---|
+| `networking` | VNet + 3 subnets (container-apps + postgres delegated, private-endpoints) | `networking` (VPC) | subnet ids (consumed by postgres + Phase-3 compute) |
+| `postgres` | PostgreSQL Flexible Server (VNet-integrated, private DNS) + DB `logistics` | `aurora` | `DATABASE_HOST/PORT/NAME/USER/PASSWORD` (password also in Key Vault `postgres-admin-password`) |
+| `redis` | Azure Cache for Redis (Basic C0 default) | `elasticache` | `REDIS_HOST` / `REDIS_PORT` (6380, TLS) / `REDIS_PASSWORD` |
+| `servicebus` | Service Bus namespace + queues sms/whatsapp/email/metering (built-in DLQ) | `sqs` | `AZURE_SERVICE_BUS_CONNECTION_STRING` + `SQS_*_QUEUE_URL` (queue names) |
+| `eventgrid` | Event Grid custom topic | `eventbridge` | `AZURE_EVENT_GRID_ENDPOINT` / `AZURE_EVENT_GRID_KEY` |
+| `acs` | Communication Services + Email (Azure-managed domain) | `ses` | `AZURE_COMMUNICATION_CONNECTION_STRING` + sender address |
+| `monitoring` | Log Analytics workspace + Application Insights | `monitoring` | `APPLICATIONINSIGHTS_CONNECTION_STRING`; workspace id (Container Apps log sink) |
+
+**Two portability notes for Phase 3 (runtime config, not provisioning):**
+- **Postgres requires TLS** (Flexible Server enforces `require_secure_transport`). `shared/db.py`
+  currently keys `sslmode=require` on the AWS-specific `DB_SECRET_ARN`; Phase 3 adds a generic
+  `DATABASE_SSLMODE` override so Azure sets `require` without that AWS env.
+- **Redis Basic/Standard requires TLS + an access key** (no VNet injection below Premium).
+  `shared/distributed_cache.py` currently reads only `REDIS_HOST`/`REDIS_PORT`; Phase 3 adds
+  `REDIS_PASSWORD` + `REDIS_SSL` support (defaults keep AWS unchanged).
+
+Read the wired values after an apply with `terraform output` (sensitive ones via
+`terraform output -raw <name>`), e.g. `terraform output -raw database_password`.
+
 ## Replica roadmap (toward a full AWS→Azure mirror)
 
 The goal is a complete Azure mirror of the AWS stack, deployable instead of AWS.
@@ -106,12 +135,12 @@ Built in order of tractability (infra-only first; app-coupled pieces last):
 | # | AWS module | Azure target | Depends on | Status |
 |---|---|---|---|---|
 | 1 | S3 + CloudFront | Blob + Front Door Standard | — | ✅ done |
-| 2 | KMS + Secrets Manager | Key Vault | — | 🔨 app side done |
-| 3 | ElastiCache | Azure Cache for Redis | networking | ⏳ |
-| 4 | Aurora Serverless v2 | PostgreSQL Flexible Server | networking | ⏳ |
-| 5 | VPC + endpoints | VNet + subnets + Private/Service Endpoints | — | ⏳ |
-| 6 | SQS / EventBridge / SES | Service Bus / Event Grid / Communication Services | — | 🔨 app side done (ports in place); Azure adapters + Terraform pending |
-| 7 | Monitoring (CloudWatch) | Log Analytics + App Insights + alerts | — | ⏳ |
+| 2 | KMS + Secrets Manager | Key Vault | — | ✅ adapters + Terraform |
+| 3 | ElastiCache | Azure Cache for Redis (`modules/redis`) | — | ✅ Terraform (client TLS/pwd in Phase 3) |
+| 4 | Aurora Serverless v2 | PostgreSQL Flexible Server (`modules/postgres`) | networking | ✅ Terraform (client sslmode in Phase 3) |
+| 5 | VPC + endpoints | VNet + delegated subnets (`modules/networking`) | — | ✅ Terraform |
+| 6 | SQS / EventBridge / SES | Service Bus / Event Grid / Communication Services | — | ✅ adapters + Terraform (`modules/{servicebus,eventgrid,acs}`) |
+| 7 | Monitoring (CloudWatch) | Log Analytics + App Insights (`modules/monitoring`) | — | ✅ workspace + APM (alert rules in Phase 3) |
 | 8 | Lambda + API Gateway | **Container Apps** (ingress = API) | **backend containerized** | 🔨 image done (ADR-005); Terraform pending |
 | 9 | Cognito | Entra External ID | app claim-mapping behind an interface | ⏳ |
 
