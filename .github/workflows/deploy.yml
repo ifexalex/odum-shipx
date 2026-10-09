@@ -59,7 +59,7 @@ permissions:
 jobs:
   resolve-artifact:
     runs-on: ubuntu-latest
-    if: github.event_name == 'push'   # tag push path only
+    if: github.event_name == 'push' && vars.DEPLOY_CLOUD != 'azure'   # tag push path only (AWS)
     outputs:
       run_id: ${{ steps.find.outputs.run_id }}
     permissions:
@@ -85,8 +85,9 @@ jobs:
   # ── Dev — auto-deploys on every successful CI run ──────────────────────
   deploy-dev:
     if: >-
-      (github.event_name == 'workflow_run' && github.event.workflow_run.conclusion == 'success') ||
-      (github.event_name == 'workflow_dispatch' && inputs.environment == 'dev')
+      ((github.event_name == 'workflow_run' && github.event.workflow_run.conclusion == 'success') ||
+       (github.event_name == 'workflow_dispatch' && inputs.environment == 'dev')) &&
+      vars.DEPLOY_CLOUD != 'azure'
     permissions:
       contents: read
       id-token: write
@@ -103,8 +104,9 @@ jobs:
   smoke-dev:
     needs: deploy-dev
     if: >-
-      (github.event_name == 'workflow_run' && github.event.workflow_run.conclusion == 'success') ||
-      (github.event_name == 'workflow_dispatch' && inputs.environment == 'dev')
+      ((github.event_name == 'workflow_run' && github.event.workflow_run.conclusion == 'success') ||
+       (github.event_name == 'workflow_dispatch' && inputs.environment == 'dev')) &&
+      vars.DEPLOY_CLOUD != 'azure'
     permissions:
       contents: read
     uses: ./.github/workflows/_smoke-test.yml
@@ -118,9 +120,10 @@ jobs:
   deploy-staging:
     needs: resolve-artifact
     if: >-
-      (github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v') &&
+      ((github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v') &&
         contains(github.ref, '-rc')) ||
-      (github.event_name == 'workflow_dispatch' && inputs.environment == 'staging')
+      (github.event_name == 'workflow_dispatch' && inputs.environment == 'staging')) &&
+      vars.DEPLOY_CLOUD != 'azure'
     permissions:
       contents: read
       id-token: write
@@ -137,7 +140,7 @@ jobs:
   smoke-staging:
     needs: deploy-staging
     if: >-
-      always() && needs.deploy-staging.result == 'success' && (
+      always() && needs.deploy-staging.result == 'success' && vars.DEPLOY_CLOUD != 'azure' && (
         (github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v') &&
           contains(github.ref, '-rc')) ||
         (github.event_name == 'workflow_dispatch' && inputs.environment == 'staging')
@@ -157,7 +160,7 @@ jobs:
   deploy-prod:
     needs: [resolve-artifact, smoke-staging]
     if: >-
-      always() && (
+      always() && vars.DEPLOY_CLOUD != 'azure' && (
         (github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v') &&
           !contains(github.ref, '-rc') &&
           (needs.smoke-staging.result == 'success' || needs.smoke-staging.result == 'skipped')) ||
@@ -179,7 +182,7 @@ jobs:
   # ── Demo — standalone, dispatch-only (NOT in the promotion chain) ────────
   # Deploy a chosen CI artifact to the throwaway demo env for a live link.
   deploy-demo:
-    if: github.event_name == 'workflow_dispatch' && inputs.environment == 'demo'
+    if: github.event_name == 'workflow_dispatch' && inputs.environment == 'demo' && vars.DEPLOY_CLOUD != 'azure'
     permissions:
       contents: read
       id-token: write
@@ -192,7 +195,7 @@ jobs:
 
   smoke-demo:
     needs: deploy-demo
-    if: always() && needs.deploy-demo.result == 'success'
+    if: always() && needs.deploy-demo.result == 'success' && vars.DEPLOY_CLOUD != 'azure'
     permissions:
       contents: read
     uses: ./.github/workflows/_smoke-test.yml
@@ -206,7 +209,7 @@ jobs:
   # loudly if a deploy left prod unhealthy, rather than waiting on alarms.
   smoke-prod:
     needs: deploy-prod
-    if: always() && needs.deploy-prod.result == 'success'
+    if: always() && needs.deploy-prod.result == 'success' && vars.DEPLOY_CLOUD != 'azure'
     permissions:
       contents: read
     uses: ./.github/workflows/_smoke-test.yml

@@ -40,8 +40,9 @@ jobs:
   # ── Dev — auto-applies on every Azure infra change ───────────────────────
   terraform-dev:
     if: >-
-      github.event_name == 'push' ||
-      (github.event_name == 'workflow_dispatch' && inputs.environment == 'dev')
+      (github.event_name == 'push' ||
+       (github.event_name == 'workflow_dispatch' && inputs.environment == 'dev')) &&
+      vars.DEPLOY_CLOUD == 'azure'
     runs-on: ubuntu-latest
     environment: dev
     permissions:
@@ -77,8 +78,9 @@ jobs:
   terraform-staging:
     needs: terraform-dev
     if: >-
-      github.event_name == 'push' ||
-      (github.event_name == 'workflow_dispatch' && (inputs.environment == 'dev' || inputs.environment == 'staging'))
+      (github.event_name == 'push' ||
+       (github.event_name == 'workflow_dispatch' && (inputs.environment == 'dev' || inputs.environment == 'staging'))) &&
+      vars.DEPLOY_CLOUD == 'azure'
     runs-on: ubuntu-latest
     environment: staging
     permissions:
@@ -113,6 +115,7 @@ jobs:
   # ── Prod — gated by staging success + GitHub Environment approval ─────────
   terraform-prod:
     needs: terraform-staging
+    if: vars.DEPLOY_CLOUD == 'azure'
     runs-on: ubuntu-latest
     environment: prod
     permissions:
@@ -146,7 +149,7 @@ jobs:
 
   # ── Demo — standalone, dispatch-only (NOT in the dev→staging→prod chain) ──
   terraform-demo:
-    if: github.event_name == 'workflow_dispatch' && inputs.environment == 'demo'
+    if: github.event_name == 'workflow_dispatch' && inputs.environment == 'demo' && vars.DEPLOY_CLOUD == 'azure'
     runs-on: ubuntu-latest
     environment: demo
     permissions:
