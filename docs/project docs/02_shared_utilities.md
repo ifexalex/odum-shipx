@@ -577,7 +577,8 @@ read once in `shared/providers/__init__.py`.
   `begin_send`) are implemented and **mocked-SDK tested** (`tests/unit/test_azure_eventgrid_acs_providers.py`). The only
   remaining adapters are **identity** (`entra.py`, `entra_claims.py`) — ADR-004 phases 3–5, which need a real Entra
   tenant. All other azure branches resolve at call time only when `CLOUD_PROVIDER=azure`. Azure runtime deps are pinned
-  in `requirements-azure.txt` (pulled into `requirements-dev.txt`; kept out of the AWS Lambda bundle).
+  as the `azure` optional-dependency extra in `pyproject.toml` (`uv sync --extra azure`); kept out of
+  the default set so the AWS Lambda bundle stays lean.
 - **Still on boto3 directly** (the authN *execution* remainder — see ADR-004 phases 3–5, which need an actual Azure
   tenant, not a code sweep): the authorizer's JWT/JWKS *verification* (`services/authorizer/handler.py` — env-driven
   `COGNITO_JWKS_URL`/`COGNITO_AUDIENCE`, ports by pointing at Entra's JWKS); token refresh

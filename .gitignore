@@ -24,3 +24,7 @@ ShipX_Dev_Live.postman_environment.json
 
 # OS junk
 .DS_Store
+
+# uv-generated dependency exports (CI/scripts regenerate these; uv.lock is the source of truth)
+requirements-scan.txt
+build/*-reqs.txt

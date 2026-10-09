@@ -55,7 +55,7 @@ class DistributedCache:
         try:
             import redis
         except ImportError as exc:
-            raise RuntimeError("redis package is not installed. Add redis>=5.0.0 to requirements-layer.txt.") from exc
+            raise RuntimeError("redis package is not installed. It is a pinned runtime dep in pyproject.toml.") from exc
 
         host = os.environ.get("REDIS_HOST", "localhost")
         port = int(os.environ.get("REDIS_PORT", "6379"))

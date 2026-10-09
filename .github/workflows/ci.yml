@@ -19,14 +19,15 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - uses: astral-sh/setup-uv@v5
         with:
-          python-version: "3.13"
-      - run: pip install ruff==0.2.0 mypy==1.19.1 pydantic==2.12.5
+          enable-cache: true
+      # uv auto-installs the interpreter pinned by requires-python (3.13).
+      - run: uv sync --extra azure
       - name: Lint with ruff
-        run: ruff check .
+        run: uv run ruff check .
       - name: Type-check with mypy
-        run: mypy shared/ services/ --ignore-missing-imports
+        run: uv run mypy shared/ services/ --ignore-missing-imports
 
   test:
     runs-on: ubuntu-latest
@@ -46,11 +47,10 @@ jobs:
           --health-retries 5
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - uses: astral-sh/setup-uv@v5
         with:
-          python-version: "3.13"
-      - name: Install dependencies
-        run: pip install -r requirements-dev.txt
+          enable-cache: true
+      - run: uv sync --extra azure
       - name: Run migrations
         env:
           DATABASE_HOST: localhost
@@ -58,11 +58,11 @@ jobs:
           DATABASE_NAME: logistics_test
           DATABASE_USER: test_user
           DATABASE_PASSWORD: test_pass
-        run: python scripts/migrate.py
+        run: uv run python scripts/migrate.py
       - name: Run unit tests
         env:
           PYTHONPATH: ".:services"
-        run: pytest tests/unit/ -v --cov=services --cov=shared --cov-report=xml
+        run: uv run pytest tests/unit/ -v --cov=services --cov=shared --cov-report=xml
       - name: Run tenant isolation tests
         env:
           PYTHONPATH: ".:services"
@@ -71,7 +71,7 @@ jobs:
           DATABASE_NAME: logistics_test
           DATABASE_USER: test_user
           DATABASE_PASSWORD: test_pass
-        run: pytest tests/tenant_isolation/ -v
+        run: uv run pytest tests/tenant_isolation/ -v
       - name: Upload coverage
         uses: codecov/codecov-action@v3
         with:
@@ -85,15 +85,17 @@ jobs:
       contents: read
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - uses: astral-sh/setup-uv@v5
         with:
-          python-version: "3.13"
-      - name: Install security tools
-        run: pip install bandit==1.7.7 safety==3.7.0
+          enable-cache: true
+      - run: uv sync --extra azure
       - name: SAST scan (bandit)
-        run: bandit -r services/ shared/ -ll -q -c pyproject.toml
+        run: uv run bandit -r services/ shared/ -ll -q -c pyproject.toml
       - name: Dependency vulnerability scan (safety)
-        run: safety check -r requirements.txt
+        # Scan the resolved runtime deps (what ships), exported from the lock.
+        run: |
+          uv export --frozen --no-hashes --no-emit-project --no-default-groups --extra azure -o requirements-scan.txt
+          uv run safety check -r requirements-scan.txt
       - name: Trivy filesystem scan
         # Pinned to v0.35.0 — update via Dependabot, never float @master
         uses: aquasecurity/trivy-action@57a97c7e7821a5776cebc9bb87c984fa69cba8f1  # v0.35.0
@@ -116,22 +118,23 @@ jobs:
 
     steps:
       - uses: actions/checkout@v4
-
-      - uses: actions/setup-python@v5
+      - uses: astral-sh/setup-uv@v5
         with:
-          python-version: "3.13"
+          enable-cache: true
 
       - name: Build shared Lambda layer
         run: |
           mkdir -p build/layer/python
           cp -r shared/ build/layer/python/shared/
-          pip install \
-            --platform manylinux2014_aarch64 \
-            --target build/layer/python/ \
-            --implementation cp \
+          # Layer deps = project runtime deps + the `layer` group (alembic),
+          # exported pinned from uv.lock, installed for the arm64 Lambda target.
+          uv export --frozen --no-hashes --no-emit-project --no-default-groups --group layer -o build/layer-reqs.txt
+          uv pip install \
+            --python-platform aarch64-manylinux_2_28 \
             --python-version 3.13 \
-            --only-binary=:all: \
-            -r requirements-layer.txt
+            --target build/layer/python \
+            --only-binary :all: \
+            -r build/layer-reqs.txt
           cd build/layer && zip -r ../shared-layer.zip python/
 
       - name: Build service zips
@@ -160,18 +163,14 @@ jobs:
       - name: Build migration zip
         run: |
           mkdir -p build/migrate_pkg
-          # Install alembic + DB driver directly into the package — the shared
-          # layer does not include these; the migrate Lambda must be self-contained.
-          # alembic is pure Python; install normally.
-          pip install alembic==1.13.0 --target build/migrate_pkg --quiet
-          # psycopg2-binary has a C extension. CI runs on linux/amd64 but Lambda
-          # runs on arm64 — use --platform to download the correct binary wheel.
-          pip install psycopg2-binary==2.9.11 \
-            --target build/migrate_pkg \
-            --platform manylinux2014_aarch64 \
+          # The migrate Lambda is self-contained (does NOT use the shared layer):
+          # bundle alembic + the DB driver directly, built for the arm64 target.
+          uv pip install \
+            --python-platform aarch64-manylinux_2_28 \
             --python-version 3.13 \
-            --only-binary=:all: \
-            --quiet
+            --target build/migrate_pkg \
+            --only-binary :all: \
+            alembic==1.13.0 psycopg2-binary==2.9.11
           cp -r migrations/ build/migrate_pkg/migrations/
           cp services/migrate/handler.py build/migrate_pkg/handler.py
           cd build/migrate_pkg && zip -r ../../build/migrate.zip .

@@ -9,6 +9,12 @@ continuous deployment (database migrations, Lambda deployment, smoke tests). Use
 gating for staging and production — no stored AWS credentials (OIDC), immutable artifact promotion
 (build once in CI, deploy the same binary to all environments).
 
+> **Dependency tooling (2026-10-09):** the pipeline uses **uv** — CI runs `astral-sh/setup-uv` +
+> `uv sync`/`uv run`; the Lambda layer/zips are built via `uv export` + `uv pip install
+> --python-platform aarch64-manylinux_2_28` (python3.13). Deps live in `pyproject.toml` + `uv.lock`;
+> there are no `requirements*.txt` files. The **`.github/workflows/*.yml` files are the source of
+> truth** — any YAML inlined in this doc below is illustrative and may show the earlier pip form.
+
 ## Depends On
 
 - All previous tasks complete

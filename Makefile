@@ -38,35 +38,36 @@ stack: up bootstrap
 # ─── Application ─────────────────────────────────────────────────────────────
 
 install:
-	pip install -r requirements-dev.txt
+	uv sync --extra azure
 
 lint:
-	ruff check .
-	mypy shared/ services/ --ignore-missing-imports
+	uv run ruff check .
+	uv run mypy shared/ services/ --ignore-missing-imports
 
 security-scan:
-	bandit -r services/ shared/ -ll -q
-	safety check -r requirements.txt
+	uv run bandit -r services/ shared/ -ll -q -c pyproject.toml
+	uv export --frozen --no-hashes --no-emit-project --no-default-groups --extra azure -o requirements-scan.txt
+	uv run safety check -r requirements-scan.txt
 
 test: test-unit
 
 test-unit:
-	PYTHONPATH=.:services pytest tests/unit/ -v --cov=services --cov=shared --cov-report=term-missing
+	PYTHONPATH=.:services uv run pytest tests/unit/ -v --cov=services --cov=shared --cov-report=term-missing
 
 test-integration:
-	PYTHONPATH=.:services pytest tests/integration/ -v -m integration
+	PYTHONPATH=.:services uv run pytest tests/integration/ -v -m integration
 
 test-isolation:
-	PYTHONPATH=.:services pytest tests/tenant_isolation/ -v -m isolation
+	PYTHONPATH=.:services uv run pytest tests/tenant_isolation/ -v -m isolation
 
 test-all:
-	PYTHONPATH=.:services pytest tests/ -v --cov=services --cov=shared --cov-report=xml
+	PYTHONPATH=.:services uv run pytest tests/ -v --cov=services --cov=shared --cov-report=xml
 
 # Run lint + type-check + unit tests in one shot
 check:
-	ruff check .
-	mypy shared/ services/ --ignore-missing-imports
-	PYTHONPATH=.:services pytest tests/unit/ -v --cov=services --cov=shared --cov-report=term-missing
+	uv run ruff check .
+	uv run mypy shared/ services/ --ignore-missing-imports
+	PYTHONPATH=.:services uv run pytest tests/unit/ -v --cov=services --cov=shared --cov-report=term-missing
 
 # Run end-to-end API tests against the local server.
 # REQUIRES: 'make dev' running in another terminal first.
@@ -89,7 +90,8 @@ seed-stress:
 
 package-layer:
 	mkdir -p build/layer/python
-	pip install -r requirements-layer.txt -t build/layer/python --platform manylinux2014_aarch64 --only-binary=:all:
+	uv export --frozen --no-hashes --no-emit-project --no-default-groups --group layer -o build/layer-reqs.txt
+	uv pip install --python-platform aarch64-manylinux_2_28 --python-version 3.13 --only-binary :all: -t build/layer/python -r build/layer-reqs.txt
 	cp -r shared/ build/layer/python/shared/
 	cd build/layer && zip -r ../shared-layer.zip python/
 
