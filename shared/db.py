@@ -62,10 +62,11 @@ def get_connection() -> psycopg2.extensions.connection:
 
     if _connection is None or _connection.closed:
         logger.debug("Creating new database connection")
-        # sslmode defaults to 'require' in production (DB_SECRET_ARN set).
-        # Falls back to 'prefer' locally so plain-TCP Aurora Serverless local
-        # Docker works without a certificate bundle.
-        _ssl_mode = "require" if os.environ.get("DB_SECRET_ARN") else "prefer"
+        # sslmode: an explicit DATABASE_SSLMODE wins (set 'require' on Azure,
+        # whose Postgres Flexible Server mandates TLS). Otherwise it defaults to
+        # 'require' in AWS production (DB_SECRET_ARN set) and 'prefer' locally so
+        # plain-TCP Aurora Serverless local Docker works without a cert bundle.
+        _ssl_mode = os.environ.get("DATABASE_SSLMODE") or ("require" if os.environ.get("DB_SECRET_ARN") else "prefer")
         _connection = psycopg2.connect(
             host=os.environ["DATABASE_HOST"],
             port=int(os.environ.get("DATABASE_PORT", "5432")),

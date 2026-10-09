@@ -652,3 +652,21 @@ arg (`docker-entrypoint.sh`: `api` / `worker` / `job` / `migrate`):
   `tests/unit/test_scheduled_run.py` (5) — fully mocked (no gunicorn, Service Bus, JWKS, or DB).
   Build/run verified locally: `docker build` + the api container serves `/health` 200 and gates
   `/v1/*` to 401 without a token.
+
+## shared/db.py + shared/distributed_cache.py — Azure connection portability (added 2026-10-09)
+
+Two small, backward-compatible runtime additions so the Phase-3 Container Apps can reach the
+Azure data layer (Postgres Flexible Server + Azure Cache for Redis), both of which mandate TLS —
+AWS/local behavior is unchanged (the new env vars default to the old posture):
+
+- **`shared/db.py`** — `sslmode` now honours an explicit `DATABASE_SSLMODE` env (Container Apps
+  sets `require`); otherwise the previous default stands (`require` when `DB_SECRET_ARN` is set,
+  else `prefer`). Azure has no `DB_SECRET_ARN`, so this is how it gets TLS.
+- **`shared/distributed_cache.py`** — the redis client now passes `password` (from
+  `REDIS_PASSWORD`) and `ssl` (from `REDIS_SSL=true`). Both default off → AWS ElastiCache
+  (in-VPC, plain TCP, no auth) and local Redis connect exactly as before; Azure Redis Basic
+  (public, TLS + access key) now works.
+
+- **Tests:** `tests/unit/test_db_connection_healing.py::TestSslMode` (3) and
+  `tests/unit/test_distributed_cache.py` (3) — assert the connection kwargs for the AWS/local vs
+  Azure env, fully mocked.

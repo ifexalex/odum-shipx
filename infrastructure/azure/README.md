@@ -11,7 +11,7 @@ Azure (e.g. to use Founders Hub credits) without re-architecting.
 |---|---|---|---|
 | Frontend hosting / CDN | S3 + CloudFront | **Blob static website + Front Door Standard** | ✅ |
 | WAF / DDoS | CloudFront WAF | Cloudflare (recommended) / Front Door Premium | ⏳ |
-| Backend compute | Lambda | **Container Apps** (`Dockerfile` — api/worker/job) | 🔨 container built; Terraform pending |
+| Backend compute | Lambda | **Container Apps** (`Dockerfile` + `modules/container_app`) | ✅ Terraform (image pushed by CI) |
 | Networking | VPC + subnets | **VNet + delegated subnets (`modules/networking`)** | ✅ Terraform |
 | Object storage | S3 | **Blob (`BlobStorageProvider`)** — adapter + `modules/storage` Terraform; Azurite- & real-account-testable | ✅ |
 | Queue | SQS | **Service Bus (`ServiceBusQueueProvider`)** — adapter + `modules/servicebus` Terraform | ✅ |
@@ -116,16 +116,48 @@ from one `terraform apply` on the root.
 | `acs` | Communication Services + Email (Azure-managed domain) | `ses` | `AZURE_COMMUNICATION_CONNECTION_STRING` + sender address |
 | `monitoring` | Log Analytics workspace + Application Insights | `monitoring` | `APPLICATIONINSIGHTS_CONNECTION_STRING`; workspace id (Container Apps log sink) |
 
-**Two portability notes for Phase 3 (runtime config, not provisioning):**
-- **Postgres requires TLS** (Flexible Server enforces `require_secure_transport`). `shared/db.py`
-  currently keys `sslmode=require` on the AWS-specific `DB_SECRET_ARN`; Phase 3 adds a generic
-  `DATABASE_SSLMODE` override so Azure sets `require` without that AWS env.
-- **Redis Basic/Standard requires TLS + an access key** (no VNet injection below Premium).
-  `shared/distributed_cache.py` currently reads only `REDIS_HOST`/`REDIS_PORT`; Phase 3 adds
-  `REDIS_PASSWORD` + `REDIS_SSL` support (defaults keep AWS unchanged).
+**Two runtime portability fixes (done in Phase 3, keep AWS unchanged):**
+- `shared/db.py` honours a generic `DATABASE_SSLMODE` (Container Apps sets `require` for the
+  Flexible Server, which mandates TLS) — falls back to the old `DB_SECRET_ARN`-based default.
+- `shared/distributed_cache.py` honours `REDIS_PASSWORD` + `REDIS_SSL=true` (Azure Redis needs
+  both) — defaults to no-auth plain TCP, so AWS/local is unchanged.
 
 Read the wired values after an apply with `terraform output` (sensitive ones via
 `terraform output -raw <name>`), e.g. `terraform output -raw database_password`.
+
+## Compute layer (Phase 3)
+
+`modules/container_app` is the Lambda-free compute plane (ADR-005). One image, four workload
+shapes, each the entrypoint arg from the Dockerfile:
+
+| Resource | Workload | Replaces (AWS) |
+|---|---|---|
+| `azurerm_container_app.api` | `api` — gunicorn, external HTTPS ingress on :8080 | API Gateway + HTTP Lambdas |
+| `azurerm_container_app.worker["*"]` | `worker --queue <k>` — one per queue, **KEDA**-scaled 0→N on Service Bus depth | SQS → consumer Lambdas |
+| `azurerm_container_app_job.scheduled["*"]` | `job --job <n>` — 7 cron jobs (schedules mirror the EventBridge rules) | EventBridge → scheduled Lambdas |
+| `azurerm_container_app_job.migrate` | `migrate` — manual trigger (alembic) | the migrate Lambda |
+
+Plus an **ACR** (private registry, image pulled via the app's managed identity) and the
+**Container Apps Environment** (VNet-integrated on the `container-apps` subnet, logs → Log
+Analytics). The root creates one **user-assigned managed identity** (granted ACR pull + Key
+Vault wrap/unwrap + secret read) shared by all apps/jobs; `CLOUD_PROVIDER=azure` plus every
+Phase-2 output is injected as env (secrets as Container App secrets).
+
+**Bootstrap / image flow (chicken-and-egg):** the ACR image doesn't exist on the first apply, so
+`container_image` defaults to a public placeholder and Terraform **ignores image drift**. The
+Phase-5 deploy workflow builds + pushes the real image to ACR and runs
+`az containerapp update --image` (and the migrate job). Sequence for a manual first bring-up:
+
+```bash
+terraform apply                       # provisions ACR + env + apps (placeholder image)
+az acr login -n "$(terraform output -raw acr_name)"
+docker build -t "$(terraform output -raw acr_login_server)/shipx-backend:latest" .
+docker push "$(terraform output -raw acr_login_server)/shipx-backend:latest"
+az containerapp job start -g <rg> -n "$(terraform output -raw migrate_job_name)"   # migrate
+az containerapp update -g <rg> -n "$(terraform output -raw api_app_name)" \
+  --image "$(terraform output -raw acr_login_server)/shipx-backend:latest"
+curl "$(terraform output -raw api_url)/health"                                      # 200
+```
 
 ## Replica roadmap (toward a full AWS→Azure mirror)
 
@@ -141,7 +173,7 @@ Built in order of tractability (infra-only first; app-coupled pieces last):
 | 5 | VPC + endpoints | VNet + delegated subnets (`modules/networking`) | — | ✅ Terraform |
 | 6 | SQS / EventBridge / SES | Service Bus / Event Grid / Communication Services | — | ✅ adapters + Terraform (`modules/{servicebus,eventgrid,acs}`) |
 | 7 | Monitoring (CloudWatch) | Log Analytics + App Insights (`modules/monitoring`) | — | ✅ workspace + APM (alert rules in Phase 3) |
-| 8 | Lambda + API Gateway | **Container Apps** (ingress = API) | **backend containerized** | 🔨 image done (ADR-005); Terraform pending |
+| 8 | Lambda + API Gateway | **Container Apps** (`modules/container_app`) | backend containerized | ✅ Terraform (CI pushes image — Phase 5) |
 | 9 | Cognito | Entra External ID | app claim-mapping behind an interface | ⏳ |
 
 **Application portability (already landed, cloud-agnostic — not Terraform):** the

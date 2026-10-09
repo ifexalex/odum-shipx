@@ -10,6 +10,16 @@ resource "azurerm_resource_group" "main" {
   tags     = local.common_tags
 }
 
+# User-assigned managed identity for the Container Apps compute (Phase 3). Kept
+# in the root to break the module cycle: Key Vault grants it access, and the
+# container_app module uses it for ACR pull + Key Vault/Storage auth.
+resource "azurerm_user_assigned_identity" "app" {
+  name                = "${local.name_prefix}-app-identity"
+  resource_group_name = azurerm_resource_group.main.name
+  location            = var.location
+  tags                = local.common_tags
+}
+
 module "frontend" {
   source = "./modules/frontend"
 
@@ -41,6 +51,10 @@ module "keyvault" {
   resource_group_name = azurerm_resource_group.main.name
   location            = var.location
   common_tags         = local.common_tags
+
+  # Grant the app identity runtime access (wrap/unwrap keys + read secrets) so
+  # KeyVaultKeyProvider/KeyVaultSecretsProvider work via DefaultAzureCredential.
+  extra_object_ids = [azurerm_user_assigned_identity.app.principal_id]
 }
 
 # ─── Data + messaging layer (Phase 2) ───────────────────────────────────────
@@ -118,4 +132,67 @@ module "monitoring" {
   resource_group_name = azurerm_resource_group.main.name
   location            = var.location
   common_tags         = local.common_tags
+}
+
+# ─── Compute (Phase 3) ──────────────────────────────────────────────────────
+# Container Apps running the Phase-1 image; consumes every Phase-2 output as the
+# adapter env. CLOUD_PROVIDER=azure makes the running app resolve Azure adapters.
+
+module "container_app" {
+  source = "./modules/container_app"
+
+  name_prefix         = local.name_prefix
+  resource_group_name = azurerm_resource_group.main.name
+  location            = var.location
+  common_tags         = local.common_tags
+
+  identity_id                = azurerm_user_assigned_identity.app.id
+  identity_principal_id      = azurerm_user_assigned_identity.app.principal_id
+  subnet_id                  = module.networking.container_apps_subnet_id
+  log_analytics_workspace_id = module.monitoring.workspace_id
+
+  container_image = var.container_image
+
+  # Postgres
+  db_host     = module.postgres.host
+  db_port     = module.postgres.port
+  db_name     = module.postgres.database_name
+  db_user     = module.postgres.administrator_login
+  db_password = module.postgres.administrator_password
+
+  # Redis
+  redis_host     = module.redis.hostname
+  redis_port     = module.redis.ssl_port
+  redis_password = module.redis.primary_access_key
+
+  # Service Bus
+  service_bus_connection_string = module.servicebus.connection_string
+  queue_names                   = module.servicebus.queue_names
+
+  # Event Grid
+  event_grid_endpoint = module.eventgrid.endpoint
+  event_grid_key      = module.eventgrid.primary_access_key
+
+  # ACS email
+  acs_connection_string = module.acs.connection_string
+  acs_sender_address    = module.acs.sender_address
+
+  # Storage + Key Vault
+  blob_container_name       = module.storage.container_name
+  storage_connection_string = module.storage.connection_string
+  key_vault_url             = module.keyvault.vault_uri
+  encryption_key_id         = module.keyvault.encryption_key_id
+
+  # Observability
+  app_insights_connection_string = module.monitoring.app_insights_connection_string
+
+  # Auth (Entra) — wired in Phase 4.
+  oidc_jwks_url = var.oidc_jwks_url
+  oidc_audience = var.oidc_audience
+
+  # Sizing
+  api_cpu          = var.api_cpu
+  api_memory       = var.api_memory
+  api_min_replicas = var.api_min_replicas
+  api_max_replicas = var.api_max_replicas
 }

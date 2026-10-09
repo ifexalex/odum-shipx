@@ -141,3 +141,35 @@ output "app_insights_connection_string" {
   value       = module.monitoring.app_insights_connection_string
   sensitive   = true
 }
+
+# ─── Compute (Phase 3) ──────────────────────────────────────────────────────
+
+output "api_url" {
+  description = "Public HTTPS base URL of the API Container App — point the frontend + smoke tests here."
+  value       = module.container_app.api_url
+}
+
+output "api_fqdn" {
+  description = "API Container App ingress FQDN."
+  value       = module.container_app.api_fqdn
+}
+
+output "acr_login_server" {
+  description = "ACR login server — the deploy workflow tags/pushes the backend image here."
+  value       = module.container_app.acr_login_server
+}
+
+output "acr_name" {
+  description = "ACR name (for `az acr login` and image updates)."
+  value       = module.container_app.acr_name
+}
+
+output "api_app_name" {
+  description = "API Container App name (for `az containerapp update --image`)."
+  value       = module.container_app.api_app_name
+}
+
+output "migrate_job_name" {
+  description = "Migration Container App Job name (`az containerapp job start`)."
+  value       = module.container_app.migrate_job_name
+}

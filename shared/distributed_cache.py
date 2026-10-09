@@ -59,9 +59,16 @@ class DistributedCache:
 
         host = os.environ.get("REDIS_HOST", "localhost")
         port = int(os.environ.get("REDIS_PORT", "6379"))
+        # Azure Cache for Redis (Basic/Standard) mandates TLS + an access key;
+        # AWS ElastiCache here is in-VPC plain TCP with no auth. Both are env-
+        # driven and default to the AWS/local posture (no password, no TLS).
+        password = os.environ.get("REDIS_PASSWORD") or None
+        use_ssl = os.environ.get("REDIS_SSL", "").lower() == "true"
         self._client = redis.Redis(
             host=host,
             port=port,
+            password=password,
+            ssl=use_ssl,
             decode_responses=True,
             socket_connect_timeout=_CONNECT_TIMEOUT,
             socket_timeout=_SOCKET_TIMEOUT,

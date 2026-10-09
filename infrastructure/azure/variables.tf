@@ -47,3 +47,47 @@ variable "acs_data_location" {
   type        = string
   default     = "Europe"
 }
+
+# ─── Compute (Phase 3) ──────────────────────────────────────────────────────
+
+variable "container_image" {
+  description = "Backend image for the Container Apps. Defaults to a public placeholder so the first apply succeeds before the real image is in ACR; the deploy workflow pushes + updates it."
+  type        = string
+  default     = "mcr.microsoft.com/k8se/quickstart:latest"
+}
+
+variable "oidc_jwks_url" {
+  description = "OIDC JWKS endpoint for token verification (Entra; set in Phase 4)."
+  type        = string
+  default     = ""
+}
+
+variable "oidc_audience" {
+  description = "OIDC token audience (Entra app client id; set in Phase 4)."
+  type        = string
+  default     = ""
+}
+
+variable "api_cpu" {
+  description = "API container vCPU."
+  type        = number
+  default     = 0.5
+}
+
+variable "api_memory" {
+  description = "API container memory (e.g. 1Gi)."
+  type        = string
+  default     = "1Gi"
+}
+
+variable "api_min_replicas" {
+  description = "API minimum replicas (1 keeps it warm; raise for prod)."
+  type        = number
+  default     = 1
+}
+
+variable "api_max_replicas" {
+  description = "API maximum replicas."
+  type        = number
+  default     = 3
+}
