@@ -90,7 +90,10 @@ jobs:
           enable-cache: true
       - run: uv sync --extra azure
       - name: SAST scan (bandit)
-        run: uv run bandit -r services/ shared/ -ll -q -c pyproject.toml
+        # Run via uvx (isolated tool env) rather than the shared project venv:
+        # a clean, complete install each run, immune to project-env/cache quirks
+        # that broke bandit's plugin discovery under `uv run` on the CI runner.
+        run: uvx bandit@1.9.4 -r services/ shared/ -ll -q -c pyproject.toml
       - name: Dependency vulnerability scan (safety)
         # Scan the resolved runtime deps (what ships), exported from the lock.
         run: |
