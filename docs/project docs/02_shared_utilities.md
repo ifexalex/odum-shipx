@@ -670,3 +670,28 @@ AWS/local behavior is unchanged (the new env vars default to the old posture):
 - **Tests:** `tests/unit/test_db_connection_healing.py::TestSslMode` (3) and
   `tests/unit/test_distributed_cache.py` (3) — assert the connection kwargs for the AWS/local vs
   Azure env, fully mocked.
+
+## shared/providers/azure/entra.py + entra_claims.py — Entra identity (added 2026-10-09)
+
+The Azure side of the `IdentityProvider` + `ClaimsMapper` ports (ADR-004 Phase 4). The factory in
+`shared/providers/__init__.py` already selected these paths; this fills them in.
+
+- **`EntraIdentityProvider`** (`entra.py`) — the 14 `IdentityProvider` methods over **Microsoft
+  Graph** (v1.0). Auth is a bearer token from `azure-identity` `DefaultAzureCredential` (the
+  Container Apps managed identity in prod); Graph calls go over **stdlib `urllib`** so no HTTP
+  dependency is added. Roles are **security groups** named `{tenant_id}:{role}` — the faithful
+  Cognito mirror, so `sync_user_groups`'s reconcile logic is byte-identical. Users are created with
+  a `passwordProfile` (`forceChangePasswordNextSignIn`) — the invite/reset analogue (Entra has no
+  Cognito-style invite email out of the box; the migration script + tenant SSPR config drive the
+  email). `username` is the UPN/email, resolved to the Graph object id as needed. Errors normalize
+  to the same exceptions as Cognito: 409 → `DuplicateResourceError`, else `ExternalServiceError("Entra", …)`.
+- **`EntraClaimsMapper`** (`entra_claims.py`) — reads `oid`/`sub` (user id), a configurable tenant
+  claim (`ENTRA_TENANT_ID_CLAIM`, default `tenant_id`), the `groups` claim normalized to
+  `{tenant_id}:{role}` names, and a configurable role claim (`ENTRA_ROLE_CLAIM`, default `role`).
+  The downstream interpretation stays in `shared/auth.py`, unchanged. (Entra must be configured to
+  emit group *display names* in the token — documented in the Phase-4 checklist.)
+- **Tests:** `tests/unit/test_entra_claims.py` (7) and `tests/unit/test_entra_identity_provider.py`
+  (7) — fully mocked (stubbed Graph / token + urlopen); cover the claim shapes, the group-sync
+  reconcile, create-user flows, 409→duplicate error mapping, and factory selection. Real end-to-end
+  needs an Entra tenant (see the ADR-004 / Phase-4 checklist). The bulk user migration is
+  `scripts/migrate_users_to_entra.py`.

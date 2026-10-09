@@ -17,7 +17,7 @@ Azure (e.g. to use Founders Hub credits) without re-architecting.
 | Queue | SQS | **Service Bus (`ServiceBusQueueProvider`)** — adapter + `modules/servicebus` Terraform | ✅ |
 | Database | Aurora Serverless v2 | **PostgreSQL Flexible Server (`modules/postgres`)** — VNet-integrated, private | ✅ Terraform |
 | Cache | ElastiCache | **Azure Cache for Redis (`modules/redis`)** | ✅ Terraform |
-| Auth | Cognito | Entra External ID | ⏳ |
+| Auth | Cognito | **Entra External ID** (`EntraIdentityProvider` + `EntraClaimsMapper`) | 🔨 adapters + migration script done; tenant setup manual |
 | Events | EventBridge | **Event Grid (`EventGridProvider`)** — adapter + `modules/eventgrid` Terraform | ✅ |
 | Email | SES | **ACS Email (`AcsEmailProvider`)** — adapter + `modules/acs` Terraform | ✅ |
 | Monitoring | CloudWatch | **Log Analytics + App Insights (`modules/monitoring`)** | ✅ Terraform |
@@ -159,6 +159,37 @@ az containerapp update -g <rg> -n "$(terraform output -raw api_app_name)" \
 curl "$(terraform output -raw api_url)/health"                                      # 200
 ```
 
+## Auth setup — Entra External ID (Phase 4, manual)
+
+The identity adapters are code (`shared/providers/azure/entra.py` +
+`entra_claims.py`) and the bulk migration is `scripts/migrate_users_to_entra.py`, but the Entra
+**tenant** itself is set up by hand (an External ID / CIAM tenant can't be fully Terraformed). One
+time, per the ADR-004 decision (External ID + roles as security groups):
+
+1. **Create the External ID tenant** (portal) and an **app registration** for the SPA + API.
+   Note the tenant id, app (client) id, and the token/issuer URLs.
+2. **Graph permissions** for the deploy/migration identity (the one `migrate_users_to_entra.py`
+   and the Container Apps managed identity use): application permissions **User.ReadWrite.All** +
+   **Group.ReadWrite.All**, admin-consented.
+3. **Token config so the API can authorize:** emit the `groups` claim as **group display names**
+   (a group-claims / claims-mapping policy — Entra emits object ids by default) so they arrive as
+   `{tenant_id}:{role}`; add the ShipX tenant id + primary role as optional/extension claims.
+   Override `ENTRA_TENANT_ID_CLAIM` / `ENTRA_ROLE_CLAIM` if you name them differently.
+4. **Wire the API** (Container Apps env / tfvars): `OIDC_JWKS_URL` + `OIDC_AUDIENCE` →
+   the Entra app's JWKS + client id (the authorizer verifies RS256 against these);
+   `ENTRA_USER_DOMAIN` → the tenant's managed domain (e.g. `yourtenant.onmicrosoft.com`).
+5. **Migrate users** (Cognito can't export password hashes, so re-provision with a forced reset):
+   ```bash
+   CLOUD_PROVIDER=azure ENTRA_USER_DOMAIN=yourtenant.onmicrosoft.com \
+     python scripts/migrate_users_to_entra.py --dry-run     # preview
+   CLOUD_PROVIDER=azure ENTRA_USER_DOMAIN=yourtenant.onmicrosoft.com \
+     python scripts/migrate_users_to_entra.py               # provision + reconcile groups
+   ```
+   Idempotent — re-runs skip existing users but still reconcile their groups.
+
+Cutover is a config flip (`DEPLOY_CLOUD`/`CLOUD_PROVIDER` + the `OIDC_*` env); rollback is flipping
+them back. AWS continues to use Cognito unchanged throughout.
+
 ## Replica roadmap (toward a full AWS→Azure mirror)
 
 The goal is a complete Azure mirror of the AWS stack, deployable instead of AWS.
@@ -174,7 +205,7 @@ Built in order of tractability (infra-only first; app-coupled pieces last):
 | 6 | SQS / EventBridge / SES | Service Bus / Event Grid / Communication Services | — | ✅ adapters + Terraform (`modules/{servicebus,eventgrid,acs}`) |
 | 7 | Monitoring (CloudWatch) | Log Analytics + App Insights (`modules/monitoring`) | — | ✅ workspace + APM (alert rules in Phase 3) |
 | 8 | Lambda + API Gateway | **Container Apps** (`modules/container_app`) | backend containerized | ✅ Terraform (CI pushes image — Phase 5) |
-| 9 | Cognito | Entra External ID | app claim-mapping behind an interface | ⏳ |
+| 9 | Cognito | Entra External ID (`shared/providers/azure/entra*`) | app claim-mapping behind an interface | 🔨 adapters + migration done; tenant setup manual |
 
 **Application portability (already landed, cloud-agnostic — not Terraform):** the
 backend now uses a **ports-and-adapters layer** (`shared/providers/`) so business

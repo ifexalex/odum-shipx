@@ -1,6 +1,6 @@
 # ADR-004: Cognito → Entra Portability (IdentityProvider port + user migration)
 
-**Status:** Accepted — Phases 1–2 implemented (2026-10-06, AWS-only); phases 3–5 need an Azure tenant to build/test/migrate against
+**Status:** Accepted — Phases 1–4 implemented in code (Phases 1–2 AWS-only 2026-10-06; the Entra adapter, claims mapper, and migration script 2026-10-09, master-plan 7.115). Decision taken: **Entra External ID**, roles as **security groups** `{tenant_id}:{role}`. Remaining to go live (Phase 5): a real External ID tenant + the manual setup checklist (infrastructure/azure/README.md → "Auth setup — Entra External ID"), running the migration, and the dual-run→cutover.
 
 **Builds on** ADR-003 (Tenant-Aware Authentication with Cognito Custom Claims, in
 `system_design_logistics_management.md`): ADR-003 chose a single Cognito pool with
@@ -123,10 +123,17 @@ data loss, since Cognito is untouched until decommission).
    so `auth.py` never needs editing again for the cutover; the Entra mapper is one new
    file. *(Still pending: the authorizer's verifier list gains an Entra verifier — that's
    Phase 3, since it needs Entra's JWKS/issuer.)*
-3. **Entra adapter + Terraform** — `azure/entra.py` (Graph) + `infrastructure/azure`
-   Entra External ID tenant, app registration, extension attributes, claims-mapping.
-4. **User migration** — bulk-provision + invite (above), behind a one-shot script.
-5. **Dual-run → cutover → decommission Cognito.**
+3. **Entra adapter + claim mapper** — ✅ **done (2026-10-09, master-plan 7.115).**
+   `shared/providers/azure/entra.py` (`EntraIdentityProvider`, Graph via stdlib urllib +
+   `azure-identity`) + `entra_claims.py` (`EntraClaimsMapper`). The authorizer's verifier is
+   already issuer-driven (`OIDC_JWKS_URL`/`OIDC_AUDIENCE` → Entra; done in Phase 1's
+   `shared/auth_verify.py`). Mocked-unit-tested; the External ID **tenant** setup is manual
+   (checklist in `infrastructure/azure/README.md`).
+4. **User migration** — ✅ **done (2026-10-09).** `scripts/migrate_users_to_entra.py` bulk-
+   provisions `tenant_user` rows into Entra via the port (forced password reset + group sync),
+   idempotent, `--dry-run`/`--tenant`.
+5. **Dual-run → cutover → decommission Cognito** — operational; config flip
+   (`DEPLOY_CLOUD`/`CLOUD_PROVIDER` + `OIDC_*`), run against a real tenant.
 
 ## Consequences
 - Phases 1–2 are done AWS-only and make the codebase **seam-ready**: identity management
@@ -134,10 +141,9 @@ data loss, since Cognito is untouched until decommission).
   `services/tenant_management/service.py` and `shared/auth.py` are cloud-agnostic and
   won't need editing for the cutover. They do **not** by themselves achieve auth
   portability — that still needs phases 3–5, which require an actual Azure tenant.
-- Entra External ID (CIAM) vs Azure AD B2C is an **open question for the business**
-  (B2C is legacy/being superseded by External ID; recommend External ID). The claim
-  mechanism (extension attributes + claims-mapping policy or a custom claims provider)
-  differs between them — pick before phase 3.
+- Entra External ID vs Azure AD B2C — **decided: External ID** (B2C is legacy). Roles are
+  modelled as **security groups** `{tenant_id}:{role}` (faithful Cognito mirror). The token must
+  emit group *display names* (claims-mapping policy) so the `groups` claim arrives in that form.
 - Cost/credits: Entra External ID MAU-based pricing vs Cognito MAU — fold into the
   `docs/azure_cost_model.md` comparison before committing.
 

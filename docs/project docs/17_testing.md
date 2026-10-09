@@ -1247,3 +1247,10 @@ Fully mocked — no gunicorn, Service Bus, JWKS, DB, or Azure SDK is touched.
 - **`tests/unit/test_scheduled_run.py`** (5): `run_job` returns 0 on success (invoking the job's `lambda_handler` with a traceable event) / 1 on handler failure / raises on an unknown job; every advertised job name imports and exposes `lambda_handler`; argparse rejects an unknown job.
 - **`tests/unit/test_db_connection_healing.py::TestSslMode`** (3, added Phase 3): `shared/db.py` sslmode selection — explicit `DATABASE_SSLMODE` wins (Azure sets `require`), AWS `DB_SECRET_ARN` defaults to `require`, local defaults to `prefer`; `psycopg2.connect` + `_get_db_password` mocked.
 - **`tests/unit/test_distributed_cache.py`** (3, added Phase 3): the redis client is built with `password`/`ssl` off by default (AWS/local) and on from `REDIS_PASSWORD`/`REDIS_SSL=true` (Azure); case-insensitive flag; the `redis` package is faked.
+
+### Compute portability — Entra identity (ADR-004 Phase 4, 2026-10-09)
+
+Fully mocked — no Microsoft Graph, credential, or network.
+
+- **`tests/unit/test_entra_claims.py`** (7): `EntraClaimsMapper` — `user_id` prefers `oid` then `sub`; tenant id from the configurable claim; `groups` from a list / JSON-array string / CSV normalized to `{tenant_id}:{role}`; `primary_role` from the role claim.
+- **`tests/unit/test_entra_identity_provider.py`** (7): `EntraIdentityProvider` with `_graph` stubbed — `create_user`/`create_user_with_password` POST `/users` with the right `forceChangePasswordNextSignIn` and sync groups; disable/enable PATCH `accountEnabled`; `sync_user_groups` adds missing + removes stale groups scoped to the tenant prefix (leaving other tenants' groups); and with `urlopen`+token stubbed, `_graph` maps HTTP 409 → `DuplicateResourceError` and other codes → `ExternalServiceError`; factory selects Entra under `CLOUD_PROVIDER=azure`.
