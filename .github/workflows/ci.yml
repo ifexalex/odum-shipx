@@ -73,7 +73,7 @@ jobs:
           DATABASE_PASSWORD: test_pass
         run: uv run pytest tests/tenant_isolation/ -v
       - name: Upload coverage
-        uses: codecov/codecov-action@v3
+        uses: codecov/codecov-action@v7
         with:
           files: coverage.xml
           fail_ci_if_error: false
