@@ -75,7 +75,7 @@ All four export endpoints accept an optional `?format=` query parameter:
 | `csv` | `text/csv` | Flat CSV, UTF-8 BOM encoded for Excel compatibility. |
 | `pdf` | `application/pdf` | Landscape A4, blue header row, alternating row shading (reportlab). |
 
-Invalid `?format=` values return 422 with `VALIDATION_ERROR`. Dependencies: `openpyxl` (xlsx), stdlib `csv` (csv), `reportlab>=4.0` (pdf) — all in `requirements-layer.txt`.
+Invalid `?format=` values return 422 with `VALIDATION_ERROR`. Dependencies: `openpyxl` (xlsx), stdlib `csv` (csv), `reportlab>=4.0` (pdf) — bundled in the shared Lambda layer (pyproject `layer` deps).
 
 ## Packing List Excel Export (Backend Spec §7.1)
 
@@ -625,7 +625,7 @@ class ImportResult(BaseModel):
 - **Memory:** 512MB (openpyxl can be memory-intensive for large files)
 - **Timeout:** 60s (import may process hundreds of rows)
 - **VPC:** Yes (needs DB access for customer lookup + packing list creation)
-- **Layer deps:** `openpyxl` (xlsx), `reportlab>=4.0` (pdf) in `requirements-layer.txt`; stdlib `csv` for csv output
+- **Layer deps:** `openpyxl` (xlsx), `reportlab>=4.0` (pdf) in the shared Lambda layer; stdlib `csv` for csv output
 
 ## Acceptance Criteria
 

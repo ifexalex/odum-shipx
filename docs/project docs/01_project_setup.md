@@ -181,10 +181,8 @@ logistics-system/
 │   └── workflows/
 │       ├── ci.yml
 │       └── deploy.yml
-├── pyproject.toml
-├── requirements.txt                # Lambda deployment deps
-├── requirements-dev.txt            # Dev/test deps
-├── requirements-layer.txt          # Shared layer deps
+├── pyproject.toml                  # deps (uv): [project] runtime, [optional].azure, [dependency-groups] dev/layer
+├── uv.lock                         # fully-resolved, hash-locked dependency lock (source of truth)
 ├── Dockerfile.lambda               # Optional: Lambda container image build
 ├── Makefile
 ├── .env.example
@@ -231,40 +229,26 @@ markers = [
 ]
 ```
 
-### `requirements.txt` (Lambda runtime)
+### Dependencies — `pyproject.toml` + `uv.lock` (managed with uv)
 
-```
-psycopg2-binary==2.9.9
-pydantic==2.6.0
-boto3==1.34.0
-aws-xray-sdk==2.14.0
-```
+Dependencies live in `pyproject.toml` and are locked in `uv.lock` (the source of
+truth — fully resolved + hash-locked). There are no `requirements*.txt` files.
 
-### `requirements-dev.txt`
+- `[project].dependencies` — runtime deps bundled into the shared Lambda layer
+  (boto3, pydantic, psycopg2-binary, cryptography, aws-xray-sdk, openpyxl, redis, reportlab).
+- `[project.optional-dependencies].azure` — Azure portability SDKs (`uv sync --extra azure`).
+- `[dependency-groups].dev` — test/lint/local tooling (pytest, ruff, mypy, bandit, safety, moto, flask, …).
+- `[dependency-groups].layer` — extras the layer bundles beyond runtime (alembic for the migrate Lambda).
 
-```
--r requirements.txt
-pytest==8.0.0
-pytest-cov==4.1.0
-pytest-asyncio==0.23.0
-pytest-timeout==2.2.0
-moto[all]==5.0.0
-ruff==0.2.0
-mypy==1.8.0
-bandit==1.7.7
-safety==3.0.0
-openpyxl==3.1.2
-reportlab==4.1.0
-alembic==1.13.0
-locust==2.24.0           # Load testing
-```
+Common commands:
 
-### `requirements-layer.txt` (shared Lambda layer)
-
-```
-psycopg2-binary==2.9.9
-pydantic==2.6.0
-aws-xray-sdk==2.14.0
+```bash
+uv sync --extra azure                 # create .venv + install runtime + dev + azure
+uv run pytest tests/unit              # run in the managed env
+uv lock                               # re-resolve after editing pyproject
+# Lambda layer (arm64, python3.13): export the locked layer deps, then install for the target
+uv export --frozen --no-hashes --no-emit-project --no-default-groups --group layer -o build/layer-reqs.txt
+uv pip install --python-platform aarch64-manylinux_2_28 --python-version 3.13 --only-binary :all: --target build/layer/python -r build/layer-reqs.txt
 ```
 
 ### `infrastructure/aws/versions.tf`
@@ -409,39 +393,41 @@ node_modules/
 .PHONY: install lint test test-unit test-integration test-isolation migrate seed deploy clean security-scan
 
 install:
-	pip install -r requirements-dev.txt
+	uv sync --extra azure
 
 lint:
-	ruff check .
-	mypy shared/ services/ --ignore-missing-imports
+	uv run ruff check .
+	uv run mypy shared/ services/ --ignore-missing-imports
 
 security-scan:
-	bandit -r services/ shared/ -ll -q
-	safety check -r requirements.txt
+	uv run bandit -r services/ shared/ -ll -q -c pyproject.toml
+	uv export --frozen --no-hashes --no-emit-project --no-default-groups --extra azure -o requirements-scan.txt
+	uv run safety check -r requirements-scan.txt
 
 test: test-unit
 
 test-unit:
-	pytest tests/unit/ -v --cov=services --cov=shared --cov-report=term-missing -m unit
+	uv run pytest tests/unit/ -v --cov=services --cov=shared --cov-report=term-missing -m unit
 
 test-integration:
-	pytest tests/integration/ -v -m integration
+	uv run pytest tests/integration/ -v -m integration
 
 test-isolation:
-	pytest tests/tenant_isolation/ -v -m isolation
+	uv run pytest tests/tenant_isolation/ -v -m isolation
 
 test-all:
-	pytest tests/ -v --cov=services --cov=shared --cov-report=xml
+	uv run pytest tests/ -v --cov=services --cov=shared --cov-report=xml
 
 migrate:
-	python scripts/migrate.py
+	uv run python scripts/migrate.py
 
 seed:
-	python scripts/seed.py
+	uv run python scripts/seed.py
 
 package-layer:
 	mkdir -p build/layer/python
-	pip install -r requirements-layer.txt -t build/layer/python --platform manylinux2014_aarch64 --only-binary=:all:
+	uv export --frozen --no-hashes --no-emit-project --no-default-groups --group layer -o build/layer-reqs.txt
+	uv pip install --python-platform aarch64-manylinux_2_28 --python-version 3.13 --only-binary :all: -t build/layer/python -r build/layer-reqs.txt
 	cp -r shared/ build/layer/python/shared/
 	cd build/layer && zip -r ../shared-layer.zip python/
 
@@ -641,7 +627,7 @@ def setup_logging() -> logging.Logger:
 
 - [ ] All directories and `__init__.py` files exist
 - [ ] `pyproject.toml` configured with ruff (including bandit rules via S selector), mypy, pytest with markers
-- [ ] `requirements*.txt` files have pinned dependencies including `aws-xray-sdk`
+- [ ] `pyproject.toml` has exactly-pinned dependencies (incl. `aws-xray-sdk`) + committed `uv.lock`
 - [ ] `.env.example` has all environment variables documented including `SERVICE_NAME`, `DB_SECRET_ARN`
 - [ ] `Makefile` has targets for install, lint, security-scan, test-unit, test-integration, test-isolation, test-all, migrate, seed, package-layer (ARM64), clean
 - [ ] `shared/exceptions.py` has all 13 error types matching the error catalog in `00_CROSS_CUTTING_STANDARDS.md`

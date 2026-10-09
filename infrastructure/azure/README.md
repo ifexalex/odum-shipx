@@ -150,8 +150,8 @@ The **pytest suite is fully mocked** and never touches Azurite or a real cloud â
 `tests/unit/test_azure_blob_provider.py` uses an in-memory SDK fake. Azurite (and
 a real account) are exercised only by **`scripts/azure_smoke.py`**, which does
 live SAS PUT/GET round-trips when pointed at either (via
-`AZURE_STORAGE_CONNECTION_STRING`). Dev deps come from `requirements-azure.txt`
-(pulled in by `requirements-dev.txt`).
+`AZURE_STORAGE_CONNECTION_STRING`). The Azure SDKs are the `azure` extra in
+`pyproject.toml` â€” install with `uv sync --extra azure`.
 
 What has a local emulator: Blob/Queue/Table (**Azurite**), Postgres (plain
 Postgres, already in the stack), Functions (`func` core tools). What does **not**
