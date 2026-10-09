@@ -50,7 +50,7 @@ dev = [
     "pytest-timeout==2.2.0",
     "requests==2.34.2",
     "ruff==0.2.0",
-    "safety==3.7.0",
+    "safety==3.8.1",
 ]
 # Extra packages the shared Lambda layer bundles beyond `dependencies` (alembic
 # for the migrate Lambda). The layer = project runtime deps + this group; the CI
