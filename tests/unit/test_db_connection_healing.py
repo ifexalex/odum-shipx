@@ -76,3 +76,44 @@ class TestConnectionSelfHeal:
 
         mock_connect.assert_called_once()
         assert result is mock_connect.return_value
+
+
+class TestSslMode:
+    """sslmode selection (added for Azure Postgres, which mandates TLS)."""
+
+    def setup_method(self) -> None:
+        db_module._connection = None  # noqa: SLF001
+        db_module._cached_password = None  # noqa: SLF001
+
+    def teardown_method(self) -> None:
+        db_module._connection = None  # noqa: SLF001
+
+    def _connect_with_env(self, env: dict[str, str]) -> str:
+        base = {
+            "DATABASE_HOST": "localhost",
+            "DATABASE_PORT": "5432",
+            "DATABASE_NAME": "test",
+            "DATABASE_USER": "test",
+            "DATABASE_PASSWORD": "test",
+            "DB_SECRET_ARN": "",
+            "DATABASE_SSLMODE": "",
+        }
+        base.update(env)
+        with (
+            patch.object(db_module.psycopg2, "connect") as mock_connect,
+            patch.object(db_module, "_get_db_password", return_value="test"),
+            patch.dict("os.environ", base, clear=False),
+        ):
+            mock_connect.return_value = MagicMock(closed=False)
+            db_module.get_connection()
+        return mock_connect.call_args.kwargs["sslmode"]
+
+    def test_explicit_sslmode_wins(self) -> None:
+        # Azure path: DATABASE_SSLMODE=require overrides everything.
+        assert self._connect_with_env({"DATABASE_SSLMODE": "require"}) == "require"
+
+    def test_aws_production_defaults_to_require(self) -> None:
+        assert self._connect_with_env({"DB_SECRET_ARN": "arn:aws:secretsmanager:x"}) == "require"
+
+    def test_local_defaults_to_prefer(self) -> None:
+        assert self._connect_with_env({}) == "prefer"

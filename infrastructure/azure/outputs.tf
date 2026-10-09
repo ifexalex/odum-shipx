@@ -50,3 +50,126 @@ output "smoke_secret_name" {
   description = "Secret name (value 'ok') for verifying the SecretsProvider."
   value       = module.keyvault.smoke_secret_name
 }
+
+# ─── Data + messaging adapter env values (Phase 2) ──────────────────────────
+# These map 1:1 to the env vars the app/adapters read; Phase-3 Container Apps
+# wires them (secrets from Key Vault / module outputs). Read a sensitive one
+# with e.g. `terraform output -raw database_password`.
+
+output "database_host" {
+  description = "DATABASE_HOST — Postgres Flexible Server FQDN."
+  value       = module.postgres.host
+}
+
+output "database_port" {
+  description = "DATABASE_PORT."
+  value       = module.postgres.port
+}
+
+output "database_name" {
+  description = "DATABASE_NAME."
+  value       = module.postgres.database_name
+}
+
+output "database_user" {
+  description = "DATABASE_USER."
+  value       = module.postgres.administrator_login
+}
+
+output "database_password" {
+  description = "DATABASE_PASSWORD (also in Key Vault secret `postgres-admin-password`)."
+  value       = module.postgres.administrator_password
+  sensitive   = true
+}
+
+output "redis_host" {
+  description = "REDIS_HOST."
+  value       = module.redis.hostname
+}
+
+output "redis_port" {
+  description = "REDIS_PORT (TLS — requires REDIS_SSL=true)."
+  value       = module.redis.ssl_port
+}
+
+output "redis_password" {
+  description = "REDIS_PASSWORD — Redis access key."
+  value       = module.redis.primary_access_key
+  sensitive   = true
+}
+
+output "service_bus_connection_string" {
+  description = "AZURE_SERVICE_BUS_CONNECTION_STRING."
+  value       = module.servicebus.connection_string
+  sensitive   = true
+}
+
+output "service_bus_queue_names" {
+  description = "Channel → queue name map (set as SQS_SMS/WHATSAPP/EMAIL/METERING_QUEUE_URL)."
+  value       = module.servicebus.queue_names
+}
+
+output "event_grid_endpoint" {
+  description = "AZURE_EVENT_GRID_ENDPOINT."
+  value       = module.eventgrid.endpoint
+}
+
+output "event_grid_key" {
+  description = "AZURE_EVENT_GRID_KEY."
+  value       = module.eventgrid.primary_access_key
+  sensitive   = true
+}
+
+output "acs_connection_string" {
+  description = "AZURE_COMMUNICATION_CONNECTION_STRING."
+  value       = module.acs.connection_string
+  sensitive   = true
+}
+
+output "acs_sender_address" {
+  description = "Managed-domain sender address — wire as the notification from-address."
+  value       = module.acs.sender_address
+}
+
+output "log_analytics_workspace_id" {
+  description = "Log Analytics workspace id (Container Apps Environment log sink)."
+  value       = module.monitoring.workspace_id
+}
+
+output "app_insights_connection_string" {
+  description = "APPLICATIONINSIGHTS_CONNECTION_STRING."
+  value       = module.monitoring.app_insights_connection_string
+  sensitive   = true
+}
+
+# ─── Compute (Phase 3) ──────────────────────────────────────────────────────
+
+output "api_url" {
+  description = "Public HTTPS base URL of the API Container App — point the frontend + smoke tests here."
+  value       = module.container_app.api_url
+}
+
+output "api_fqdn" {
+  description = "API Container App ingress FQDN."
+  value       = module.container_app.api_fqdn
+}
+
+output "acr_login_server" {
+  description = "ACR login server — the deploy workflow tags/pushes the backend image here."
+  value       = module.container_app.acr_login_server
+}
+
+output "acr_name" {
+  description = "ACR name (for `az acr login` and image updates)."
+  value       = module.container_app.acr_name
+}
+
+output "api_app_name" {
+  description = "API Container App name (for `az containerapp update --image`)."
+  value       = module.container_app.api_app_name
+}
+
+output "migrate_job_name" {
+  description = "Migration Container App Job name (`az containerapp job start`)."
+  value       = module.container_app.migrate_job_name
+}

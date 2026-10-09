@@ -12,15 +12,15 @@ Each line maps the equivalent AWS service (the app's current cloud) to its Azure
 
 | Component | AWS today | Azure equivalent | Azure ~$/mo |
 |---|---|---|---:|
-| Backend compute | Lambda | Functions (Flex Consumption) **or** Container Apps | 5–30 |
-| API routing | API Gateway (HTTP) | Functions/Container Apps ingress (not APIM) | ~0 |
+| Backend compute | Lambda | **Container Apps** (as built — ADR-005; one image, api + workers + jobs) | 5–30 |
+| API routing | API Gateway (HTTP) | Container Apps external ingress (not APIM) | ~0 |
 | Database | Aurora Serverless v2 | PostgreSQL Flexible Server (Burstable B2s + 32 GB) | 25–40 |
 | Cache | ElastiCache Redis | Azure Cache for Redis (Basic C0) | ~16 |
 | Auth / identity | Cognito | Entra External ID — **free ≤ 50k MAU** | **0** |
 | Object storage | S3 | Blob Storage | 1–5 |
 | Frontend / CDN | CloudFront | Static Web Apps (free tier) **or** Front Door Standard | 0–35 |
-| Private networking | 7× VPC interface endpoints (~$112) | VNet **Service Endpoints — free** | **0** |
-| Queues | SQS | Storage Queues / Service Bus | 0–5 |
+| Private networking | 7× VPC interface endpoints (~$112) | VNet integration + private DNS (Postgres) — **~free** (DNS zone pennies) | **0–1** |
+| Queues | SQS | **Service Bus** (as built — Standard, ~$10 base + usage) | 10–15 |
 | Scheduler / events | EventBridge | Timer Functions / Event Grid | 0–2 |
 | Email | SES | Communication Services Email / SendGrid | 1–5 |
 | Secrets + crypto | Secrets Manager + KMS | Key Vault | 2–5 |
@@ -74,5 +74,5 @@ Founders Hub grants up to **$150,000** in Azure credits (tiered over the program
 ---
 
 ## Notes
-- The app is portable by design: **PostgreSQL + Alembic** run identically on Azure; the backend can run as a **container** on Azure Container Apps (same image that runs on AWS), and the static SPA deploys to Static Web Apps. See `docs/runbook.md` for the AWS deploy and the cloud-portability approach.
+- The app is portable by design: **PostgreSQL + Alembic** run identically on Azure; the backend runs as a **container on Azure Container Apps** while **AWS keeps Lambda unchanged** (ADR-005 — same `shared/` business logic, thin per-cloud edge), selected by the `DEPLOY_CLOUD`/`CLOUD_PROVIDER` switches. The SPA deploys to Blob + Front Door. See `infrastructure/azure/README.md` for the full Azure stack + bring-up and `docs/runbook.md` for the cloud-portability approach.
 - Numbers are list-price estimates; actual spend varies with log volume, Postgres load, and whether Premium WAF is enabled.

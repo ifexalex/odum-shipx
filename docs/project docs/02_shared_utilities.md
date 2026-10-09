@@ -604,3 +604,94 @@ load. This removes the hard `aws_xray_sdk` import from the handlers' startup pat
 **Trade-off recorded:** the S3 presigned-POST `content-length-range` enforced max upload size at the edge; a presigned
 PUT cannot. Size is now enforced client-side (`useFileUpload.ts`) and should be re-verified server-side via
 `StorageProvider.object_size` on any flow that gains a post-upload confirm step.
+
+## shared/auth_verify.py + shared/http_routing.py — container compute edge (added 2026-10-09)
+
+Added for the Azure Container Apps compute path (ADR-005); AWS behavior unchanged.
+
+**`shared/auth_verify.py`** — bearer-token verification, extracted verbatim from the AWS Lambda
+authorizer so the **same** logic backs both the authorizer (AWS) and the container's in-process
+auth middleware (Azure). `build_authorizer_claims(token)` tries an OIDC RS256 JWT (JWKS-verified)
+then a ShipX HS256 impersonation token, returning the flat, Cognito-shaped claims dict
+(`sub`/`custom:tenant_id`/`cognito:groups` + impersonation markers) that `shared/auth.py`'s
+`get_tenant_context` reads from `requestContext.authorizer`, or `None` to deny (401). The JWKS
+endpoint/audience are read from `OIDC_JWKS_URL`/`OIDC_AUDIENCE`, falling back to
+`COGNITO_JWKS_URL`/`COGNITO_AUDIENCE` (so AWS is unchanged; Entra points the `OIDC_*` vars at its
+own JWKS in ADR-004 Phase 4). `services/authorizer/handler.py` is now a thin adapter over this.
+
+**`shared/http_routing.py`** — the HTTP path→service route table + public-route set, extracted from
+`scripts/local_server.py` so the dev server, the container HTTP app, and (by mirroring) production
+API Gateway share **one** source of truth. `resolve_service(path)` returns the handling service
+module (with the excel export/pdf/import and container-sub-resource and platform-usage special
+cases); `is_public_route(method, path)` matches the no-JWT routes (`local.public_routes` in the
+api-gateway module); `invoke_handler(service, event)` lazily imports and calls the handler.
+`local_server.py` now imports these instead of its own duplicated copy.
+
+- **Tests:** `tests/unit/test_auth_verify.py` (9 — both token strategies, groups-list flattening,
+  env precedence/fallback), `tests/unit/test_http_routing.py` (19 — every routing special case +
+  public-route matching), both fully mocked.
+
+## services/http_app/ + services/queue_worker/ + services/scheduled/run.py — container workloads (added 2026-10-09)
+
+The container entry points (ADR-005). One image (`Dockerfile`), workload chosen by the entrypoint
+arg (`docker-entrypoint.sh`: `api` / `worker` / `job` / `migrate`):
+
+- **`services/http_app/app.py`** — the production WSGI app (gunicorn), the cloud-neutral sibling of
+  `scripts/local_server.py`. Verifies a real token via `shared/auth_verify.py` (no `X-Role` dev
+  shim), gates public vs authenticated routes via `shared/http_routing.py`, builds the
+  API-Gateway-v2 event, and dispatches. Runs gunicorn **processes, 1 thread each** (the `shared/db.py`
+  connection singleton is not thread-safe — see the single-threaded dev-server note above).
+- **`services/queue_worker/worker.py`** — Service Bus consumer, the Azure analogue of AWS's SQS →
+  Lambda event sources. One worker per queue (`--queue sms|whatsapp|email|metering`); wraps each
+  message into a single-record SQS-shaped event and calls the **same** handler the Lambda event
+  source would (`notification.handler.{sms,whatsapp,email}_handler`, `metering.handler.lambda_handler`).
+- **`services/scheduled/run.py`** — Container App Jobs cron runner; `--job <name>` invokes the
+  matching `services/scheduled/*` `lambda_handler` once and exits 0/1 (mirrors the EventBridge rules).
+
+- **Tests:** `tests/unit/test_http_app.py` (8), `tests/unit/test_queue_worker.py` (7),
+  `tests/unit/test_scheduled_run.py` (5) — fully mocked (no gunicorn, Service Bus, JWKS, or DB).
+  Build/run verified locally: `docker build` + the api container serves `/health` 200 and gates
+  `/v1/*` to 401 without a token.
+
+## shared/db.py + shared/distributed_cache.py — Azure connection portability (added 2026-10-09)
+
+Two small, backward-compatible runtime additions so the Phase-3 Container Apps can reach the
+Azure data layer (Postgres Flexible Server + Azure Cache for Redis), both of which mandate TLS —
+AWS/local behavior is unchanged (the new env vars default to the old posture):
+
+- **`shared/db.py`** — `sslmode` now honours an explicit `DATABASE_SSLMODE` env (Container Apps
+  sets `require`); otherwise the previous default stands (`require` when `DB_SECRET_ARN` is set,
+  else `prefer`). Azure has no `DB_SECRET_ARN`, so this is how it gets TLS.
+- **`shared/distributed_cache.py`** — the redis client now passes `password` (from
+  `REDIS_PASSWORD`) and `ssl` (from `REDIS_SSL=true`). Both default off → AWS ElastiCache
+  (in-VPC, plain TCP, no auth) and local Redis connect exactly as before; Azure Redis Basic
+  (public, TLS + access key) now works.
+
+- **Tests:** `tests/unit/test_db_connection_healing.py::TestSslMode` (3) and
+  `tests/unit/test_distributed_cache.py` (3) — assert the connection kwargs for the AWS/local vs
+  Azure env, fully mocked.
+
+## shared/providers/azure/entra.py + entra_claims.py — Entra identity (added 2026-10-09)
+
+The Azure side of the `IdentityProvider` + `ClaimsMapper` ports (ADR-004 Phase 4). The factory in
+`shared/providers/__init__.py` already selected these paths; this fills them in.
+
+- **`EntraIdentityProvider`** (`entra.py`) — the 14 `IdentityProvider` methods over **Microsoft
+  Graph** (v1.0). Auth is a bearer token from `azure-identity` `DefaultAzureCredential` (the
+  Container Apps managed identity in prod); Graph calls go over **stdlib `urllib`** so no HTTP
+  dependency is added. Roles are **security groups** named `{tenant_id}:{role}` — the faithful
+  Cognito mirror, so `sync_user_groups`'s reconcile logic is byte-identical. Users are created with
+  a `passwordProfile` (`forceChangePasswordNextSignIn`) — the invite/reset analogue (Entra has no
+  Cognito-style invite email out of the box; the migration script + tenant SSPR config drive the
+  email). `username` is the UPN/email, resolved to the Graph object id as needed. Errors normalize
+  to the same exceptions as Cognito: 409 → `DuplicateResourceError`, else `ExternalServiceError("Entra", …)`.
+- **`EntraClaimsMapper`** (`entra_claims.py`) — reads `oid`/`sub` (user id), a configurable tenant
+  claim (`ENTRA_TENANT_ID_CLAIM`, default `tenant_id`), the `groups` claim normalized to
+  `{tenant_id}:{role}` names, and a configurable role claim (`ENTRA_ROLE_CLAIM`, default `role`).
+  The downstream interpretation stays in `shared/auth.py`, unchanged. (Entra must be configured to
+  emit group *display names* in the token — documented in the Phase-4 checklist.)
+- **Tests:** `tests/unit/test_entra_claims.py` (7) and `tests/unit/test_entra_identity_provider.py`
+  (7) — fully mocked (stubbed Graph / token + urlopen); cover the claim shapes, the group-sync
+  reconcile, create-user flows, 409→duplicate error mapping, and factory selection. Real end-to-end
+  needs an Entra tenant (see the ADR-004 / Phase-4 checklist). The bulk user migration is
+  `scripts/migrate_users_to_entra.py`.

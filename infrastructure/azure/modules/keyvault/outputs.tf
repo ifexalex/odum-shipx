@@ -8,6 +8,11 @@ output "vault_name" {
   value       = azurerm_key_vault.main.name
 }
 
+output "vault_id" {
+  description = "Key Vault resource id — used by other modules that store secrets here (e.g. postgres)."
+  value       = azurerm_key_vault.main.id
+}
+
 output "encryption_key_id" {
   description = "Versioned RSA key id for envelope wrap/unwrap (set as ENCRYPTION_KEY_VAULT_KEY_ID). Pinned to a version so existing ciphertext stays unwrappable across key rotation."
   value       = azurerm_key_vault_key.data_key.id

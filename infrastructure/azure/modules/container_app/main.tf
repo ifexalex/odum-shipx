@@ -1,0 +1,400 @@
+# ---------------------------------------------------------------------------
+# Container Apps — the Azure compute plane (ADR-005), the analogue of AWS
+# Lambda + API Gateway + SQS event sources + EventBridge schedules. One image
+# (the repo-root Dockerfile) runs four workload shapes, all selected by the
+# entrypoint arg:
+#   - api       : one Container App with external HTTPS ingress (= API Gateway)
+#   - worker    : one Container App per queue, KEDA-scaled on Service Bus depth
+#                 (= the SQS event-source Lambdas)
+#   - scheduled : one Container App Job per cron job (= the EventBridge rules)
+#   - migrate   : a manually-triggered Container App Job (alembic)
+#
+# The image, env, and secrets are identical across all four; CLOUD_PROVIDER=azure
+# makes the app resolve the Azure adapters built in Phases 1–2.
+#
+# Bootstrap note: the ACR image does not exist on the first apply. `container_image`
+# defaults to a public placeholder so the resources provision cleanly; the Phase-5
+# deploy workflow pushes the real image to ACR and updates the apps. image changes
+# are ignored by Terraform so CI owns the running tag.
+# ---------------------------------------------------------------------------
+
+locals {
+  # Non-secret env — plain values. CLOUD_PROVIDER=azure drives adapter selection.
+  plain_env = {
+    CLOUD_PROVIDER              = "azure"
+    DATABASE_HOST               = var.db_host
+    DATABASE_PORT               = tostring(var.db_port)
+    DATABASE_NAME               = var.db_name
+    DATABASE_USER               = var.db_user
+    DATABASE_SSLMODE            = "require"
+    REDIS_HOST                  = var.redis_host
+    REDIS_PORT                  = tostring(var.redis_port)
+    REDIS_SSL                   = "true"
+    AZURE_EVENT_GRID_ENDPOINT   = var.event_grid_endpoint
+    AZURE_KEY_VAULT_URL         = var.key_vault_url
+    ENCRYPTION_KEY_VAULT_KEY_ID = var.encryption_key_id
+    BLOB_CONTAINER_NAME         = var.blob_container_name
+    SES_FROM_ADDRESS            = var.acs_sender_address
+    # OIDC token verification — Entra values wired in Phase 4 (empty until then).
+    OIDC_JWKS_URL = var.oidc_jwks_url
+    OIDC_AUDIENCE = var.oidc_audience
+    # Per-channel queue names (the opaque queue reference on Azure).
+    SQS_SMS_QUEUE_URL      = lookup(var.queue_names, "sms", "")
+    SQS_WHATSAPP_QUEUE_URL = lookup(var.queue_names, "whatsapp", "")
+    SQS_EMAIL_QUEUE_URL    = lookup(var.queue_names, "email", "")
+    SQS_METERING_QUEUE_URL = lookup(var.queue_names, "metering", "")
+  }
+
+  # Container App secret name (lowercase alnum + '-') → value.
+  secret_values = {
+    database-password      = var.db_password
+    redis-password         = var.redis_password
+    service-bus-connection = var.service_bus_connection_string
+    event-grid-key         = var.event_grid_key
+    acs-connection         = var.acs_connection_string
+    storage-connection     = var.storage_connection_string
+    appinsights-connection = var.app_insights_connection_string
+  }
+
+  # Env var name → secret name (injects the secret as that env var).
+  secret_env = {
+    DATABASE_PASSWORD                     = "database-password"
+    REDIS_PASSWORD                        = "redis-password"
+    AZURE_SERVICE_BUS_CONNECTION_STRING   = "service-bus-connection"
+    AZURE_EVENT_GRID_KEY                  = "event-grid-key"
+    AZURE_COMMUNICATION_CONNECTION_STRING = "acs-connection"
+    AZURE_STORAGE_CONNECTION_STRING       = "storage-connection"
+    APPLICATIONINSIGHTS_CONNECTION_STRING = "appinsights-connection"
+  }
+
+  image = var.container_image
+
+  # Scheduled jobs → cron expression, mirroring the AWS EventBridge rules.
+  scheduled_jobs = {
+    storage_fee        = "0 0 * * *"   # midnight UTC daily
+    storage_reminders  = "0 8 * * *"   # 08:00 UTC daily
+    data_cleanup       = "0 2 * * *"   # 02:00 UTC daily
+    release_expiry     = "0 0 * * *"   # midnight UTC daily
+    dispute_escalation = "0 */6 * * *" # every 6 hours
+    sla_check          = "0 */4 * * *" # every 4 hours
+    usage_aggregation  = "0 * * * *"   # hourly
+  }
+
+  # Workers → the Service Bus queue each consumes (for the KEDA scaler).
+  workers = {
+    sms      = lookup(var.queue_names, "sms", "")
+    whatsapp = lookup(var.queue_names, "whatsapp", "")
+    email    = lookup(var.queue_names, "email", "")
+    metering = lookup(var.queue_names, "metering", "")
+  }
+}
+
+# ─── Container registry (private) ───────────────────────────────────────────
+resource "azurerm_container_registry" "acr" {
+  # ACR names: 5–50 chars, alphanumeric only, globally unique.
+  name                = substr(lower(replace("${var.name_prefix}acr", "-", "")), 0, 40)
+  resource_group_name = var.resource_group_name
+  location            = var.location
+  sku                 = var.acr_sku
+  admin_enabled       = false # pull via the managed identity, not admin creds
+  tags                = var.common_tags
+}
+
+# The app identity pulls images from ACR.
+resource "azurerm_role_assignment" "acr_pull" {
+  scope                = azurerm_container_registry.acr.id
+  role_definition_name = "AcrPull"
+  principal_id         = var.identity_principal_id
+}
+
+# ─── Container Apps Environment (VNet-integrated, logs → Log Analytics) ──────
+resource "azurerm_container_app_environment" "main" {
+  name                       = "${var.name_prefix}-cae"
+  resource_group_name        = var.resource_group_name
+  location                   = var.location
+  log_analytics_workspace_id = var.log_analytics_workspace_id
+  infrastructure_subnet_id   = var.subnet_id
+  tags                       = var.common_tags
+}
+
+# ─── API ─────────────────────────────────────────────────────────────────────
+resource "azurerm_container_app" "api" {
+  name                         = "${var.name_prefix}-api"
+  resource_group_name          = var.resource_group_name
+  container_app_environment_id = azurerm_container_app_environment.main.id
+  revision_mode                = "Single"
+  tags                         = var.common_tags
+
+  identity {
+    type         = "UserAssigned"
+    identity_ids = [var.identity_id]
+  }
+
+  registry {
+    server   = azurerm_container_registry.acr.login_server
+    identity = var.identity_id
+  }
+
+  dynamic "secret" {
+    for_each = local.secret_values
+    content {
+      name  = secret.key
+      value = secret.value
+    }
+  }
+
+  ingress {
+    external_enabled = true
+    target_port      = 8080
+    transport        = "auto"
+    traffic_weight {
+      percentage      = 100
+      latest_revision = true
+    }
+  }
+
+  template {
+    min_replicas = var.api_min_replicas
+    max_replicas = var.api_max_replicas
+
+    container {
+      name   = "api"
+      image  = local.image
+      cpu    = var.api_cpu
+      memory = var.api_memory
+      args   = ["api"]
+
+      dynamic "env" {
+        for_each = local.plain_env
+        content {
+          name  = env.key
+          value = env.value
+        }
+      }
+      dynamic "env" {
+        for_each = local.secret_env
+        content {
+          name        = env.key
+          secret_name = env.value
+        }
+      }
+    }
+  }
+
+  lifecycle {
+    # CI owns the running image tag (pushes to ACR + updates the app).
+    ignore_changes = [template[0].container[0].image]
+  }
+
+  depends_on = [azurerm_role_assignment.acr_pull]
+}
+
+# ─── Queue workers (one per queue, KEDA-scaled on Service Bus depth) ─────────
+resource "azurerm_container_app" "worker" {
+  for_each = local.workers
+
+  name                         = "${var.name_prefix}-worker-${each.key}"
+  resource_group_name          = var.resource_group_name
+  container_app_environment_id = azurerm_container_app_environment.main.id
+  revision_mode                = "Single"
+  tags                         = var.common_tags
+
+  identity {
+    type         = "UserAssigned"
+    identity_ids = [var.identity_id]
+  }
+
+  registry {
+    server   = azurerm_container_registry.acr.login_server
+    identity = var.identity_id
+  }
+
+  dynamic "secret" {
+    for_each = local.secret_values
+    content {
+      name  = secret.key
+      value = secret.value
+    }
+  }
+
+  template {
+    min_replicas = 0
+    max_replicas = var.worker_max_replicas
+
+    container {
+      name   = "worker"
+      image  = local.image
+      cpu    = var.worker_cpu
+      memory = var.worker_memory
+      args   = ["worker", "--queue", each.key]
+
+      dynamic "env" {
+        for_each = local.plain_env
+        content {
+          name  = env.key
+          value = env.value
+        }
+      }
+      dynamic "env" {
+        for_each = local.secret_env
+        content {
+          name        = env.key
+          secret_name = env.value
+        }
+      }
+    }
+
+    # Scale 0→N on Service Bus queue depth (the KEDA azure-servicebus scaler).
+    custom_scale_rule {
+      name             = "sb-${each.key}"
+      custom_rule_type = "azure-servicebus"
+      metadata = {
+        queueName    = each.value
+        messageCount = "5"
+      }
+      authentication {
+        secret_name       = "service-bus-connection"
+        trigger_parameter = "connection"
+      }
+    }
+  }
+
+  lifecycle {
+    ignore_changes = [template[0].container[0].image]
+  }
+
+  depends_on = [azurerm_role_assignment.acr_pull]
+}
+
+# ─── Scheduled jobs (cron) ───────────────────────────────────────────────────
+resource "azurerm_container_app_job" "scheduled" {
+  for_each = local.scheduled_jobs
+
+  name                         = "${var.name_prefix}-job-${replace(each.key, "_", "-")}"
+  resource_group_name          = var.resource_group_name
+  location                     = var.location
+  container_app_environment_id = azurerm_container_app_environment.main.id
+
+  replica_timeout_in_seconds = var.job_timeout_seconds
+  replica_retry_limit        = 1
+
+  identity {
+    type         = "UserAssigned"
+    identity_ids = [var.identity_id]
+  }
+
+  registry {
+    server   = azurerm_container_registry.acr.login_server
+    identity = var.identity_id
+  }
+
+  dynamic "secret" {
+    for_each = local.secret_values
+    content {
+      name  = secret.key
+      value = secret.value
+    }
+  }
+
+  schedule_trigger_config {
+    cron_expression          = each.value
+    parallelism              = 1
+    replica_completion_count = 1
+  }
+
+  template {
+    container {
+      name   = "job"
+      image  = local.image
+      cpu    = var.job_cpu
+      memory = var.job_memory
+      args   = ["job", "--job", each.key]
+
+      dynamic "env" {
+        for_each = local.plain_env
+        content {
+          name  = env.key
+          value = env.value
+        }
+      }
+      dynamic "env" {
+        for_each = local.secret_env
+        content {
+          name        = env.key
+          secret_name = env.value
+        }
+      }
+    }
+  }
+
+  lifecycle {
+    ignore_changes = [template[0].container[0].image]
+  }
+
+  depends_on = [azurerm_role_assignment.acr_pull]
+}
+
+# ─── Migration job (manual trigger) ─────────────────────────────────────────
+resource "azurerm_container_app_job" "migrate" {
+  name                         = "${var.name_prefix}-job-migrate"
+  resource_group_name          = var.resource_group_name
+  location                     = var.location
+  container_app_environment_id = azurerm_container_app_environment.main.id
+
+  replica_timeout_in_seconds = var.job_timeout_seconds
+  replica_retry_limit        = 0
+
+  identity {
+    type         = "UserAssigned"
+    identity_ids = [var.identity_id]
+  }
+
+  registry {
+    server   = azurerm_container_registry.acr.login_server
+    identity = var.identity_id
+  }
+
+  dynamic "secret" {
+    for_each = local.secret_values
+    content {
+      name  = secret.key
+      value = secret.value
+    }
+  }
+
+  manual_trigger_config {
+    parallelism              = 1
+    replica_completion_count = 1
+  }
+
+  template {
+    container {
+      name   = "migrate"
+      image  = local.image
+      cpu    = var.job_cpu
+      memory = var.job_memory
+      args   = ["migrate"]
+
+      dynamic "env" {
+        for_each = local.plain_env
+        content {
+          name  = env.key
+          value = env.value
+        }
+      }
+      dynamic "env" {
+        for_each = local.secret_env
+        content {
+          name        = env.key
+          secret_name = env.value
+        }
+      }
+    }
+  }
+
+  lifecycle {
+    ignore_changes = [template[0].container[0].image]
+  }
+
+  depends_on = [azurerm_role_assignment.acr_pull]
+}

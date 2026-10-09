@@ -11,14 +11,16 @@ Azure (e.g. to use Founders Hub credits) without re-architecting.
 |---|---|---|---|
 | Frontend hosting / CDN | S3 + CloudFront | **Blob static website + Front Door Standard** | ✅ |
 | WAF / DDoS | CloudFront WAF | Cloudflare (recommended) / Front Door Premium | ⏳ |
-| Backend compute | Lambda | Container Apps / Functions | ⏳ |
-| Object storage | S3 | **Blob (`BlobStorageProvider`)** — adapter + `modules/storage` Terraform; Azurite- & real-account-testable | 🔨 |
-| Queue | SQS | **Service Bus (`ServiceBusQueueProvider`)** — app adapter done, mocked-SDK tested | 🔨 |
-| Database | Aurora Serverless v2 | PostgreSQL Flexible Server | ⏳ |
-| Cache | ElastiCache | Azure Cache for Redis | ⏳ |
-| Auth | Cognito | Entra External ID | ⏳ |
-| Events | EventBridge | **Event Grid (`EventGridProvider`)** — app adapter done, mocked-SDK tested | 🔨 |
-| Email | SES | **ACS Email (`AcsEmailProvider`)** — app adapter done, mocked-SDK tested | 🔨 |
+| Backend compute | Lambda | **Container Apps** (`Dockerfile` + `modules/container_app`) | ✅ Terraform (image pushed by CI) |
+| Networking | VPC + subnets | **VNet + delegated subnets (`modules/networking`)** | ✅ Terraform |
+| Object storage | S3 | **Blob (`BlobStorageProvider`)** — adapter + `modules/storage` Terraform; Azurite- & real-account-testable | ✅ |
+| Queue | SQS | **Service Bus (`ServiceBusQueueProvider`)** — adapter + `modules/servicebus` Terraform | ✅ |
+| Database | Aurora Serverless v2 | **PostgreSQL Flexible Server (`modules/postgres`)** — VNet-integrated, private | ✅ Terraform |
+| Cache | ElastiCache | **Azure Cache for Redis (`modules/redis`)** | ✅ Terraform |
+| Auth | Cognito | **Entra External ID** (`EntraIdentityProvider` + `EntraClaimsMapper`) | 🔨 adapters + migration script done; tenant setup manual |
+| Events | EventBridge | **Event Grid (`EventGridProvider`)** — adapter + `modules/eventgrid` Terraform | ✅ |
+| Email | SES | **ACS Email (`AcsEmailProvider`)** — adapter + `modules/acs` Terraform | ✅ |
+| Monitoring | CloudWatch | **Log Analytics + App Insights (`modules/monitoring`)** | ✅ Terraform |
 | Secrets / crypto | Secrets Manager + KMS | **Key Vault (`KeyVaultSecretsProvider` + `KeyVaultKeyProvider`)** — adapters + `modules/keyvault` Terraform; real-account-verifiable | 🔨 |
 
 ## Frontend module (what's here now)
@@ -98,6 +100,100 @@ chosen by a pipeline variable:
   Blob+Front Door. Required secrets are listed at the top of that workflow
   (`AZURE_*` come from `terraform -chdir=infrastructure/azure output`).
 
+## Data + messaging layer (Phase 2)
+
+Seven modules mirror the AWS data/messaging stack. Each output maps 1:1 to an adapter env var;
+the Phase-3 Container Apps module wires them (secrets via Key Vault references). All provision
+from one `terraform apply` on the root.
+
+| Module | Azure resource | Mirrors AWS | Outputs → env |
+|---|---|---|---|
+| `networking` | VNet + 3 subnets (container-apps + postgres delegated, private-endpoints) | `networking` (VPC) | subnet ids (consumed by postgres + Phase-3 compute) |
+| `postgres` | PostgreSQL Flexible Server (VNet-integrated, private DNS) + DB `logistics` | `aurora` | `DATABASE_HOST/PORT/NAME/USER/PASSWORD` (password also in Key Vault `postgres-admin-password`) |
+| `redis` | Azure Cache for Redis (Basic C0 default) | `elasticache` | `REDIS_HOST` / `REDIS_PORT` (6380, TLS) / `REDIS_PASSWORD` |
+| `servicebus` | Service Bus namespace + queues sms/whatsapp/email/metering (built-in DLQ) | `sqs` | `AZURE_SERVICE_BUS_CONNECTION_STRING` + `SQS_*_QUEUE_URL` (queue names) |
+| `eventgrid` | Event Grid custom topic | `eventbridge` | `AZURE_EVENT_GRID_ENDPOINT` / `AZURE_EVENT_GRID_KEY` |
+| `acs` | Communication Services + Email (Azure-managed domain) | `ses` | `AZURE_COMMUNICATION_CONNECTION_STRING` + sender address |
+| `monitoring` | Log Analytics workspace + Application Insights | `monitoring` | `APPLICATIONINSIGHTS_CONNECTION_STRING`; workspace id (Container Apps log sink) |
+
+**Two runtime portability fixes (done in Phase 3, keep AWS unchanged):**
+- `shared/db.py` honours a generic `DATABASE_SSLMODE` (Container Apps sets `require` for the
+  Flexible Server, which mandates TLS) — falls back to the old `DB_SECRET_ARN`-based default.
+- `shared/distributed_cache.py` honours `REDIS_PASSWORD` + `REDIS_SSL=true` (Azure Redis needs
+  both) — defaults to no-auth plain TCP, so AWS/local is unchanged.
+
+Read the wired values after an apply with `terraform output` (sensitive ones via
+`terraform output -raw <name>`), e.g. `terraform output -raw database_password`.
+
+## Compute layer (Phase 3)
+
+`modules/container_app` is the Lambda-free compute plane (ADR-005). One image, four workload
+shapes, each the entrypoint arg from the Dockerfile:
+
+| Resource | Workload | Replaces (AWS) |
+|---|---|---|
+| `azurerm_container_app.api` | `api` — gunicorn, external HTTPS ingress on :8080 | API Gateway + HTTP Lambdas |
+| `azurerm_container_app.worker["*"]` | `worker --queue <k>` — one per queue, **KEDA**-scaled 0→N on Service Bus depth | SQS → consumer Lambdas |
+| `azurerm_container_app_job.scheduled["*"]` | `job --job <n>` — 7 cron jobs (schedules mirror the EventBridge rules) | EventBridge → scheduled Lambdas |
+| `azurerm_container_app_job.migrate` | `migrate` — manual trigger (alembic) | the migrate Lambda |
+
+Plus an **ACR** (private registry, image pulled via the app's managed identity) and the
+**Container Apps Environment** (VNet-integrated on the `container-apps` subnet, logs → Log
+Analytics). The root creates one **user-assigned managed identity** (granted ACR pull + Key
+Vault wrap/unwrap + secret read) shared by all apps/jobs; `CLOUD_PROVIDER=azure` plus every
+Phase-2 output is injected as env (secrets as Container App secrets).
+
+**Bootstrap / image flow (chicken-and-egg):** the ACR image doesn't exist on the first apply, so
+`container_image` defaults to a public placeholder and Terraform **ignores image drift**. The
+Phase-5 deploy workflow builds + pushes the real image to ACR and runs
+`az containerapp update --image` (and the migrate job). Sequence for a manual first bring-up:
+
+```bash
+terraform apply                       # provisions ACR + env + apps (placeholder image)
+az acr login -n "$(terraform output -raw acr_name)"
+docker build -t "$(terraform output -raw acr_login_server)/shipx-backend:latest" .
+docker push "$(terraform output -raw acr_login_server)/shipx-backend:latest"
+az containerapp job start -g <rg> -n "$(terraform output -raw migrate_job_name)"   # migrate
+az containerapp update -g <rg> -n "$(terraform output -raw api_app_name)" \
+  --image "$(terraform output -raw acr_login_server)/shipx-backend:latest"
+curl "$(terraform output -raw api_url)/health"                                      # 200
+```
+
+After that first bring-up, **`deploy-azure.yml`** automates it on every push (gated
+`DEPLOY_CLOUD=azure`): it builds + pushes the image to ACR, runs the migration job, rolls the
+Container Apps, and smoke-tests — the Azure analogue of the AWS `deploy.yml` Lambda pipeline.
+
+## Auth setup — Entra External ID (Phase 4, manual)
+
+The identity adapters are code (`shared/providers/azure/entra.py` +
+`entra_claims.py`) and the bulk migration is `scripts/migrate_users_to_entra.py`, but the Entra
+**tenant** itself is set up by hand (an External ID / CIAM tenant can't be fully Terraformed). One
+time, per the ADR-004 decision (External ID + roles as security groups):
+
+1. **Create the External ID tenant** (portal) and an **app registration** for the SPA + API.
+   Note the tenant id, app (client) id, and the token/issuer URLs.
+2. **Graph permissions** for the deploy/migration identity (the one `migrate_users_to_entra.py`
+   and the Container Apps managed identity use): application permissions **User.ReadWrite.All** +
+   **Group.ReadWrite.All**, admin-consented.
+3. **Token config so the API can authorize:** emit the `groups` claim as **group display names**
+   (a group-claims / claims-mapping policy — Entra emits object ids by default) so they arrive as
+   `{tenant_id}:{role}`; add the ShipX tenant id + primary role as optional/extension claims.
+   Override `ENTRA_TENANT_ID_CLAIM` / `ENTRA_ROLE_CLAIM` if you name them differently.
+4. **Wire the API** (Container Apps env / tfvars): `OIDC_JWKS_URL` + `OIDC_AUDIENCE` →
+   the Entra app's JWKS + client id (the authorizer verifies RS256 against these);
+   `ENTRA_USER_DOMAIN` → the tenant's managed domain (e.g. `yourtenant.onmicrosoft.com`).
+5. **Migrate users** (Cognito can't export password hashes, so re-provision with a forced reset):
+   ```bash
+   CLOUD_PROVIDER=azure ENTRA_USER_DOMAIN=yourtenant.onmicrosoft.com \
+     python scripts/migrate_users_to_entra.py --dry-run     # preview
+   CLOUD_PROVIDER=azure ENTRA_USER_DOMAIN=yourtenant.onmicrosoft.com \
+     python scripts/migrate_users_to_entra.py               # provision + reconcile groups
+   ```
+   Idempotent — re-runs skip existing users but still reconcile their groups.
+
+Cutover is a config flip (`DEPLOY_CLOUD`/`CLOUD_PROVIDER` + the `OIDC_*` env); rollback is flipping
+them back. AWS continues to use Cognito unchanged throughout.
+
 ## Replica roadmap (toward a full AWS→Azure mirror)
 
 The goal is a complete Azure mirror of the AWS stack, deployable instead of AWS.
@@ -106,14 +202,14 @@ Built in order of tractability (infra-only first; app-coupled pieces last):
 | # | AWS module | Azure target | Depends on | Status |
 |---|---|---|---|---|
 | 1 | S3 + CloudFront | Blob + Front Door Standard | — | ✅ done |
-| 2 | KMS + Secrets Manager | Key Vault | — | 🔨 app side done |
-| 3 | ElastiCache | Azure Cache for Redis | networking | ⏳ |
-| 4 | Aurora Serverless v2 | PostgreSQL Flexible Server | networking | ⏳ |
-| 5 | VPC + endpoints | VNet + subnets + Private/Service Endpoints | — | ⏳ |
-| 6 | SQS / EventBridge / SES | Service Bus / Event Grid / Communication Services | — | 🔨 app side done (ports in place); Azure adapters + Terraform pending |
-| 7 | Monitoring (CloudWatch) | Log Analytics + App Insights + alerts | — | ⏳ |
-| 8 | Lambda + API Gateway | **Container Apps** (ingress = API) | **backend containerized** | ⏳ |
-| 9 | Cognito | Entra External ID | app claim-mapping behind an interface | ⏳ |
+| 2 | KMS + Secrets Manager | Key Vault | — | ✅ adapters + Terraform |
+| 3 | ElastiCache | Azure Cache for Redis (`modules/redis`) | — | ✅ Terraform (client TLS/pwd in Phase 3) |
+| 4 | Aurora Serverless v2 | PostgreSQL Flexible Server (`modules/postgres`) | networking | ✅ Terraform (client sslmode in Phase 3) |
+| 5 | VPC + endpoints | VNet + delegated subnets (`modules/networking`) | — | ✅ Terraform |
+| 6 | SQS / EventBridge / SES | Service Bus / Event Grid / Communication Services | — | ✅ adapters + Terraform (`modules/{servicebus,eventgrid,acs}`) |
+| 7 | Monitoring (CloudWatch) | Log Analytics + App Insights (`modules/monitoring`) | — | ✅ workspace + APM (alert rules in Phase 3) |
+| 8 | Lambda + API Gateway | **Container Apps** (`modules/container_app`) | backend containerized | ✅ Terraform (CI pushes image — Phase 5) |
+| 9 | Cognito | Entra External ID (`shared/providers/azure/entra*`) | app claim-mapping behind an interface | 🔨 adapters + migration done; tenant setup manual |
 
 **Application portability (already landed, cloud-agnostic — not Terraform):** the
 backend now uses a **ports-and-adapters layer** (`shared/providers/`) so business
@@ -130,12 +226,29 @@ is likewise behind a shim (`shared/observability.py::init_tracing`, a no-op off
 AWS). The one remaining boto3 touchpoint is **Cognito** (auth), the stickiest —
 token claims + user migration to Entra, not a clean adapter swap.
 
-**Key dependency:** #8 (compute) needs the backend packaged as a **container**
-(it already runs under Flask in `scripts/local_server.py`, so this is a wrapper,
-not a rewrite). Containerizing is what lets the same image run on Azure Container
-Apps *and* AWS Fargate — the move that makes the backend as portable as the
-frontend already is. #9 (auth) is the stickiest (token claims + user migration);
-keep the IdP behind an interface so it's swappable.
+**Key dependency:** #8 (compute) needs the backend packaged as a **container** —
+**done** (ADR-005). The repo-root `Dockerfile` builds one image whose entrypoint
+(`docker-entrypoint.sh`) selects the workload: `api` (gunicorn → `services/http_app`),
+`worker --queue <k>` (Service Bus consumer → `services/queue_worker`), `job --job <n>`
+(cron → `services/scheduled/run.py`), or `migrate`. The HTTP app verifies real tokens
+in-process via `shared/auth_verify.py` (the same code the AWS authorizer runs) and routes
+via `shared/http_routing.py` (shared with the dev server + mirrored by API Gateway). What
+remains for #8 is the **Terraform** — Container Apps Environment + ACR + the three
+workloads + env wiring (`CLOUD_PROVIDER=azure` + the adapter connection strings). #9 (auth)
+is the stickiest (token claims + user migration); the IdP is behind the `IdentityProvider`
+port already (ADR-004).
+
+### Backend container (local build/run)
+
+```bash
+docker build -t shipx-backend .
+docker run -p 8080:8080 -e CLOUD_PROVIDER=azure shipx-backend api   # → GET /health 200
+docker run shipx-backend worker --queue sms                          # Service Bus consumer
+docker run shipx-backend job --job release_expiry                    # one cron job, then exit
+```
+
+gunicorn runs **processes, 1 thread each** (the `shared/db.py` connection singleton is not
+thread-safe — same reason the dev server is single-threaded). Scale with replicas, not threads.
 
 ## Local testing (Azurite — the Azure "local stack")
 

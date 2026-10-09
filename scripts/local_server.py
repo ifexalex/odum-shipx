@@ -50,6 +50,7 @@ from flask import Flask, Response, request
 from flask_cors import CORS
 
 from shared.db import execute_with_tenant
+from shared.http_routing import invoke_handler, resolve_service
 
 logging.basicConfig(level=logging.INFO, format="%(levelname)s  %(name)s  %(message)s")
 logger = logging.getLogger("local_server")
@@ -77,53 +78,9 @@ CORS(
 )
 
 # ---------------------------------------------------------------------------
-# Lazy-import handler modules (avoids importing everything on startup)
+# Route table + service resolution live in shared/http_routing.py so the dev
+# server, the container HTTP app, and production API Gateway share one mapping.
 # ---------------------------------------------------------------------------
-
-_handlers: dict = {}
-
-
-def _get_handler(name: str):
-    if name not in _handlers:
-        import importlib
-
-        mod = importlib.import_module(f"services.{name}.handler")
-        _handlers[name] = mod
-    return _handlers[name]
-
-
-# ---------------------------------------------------------------------------
-# Route table  (path-prefix → service module name)
-# Order matters — more specific prefixes must come first.
-# ---------------------------------------------------------------------------
-
-_ROUTES = [
-    ("/v1/auth", "auth"),  # httpOnly-cookie session refresh — see services/auth/handler.py
-    ("/v1/register", "tenant_management"),  # customer self-registration (public)
-    ("/v1/invites", "tenant_management"),  # customer account-creation invites (public claim + staff issue)
-    # Webhooks split by provider — payment (Paystack/Flutterwave, HMAC-verified)
-    # vs WhatsApp (Meta). Both were previously unroutable here AND in API
-    # Gateway (found closing audit gap B12).
-    ("/v1/webhooks/payment", "payment_release"),
-    ("/v1/webhooks/whatsapp", "notification"),
-    ("/v1/billing", "billing"),
-    ("/v1/refunds", "refunds"),
-    ("/v1/claims", "claims"),
-    ("/v1/uploads", "claims"),  # presigned URL lives in claims handler
-    ("/v1/packing-lists", "packing_list"),
-    ("/v1/release-notes", "payment_release"),
-    ("/v1/payments", "payment_release"),
-    ("/v1/warehouses", "payment_release"),
-    ("/v1/containers", "tracking"),
-    ("/v1/shipments", "tracking"),
-    ("/v1/manifests", "manifest"),
-    ("/v1/platform", "tenant_management"),
-    ("/v1/tenants", "tenant_management"),
-    ("/v1/tenant", "tenant_management"),  # tenant-admin routes
-    ("/v1/customers", "tenant_management"),  # customer management routes
-    ("/v1/notifications", "notification"),
-    ("/v1/excel", "excel"),
-]
 
 # Matches the Acme Shipping Ltd dev-seed tenant — seed.py inserts with this
 # exact UUID so it survives make stack. DEFAULT_USER_ID is a placeholder;
@@ -427,42 +384,9 @@ def dispatch(path: str):
     full_path = f"/v1/{path}"
     event = _build_event()
 
-    # Find the matching service.
-    # Excel export/import routes share prefixes with other handlers so must be
-    # checked before the general prefix table.  Only packing-lists, manifests,
-    # billing, and containers have excel exports; other /export paths (e.g.
-    # /v1/customers/{id}/export) belong to their own service handlers.
-    _excel_prefixes = ("/v1/packing-lists/", "/v1/manifests/", "/v1/billing/", "/v1/containers/")
-    # PDF document generators all live in the excel service, but their paths sit
-    # under other resources' prefixes (/v1/release-notes/, /v1/payments/), which
-    # _ROUTES below would otherwise hand to payment_release — a handler with no
-    # /pdf branch at all. Production API Gateway routes these to the excel Lambda
-    # explicitly (04c_terraform_api_gateway.md); this mirrors that mapping so the
-    # PDF endpoints are reachable in local dev too. Without it every PDF route
-    # 404s locally, which is why the release-note PDF's broken SQL went unnoticed.
-    _excel_pdf_prefixes = ("/v1/packing-lists/", "/v1/release-notes/", "/v1/payments/")
-    _path_no_qs = full_path.split("?")[0]
-    service_name = None
-    if (
-        (_path_no_qs.endswith("/export") and any(_path_no_qs.startswith(p) for p in _excel_prefixes))
-        or (_path_no_qs.endswith("/pdf") and any(_path_no_qs.startswith(p) for p in _excel_pdf_prefixes))
-        or _path_no_qs.endswith("/import")
-        or _path_no_qs.endswith("/import/presigned-url")
-    ):
-        service_name = "excel"
-    elif _path_no_qs.startswith("/v1/containers/") and _path_no_qs.endswith("/packing-lists"):
-        # GET /v1/containers/{id}/packing-lists — sub-resource alias handled by
-        # packing_list/handler.py's _container_packing_lists(), not tracking.
-        service_name = "packing_list"
-    elif _path_no_qs.startswith("/v1/platform/tenants/") and _path_no_qs.endswith("/usage"):
-        # Per-tenant usage lives in the metering handler (API GW routes it there
-        # in production); everything else under /v1/platform is tenant_management.
-        service_name = "metering"
-    else:
-        for prefix, name in _ROUTES:
-            if full_path == prefix or full_path.startswith(prefix + "/") or full_path.startswith(prefix + "?"):
-                service_name = name
-                break
+    # Resolve the handling service via the shared route table (shared/http_routing.py),
+    # the same mapping the container HTTP app and production API Gateway use.
+    service_name = resolve_service(full_path)
 
     if service_name is None:
         return Response(
@@ -474,11 +398,7 @@ def dispatch(path: str):
     logger.info("%s %s → services.%s.handler", request.method, full_path, service_name)
 
     try:
-        handler_mod = _get_handler(service_name)
-        fn = getattr(handler_mod, "lambda_handler", None) or getattr(handler_mod, "http_handler", None)
-        if fn is None:
-            raise AttributeError(f"No lambda_handler or http_handler in services.{service_name}.handler")
-        result = fn(event, {})
+        result = invoke_handler(service_name, event)
         return _to_flask_response(result)
     except Exception as exc:
         logger.exception("Unhandled error in %s handler", service_name)
