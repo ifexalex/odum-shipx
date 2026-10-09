@@ -86,6 +86,28 @@ Tag protection ruleset (configure in repo **Settings → Rules**):
 - Runtime: **Python 3.13** across CI, the Lambda layer build, the Terraform `runtime`, the
   deploy `--compatible-runtimes`, and mypy (aligned 2026-10-08).
 
+### Choosing the cloud — the `DEPLOY_CLOUD` switch
+
+A single **repository variable** `DEPLOY_CLOUD` selects which cloud's deploy pipelines run.
+It is read as `vars.DEPLOY_CLOUD` in every deploy job's `if:`, so exactly one cloud ever
+deploys — never both at once.
+
+| `DEPLOY_CLOUD` value | What deploys | What is skipped |
+|---|---|---|
+| unset / `aws` (default) | `terraform.yml`, `deploy.yml`, `frontend-ci.yml` deploy (AWS) | all `terraform-azure.yml` jobs |
+| `azure` | all `terraform-azure.yml` jobs | `terraform.yml`, `deploy.yml`, `frontend-ci.yml` deploy |
+
+- **Fail-safe default:** AWS workflows are gated `vars.DEPLOY_CLOUD != 'azure'`, so an unset or
+  misspelled value still deploys AWS (the live cloud) rather than silently deploying nothing.
+  Azure workflows are gated `vars.DEPLOY_CLOUD == 'azure'` (opt-in).
+- The gate is on **deploy/apply jobs only** — CI (lint/test/build), frontend build+test, and all
+  Terraform `plan`/`validate` still run on every push regardless of `DEPLOY_CLOUD`.
+- Set it once per repo: `gh variable set DEPLOY_CLOUD --body azure` (or `aws`). Flip it to cut
+  the whole stack over; there is no per-environment split — all envs follow the one switch.
+- It does **not** remove the need for the target cloud's secrets/OIDC to be wired first
+  (see the bootstrap checklist below). Switching to `azure` with no `AZURE_*` secrets set will
+  fail `azure/login`, not fall back to AWS.
+
 ---
 
 ## Deliverables
