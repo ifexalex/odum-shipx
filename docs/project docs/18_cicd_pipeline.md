@@ -94,8 +94,12 @@ deploys — never both at once.
 
 | `DEPLOY_CLOUD` value | What deploys | What is skipped |
 |---|---|---|
-| unset / `aws` (default) | `terraform.yml`, `deploy.yml`, `frontend-ci.yml` deploy (AWS) | all `terraform-azure.yml` jobs |
-| `azure` | all `terraform-azure.yml` jobs | `terraform.yml`, `deploy.yml`, `frontend-ci.yml` deploy |
+| unset / `aws` (default) | `terraform.yml`, `deploy.yml`, `frontend-ci.yml` deploy (AWS Lambda) | `terraform-azure.yml`, `deploy-azure.yml` |
+| `azure` | `terraform-azure.yml` (infra) + `deploy-azure.yml` (backend image → Container Apps) | `terraform.yml`, `deploy.yml`, `frontend-ci.yml` deploy |
+
+The AWS backend deploys as Lambda zips (`deploy.yml`); the Azure backend deploys as a container
+image to ACR that rolls the Container Apps (`deploy-azure.yml` → `_deploy-azure-env.yml`). Both
+follow the same promotion model (main → dev, `v*-rc*` → staging, `v*` → prod, dispatch → demo).
 
 - **Fail-safe default:** AWS workflows are gated `vars.DEPLOY_CLOUD != 'azure'`, so an unset or
   misspelled value still deploys AWS (the live cloud) rather than silently deploying nothing.
@@ -893,6 +897,24 @@ output`.)
 
 `workflow_dispatch` on **Actions → "Terraform (Azure)"** applies a chosen env on demand; a push
 to `main` touching the Azure infra runs the full dev→staging→prod chain.
+
+### Azure backend deploy (`deploy-azure.yml` + `_deploy-azure-env.yml`, added 2026-10-09)
+
+The app-code counterpart to `terraform-azure.yml` (which is infra only) — the Azure analogue of
+`deploy.yml`, gated `vars.DEPLOY_CLOUD == 'azure'`. Same promotion model (main → dev, `v*-rc*` →
+staging, `v*` → prod, dispatch → demo). The reusable `_deploy-azure-env.yml` per environment:
+
+1. `azure/login` (OIDC) + `terraform init` to **read the env's infra outputs** (RG, ACR name +
+   login server, migrate-job name, api URL) — Terraform state is the single source of names.
+2. `az acr login`, then **build + push** the `Dockerfile` image to ACR tagged with the commit SHA.
+3. **Migrate**: point the migration Container App Job at the new image, `az containerapp job start`,
+   poll to `Succeeded` (a `Failed` aborts the deploy — idempotent `alembic upgrade head`).
+4. **Roll** every Container App (api + workers) and Job (scheduled + migrate) onto the new image via
+   `az containerapp update/job update --image` (Terraform ignores image drift, so CI owns the tag).
+5. **Smoke** the live ingress (health 200, unauthenticated `/v1/*` → 401) — read-only, prod-safe.
+
+Prereq: the infra must already be applied (`terraform-azure.yml`) so ACR + the apps exist; the
+first bring-up before CI is the manual sequence in `infrastructure/azure/README.md`.
 
 ### Security Design
 

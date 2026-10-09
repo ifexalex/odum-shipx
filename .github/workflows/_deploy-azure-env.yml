@@ -1,0 +1,132 @@
+name: Deploy Azure Environment (reusable)
+
+# Azure analogue of _deploy-env.yml. Builds the backend container image, pushes
+# it to the environment's ACR, runs the migration job, rolls every Container App
+# + Job onto the new image, then smoke-tests the API. Infra (ACR/app/job names,
+# RG, api URL) is read from Terraform outputs — the single source of truth — so
+# there is no second place to keep names in sync.
+
+on:
+  workflow_call:
+    inputs:
+      environment:
+        required: true
+        type: string
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    environment: ${{ inputs.environment }}
+    permissions:
+      contents: read
+      id-token: write
+    env:
+      # Terraform azurerm backend + provider auth via OIDC (no stored secret).
+      ARM_USE_OIDC: "true"
+      ARM_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
+      ARM_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
+      ARM_SUBSCRIPTION_ID: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: azure/login@v2
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+
+      - uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: "1.7.5"
+
+      # Resolve infra names/URLs from the env's Terraform state.
+      - name: Read infrastructure outputs
+        id: tf
+        working-directory: infrastructure/azure
+        run: |
+          terraform init -backend-config=environments/${{ inputs.environment }}.backend.hcl
+          {
+            echo "rg=$(terraform output -raw resource_group)"
+            echo "acr=$(terraform output -raw acr_name)"
+            echo "acr_server=$(terraform output -raw acr_login_server)"
+            echo "migrate_job=$(terraform output -raw migrate_job_name)"
+            echo "api_url=$(terraform output -raw api_url)"
+          } >> "$GITHUB_OUTPUT"
+
+      # Build + push the same image the Dockerfile produces, tagged with the SHA.
+      - name: Build and push image
+        env:
+          ACR: ${{ steps.tf.outputs.acr }}
+          ACR_SERVER: ${{ steps.tf.outputs.acr_server }}
+        run: |
+          az acr login -n "$ACR"
+          IMAGE="${ACR_SERVER}/shipx-backend:${{ github.sha }}"
+          docker build -t "$IMAGE" -t "${ACR_SERVER}/shipx-backend:latest" .
+          docker push "$IMAGE"
+          docker push "${ACR_SERVER}/shipx-backend:latest"
+          echo "IMAGE=$IMAGE" >> "$GITHUB_ENV"
+
+      # Migrations first — point the migrate Job at the new image, start it, wait.
+      # alembic upgrade head is idempotent; a non-success aborts the deploy.
+      - name: Run database migrations
+        env:
+          RG: ${{ steps.tf.outputs.rg }}
+          MIGRATE_JOB: ${{ steps.tf.outputs.migrate_job }}
+        run: |
+          az containerapp job update -g "$RG" -n "$MIGRATE_JOB" --image "$IMAGE" --output none
+          EXEC=$(az containerapp job start -g "$RG" -n "$MIGRATE_JOB" --query name -o tsv)
+          echo "Started migration execution: $EXEC"
+          STATUS="Running"
+          for _ in $(seq 1 60); do
+            STATUS=$(az containerapp job execution show -g "$RG" --job-name "$MIGRATE_JOB" \
+              --job-execution-name "$EXEC" --query properties.status -o tsv 2>/dev/null || echo "Running")
+            case "$STATUS" in
+              Succeeded) break ;;
+              Failed|Degraded) echo "Migration $STATUS — aborting deploy"; exit 1 ;;
+            esac
+            sleep 10
+          done
+          [ "$STATUS" = "Succeeded" ] || { echo "Migration did not succeed in time ($STATUS)"; exit 1; }
+
+      # Roll every Container App (api + workers) and Job (scheduled + migrate)
+      # onto the new image. Terraform ignores image drift, so this does not fight it.
+      - name: Update apps and jobs to the new image
+        env:
+          RG: ${{ steps.tf.outputs.rg }}
+        run: |
+          for app in $(az containerapp list -g "$RG" --query "[].name" -o tsv); do
+            echo "Updating app $app"
+            az containerapp update -g "$RG" -n "$app" --image "$IMAGE" --output none
+          done
+          for job in $(az containerapp job list -g "$RG" --query "[].name" -o tsv); do
+            echo "Updating job $job"
+            az containerapp job update -g "$RG" -n "$job" --image "$IMAGE" --output none
+          done
+
+      # Read-only smoke against the live ingress: health 200, unauthenticated 401,
+      # response-time SLA. Safe for prod.
+      - name: Smoke test
+        env:
+          API_BASE: ${{ steps.tf.outputs.api_url }}
+        run: |
+          echo "Smoke-testing $API_BASE"
+          sleep 15  # allow the new revision to become ready
+
+          code=$(curl -sf --max-time 15 --retry 5 --retry-delay 5 -o /dev/null -w "%{http_code}" "$API_BASE/health")
+          echo "health: $code"; test "$code" = "200"
+
+          failed=0
+          for ep in "/v1/packing-lists" "/v1/billing/disputes" "/v1/manifests" "/v1/containers" "/v1/claims"; do
+            status=$(curl -s -o /dev/null -w "%{http_code}" --max-time 10 "$API_BASE$ep")
+            if [ "$status" != "401" ]; then echo "FAIL: $ep → $status (want 401)"; failed=1; else echo "OK: $ep → 401"; fi
+          done
+          exit $failed
+
+      - name: Deployment summary
+        env:
+          API_URL: ${{ steps.tf.outputs.api_url }}
+        run: |
+          echo "✅ Azure deploy complete (${{ inputs.environment }})"
+          echo "   Commit: ${{ github.sha }}"
+          echo "   API:    $API_URL"

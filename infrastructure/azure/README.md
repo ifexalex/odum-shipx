@@ -159,6 +159,10 @@ az containerapp update -g <rg> -n "$(terraform output -raw api_app_name)" \
 curl "$(terraform output -raw api_url)/health"                                      # 200
 ```
 
+After that first bring-up, **`deploy-azure.yml`** automates it on every push (gated
+`DEPLOY_CLOUD=azure`): it builds + pushes the image to ACR, runs the migration job, rolls the
+Container Apps, and smoke-tests — the Azure analogue of the AWS `deploy.yml` Lambda pipeline.
+
 ## Auth setup — Entra External ID (Phase 4, manual)
 
 The identity adapters are code (`shared/providers/azure/entra.py` +
