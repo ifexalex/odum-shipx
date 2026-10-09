@@ -400,7 +400,7 @@ lint:
 	uv run mypy shared/ services/ --ignore-missing-imports
 
 security-scan:
-	uv run bandit -r services/ shared/ -ll -q -c pyproject.toml
+	uvx bandit@1.9.4 -r services/ shared/ -ll -q -c pyproject.toml
 	uv export --frozen --no-hashes --no-emit-project --no-default-groups --extra azure -o requirements-scan.txt
 	uv run safety check -r requirements-scan.txt
 
