@@ -21,7 +21,8 @@ locals {
 }
 
 resource "azurerm_servicebus_namespace" "main" {
-  name                = "${var.name_prefix}-sb"
+  # Azure reserves the -sb and -mgmt suffixes for namespace names, so use -bus.
+  name                = "${var.name_prefix}-bus"
   resource_group_name = var.resource_group_name
   location            = var.location
   sku                 = var.sku
