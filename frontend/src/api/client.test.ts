@@ -231,7 +231,7 @@ describe('tenant-blocked gate wiring (16.12 / A4)', () => {
 describe('apiDownloadFile', () => {
   let fetchMock: ReturnType<typeof vi.fn>
   let openSpy: ReturnType<typeof vi.fn>
-  let clickSpy: ReturnType<typeof vi.fn>
+  let clickSpy: ReturnType<typeof vi.fn<() => void>>
 
   beforeEach(() => {
     vi.stubEnv('VITE_API_BASE_URL', 'https://api.test.shipx.co')
@@ -246,7 +246,7 @@ describe('apiDownloadFile', () => {
     })
     openSpy = vi.fn()
     vi.stubGlobal('open', openSpy)
-    clickSpy = vi.fn()
+    clickSpy = vi.fn<() => void>()
     vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(clickSpy)
   })
 
