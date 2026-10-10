@@ -8,6 +8,12 @@ output "storage_account_name" {
   value       = azurerm_storage_account.frontend.name
 }
 
+output "storage_primary_access_key" {
+  description = "Storage account key — CI uploads the SPA with `--account-key` (no data-plane RBAC role needed on the least-privilege deploy identity, mirroring the ACR admin-creds choice)."
+  value       = azurerm_storage_account.frontend.primary_access_key
+  sensitive   = true
+}
+
 output "storage_web_host" {
   description = "Static-website primary host of the storage account."
   value       = azurerm_storage_account.frontend.primary_web_host

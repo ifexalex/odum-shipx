@@ -8,6 +8,12 @@ output "frontend_storage_account" {
   value       = one(module.frontend[*].storage_account_name)
 }
 
+output "frontend_storage_key" {
+  description = "Frontend storage account key — the frontend-deploy workflow uploads with this (no data-plane RBAC role needed)."
+  value       = one(module.frontend[*].storage_primary_access_key)
+  sensitive   = true
+}
+
 output "frontend_frontdoor_profile" {
   description = "Front Door profile name — used by CI to purge the endpoint after a deploy."
   value       = one(module.frontend[*].frontdoor_profile_name)

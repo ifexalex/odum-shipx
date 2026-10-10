@@ -97,6 +97,11 @@ jobs:
             echo "endpoint=$(terraform output -raw frontend_frontdoor_endpoint)"
             echo "api_url=$(terraform output -raw api_url)"
           } >> "$GITHUB_OUTPUT"
+          # Storage key → upload with --account-key (no data-plane RBAC role needed
+          # on the Contributor-only deploy identity). Mask it so it never prints.
+          KEY=$(terraform output -raw frontend_storage_key)
+          echo "::add-mask::$KEY"
+          echo "storage_key=$KEY" >> "$GITHUB_OUTPUT"
 
       - name: Build (${{ inputs.cloud }} / ${{ inputs.environment }})
         run: npm run build
@@ -143,7 +148,8 @@ jobs:
         if: inputs.cloud == 'azure'
         run: |
           az storage blob upload-batch \
-            --account-name "${{ steps.tf.outputs.storage_account }}" --auth-mode login \
+            --account-name "${{ steps.tf.outputs.storage_account }}" \
+            --account-key "${{ steps.tf.outputs.storage_key }}" \
             --destination '$web' --source dist \
             --content-cache 'public, max-age=31536000, immutable' --overwrite
 
@@ -151,7 +157,8 @@ jobs:
         if: inputs.cloud == 'azure'
         run: |
           az storage blob upload \
-            --account-name "${{ steps.tf.outputs.storage_account }}" --auth-mode login \
+            --account-name "${{ steps.tf.outputs.storage_account }}" \
+            --account-key "${{ steps.tf.outputs.storage_key }}" \
             --container-name '$web' --name index.html --file dist/index.html \
             --content-cache 'no-cache, no-store, must-revalidate' --overwrite
 
