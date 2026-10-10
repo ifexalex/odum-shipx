@@ -1,21 +1,21 @@
 output "frontend_url" {
   description = "Public HTTPS URL of the SPA (Front Door default endpoint)."
-  value       = module.frontend.frontend_url
+  value       = one(module.frontend[*].frontend_url)
 }
 
 output "frontend_storage_account" {
   description = "Storage account name — CI uploads the built dist/ into its $web container."
-  value       = module.frontend.storage_account_name
+  value       = one(module.frontend[*].storage_account_name)
 }
 
 output "frontend_frontdoor_profile" {
   description = "Front Door profile name — used by CI to purge the endpoint after a deploy."
-  value       = module.frontend.frontdoor_profile_name
+  value       = one(module.frontend[*].frontdoor_profile_name)
 }
 
 output "frontend_frontdoor_endpoint" {
   description = "Front Door endpoint name — used by CI for cache purge."
-  value       = module.frontend.frontdoor_endpoint_name
+  value       = one(module.frontend[*].frontdoor_endpoint_name)
 }
 
 output "resource_group" {
@@ -84,17 +84,17 @@ output "database_password" {
 
 output "redis_host" {
   description = "REDIS_HOST."
-  value       = module.redis.hostname
+  value       = one(module.redis[*].hostname)
 }
 
 output "redis_port" {
   description = "REDIS_PORT (TLS — requires REDIS_SSL=true)."
-  value       = module.redis.ssl_port
+  value       = one(module.redis[*].ssl_port)
 }
 
 output "redis_password" {
   description = "REDIS_PASSWORD — Redis access key."
-  value       = module.redis.primary_access_key
+  value       = one(module.redis[*].primary_access_key)
   sensitive   = true
 }
 

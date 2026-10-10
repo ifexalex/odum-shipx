@@ -22,6 +22,8 @@ resource "azurerm_user_assigned_identity" "app" {
 
 module "frontend" {
   source = "./modules/frontend"
+  # Optional: Front Door is forbidden on Free Trial/Student subscriptions.
+  count = var.enable_frontend ? 1 : 0
 
   name_prefix             = local.name_prefix
   resource_group_name     = azurerm_resource_group.main.name
@@ -89,6 +91,10 @@ module "postgres" {
 
 module "redis" {
   source = "./modules/redis"
+  # Optional: classic Azure Cache for Redis is retiring and blocked on some
+  # subscriptions. When disabled, the app's distributed cache degrades to DB
+  # lookups (miss path), so it stays functional.
+  count = var.enable_redis ? 1 : 0
 
   name_prefix         = local.name_prefix
   resource_group_name = azurerm_resource_group.main.name
@@ -161,9 +167,11 @@ module "container_app" {
   db_password = module.postgres.administrator_password
 
   # Redis
-  redis_host     = module.redis.hostname
-  redis_port     = module.redis.ssl_port
-  redis_password = module.redis.primary_access_key
+  redis_host     = var.enable_redis ? module.redis[0].hostname : ""
+  redis_port     = var.enable_redis ? module.redis[0].ssl_port : 6380
+  redis_password = var.enable_redis ? module.redis[0].primary_access_key : ""
+
+  grant_acr_pull = var.grant_acr_pull
 
   # Service Bus
   service_bus_connection_string = module.servicebus.connection_string

@@ -90,21 +90,42 @@ locals {
 }
 
 # ─── Container registry (private) ───────────────────────────────────────────
+# Two pull modes, chosen by `grant_acr_pull`:
+#   true  (default) — managed-identity pull + an AcrPull role assignment. The
+#                     secure path; needs the deploy identity to have rights to
+#                     write role assignments (User Access Administrator/Owner).
+#   false           — enable the ACR admin user and pull with admin creds. Use
+#                     when the deploy identity is Contributor-only (can't create
+#                     role assignments — e.g. a restricted/Free-Trial account).
 resource "azurerm_container_registry" "acr" {
   # ACR names: 5–50 chars, alphanumeric only, globally unique.
   name                = substr(lower(replace("${var.name_prefix}acr", "-", "")), 0, 40)
   resource_group_name = var.resource_group_name
   location            = var.location
   sku                 = var.acr_sku
-  admin_enabled       = false # pull via the managed identity, not admin creds
+  admin_enabled       = !var.grant_acr_pull
   tags                = var.common_tags
 }
 
-# The app identity pulls images from ACR.
+# The app identity pulls images from ACR (secure path).
 resource "azurerm_role_assignment" "acr_pull" {
+  count                = var.grant_acr_pull ? 1 : 0
   scope                = azurerm_container_registry.acr.id
   role_definition_name = "AcrPull"
   principal_id         = var.identity_principal_id
+}
+
+locals {
+  # Registry auth: managed identity, or ACR admin creds when role assignment
+  # isn't permitted. The non-chosen fields are null (unset).
+  acr_identity        = var.grant_acr_pull ? var.identity_id : null
+  acr_username        = var.grant_acr_pull ? null : azurerm_container_registry.acr.admin_username
+  acr_password_secret = var.grant_acr_pull ? null : "acr-admin-password"
+
+  # The ACR admin password is a Container App secret only in admin-creds mode.
+  acr_secret = var.grant_acr_pull ? {} : { acr-admin-password = azurerm_container_registry.acr.admin_password }
+  # Full secret map every app/job uses (base + optional ACR admin password).
+  all_secrets = merge(local.secret_values, local.acr_secret)
 }
 
 # ─── Container Apps Environment (VNet-integrated, logs → Log Analytics) ──────
@@ -131,12 +152,14 @@ resource "azurerm_container_app" "api" {
   }
 
   registry {
-    server   = azurerm_container_registry.acr.login_server
-    identity = var.identity_id
+    server               = azurerm_container_registry.acr.login_server
+    identity             = local.acr_identity
+    username             = local.acr_username
+    password_secret_name = local.acr_password_secret
   }
 
   dynamic "secret" {
-    for_each = local.secret_values
+    for_each = local.all_secrets
     content {
       name  = secret.key
       value = secret.value
@@ -205,12 +228,14 @@ resource "azurerm_container_app" "worker" {
   }
 
   registry {
-    server   = azurerm_container_registry.acr.login_server
-    identity = var.identity_id
+    server               = azurerm_container_registry.acr.login_server
+    identity             = local.acr_identity
+    username             = local.acr_username
+    password_secret_name = local.acr_password_secret
   }
 
   dynamic "secret" {
-    for_each = local.secret_values
+    for_each = local.all_secrets
     content {
       name  = secret.key
       value = secret.value
@@ -284,12 +309,14 @@ resource "azurerm_container_app_job" "scheduled" {
   }
 
   registry {
-    server   = azurerm_container_registry.acr.login_server
-    identity = var.identity_id
+    server               = azurerm_container_registry.acr.login_server
+    identity             = local.acr_identity
+    username             = local.acr_username
+    password_secret_name = local.acr_password_secret
   }
 
   dynamic "secret" {
-    for_each = local.secret_values
+    for_each = local.all_secrets
     content {
       name  = secret.key
       value = secret.value
@@ -350,12 +377,14 @@ resource "azurerm_container_app_job" "migrate" {
   }
 
   registry {
-    server   = azurerm_container_registry.acr.login_server
-    identity = var.identity_id
+    server               = azurerm_container_registry.acr.login_server
+    identity             = local.acr_identity
+    username             = local.acr_username
+    password_secret_name = local.acr_password_secret
   }
 
   dynamic "secret" {
-    for_each = local.secret_values
+    for_each = local.all_secrets
     content {
       name  = secret.key
       value = secret.value
