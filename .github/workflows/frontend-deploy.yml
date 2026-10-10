@@ -90,16 +90,20 @@ jobs:
           ARM_SUBSCRIPTION_ID: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
         run: |
           terraform init -backend-config=environments/${{ inputs.environment }}.backend.hcl
+          SA=$(terraform output -raw frontend_storage_account)
+          RG=$(terraform output -raw resource_group)
           {
-            echo "storage_account=$(terraform output -raw frontend_storage_account)"
-            echo "rg=$(terraform output -raw resource_group)"
+            echo "storage_account=$SA"
+            echo "rg=$RG"
             echo "profile=$(terraform output -raw frontend_frontdoor_profile)"
             echo "endpoint=$(terraform output -raw frontend_frontdoor_endpoint)"
             echo "api_url=$(terraform output -raw api_url)"
           } >> "$GITHUB_OUTPUT"
-          # Storage key → upload with --account-key (no data-plane RBAC role needed
-          # on the Contributor-only deploy identity). Mask it so it never prints.
-          KEY=$(terraform output -raw frontend_storage_key)
+          # Upload with the storage key via --account-key — no data-plane RBAC role
+          # needed on the Contributor-only deploy identity. Fetched via control-plane
+          # listKeys (Contributor has it), so there's no dependency on a freshly
+          # applied TF output. Masked so it never prints.
+          KEY=$(az storage account keys list -g "$RG" -n "$SA" --query "[0].value" -o tsv)
           echo "::add-mask::$KEY"
           echo "storage_key=$KEY" >> "$GITHUB_OUTPUT"
 
