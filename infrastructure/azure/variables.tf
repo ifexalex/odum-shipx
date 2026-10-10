@@ -68,6 +68,30 @@ variable "oidc_audience" {
   default     = ""
 }
 
+variable "entra_user_domain" {
+  description = "Entra verified/managed domain for UPNs (e.g. yourtenant.onmicrosoft.com). Empty until Entra is set up."
+  type        = string
+  default     = ""
+}
+
+variable "auth_provider" {
+  description = "Identity authority: 'azure' (Entra) or 'aws' (Cognito bridge — the Azure API validates Cognito JWTs). Defaults to azure."
+  type        = string
+  default     = "azure"
+}
+
+variable "entra_token_endpoint" {
+  description = "Entra OAuth2 token endpoint for the backend session-refresh exchange. Empty until Entra is set up."
+  type        = string
+  default     = ""
+}
+
+variable "entra_client_id" {
+  description = "Entra app registration client id for the backend session-refresh exchange."
+  type        = string
+  default     = ""
+}
+
 variable "api_cpu" {
   description = "API container vCPU."
   type        = number

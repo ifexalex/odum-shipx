@@ -173,3 +173,31 @@ describe('sessionFromIdToken', () => {
     expect(sessionFromIdToken(token).role).toBe('customer')
   })
 })
+
+describe('buildSession — Entra claim shape', () => {
+  const tenantId = 'aaaa-bbbb'
+
+  it('reads oid / tenant_id / groups / role from an Entra token', () => {
+    const session = buildSession({
+      oid: 'entra-obj-1',
+      tenant_id: tenantId,
+      groups: [`${tenantId}:tenant_admin`, `${tenantId}:china_office_staff`],
+      role: 'tenant_admin',
+      exp: 1700000000,
+    })
+    expect(session.userId).toBe('entra-obj-1')
+    expect(session.tenantId).toBe(tenantId)
+    expect(session.roles.sort()).toEqual(['china_office_staff', 'tenant_admin'])
+    expect(session.role).toBe('tenant_admin')
+  })
+
+  it('handles a comma-separated Entra groups string', () => {
+    const session = buildSession({
+      oid: 'entra-obj-2',
+      tenant_id: tenantId,
+      groups: `${tenantId}:customer`,
+      exp: 1700000000,
+    })
+    expect(session.roles).toEqual(['customer'])
+  })
+})

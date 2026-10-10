@@ -74,7 +74,8 @@ function parseRoles(groups: string[], tenantId: string): UserRole[] {
 // falling back to a deterministic (alphabetically first) member of `roles`
 // when the claim is absent, stale, or names a role the user no longer holds.
 function parsePrimaryRole(claims: Record<string, unknown>, roles: UserRole[]): UserRole {
-  const claimed = claims['custom:role']
+  // Cognito: custom:role; Entra: role (ENTRA_ROLE_CLAIM).
+  const claimed = claims['custom:role'] ?? claims.role
   if (typeof claimed === 'string' && VALID_ROLES.has(claimed) && roles.includes(claimed as UserRole)) {
     return claimed as UserRole
   }
@@ -82,17 +83,19 @@ function parsePrimaryRole(claims: Record<string, unknown>, roles: UserRole[]): U
 }
 
 export function buildSession(claims: Record<string, unknown>): Session {
-  const userId = String(claims.sub ?? '')
-  // Cognito ID tokens carry custom:tenant_id; ShipX impersonation tokens
-  // (services/tenant_management/impersonation.py) carry a bare tenant_id.
+  // Cognito ID tokens carry `sub`; Entra tokens carry `oid` (object id).
+  const userId = String(claims.sub ?? claims.oid ?? '')
+  // Cognito: custom:tenant_id; Entra: a `tenant_id` custom claim; ShipX
+  // impersonation tokens (services/tenant_management/impersonation.py): bare tenant_id.
   const tenantId = String(claims['custom:tenant_id'] ?? claims.tenant_id ?? '')
   if (!userId || !tenantId) {
-    throw new Error('JWT is missing required claims (sub / custom:tenant_id)')
+    throw new Error('JWT is missing required claims (sub|oid / tenant id)')
   }
 
-  // Impersonation tokens have no cognito:groups — they carry the target role
-  // directly in a `role` claim instead (single role only). Groups win when present (Cognito path).
-  const groups = parseGroups(claims['cognito:groups'])
+  // Role groups: Cognito `cognito:groups`, Entra `groups` — both in canonical
+  // `{tenant_id}:{role}` form. Impersonation tokens have neither — they carry
+  // the target role directly in a `role` claim (single role only).
+  const groups = parseGroups(claims['cognito:groups'] ?? claims.groups)
   const directRole = typeof claims.role === 'string' && VALID_ROLES.has(claims.role) ? (claims.role as UserRole) : null
   const roles: UserRole[] = groups.length > 0 ? parseRoles(groups, tenantId) : [directRole ?? 'customer']
   const role = parsePrimaryRole(claims, roles)

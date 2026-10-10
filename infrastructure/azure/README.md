@@ -197,7 +197,52 @@ Container Apps, and smoke-tests. The manual sequence above is only for a local/f
 CI is wired. `terraform-azure.yml` is plan-only (infra review); the deploy owns the apply, so a
 single workflow owns the state.
 
-## Auth setup — Entra External ID (Phase 4, manual)
+## Running the full app on Azure — auth is the deciding piece
+
+Compute + data + frontend hosting are all on Azure. **Auth** is the one thing
+with a choice, because the SPA logs in via **Cognito** today
+(`frontend/src/auth/CognitoClient.ts`) — so a working end-to-end login needs one of:
+
+**Path A — Cognito bridge (fastest; no frontend change, no Entra tenant).** Keep the
+existing AWS Cognito pool as the identity authority; the Azure-hosted API validates
+Cognito JWTs. Everything else runs on Azure. Set on the Azure API (Container Apps env):
+
+```
+AUTH_PROVIDER   = aws                                   # use the Cognito claims mapper even though CLOUD_PROVIDER=azure
+OIDC_JWKS_URL   = https://cognito-idp.<region>.amazonaws.com/<pool-id>/.well-known/jwks.json
+OIDC_AUDIENCE   = <cognito app client id>
+```
+and build the SPA with `VITE_API_BASE_URL=<azure api_url>` + the **existing** `VITE_COGNITO_*`.
+`AUTH_PROVIDER` defaults to `CLOUD_PROVIDER`, so this is the only override needed. Result: the
+full app runs on Azure with auth federated to Cognito (the ADR-004 dual-run posture) — no Entra
+tenant, no frontend rewrite.
+
+**Path B — native Entra (no AWS dependency).** The SPA now has an Entra login path
+(`frontend/src/auth/EntraClient.ts`, selected by `VITE_AUTH_PROVIDER=entra`) using the OAuth2
+ROPC grant, so the existing email/password login works against Entra for **local accounts** — no
+redirect-UX rewrite. Set up the Entra tenant (below), point the API's `OIDC_*` at Entra, build the
+SPA with the `VITE_ENTRA_*` vars, and migrate users. Backend auth is already native
+(`auth_provider="azure"` default → Entra verify + claims mapper). Frontend build env for Azure:
+
+```
+VITE_AUTH_PROVIDER       = entra
+VITE_API_BASE_URL        = <azure api_url>
+VITE_ENTRA_TOKEN_ENDPOINT= https://<tenant>.ciamlogin.com/<tenant>.onmicrosoft.com/oauth2/v2.0/token
+VITE_ENTRA_CLIENT_ID     = <SPA app registration client id>
+VITE_ENTRA_SCOPE         = openid profile offline_access            # optional
+```
+
+Reload-persistence works on Entra too: the backend httpOnly-cookie refresh (`services/auth`) is
+provider-aware — `AUTH_PROVIDER=azure` exchanges the cookie via `entra_refresh.py` (OAuth2
+refresh-token grant), so a page reload silently restores the session exactly as on Cognito. Set
+the backend `entra_token_endpoint` + `entra_client_id` (tfvars) so it can do the exchange.
+
+Caveat (validate against your tenant): ROPC covers local accounts only (no social/MFA — swap to
+an MSAL redirect flow behind the same `authClient` seam if those are needed).
+
+Recommended: **Path A to get it live instantly**; Path B for the AWS-free end-state.
+
+### Entra tenant setup (for Path B)
 
 The identity adapters are code (`shared/providers/azure/entra.py` +
 `entra_claims.py`) and the bulk migration is `scripts/migrate_users_to_entra.py`, but the Entra

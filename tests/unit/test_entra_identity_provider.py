@@ -93,9 +93,21 @@ class TestFactory:
         import shared.providers as providers
 
         monkeypatch.setattr(providers, "CLOUD_PROVIDER", "azure")
+        monkeypatch.setattr(providers, "AUTH_PROVIDER", "azure")
         monkeypatch.setattr(providers, "_identity_provider", None)
         monkeypatch.setattr(providers, "_claims_mapper", None)
         assert isinstance(get_identity_provider(), EntraIdentityProvider)
         from shared.providers.azure.entra_claims import EntraClaimsMapper
 
         assert isinstance(get_claims_mapper(), EntraClaimsMapper)
+
+    def test_auth_provider_decouples_from_cloud_provider(self, monkeypatch):
+        # Bridge: infra on Azure, auth still on Cognito (AUTH_PROVIDER=aws).
+        import shared.providers as providers
+        from shared.providers.aws.cognito_claims import CognitoClaimsMapper
+
+        monkeypatch.setattr(providers, "CLOUD_PROVIDER", "azure")
+        monkeypatch.setattr(providers, "AUTH_PROVIDER", "aws")
+        monkeypatch.setattr(providers, "_claims_mapper", None)
+        monkeypatch.setattr(providers, "_identity_provider", None)
+        assert isinstance(get_claims_mapper(), CognitoClaimsMapper)

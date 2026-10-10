@@ -21,6 +21,13 @@ from shared.providers.base import (
 
 CLOUD_PROVIDER = os.environ.get("CLOUD_PROVIDER", "aws").lower()
 
+# The identity/auth cloud can differ from the infrastructure cloud — e.g. run
+# compute + data on Azure while auth stays on Cognito during an Entra migration
+# (ADR-004 dual-run), or vice versa. AUTH_PROVIDER selects the IdentityProvider +
+# ClaimsMapper independently; it defaults to CLOUD_PROVIDER so nothing changes
+# unless explicitly set.
+AUTH_PROVIDER = os.environ.get("AUTH_PROVIDER", CLOUD_PROVIDER).lower()
+
 _key_provider: KeyProvider | None = None
 _key_resolved = False
 
@@ -173,12 +180,12 @@ def get_email_provider() -> EmailProvider:
 
 
 def get_identity_provider() -> IdentityProvider:
-    """Return the user/role provisioning provider for the active cloud (cached singleton)."""
+    """Return the user/role provisioning provider for the active AUTH_PROVIDER (cached singleton)."""
     global _identity_provider
     if _identity_provider is not None:
         return _identity_provider
 
-    if CLOUD_PROVIDER == "azure":
+    if AUTH_PROVIDER == "azure":
         from shared.providers.azure.entra import EntraIdentityProvider
 
         _identity_provider = EntraIdentityProvider()
@@ -190,12 +197,12 @@ def get_identity_provider() -> IdentityProvider:
 
 
 def get_claims_mapper() -> ClaimsMapper:
-    """Return the JWT claims mapper for the active cloud (cached singleton)."""
+    """Return the JWT claims mapper for the active AUTH_PROVIDER (cached singleton)."""
     global _claims_mapper
     if _claims_mapper is not None:
         return _claims_mapper
 
-    if CLOUD_PROVIDER == "azure":
+    if AUTH_PROVIDER == "azure":
         from shared.providers.azure.entra_claims import EntraClaimsMapper
 
         _claims_mapper = EntraClaimsMapper()

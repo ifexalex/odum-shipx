@@ -122,6 +122,42 @@ variable "oidc_audience" {
   default     = ""
 }
 
+variable "entra_user_domain" {
+  description = "Entra verified/managed domain for UPNs (EntraIdentityProvider). Empty until Entra is set up."
+  type        = string
+  default     = ""
+}
+
+variable "auth_provider" {
+  description = "Identity authority: 'azure' (Entra) or 'aws' (Cognito bridge — validate Cognito JWTs while running on Azure). Defaults to azure to match the infra cloud."
+  type        = string
+  default     = "azure"
+}
+
+variable "cors_allow_origins" {
+  description = "Comma-separated browser origins allowed to call the API (e.g. the frontend URL). Empty = same-origin only."
+  type        = string
+  default     = ""
+}
+
+variable "entra_token_endpoint" {
+  description = "Entra OAuth2 token endpoint — the backend's httpOnly-cookie session refresh uses it when AUTH_PROVIDER=azure. Empty until Entra is set up."
+  type        = string
+  default     = ""
+}
+
+variable "entra_client_id" {
+  description = "Entra app registration client id for the backend refresh exchange."
+  type        = string
+  default     = ""
+}
+
+variable "entra_scope" {
+  description = "OAuth2 scopes for the Entra refresh exchange."
+  type        = string
+  default     = "openid profile offline_access"
+}
+
 # ─── Sizing ───────────────────────────────────────────────────────────────────
 variable "api_cpu" {
   type    = number

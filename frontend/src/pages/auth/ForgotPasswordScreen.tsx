@@ -7,7 +7,7 @@
  */
 import { useState, type FormEvent, type JSX } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { forgotPassword } from '../../auth/CognitoClient'
+import { forgotPassword } from '../../auth/authClient'
 import { Banner, Button, Field, Icon } from '../../design/components'
 import { AuthShell, FormHead } from './AuthShell'
 import styles from './LoginScreen.module.css'

@@ -40,7 +40,6 @@ from shared.observability import init_tracing
 from shared.responses import error_response
 from shared.validation import parse_validated
 
-from . import cognito_refresh
 from .models import EstablishSessionRequest
 
 setup_logging()
@@ -103,6 +102,24 @@ def lambda_handler(event: dict[str, Any], context: Any) -> dict[str, Any]:
         )
 
 
+def _refresher() -> Any:
+    """Return the refresh/revoke module for the active identity provider.
+
+    AUTH_PROVIDER selects it (default = CLOUD_PROVIDER), so the same cookie flow
+    exchanges the token against Cognito on AWS and Entra on Azure. Imported
+    lazily so neither cloud's SDK/config is required on the other.
+    """
+    from shared.providers import AUTH_PROVIDER
+
+    if AUTH_PROVIDER == "azure":
+        from . import entra_refresh
+
+        return entra_refresh
+    from . import cognito_refresh
+
+    return cognito_refresh
+
+
 def _parse_body(event: dict[str, Any]) -> dict[str, Any]:
     raw = event.get("body") or "{}"
     try:
@@ -146,7 +163,7 @@ def _refresh(event: dict[str, Any], request_id: str) -> dict[str, Any]:
     if not refresh_token:
         raise AuthenticationRequiredError()
 
-    tokens = cognito_refresh.refresh_id_token(refresh_token)
+    tokens = _refresher().refresh_id_token(refresh_token)
     body = json.dumps({"data": {"id_token": tokens["id_token"], "expires_in": tokens["expires_in"]}})
     return {
         "statusCode": 200,
@@ -158,7 +175,7 @@ def _refresh(event: dict[str, Any], request_id: str) -> dict[str, Any]:
 def _logout(event: dict[str, Any], request_id: str) -> dict[str, Any]:
     refresh_token = _read_refresh_cookie(event)
     if refresh_token:
-        cognito_refresh.revoke_refresh_token(refresh_token)
+        _refresher().revoke_refresh_token(refresh_token)
 
     return {
         "statusCode": 204,

@@ -12,7 +12,7 @@
  */
 import { useState, type FormEvent, type JSX } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
-import { completeNewPassword, confirmForgotPassword, hasPendingNewPasswordChallenge } from '../../auth/CognitoClient'
+import { completeNewPassword, confirmForgotPassword, hasPendingNewPasswordChallenge } from '../../auth/authClient'
 import { homePathForRole } from '../../auth/roleHome'
 import { useSession } from '../../auth/useSession'
 import { Banner, Button, Field, Icon } from '../../design/components'

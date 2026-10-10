@@ -691,7 +691,14 @@ The Azure side of the `IdentityProvider` + `ClaimsMapper` ports (ADR-004 Phase 4
   The downstream interpretation stays in `shared/auth.py`, unchanged. (Entra must be configured to
   emit group *display names* in the token — documented in the Phase-4 checklist.)
 - **Tests:** `tests/unit/test_entra_claims.py` (7) and `tests/unit/test_entra_identity_provider.py`
-  (7) — fully mocked (stubbed Graph / token + urlopen); cover the claim shapes, the group-sync
-  reconcile, create-user flows, 409→duplicate error mapping, and factory selection. Real end-to-end
-  needs an Entra tenant (see the ADR-004 / Phase-4 checklist). The bulk user migration is
-  `scripts/migrate_users_to_entra.py`.
+  (8) — fully mocked (stubbed Graph / token + urlopen); cover the claim shapes, the group-sync
+  reconcile, create-user flows, 409→duplicate error mapping, factory selection, and the
+  `AUTH_PROVIDER` decoupling. Real end-to-end needs an Entra tenant (see the ADR-004 / Phase-4
+  checklist). The bulk user migration is `scripts/migrate_users_to_entra.py`.
+
+**`AUTH_PROVIDER` — auth cloud decoupled from infra cloud (added 2026-10-10).** `get_identity_provider()`
+and `get_claims_mapper()` now select on `AUTH_PROVIDER` (default `CLOUD_PROVIDER`), not `CLOUD_PROVIDER`
+directly. This is the ADR-004 dual-run seam: run compute + data on Azure (`CLOUD_PROVIDER=azure`)
+while auth stays on Cognito (`AUTH_PROVIDER=aws` + `OIDC_JWKS_URL`/`OIDC_AUDIENCE` pointed at the
+Cognito pool) — so the Azure API validates Cognito JWTs with the Cognito claims mapper. Default
+behavior is unchanged (unset → equals `CLOUD_PROVIDER`).

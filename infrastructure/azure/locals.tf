@@ -20,7 +20,7 @@ locals {
     "style-src 'self' 'unsafe-inline'",
     "img-src 'self' data:",
     "font-src 'self' data:",
-    "connect-src 'self' ${var.api_base_url} https://login.microsoftonline.com https://*.ciamlogin.com",
+    "connect-src 'self' ${var.api_base_url} https://*.azurecontainerapps.io https://login.microsoftonline.com https://*.ciamlogin.com",
     "frame-ancestors 'none'",
     "base-uri 'self'",
   ])
