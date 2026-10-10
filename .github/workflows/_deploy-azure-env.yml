@@ -94,17 +94,30 @@ jobs:
           az containerapp job update -g "$RG" -n "$MIGRATE_JOB" --image "$IMAGE" --output none
           EXEC=$(az containerapp job start -g "$RG" -n "$MIGRATE_JOB" --query name -o tsv)
           echo "Started migration execution: $EXEC"
-          STATUS="Running"
-          for _ in $(seq 1 60); do
-            STATUS=$(az containerapp job execution show -g "$RG" --job-name "$MIGRATE_JOB" \
-              --job-execution-name "$EXEC" --query properties.status -o tsv 2>/dev/null || echo "Running")
+
+          # Poll via `execution list` + JMESPath (reliable across CLI versions,
+          # unlike `execution show`). Status is read into STATUS; a read error
+          # leaves it empty and we keep waiting, but failures are NOT masked.
+          STATUS=""
+          for _ in $(seq 1 40); do
+            STATUS=$(az containerapp job execution list -g "$RG" --name "$MIGRATE_JOB" \
+              --query "[?name=='$EXEC'].properties.status | [0]" -o tsv)
+            echo "migration status: ${STATUS:-<pending>}"
             case "$STATUS" in
               Succeeded) break ;;
-              Failed|Degraded) echo "Migration $STATUS — aborting deploy"; exit 1 ;;
+              Failed|Degraded) break ;;
             esac
-            sleep 10
+            sleep 15
           done
-          [ "$STATUS" = "Succeeded" ] || { echo "Migration did not succeed in time ($STATUS)"; exit 1; }
+
+          if [ "$STATUS" != "Succeeded" ]; then
+            echo "::error::Migration did not succeed (status: ${STATUS:-unknown}). Recent logs:"
+            az containerapp job logs show -g "$RG" --name "$MIGRATE_JOB" \
+              --execution "$EXEC" --container migrate --tail 200 2>/dev/null \
+              || echo "(could not fetch logs via CLI — check Log Analytics / the portal execution history)"
+            exit 1
+          fi
+          echo "Migration succeeded."
 
       # Roll every Container App (api + workers) and Job (scheduled + migrate)
       # onto the new image. Terraform ignores image drift, so this does not fight it.
