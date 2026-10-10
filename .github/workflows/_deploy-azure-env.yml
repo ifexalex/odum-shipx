@@ -46,13 +46,33 @@ jobs:
         working-directory: infrastructure/azure
         run: |
           terraform init -backend-config=environments/${{ inputs.environment }}.backend.hcl
-          {
-            echo "rg=$(terraform output -raw resource_group)"
-            echo "acr=$(terraform output -raw acr_name)"
-            echo "acr_server=$(terraform output -raw acr_login_server)"
-            echo "migrate_job=$(terraform output -raw migrate_job_name)"
-            echo "api_url=$(terraform output -raw api_url)"
-          } >> "$GITHUB_OUTPUT"
+
+          # Preflight: this pipeline rolls EXISTING Container Apps — it does not
+          # create infrastructure. If the Terraform outputs aren't in the state
+          # yet (infra not applied, or the apply is still running), fail fast with
+          # a clear message instead of a cryptic `Output "..." not found`.
+          terraform output -json > /tmp/tfout.json
+          python3 - <<'PY'
+          import json, os, sys
+          try:
+              out = json.load(open("/tmp/tfout.json"))
+          except Exception:
+              out = {}
+          required = ["resource_group", "acr_name", "acr_login_server", "migrate_job_name", "api_url"]
+          missing = [k for k in required if k not in out]
+          if missing:
+              print("::error::Azure infrastructure is not applied yet (missing Terraform outputs: %s)." % ", ".join(missing))
+              print("::error::Run the 'Terraform (Azure)' workflow and let it finish green BEFORE deploying — "
+                    "this pipeline deploys an image to existing Container Apps, it does not create them.")
+              sys.exit(1)
+          with open(os.environ["GITHUB_OUTPUT"], "a") as f:
+              f.write("rg=%s\n" % out["resource_group"]["value"])
+              f.write("acr=%s\n" % out["acr_name"]["value"])
+              f.write("acr_server=%s\n" % out["acr_login_server"]["value"])
+              f.write("migrate_job=%s\n" % out["migrate_job_name"]["value"])
+              f.write("api_url=%s\n" % out["api_url"]["value"])
+          print("Infra outputs resolved — api_url=%s" % out["api_url"]["value"])
+          PY
 
       # Build + push the same image the Dockerfile produces, tagged with the SHA.
       - name: Build and push image

@@ -23,6 +23,37 @@ Azure (e.g. to use Founders Hub credits) without re-architecting.
 | Monitoring | CloudWatch | **Log Analytics + App Insights (`modules/monitoring`)** | ✅ Terraform |
 | Secrets / crypto | Secrets Manager + KMS | **Key Vault (`KeyVaultSecretsProvider` + `KeyVaultKeyProvider`)** — adapters + `modules/keyvault` Terraform; real-account-verifiable | 🔨 |
 
+## Subscription prerequisites & capability toggles
+
+**1. Register resource providers** (one-time per subscription — the apply fails with
+`... is not registered for the Microsoft.X resource provider` otherwise):
+
+```bash
+for rp in Microsoft.App Microsoft.ContainerRegistry Microsoft.OperationalInsights \
+          Microsoft.Insights Microsoft.DBforPostgreSQL Microsoft.Cache \
+          Microsoft.ServiceBus Microsoft.EventGrid Microsoft.Communication \
+          Microsoft.KeyVault Microsoft.Storage Microsoft.Network \
+          Microsoft.ManagedIdentity Microsoft.Cdn; do az provider register -n "$rp"; done
+az provider show -n Microsoft.App --query registrationState   # wait for "Registered"
+```
+
+**2. Capability toggles** (tfvars) — some services are restricted on **Free Trial / Student**
+subscriptions. `dev.tfvars` ships with all three off for exactly that case; defaults are `true`
+for pay-as-you-go subs:
+
+| Variable | Default | Set `false` when | Effect when `false` |
+|---|---|---|---|
+| `enable_frontend` | `true` | Front Door is forbidden (Free Trial/Student) | skip the Blob+Front Door module (backend-only) |
+| `enable_redis` | `true` | classic Redis is retiring/blocked | skip Redis; the cache degrades to DB lookups (still functional) |
+| `grant_acr_pull` | `true` | the deploy identity is Contributor-only (can't write role assignments) | pull images from ACR with **admin creds** instead of a managed-identity AcrPull role |
+
+For the **secure** path (`grant_acr_pull = true`) the deploy identity needs role-assignment
+rights — grant it **User Access Administrator** on the subscription/RG:
+```bash
+az role assignment create --assignee "$APP_ID" --role "User Access Administrator" \
+  --scope "/subscriptions/$SUB"
+```
+
 ## Frontend module (what's here now)
 
 `modules/frontend` = Blob storage `$web` static site behind **Front Door

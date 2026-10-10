@@ -91,3 +91,23 @@ variable "api_max_replicas" {
   type        = number
   default     = 3
 }
+
+# ─── Subscription-capability toggles (set false on Free Trial/Student) ──────
+
+variable "enable_frontend" {
+  description = "Provision the Blob + Front Door frontend. Front Door is forbidden on Free Trial/Student subscriptions — set false there (backend-only deploy)."
+  type        = bool
+  default     = true
+}
+
+variable "enable_redis" {
+  description = "Provision Azure Cache for Redis. Classic Redis is retiring/blocked on some subscriptions — set false to run without it (the cache degrades to DB lookups)."
+  type        = bool
+  default     = true
+}
+
+variable "grant_acr_pull" {
+  description = "true: managed-identity ACR pull + role assignment (needs role-assignment rights). false: ACR admin creds — set false when the deploy identity is Contributor-only."
+  type        = bool
+  default     = true
+}

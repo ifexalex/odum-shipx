@@ -52,6 +52,12 @@ variable "acr_sku" {
   default     = "Basic"
 }
 
+variable "grant_acr_pull" {
+  description = "true: managed-identity pull + AcrPull role assignment (needs role-assignment rights). false: ACR admin creds (for Contributor-only / restricted deploy identities)."
+  type        = bool
+  default     = true
+}
+
 # ─── Data + messaging values (from the Phase-2 modules) ─────────────────────
 variable "db_host" { type = string }
 variable "db_port" { type = number }
