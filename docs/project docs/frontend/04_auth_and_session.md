@@ -174,3 +174,30 @@ aws --endpoint-url=http://localhost:5100 cognito-idp admin-set-user-password \
   **Fix:** extracted the Cognito-session-ending logic already in `logout()` into a shared `endCognitoSession()`, and `setIdentity()` now calls it whenever `cognitoSession` is set before switching identity — picking a dev role is an unambiguous "use the shim now" signal, so it ends any real session standing in its way rather than being silently outranked by one. This also incidentally closes the reload race noted in the entry above as "left unfixed" for the *specific* case where the switcher was used while a real session was active: since the real session is now properly ended (server-side revoke included) the moment a role is picked, there's no lingering valid cookie left to race against on a subsequent reload.
 
   **Verified two ways.** Unit: new case in `LocalAuthProvider.test.tsx` — log in for real, pick a dev role via `RoleSwitcher`, assert `signOut`/`revokeServerSession` were called and the session/headers fully reflect the picked role, not the real one. Live: reproduced the exact bug with Playwright (real customer login → pick `tenant_admin` → app stays on the customer's page) before the fix, then re-ran the identical script after — the app now correctly switches to `tenant_admin`'s `/dashboard`, and stays there across a reload.
+
+## Cloud-agnostic auth provider (Cognito ↔ Entra, added 2026-10-10)
+
+The auth layer is no longer hard-wired to Cognito. The app's auth entry points import from
+**`src/auth/authClient.ts`**, a facade that selects the provider by build-time env
+`VITE_AUTH_PROVIDER` — `'cognito'` (AWS, default) or `'entra'` (Azure):
+
+- **`CognitoClient.ts`** — unchanged (SRP sign-in, new-password + forgot-password challenges).
+- **`EntraClient.ts`** (new) — Microsoft Entra (External ID) via the OAuth2 **ROPC** grant, so the
+  existing email/password `LoginScreen` works unchanged against Entra for **local accounts** (no
+  redirect UX). Same `signIn/refreshSession/signOut` surface + `{idToken,accessToken,refreshToken}`
+  shape as Cognito. Password-reset flows are Entra-hosted (the in-app challenge functions reject).
+  Config: `VITE_ENTRA_TOKEN_ENDPOINT`, `VITE_ENTRA_CLIENT_ID`, `VITE_ENTRA_SCOPE`.
+- **`jwt.ts`** — `buildSession` now reads both claim shapes (Cognito `sub`/`custom:tenant_id`/
+  `cognito:groups`/`custom:role` and Entra `oid`/`tenant_id`/`groups`/`role`) via fallbacks, so the
+  same `{tenant_id}:{role}` role interpretation works for either issuer. Backward-compatible.
+
+The backend is already native per cloud (`AUTH_PROVIDER` selects the authorizer verify + claims
+mapper). **Known follow-up:** reload-persistence still uses the backend httpOnly-cookie refresh
+(`services/auth`), which is Cognito-specific — extending silent-refresh to Entra refresh tokens is
+pending; an Entra session survives the tab but a full reload currently re-prompts login. ROPC also
+covers local accounts only (no social/MFA) — swap `EntraClient` for an MSAL redirect flow behind
+the same `authClient` seam if those are needed. Validate against a real Entra tenant.
+
+**Tests:** `EntraClient.test.ts` (ROPC password/refresh grants + error mapping, mocked fetch),
+`jwt.test.ts` (Entra claim shape → Session), `SessionProvider.test.tsx` re-pointed to mock
+`authClient`. 100 auth-suite tests green; `npm run typecheck` clean.

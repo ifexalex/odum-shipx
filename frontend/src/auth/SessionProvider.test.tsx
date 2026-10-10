@@ -1,12 +1,12 @@
 import { act, renderHook } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { signIn, signOut } from './CognitoClient'
+import { signIn, signOut } from './authClient'
 import { establishServerSession, revokeServerSession, silentRefresh } from './sessionApi'
 import { useSession } from './SessionContext'
 import { SessionProvider } from './SessionProvider'
 import { getAuthHeaders } from './tokenStore'
 
-vi.mock('./CognitoClient', () => ({
+vi.mock('./authClient', () => ({
   signIn: vi.fn(),
   signOut: vi.fn(),
 }))

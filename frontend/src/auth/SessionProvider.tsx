@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, type JSX, type ReactNode } from 'react'
-import { signIn as cognitoSignIn, signOut as cognitoSignOut } from './CognitoClient'
+import { signIn as cognitoSignIn, signOut as cognitoSignOut } from './authClient'
 import { sessionFromIdToken } from './jwt'
 import { establishServerSession, revokeServerSession, silentRefresh } from './sessionApi'
 import { SessionContext, type SessionStatus } from './SessionContext'

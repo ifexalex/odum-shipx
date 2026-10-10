@@ -217,12 +217,28 @@ and build the SPA with `VITE_API_BASE_URL=<azure api_url>` + the **existing** `V
 full app runs on Azure with auth federated to Cognito (the ADR-004 dual-run posture) — no Entra
 tenant, no frontend rewrite.
 
-**Path B — native Entra (no AWS dependency; more work).** Set up the Entra tenant (below),
-point `OIDC_*` at Entra, **and** add an Entra/MSAL login path to the SPA (the frontend is
-Cognito-only today — that's net-new frontend work), then migrate users. This is the end-state
-once you want to cut AWS out entirely.
+**Path B — native Entra (no AWS dependency).** The SPA now has an Entra login path
+(`frontend/src/auth/EntraClient.ts`, selected by `VITE_AUTH_PROVIDER=entra`) using the OAuth2
+ROPC grant, so the existing email/password login works against Entra for **local accounts** — no
+redirect-UX rewrite. Set up the Entra tenant (below), point the API's `OIDC_*` at Entra, build the
+SPA with the `VITE_ENTRA_*` vars, and migrate users. Backend auth is already native
+(`auth_provider="azure"` default → Entra verify + claims mapper). Frontend build env for Azure:
 
-Recommended: **Path A to get it live now**, Path B as the follow-up.
+```
+VITE_AUTH_PROVIDER       = entra
+VITE_API_BASE_URL        = <azure api_url>
+VITE_ENTRA_TOKEN_ENDPOINT= https://<tenant>.ciamlogin.com/<tenant>.onmicrosoft.com/oauth2/v2.0/token
+VITE_ENTRA_CLIENT_ID     = <SPA app registration client id>
+VITE_ENTRA_SCOPE         = openid profile offline_access            # optional
+```
+
+Caveats (validate against your tenant): ROPC covers local accounts only (no social/MFA — swap to
+an MSAL redirect flow behind the same `authClient` seam if those are needed); and **reload-
+persistence** still rides the backend httpOnly-cookie refresh (`services/auth`), which is
+Cognito-specific — extending silent-refresh to Entra refresh tokens is the remaining follow-up, so
+until then an Entra session survives the tab but a full page reload re-prompts login.
+
+Recommended: **Path A to get it live instantly**; Path B for the AWS-free end-state.
 
 ### Entra tenant setup (for Path B)
 
