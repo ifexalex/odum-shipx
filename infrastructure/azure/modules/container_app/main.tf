@@ -64,7 +64,8 @@ locals {
 
   # Env var name → secret name. The redis mapping is included only when Redis is
   # enabled, so a disabled service never references a non-existent secret.
-  secret_env = merge(
+  # tomap(): the conditional fragment makes this an object; for_each needs a map.
+  secret_env = tomap(merge(
     {
       DATABASE_PASSWORD                     = "database-password"
       AZURE_SERVICE_BUS_CONNECTION_STRING   = "service-bus-connection"
@@ -74,7 +75,7 @@ locals {
       APPLICATIONINSIGHTS_CONNECTION_STRING = "appinsights-connection"
     },
     var.enable_redis ? { REDIS_PASSWORD = "redis-password" } : {},
-  )
+  ))
 
   image = var.container_image
 
@@ -134,7 +135,9 @@ locals {
   # The ACR admin password is a Container App secret only in admin-creds mode.
   acr_secret = var.grant_acr_pull ? {} : { acr-admin-password = azurerm_container_registry.acr.admin_password }
   # Full secret map every app/job uses (base + optional ACR admin password).
-  all_secrets = merge(local.secret_values, local.acr_secret)
+  # tomap(): merge()/conditional fragments yield an object type, but for_each
+  # requires a map — coerce it (all values are strings).
+  all_secrets = tomap(merge(local.secret_values, local.acr_secret))
 }
 
 # ─── Container Apps Environment (VNet-integrated, logs → Log Analytics) ──────
