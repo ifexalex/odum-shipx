@@ -172,6 +172,7 @@ module "container_app" {
   redis_password = var.enable_redis ? module.redis[0].primary_access_key : ""
 
   grant_acr_pull = var.grant_acr_pull
+  enable_redis   = var.enable_redis
 
   # Service Bus
   service_bus_connection_string = module.servicebus.connection_string
