@@ -45,8 +45,10 @@ locals {
     SQS_METERING_QUEUE_URL = lookup(var.queue_names, "metering", "")
   }
 
-  # Container App secret name (lowercase alnum + '-') → value.
-  secret_values = {
+  # Candidate Container App secrets (name → value). Azure rejects a secret with
+  # an empty value, so empties are filtered out below — e.g. redis-password when
+  # Redis is disabled (enable_redis=false passes "").
+  candidate_secrets = {
     database-password      = var.db_password
     redis-password         = var.redis_password
     service-bus-connection = var.service_bus_connection_string
@@ -55,9 +57,11 @@ locals {
     storage-connection     = var.storage_connection_string
     appinsights-connection = var.app_insights_connection_string
   }
+  secret_values = { for k, v in local.candidate_secrets : k => v if v != "" }
 
-  # Env var name → secret name (injects the secret as that env var).
-  secret_env = {
+  # Env var name → secret name. Only keep a mapping whose backing secret survived
+  # the empty-filter, so a disabled service doesn't reference a non-existent secret.
+  candidate_secret_env = {
     DATABASE_PASSWORD                     = "database-password"
     REDIS_PASSWORD                        = "redis-password"
     AZURE_SERVICE_BUS_CONNECTION_STRING   = "service-bus-connection"
@@ -65,6 +69,10 @@ locals {
     AZURE_COMMUNICATION_CONNECTION_STRING = "acs-connection"
     AZURE_STORAGE_CONNECTION_STRING       = "storage-connection"
     APPLICATIONINSIGHTS_CONNECTION_STRING = "appinsights-connection"
+  }
+  secret_env = {
+    for env_name, secret_name in local.candidate_secret_env : env_name => secret_name
+    if contains(keys(local.secret_values), secret_name)
   }
 
   image = var.container_image
