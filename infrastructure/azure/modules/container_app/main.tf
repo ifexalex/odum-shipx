@@ -22,6 +22,7 @@ locals {
   # Non-secret env — plain values. CLOUD_PROVIDER=azure drives adapter selection.
   plain_env = {
     CLOUD_PROVIDER              = "azure"
+    AUTH_PROVIDER               = var.auth_provider
     DATABASE_HOST               = var.db_host
     DATABASE_PORT               = tostring(var.db_port)
     DATABASE_NAME               = var.db_name

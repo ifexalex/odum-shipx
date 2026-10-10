@@ -128,6 +128,12 @@ variable "entra_user_domain" {
   default     = ""
 }
 
+variable "auth_provider" {
+  description = "Identity authority: 'azure' (Entra) or 'aws' (Cognito bridge — validate Cognito JWTs while running on Azure). Defaults to azure to match the infra cloud."
+  type        = string
+  default     = "azure"
+}
+
 variable "cors_allow_origins" {
   description = "Comma-separated browser origins allowed to call the API (e.g. the frontend URL). Empty = same-origin only."
   type        = string

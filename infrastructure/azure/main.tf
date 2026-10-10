@@ -195,7 +195,8 @@ module "container_app" {
   # Observability
   app_insights_connection_string = module.monitoring.app_insights_connection_string
 
-  # Auth (Entra).
+  # Auth. auth_provider selects the IdP (azure=Entra, aws=Cognito bridge).
+  auth_provider     = var.auth_provider
   oidc_jwks_url     = var.oidc_jwks_url
   oidc_audience     = var.oidc_audience
   entra_user_domain = var.entra_user_domain

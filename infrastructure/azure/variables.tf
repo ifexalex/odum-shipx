@@ -74,6 +74,12 @@ variable "entra_user_domain" {
   default     = ""
 }
 
+variable "auth_provider" {
+  description = "Identity authority: 'azure' (Entra) or 'aws' (Cognito bridge — the Azure API validates Cognito JWTs). Defaults to azure."
+  type        = string
+  default     = "azure"
+}
+
 variable "api_cpu" {
   description = "API container vCPU."
   type        = number
