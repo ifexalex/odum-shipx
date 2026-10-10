@@ -1,10 +1,14 @@
 name: Deploy Azure Environment (reusable)
 
-# Azure analogue of _deploy-env.yml. Builds the backend container image, pushes
-# it to the environment's ACR, runs the migration job, rolls every Container App
-# + Job onto the new image, then smoke-tests the API. Infra (ACR/app/job names,
-# RG, api URL) is read from Terraform outputs — the single source of truth — so
-# there is no second place to keep names in sync.
+# Azure analogue of _deploy-env.yml. Every deploy runs `terraform apply` FIRST,
+# in the same job, so infra + state are reconciled and any change captured before
+# the app rolls — and if the apply fails, no later step runs (they all depend on
+# its outputs). This workflow is the single Terraform state-owner for an
+# environment; terraform-azure.yml is plan-only (infra review), it does not apply.
+#
+# After the apply: build the image, push to the env's ACR, run the migration job,
+# roll every Container App + Job onto the new image, smoke-test the API. Infra
+# names/URLs come from the apply's own outputs — one source of truth.
 
 on:
   workflow_call:
@@ -40,38 +44,31 @@ jobs:
         with:
           terraform_version: "1.7.5"
 
-      # Resolve infra names/URLs from the env's Terraform state.
-      - name: Read infrastructure outputs
+      # Terraform FIRST — reconcile infra + state before any app change. If this
+      # fails the job stops here; every later step depends on steps.tf.outputs,
+      # so the deploy cannot proceed on un-applied/failed infra. apply is a no-op
+      # when nothing changed, so it is safe to run on every deploy.
+      - name: Terraform apply (infra + state)
         id: tf
         working-directory: infrastructure/azure
         run: |
           terraform init -backend-config=environments/${{ inputs.environment }}.backend.hcl
-
-          # Preflight: this pipeline rolls EXISTING Container Apps — it does not
-          # create infrastructure. If the Terraform outputs aren't in the state
-          # yet (infra not applied, or the apply is still running), fail fast with
-          # a clear message instead of a cryptic `Output "..." not found`.
+          terraform apply -var-file=environments/${{ inputs.environment }}.tfvars -auto-approve
           terraform output -json > /tmp/tfout.json
           python3 - <<'PY'
-          import json, os, sys
-          try:
-              out = json.load(open("/tmp/tfout.json"))
-          except Exception:
-              out = {}
-          required = ["resource_group", "acr_name", "acr_login_server", "migrate_job_name", "api_url"]
-          missing = [k for k in required if k not in out]
-          if missing:
-              print("::error::Azure infrastructure is not applied yet (missing Terraform outputs: %s)." % ", ".join(missing))
-              print("::error::Run the 'Terraform (Azure)' workflow and let it finish green BEFORE deploying — "
-                    "this pipeline deploys an image to existing Container Apps, it does not create them.")
-              sys.exit(1)
+          import json, os
+          out = json.load(open("/tmp/tfout.json"))
+          vals = {
+              "rg": out["resource_group"]["value"],
+              "acr": out["acr_name"]["value"],
+              "acr_server": out["acr_login_server"]["value"],
+              "migrate_job": out["migrate_job_name"]["value"],
+              "api_url": out["api_url"]["value"],
+          }
           with open(os.environ["GITHUB_OUTPUT"], "a") as f:
-              f.write("rg=%s\n" % out["resource_group"]["value"])
-              f.write("acr=%s\n" % out["acr_name"]["value"])
-              f.write("acr_server=%s\n" % out["acr_login_server"]["value"])
-              f.write("migrate_job=%s\n" % out["migrate_job_name"]["value"])
-              f.write("api_url=%s\n" % out["api_url"]["value"])
-          print("Infra outputs resolved — api_url=%s" % out["api_url"]["value"])
+              for k, v in vals.items():
+                  f.write(f"{k}={v}\n")
+          print("Infra applied — api_url=" + vals["api_url"])
           PY
 
       # Build + push the same image the Dockerfile produces, tagged with the SHA.

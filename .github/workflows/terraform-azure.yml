@@ -1,10 +1,12 @@
 name: Terraform (Azure)
 
-# Azure analogue of terraform.yml. Triggered on Azure infra changes to main;
-# dev -> staging -> prod, each gated by its GitHub Environment (required
-# reviewers on staging/prod). Auth is OIDC federated credentials (no secrets):
-# the deploy identity is an Entra app registration with a federated credential
-# per environment subject. One-time setup + state bootstrap in
+# Azure infra PLAN/preview (fmt + validate + plan) on changes to main — a review
+# check, it does NOT apply. The apply is owned by the deploy pipeline
+# (_deploy-azure-env.yml runs `terraform apply` as its first step), so there is a
+# single state-owner and no lock contention between workflows. Plans run with
+# -lock=false so a preview never blocks or is blocked by a concurrent deploy
+# apply. dev -> staging -> prod, each gated by its GitHub Environment. Auth is
+# OIDC federated credentials. One-time setup + state bootstrap in
 # infrastructure/azure/README.md.
 
 on:
@@ -16,12 +18,12 @@ on:
   workflow_dispatch:
     inputs:
       environment:
-        description: "Environment to apply (dev/staging/prod run sequentially from the selected one; demo is standalone)"
+        description: "Environment to plan (dev/staging/prod run sequentially from the selected one; demo is standalone). Preview only — apply happens in the deploy pipeline."
         required: true
         type: choice
         options: [dev, staging, prod, demo]
 
-# Queue infra changes — never cancel a Terraform apply mid-run.
+# Serialize infra plans per ref.
 concurrency:
   group: terraform-azure-${{ github.ref }}
   cancel-in-progress: false
@@ -37,7 +39,7 @@ env:
   ARM_SUBSCRIPTION_ID: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
 
 jobs:
-  # ── Dev — auto-applies on every Azure infra change ───────────────────────
+  # ── Dev — plan preview on every Azure infra change ───────────────────────
   terraform-dev:
     if: >-
       (github.event_name == 'push' ||
@@ -69,10 +71,7 @@ jobs:
         run: terraform validate
       - name: Terraform Plan
         working-directory: infrastructure/azure
-        run: terraform plan -var-file=environments/dev.tfvars -out=tfplan
-      - name: Terraform Apply
-        working-directory: infrastructure/azure
-        run: terraform apply tfplan
+        run: terraform plan -var-file=environments/dev.tfvars -lock=false
 
   # ── Staging — gated by dev success + GitHub Environment approval ─────────
   terraform-staging:
@@ -107,10 +106,7 @@ jobs:
         run: terraform validate
       - name: Terraform Plan
         working-directory: infrastructure/azure
-        run: terraform plan -var-file=environments/staging.tfvars -out=tfplan
-      - name: Terraform Apply
-        working-directory: infrastructure/azure
-        run: terraform apply tfplan
+        run: terraform plan -var-file=environments/staging.tfvars -lock=false
 
   # ── Prod — gated by staging success + GitHub Environment approval ─────────
   terraform-prod:
@@ -142,10 +138,7 @@ jobs:
         run: terraform validate
       - name: Terraform Plan
         working-directory: infrastructure/azure
-        run: terraform plan -var-file=environments/prod.tfvars -out=tfplan
-      - name: Terraform Apply
-        working-directory: infrastructure/azure
-        run: terraform apply tfplan
+        run: terraform plan -var-file=environments/prod.tfvars -lock=false
 
   # ── Demo — standalone, dispatch-only (NOT in the dev→staging→prod chain) ──
   terraform-demo:
@@ -176,7 +169,4 @@ jobs:
         run: terraform validate
       - name: Terraform Plan
         working-directory: infrastructure/azure
-        run: terraform plan -var-file=environments/demo.tfvars -out=tfplan
-      - name: Terraform Apply
-        working-directory: infrastructure/azure
-        run: terraform apply tfplan
+        run: terraform plan -var-file=environments/demo.tfvars -lock=false

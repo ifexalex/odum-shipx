@@ -190,9 +190,12 @@ az containerapp update -g <rg> -n "$(terraform output -raw api_app_name)" \
 curl "$(terraform output -raw api_url)/health"                                      # 200
 ```
 
-After that first bring-up, **`deploy-azure.yml`** automates it on every push (gated
-`DEPLOY_CLOUD=azure`): it builds + pushes the image to ACR, runs the migration job, rolls the
-Container Apps, and smoke-tests — the Azure analogue of the AWS `deploy.yml` Lambda pipeline.
+**`deploy-azure.yml`** automates all of this on every push (gated `DEPLOY_CLOUD=azure`) and runs
+`terraform apply` as its **first step**, so you don't have to apply infra separately — the deploy
+reconciles infra + state, then builds + pushes the image to ACR, runs the migration job, rolls the
+Container Apps, and smoke-tests. The manual sequence above is only for a local/first bring-up before
+CI is wired. `terraform-azure.yml` is plan-only (infra review); the deploy owns the apply, so a
+single workflow owns the state.
 
 ## Auth setup — Entra External ID (Phase 4, manual)
 

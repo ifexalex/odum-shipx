@@ -841,10 +841,17 @@ Run `terraform plan -var-file=environments/dev.tfvars` — should show **0 chang
 
 ## Azure deployment pipeline (`terraform-azure.yml`, added 2026-10-08)
 
-The Azure portability stack (`infrastructure/azure/`) has its own Terraform pipeline mirroring
-the AWS one: push to `main` touching `infrastructure/azure/**` or `infrastructure/common/**`
-runs dev → staging → prod, each gated by its GitHub Environment. Auth is **OIDC federated
-credentials** (no stored client secret), same zero-secret posture as AWS.
+The Azure portability stack (`infrastructure/azure/`) has its own Terraform pipeline: push to
+`main` touching `infrastructure/azure/**` or `infrastructure/common/**` runs dev → staging → prod
+fmt + validate + **plan** (preview), each gated by its GitHub Environment. Auth is **OIDC
+federated credentials** (no stored client secret), same zero-secret posture as AWS.
+
+> **Plan-only (2026-10-10).** `terraform-azure.yml` no longer applies — it is the infra *review*
+> check. The **apply is owned by the deploy pipeline**: `_deploy-azure-env.yml` runs
+> `terraform apply` as its first step on every deploy, so infra + state are reconciled (and any
+> change captured) before the app rolls, and the deploy cannot proceed on failed infra. One
+> workflow owns the state → no lock contention. Plans here use `-lock=false` so a preview never
+> blocks or is blocked by a concurrent deploy apply.
 
 ### 1. One-time Terraform state bootstrap (manual)
 
@@ -907,12 +914,16 @@ to `main` touching the Azure infra runs the full dev→staging→prod chain.
 
 ### Azure backend deploy (`deploy-azure.yml` + `_deploy-azure-env.yml`, added 2026-10-09)
 
-The app-code counterpart to `terraform-azure.yml` (which is infra only) — the Azure analogue of
-`deploy.yml`, gated `vars.DEPLOY_CLOUD == 'azure'`. Same promotion model (main → dev, `v*-rc*` →
-staging, `v*` → prod, dispatch → demo). The reusable `_deploy-azure-env.yml` per environment:
+The Azure analogue of `deploy.yml`, gated `vars.DEPLOY_CLOUD == 'azure'`. Same promotion model
+(main → dev, `v*-rc*` → staging, `v*` → prod, dispatch → demo). The reusable
+`_deploy-azure-env.yml` per environment, in one job (so order is guaranteed and a failure stops
+everything after it):
 
-1. `azure/login` (OIDC) + `terraform init` to **read the env's infra outputs** (RG, ACR name +
-   login server, migrate-job name, api URL) — Terraform state is the single source of names.
+1. **`terraform apply`** (`init` + `apply -var-file=environments/<env>.tfvars -auto-approve`) —
+   **always first**, reconciling infra + state before anything ships, and emitting the infra
+   outputs (RG, ACR, migrate-job, api URL) the later steps consume. A no-op when nothing changed;
+   a failure aborts the deploy (every later step depends on its outputs). This is the single
+   Terraform state-owner (`terraform-azure.yml` is plan-only).
 2. `az acr login`, then **build + push** the `Dockerfile` image to ACR tagged with the commit SHA.
 3. **Migrate**: point the migration Container App Job at the new image, `az containerapp job start`,
    poll to `Succeeded` (a `Failed` aborts the deploy — idempotent `alembic upgrade head`).
@@ -920,8 +931,9 @@ staging, `v*` → prod, dispatch → demo). The reusable `_deploy-azure-env.yml`
    `az containerapp update/job update --image` (Terraform ignores image drift, so CI owns the tag).
 5. **Smoke** the live ingress (health 200, unauthenticated `/v1/*` → 401) — read-only, prod-safe.
 
-Prereq: the infra must already be applied (`terraform-azure.yml`) so ACR + the apps exist; the
-first bring-up before CI is the manual sequence in `infrastructure/azure/README.md`.
+Because step 1 applies the infra, a first-ever environment stands up from this pipeline alone
+(given the tfstate account + secrets + registered resource providers exist). There is no separate
+"apply infra first" prerequisite — the deploy *is* the apply-then-ship.
 
 ### Security Design
 
