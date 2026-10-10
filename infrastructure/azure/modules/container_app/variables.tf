@@ -58,6 +58,12 @@ variable "grant_acr_pull" {
   default     = true
 }
 
+variable "enable_redis" {
+  description = "Whether Redis is provisioned. When false, the redis-password secret + REDIS_PASSWORD env are omitted and the cache degrades to DB lookups."
+  type        = bool
+  default     = true
+}
+
 # ─── Data + messaging values (from the Phase-2 modules) ─────────────────────
 variable "db_host" { type = string }
 variable "db_port" { type = number }
