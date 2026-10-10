@@ -36,8 +36,11 @@ locals {
     BLOB_CONTAINER_NAME         = var.blob_container_name
     SES_FROM_ADDRESS            = var.acs_sender_address
     # OIDC token verification — Entra values wired in Phase 4 (empty until then).
-    OIDC_JWKS_URL = var.oidc_jwks_url
-    OIDC_AUDIENCE = var.oidc_audience
+    OIDC_JWKS_URL     = var.oidc_jwks_url
+    OIDC_AUDIENCE     = var.oidc_audience
+    ENTRA_USER_DOMAIN = var.entra_user_domain
+    # Browser origins allowed to call the API (the frontend URL).
+    CORS_ALLOW_ORIGINS = var.cors_allow_origins
     # Per-channel queue names (the opaque queue reference on Azure).
     SQS_SMS_QUEUE_URL      = lookup(var.queue_names, "sms", "")
     SQS_WHATSAPP_QUEUE_URL = lookup(var.queue_names, "whatsapp", "")

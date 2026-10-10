@@ -68,6 +68,12 @@ variable "oidc_audience" {
   default     = ""
 }
 
+variable "entra_user_domain" {
+  description = "Entra verified/managed domain for UPNs (e.g. yourtenant.onmicrosoft.com). Empty until Entra is set up."
+  type        = string
+  default     = ""
+}
+
 variable "api_cpu" {
   description = "API container vCPU."
   type        = number

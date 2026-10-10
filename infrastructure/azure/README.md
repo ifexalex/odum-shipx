@@ -197,7 +197,34 @@ Container Apps, and smoke-tests. The manual sequence above is only for a local/f
 CI is wired. `terraform-azure.yml` is plan-only (infra review); the deploy owns the apply, so a
 single workflow owns the state.
 
-## Auth setup — Entra External ID (Phase 4, manual)
+## Running the full app on Azure — auth is the deciding piece
+
+Compute + data + frontend hosting are all on Azure. **Auth** is the one thing
+with a choice, because the SPA logs in via **Cognito** today
+(`frontend/src/auth/CognitoClient.ts`) — so a working end-to-end login needs one of:
+
+**Path A — Cognito bridge (fastest; no frontend change, no Entra tenant).** Keep the
+existing AWS Cognito pool as the identity authority; the Azure-hosted API validates
+Cognito JWTs. Everything else runs on Azure. Set on the Azure API (Container Apps env):
+
+```
+AUTH_PROVIDER   = aws                                   # use the Cognito claims mapper even though CLOUD_PROVIDER=azure
+OIDC_JWKS_URL   = https://cognito-idp.<region>.amazonaws.com/<pool-id>/.well-known/jwks.json
+OIDC_AUDIENCE   = <cognito app client id>
+```
+and build the SPA with `VITE_API_BASE_URL=<azure api_url>` + the **existing** `VITE_COGNITO_*`.
+`AUTH_PROVIDER` defaults to `CLOUD_PROVIDER`, so this is the only override needed. Result: the
+full app runs on Azure with auth federated to Cognito (the ADR-004 dual-run posture) — no Entra
+tenant, no frontend rewrite.
+
+**Path B — native Entra (no AWS dependency; more work).** Set up the Entra tenant (below),
+point `OIDC_*` at Entra, **and** add an Entra/MSAL login path to the SPA (the frontend is
+Cognito-only today — that's net-new frontend work), then migrate users. This is the end-state
+once you want to cut AWS out entirely.
+
+Recommended: **Path A to get it live now**, Path B as the follow-up.
+
+### Entra tenant setup (for Path B)
 
 The identity adapters are code (`shared/providers/azure/entra.py` +
 `entra_claims.py`) and the bulk migration is `scripts/migrate_users_to_entra.py`, but the Entra

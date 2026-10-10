@@ -195,9 +195,13 @@ module "container_app" {
   # Observability
   app_insights_connection_string = module.monitoring.app_insights_connection_string
 
-  # Auth (Entra) — wired in Phase 4.
-  oidc_jwks_url = var.oidc_jwks_url
-  oidc_audience = var.oidc_audience
+  # Auth (Entra).
+  oidc_jwks_url     = var.oidc_jwks_url
+  oidc_audience     = var.oidc_audience
+  entra_user_domain = var.entra_user_domain
+
+  # Let the SPA's origin (the Front Door URL) call the API from the browser.
+  cors_allow_origins = var.enable_frontend ? module.frontend[0].frontend_url : ""
 
   # Sizing
   api_cpu          = var.api_cpu

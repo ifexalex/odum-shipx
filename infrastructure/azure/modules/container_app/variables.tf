@@ -122,6 +122,18 @@ variable "oidc_audience" {
   default     = ""
 }
 
+variable "entra_user_domain" {
+  description = "Entra verified/managed domain for UPNs (EntraIdentityProvider). Empty until Entra is set up."
+  type        = string
+  default     = ""
+}
+
+variable "cors_allow_origins" {
+  description = "Comma-separated browser origins allowed to call the API (e.g. the frontend URL). Empty = same-origin only."
+  type        = string
+  default     = ""
+}
+
 # ─── Sizing ───────────────────────────────────────────────────────────────────
 variable "api_cpu" {
   type    = number
