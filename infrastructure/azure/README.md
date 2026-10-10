@@ -232,11 +232,13 @@ VITE_ENTRA_CLIENT_ID     = <SPA app registration client id>
 VITE_ENTRA_SCOPE         = openid profile offline_access            # optional
 ```
 
-Caveats (validate against your tenant): ROPC covers local accounts only (no social/MFA — swap to
-an MSAL redirect flow behind the same `authClient` seam if those are needed); and **reload-
-persistence** still rides the backend httpOnly-cookie refresh (`services/auth`), which is
-Cognito-specific — extending silent-refresh to Entra refresh tokens is the remaining follow-up, so
-until then an Entra session survives the tab but a full page reload re-prompts login.
+Reload-persistence works on Entra too: the backend httpOnly-cookie refresh (`services/auth`) is
+provider-aware — `AUTH_PROVIDER=azure` exchanges the cookie via `entra_refresh.py` (OAuth2
+refresh-token grant), so a page reload silently restores the session exactly as on Cognito. Set
+the backend `entra_token_endpoint` + `entra_client_id` (tfvars) so it can do the exchange.
+
+Caveat (validate against your tenant): ROPC covers local accounts only (no social/MFA — swap to
+an MSAL redirect flow behind the same `authClient` seam if those are needed).
 
 Recommended: **Path A to get it live instantly**; Path B for the AWS-free end-state.
 

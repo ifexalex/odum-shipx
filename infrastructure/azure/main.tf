@@ -196,10 +196,12 @@ module "container_app" {
   app_insights_connection_string = module.monitoring.app_insights_connection_string
 
   # Auth. auth_provider selects the IdP (azure=Entra, aws=Cognito bridge).
-  auth_provider     = var.auth_provider
-  oidc_jwks_url     = var.oidc_jwks_url
-  oidc_audience     = var.oidc_audience
-  entra_user_domain = var.entra_user_domain
+  auth_provider        = var.auth_provider
+  oidc_jwks_url        = var.oidc_jwks_url
+  oidc_audience        = var.oidc_audience
+  entra_user_domain    = var.entra_user_domain
+  entra_token_endpoint = var.entra_token_endpoint
+  entra_client_id      = var.entra_client_id
 
   # Let the SPA's origin (the Front Door URL) call the API from the browser.
   cors_allow_origins = var.enable_frontend ? module.frontend[0].frontend_url : ""

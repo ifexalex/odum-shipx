@@ -191,12 +191,13 @@ The auth layer is no longer hard-wired to Cognito. The app's auth entry points i
   `cognito:groups`/`custom:role` and Entra `oid`/`tenant_id`/`groups`/`role`) via fallbacks, so the
   same `{tenant_id}:{role}` role interpretation works for either issuer. Backward-compatible.
 
-The backend is already native per cloud (`AUTH_PROVIDER` selects the authorizer verify + claims
-mapper). **Known follow-up:** reload-persistence still uses the backend httpOnly-cookie refresh
-(`services/auth`), which is Cognito-specific — extending silent-refresh to Entra refresh tokens is
-pending; an Entra session survives the tab but a full reload currently re-prompts login. ROPC also
-covers local accounts only (no social/MFA) — swap `EntraClient` for an MSAL redirect flow behind
-the same `authClient` seam if those are needed. Validate against a real Entra tenant.
+The backend is native per cloud end-to-end: `AUTH_PROVIDER` selects the authorizer verify + claims
+mapper **and** the httpOnly-cookie session refresh (`services/auth/handler.py` → `cognito_refresh`
+on AWS / `entra_refresh` on Azure, via the OAuth2 refresh-token grant). So **reload-persistence
+works on Entra too** — a page reload silently restores the session exactly as on Cognito (the
+backend needs `ENTRA_TOKEN_ENDPOINT` + `ENTRA_CLIENT_ID` env to do the exchange). Remaining caveat:
+ROPC covers local accounts only (no social/MFA) — swap `EntraClient` for an MSAL redirect flow
+behind the same `authClient` seam if those are needed. Validate against a real Entra tenant.
 
 **Tests:** `EntraClient.test.ts` (ROPC password/refresh grants + error mapping, mocked fetch),
 `jwt.test.ts` (Entra claim shape → Session), `SessionProvider.test.tsx` re-pointed to mock

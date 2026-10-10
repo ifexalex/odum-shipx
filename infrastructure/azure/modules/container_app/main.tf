@@ -40,6 +40,10 @@ locals {
     OIDC_JWKS_URL     = var.oidc_jwks_url
     OIDC_AUDIENCE     = var.oidc_audience
     ENTRA_USER_DOMAIN = var.entra_user_domain
+    # Backend httpOnly-cookie session refresh when AUTH_PROVIDER=azure (services/auth/entra_refresh.py).
+    ENTRA_TOKEN_ENDPOINT = var.entra_token_endpoint
+    ENTRA_CLIENT_ID      = var.entra_client_id
+    ENTRA_SCOPE          = var.entra_scope
     # Browser origins allowed to call the API (the frontend URL).
     CORS_ALLOW_ORIGINS = var.cors_allow_origins
     # Per-channel queue names (the opaque queue reference on Azure).

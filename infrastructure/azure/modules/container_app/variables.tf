@@ -140,6 +140,24 @@ variable "cors_allow_origins" {
   default     = ""
 }
 
+variable "entra_token_endpoint" {
+  description = "Entra OAuth2 token endpoint — the backend's httpOnly-cookie session refresh uses it when AUTH_PROVIDER=azure. Empty until Entra is set up."
+  type        = string
+  default     = ""
+}
+
+variable "entra_client_id" {
+  description = "Entra app registration client id for the backend refresh exchange."
+  type        = string
+  default     = ""
+}
+
+variable "entra_scope" {
+  description = "OAuth2 scopes for the Entra refresh exchange."
+  type        = string
+  default     = "openid profile offline_access"
+}
+
 # ─── Sizing ───────────────────────────────────────────────────────────────────
 variable "api_cpu" {
   type    = number

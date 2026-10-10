@@ -143,7 +143,7 @@ class TestRefreshRoute:
     def test_valid_cookie_returns_fresh_id_token(self):
         event = _event("POST", "/v1/auth/refresh", cookies=[f"shipx_rt={REFRESH_TOKEN}"])
         with patch(
-            "services.auth.handler.cognito_refresh.refresh_id_token",
+            "services.auth.cognito_refresh.refresh_id_token",
             return_value={"id_token": "fresh.id.token", "access_token": "x", "expires_in": 3600},
         ) as mock_refresh:
             resp = handler.lambda_handler(event, None)
@@ -172,7 +172,7 @@ class TestRefreshRoute:
     def test_expired_refresh_token_propagates_401(self):
         event = _event("POST", "/v1/auth/refresh", cookies=[f"shipx_rt={REFRESH_TOKEN}"])
         with patch(
-            "services.auth.handler.cognito_refresh.refresh_id_token",
+            "services.auth.cognito_refresh.refresh_id_token",
             side_effect=AuthenticationRequiredError(),
         ):
             resp = handler.lambda_handler(event, None)
@@ -187,7 +187,7 @@ class TestRefreshRoute:
 class TestLogoutRoute:
     def test_revokes_token_and_clears_cookie(self):
         event = _event("POST", "/v1/auth/logout", cookies=[f"shipx_rt={REFRESH_TOKEN}"])
-        with patch("services.auth.handler.cognito_refresh.revoke_refresh_token") as mock_revoke:
+        with patch("services.auth.cognito_refresh.revoke_refresh_token") as mock_revoke:
             resp = handler.lambda_handler(event, None)
 
         assert resp["statusCode"] == 204
@@ -198,7 +198,7 @@ class TestLogoutRoute:
 
     def test_no_cookie_still_clears_and_skips_revoke_call(self):
         event = _event("POST", "/v1/auth/logout", cookies=[])
-        with patch("services.auth.handler.cognito_refresh.revoke_refresh_token") as mock_revoke:
+        with patch("services.auth.cognito_refresh.revoke_refresh_token") as mock_revoke:
             resp = handler.lambda_handler(event, None)
 
         assert resp["statusCode"] == 204
