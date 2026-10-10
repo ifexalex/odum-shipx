@@ -5,6 +5,12 @@ so the app can be deployed to either cloud. You run **one** cloud at a time (see
 the cloud-portability notes in `docs/runbook.md`); this stack lets you move to
 Azure (e.g. to use Founders Hub credits) without re-architecting.
 
+> **Setting up a fresh Azure subscription?** Follow **[`SETUP.md`](SETUP.md)** —
+> the ordered, copy-pasteable bootstrap (subscription upgrade → resource providers
+> → tfstate → Contributor-only OIDC identity → GitHub config → auth → first deploy)
+> with a troubleshooting table for every gotcha. This README is the architecture
+> reference; SETUP.md is the runbook.
+
 **Status:** incremental build-out. Implemented so far:
 
 | Piece | AWS (`../aws`) | Azure (here) | Status |

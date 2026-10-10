@@ -90,13 +90,22 @@ jobs:
           ARM_SUBSCRIPTION_ID: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
         run: |
           terraform init -backend-config=environments/${{ inputs.environment }}.backend.hcl
+          SA=$(terraform output -raw frontend_storage_account)
+          RG=$(terraform output -raw resource_group)
           {
-            echo "storage_account=$(terraform output -raw frontend_storage_account)"
-            echo "rg=$(terraform output -raw resource_group)"
+            echo "storage_account=$SA"
+            echo "rg=$RG"
             echo "profile=$(terraform output -raw frontend_frontdoor_profile)"
             echo "endpoint=$(terraform output -raw frontend_frontdoor_endpoint)"
             echo "api_url=$(terraform output -raw api_url)"
           } >> "$GITHUB_OUTPUT"
+          # Upload with the storage key via --account-key — no data-plane RBAC role
+          # needed on the Contributor-only deploy identity. Fetched via control-plane
+          # listKeys (Contributor has it), so there's no dependency on a freshly
+          # applied TF output. Masked so it never prints.
+          KEY=$(az storage account keys list -g "$RG" -n "$SA" --query "[0].value" -o tsv)
+          echo "::add-mask::$KEY"
+          echo "storage_key=$KEY" >> "$GITHUB_OUTPUT"
 
       - name: Build (${{ inputs.cloud }} / ${{ inputs.environment }})
         run: npm run build
@@ -143,7 +152,8 @@ jobs:
         if: inputs.cloud == 'azure'
         run: |
           az storage blob upload-batch \
-            --account-name "${{ steps.tf.outputs.storage_account }}" --auth-mode login \
+            --account-name "${{ steps.tf.outputs.storage_account }}" \
+            --account-key "${{ steps.tf.outputs.storage_key }}" \
             --destination '$web' --source dist \
             --content-cache 'public, max-age=31536000, immutable' --overwrite
 
@@ -151,7 +161,8 @@ jobs:
         if: inputs.cloud == 'azure'
         run: |
           az storage blob upload \
-            --account-name "${{ steps.tf.outputs.storage_account }}" --auth-mode login \
+            --account-name "${{ steps.tf.outputs.storage_account }}" \
+            --account-key "${{ steps.tf.outputs.storage_key }}" \
             --container-name '$web' --name index.html --file dist/index.html \
             --content-cache 'no-cache, no-store, must-revalidate' --overwrite
 
