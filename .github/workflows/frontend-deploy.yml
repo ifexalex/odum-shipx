@@ -8,18 +8,19 @@ name: Frontend Deploy (AWS or Azure)
 # Required secrets (set per GitHub Environment):
 #   Shared build:
 #     VITE_COGNITO_USER_POOL_ID, VITE_COGNITO_CLIENT_ID
-#     VITE_API_BASE_URL            (AWS backend URL; default)
-#     AZURE_VITE_API_BASE_URL      (Azure backend URL; optional — falls back to VITE_API_BASE_URL)
+#     VITE_API_BASE_URL            (AWS backend URL; Azure reads its API URL from Terraform)
+#     VITE_AUTH_PROVIDER           (optional: 'cognito' default | 'entra')
+#     VITE_ENTRA_TOKEN_ENDPOINT, VITE_ENTRA_CLIENT_ID  (optional; only for native Entra)
 #   AWS deploy (cloud=aws):
 #     FRONTEND_DEPLOY_ROLE_ARN     (OIDC role: s3:PutObject + cloudfront:CreateInvalidation)
 #     FRONTEND_S3_BUCKET, FRONTEND_CLOUDFRONT_ID
 #   Azure deploy (cloud=azure):
 #     AZURE_CLIENT_ID, AZURE_TENANT_ID, AZURE_SUBSCRIPTION_ID   (OIDC federated SP)
-#        → the SP needs "Storage Blob Data Contributor" on the storage account
-#          and a role allowing `az afd endpoint purge` on the Front Door profile.
-#     AZURE_FRONTEND_STORAGE_ACCOUNT, AZURE_FRONTEND_FRONTDOOR_PROFILE,
-#     AZURE_FRONTEND_FRONTDOOR_ENDPOINT, AZURE_RESOURCE_GROUP
-#        (all from `terraform -chdir=infrastructure/azure output`)
+#        → the SP needs "Storage Blob Data Contributor" on the storage account,
+#          a role allowing `az afd endpoint purge`, and read access to the tfstate.
+#   The storage account / Front Door profile+endpoint / resource group / API URL
+#   are read from Terraform state — NOT secrets — so there is nothing extra to keep
+#   in sync (matches the backend deploy-azure.yml pattern).
 
 on:
   workflow_dispatch:
@@ -62,14 +63,52 @@ jobs:
 
       - run: npm ci
 
+      # ── Azure: login + resolve infra from Terraform state (before build, so the
+      #    SPA can be built against the real Azure API URL) ────────────────────
+      - name: Azure — login (OIDC)
+        if: inputs.cloud == 'azure'
+        uses: azure/login@v2
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Azure — setup Terraform
+        if: inputs.cloud == 'azure'
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: "1.7.5"
+
+      - name: Azure — read infra outputs
+        if: inputs.cloud == 'azure'
+        id: tf
+        working-directory: infrastructure/azure
+        env:
+          ARM_USE_OIDC: "true"
+          ARM_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
+          ARM_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
+          ARM_SUBSCRIPTION_ID: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+        run: |
+          terraform init -backend-config=environments/${{ inputs.environment }}.backend.hcl
+          {
+            echo "storage_account=$(terraform output -raw frontend_storage_account)"
+            echo "rg=$(terraform output -raw resource_group)"
+            echo "profile=$(terraform output -raw frontend_frontdoor_profile)"
+            echo "endpoint=$(terraform output -raw frontend_frontdoor_endpoint)"
+            echo "api_url=$(terraform output -raw api_url)"
+          } >> "$GITHUB_OUTPUT"
+
       - name: Build (${{ inputs.cloud }} / ${{ inputs.environment }})
         run: npm run build
         env:
-          # Point the SPA at the chosen cloud's backend. AZURE_VITE_API_BASE_URL
-          # lets Azure use a different API host; falls back to VITE_API_BASE_URL.
-          VITE_API_BASE_URL: ${{ (inputs.cloud == 'azure' && secrets.AZURE_VITE_API_BASE_URL) || secrets.VITE_API_BASE_URL }}
+          # Azure API URL comes from Terraform state; AWS from the secret.
+          VITE_API_BASE_URL: ${{ steps.tf.outputs.api_url || secrets.VITE_API_BASE_URL }}
           VITE_COGNITO_USER_POOL_ID: ${{ secrets.VITE_COGNITO_USER_POOL_ID }}
           VITE_COGNITO_CLIENT_ID: ${{ secrets.VITE_COGNITO_CLIENT_ID }}
+          # Auth provider: default cognito; set entra (+ the VITE_ENTRA_* below) for native Entra.
+          VITE_AUTH_PROVIDER: ${{ secrets.VITE_AUTH_PROVIDER }}
+          VITE_ENTRA_TOKEN_ENDPOINT: ${{ secrets.VITE_ENTRA_TOKEN_ENDPOINT }}
+          VITE_ENTRA_CLIENT_ID: ${{ secrets.VITE_ENTRA_CLIENT_ID }}
           VITE_ENVIRONMENT: ${{ inputs.environment }}
 
       # ----------------------------------------------------------------- AWS
@@ -100,19 +139,11 @@ jobs:
             --distribution-id ${{ secrets.FRONTEND_CLOUDFRONT_ID }} --paths "/index.html"
 
       # --------------------------------------------------------------- Azure
-      - name: Azure — login (OIDC)
-        if: inputs.cloud == 'azure'
-        uses: azure/login@v2
-        with:
-          client-id: ${{ secrets.AZURE_CLIENT_ID }}
-          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
-          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
-
       - name: Azure — upload hashed assets (immutable)
         if: inputs.cloud == 'azure'
         run: |
           az storage blob upload-batch \
-            --account-name "${{ secrets.AZURE_FRONTEND_STORAGE_ACCOUNT }}" --auth-mode login \
+            --account-name "${{ steps.tf.outputs.storage_account }}" --auth-mode login \
             --destination '$web' --source dist \
             --content-cache 'public, max-age=31536000, immutable' --overwrite
 
@@ -120,18 +151,18 @@ jobs:
         if: inputs.cloud == 'azure'
         run: |
           az storage blob upload \
-            --account-name "${{ secrets.AZURE_FRONTEND_STORAGE_ACCOUNT }}" --auth-mode login \
+            --account-name "${{ steps.tf.outputs.storage_account }}" --auth-mode login \
             --container-name '$web' --name index.html --file dist/index.html \
             --content-cache 'no-cache, no-store, must-revalidate' --overwrite
 
-      - name: Azure — purge Front Door /index.html
+      - name: Azure — purge Front Door
         if: inputs.cloud == 'azure'
         run: |
           az afd endpoint purge \
-            --resource-group "${{ secrets.AZURE_RESOURCE_GROUP }}" \
-            --profile-name "${{ secrets.AZURE_FRONTEND_FRONTDOOR_PROFILE }}" \
-            --endpoint-name "${{ secrets.AZURE_FRONTEND_FRONTDOOR_ENDPOINT }}" \
-            --content-paths '/index.html'
+            --resource-group "${{ steps.tf.outputs.rg }}" \
+            --profile-name "${{ steps.tf.outputs.profile }}" \
+            --endpoint-name "${{ steps.tf.outputs.endpoint }}" \
+            --content-paths '/*'
 
       - name: Summary
         run: echo "✅ Frontend deployed to ${{ inputs.cloud }} (${{ inputs.environment }}) — commit ${{ github.sha }}"
