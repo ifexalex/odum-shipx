@@ -1226,3 +1226,16 @@ User asked (after declining it on the manifest table — not actionable there, c
 - **De-duplication:** the capacity estimate + colour-level logic moved to `api/containerRules.ts` (`containerCapacityCbm`, `utilizationLevel`), and `ContainerDetail` now imports them instead of its own copies.
 
 Why the list, not the manifest table: by the time a container reaches manifest verification it's sealed/arrived — the load is fixed and not a Nigeria-ops decision; utilization is a loading-time (China) signal, and `capacity_cbm` is populated only for containers created with a preset. Tests: `ContainerList.test.tsx` (+3 — exact-capacity %, type-estimate fallback %, capacity-unknown CBM-only). 848 frontend tests pass; tsc/eslint clean; build OK.
+
+## Shipping-company onboarding — public lead + platform queue (2026-10-11)
+
+User: "there is no way to onboard a shipping company … customers shouldn't be onboarded, customers should be invited … tenants are the ones to be onboarded," with a follow-up to make company onboarding *unmistakable* from customer sign-up. Backend already had platform-admin tenant creation; the gap was a public entry point for companies and clean separation of the two audiences. Model chosen (admin/sales-led): public lead → platform admin provisions. See `06_routing_rbac_and_navigation.md` for the route/guard table and the full separation rationale, and `07_api_tenant_management.md` for the API.
+
+- **`pages/auth/RequestOnboardingScreen.tsx`** (`/get-started`, public) — company + contact form on the shared `AuthShell`/`FormHead`. No password, no account; `POST /v1/onboarding-requests` via `companyOnboardingApi.requestOnboarding`. Success copy explicitly says "No account has been created yet." Carries an "Are you a customer?" off-ramp.
+- **`pages/auth/RegisterScreen.tsx`** — relabelled "Create your customer account"; bare `/register` now renders a which-are-you chooser instead of a dead-end warning.
+- **`pages/auth/LoginScreen.tsx`** — two labelled footer CTAs (customer `/register` vs company `/get-started`).
+- **`pages/platform/OnboardingRequests.tsx`** (`/platform/onboarding-requests`, platform_admin) — status-filtered lead queue (`useOnboardingRequests`); per-row **Mark contacted** / **Reject** (reason modal → `useUpdateOnboardingRequest`) / **Provision**. Provision navigates to `CreateTenantPage` with the lead in router state.
+- **`pages/platform/CreateTenantPage.tsx`** — reads `useLocation().state.lead`; pre-fills company/contact/countries and sends `onboarding_request_id` so a successful create links + closes the lead. Shows a "Provisioning from an onboarding request" banner when launched from a lead.
+- **Nav:** `navConfig.ts` gains an "Onboarding Requests" platform entry; `AppSidebar.tsx` overlays a live pending-lead count via `useOnboardingPendingCount` (gated to platform admins — no fetch for other roles). New hooks in `hooks/useOnboardingRequests.ts`; query keys in `api/keys.ts` (`onboardingRequestKeys`).
+
+Tests: `RequestOnboardingScreen.test.tsx`, `RegisterScreen.test.tsx`, `OnboardingRequests.test.tsx`, plus a platform-nav assertion in `AppSidebar.test.tsx` (harness wrapped in a `QueryClientProvider` for the new hook). 861 frontend tests pass; tsc clean; eslint 0 errors.

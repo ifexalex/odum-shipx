@@ -14,17 +14,20 @@ locals {
   # ---------------------------------------------------------------------------
   all_routes = {
     # --- Platform Admin (11 routes) -----------------------------------------
-    "POST /v1/platform/tenants"                  = "tenant_management"
-    "GET /v1/platform/tenants"                   = "tenant_management"
-    "GET /v1/platform/tenants/{id}"              = "tenant_management"
-    "PATCH /v1/platform/tenants/{id}"            = "tenant_management"
-    "DELETE /v1/platform/tenants/{id}"           = "tenant_management"
-    "PATCH /v1/platform/tenants/{id}/suspend"    = "tenant_management"
-    "PATCH /v1/platform/tenants/{id}/activate"   = "tenant_management"
-    "PATCH /v1/platform/tenants/{id}/reactivate" = "tenant_management"
-    "GET /v1/platform/tenants/{id}/usage"        = "metering"
-    "GET /v1/platform/dashboard"                 = "tenant_management"
-    "GET /v1/platform/audit-log"                 = "tenant_management"
+    "POST /v1/platform/tenants"                   = "tenant_management"
+    "GET /v1/platform/tenants"                    = "tenant_management"
+    "GET /v1/platform/tenants/{id}"               = "tenant_management"
+    "PATCH /v1/platform/tenants/{id}"             = "tenant_management"
+    "DELETE /v1/platform/tenants/{id}"            = "tenant_management"
+    "PATCH /v1/platform/tenants/{id}/suspend"     = "tenant_management"
+    "PATCH /v1/platform/tenants/{id}/activate"    = "tenant_management"
+    "PATCH /v1/platform/tenants/{id}/reactivate"  = "tenant_management"
+    "GET /v1/platform/tenants/{id}/usage"         = "metering"
+    "GET /v1/platform/dashboard"                  = "tenant_management"
+    "GET /v1/platform/audit-log"                  = "tenant_management"
+    "GET /v1/platform/onboarding-requests"        = "tenant_management"
+    "GET /v1/platform/onboarding-requests/{id}"   = "tenant_management"
+    "PATCH /v1/platform/onboarding-requests/{id}" = "tenant_management"
 
     # --- Tenant Admin (13 routes) -------------------------------------------
     "GET /v1/tenant/config"               = "tenant_management"
@@ -298,6 +301,7 @@ locals {
     "GET /v1/shipments/{tracking-code}" = "tracking"             # public shipment lookup
     "GET /v1/webhooks/whatsapp"         = "notification_webhook" # Meta webhook verification
     "POST /v1/webhooks/whatsapp"        = "notification_webhook" # Meta webhook status callback
+    "POST /v1/onboarding-requests"      = "tenant_management"    # shipping-company onboarding lead (public; no account created)
     "POST /v1/register"                 = "tenant_management"    # customer self-registration (legacy, body-resolved slug)
     "POST /v1/register/{slug}"          = "tenant_management"    # customer self-registration, tenant-scoped by slug
     "GET /v1/invites/{token}"           = "tenant_management"    # account-creation invite claim-page preview

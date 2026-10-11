@@ -39,6 +39,14 @@ class TenantUserStatus(StrEnum):
     deactivated = "deactivated"
 
 
+class OnboardingRequestStatus(StrEnum):
+    new = "new"
+    contacted = "contacted"
+    approved = "approved"
+    rejected = "rejected"
+    provisioned = "provisioned"
+
+
 # ---------------------------------------------------------------------------
 # Nested input models
 # ---------------------------------------------------------------------------
@@ -62,6 +70,37 @@ class CreateTenantRequest(BaseModel):
     destination_country: str = "Nigeria"
     subscription_tier: SubscriptionTier
     initial_admin: InitialAdminInput
+    # When provisioning from a company onboarding lead: links the tenant back to
+    # the request and flips it to 'provisioned' (see service.create_tenant).
+    onboarding_request_id: str | None = None
+
+
+# ---------------------------------------------------------------------------
+# Company onboarding (shipping-company leads — NOT customer sign-up)
+# ---------------------------------------------------------------------------
+
+
+class CreateOnboardingRequest(BaseModel):
+    """Public lead form for a shipping COMPANY requesting onboarding.
+
+    Deliberately collects no password and no tenant slug, and creates no account
+    — a platform admin reviews and provisions later. This shape is what keeps it
+    from being confused with customer self-registration (CustomerRegistrationRequest).
+    """
+
+    company_name: str = Field(min_length=1, max_length=200)
+    contact_name: str = Field(min_length=1, max_length=200)
+    contact_email: str = Field(min_length=3, max_length=320)
+    contact_phone: str | None = Field(default=None, max_length=40)
+    origin_country: str = Field(default="China", max_length=100)
+    destination_country: str = Field(default="Nigeria", max_length=100)
+    monthly_volume: str | None = Field(default=None, max_length=100)
+    notes: str | None = Field(default=None, max_length=2000)
+
+
+class OnboardingRequestStatusUpdate(BaseModel):
+    status: OnboardingRequestStatus
+    rejection_reason: str | None = Field(default=None, max_length=2000)
 
 
 class UpdateTenantRequest(BaseModel):

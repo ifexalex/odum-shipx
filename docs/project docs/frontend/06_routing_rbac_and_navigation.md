@@ -18,13 +18,20 @@ Production uses a single SPA. The `{tenant}.shipx.co` subdomain pattern seen in 
 |---|---|---|
 | `/` | `pages/marketing/LandingPage.tsx` | Public marketing landing page, ported from `Shipx_frontend_design/Shipx Landing Page v2.html` (the landing prototypes sit outside `screens/`). `RootRedirect` (in `routes.tsx`, not `routeTable.ts` — it's a dual-behavior apex, not a single guarded page) renders it for signed-out visitors; signed-in visitors are redirected to `homePathForRole(session.role)` as before. Not itself route-guarded. |
 | `/login` | `auth/auth-screens.jsx` → `LoginScreen` | |
-| `/register` | `auth-screens.jsx` → `RegisterScreen` | Customer self-registration → `POST /v1/register` |
+| `/register`, `/register/:slug` | `pages/auth/RegisterScreen.tsx` | **Customer** self-registration → `POST /v1/register/{slug}`. Bare `/register` (no slug) renders a "Which are you?" chooser (customer → use company link/invite; shipping company → `/get-started`), never the form. |
+| `/get-started` | `pages/auth/RequestOnboardingScreen.tsx` | **Shipping-company** onboarding *request* (a lead) → `POST /v1/onboarding-requests`. No account, no password, no tenant created. Deliberately distinct from customer sign-up — see note below. |
 | `/forgot-password` | `auth-screens.jsx` → `ForgotPasswordScreen` | |
 | `/reset-password?token=...` | `auth-screens.jsx` → `SetPasswordScreen` | |
 | `/track`, `/track/:code` | `gapfix/gapfix-screens-a.jsx` → `PublicTracking` | `GET /v1/shipments/{code}?phone={phone}` — no JWT. Served under tenant subdomain for branding. |
 
 ### Implementation notes / ground-truth gaps found
 
+- **Shipping-company onboarding separated from customer sign-up (2026-10-11):** companies (tenants) previously had no public entry point, and the only "register" surface (`/register`) demanded a company slug and spoke to *customers*, so a company landing there dead-ended. Added a distinct public lead flow and kept the two audiences unmistakable in both directions:
+  - **`/get-started`** (`RequestOnboardingScreen`) is the shipping-company partnership *request* — headline "Partner with ShipX", explicit "Are you a customer?" off-ramp to sign-in, a plain `POST /v1/onboarding-requests`, and no password field (it creates no account).
+  - **`/register/:slug`** (`RegisterScreen`) is the customer account form — headline "Create your customer account", with a mirror line pointing companies to `/get-started`.
+  - **Bare `/register`** no longer dead-ends on a "missing company" warning: it renders a two-way chooser (customer vs shipping company).
+  - **`LoginScreen`** footer carries two labelled CTAs: "Customer of a shipping company? → Create your account" (`/register`) and "Are you a shipping company? → Onboard with ShipX" (`/get-started`).
+  - API clients: `companyOnboardingApi.requestOnboarding` (`src/api/customer.ts`) for the public lead; `platformApi.listOnboardingRequests/getOnboardingRequest/updateOnboardingRequest` + `CreateTenantInput.onboarding_request_id` (`src/api/tenantManagement.ts`) for the admin side. Tests: `RequestOnboardingScreen.test.tsx`, `RegisterScreen.test.tsx`, `OnboardingRequests.test.tsx`.
 - **Landing page gap closed (2026-07-10):** the apex path `/` previously redirected unconditionally to `/login` for signed-out visitors — no public marketing surface existed, even though the design prototypes had one (`Shipx Landing Page.html` / `... v2.html`, dated after the numbered `screens/` prototypes and never assigned to a task; v2 — same content plus the motion layer — is the implemented source). Implemented as `pages/marketing/LandingPage.tsx` + `LandingPage.module.css`, wired into the existing `RootRedirect` component. All CTAs are `<Link>`/`<a>` styled to look like buttons (not the design system's `<Button>`, which renders a `<button>` — nesting an anchor inside a button is invalid HTML and breaks keyboard/screen-reader focus). "Start free trial" → `/register`; "Sign in" → `/login`; "Talk to sales" / "Book a demo" → `mailto:sales@shipx.co`.
 
 ## Platform Admin (`role: platform_admin`)
@@ -32,8 +39,9 @@ Production uses a single SPA. The `{tenant}.shipx.co` subdomain pattern seen in 
 | Path | Screen source | API |
 |---|---|---|
 | `/platform/dashboard` | `platform/platform-screens.jsx` → `PlatformDashboard` | `GET /v1/platform/dashboard` |
+| `/platform/onboarding-requests` | `pages/platform/OnboardingRequests.tsx` | `GET /v1/platform/onboarding-requests`, `PATCH …/{id}`; **Provision** navigates to `/platform/tenants/new` with the lead in router state (pre-fill + `onboarding_request_id`). Sidebar entry carries a live pending-lead count badge (`useOnboardingPendingCount`). |
 | `/platform/tenants` | → `TenantList` | `GET /v1/platform/tenants` |
-| `/platform/tenants/new` | → `CreateTenant` | `POST /v1/platform/tenants` |
+| `/platform/tenants/new` | `pages/platform/CreateTenantPage.tsx` | `POST /v1/platform/tenants`; accepts an optional lead via `useLocation().state.lead` — pre-fills company/contact/countries and sends `onboarding_request_id` to link + close the lead. |
 | `/platform/tenants/:id` (tabs: overview/users/usage/config/audit) | → `TenantDetail`, `TenantOverview`, `TenantUsers`, `TenantUsage`, `TenantConfig`, `TenantAudit` | `GET/PATCH/DELETE /v1/platform/tenants/{id}`, suspend/activate/reactivate |
 | `/platform/tenants/:id` → impersonate action | n/a (modal) | `POST /v1/platform/tenants/{id}/impersonate` — see Task 08 |
 | `/platform/settings`, `/platform/settings/notifications`, `/platform/settings/plans` | → `PlatformSettings`, `PlatformGeneral`, `PlatformNotifications`, `PlatformPlans` | `GET/PUT /v1/platform/settings` |

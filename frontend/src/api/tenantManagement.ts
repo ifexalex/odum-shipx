@@ -554,6 +554,26 @@ export interface CreateTenantInput {
   primary_contact_phone?: string
   subscription_tier: SubscriptionTier
   initial_admin: { email: string; full_name: string }
+  /** Set when provisioning from a company onboarding lead — links + closes it. */
+  onboarding_request_id?: string
+}
+
+export type OnboardingRequestStatus = 'new' | 'contacted' | 'approved' | 'rejected' | 'provisioned'
+
+export interface OnboardingRequest {
+  id: string
+  company_name: string
+  contact_name: string
+  contact_email: string
+  contact_phone: string | null
+  origin_country: string
+  destination_country: string
+  monthly_volume: string | null
+  notes: string | null
+  status: OnboardingRequestStatus
+  rejection_reason: string | null
+  tenant_id: string | null
+  created_at: string
 }
 
 export const platformApi = {
@@ -568,6 +588,23 @@ export const platformApi = {
       method: 'POST',
       path: '/v1/platform/tenants',
       body,
+    }),
+
+  // Shipping-company onboarding leads (admin review queue).
+  listOnboardingRequests: (status?: OnboardingRequestStatus) =>
+    apiRequest<OnboardingRequest[]>({
+      method: 'GET',
+      path: status ? `/v1/platform/onboarding-requests?status=${status}` : '/v1/platform/onboarding-requests',
+    }),
+
+  getOnboardingRequest: (id: string) =>
+    apiRequest<OnboardingRequest>({ method: 'GET', path: `/v1/platform/onboarding-requests/${id}` }),
+
+  updateOnboardingRequest: (id: string, status: OnboardingRequestStatus, rejection_reason?: string) =>
+    apiRequest<OnboardingRequest>({
+      method: 'PATCH',
+      path: `/v1/platform/onboarding-requests/${id}`,
+      body: { status, rejection_reason },
     }),
 
   suspendTenant: (id: string, reason: string) =>

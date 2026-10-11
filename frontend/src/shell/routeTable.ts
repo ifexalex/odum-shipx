@@ -38,9 +38,13 @@ export const routeTable: RouteDef[] = [
   { path: '/reset-password', allow: 'public', title: 'Reset Password', layout: 'none' },
   { path: '/track', allow: 'public', title: 'Track Shipment', layout: 'none' },
   { path: '/track/:code', allow: 'public', title: 'Track Shipment', layout: 'none' },
+  // Shipping-company onboarding request (a lead — NOT customer sign-up; no
+  // account is created here). See RequestOnboardingScreen.
+  { path: '/get-started', allow: 'public', title: 'Partner with ShipX', layout: 'none' },
 
   // Platform admin
   { path: '/platform/dashboard', allow: ['platform_admin'], title: 'Platform Dashboard', layout: 'staff' },
+  { path: '/platform/onboarding-requests', allow: ['platform_admin'], title: 'Onboarding Requests', layout: 'staff' },
   { path: '/platform/tenants', allow: ['platform_admin'], title: 'Tenants', layout: 'staff' },
   { path: '/platform/tenants/new', allow: ['platform_admin'], title: 'Create Tenant', layout: 'staff' },
   { path: '/platform/tenants/:id', allow: ['platform_admin'], title: 'Tenant Detail', layout: 'staff' },

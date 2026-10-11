@@ -20,6 +20,7 @@ tests/
 │   ├── test_responses.py          # Response formatting
 │   ├── test_pagination.py         # Cursor encoding/decoding
 │   ├── test_tenant_management.py  # Service layer unit tests (incl. self-register FK fix, customer invites)
+│   ├── test_onboarding.py         # Shipping-company onboarding leads (public lead + platform queue + provision-links-lead)
 │   ├── test_cognito_client.py     # Moto-backed: Cognito group sync, create_user_with_password (invite claim)
 │   ├── test_phone.py              # shared/phone.py — E.164 normalisation, dial-code lookup, masking
 │   ├── test_invites.py            # shared/invites.py — token mint/hash, expiry/consumed validity checks
@@ -1254,3 +1255,13 @@ Fully mocked — no Microsoft Graph, credential, or network.
 
 - **`tests/unit/test_entra_claims.py`** (7): `EntraClaimsMapper` — `user_id` prefers `oid` then `sub`; tenant id from the configurable claim; `groups` from a list / JSON-array string / CSV normalized to `{tenant_id}:{role}`; `primary_role` from the role claim.
 - **`tests/unit/test_entra_identity_provider.py`** (7): `EntraIdentityProvider` with `_graph` stubbed — `create_user`/`create_user_with_password` POST `/users` with the right `forceChangePasswordNextSignIn` and sync groups; disable/enable PATCH `accountEnabled`; `sync_user_groups` adds missing + removes stale groups scoped to the tenant prefix (leaving other tenants' groups); and with `urlopen`+token stubbed, `_graph` maps HTTP 409 → `DuplicateResourceError` and other codes → `ExternalServiceError`; factory selects Entra under `CLOUD_PROVIDER=azure`.
+
+### Shipping-company onboarding (admin/sales-led, migration 054, 2026-10-11)
+
+**Backend — `tests/unit/test_onboarding.py`** (10):
+- `TestCreateOnboardingRequestService` — the public service inserts a lead and publishes `OnboardingRequested`; a publish failure is swallowed and never fails lead capture.
+- `TestPublicRoute` — `POST /v1/onboarding-requests` needs no auth and returns 201; missing required fields → 422; no account/tenant-creation path is invoked (it's a lead only).
+- `TestPlatformRoutes` — `GET`/`PATCH /v1/platform/onboarding-requests` are 403 for a non-platform role (`get_tenant_context` patched to a `tenant_admin` ctx so the role check is reached without a DB `_check_tenant_active` call) and succeed for `platform_admin`.
+- `TestProvisioningLinksLead` — `create_tenant` with `onboarding_request_id` marks the lead `provisioned` + links `tenant_id`; without it, no lead is touched.
+
+**Frontend** — `RequestOnboardingScreen.test.tsx` (public form: no password, submits a lead, shows the no-account confirmation), `RegisterScreen.test.tsx` (bare `/register` chooser routes companies to `/get-started`; `/register/:slug` renders the customer form), `OnboardingRequests.test.tsx` (lists leads, actions only on open ones, Provision carries the lead via router state, reject with reason), and an "Onboarding Requests" platform-nav assertion in `AppSidebar.test.tsx` (its render harness now wraps a `QueryClientProvider` for the pending-count hook). 861 frontend tests pass.
