@@ -173,3 +173,18 @@ output "migrate_job_name" {
   description = "Migration Container App Job name (`az containerapp job start`)."
   value       = module.container_app.migrate_job_name
 }
+
+output "entra_claims_app_name" {
+  description = "Entra claims-provider Container App name (rolled by the deploy's `az containerapp update` loop)."
+  value       = module.container_app.claims_app_name
+}
+
+output "entra_claims_endpoint_url" {
+  description = "Register this URL as the Entra custom authentication extension target."
+  value       = "https://${module.container_app.claims_app_fqdn}/token-claims"
+}
+
+output "entra_claims_principal_id" {
+  description = "Shared app managed-identity object id — grant it Graph User.Read.All (manual)."
+  value       = azurerm_user_assigned_identity.app.principal_id
+}

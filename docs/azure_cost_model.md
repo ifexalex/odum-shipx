@@ -17,6 +17,7 @@ Each line maps the equivalent AWS service (the app's current cloud) to its Azure
 | Database | Aurora Serverless v2 | PostgreSQL Flexible Server (Burstable B2s + 32 GB) | 25–40 |
 | Cache | ElastiCache Redis | Azure Cache for Redis (Basic C0) | ~16 |
 | Auth / identity | Cognito | Entra External ID — **free ≤ 50k MAU** | **0** |
+| Auth claims extension | (n/a — Cognito carries claims) | Entra claims provider — a small **always-on Container App** (0.25 vCPU, min 1) on the shared image; CIAM can't emit the claims any other way, and it must stay warm (extension call times out ~2s). Not an Azure Function: App Service quota is 0 on this sub | ~10–14 |
 | Object storage | S3 | Blob Storage | 1–5 |
 | Frontend / CDN | CloudFront | Static Web Apps (free tier) **or** Front Door Standard | 0–35 |
 | Private networking | 7× VPC interface endpoints (~$112) | VNet integration + private DNS (Postgres) — **~free** (DNS zone pennies) | **0–1** |
@@ -26,10 +27,10 @@ Each line maps the equivalent AWS service (the app's current cloud) to its Azure
 | Secrets + crypto | Secrets Manager + KMS | Key Vault | 2–5 |
 | Monitoring | CloudWatch | Azure Monitor + Log Analytics | 5–20 |
 | DDoS (L3/L4) | Shield Standard (free) | DDoS Basic (**free / automatic**) | 0 |
-| **Subtotal (no L7 WAF)** | | | **≈ $60–175** |
+| **Subtotal (no L7 WAF)** | | | **≈ $73–188** |
 | L7 WAF + DDoS **(recommended)** | CloudFront WAF (~$10) | **Cloudflare (Free → Pro)** — cloud-neutral edge in front of the app | **0–25** |
 | L7 WAF (Azure-native alt) | — | Front Door Premium (WAF requires Premium) | ~330 |
-| **Total (with Cloudflare WAF)** | | | **≈ $85–200** |
+| **Total (with Cloudflare WAF)** | | | **≈ $98–213** |
 
 ### Why Azure is cheaper at the base
 - **VNet Service Endpoints are free** — erases the ~$112/mo that AWS interface endpoints cost (the single biggest AWS fixed cost).
@@ -50,11 +51,11 @@ Cost is dominated by a fixed infra floor, so it scales **sub-linearly** with use
 
 | Scale | Compute | Postgres | Cache | Requests/other | **~$/mo (no WAF)** | **+ Cloudflare WAF** |
 |---|---:|---:|---:|---:|---:|---:|
-| 300 MAU (3 tenants) | 5–30 | 25–40 | 16 | 15–60 | **60–175** | 85–200 |
+| 300 MAU (3 tenants) | 5–30 | 25–40 | 16 | 15–60 | **73–188** | 98–213 |
 | ~1,000 MAU (10 tenants) | 20–60 | 40–70 (B4ms) | 16–55 | 30–90 | **120–280** | 145–305 |
 | ~5,000 MAU (50 tenants) | 60–150 | 120–250 (GP D2–D4) | 55–110 | 80–200 | **350–750** | 375–775 |
 
-Identity stays **free to 50,000 MAU**; adding tenants is nearly free until real scale. (Azure-native Front Door Premium WAF would instead add ~$330/mo flat at any scale — see the WAF note above.)
+Identity stays **free to 50,000 MAU**; adding tenants is nearly free until real scale. The Entra claims provider adds **~$10–14/mo** (one always-on 0.25-vCPU Container App replica beyond the free grant) at every scale — included in the totals above; it's in the fixed floor, not per-user. (Azure-native Front Door Premium WAF would instead add ~$330/mo flat at any scale — see the WAF note above.) The 1,000 / 5,000 MAU rows' ranges already absorb it.
 
 ---
 
@@ -64,9 +65,9 @@ Founders Hub grants up to **$150,000** in Azure credits (tiered over the program
 
 | Scenario | Burn / mo | $150k lasts* |
 |---|---:|---|
-| Baseline, no WAF | ~$120 | effectively the entire program |
-| Baseline + Cloudflare WAF | ~$145 | effectively the entire program |
-| Growth to 5,000 MAU + Cloudflare WAF | ~$600 | many years of runtime-equivalent |
+| Baseline, no WAF | ~$133 | effectively the entire program |
+| Baseline + Cloudflare WAF | ~$158 | effectively the entire program |
+| Growth to 5,000 MAU + Cloudflare WAF | ~$615 | many years of runtime-equivalent |
 | (If Azure-native Front Door Premium WAF) | +~$330 flat | still covered by credits |
 
 \* Runway is capped by the credit eligibility window, not spend — the point is that **out-of-pocket Azure cost is ~$0 for the foreseeable future**, and even post-credits the baseline ($60–175) + Cloudflare (~$25) is very manageable.

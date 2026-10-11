@@ -75,6 +75,43 @@ Mapping lives in **one place** behind a small `claims_adapter` (keyed on
 token types (Cognito JWT + ShipX impersonation token) — add an Entra verifier as a
 third, which is exactly what enables the dual-run cutover below.
 
+> **Addendum (2026-10-11) — the cloud-group claim-shape gap.** The original plan assumed the
+> Entra `groups` claim could be emitted as `{tenant_id}:{role}` **display names** via a
+> claims-mapping policy. In practice Entra emits **object ids (GUIDs)** for *cloud-only* groups and
+> display-name emission is only available for on-prem-synced groups — so a backend built only for
+> Cognito's name-carrying `cognito:groups` resolved **no** roles on a real Entra token (the
+> Cognito↔Entra incompatibility that surfaced during the first live platform-admin bring-up).
+> `EntraClaimsMapper.groups()` now accepts three shapes and is the compatibility layer: (1)
+> canonical names pass through; (2) object ids are mapped via `ENTRA_PLATFORM_ADMIN_GROUP_ID` /
+> `ENTRA_GROUP_ID_MAP`; (3) the canonical group is **synthesized** from the `tenant_id` + `role`
+> optional/extension claims (the primary, policy-free path). `scripts/setup_entra_platform_admin.sh`
+> provisions the SPA app, claims, group, and admin user accordingly. Cognito is untouched (separate
+> `CognitoClaimsMapper`); `shared/auth.py` stays cloud-agnostic.
+>
+> **CIAM wrinkle (observed live).** On an Entra **External ID / CIAM** tenant (`*.ciamlogin.com`),
+> app-manifest `optionalClaims` for directory extensions are **not** emitted in the token even when
+> the extension is registered, the user attribute is set, and the optional claim is configured — but
+> the `groups` claim (object ids) *is* emitted. So for the platform admin the `tenant_id`/`role`
+> extension claims can be absent while only the `platform_admin` group GUID arrives. Since a platform
+> admin is tenant-less by invariant (`tenant_id=PLATFORM`), `EntraClaimsMapper.tenant_id()` **derives**
+> `PLATFORM` from `platform_admin` membership (mapped group id or role claim) when no tenant claim is
+> present — so a CIAM token carrying only the group GUID resolves fully with just
+> `ENTRA_PLATFORM_ADMIN_GROUP_ID` set. Tenant-scoped users still require an explicit tenant claim
+> (their tenant id is not derivable).
+>
+> **Full-roles fix on CIAM — custom authentication extension.** Because tenant users' `tenant_id`
+> can't be derived, CIAM needs a **custom claims provider** (OnTokenIssuanceStart) to inject
+> `tenant_id` + `role` into every token. Implemented as its own **Container App** on the shared
+> backend image (`services/entra_token_claims/` via the `claims` entrypoint, in `modules/container_app`
+> — an Azure Function was the first design but App Service VM quota is 0 on the target subscription,
+> so it moved to Container Apps, which has quota and keeps the one-image model, ADR-005)
+> that reads the user's `extension_<appId>_tenant_id` / `_role` off the directory via Graph (managed
+> identity) and returns them as claims; `EntraIdentityProvider` stamps those extension attributes on
+> every user it provisions (`ENTRA_TENANT_ID_ATTR` / `ENTRA_ROLE_ATTR`). The managed-identity Graph
+> grant and the extension↔app binding are one-time manual Graph steps (no azurerm/azuread resource),
+> documented in `infrastructure/azure/README.md`. With it live, the `EntraClaimsMapper` synthesize
+> path resolves all roles on CIAM.
+
 ### C. Unaffected
 The **impersonation token** is ShipX's own HS256 JWT (already provider-agnostic via
 `SecretsProvider`, ADR-less) — not a Cognito token, so Cognito→Entra does not touch it.

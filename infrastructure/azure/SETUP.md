@@ -129,11 +129,23 @@ Pick one (see the README "Running the full app on Azure" for detail):
   `oidc_jwks_url`/`oidc_audience` → your existing Cognito pool; frontend
   `VITE_AUTH_PROVIDER=cognito` + `VITE_COGNITO_*`.
 - **Native Entra**: create an Entra External ID tenant + app registration (local
-  accounts), grant it MS Graph `User.ReadWrite.All` + `Group.ReadWrite.All`, emit
-  `groups` as display names in `{tenant_id}:{role}` form; backend
-  `auth_provider="azure"` + `oidc_jwks_url`/`oidc_audience` + `entra_token_endpoint`
-  + `entra_client_id` + `entra_user_domain`; frontend `VITE_AUTH_PROVIDER=entra` +
-  `VITE_ENTRA_*`; then run `scripts/migrate_users_to_entra.py`.
+  accounts), grant it MS Graph `User.ReadWrite.All` + `Group.ReadWrite.All`; carry
+  the ShipX tenant id + role into the token as `tenant_id`/`role` optional claims
+  (extension attributes) — the backend's `EntraClaimsMapper` synthesizes the
+  canonical role group from them, so no claims-mapping policy is needed (set
+  `groupMembershipClaims=SecurityGroup` + `ENTRA_PLATFORM_ADMIN_GROUP_ID` if you
+  prefer the group route). Backend `auth_provider="azure"` + `oidc_jwks_url`/
+  `oidc_audience` + `entra_token_endpoint` + `entra_client_id` + `entra_user_domain`
+  (+ `ENTRA_TENANT_ID_CLAIM`/`ENTRA_ROLE_CLAIM` if you renamed the claims); frontend
+  `VITE_AUTH_PROVIDER=entra` + `VITE_ENTRA_*`; then run
+  `scripts/migrate_users_to_entra.py`. For the first platform admin, run
+  `scripts/setup_entra_platform_admin.sh` (does the app registration, claims, group,
+  and user in one idempotent pass and prints the env wiring). For **tenant-scoped
+  users on CIAM** (customer/staff/tenant_admin, whose tenant id can't be derived),
+  deploy the custom authentication extension — a Container App on the shared image
+  (`services/entra_token_claims/` via the `claims` entrypoint, in `modules/container_app`)
+  — and bind it per the README "Token claims on CIAM" section; it injects
+  `tenant_id`+`role` into every token so all roles resolve.
 
 ## 7. First deploy
 

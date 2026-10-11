@@ -135,3 +135,46 @@ variable "grant_acr_pull" {
   type        = bool
   default     = true
 }
+
+# --- Entra claims extension (ADR-004) — filled after the manual Entra setup ---
+variable "entra_claims_caller_jwks_url" {
+  description = "Tenant JWKS URL the claims Function uses to verify Entra's inbound call."
+  type        = string
+  default     = ""
+}
+
+variable "entra_claims_caller_audience" {
+  description = "Expected audience of Entra's inbound call to the claims Function (the extension API app id)."
+  type        = string
+  default     = ""
+}
+
+variable "entra_claims_caller_issuer" {
+  description = "Expected issuer of Entra's inbound call to the claims Function."
+  type        = string
+  default     = ""
+}
+
+variable "entra_tenant_id_attr" {
+  description = "Directory extension attribute carrying the ShipX tenant id (extension_<appId>_tenant_id)."
+  type        = string
+  default     = ""
+}
+
+variable "entra_role_attr" {
+  description = "Directory extension attribute carrying the ShipX role (extension_<appId>_role)."
+  type        = string
+  default     = ""
+}
+
+variable "entra_out_tenant_claim" {
+  description = "Claim name the Function emits the tenant id as (must match backend ENTRA_TENANT_ID_CLAIM)."
+  type        = string
+  default     = "tenant_id"
+}
+
+variable "entra_out_role_claim" {
+  description = "Claim name the Function emits the role as (must match backend ENTRA_ROLE_CLAIM)."
+  type        = string
+  default     = "role"
+}

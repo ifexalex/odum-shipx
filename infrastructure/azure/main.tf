@@ -211,4 +211,15 @@ module "container_app" {
   api_memory       = var.api_memory
   api_min_replicas = var.api_min_replicas
   api_max_replicas = var.api_max_replicas
+
+  # Entra custom-claims provider (OnTokenIssuanceStart) — its own Container App
+  # on the shared image, injecting tenant_id + role so all roles resolve on CIAM
+  # (ADR-004). Config filled after the manual Entra setup; empty → denies callers.
+  claims_caller_jwks_url  = var.entra_claims_caller_jwks_url
+  claims_caller_audience  = var.entra_claims_caller_audience
+  claims_caller_issuer    = var.entra_claims_caller_issuer
+  claims_tenant_id_attr   = var.entra_tenant_id_attr
+  claims_role_attr        = var.entra_role_attr
+  claims_out_tenant_claim = var.entra_out_tenant_claim
+  claims_out_role_claim   = var.entra_out_role_claim
 }

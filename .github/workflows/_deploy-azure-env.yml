@@ -133,6 +133,8 @@ jobs:
             echo "Updating job $job"
             az containerapp job update -g "$RG" -n "$job" --image "$IMAGE" --output none
           done
+          # The Entra claims provider (shipx-*-entra-claims) is a Container App on
+          # the same image, so the loop above already rolled it — no separate step.
 
       # Read-only smoke against the live ingress: health 200, unauthenticated 401,
       # response-time SLA. Safe for prod.
