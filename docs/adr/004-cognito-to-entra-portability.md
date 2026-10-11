@@ -75,6 +75,19 @@ Mapping lives in **one place** behind a small `claims_adapter` (keyed on
 token types (Cognito JWT + ShipX impersonation token) — add an Entra verifier as a
 third, which is exactly what enables the dual-run cutover below.
 
+> **Addendum (2026-10-11) — the cloud-group claim-shape gap.** The original plan assumed the
+> Entra `groups` claim could be emitted as `{tenant_id}:{role}` **display names** via a
+> claims-mapping policy. In practice Entra emits **object ids (GUIDs)** for *cloud-only* groups and
+> display-name emission is only available for on-prem-synced groups — so a backend built only for
+> Cognito's name-carrying `cognito:groups` resolved **no** roles on a real Entra token (the
+> Cognito↔Entra incompatibility that surfaced during the first live platform-admin bring-up).
+> `EntraClaimsMapper.groups()` now accepts three shapes and is the compatibility layer: (1)
+> canonical names pass through; (2) object ids are mapped via `ENTRA_PLATFORM_ADMIN_GROUP_ID` /
+> `ENTRA_GROUP_ID_MAP`; (3) the canonical group is **synthesized** from the `tenant_id` + `role`
+> optional/extension claims (the primary, policy-free path). `scripts/setup_entra_platform_admin.sh`
+> provisions the SPA app, claims, group, and admin user accordingly. Cognito is untouched (separate
+> `CognitoClaimsMapper`); `shared/auth.py` stays cloud-agnostic.
+
 ### C. Unaffected
 The **impersonation token** is ShipX's own HS256 JWT (already provider-agnostic via
 `SecretsProvider`, ADR-less) — not a Cognito token, so Cognito→Entra does not touch it.

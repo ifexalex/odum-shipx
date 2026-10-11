@@ -260,10 +260,24 @@ time, per the ADR-004 decision (External ID + roles as security groups):
 2. **Graph permissions** for the deploy/migration identity (the one `migrate_users_to_entra.py`
    and the Container Apps managed identity use): application permissions **User.ReadWrite.All** +
    **Group.ReadWrite.All**, admin-consented.
-3. **Token config so the API can authorize:** emit the `groups` claim as **group display names**
-   (a group-claims / claims-mapping policy — Entra emits object ids by default) so they arrive as
-   `{tenant_id}:{role}`; add the ShipX tenant id + primary role as optional/extension claims.
-   Override `ENTRA_TENANT_ID_CLAIM` / `ENTRA_ROLE_CLAIM` if you name them differently.
+3. **Token config so the API can authorize.** The backend's `EntraClaimsMapper` accepts three
+   shapes, so you do **not** need a (brittle, cloud-group-unsupported) claims-mapping policy:
+   - **Primary path — optional/extension claims.** Emit the ShipX tenant id + primary role as
+     directory-extension claims (`extension_<appId>_tenant_id` / `_role`) and point
+     `ENTRA_TENANT_ID_CLAIM` / `ENTRA_ROLE_CLAIM` at those names. The mapper synthesizes the
+     canonical `platform_admin` / `{tenant_id}:{role}` group from them.
+   - **Group object ids.** Set `groupMembershipClaims=SecurityGroup` (token carries group GUIDs)
+     and map the ones that matter with `ENTRA_PLATFORM_ADMIN_GROUP_ID` / `ENTRA_GROUP_ID_MAP`.
+   - **Display names.** If you *do* have on-prem-synced groups or a claims-mapping policy emitting
+     `{tenant_id}:{role}` names, they pass through unchanged.
+
+   > **Fastest path — one script.** `scripts/setup_entra_platform_admin.sh` does the SPA app
+   > registration (public client + OIDC consent), the `tenant_id`/`role` extension + optional
+   > claims, the `platform_admin` group, and the admin user in one idempotent run, then prints the
+   > exact backend/frontend env. Run it instead of steps 1 + 3 for the platform admin:
+   > ```bash
+   > ADMIN_EMAIL=you@example.com ./scripts/setup_entra_platform_admin.sh
+   > ```
 4. **Wire the API** (Container Apps env / tfvars): `OIDC_JWKS_URL` + `OIDC_AUDIENCE` →
    the Entra app's JWKS + client id (the authorizer verifies RS256 against these);
    `ENTRA_USER_DOMAIN` → the tenant's managed domain (e.g. `yourtenant.onmicrosoft.com`).

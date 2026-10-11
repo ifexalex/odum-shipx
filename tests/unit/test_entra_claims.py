@@ -1,6 +1,9 @@
 """Unit tests for shared/providers/azure/entra_claims.py — the Entra claims
 mapper. Pure dict-in/dict-out; no tokens or network."""
 
+import importlib
+
+import shared.providers.azure.entra_claims as entra_claims_module
 from shared.providers.azure.entra_claims import EntraClaimsMapper
 
 
@@ -36,3 +39,72 @@ class TestEntraClaimsMapper:
     def test_primary_role(self):
         assert self.mapper.primary_role({"role": "tenant_admin"}) == "tenant_admin"
         assert self.mapper.primary_role({}) is None
+
+    # ── Entra object-id groups: the real-token shape ──────────────────────────
+
+    def test_bare_object_id_groups_are_dropped_when_unmapped(self):
+        """Cloud-only Entra groups arrive as GUIDs; with no mapping/role claim
+        there is nothing to interpret, so none are granted (not misread as roles)."""
+        claims = {"groups": ["11111111-2222-3333-4444-555555555555"]}
+        assert self.mapper.groups(claims) == []
+
+    def test_platform_admin_synthesized_from_role_claim(self):
+        """The policy-free path: role=platform_admin yields the prefixless group."""
+        claims = {"tenant_id": "PLATFORM", "role": "platform_admin"}
+        assert self.mapper.groups(claims) == ["platform_admin"]
+
+    def test_tenant_role_synthesized_from_role_and_tenant_claims(self):
+        claims = {"tenant_id": "t-9", "role": "tenant_admin"}
+        assert self.mapper.groups(claims) == ["t-9:tenant_admin"]
+
+    def test_non_platform_role_without_tenant_is_not_synthesized(self):
+        assert self.mapper.groups({"role": "tenant_admin"}) == []
+
+    def test_synthesized_role_merges_with_passthrough_without_duplicates(self):
+        claims = {
+            "tenant_id": "t-9",
+            "role": "tenant_admin",
+            "groups": ["t-9:tenant_admin", "t-9:nigeria_office_staff"],
+        }
+        assert self.mapper.groups(claims) == ["t-9:tenant_admin", "t-9:nigeria_office_staff"]
+
+
+class TestEntraGroupIdMap:
+    """Object-id → canonical-name translation via env config."""
+
+    def _mapper_with_env(self, monkeypatch, **env):
+        for key, value in env.items():
+            monkeypatch.setenv(key, value)
+        # The map is captured in __init__, so construct after setting env.
+        return EntraClaimsMapper()
+
+    def test_platform_admin_group_id_shorthand(self, monkeypatch):
+        gid = "aaaabbbb-cccc-dddd-eeee-ffff00001111"
+        mapper = self._mapper_with_env(monkeypatch, ENTRA_PLATFORM_ADMIN_GROUP_ID=gid)
+        assert mapper.groups({"groups": [gid]}) == ["platform_admin"]
+
+    def test_group_id_map_json(self, monkeypatch):
+        gid = "22223333-4444-5555-6666-777788889999"
+        mapper = self._mapper_with_env(
+            monkeypatch, ENTRA_GROUP_ID_MAP=f'{{"{gid}": "t-9:tenant_admin"}}'
+        )
+        assert mapper.groups({"groups": [gid]}) == ["t-9:tenant_admin"]
+
+    def test_malformed_group_id_map_is_ignored(self, monkeypatch):
+        mapper = self._mapper_with_env(monkeypatch, ENTRA_GROUP_ID_MAP="not-json")
+        # Falls back cleanly: unmapped GUID dropped, no crash.
+        assert mapper.groups({"groups": ["00000000-0000-0000-0000-000000000000"]}) == []
+
+    def test_overridable_claim_names(self, monkeypatch):
+        """ENTRA_*_CLAIM point the mapper at directory-extension claim names."""
+        monkeypatch.setenv("ENTRA_TENANT_ID_CLAIM", "extension_abc_tenant_id")
+        monkeypatch.setenv("ENTRA_ROLE_CLAIM", "extension_abc_role")
+        reloaded = importlib.reload(entra_claims_module)
+        try:
+            mapper = reloaded.EntraClaimsMapper()
+            claims = {"extension_abc_tenant_id": "PLATFORM", "extension_abc_role": "platform_admin"}
+            assert mapper.tenant_id(claims) == "PLATFORM"
+            assert mapper.groups(claims) == ["platform_admin"]
+        finally:
+            monkeypatch.undo()
+            importlib.reload(entra_claims_module)

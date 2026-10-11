@@ -544,6 +544,11 @@ read once in `shared/providers/__init__.py`.
     stay in `shared/auth.py`. AWS adapter `shared/providers/aws/cognito_claims.py` (`CognitoClaimsMapper`, holds the
     `cognito:groups` bracket-parsing); Azure → Entra (normalizes its role claims into the same `{tenant_id}:{role}`
     canonical form so `auth.py` never changes). Consumed by `shared/auth.py`. **ADR-004 Phase 2.**
+    - `EntraClaimsMapper.groups()` closes the Cognito↔Entra gap (ADR-004 addendum 2026-10-11): Entra emits
+      *cloud-only* group membership as object ids (GUIDs), not `{tenant_id}:{role}` names, so it accepts three shapes —
+      canonical names pass through; object ids are mapped via `ENTRA_PLATFORM_ADMIN_GROUP_ID` / `ENTRA_GROUP_ID_MAP`;
+      and the canonical group is **synthesized** from the `tenant_id` + `role` optional claims (`ENTRA_TENANT_ID_CLAIM` /
+      `ENTRA_ROLE_CLAIM`), the primary policy-free path. Provisioned by `scripts/setup_entra_platform_admin.sh`.
 - **Factories** (`shared/providers/__init__.py`):
   - `get_key_provider()` → `KeyProvider | None` (None = field encryption not configured; preserves the dev
     plaintext-fallback in `shared/encryption.py`).
