@@ -260,11 +260,12 @@ time, per the ADR-004 decision (External ID + roles as security groups):
 2. **Graph permissions** for the deploy/migration identity (the one `migrate_users_to_entra.py`
    and the Container Apps managed identity use): application permissions **User.ReadWrite.All** +
    **Group.ReadWrite.All**, admin-consented.
-3. **Token config so the API can authorize.** The backend's `EntraClaimsMapper` accepts three
-   shapes, so you do **not** need a (brittle, cloud-group-unsupported) claims-mapping policy:
-   - **Primary path — optional/extension claims.** Emit the ShipX tenant id + primary role as
-     directory-extension claims (`extension_<appId>_tenant_id` / `_role`) and point
-     `ENTRA_TENANT_ID_CLAIM` / `ENTRA_ROLE_CLAIM` at those names. The mapper synthesizes the
+3. **Token config so the API can authorize.** On CIAM the **claims provider** (see "Token claims on
+   CIAM" below) is what puts `tenant_id` + `role` into the token — that's the path this deployment
+   uses, and it needs no claims-mapping policy. The backend's `EntraClaimsMapper` is deliberately
+   tolerant of three shapes, so it also works if you feed claims another way:
+   - **tenant_id + role claims** (what the claims provider injects; default claim names `tenant_id` /
+     `role`, overridable via `ENTRA_TENANT_ID_CLAIM` / `ENTRA_ROLE_CLAIM`). The mapper synthesizes the
      canonical `platform_admin` / `{tenant_id}:{role}` group from them.
    - **Group object ids.** Set `groupMembershipClaims=SecurityGroup` (token carries group GUIDs)
      and map the ones that matter with `ENTRA_PLATFORM_ADMIN_GROUP_ID` / `ENTRA_GROUP_ID_MAP`.
@@ -272,9 +273,10 @@ time, per the ADR-004 decision (External ID + roles as security groups):
      `{tenant_id}:{role}` names, they pass through unchanged.
 
    > **Fastest path — one script.** `scripts/setup_entra_platform_admin.sh` does the SPA app
-   > registration (public client + OIDC consent), the `tenant_id`/`role` extension + optional
-   > claims, the `platform_admin` group, and the admin user in one idempotent run, then prints the
-   > exact backend/frontend env. Run it instead of steps 1 + 3 for the platform admin:
+   > registration (public client + OIDC consent), the security-group claim, the `platform_admin`
+   > group, and the admin user in one idempotent run, then prints the exact backend/frontend env.
+   > The platform admin resolves from its group GUID alone (no claims provider needed). Run it
+   > instead of steps 1 + 3 for the platform admin:
    > ```bash
    > ADMIN_EMAIL=you@example.com ./scripts/setup_entra_platform_admin.sh
    > ```
@@ -307,32 +309,25 @@ that injects `tenant_id` + `role` into every token at sign-in.
   separate Function. This is deliberate: App Service (Functions) VM quota is **0** on this
   subscription (both Y1 and B1), while Container Apps has quota; it's always-on (`claims_min_replicas`
   defaults to 1) because Entra's extension call times out ~2s. Code is `services/entra_token_claims/`
-  (`app.py` Flask WSGI → reads the user's `extension_<appId>_tenant_id` / `_role` off the directory
-  via Graph with the shared managed identity, returns them as the `tenant_id` / `role` claims). The
-  deploy's `az containerapp update --image` loop rolls it like any other app — no dedicated step. The
-  claims config is passed via the `entra_claims_*` / `entra_tenant_id_attr` / `entra_role_attr` tfvars.
-- **Provisioning:** set `ENTRA_TENANT_ID_ATTR` / `ENTRA_ROLE_ATTR` on the API/migration env so
-  `EntraIdentityProvider` stamps those extension attributes on every user it creates (the claims
-  Function then reads them). `setup_entra_platform_admin.sh` already stamps the platform admin.
+  (`app.py` Flask WSGI → reads the user's `tenant_id` / `role` from **`tenant_user` in the ShipX DB**,
+  keyed on the Entra `oid` against the globally-unique `cognito_sub`, and returns them as the
+  `tenant_id` / `role` claims). **No Microsoft Graph permission** is required (email isn't a safe key
+  — it's unique only per tenant — so the oid/`cognito_sub` is used). The deploy's
+  `az containerapp update --image` loop rolls it like any other app — no dedicated step. The claims
+  config is passed via the `entra_claims_*` tfvars.
+- **Provisioning:** `scripts/migrate_users_to_entra.py` stamps each provisioned user's Entra `oid`
+  into `tenant_user.cognito_sub`, which is how the claims provider resolves them. No directory
+  extension attributes are involved.
 - **Manual (Graph / portal — not Terraformable; required before go-live — the authoritative
-  checklist is `docs/runbook.md` → "Azure deployment — required one-time setup"):**
-  1. Grant the Function's managed identity Graph **`User.Read.All`** (the Contributor deploy identity
-     can't create app-role assignments):
-     ```bash
-     PRINCIPAL=$(terraform output -raw entra_claims_principal_id)
-     GRAPH_SP=$(az ad sp list --filter "appId eq '00000003-0000-0000-c000-000000000000'" --query '[0].id' -o tsv)
-     ROLE=$(az ad sp show --id "$GRAPH_SP" --query "appRoles[?value=='User.Read.All'].id | [0]" -o tsv)
-     az rest --method POST \
-       --url "https://graph.microsoft.com/v1.0/servicePrincipals/$PRINCIPAL/appRoleAssignments" \
-       --body "{\"principalId\":\"$PRINCIPAL\",\"resourceId\":\"$GRAPH_SP\",\"appRoleId\":\"$ROLE\"}"
-     ```
-  2. Register the extension against the endpoint (`terraform output -raw entra_claims_endpoint_url`)
-     and bind it to the app's token-issuance event — `customAuthenticationExtensions` +
-     `authenticationEventListeners` via Graph (`/beta`), then attach the app as a claims source.
-     No azurerm/azuread resource exists for this, so it is a one-time Graph/portal step.
+  checklist is `docs/runbook.md` → "Azure deployment — required one-time setup"):** register the
+  custom authentication extension against the endpoint (`terraform output -raw entra_claims_endpoint_url`)
+  and bind it to the SPA app's token-issuance event — `customAuthenticationExtensions` +
+  `authenticationEventListeners` via Graph (`/beta`) or the portal — mapping the returned `tenant_id`
+  + `role` into the token. This is the one step with no azurerm/azuread resource.
 - **Backend env it enables:** with the extension live, every token carries `tenant_id` + `role`, so
-  the `EntraClaimsMapper` synthesize path resolves **all** roles — set `ENTRA_TENANT_ID_CLAIM` /
-  `ENTRA_ROLE_CLAIM` to match `OUT_TENANT_CLAIM` / `OUT_ROLE_CLAIM` (default `tenant_id` / `role`).
+  the `EntraClaimsMapper` synthesize path resolves **all** roles — `ENTRA_TENANT_ID_CLAIM` /
+  `ENTRA_ROLE_CLAIM` stay at their `tenant_id` / `role` defaults (matching `OUT_TENANT_CLAIM` /
+  `OUT_ROLE_CLAIM`).
 
 ## Replica roadmap (toward a full AWS→Azure mirror)
 

@@ -2,8 +2,8 @@
 extension, hosted as a **Container App** workload on the shared backend image
 (not an Azure Function: App Service quota is 0 on the target subscription, and
 Container Apps is the proven compute — ADR-004 addendum / ADR-005 one-image
-model). Reuses the pure logic in `claims.py` / `security.py` and the Graph
-reader in `directory.py`.
+model). Reuses the pure logic in `claims.py` / `security.py` and the DB-backed
+reader in `db_lookup.py`.
 
 Run via the container entrypoint (`docker-entrypoint.sh claims`), i.e.::
 
@@ -11,10 +11,10 @@ Run via the container entrypoint (`docker-entrypoint.sh claims`), i.e.::
 
 Environment:
   CALLER_JWKS_URL / CALLER_AUDIENCE / CALLER_ISSUER  — verify Entra's inbound token
-  ENTRA_TENANT_ID_ATTR / ENTRA_ROLE_ATTR             — directory extension attrs to read
   OUT_TENANT_CLAIM / OUT_ROLE_CLAIM                  — emitted claim names (default tenant_id/role)
-  GRAPH_BASE_URL                                     — optional Graph base override
-Auth to Graph is the container's managed identity (DefaultAzureCredential).
+  DATABASE_* / DATABASE_SSLMODE                      — ShipX DB connection (see shared/db.py)
+The claims are read from the ShipX DB (tenant_user) by the Entra oid — no Graph
+permission is needed.
 """
 
 import json
@@ -25,7 +25,7 @@ from typing import Any
 from flask import Flask, Response, request
 
 from services.entra_token_claims.claims import build_claims_response
-from services.entra_token_claims.directory import DirectoryClaimsReader
+from services.entra_token_claims.db_lookup import DatabaseClaimsReader
 from services.entra_token_claims.security import is_authorized
 from shared.logging_config import setup_logging
 
@@ -36,9 +36,7 @@ _JWKS_URL = os.environ.get("CALLER_JWKS_URL", "")
 _EXPECTED_AUD = os.environ.get("CALLER_AUDIENCE", "")
 _EXPECTED_ISS = os.environ.get("CALLER_ISSUER", "")
 
-_reader = DirectoryClaimsReader(
-    tenant_attr=os.environ.get("ENTRA_TENANT_ID_ATTR", ""),
-    role_attr=os.environ.get("ENTRA_ROLE_ATTR", ""),
+_reader = DatabaseClaimsReader(
     out_tenant_claim=os.environ.get("OUT_TENANT_CLAIM", "tenant_id"),
     out_role_claim=os.environ.get("OUT_ROLE_CLAIM", "role"),
 )

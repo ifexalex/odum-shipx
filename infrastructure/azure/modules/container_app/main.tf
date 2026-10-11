@@ -455,14 +455,15 @@ resource "azurerm_container_app_job" "migrate" {
 # the extension call times out ~2s. Reads users' tenant_id/role extension attrs
 # from Graph with the shared managed identity (grant it User.Read.All — manual).
 locals {
+  # Inbound-verify + output-claim config on top of the shared app env
+  # (local.plain_env/secret_env give it DB connectivity — it reads tenant_id/role
+  # from tenant_user by the Entra oid, so no Graph permission is needed).
   claims_env = {
-    CALLER_JWKS_URL      = var.claims_caller_jwks_url
-    CALLER_AUDIENCE      = var.claims_caller_audience
-    CALLER_ISSUER        = var.claims_caller_issuer
-    ENTRA_TENANT_ID_ATTR = var.claims_tenant_id_attr
-    ENTRA_ROLE_ATTR      = var.claims_role_attr
-    OUT_TENANT_CLAIM     = var.claims_out_tenant_claim
-    OUT_ROLE_CLAIM       = var.claims_out_role_claim
+    CALLER_JWKS_URL  = var.claims_caller_jwks_url
+    CALLER_AUDIENCE  = var.claims_caller_audience
+    CALLER_ISSUER    = var.claims_caller_issuer
+    OUT_TENANT_CLAIM = var.claims_out_tenant_claim
+    OUT_ROLE_CLAIM   = var.claims_out_role_claim
   }
 }
 
@@ -514,11 +515,19 @@ resource "azurerm_container_app" "claims" {
       memory = var.claims_memory
       args   = ["claims"]
 
+      # Shared app env (incl. DB connection) + the claims-specific config.
       dynamic "env" {
-        for_each = local.claims_env
+        for_each = merge(local.plain_env, local.claims_env)
         content {
           name  = env.key
           value = env.value
+        }
+      }
+      dynamic "env" {
+        for_each = local.secret_env
+        content {
+          name        = env.key
+          secret_name = env.value
         }
       }
     }

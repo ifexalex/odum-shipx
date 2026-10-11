@@ -33,7 +33,7 @@ PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 if PROJECT_ROOT not in sys.path:
     sys.path.insert(0, PROJECT_ROOT)
 
-from shared.db import execute_with_tenant  # noqa: E402
+from shared.db import execute_with_tenant, execute_write_with_tenant  # noqa: E402
 from shared.exceptions import DuplicateResourceError  # noqa: E402
 from shared.providers import get_identity_provider  # noqa: E402
 from shared.tenant_context import PLATFORM_TENANT_ID  # noqa: E402
@@ -51,6 +51,7 @@ def _fetch_users(tenant_filter: str | None) -> list[dict]:
     """
     query = """
         SELECT
+            tu.id,
             tu.tenant_id,
             tu.email,
             tu.full_name,
@@ -79,6 +80,18 @@ def _desired_groups(tenant_id: str, roles: list[str]) -> set[str]:
     return set(roles)
 
 
+def _store_entra_oid(user_id: str, oid: str) -> None:
+    """Persist the new Entra object id into tenant_user.cognito_sub (the IdP
+    subject key) so the claims provider can resolve tenant_id/role by oid —
+    cognito_sub is globally unique, unlike (tenant_id, email). PLATFORM-scoped
+    write (spans tenants, as the migration already reads)."""
+    execute_write_with_tenant(
+        PLATFORM_TENANT_ID,
+        "UPDATE tenant_user SET cognito_sub = %s WHERE id = %s RETURNING id",
+        (oid, user_id),
+    )
+
+
 def migrate(dry_run: bool, tenant_filter: str | None) -> int:
     users = _fetch_users(tenant_filter)
     logger.info("Found %d active user(s) to migrate%s", len(users), f" for tenant {tenant_filter}" if tenant_filter else "")
@@ -98,7 +111,8 @@ def migrate(dry_run: bool, tenant_filter: str | None) -> int:
             continue
 
         try:
-            idp.create_user(email=email, full_name=full_name, tenant_id=tenant_id, role=primary_role)
+            oid = idp.create_user(email=email, full_name=full_name, tenant_id=tenant_id, role=primary_role)
+            _store_entra_oid(row["id"], oid)
             created += 1
             logger.info("Provisioned %s (tenant=%s)", email, tenant_id)
         except DuplicateResourceError:

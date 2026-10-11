@@ -557,9 +557,9 @@ read once in `shared/providers/__init__.py`.
     - **Tenant users on CIAM** get that claim from the **custom authentication extension** (ADR-004): a standalone
       Container App (`services/entra_token_claims/` on the shared image via the `claims` entrypoint, in Terraform
       `modules/container_app` — Functions aren't an option: App Service quota is 0) injects `tenant_id` + `role` at
-      token issuance, read from the user's `extension_<appId>_tenant_id` / `_role` directory attributes.
-      `EntraIdentityProvider` stamps those attributes on every user it creates when `ENTRA_TENANT_ID_ATTR` /
-      `ENTRA_ROLE_ATTR` are set (no-op otherwise — workforce tenants emit the optional claims directly).
+      token issuance, read from **`tenant_user` in the ShipX DB** by the Entra `oid` (→ the globally-unique
+      `cognito_sub`, stamped by `migrate_users_to_entra.py`). No Graph permission — a DB read, in-VNet and
+      least-privilege; email is not used as the key (unique only per tenant).
 - **Factories** (`shared/providers/__init__.py`):
   - `get_key_provider()` → `KeyProvider | None` (None = field encryption not configured; preserves the dev
     plaintext-fallback in `shared/encryption.py`).

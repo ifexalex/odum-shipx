@@ -84,8 +84,9 @@ third, which is exactly what enables the dual-run cutover below.
 > `EntraClaimsMapper.groups()` now accepts three shapes and is the compatibility layer: (1)
 > canonical names pass through; (2) object ids are mapped via `ENTRA_PLATFORM_ADMIN_GROUP_ID` /
 > `ENTRA_GROUP_ID_MAP`; (3) the canonical group is **synthesized** from the `tenant_id` + `role`
-> optional/extension claims (the primary, policy-free path). `scripts/setup_entra_platform_admin.sh`
-> provisions the SPA app, claims, group, and admin user accordingly. Cognito is untouched (separate
+> claims (the policy-free path; for tenant users those claims come from the claims provider — see
+> the 2026-10-11 addendum below). `scripts/setup_entra_platform_admin.sh` provisions the SPA app,
+> the security-group claim, the `platform_admin` group, and the admin user. Cognito is untouched (separate
 > `CognitoClaimsMapper`); `shared/auth.py` stays cloud-agnostic.
 >
 > **CIAM wrinkle (observed live).** On an Entra **External ID / CIAM** tenant (`*.ciamlogin.com`),
@@ -105,12 +106,15 @@ third, which is exactly what enables the dual-run cutover below.
 > backend image (`services/entra_token_claims/` via the `claims` entrypoint, in `modules/container_app`
 > — an Azure Function was the first design but App Service VM quota is 0 on the target subscription,
 > so it moved to Container Apps, which has quota and keeps the one-image model, ADR-005)
-> that reads the user's `extension_<appId>_tenant_id` / `_role` off the directory via Graph (managed
-> identity) and returns them as claims; `EntraIdentityProvider` stamps those extension attributes on
-> every user it provisions (`ENTRA_TENANT_ID_ATTR` / `ENTRA_ROLE_ATTR`). The managed-identity Graph
-> grant and the extension↔app binding are one-time manual Graph steps (no azurerm/azuread resource),
-> documented in `infrastructure/azure/README.md`. With it live, the `EntraClaimsMapper` synthesize
-> path resolves all roles on CIAM.
+> that reads the user's `tenant_id` / `role` from **`tenant_user` in the ShipX DB**, keyed on the
+> Entra `oid` against the globally-unique `cognito_sub` (email is unique only per tenant, so it
+> would be cross-tenant-ambiguous — `cognito_sub` is the stable IdP-subject key, and
+> `migrate_users_to_entra.py` stamps each provisioned user's `oid` into it). It returns those as
+> claims; **no Microsoft Graph permission is needed** (the first design read directory extension
+> attributes via Graph, which required a broad `User.Read.All` grant — dropped in favour of the
+> in-VNet DB read: faster and least-privilege). The only one-time manual step is the extension↔app
+> binding (no azurerm/azuread resource), documented in `infrastructure/azure/README.md`. With it
+> live, the `EntraClaimsMapper` synthesize path resolves all roles on CIAM.
 
 ### C. Unaffected
 The **impersonation token** is ShipX's own HS256 JWT (already provider-agnostic via
