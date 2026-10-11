@@ -142,9 +142,10 @@ Pick one (see the README "Running the full app on Azure" for detail):
   `scripts/setup_entra_platform_admin.sh` (does the app registration, claims, group,
   and user in one idempotent pass and prints the env wiring). For **tenant-scoped
   users on CIAM** (customer/staff/tenant_admin, whose tenant id can't be derived),
-  deploy the custom authentication extension (`modules/entra_claims_function` +
-  `services/entra_token_claims/`) and bind it per the README "Token claims on CIAM"
-  section — it injects `tenant_id`+`role` into every token so all roles resolve.
+  deploy the custom authentication extension — a Container App on the shared image
+  (`services/entra_token_claims/` via the `claims` entrypoint, in `modules/container_app`)
+  — and bind it per the README "Token claims on CIAM" section; it injects
+  `tenant_id`+`role` into every token so all roles resolve.
 
 ## 7. First deploy
 

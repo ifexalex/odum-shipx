@@ -17,7 +17,7 @@ Each line maps the equivalent AWS service (the app's current cloud) to its Azure
 | Database | Aurora Serverless v2 | PostgreSQL Flexible Server (Burstable B2s + 32 GB) | 25–40 |
 | Cache | ElastiCache Redis | Azure Cache for Redis (Basic C0) | ~16 |
 | Auth / identity | Cognito | Entra External ID — **free ≤ 50k MAU** | **0** |
-| Auth claims extension | (n/a — Cognito carries claims) | Entra claims Function on a **B1 (always-on)** plan — CIAM can't emit the claims any other way; always-on because the extension call times out ~2s (FC1/Y1 cheaper but cold-start/quota risk) | ~13 |
+| Auth claims extension | (n/a — Cognito carries claims) | Entra claims provider — a small **always-on Container App** (0.25 vCPU, min 1) on the shared image; CIAM can't emit the claims any other way, and it must stay warm (extension call times out ~2s). Not an Azure Function: App Service quota is 0 on this sub | ~10–14 |
 | Object storage | S3 | Blob Storage | 1–5 |
 | Frontend / CDN | CloudFront | Static Web Apps (free tier) **or** Front Door Standard | 0–35 |
 | Private networking | 7× VPC interface endpoints (~$112) | VNet integration + private DNS (Postgres) — **~free** (DNS zone pennies) | **0–1** |
@@ -55,7 +55,7 @@ Cost is dominated by a fixed infra floor, so it scales **sub-linearly** with use
 | ~1,000 MAU (10 tenants) | 20–60 | 40–70 (B4ms) | 16–55 | 30–90 | **120–280** | 145–305 |
 | ~5,000 MAU (50 tenants) | 60–150 | 120–250 (GP D2–D4) | 55–110 | 80–200 | **350–750** | 375–775 |
 
-Identity stays **free to 50,000 MAU**; adding tenants is nearly free until real scale. The Entra claims Function adds **~$13/mo flat** (B1 always-on) at every scale — included in the totals above; it's in the fixed floor, not per-user. (Azure-native Front Door Premium WAF would instead add ~$330/mo flat at any scale — see the WAF note above.) The 1,000 / 5,000 MAU rows' ranges already absorb it.
+Identity stays **free to 50,000 MAU**; adding tenants is nearly free until real scale. The Entra claims provider adds **~$10–14/mo** (one always-on 0.25-vCPU Container App replica beyond the free grant) at every scale — included in the totals above; it's in the fixed floor, not per-user. (Azure-native Front Door Premium WAF would instead add ~$330/mo flat at any scale — see the WAF note above.) The 1,000 / 5,000 MAU rows' ranges already absorb it.
 
 ---
 

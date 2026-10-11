@@ -555,8 +555,9 @@ read once in `shared/providers/__init__.py`.
       group that grants the role also fixes the scope (just set `ENTRA_PLATFORM_ADMIN_GROUP_ID`). Tenant-scoped users
       still need an explicit tenant claim.
     - **Tenant users on CIAM** get that claim from the **custom authentication extension** (ADR-004): a standalone
-      Azure Function (`services/entra_token_claims/`, Terraform `modules/entra_claims_function`) injects `tenant_id` +
-      `role` at token issuance, read from the user's `extension_<appId>_tenant_id` / `_role` directory attributes.
+      Container App (`services/entra_token_claims/` on the shared image via the `claims` entrypoint, in Terraform
+      `modules/container_app` — Functions aren't an option: App Service quota is 0) injects `tenant_id` + `role` at
+      token issuance, read from the user's `extension_<appId>_tenant_id` / `_role` directory attributes.
       `EntraIdentityProvider` stamps those attributes on every user it creates when `ENTRA_TENANT_ID_ATTR` /
       `ENTRA_ROLE_ATTR` are set (no-op otherwise — workforce tenants emit the optional claims directly).
 - **Factories** (`shared/providers/__init__.py`):

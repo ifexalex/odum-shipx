@@ -927,13 +927,12 @@ everything after it):
 2. `az acr login`, then **build + push** the `Dockerfile` image to ACR tagged with the commit SHA.
 3. **Migrate**: point the migration Container App Job at the new image, `az containerapp job start`,
    poll to `Succeeded` (a `Failed` aborts the deploy — idempotent `alembic upgrade head`).
-4. **Roll** every Container App (api + workers) and Job (scheduled + migrate) onto the new image via
-   `az containerapp update/job update --image` (Terraform ignores image drift, so CI owns the tag).
-5. **Deploy the Entra claims Function** (ADR-004): zip `services/entra_token_claims/` and
-   `az functionapp deployment source config-zip` to the `entra_claims_function_name` app. Not a
-   Container App — it builds remotely (Oryx, `SCM_DO_BUILD_DURING_DEPLOYMENT=1`) so its
-   `requirements.txt` is installed server-side; independent of the backend image.
-6. **Smoke** the live ingress (health 200, unauthenticated `/v1/*` → 401) — read-only, prod-safe.
+4. **Roll** every Container App (api + workers + the Entra claims provider) and Job (scheduled +
+   migrate) onto the new image via `az containerapp update/job update --image` (Terraform ignores
+   image drift, so CI owns the tag). The claims provider (`*-entra-claims`, ADR-004) is a Container
+   App on the same shared image (`docker-entrypoint.sh claims`), so this loop rolls it too — no
+   dedicated deploy step.
+5. **Smoke** the live ingress (health 200, unauthenticated `/v1/*` → 401) — read-only, prod-safe.
 
 Because step 1 applies the infra, a first-ever environment stands up from this pipeline alone
 (given the tfstate account + secrets + registered resource providers exist). There is no separate

@@ -37,6 +37,19 @@ case "$cmd" in
   migrate)
     exec python scripts/migrate.py
     ;;
+  claims)
+    # Entra custom-claims provider (OnTokenIssuanceStart). Single worker/thread
+    # is plenty — it does one Graph read per sign-in — and it must stay warm
+    # (Entra's extension call times out ~2s), so the Container App runs min 1.
+    exec gunicorn \
+      --bind "0.0.0.0:${PORT:-8080}" \
+      --workers "${GUNICORN_WORKERS:-1}" \
+      --threads 1 \
+      --timeout "${GUNICORN_TIMEOUT:-30}" \
+      --access-logfile - \
+      --error-logfile - \
+      services.entra_token_claims.app:app
+    ;;
   *)
     exec "$@"
     ;;

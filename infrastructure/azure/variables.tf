@@ -137,12 +137,6 @@ variable "grant_acr_pull" {
 }
 
 # --- Entra claims extension (ADR-004) — filled after the manual Entra setup ---
-variable "entra_claims_plan_sku" {
-  description = "App Service plan SKU for the claims Function (default B1, always-on; see the module)."
-  type        = string
-  default     = "B1"
-}
-
 variable "entra_claims_caller_jwks_url" {
   description = "Tenant JWKS URL the claims Function uses to verify Entra's inbound call."
   type        = string
