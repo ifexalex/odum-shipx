@@ -215,14 +215,6 @@ variable "claims_caller_issuer" {
   type    = string
   default = ""
 }
-variable "claims_tenant_id_attr" {
-  type    = string
-  default = ""
-}
-variable "claims_role_attr" {
-  type    = string
-  default = ""
-}
 variable "claims_out_tenant_claim" {
   type    = string
   default = "tenant_id"

@@ -155,18 +155,6 @@ variable "entra_claims_caller_issuer" {
   default     = ""
 }
 
-variable "entra_tenant_id_attr" {
-  description = "Directory extension attribute carrying the ShipX tenant id (extension_<appId>_tenant_id)."
-  type        = string
-  default     = ""
-}
-
-variable "entra_role_attr" {
-  description = "Directory extension attribute carrying the ShipX role (extension_<appId>_role)."
-  type        = string
-  default     = ""
-}
-
 variable "entra_out_tenant_claim" {
   description = "Claim name the Function emits the tenant id as (must match backend ENTRA_TENANT_ID_CLAIM)."
   type        = string

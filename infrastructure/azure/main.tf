@@ -218,8 +218,6 @@ module "container_app" {
   claims_caller_jwks_url  = var.entra_claims_caller_jwks_url
   claims_caller_audience  = var.entra_claims_caller_audience
   claims_caller_issuer    = var.entra_claims_caller_issuer
-  claims_tenant_id_attr   = var.entra_tenant_id_attr
-  claims_role_attr        = var.entra_role_attr
   claims_out_tenant_claim = var.entra_out_tenant_claim
   claims_out_role_claim   = var.entra_out_role_claim
 }

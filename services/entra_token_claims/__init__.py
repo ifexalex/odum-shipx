@@ -9,5 +9,6 @@ add them. Hosted as a **Container App** workload on the shared backend image
 subscription, so Azure Functions is not an option (ADR-005 one-image model).
 The pure request/response logic (`claims.py`) and the inbound-caller check
 (`security.py`) are SDK-free and unit-tested; `app.py` is the Flask WSGI
-entrypoint that wires them to Graph.
+entrypoint that wires them to the ShipX DB (`db_lookup.py`) — the claims are read
+from `tenant_user` by the Entra oid, so no Microsoft Graph permission is needed.
 """

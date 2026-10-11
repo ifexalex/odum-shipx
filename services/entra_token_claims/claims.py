@@ -1,8 +1,8 @@
 """Pure request/response logic for the Entra OnTokenIssuanceStart event.
 
-No Azure SDK imports — the directory lookup is injected as a callable — so this
-module is fully unit-testable with a stub. `app.py` supplies the real
-Graph-backed lookup.
+No Azure SDK imports — the lookup is injected as a callable — so this module is
+fully unit-testable with a stub. `app.py` supplies the real DB-backed lookup
+(`db_lookup.py`), keyed on the user's directory object id (`oid`).
 
 Contract (Microsoft Graph custom authentication extension, token-issuance-start):
     request:  data.authenticationContext.user.id  → the signing-in user's oid
@@ -38,7 +38,7 @@ def build_claims_response(
     ``{"tenant_id": "PLATFORM", "role": "platform_admin"}``); empty values are
     dropped. An unknown user (no oid, or a lookup returning nothing) yields an
     empty claim set — the token is still issued and the backend simply resolves
-    no elevated role, so a directory/Graph miss fails closed rather than
+    no elevated role, so a DB miss fails open on the claim rather than
     blocking sign-in.
     """
     oid = extract_object_id(event)

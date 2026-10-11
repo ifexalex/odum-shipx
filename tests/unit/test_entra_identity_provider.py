@@ -44,33 +44,6 @@ class TestUserLifecycle:
         body = p._graph.call_args_list[0].args[2]  # noqa: SLF001
         assert body["passwordProfile"]["forceChangePasswordNextSignIn"] is True
 
-    def test_create_stamps_role_attributes_when_configured(self, monkeypatch):
-        # With the extension attr names set, _create PATCHes them after the POST
-        # so the CIAM claims extension can read tenant_id/role off the directory.
-        monkeypatch.setenv("ENTRA_TENANT_ID_ATTR", "extension_abc_tenant_id")
-        monkeypatch.setenv("ENTRA_ROLE_ATTR", "extension_abc_role")
-        p = EntraIdentityProvider()
-        p._graph = MagicMock(side_effect=[{"id": "oid-9"}, None])  # noqa: SLF001 - POST then PATCH
-        p.sync_user_groups = MagicMock()  # noqa: SLF001
-
-        p.create_user("c@x.com", "Cat", "PLATFORM", "platform_admin")
-
-        patch_call = p._graph.call_args_list[1]  # noqa: SLF001
-        assert patch_call.args[0] == "PATCH"
-        assert patch_call.args[1] == "/users/oid-9"
-        assert patch_call.args[2] == {
-            "extension_abc_tenant_id": "PLATFORM",
-            "extension_abc_role": "platform_admin",
-        }
-
-    def test_create_skips_attribute_stamp_when_not_configured(self):
-        # No attr env → only the POST /users call, no PATCH (back-compat).
-        p = _provider_with_stubbed_graph()
-        p.sync_user_groups = MagicMock()  # noqa: SLF001
-        p._graph.side_effect = [{"id": "oid-3"}]  # noqa: SLF001
-        p.create_user("d@x.com", "Dee", "t1", "customer")
-        assert p._graph.call_count == 1  # noqa: SLF001 - POST only
-
     def test_disable_and_enable_patch_account_enabled(self):
         p = _provider_with_stubbed_graph()
         p.disable_user("a@x.com")
