@@ -311,7 +311,8 @@ that injects `tenant_id` + `role` into every token at sign-in.
 - **Provisioning:** set `ENTRA_TENANT_ID_ATTR` / `ENTRA_ROLE_ATTR` on the API/migration env so
   `EntraIdentityProvider` stamps those extension attributes on every user it creates (the claims
   Function then reads them). `setup_entra_platform_admin.sh` already stamps the platform admin.
-- **Manual (Graph / portal — not Terraformable):**
+- **Manual (Graph / portal — not Terraformable; required before go-live — the authoritative
+  checklist is `docs/runbook.md` → "Azure deployment — required one-time setup"):**
   1. Grant the Function's managed identity Graph **`User.Read.All`** (the Contributor deploy identity
      can't create app-role assignments):
      ```bash
