@@ -7,20 +7,26 @@
 # This automates the manual bring-up steps (ADR-004 Phase 5) and is idempotent:
 # re-running reconciles state rather than failing on existing objects.
 #
+# The platform admin resolves purely from `platform_admin` group membership
+# (backend ENTRA_PLATFORM_ADMIN_GROUP_ID → platform_admin, tenant_id derived as
+# PLATFORM), so this script only needs the app + group + user + the group claim.
+# Tenant users' tenant_id/role come from the DB-backed claims provider via the
+# custom authentication extension — a separate, one-time binding documented in
+# docs/runbook.md ("Azure deployment — required one-time setup"); this script
+# does NOT register directory extensions or a Graph permission (none are needed).
+#
 # What it does
 #   1. Resolves the tenant's verified default domain (or honours TENANT_DOMAIN).
 #   2. Creates/updates the SPA app registration as a PUBLIC client (ROPC-capable,
 #      matching frontend/src/auth/EntraClient.ts).
 #   3. Ensures its service principal and admin-consents the OIDC delegated scopes
 #      (openid / profile / offline_access) so ROPC needs no interactive consent.
-#   4. Registers directory extensions `tenant_id` + `role` on the app and wires
-#      them (plus the security-group claim) into the token via optionalClaims.
+#   4. Enables the security-group claim on the app (so the admin's group GUID is
+#      in the token).
 #   5. Ensures the prefixless `platform_admin` security group.
 #   6. Creates the admin user under the verified domain, sets a permanent
-#      password, stamps tenant_id=PLATFORM / role=platform_admin, and adds it to
-#      the group.
-#   7. Prints the exact backend + frontend env wiring (including the claim names
-#      the backend's EntraClaimsMapper must read).
+#      password + contact email, and adds it to the group.
+#   7. Prints the exact backend + frontend env wiring.
 #
 # Requirements: az CLI, logged in (`az login`) as a user with permission to
 # create app registrations, grant admin consent, and manage users/groups.
@@ -100,45 +106,16 @@ for attempt in 1 2 3 4 5; do
   log "admin-consent not ready yet (attempt ${attempt}); retrying in 10s…"; sleep 10
 done
 
-# ── 4. Directory extensions + token (optional) claims ────────────────────────
-ensure_extension() {
-  # $1 = short attribute name → echoes the full extension_<app>_<name>
-  local short="$1" existing
-  existing="$(az rest --method GET \
-    --url "${GRAPH}/applications/${APP_OBJECT_ID}/extensionProperties" \
-    --query "value[?name=='extension_${APP_ID//-/}_${short}'].name | [0]" -o tsv 2>/dev/null || true)"
-  if [ -n "${existing}" ]; then printf '%s' "${existing}"; return; fi
-  az rest --method POST \
-    --url "${GRAPH}/applications/${APP_OBJECT_ID}/extensionProperties" \
-    --headers "Content-Type=application/json" \
-    --body "{\"name\":\"${short}\",\"dataType\":\"String\",\"targetObjects\":[\"User\"]}" \
-    --query name -o tsv
-}
-log "Registering directory extensions tenant_id + role…"
-EXT_TENANT="$(ensure_extension tenant_id)"
-EXT_ROLE="$(ensure_extension role)"
-log "  tenant_id → ${EXT_TENANT}"
-log "  role      → ${EXT_ROLE}"
-
-log "Wiring optional claims + security-group claim into the token…"
+# ── 4. Security-group claim ──────────────────────────────────────────────────
+# Emit security-group object ids in the token so the platform admin's
+# `platform_admin` group GUID is present; the backend maps it via
+# ENTRA_PLATFORM_ADMIN_GROUP_ID and derives tenant_id=PLATFORM. No directory
+# extensions / optional claims — tenant users' claims come from the claims
+# provider (DB-backed), not from this app's token config.
+log "Enabling the security-group claim on the app…"
 az rest --method PATCH --url "${GRAPH}/applications/${APP_OBJECT_ID}" \
   --headers "Content-Type=application/json" \
-  --body "$(cat <<JSON
-{
-  "groupMembershipClaims": "SecurityGroup",
-  "optionalClaims": {
-    "idToken": [
-      {"name": "${EXT_TENANT}", "essential": false},
-      {"name": "${EXT_ROLE}", "essential": false}
-    ],
-    "accessToken": [
-      {"name": "${EXT_TENANT}", "essential": false},
-      {"name": "${EXT_ROLE}", "essential": false}
-    ]
-  }
-}
-JSON
-)"
+  --body '{"groupMembershipClaims": "SecurityGroup"}'
 
 # ── 5. platform_admin security group ─────────────────────────────────────────
 GROUP_ID="$(az ad group list --display-name "${GROUP_NAME}" --query "[0].id" -o tsv)"
@@ -166,10 +143,10 @@ else
   az ad user update --id "${UPN}" --password "${ADMIN_PASSWORD}" --force-change-password-next-sign-in false
 fi
 
-log "Stamping tenant_id=PLATFORM / role=platform_admin and contact email…"
+log "Setting the contact email (otherMails)…"
 az rest --method PATCH --url "${GRAPH}/users/${USER_ID}" \
   --headers "Content-Type=application/json" \
-  --body "{\"${EXT_TENANT}\":\"PLATFORM\",\"${EXT_ROLE}\":\"platform_admin\",\"otherMails\":[\"${ADMIN_EMAIL}\"]}"
+  --body "{\"otherMails\":[\"${ADMIN_EMAIL}\"]}"
 
 # ── 7. Group membership ──────────────────────────────────────────────────────
 if az ad group member check --group "${GROUP_ID}" --member-id "${USER_ID}" --query value -o tsv 2>/dev/null | grep -qi true; then
@@ -193,22 +170,27 @@ cat <<SUMMARY
   SPA client id      : ${APP_ID}
   Token endpoint     : ${TOKEN_ENDPOINT}
 
- Backend API env (so EntraClaimsMapper reads these claims):
+ Backend API env (the platform admin resolves via this group GUID):
    AUTH_PROVIDER=azure
    OIDC_AUDIENCE=${APP_ID}
-   ENTRA_TENANT_ID_CLAIM=${EXT_TENANT}
-   ENTRA_ROLE_CLAIM=${EXT_ROLE}
    ENTRA_PLATFORM_ADMIN_GROUP_ID=${GROUP_ID}
+   # ENTRA_TENANT_ID_CLAIM / ENTRA_ROLE_CLAIM stay at their tenant_id / role
+   # defaults — only set them if the claims provider emits different names.
 
  Frontend build env:
    VITE_AUTH_PROVIDER=entra
    VITE_ENTRA_CLIENT_ID=${APP_ID}
    VITE_ENTRA_TOKEN_ENDPOINT=${TOKEN_ENDPOINT}
 
- Verify the token carries the role (expect groups + role=platform_admin):
+ Verify (expect groups to contain ${GROUP_ID}):
    curl -s -X POST "${TOKEN_ENDPOINT}" \\
      -d grant_type=password -d "client_id=${APP_ID}" \\
      -d "username=${UPN}" -d "password=<password>" \\
-     -d "scope=openid profile offline_access ${APP_ID}/.default" | python3 -m json.tool
+     -d "scope=openid profile offline_access" | python3 -m json.tool
+   # decode the id_token; groups should include the platform_admin group id.
+
+ NOTE: tenant users (customer/staff/tenant_admin) also need the DB-backed claims
+ provider + its custom-auth-extension binding — see docs/runbook.md
+ ("Azure deployment — required one-time setup"). The platform admin does not.
 ============================================================
 SUMMARY

@@ -84,8 +84,9 @@ third, which is exactly what enables the dual-run cutover below.
 > `EntraClaimsMapper.groups()` now accepts three shapes and is the compatibility layer: (1)
 > canonical names pass through; (2) object ids are mapped via `ENTRA_PLATFORM_ADMIN_GROUP_ID` /
 > `ENTRA_GROUP_ID_MAP`; (3) the canonical group is **synthesized** from the `tenant_id` + `role`
-> optional/extension claims (the primary, policy-free path). `scripts/setup_entra_platform_admin.sh`
-> provisions the SPA app, claims, group, and admin user accordingly. Cognito is untouched (separate
+> claims (the policy-free path; for tenant users those claims come from the claims provider — see
+> the 2026-10-11 addendum below). `scripts/setup_entra_platform_admin.sh` provisions the SPA app,
+> the security-group claim, the `platform_admin` group, and the admin user. Cognito is untouched (separate
 > `CognitoClaimsMapper`); `shared/auth.py` stays cloud-agnostic.
 >
 > **CIAM wrinkle (observed live).** On an Entra **External ID / CIAM** tenant (`*.ciamlogin.com`),

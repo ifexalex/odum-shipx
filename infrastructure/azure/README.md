@@ -273,9 +273,10 @@ time, per the ADR-004 decision (External ID + roles as security groups):
      `{tenant_id}:{role}` names, they pass through unchanged.
 
    > **Fastest path — one script.** `scripts/setup_entra_platform_admin.sh` does the SPA app
-   > registration (public client + OIDC consent), the `tenant_id`/`role` extension + optional
-   > claims, the `platform_admin` group, and the admin user in one idempotent run, then prints the
-   > exact backend/frontend env. Run it instead of steps 1 + 3 for the platform admin:
+   > registration (public client + OIDC consent), the security-group claim, the `platform_admin`
+   > group, and the admin user in one idempotent run, then prints the exact backend/frontend env.
+   > The platform admin resolves from its group GUID alone (no claims provider needed). Run it
+   > instead of steps 1 + 3 for the platform admin:
    > ```bash
    > ADMIN_EMAIL=you@example.com ./scripts/setup_entra_platform_admin.sh
    > ```
