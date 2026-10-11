@@ -21,6 +21,18 @@ variable "python_version" {
   default     = "3.12"
 }
 
+variable "function_plan_sku" {
+  description = <<-EOT
+    App Service plan SKU for the claims Function. Default B1 (Basic, always-on):
+    the Entra extension call times out ~2s so the auth path must stay warm, and
+    Consumption (Y1) VM quota is 0 on many subscriptions. Override to EP1 (Elastic
+    Premium) or FC1 (Flex Consumption) where that quota exists, or Y1 to force
+    Consumption.
+  EOT
+  type        = string
+  default     = "B1"
+}
+
 variable "app_insights_connection_string" {
   description = "Application Insights connection string (observability). Optional."
   type        = string

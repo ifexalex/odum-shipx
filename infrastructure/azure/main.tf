@@ -229,11 +229,12 @@ module "entra_claims_function" {
 
   app_insights_connection_string = module.monitoring.app_insights_connection_string
 
-  caller_jwks_url  = var.entra_claims_caller_jwks_url
-  caller_audience  = var.entra_claims_caller_audience
-  caller_issuer    = var.entra_claims_caller_issuer
-  tenant_id_attr   = var.entra_tenant_id_attr
-  role_attr        = var.entra_role_attr
-  out_tenant_claim = var.entra_out_tenant_claim
-  out_role_claim   = var.entra_out_role_claim
+  function_plan_sku = var.entra_claims_plan_sku
+  caller_jwks_url   = var.entra_claims_caller_jwks_url
+  caller_audience   = var.entra_claims_caller_audience
+  caller_issuer     = var.entra_claims_caller_issuer
+  tenant_id_attr    = var.entra_tenant_id_attr
+  role_attr         = var.entra_role_attr
+  out_tenant_claim  = var.entra_out_tenant_claim
+  out_role_claim    = var.entra_out_role_claim
 }

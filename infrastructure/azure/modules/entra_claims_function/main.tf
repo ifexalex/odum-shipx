@@ -34,12 +34,18 @@ resource "azurerm_storage_account" "fn" {
   tags                            = var.common_tags
 }
 
+# Default B1 (Basic, always-on) rather than Y1 (Consumption): (1) Entra custom
+# authentication extensions have a hard ~2s timeout, so a cold-starting
+# Consumption function would intermittently fail sign-ins — an always-on plan
+# keeps the auth hot path warm; (2) many subscriptions have 0 Y1 (Consumption)
+# VM quota, which fails the apply. Override via `function_plan_sku` (e.g. EP1 /
+# FC1 where elastic/flex quota exists).
 resource "azurerm_service_plan" "fn" {
   name                = "${var.name_prefix}-claims-plan"
   resource_group_name = var.resource_group_name
   location            = var.location
   os_type             = "Linux"
-  sku_name            = "Y1" # Consumption
+  sku_name            = var.function_plan_sku
   tags                = var.common_tags
 }
 
@@ -64,6 +70,9 @@ resource "azurerm_linux_function_app" "claims" {
     application_insights_connection_string = var.app_insights_connection_string != "" ? var.app_insights_connection_string : null
     ftps_state                             = "Disabled"
     minimum_tls_version                    = "1.2"
+    # Keep the auth hot path warm (Entra's extension call times out ~2s). Not
+    # permitted on Consumption (Y1), so only when a dedicated plan is used.
+    always_on = var.function_plan_sku != "Y1"
   }
 
   app_settings = {

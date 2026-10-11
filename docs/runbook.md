@@ -152,6 +152,49 @@ The frontend has defence in depth across layers:
 
 ---
 
+## Azure deployment — required one-time setup (Entra auth)
+
+**Applies only when `DEPLOY_CLOUD=azure`.** The Azure pipeline deploys everything except two
+Entra-tenant steps that have **no Terraform/azuread resource** and that the Contributor deploy
+identity cannot perform. **Login is broken until both are done** — `terraform apply` + the CI
+Function deploy succeed, but tokens carry no `tenant_id`/`role`, so every request resolves as an
+unprivileged `customer` (platform admin included). Run these once per Entra tenant, after the first
+`deploy-azure.yml` run has created the resources. Full context: `infrastructure/azure/README.md`
+→ "Entra tenant setup" + "Token claims on CIAM".
+
+**Prerequisite (done by the tenant admin, before any of the below):** an Entra External ID tenant +
+SPA app registration exist, and `scripts/setup_entra_platform_admin.sh` has been run (creates the
+`platform_admin` group, the `tenant_id`/`role` directory extensions, and the first admin). Set the
+matching tfvars (`entra_claims_*`, `entra_tenant_id_attr`, `entra_role_attr`) and the API env
+(`AUTH_PROVIDER=azure`, `OIDC_*`, `ENTRA_TENANT_ID_CLAIM`/`ENTRA_ROLE_CLAIM`,
+`ENTRA_PLATFORM_ADMIN_GROUP_ID`) so a deploy picks them up.
+
+1. **Grant the claims Function's managed identity Graph `User.Read.All`** (it reads users' extension
+   attributes). Needs a Graph-admin / Privileged Role Admin — not the deploy identity:
+   ```bash
+   cd infrastructure/azure
+   PRINCIPAL=$(terraform output -raw entra_claims_principal_id)
+   GRAPH_SP=$(az ad sp list --filter "appId eq '00000003-0000-0000-c000-000000000000'" --query '[0].id' -o tsv)
+   ROLE=$(az ad sp show --id "$GRAPH_SP" --query "appRoles[?value=='User.Read.All'].id | [0]" -o tsv)
+   az rest --method POST \
+     --url "https://graph.microsoft.com/v1.0/servicePrincipals/$PRINCIPAL/appRoleAssignments" \
+     --body "{\"principalId\":\"$PRINCIPAL\",\"resourceId\":\"$GRAPH_SP\",\"appRoleId\":\"$ROLE\"}"
+   ```
+2. **Register + bind the custom authentication extension** to the SPA app's token-issuance event,
+   pointing it at `terraform output -raw entra_claims_endpoint_url` — `customAuthenticationExtensions`
+   + `authenticationEventListeners` via Graph `/beta` (or the portal: Enterprise apps → Custom
+   authentication extensions). This is what makes Entra call the Function on every sign-in.
+
+**Verify:** sign in (ROPC or the SPA), decode the **id_token**, and confirm it carries `tenant_id` +
+`role` (and `groups`). If they're missing: step 2 isn't bound (or propagation lag); if the Function
+500s: step 1's Graph grant is missing. Re-run a deploy only if the Function **code** changed — these
+two steps persist across deploys and do not need repeating.
+
+**Rollback / cloud switch:** flipping `DEPLOY_CLOUD` back to `aws` returns auth to Cognito with no
+Entra dependency; the Entra objects can stay in place, dormant.
+
+---
+
 ## Hotfix Procedure (break-glass)
 
 Use when a critical bug is in prod and cannot wait for the normal tag-based release cycle.
