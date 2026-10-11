@@ -39,6 +39,8 @@ import logging
 import os
 from typing import Any
 
+from shared.tenant_context import PLATFORM_TENANT_ID
+
 logger = logging.getLogger(__name__)
 
 # Entra emits the ShipX tenant id + primary role as custom/optional claims; the
@@ -94,8 +96,21 @@ class EntraClaimsMapper:
         return str(claims.get("oid") or claims.get("sub", ""))
 
     def tenant_id(self, claims: dict[str, Any]) -> str:
-        # The ShipX tenant id (NOT `tid`, which is the Entra *directory* tenant).
-        return str(claims.get(_TENANT_ID_CLAIM, ""))
+        """The ShipX tenant id (NOT `tid`, the Entra *directory* tenant).
+
+        Read from the configured tenant claim. Entra External ID (CIAM) does not
+        reliably emit app-manifest directory-extension optional claims, so when
+        the claim is absent the tenant is derived from `platform_admin` group
+        membership — a platform admin is tenant-less by definition
+        (`tenant_id=PLATFORM`, a system invariant), so the group that already
+        grants the role also fixes the scope. Tenant-scoped users still require
+        an explicit tenant claim (their tenant id is not derivable)."""
+        explicit = str(claims.get(_TENANT_ID_CLAIM, ""))
+        if explicit:
+            return explicit
+        if self._is_platform_admin(claims):
+            return PLATFORM_TENANT_ID
+        return ""
 
     def groups(self, claims: dict[str, Any]) -> list[str]:
         """Normalize the `groups` claim to ShipX's canonical group names.
@@ -105,19 +120,10 @@ class EntraClaimsMapper:
         docstring for the three accepted input shapes. Order is preserved and
         duplicates removed; unmapped object ids are dropped.
         """
-        names: list[str] = []
-        for entry in self._raw_groups(claims):
-            if entry in self._group_id_map:
-                names.append(self._group_id_map[entry])
-            elif ":" in entry or entry == _PLATFORM_ADMIN_GROUP:
-                # Already a canonical display name (on-prem-synced group or a
-                # claims-mapping policy that emits names) — pass through.
-                names.append(entry)
-            # else: an unmapped directory object id we cannot interpret — skip.
-
-        # Policy-free fallback: synthesize the canonical name from the tenant_id
-        # + role optional claims, which Entra emits reliably even when the
-        # groups claim carries only object ids.
+        # Directly-carried / id-mapped names, then the policy-free synthesis from
+        # the tenant_id + role optional claims (reliable even when the groups
+        # claim carries only object ids).
+        names = self._mapped_groups(claims)
         names.extend(self._synthesize_groups(claims))
 
         # De-duplicate, preserving first-seen order.
@@ -128,6 +134,34 @@ class EntraClaimsMapper:
                 seen.add(name)
                 deduped.append(name)
         return deduped
+
+    def _mapped_groups(self, claims: dict[str, Any]) -> list[str]:
+        """Canonical names carried directly in the `groups` claim.
+
+        Object ids translated via the id map; already-canonical names passed
+        through; unmapped object ids dropped. Does NOT consult the tenant_id/role
+        claims (that is `_synthesize_groups`), so it is safe to call from
+        `tenant_id()` without recursion.
+        """
+        names: list[str] = []
+        for entry in self._raw_groups(claims):
+            if entry in self._group_id_map:
+                names.append(self._group_id_map[entry])
+            elif ":" in entry or entry == _PLATFORM_ADMIN_GROUP:
+                # Already a canonical display name (on-prem-synced group or a
+                # claims-mapping policy that emits names) — pass through.
+                names.append(entry)
+            # else: an unmapped directory object id we cannot interpret — skip.
+        return names
+
+    def _is_platform_admin(self, claims: dict[str, Any]) -> bool:
+        """Whether the token denotes a platform admin — via a mapped/canonical
+        `platform_admin` group or the role claim. Avoids `tenant_id()` so the
+        derivation in `tenant_id()` cannot recurse."""
+        if _PLATFORM_ADMIN_GROUP in self._mapped_groups(claims):
+            return True
+        role = self.primary_role(claims)
+        return role is not None and role.strip() == _PLATFORM_ADMIN_GROUP
 
     def primary_role(self, claims: dict[str, Any]) -> str | None:
         role = claims.get(_ROLE_CLAIM)

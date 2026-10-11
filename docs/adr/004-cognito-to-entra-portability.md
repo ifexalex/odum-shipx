@@ -87,6 +87,28 @@ third, which is exactly what enables the dual-run cutover below.
 > optional/extension claims (the primary, policy-free path). `scripts/setup_entra_platform_admin.sh`
 > provisions the SPA app, claims, group, and admin user accordingly. Cognito is untouched (separate
 > `CognitoClaimsMapper`); `shared/auth.py` stays cloud-agnostic.
+>
+> **CIAM wrinkle (observed live).** On an Entra **External ID / CIAM** tenant (`*.ciamlogin.com`),
+> app-manifest `optionalClaims` for directory extensions are **not** emitted in the token even when
+> the extension is registered, the user attribute is set, and the optional claim is configured — but
+> the `groups` claim (object ids) *is* emitted. So for the platform admin the `tenant_id`/`role`
+> extension claims can be absent while only the `platform_admin` group GUID arrives. Since a platform
+> admin is tenant-less by invariant (`tenant_id=PLATFORM`), `EntraClaimsMapper.tenant_id()` **derives**
+> `PLATFORM` from `platform_admin` membership (mapped group id or role claim) when no tenant claim is
+> present — so a CIAM token carrying only the group GUID resolves fully with just
+> `ENTRA_PLATFORM_ADMIN_GROUP_ID` set. Tenant-scoped users still require an explicit tenant claim
+> (their tenant id is not derivable).
+>
+> **Full-roles fix on CIAM — custom authentication extension.** Because tenant users' `tenant_id`
+> can't be derived, CIAM needs a **custom claims provider** (OnTokenIssuanceStart) to inject
+> `tenant_id` + `role` into every token. Implemented as a standalone Azure Function
+> (`services/entra_token_claims/`, Terraformed by `infrastructure/azure/modules/entra_claims_function`)
+> that reads the user's `extension_<appId>_tenant_id` / `_role` off the directory via Graph (managed
+> identity) and returns them as claims; `EntraIdentityProvider` stamps those extension attributes on
+> every user it provisions (`ENTRA_TENANT_ID_ATTR` / `ENTRA_ROLE_ATTR`). The managed-identity Graph
+> grant and the extension↔app binding are one-time manual Graph steps (no azurerm/azuread resource),
+> documented in `infrastructure/azure/README.md`. With it live, the `EntraClaimsMapper` synthesize
+> path resolves all roles on CIAM.
 
 ### C. Unaffected
 The **impersonation token** is ShipX's own HS256 JWT (already provider-agnostic via

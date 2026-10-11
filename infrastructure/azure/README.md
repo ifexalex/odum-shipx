@@ -293,6 +293,43 @@ time, per the ADR-004 decision (External ID + roles as security groups):
 Cutover is a config flip (`DEPLOY_CLOUD`/`CLOUD_PROVIDER` + the `OIDC_*` env); rollback is flipping
 them back. AWS continues to use Cognito unchanged throughout.
 
+### Token claims on CIAM — the custom authentication extension (all roles)
+
+Entra **External ID (CIAM, `*.ciamlogin.com`) does not emit app-manifest `optionalClaims` for
+directory extensions** — a real token carries only the `groups` object ids. The platform admin
+survives this (its `tenant_id=PLATFORM` is derived from `platform_admin` membership), but
+**tenant-scoped users (customer / staff / tenant_admin) need a real `tenant_id` claim that can't be
+derived.** The fix is a **custom authentication extension** (OnTokenIssuanceStart claims provider)
+that injects `tenant_id` + `role` into every token at sign-in.
+
+- **Compute (Terraformed):** `modules/entra_claims_function` deploys the Function App + plan +
+  storage + a system-assigned managed identity. Code lives in `services/entra_token_claims/`
+  (reads the user's `extension_<appId>_tenant_id` / `_role` off the directory via Graph and returns
+  them as the `tenant_id` / `role` claims). CI zip-deploys that folder to the Function App
+  (`terraform output entra_claims_function_name`). The claims config is passed via the
+  `entra_claims_*` / `entra_tenant_id_attr` / `entra_role_attr` tfvars.
+- **Provisioning:** set `ENTRA_TENANT_ID_ATTR` / `ENTRA_ROLE_ATTR` on the API/migration env so
+  `EntraIdentityProvider` stamps those extension attributes on every user it creates (the claims
+  Function then reads them). `setup_entra_platform_admin.sh` already stamps the platform admin.
+- **Manual (Graph / portal — not Terraformable):**
+  1. Grant the Function's managed identity Graph **`User.Read.All`** (the Contributor deploy identity
+     can't create app-role assignments):
+     ```bash
+     PRINCIPAL=$(terraform output -raw entra_claims_principal_id)
+     GRAPH_SP=$(az ad sp list --filter "appId eq '00000003-0000-0000-c000-000000000000'" --query '[0].id' -o tsv)
+     ROLE=$(az ad sp show --id "$GRAPH_SP" --query "appRoles[?value=='User.Read.All'].id | [0]" -o tsv)
+     az rest --method POST \
+       --url "https://graph.microsoft.com/v1.0/servicePrincipals/$PRINCIPAL/appRoleAssignments" \
+       --body "{\"principalId\":\"$PRINCIPAL\",\"resourceId\":\"$GRAPH_SP\",\"appRoleId\":\"$ROLE\"}"
+     ```
+  2. Register the extension against the endpoint (`terraform output -raw entra_claims_endpoint_url`)
+     and bind it to the app's token-issuance event — `customAuthenticationExtensions` +
+     `authenticationEventListeners` via Graph (`/beta`), then attach the app as a claims source.
+     No azurerm/azuread resource exists for this, so it is a one-time Graph/portal step.
+- **Backend env it enables:** with the extension live, every token carries `tenant_id` + `role`, so
+  the `EntraClaimsMapper` synthesize path resolves **all** roles — set `ENTRA_TENANT_ID_CLAIM` /
+  `ENTRA_ROLE_CLAIM` to match `OUT_TENANT_CLAIM` / `OUT_ROLE_CLAIM` (default `tenant_id` / `role`).
+
 ## Replica roadmap (toward a full AWS→Azure mirror)
 
 The goal is a complete Azure mirror of the AWS stack, deployable instead of AWS.

@@ -549,6 +549,16 @@ read once in `shared/providers/__init__.py`.
       canonical names pass through; object ids are mapped via `ENTRA_PLATFORM_ADMIN_GROUP_ID` / `ENTRA_GROUP_ID_MAP`;
       and the canonical group is **synthesized** from the `tenant_id` + `role` optional claims (`ENTRA_TENANT_ID_CLAIM` /
       `ENTRA_ROLE_CLAIM`), the primary policy-free path. Provisioned by `scripts/setup_entra_platform_admin.sh`.
+    - `EntraClaimsMapper.tenant_id()` **derives** `PLATFORM` from `platform_admin` membership when no tenant claim is
+      present — Entra External ID (CIAM) does not emit app-manifest directory-extension optional claims, so a real CIAM
+      token often carries only the `platform_admin` group GUID; a platform admin is tenant-less by invariant, so the
+      group that grants the role also fixes the scope (just set `ENTRA_PLATFORM_ADMIN_GROUP_ID`). Tenant-scoped users
+      still need an explicit tenant claim.
+    - **Tenant users on CIAM** get that claim from the **custom authentication extension** (ADR-004): a standalone
+      Azure Function (`services/entra_token_claims/`, Terraform `modules/entra_claims_function`) injects `tenant_id` +
+      `role` at token issuance, read from the user's `extension_<appId>_tenant_id` / `_role` directory attributes.
+      `EntraIdentityProvider` stamps those attributes on every user it creates when `ENTRA_TENANT_ID_ATTR` /
+      `ENTRA_ROLE_ATTR` are set (no-op otherwise — workforce tenants emit the optional claims directly).
 - **Factories** (`shared/providers/__init__.py`):
   - `get_key_provider()` → `KeyProvider | None` (None = field encryption not configured; preserves the dev
     plaintext-fallback in `shared/encryption.py`).

@@ -20,6 +20,10 @@ class TestEntraClaimsMapper:
         assert self.mapper.tenant_id({"tenant_id": "t-123"}) == "t-123"
         assert self.mapper.tenant_id({}) == ""
 
+    def test_tenant_id_not_derived_for_non_platform_without_claim(self):
+        # A tenant-scoped user's tenant id is not derivable — must be explicit.
+        assert self.mapper.tenant_id({"role": "tenant_admin", "groups": ["some-guid"]}) == ""
+
     def test_groups_from_list(self):
         claims = {"groups": ["t1:tenant_admin", "t1:china_office_staff"]}
         assert self.mapper.groups(claims) == ["t1:tenant_admin", "t1:china_office_staff"]
@@ -83,6 +87,15 @@ class TestEntraGroupIdMap:
         mapper = self._mapper_with_env(monkeypatch, ENTRA_PLATFORM_ADMIN_GROUP_ID=gid)
         assert mapper.groups({"groups": [gid]}) == ["platform_admin"]
 
+    def test_tenant_id_derived_from_platform_admin_group_id(self, monkeypatch):
+        # The real CIAM case: token carries only the platform_admin group GUID
+        # (no tenant/role extension claims). tenant_id is derived as PLATFORM.
+        gid = "226e2e44-ef7e-4dc6-bf2b-6f39879e8628"
+        mapper = self._mapper_with_env(monkeypatch, ENTRA_PLATFORM_ADMIN_GROUP_ID=gid)
+        claims = {"oid": "u", "groups": [gid]}
+        assert mapper.tenant_id(claims) == "PLATFORM"
+        assert mapper.groups(claims) == ["platform_admin"]
+
     def test_group_id_map_json(self, monkeypatch):
         gid = "22223333-4444-5555-6666-777788889999"
         mapper = self._mapper_with_env(
@@ -138,6 +151,17 @@ class TestDualCloudRoleResolution:
         monkeypatch.setenv("ENTRA_PLATFORM_ADMIN_GROUP_ID", "GUID-PA")
         claims = {"oid": "u", "tenant_id": "PLATFORM", "groups": ["GUID-PA"]}
         assert self._roles(monkeypatch, EntraClaimsMapper(), claims) == {"platform_admin"}
+
+    def test_entra_platform_admin_ciam_token_no_extension_claims(self, monkeypatch):
+        # The exact real-world CIAM id_token: only the platform_admin group GUID,
+        # no tenant/role extension claims (CIAM ignores manifest optional claims).
+        gid = "226e2e44-ef7e-4dc6-bf2b-6f39879e8628"
+        monkeypatch.setenv("ENTRA_PLATFORM_ADMIN_GROUP_ID", gid)
+        mapper = EntraClaimsMapper()
+        claims = {"oid": "0fd5de8e", "groups": [gid]}
+        # get_tenant_context derives tenant_id, then parses roles from it:
+        assert mapper.tenant_id(claims) == "PLATFORM"
+        assert self._roles(monkeypatch, mapper, claims) == {"platform_admin"}
 
     def test_both_clouds_resolve_tenant_admin_identically(self, monkeypatch):
         from shared.providers.aws.cognito_claims import CognitoClaimsMapper
