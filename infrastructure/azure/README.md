@@ -302,8 +302,11 @@ survives this (its `tenant_id=PLATFORM` is derived from `platform_admin` members
 derived.** The fix is a **custom authentication extension** (OnTokenIssuanceStart claims provider)
 that injects `tenant_id` + `role` into every token at sign-in.
 
-- **Compute (Terraformed):** `modules/entra_claims_function` deploys the Function App + plan +
-  storage + a system-assigned managed identity. Code lives in `services/entra_token_claims/`
+- **Compute (Terraformed):** `modules/entra_claims_function` deploys the Function App + App Service
+  plan + storage + a system-assigned managed identity. The plan defaults to **B1 (Basic, always-on)**
+  — Entra's extension call times out ~2s so the auth path must stay warm, and Consumption (Y1) VM
+  quota is 0 on many subscriptions; override with `entra_claims_plan_sku` (EP1/FC1/Y1) where that
+  quota exists. Code lives in `services/entra_token_claims/`
   (reads the user's `extension_<appId>_tenant_id` / `_role` off the directory via Graph and returns
   them as the `tenant_id` / `role` claims). CI zip-deploys that folder to the Function App
   (`terraform output entra_claims_function_name`). The claims config is passed via the
