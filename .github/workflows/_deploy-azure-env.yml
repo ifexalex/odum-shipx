@@ -64,6 +64,7 @@ jobs:
               "acr_server": out["acr_login_server"]["value"],
               "migrate_job": out["migrate_job_name"]["value"],
               "api_url": out["api_url"]["value"],
+              "claims_fn": out["entra_claims_function_name"]["value"],
           }
           with open(os.environ["GITHUB_OUTPUT"], "a") as f:
               for k, v in vals.items():
@@ -133,6 +134,20 @@ jobs:
             echo "Updating job $job"
             az containerapp job update -g "$RG" -n "$job" --image "$IMAGE" --output none
           done
+
+      # Deploy the Entra custom-claims Function (OnTokenIssuanceStart provider).
+      # It is not a Container App — it zip-deploys from services/entra_token_claims/
+      # and builds remotely (Oryx) so requirements.txt is installed server-side.
+      # Independent of the backend image; the Function App is created by Terraform.
+      - name: Deploy Entra claims Function
+        env:
+          RG: ${{ steps.tf.outputs.rg }}
+          CLAIMS_FN: ${{ steps.tf.outputs.claims_fn }}
+        run: |
+          ( cd services/entra_token_claims && zip -r /tmp/entra_claims_fn.zip . -x '*.pyc' '__pycache__/*' )
+          az functionapp deployment source config-zip \
+            -g "$RG" -n "$CLAIMS_FN" --src /tmp/entra_claims_fn.zip --output none
+          echo "Deployed claims Function: $CLAIMS_FN"
 
       # Read-only smoke against the live ingress: health 200, unauthenticated 401,
       # response-time SLA. Safe for prod.

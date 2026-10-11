@@ -68,6 +68,10 @@ resource "azurerm_linux_function_app" "claims" {
 
   app_settings = {
     FUNCTIONS_WORKER_RUNTIME = "python"
+    # Remote (Oryx) build on config-zip deploy so requirements.txt is installed
+    # server-side — CI just uploads the source zip (services/entra_token_claims/).
+    SCM_DO_BUILD_DURING_DEPLOYMENT = "1"
+    ENABLE_ORYX_BUILD              = "true"
     # Inbound-caller verification (the Entra token Entra sends to the extension).
     CALLER_JWKS_URL = var.caller_jwks_url
     CALLER_AUDIENCE = var.caller_audience
