@@ -549,6 +549,11 @@ read once in `shared/providers/__init__.py`.
       canonical names pass through; object ids are mapped via `ENTRA_PLATFORM_ADMIN_GROUP_ID` / `ENTRA_GROUP_ID_MAP`;
       and the canonical group is **synthesized** from the `tenant_id` + `role` optional claims (`ENTRA_TENANT_ID_CLAIM` /
       `ENTRA_ROLE_CLAIM`), the primary policy-free path. Provisioned by `scripts/setup_entra_platform_admin.sh`.
+    - `EntraClaimsMapper.tenant_id()` **derives** `PLATFORM` from `platform_admin` membership when no tenant claim is
+      present — Entra External ID (CIAM) does not emit app-manifest directory-extension optional claims, so a real CIAM
+      token often carries only the `platform_admin` group GUID; a platform admin is tenant-less by invariant, so the
+      group that grants the role also fixes the scope (just set `ENTRA_PLATFORM_ADMIN_GROUP_ID`). Tenant-scoped users
+      still need an explicit tenant claim.
 - **Factories** (`shared/providers/__init__.py`):
   - `get_key_provider()` → `KeyProvider | None` (None = field encryption not configured; preserves the dev
     plaintext-fallback in `shared/encryption.py`).

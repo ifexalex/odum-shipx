@@ -87,6 +87,17 @@ third, which is exactly what enables the dual-run cutover below.
 > optional/extension claims (the primary, policy-free path). `scripts/setup_entra_platform_admin.sh`
 > provisions the SPA app, claims, group, and admin user accordingly. Cognito is untouched (separate
 > `CognitoClaimsMapper`); `shared/auth.py` stays cloud-agnostic.
+>
+> **CIAM wrinkle (observed live).** On an Entra **External ID / CIAM** tenant (`*.ciamlogin.com`),
+> app-manifest `optionalClaims` for directory extensions are **not** emitted in the token even when
+> the extension is registered, the user attribute is set, and the optional claim is configured — but
+> the `groups` claim (object ids) *is* emitted. So for the platform admin the `tenant_id`/`role`
+> extension claims can be absent while only the `platform_admin` group GUID arrives. Since a platform
+> admin is tenant-less by invariant (`tenant_id=PLATFORM`), `EntraClaimsMapper.tenant_id()` **derives**
+> `PLATFORM` from `platform_admin` membership (mapped group id or role claim) when no tenant claim is
+> present — so a CIAM token carrying only the group GUID resolves fully with just
+> `ENTRA_PLATFORM_ADMIN_GROUP_ID` set. Tenant-scoped users still require an explicit tenant claim
+> (their tenant id is not derivable).
 
 ### C. Unaffected
 The **impersonation token** is ShipX's own HS256 JWT (already provider-agnostic via
