@@ -51,6 +51,38 @@ class TestBuildClaimsResponse:
         assert resp["data"]["actions"][0]["claims"] == {}
 
 
+class TestClaimsWsgiApp:
+    """The Flask entrypoint (Container App workload) wiring — verify gate +
+    response. `_verify_caller`/`is_authorized`/`_reader` are stubbed so no JWKS
+    or Graph is touched."""
+
+    def test_health_ok(self):
+        from services.entra_token_claims import app as appmod
+
+        resp = appmod.app.test_client().get("/health")
+        assert resp.status_code == 200
+
+    def test_unauthorized_without_valid_caller(self, monkeypatch):
+        from services.entra_token_claims import app as appmod
+
+        monkeypatch.setattr(appmod, "_verify_caller", lambda _h: None)
+        resp = appmod.app.test_client().post("/token-claims", json=_event())
+        assert resp.status_code == 401
+
+    def test_returns_claims_when_authorized(self, monkeypatch):
+        from services.entra_token_claims import app as appmod
+
+        monkeypatch.setattr(appmod, "_verify_caller", lambda _h: {"aud": "a", "iss": "i"})
+        monkeypatch.setattr(appmod, "is_authorized", lambda *_a: True)
+        monkeypatch.setattr(appmod, "_reader", lambda _oid: {"tenant_id": "PLATFORM", "role": "platform_admin"})
+        resp = appmod.app.test_client().post("/token-claims", json=_event())
+        assert resp.status_code == 200
+        assert resp.get_json()["data"]["actions"][0]["claims"] == {
+            "tenant_id": "PLATFORM",
+            "role": "platform_admin",
+        }
+
+
 class TestInboundAuthorization:
     AUD = "api-app-id"
     ISS = "https://tenant.ciamlogin.com/xxx/v2.0"

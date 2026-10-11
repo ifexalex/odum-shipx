@@ -37,3 +37,13 @@ output "migrate_job_name" {
   description = "Migration Container App Job name (`az containerapp job start`)."
   value       = azurerm_container_app_job.migrate.name
 }
+
+output "claims_app_name" {
+  description = "Entra claims-provider Container App name (`az containerapp update --image`)."
+  value       = azurerm_container_app.claims.name
+}
+
+output "claims_app_fqdn" {
+  description = "Public FQDN of the claims provider — register as the Entra custom-auth-extension target (+ /token-claims)."
+  value       = azurerm_container_app.claims.ingress[0].fqdn
+}

@@ -3,7 +3,7 @@
 Reads a user's ShipX `tenant_id` / `role` from their directory **extension
 attributes** by object id, authenticated with the Function's managed identity
 (`DefaultAzureCredential`). Isolated from the pure logic (`claims.py`) so unit
-tests never need the Azure SDK; `function_app.py` injects an instance as the
+tests never need the Azure SDK; `app.py` injects an instance as the
 `lookup` callable.
 """
 

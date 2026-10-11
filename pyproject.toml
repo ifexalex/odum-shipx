@@ -144,14 +144,6 @@ plugins = ["pydantic.mypy"]
 warn_return_any = true
 warn_unused_configs = true
 
-[[tool.mypy.overrides]]
-# The Entra claims Function's entrypoint uses azure.functions route decorators,
-# which ship no type stubs and so read as untyped under strict mypy. The module
-# is exercised by the Functions runtime (not unit-typed); its pure logic lives in
-# claims.py / security.py, which stay fully strict-checked.
-module = "services.entra_token_claims.function_app"
-disallow_untyped_decorators = false
-
 [tool.bandit]
 skips = [
     "B608",  # SQL injection via string — false positive; all dynamic SQL uses allowlists (column names, not user input)

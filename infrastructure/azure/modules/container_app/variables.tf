@@ -199,3 +199,52 @@ variable "job_timeout_seconds" {
   type    = number
   default = 600
 }
+
+# --- Entra claims provider (ADR-004) — runs as its own Container App on the
+# shared image (docker-entrypoint.sh `claims`). Config filled after the manual
+# Entra tenant setup; empty values just mean the endpoint denies callers. ---
+variable "claims_caller_jwks_url" {
+  type    = string
+  default = ""
+}
+variable "claims_caller_audience" {
+  type    = string
+  default = ""
+}
+variable "claims_caller_issuer" {
+  type    = string
+  default = ""
+}
+variable "claims_tenant_id_attr" {
+  type    = string
+  default = ""
+}
+variable "claims_role_attr" {
+  type    = string
+  default = ""
+}
+variable "claims_out_tenant_claim" {
+  type    = string
+  default = "tenant_id"
+}
+variable "claims_out_role_claim" {
+  type    = string
+  default = "role"
+}
+variable "claims_cpu" {
+  type    = number
+  default = 0.25
+}
+variable "claims_memory" {
+  type    = string
+  default = "0.5Gi"
+}
+variable "claims_min_replicas" {
+  description = "Keep >=1: Entra's token-issuance call times out ~2s, so the claims path must stay warm."
+  type        = number
+  default     = 1
+}
+variable "claims_max_replicas" {
+  type    = number
+  default = 2
+}

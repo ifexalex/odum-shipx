@@ -302,15 +302,15 @@ survives this (its `tenant_id=PLATFORM` is derived from `platform_admin` members
 derived.** The fix is a **custom authentication extension** (OnTokenIssuanceStart claims provider)
 that injects `tenant_id` + `role` into every token at sign-in.
 
-- **Compute (Terraformed):** `modules/entra_claims_function` deploys the Function App + App Service
-  plan + storage + a system-assigned managed identity. The plan defaults to **B1 (Basic, always-on)**
-  — Entra's extension call times out ~2s so the auth path must stay warm, and Consumption (Y1) VM
-  quota is 0 on many subscriptions; override with `entra_claims_plan_sku` (EP1/FC1/Y1) where that
-  quota exists. Code lives in `services/entra_token_claims/`
-  (reads the user's `extension_<appId>_tenant_id` / `_role` off the directory via Graph and returns
-  them as the `tenant_id` / `role` claims). CI zip-deploys that folder to the Function App
-  (`terraform output entra_claims_function_name`). The claims config is passed via the
-  `entra_claims_*` / `entra_tenant_id_attr` / `entra_role_attr` tfvars.
+- **Compute (Terraformed):** the claims provider runs as its **own Container App** (`*-entra-claims`)
+  on the **shared backend image** via the `claims` entrypoint — in the `container_app` module, not a
+  separate Function. This is deliberate: App Service (Functions) VM quota is **0** on this
+  subscription (both Y1 and B1), while Container Apps has quota; it's always-on (`claims_min_replicas`
+  defaults to 1) because Entra's extension call times out ~2s. Code is `services/entra_token_claims/`
+  (`app.py` Flask WSGI → reads the user's `extension_<appId>_tenant_id` / `_role` off the directory
+  via Graph with the shared managed identity, returns them as the `tenant_id` / `role` claims). The
+  deploy's `az containerapp update --image` loop rolls it like any other app — no dedicated step. The
+  claims config is passed via the `entra_claims_*` / `entra_tenant_id_attr` / `entra_role_attr` tfvars.
 - **Provisioning:** set `ENTRA_TENANT_ID_ATTR` / `ENTRA_ROLE_ATTR` on the API/migration env so
   `EntraIdentityProvider` stamps those extension attributes on every user it creates (the claims
   Function then reads them). `setup_entra_platform_admin.sh` already stamps the platform admin.

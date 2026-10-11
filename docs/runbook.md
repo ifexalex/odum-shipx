@@ -156,10 +156,11 @@ The frontend has defence in depth across layers:
 
 **Applies only when `DEPLOY_CLOUD=azure`.** The Azure pipeline deploys everything except two
 Entra-tenant steps that have **no Terraform/azuread resource** and that the Contributor deploy
-identity cannot perform. **Login is broken until both are done** — `terraform apply` + the CI
-Function deploy succeed, but tokens carry no `tenant_id`/`role`, so every request resolves as an
-unprivileged `customer` (platform admin included). Run these once per Entra tenant, after the first
-`deploy-azure.yml` run has created the resources. Full context: `infrastructure/azure/README.md`
+identity cannot perform. **Login is broken until both are done** — the deploy succeeds (the claims
+provider runs as a Container App on the shared image), but tokens carry no `tenant_id`/`role`, so
+every request resolves as an unprivileged `customer` (platform admin included). Run these once per
+Entra tenant, after the first `deploy-azure.yml` run has created the resources. Full context:
+`infrastructure/azure/README.md`
 → "Entra tenant setup" + "Token claims on CIAM".
 
 **Prerequisite (done by the tenant admin, before any of the below):** an Entra External ID tenant +
@@ -169,8 +170,9 @@ matching tfvars (`entra_claims_*`, `entra_tenant_id_attr`, `entra_role_attr`) an
 (`AUTH_PROVIDER=azure`, `OIDC_*`, `ENTRA_TENANT_ID_CLAIM`/`ENTRA_ROLE_CLAIM`,
 `ENTRA_PLATFORM_ADMIN_GROUP_ID`) so a deploy picks them up.
 
-1. **Grant the claims Function's managed identity Graph `User.Read.All`** (it reads users' extension
-   attributes). Needs a Graph-admin / Privileged Role Admin — not the deploy identity:
+1. **Grant the claims provider's managed identity Graph `User.Read.All`** (the shared app managed
+   identity the claims Container App runs as; it reads users' extension attributes). Needs a
+   Graph-admin / Privileged Role Admin — not the deploy identity:
    ```bash
    cd infrastructure/azure
    PRINCIPAL=$(terraform output -raw entra_claims_principal_id)
@@ -183,11 +185,11 @@ matching tfvars (`entra_claims_*`, `entra_tenant_id_attr`, `entra_role_attr`) an
 2. **Register + bind the custom authentication extension** to the SPA app's token-issuance event,
    pointing it at `terraform output -raw entra_claims_endpoint_url` — `customAuthenticationExtensions`
    + `authenticationEventListeners` via Graph `/beta` (or the portal: Enterprise apps → Custom
-   authentication extensions). This is what makes Entra call the Function on every sign-in.
+   authentication extensions). This is what makes Entra call the claims provider on every sign-in.
 
 **Verify:** sign in (ROPC or the SPA), decode the **id_token**, and confirm it carries `tenant_id` +
-`role` (and `groups`). If they're missing: step 2 isn't bound (or propagation lag); if the Function
-500s: step 1's Graph grant is missing. Re-run a deploy only if the Function **code** changed — these
+`role` (and `groups`). If they're missing: step 2 isn't bound (or propagation lag); if the claims
+provider 500s: step 1's Graph grant is missing (check the `*-entra-claims` Container App logs). These
 two steps persist across deploys and do not need repeating.
 
 **Rollback / cloud switch:** flipping `DEPLOY_CLOUD` back to `aws` returns auth to Cognito with no

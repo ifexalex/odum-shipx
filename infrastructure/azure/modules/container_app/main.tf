@@ -447,3 +447,87 @@ resource "azurerm_container_app_job" "migrate" {
 
   depends_on = [azurerm_role_assignment.acr_pull]
 }
+
+# ─── Entra custom-claims provider (OnTokenIssuanceStart) ────────────────────
+# Own Container App (not the api) so token issuance is isolated from the API's
+# availability, on the same shared image via the `claims` entrypoint. External
+# ingress because Entra calls it from the internet; always-on (min 1) because
+# the extension call times out ~2s. Reads users' tenant_id/role extension attrs
+# from Graph with the shared managed identity (grant it User.Read.All — manual).
+locals {
+  claims_env = {
+    CALLER_JWKS_URL      = var.claims_caller_jwks_url
+    CALLER_AUDIENCE      = var.claims_caller_audience
+    CALLER_ISSUER        = var.claims_caller_issuer
+    ENTRA_TENANT_ID_ATTR = var.claims_tenant_id_attr
+    ENTRA_ROLE_ATTR      = var.claims_role_attr
+    OUT_TENANT_CLAIM     = var.claims_out_tenant_claim
+    OUT_ROLE_CLAIM       = var.claims_out_role_claim
+  }
+}
+
+resource "azurerm_container_app" "claims" {
+  name                         = "${var.name_prefix}-entra-claims"
+  resource_group_name          = var.resource_group_name
+  container_app_environment_id = azurerm_container_app_environment.main.id
+  revision_mode                = "Single"
+  tags                         = var.common_tags
+
+  identity {
+    type         = "UserAssigned"
+    identity_ids = [var.identity_id]
+  }
+
+  registry {
+    server               = azurerm_container_registry.acr.login_server
+    identity             = local.acr_identity
+    username             = local.acr_username
+    password_secret_name = local.acr_password_secret
+  }
+
+  dynamic "secret" {
+    for_each = local.all_secrets
+    content {
+      name  = secret.key
+      value = secret.value
+    }
+  }
+
+  ingress {
+    external_enabled = true
+    target_port      = 8080
+    transport        = "auto"
+    traffic_weight {
+      percentage      = 100
+      latest_revision = true
+    }
+  }
+
+  template {
+    min_replicas = var.claims_min_replicas
+    max_replicas = var.claims_max_replicas
+
+    container {
+      name   = "claims"
+      image  = local.image
+      cpu    = var.claims_cpu
+      memory = var.claims_memory
+      args   = ["claims"]
+
+      dynamic "env" {
+        for_each = local.claims_env
+        content {
+          name  = env.key
+          value = env.value
+        }
+      }
+    }
+  }
+
+  lifecycle {
+    # CI owns the running image tag (pushes to ACR + `az containerapp update`).
+    ignore_changes = [template[0].container[0].image]
+  }
+
+  depends_on = [azurerm_role_assignment.acr_pull]
+}

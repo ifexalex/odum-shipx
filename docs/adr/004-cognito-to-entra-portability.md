@@ -101,8 +101,10 @@ third, which is exactly what enables the dual-run cutover below.
 >
 > **Full-roles fix on CIAM — custom authentication extension.** Because tenant users' `tenant_id`
 > can't be derived, CIAM needs a **custom claims provider** (OnTokenIssuanceStart) to inject
-> `tenant_id` + `role` into every token. Implemented as a standalone Azure Function
-> (`services/entra_token_claims/`, Terraformed by `infrastructure/azure/modules/entra_claims_function`)
+> `tenant_id` + `role` into every token. Implemented as its own **Container App** on the shared
+> backend image (`services/entra_token_claims/` via the `claims` entrypoint, in `modules/container_app`
+> — an Azure Function was the first design but App Service VM quota is 0 on the target subscription,
+> so it moved to Container Apps, which has quota and keeps the one-image model, ADR-005)
 > that reads the user's `extension_<appId>_tenant_id` / `_role` off the directory via Graph (managed
 > identity) and returns them as claims; `EntraIdentityProvider` stamps those extension attributes on
 > every user it provisions (`ENTRA_TENANT_ID_ATTR` / `ENTRA_ROLE_ATTR`). The managed-identity Graph

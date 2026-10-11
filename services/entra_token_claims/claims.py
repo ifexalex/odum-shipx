@@ -1,7 +1,7 @@
 """Pure request/response logic for the Entra OnTokenIssuanceStart event.
 
 No Azure SDK imports — the directory lookup is injected as a callable — so this
-module is fully unit-testable with a stub. `function_app.py` supplies the real
+module is fully unit-testable with a stub. `app.py` supplies the real
 Graph-backed lookup.
 
 Contract (Microsoft Graph custom authentication extension, token-issuance-start):
