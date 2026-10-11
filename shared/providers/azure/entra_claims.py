@@ -118,12 +118,16 @@ class EntraClaimsMapper:
         # Policy-free fallback: synthesize the canonical name from the tenant_id
         # + role optional claims, which Entra emits reliably even when the
         # groups claim carries only object ids.
-        for synthesized in self._synthesize_groups(claims):
-            names.append(synthesized)
+        names.extend(self._synthesize_groups(claims))
 
         # De-duplicate, preserving first-seen order.
         seen: set[str] = set()
-        return [name for name in names if not (name in seen or seen.add(name))]
+        deduped: list[str] = []
+        for name in names:
+            if name not in seen:
+                seen.add(name)
+                deduped.append(name)
+        return deduped
 
     def primary_role(self, claims: dict[str, Any]) -> str | None:
         role = claims.get(_ROLE_CLAIM)

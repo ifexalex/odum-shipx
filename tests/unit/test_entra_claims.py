@@ -108,3 +108,41 @@ class TestEntraGroupIdMap:
         finally:
             monkeypatch.undo()
             importlib.reload(entra_claims_module)
+
+
+class TestDualCloudRoleResolution:
+    """Regression guard for the Cognito↔Entra gap: the SAME cloud-agnostic
+    `shared.auth` logic must resolve roles from a Cognito-shaped token AND a
+    native Entra-shaped token, with no code change — only the active mapper
+    differs. This is the "deploy to either cloud without touching code" contract."""
+
+    def _roles(self, monkeypatch, mapper, claims):
+        import shared.auth as auth
+
+        monkeypatch.setattr(auth, "get_claims_mapper", lambda: mapper)
+        return {r.value for r in auth._parse_roles(claims, mapper.tenant_id(claims))}
+
+    def test_cognito_platform_admin(self, monkeypatch):
+        from shared.providers.aws.cognito_claims import CognitoClaimsMapper
+
+        claims = {"sub": "u", "custom:tenant_id": "PLATFORM", "cognito:groups": "platform_admin"}
+        assert self._roles(monkeypatch, CognitoClaimsMapper(), claims) == {"platform_admin"}
+
+    def test_entra_platform_admin_from_native_token(self, monkeypatch):
+        # Real Entra shape: groups are object ids (unmapped here), role via claim.
+        claims = {"oid": "u", "tenant_id": "PLATFORM", "role": "platform_admin",
+                  "groups": ["11111111-2222-3333-4444-555555555555"]}
+        assert self._roles(monkeypatch, EntraClaimsMapper(), claims) == {"platform_admin"}
+
+    def test_entra_platform_admin_from_mapped_group_id(self, monkeypatch):
+        monkeypatch.setenv("ENTRA_PLATFORM_ADMIN_GROUP_ID", "GUID-PA")
+        claims = {"oid": "u", "tenant_id": "PLATFORM", "groups": ["GUID-PA"]}
+        assert self._roles(monkeypatch, EntraClaimsMapper(), claims) == {"platform_admin"}
+
+    def test_both_clouds_resolve_tenant_admin_identically(self, monkeypatch):
+        from shared.providers.aws.cognito_claims import CognitoClaimsMapper
+
+        cog = {"sub": "u", "custom:tenant_id": "t-9", "cognito:groups": "t-9:tenant_admin"}
+        ent = {"oid": "u", "tenant_id": "t-9", "role": "tenant_admin", "groups": ["some-guid"]}
+        assert self._roles(monkeypatch, CognitoClaimsMapper(), cog) == {"tenant_admin"}
+        assert self._roles(monkeypatch, EntraClaimsMapper(), ent) == {"tenant_admin"}
