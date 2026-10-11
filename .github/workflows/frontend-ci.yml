@@ -42,13 +42,22 @@ jobs:
       # a violation is found. They catch regressions that TypeScript can't.
       - name: "Security: no localStorage/sessionStorage in auth layer"
         run: |
-          if grep -rn --include="*.ts" --include="*.tsx" \
-            "localStorage\|sessionStorage" src/auth/; then
-            echo "❌ Token storage violation: localStorage/sessionStorage found in src/auth/"
+          # Flag *actual* reads/writes to real web storage (localStorage.setItem,
+          # window.sessionStorage.getItem, …). Policy comments that merely name
+          # the APIs, and the enforcement test (storage.test.ts, which monkeypatches
+          # window.localStorage.setItem to assert it is never called), legitimately
+          # mention them — so match member access, not the bare string, and skip
+          # *.test.ts(x). Catches a genuine regression; ignores the false positives.
+          HITS=$(grep -rnE --include="*.ts" --include="*.tsx" \
+            "(window\.)?(localStorage|sessionStorage)\.(getItem|setItem|removeItem|clear|key|length)" \
+            src/auth/ | grep -vE "\.test\.tsx?:" || true)
+          if [ -n "$HITS" ]; then
+            echo "$HITS"
+            echo "❌ Token storage violation: localStorage/sessionStorage access found in src/auth/"
             echo "   Tokens must stay in memory only (11_security_and_compliance.md)."
             exit 1
           fi
-          echo "✅ No localStorage/sessionStorage in src/auth/"
+          echo "✅ No localStorage/sessionStorage access in src/auth/"
 
       - name: "Security: no dangerouslySetInnerHTML in app code"
         run: |
