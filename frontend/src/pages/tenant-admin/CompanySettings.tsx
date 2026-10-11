@@ -266,10 +266,10 @@ export function CompanySettings(): JSX.Element {
                   label="Brand colour"
                   name="primary_color"
                   optional
-                  placeholder="#1c7922"
+                  placeholder="#1a73e8"
                   value={form.primary_color}
                   onChange={set('primary_color')}
-                  error={colorInvalid ? 'Use a hex colour like #1c7922.' : undefined}
+                  error={colorInvalid ? 'Use a hex colour like #1a73e8.' : undefined}
                   disabled={isLoading}
                 />
               </div>

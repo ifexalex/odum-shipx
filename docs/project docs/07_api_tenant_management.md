@@ -45,6 +45,14 @@ Entra adapter + user migration), scoped in `docs/adr/004-cognito-to-entra-portab
 | GET | `/v1/platform/audit-log` | Platform audit log | platform_admin |
 | POST | `/v1/platform/tenants/{id}/impersonate` | Start 30-min read-only impersonation session | platform_admin |
 | DELETE | `/v1/platform/impersonation/{session_id}` | End impersonation session | platform_admin |
+| GET | `/v1/platform/onboarding-requests` | List shipping-company onboarding leads; `?status=` filters (`new\|contacted\|approved\|rejected\|provisioned`) | platform_admin |
+| GET | `/v1/platform/onboarding-requests/{id}` | Get one onboarding lead | platform_admin |
+| PATCH | `/v1/platform/onboarding-requests/{id}` | Update lead status (`{status, rejection_reason?}`) — mark contacted / approve / reject | platform_admin |
+
+### Public Endpoints (no JWT)
+| Method | Path | Handler | Roles |
+|---|---|---|---|
+| POST | `/v1/onboarding-requests` | Submit a shipping-company onboarding request (lead). Creates **no** account/tenant; records a lead and emits `OnboardingRequested` to platform ops | public |
 
 ### Tenant Admin Endpoints
 | Method | Path | Handler | Roles |
@@ -749,6 +757,19 @@ Replace the native Cognito JWT authorizer with a Lambda REQUEST authorizer point
 ### `impersonation_session` table (migration 028)
 Platform-scoped (no tenant RLS). Columns: `id, platform_admin_id, target_tenant_id, target_user_id, target_role, read_only, started_at, expires_at, ended_at, end_reason`.
 
+## Shipping-Company Onboarding Requests (added 2026-10-11)
+
+**Problem:** a shipping company (a *tenant*) had no public way to get onboarded — tenant creation was platform-admin-only, and the public `/register/:slug` page is customer-scoped (it demands a company slug). The two audiences were blurred: a company landing on `/register` was told to "use the link your shipping company gave you."
+
+**Model — admin / sales-led.** A public lead form (`POST /v1/onboarding-requests`) captures a company's interest; a platform admin reviews the queue and provisions the tenant via the existing `POST /v1/platform/tenants`, passing `onboarding_request_id` to link + close the lead in one action. **No public/open tenant creation.** Customer onboarding (invite / `/register/:slug`) is unchanged.
+
+- **`POST /v1/onboarding-requests`** (public, no JWT). Body (`CreateOnboardingRequest`): `company_name`, `contact_name`, `contact_email` (required); `contact_phone`, `monthly_volume`, `notes` optional; `origin_country`/`destination_country` default `China`/`Nigeria`. Inserts a `tenant_onboarding_request` row (status `new`) and best-effort `publish_event("OnboardingRequested", tenant_id=PLATFORM)` so notifications emails **platform ops** (not a customer). Returns only `{id, status}` — no account, no password, no tenant. No PII logged (only the request id). Registered as public in `shared/http_routing.py` `PUBLIC_ROUTES` **and** `infrastructure/aws/modules/api-gateway` `public_routes`, and short-circuited at the top of `lambda_handler` before `get_tenant_context`.
+- **`GET /v1/platform/onboarding-requests?status=`** / **`GET …/{id}`** (platform_admin) — review queue, newest first.
+- **`PATCH /v1/platform/onboarding-requests/{id}`** (platform_admin) — `OnboardingRequestStatusUpdate` (`status`, optional `rejection_reason`); audited via `insert_platform_audit("ONBOARDING_REQUEST_UPDATED")`.
+- **`POST /v1/platform/tenants` extension:** optional `onboarding_request_id` in the body — on a successful create, `create_tenant` best-effort links `tenant_id` onto the lead and flips its status to `provisioned` (sets `reviewed_by`/`reviewed_at`). Failure to link is logged, not fatal (the tenant is already created).
+
+Repository functions (`insert_onboarding_request`, `list_onboarding_requests`, `get_onboarding_request`, `update_onboarding_request`) run at `PLATFORM_TENANT_ID` scope (like `platform_settings`); writes use `RETURNING *` and `execute_write_with_tenant` returns the single row. Table defined in **migration 054** (`05b_database_schema_extended.md`). Tests: `tests/unit/test_onboarding.py`.
+
 ## Acceptance Criteria
 
 - [x] All 25+ routes handled with correct role authorization
@@ -781,6 +802,7 @@ Platform-scoped (no tenant RLS). Columns: `id, platform_admin_id, target_tenant_
 - [x] POST /v1/platform/tenants/{id}/impersonate — creates read-only 30-min impersonation session; mints HS256 JWT; audits IMPERSONATION_START; refuses if tenant not active or has no tenant_admin
 - [x] DELETE /v1/platform/impersonation/{session_id} — ends session; audits IMPERSONATION_END
 - [x] impersonation_session table (migration 028, platform-scoped, no RLS)
+- [x] Shipping-company onboarding (admin/sales-led, 2026-10-11): public `POST /v1/onboarding-requests` records a lead (no account/tenant created), emits `OnboardingRequested` to platform ops; platform `GET/GET{id}/PATCH /v1/platform/onboarding-requests` review queue; `POST /v1/platform/tenants` accepts `onboarding_request_id` to link + mark the lead `provisioned`; `tenant_onboarding_request` table (migration 054, platform-scoped, no RLS)
 - [x] Lambda authorizer (services/authorizer/handler.py) accepts both Cognito RS256 and ShipX HS256 impersonation tokens; synthesises cognito:groups for get_tenant_context() compatibility
 - [x] TenantContext.read_only enforced centrally: `get_tenant_context()` calls `assert_not_read_only()` internally (single chokepoint in `shared/auth.py`) — POST/PATCH/PUT/DELETE with `read_only=True` return 403 IMPERSONATION_READ_ONLY before any business logic; GET/HEAD/OPTIONS pass through; public/webhook routes unaffected (they bypass `get_tenant_context()` entirely)
 - [x] Webhook config save: PUT /v1/tenant/config accepts `webhook_config` (endpoint_url validated HTTPS, enabled, events validated against WebhookEventType enum); secret preserved on update, generated on first save, never returned in GET (masked to `****`)

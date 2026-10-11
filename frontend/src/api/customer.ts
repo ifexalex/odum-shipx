@@ -98,6 +98,35 @@ export const registerApi = {
 }
 
 // ---------------------------------------------------------------------------
+// Shipping-company onboarding lead (no JWT — POST /v1/onboarding-requests)
+// This is for COMPANIES (tenants), NOT customers: it creates no account and no
+// tenant, just records a lead a platform admin reviews and provisions. Kept
+// deliberately separate from registerApi so the two flows are never conflated.
+// ---------------------------------------------------------------------------
+
+export interface CompanyOnboardingInput {
+  company_name: string
+  contact_name: string
+  contact_email: string
+  contact_phone?: string
+  origin_country?: string
+  destination_country?: string
+  monthly_volume?: string
+  notes?: string
+}
+
+export interface CompanyOnboardingResult {
+  id: string
+  status: string
+}
+
+export const companyOnboardingApi = {
+  /** Submit a shipping-company onboarding request (lead). No account is created. */
+  requestOnboarding: (body: CompanyOnboardingInput) =>
+    apiRequest<CompanyOnboardingResult>({ method: 'POST', path: '/v1/onboarding-requests', body }),
+}
+
+// ---------------------------------------------------------------------------
 // Customer account-creation invites (no JWT — public claim page)
 // ---------------------------------------------------------------------------
 

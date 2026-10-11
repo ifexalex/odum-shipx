@@ -155,3 +155,10 @@ export const platformTenantKeys = {
   list: () => [...platformTenantKeys.all, 'list'] as const,
   detail: (id: string) => [...platformTenantKeys.all, 'detail', id] as const,
 }
+
+// ─── Platform onboarding requests (shipping-company leads) ────────────────────
+export const onboardingRequestKeys = {
+  all: ['onboarding-requests'] as const,
+  list: (status?: string) => [...onboardingRequestKeys.all, 'list', status ?? 'all'] as const,
+  detail: (id: string) => [...onboardingRequestKeys.all, 'detail', id] as const,
+}

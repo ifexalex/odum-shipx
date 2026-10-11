@@ -78,6 +78,7 @@ export const navConfig: Record<UserRole, NavLinkGroup[]> = {
     {
       items: [
         { icon: 'grid', label: 'Dashboard', path: '/platform/dashboard' },
+        { icon: 'mail', label: 'Onboarding Requests', path: '/platform/onboarding-requests' },
         { icon: 'building', label: 'Tenants', path: '/platform/tenants' },
         { icon: 'settings', label: 'Settings', path: '/platform/settings' },
         { icon: 'log', label: 'Audit Log', path: '/platform/audit-log' },

@@ -398,6 +398,35 @@ CREATE INDEX idx_packing_list_arrival_warehouse ON packing_list(arrival_warehous
 
 Resolution is server-side (`services/packing_list/service.py::_resolve_arrival_warehouse`): an explicit id is tenant-validated; when omitted it defaults to the tenant's `is_default` warehouse. Warehouse CRUD lives on `/v1/warehouses` (payment_release) — see `13_api_payment_release.md`.
 
+### Migration 054 — `tenant_onboarding_request` Table
+
+Platform-scoped lead table (no tenant RLS, like `platform_settings`/`impersonation_session`) backing the shipping-company onboarding queue — see `07_api_tenant_management.md`. A row is a *lead*, not a tenant: it exists before any account, and is linked to the provisioned tenant (and flipped to `provisioned`) only when a platform admin creates the tenant with `onboarding_request_id`.
+
+```sql
+CREATE TABLE tenant_onboarding_request (
+    id                  UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    company_name        VARCHAR(200) NOT NULL,
+    contact_name        VARCHAR(200) NOT NULL,
+    contact_email       VARCHAR(320) NOT NULL,
+    contact_phone       VARCHAR(40),
+    origin_country      VARCHAR(100) NOT NULL DEFAULT 'China',
+    destination_country VARCHAR(100) NOT NULL DEFAULT 'Nigeria',
+    monthly_volume      VARCHAR(100),
+    notes               TEXT,
+    status              VARCHAR(20) NOT NULL DEFAULT 'new'
+                        CHECK (status IN ('new','contacted','approved','rejected','provisioned')),
+    rejection_reason    TEXT,
+    reviewed_by         UUID,
+    reviewed_at         TIMESTAMPTZ,
+    tenant_id           UUID REFERENCES tenant(id) ON DELETE SET NULL,
+    created_at          TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE INDEX idx_onboarding_request_status ON tenant_onboarding_request(status, created_at DESC);
+CREATE INDEX idx_onboarding_request_email ON tenant_onboarding_request(lower(contact_email));
+```
+
+`reviewed_by` is a bare UUID (platform admins have no `tenant_user` row — same reasoning as migration 014/037, so no FK). `tenant_id` is `ON DELETE SET NULL` so offboarding a tenant doesn't delete its originating lead.
+
 ## Acceptance Criteria
 
 - [x] All 14 tables created with correct schemas
@@ -411,6 +440,7 @@ Resolution is server-side (`services/packing_list/service.py::_resolve_arrival_w
 - [x] Field encryption documented (migration 013)
 - [x] tenant_config FK issue resolved (migration 014)
 - [x] tenant.reactivated_at added for re-onboarding (migration 015)
+- [x] tenant_onboarding_request table created (migration 054, platform-scoped, no RLS) — shipping-company onboarding leads; status new/contacted/approved/rejected/provisioned; nullable tenant_id FK (ON DELETE SET NULL); indexes on (status, created_at DESC) and lower(contact_email)
 - [x] cbm_dispute.status CHECK includes 'rejected' (migration 016)
 - [x] notification_template table created with RLS (migration 024) — per-tenant custom message copy for SMS, WhatsApp, and email
 - [x] rate_history table created with RLS (migration 025) — append-only audit trail of rate changes

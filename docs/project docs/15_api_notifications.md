@@ -392,6 +392,12 @@ that no Terraform sets — they must be provisioned out-of-band.
 ### WhatsApp delivery status webhook
 `_handle_whatsapp_delivery_status` now updates `notification_log.status` by `provider_message_id` when Meta sends sent/delivered/read/failed callbacks.
 
+## `OnboardingRequested` — shipping-company lead (2026-10-11)
+
+`services/tenant_management/service.py::create_onboarding_request` publishes `OnboardingRequested` (source `logistics.tenant_management`, `tenant_id=PLATFORM`, payload `{request_id, company_name}`) on a public `POST /v1/onboarding-requests`. The publish is **best-effort** (wrapped in try/except; a publish failure never fails lead capture) and carries **no PII** beyond the company name — contact email/phone stay out of the event.
+
+**Delivery status — not yet wired to a channel.** Consistent with the 2026-09-09 ground-truth above, publishing to EventBridge does **not** by itself notify anyone: there is no `OnboardingRequested` rule in `infrastructure/aws/modules/eventbridge/main.tf`, and the SQS notification pipeline is a separate system. There is also no platform-ops recipient model (the `shared/notifications.py` path is tenant/customer-scoped, and there is no tenant yet — a lead precedes any tenant). Platform admins see new leads in the **console queue** (`/platform/onboarding-requests`, GET `/v1/platform/onboarding-requests`) with a live pending-count sidebar badge; that pull-based surface is the current notification mechanism. A push channel for platform ops (email/Slack to a platform distribution list) is a deliberate follow-up, not part of this change.
+
 ## Acceptance Criteria
 
 - [x] 3 separate Lambda handlers consuming from 3 SQS queues

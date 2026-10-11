@@ -8,6 +8,7 @@ import { ForgotPasswordScreen } from '../pages/auth/ForgotPasswordScreen'
 import { InviteClaimScreen } from '../pages/auth/InviteClaimScreen'
 import { LoginScreen } from '../pages/auth/LoginScreen'
 import { RegisterScreen } from '../pages/auth/RegisterScreen'
+import { RequestOnboardingScreen } from '../pages/auth/RequestOnboardingScreen'
 import { ResetPasswordScreen } from '../pages/auth/ResetPasswordScreen'
 import { LandingPage } from '../pages/marketing/LandingPage'
 import { ContainerDetail } from '../pages/china/ContainerDetail'
@@ -58,6 +59,7 @@ import { StaffProfile } from '../pages/staff/StaffProfile'
 // Platform-admin pages
 import { PlatformAuditLog } from '../pages/platform/PlatformAuditLog'
 import { CreateTenantPage } from '../pages/platform/CreateTenantPage'
+import { OnboardingRequests } from '../pages/platform/OnboardingRequests'
 import { PlatformSettings } from '../pages/platform/PlatformSettings'
 import { PlatformDashboard } from '../pages/platform/PlatformDashboard'
 import { PlatformTenantList } from '../pages/platform/PlatformTenantList'
@@ -106,6 +108,7 @@ const PUBLIC_SCREENS: Record<string, JSX.Element> = {
   '/login': <LoginScreen />,
   '/register': <RegisterScreen />,
   '/register/:slug': <RegisterScreen />,
+  '/get-started': <RequestOnboardingScreen />,
   '/invite/:token': <InviteClaimScreen />,
   '/forgot-password': <ForgotPasswordScreen />,
   '/reset-password': <ResetPasswordScreen />,
@@ -170,6 +173,7 @@ const STAFF_SCREENS: Record<string, JSX.Element> = {
   '/platform/settings/notifications': <PlatformSettings />,
   '/platform/settings/plans': <PlatformSettings />,
   '/platform/tenants': <PlatformTenantList />,
+  '/platform/onboarding-requests': <OnboardingRequests />,
   '/platform/tenants/new': <CreateTenantPage />,
   '/platform/tenants/:id': <PlatformTenantDetail />,
   // Release notes (already here, kept)

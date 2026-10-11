@@ -1280,3 +1280,68 @@ def upsert_notification_template(
         """,
         data,
     )
+
+
+# ---------------------------------------------------------------------------
+# Company onboarding requests (shipping-company leads) — PLATFORM scope, no RLS
+# ---------------------------------------------------------------------------
+
+
+def insert_onboarding_request(data: dict[str, Any]) -> dict[str, Any]:
+    """Insert a company onboarding lead. Returns the created row."""
+    row = execute_write_with_tenant(
+        PLATFORM_TENANT_ID,
+        """
+        INSERT INTO tenant_onboarding_request
+            (company_name, contact_name, contact_email, contact_phone,
+             origin_country, destination_country, monthly_volume, notes)
+        VALUES
+            (%(company_name)s, %(contact_name)s, %(contact_email)s, %(contact_phone)s,
+             %(origin_country)s, %(destination_country)s, %(monthly_volume)s, %(notes)s)
+        RETURNING *
+        """,
+        data,
+    )
+    if row is None:
+        raise RuntimeError("insert_onboarding_request returned no row")
+    return row
+
+
+def list_onboarding_requests(status: str | None = None) -> list[dict[str, Any]]:
+    """List onboarding leads, newest first; optionally filtered by status."""
+    if status:
+        return execute_with_tenant(
+            PLATFORM_TENANT_ID,
+            "SELECT * FROM tenant_onboarding_request WHERE status = %s ORDER BY created_at DESC",
+            (status,),
+        )
+    return execute_with_tenant(
+        PLATFORM_TENANT_ID,
+        "SELECT * FROM tenant_onboarding_request ORDER BY created_at DESC",
+        (),
+    )
+
+
+def get_onboarding_request(request_id: str) -> dict[str, Any] | None:
+    rows = execute_with_tenant(
+        PLATFORM_TENANT_ID,
+        "SELECT * FROM tenant_onboarding_request WHERE id = %s LIMIT 1",
+        (request_id,),
+    )
+    return rows[0] if rows else None
+
+
+def update_onboarding_request(request_id: str, fields: dict[str, Any]) -> dict[str, Any] | None:
+    """Patch an onboarding lead (status/review/link fields). Returns the updated
+    row, or None if the id doesn't exist (RETURNING → zero rows)."""
+    allowed = ("status", "rejection_reason", "reviewed_by", "reviewed_at", "tenant_id")
+    sets = [f"{col} = %({col})s" for col in allowed if col in fields]
+    if not sets:
+        return get_onboarding_request(request_id)
+    params = {col: fields[col] for col in allowed if col in fields}
+    params["id"] = request_id
+    return execute_write_with_tenant(
+        PLATFORM_TENANT_ID,
+        f"UPDATE tenant_onboarding_request SET {', '.join(sets)} WHERE id = %(id)s RETURNING *",
+        params,
+    )

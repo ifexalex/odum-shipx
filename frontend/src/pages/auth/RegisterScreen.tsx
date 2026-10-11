@@ -112,13 +112,26 @@ export function RegisterScreen(): JSX.Element {
 
   return (
     <AuthShell>
-      <FormHead title="Create your account" sub="Register to track your shipments and manage billing." />
+      <FormHead
+        title="Create your customer account"
+        sub="For customers of a shipping company — track your shipments and manage billing. Not onboarding a company?"
+      />
 
       {!slug && (
         <div style={{ marginBottom: 20 }}>
-          <Banner variant="warning" title="Missing shipping company">
-            This sign-up link doesn&apos;t identify a shipping company. Use the company-specific link your
-            shipping company gave you.
+          <Banner variant="warning" title="Which are you?">
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+              <span>
+                <strong>A customer</strong> of a shipping company? Use the company-specific sign-up link your
+                shipping company gave you, or wait for their invite.
+              </span>
+              <span>
+                <strong>A shipping company</strong> wanting to run your operations on ShipX?{' '}
+                <button type="button" className={styles.link} onClick={() => navigate('/get-started')}>
+                  Get started here →
+                </button>
+              </span>
+            </div>
           </Banner>
         </div>
       )}

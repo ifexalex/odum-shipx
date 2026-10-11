@@ -9,6 +9,15 @@ ENDPOINT="http://localhost:5100"
 REGION="${AWS_DEFAULT_REGION:-eu-west-1}"
 ACCOUNT="123456789012"   # Moto default account ID
 
+# This script talks only to Moto on localhost, but botocore still needs *some*
+# credentials to sign every request — without them every `aws` call fails with
+# NoCredentials. `make bootstrap` does not source .env.local (unlike `make dev`),
+# so provide Moto's dummy creds here. Any real value already in the env wins, so
+# this never overrides a developer's own setup. Moto accepts any credentials.
+export AWS_ACCESS_KEY_ID="${AWS_ACCESS_KEY_ID:-testing}"
+export AWS_SECRET_ACCESS_KEY="${AWS_SECRET_ACCESS_KEY:-testing}"
+export AWS_DEFAULT_REGION="${REGION}"
+
 echo "==> Waiting for Moto to be ready..."
 until curl -sf -X POST "${ENDPOINT}/moto-api/reset" > /dev/null 2>&1; do
   echo "    ... still waiting"

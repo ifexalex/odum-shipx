@@ -23,6 +23,7 @@ logger = logging.getLogger(__name__)
 ROUTES: list[tuple[str, str]] = [
     ("/v1/auth", "auth"),  # httpOnly-cookie session refresh — see services/auth/handler.py
     ("/v1/register", "tenant_management"),  # customer self-registration (public)
+    ("/v1/onboarding-requests", "tenant_management"),  # shipping-company onboarding lead (public)
     ("/v1/invites", "tenant_management"),  # customer account-creation invites (public claim + staff issue)
     # Webhooks split by provider — payment (Paystack/Flutterwave, HMAC-verified)
     # vs WhatsApp (Meta).
@@ -71,6 +72,7 @@ PUBLIC_ROUTES: frozenset[str] = frozenset(
         "POST /v1/webhooks/whatsapp",
         "POST /v1/register",
         "POST /v1/register/{slug}",
+        "POST /v1/onboarding-requests",
         "GET /v1/invites/{token}",
         "POST /v1/invites/{token}/accept",
         "POST /v1/auth/session",

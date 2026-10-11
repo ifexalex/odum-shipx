@@ -20,6 +20,7 @@ tests/
 │   ├── test_responses.py          # Response formatting
 │   ├── test_pagination.py         # Cursor encoding/decoding
 │   ├── test_tenant_management.py  # Service layer unit tests (incl. self-register FK fix, customer invites)
+│   ├── test_onboarding.py         # Shipping-company onboarding leads (public lead + platform queue + provision-links-lead)
 │   ├── test_cognito_client.py     # Moto-backed: Cognito group sync, create_user_with_password (invite claim)
 │   ├── test_phone.py              # shared/phone.py — E.164 normalisation, dial-code lookup, masking
 │   ├── test_invites.py            # shared/invites.py — token mint/hash, expiry/consumed validity checks

@@ -35,9 +35,11 @@ from shared.validation import parse_validated
 from . import impersonation, service
 from .models import (
     AcceptCustomerInviteRequest,
+    CreateOnboardingRequest,
     CreateTenantRequest,
     CreateTenantUserRequest,
     CustomerRegistrationRequest,
+    OnboardingRequestStatusUpdate,
     PaystackConfigRequest,
     SuspendTenantRequest,
     UpdateCbmRateRequest,
@@ -83,6 +85,10 @@ def lambda_handler(event: dict[str, Any], context: Any) -> dict[str, Any]:
     public_parts = path.strip("/").split("/")
     if method == "GET" and path.strip("/") == "v1/health":
         return _health_response(request_id)
+    # Company (shipping-company) onboarding lead — public, NOT customer sign-up:
+    # creates no account/tenant, just records a lead for a platform admin to provision.
+    if method == "POST" and path == "/v1/onboarding-requests":
+        return _handle_create_onboarding_request(event, request_id, ip_address)
     if method == "POST" and path == "/v1/register":
         return _handle_self_register(event, request_id, ip_address, slug=None)
     if method == "POST" and len(public_parts) == 3 and public_parts[:2] == ["v1", "register"]:
@@ -372,6 +378,27 @@ def _handle_accept_invite(
         )
 
 
+def _handle_create_onboarding_request(event: dict[str, Any], request_id: str, ip_address: str | None) -> dict[str, Any]:
+    """POST /v1/onboarding-requests — a shipping COMPANY requests onboarding (no JWT).
+
+    Records a lead only; no account or tenant is created (that's customer sign-up's
+    job, deliberately kept separate). A platform admin provisions it later.
+    """
+    try:
+        req = parse_validated(CreateOnboardingRequest, _parse_body(event))
+        result = service.create_onboarding_request(req, request_id=request_id, ip_address=ip_address)
+        return created(result, location=f"/v1/platform/onboarding-requests/{result['id']}", request_id=request_id)
+    except LogisticsBaseError as exc:
+        return error_response(exc, instance="/v1/onboarding-requests", request_id=request_id)
+    except Exception:
+        logger.exception("Unhandled error creating onboarding request")
+        return error_response(
+            LogisticsBaseError("Internal server error", "INTERNAL_ERROR", 500),
+            instance="/v1/onboarding-requests",
+            request_id=request_id,
+        )
+
+
 # ---------------------------------------------------------------------------
 # Platform admin routes  /v1/platform/...
 # ---------------------------------------------------------------------------
@@ -405,6 +432,18 @@ def _platform_routes(
             action=_qp(event, "action") or None,
         )
         return paginated(page, next_cursor, has_more, request_id=request_id)
+
+    # /v1/platform/onboarding-requests[/{id}] — shipping-company onboarding leads
+    if resource == "onboarding-requests":
+        req_id = parts[3] if len(parts) > 3 else None
+        if method == "GET" and req_id is None:
+            return success(service.list_onboarding_requests(status=_qp(event, "status") or None), request_id=request_id)
+        if method == "GET" and req_id:
+            return success(service.get_onboarding_request(req_id), request_id=request_id)
+        if method == "PATCH" and req_id:
+            status_req = parse_validated(OnboardingRequestStatusUpdate, _parse_body(event))
+            result = service.update_onboarding_request_status(req_id, status_req, actor_id=ctx.user_id, ip_address=ip_address)
+            return success(result, request_id=request_id)
 
     # GET /v1/platform/plans · PUT /v1/platform/plans/{tier}
     if resource == "plans":

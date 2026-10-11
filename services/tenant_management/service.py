@@ -34,9 +34,11 @@ from shared.webhook import test_fire_tenant_webhook
 from . import repository as repo
 from .models import (
     AcceptCustomerInviteRequest,
+    CreateOnboardingRequest,
     CreateTenantRequest,
     CreateTenantUserRequest,
     CustomerRegistrationRequest,
+    OnboardingRequestStatusUpdate,
     PaystackConfigRequest,
     UpdateDollarRateMarkupRequest,
     UpdateTenantConfigRequest,
@@ -300,7 +302,110 @@ def create_tenant(
     except Exception as exc:
         logger.warning("tenant_onboarded notification failed for tenant %s: %s", tenant_id, exc)
 
+    # When provisioned from a company onboarding lead: link the tenant back and
+    # close the lead. Best-effort — the tenant already exists; a bookkeeping
+    # failure here must not fail the create (the admin can re-mark it).
+    if req.onboarding_request_id:
+        try:
+            repo.update_onboarding_request(
+                req.onboarding_request_id,
+                {
+                    "status": "provisioned",
+                    "tenant_id": tenant_id,
+                    "reviewed_by": actor_id,
+                    "reviewed_at": datetime.now(UTC),
+                },
+            )
+        except Exception as exc:
+            logger.warning(
+                "Could not link onboarding request %s to tenant %s: %s",
+                req.onboarding_request_id,
+                tenant_id,
+                exc,
+            )
+
     return {"tenant": tenant, "admin_user": admin_user}
+
+
+# ---------------------------------------------------------------------------
+# Company onboarding (shipping-company leads — distinct from customer sign-up)
+# ---------------------------------------------------------------------------
+
+
+def create_onboarding_request(
+    req: CreateOnboardingRequest, request_id: str = "", ip_address: str | None = None
+) -> dict[str, Any]:
+    """Record a shipping-company onboarding lead (public). Creates NO account and
+    NO tenant — a platform admin reviews and provisions via create_tenant."""
+    row = repo.insert_onboarding_request(
+        {
+            "company_name": req.company_name,
+            "contact_name": req.contact_name,
+            "contact_email": req.contact_email,
+            "contact_phone": req.contact_phone,
+            "origin_country": req.origin_country,
+            "destination_country": req.destination_country,
+            "monthly_volume": req.monthly_volume,
+            "notes": req.notes,
+        }
+    )
+    # Notify platform ops (best-effort) — a lead, never a customer notification.
+    try:
+        publish_event(
+            source="logistics.tenant_management",
+            detail_type="OnboardingRequested",
+            tenant_id=PLATFORM_TENANT_ID,
+            payload={"request_id": str(row["id"]), "company_name": req.company_name},
+            request_id=request_id,
+        )
+    except Exception as exc:
+        logger.warning("OnboardingRequested event publish failed: %s", exc)
+    # Return only non-sensitive confirmation — the public caller gets an id + status.
+    return {"id": str(row["id"]), "status": row["status"]}
+
+
+def list_onboarding_requests(status: str | None = None) -> list[dict[str, Any]]:
+    return repo.list_onboarding_requests(status=status)
+
+
+def get_onboarding_request(request_id: str) -> dict[str, Any]:
+    row = repo.get_onboarding_request(request_id)
+    if not row:
+        raise ResourceNotFoundError("onboarding_request", request_id)
+    return row
+
+
+def update_onboarding_request_status(
+    request_id: str,
+    req: OnboardingRequestStatusUpdate,
+    actor_id: str,
+    ip_address: str | None = None,
+) -> dict[str, Any]:
+    """Platform-admin status transition (contacted/rejected/approved). Provisioning
+    to 'provisioned' happens via create_tenant, not here."""
+    existing = repo.get_onboarding_request(request_id)
+    if not existing:
+        raise ResourceNotFoundError("onboarding_request", request_id)
+    updated = repo.update_onboarding_request(
+        request_id,
+        {
+            "status": req.status.value,
+            "rejection_reason": req.rejection_reason,
+            "reviewed_by": actor_id,
+            "reviewed_at": datetime.now(UTC),
+        },
+    )
+    try:
+        repo.insert_platform_audit(
+            action="ONBOARDING_REQUEST_UPDATED",
+            actor_id=actor_id,
+            target_tenant_id=None,
+            details={"request_id": request_id, "status": req.status.value},
+            ip_address=ip_address,
+        )
+    except Exception as exc:
+        logger.warning("Platform audit insert failed: %s", exc)
+    return updated if updated else existing
 
 
 def list_tenants(limit: int = 50, cursor: dict[str, Any] | None = None) -> list[dict[str, Any]]:

@@ -626,6 +626,18 @@ bash scripts/bootstrap_local.sh
 set -a; source .env.local; set +a
 ```
 
+### `NoCredentials: Unable to locate credentials` during `make bootstrap`
+
+Fixed — `scripts/bootstrap_local.sh` now exports Moto's dummy credentials
+itself (any real `AWS_ACCESS_KEY_ID`/`AWS_SECRET_ACCESS_KEY` already in your
+env still wins). If you hit this on an older checkout: `make bootstrap` runs the
+script without sourcing `.env.local`, so botocore had no credentials to sign
+with. Note the earlier steps misreported this as `Already exists` — they pipe
+`2>/dev/null || echo "Already exists"`, which also swallows a `NoCredentials`
+failure; the Cognito step was just the first one to surface the real error. On
+an old checkout, either pull this fix or run `set -a; source .env.local; set +a`
+first (needs AWS vars present in `.env.local`).
+
 ### `psycopg2.OperationalError: database "logistics" does not exist`
 
 The `make stack` command creates the database automatically via `scripts/reset_db.py`. If you see this outside of `make stack`:

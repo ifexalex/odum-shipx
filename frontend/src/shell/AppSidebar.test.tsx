@@ -1,3 +1,4 @@
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { MemoryRouter } from 'react-router-dom'
@@ -36,12 +37,15 @@ function makeContextValue(overrides: Partial<SessionContextValue>): SessionConte
 }
 
 function renderAt(value: SessionContextValue, path: string) {
+  const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } })
   return render(
-    <SessionContext.Provider value={value}>
-      <MemoryRouter initialEntries={[path]}>
-        <AppSidebar />
-      </MemoryRouter>
-    </SessionContext.Provider>,
+    <QueryClientProvider client={queryClient}>
+      <SessionContext.Provider value={value}>
+        <MemoryRouter initialEntries={[path]}>
+          <AppSidebar />
+        </MemoryRouter>
+      </SessionContext.Provider>
+    </QueryClientProvider>,
   )
 }
 
@@ -56,6 +60,12 @@ describe('AppSidebar', () => {
     expect(screen.getByText('Dashboard')).toBeInTheDocument()
     expect(screen.getByText('Users')).toBeInTheDocument()
     expect(screen.getByText('Operations')).toBeInTheDocument()
+  })
+
+  it('shows the platform admin onboarding-requests nav entry', () => {
+    renderAt(makeContextValue({ session: makeSession('platform_admin'), status: 'authenticated' }), '/platform/dashboard')
+    expect(screen.getByText('Onboarding Requests')).toBeInTheDocument()
+    expect(screen.getByText('Tenants')).toBeInTheDocument()
   })
 
   it('calls logout when the logout button is clicked', async () => {

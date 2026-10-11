@@ -6,12 +6,21 @@
  * didn't match the backend contract (nested initial_admin) and 422'd.
  */
 import { useState, type JSX } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useLocation, useNavigate } from 'react-router-dom'
 import { ApiError } from '../../api/client'
-import { platformApi, type SubscriptionTier, type Tenant } from '../../api/tenantManagement'
+import { platformApi, type OnboardingRequest, type SubscriptionTier, type Tenant } from '../../api/tenantManagement'
 import { Banner, Button, Card, Field, Icon, Mono } from '../../design/components'
 import { PageHeader } from '../../shell/PageHeader'
 import { SectionHead } from '../../shell/SectionHead'
+
+/**
+ * When provisioning is launched from a company onboarding lead, OnboardingRequests
+ * navigates here with the lead in router state so the form arrives pre-filled and
+ * the resulting tenant is linked back to (and closes) that lead.
+ */
+interface ProvisionFromLead {
+  lead?: OnboardingRequest
+}
 
 const PLANS: { tier: SubscriptionTier; name: string; features: string[] }[] = [
   { tier: 'starter', name: 'Starter', features: ['10 staff users', '5 containers / month', '5 GB storage'] },
@@ -48,11 +57,12 @@ function PlanRadio({ name, features, selected, onSelect }: { name: string; featu
 
 export function CreateTenantPage(): JSX.Element {
   const navigate = useNavigate()
-  const [companyName, setCompanyName] = useState('')
-  const [contactEmail, setContactEmail] = useState('')
-  const [contactPhone, setContactPhone] = useState('')
-  const [adminName, setAdminName] = useState('')
-  const [adminEmail, setAdminEmail] = useState('')
+  const lead = (useLocation().state as ProvisionFromLead | null)?.lead
+  const [companyName, setCompanyName] = useState(lead?.company_name ?? '')
+  const [contactEmail, setContactEmail] = useState(lead?.contact_email ?? '')
+  const [contactPhone, setContactPhone] = useState(lead?.contact_phone ?? '')
+  const [adminName, setAdminName] = useState(lead?.contact_name ?? '')
+  const [adminEmail, setAdminEmail] = useState(lead?.contact_email ?? '')
   const [tier, setTier] = useState<SubscriptionTier>('starter')
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -75,6 +85,7 @@ export function CreateTenantPage(): JSX.Element {
         ...(contactPhone.trim() ? { primary_contact_phone: contactPhone } : {}),
         subscription_tier: tier,
         initial_admin: { email: adminEmail, full_name: adminName },
+        ...(lead ? { onboarding_request_id: lead.id } : {}),
       })
       setCreated(result.tenant)
     } catch (err) {
@@ -119,6 +130,15 @@ export function CreateTenantPage(): JSX.Element {
         title="Onboard a new tenant"
         subtitle="Creates the tenant, provisions the first admin in Cognito, and applies default configuration."
       />
+
+      {lead && (
+        <div style={{ marginBottom: 16 }}>
+          <Banner variant="info" title="Provisioning from an onboarding request">
+            Pre-filled from <strong>{lead.company_name}</strong>&apos;s request. Creating this tenant marks the
+            request as <strong>provisioned</strong>. Review the details and the admin&apos;s name before creating.
+          </Banner>
+        </div>
+      )}
 
       {error && <div style={{ marginBottom: 16 }}><Banner variant="error" title="Could not create tenant">{error}</Banner></div>}
 

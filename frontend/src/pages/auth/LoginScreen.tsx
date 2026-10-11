@@ -194,9 +194,15 @@ export function LoginScreen(): JSX.Element {
             <span className={styles.dividerLine} />
           </div>
           <p className={styles.footerLine}>
-            New customer?{' '}
+            Customer of a shipping company?{' '}
             <button type="button" className={styles.footerLinkStrong} onClick={() => navigate('/register')}>
-              Register here →
+              Create your account →
+            </button>
+          </p>
+          <p className={styles.footerLine} style={{ marginTop: 8 }}>
+            Are you a shipping company?{' '}
+            <button type="button" className={styles.footerLinkStrong} onClick={() => navigate('/get-started')}>
+              Onboard with ShipX →
             </button>
           </p>
         </div>
