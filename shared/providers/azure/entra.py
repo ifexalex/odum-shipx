@@ -41,6 +41,13 @@ class EntraIdentityProvider:
         # The verified/managed domain that user principal names are formed under
         # when the email's own domain is not a verified domain in the tenant.
         self._user_domain = os.environ.get("ENTRA_USER_DOMAIN", "")
+        # Directory extension attribute names that carry the ShipX tenant id +
+        # role (e.g. extension_<appId>_tenant_id). When set, provisioning stamps
+        # them so the token-claims custom extension (ADR-004) can emit them on
+        # CIAM, where app-manifest optional claims are not honoured. Unset → the
+        # stamp is skipped (workforce tenants emit the optional claims directly).
+        self._tenant_id_attr = os.environ.get("ENTRA_TENANT_ID_ATTR", "")
+        self._role_attr = os.environ.get("ENTRA_ROLE_ATTR", "")
         self._credential: Any = None
 
     # ------------------------------------------------------------------
@@ -124,8 +131,21 @@ class EntraIdentityProvider:
         sub = str(created["id"])
         # Reconcile the user's role group so the token carries {tenant_id}:{role}.
         self.sync_user_groups(upn, tenant_id, {role})
+        # Stamp the directory extension attributes the claims extension reads.
+        self._stamp_role_attributes(sub, tenant_id, role)
         logger.info("Entra user created: tenant_id=%s role=%s oid=%s", tenant_id, role, sub)
         return sub
+
+    def _stamp_role_attributes(self, user_id: str, tenant_id: str, role: str) -> None:
+        """Write the ShipX tenant id + role onto the user's directory extension
+        attributes (no-op unless both attr names are configured)."""
+        if not (self._tenant_id_attr and self._role_attr):
+            return
+        self._graph(
+            "PATCH",
+            f"/users/{urllib.parse.quote(user_id)}",
+            {self._tenant_id_attr: tenant_id, self._role_attr: role},
+        )
 
     def create_user(self, email: str, full_name: str, tenant_id: str, role: str) -> str:
         # No native invite email; create with a random password + forced change

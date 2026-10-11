@@ -173,3 +173,18 @@ output "migrate_job_name" {
   description = "Migration Container App Job name (`az containerapp job start`)."
   value       = module.container_app.migrate_job_name
 }
+
+output "entra_claims_function_name" {
+  description = "Entra claims-provider Function App name (CI zip-deploys services/entra_token_claims/ to it)."
+  value       = module.entra_claims_function.function_app_name
+}
+
+output "entra_claims_endpoint_url" {
+  description = "Register this URL as the Entra custom authentication extension target."
+  value       = module.entra_claims_function.endpoint_url
+}
+
+output "entra_claims_principal_id" {
+  description = "Claims Function managed-identity object id — grant it Graph User.Read.All (manual)."
+  value       = module.entra_claims_function.principal_id
+}

@@ -212,3 +212,28 @@ module "container_app" {
   api_min_replicas = var.api_min_replicas
   api_max_replicas = var.api_max_replicas
 }
+
+# ---------------------------------------------------------------------------
+# Entra custom authentication extension (OnTokenIssuanceStart) claims provider.
+# Injects tenant_id + role into Entra tokens at sign-in so all roles resolve on
+# CIAM (ADR-004 addendum). Deployed always; it denies callers until the Entra
+# side (app registration + extension binding + the claims config vars) is set up.
+# ---------------------------------------------------------------------------
+module "entra_claims_function" {
+  source = "./modules/entra_claims_function"
+
+  name_prefix         = local.name_prefix
+  resource_group_name = azurerm_resource_group.main.name
+  location            = var.location
+  common_tags         = local.common_tags
+
+  app_insights_connection_string = module.monitoring.app_insights_connection_string
+
+  caller_jwks_url  = var.entra_claims_caller_jwks_url
+  caller_audience  = var.entra_claims_caller_audience
+  caller_issuer    = var.entra_claims_caller_issuer
+  tenant_id_attr   = var.entra_tenant_id_attr
+  role_attr        = var.entra_role_attr
+  out_tenant_claim = var.entra_out_tenant_claim
+  out_role_claim   = var.entra_out_role_claim
+}

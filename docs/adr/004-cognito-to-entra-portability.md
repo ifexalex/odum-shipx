@@ -98,6 +98,17 @@ third, which is exactly what enables the dual-run cutover below.
 > present — so a CIAM token carrying only the group GUID resolves fully with just
 > `ENTRA_PLATFORM_ADMIN_GROUP_ID` set. Tenant-scoped users still require an explicit tenant claim
 > (their tenant id is not derivable).
+>
+> **Full-roles fix on CIAM — custom authentication extension.** Because tenant users' `tenant_id`
+> can't be derived, CIAM needs a **custom claims provider** (OnTokenIssuanceStart) to inject
+> `tenant_id` + `role` into every token. Implemented as a standalone Azure Function
+> (`services/entra_token_claims/`, Terraformed by `infrastructure/azure/modules/entra_claims_function`)
+> that reads the user's `extension_<appId>_tenant_id` / `_role` off the directory via Graph (managed
+> identity) and returns them as claims; `EntraIdentityProvider` stamps those extension attributes on
+> every user it provisions (`ENTRA_TENANT_ID_ATTR` / `ENTRA_ROLE_ATTR`). The managed-identity Graph
+> grant and the extension↔app binding are one-time manual Graph steps (no azurerm/azuread resource),
+> documented in `infrastructure/azure/README.md`. With it live, the `EntraClaimsMapper` synthesize
+> path resolves all roles on CIAM.
 
 ### C. Unaffected
 The **impersonation token** is ShipX's own HS256 JWT (already provider-agnostic via
