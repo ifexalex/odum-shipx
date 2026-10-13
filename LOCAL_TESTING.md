@@ -125,7 +125,16 @@ or activate the venv: `source .venv/bin/activate`.
 
 ### 3.4 Create your local env file
 
-`.env.local` is already in the repo and pre-configured for the local stack. Load it into your shell:
+`.env.local` is **gitignored** (it once held live Cognito IDs — commit 6c0f955), so a fresh
+checkout has none. Create it from the tracked, non-secret template:
+
+```bash
+cp .env.local.sample .env.local
+```
+
+`make dev`, `make bootstrap`, and `make stack` also create it from the sample automatically if it's
+missing, and `scripts/bootstrap_local.sh` rewrites the `COGNITO_*` / `SQS_*` values in it each run.
+Load it into your shell for ad-hoc commands:
 
 ```bash
 set -a; source .env.local; set +a

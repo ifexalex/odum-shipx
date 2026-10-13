@@ -155,6 +155,9 @@ jobs:
           # so `python3 scripts/...` and `bash scripts/*.sh` use it unchanged.
           echo "$GITHUB_WORKSPACE/.venv/bin" >> "$GITHUB_PATH"
 
+      - name: Provision .env.local (gitignored — from the tracked sample)
+        run: cp .env.local.sample .env.local
+
       - name: Start local stack (Postgres + Moto + Redis)
         run: make up
 
