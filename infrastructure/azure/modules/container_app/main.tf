@@ -40,6 +40,10 @@ locals {
     OIDC_JWKS_URL     = var.oidc_jwks_url
     OIDC_AUDIENCE     = var.oidc_audience
     ENTRA_USER_DOMAIN = var.entra_user_domain
+    # Maps the platform_admin group's object id → the platform_admin role (and
+    # any other GUID→name entries), so EntraClaimsMapper resolves roles on CIAM.
+    ENTRA_PLATFORM_ADMIN_GROUP_ID = var.entra_platform_admin_group_id
+    ENTRA_GROUP_ID_MAP            = var.entra_group_id_map
     # Backend httpOnly-cookie session refresh when AUTH_PROVIDER=azure (services/auth/entra_refresh.py).
     ENTRA_TOKEN_ENDPOINT = var.entra_token_endpoint
     ENTRA_CLIENT_ID      = var.entra_client_id

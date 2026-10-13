@@ -74,6 +74,18 @@ variable "entra_user_domain" {
   default     = ""
 }
 
+variable "entra_platform_admin_group_id" {
+  description = "Entra platform_admin group object id — the backend maps it to the platform_admin role (ADR-004). Empty until set up."
+  type        = string
+  default     = ""
+}
+
+variable "entra_group_id_map" {
+  description = "Optional JSON {guid: canonical role-group name} for extra Entra group-id → role mappings."
+  type        = string
+  default     = ""
+}
+
 variable "auth_provider" {
   description = "Identity authority: 'azure' (Entra) or 'aws' (Cognito bridge — the Azure API validates Cognito JWTs). Defaults to azure."
   type        = string

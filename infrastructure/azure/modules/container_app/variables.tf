@@ -122,6 +122,18 @@ variable "oidc_audience" {
   default     = ""
 }
 
+variable "entra_platform_admin_group_id" {
+  description = "Entra platform_admin group object id → mapped to the platform_admin role by the backend."
+  type        = string
+  default     = ""
+}
+
+variable "entra_group_id_map" {
+  description = "Optional JSON {guid: canonical role-group name} for additional group-id → role mappings."
+  type        = string
+  default     = ""
+}
+
 variable "entra_user_domain" {
   description = "Entra verified/managed domain for UPNs (EntraIdentityProvider). Empty until Entra is set up."
   type        = string
