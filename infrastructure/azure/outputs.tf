@@ -18,6 +18,23 @@ output "frontend_frontdoor_endpoint" {
   value       = one(module.frontend[*].frontdoor_endpoint_name)
 }
 
+# Entra SPA values for the frontend build (public identifiers, not secrets) — so
+# the Azure frontend deploy reads them from Terraform instead of extra secrets.
+output "frontend_auth_provider" {
+  description = "Auth provider the SPA should build with (entra when auth_provider=azure)."
+  value       = var.auth_provider == "azure" ? "entra" : "cognito"
+}
+
+output "entra_client_id" {
+  description = "Entra SPA app (client) id — VITE_ENTRA_CLIENT_ID."
+  value       = var.entra_client_id
+}
+
+output "entra_token_endpoint" {
+  description = "Entra OAuth2 token endpoint — VITE_ENTRA_TOKEN_ENDPOINT."
+  value       = var.entra_token_endpoint
+}
+
 output "resource_group" {
   description = "Resource group holding the Azure stack."
   value       = azurerm_resource_group.main.name

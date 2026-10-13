@@ -909,6 +909,14 @@ AZURE_SUBSCRIPTION_ID  → <your subscription id>
 `AZURE_FRONTEND_*`, `AZURE_RESOURCE_GROUP` secrets from `terraform -chdir=infrastructure/azure
 output`.)
 
+**Frontend auth provider (dual-cloud).** The SPA supports both identity backends via one build flag
+(`VITE_AUTH_PROVIDER` → `frontend/src/auth/authClient.ts` picks `EntraClient` or `CognitoClient`).
+`frontend-deploy.yml` resolves it automatically so it can't drift: on **Azure** it reads
+`frontend_auth_provider` (= `entra`), `entra_client_id`, and `entra_token_endpoint` from Terraform
+outputs (public ids, so no `VITE_ENTRA_*` secrets); on **AWS** it falls back to the optional
+`VITE_AUTH_PROVIDER`/`VITE_ENTRA_*` secrets and defaults to `cognito` (with the `VITE_COGNITO_*`
+secrets). Same `dist/` either way.
+
 `workflow_dispatch` on **Actions → "Terraform (Azure)"** applies a chosen env on demand; a push
 to `main` touching the Azure infra runs the full dev→staging→prod chain.
 
