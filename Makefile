@@ -16,12 +16,19 @@ up:
 down:
 	docker compose -f docker-compose.local.yml down
 
+# Create .env.local from the tracked sample on first use. .env.local is
+# gitignored (it once held live Cognito IDs — commit 6c0f955), so a fresh
+# checkout has none; this file rule provisions it. Edit .env.local freely
+# afterwards — the rule only runs when the file is absent.
+.env.local:
+	@cp .env.local.sample .env.local && echo "Created .env.local from .env.local.sample"
+
 # Create SQS queues, EventBridge bus, S3 bucket in Moto
-bootstrap:
+bootstrap: .env.local
 	bash scripts/bootstrap_local.sh
 
 # Start the local Flask API server (loads .env.local automatically)
-dev:
+dev: .env.local
 	@lsof -ti :3000 | xargs kill -9 2>/dev/null || true
 	set -a; source .env.local; set +a; PYTHONPATH=. python3 scripts/local_server.py
 
