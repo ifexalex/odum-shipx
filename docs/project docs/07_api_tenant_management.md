@@ -656,12 +656,13 @@ and `AdminCustomerDetail.tsx`, backed by a new `pending_invite_expires_at` corre
 
 A separate, minimal Lambda service (not part of `tenant_management`) handling the httpOnly-cookie refresh-token flow that lets a page reload silently restore a session instead of forcing re-login. See [frontend/04_auth_and_session.md](frontend/04_auth_and_session.md) ("Token Refresh") and [frontend/11_security_and_compliance.md](frontend/11_security_and_compliance.md) ("Token Storage") for the full frontend-side flow and threat model.
 
-All three routes are public (`authorization_type = "NONE"`) — by definition, they run before any JWT exists or while one is being renewed:
+All four routes are public (`authorization_type = "NONE"`) — by definition, they run before any JWT exists or while one is being renewed:
 
 | Method | Path | Purpose |
 |---|---|---|
-| POST | `/v1/auth/session` | Persists a just-issued Cognito refresh token as a `Secure; HttpOnly; SameSite=Strict` cookie (`Path=/v1/auth`). Called once, immediately after a successful client-side Cognito login. |
-| POST | `/v1/auth/refresh` | Reads the cookie (attached automatically by the browser), exchanges it via Cognito's `InitiateAuth`/`REFRESH_TOKEN_AUTH` flow, returns a fresh `id_token` in the response body. Called on every app boot and on the API client's 401-recovery path. |
+| POST | `/v1/auth/login` | **Entra only** (ROPC login proxy, added 2026-10-14). Takes `{username, password}`, runs the OAuth2 password grant against Entra server-side (`entra_refresh.password_grant`), returns `{id_token, access_token, refresh_token, expires_in}`. Exists because Entra's token endpoint sends **no CORS header for the password grant**, so the SPA can't call it directly. Normalizes the submitted email to the account's managed-domain UPN via `ENTRA_USER_DOMAIN` so users log in with their real email. On Cognito this route **404s** (that SPA signs in client-side). |
+| POST | `/v1/auth/session` | Persists a just-issued refresh token as a `Secure; HttpOnly; SameSite=Strict` cookie (`Path=/v1/auth`). Called once, immediately after a successful login (client-side on Cognito; from the `/v1/auth/login` response on Entra). |
+| POST | `/v1/auth/refresh` | Reads the cookie (attached automatically by the browser), exchanges it (Cognito `REFRESH_TOKEN_AUTH` / Entra OAuth2 refresh-token grant, selected by `AUTH_PROVIDER`), returns a fresh `id_token` in the response body. Called on every app boot and on the API client's 401-recovery path. |
 | POST | `/v1/auth/logout` | Revokes the refresh token server-side (`RevokeToken` — invalidates it and every access/ID token issued from it) and clears the cookie. |
 
 Deliberately a separate, narrower Lambda from `tenant_management`: its IAM policy grants only `cognito-idp:InitiateAuth` and `cognito-idp:RevokeToken` on the user pool — the non-admin, non-destructive Cognito APIs. It cannot create, disable, delete, or read users (that stays scoped to `tenant_management`'s broader `cognito_admin` policy). It's also the one Lambda in this service tier not attached to the VPC — it never queries Aurora, so skipping the ENI attach avoids that cold-start cost on a path that sits on the critical render path of every page load.

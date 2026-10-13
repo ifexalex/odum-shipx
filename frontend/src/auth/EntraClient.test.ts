@@ -1,66 +1,46 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { refreshSession, signIn, signOut } from './EntraClient'
+import { refreshSession, signIn } from './EntraClient'
 
-describe('EntraClient (ROPC)', () => {
+describe('EntraClient (backend ROPC proxy)', () => {
   beforeEach(() => {
-    vi.stubEnv('VITE_ENTRA_TOKEN_ENDPOINT', 'https://t.ciamlogin.com/t.onmicrosoft.com/oauth2/v2.0/token')
-    vi.stubEnv('VITE_ENTRA_CLIENT_ID', 'client-123')
-    vi.stubEnv('VITE_ENTRA_SCOPE', 'openid profile offline_access')
+    vi.stubEnv('VITE_API_BASE_URL', 'https://api.example.test')
   })
 
   afterEach(() => {
     vi.unstubAllEnvs()
     vi.restoreAllMocks()
-    signOut()
   })
 
-  function mockTokenResponse(body: Record<string, unknown>, ok = true): void {
+  function mockResponse(body: Record<string, unknown>, ok = true, status = 200): void {
     vi.stubGlobal(
       'fetch',
-      vi.fn().mockResolvedValue({
-        ok,
-        json: () => Promise.resolve(body),
-      }),
+      vi.fn().mockResolvedValue({ ok, status, json: () => Promise.resolve(body) }),
     )
   }
 
-  it('signIn posts the ROPC password grant and maps the tokens', async () => {
-    mockTokenResponse({ id_token: 'id.jwt', access_token: 'acc', refresh_token: 'ref' })
+  it('signIn posts credentials to the backend /v1/auth/login and maps the envelope', async () => {
+    mockResponse({ data: { id_token: 'id.jwt', access_token: 'acc', refresh_token: 'ref' } })
 
     const tokens = await signIn('user@x.com', 'pw')
 
     expect(tokens).toEqual({ idToken: 'id.jwt', accessToken: 'acc', refreshToken: 'ref' })
     const fetchMock = globalThis.fetch as unknown as ReturnType<typeof vi.fn>
     const call = fetchMock.mock.calls[0]!
-    const url = call[0] as string
-    const init = call[1] as { body: string }
-    expect(url).toContain('/oauth2/v2.0/token')
-    const sent = new URLSearchParams(init.body)
-    expect(sent.get('grant_type')).toBe('password')
-    expect(sent.get('username')).toBe('user@x.com')
-    expect(sent.get('password')).toBe('pw')
-    expect(sent.get('client_id')).toBe('client-123')
+    expect(call[0] as string).toBe('https://api.example.test/v1/auth/login')
+    const init = call[1] as { body: string; method: string }
+    expect(init.method).toBe('POST')
+    expect(JSON.parse(init.body)).toEqual({ username: 'user@x.com', password: 'pw' })
   })
 
-  it('refreshSession uses the refresh_token grant', async () => {
-    mockTokenResponse({ id_token: 'id2', access_token: 'acc2', refresh_token: 'ref2' })
-
-    const tokens = await refreshSession('old-refresh')
-
-    expect(tokens.idToken).toBe('id2')
-    const fetchMock = globalThis.fetch as unknown as ReturnType<typeof vi.fn>
-    const init = fetchMock.mock.calls[0]![1] as { body: string }
-    const sent = new URLSearchParams(init.body)
-    expect(sent.get('grant_type')).toBe('refresh_token')
-    expect(sent.get('refresh_token')).toBe('old-refresh')
-  })
-
-  it('surfaces the Entra error code as the Error name', async () => {
-    mockTokenResponse({ error: 'invalid_grant', error_description: 'bad creds' }, false)
+  it('maps a 401 from the proxy to a credentials message', async () => {
+    mockResponse({ detail: 'Authentication required', error_code: 'AUTHENTICATION_REQUIRED' }, false, 401)
 
     await expect(signIn('user@x.com', 'wrong')).rejects.toMatchObject({
-      name: 'invalid_grant',
-      message: 'bad creds',
+      message: 'Check your email and password and try again.',
     })
+  })
+
+  it('refreshSession rejects — refresh is server-side via the session cookie', async () => {
+    await expect(refreshSession()).rejects.toThrow(/server-side/i)
   })
 })
