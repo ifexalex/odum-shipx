@@ -223,25 +223,35 @@ and build the SPA with `VITE_API_BASE_URL=<azure api_url>` + the **existing** `V
 full app runs on Azure with auth federated to Cognito (the ADR-004 dual-run posture) — no Entra
 tenant, no frontend rewrite.
 
-**Path B — native Entra (no AWS dependency).** The SPA now has an Entra login path
-(`frontend/src/auth/EntraClient.ts`, selected by `VITE_AUTH_PROVIDER=entra`) using the OAuth2
-ROPC grant, so the existing email/password login works against Entra for **local accounts** — no
-redirect-UX rewrite. Set up the Entra tenant (below), point the API's `OIDC_*` at Entra, build the
-SPA with the `VITE_ENTRA_*` vars, and migrate users. Backend auth is already native
-(`auth_provider="azure"` default → Entra verify + claims mapper). Frontend build env for Azure:
+**Path B — native Entra (no AWS dependency).** The SPA has an Entra login path
+(`frontend/src/auth/EntraClient.ts`, selected by `VITE_AUTH_PROVIDER=entra`) using the OAuth2 ROPC
+grant, so the existing email/password login works against Entra for **local accounts** — no
+redirect-UX rewrite. Set up the Entra tenant (below), point the API's `OIDC_*` at Entra, and migrate
+users. Backend auth is already native (`auth_provider="azure"` default → Entra verify + claims
+mapper). Frontend build env for Azure:
 
 ```
-VITE_AUTH_PROVIDER       = entra
-VITE_API_BASE_URL        = <azure api_url>
-VITE_ENTRA_TOKEN_ENDPOINT= https://<tenant>.ciamlogin.com/<tenant>.onmicrosoft.com/oauth2/v2.0/token
-VITE_ENTRA_CLIENT_ID     = <SPA app registration client id>
-VITE_ENTRA_SCOPE         = openid profile offline_access            # optional
+VITE_AUTH_PROVIDER = entra
+VITE_API_BASE_URL  = <azure api_url>
 ```
+
+> **Login is proxied through the backend (don't send ROPC from the browser).** Entra's token
+> endpoint returns **no CORS header for the password grant**, so a browser `fetch` to it is blocked
+> (`No 'Access-Control-Allow-Origin'`). `EntraClient.signIn` therefore calls `POST /v1/auth/login`,
+> which runs the ROPC exchange server-side. The `VITE_ENTRA_*` build vars are **no longer needed on
+> the frontend** — the backend container holds `ENTRA_TOKEN_ENDPOINT`/`ENTRA_CLIENT_ID`/`ENTRA_SCOPE`
+> (set via the `entra_token_endpoint`/`entra_client_id`/`entra_scope` tfvars). If you deployed an
+> older build and login fails with that CORS error, redeploy the SPA from this revision.
+
+> **Users log in with their email**, not the managed-domain UPN. The backend maps
+> `alex@gmail.com` → `alex_gmail.com@<tenant>.onmicrosoft.com` (`email_to_upn` + `ENTRA_USER_DOMAIN`,
+> the `entra_user_domain` tfvar) before the ROPC call. Set `entra_user_domain` to your tenant's
+> initial domain (e.g. `ifexalexoutlook.onmicrosoft.com`); if it's unset, users must type the full
+> UPN (no breakage, just no email convenience). Idempotent — a full UPN still works.
 
 Reload-persistence works on Entra too: the backend httpOnly-cookie refresh (`services/auth`) is
 provider-aware — `AUTH_PROVIDER=azure` exchanges the cookie via `entra_refresh.py` (OAuth2
-refresh-token grant), so a page reload silently restores the session exactly as on Cognito. Set
-the backend `entra_token_endpoint` + `entra_client_id` (tfvars) so it can do the exchange.
+refresh-token grant), so a page reload silently restores the session exactly as on Cognito.
 
 Caveat (validate against your tenant): ROPC covers local accounts only (no social/MFA — swap to
 an MSAL redirect flow behind the same `authClient` seam if those are needed).

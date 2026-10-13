@@ -20,7 +20,7 @@ from typing import Any, TypedDict
 import boto3
 from botocore.exceptions import ClientError
 
-from shared.exceptions import AuthenticationRequiredError, ExternalServiceError
+from shared.exceptions import AuthenticationRequiredError, ExternalServiceError, LogisticsBaseError
 
 logger = logging.getLogger(__name__)
 
@@ -29,6 +29,20 @@ class RefreshResult(TypedDict):
     id_token: str
     access_token: str
     expires_in: int
+
+
+def password_grant(username: str, password: str) -> dict[str, Any]:
+    """Not supported on Cognito — the SPA signs in client-side via amazon-cognito-identity-js.
+
+    The server-side password proxy exists only for Entra (whose token endpoint
+    blocks the browser with CORS). Keeping this symmetric member means the
+    handler can resolve the provider module uniformly without branching.
+    """
+    raise LogisticsBaseError(
+        "Password login is handled client-side on Cognito, not via this endpoint.",
+        "NOT_SUPPORTED",
+        404,
+    )
 
 
 # boto3.client() has no stub-derived type without boto3-stubs (not a project

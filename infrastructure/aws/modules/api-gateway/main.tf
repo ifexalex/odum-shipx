@@ -306,6 +306,7 @@ locals {
     "POST /v1/register/{slug}"          = "tenant_management"    # customer self-registration, tenant-scoped by slug
     "GET /v1/invites/{token}"           = "tenant_management"    # account-creation invite claim-page preview
     "POST /v1/invites/{token}/accept"   = "tenant_management"    # account-creation invite claim
+    "POST /v1/auth/login"               = "auth"                 # Entra ROPC login proxy (CORS-blocked direct from SPA)
     "POST /v1/auth/session"             = "auth"                 # persist refresh token as httpOnly cookie
     "POST /v1/auth/refresh"             = "auth"                 # silent session restore on page load
     "POST /v1/auth/logout"              = "auth"                 # revoke + clear cookie

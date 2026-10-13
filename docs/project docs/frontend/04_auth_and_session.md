@@ -184,21 +184,36 @@ The auth layer is no longer hard-wired to Cognito. The app's auth entry points i
 - **`CognitoClient.ts`** — unchanged (SRP sign-in, new-password + forgot-password challenges).
 - **`EntraClient.ts`** (new) — Microsoft Entra (External ID) via the OAuth2 **ROPC** grant, so the
   existing email/password `LoginScreen` works unchanged against Entra for **local accounts** (no
-  redirect UX). Same `signIn/refreshSession/signOut` surface + `{idToken,accessToken,refreshToken}`
-  shape as Cognito. Password-reset flows are Entra-hosted (the in-app challenge functions reject).
-  Config: `VITE_ENTRA_TOKEN_ENDPOINT`, `VITE_ENTRA_CLIENT_ID`, `VITE_ENTRA_SCOPE`.
+  redirect UX). Same `signIn/signOut` surface + `{idToken,accessToken,refreshToken}` shape as Cognito.
+  Password-reset flows are Entra-hosted (the in-app challenge functions reject).
+  - **Login is proxied through the backend, not sent to Entra from the browser (2026-10-14 fix).**
+    Entra's token endpoint returns **no `Access-Control-Allow-Origin` header for the ROPC password
+    grant**, so a browser `fetch` to `…ciamlogin.com/…/oauth2/v2.0/token` is CORS-blocked. `signIn`
+    therefore `POST`s `{username,password}` to the backend `POST /v1/auth/login`
+    (`services/auth/handler.py` → `entra_refresh.password_grant`), which runs the exchange
+    server-side and returns the tokens. The SPA needs only `VITE_AUTH_PROVIDER=entra` +
+    `VITE_API_BASE_URL`; `VITE_ENTRA_*` are **no longer required on the frontend** (the backend holds
+    `ENTRA_TOKEN_ENDPOINT`/`ENTRA_CLIENT_ID`/`ENTRA_SCOPE`). `refreshSession` rejects — refresh is
+    server-side via the cookie flow below, so this module is never on the refresh path.
+  - **Email as the login name.** Users sign in with their real email (e.g. `alex@gmail.com`); the
+    backend maps it to the account's managed-domain UPN (`alex_gmail.com@<tenant>.onmicrosoft.com`)
+    via `email_to_upn` + `ENTRA_USER_DOMAIN` before the ROPC call (idempotent — a full UPN passes
+    through unchanged), so the ugly UPN never has to be typed.
 - **`jwt.ts`** — `buildSession` now reads both claim shapes (Cognito `sub`/`custom:tenant_id`/
   `cognito:groups`/`custom:role` and Entra `oid`/`tenant_id`/`groups`/`role`) via fallbacks, so the
   same `{tenant_id}:{role}` role interpretation works for either issuer. Backward-compatible.
 
 The backend is native per cloud end-to-end: `AUTH_PROVIDER` selects the authorizer verify + claims
-mapper **and** the httpOnly-cookie session refresh (`services/auth/handler.py` → `cognito_refresh`
-on AWS / `entra_refresh` on Azure, via the OAuth2 refresh-token grant). So **reload-persistence
-works on Entra too** — a page reload silently restores the session exactly as on Cognito (the
-backend needs `ENTRA_TOKEN_ENDPOINT` + `ENTRA_CLIENT_ID` env to do the exchange). Remaining caveat:
-ROPC covers local accounts only (no social/MFA) — swap `EntraClient` for an MSAL redirect flow
-behind the same `authClient` seam if those are needed. Validate against a real Entra tenant.
+mapper **and** the httpOnly-cookie session flow (`services/auth/handler.py` → `cognito_refresh`
+on AWS / `entra_refresh` on Azure). On Entra the backend now owns **both** halves of the OAuth2
+exchange: `POST /v1/auth/login` (ROPC password grant) and `POST /v1/auth/refresh` (refresh-token
+grant). So **reload-persistence works on Entra too** — a page reload silently restores the session
+exactly as on Cognito (backend env: `ENTRA_TOKEN_ENDPOINT` + `ENTRA_CLIENT_ID`, plus
+`ENTRA_USER_DOMAIN` for email→UPN login). Remaining caveat: ROPC covers local accounts only (no
+social/MFA) — swap `EntraClient` for an MSAL redirect flow behind the same `authClient` seam if
+those are needed. Validate against a real Entra tenant.
 
-**Tests:** `EntraClient.test.ts` (ROPC password/refresh grants + error mapping, mocked fetch),
-`jwt.test.ts` (Entra claim shape → Session), `SessionProvider.test.tsx` re-pointed to mock
-`authClient`. 100 auth-suite tests green; `npm run typecheck` clean.
+**Tests:** `EntraClient.test.ts` (backend-proxy login + credentials-error mapping, mocked fetch),
+`test_entra_refresh.py` (`password_grant` token mapping, email→UPN translation, invalid_grant, and
+the `POST /v1/auth/login` route — Entra 200 / Cognito 404), `jwt.test.ts` (Entra claim shape →
+Session). Auth suite green; `npm run typecheck` clean.
