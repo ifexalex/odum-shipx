@@ -2,82 +2,79 @@
 // CognitoClient, exposing the same signIn/refreshSession/signOut surface so the
 // app's auth layer is cloud-agnostic (selected in authClient.ts).
 //
-// Uses the OAuth2 Resource Owner Password Credentials (ROPC) grant so the
-// existing email/password LoginScreen works unchanged — no redirect UX. ROPC is
-// valid for Entra External ID LOCAL accounts (the ones the Cognito→Entra
-// migration provisions); it does not support social/federated logins or MFA. If
-// those are needed later, swap this for an MSAL redirect flow behind the same
-// authClient seam.
-//
-// Config (build-time env):
-//   VITE_ENTRA_TOKEN_ENDPOINT — full OAuth2 token endpoint, e.g.
-//     https://<tenant>.ciamlogin.com/<tenant>.onmicrosoft.com/oauth2/v2.0/token
-//   VITE_ENTRA_CLIENT_ID      — the SPA app registration (public) client id
-//   VITE_ENTRA_SCOPE          — space-separated scopes (default below)
+// Login goes through the BACKEND, not Entra directly. Entra's token endpoint
+// sends no Access-Control-Allow-Origin header for the ROPC password grant, so a
+// browser fetch to it is CORS-blocked. `services/auth/handler.py` (POST
+// /v1/auth/login) runs that exchange server-side and returns the tokens, so the
+// existing email/password LoginScreen works unchanged — no redirect UX, no CORS.
+// (Token refresh is likewise server-side via the httpOnly-cookie flow in
+// sessionApi.ts → POST /v1/auth/refresh, so this module's refreshSession is not
+// part of the live path.) ROPC is valid only for Entra local accounts without
+// MFA; for social/federated/MFA, swap in an MSAL redirect flow behind this seam.
 
 import type { CognitoTokens } from './CognitoClient'
 
-const DEFAULT_SCOPE = 'openid profile offline_access'
-
-function readEnv(name: string): string {
-  const value = import.meta.env[name]
-  if (!value) throw new Error(`Missing required env var: ${name}`)
+function apiBaseUrl(): string {
+  const value = import.meta.env.VITE_API_BASE_URL as string | undefined
+  if (!value) throw new Error('Missing required env var: VITE_API_BASE_URL')
   return value
 }
 
-interface EntraTokenResponse {
-  id_token?: string
-  access_token?: string
-  refresh_token?: string
-  error?: string
-  error_description?: string
+interface LoginEnvelope {
+  data?: { id_token?: string; access_token?: string; refresh_token?: string }
+  detail?: string
+  title?: string
+  error_code?: string
 }
 
-// Entra returns the current refresh token on ROPC; kept in memory only (never
-// persisted), mirroring CognitoClient's posture — see 11_security_and_compliance.md.
-let currentRefreshToken: string | null = null
-
-async function requestToken(body: Record<string, string>): Promise<CognitoTokens> {
-  const endpoint = readEnv('VITE_ENTRA_TOKEN_ENDPOINT')
-  const clientId = readEnv('VITE_ENTRA_CLIENT_ID')
-  const scope = import.meta.env.VITE_ENTRA_SCOPE || DEFAULT_SCOPE
-
-  const form = new URLSearchParams({ client_id: clientId, scope, ...body })
-  const resp = await fetch(endpoint, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-    body: form.toString(),
-  })
-  const data = (await resp.json()) as EntraTokenResponse
-  if (!resp.ok || !data.id_token) {
-    // Surface Entra's error code as the Error name so LoginScreen can message it.
-    const err = new Error(data.error_description || data.error || 'Entra authentication failed')
-    err.name = data.error || 'EntraAuthError'
+// Authenticates via the backend ROPC proxy — the browser never calls Entra and
+// the API never persists the password (parity with CognitoClient.signIn, which
+// talks to Cognito's own CORS-enabled endpoint client-side).
+export async function signIn(email: string, password: string): Promise<CognitoTokens> {
+  let resp: Response
+  try {
+    resp = await fetch(new URL('/v1/auth/login', apiBaseUrl()).toString(), {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ username: email, password }),
+    })
+  } catch {
+    const err = new Error('Could not reach the server. Check your connection and try again.')
+    err.name = 'NetworkError'
     throw err
   }
-  currentRefreshToken = data.refresh_token ?? null
+
+  const body = (await resp.json().catch(() => ({}))) as LoginEnvelope
+  if (!resp.ok || !body.data?.id_token) {
+    // 400/401 from the proxy means Entra rejected the credentials (invalid_grant)
+    // — surface a credentials message; anything else is a server/config fault.
+    const credsProblem = resp.status === 400 || resp.status === 401
+    const err = new Error(
+      credsProblem
+        ? 'Check your email and password and try again.'
+        : body.detail || body.title || 'Sign-in failed. Please try again.',
+    )
+    err.name = body.error_code || 'EntraAuthError'
+    throw err
+  }
+
   return {
-    idToken: data.id_token,
-    accessToken: data.access_token ?? data.id_token,
-    refreshToken: data.refresh_token ?? '',
+    idToken: body.data.id_token,
+    accessToken: body.data.access_token ?? body.data.id_token,
+    refreshToken: body.data.refresh_token ?? '',
   }
 }
 
-// Authenticates directly against Entra — the backend API never sees a password
-// (parity with CognitoClient.signIn).
-export function signIn(email: string, password: string): Promise<CognitoTokens> {
-  return requestToken({ grant_type: 'password', username: email, password })
-}
-
-// Silent refresh via the OAuth2 refresh_token grant.
-export function refreshSession(refreshToken: string): Promise<CognitoTokens> {
-  const token = refreshToken || currentRefreshToken
-  if (!token) return Promise.reject(new Error('No Entra refresh token available — sign in first'))
-  return requestToken({ grant_type: 'refresh_token', refresh_token: token })
+// Refresh runs server-side off the httpOnly cookie (sessionApi.silentRefresh →
+// POST /v1/auth/refresh); nothing in the app calls this. Kept only to satisfy
+// the shared authClient surface, and rejects clearly if ever invoked.
+export function refreshSession(): Promise<CognitoTokens> {
+  return Promise.reject(new Error('Entra refresh is handled server-side via the session cookie'))
 }
 
 export function signOut(): void {
-  currentRefreshToken = null
+  // No client-side Entra state to clear — the httpOnly cookie is revoked/cleared
+  // by POST /v1/auth/logout (sessionApi.revokeServerSession).
 }
 
 // --- Flows Entra services through its own hosted experience, not in-app ---

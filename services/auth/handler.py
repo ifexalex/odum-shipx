@@ -40,7 +40,7 @@ from shared.observability import init_tracing
 from shared.responses import error_response
 from shared.validation import parse_validated
 
-from .models import EstablishSessionRequest
+from .models import EstablishSessionRequest, LoginRequest
 
 setup_logging()
 init_tracing()
@@ -72,7 +72,9 @@ def lambda_handler(event: dict[str, Any], context: Any) -> dict[str, Any]:
     path = http.get("path", "")
 
     try:
-        if method == "POST" and path == "/v1/auth/session":
+        if method == "POST" and path == "/v1/auth/login":
+            response = _login(event, request_id)
+        elif method == "POST" and path == "/v1/auth/session":
             response = _establish_session(event, request_id)
         elif method == "POST" and path == "/v1/auth/refresh":
             response = _refresh(event, request_id)
@@ -145,6 +147,35 @@ def _read_refresh_cookie(event: dict[str, Any]) -> str | None:
 
 def _cookie_header(value: str, max_age: int) -> str:
     return f"{_COOKIE_NAME}={value}; Path={_COOKIE_PATH}; Max-Age={max_age}; HttpOnly; Secure; SameSite=Strict"
+
+
+def _login(event: dict[str, Any], request_id: str) -> dict[str, Any]:
+    """Entra ROPC login proxy — the server-side half of EntraClient.signIn.
+
+    Entra's token endpoint sends no CORS headers for the password grant, so the
+    SPA cannot call it directly; it POSTs here instead. We run the exchange
+    server-side and return the tokens so SessionProvider.login() can proceed
+    exactly as it does on Cognito (set the in-memory ID token, then persist the
+    refresh token via POST /v1/auth/session). On Cognito this route 404s — that
+    SPA signs in client-side and never calls it.
+    """
+    req = parse_validated(LoginRequest, _parse_body(event))
+    tokens = _refresher().password_grant(req.username, req.password)
+    body = json.dumps(
+        {
+            "data": {
+                "id_token": tokens["id_token"],
+                "access_token": tokens["access_token"],
+                "refresh_token": tokens["refresh_token"],
+                "expires_in": tokens["expires_in"],
+            }
+        }
+    )
+    return {
+        "statusCode": 200,
+        "headers": {**_STANDARD_HEADERS, "X-Request-Id": request_id},
+        "body": body,
+    }
 
 
 def _establish_session(event: dict[str, Any], request_id: str) -> dict[str, Any]:

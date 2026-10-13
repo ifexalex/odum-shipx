@@ -34,6 +34,22 @@ _GRAPH_BASE = os.environ.get("GRAPH_BASE_URL", "https://graph.microsoft.com/v1.0
 _GRAPH_SCOPE = "https://graph.microsoft.com/.default"
 
 
+def email_to_upn(email: str, user_domain: str) -> str:
+    """Map a login email to the userPrincipalName the user was provisioned under.
+
+    Provisioning (`EntraIdentityProvider._create`) forms the UPN as the email
+    verbatim when it is already under the tenant's verified domain, else
+    `local_domain@<managed-domain>` (the `@` replaced with `_`). The login proxy
+    reuses this so a user can sign in with their real email (e.g. alex@gmail.com)
+    even though the account's sign-in name is alex_gmail.com@tenant.onmicrosoft.com.
+    Idempotent: a value already ending in the managed domain is returned as-is, so
+    passing the full UPN also works.
+    """
+    if not user_domain or email.endswith(f"@{user_domain}"):
+        return email
+    return f'{email.replace("@", "_")}@{user_domain}'
+
+
 class EntraIdentityProvider:
     """IdentityProvider backed by Microsoft Graph for user/group provisioning."""
 
@@ -84,13 +100,8 @@ class EntraIdentityProvider:
             raise ExternalServiceError("Entra", str(exc)) from exc
 
     def _upn(self, email: str) -> str:
-        """Form the userPrincipalName. Uses the email directly when it is already
-        under the tenant's verified domain, else `local#EXT#@domain`-style under
-        the configured managed domain."""
-        if not self._user_domain or email.endswith(f"@{self._user_domain}"):
-            return email
-        local = email.replace("@", "_")
-        return f"{local}@{self._user_domain}"
+        """Form the userPrincipalName (see module-level email_to_upn)."""
+        return email_to_upn(email, self._user_domain)
 
     def _resolve_user_id(self, username: str) -> str:
         """Resolve a UPN/email to the Graph object id."""
