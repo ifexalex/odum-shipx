@@ -16,3 +16,13 @@ api_base_url = "https://api-dev.shipx.example"
 enable_frontend = true
 enable_redis    = false
 grant_acr_pull  = false
+
+# ── Entra auth (dev tenant ifexalexoutlook) — public identifiers, not secrets ──
+auth_provider                 = "azure"
+oidc_jwks_url                 = "https://ifexalexoutlook.ciamlogin.com/a59c21d1-635f-4308-bb41-2d582350660d/discovery/v2.0/keys"
+oidc_audience                 = "9436cda7-a13f-4ef9-a580-6c11c1257c35"
+entra_user_domain             = "ifexalexoutlook.onmicrosoft.com"
+entra_platform_admin_group_id = "226e2e44-ef7e-4dc6-bf2b-6f39879e8628"
+# Native-Entra SPA (ROPC) + backend cookie-refresh:
+entra_client_id      = "9436cda7-a13f-4ef9-a580-6c11c1257c35"
+entra_token_endpoint = "https://ifexalexoutlook.ciamlogin.com/ifexalexoutlook.onmicrosoft.com/oauth2/v2.0/token"

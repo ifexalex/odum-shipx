@@ -170,12 +170,13 @@ cat <<SUMMARY
   SPA client id      : ${APP_ID}
   Token endpoint     : ${TOKEN_ENDPOINT}
 
- Backend API env (the platform admin resolves via this group GUID):
-   AUTH_PROVIDER=azure
-   OIDC_AUDIENCE=${APP_ID}
-   ENTRA_PLATFORM_ADMIN_GROUP_ID=${GROUP_ID}
-   # ENTRA_TENANT_ID_CLAIM / ENTRA_ROLE_CLAIM stay at their tenant_id / role
-   # defaults — only set them if the claims provider emits different names.
+ Deploy tfvars (infrastructure/azure/environments/<env>.tfvars) — the platform
+ admin resolves via this group GUID; the deploy wires these into the API container:
+   auth_provider                 = "azure"
+   oidc_audience                 = "${APP_ID}"
+   entra_platform_admin_group_id = "${GROUP_ID}"
+   # (oidc_jwks_url + the Entra JWKS/issuer too; ENTRA_TENANT_ID_CLAIM /
+   #  ENTRA_ROLE_CLAIM stay at their tenant_id / role defaults.)
 
  Frontend build env:
    VITE_AUTH_PROVIDER=entra

@@ -7,10 +7,14 @@ name: Frontend Deploy (AWS or Azure)
 #
 # Required secrets (set per GitHub Environment):
 #   Shared build:
-#     VITE_COGNITO_USER_POOL_ID, VITE_COGNITO_CLIENT_ID
+#     VITE_COGNITO_USER_POOL_ID, VITE_COGNITO_CLIENT_ID   (AWS/Cognito login)
 #     VITE_API_BASE_URL            (AWS backend URL; Azure reads its API URL from Terraform)
-#     VITE_AUTH_PROVIDER           (optional: 'cognito' default | 'entra')
-#     VITE_ENTRA_TOKEN_ENDPOINT, VITE_ENTRA_CLIENT_ID  (optional; only for native Entra)
+#   Auth provider + Entra values are resolved automatically: on Azure they come
+#   from Terraform (frontend_auth_provider=entra, entra_client_id,
+#   entra_token_endpoint — public ids, not secrets); on AWS they fall back to the
+#   optional VITE_AUTH_PROVIDER / VITE_ENTRA_* secrets, defaulting to cognito. So
+#   the SPA authenticates against Entra (Azure) or Cognito (AWS) with no manual
+#   provider flag to keep in sync.
 #   AWS deploy (cloud=aws):
 #     FRONTEND_DEPLOY_ROLE_ARN     (OIDC role: s3:PutObject + cloudfront:CreateInvalidation)
 #     FRONTEND_S3_BUCKET, FRONTEND_CLOUDFRONT_ID
@@ -98,6 +102,10 @@ jobs:
             echo "profile=$(terraform output -raw frontend_frontdoor_profile)"
             echo "endpoint=$(terraform output -raw frontend_frontdoor_endpoint)"
             echo "api_url=$(terraform output -raw api_url)"
+            # Entra SPA build values (public ids) — so Azure needs no VITE_ENTRA_* secrets.
+            echo "auth_provider=$(terraform output -raw frontend_auth_provider)"
+            echo "entra_client_id=$(terraform output -raw entra_client_id)"
+            echo "entra_token_endpoint=$(terraform output -raw entra_token_endpoint)"
           } >> "$GITHUB_OUTPUT"
           # Upload with the storage key via --account-key — no data-plane RBAC role
           # needed on the Contributor-only deploy identity. Fetched via control-plane
@@ -114,10 +122,12 @@ jobs:
           VITE_API_BASE_URL: ${{ steps.tf.outputs.api_url || secrets.VITE_API_BASE_URL }}
           VITE_COGNITO_USER_POOL_ID: ${{ secrets.VITE_COGNITO_USER_POOL_ID }}
           VITE_COGNITO_CLIENT_ID: ${{ secrets.VITE_COGNITO_CLIENT_ID }}
-          # Auth provider: default cognito; set entra (+ the VITE_ENTRA_* below) for native Entra.
-          VITE_AUTH_PROVIDER: ${{ secrets.VITE_AUTH_PROVIDER }}
-          VITE_ENTRA_TOKEN_ENDPOINT: ${{ secrets.VITE_ENTRA_TOKEN_ENDPOINT }}
-          VITE_ENTRA_CLIENT_ID: ${{ secrets.VITE_ENTRA_CLIENT_ID }}
+          # Provider + Entra values: Azure supplies them from Terraform (so the
+          # build can't be misconfigured and needs no VITE_ENTRA_* secrets); AWS
+          # falls back to secrets, defaulting to cognito. Both clouds are supported.
+          VITE_AUTH_PROVIDER: ${{ steps.tf.outputs.auth_provider || secrets.VITE_AUTH_PROVIDER || 'cognito' }}
+          VITE_ENTRA_TOKEN_ENDPOINT: ${{ steps.tf.outputs.entra_token_endpoint || secrets.VITE_ENTRA_TOKEN_ENDPOINT }}
+          VITE_ENTRA_CLIENT_ID: ${{ steps.tf.outputs.entra_client_id || secrets.VITE_ENTRA_CLIENT_ID }}
           VITE_ENVIRONMENT: ${{ inputs.environment }}
 
       # ----------------------------------------------------------------- AWS

@@ -171,9 +171,11 @@ calls it, so tokens carry no `tenant_id`/`role` and every request resolves as an
 SPA app registration exist, `scripts/setup_entra_platform_admin.sh` has been run (creates the
 `platform_admin` group + the first admin), and the user migration (`scripts/migrate_users_to_entra.py`)
 has provisioned tenant users (it stamps each one's Entra `oid` into `tenant_user.cognito_sub`, which
-is how the claims provider resolves them). Set the `entra_claims_*` tfvars and the API env
-(`AUTH_PROVIDER=azure`, `OIDC_*`, `ENTRA_PLATFORM_ADMIN_GROUP_ID`; leave `ENTRA_TENANT_ID_CLAIM`/
-`ENTRA_ROLE_CLAIM` at their `tenant_id`/`role` defaults) so a deploy picks them up.
+is how the claims provider resolves them). Set the deploy tfvars — `auth_provider="azure"`,
+`oidc_jwks_url`/`oidc_audience`, **`entra_platform_admin_group_id`** (the `platform_admin` group id —
+this is what makes the platform admin resolve), and `entra_claims_*` for the claims provider — so a
+deploy wires them into the API/claims containers. (`ENTRA_TENANT_ID_CLAIM`/`ENTRA_ROLE_CLAIM` stay at
+their `tenant_id`/`role` defaults.)
 
 1. **Register + bind the custom authentication extension** to the SPA app's token-issuance event,
    pointing it at `terraform output -raw entra_claims_endpoint_url` — `customAuthenticationExtensions`
