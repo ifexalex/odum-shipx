@@ -104,6 +104,12 @@ variable "entra_client_id" {
   default     = ""
 }
 
+variable "entra_local_accounts" {
+  description = "true on an Entra External ID (CIAM) tenant → provision email local accounts (email sign-in); false on workforce → member/UPN accounts (default)."
+  type        = bool
+  default     = false
+}
+
 variable "entra_authorize_endpoint" {
   description = "Entra OAuth2 authorize endpoint for interactive login. Empty → derived from the token endpoint (/token→/authorize)."
   type        = string

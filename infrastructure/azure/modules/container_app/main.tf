@@ -40,6 +40,10 @@ locals {
     OIDC_JWKS_URL     = var.oidc_jwks_url
     OIDC_AUDIENCE     = var.oidc_audience
     ENTRA_USER_DOMAIN = var.entra_user_domain
+    # Account model for provisioning (EntraIdentityProvider): "true" on an Entra
+    # External ID (CIAM) tenant → email local accounts (email sign-in); "false"
+    # on workforce → member/UPN accounts.
+    ENTRA_LOCAL_ACCOUNTS = var.entra_local_accounts ? "true" : "false"
     # Maps the platform_admin group's object id → the platform_admin role (and
     # any other GUID→name entries), so EntraClaimsMapper resolves roles on CIAM.
     ENTRA_PLATFORM_ADMIN_GROUP_ID = var.entra_platform_admin_group_id

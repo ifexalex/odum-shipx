@@ -140,6 +140,12 @@ variable "entra_user_domain" {
   default     = ""
 }
 
+variable "entra_local_accounts" {
+  description = "true on an Entra External ID (CIAM) tenant → provision email local accounts (email sign-in); false on workforce → member/UPN accounts."
+  type        = bool
+  default     = false
+}
+
 variable "auth_provider" {
   description = "Identity authority: 'azure' (Entra) or 'aws' (Cognito bridge — validate Cognito JWTs while running on Azure). Defaults to azure to match the infra cloud."
   type        = string
