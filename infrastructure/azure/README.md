@@ -280,7 +280,43 @@ Backend tfvars for Path B: `auth_provider="azure"`, `entra_token_endpoint`, `ent
 > never federate. On a tenant **without** that feature, creating an email-only account fails with
 > *"Name coexistence user creation is not enabled on tenant"* — keep `ENTRA_LOCAL_ACCOUNTS=false` and use
 > UPN sign-in. (If you need email-based *customer* sign-in at scale, provision a dedicated B2C/External ID
-> tenant with email sign-in turned on.)
+> tenant with email sign-in turned on — see the next section.)
+
+### Email + password sign-in — set up a Microsoft Entra External ID tenant (Path B-email)
+
+The workforce/ciamlogin tenant can't do email local accounts. For real email+password (and social /
+self-service sign-up / branding), stand up a dedicated **Microsoft Entra External ID** tenant. The code
+already supports it — flipping `ENTRA_LOCAL_ACCOUNTS=true` makes provisioning create email local accounts.
+One-time setup:
+
+1. **Create the tenant.** Entra admin center → **Manage tenants → Create → External** (an *External ID*
+   tenant, not Workforce). Link it to your subscription. Note its tenant id and initial domain
+   `<name>.onmicrosoft.com`; the authority is `https://<name>.ciamlogin.com/<name>.onmicrosoft.com`.
+2. **Sign-in experience.** In the new tenant → **User flows** → create a **Sign up and sign in** flow with
+   **Email with password** as the identity provider (leave Microsoft Account/social off unless you fully
+   configure them — an unconfigured social IdP re-introduces the federation failure). Associate the SPA app
+   with the flow.
+3. **Register the SPA app** in the new tenant (public client / SPA platform). Add the redirect URI
+   `https://<front-door-host>/auth/callback`. Record its **client id**.
+4. **Point the stack at the new tenant** (tfvars):
+   - `entra_token_endpoint = https://<name>.ciamlogin.com/<name>.onmicrosoft.com/oauth2/v2.0/token`
+   - `entra_client_id = <new SPA client id>`
+   - `entra_user_domain = <name>.onmicrosoft.com`
+   - `oidc_jwks_url = https://<name>.ciamlogin.com/<tenant-id>/discovery/v2.0/keys`,
+     `oidc_audience = <new SPA client id>`
+   - `entra_claims_caller_audience/_issuer/_jwks_url` for the claims container (the
+     `setup_entra_claims_provider.sh` run below prints these)
+   - **`ENTRA_LOCAL_ACCOUNTS=true`** on the API + migrate containers (and export it when running the scripts)
+   - frontend secrets stay `VITE_AUTH_PROVIDER=entra` + `VITE_API_BASE_URL`
+5. **Deploy** (`deploy-azure.yml`), then run the two setup scripts **logged into the new tenant**
+   (`az login --tenant <new-tenant-id>`), with `ENTRA_LOCAL_ACCOUNTS=true` exported:
+   - `scripts/setup_entra_platform_admin.sh` → creates the platform admin as a **local account** (email login)
+   - `scripts/setup_entra_claims_provider.sh` → binds the token-issuance claims provider + redirect URI
+6. **Provision/migrate users** (`scripts/migrate_users_to_entra.py`, also with `ENTRA_LOCAL_ACCOUNTS=true`) —
+   each is created as a local account and its Entra `oid` is stamped into `tenant_user.cognito_sub` so the
+   claims provider resolves `tenant_id`/`role`.
+7. **Verify:** sign in with the **email**, decode the id_token → `tenant_id` + `role` present; no
+   `login.live.com` hop.
 
 Recommended: **Path A to get it live instantly**; Path B for the AWS-free, MFA-capable end-state.
 
