@@ -268,6 +268,19 @@ Backend tfvars for Path B: `auth_provider="azure"`, `entra_token_endpoint`, `ent
 `entra_user_domain`, `entra_platform_admin_group_id` (maps the platform-admin group GUID), plus
 `oidc_jwks_url`/`oidc_audience` for API token verification.
 
+> **Users are provisioned as B2C *local accounts* (sign in with their real email).** `EntraIdentityProvider`
+> creates users with `creationType: LocalAccount` + an `emailAddress` identity (issuer = `entra_user_domain`),
+> not member/UPN accounts — so interactive sign-in prompts for a password **locally** and B2C does not
+> federate a consumer email (gmail/outlook) to a Microsoft personal account. A member/UPN account makes
+> the hosted sign-in federate such emails to `login.live.com`, which fails with a `redirect_uri`/
+> `invalid_request` error. Set `ENTRA_LOCAL_ACCOUNTS=false` only for a workforce tenant that deliberately
+> wants member accounts. If you earlier created the admin as a member account, re-run
+> `scripts/setup_entra_platform_admin.sh` (now creates a local account) or recreate the user.
+>
+> Also, in the **Azure AD B2C → User flows / Identity providers** blade, keep the sign-in flow on
+> **Email + password (local accounts)** and don't enable **Microsoft Account**/social unless you've fully
+> configured that identity provider — an enabled-but-unconfigured social IdP also triggers the federation failure.
+
 Recommended: **Path A to get it live instantly**; Path B for the AWS-free, MFA-capable end-state.
 
 ### Entra tenant setup (for Path B)

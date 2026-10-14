@@ -126,34 +126,45 @@ else
   log "Reusing security group '${GROUP_NAME}' (${GROUP_ID})."
 fi
 
-# ── 6. The platform admin user ───────────────────────────────────────────────
+# ── 6. The platform admin user — a B2C LOCAL account ─────────────────────────
+# Local account (creationType=LocalAccount + emailAddress identity) so the admin
+# signs in interactively with their REAL email and B2C does not federate it to a
+# consumer Microsoft account. (A plain member/UPN account causes the sign-in to
+# federate gmail/outlook addresses to login.live.com and fail.)
 ADMIN_PASSWORD="${ADMIN_PASSWORD:-$(openssl rand -base64 18)A1!}"
-USER_ID="$(az ad user show --id "${UPN}" --query id -o tsv 2>/dev/null || true)"
+FILTER_ENC="$(python3 -c "import urllib.parse,sys;print(urllib.parse.quote(sys.argv[1]))" \
+  "identities/any(i:i/issuerAssignedId eq '${ADMIN_EMAIL}' and i/issuer eq '${TENANT_DOMAIN}')")"
+USER_ID="$(az rest --method GET \
+  --url "${GRAPH}/users?\$filter=${FILTER_ENC}&\$select=id&\$count=true" \
+  --headers "ConsistencyLevel=eventual" --query 'value[0].id' -o tsv 2>/dev/null || true)"
 if [ -z "${USER_ID}" ]; then
-  log "Creating user ${UPN}…"
-  USER_ID="$(az ad user create \
-    --display-name "${ADMIN_NAME}" \
-    --user-principal-name "${UPN}" \
-    --mail-nickname "$(printf '%s' "${ADMIN_EMAIL%@*}" | tr -cd 'A-Za-z0-9._-')" \
-    --password "${ADMIN_PASSWORD}" \
-    --force-change-password-next-sign-in false \
-    --query id -o tsv)"
+  log "Creating local account for ${ADMIN_EMAIL}…"
+  USER_ID="$(az rest --method POST --url "${GRAPH}/users" \
+    --headers "Content-Type=application/json" \
+    --body "{
+      \"accountEnabled\": true,
+      \"displayName\": \"${ADMIN_NAME}\",
+      \"creationType\": \"LocalAccount\",
+      \"identities\": [ {\"signInType\":\"emailAddress\",\"issuer\":\"${TENANT_DOMAIN}\",\"issuerAssignedId\":\"${ADMIN_EMAIL}\"} ],
+      \"passwordProfile\": {\"password\":\"${ADMIN_PASSWORD}\",\"forceChangePasswordNextSignIn\":false},
+      \"passwordPolicies\": \"DisablePasswordExpiration\"
+    }" --query id -o tsv)"
 else
-  log "Reusing user ${UPN} (${USER_ID}); setting a permanent password…"
-  az ad user update --id "${UPN}" --password "${ADMIN_PASSWORD}" --force-change-password-next-sign-in false
+  log "Reusing local account ${ADMIN_EMAIL} (${USER_ID}); setting a permanent password…"
+  az rest --method PATCH --url "${GRAPH}/users/${USER_ID}" \
+    --headers "Content-Type=application/json" \
+    --body "{\"passwordProfile\":{\"password\":\"${ADMIN_PASSWORD}\",\"forceChangePasswordNextSignIn\":false}}"
 fi
-
-log "Setting the contact email (otherMails)…"
-az rest --method PATCH --url "${GRAPH}/users/${USER_ID}" \
-  --headers "Content-Type=application/json" \
-  --body "{\"otherMails\":[\"${ADMIN_EMAIL}\"]}"
 
 # ── 7. Group membership ──────────────────────────────────────────────────────
 if az ad group member check --group "${GROUP_ID}" --member-id "${USER_ID}" --query value -o tsv 2>/dev/null | grep -qi true; then
   log "User already in '${GROUP_NAME}'."
 else
   log "Adding user to '${GROUP_NAME}'…"
-  az ad group member add --group "${GROUP_ID}" --member-id "${USER_ID}"
+  az rest --method POST --url "${GRAPH}/groups/${GROUP_ID}/members/\$ref" \
+    --headers "Content-Type=application/json" \
+    --body "{\"@odata.id\":\"${GRAPH}/directoryObjects/${USER_ID}\"}" 2>/dev/null \
+    || az ad group member add --group "${GROUP_ID}" --member-id "${USER_ID}"
 fi
 
 # ── Summary ──────────────────────────────────────────────────────────────────
@@ -163,8 +174,8 @@ cat <<SUMMARY
 ============================================================
  ShipX platform admin provisioned in Entra
 ============================================================
-  UPN (login)        : ${UPN}
-  Contact email      : ${ADMIN_EMAIL}
+  Login email        : ${ADMIN_EMAIL}
+  (local account; UPN is auto-assigned by the directory)
   Password           : ${ADMIN_PASSWORD}
   Group              : ${GROUP_NAME} (${GROUP_ID})
   SPA client id      : ${APP_ID}

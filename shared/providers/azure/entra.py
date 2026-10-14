@@ -56,7 +56,15 @@ class EntraIdentityProvider:
     def __init__(self) -> None:
         # The verified/managed domain that user principal names are formed under
         # when the email's own domain is not a verified domain in the tenant.
+        # For local accounts it is also the identity `issuer` (the tenant's
+        # initial *.onmicrosoft.com domain).
         self._user_domain = os.environ.get("ENTRA_USER_DOMAIN", "")
+        # The project's Azure target is Entra External ID (B2C/CIAM), whose
+        # interactive sign-in uses **local accounts** (creationType=LocalAccount
+        # + an emailAddress identity) so users sign in with their real email and
+        # no consumer-account federation is triggered. Set ENTRA_LOCAL_ACCOUNTS=
+        # false only for a workforce tenant that wants member (UPN) accounts.
+        self._local_accounts = os.environ.get("ENTRA_LOCAL_ACCOUNTS", "true").strip().lower() != "false"
         self._credential: Any = None
 
     # ------------------------------------------------------------------
@@ -73,11 +81,19 @@ class EntraIdentityProvider:
     def _token(self) -> str:
         return str(self._get_credential().get_token(_GRAPH_SCOPE).token)
 
-    def _graph(self, method: str, path: str, body: dict[str, Any] | None = None) -> Any:
+    def _graph(
+        self,
+        method: str,
+        path: str,
+        body: dict[str, Any] | None = None,
+        extra_headers: dict[str, str] | None = None,
+    ) -> Any:
         """Call Graph and return parsed JSON (or None for an empty 2xx body).
 
         Normalizes failures to the same exceptions the Cognito adapter raises:
         409 → DuplicateResourceError, anything else → ExternalServiceError.
+        `extra_headers` carries advanced-query headers (e.g. ConsistencyLevel)
+        for the `identities` $filter that resolves B2C local accounts.
         """
         from shared.exceptions import DuplicateResourceError, ExternalServiceError
 
@@ -86,6 +102,8 @@ class EntraIdentityProvider:
         req = urllib.request.Request(url, data=data, method=method)
         req.add_header("Authorization", f"Bearer {self._token()}")
         req.add_header("Content-Type", "application/json")
+        for name, value in (extra_headers or {}).items():
+            req.add_header(name, value)
         try:
             with urllib.request.urlopen(req, timeout=10) as resp:  # noqa: S310 - Graph host only
                 raw = resp.read()
@@ -104,9 +122,33 @@ class EntraIdentityProvider:
         return email_to_upn(email, self._user_domain)
 
     def _resolve_user_id(self, username: str) -> str:
-        """Resolve a UPN/email to the Graph object id."""
-        user = self._graph("GET", f"/users/{urllib.parse.quote(username)}")
-        return str(user["id"]) if user else ""
+        """Resolve an object id / UPN / email to the Graph object id.
+
+        A direct GET works for an object id or a UPN (member accounts). For a
+        B2C **local account** the email is not the UPN, so fall back to filtering
+        on the emailAddress identity (needs the advanced-query headers).
+        """
+        from shared.exceptions import ExternalServiceError
+
+        try:
+            user = self._graph("GET", f"/users/{urllib.parse.quote(username)}")
+            if user:
+                return str(user["id"])
+        except ExternalServiceError as exc:
+            if "404" not in str(exc):
+                raise  # a real failure, not just "not addressable by this key"
+
+        if "@" not in username:
+            return ""
+        # Local-account lookup by email identity.
+        flt = urllib.parse.quote(f"identities/any(i:i/issuerAssignedId eq '{username}' and i/issuer eq '{self._user_domain}')")
+        result = self._graph(
+            "GET",
+            f"/users?$filter={flt}&$select=id&$count=true",
+            extra_headers={"ConsistencyLevel": "eventual"},
+        )
+        values = (result or {}).get("value", [])
+        return str(values[0]["id"]) if values else ""
 
     def _group_id(self, group_name: str) -> str | None:
         flt = urllib.parse.quote(f"displayName eq '{group_name}'")
@@ -119,23 +161,37 @@ class EntraIdentityProvider:
     # ------------------------------------------------------------------
 
     def _create(self, email: str, full_name: str, tenant_id: str, role: str, password: str, force_change: bool) -> str:
-        upn = self._upn(email)
-        body = {
-            "accountEnabled": True,
-            "displayName": full_name,
-            "mailNickname": email.split("@")[0],
-            "userPrincipalName": upn,
-            "mail": email,
-            "passwordProfile": {
-                "password": password,
-                "forceChangePasswordNextSignIn": force_change,
-            },
-        }
+        if self._local_accounts:
+            # B2C/CIAM local account: sign-in name IS the email (emailAddress
+            # identity), so the interactive flow prompts for a password locally
+            # instead of federating the email to a consumer Microsoft account.
+            if not self._user_domain:
+                from shared.exceptions import ExternalServiceError
+
+                raise ExternalServiceError("Entra", "ENTRA_USER_DOMAIN is required to create local accounts")
+            body: dict[str, Any] = {
+                "accountEnabled": True,
+                "displayName": full_name,
+                "creationType": "LocalAccount",
+                "identities": [{"signInType": "emailAddress", "issuer": self._user_domain, "issuerAssignedId": email}],
+                "passwordProfile": {"password": password, "forceChangePasswordNextSignIn": force_change},
+            }
+        else:
+            # Workforce (member) account keyed by UPN.
+            body = {
+                "accountEnabled": True,
+                "displayName": full_name,
+                "mailNickname": email.split("@")[0],
+                "userPrincipalName": self._upn(email),
+                "mail": email,
+                "passwordProfile": {"password": password, "forceChangePasswordNextSignIn": force_change},
+            }
         created = self._graph("POST", "/users", body)
         sub = str(created["id"])
-        # Reconcile the user's role group so the token carries {tenant_id}:{role}.
-        self.sync_user_groups(upn, tenant_id, {role})
-        logger.info("Entra user created: tenant_id=%s role=%s oid=%s", tenant_id, role, sub)
+        # Reconcile the role group by object id (works for local + member accounts)
+        # so the token carries {tenant_id}:{role}.
+        self.sync_user_groups(sub, tenant_id, {role})
+        logger.info("Entra user created: tenant_id=%s role=%s oid=%s local=%s", tenant_id, role, sub, self._local_accounts)
         return sub
 
     def create_user(self, email: str, full_name: str, tenant_id: str, role: str) -> str:
@@ -153,21 +209,31 @@ class EntraIdentityProvider:
         (`sync_user_groups`), not a mutable attribute, so a `role` change here is
         a no-op — callers reconcile groups separately (parity with how the token's
         role claim is sourced)."""
-        if full_name is not None:
-            self._graph("PATCH", f"/users/{urllib.parse.quote(username)}", {"displayName": full_name})
+        if full_name is None:
+            return
+        uid = self._resolve_user_id(username)
+        if uid:
+            self._graph("PATCH", f"/users/{uid}", {"displayName": full_name})
 
     def disable_user(self, username: str) -> None:
-        self._graph("PATCH", f"/users/{urllib.parse.quote(username)}", {"accountEnabled": False})
+        uid = self._resolve_user_id(username)
+        if uid:
+            self._graph("PATCH", f"/users/{uid}", {"accountEnabled": False})
 
     def enable_user(self, username: str) -> None:
-        self._graph("PATCH", f"/users/{urllib.parse.quote(username)}", {"accountEnabled": True})
+        uid = self._resolve_user_id(username)
+        if uid:
+            self._graph("PATCH", f"/users/{uid}", {"accountEnabled": True})
 
     def global_sign_out(self, username: str) -> None:
         """Revoke all refresh/session tokens. Missing user is a no-op."""
         from shared.exceptions import ExternalServiceError
 
+        uid = self._resolve_user_id(username)
+        if not uid:
+            return
         try:
-            self._graph("POST", f"/users/{urllib.parse.quote(username)}/revokeSignInSessions")
+            self._graph("POST", f"/users/{uid}/revokeSignInSessions")
         except ExternalServiceError as exc:
             if "404" in str(exc):
                 return
@@ -176,11 +242,13 @@ class EntraIdentityProvider:
     def resend_invite(self, username: str) -> None:
         """Re-trigger the password set: force a change on next sign-in. The actual
         email is driven by the tenant's invitation/SSPR config (documented)."""
-        self._graph(
-            "PATCH",
-            f"/users/{urllib.parse.quote(username)}",
-            {"passwordProfile": {"forceChangePasswordNextSignIn": True}},
-        )
+        uid = self._resolve_user_id(username)
+        if uid:
+            self._graph(
+                "PATCH",
+                f"/users/{uid}",
+                {"passwordProfile": {"forceChangePasswordNextSignIn": True}},
+            )
 
     def reset_password(self, username: str) -> None:
         """Entra password reset is self-service (SSPR) or admin-initiated via
