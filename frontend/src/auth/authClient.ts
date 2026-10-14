@@ -7,6 +7,7 @@
 // flows are Cognito's in-app challenge model; on Entra they are hosted/self-
 // service (the Entra impl rejects them with a clear message).
 
+import type { CognitoTokens } from './CognitoClient'
 import * as cognito from './CognitoClient'
 import * as entra from './EntraClient'
 
@@ -28,3 +29,19 @@ export const forgotPassword = impl.forgotPassword
 export const completeNewPassword = impl.completeNewPassword
 export const confirmForgotPassword = impl.confirmForgotPassword
 export const hasPendingNewPasswordChallenge = impl.hasPendingNewPasswordChallenge
+
+// Entra logs in via an interactive redirect (auth-code + PKCE), not an in-app
+// email/password form. These drive that flow; `isInteractiveLogin` lets the UI
+// render a redirect button instead of the credential form. Cognito keeps the
+// form, so its stubs reject (never called in the Cognito UI path).
+export const isInteractiveLogin = authProvider === 'entra'
+
+export const beginInteractiveLogin: () => Promise<never> =
+  authProvider === 'entra'
+    ? entra.beginLogin
+    : () => Promise.reject(new Error('Interactive login is only used on Entra'))
+
+export const completeInteractiveLogin: (code: string, state: string) => Promise<CognitoTokens> =
+  authProvider === 'entra'
+    ? entra.completeLogin
+    : () => Promise.reject(new Error('Interactive login is only used on Entra'))

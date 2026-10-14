@@ -107,6 +107,39 @@ def password_grant(username: str, password: str) -> LoginResult:
     }
 
 
+def authorization_code_grant(code: str, code_verifier: str, redirect_uri: str) -> LoginResult:
+    """Exchange an OAuth2 authorization code (+ PKCE verifier) for Entra tokens.
+
+    The server-side half of the interactive auth-code + PKCE login (BFF): the SPA
+    redirects the user to Entra, Entra calls the custom-claims provider (which
+    injects tenant_id/role) and redirects back with a `code`, and this exchanges
+    it for the token set. Unlike ROPC this triggers the claims provider and
+    supports MFA/Conditional Access/social — see 04_auth_and_session.md.
+
+    Raises:
+        AuthenticationRequiredError: the code is invalid/expired/already used
+            (Entra reports HTTP 400 invalid_grant).
+        ExternalServiceError: misconfiguration or any other Entra failure.
+    """
+    data = _token_request(
+        {
+            "grant_type": "authorization_code",
+            "code": code,
+            "code_verifier": code_verifier,
+            "redirect_uri": redirect_uri,
+        }
+    )
+    id_token = data.get("id_token")
+    if not id_token:
+        raise AuthenticationRequiredError()
+    return {
+        "id_token": id_token,
+        "access_token": data.get("access_token", id_token),
+        "refresh_token": data.get("refresh_token", ""),
+        "expires_in": int(data.get("expires_in", 3600)),
+    }
+
+
 def refresh_id_token(refresh_token: str) -> RefreshResult:
     """Exchange an Entra refresh token for a fresh ID/access token pair.
 

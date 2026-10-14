@@ -1,6 +1,6 @@
 import { useState, type FormEvent, type JSX } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { authProvider } from '../../auth/authClient'
+import { authProvider, isInteractiveLogin } from '../../auth/authClient'
 import { homePathForRole } from '../../auth/roleHome'
 import { useSession } from '../../auth/useSession'
 import { Banner, Button, Check, Field, Icon, KolaMark, ShipxWordmark } from '../../design/components'
@@ -78,7 +78,7 @@ function BrandIllustration(): JSX.Element {
 }
 
 export function LoginScreen(): JSX.Element {
-  const { login, status } = useSession()
+  const { login, beginLogin, status } = useSession()
   const navigate = useNavigate()
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
@@ -101,6 +101,18 @@ export function LoginScreen(): JSX.Element {
         return
       }
       setError(loginErrorMessage(err))
+    }
+  }
+
+  // Entra: no in-app credentials — redirect to Entra's hosted sign-in (the
+  // interactive flow that triggers the custom-claims provider). beginLogin
+  // navigates away on success, so this only returns on failure.
+  async function handleEntraLogin(): Promise<void> {
+    setError(null)
+    try {
+      await beginLogin?.()
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Could not start sign-in. Please try again.')
     }
   }
 
@@ -137,7 +149,11 @@ export function LoginScreen(): JSX.Element {
         <div className={styles.formWrap}>
           <div className={styles.formHead}>
             <h2 className={styles.formTitle}>Sign in to ShipX</h2>
-            <p className={styles.formSub}>Enter your credentials to access your portal.</p>
+            <p className={styles.formSub}>
+              {isInteractiveLogin
+                ? 'Continue with your Microsoft Entra account to access your portal.'
+                : 'Enter your credentials to access your portal.'}
+            </p>
           </div>
 
           {error && (
@@ -148,52 +164,58 @@ export function LoginScreen(): JSX.Element {
             </div>
           )}
 
-          <form onSubmit={handleSubmit}>
-            <Field
-              label="Email address"
-              type="email"
-              icon="mail"
-              placeholder="you@company.com"
-              name="email"
-              value={email}
-              onChange={(event) => setEmail(event.target.value)}
-              autoComplete="username"
-              required
-            />
-            <Field
-              label="Password"
-              type={showPassword ? 'text' : 'password'}
-              icon="lock"
-              placeholder="••••••••"
-              name="password"
-              value={password}
-              onChange={(event) => setPassword(event.target.value)}
-              autoComplete="current-password"
-              required
-              trailing={
-                <button
-                  type="button"
-                  className={styles.trailingButton}
-                  aria-label={showPassword ? 'Hide password' : 'Show password'}
-                  onClick={() => setShowPassword((value) => !value)}
-                >
-                  <Icon name={showPassword ? 'eyeoff' : 'eye'} size={16} />
-                </button>
-              }
-            />
-            <div className={styles.rowBetween}>
-              <label className={styles.rememberLabel}>
-                <Check checked={rememberMe} onChange={setRememberMe} />
-                Remember me for 30 days
-              </label>
-              <button type="button" className={styles.link} onClick={() => navigate('/forgot-password')}>
-                Forgot password?
-              </button>
-            </div>
-            <Button type="submit" variant="accent" size="lg" full loading={loading}>
-              Sign In
+          {isInteractiveLogin ? (
+            <Button variant="accent" size="lg" full loading={loading} onClick={() => void handleEntraLogin()}>
+              Continue with Microsoft Entra
             </Button>
-          </form>
+          ) : (
+            <form onSubmit={handleSubmit}>
+              <Field
+                label="Email address"
+                type="email"
+                icon="mail"
+                placeholder="you@company.com"
+                name="email"
+                value={email}
+                onChange={(event) => setEmail(event.target.value)}
+                autoComplete="username"
+                required
+              />
+              <Field
+                label="Password"
+                type={showPassword ? 'text' : 'password'}
+                icon="lock"
+                placeholder="••••••••"
+                name="password"
+                value={password}
+                onChange={(event) => setPassword(event.target.value)}
+                autoComplete="current-password"
+                required
+                trailing={
+                  <button
+                    type="button"
+                    className={styles.trailingButton}
+                    aria-label={showPassword ? 'Hide password' : 'Show password'}
+                    onClick={() => setShowPassword((value) => !value)}
+                  >
+                    <Icon name={showPassword ? 'eyeoff' : 'eye'} size={16} />
+                  </button>
+                }
+              />
+              <div className={styles.rowBetween}>
+                <label className={styles.rememberLabel}>
+                  <Check checked={rememberMe} onChange={setRememberMe} />
+                  Remember me for 30 days
+                </label>
+                <button type="button" className={styles.link} onClick={() => navigate('/forgot-password')}>
+                  Forgot password?
+                </button>
+              </div>
+              <Button type="submit" variant="accent" size="lg" full loading={loading}>
+                Sign In
+              </Button>
+            </form>
+          )}
 
           <div className={styles.divider}>
             <span className={styles.dividerLine} />

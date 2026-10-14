@@ -204,6 +204,16 @@ module "container_app" {
   entra_group_id_map            = var.entra_group_id_map
   entra_token_endpoint          = var.entra_token_endpoint
   entra_client_id               = var.entra_client_id
+  # Interactive login (BFF auth-code + PKCE). Redirect URI defaults to the SPA's
+  # /auth/callback on the Front Door origin (register this exact value on the app
+  # registration); override with var.entra_redirect_uri for a custom domain.
+  entra_authorize_endpoint = var.entra_authorize_endpoint
+  entra_redirect_uri = var.entra_redirect_uri != "" ? var.entra_redirect_uri : (
+    var.enable_frontend ? "${module.frontend[0].frontend_url}/auth/callback" : ""
+  )
+  # SPA (Front Door) and API (Container Apps) are different sites → cookies must
+  # be SameSite=None to be sent cross-site.
+  auth_cookie_samesite = var.auth_cookie_samesite
 
   # Let the SPA's origin (the Front Door URL) call the API from the browser.
   cors_allow_origins = var.enable_frontend ? module.frontend[0].frontend_url : ""

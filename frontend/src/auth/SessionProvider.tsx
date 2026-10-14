@@ -1,5 +1,10 @@
 import { useEffect, useRef, useState, type JSX, type ReactNode } from 'react'
-import { signIn as cognitoSignIn, signOut as cognitoSignOut } from './authClient'
+import {
+  beginInteractiveLogin,
+  completeInteractiveLogin,
+  signIn as cognitoSignIn,
+  signOut as cognitoSignOut,
+} from './authClient'
 import { sessionFromIdToken } from './jwt'
 import { establishServerSession, revokeServerSession, silentRefresh } from './sessionApi'
 import { SessionContext, type SessionStatus } from './SessionContext'
@@ -145,6 +150,37 @@ export function SessionProvider({
     }
   }
 
+  // Interactive (Entra) login — a redirect, not an in-app credential exchange.
+  // beginLogin navigates away to Entra; completeLogin runs on the /auth/callback
+  // route when the browser returns. The httpOnly refresh cookie is set by the
+  // backend callback itself, so (unlike Cognito's login) there's no
+  // establishServerSession step here — the token already round-tripped the server.
+  async function beginLogin(): Promise<void> {
+    setStatus('loading')
+    try {
+      await beginInteractiveLogin()
+    } catch (err) {
+      setStatus('unauthenticated')
+      throw err
+    }
+  }
+
+  async function completeLogin(code: string, state: string): Promise<Session> {
+    setStatus('loading')
+    try {
+      const tokens = await completeInteractiveLogin(code, state)
+      const next = sessionFromIdToken(tokens.idToken)
+      setActiveTokens({ idToken: tokens.idToken, tokenType: 'cognito' })
+      applySession(next)
+      setStatus('authenticated')
+      scheduleRefresh(next)
+      return next
+    } catch (err) {
+      setStatus('unauthenticated')
+      throw err
+    }
+  }
+
   function logout(): void {
     clearTimers()
     cognitoSignOut()
@@ -206,7 +242,18 @@ export function SessionProvider({
 
   return (
     <SessionContext.Provider
-      value={{ session, status, login, logout, startImpersonation, exitImpersonation, refreshNow, setActiveRole }}
+      value={{
+        session,
+        status,
+        login,
+        beginLogin,
+        completeLogin,
+        logout,
+        startImpersonation,
+        exitImpersonation,
+        refreshNow,
+        setActiveRole,
+      }}
     >
       {children}
     </SessionContext.Provider>

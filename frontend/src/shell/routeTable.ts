@@ -41,6 +41,8 @@ export const routeTable: RouteDef[] = [
   // Shipping-company onboarding request (a lead — NOT customer sign-up; no
   // account is created here). See RequestOnboardingScreen.
   { path: '/get-started', allow: 'public', title: 'Partner with ShipX', layout: 'none' },
+  // Entra interactive-login redirect target (BFF auth-code callback).
+  { path: '/auth/callback', allow: 'public', title: 'Signing in', layout: 'none' },
 
   // Platform admin
   { path: '/platform/dashboard', allow: ['platform_admin'], title: 'Platform Dashboard', layout: 'staff' },

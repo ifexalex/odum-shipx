@@ -8,6 +8,14 @@ export interface SessionContextValue {
   status: SessionStatus
   /** Resolves with the new Session so callers can redirect by role without racing a re-render. */
   login: (email: string, password: string) => Promise<Session>
+  /**
+   * Entra interactive login: redirects the browser to Entra (never resolves —
+   * the page unloads). Optional because only the Entra provider + the
+   * /auth/callback route use it; Cognito/local UIs and tests can omit it.
+   */
+  beginLogin?: () => Promise<void>
+  /** Entra interactive login: completes on the /auth/callback route from the returned code + state. */
+  completeLogin?: (code: string, state: string) => Promise<Session>
   logout: () => void
   /** Swaps the active session to an impersonation token returned by POST /v1/platform/tenants/{id}/impersonate. */
   startImpersonation: (idToken: string, tenantName?: string) => void

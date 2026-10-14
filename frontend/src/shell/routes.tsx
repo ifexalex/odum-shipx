@@ -9,6 +9,7 @@ import { InviteClaimScreen } from '../pages/auth/InviteClaimScreen'
 import { LoginScreen } from '../pages/auth/LoginScreen'
 import { RegisterScreen } from '../pages/auth/RegisterScreen'
 import { RequestOnboardingScreen } from '../pages/auth/RequestOnboardingScreen'
+import { AuthCallback } from '../pages/auth/AuthCallback'
 import { ResetPasswordScreen } from '../pages/auth/ResetPasswordScreen'
 import { LandingPage } from '../pages/marketing/LandingPage'
 import { ContainerDetail } from '../pages/china/ContainerDetail'
@@ -109,6 +110,7 @@ const PUBLIC_SCREENS: Record<string, JSX.Element> = {
   '/register': <RegisterScreen />,
   '/register/:slug': <RegisterScreen />,
   '/get-started': <RequestOnboardingScreen />,
+  '/auth/callback': <AuthCallback />,
   '/invite/:token': <InviteClaimScreen />,
   '/forgot-password': <ForgotPasswordScreen />,
   '/reset-password': <ResetPasswordScreen />,
