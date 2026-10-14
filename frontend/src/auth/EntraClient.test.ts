@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { refreshSession, signIn } from './EntraClient'
+import { beginLogin, completeLogin, refreshSession, signIn } from './EntraClient'
 
-describe('EntraClient (backend ROPC proxy)', () => {
+describe('EntraClient (interactive BFF auth-code)', () => {
   beforeEach(() => {
     vi.stubEnv('VITE_API_BASE_URL', 'https://api.example.test')
   })
@@ -11,36 +11,50 @@ describe('EntraClient (backend ROPC proxy)', () => {
     vi.restoreAllMocks()
   })
 
-  function mockResponse(body: Record<string, unknown>, ok = true, status = 200): void {
-    vi.stubGlobal(
-      'fetch',
-      vi.fn().mockResolvedValue({ ok, status, json: () => Promise.resolve(body) }),
-    )
+  function mockFetch(body: Record<string, unknown>, ok = true, status = 200): ReturnType<typeof vi.fn> {
+    const fn = vi.fn().mockResolvedValue({ ok, status, json: () => Promise.resolve(body) })
+    vi.stubGlobal('fetch', fn)
+    return fn
   }
 
-  it('signIn posts credentials to the backend /v1/auth/login and maps the envelope', async () => {
-    mockResponse({ data: { id_token: 'id.jwt', access_token: 'acc', refresh_token: 'ref' } })
+  it('beginLogin fetches the authorize URL (with credentials) and redirects', async () => {
+    const fetchMock = mockFetch({ data: { authorize_url: 'https://entra.example/authorize?x=1' } })
+    const assign = vi.fn()
+    vi.stubGlobal('location', { assign } as unknown as Location)
 
-    const tokens = await signIn('user@x.com', 'pw')
+    // beginLogin never resolves (it redirects), so race it against the redirect.
+    void beginLogin()
+    await vi.waitFor(() => expect(assign).toHaveBeenCalledWith('https://entra.example/authorize?x=1'))
 
-    expect(tokens).toEqual({ idToken: 'id.jwt', accessToken: 'acc', refreshToken: 'ref' })
-    const fetchMock = globalThis.fetch as unknown as ReturnType<typeof vi.fn>
-    const call = fetchMock.mock.calls[0]!
-    expect(call[0] as string).toBe('https://api.example.test/v1/auth/login')
-    const init = call[1] as { body: string; method: string }
-    expect(init.method).toBe('POST')
-    expect(JSON.parse(init.body)).toEqual({ username: 'user@x.com', password: 'pw' })
+    const [url, init] = fetchMock.mock.calls[0]!
+    expect(url).toBe('https://api.example.test/v1/auth/authorize-url')
+    expect((init as RequestInit).credentials).toBe('include')
   })
 
-  it('maps a 401 from the proxy to a credentials message', async () => {
-    mockResponse({ detail: 'Authentication required', error_code: 'AUTHENTICATION_REQUIRED' }, false, 401)
-
-    await expect(signIn('user@x.com', 'wrong')).rejects.toMatchObject({
-      message: 'Check your email and password and try again.',
-    })
+  it('beginLogin throws a friendly error when the backend fails', async () => {
+    mockFetch({ detail: 'nope' }, false, 503)
+    await expect(beginLogin()).rejects.toThrow(/nope|start sign-in/i)
   })
 
-  it('refreshSession rejects — refresh is server-side via the session cookie', async () => {
+  it('completeLogin posts code+state with credentials and maps the id token', async () => {
+    const fetchMock = mockFetch({ data: { id_token: 'id.jwt' } })
+
+    const tokens = await completeLogin('the-code', 'the-state')
+
+    expect(tokens).toEqual({ idToken: 'id.jwt', accessToken: 'id.jwt', refreshToken: '' })
+    const [url, init] = fetchMock.mock.calls[0]!
+    expect(url).toBe('https://api.example.test/v1/auth/callback')
+    expect((init as RequestInit).credentials).toBe('include')
+    expect(JSON.parse((init as RequestInit).body as string)).toEqual({ code: 'the-code', state: 'the-state' })
+  })
+
+  it('completeLogin surfaces the backend error on failure', async () => {
+    mockFetch({ detail: 'Sign-in could not be completed.' }, false, 401)
+    await expect(completeLogin('c', 's')).rejects.toThrow(/could not be completed/i)
+  })
+
+  it('signIn and refreshSession reject — interactive/cookie flows replace them', async () => {
+    await expect(signIn()).rejects.toThrow(/interactive/i)
     await expect(refreshSession()).rejects.toThrow(/server-side/i)
   })
 })

@@ -48,6 +48,14 @@ locals {
     ENTRA_TOKEN_ENDPOINT = var.entra_token_endpoint
     ENTRA_CLIENT_ID      = var.entra_client_id
     ENTRA_SCOPE          = var.entra_scope
+    # Interactive login (BFF auth-code + PKCE, services/auth/entra_oauth.py).
+    # ENTRA_AUTHORIZE_ENDPOINT defaults to the token endpoint with /token→/authorize.
+    ENTRA_AUTHORIZE_ENDPOINT = var.entra_authorize_endpoint
+    ENTRA_REDIRECT_URI       = var.entra_redirect_uri
+    # SPA and API are different sites on Azure (*.azurefd.net vs
+    # *.azurecontainerapps.io), so the auth cookies must be SameSite=None to be
+    # sent cross-site. (AWS shares a registrable domain → default Strict.)
+    AUTH_COOKIE_SAMESITE = var.auth_cookie_samesite
     # Browser origins allowed to call the API (the frontend URL).
     CORS_ALLOW_ORIGINS = var.cors_allow_origins
     # Per-channel queue names (the opaque queue reference on Azure).

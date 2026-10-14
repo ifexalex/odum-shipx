@@ -252,6 +252,17 @@ export function LocalAuthProvider({ children, initialRole = 'platform_admin' }: 
     return next
   }
 
+  // Interactive (Entra) login does not apply to the local dev shim — local auth
+  // is the role-switcher / Cognito-bridge path. Present for the uniform context
+  // contract; reject clearly if ever invoked locally.
+  function beginLogin(): Promise<void> {
+    return Promise.reject(new Error('Interactive login is not used in local dev'))
+  }
+
+  function completeLogin(): Promise<Session> {
+    return Promise.reject(new Error('Interactive login is not used in local dev'))
+  }
+
   function logout(): void {
     // Regression found live right after shipping the real-logout fix this
     // function otherwise implements: the API client's 401-recovery path
@@ -319,6 +330,8 @@ export function LocalAuthProvider({ children, initialRole = 'platform_admin' }: 
         session,
         status,
         login,
+        beginLogin,
+        completeLogin,
         logout,
         startImpersonation,
         exitImpersonation,

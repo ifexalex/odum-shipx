@@ -24,3 +24,12 @@ class LoginRequest(BaseModel):
 
     username: str = Field(min_length=3, max_length=320)
     password: str = Field(min_length=1, max_length=256)
+
+
+class AuthCallbackRequest(BaseModel):
+    """POST /v1/auth/callback body — the OAuth2 authorization code + state the SPA
+    received back from Entra. The PKCE verifier and expected state live in the
+    httpOnly transaction cookie, never in this body (services/auth/handler.py)."""
+
+    code: str = Field(min_length=1, max_length=4096)
+    state: str = Field(min_length=1, max_length=512)

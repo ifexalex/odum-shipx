@@ -170,6 +170,24 @@ variable "entra_scope" {
   default     = "openid profile offline_access"
 }
 
+variable "entra_authorize_endpoint" {
+  description = "Entra OAuth2 authorize endpoint for interactive login. Empty → derived from the token endpoint."
+  type        = string
+  default     = ""
+}
+
+variable "entra_redirect_uri" {
+  description = "SPA callback URL registered on the app registration (e.g. https://<frontend>/auth/callback)."
+  type        = string
+  default     = ""
+}
+
+variable "auth_cookie_samesite" {
+  description = "SameSite for the auth cookies. 'None' for cross-site (Azure FrontDoor↔ContainerApps); 'Strict' when SPA+API share a site."
+  type        = string
+  default     = "Strict"
+}
+
 # ─── Sizing ───────────────────────────────────────────────────────────────────
 variable "api_cpu" {
   type    = number

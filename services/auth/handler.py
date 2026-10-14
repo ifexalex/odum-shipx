@@ -30,6 +30,7 @@ See docs/project docs/frontend/04_auth_and_session.md and
 
 import json
 import logging
+import os
 import time
 import uuid
 from typing import Any
@@ -48,11 +49,23 @@ init_tracing()
 logger = logging.getLogger(__name__)
 
 _COOKIE_NAME = "shipx_rt"
+# Short-lived transaction cookie for the interactive auth-code flow: holds the
+# server-generated PKCE verifier + state + nonce across the Entra redirect so
+# none of it ever touches JS (entra_oauth.py / _authorize_url / _callback).
+_TX_COOKIE_NAME = "shipx_auth_tx"
 _COOKIE_PATH = "/v1/auth"
 # Matches Cognito's refresh_token_validity (infrastructure/aws/modules/cognito/main.tf) — the
 # cookie's lifetime should never exceed the token's own validity, but capping it here too
 # means a stale cookie value from a rotated Cognito config still expires client-side on schedule.
 _COOKIE_MAX_AGE_SECONDS = 60 * 60 * 24 * 30
+_TX_COOKIE_MAX_AGE_SECONDS = 600  # the authorize→callback round-trip is seconds; 10 min is ample.
+
+# SameSite for the auth cookies. Default Strict (AWS: SPA + API share the
+# registrable domain, e.g. shipx.co / api.shipx.co). Azure serves the SPA and
+# API from different sites (*.azurefd.net vs *.azurecontainerapps.io), where
+# only SameSite=None cookies are sent on cross-site fetches — set
+# AUTH_COOKIE_SAMESITE=None there. None implies Secure, which we always set.
+_COOKIE_SAMESITE = os.environ.get("AUTH_COOKIE_SAMESITE", "Strict")
 
 _STANDARD_HEADERS = {
     "Content-Type": "application/json",
@@ -72,7 +85,11 @@ def lambda_handler(event: dict[str, Any], context: Any) -> dict[str, Any]:
     path = http.get("path", "")
 
     try:
-        if method == "POST" and path == "/v1/auth/login":
+        if method == "POST" and path == "/v1/auth/authorize-url":
+            response = _authorize_url(event, request_id)
+        elif method == "POST" and path == "/v1/auth/callback":
+            response = _callback(event, request_id)
+        elif method == "POST" and path == "/v1/auth/login":
             response = _login(event, request_id)
         elif method == "POST" and path == "/v1/auth/session":
             response = _establish_session(event, request_id)
@@ -145,8 +162,86 @@ def _read_refresh_cookie(event: dict[str, Any]) -> str | None:
     return None
 
 
-def _cookie_header(value: str, max_age: int) -> str:
-    return f"{_COOKIE_NAME}={value}; Path={_COOKIE_PATH}; Max-Age={max_age}; HttpOnly; Secure; SameSite=Strict"
+def _cookie_header(value: str, max_age: int, name: str = _COOKIE_NAME) -> str:
+    return f"{name}={value}; Path={_COOKIE_PATH}; Max-Age={max_age}; " f"HttpOnly; Secure; SameSite={_COOKIE_SAMESITE}"
+
+
+def _read_cookie(event: dict[str, Any], name: str) -> str | None:
+    for raw in event.get("cookies") or []:
+        cookie_name, _, value = str(raw).partition("=")
+        if cookie_name == name and value:
+            return value
+    return None
+
+
+def _authorize_url(event: dict[str, Any], request_id: str) -> dict[str, Any]:
+    """Begin the interactive Entra login (BFF auth-code + PKCE).
+
+    Generates the PKCE verifier, state, and nonce server-side, stashes them in a
+    short-lived httpOnly transaction cookie, and returns the Entra authorize URL
+    for the SPA to redirect to. Nothing sensitive reaches JS. Entra-only — the
+    Cognito SPA uses its own hosted/SRP flow and never calls this.
+    """
+    from . import entra_oauth
+
+    verifier, challenge = entra_oauth.generate_pkce()
+    state = entra_oauth.generate_token()
+    nonce = entra_oauth.generate_token()
+    try:
+        url = entra_oauth.build_authorize_url(state=state, nonce=nonce, code_challenge=challenge)
+    except ValueError as exc:
+        raise LogisticsBaseError(str(exc), "ENTRA_NOT_CONFIGURED", 503) from exc
+
+    tx = json.dumps({"v": verifier, "s": state, "n": nonce})
+    return {
+        "statusCode": 200,
+        "cookies": [_cookie_header(tx, _TX_COOKIE_MAX_AGE_SECONDS, name=_TX_COOKIE_NAME)],
+        "headers": {**_STANDARD_HEADERS, "X-Request-Id": request_id},
+        "body": json.dumps({"data": {"authorize_url": url}}),
+    }
+
+
+def _callback(event: dict[str, Any], request_id: str) -> dict[str, Any]:
+    """Complete the interactive login: exchange the auth code for tokens.
+
+    Reads the transaction cookie (PKCE verifier + expected state) set by
+    `_authorize_url`, validates the returned `state` (CSRF), exchanges the code
+    server-side, persists the refresh token as the httpOnly session cookie, and
+    returns the ID token (now carrying the claims-provider-injected
+    tenant_id/role). The refresh token never touches JS.
+    """
+    from . import entra_oauth, entra_refresh
+    from .models import AuthCallbackRequest
+
+    req = parse_validated(AuthCallbackRequest, _parse_body(event))
+    raw_tx = _read_cookie(event, _TX_COOKIE_NAME)
+    if not raw_tx:
+        raise AuthenticationRequiredError()
+    try:
+        tx = json.loads(raw_tx)
+    except json.JSONDecodeError as exc:
+        raise AuthenticationRequiredError() from exc
+    # Constant-time-ish state check — the transaction cookie is httpOnly, so this
+    # guards against a forged/replayed callback, not a cookie-reading attacker.
+    if not tx.get("s") or tx.get("s") != req.state:
+        raise AuthenticationRequiredError()
+
+    tokens = entra_refresh.authorization_code_grant(
+        code=req.code,
+        code_verifier=str(tx.get("v", "")),
+        redirect_uri=entra_oauth.redirect_uri(),
+    )
+    body = json.dumps({"data": {"id_token": tokens["id_token"], "expires_in": tokens["expires_in"]}})
+    return {
+        "statusCode": 200,
+        # Set the session cookie; expire the one-shot transaction cookie.
+        "cookies": [
+            _cookie_header(tokens["refresh_token"], _COOKIE_MAX_AGE_SECONDS),
+            _cookie_header("", 0, name=_TX_COOKIE_NAME),
+        ],
+        "headers": {**_STANDARD_HEADERS, "X-Request-Id": request_id},
+        "body": body,
+    }
 
 
 def _login(event: dict[str, Any], request_id: str) -> dict[str, Any]:

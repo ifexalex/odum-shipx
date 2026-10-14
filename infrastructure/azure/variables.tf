@@ -104,6 +104,24 @@ variable "entra_client_id" {
   default     = ""
 }
 
+variable "entra_authorize_endpoint" {
+  description = "Entra OAuth2 authorize endpoint for interactive login. Empty → derived from the token endpoint (/token→/authorize)."
+  type        = string
+  default     = ""
+}
+
+variable "entra_redirect_uri" {
+  description = "Interactive-login SPA callback URL registered on the app registration. Empty → derived as <frontend_url>/auth/callback."
+  type        = string
+  default     = ""
+}
+
+variable "auth_cookie_samesite" {
+  description = "SameSite for auth cookies. Default 'None' — the Azure SPA (Front Door) and API (Container Apps) are different sites, so cross-site cookies are required."
+  type        = string
+  default     = "None"
+}
+
 variable "api_cpu" {
   description = "API container vCPU."
   type        = number

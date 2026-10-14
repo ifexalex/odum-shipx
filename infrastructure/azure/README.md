@@ -223,40 +223,49 @@ and build the SPA with `VITE_API_BASE_URL=<azure api_url>` + the **existing** `V
 full app runs on Azure with auth federated to Cognito (the ADR-004 dual-run posture) — no Entra
 tenant, no frontend rewrite.
 
-**Path B — native Entra (no AWS dependency).** The SPA has an Entra login path
-(`frontend/src/auth/EntraClient.ts`, selected by `VITE_AUTH_PROVIDER=entra`) using the OAuth2 ROPC
-grant, so the existing email/password login works against Entra for **local accounts** — no
-redirect-UX rewrite. Set up the Entra tenant (below), point the API's `OIDC_*` at Entra, and migrate
-users. Backend auth is already native (`auth_provider="azure"` default → Entra verify + claims
-mapper). Frontend build env for Azure:
+**Path B — native Entra (no AWS dependency).** The SPA signs in with Entra via an **interactive
+auth-code + PKCE** flow (`frontend/src/auth/EntraClient.ts`, selected by `VITE_AUTH_PROVIDER=entra`):
+the login button redirects to Entra's hosted sign-in, and on return the session is established. This
+is the flow that **triggers the custom-claims provider** (so `tenant_id`/`role` land in the token),
+and it supports MFA / Conditional Access / social. Frontend build env for Azure:
 
 ```
 VITE_AUTH_PROVIDER = entra
 VITE_API_BASE_URL  = <azure api_url>
 ```
 
-> **Login is proxied through the backend (don't send ROPC from the browser).** Entra's token
-> endpoint returns **no CORS header for the password grant**, so a browser `fetch` to it is blocked
-> (`No 'Access-Control-Allow-Origin'`). `EntraClient.signIn` therefore calls `POST /v1/auth/login`,
-> which runs the ROPC exchange server-side. The `VITE_ENTRA_*` build vars are **no longer needed on
-> the frontend** — the backend container holds `ENTRA_TOKEN_ENDPOINT`/`ENTRA_CLIENT_ID`/`ENTRA_SCOPE`
-> (set via the `entra_token_endpoint`/`entra_client_id`/`entra_scope` tfvars). If you deployed an
-> older build and login fails with that CORS error, redeploy the SPA from this revision.
+> **Backend-for-frontend (BFF), not client-side MSAL.** The browser never holds the password, the
+> PKCE verifier, or any token beyond the in-memory ID token (consistent with the httpOnly-cookie
+> posture + the `no localStorage/sessionStorage in src/auth` CI guard). The backend owns the OAuth
+> exchange over three public routes (`services/auth/handler.py`):
+> - `POST /v1/auth/authorize-url` — mints the Entra authorize URL with a **server-generated** PKCE
+>   challenge + state + nonce, stashed in a short-lived httpOnly transaction cookie; the SPA redirects to it.
+> - Entra authenticates the user (claims provider fires → injects `tenant_id`/`role`) and redirects
+>   back to **`<frontend_url>/auth/callback`** with `?code=&state=`.
+> - `POST /v1/auth/callback` — validates `state` against the transaction cookie, exchanges the code
+>   (`authorization_code` grant + verifier) server-side, sets the httpOnly refresh cookie, and returns
+>   the ID token. Reload-persistence then uses the existing `/v1/auth/refresh` cookie flow.
+>
+> The `VITE_ENTRA_*` build vars are **not used** — the backend container holds every `ENTRA_*` value.
 
-> **Users log in with their email**, not the managed-domain UPN. The backend maps
-> `alex@gmail.com` → `alex_gmail.com@<tenant>.onmicrosoft.com` (`email_to_upn` + `ENTRA_USER_DOMAIN`,
-> the `entra_user_domain` tfvar) before the ROPC call. Set `entra_user_domain` to your tenant's
-> initial domain (e.g. `ifexalexoutlook.onmicrosoft.com`); if it's unset, users must type the full
-> UPN (no breakage, just no email convenience). Idempotent — a full UPN still works.
+**Required Entra app-registration config for Path B (do this once):**
+1. **Redirect URI** — add the SPA callback as a **Single-page application** redirect URI on the app
+   registration: `https://<your-front-door-host>/auth/callback` (Terraform derives and sets the
+   backend's `ENTRA_REDIRECT_URI` to this; override with the `entra_redirect_uri` tfvar for a custom
+   domain). It must match exactly.
+2. **Bind the custom-claims provider** — attach the `entra_token_claims` custom authentication
+   extension to this app as a claims provider for the **token-issuance-start** event, so `tenant_id`
+   / `role` are injected (see "Token claims on CIAM" below). This is what the interactive flow needs
+   and ROPC could never trigger.
+3. **Cross-site cookies** — the SPA (Front Door) and API (Container Apps) are different sites, so the
+   auth cookies are set `SameSite=None; Secure` (the `auth_cookie_samesite` tfvar, default `None` on
+   Azure). If you later serve the API under the Front Door domain, set it to `Strict`.
 
-Reload-persistence works on Entra too: the backend httpOnly-cookie refresh (`services/auth`) is
-provider-aware — `AUTH_PROVIDER=azure` exchanges the cookie via `entra_refresh.py` (OAuth2
-refresh-token grant), so a page reload silently restores the session exactly as on Cognito.
+Backend tfvars for Path B: `auth_provider="azure"`, `entra_token_endpoint`, `entra_client_id`,
+`entra_user_domain`, `entra_platform_admin_group_id` (maps the platform-admin group GUID), plus
+`oidc_jwks_url`/`oidc_audience` for API token verification.
 
-Caveat (validate against your tenant): ROPC covers local accounts only (no social/MFA — swap to
-an MSAL redirect flow behind the same `authClient` seam if those are needed).
-
-Recommended: **Path A to get it live instantly**; Path B for the AWS-free end-state.
+Recommended: **Path A to get it live instantly**; Path B for the AWS-free, MFA-capable end-state.
 
 ### Entra tenant setup (for Path B)
 

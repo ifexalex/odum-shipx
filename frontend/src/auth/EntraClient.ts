@@ -1,16 +1,18 @@
-// Microsoft Entra (External ID) auth client — the Azure counterpart of
-// CognitoClient, exposing the same signIn/refreshSession/signOut surface so the
-// app's auth layer is cloud-agnostic (selected in authClient.ts).
+// Microsoft Entra (External ID) auth client — interactive auth-code + PKCE via
+// a backend-for-frontend (BFF) flow. The Azure counterpart of CognitoClient.
 //
-// Login goes through the BACKEND, not Entra directly. Entra's token endpoint
-// sends no Access-Control-Allow-Origin header for the ROPC password grant, so a
-// browser fetch to it is CORS-blocked. `services/auth/handler.py` (POST
-// /v1/auth/login) runs that exchange server-side and returns the tokens, so the
-// existing email/password LoginScreen works unchanged — no redirect UX, no CORS.
-// (Token refresh is likewise server-side via the httpOnly-cookie flow in
-// sessionApi.ts → POST /v1/auth/refresh, so this module's refreshSession is not
-// part of the live path.) ROPC is valid only for Entra local accounts without
-// MFA; for social/federated/MFA, swap in an MSAL redirect flow behind this seam.
+// Why BFF and not client-side MSAL: this codebase keeps tokens out of
+// JS-reachable storage (httpOnly refresh cookie, in-memory id token — there's a
+// CI guard failing the build on localStorage/sessionStorage in src/auth). So the
+// backend owns the OAuth secrets: it mints the authorize URL (server-generated
+// PKCE challenge + state + nonce in a short-lived httpOnly cookie), and on the
+// callback exchanges the code and sets the httpOnly refresh cookie. The SPA only
+// redirects and relays the `code`/`state` from the URL — it never holds the
+// password, the PKCE verifier, or any token beyond the in-memory id token.
+//
+// The interactive flow triggers Entra's custom-claims provider (which injects
+// tenant_id/role), unlike ROPC — see 04_auth_and_session.md. Config: the SPA
+// needs only VITE_API_BASE_URL; the backend holds every ENTRA_* value.
 
 import type { CognitoTokens } from './CognitoClient'
 
@@ -20,66 +22,76 @@ function apiBaseUrl(): string {
   return value
 }
 
-interface LoginEnvelope {
-  data?: { id_token?: string; access_token?: string; refresh_token?: string }
-  detail?: string
-  title?: string
-  error_code?: string
+function authUrl(path: string): string {
+  return new URL(path, apiBaseUrl()).toString()
 }
 
-// Authenticates via the backend ROPC proxy — the browser never calls Entra and
-// the API never persists the password (parity with CognitoClient.signIn, which
-// talks to Cognito's own CORS-enabled endpoint client-side).
-export async function signIn(email: string, password: string): Promise<CognitoTokens> {
-  let resp: Response
-  try {
-    resp = await fetch(new URL('/v1/auth/login', apiBaseUrl()).toString(), {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ username: email, password }),
-    })
-  } catch {
-    const err = new Error('Could not reach the server. Check your connection and try again.')
-    err.name = 'NetworkError'
-    throw err
+// Begin interactive login: ask the backend for the authorize URL (which also
+// sets the httpOnly PKCE/state transaction cookie), then redirect the browser
+// to Entra. Never resolves — the page navigates away on success.
+export async function beginLogin(): Promise<never> {
+  const resp = await fetch(authUrl('/v1/auth/authorize-url'), {
+    method: 'POST',
+    credentials: 'include',
+    headers: { 'Content-Type': 'application/json' },
+    body: '{}',
+  })
+  const body = (await resp.json().catch(() => ({}))) as {
+    data?: { authorize_url?: string }
+    detail?: string
+    title?: string
   }
+  const url = body.data?.authorize_url
+  if (!resp.ok || !url) {
+    throw new Error(body.detail || body.title || 'Could not start sign-in. Please try again.')
+  }
+  window.location.assign(url)
+  // Block the caller until the navigation unloads the page.
+  return new Promise<never>(() => {})
+}
 
-  const body = (await resp.json().catch(() => ({}))) as LoginEnvelope
+// Complete interactive login: hand the code + state back to the backend, which
+// validates state against the transaction cookie, exchanges the code, and sets
+// the refresh cookie. Returns the ID token (now carrying tenant_id/role).
+export async function completeLogin(code: string, state: string): Promise<CognitoTokens> {
+  const resp = await fetch(authUrl('/v1/auth/callback'), {
+    method: 'POST',
+    credentials: 'include',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ code, state }),
+  })
+  const body = (await resp.json().catch(() => ({}))) as {
+    data?: { id_token?: string }
+    detail?: string
+    title?: string
+  }
   if (!resp.ok || !body.data?.id_token) {
-    // 400/401 from the proxy means Entra rejected the credentials (invalid_grant)
-    // — surface a credentials message; anything else is a server/config fault.
-    const credsProblem = resp.status === 400 || resp.status === 401
-    const err = new Error(
-      credsProblem
-        ? 'Check your email and password and try again.'
-        : body.detail || body.title || 'Sign-in failed. Please try again.',
-    )
-    err.name = body.error_code || 'EntraAuthError'
-    throw err
+    throw new Error(body.detail || body.title || 'Sign-in could not be completed. Please try again.')
   }
+  // The refresh token stays server-side in the httpOnly cookie the callback set;
+  // only the id token comes back, to live in memory. accessToken mirrors it (the
+  // app authenticates to its own API with the id token, as on Cognito).
+  return { idToken: body.data.id_token, accessToken: body.data.id_token, refreshToken: '' }
+}
 
-  return {
-    idToken: body.data.id_token,
-    accessToken: body.data.access_token ?? body.data.id_token,
-    refreshToken: body.data.refresh_token ?? '',
-  }
+// Password sign-in is not used on Entra (interactive redirect instead); kept so
+// the authClient surface stays uniform. Rejects clearly if ever called.
+export function signIn(): Promise<CognitoTokens> {
+  return Promise.reject(new Error('Entra uses interactive sign-in — call beginLogin() instead'))
 }
 
 // Refresh runs server-side off the httpOnly cookie (sessionApi.silentRefresh →
-// POST /v1/auth/refresh); nothing in the app calls this. Kept only to satisfy
-// the shared authClient surface, and rejects clearly if ever invoked.
+// POST /v1/auth/refresh); nothing in the app calls this.
 export function refreshSession(): Promise<CognitoTokens> {
   return Promise.reject(new Error('Entra refresh is handled server-side via the session cookie'))
 }
 
 export function signOut(): void {
-  // No client-side Entra state to clear — the httpOnly cookie is revoked/cleared
-  // by POST /v1/auth/logout (sessionApi.revokeServerSession).
+  // No client-side Entra state to clear — the httpOnly cookie is cleared by
+  // POST /v1/auth/logout (sessionApi.revokeServerSession).
 }
 
-// --- Flows Entra services through its own hosted experience, not in-app ---
-// These keep the CognitoClient surface so authClient can re-export uniformly,
-// but on Entra password management is a hosted/self-service flow.
+// --- Hosted/self-service on Entra; kept for the uniform authClient surface ---
 
 export function hasPendingNewPasswordChallenge(): boolean {
   return false

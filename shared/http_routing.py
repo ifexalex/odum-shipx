@@ -76,6 +76,8 @@ PUBLIC_ROUTES: frozenset[str] = frozenset(
         "GET /v1/invites/{token}",
         "POST /v1/invites/{token}/accept",
         "POST /v1/auth/login",
+        "POST /v1/auth/authorize-url",
+        "POST /v1/auth/callback",
         "POST /v1/auth/session",
         "POST /v1/auth/refresh",
         "POST /v1/auth/logout",

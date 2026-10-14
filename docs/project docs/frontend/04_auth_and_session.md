@@ -182,38 +182,37 @@ The auth layer is no longer hard-wired to Cognito. The app's auth entry points i
 `VITE_AUTH_PROVIDER` — `'cognito'` (AWS, default) or `'entra'` (Azure):
 
 - **`CognitoClient.ts`** — unchanged (SRP sign-in, new-password + forgot-password challenges).
-- **`EntraClient.ts`** (new) — Microsoft Entra (External ID) via the OAuth2 **ROPC** grant, so the
-  existing email/password `LoginScreen` works unchanged against Entra for **local accounts** (no
-  redirect UX). Same `signIn/signOut` surface + `{idToken,accessToken,refreshToken}` shape as Cognito.
-  Password-reset flows are Entra-hosted (the in-app challenge functions reject).
-  - **Login is proxied through the backend, not sent to Entra from the browser (2026-10-14 fix).**
-    Entra's token endpoint returns **no `Access-Control-Allow-Origin` header for the ROPC password
-    grant**, so a browser `fetch` to `…ciamlogin.com/…/oauth2/v2.0/token` is CORS-blocked. `signIn`
-    therefore `POST`s `{username,password}` to the backend `POST /v1/auth/login`
-    (`services/auth/handler.py` → `entra_refresh.password_grant`), which runs the exchange
-    server-side and returns the tokens. The SPA needs only `VITE_AUTH_PROVIDER=entra` +
-    `VITE_API_BASE_URL`; `VITE_ENTRA_*` are **no longer required on the frontend** (the backend holds
-    `ENTRA_TOKEN_ENDPOINT`/`ENTRA_CLIENT_ID`/`ENTRA_SCOPE`). `refreshSession` rejects — refresh is
-    server-side via the cookie flow below, so this module is never on the refresh path.
-  - **Email as the login name.** Users sign in with their real email (e.g. `alex@gmail.com`); the
-    backend maps it to the account's managed-domain UPN (`alex_gmail.com@<tenant>.onmicrosoft.com`)
-    via `email_to_upn` + `ENTRA_USER_DOMAIN` before the ROPC call (idempotent — a full UPN passes
-    through unchanged), so the ugly UPN never has to be typed.
-- **`jwt.ts`** — `buildSession` now reads both claim shapes (Cognito `sub`/`custom:tenant_id`/
-  `cognito:groups`/`custom:role` and Entra `oid`/`tenant_id`/`groups`/`role`) via fallbacks, so the
-  same `{tenant_id}:{role}` role interpretation works for either issuer. Backward-compatible.
+- **`EntraClient.ts`** — Microsoft Entra (External ID) via an **interactive auth-code + PKCE**
+  flow through a backend-for-frontend (BFF), updated 2026-10-14. `LoginScreen` renders a
+  "Continue with Microsoft Entra" button (`isInteractiveLogin`) that `beginLogin()`s — a redirect to
+  Entra's hosted sign-in — instead of the email/password form. On return, the `/auth/callback` route
+  (`AuthCallback.tsx`) `completeLogin(code, state)`s and the session is built.
+  - **Why interactive, not ROPC:** only the interactive flow **triggers the custom-claims provider**
+    that injects `tenant_id`/`role` (ROPC gets `groups` GUIDs but no `tenant_id`, so `buildSession`
+    can't scope a tenant user). Interactive also supports **MFA / Conditional Access / social** and
+    never puts the password in the app — the right fit for a secure multi-tenant app.
+  - **BFF — nothing sensitive in JS.** The backend owns the OAuth secrets:
+    `POST /v1/auth/authorize-url` mints the authorize URL with a server-generated PKCE challenge +
+    state + nonce in a short-lived httpOnly cookie; `POST /v1/auth/callback` validates state,
+    exchanges the code server-side, and sets the httpOnly refresh cookie. The SPA only relays the
+    `code`/`state` from the URL and holds the id token in memory — consistent with the no-web-storage
+    posture + the `src/auth` CI guard. The SPA needs only `VITE_AUTH_PROVIDER=entra` +
+    `VITE_API_BASE_URL`; every `ENTRA_*` value lives on the backend.
+  - The ROPC `POST /v1/auth/login` proxy remains for local-account/testing use but is superseded.
+- **`jwt.ts`** — `buildSession` reads both claim shapes (Cognito `sub`/`custom:tenant_id`/
+  `cognito:groups`/`custom:role` and Entra `oid`/`tenant_id`/`groups`/`role`); the interactive flow's
+  claims provider supplies `tenant_id`/`role`, so the same `{tenant_id}:{role}` interpretation works.
 
 The backend is native per cloud end-to-end: `AUTH_PROVIDER` selects the authorizer verify + claims
-mapper **and** the httpOnly-cookie session flow (`services/auth/handler.py` → `cognito_refresh`
-on AWS / `entra_refresh` on Azure). On Entra the backend now owns **both** halves of the OAuth2
-exchange: `POST /v1/auth/login` (ROPC password grant) and `POST /v1/auth/refresh` (refresh-token
-grant). So **reload-persistence works on Entra too** — a page reload silently restores the session
-exactly as on Cognito (backend env: `ENTRA_TOKEN_ENDPOINT` + `ENTRA_CLIENT_ID`, plus
-`ENTRA_USER_DOMAIN` for email→UPN login). Remaining caveat: ROPC covers local accounts only (no
-social/MFA) — swap `EntraClient` for an MSAL redirect flow behind the same `authClient` seam if
-those are needed. Validate against a real Entra tenant.
+mapper **and** the httpOnly-cookie session flow (`services/auth/handler.py` → `cognito_refresh` on
+AWS / `entra_refresh` + `entra_oauth` on Azure). Reload-persistence uses the same `/v1/auth/refresh`
+cookie flow on both. **Cross-site cookies:** on Azure the SPA (Front Door) and API (Container Apps)
+are different sites, so the auth cookies are `SameSite=None; Secure` (`AUTH_COOKIE_SAMESITE` env,
+default `Strict` for AWS's shared-domain setup). Entra app-registration prerequisites (register the
+`/auth/callback` SPA redirect URI; bind the `entra_token_claims` provider) are in
+`infrastructure/azure/README.md`.
 
-**Tests:** `EntraClient.test.ts` (backend-proxy login + credentials-error mapping, mocked fetch),
-`test_entra_refresh.py` (`password_grant` token mapping, email→UPN translation, invalid_grant, and
-the `POST /v1/auth/login` route — Entra 200 / Cognito 404), `jwt.test.ts` (Entra claim shape →
-Session). Auth suite green; `npm run typecheck` clean.
+**Tests:** `EntraClient.test.ts` (begin/complete interactive login + error mapping, mocked fetch),
+`test_entra_oauth.py` (PKCE challenge, authorize-URL params, `authorization_code_grant`, and the
+`/v1/auth/authorize-url` + `/v1/auth/callback` routes incl. state-mismatch/CSRF rejection),
+`jwt.test.ts` (Entra claim shape → Session). Auth suites green; `npm run typecheck`/`eslint`/`build` clean.
