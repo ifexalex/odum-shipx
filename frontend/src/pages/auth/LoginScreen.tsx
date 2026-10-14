@@ -1,5 +1,6 @@
 import { useState, type FormEvent, type JSX } from 'react'
 import { useNavigate } from 'react-router-dom'
+import { authProvider } from '../../auth/authClient'
 import { homePathForRole } from '../../auth/roleHome'
 import { useSession } from '../../auth/useSession'
 import { Banner, Button, Check, Field, Icon, KolaMark, ShipxWordmark } from '../../design/components'
@@ -12,6 +13,12 @@ import styles from './LoginScreen.module.css'
 function loginErrorMessage(err: unknown): string {
   const code = err instanceof Error ? err.name : undefined
   const message = err instanceof Error ? err.message : ''
+  // Entra errors come from EntraClient / the backend login proxy already phrased
+  // for the user (bad credentials, server/config faults) — surface them directly
+  // rather than collapsing every Entra failure into the generic Cognito fallback.
+  if (authProvider === 'entra') {
+    return message || 'Something went wrong signing you in. Please try again.'
+  }
   // Cognito reports a deactivated account as NotAuthorizedException("User is disabled.")
   if (code === 'NotAuthorizedException' && /disabled/i.test(message)) {
     return 'Your account has been deactivated. Contact your tenant administrator to restore access.'
@@ -135,7 +142,7 @@ export function LoginScreen(): JSX.Element {
 
           {error && (
             <div style={{ marginBottom: 20 }}>
-              <Banner variant="error" title="Invalid email or password">
+              <Banner variant="error" title="Couldn't sign in">
                 {error}
               </Banner>
             </div>
