@@ -248,18 +248,21 @@ VITE_API_BASE_URL  = <azure api_url>
 >
 > The `VITE_ENTRA_*` build vars are **not used** — the backend container holds every `ENTRA_*` value.
 
-**Required Entra app-registration config for Path B (do this once):**
-1. **Redirect URI** — add the SPA callback as a **Single-page application** redirect URI on the app
+**Required Entra app-registration config for Path B (do this once):** run
+**`./scripts/setup_entra_claims_provider.sh`** after the first deploy — it does steps 1 and 2 below
+idempotently (and prints the `entra_claims_caller_*` tfvars to set, then re-deploy). The full
+checklist is `docs/runbook.md` → "Azure deployment — required one-time setup".
+1. **Redirect URI** — the SPA callback as a **Single-page application** redirect URI on the app
    registration: `https://<your-front-door-host>/auth/callback` (Terraform derives and sets the
    backend's `ENTRA_REDIRECT_URI` to this; override with the `entra_redirect_uri` tfvar for a custom
-   domain). It must match exactly.
+   domain). Must match exactly. *(The script adds this.)*
 2. **Bind the custom-claims provider** — attach the `entra_token_claims` custom authentication
-   extension to this app as a claims provider for the **token-issuance-start** event, so `tenant_id`
-   / `role` are injected (see "Token claims on CIAM" below). This is what the interactive flow needs
-   and ROPC could never trigger.
+   extension to this app for the **token-issuance-start** event, so `tenant_id`/`role` are injected
+   (see "Token claims on CIAM" below). This is what the interactive flow needs and ROPC could never
+   trigger. *(The script does this.)*
 3. **Cross-site cookies** — the SPA (Front Door) and API (Container Apps) are different sites, so the
    auth cookies are set `SameSite=None; Secure` (the `auth_cookie_samesite` tfvar, default `None` on
-   Azure). If you later serve the API under the Front Door domain, set it to `Strict`.
+   Azure). If you later serve the API under the Front Door domain, set it to `Strict`. *(Terraform.)*
 
 Backend tfvars for Path B: `auth_provider="azure"`, `entra_token_endpoint`, `entra_client_id`,
 `entra_user_domain`, `entra_platform_admin_group_id` (maps the platform-admin group GUID), plus
@@ -337,12 +340,13 @@ that injects `tenant_id` + `role` into every token at sign-in.
 - **Provisioning:** `scripts/migrate_users_to_entra.py` stamps each provisioned user's Entra `oid`
   into `tenant_user.cognito_sub`, which is how the claims provider resolves them. No directory
   extension attributes are involved.
-- **Manual (Graph / portal — not Terraformable; required before go-live — the authoritative
-  checklist is `docs/runbook.md` → "Azure deployment — required one-time setup"):** register the
-  custom authentication extension against the endpoint (`terraform output -raw entra_claims_endpoint_url`)
-  and bind it to the SPA app's token-issuance event — `customAuthenticationExtensions` +
-  `authenticationEventListeners` via Graph (`/beta`) or the portal — mapping the returned `tenant_id`
-  + `role` into the token. This is the one step with no azurerm/azuread resource.
+- **Manual (not Terraformable; required before go-live):** run
+  **`./scripts/setup_entra_claims_provider.sh`** (idempotent). It registers the custom authentication
+  extension against the endpoint (`terraform output -raw entra_claims_endpoint_url`), binds it to the
+  SPA app's token-issuance event (`customAuthenticationExtensions` + `authenticationEventListeners`),
+  ensures the resource/audience app + consent, adds the SPA `/auth/callback` redirect URI, and prints
+  the `entra_claims_caller_*` tfvars to set. The authoritative checklist is `docs/runbook.md` →
+  "Azure deployment — required one-time setup". This is the one step with no azurerm/azuread resource.
 - **Backend env it enables:** with the extension live, every token carries `tenant_id` + `role`, so
   the `EntraClaimsMapper` synthesize path resolves **all** roles — `ENTRA_TENANT_ID_CLAIM` /
   `ENTRA_ROLE_CLAIM` stay at their `tenant_id` / `role` defaults (matching `OUT_TENANT_CLAIM` /

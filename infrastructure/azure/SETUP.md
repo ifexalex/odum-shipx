@@ -145,8 +145,9 @@ Pick one (see the README "Running the full app on Azure" for detail):
   deploy the custom authentication extension — a Container App on the shared image
   (`services/entra_token_claims/` via the `claims` entrypoint, in `modules/container_app`,
   reading tenant_id/role from the ShipX DB by the Entra oid — no Graph permission) —
-  and bind it per the README "Token claims on CIAM" section; it injects
-  `tenant_id`+`role` into every token so all roles resolve.
+  then run **`./scripts/setup_entra_claims_provider.sh`** (idempotent) to bind it to the SPA app's
+  token-issuance event and add the `/auth/callback` redirect URI; it injects `tenant_id`+`role` into
+  every token so all roles resolve. See `docs/runbook.md` → "Azure deployment — required one-time setup".
 
 ## 7. First deploy
 
