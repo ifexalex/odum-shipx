@@ -98,7 +98,7 @@ describe('LoginScreen', () => {
     await userEvent.type(screen.getByLabelText('Password', { exact: false, selector: 'input' }), 'wrong-password')
     await userEvent.click(screen.getByRole('button', { name: 'Sign In' }))
 
-    expect(await screen.findByText('Invalid email or password')).toBeInTheDocument()
+    expect(await screen.findByText("Couldn't sign in")).toBeInTheDocument()
     expect(screen.getByLabelText('Email address', { exact: false, selector: 'input' })).toBeInTheDocument()
   })
 

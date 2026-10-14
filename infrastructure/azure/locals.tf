@@ -17,9 +17,12 @@ locals {
   content_security_policy = join("; ", [
     "default-src 'self'",
     "script-src 'self'",
-    "style-src 'self' 'unsafe-inline'",
+    # Google Fonts: the stylesheet is served from fonts.googleapis.com and the
+    # font files from fonts.gstatic.com (see frontend/index.html). 'unsafe-inline'
+    # stays for styled-components/inline style attributes the app sets at runtime.
+    "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
     "img-src 'self' data:",
-    "font-src 'self' data:",
+    "font-src 'self' data: https://fonts.gstatic.com",
     "connect-src 'self' ${var.api_base_url} https://*.azurecontainerapps.io https://login.microsoftonline.com https://*.ciamlogin.com",
     "frame-ancestors 'none'",
     "base-uri 'self'",
