@@ -268,18 +268,19 @@ Backend tfvars for Path B: `auth_provider="azure"`, `entra_token_endpoint`, `ent
 `entra_user_domain`, `entra_platform_admin_group_id` (maps the platform-admin group GUID), plus
 `oidc_jwks_url`/`oidc_audience` for API token verification.
 
-> **Users are provisioned as B2C *local accounts* (sign in with their real email).** `EntraIdentityProvider`
-> creates users with `creationType: LocalAccount` + an `emailAddress` identity (issuer = `entra_user_domain`),
-> not member/UPN accounts — so interactive sign-in prompts for a password **locally** and B2C does not
-> federate a consumer email (gmail/outlook) to a Microsoft personal account. A member/UPN account makes
-> the hosted sign-in federate such emails to `login.live.com`, which fails with a `redirect_uri`/
-> `invalid_request` error. Set `ENTRA_LOCAL_ACCOUNTS=false` only for a workforce tenant that deliberately
-> wants member accounts. If you earlier created the admin as a member account, re-run
-> `scripts/setup_entra_platform_admin.sh` (now creates a local account) or recreate the user.
+> **Account model: member/UPN by default.** `EntraIdentityProvider` provisions **member accounts keyed
+> by UPN** (`<local>_<domain>@<tenant>.onmicrosoft.com`), the model every Entra tenant supports — users
+> sign in interactively with that **UPN**. **Do not type the raw email** on the hosted sign-in page: a
+> consumer email (gmail/outlook) gets home-realm-discovered to a *personal* Microsoft account and
+> federated to `login.live.com`, which fails (`redirect_uri`/`invalid_request`). The UPN never federates.
 >
-> Also, in the **Azure AD B2C → User flows / Identity providers** blade, keep the sign-in flow on
-> **Email + password (local accounts)** and don't enable **Microsoft Account**/social unless you've fully
-> configured that identity provider — an enabled-but-unconfigured social IdP also triggers the federation failure.
+> **Email-as-username is only possible on an Azure AD B2C tenant with email sign-in ("name coexistence")
+> enabled.** There you can set `ENTRA_LOCAL_ACCOUNTS=true`, and the provider creates
+> `creationType: LocalAccount` + an `emailAddress` identity so users sign in with their real email and
+> never federate. On a tenant **without** that feature, creating an email-only account fails with
+> *"Name coexistence user creation is not enabled on tenant"* — keep `ENTRA_LOCAL_ACCOUNTS=false` and use
+> UPN sign-in. (If you need email-based *customer* sign-in at scale, provision a dedicated B2C/External ID
+> tenant with email sign-in turned on.)
 
 Recommended: **Path A to get it live instantly**; Path B for the AWS-free, MFA-capable end-state.
 

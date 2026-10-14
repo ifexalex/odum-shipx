@@ -59,12 +59,15 @@ class EntraIdentityProvider:
         # For local accounts it is also the identity `issuer` (the tenant's
         # initial *.onmicrosoft.com domain).
         self._user_domain = os.environ.get("ENTRA_USER_DOMAIN", "")
-        # The project's Azure target is Entra External ID (B2C/CIAM), whose
-        # interactive sign-in uses **local accounts** (creationType=LocalAccount
-        # + an emailAddress identity) so users sign in with their real email and
-        # no consumer-account federation is triggered. Set ENTRA_LOCAL_ACCOUNTS=
-        # false only for a workforce tenant that wants member (UPN) accounts.
-        self._local_accounts = os.environ.get("ENTRA_LOCAL_ACCOUNTS", "true").strip().lower() != "false"
+        # Account model. Default = member/UPN accounts, which every Entra tenant
+        # supports (including workforce and the externalid/ciamlogin tenant used
+        # here). Set ENTRA_LOCAL_ACCOUNTS=true only on an Azure AD B2C tenant that
+        # has email sign-in / "name coexistence" enabled — there, local accounts
+        # (creationType=LocalAccount + an emailAddress identity) let users sign in
+        # with their real email and avoid consumer-account federation. On a tenant
+        # without that feature, creating an email-only account fails
+        # ("Name coexistence user creation is not enabled"), so this stays off.
+        self._local_accounts = os.environ.get("ENTRA_LOCAL_ACCOUNTS", "false").strip().lower() == "true"
         self._credential: Any = None
 
     # ------------------------------------------------------------------
