@@ -177,17 +177,47 @@ this is what makes the platform admin resolve), and `entra_claims_*` for the cla
 deploy wires them into the API/claims containers. (`ENTRA_TENANT_ID_CLAIM`/`ENTRA_ROLE_CLAIM` stay at
 their `tenant_id`/`role` defaults.)
 
-1. **Register + bind the custom authentication extension** to the SPA app's token-issuance event,
-   pointing it at `terraform output -raw entra_claims_endpoint_url` — `customAuthenticationExtensions`
-   + `authenticationEventListeners` via Graph `/beta` (or the portal: Enterprise apps → Custom
-   authentication extensions), mapping the returned `tenant_id` + `role` into the token. This is what
-   makes Entra call the claims provider on every sign-in.
+**Run the setup script — it does all of it, idempotently:**
 
-**Verify:** sign in (ROPC or the SPA), decode the **id_token**, and confirm it carries `tenant_id` +
-`role` (and `groups`). If they're missing: the extension isn't bound (or propagation lag); if the
-claims provider 500s or returns empty claims, check the `*-entra-claims` Container App logs (DB
-connectivity / the user's `cognito_sub` not matching their Entra `oid`). This step persists across
-deploys and does not need repeating.
+```bash
+az login                                    # a user who can manage app regs + grant consent
+# from a checkout with Terraform initialised for the target env (it auto-reads the
+# claims endpoint + frontend URL from `terraform output`):
+./scripts/setup_entra_claims_provider.sh
+#   or pass values explicitly:
+#   SPA_APP_ID=<spa client id> CLAIMS_ENDPOINT=https://<app>.azurecontainerapps.io/ \
+#   FRONTEND_URL=https://<frontdoor-host> ./scripts/setup_entra_claims_provider.sh
+```
+
+`scripts/setup_entra_claims_provider.sh` (idempotent — safe to re-run) performs every tenant step
+the pipeline can't:
+
+1. Adds the SPA **`/auth/callback` redirect URI** (interactive auth-code + PKCE login).
+2. Ensures the **resource app** the extension authenticates to (exposes
+   `CustomAuthenticationExtensions.Receive.Payload`; its appId is the `aud` the claims provider
+   validates — `services/entra_token_claims/security.py`).
+3. Creates/reconciles the **onTokenIssuanceStart custom authentication extension** pointing at the
+   claims Container App, emitting `tenant_id` + `role`.
+4. **Binds** it to the SPA app via an `authenticationEventListener` (so Entra calls it every sign-in).
+5. Best-effort **admin-consent** (prints the portal "Grant permission" fallback if a click is needed).
+6. Prints the exact **`entra_claims_caller_audience` / `_issuer` / `_jwks_url`** tfvars to set — then
+   re-run `deploy-azure.yml` so the claims container validates the inbound token with those values.
+
+(The portal/Graph `/beta` equivalents are `customAuthenticationExtensions` + `authenticationEventListeners`
+under Enterprise apps → Custom authentication extensions, if you ever need to do it by hand.)
+
+**Verify:** sign in via the SPA, decode the **id_token**, and confirm it carries `tenant_id` +
+`role` (and `groups`):
+
+```bash
+python3 -c "import sys,json,base64; p=sys.argv[1].split('.')[1]; p+='='*(-len(p)%4); \
+print(sorted(json.loads(base64.urlsafe_b64decode(p)).keys()))" '<id_token>'
+```
+
+If they're missing: the extension isn't bound (or propagation lag, a few minutes); if the claims
+provider 500s or returns empty claims, check the `*-entra-claims` Container App logs (DB connectivity
+/ the user's `cognito_sub` not matching their Entra `oid`). This step persists across deploys and
+does not need repeating.
 
 **Rollback / cloud switch:** flipping `DEPLOY_CLOUD` back to `aws` returns auth to Cognito with no
 Entra dependency; the Entra objects can stay in place, dormant.
