@@ -99,19 +99,22 @@ def verify_impersonation(token: str) -> dict[str, Any] | None:
 
 
 def _oidc_claims_to_context(claims: dict[str, Any]) -> dict[str, Any]:
-    """Project verified OIDC claims into the flat authorizer-context shape.
+    """Project verified OIDC claims into the authorizer-context shape.
 
-    Mirrors API Gateway's HTTP-API-v2 flattening of the list-valued
-    ``cognito:groups`` claim to a comma-joined string.
+    Passes the verified claims through unchanged except for mirroring API
+    Gateway's HTTP-API-v2 flattening of the list-valued ``cognito:groups`` claim
+    to a comma-joined string. The claims are interpreted downstream by the active
+    cloud's ``ClaimsMapper``, so the provider-specific keys must survive: Cognito
+    reads ``sub`` / ``custom:tenant_id`` / ``cognito:groups``, while Entra reads
+    ``oid`` / ``tenant_id`` / ``role`` / ``groups`` (GUIDs). Projecting to only the
+    Cognito keys (as this did originally) dropped every Entra claim, so on Azure
+    the mapper saw an empty identity and every authenticated request 401'd.
     """
-    groups = claims.get("cognito:groups", "")
+    context = dict(claims)
+    groups = context.get("cognito:groups")
     if isinstance(groups, list):
-        groups = ",".join(groups)
-    return {
-        "sub": claims.get("sub", ""),
-        "custom:tenant_id": claims.get("custom:tenant_id", ""),
-        "cognito:groups": groups,
-    }
+        context["cognito:groups"] = ",".join(groups)
+    return context
 
 
 def _impersonation_claims_to_context(claims: dict[str, Any]) -> dict[str, Any]:
