@@ -58,6 +58,29 @@ class TestUserLifecycle:
         assert "creationType" not in body
         assert body["userPrincipalName"] == "c_gmail.com@tenant.onmicrosoft.com"
 
+    def test_create_reuses_existing_user_on_conflict(self):
+        # A duplicate UPN/identity (Graph 409, or 400 ObjectConflict mapped to
+        # DuplicateResourceError) is idempotent: resolve the existing oid and
+        # reconcile the role group rather than failing provisioning.
+        p = _provider_with_stubbed_graph(local=False)
+        p.sync_user_groups = MagicMock()  # noqa: SLF001
+        p._resolve_user_id = MagicMock(return_value="existing-oid")  # noqa: SLF001
+        p._graph.side_effect = DuplicateResourceError("user", "/users")  # noqa: SLF001
+
+        uid = p.create_user("c@gmail.com", "Cy", "t1", "tenant_admin")
+
+        assert uid == "existing-oid"
+        p._resolve_user_id.assert_called_once_with("c_gmail.com@tenant.onmicrosoft.com")  # noqa: SLF001
+        p.sync_user_groups.assert_called_once_with("existing-oid", "t1", {"tenant_admin"})  # noqa: SLF001
+
+    def test_create_raises_when_conflicting_user_unresolvable(self):
+        p = _provider_with_stubbed_graph(local=False)
+        p.sync_user_groups = MagicMock()  # noqa: SLF001
+        p._resolve_user_id = MagicMock(return_value="")  # noqa: SLF001
+        p._graph.side_effect = DuplicateResourceError("user", "/users")  # noqa: SLF001
+        with pytest.raises(ExternalServiceError):
+            p.create_user("c@gmail.com", "Cy", "t1", "tenant_admin")
+
     def test_local_account_requires_user_domain(self):
         p = _provider_with_stubbed_graph(local=True)
         p._user_domain = ""  # noqa: SLF001
@@ -141,19 +164,28 @@ class TestCredentialSelection:
 
 
 class TestErrorMapping:
-    def _run_graph(self, http_error_code: int):
+    def _run_graph(self, http_error_code: int, body: bytes = b'{"error":"e"}'):
         p = EntraIdentityProvider()
         p._credential = MagicMock()  # noqa: SLF001
         p._credential.get_token.return_value = MagicMock(token="tok")  # noqa: SLF001
-        err = urllib.error.HTTPError(
-            url="https://graph", code=http_error_code, msg="x", hdrs=None, fp=io.BytesIO(b'{"error":"e"}')
-        )
+        err = urllib.error.HTTPError(url="https://graph", code=http_error_code, msg="x", hdrs=None, fp=io.BytesIO(body))
         with patch("urllib.request.urlopen", side_effect=err):
             return p._graph("POST", "/users", {"x": 1})  # noqa: SLF001
 
     def test_409_maps_to_duplicate(self):
         with pytest.raises(DuplicateResourceError):
             self._run_graph(409)
+
+    def test_400_object_conflict_maps_to_duplicate(self):
+        # Graph returns a duplicate userPrincipalName as 400 Request_BadRequest /
+        # ObjectConflict, not 409 — it must still be a DuplicateResourceError.
+        body = b'{"error":{"code":"Request_BadRequest","message":"Another object with the same value for property userPrincipalName already exists.","details":[{"code":"ObjectConflict"}]}}'
+        with pytest.raises(DuplicateResourceError):
+            self._run_graph(400, body)
+
+    def test_400_other_maps_to_external_service_error(self):
+        with pytest.raises(ExternalServiceError):
+            self._run_graph(400, b'{"error":{"code":"Request_BadRequest","message":"bad property"}}')
 
     def test_other_maps_to_external_service_error(self):
         with pytest.raises(ExternalServiceError):

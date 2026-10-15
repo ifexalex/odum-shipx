@@ -134,6 +134,40 @@ class TestCreateTenantNotifiesOnboarding:
         assert result["tenant"]["id"] == TENANT_ID
 
 
+class TestCreateTenantLeadIdempotency:
+    """A provision click on an already-provisioned onboarding lead must not create
+    a second tenant (double-click / retry after a transient 500)."""
+
+    def _req(self, onboarding_request_id: str):
+        from services.tenant_management.models import CreateTenantRequest, InitialAdminInput, SubscriptionTier
+
+        return CreateTenantRequest(
+            company_name="ACME Logistics",
+            primary_contact_email="owner@acme.com",
+            primary_contact_phone="+2348012345678",
+            subscription_tier=SubscriptionTier.business,
+            initial_admin=InitialAdminInput(email="admin@acme.com", full_name="Jane Admin"),
+            onboarding_request_id=onboarding_request_id,
+        )
+
+    def test_already_provisioned_lead_raises_and_creates_no_tenant(self):
+        from services.tenant_management import service
+
+        with (
+            patch.object(service, "get_identity_provider", return_value=MagicMock()),
+            patch.object(
+                service.repo,
+                "get_onboarding_request",
+                return_value={"id": "req-1", "status": "provisioned", "tenant_id": TENANT_ID},
+            ),
+            patch.object(service.repo, "create_tenant") as mock_create,
+        ):
+            with pytest.raises(DuplicateResourceError):
+                service.create_tenant(self._req("req-1"), actor_id="platform-admin")
+
+        mock_create.assert_not_called()
+
+
 class TestCreateTenantDefaultWarehouse:
     """Ground-truth gap found live, against a real paper "Goods Release
     Note": migration 041's one-time backfill gave exactly one default
