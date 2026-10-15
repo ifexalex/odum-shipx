@@ -109,6 +109,11 @@ jobs:
             echo "auth_provider=$(terraform output -raw frontend_auth_provider)"
             echo "entra_client_id=$(terraform output -raw entra_client_id)"
             echo "entra_token_endpoint=$(terraform output -raw entra_token_endpoint)"
+            # Platform-admin group id (+ optional group-id map): the SPA maps the
+            # token's group GUIDs back to canonical role names, mirroring the
+            # backend EntraClaimsMapper. Public ids, not secrets.
+            echo "entra_platform_admin_group_id=$(terraform output -raw entra_platform_admin_group_id)"
+            echo "entra_group_id_map=$(terraform output -raw entra_group_id_map)"
           } >> "$GITHUB_OUTPUT"
           # Upload with the storage key via --account-key — no data-plane RBAC role
           # needed on the Contributor-only deploy identity. Fetched via control-plane
@@ -131,6 +136,9 @@ jobs:
           VITE_AUTH_PROVIDER: ${{ steps.tf.outputs.auth_provider || secrets.VITE_AUTH_PROVIDER || 'cognito' }}
           VITE_ENTRA_TOKEN_ENDPOINT: ${{ steps.tf.outputs.entra_token_endpoint || secrets.VITE_ENTRA_TOKEN_ENDPOINT }}
           VITE_ENTRA_CLIENT_ID: ${{ steps.tf.outputs.entra_client_id || secrets.VITE_ENTRA_CLIENT_ID }}
+          # Entra group-id → canonical role mapping (SPA mirrors the backend mapper).
+          VITE_ENTRA_PLATFORM_ADMIN_GROUP_ID: ${{ steps.tf.outputs.entra_platform_admin_group_id || secrets.VITE_ENTRA_PLATFORM_ADMIN_GROUP_ID }}
+          VITE_ENTRA_GROUP_ID_MAP: ${{ steps.tf.outputs.entra_group_id_map || secrets.VITE_ENTRA_GROUP_ID_MAP }}
           VITE_ENVIRONMENT: ${{ inputs.environment }}
 
       # ----------------------------------------------------------------- AWS

@@ -35,6 +35,25 @@ output "entra_token_endpoint" {
   value       = var.entra_token_endpoint
 }
 
+output "entra_platform_admin_group_id" {
+  description = <<-EOT
+    Entra platform_admin group object id — VITE_ENTRA_PLATFORM_ADMIN_GROUP_ID.
+    The SPA maps this GUID (carried in the token's `groups` claim) back to the
+    canonical `platform_admin` name and derives tenant_id=PLATFORM, mirroring the
+    backend EntraClaimsMapper. A public identifier, not a secret.
+  EOT
+  value       = var.entra_platform_admin_group_id
+}
+
+output "entra_group_id_map" {
+  description = <<-EOT
+    JSON {<group guid>: <canonical name>} for tenant-scoped Entra groups —
+    VITE_ENTRA_GROUP_ID_MAP. Usually empty (tenant users' tenant_id/role come
+    from the DB claims extension); here for parity with the backend mapper.
+  EOT
+  value       = var.entra_group_id_map
+}
+
 output "resource_group" {
   description = "Resource group holding the Azure stack."
   value       = azurerm_resource_group.main.name
