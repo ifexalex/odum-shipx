@@ -41,35 +41,16 @@ class LoginResult(TypedDict):
     expires_in: int
 
 
-def _spa_origin() -> str | None:
-    """Origin (scheme://host[:port]) of the registered SPA redirect URI, or None.
-
-    Derived from ENTRA_REDIRECT_URI so it always matches a URI registered on the
-    app. Used as the `Origin` header on token redemptions (see _token_request).
-    """
-    redirect_uri = os.environ.get("ENTRA_REDIRECT_URI", "")
-    if not redirect_uri:
-        return None
-    parts = urllib.parse.urlsplit(redirect_uri)
-    if not parts.scheme or not parts.netloc:
-        return None
-    return f"{parts.scheme}://{parts.netloc}"
-
-
-def _token_request(form_fields: dict[str, str], cross_origin: bool = False) -> dict[str, str]:
+def _token_request(form_fields: dict[str, str]) -> dict[str, str]:
     """POST an OAuth2 form to the Entra token endpoint and return the JSON body.
 
     Shared by the authorization_code, refresh_token and password (ROPC) grants.
-
-    Args:
-        form_fields: grant-specific form parameters (client_id + scope are added).
-        cross_origin: send an `Origin` header matching the registered SPA redirect
-            URI. The app's redirect URI is registered under the Entra
-            *Single-Page Application* platform, whose codes/refresh tokens may
-            only be redeemed via a cross-origin request (AADSTS9002327). This BFF
-            redeems them server-side (no secret — PKCE is the proof), so it must
-            present the Origin header for the authorization_code and refresh_token
-            grants. ROPC does not need it.
+    The app's redirect URI is registered under the Entra *Mobile & desktop*
+    (publicClient) platform: the BFF redeems the code/refresh token server-side
+    with PKCE and no client secret (a public client), which is a same-origin POST
+    with no `Origin` header. (An `Origin` header would make Entra treat it as a
+    cross-origin SPA redemption and reject it with AADSTS9002326 — that is only
+    valid for the SPA client-type.)
 
     Raises:
         AuthenticationRequiredError: invalid grant/credentials (HTTP 400/401 with
@@ -83,16 +64,11 @@ def _token_request(form_fields: dict[str, str], cross_origin: bool = False) -> d
         raise ExternalServiceError("Entra", "ENTRA_TOKEN_ENDPOINT / ENTRA_CLIENT_ID are not set")
 
     form = urllib.parse.urlencode({"client_id": client_id, "scope": scope, **form_fields}).encode()
-    headers = {"Content-Type": "application/x-www-form-urlencoded"}
-    if cross_origin:
-        origin = _spa_origin()
-        if origin:
-            headers["Origin"] = origin
     req = urllib.request.Request(
         endpoint,
         data=form,
         method="POST",
-        headers=headers,
+        headers={"Content-Type": "application/x-www-form-urlencoded"},
     )
     try:
         with urllib.request.urlopen(req, timeout=10) as resp:  # noqa: S310 - Entra token endpoint only
@@ -159,8 +135,7 @@ def authorization_code_grant(code: str, code_verifier: str, redirect_uri: str) -
             "code": code,
             "code_verifier": code_verifier,
             "redirect_uri": redirect_uri,
-        },
-        cross_origin=True,
+        }
     )
     id_token = data.get("id_token")
     if not id_token:
@@ -181,7 +156,7 @@ def refresh_id_token(refresh_token: str) -> RefreshResult:
             (Entra reports this as HTTP 400 invalid_grant).
         ExternalServiceError: misconfiguration or any other Entra failure.
     """
-    data = _token_request({"grant_type": "refresh_token", "refresh_token": refresh_token}, cross_origin=True)
+    data = _token_request({"grant_type": "refresh_token", "refresh_token": refresh_token})
     id_token = data.get("id_token")
     if not id_token:
         # No id_token back means the grant didn't yield a usable session.

@@ -93,12 +93,12 @@ class TestAuthorizationCodeGrant:
         assert captured["form"]["grant_type"] == ["authorization_code"]
         assert captured["form"]["code"] == ["the-code"]
         assert captured["form"]["code_verifier"] == ["the-verifier"]
-        # SPA-registered redirect URIs may only be redeemed cross-origin
-        # (AADSTS9002327): the server-side exchange must carry the Origin header
-        # of the registered redirect URI.
-        assert captured["req"].get_header("Origin") == "https://app.example.test"
+        # The redirect URI is registered under the Mobile & desktop (publicClient)
+        # platform, so the server-side PKCE redemption is a same-origin POST: it
+        # must NOT send an Origin header (that is SPA-only — AADSTS9002326).
+        assert captured["req"].get_header("Origin") is None
 
-    def test_refresh_sends_spa_origin_header(self):
+    def test_refresh_does_not_send_origin_header(self):
         captured: dict = {}
 
         def _fake(req, timeout=None):  # noqa: ANN001
@@ -107,8 +107,7 @@ class TestAuthorizationCodeGrant:
 
         with patch("urllib.request.urlopen", side_effect=_fake):
             entra_refresh.refresh_id_token("rt")
-        # SPA-issued refresh tokens are also cross-origin-only.
-        assert captured["req"].get_header("Origin") == "https://app.example.test"
+        assert captured["req"].get_header("Origin") is None
 
     def test_invalid_code_raises(self):
         err = urllib.error.HTTPError(url="https://t", code=400, msg="bad", hdrs=None, fp=io.BytesIO(b'{"error":"invalid_grant"}'))
