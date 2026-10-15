@@ -24,6 +24,11 @@ _ENV = {
 }
 
 
+def _encode_tx(tx: dict) -> str:
+    """Encode a transaction dict the way the handler does (base64url JSON)."""
+    return base64.urlsafe_b64encode(json.dumps(tx).encode()).decode()
+
+
 def _urlopen_returning(payload: dict):
     from unittest.mock import MagicMock
 
@@ -118,10 +123,17 @@ class TestHandlerInteractiveRoutes:
         assert "authorize_url" in json.loads(resp["body"])["data"]
         tx_cookie = next(c for c in resp["cookies"] if c.startswith("shipx_auth_tx="))
         assert "HttpOnly" in tx_cookie and "Secure" in tx_cookie
+        # The cookie VALUE must be a valid cookie-octet string (RFC 6265): raw JSON
+        # (spaces/commas/quotes/braces) is dropped by browsers. It is base64url JSON
+        # carrying the PKCE verifier, state and nonce.
+        value = tx_cookie.split("=", 1)[1].split(";", 1)[0]
+        assert not any(ch in value for ch in ' ",;{}')
+        decoded = json.loads(base64.urlsafe_b64decode(value))
+        assert set(decoded) == {"v", "s", "n"}
 
     def test_callback_validates_state_exchanges_and_sets_session(self, monkeypatch):
         monkeypatch.setattr(providers, "AUTH_PROVIDER", "azure")
-        tx = json.dumps({"v": "verifier", "s": "state-xyz", "n": "nonce"})
+        tx = _encode_tx({"v": "verifier", "s": "state-xyz", "n": "nonce"})
         with patch(
             "services.auth.entra_refresh.authorization_code_grant",
             return_value={"id_token": "id.jwt", "access_token": "a", "refresh_token": "r", "expires_in": 1800},
@@ -139,7 +151,7 @@ class TestHandlerInteractiveRoutes:
 
     def test_callback_rejects_state_mismatch(self, monkeypatch):
         monkeypatch.setattr(providers, "AUTH_PROVIDER", "azure")
-        tx = json.dumps({"v": "verifier", "s": "expected", "n": "nonce"})
+        tx = _encode_tx({"v": "verifier", "s": "expected", "n": "nonce"})
         resp = handler.lambda_handler(
             self._event("/v1/auth/callback", {"code": "c", "state": "forged"}, [f"shipx_auth_tx={tx}"]),
             None,
@@ -150,6 +162,16 @@ class TestHandlerInteractiveRoutes:
         monkeypatch.setattr(providers, "AUTH_PROVIDER", "azure")
         resp = handler.lambda_handler(
             self._event("/v1/auth/callback", {"code": "c", "state": "s"}, []),
+            None,
+        )
+        assert resp["statusCode"] == 401
+
+    def test_callback_rejects_malformed_tx_cookie(self, monkeypatch):
+        # A tx cookie that is not valid base64url JSON (e.g. a legacy raw-JSON
+        # value or a truncated cookie) fails closed rather than 500ing.
+        monkeypatch.setattr(providers, "AUTH_PROVIDER", "azure")
+        resp = handler.lambda_handler(
+            self._event("/v1/auth/callback", {"code": "c", "state": "s"}, ["shipx_auth_tx=not-base64url!!"]),
             None,
         )
         assert resp["statusCode"] == 401

@@ -28,6 +28,7 @@ See docs/project docs/frontend/04_auth_and_session.md and
 11_security_and_compliance.md for the threat model this closes.
 """
 
+import base64
 import json
 import logging
 import os
@@ -192,7 +193,11 @@ def _authorize_url(event: dict[str, Any], request_id: str) -> dict[str, Any]:
     except ValueError as exc:
         raise LogisticsBaseError(str(exc), "ENTRA_NOT_CONFIGURED", 503) from exc
 
-    tx = json.dumps({"v": verifier, "s": state, "n": nonce})
+    # base64url-encode the JSON so the cookie VALUE is a valid cookie-octet
+    # string. Raw JSON contains spaces/commas/quotes/braces, which browsers
+    # reject or truncate in a Set-Cookie value — dropping the transaction and
+    # 401ing the callback.
+    tx = base64.urlsafe_b64encode(json.dumps({"v": verifier, "s": state, "n": nonce}).encode()).decode()
     return {
         "statusCode": 200,
         "cookies": [_cookie_header(tx, _TX_COOKIE_MAX_AGE_SECONDS, name=_TX_COOKIE_NAME)],
@@ -218,8 +223,8 @@ def _callback(event: dict[str, Any], request_id: str) -> dict[str, Any]:
     if not raw_tx:
         raise AuthenticationRequiredError()
     try:
-        tx = json.loads(raw_tx)
-    except json.JSONDecodeError as exc:
+        tx = json.loads(base64.urlsafe_b64decode(raw_tx))
+    except (ValueError, json.JSONDecodeError) as exc:
         raise AuthenticationRequiredError() from exc
     # Constant-time-ish state check — the transaction cookie is httpOnly, so this
     # guards against a forged/replayed callback, not a cookie-reading attacker.
