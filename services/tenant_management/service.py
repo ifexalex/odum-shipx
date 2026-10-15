@@ -168,6 +168,16 @@ def create_tenant(
     """
     cognito = get_identity_provider()
 
+    # 0. Idempotency guard for lead-driven provisioning: if this onboarding
+    # request was already provisioned, do not create a second tenant (the
+    # provision button can be clicked again, or a transient 500 can leave the
+    # client unsure). Return a conflict so the caller refreshes rather than
+    # duplicating the tenant.
+    if req.onboarding_request_id:
+        existing_request = repo.get_onboarding_request(req.onboarding_request_id)
+        if existing_request and (existing_request.get("status") == "provisioned" or existing_request.get("tenant_id")):
+            raise DuplicateResourceError("onboarding_request", req.onboarding_request_id)
+
     # 1. Create tenant — slug derived from company_name; unique constraint handled at DB level
     base_slug = _generate_slug(req.company_name)
     slug = base_slug

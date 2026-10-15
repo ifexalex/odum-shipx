@@ -141,9 +141,13 @@ class EntraIdentityProvider:
                 raw = resp.read()
                 return json.loads(raw) if raw else None
         except urllib.error.HTTPError as exc:
-            if exc.code == 409:
-                raise DuplicateResourceError("user", path) from exc
             detail = exc.read().decode(errors="replace") if hasattr(exc, "read") else str(exc)
+            # Graph reports an existing object inconsistently: 409 on some routes,
+            # but a 400 Request_BadRequest / ObjectConflict for a duplicate
+            # userPrincipalName or identity. Normalise both to DuplicateResourceError
+            # so callers can treat "already exists" idempotently.
+            if exc.code == 409 or (exc.code == 400 and ("ObjectConflict" in detail or "already exists" in detail)):
+                raise DuplicateResourceError("user", path) from exc
             logger.warning("Graph %s %s failed: %s %s", method, path, exc.code, detail)
             raise ExternalServiceError("Entra", f"{exc.code}: {detail}") from exc
         except urllib.error.URLError as exc:
@@ -218,12 +222,27 @@ class EntraIdentityProvider:
                 "mail": email,
                 "passwordProfile": {"password": password, "forceChangePasswordNextSignIn": force_change},
             }
-        created = self._graph("POST", "/users", body)
-        sub = str(created["id"])
+        from shared.exceptions import DuplicateResourceError, ExternalServiceError
+
+        try:
+            created = self._graph("POST", "/users", body)
+            sub = str(created["id"])
+        except DuplicateResourceError as exc:
+            # The directory user already exists (e.g. a retried provisioning, or the
+            # same person already administers another tenant). Entra is a shared
+            # directory with globally-unique UPNs/identities, while ShipX scopes a
+            # user to a tenant via the {tenant_id}:{role} group — so reusing the
+            # existing object id and just reconciling the group is the correct,
+            # idempotent behaviour, not an error.
+            key = email if self._local_accounts else self._upn(email)
+            sub = self._resolve_user_id(key)
+            if not sub:
+                raise ExternalServiceError("Entra", f"user {key} reported as existing but could not be resolved") from exc
+            logger.info("Entra user already existed; reusing oid=%s tenant_id=%s role=%s", sub, tenant_id, role)
         # Reconcile the role group by object id (works for local + member accounts)
         # so the token carries {tenant_id}:{role}.
         self.sync_user_groups(sub, tenant_id, {role})
-        logger.info("Entra user created: tenant_id=%s role=%s oid=%s local=%s", tenant_id, role, sub, self._local_accounts)
+        logger.info("Entra user provisioned: tenant_id=%s role=%s oid=%s local=%s", tenant_id, role, sub, self._local_accounts)
         return sub
 
     def create_user(self, email: str, full_name: str, tenant_id: str, role: str) -> str:
