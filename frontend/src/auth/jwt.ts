@@ -50,6 +50,79 @@ function parseGroups(raw: unknown): string[] {
     .filter(Boolean)
 }
 
+// Frontend port of shared/providers/azure/entra_claims.py (EntraClaimsMapper).
+// Entra tokens are not shaped like Cognito's: a cloud-only security group is
+// emitted in `groups` as its directory OBJECT ID (a GUID), not the canonical
+// "{tenant_id}:{role}"/"platform_admin" name; CIAM also does not reliably emit
+// a ShipX tenant_id claim. buildSession applies this ONLY for the Entra provider
+// (mirroring get_claims_mapper's provider selection) so Cognito is untouched.
+const PLATFORM_ADMIN_GROUP = 'platform_admin'
+
+// Entra group-object-id → ShipX canonical name, built at call time from the
+// build-injected env so a token carrying GUIDs resolves without a Graph call.
+// Mirrors _load_group_id_map (ENTRA_GROUP_ID_MAP + ENTRA_PLATFORM_ADMIN_GROUP_ID).
+function loadEntraGroupIdMap(): Record<string, string> {
+  const map: Record<string, string> = {}
+  const raw = (import.meta.env.VITE_ENTRA_GROUP_ID_MAP || '').trim()
+  if (raw) {
+    try {
+      const parsed: unknown = JSON.parse(raw)
+      if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
+        for (const [k, v] of Object.entries(parsed as Record<string, unknown>)) {
+          map[String(k).trim()] = String(v).trim()
+        }
+      }
+    } catch {
+      // Malformed config must never silently grant/deny a role — ignore it.
+    }
+  }
+  const platformAdminGid = (import.meta.env.VITE_ENTRA_PLATFORM_ADMIN_GROUP_ID || '').trim()
+  if (platformAdminGid) map[platformAdminGid] = PLATFORM_ADMIN_GROUP
+  return map
+}
+
+// Normalize an Entra token's identity into ShipX's canonical (tenantId, groups)
+// shapes — the same output EntraClaimsMapper produces for the backend. Exported
+// for direct unit testing. `groups` come back as "{tenant}:{role}"/"platform_admin".
+export function normalizeEntraClaims(
+  claims: Record<string, unknown>,
+  groupIdMap: Record<string, string> = loadEntraGroupIdMap(),
+): { tenantId: string; groups: string[] } {
+  // Names carried directly or mapped from GUIDs (unmapped GUIDs dropped).
+  const mapped: string[] = []
+  for (const entry of parseGroups(claims.groups)) {
+    if (groupIdMap[entry]) mapped.push(groupIdMap[entry])
+    else if (entry.includes(':') || entry === PLATFORM_ADMIN_GROUP) mapped.push(entry)
+  }
+
+  const roleClaim = typeof claims.role === 'string' ? claims.role.trim() : ''
+  const explicitTenant = String(claims.tenant_id ?? '')
+  // A platform admin is tenant-less by definition (tenant_id=PLATFORM); the group
+  // that grants the role also fixes the scope. Tenant users need an explicit claim.
+  const isPlatformAdmin = mapped.includes(PLATFORM_ADMIN_GROUP) || roleClaim === PLATFORM_ADMIN_GROUP
+  const tenantId = explicitTenant || (isPlatformAdmin ? PLATFORM_TENANT_ID : '')
+
+  // Synthesize the canonical group from the role + tenant_id claims (reliable even
+  // when `groups` carries only GUIDs) — mirrors _synthesize_groups.
+  const synthesized: string[] = []
+  if (roleClaim === PLATFORM_ADMIN_GROUP) synthesized.push(PLATFORM_ADMIN_GROUP)
+  else if (roleClaim && tenantId) synthesized.push(`${tenantId}:${roleClaim}`)
+
+  const seen = new Set<string>()
+  const groups: string[] = []
+  for (const name of [...mapped, ...synthesized]) {
+    if (!seen.has(name)) {
+      seen.add(name)
+      groups.push(name)
+    }
+  }
+  return { tenantId, groups }
+}
+
+function isEntraProvider(): boolean {
+  return (import.meta.env.VITE_AUTH_PROVIDER || 'cognito').toLowerCase() === 'entra'
+}
+
 // Mirrors shared/auth.py's _parse_roles: the platform_admin group has no tenant
 // prefix; tenant users are "{tenant_id}:{role}". Collects every matching group
 // (not just the first) so staff can hold more than one role at once. Falls
@@ -85,17 +158,22 @@ function parsePrimaryRole(claims: Record<string, unknown>, roles: UserRole[]): U
 export function buildSession(claims: Record<string, unknown>): Session {
   // Cognito ID tokens carry `sub`; Entra tokens carry `oid` (object id).
   const userId = String(claims.sub ?? claims.oid ?? '')
-  // Cognito: custom:tenant_id; Entra: a `tenant_id` custom claim; ShipX
-  // impersonation tokens (services/tenant_management/impersonation.py): bare tenant_id.
-  const tenantId = String(claims['custom:tenant_id'] ?? claims.tenant_id ?? '')
+
+  // On Entra, normalize the provider-specific claim shapes (GUID group ids, no
+  // tenant_id claim for platform admins) into ShipX's canonical tenant_id +
+  // groups first — mirroring EntraClaimsMapper. On Cognito these are carried
+  // verbatim. Impersonation tokens carry a bare `tenant_id` + `role` on either.
+  const entra = isEntraProvider() ? normalizeEntraClaims(claims) : null
+  // Cognito: custom:tenant_id; Entra: derived above; impersonation: bare tenant_id.
+  const tenantId = entra ? entra.tenantId : String(claims['custom:tenant_id'] ?? claims.tenant_id ?? '')
   if (!userId || !tenantId) {
     throw new Error('JWT is missing required claims (sub|oid / tenant id)')
   }
 
-  // Role groups: Cognito `cognito:groups`, Entra `groups` — both in canonical
-  // `{tenant_id}:{role}` form. Impersonation tokens have neither — they carry
-  // the target role directly in a `role` claim (single role only).
-  const groups = parseGroups(claims['cognito:groups'] ?? claims.groups)
+  // Role groups in canonical `{tenant_id}:{role}` / `platform_admin` form:
+  // Cognito `cognito:groups`; Entra normalized above. Impersonation tokens have
+  // neither — they carry the target role directly in a `role` claim (single role).
+  const groups = entra ? entra.groups : parseGroups(claims['cognito:groups'] ?? claims.groups)
   const directRole = typeof claims.role === 'string' && VALID_ROLES.has(claims.role) ? (claims.role as UserRole) : null
   const roles: UserRole[] = groups.length > 0 ? parseRoles(groups, tenantId) : [directRole ?? 'customer']
   const role = parsePrimaryRole(claims, roles)

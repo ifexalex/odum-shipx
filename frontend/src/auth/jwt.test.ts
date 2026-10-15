@@ -1,5 +1,5 @@
-import { describe, expect, it } from 'vitest'
-import { buildSession, decodeJwt, sessionFromIdToken } from './jwt'
+import { afterEach, describe, expect, it, vi } from 'vitest'
+import { buildSession, decodeJwt, normalizeEntraClaims, sessionFromIdToken } from './jwt'
 
 function fakeJwt(claims: Record<string, unknown>): string {
   const base64url = (input: string): string =>
@@ -199,5 +199,68 @@ describe('buildSession — Entra claim shape', () => {
       exp: 1700000000,
     })
     expect(session.roles).toEqual(['customer'])
+  })
+})
+
+// Real CIAM tokens carry group directory OBJECT IDS (GUIDs) in `groups`, not
+// canonical names, and omit a tenant_id claim for platform admins. These assert
+// the EntraClaimsMapper parity ported into jwt.ts.
+describe('normalizeEntraClaims', () => {
+  const PLATFORM_ADMIN_GID = '7eec8dba-c70f-4043-b84d-5c3a82b86c37'
+
+  it('maps the platform_admin group GUID to the canonical name and derives tenant_id=PLATFORM', () => {
+    const { tenantId, groups } = normalizeEntraClaims(
+      { oid: 'o1', groups: [PLATFORM_ADMIN_GID] },
+      { [PLATFORM_ADMIN_GID]: 'platform_admin' },
+    )
+    expect(tenantId).toBe('PLATFORM')
+    expect(groups).toEqual(['platform_admin'])
+  })
+
+  it('synthesizes a canonical group from the role + tenant_id claims when groups carries only GUIDs', () => {
+    const { tenantId, groups } = normalizeEntraClaims(
+      { oid: 'o2', tenant_id: 'aaaa-bbbb', role: 'tenant_admin', groups: ['some-unmapped-guid'] },
+      {},
+    )
+    expect(tenantId).toBe('aaaa-bbbb')
+    expect(groups).toEqual(['aaaa-bbbb:tenant_admin'])
+  })
+
+  it('drops unmapped GUIDs and yields no tenant when nothing identifies the user', () => {
+    const { tenantId, groups } = normalizeEntraClaims({ oid: 'o3', groups: ['unknown-guid'] }, {})
+    expect(tenantId).toBe('')
+    expect(groups).toEqual([])
+  })
+})
+
+describe('buildSession — Entra provider (CIAM GUID token)', () => {
+  afterEach(() => vi.unstubAllEnvs())
+
+  it('builds a platform-admin session from oid + group GUID with no tenant_id/role claim', () => {
+    vi.stubEnv('VITE_AUTH_PROVIDER', 'entra')
+    vi.stubEnv('VITE_ENTRA_PLATFORM_ADMIN_GROUP_ID', '7eec8dba-c70f-4043-b84d-5c3a82b86c37')
+    const session = buildSession({
+      oid: 'entra-admin-1',
+      groups: ['7eec8dba-c70f-4043-b84d-5c3a82b86c37'],
+      exp: 1700000000,
+    })
+    expect(session.userId).toBe('entra-admin-1')
+    expect(session.tenantId).toBe('PLATFORM')
+    expect(session.role).toBe('platform_admin')
+    expect(session.isPlatformAdmin).toBe(true)
+  })
+
+  it('builds a tenant-user session from the DB-injected tenant_id + role claims', () => {
+    vi.stubEnv('VITE_AUTH_PROVIDER', 'entra')
+    const session = buildSession({
+      oid: 'entra-user-1',
+      tenant_id: 'aaaa-bbbb',
+      role: 'nigeria_office_staff',
+      groups: ['irrelevant-directory-guid'],
+      exp: 1700000000,
+    })
+    expect(session.tenantId).toBe('aaaa-bbbb')
+    expect(session.roles).toEqual(['nigeria_office_staff'])
+    expect(session.role).toBe('nigeria_office_staff')
   })
 })
