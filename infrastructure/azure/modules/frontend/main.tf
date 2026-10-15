@@ -100,6 +100,48 @@ resource "azurerm_cdn_frontdoor_origin" "frontend" {
   certificate_name_check_enabled = true
 }
 
+# ---------------------------------------------------------------------------
+# API origin — serve /v1/* and /health from the API Container App on the SAME
+# Front Door host as the SPA, so the browser treats the API as first-party:
+# the httpOnly auth cookies (shipx_rt, shipx_auth_tx) are sent normally instead
+# of being dropped as third-party (Chrome/Safari block cross-site cookies), and
+# there is no cross-origin CORS. Created only when api_origin_host is set.
+# ---------------------------------------------------------------------------
+resource "azurerm_cdn_frontdoor_origin_group" "api" {
+  count                    = var.api_origin_host == "" ? 0 : 1
+  name                     = "api-origins"
+  cdn_frontdoor_profile_id = azurerm_cdn_frontdoor_profile.frontend.id
+  session_affinity_enabled = false
+
+  load_balancing {
+    sample_size                 = 4
+    successful_samples_required = 3
+  }
+
+  health_probe {
+    path                = "/health"
+    protocol            = "Https"
+    request_type        = "GET"
+    interval_in_seconds = 100
+  }
+}
+
+resource "azurerm_cdn_frontdoor_origin" "api" {
+  count                         = var.api_origin_host == "" ? 0 : 1
+  name                          = "api-container-app"
+  cdn_frontdoor_origin_group_id = azurerm_cdn_frontdoor_origin_group.api[0].id
+  enabled                       = true
+
+  host_name          = var.api_origin_host
+  origin_host_header = var.api_origin_host
+  http_port          = 80
+  https_port         = 443
+  priority           = 1
+  weight             = 1
+
+  certificate_name_check_enabled = true
+}
+
 # Security response headers — mirrors the AWS response-headers policy.
 resource "azurerm_cdn_frontdoor_rule_set" "headers" {
   name                     = "securityheaders"
@@ -174,4 +216,21 @@ resource "azurerm_cdn_frontdoor_route" "frontend" {
       "image/svg+xml",
     ]
   }
+}
+
+# API route — more specific than "/*", so Front Door sends /v1/* and /health to
+# the Container App origin while everything else serves the SPA. No cache block
+# → API responses are never cached. Same host as the SPA ⇒ first-party cookies.
+resource "azurerm_cdn_frontdoor_route" "api" {
+  count                         = var.api_origin_host == "" ? 0 : 1
+  name                          = "api-route"
+  cdn_frontdoor_endpoint_id     = azurerm_cdn_frontdoor_endpoint.frontend.id
+  cdn_frontdoor_origin_group_id = azurerm_cdn_frontdoor_origin_group.api[0].id
+  cdn_frontdoor_origin_ids      = [azurerm_cdn_frontdoor_origin.api[0].id]
+
+  supported_protocols    = ["Http", "Https"]
+  patterns_to_match      = ["/v1/*", "/health"]
+  forwarding_protocol    = "HttpsOnly"
+  https_redirect_enabled = true
+  link_to_default_domain = true
 }

@@ -101,7 +101,10 @@ jobs:
             echo "rg=$RG"
             echo "profile=$(terraform output -raw frontend_frontdoor_profile)"
             echo "endpoint=$(terraform output -raw frontend_frontdoor_endpoint)"
-            echo "api_url=$(terraform output -raw api_url)"
+            # API is served same-origin via the Front Door /v1/* route, so the SPA's
+            # API base is the Front Door URL (first-party cookies, no CORS), not the
+            # direct Container App URL.
+            echo "api_base=$(terraform output -raw frontend_url)"
             # Entra SPA build values (public ids) — so Azure needs no VITE_ENTRA_* secrets.
             echo "auth_provider=$(terraform output -raw frontend_auth_provider)"
             echo "entra_client_id=$(terraform output -raw entra_client_id)"
@@ -118,8 +121,8 @@ jobs:
       - name: Build (${{ inputs.cloud }} / ${{ inputs.environment }})
         run: npm run build
         env:
-          # Azure API URL comes from Terraform state; AWS from the secret.
-          VITE_API_BASE_URL: ${{ steps.tf.outputs.api_url || secrets.VITE_API_BASE_URL }}
+          # Azure: the Front Door URL (same-origin API via /v1/*); AWS: the secret.
+          VITE_API_BASE_URL: ${{ steps.tf.outputs.api_base || secrets.VITE_API_BASE_URL }}
           VITE_COGNITO_USER_POOL_ID: ${{ secrets.VITE_COGNITO_USER_POOL_ID }}
           VITE_COGNITO_CLIENT_ID: ${{ secrets.VITE_COGNITO_CLIENT_ID }}
           # Provider + Entra values: Azure supplies them from Terraform (so the
