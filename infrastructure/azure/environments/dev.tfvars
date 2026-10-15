@@ -40,5 +40,10 @@ entra_platform_admin_group_id = "7eec8dba-c70f-4043-b84d-5c3a82b86c37"
 entra_client_id              = "c6d0fc93-1fb5-43c5-9621-513abf93c5d6"
 entra_token_endpoint         = "https://shipxcustomer.ciamlogin.com/shipxcustomer.onmicrosoft.com/oauth2/v2.0/token"
 entra_claims_caller_audience = "bc01467b-2122-41be-ae25-c678d9248c16" # the custom-extension resourceId
-entra_claims_caller_issuer   = "https://shipxcustomer.ciamlogin.com/062cb98d-8990-4947-81c4-223cb1e9b8f3/v2.0"
+# NB: the issuer host is the tenant GUID, not the tenant name — this is what the
+# CIAM tenant actually stamps on tokens (confirmed via the OIDC discovery doc's
+# `issuer`). Using the shipxcustomer.* host here 401'd the claims extension and
+# failed token issuance (AADSTS1100001/1003002). The JWKS host below may use
+# either form (signature verification resolves the key by kid).
+entra_claims_caller_issuer   = "https://062cb98d-8990-4947-81c4-223cb1e9b8f3.ciamlogin.com/062cb98d-8990-4947-81c4-223cb1e9b8f3/v2.0"
 entra_claims_caller_jwks_url = "https://shipxcustomer.ciamlogin.com/062cb98d-8990-4947-81c4-223cb1e9b8f3/discovery/v2.0/keys"

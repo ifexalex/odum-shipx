@@ -79,7 +79,20 @@ def health() -> Response:
 def token_claims() -> Response:
     """OnTokenIssuanceStart webhook — return ShipX's tenant_id/role claims."""
     caller = _verify_caller(request.headers.get("Authorization", ""))
-    if caller is None or not is_authorized(caller, _EXPECTED_AUD, _EXPECTED_ISS):
+    if caller is None:
+        # _verify_caller already logged the signature/audience/JWKS failure reason.
+        return Response(status=401)
+    if not is_authorized(caller, _EXPECTED_AUD, _EXPECTED_ISS):
+        # Log the mismatch so a misconfigured caller audience/issuer is diagnosable
+        # without a redeploy. aud/iss are token identifiers, not secrets — but the
+        # token itself is never logged.
+        logger.warning(
+            "Caller not authorized: aud=%r (expected %r) iss=%r (expected %r)",
+            caller.get("aud"),
+            _EXPECTED_AUD,
+            caller.get("iss"),
+            _EXPECTED_ISS,
+        )
         return Response(status=401)
     event = request.get_json(silent=True)
     if event is None:
