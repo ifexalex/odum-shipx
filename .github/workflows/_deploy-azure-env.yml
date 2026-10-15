@@ -30,6 +30,10 @@ jobs:
       ARM_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
       ARM_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
       ARM_SUBSCRIPTION_ID: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+      # Graph provisioning app secret (EntraIdentityProvider client-credentials).
+      # A GitHub Environment secret, injected as a Terraform variable at apply —
+      # never committed to tfvars. Empty when unset → managed-identity fallback.
+      TF_VAR_entra_graph_client_secret: ${{ secrets.ENTRA_GRAPH_CLIENT_SECRET }}
 
     steps:
       - uses: actions/checkout@v4

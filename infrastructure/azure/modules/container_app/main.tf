@@ -52,6 +52,13 @@ locals {
     ENTRA_TOKEN_ENDPOINT = var.entra_token_endpoint
     ENTRA_CLIENT_ID      = var.entra_client_id
     ENTRA_SCOPE          = var.entra_scope
+    # Graph client-credentials for user/group provisioning (EntraIdentityProvider).
+    # Required when the managed directory is a DIFFERENT tenant from the compute's
+    # (e.g. provisioning into a CIAM tenant): a managed identity is single-tenant
+    # and cannot mint a Graph token for it. Empty → DefaultAzureCredential fallback.
+    # The secret is a Container App secret (see secret_env below), not a plain env.
+    ENTRA_GRAPH_TENANT_ID = var.entra_graph_tenant_id
+    ENTRA_GRAPH_CLIENT_ID = var.entra_graph_client_id
     # Interactive login (BFF auth-code + PKCE, services/auth/entra_oauth.py).
     # ENTRA_AUTHORIZE_ENDPOINT defaults to the token endpoint with /token→/authorize.
     ENTRA_AUTHORIZE_ENDPOINT = var.entra_authorize_endpoint
@@ -84,6 +91,10 @@ locals {
       appinsights-connection = var.app_insights_connection_string
     },
     var.enable_redis ? { redis-password = var.redis_password } : {},
+    # Graph provisioning app secret — gated on the NON-SENSITIVE client id (an
+    # empty gate over a sensitive value would mark the whole map sensitive and
+    # break for_each; Azure also rejects an empty-valued secret).
+    var.entra_graph_client_id != "" ? { entra-graph-client-secret = var.entra_graph_client_secret } : {},
   )
 
   # Env var name → secret name. The redis mapping is included only when Redis is
@@ -99,6 +110,7 @@ locals {
       APPLICATIONINSIGHTS_CONNECTION_STRING = "appinsights-connection"
     },
     var.enable_redis ? { REDIS_PASSWORD = "redis-password" } : {},
+    var.entra_graph_client_id != "" ? { ENTRA_GRAPH_CLIENT_SECRET = "entra-graph-client-secret" } : {},
   ))
 
   image = var.container_image

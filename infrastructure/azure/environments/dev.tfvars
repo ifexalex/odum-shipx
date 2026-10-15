@@ -47,3 +47,12 @@ entra_claims_caller_audience = "bc01467b-2122-41be-ae25-c678d9248c16" # the cust
 # either form (signature verification resolves the key by kid).
 entra_claims_caller_issuer   = "https://062cb98d-8990-4947-81c4-223cb1e9b8f3.ciamlogin.com/062cb98d-8990-4947-81c4-223cb1e9b8f3/v2.0"
 entra_claims_caller_jwks_url = "https://shipxcustomer.ciamlogin.com/062cb98d-8990-4947-81c4-223cb1e9b8f3/discovery/v2.0/keys"
+# Graph client-credentials used by EntraIdentityProvider to provision tenant
+# users INTO the CIAM tenant (the Container App's managed identity can't — it is
+# single-tenant). Create a confidential app registration in 062cb98d with Graph
+# APPLICATION permissions User.ReadWrite.All + Group.ReadWrite.All (admin-consented),
+# put its client id below, and set its secret as the GitHub Environment secret
+# ENTRA_GRAPH_CLIENT_SECRET (injected via TF_VAR at apply — never in tfvars).
+# Empty client id → managed-identity fallback (provisioning stays disabled).
+entra_graph_tenant_id = "062cb98d-8990-4947-81c4-223cb1e9b8f3"
+entra_graph_client_id = "" # TODO: set to the CIAM Graph provisioning app's client id

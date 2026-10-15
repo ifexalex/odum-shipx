@@ -176,6 +176,25 @@ variable "entra_scope" {
   default     = "openid profile offline_access"
 }
 
+variable "entra_graph_tenant_id" {
+  description = "Tenant id of the directory the EntraIdentityProvider provisions users into (the CIAM tenant). Empty → DefaultAzureCredential (managed identity)."
+  type        = string
+  default     = ""
+}
+
+variable "entra_graph_client_id" {
+  description = "App-registration client id (in entra_graph_tenant_id) with Graph application permissions to create users/groups. Empty disables client-credentials (falls back to the managed identity)."
+  type        = string
+  default     = ""
+}
+
+variable "entra_graph_client_secret" {
+  description = "Client secret for entra_graph_client_id. Supplied at apply time via TF_VAR_entra_graph_client_secret (a GitHub secret) — never committed."
+  type        = string
+  default     = ""
+  sensitive   = true
+}
+
 variable "entra_authorize_endpoint" {
   description = "Entra OAuth2 authorize endpoint for interactive login. Empty → derived from the token endpoint."
   type        = string

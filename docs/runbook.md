@@ -222,6 +222,28 @@ does not need repeating.
 **Rollback / cloud switch:** flipping `DEPLOY_CLOUD` back to `aws` returns auth to Cognito with no
 Entra dependency; the Entra objects can stay in place, dormant.
 
+### Graph provisioning app (tenant creation / user provisioning)
+
+Creating a tenant provisions its initial admin as an Entra user via Microsoft Graph
+(`EntraIdentityProvider`). On a CIAM setup the Container App's **managed identity cannot do this** —
+it lives in the subscription's home tenant and is single-tenant, so it can't mint a Graph token for
+the CIAM tenant (`DefaultAzureCredential` fails; `POST /v1/platform/tenants` → `500 Could not create
+tenant`). Provision a dedicated confidential app **in the CIAM tenant**:
+
+1. Register an app in the CIAM tenant (e.g. `shipx-graph-provisioner`). Add Microsoft Graph
+   **Application** permissions `User.ReadWrite.All` and `Group.ReadWrite.All`, then **Grant admin
+   consent** (these are app-only — no delegated/user context).
+2. Create a **client secret** on that app.
+3. Set `entra_graph_tenant_id` (the CIAM tenant id — already in `dev.tfvars`) and
+   `entra_graph_client_id` (the new app's client id) in the environment's tfvars.
+4. Add the secret as the **GitHub Environment secret `ENTRA_GRAPH_CLIENT_SECRET`** (injected at apply
+   via `TF_VAR_entra_graph_client_secret` — never committed), then re-run `deploy-azure.yml` so the
+   API/worker/job containers pick up `ENTRA_GRAPH_CLIENT_ID` + the secret.
+
+With the client id empty, the provider falls back to the managed identity (provisioning stays
+disabled but nothing else breaks). This step persists across deploys. **Verify:** provision a tenant
+from the platform console; it should return 201 and the admin user should appear in the CIAM tenant.
+
 ---
 
 ## Hotfix Procedure (break-glass)
