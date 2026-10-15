@@ -55,4 +55,4 @@ entra_claims_caller_jwks_url = "https://shipxcustomer.ciamlogin.com/062cb98d-899
 # ENTRA_GRAPH_CLIENT_SECRET (injected via TF_VAR at apply — never in tfvars).
 # Empty client id → managed-identity fallback (provisioning stays disabled).
 entra_graph_tenant_id = "062cb98d-8990-4947-81c4-223cb1e9b8f3"
-entra_graph_client_id = "" # TODO: set to the CIAM Graph provisioning app's client id
+entra_graph_client_id = "37c40cbe-5995-4b37-9d2a-0d6a02624426" # shipx-graph-provisioner (User.ReadWrite.All + Group.ReadWrite.All)
