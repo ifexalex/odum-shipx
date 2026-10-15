@@ -126,6 +126,9 @@ class TestProvisioningLinksLead:
         mock_idp.create_user.return_value = "sub-1"
         with (
             patch.object(service, "get_identity_provider", return_value=mock_idp),
+            # The idempotency guard reads the lead first; an un-provisioned lead
+            # lets provisioning proceed.
+            patch.object(service.repo, "get_onboarding_request", return_value={"id": "req-1", "status": "new"}),
             patch.object(service.repo, "create_tenant", return_value=tenant),
             patch.object(service.repo, "create_tenant_user", return_value=admin_user),
             patch.object(service.repo, "upsert_config"),
