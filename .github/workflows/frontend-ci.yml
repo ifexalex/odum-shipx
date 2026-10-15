@@ -195,7 +195,12 @@ jobs:
         working-directory: frontend
         env:
           PW_E2E: local-stack           # skip Playwright's managed preview server
-        run: npx playwright test --project=local-stack
+        run: |
+          # Export the DB env so the invite-minting helper the specs shell out to
+          # (scripts/mint_test_invite.py) can reach Postgres — it reads DATABASE_*
+          # from the environment. .env.local lives at the repo root (one level up).
+          set -a; source ../.env.local; set +a
+          npx playwright test --project=local-stack
 
       - uses: actions/upload-artifact@v4
         if: failure()
