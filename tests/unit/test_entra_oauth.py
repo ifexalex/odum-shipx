@@ -85,6 +85,7 @@ class TestAuthorizationCodeGrant:
 
         def _fake(req, timeout=None):  # noqa: ANN001
             captured["form"] = urllib.parse.parse_qs(req.data.decode())
+            captured["req"] = req
             return _urlopen_returning({"id_token": "x", "refresh_token": "r", "expires_in": 60})
 
         with patch("urllib.request.urlopen", side_effect=_fake):
@@ -92,6 +93,22 @@ class TestAuthorizationCodeGrant:
         assert captured["form"]["grant_type"] == ["authorization_code"]
         assert captured["form"]["code"] == ["the-code"]
         assert captured["form"]["code_verifier"] == ["the-verifier"]
+        # SPA-registered redirect URIs may only be redeemed cross-origin
+        # (AADSTS9002327): the server-side exchange must carry the Origin header
+        # of the registered redirect URI.
+        assert captured["req"].get_header("Origin") == "https://app.example.test"
+
+    def test_refresh_sends_spa_origin_header(self):
+        captured: dict = {}
+
+        def _fake(req, timeout=None):  # noqa: ANN001
+            captured["req"] = req
+            return _urlopen_returning({"id_token": "x", "access_token": "a", "expires_in": 60})
+
+        with patch("urllib.request.urlopen", side_effect=_fake):
+            entra_refresh.refresh_id_token("rt")
+        # SPA-issued refresh tokens are also cross-origin-only.
+        assert captured["req"].get_header("Origin") == "https://app.example.test"
 
     def test_invalid_code_raises(self):
         err = urllib.error.HTTPError(url="https://t", code=400, msg="bad", hdrs=None, fp=io.BytesIO(b'{"error":"invalid_grant"}'))
