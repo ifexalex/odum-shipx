@@ -86,6 +86,25 @@ variable "entra_group_id_map" {
   default     = ""
 }
 
+variable "entra_graph_tenant_id" {
+  description = "Tenant id of the directory the backend provisions users into (the CIAM tenant). Empty → managed identity (only works when that directory is the compute's home tenant)."
+  type        = string
+  default     = ""
+}
+
+variable "entra_graph_client_id" {
+  description = "App-registration client id (in the CIAM tenant) holding Graph application permissions (User.ReadWrite.All, Group.ReadWrite.All) to provision tenant users. Empty disables client-credentials."
+  type        = string
+  default     = ""
+}
+
+variable "entra_graph_client_secret" {
+  description = "Client secret for entra_graph_client_id — set via TF_VAR_entra_graph_client_secret (a GitHub Actions secret), never committed to tfvars."
+  type        = string
+  default     = ""
+  sensitive   = true
+}
+
 variable "auth_provider" {
   description = "Identity authority: 'azure' (Entra) or 'aws' (Cognito bridge — the Azure API validates Cognito JWTs). Defaults to azure."
   type        = string

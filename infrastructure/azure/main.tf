@@ -209,6 +209,11 @@ module "container_app" {
   entra_group_id_map            = var.entra_group_id_map
   entra_token_endpoint          = var.entra_token_endpoint
   entra_client_id               = var.entra_client_id
+  # Graph client-credentials for provisioning users into the CIAM tenant (the
+  # managed identity can't — it's single-tenant). Secret via TF_VAR at apply.
+  entra_graph_tenant_id     = var.entra_graph_tenant_id
+  entra_graph_client_id     = var.entra_graph_client_id
+  entra_graph_client_secret = var.entra_graph_client_secret
   # Interactive login (BFF auth-code + PKCE). Set entra_redirect_uri explicitly
   # (the SPA's /auth/callback on the Front Door host) — NOT derived from
   # module.frontend, because the frontend module now depends on this module's

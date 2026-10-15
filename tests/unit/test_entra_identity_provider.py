@@ -119,6 +119,27 @@ class TestGroupSync:
         p.remove_user_from_group.assert_called_once_with("oid-1", "t1:customer")  # noqa: SLF001
 
 
+class TestCredentialSelection:
+    def test_uses_client_secret_credential_when_graph_app_configured(self, monkeypatch):
+        # Managing a foreign (CIAM) tenant requires an app registration there —
+        # a managed identity is single-tenant and cannot mint a token for it.
+        monkeypatch.setenv("ENTRA_GRAPH_TENANT_ID", "062cb98d-tenant")
+        monkeypatch.setenv("ENTRA_GRAPH_CLIENT_ID", "graph-app-id")
+        monkeypatch.setenv("ENTRA_GRAPH_CLIENT_SECRET", "shh")
+        with patch("azure.identity.ClientSecretCredential") as csc, patch("azure.identity.DefaultAzureCredential") as dac:
+            EntraIdentityProvider()._get_credential()  # noqa: SLF001
+        csc.assert_called_once_with("062cb98d-tenant", "graph-app-id", "shh")
+        dac.assert_not_called()
+
+    def test_falls_back_to_default_credential_when_unconfigured(self, monkeypatch):
+        for var in ("ENTRA_GRAPH_TENANT_ID", "ENTRA_GRAPH_CLIENT_ID", "ENTRA_GRAPH_CLIENT_SECRET"):
+            monkeypatch.delenv(var, raising=False)
+        with patch("azure.identity.ClientSecretCredential") as csc, patch("azure.identity.DefaultAzureCredential") as dac:
+            EntraIdentityProvider()._get_credential()  # noqa: SLF001
+        dac.assert_called_once_with()
+        csc.assert_not_called()
+
+
 class TestErrorMapping:
     def _run_graph(self, http_error_code: int):
         p = EntraIdentityProvider()

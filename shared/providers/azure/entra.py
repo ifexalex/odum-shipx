@@ -1,9 +1,13 @@
 """Microsoft Entra IdentityProvider — the Azure analogue of the Cognito
 user/group provisioning adapter (ADR-004 Phase 4).
 
-Talks to Microsoft Graph (v1.0). Auth is a bearer token from
-`azure-identity` (DefaultAzureCredential — the Container Apps managed identity in
-prod, `az login` / a service principal locally); Graph calls go over stdlib
+Talks to Microsoft Graph (v1.0). Auth is a bearer token from `azure-identity`:
+a ``ClientSecretCredential`` when ``ENTRA_GRAPH_TENANT_ID`` / ``ENTRA_GRAPH_
+CLIENT_ID`` / ``ENTRA_GRAPH_CLIENT_SECRET`` are set (required to manage a tenant
+the compute identity does not live in — e.g. provisioning into a CIAM tenant from
+a Container App whose managed identity is in the subscription's home tenant),
+else ``DefaultAzureCredential`` (the Container Apps managed identity in prod,
+``az login`` locally). See ``_get_credential``. Graph calls go over stdlib
 `urllib` so no HTTP dependency is added. Roles are modelled as **security groups**
 named `{tenant_id}:{role}` — the faithful mirror of the Cognito group model, so
 the `sync_user_groups` reconcile logic is identical.
@@ -75,10 +79,35 @@ class EntraIdentityProvider:
     # ------------------------------------------------------------------
 
     def _get_credential(self) -> Any:
-        if self._credential is None:
-            from azure.identity import DefaultAzureCredential
+        """Credential for Microsoft Graph calls.
 
-            self._credential = DefaultAzureCredential()
+        Prefers client-credentials (``ClientSecretCredential``) when
+        ``ENTRA_GRAPH_TENANT_ID`` / ``ENTRA_GRAPH_CLIENT_ID`` /
+        ``ENTRA_GRAPH_CLIENT_SECRET`` are set. This is required whenever the
+        directory being managed is a *different* tenant from the one the compute
+        identity lives in — e.g. provisioning users into an Entra External ID
+        (CIAM) tenant from a Container App whose managed identity is in the
+        subscription's home tenant. A managed identity is single-tenant and
+        cannot mint a Graph token for a foreign tenant, so ``DefaultAzure
+        Credential`` fails there ("Unable to load the proper Managed Identity").
+
+        Falls back to ``DefaultAzureCredential`` (the Container Apps managed
+        identity in prod, ``az login`` locally) when no app registration is
+        configured — correct when the managed directory IS the compute's home
+        tenant and the identity holds the Graph app-roles.
+        """
+        if self._credential is None:
+            tenant_id = os.environ.get("ENTRA_GRAPH_TENANT_ID", "").strip()
+            client_id = os.environ.get("ENTRA_GRAPH_CLIENT_ID", "").strip()
+            client_secret = os.environ.get("ENTRA_GRAPH_CLIENT_SECRET", "").strip()
+            if tenant_id and client_id and client_secret:
+                from azure.identity import ClientSecretCredential
+
+                self._credential = ClientSecretCredential(tenant_id, client_id, client_secret)
+            else:
+                from azure.identity import DefaultAzureCredential
+
+                self._credential = DefaultAzureCredential()
         return self._credential
 
     def _token(self) -> str:
