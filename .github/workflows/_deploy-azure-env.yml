@@ -36,7 +36,7 @@ jobs:
       TF_VAR_entra_graph_client_secret: ${{ secrets.ENTRA_GRAPH_CLIENT_SECRET }}
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - uses: azure/login@v2
         with:
