@@ -30,6 +30,10 @@ module "frontend" {
   location                = var.location
   common_tags             = local.common_tags
   content_security_policy = local.content_security_policy
+  # Serve /v1/* and /health from the API Container App on the same Front Door
+  # host as the SPA → first-party auth cookies, no CORS. (frontend depends on
+  # container_app; container_app no longer references frontend, so no cycle.)
+  api_origin_host = module.container_app.api_fqdn
 }
 
 # ─── Backend provider-adapter targets (object storage + Key Vault) ──────────
@@ -205,19 +209,23 @@ module "container_app" {
   entra_group_id_map            = var.entra_group_id_map
   entra_token_endpoint          = var.entra_token_endpoint
   entra_client_id               = var.entra_client_id
-  # Interactive login (BFF auth-code + PKCE). Redirect URI defaults to the SPA's
-  # /auth/callback on the Front Door origin (register this exact value on the app
-  # registration); override with var.entra_redirect_uri for a custom domain.
+  # Interactive login (BFF auth-code + PKCE). Set entra_redirect_uri explicitly
+  # (the SPA's /auth/callback on the Front Door host) — NOT derived from
+  # module.frontend, because the frontend module now depends on this module's
+  # api_fqdn (same-origin API route), and a reverse reference here would create a
+  # cycle. Register this exact value on the app registration.
   entra_authorize_endpoint = var.entra_authorize_endpoint
-  entra_redirect_uri = var.entra_redirect_uri != "" ? var.entra_redirect_uri : (
-    var.enable_frontend ? "${module.frontend[0].frontend_url}/auth/callback" : ""
-  )
-  # SPA (Front Door) and API (Container Apps) are different sites → cookies must
-  # be SameSite=None to be sent cross-site.
+  entra_redirect_uri       = var.entra_redirect_uri
+
+  # The API is served same-origin with the SPA via a Front Door /v1/* route
+  # (see module.frontend.api_origin_host), so the auth cookies are first-party;
+  # SameSite=Lax survives the Entra redirect return. (Cross-site SameSite=None
+  # cookies were dropped by Chrome/Safari third-party-cookie blocking.)
   auth_cookie_samesite = var.auth_cookie_samesite
 
-  # Let the SPA's origin (the Front Door URL) call the API from the browser.
-  cors_allow_origins = var.enable_frontend ? module.frontend[0].frontend_url : ""
+  # Same-origin ⇒ browser requests are not cross-origin, so no CORS allowlist is
+  # needed. (Kept empty rather than pointing at module.frontend to avoid a cycle.)
+  cors_allow_origins = ""
 
   # Sizing
   api_cpu          = var.api_cpu

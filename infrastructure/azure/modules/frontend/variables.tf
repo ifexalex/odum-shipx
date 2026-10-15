@@ -22,3 +22,9 @@ variable "content_security_policy" {
   description = "CSP header value for the SPA."
   type        = string
 }
+
+variable "api_origin_host" {
+  description = "API Container App ingress FQDN. When set, Front Door serves /v1/* and /health from it so the API is same-origin with the SPA (first-party auth cookies, no CORS). Empty disables the API route."
+  type        = string
+  default     = ""
+}
