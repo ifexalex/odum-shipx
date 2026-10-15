@@ -200,6 +200,7 @@ module "container_app" {
   oidc_jwks_url                 = var.oidc_jwks_url
   oidc_audience                 = var.oidc_audience
   entra_user_domain             = var.entra_user_domain
+  entra_local_accounts          = var.entra_local_accounts
   entra_platform_admin_group_id = var.entra_platform_admin_group_id
   entra_group_id_map            = var.entra_group_id_map
   entra_token_endpoint          = var.entra_token_endpoint

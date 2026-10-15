@@ -12,60 +12,111 @@ from shared.exceptions import DuplicateResourceError, ExternalServiceError
 from shared.providers import get_claims_mapper, get_identity_provider
 from shared.providers.azure.entra import EntraIdentityProvider
 
+_DOMAIN = "tenant.onmicrosoft.com"
 
-def _provider_with_stubbed_graph():
+
+def _provider_with_stubbed_graph(local: bool = True):
     p = EntraIdentityProvider()
+    p._user_domain = _DOMAIN  # noqa: SLF001
+    p._local_accounts = local  # noqa: SLF001
     p._graph = MagicMock()  # noqa: SLF001
     return p
 
 
 class TestUserLifecycle:
-    def test_create_with_password_posts_user_and_syncs_group(self):
-        p = _provider_with_stubbed_graph()
-        # Stub sync_user_groups (its own reconcile logic is covered separately);
-        # the POST /users call returns the new object id.
+    def test_create_local_account_posts_email_identity_and_syncs_by_oid(self):
+        p = _provider_with_stubbed_graph(local=True)
         p.sync_user_groups = MagicMock()  # noqa: SLF001
         p._graph.side_effect = [{"id": "oid-1"}]  # noqa: SLF001
 
-        uid = p.create_user_with_password("a@x.com", "Ann", "t1", "tenant_admin", "P@ssw0rd!")
+        uid = p.create_user_with_password("a@gmail.com", "Ann", "t1", "tenant_admin", "P@ssw0rd!")
 
         assert uid == "oid-1"
-        args = p._graph.call_args_list[0]  # noqa: SLF001
-        assert args.args[0] == "POST" and args.args[1] == "/users"
-        body = args.args[2]
+        method, path, body = p._graph.call_args_list[0].args[:3]  # noqa: SLF001
+        assert method == "POST" and path == "/users"
+        assert body["creationType"] == "LocalAccount"
+        assert body["identities"] == [{"signInType": "emailAddress", "issuer": _DOMAIN, "issuerAssignedId": "a@gmail.com"}]
         assert body["passwordProfile"]["forceChangePasswordNextSignIn"] is False
-        p.sync_user_groups.assert_called_once()  # noqa: SLF001
+        assert "userPrincipalName" not in body
+        # Group reconcile is keyed on the object id, not email/UPN.
+        p.sync_user_groups.assert_called_once_with("oid-1", "t1", {"tenant_admin"})  # noqa: SLF001
 
     def test_create_user_forces_password_change(self):
-        p = _provider_with_stubbed_graph()
+        p = _provider_with_stubbed_graph(local=True)
         p.sync_user_groups = MagicMock()  # noqa: SLF001
         p._graph.side_effect = [{"id": "oid-2"}]  # noqa: SLF001
-        p.create_user("b@x.com", "Bob", "t1", "customer")
+        p.create_user("b@gmail.com", "Bob", "t1", "customer")
         body = p._graph.call_args_list[0].args[2]  # noqa: SLF001
         assert body["passwordProfile"]["forceChangePasswordNextSignIn"] is True
 
-    def test_disable_and_enable_patch_account_enabled(self):
+    def test_member_account_mode_posts_upn(self):
+        p = _provider_with_stubbed_graph(local=False)
+        p.sync_user_groups = MagicMock()  # noqa: SLF001
+        p._graph.side_effect = [{"id": "oid-3"}]  # noqa: SLF001
+        p.create_user_with_password("c@gmail.com", "Cy", "t1", "customer", "P@ssw0rd!")
+        body = p._graph.call_args_list[0].args[2]  # noqa: SLF001
+        assert "creationType" not in body
+        assert body["userPrincipalName"] == "c_gmail.com@tenant.onmicrosoft.com"
+
+    def test_local_account_requires_user_domain(self):
+        p = _provider_with_stubbed_graph(local=True)
+        p._user_domain = ""  # noqa: SLF001
+        with pytest.raises(ExternalServiceError):
+            p.create_user_with_password("a@gmail.com", "Ann", "t1", "customer", "P@ssw0rd!")
+
+    def test_disable_and_enable_resolve_then_patch(self):
         p = _provider_with_stubbed_graph()
-        p.disable_user("a@x.com")
-        p.enable_user("a@x.com")
+        p._resolve_user_id = MagicMock(return_value="oid-7")  # noqa: SLF001
+        p.disable_user("a@gmail.com")
+        p.enable_user("a@gmail.com")
+        assert p._graph.call_args_list[0].args[:2] == ("PATCH", "/users/oid-7")  # noqa: SLF001
         assert p._graph.call_args_list[0].args[2] == {"accountEnabled": False}  # noqa: SLF001
         assert p._graph.call_args_list[1].args[2] == {"accountEnabled": True}  # noqa: SLF001
+
+    def test_disable_missing_user_is_noop(self):
+        p = _provider_with_stubbed_graph()
+        p._resolve_user_id = MagicMock(return_value="")  # noqa: SLF001
+        p.disable_user("gone@gmail.com")
+        p._graph.assert_not_called()  # noqa: SLF001
+
+
+class TestResolveUserId:
+    def test_resolves_local_account_by_email_identity(self):
+        p = _provider_with_stubbed_graph()
+        # Direct GET /users/{email} 404s (email isn't the UPN), then the
+        # identities $filter finds the account.
+        p._graph = MagicMock(  # noqa: SLF001
+            side_effect=[
+                ExternalServiceError("Entra", "404: not found"),
+                {"value": [{"id": "oid-9"}]},
+            ]
+        )
+        uid = p._resolve_user_id("a@gmail.com")  # noqa: SLF001
+        assert uid == "oid-9"
+        # The filter query carries the advanced-query consistency header.
+        filter_call = p._graph.call_args_list[1]  # noqa: SLF001
+        assert "identities/any" in filter_call.args[1]
+        assert filter_call.kwargs["extra_headers"] == {"ConsistencyLevel": "eventual"}
+
+    def test_direct_hit_returns_without_filter(self):
+        p = _provider_with_stubbed_graph()
+        p._graph = MagicMock(return_value={"id": "oid-upn"})  # noqa: SLF001
+        assert p._resolve_user_id("c_gmail.com@tenant.onmicrosoft.com") == "oid-upn"  # noqa: SLF001
+        p._graph.assert_called_once()  # noqa: SLF001
 
 
 class TestGroupSync:
     def test_sync_adds_missing_and_removes_extra_scoped_to_tenant(self):
         p = _provider_with_stubbed_graph()
-        # Current groups for the user: one in-tenant role + one other-tenant group.
         p.list_groups_for_user = MagicMock(return_value={"t1:customer", "t2:tenant_admin"})  # noqa: SLF001
         p.create_group_if_not_exists = MagicMock()  # noqa: SLF001
         p.add_user_to_group = MagicMock()  # noqa: SLF001
         p.remove_user_from_group = MagicMock()  # noqa: SLF001
 
-        p.sync_user_groups("a@x.com", "t1", {"tenant_admin"})
+        p.sync_user_groups("oid-1", "t1", {"tenant_admin"})
 
-        # Adds the desired t1 role, removes the stale t1 role, leaves t2 untouched.
-        p.add_user_to_group.assert_called_once_with("a@x.com", "t1:tenant_admin")  # noqa: SLF001
-        p.remove_user_from_group.assert_called_once_with("a@x.com", "t1:customer")  # noqa: SLF001
+        p.add_user_to_group.assert_called_once_with("oid-1", "t1:tenant_admin")  # noqa: SLF001
+        p.remove_user_from_group.assert_called_once_with("oid-1", "t1:customer")  # noqa: SLF001
 
 
 class TestErrorMapping:
@@ -102,7 +153,6 @@ class TestFactory:
         assert isinstance(get_claims_mapper(), EntraClaimsMapper)
 
     def test_auth_provider_decouples_from_cloud_provider(self, monkeypatch):
-        # Bridge: infra on Azure, auth still on Cognito (AUTH_PROVIDER=aws).
         import shared.providers as providers
         from shared.providers.aws.cognito_claims import CognitoClaimsMapper
 
