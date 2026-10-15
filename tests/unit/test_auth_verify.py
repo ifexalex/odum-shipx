@@ -35,6 +35,24 @@ class TestBuildAuthorizerClaims:
             result = auth_verify.build_authorizer_claims("tok")
         assert result["cognito:groups"] == "t1:tenant_admin,t1:china_office_staff"
 
+    def test_oidc_passes_entra_claims_through_unchanged(self):
+        # Entra tokens carry oid / tenant_id / role / groups (object-id GUIDs), not
+        # the Cognito keys. These must survive to the authorizer context so the
+        # EntraClaimsMapper can read them downstream — projecting to only the
+        # Cognito keys previously dropped them and 401'd every authenticated call.
+        entra_claims = {
+            "oid": "entra-obj-1",
+            "tenant_id": "tenant-abc",
+            "role": "tenant_admin",
+            "groups": ["7eec8dba-c70f-4043-b84d-5c3a82b86c37"],
+        }
+        with patch.object(auth_verify, "verify_oidc_jwt", return_value=entra_claims):
+            result = auth_verify.build_authorizer_claims("tok")
+        assert result["oid"] == "entra-obj-1"
+        assert result["tenant_id"] == "tenant-abc"
+        assert result["role"] == "tenant_admin"
+        assert result["groups"] == ["7eec8dba-c70f-4043-b84d-5c3a82b86c37"]
+
     def test_falls_through_to_impersonation_when_oidc_fails(self):
         imp_claims = {
             "sub": "admin-1",
