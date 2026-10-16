@@ -116,10 +116,13 @@ class TestResolveUserId:
         )
         uid = p._resolve_user_id("a@gmail.com")  # noqa: SLF001
         assert uid == "oid-9"
-        # The filter query carries the advanced-query consistency header.
+        # The identities filter is a REGULAR query on Entra External ID (CIAM):
+        # no advanced-query ConsistencyLevel header (which Graph rejects there),
+        # and no $count.
         filter_call = p._graph.call_args_list[1]  # noqa: SLF001
         assert "identities/any" in filter_call.args[1]
-        assert filter_call.kwargs["extra_headers"] == {"ConsistencyLevel": "eventual"}
+        assert "$count" not in filter_call.args[1]
+        assert "extra_headers" not in filter_call.kwargs
 
     def test_direct_hit_returns_without_filter(self):
         p = _provider_with_stubbed_graph()
