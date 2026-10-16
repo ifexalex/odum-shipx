@@ -8,9 +8,20 @@ import {
 import { sessionFromIdToken } from './jwt'
 import { establishServerSession, revokeServerSession, silentRefresh } from './sessionApi'
 import { SessionContext, type SessionStatus } from './SessionContext'
+import { SessionTimeoutModal } from './SessionTimeoutModal'
 import { useRegisterSessionActions } from './sessionBridge'
 import { clearActiveTokens, getActiveIdToken, getActiveTokenType, setActiveTokens } from './tokenStore'
 import type { Session, UserRole } from './types'
+import { useIdleTimeout } from './useIdleTimeout'
+
+// Inactivity timeout: warn after this long idle, then hard-logout after the
+// warning countdown. Overridable per environment; defaults 30 min + 60 s.
+function _positiveEnv(raw: unknown, fallback: number): number {
+  const n = Number(raw)
+  return Number.isFinite(n) && n > 0 ? n : fallback
+}
+const IDLE_MS = _positiveEnv(import.meta.env.VITE_IDLE_TIMEOUT_MINUTES, 30) * 60_000
+const WARNING_MS = _positiveEnv(import.meta.env.VITE_IDLE_WARNING_SECONDS, 60) * 1_000
 
 export interface SessionProviderProps {
   children: ReactNode
@@ -39,6 +50,8 @@ export function SessionProvider({
   // attempts a silent restore before anything renders a login screen; see
   // RoleGuard/RootRedirect, which both treat 'loading' as "wait," not "bounce."
   const [status, setStatus] = useState<SessionStatus>('loading')
+  // Epoch-ms hard-logout deadline while the inactivity warning is showing; null hides it.
+  const [idleDeadline, setIdleDeadline] = useState<number | null>(null)
   const refreshTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
   const expiryTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
   // Saved only while impersonating — the platform admin's own session/idToken, restored on exit.
@@ -240,6 +253,33 @@ export function SessionProvider({
 
   useRegisterSessionActions({ refreshNow, logout, exitImpersonation })
 
+  // Inactivity timeout. Armed only for a normal authenticated session —
+  // impersonation already hard-expires on its own timer (startImpersonation),
+  // so it must not also be idle-logged-out mid-task.
+  const idleEnabled = status === 'authenticated' && getActiveTokenType() !== 'impersonation'
+  const idle = useIdleTimeout({
+    idleMs: IDLE_MS,
+    warningMs: WARNING_MS,
+    enabled: idleEnabled,
+    onWarn: (deadline) => setIdleDeadline(deadline),
+    onTimeout: () => {
+      setIdleDeadline(null)
+      logout()
+    },
+  })
+
+  function staySignedIn(): void {
+    setIdleDeadline(null)
+    idle.reset()
+    // Prove the session is still good and reschedule the proactive refresh.
+    void refreshNow().catch(() => undefined)
+  }
+
+  function signOutNow(): void {
+    setIdleDeadline(null)
+    logout()
+  }
+
   return (
     <SessionContext.Provider
       value={{
@@ -256,6 +296,9 @@ export function SessionProvider({
       }}
     >
       {children}
+      {idleDeadline !== null && (
+        <SessionTimeoutModal deadline={idleDeadline} onContinue={staySignedIn} onSignOut={signOutNow} />
+      )}
     </SessionContext.Provider>
   )
 }

@@ -81,6 +81,10 @@ Cognito `IdToken`/`AccessToken` expire in ~1 hour by default; refresh silently i
 
 **This is also what makes a page reload not force a re-login.** `SessionProvider` starts in `status: 'loading'` and, on mount, immediately attempts `POST /v1/auth/refresh` before rendering anything route-dependent — `RoleGuard` and `RootRedirect` both treat `'loading'` as "wait" (rendering `SessionLoading`), never "redirect to `/login`." The in-memory `IdToken` is gone after any reload (never persisted, by design), but the httpOnly cookie survives it, so the very first thing the app does is trade that cookie for a fresh token before any guard gets a chance to bounce the user out.
 
+## Inactivity Timeout
+
+On top of the (up to 30-day) refresh-cookie session, the SPA enforces a client-side **inactivity timeout** so an unattended, signed-in browser doesn't stay usable indefinitely. `useIdleTimeout` (`frontend/src/auth/useIdleTimeout.ts`) watches real user activity (`mousedown`, `keydown`, `touchstart`, `scroll`, `wheel`, `focus` — not raw `mousemove`) and, after **30 minutes idle** (`VITE_IDLE_TIMEOUT_MINUTES`), `SessionProvider` shows the `SessionTimeoutModal` — a "Still there?" warning with a **60-second** countdown (`VITE_IDLE_WARNING_SECONDS`). **Stay signed in** dismisses it, re-arms the timer, and calls `refreshNow()` to prove/renew the session; **Sign out** (or letting the countdown reach zero) calls `logout()` (clears tokens + `POST /v1/auth/logout`). During the warning window ambient activity is deliberately ignored — only an explicit choice counts — so an incidental mouse event can't silently keep a session alive. The timer is armed only for a normal authenticated session; impersonation is excluded (it already hard-expires at 30 min on its own timer). Covered by `frontend/src/auth/useIdleTimeout.test.ts`.
+
 ## Route Guards
 
 `RoleGuard` wraps route definitions (Task 06):
