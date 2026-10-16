@@ -71,20 +71,27 @@ def build_authorize_url(state: str, nonce: str, code_challenge: str) -> str:
     if not endpoint or not client_id or not redirect_uri:
         raise ValueError("ENTRA_AUTHORIZE/TOKEN_ENDPOINT, ENTRA_CLIENT_ID and ENTRA_REDIRECT_URI must be set")
 
-    query = urllib.parse.urlencode(
-        {
-            "client_id": client_id,
-            "response_type": "code",
-            "redirect_uri": redirect_uri,
-            "response_mode": "query",
-            "scope": scope,
-            "state": state,
-            "nonce": nonce,
-            "code_challenge": code_challenge,
-            "code_challenge_method": "S256",
-        }
-    )
-    return f"{endpoint}?{query}"
+    params = {
+        "client_id": client_id,
+        "response_type": "code",
+        "redirect_uri": redirect_uri,
+        "response_mode": "query",
+        "scope": scope,
+        "state": state,
+        "nonce": nonce,
+        "code_challenge": code_challenge,
+        "code_challenge_method": "S256",
+    }
+    # Without a `prompt`, Entra silently reuses its single active SSO session, so a
+    # user can never choose or switch accounts — the login button just logs the
+    # same person straight back in. `select_account` shows the account picker
+    # (still SSO-fast for the chosen account). Override via ENTRA_AUTHORIZE_PROMPT
+    # (e.g. "login" to force re-auth, or "" to disable).
+    prompt = os.environ.get("ENTRA_AUTHORIZE_PROMPT", "select_account").strip()
+    if prompt:
+        params["prompt"] = prompt
+
+    return f"{endpoint}?{urllib.parse.urlencode(params)}"
 
 
 def redirect_uri() -> str:
