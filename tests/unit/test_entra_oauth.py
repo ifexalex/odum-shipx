@@ -59,6 +59,13 @@ class TestPkceAndAuthorizeUrl:
         assert qs["code_challenge_method"] == ["S256"]
         assert qs["state"] == ["st"] and qs["nonce"] == ["no"]
         assert qs["redirect_uri"] == ["https://app.example.test/auth/callback"]
+        # Account picker by default so users can choose / switch accounts.
+        assert qs["prompt"] == ["select_account"]
+
+    def test_build_authorize_url_prompt_is_overridable(self):
+        with patch.dict("os.environ", {**_ENV, "ENTRA_AUTHORIZE_PROMPT": ""}, clear=False):
+            url = entra_oauth.build_authorize_url(state="s", nonce="n", code_challenge="c")
+        assert "prompt=" not in urllib.parse.urlparse(url).query
 
     def test_build_authorize_url_raises_when_unconfigured(self):
         with patch.dict("os.environ", {"ENTRA_TOKEN_ENDPOINT": "", "ENTRA_CLIENT_ID": "", "ENTRA_REDIRECT_URI": ""}):

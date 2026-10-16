@@ -151,7 +151,7 @@ export function LoginScreen(): JSX.Element {
             <h2 className={styles.formTitle}>Sign in to ShipX</h2>
             <p className={styles.formSub}>
               {isInteractiveLogin
-                ? 'Continue with your Microsoft Entra account to access your portal.'
+                ? 'Sign in to access your portal.'
                 : 'Enter your credentials to access your portal.'}
             </p>
           </div>
@@ -166,7 +166,7 @@ export function LoginScreen(): JSX.Element {
 
           {isInteractiveLogin ? (
             <Button variant="accent" size="lg" full loading={loading} onClick={() => void handleEntraLogin()}>
-              Continue with Microsoft Entra
+              Sign in
             </Button>
           ) : (
             <form onSubmit={handleSubmit}>
