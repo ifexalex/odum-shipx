@@ -231,6 +231,22 @@ def create_tenant(
     if admin_user is None:
         raise RuntimeError("create_tenant_user returned None unexpectedly")
 
+    # 3b. Send the initial admin a ShipX activation link to set their password
+    # (created with a random IdP password + no login). This is their first-login
+    # path. Best-effort — the tenant + admin are already committed and the link
+    # can be resent; a failure here must not fail provisioning.
+    try:
+        issue_activation(
+            tenant_id,
+            str(admin_user["id"]),
+            req.initial_admin.email,
+            req.initial_admin.full_name,
+            created_by=None,
+            request_id=request_id,
+        )
+    except Exception as exc:
+        logger.warning("Activation link issuance failed for admin of tenant %s: %s", tenant_id, exc)
+
     # 4. Upsert default configs
     today = datetime.now(UTC).isoformat()
     default_markup = {**DEFAULT_CONFIGS["dollar_rate_markup"], "updated_at": today}
@@ -1223,7 +1239,116 @@ def create_user(
     except Exception as exc:
         logger.warning("Metering record failed: %s", exc)
 
+    # Operator-provisioned users have a random IdP password and no login — send
+    # the ShipX activation link so they set their own password (all roles).
+    # Best-effort: the user is committed and the link can be resent.
+    try:
+        issue_activation(tenant_id, user_id, req.email, req.full_name, created_by=actor_id, request_id=request_id)
+    except Exception as exc:
+        logger.warning("Activation link issuance failed for user %s: %s", user_id, exc)
+
     return user
+
+
+# ---------------------------------------------------------------------------
+# Account activation (operator-provisioned staff/admins set their own password)
+# ---------------------------------------------------------------------------
+
+
+def _app_base_url() -> str:
+    """Base URL of the staff/admin portal for activation links. `APP_BASE_URL`,
+    else derived from `ENTRA_REDIRECT_URI`'s origin (the SPA host)."""
+    base = os.environ.get("APP_BASE_URL", "").strip()
+    if base:
+        return base.rstrip("/")
+    redirect = os.environ.get("ENTRA_REDIRECT_URI", "").strip()
+    if redirect:
+        from urllib.parse import urlsplit
+
+        parts = urlsplit(redirect)
+        if parts.scheme and parts.netloc:
+            return f"{parts.scheme}://{parts.netloc}"
+    return ""
+
+
+def _mask_email(email: str) -> str:
+    local, _, domain = email.partition("@")
+    return f"{local[:1]}***@{domain}" if domain else "***"
+
+
+def issue_activation(
+    tenant_id: str,
+    user_id: str,
+    email: str,
+    full_name: str,
+    created_by: str | None = None,
+    request_id: str = "",
+) -> str:
+    """Mint a single-use activation link and email a ShipX welcome with a
+    "set your password" link. Best-effort email; the token row is the record.
+    Returns the raw token (for tests / resend). Never raises on email failure."""
+    from shared import activation
+    from shared.notifications import enqueue_notifications
+
+    activation.delete_unconsumed(tenant_id, user_id)
+    token = activation.mint_token()
+    activation.create_activation(
+        tenant_id,
+        user_id,
+        activation.hash_token(token),
+        sent_channel="email",
+        sent_to_masked=_mask_email(email),
+        created_by=created_by,
+    )
+    link = f"{_app_base_url()}/activate/{token}"
+    try:
+        enqueue_notifications(
+            tenant_id=tenant_id,
+            event_type="account_activation",
+            recipient={"email": email, "phone": "", "whatsapp": "", "name": full_name or email},
+            template_data={"name": full_name or "", "activation_link": link},
+            request_id=request_id,
+        )
+    except Exception as exc:
+        logger.warning("account_activation notification failed for user %s: %s", user_id, exc)
+    return token
+
+
+def get_activation_preview(token: str) -> dict[str, Any]:
+    """Public preview for GET /v1/activate/{token} — the email being activated."""
+    from shared import activation
+
+    row = activation.get_activation_by_token(token)
+    if not activation.is_activation_valid(row):
+        raise ResourceNotFoundError("activation", "token")
+    assert row is not None
+    user = repo.get_user_by_id(str(row["tenant_id"]), str(row["user_id"]))
+    if not user:
+        raise ResourceNotFoundError("activation", "token")
+    return {"email": user["email"], "full_name": user.get("full_name")}
+
+
+def activate_account(token: str, password: str) -> dict[str, Any]:
+    """Public POST /v1/activate/{token} — set the user's chosen password in the IdP
+    and consume the single-use token. The account is then a normal login."""
+    from shared import activation
+
+    row = activation.get_activation_by_token(token)
+    if not activation.is_activation_valid(row):
+        raise ResourceNotFoundError("activation", "token")
+    assert row is not None
+    tenant_id = str(row["tenant_id"])
+    user = repo.get_user_by_id(tenant_id, str(row["user_id"]))
+    if not user:
+        raise ResourceNotFoundError("activation", "token")
+
+    cognito = get_identity_provider()
+    cognito.set_password(user["email"], password, force_change=False)
+    # Burn the token (single-use). set_password already succeeded, so a lost race
+    # here only means the link can't be reused — the password is set either way.
+    activation.consume_activation(tenant_id, str(row["id"]))
+    logger.info("Account activated: tenant_id=%s user_id=%s", tenant_id, user["id"])
+    return {"email": user["email"]}
 
 
 def list_users(tenant_id: str) -> list[dict[str, Any]]:

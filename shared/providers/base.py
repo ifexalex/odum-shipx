@@ -212,6 +212,12 @@ class IdentityProvider(Protocol):
         """Trigger a provider-managed password-reset email."""
         ...
 
+    def set_password(self, username: str, password: str, force_change: bool = False) -> None:
+        """Set a user's password directly (admin), for the ShipX account-activation
+        flow — the user chooses their own password via a ShipX link. `force_change`
+        False means the chosen password is final."""
+        ...
+
     def create_group_if_not_exists(self, group_name: str) -> None:
         """Ensure a role group exists (idempotent)."""
         ...

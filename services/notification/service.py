@@ -42,6 +42,9 @@ _SMS_TEMPLATES: dict[str, str] = {
     "customer_invite": (
         "{company_name}: Hi {name}, create your account to track your shipments: {invite_link} " "(link expires in 48 hours)"
     ),
+    "account_activation": (
+        "{company_name}: Hi {name}, activate your account and set your password: {activation_link} " "(link expires in 48 hours)"
+    ),
     "payment_claim_confirmed": ("{company_name}: Your payment of NGN {amount_ngn} has been confirmed. Thank you!"),
     "payment_claim_rejected": (
         "{company_name}: Your payment claim of NGN {amount_ngn} was not confirmed. "
@@ -62,6 +65,7 @@ _SMS_TEMPLATES_ZH: dict[str, str] = {
     "container_arrived": "{company_name}: 您的货物已到达仓库！集装箱 {container_number}，正在准备账单。",
     "customer_registered": "{company_name}: 欢迎！您的账户已创建。请查收邮件以设置密码。",
     "customer_invite": "{company_name}: 您好 {name}，创建账户以跟踪您的货物：{invite_link}（链接48小时后失效）",
+    "account_activation": "{company_name}: 您好 {name}，激活账户并设置密码：{activation_link}（链接48小时后失效）",
     "payment_claim_confirmed": "{company_name}: 您的付款 NGN {amount_ngn} 已确认。谢谢！",
     "payment_claim_rejected": (
         "{company_name}: 您的付款申报 NGN {amount_ngn} 未通过确认。" "原因：{reason}。请联系我们或重新提交正确的凭证。"
@@ -425,6 +429,7 @@ EMAIL_SUBJECTS: dict[str, str] = {
     "container_arrived": "Your goods have arrived at the warehouse",
     "customer_registered": "Welcome — your account is ready",
     "customer_invite": "Create your account to track your shipment",
+    "account_activation": "Activate your account — set your password",
     "payment_claim_confirmed": "Your payment has been confirmed",
     "payment_claim_rejected": "Your payment claim needs attention",
 }
@@ -443,6 +448,7 @@ EMAIL_SUBJECTS_ZH: dict[str, str] = {
     "container_arrived": "您的货物已到达仓库",
     "customer_registered": "欢迎 — 您的账户已准备就绪",
     "customer_invite": "创建账户以跟踪您的货物",
+    "account_activation": "激活账户 — 设置您的密码",
     "payment_claim_confirmed": "您的付款已确认",
     "payment_claim_rejected": "您的付款申报需要关注",
 }
@@ -460,6 +466,9 @@ def render_email_html(
     color = get_primary_color(branding)
     greeting = f"Hello {recipient_name}," if recipient_name else "Hello,"
 
+    # Action links (keys ending in _link, e.g. activation_link / invite_link) are
+    # rendered as a prominent CTA button rather than a raw URL in a table row.
+    links = {k: v for k, v in template_data.items() if k.endswith("_link") and v}
     rows = "".join(
         f"<tr>"
         f"<td style='padding:4px 8px;color:#555;font-size:13px;white-space:nowrap;'>"
@@ -468,9 +477,19 @@ def render_email_html(
         f"<td style='padding:4px 8px;font-size:13px;'>{v}</td>"
         f"</tr>"
         for k, v in template_data.items()
-        if v is not None
+        if v is not None and not k.endswith("_link")
     )
     table = f"<table style='border-collapse:collapse;width:100%;margin-top:12px;'>" f"{rows}</table>" if rows else ""
+    _link_labels = {"activation_link": "Activate account", "invite_link": "Create your account"}
+    buttons = "".join(
+        f"<p style='margin:20px 0;'>"
+        f"<a href='{v}' style='display:inline-block;background:{color};color:#ffffff;"
+        f"text-decoration:none;padding:12px 22px;border-radius:6px;font-size:15px;font-weight:bold;'>"
+        f"{_link_labels.get(k, k.replace('_link', '').replace('_', ' ').title() or 'Continue')}</a></p>"
+        f"<p style='margin:0 0 8px 0;font-size:12px;color:#888;word-break:break-all;'>"
+        f"Or paste this link into your browser: {v}</p>"
+        for k, v in links.items()
+    )
 
     return (
         "<!DOCTYPE html>"
@@ -487,6 +506,7 @@ def render_email_html(
         f"{company_name}</span></td></tr>"
         "<tr><td style='padding:24px;'>"
         f"<p style='margin:0 0 16px 0;font-size:15px;color:#222;'>{greeting}</p>"
+        f"{buttons}"
         f"{table}"
         f"<p style='margin:16px 0 0 0;font-size:12px;color:#888;'>"
         f"This is an automated notification from {company_name}.</p>"

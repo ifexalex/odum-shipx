@@ -35,6 +35,7 @@ from shared.validation import parse_validated
 from . import impersonation, service
 from .models import (
     AcceptCustomerInviteRequest,
+    ActivateAccountRequest,
     CreateOnboardingRequest,
     CreateTenantRequest,
     CreateTenantUserRequest,
@@ -99,6 +100,13 @@ def lambda_handler(event: dict[str, Any], context: Any) -> dict[str, Any]:
             return _handle_get_invite(token, request_id)
         if method == "POST" and len(public_parts) == 4 and public_parts[3] == "accept":
             return _handle_accept_invite(event, token, request_id, ip_address)
+    # Account activation — public (no JWT): a provisioned staff/admin sets their
+    # own password via the ShipX welcome link.
+    if method in ("GET", "POST") and len(public_parts) == 3 and public_parts[:2] == ["v1", "activate"]:
+        token = public_parts[2]
+        if method == "GET":
+            return _handle_get_activation(token, request_id)
+        return _handle_activate_account(event, token, request_id, ip_address)
 
     try:
         tenant_ctx = get_tenant_context(event)
@@ -374,6 +382,42 @@ def _handle_accept_invite(
         return error_response(
             LogisticsBaseError("Internal server error", "INTERNAL_ERROR", 500),
             instance=f"/v1/invites/{token}/accept",
+            request_id=request_id,
+        )
+
+
+def _handle_get_activation(token: str, request_id: str) -> dict[str, Any]:
+    """GET /v1/activate/{token} — public preview (no JWT) for the set-password page."""
+    try:
+        return success(service.get_activation_preview(token), request_id=request_id)
+    except LogisticsBaseError as exc:
+        return error_response(exc, instance=f"/v1/activate/{token}", request_id=request_id)
+    except Exception:
+        logger.exception("Unhandled error resolving activation")
+        return error_response(
+            LogisticsBaseError("Internal server error", "INTERNAL_ERROR", 500),
+            instance=f"/v1/activate/{token}",
+            request_id=request_id,
+        )
+
+
+def _handle_activate_account(
+    event: dict[str, Any],
+    token: str,
+    request_id: str,
+    ip_address: str | None,
+) -> dict[str, Any]:
+    """POST /v1/activate/{token} — public (no JWT): set the user's chosen password."""
+    try:
+        req = parse_validated(ActivateAccountRequest, _parse_body(event))
+        return success(service.activate_account(token, req.password), request_id=request_id)
+    except LogisticsBaseError as exc:
+        return error_response(exc, instance=f"/v1/activate/{token}", request_id=request_id)
+    except Exception:
+        logger.exception("Unhandled error activating account")
+        return error_response(
+            LogisticsBaseError("Internal server error", "INTERNAL_ERROR", 500),
+            instance=f"/v1/activate/{token}",
             request_id=request_id,
         )
 

@@ -161,3 +161,23 @@ export const inviteApi = {
       body,
     }),
 }
+
+// Account activation — operator-provisioned staff/admins set their own password.
+export interface ActivationDetail {
+  email: string
+  full_name: string | null
+}
+
+export const activationApi = {
+  /** GET /v1/activate/{token} — the email being activated (public preview). */
+  get: (token: string) =>
+    apiRequest<ActivationDetail>({ method: 'GET', path: `/v1/activate/${encodeURIComponent(token)}` }),
+
+  /** POST /v1/activate/{token} — set the chosen password for the account. */
+  activate: (token: string, body: { password: string }) =>
+    apiRequest<{ email: string }>({
+      method: 'POST',
+      path: `/v1/activate/${encodeURIComponent(token)}`,
+      body,
+    }),
+}

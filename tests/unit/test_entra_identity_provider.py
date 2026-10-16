@@ -87,6 +87,22 @@ class TestUserLifecycle:
         with pytest.raises(ExternalServiceError):
             p.create_user_with_password("a@gmail.com", "Ann", "t1", "customer", "P@ssw0rd!")
 
+    def test_set_password_patches_password_profile(self):
+        p = _provider_with_stubbed_graph()
+        p._resolve_user_id = MagicMock(return_value="oid-pw")  # noqa: SLF001
+        p.set_password("a@gmail.com", "N3wPassw0rd!")
+        method, path, body = p._graph.call_args_list[0].args[:3]  # noqa: SLF001
+        assert method == "PATCH" and path == "/users/oid-pw"
+        assert body == {"passwordProfile": {"password": "N3wPassw0rd!", "forceChangePasswordNextSignIn": False}}
+
+    def test_set_password_unknown_user_raises(self):
+        from shared.exceptions import ResourceNotFoundError
+
+        p = _provider_with_stubbed_graph()
+        p._resolve_user_id = MagicMock(return_value="")  # noqa: SLF001
+        with pytest.raises(ResourceNotFoundError):
+            p.set_password("missing@gmail.com", "pw12345678")
+
     def test_disable_and_enable_resolve_then_patch(self):
         p = _provider_with_stubbed_graph()
         p._resolve_user_id = MagicMock(return_value="oid-7")  # noqa: SLF001
