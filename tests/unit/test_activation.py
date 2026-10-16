@@ -86,6 +86,22 @@ class TestActivateAccount:
                 service.activate_account("tok", "whatever123")
 
 
+class TestResendActivation:
+    def test_reissues_for_existing_user(self):
+        with (
+            patch.object(service.repo, "get_user_by_id", return_value={"id": _USER, "email": "a@b.com", "full_name": "A B"}),
+            patch.object(service, "issue_activation") as issue,
+        ):
+            result = service.resend_activation(_TENANT, _USER, actor_id="admin-1")
+        issue.assert_called_once()
+        assert result["email"] == "a***@b.com"
+
+    def test_unknown_user_raises(self):
+        with patch.object(service.repo, "get_user_by_id", return_value=None):
+            with pytest.raises(ResourceNotFoundError):
+                service.resend_activation(_TENANT, _USER)
+
+
 class TestActivationPreview:
     def test_returns_email_for_valid_token(self):
         with (

@@ -768,6 +768,9 @@ def _tenant_admin_routes(
             if action == "reset-password" and method == "POST":
                 service.reset_user_password(tenant_id, user_id)
                 return success({"message": "Password reset email sent"}, request_id=request_id)
+            if action == "resend-activation" and method == "POST":
+                result = service.resend_activation(tenant_id, user_id, actor_id=ctx.user_id, request_id=request_id)
+                return success(result, request_id=request_id)
             if method == "GET":
                 return success(service.get_user(tenant_id, user_id), request_id=request_id)
             if method == "PATCH":
