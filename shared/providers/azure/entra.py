@@ -161,8 +161,14 @@ class EntraIdentityProvider:
         """Resolve an object id / UPN / email to the Graph object id.
 
         A direct GET works for an object id or a UPN (member accounts). For a
-        B2C **local account** the email is not the UPN, so fall back to filtering
-        on the emailAddress identity (needs the advanced-query headers).
+        local account the email is not the UPN, so fall back to filtering on the
+        emailAddress identity.
+
+        NB: this filter is a REGULAR query on Entra External ID (CIAM) — sending
+        the advanced-query `ConsistencyLevel: eventual` header + `$count=true`
+        makes Graph reject it with `Request_UnsupportedQuery` ("Unsupported query
+        on property 'ObjectIdentity'"), the opposite of Azure AD B2C. Verified
+        live against the tenant: no header → 200 with the match, header → 400.
         """
         from shared.exceptions import ExternalServiceError
 
@@ -176,13 +182,10 @@ class EntraIdentityProvider:
 
         if "@" not in username:
             return ""
-        # Local-account lookup by email identity.
+        # Local-account lookup by email identity (regular query — no advanced-query
+        # header; see the method docstring).
         flt = urllib.parse.quote(f"identities/any(i:i/issuerAssignedId eq '{username}' and i/issuer eq '{self._user_domain}')")
-        result = self._graph(
-            "GET",
-            f"/users?$filter={flt}&$select=id&$count=true",
-            extra_headers={"ConsistencyLevel": "eventual"},
-        )
+        result = self._graph("GET", f"/users?$filter={flt}&$select=id")
         values = (result or {}).get("value", [])
         return str(values[0]["id"]) if values else ""
 
