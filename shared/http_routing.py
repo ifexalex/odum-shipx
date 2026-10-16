@@ -25,6 +25,7 @@ ROUTES: list[tuple[str, str]] = [
     ("/v1/register", "tenant_management"),  # customer self-registration (public)
     ("/v1/onboarding-requests", "tenant_management"),  # shipping-company onboarding lead (public)
     ("/v1/invites", "tenant_management"),  # customer account-creation invites (public claim + staff issue)
+    ("/v1/activate", "tenant_management"),  # staff/admin account activation (public set-password)
     # Webhooks split by provider — payment (Paystack/Flutterwave, HMAC-verified)
     # vs WhatsApp (Meta).
     ("/v1/webhooks/payment", "payment_release"),
@@ -75,6 +76,8 @@ PUBLIC_ROUTES: frozenset[str] = frozenset(
         "POST /v1/onboarding-requests",
         "GET /v1/invites/{token}",
         "POST /v1/invites/{token}/accept",
+        "GET /v1/activate/{token}",
+        "POST /v1/activate/{token}",
         "POST /v1/auth/login",
         "POST /v1/auth/authorize-url",
         "POST /v1/auth/callback",

@@ -306,6 +306,8 @@ locals {
     "POST /v1/register/{slug}"          = "tenant_management"    # customer self-registration, tenant-scoped by slug
     "GET /v1/invites/{token}"           = "tenant_management"    # account-creation invite claim-page preview
     "POST /v1/invites/{token}/accept"   = "tenant_management"    # account-creation invite claim
+    "GET /v1/activate/{token}"          = "tenant_management"    # staff/admin activation preview (set-password page)
+    "POST /v1/activate/{token}"         = "tenant_management"    # staff/admin activation — set chosen password
     "POST /v1/auth/login"               = "auth"                 # Entra ROPC login proxy (CORS-blocked direct from SPA)
     "POST /v1/auth/authorize-url"       = "auth"                 # begin interactive Entra login (BFF auth-code + PKCE)
     "POST /v1/auth/callback"            = "auth"                 # complete interactive login — exchange code for tokens

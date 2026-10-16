@@ -199,6 +199,25 @@ class CognitoIdentityProvider:
         except ClientError as exc:
             raise ExternalServiceError("Cognito", str(exc)) from exc
 
+    def set_password(self, username: str, password: str, force_change: bool = False) -> None:
+        """Set a permanent password directly (admin), for ShipX account activation —
+        the user chooses their own password via a ShipX link. `force_change` True
+        sets a temporary password instead (NEW_PASSWORD_REQUIRED on next login)."""
+        from botocore.exceptions import ClientError
+
+        from shared.exceptions import ExternalServiceError
+
+        try:
+            self.client.admin_set_user_password(
+                UserPoolId=self.user_pool_id,
+                Username=username,
+                Password=password,
+                Permanent=not force_change,
+            )
+            logger.info("Cognito password set for %s (permanent=%s)", username, not force_change)
+        except ClientError as exc:
+            raise ExternalServiceError("Cognito", str(exc)) from exc
+
     # ------------------------------------------------------------------
     # Group management
     # ------------------------------------------------------------------

@@ -1,0 +1,256 @@
+/**
+ * Public account-activation page for operator-provisioned staff/admins
+ * (`GET /v1/activate/:token`, `POST /v1/activate/:token`).
+ *
+ * Reached from the ShipX welcome email sent when a tenant admin or staff user
+ * is provisioned (created in the IdP with a random password and no login). The
+ * page shows the account email (fixed — not editable) and collects a new
+ * password, which the backend sets in the IdP via the provisioning app. Expired
+ * or used links get a "request a new one" message rather than a raw error.
+ */
+import { useEffect, useState, type FormEvent, type JSX } from 'react'
+import { useNavigate, useParams } from 'react-router-dom'
+import { ApiError } from '../../api/client'
+import { activationApi, type ActivationDetail } from '../../api/customer'
+import { Banner, Button, Field, Icon } from '../../design/components'
+import { AuthShell, FormHead, PasswordStrength } from './AuthShell'
+import styles from './LoginScreen.module.css'
+
+interface Requirement {
+  label: string
+  ok: (pw: string) => boolean
+}
+
+const REQUIREMENTS: Requirement[] = [
+  { label: 'At least 12 characters', ok: (pw) => pw.length >= 12 },
+  { label: 'Mix of upper & lowercase', ok: (pw) => /[a-z]/.test(pw) && /[A-Z]/.test(pw) },
+  { label: 'At least one number', ok: (pw) => /\d/.test(pw) },
+  { label: 'At least one special character', ok: (pw) => /[^A-Za-z0-9]/.test(pw) },
+]
+
+type LoadState = 'loading' | 'ready' | 'invalid'
+
+export function ActivateScreen(): JSX.Element {
+  const navigate = useNavigate()
+  const { token } = useParams<{ token: string }>()
+  const [loadState, setLoadState] = useState<LoadState>('loading')
+  const [detail, setDetail] = useState<ActivationDetail | null>(null)
+
+  const [password, setPassword] = useState('')
+  const [confirm, setConfirm] = useState('')
+  const [showPassword, setShowPassword] = useState(false)
+  const [submitting, setSubmitting] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+  const [done, setDone] = useState(false)
+
+  useEffect(() => {
+    if (!token) {
+      setLoadState('invalid')
+      return
+    }
+    let cancelled = false
+    activationApi
+      .get(token)
+      .then((d) => {
+        if (cancelled) return
+        setDetail(d)
+        setLoadState('ready')
+      })
+      .catch(() => {
+        if (cancelled) return
+        setLoadState('invalid')
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [token])
+
+  const requirementsMet = REQUIREMENTS.every((r) => r.ok(password))
+  const canSubmit = requirementsMet && password === confirm
+
+  async function handleSubmit(event: FormEvent<HTMLFormElement>): Promise<void> {
+    event.preventDefault()
+    if (!token) return
+    setError(null)
+    setSubmitting(true)
+    try {
+      await activationApi.activate(token, { password })
+      setDone(true)
+    } catch (err) {
+      if (err instanceof ApiError && err.status === 404) {
+        setLoadState('invalid')
+      } else {
+        setError(err instanceof ApiError ? err.message : 'Could not set your password. Please try again.')
+      }
+    } finally {
+      setSubmitting(false)
+    }
+  }
+
+  if (loadState === 'loading') {
+    return (
+      <AuthShell>
+        <div style={{ textAlign: 'center', padding: '40px 0' }}>
+          <p className={styles.formSub}>Loading…</p>
+        </div>
+      </AuthShell>
+    )
+  }
+
+  if (loadState === 'invalid') {
+    return (
+      <AuthShell>
+        <div style={{ textAlign: 'center' }}>
+          <div
+            style={{
+              width: 84,
+              height: 84,
+              borderRadius: '50%',
+              background: 'var(--color-error-soft)',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              margin: '0 auto 24px',
+            }}
+          >
+            <Icon name="alert" size={42} color="var(--color-error)" stroke={2.5} />
+          </div>
+          <h2 className={styles.formTitle} style={{ marginBottom: 8 }}>This link is no longer valid.</h2>
+          <p className={styles.formSub} style={{ marginBottom: 24 }}>
+            It may have expired or already been used. Ask your administrator to resend your invitation.
+          </p>
+          <Button variant="primary" size="lg" full onClick={() => navigate('/login')}>
+            Back to sign in
+          </Button>
+        </div>
+      </AuthShell>
+    )
+  }
+
+  if (done) {
+    return (
+      <AuthShell>
+        <div style={{ textAlign: 'center' }}>
+          <div
+            style={{
+              width: 84,
+              height: 84,
+              borderRadius: '50%',
+              background: 'var(--color-success-soft)',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              margin: '0 auto 24px',
+            }}
+          >
+            <Icon name="check" size={42} color="var(--color-success)" stroke={2.5} />
+          </div>
+          <h2 className={styles.formTitle} style={{ marginBottom: 8 }}>You&rsquo;re all set.</h2>
+          <p className={styles.formSub} style={{ marginBottom: 24 }}>
+            Sign in with <strong>{detail?.email}</strong> and the password you just chose.
+          </p>
+          <Button variant="primary" size="lg" full onClick={() => navigate('/login')}>
+            Sign in →
+          </Button>
+        </div>
+      </AuthShell>
+    )
+  }
+
+  return (
+    <AuthShell>
+      <FormHead
+        title={detail?.full_name ? `Welcome, ${detail.full_name}` : 'Activate your account'}
+        sub="Set a password to activate your ShipX account and sign in."
+      />
+
+      {error && (
+        <div style={{ marginBottom: 20 }}>
+          <Banner variant="error" title="Could not set password">{error}</Banner>
+        </div>
+      )}
+
+      <form onSubmit={handleSubmit}>
+        <Field label="Email address" type="email" icon="mail" name="email" value={detail?.email ?? ''} readOnly disabled />
+
+        <Field
+          label="Password"
+          type={showPassword ? 'text' : 'password'}
+          icon="lock"
+          name="password"
+          placeholder="At least 12 characters"
+          value={password}
+          onChange={(e) => setPassword(e.target.value)}
+          autoComplete="new-password"
+          required
+          trailing={
+            <button
+              type="button"
+              className={styles.trailingButton}
+              aria-label={showPassword ? 'Hide password' : 'Show password'}
+              onClick={() => setShowPassword((v) => !v)}
+            >
+              <Icon name={showPassword ? 'eyeoff' : 'eye'} size={16} />
+            </button>
+          }
+        />
+        <PasswordStrength password={password} />
+
+        <div style={{ marginTop: 16, marginBottom: 8 }}>
+          <Field
+            label="Confirm password"
+            type={showPassword ? 'text' : 'password'}
+            icon="lock"
+            name="confirm_password"
+            placeholder="Re-enter password"
+            value={confirm}
+            onChange={(e) => setConfirm(e.target.value)}
+            autoComplete="new-password"
+            required
+            error={confirm.length > 0 && confirm !== password ? "Passwords don't match." : undefined}
+          />
+        </div>
+
+        <div
+          style={{
+            background: 'var(--color-surface-muted)',
+            border: '1px solid var(--color-line-soft)',
+            borderRadius: 8,
+            padding: '12px 14px',
+            margin: '8px 0 24px',
+            fontSize: 12,
+            lineHeight: 1.7,
+          }}
+        >
+          <div
+            style={{
+              fontWeight: 600,
+              color: 'var(--color-ink-2)',
+              marginBottom: 6,
+              textTransform: 'uppercase',
+              letterSpacing: '0.08em',
+            }}
+          >
+            Password requirements
+          </div>
+          {REQUIREMENTS.map((r) => {
+            const met = r.ok(password)
+            return (
+              <div
+                key={r.label}
+                style={{ display: 'flex', alignItems: 'center', gap: 6, color: met ? 'var(--color-success)' : 'var(--color-ink-3)' }}
+              >
+                <Icon name={met ? 'check' : 'minus'} size={12} stroke={3} />
+                {r.label}
+              </div>
+            )
+          })}
+        </div>
+
+        <Button type="submit" variant="accent" size="lg" full loading={submitting} disabled={!canSubmit}>
+          Activate account
+        </Button>
+      </form>
+    </AuthShell>
+  )
+}

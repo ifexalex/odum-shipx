@@ -5,6 +5,7 @@ import { RoleGuard } from '../auth/RoleGuard'
 import { SessionLoading } from '../auth/SessionLoading'
 import { useSession } from '../auth/useSession'
 import { ForgotPasswordScreen } from '../pages/auth/ForgotPasswordScreen'
+import { ActivateScreen } from '../pages/auth/ActivateScreen'
 import { InviteClaimScreen } from '../pages/auth/InviteClaimScreen'
 import { LoginScreen } from '../pages/auth/LoginScreen'
 import { RegisterScreen } from '../pages/auth/RegisterScreen'
@@ -112,6 +113,7 @@ const PUBLIC_SCREENS: Record<string, JSX.Element> = {
   '/get-started': <RequestOnboardingScreen />,
   '/auth/callback': <AuthCallback />,
   '/invite/:token': <InviteClaimScreen />,
+  '/activate/:token': <ActivateScreen />,
   '/forgot-password': <ForgotPasswordScreen />,
   '/reset-password': <ResetPasswordScreen />,
   '/track': <PublicTrack />,

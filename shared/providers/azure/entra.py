@@ -309,6 +309,22 @@ class EntraIdentityProvider:
         passwordProfile; force a change on next sign-in."""
         self.resend_invite(username)
 
+    def set_password(self, username: str, password: str, force_change: bool = False) -> None:
+        """Set the user's password directly via Graph (admin), for ShipX account
+        activation — a provisioned staff/admin picks their own password through a
+        ShipX link, so they never need the Entra self-service reset. `force_change`
+        False makes the chosen password final."""
+        from shared.exceptions import ResourceNotFoundError
+
+        uid = self._resolve_user_id(username)
+        if not uid:
+            raise ResourceNotFoundError("user", username)
+        self._graph(
+            "PATCH",
+            f"/users/{uid}",
+            {"passwordProfile": {"password": password, "forceChangePasswordNextSignIn": force_change}},
+        )
+
     # ------------------------------------------------------------------
     # Groups (roles)
     # ------------------------------------------------------------------

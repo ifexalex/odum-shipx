@@ -412,6 +412,31 @@ account-creation invites") and makes `phone` a real per-tenant identifier.
   write path: manifest import, `tenant_management.service.create_customer`/`update_customer`, and
   `self_register_customer`/`accept_customer_invite`.
 
+### Migration 055 — `tenant_user_activation`
+
+New table `tenant_user_activation` (account activation for operator-provisioned staff/admins — the
+`tenant_user` analogue of `customer_invite`):
+```sql
+CREATE TABLE tenant_user_activation (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    tenant_id UUID NOT NULL REFERENCES tenant(id) ON DELETE RESTRICT,
+    user_id UUID NOT NULL REFERENCES tenant_user(id) ON DELETE CASCADE,
+    token_hash CHAR(64) NOT NULL,
+    expires_at TIMESTAMPTZ NOT NULL,
+    consumed_at TIMESTAMPTZ,
+    sent_channel VARCHAR(20),
+    sent_to_masked VARCHAR(64),
+    created_by UUID REFERENCES tenant_user(id),
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+CREATE UNIQUE INDEX idx_tenant_user_activation_token_hash ON tenant_user_activation(token_hash);
+CREATE INDEX idx_tenant_user_activation_user ON tenant_user_activation(tenant_id, user_id);
+```
+RLS on, standard tenant-isolation policy. Single-use, 48h, SHA-256-hashed opaque token; the service
+(`issue_activation`) deletes any prior unconsumed row before minting a new one (resend invalidates the
+old link). Backs the `/activate/{token}` set-password flow (`shared/activation.py`); the public token
+lookup is PLATFORM-scoped, like `customer_invite`. See the activation note in `07_api_tenant_management.md`.
+
 ## Acceptance Criteria
 
 - [x] All tables created with correct data types and constraints

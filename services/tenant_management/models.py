@@ -311,6 +311,13 @@ class AcceptCustomerInviteRequest(BaseModel):
     password: str = Field(min_length=8)
 
 
+class ActivateAccountRequest(BaseModel):
+    """Body for POST /v1/activate/{token} — a provisioned staff/admin sets their
+    own password via the ShipX activation link."""
+
+    password: str = Field(min_length=8)
+
+
 # ---------------------------------------------------------------------------
 # Response models
 # ---------------------------------------------------------------------------

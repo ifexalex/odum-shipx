@@ -34,6 +34,7 @@ export const routeTable: RouteDef[] = [
   { path: '/register', allow: 'public', title: 'Register', layout: 'none' },
   { path: '/register/:slug', allow: 'public', title: 'Register', layout: 'none' },
   { path: '/invite/:token', allow: 'public', title: 'Create Your Account', layout: 'none' },
+  { path: '/activate/:token', allow: 'public', title: 'Activate Your Account', layout: 'none' },
   { path: '/forgot-password', allow: 'public', title: 'Forgot Password', layout: 'none' },
   { path: '/reset-password', allow: 'public', title: 'Reset Password', layout: 'none' },
   { path: '/track', allow: 'public', title: 'Track Shipment', layout: 'none' },
