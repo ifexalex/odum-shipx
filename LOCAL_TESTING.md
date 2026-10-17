@@ -21,6 +21,8 @@ Run the full ShipX platform on your laptop — no AWS account needed.
 11. [View the database (Adminer)](#11-view-the-database-adminer)
 12. [Troubleshooting](#12-troubleshooting)
 13. [Quick-start checklist](#13-quick-start-checklist)
+14. [Frontend dev server](#14-frontend-dev-server)
+15. [Testing the real Microsoft Entra integration locally](#15-testing-the-real-microsoft-entra-integration-locally)
 
 ---
 
@@ -883,6 +885,83 @@ npm run dev   # → http://localhost:5173
 
 The dev server proxies nothing — it calls `http://localhost:3000` (local_server.py) directly via the API client's base URL config.
 
+
+## 15. Testing the real Microsoft Entra integration locally
+
+**There is no 1:1 Entra emulator.** Microsoft ships none, and the community ones
+([entra-emulator](https://github.com/calvinchengx/entra-emulator),
+[entra-local](https://github.com/cmaneu/entra-local)) expose only a *minimal, read-only*
+Microsoft Graph — so they cannot exercise our Graph **writes** (`POST /users`,
+`POST /groups`, `POST /groups/{id}/members/$ref`, `PATCH /users/{id}` passwordProfile,
+the `identities` `$filter`), nor the `OnTokenIssuanceStart` custom-claims webhook. Every
+Entra bug found so far has been in exactly those places, so an emulator would not have
+caught them. They remain useful for minting tokens with arbitrary `tenant_id`/`role`
+claims when you only need to exercise the *consumption* side (`buildSession` →
+`auth_verify` → `EntraClaimsMapper` → `RoleGuard`).
+
+Instead, point the **local** backend at the **real** CIAM tenant. The Graph provisioning
+app uses client-credentials, which work from anywhere — no deploy needed.
+
+> **These are real directory writes against the shared CIAM tenant.** Use a dedicated
+> test email per run (`tenant_user.id` IS the Entra `oid`, so one identity can only ever
+> belong to one tenant — reusing an email now returns a clean 409) and delete the test
+> user + tenant afterwards. Never commit the client secret; `.env.local` is gitignored.
+
+### 15.1 Configure
+Uncomment the "Real Microsoft Entra integration" block in `.env.local` (template in
+`.env.local.sample`) and paste the `shipx-graph-provisioner` client secret into
+`ENTRA_GRAPH_CLIENT_SECRET`. Then restart `scripts/local_server.py`.
+
+> Flask does **not** autoreload env changes — restart the server or you will keep
+> testing the old config (this has bitten us before; see §12).
+
+### 15.2 What works immediately — Graph provisioning
+With the block enabled, provisioning against the local API performs **real** Graph writes
+while persisting to your **local** Postgres:
+
+```bash
+curl -X POST http://localhost:3000/v1/platform/tenants \
+  -H "X-Tenant-ID: PLATFORM" -H "X-Role: platform_admin" \
+  -H "Content-Type: application/json" \
+  -d '{"company_name":"Local Test Co","primary_contact_email":"ops@local.test",
+       "subscription_tier":"business",
+       "initial_admin":{"email":"local-test-1@yourdomain.com","full_name":"Local Admin"}}'
+```
+This is the fastest way to validate the whole provisioning chain (create user → group
+reconcile → `tenant_user` insert → activation link) in seconds. Check the Entra user in
+the portal, or via Graph:
+```bash
+TOKEN=$(az account get-access-token --tenant $ENTRA_GRAPH_TENANT_ID --resource-type ms-graph --query accessToken -o tsv)
+curl -s -H "Authorization: Bearer $TOKEN" \
+  "https://graph.microsoft.com/v1.0/users?\$filter=identities/any(c:c/issuerAssignedId eq 'local-test-1@yourdomain.com')&\$select=id,displayName"
+```
+(No `ConsistencyLevel` header — see the `ObjectIdentity` note in `07_api_tenant_management.md`.)
+
+### 15.3 Browser login from localhost
+Register `http://localhost:5173/auth/callback` as an additional redirect URI on the
+`shipx-spa` app (the **publicClient** platform permits `http://localhost`), then set
+`ENTRA_REDIRECT_URI=http://localhost:5173/auth/callback` locally. Real interactive login
+then runs end-to-end from localhost. Build the SPA with `VITE_AUTH_PROVIDER=entra` (not
+`VITE_ENVIRONMENT=local`, which activates the dev shim instead).
+
+### 15.4 The one gap — the claims extension
+Entra calls the custom-claims provider at a **public HTTPS URL**, so it can never reach
+`localhost`. Two options:
+- **Accept it:** the deployed `shipx-dev-entra-claims` container stays the handler, but it
+  reads the *deployed* database — so a locally-created `tenant_user` will not be found and
+  the token arrives without `tenant_id`. Fine for testing provisioning; not for login.
+- **Tunnel it:** expose your local claims app (`docker-entrypoint.sh claims`, port 8080)
+  with a dev tunnel/ngrok and temporarily repoint the extension's `targetUrl` at it, so the
+  full login + claims chain runs against your local DB. Remember to point it back — the
+  extension is shared with the deployed environment.
+
+### 15.5 Cleanup
+```bash
+# Delete the test Entra user (oid from 15.2), then the local tenant rows.
+curl -s -X DELETE -H "Authorization: Bearer $TOKEN" "https://graph.microsoft.com/v1.0/users/<oid>"
+```
+
+---
 
 ## Customer self-registration in local dev
 
