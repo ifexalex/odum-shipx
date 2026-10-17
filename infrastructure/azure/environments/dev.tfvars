@@ -54,13 +54,18 @@ entra_claims_caller_jwks_url = "https://shipxcustomer.ciamlogin.com/062cb98d-899
 # put its client id below, and set its secret as the GitHub Environment secret
 # ENTRA_GRAPH_CLIENT_SECRET (injected via TF_VAR at apply — never in tfvars).
 # Empty client id → managed-identity fallback (provisioning stays disabled).
-# Who may actually be messaged in dev. The recipient guard fails CLOSED, so with
-# this empty every notification is suppressed — which is why provisioning a tenant
-# sends no activation email (see the "Notification suppressed outside production"
-# warning in the API logs). Add ONLY your own test contacts; this database holds
-# real customer contacts imported from client manifests.
-# e.g. notification_allowlist = "you@example.com,08169760253"
-notification_allowlist = ""
+# Who may actually be messaged in dev. The recipient guard fails CLOSED, so an
+# empty value suppresses every notification — which is why provisioning sent no
+# activation email (see "Notification suppressed outside production" in the API
+# logs). Add ONLY your own test contacts: this database holds real customer
+# contacts imported from client manifests, and the guard is what stops a dev
+# action from texting them.
+#
+# Match is an exact, case-insensitive string compare against the recipient's
+# phone/email/whatsapp — and phones are stored E.164 (shared/phone.py), so the
+# +234 form is the one that matches; the local form is kept only for convenience.
+# TODO: add the email address you actually read, e.g. "…,you@example.com".
+notification_allowlist = "+2348169760253,08169760253"
 
 entra_graph_tenant_id = "062cb98d-8990-4947-81c4-223cb1e9b8f3"
 entra_graph_client_id = "37c40cbe-5995-4b37-9d2a-0d6a02624426" # shipx-graph-provisioner (User.ReadWrite.All + Group.ReadWrite.All)
