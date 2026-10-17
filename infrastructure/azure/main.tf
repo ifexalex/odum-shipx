@@ -163,6 +163,12 @@ module "container_app" {
 
   container_image = var.container_image
 
+  # ENVIRONMENT (log stamping + the notification guard's production check) and
+  # the non-production recipient allowlist. The guard fails closed, so dev sends
+  # nothing until notification_allowlist names a contact.
+  environment_name       = var.environment
+  notification_allowlist = var.notification_allowlist
+
   # Postgres
   db_host     = module.postgres.host
   db_port     = module.postgres.port
