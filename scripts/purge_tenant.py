@@ -81,9 +81,11 @@ def resolve_tenant_ids(cur: Any, emails: list[str], tenant_ids: list[str]) -> li
         ids.update(found)
     if not ids:
         return []
+    # `::uuid[]` is required throughout: psycopg2 sends these ids as a list of
+    # Python str, and Postgres has no `uuid = text` operator.
     cur.execute(
         "SELECT id, company_name, slug, primary_contact_email, status, created_at "
-        "FROM tenant WHERE id = ANY(%s) ORDER BY created_at",
+        "FROM tenant WHERE id = ANY(%s::uuid[]) ORDER BY created_at",
         (list(ids),),
     )
     return list(cur.fetchall())
@@ -176,7 +178,7 @@ def main() -> None:
     print("\nRows that belong to these tenants:")
     total = 0
     for table in order:
-        cur.execute(f'SELECT count(*) AS n FROM "{table}" WHERE tenant_id = ANY(%s)', (ids,))  # noqa: S608
+        cur.execute(f'SELECT count(*) AS n FROM "{table}" WHERE tenant_id = ANY(%s::uuid[])', (ids,))  # noqa: S608
         n = cur.fetchone()["n"]
         if n:
             print(f"  {n:>7}  {table}")
@@ -190,21 +192,21 @@ def main() -> None:
 
     print("\nDeleting (single transaction, children first)…")
     for table in order:
-        cur.execute(f'DELETE FROM "{table}" WHERE tenant_id = ANY(%s)', (ids,))  # noqa: S608
+        cur.execute(f'DELETE FROM "{table}" WHERE tenant_id = ANY(%s::uuid[])', (ids,))  # noqa: S608
         if cur.rowcount:
             print(f"  -{cur.rowcount:<7} {table}")
     # Platform-level rows that point at the tenant but carry no tenant_id column.
-    cur.execute("DELETE FROM platform_audit_log WHERE target_tenant_id = ANY(%s)", (ids,))
+    cur.execute("DELETE FROM platform_audit_log WHERE target_tenant_id = ANY(%s::uuid[])", (ids,))
     if cur.rowcount:
         print(f"  -{cur.rowcount:<7} platform_audit_log")
     cur.execute(
         "UPDATE tenant_onboarding_request SET tenant_id = NULL, status = 'new', "
-        "reviewed_by = NULL, reviewed_at = NULL WHERE tenant_id = ANY(%s) RETURNING id",
+        "reviewed_by = NULL, reviewed_at = NULL WHERE tenant_id = ANY(%s::uuid[]) RETURNING id",
         (ids,),
     )
     if cur.rowcount:
         print(f"  ~{cur.rowcount:<7} tenant_onboarding_request (lead reopened, can be re-provisioned)")
-    cur.execute(f'DELETE FROM "{TENANT_TABLE}" WHERE id = ANY(%s)', (ids,))
+    cur.execute(f'DELETE FROM "{TENANT_TABLE}" WHERE id = ANY(%s::uuid[])', (ids,))
     print(f"  -{cur.rowcount:<7} {TENANT_TABLE}")
 
     conn.commit()
