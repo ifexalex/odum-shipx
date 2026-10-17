@@ -225,6 +225,14 @@ def _build_template_override(channel: str, row: dict[str, Any]) -> dict[str, Any
 
 _ALLOWLIST_ENV = "NOTIFICATION_ALLOWLIST"
 
+# Environment names that mean "this is production, send for real". Both spellings
+# are accepted deliberately: every tfvars file (AWS and Azure) sets
+# `environment = "prod"` — and that value also feeds resource name prefixes, so it
+# cannot be renamed to "production" without recreating infrastructure. Matching
+# only "production" meant the guard could never switch itself off in any deployed
+# environment, silently suppressing *every* customer notification in production.
+_PRODUCTION_ENVIRONMENTS = frozenset({"production", "prod"})
+
 
 def _allowlist() -> set[str]:
     """Recipients that may be messaged outside production, from env."""
@@ -245,8 +253,9 @@ def _mask(value: str) -> str:
 def is_recipient_allowed(recipient: dict[str, Any]) -> bool:
     """True when this recipient may actually be messaged.
 
-    Production always sends. Every other environment **fails closed**: nothing
-    is messaged unless the contact appears in NOTIFICATION_ALLOWLIST.
+    Production always sends — see `_PRODUCTION_ENVIRONMENTS` for why both "prod"
+    and "production" count. Every other environment **fails closed**: nothing is
+    messaged unless the contact appears in NOTIFICATION_ALLOWLIST.
 
     Dev and staging databases hold real imported customer contacts — a manifest
     import creates customers straight from the forwarder's file, phone numbers
@@ -255,7 +264,7 @@ def is_recipient_allowed(recipient: dict[str, Any]) -> bool:
     text real customers. Opt-in is the only safe default; an allowlist that
     someone forgot to populate must send nothing, not everything.
     """
-    if os.environ.get("ENVIRONMENT", "").lower() == "production":
+    if os.environ.get("ENVIRONMENT", "").strip().lower() in _PRODUCTION_ENVIRONMENTS:
         return True
     allowed = _allowlist()
     if not allowed:

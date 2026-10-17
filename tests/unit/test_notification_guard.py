@@ -34,6 +34,25 @@ class TestRecipientGuard:
         with patch.dict(os.environ, {"ENVIRONMENT": "production", "NOTIFICATION_ALLOWLIST": ""}, clear=False):
             assert _guard()({"phone": "+2348031234567"}) is True
 
+    def test_prod_spelling_also_counts_as_production(self):
+        """Regression: every tfvars file (AWS + Azure) sets environment = "prod",
+        and that value also feeds resource name prefixes so it cannot be renamed.
+        Matching only "production" meant the guard could never switch off in any
+        deployed environment — silently suppressing every customer notification
+        in production."""
+        with patch.dict(os.environ, {"ENVIRONMENT": "prod", "NOTIFICATION_ALLOWLIST": ""}, clear=False):
+            assert _guard()({"phone": "+2348031234567"}) is True
+
+    def test_prod_spelling_is_case_and_whitespace_tolerant(self):
+        with patch.dict(os.environ, {"ENVIRONMENT": " PROD ", "NOTIFICATION_ALLOWLIST": ""}, clear=False):
+            assert _guard()({"phone": "+2348031234567"}) is True
+
+    def test_other_environments_still_fail_closed(self):
+        """demo/staging/dev are NOT production — they must keep failing closed."""
+        for env_name in ("demo", "staging", "dev", "", "productionish"):
+            with patch.dict(os.environ, {"ENVIRONMENT": env_name, "NOTIFICATION_ALLOWLIST": ""}, clear=False):
+                assert _guard()({"phone": "+2348031234567"}) is False, env_name
+
     def test_enqueue_returns_early_for_a_blocked_recipient(self):
         from shared import notifications
 
