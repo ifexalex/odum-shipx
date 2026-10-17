@@ -86,6 +86,19 @@ variable "entra_group_id_map" {
   default     = ""
 }
 
+variable "notification_allowlist" {
+  description = <<-EOT
+    Comma-separated phone numbers / emails that MAY be messaged outside
+    production. The recipient guard (`shared/notifications.is_recipient_allowed`)
+    fails CLOSED: empty means every non-production notification is suppressed,
+    because dev/staging databases hold real imported customer contacts. Set this
+    to your own test contacts to actually receive activation/onboarding emails in
+    dev. Ignored when environment = "prod"/production.
+  EOT
+  type        = string
+  default     = ""
+}
+
 variable "entra_graph_tenant_id" {
   description = "Tenant id of the directory the backend provisions users into (the CIAM tenant). Empty → managed identity (only works when that directory is the compute's home tenant)."
   type        = string

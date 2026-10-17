@@ -487,6 +487,31 @@ All fixes are covered by tests except the AWS-side behaviour (findings 2–7), w
    login, ships together. Route-level `React.lazy` code-splitting would cut first load materially for the
    mobile-heavy Nigerian audience. Not a bug; recorded because the responsive pass made mobile first-load matter more.
 
+### 2026-10-17 — the recipient guard could never switch off in production
+
+**Severity: HIGH (latent, pre-release).** `shared/notifications.is_recipient_allowed`
+gated "always send" on `ENVIRONMENT.lower() == "production"`, but **no environment
+anywhere sets that string** — every tfvars file on both clouds uses
+`environment = "prod"` (plus `staging`/`dev`/`demo`), and both
+`infrastructure/aws/modules/lambda` and the Azure `container_app` module pass
+`ENVIRONMENT = var.environment` straight through. The guard therefore fails
+closed in **production** as well, suppressing *every* customer notification —
+shipment updates, payment-due notices, release notes — with nothing but a
+`WARNING` line to show for it. `environment` also feeds resource name prefixes,
+so it cannot simply be renamed to `"production"` without recreating
+infrastructure.
+
+Found while wiring `NOTIFICATION_ALLOWLIST` for Azure (until then `ENVIRONMENT`
+was unset on the containers, so the mismatch was masked by the guard blocking
+everything regardless). Fixed by accepting both spellings via
+`_PRODUCTION_ENVIRONMENTS = {"production", "prod"}`; `demo`/`staging`/`dev` keep
+failing closed. Regression tests in `tests/unit/test_notification_guard.py`
+assert `prod` sends, that it is case/whitespace tolerant, and that the other
+environments (including a near-miss like `productionish`) still suppress.
+
+**Before go-live:** confirm a real notification actually sends from production —
+the failure mode here is silence, not an error.
+
 ## Severity SLA
 
 | Severity | Patch Within |

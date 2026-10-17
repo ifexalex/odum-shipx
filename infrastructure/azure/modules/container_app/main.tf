@@ -69,6 +69,13 @@ locals {
     AUTH_COOKIE_SAMESITE = var.auth_cookie_samesite
     # Browser origins allowed to call the API (the frontend URL).
     CORS_ALLOW_ORIGINS = var.cors_allow_origins
+    # Stamped on every structured log line, and read by the notification
+    # recipient guard ("production" disables it).
+    ENVIRONMENT = var.environment_name
+    # Who may be messaged outside production. The guard fails CLOSED — empty
+    # means every non-production notification is suppressed, which is why dev
+    # sends no activation emails until this is set.
+    NOTIFICATION_ALLOWLIST = var.notification_allowlist
     # Per-channel queue names (the opaque queue reference on Azure).
     SQS_SMS_QUEUE_URL      = lookup(var.queue_names, "sms", "")
     SQS_WHATSAPP_QUEUE_URL = lookup(var.queue_names, "whatsapp", "")

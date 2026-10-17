@@ -176,6 +176,25 @@ variable "entra_scope" {
   default     = "openid profile offline_access"
 }
 
+variable "environment_name" {
+  description = "Deployment environment (dev/staging/prod/demo) — sets ENVIRONMENT, which the structured logger stamps on every line and the notification recipient guard reads ('production' disables the guard)."
+  type        = string
+  default     = ""
+}
+
+variable "notification_allowlist" {
+  description = <<-EOT
+    Comma-separated phone numbers / emails that MAY be messaged outside
+    production. `shared/notifications.is_recipient_allowed` fails CLOSED: with
+    this empty, every non-production notification is suppressed (dev/staging
+    databases hold real imported customer contacts, so opt-in is the only safe
+    default). Set it to your own test contacts to receive activation/onboarding
+    emails in dev. Ignored when ENVIRONMENT=production.
+  EOT
+  type        = string
+  default     = ""
+}
+
 variable "entra_graph_tenant_id" {
   description = "Tenant id of the directory the EntraIdentityProvider provisions users into (the CIAM tenant). Empty → DefaultAzureCredential (managed identity)."
   type        = string
