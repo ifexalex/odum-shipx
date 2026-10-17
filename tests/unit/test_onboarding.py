@@ -7,6 +7,8 @@ create_tenant → lead linking. Fully mocked (no DB, no Cognito/Entra)."""
 import json
 from unittest.mock import MagicMock, patch
 
+import pytest
+
 from services.tenant_management import handler, service
 from services.tenant_management.models import (
     CreateOnboardingRequest,
@@ -17,6 +19,13 @@ from services.tenant_management.models import (
 from shared.tenant_context import PLATFORM_TENANT_ID, TenantContext, UserRole
 
 _LEAD = {"company_name": "Acme Freight", "contact_name": "Ada Obi", "contact_email": "ops@acme.com"}
+
+
+@pytest.fixture(autouse=True)
+def _identity_not_already_taken():
+    """create_tenant pre-checks that the admin email isn't already a ShipX user."""
+    with patch.object(service.repo, "find_user_across_tenants", return_value=None):
+        yield
 
 
 def _event(method: str, path: str, body: dict | None = None) -> dict:

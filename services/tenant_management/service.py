@@ -178,6 +178,14 @@ def create_tenant(
         if existing_request and (existing_request.get("status") == "provisioned" or existing_request.get("tenant_id")):
             raise DuplicateResourceError("onboarding_request", req.onboarding_request_id)
 
+    # 0b. The initial admin's email must not already belong to a ShipX user.
+    # `tenant_user.id` IS the IdP subject (oid), so one identity belongs to exactly
+    # one tenant — reusing an email that already has a row violates tenant_user_pkey
+    # mid-create, *after* the tenant row is committed (leaving an orphan tenant).
+    # Fail fast, before anything is created.
+    if repo.find_user_across_tenants(email=req.initial_admin.email):
+        raise DuplicateResourceError("tenant_user", req.initial_admin.email)
+
     # 1. Create tenant — slug derived from company_name; unique constraint handled at DB level
     base_slug = _generate_slug(req.company_name)
     slug = base_slug
@@ -213,6 +221,13 @@ def create_tenant(
         tenant_id=tenant_id,
         role="tenant_admin",
     )
+    # The IdP may have resolved to a pre-existing directory account (same person
+    # under a different email spelling). If that subject already has a tenant_user
+    # row, it belongs to another tenant — fail with a clear conflict rather than a
+    # tenant_user_pkey violation.
+    if repo.find_user_across_tenants(user_id=cognito_sub):
+        raise DuplicateResourceError("tenant_user", req.initial_admin.email)
+
     cognito.create_group_if_not_exists(group_name)
     cognito.add_user_to_group(req.initial_admin.email, group_name)
 
@@ -1192,6 +1207,12 @@ def create_user(
         tenant_id=tenant_id,
         role=primary_role_value,
     )
+
+    # `tenant_user.id` IS the IdP subject, so one identity belongs to exactly one
+    # tenant. If the IdP resolved to an account already attached to a tenant_user
+    # row, conflict clearly instead of violating tenant_user_pkey.
+    if repo.find_user_across_tenants(user_id=cognito_sub):
+        raise DuplicateResourceError("user", req.email)
 
     # Insert tenant_user (primary role only — tenant_user.role is the
     # single-role-shaped source of truth every existing query reads directly)

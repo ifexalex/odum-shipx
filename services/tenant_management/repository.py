@@ -329,6 +329,30 @@ def get_user_by_email(tenant_id: str, email: str) -> dict[str, Any] | None:
     return rows[0] if rows else None
 
 
+def find_user_across_tenants(email: str | None = None, user_id: str | None = None) -> dict[str, Any] | None:
+    """Find a tenant_user by email or id across ALL tenants (PLATFORM scope).
+
+    `tenant_user.id` IS the IdP subject/oid, so one identity can belong to exactly
+    one tenant. Provisioning uses this to reject a reused admin email up front with
+    a clear conflict instead of hitting a `tenant_user_pkey` violation mid-create.
+    """
+    if user_id:
+        rows = execute_with_tenant(
+            PLATFORM_TENANT_ID,
+            "SELECT * FROM tenant_user WHERE id = %s LIMIT 1",
+            (user_id,),
+        )
+    elif email:
+        rows = execute_with_tenant(
+            PLATFORM_TENANT_ID,
+            "SELECT * FROM tenant_user WHERE email = %s LIMIT 1",
+            (email,),
+        )
+    else:
+        return None
+    return rows[0] if rows else None
+
+
 def list_users(tenant_id: str) -> list[dict[str, Any]]:
     return execute_with_tenant(
         tenant_id,
