@@ -27,12 +27,23 @@ the Phase-4 setup checklist in docs/project docs/18_cicd_pipeline.md).
 import json
 import logging
 import os
+import time
 import urllib.error
 import urllib.parse
 import urllib.request
-from typing import Any
+from collections.abc import Callable
+from typing import Any, TypeVar
 
 logger = logging.getLogger(__name__)
+
+_T = TypeVar("_T")
+
+# Microsoft Graph is eventually consistent: an object created a moment ago can
+# still 404 on a follow-up call (notably a `$ref` membership add, which fails
+# with "...or one of its queried reference-property objects are not present").
+# Retry those briefly instead of failing the caller.
+_REPLICATION_ATTEMPTS = 4
+_REPLICATION_BACKOFF_SECONDS = 0.5  # 0.5 + 1 + 2 ≈ 3.5s worst case
 
 _GRAPH_BASE = os.environ.get("GRAPH_BASE_URL", "https://graph.microsoft.com/v1.0")
 _GRAPH_SCOPE = "https://graph.microsoft.com/.default"
@@ -242,9 +253,14 @@ class EntraIdentityProvider:
             if not sub:
                 raise ExternalServiceError("Entra", f"user {key} reported as existing but could not be resolved") from exc
             logger.info("Entra user already existed; reusing oid=%s tenant_id=%s role=%s", sub, tenant_id, role)
-        # Reconcile the role group by object id (works for local + member accounts)
-        # so the token carries {tenant_id}:{role}.
-        self.sync_user_groups(sub, tenant_id, {role})
+        # Reconcile the role group by object id (works for local + member accounts).
+        # Best-effort: on Entra the authoritative role is `tenant_user.role`, read by
+        # the claims provider — the group is a secondary signal, and a freshly created
+        # user is subject to Graph replication lag, so this must never fail the create.
+        try:
+            self.sync_user_groups(sub, tenant_id, {role})
+        except Exception as exc:  # noqa: BLE001 - group sync is non-authoritative here
+            logger.warning("Entra group sync failed for oid=%s tenant_id=%s: %s", sub, tenant_id, exc)
         logger.info("Entra user provisioned: tenant_id=%s role=%s oid=%s local=%s", tenant_id, role, sub, self._local_accounts)
         return sub
 
@@ -330,30 +346,79 @@ class EntraIdentityProvider:
     # ------------------------------------------------------------------
 
     def create_group_if_not_exists(self, group_name: str) -> None:
+        from shared.exceptions import DuplicateResourceError
+
         if self._group_id(group_name) is not None:
             return
-        self._graph(
-            "POST",
-            "/groups",
-            {
-                "displayName": group_name,
-                "mailEnabled": False,
-                "mailNickname": group_name.replace(":", "-"),
-                "securityEnabled": True,
-            },
-        )
+        try:
+            self._graph(
+                "POST",
+                "/groups",
+                {
+                    "displayName": group_name,
+                    "mailEnabled": False,
+                    "mailNickname": group_name.replace(":", "-"),
+                    "securityEnabled": True,
+                },
+            )
+        except DuplicateResourceError:
+            return  # created concurrently between the check and the write
         logger.info("Entra group created: %s", group_name)
 
+    def _retry_while_missing(self, op: Callable[[], _T], what: str) -> _T | None:
+        """Run `op`, retrying while Graph reports the object as missing (404).
+
+        Covers Graph's eventual consistency: a user/group created moments ago may
+        not be resolvable yet. Returns None (and warns) if it never succeeds —
+        callers must treat that as a soft failure.
+        """
+        from shared.exceptions import ExternalServiceError
+
+        delay = _REPLICATION_BACKOFF_SECONDS
+        last: Exception | None = None
+        for attempt in range(_REPLICATION_ATTEMPTS):
+            try:
+                return op()
+            except ExternalServiceError as exc:
+                if "404" not in str(exc):
+                    raise
+                last = exc
+                if attempt < _REPLICATION_ATTEMPTS - 1:
+                    time.sleep(delay)
+                    delay *= 2
+        logger.warning("Graph object still not replicated after retries (%s): %s", what, last)
+        return None
+
     def add_user_to_group(self, username: str, group_name: str) -> None:
-        gid = self._group_id(group_name)
-        uid = self._resolve_user_id(username)
-        if not gid or not uid:
-            return
-        self._graph(
-            "POST",
-            f"/groups/{gid}/members/$ref",
-            {"@odata.id": f"{_GRAPH_BASE}/directoryObjects/{uid}"},
-        )
+        """Add a user to a role group, idempotently and tolerant of replication lag.
+
+        A just-created user/group can 404 here (see `_retry_while_missing`), and an
+        already-member re-add returns 400 "already exist" — both are non-failures.
+        On Entra the authoritative role is `tenant_user.role` (read by the claims
+        provider), so this group is secondary and must never fail provisioning.
+        """
+        from shared.exceptions import DuplicateResourceError, ExternalServiceError
+
+        def _add() -> None:
+            gid = self._group_id(group_name)
+            uid = self._resolve_user_id(username)
+            if not gid or not uid:
+                # Not resolvable yet — shape as a 404 so the retry picks it up.
+                raise ExternalServiceError("Entra", f"404: group or user not yet resolvable for {group_name}")
+            try:
+                self._graph(
+                    "POST",
+                    f"/groups/{gid}/members/$ref",
+                    {"@odata.id": f"{_GRAPH_BASE}/directoryObjects/{uid}"},
+                )
+            except DuplicateResourceError:
+                return  # already a member
+            except ExternalServiceError as exc:
+                if "already exist" in str(exc):
+                    return  # already a member (Graph phrases this as a 400)
+                raise
+
+        self._retry_while_missing(_add, f"add user to {group_name}")
 
     def remove_user_from_group(self, username: str, group_name: str) -> None:
         from shared.exceptions import ExternalServiceError
