@@ -246,6 +246,47 @@ from the platform console; it should return 201 and the admin user should appear
 
 ---
 
+## Purging a tenant (test/abandoned data)
+
+`offboard_tenant` only sets a status — correct for a real customer, but it never
+removes data. To actually delete a test or abandoned tenant use
+**`scripts/purge_tenant.py`**. A plain `DELETE FROM tenant` cannot work: 26 FKs
+reference `tenant(id)` with `ON DELETE RESTRICT`, so Postgres refuses until every
+dependent row is gone.
+
+The script derives the delete order from the **live schema** (every table with a
+`tenant_id` column, FK graph read from `pg_constraint`, topologically sorted so
+children go first), which means tables added by future migrations are picked up
+automatically instead of rotting in a hardcoded list.
+
+**Safety:** dry-run is the default and only prints row counts; `--yes` is required
+to delete; all deletes run in **one transaction** so any failure rolls back.
+The onboarding **lead** is deliberately *not* deleted — it is reopened
+(`tenant_id` cleared, `status='new'`) so the company can be re-provisioned.
+
+The database is private (VNet), so run it from inside a container:
+
+```bash
+# 1. DRY RUN — always do this first and read the output.
+az containerapp exec -g shipx-dev-rg -n shipx-dev-api \
+  --command "python3 scripts/purge_tenant.py --email someone@example.com --dry-run"
+
+# 2. Delete, once the dry run looks right.
+az containerapp exec -g shipx-dev-rg -n shipx-dev-api \
+  --command "python3 scripts/purge_tenant.py --email someone@example.com --yes"
+```
+
+`--email` matches `tenant_user.email` **or** `tenant.primary_contact_email`;
+`--tenant-id` targets a specific tenant. Both are repeatable.
+
+> `az containerapp exec` needs a TTY — run it from a real terminal, not a script.
+
+**Afterwards:** the Entra directory user is *not* removed (the script only touches
+the database). That is usually what you want — it frees the email for
+re-provisioning, since the duplicate guard checks `tenant_user`, not the
+directory. To remove the directory account too:
+`DELETE https://graph.microsoft.com/v1.0/users/<oid>`.
+
 ## Hotfix Procedure (break-glass)
 
 Use when a critical bug is in prod and cannot wait for the normal tag-based release cycle.
