@@ -113,7 +113,7 @@ export function StaffUserDetail(): JSX.Element {
     }
   }
 
-  async function handleAction(action: 'resend' | 'reset' | 'deactivate'): Promise<void> {
+  async function handleAction(action: 'resend' | 'activate' | 'reset' | 'deactivate'): Promise<void> {
     if (!user) return
     setSaving(true)
     setError(null)
@@ -121,6 +121,9 @@ export function StaffUserDetail(): JSX.Element {
       if (action === 'resend') {
         await usersApi.resendInvite(user.id)
         setActionMsg('Invite email resent.')
+      } else if (action === 'activate') {
+        await usersApi.resendActivation(user.id)
+        setActionMsg('Activation link sent.')
       } else if (action === 'reset') {
         await usersApi.resetPassword(user.id)
         setActionMsg('Password reset email sent.')
@@ -245,6 +248,9 @@ export function StaffUserDetail(): JSX.Element {
       <SectionHead title="Actions" />
       <Card padding={20}>
         <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+          <Button variant="secondary" size="sm" loading={saving} onClick={() => void handleAction('activate')}>
+            Resend activation link
+          </Button>
           <Button variant="secondary" size="sm" loading={saving} onClick={() => void handleAction('resend')}>
             Resend invite
           </Button>

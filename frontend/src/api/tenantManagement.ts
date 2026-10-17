@@ -215,6 +215,14 @@ export const usersApi = {
   resetPassword: (id: string) =>
     apiRequest<{ message: string }>({ method: 'POST', path: `/v1/tenant/users/${id}/reset-password`, body: {} }),
 
+  /** Re-send the ShipX account-activation (set-password) link to a provisioned user. */
+  resendActivation: (id: string) =>
+    apiRequest<{ message: string; email: string }>({
+      method: 'POST',
+      path: `/v1/tenant/users/${id}/resend-activation`,
+      body: {},
+    }),
+
   /** Self-service: update the calling user's own locale. Uses PATCH /v1/tenant/me. */
   updateMe: (locale: 'en' | 'zh') =>
     apiRequest<TenantUser>({ method: 'PATCH', path: '/v1/tenant/me', body: { locale } }),

@@ -1314,6 +1314,17 @@ def issue_activation(
     return token
 
 
+def resend_activation(tenant_id: str, user_id: str, actor_id: str | None = None, request_id: str = "") -> dict[str, Any]:
+    """Re-issue a user's activation link (staff action). Mints a fresh token —
+    invalidating any prior unconsumed one — and re-sends the welcome email. Used
+    for users provisioned before activation existed, or whose link expired."""
+    user = repo.get_user_by_id(tenant_id, user_id)
+    if not user:
+        raise ResourceNotFoundError("user", user_id)
+    issue_activation(tenant_id, user_id, user["email"], user.get("full_name") or "", created_by=actor_id, request_id=request_id)
+    return {"message": "Activation link sent", "email": _mask_email(user["email"])}
+
+
 def get_activation_preview(token: str) -> dict[str, Any]:
     """Public preview for GET /v1/activate/{token} — the email being activated."""
     from shared import activation
