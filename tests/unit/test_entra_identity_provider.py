@@ -161,6 +161,58 @@ class TestGroupSync:
         p.remove_user_from_group.assert_called_once_with("oid-1", "t1:customer")  # noqa: SLF001
 
 
+class TestReplicationLagTolerance:
+    """Graph is eventually consistent — a just-created user/group can 404 on the
+    follow-up membership add. That must retry, be idempotent, and never fail
+    provisioning (on Entra the authoritative role is tenant_user.role)."""
+
+    def _provider(self):
+        p = _provider_with_stubbed_graph()
+        p._group_id = MagicMock(return_value="g1")  # noqa: SLF001
+        p._resolve_user_id = MagicMock(return_value="u1")  # noqa: SLF001
+        return p
+
+    def test_add_user_to_group_retries_until_replicated(self):
+        p = self._provider()
+        p._graph = MagicMock(side_effect=[ExternalServiceError("Entra", "404: not found"), None])  # noqa: SLF001
+        with patch("time.sleep"):
+            p.add_user_to_group("a@gmail.com", "t1:tenant_admin")
+        assert p._graph.call_count == 2  # noqa: SLF001
+
+    def test_add_user_to_group_is_idempotent_for_existing_member(self):
+        p = self._provider()
+        p._graph = MagicMock(side_effect=ExternalServiceError("Entra", "400: references already exist"))  # noqa: SLF001
+        with patch("time.sleep"):
+            p.add_user_to_group("a@gmail.com", "t1:tenant_admin")  # must not raise
+        assert p._graph.call_count == 1  # treated as success, not retried  # noqa: SLF001
+
+    def test_add_user_to_group_gives_up_without_raising(self):
+        p = self._provider()
+        p._graph = MagicMock(side_effect=ExternalServiceError("Entra", "404: not found"))  # noqa: SLF001
+        with patch("time.sleep"):
+            p.add_user_to_group("a@gmail.com", "t1:tenant_admin")  # soft failure
+        assert p._graph.call_count == 4  # noqa: SLF001
+
+    def test_add_user_to_group_propagates_non_404(self):
+        p = self._provider()
+        p._graph = MagicMock(side_effect=ExternalServiceError("Entra", "403: forbidden"))  # noqa: SLF001
+        with pytest.raises(ExternalServiceError):
+            p.add_user_to_group("a@gmail.com", "t1:tenant_admin")
+
+    def test_create_group_tolerates_concurrent_duplicate(self):
+        p = _provider_with_stubbed_graph()
+        p._group_id = MagicMock(return_value=None)  # noqa: SLF001
+        p._graph = MagicMock(side_effect=DuplicateResourceError("group", "/groups"))  # noqa: SLF001
+        p.create_group_if_not_exists("t1:tenant_admin")  # must not raise
+
+    def test_user_creation_survives_group_sync_failure(self):
+        p = _provider_with_stubbed_graph(local=True)
+        p._graph.side_effect = [{"id": "oid-new"}]  # noqa: SLF001
+        p.sync_user_groups = MagicMock(side_effect=ExternalServiceError("Entra", "404: lag"))
+        # The user id is still returned — provisioning must not fail on group sync.
+        assert p.create_user("a@gmail.com", "Ann", "t1", "tenant_admin") == "oid-new"
+
+
 class TestCredentialSelection:
     def test_uses_client_secret_credential_when_graph_app_configured(self, monkeypatch):
         # Managing a foreign (CIAM) tenant requires an app registration there —
