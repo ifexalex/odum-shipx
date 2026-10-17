@@ -16,6 +16,18 @@ from shared.exceptions import (
 TENANT_ID = "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa"
 
 
+@pytest.fixture(autouse=True)
+def _identity_not_already_taken():
+    """create_tenant/create_user now pre-check that the admin email / IdP subject
+    isn't already a ShipX user (`tenant_user.id` IS the subject, so one identity
+    belongs to exactly one tenant). Default to "not taken" so suites don't touch
+    the DB; the conflict cases patch it explicitly."""
+    from services.tenant_management import service
+
+    with patch.object(service.repo, "find_user_across_tenants", return_value=None):
+        yield
+
+
 def _tenant(**kw) -> dict:
     base = {
         "id": TENANT_ID,
@@ -132,6 +144,53 @@ class TestCreateTenantNotifiesOnboarding:
             result = service.create_tenant(self._req(), actor_id="platform-admin")
 
         assert result["tenant"]["id"] == TENANT_ID
+
+
+class TestCreateTenantIdentityConflict:
+    """`tenant_user.id` IS the IdP subject, so one identity belongs to exactly one
+    tenant. Reusing an admin email must conflict cleanly — not blow up on
+    tenant_user_pkey after the tenant row was already committed."""
+
+    def _req(self):
+        from services.tenant_management.models import CreateTenantRequest, InitialAdminInput, SubscriptionTier
+
+        return CreateTenantRequest(
+            company_name="ACME Logistics",
+            primary_contact_email="owner@acme.com",
+            primary_contact_phone="+2348012345678",
+            subscription_tier=SubscriptionTier.business,
+            initial_admin=InitialAdminInput(email="taken@acme.com", full_name="Jane Admin"),
+        )
+
+    def test_reused_admin_email_conflicts_before_creating_anything(self):
+        from services.tenant_management import service
+
+        with (
+            patch.object(service, "get_identity_provider", return_value=MagicMock()),
+            patch.object(service.repo, "find_user_across_tenants", return_value={"id": "existing-sub"}),
+            patch.object(service.repo, "create_tenant") as mock_create,
+        ):
+            with pytest.raises(DuplicateResourceError):
+                service.create_tenant(self._req(), actor_id="platform-admin")
+
+        mock_create.assert_not_called()  # no orphan tenant
+
+    def test_existing_idp_subject_conflicts_before_inserting_tenant_user(self):
+        from services.tenant_management import service
+
+        idp = MagicMock()
+        idp.create_user.return_value = "existing-sub"
+        # Email is free, but the IdP resolved to an account already attached elsewhere.
+        with (
+            patch.object(service, "get_identity_provider", return_value=idp),
+            patch.object(service.repo, "find_user_across_tenants", side_effect=[None, {"id": "existing-sub"}]),
+            patch.object(service.repo, "create_tenant", return_value=_tenant(id=TENANT_ID)),
+            patch.object(service.repo, "create_tenant_user") as mock_user,
+        ):
+            with pytest.raises(DuplicateResourceError):
+                service.create_tenant(self._req(), actor_id="platform-admin")
+
+        mock_user.assert_not_called()
 
 
 class TestCreateTenantLeadIdempotency:
