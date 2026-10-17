@@ -64,7 +64,7 @@ entra_claims_caller_jwks_url = "https://shipxcustomer.ciamlogin.com/062cb98d-899
 # Match is an exact, case-insensitive string compare against the recipient's
 # phone/email/whatsapp — and phones are stored E.164 (shared/phone.py), so only
 # the +234/+44 forms will ever match a real recipient.
-notification_allowlist = "ifexalex2@gmail.com,ifexanda@gmail.com,ifexalex@gmaiil.com,ifexalex@outlook.com,djangotestmail1593@gmail.com,ndnicksonm@gmail.com,+2348169760253,+447778569025,+2347066071386"
+notification_allowlist = "ifexalex2@gmail.com,ifexanda@gmail.com,ifexalex@gmail.com,ifexalex@outlook.com,djangotestmail1593@gmail.com,ndnicksonm@gmail.com,+2348169760253,+447778569025,+2347066071386"
 
 entra_graph_tenant_id = "062cb98d-8990-4947-81c4-223cb1e9b8f3"
 entra_graph_client_id = "37c40cbe-5995-4b37-9d2a-0d6a02624426" # shipx-graph-provisioner (User.ReadWrite.All + Group.ReadWrite.All)
