@@ -108,3 +108,29 @@ class TestContextPropagation:
         assert entry["request_id"] is None
         assert entry["tenant_id"] is None
         assert entry["user_id"] is None
+
+
+class TestDiagnosticsGate:
+    """Verbose auth/token diagnostics must run in dev/local only — never in
+    staging or production, where that detail would outlive the debugging
+    session in the log store."""
+
+    def test_enabled_in_dev_and_local(self):
+        import os
+        from unittest.mock import patch
+
+        from shared.logging_config import diagnostics_enabled
+
+        for env_name in ("dev", "local", "DEV", " local "):
+            with patch.dict(os.environ, {"ENVIRONMENT": env_name}, clear=False):
+                assert diagnostics_enabled() is True, env_name
+
+    def test_disabled_in_staging_prod_demo_and_unset(self):
+        import os
+        from unittest.mock import patch
+
+        from shared.logging_config import diagnostics_enabled
+
+        for env_name in ("staging", "prod", "production", "demo", ""):
+            with patch.dict(os.environ, {"ENVIRONMENT": env_name}, clear=False):
+                assert diagnostics_enabled() is False, env_name

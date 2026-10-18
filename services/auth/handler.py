@@ -206,6 +206,40 @@ def _authorize_url(event: dict[str, Any], request_id: str) -> dict[str, Any]:
     }
 
 
+def _log_id_token_shape(id_token: str, request_id: str) -> None:
+    """Log which claim NAMES the issued id_token carries — never their values.
+
+    Entra silently drops a custom-claims-provider's output when the app
+    registration isn't configured to emit it: the provider returns 200 with
+    tenant_id/role, the token arrives without them, and the only visible symptom
+    is the SPA rejecting the token ("JWT is missing required claims"). This makes
+    that answerable from the server side instead of needing the token out of the
+    browser. Values are deliberately excluded — they include email and name.
+
+    Dev/local only: this is a debugging aid, and token detail must not accumulate
+    in staging or production logs.
+    """
+    from shared.logging_config import diagnostics_enabled
+
+    if not diagnostics_enabled():
+        return
+    try:
+        payload = id_token.split(".")[1]
+        payload += "=" * (-len(payload) % 4)
+        claims = json.loads(base64.urlsafe_b64decode(payload))
+    except Exception as exc:  # noqa: BLE001 - diagnostics must never break login
+        logger.warning("Could not decode the issued id_token for diagnostics: %s", exc)
+        return
+    logger.info(
+        "id_token claims present: %s (has tenant_id=%s, has role=%s, has oid=%s)",
+        sorted(claims.keys()),
+        "tenant_id" in claims,
+        "role" in claims,
+        "oid" in claims,
+        extra={"request_id": request_id},
+    )
+
+
 def _callback(event: dict[str, Any], request_id: str) -> dict[str, Any]:
     """Complete the interactive login: exchange the auth code for tokens.
 
@@ -236,6 +270,7 @@ def _callback(event: dict[str, Any], request_id: str) -> dict[str, Any]:
         code_verifier=str(tx.get("v", "")),
         redirect_uri=entra_oauth.redirect_uri(),
     )
+    _log_id_token_shape(tokens["id_token"], request_id)
     body = json.dumps({"data": {"id_token": tokens["id_token"], "expires_in": tokens["expires_in"]}})
     return {
         "statusCode": 200,
