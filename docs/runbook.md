@@ -206,6 +206,17 @@ the pipeline can't:
 (The portal/Graph `/beta` equivalents are `customAuthenticationExtensions` + `authenticationEventListeners`
 under Enterprise apps → Custom authentication extensions, if you ever need to do it by hand.)
 
+> **The claims must also be *mapped into* the token.** Binding the extension only makes Entra **call**
+> the provider; the claims it returns are discarded unless the app registration sets
+> `api.acceptMappedClaims = true` **and** declares each claim under `optionalClaims`
+> (`tenant_id`, `role`, source `customClaimsProvider`). This is **one-time and app-level — never per
+> user.** Step 4b of `setup_entra_claims_provider.sh` now does it; it was missing originally, and the
+> failure is silent and confusing: `/token-claims` returns `200` with `tenant_id` + `role`, the token
+> arrives without them, and **every tenant-scoped role** fails at sign-in with
+> `JWT is missing required claims (sub|oid / tenant id)` — while a `platform_admin` still signs in
+> fine, because that resolves from the **group** claim instead and never needs the provider. If you
+> see exactly that split, this mapping is what's missing.
+
 **Verify:** sign in via the SPA, decode the **id_token**, and confirm it carries `tenant_id` +
 `role` (and `groups`):
 
