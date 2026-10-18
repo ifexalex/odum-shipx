@@ -41,7 +41,15 @@ describe('EntraClient (interactive BFF auth-code)', () => {
 
     const tokens = await completeLogin('the-code', 'the-state')
 
-    expect(tokens).toEqual({ idToken: 'id.jwt', accessToken: 'id.jwt', refreshToken: '' })
+    // tenantId/role are the backend-resolved context (null when the response
+    // omits them); Entra does not emit tenant_id/role into the token itself.
+    expect(tokens).toEqual({
+      idToken: 'id.jwt',
+      accessToken: 'id.jwt',
+      refreshToken: '',
+      tenantId: null,
+      role: null,
+    })
     const [url, init] = fetchMock.mock.calls[0]!
     expect(url).toBe('https://api.example.test/v1/auth/callback')
     expect((init as RequestInit).credentials).toBe('include')

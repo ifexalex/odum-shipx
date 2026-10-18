@@ -155,7 +155,22 @@ function parsePrimaryRole(claims: Record<string, unknown>, roles: UserRole[]): U
   return [...roles].sort()[0]!
 }
 
-export function buildSession(claims: Record<string, unknown>): Session {
+/**
+ * Tenant/role resolved by the BACKEND and returned alongside the token.
+ *
+ * Entra External ID does not emit the custom-claims provider's `tenant_id`/`role`
+ * into the token, so for tenant-scoped users those claims are absent and cannot
+ * be read client-side at all. The backend resolves them from the user's
+ * `tenant_user` row (keyed by the `oid` that IS in the token) and hands them
+ * back; this lets the SPA build a session without depending on Entra emitting
+ * custom claims. Values from the token still win when present.
+ */
+export interface ServerContext {
+  tenantId?: string | null
+  role?: string | null
+}
+
+export function buildSession(claims: Record<string, unknown>, server?: ServerContext): Session {
   // Cognito ID tokens carry `sub`; Entra tokens carry `oid` (object id).
   const userId = String(claims.sub ?? claims.oid ?? '')
 
@@ -165,7 +180,11 @@ export function buildSession(claims: Record<string, unknown>): Session {
   // verbatim. Impersonation tokens carry a bare `tenant_id` + `role` on either.
   const entra = isEntraProvider() ? normalizeEntraClaims(claims) : null
   // Cognito: custom:tenant_id; Entra: derived above; impersonation: bare tenant_id.
-  const tenantId = entra ? entra.tenantId : String(claims['custom:tenant_id'] ?? claims.tenant_id ?? '')
+  // Falls back to the backend-resolved context when the token carries no tenant
+  // claim at all (see ServerContext).
+  const tenantId =
+    (entra ? entra.tenantId : String(claims['custom:tenant_id'] ?? claims.tenant_id ?? '')) ||
+    String(server?.tenantId ?? '')
   if (!userId || !tenantId) {
     throw new Error('JWT is missing required claims (sub|oid / tenant id)')
   }
@@ -173,7 +192,12 @@ export function buildSession(claims: Record<string, unknown>): Session {
   // Role groups in canonical `{tenant_id}:{role}` / `platform_admin` form:
   // Cognito `cognito:groups`; Entra normalized above. Impersonation tokens have
   // neither — they carry the target role directly in a `role` claim (single role).
-  const groups = entra ? entra.groups : parseGroups(claims['cognito:groups'] ?? claims.groups)
+  let groups = entra ? entra.groups : parseGroups(claims['cognito:groups'] ?? claims.groups)
+  // Same for the role: with no role claim, the group-derived default ('customer')
+  // would be wrong, so synthesize the canonical group from the server's answer.
+  if (groups.length === 0 && server?.role && tenantId) {
+    groups = [server.role === 'platform_admin' ? 'platform_admin' : `${tenantId}:${server.role}`]
+  }
   const directRole = typeof claims.role === 'string' && VALID_ROLES.has(claims.role) ? (claims.role as UserRole) : null
   const roles: UserRole[] = groups.length > 0 ? parseRoles(groups, tenantId) : [directRole ?? 'customer']
   const role = parsePrimaryRole(claims, roles)
@@ -205,6 +229,6 @@ export function buildSession(claims: Record<string, unknown>): Session {
   }
 }
 
-export function sessionFromIdToken(idToken: string): Session {
-  return buildSession(decodeJwt(idToken))
+export function sessionFromIdToken(idToken: string, server?: ServerContext): Session {
+  return buildSession(decodeJwt(idToken), server)
 }

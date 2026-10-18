@@ -49,7 +49,12 @@ describe('sessionApi', () => {
 
       const result = await silentRefresh()
 
-      expect(result).toEqual({ idToken: 'fresh.id.token', expiresIn: 3600 })
+      expect(result).toEqual({
+        idToken: 'fresh.id.token',
+        expiresIn: 3600,
+        tenantId: null,
+        role: null,
+      })
       const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit]
       expect(url).toBe('https://api.test.shipx.co/v1/auth/refresh')
       expect(init.method).toBe('POST')

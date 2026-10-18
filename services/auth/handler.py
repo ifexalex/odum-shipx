@@ -206,6 +206,47 @@ def _authorize_url(event: dict[str, Any], request_id: str) -> dict[str, Any]:
     }
 
 
+def _decode_claims(id_token: str) -> dict[str, Any]:
+    """Decode a JWT payload WITHOUT verifying it. Safe here: the token was just
+    minted by the IdP over TLS in the code/refresh exchange, and the result is
+    used only to read our own identity hints — never to authorize anything (the
+    API verifies every token properly in shared/auth_verify.py)."""
+    payload = id_token.split(".")[1]
+    payload += "=" * (-len(payload) % 4)
+    claims: dict[str, Any] = json.loads(base64.urlsafe_b64decode(payload))
+    return claims
+
+
+def _session_context(id_token: str) -> dict[str, str]:
+    """Resolve the ShipX tenant/role for a freshly issued token, for the SPA.
+
+    Entra External ID does not emit the custom-claims provider's `tenant_id`/
+    `role` into the token (its app-registration `optionalClaims` route is
+    silently ignored), so the SPA cannot read them from the token at all. The
+    authoritative source is the user's `tenant_user` row, keyed by the IdP
+    subject — which IS in the token as `oid`. Resolve it here and hand it back
+    alongside the token so the SPA can build a session.
+
+    Returns {} when nothing resolves — notably a platform admin, which has no
+    `tenant_user` row by design and derives PLATFORM from its group claim.
+    """
+    try:
+        claims = _decode_claims(id_token)
+        subject = str(claims.get("oid") or claims.get("sub") or "")
+        if not subject:
+            return {}
+        from shared.auth import resolve_identity_from_db
+
+        resolved = resolve_identity_from_db(subject)
+        if resolved is None:
+            return {}
+        tenant_id, role = resolved
+        return {"tenant_id": tenant_id, "role": role}
+    except Exception as exc:  # noqa: BLE001 - never fail a login over an enrichment
+        logger.warning("Could not resolve the session context for the issued token: %s", exc)
+        return {}
+
+
 def _log_id_token_shape(id_token: str, request_id: str) -> None:
     """Log which claim NAMES the issued id_token carries — never their values.
 
@@ -224,9 +265,7 @@ def _log_id_token_shape(id_token: str, request_id: str) -> None:
     if not diagnostics_enabled():
         return
     try:
-        payload = id_token.split(".")[1]
-        payload += "=" * (-len(payload) % 4)
-        claims = json.loads(base64.urlsafe_b64decode(payload))
+        claims = _decode_claims(id_token)
     except Exception as exc:  # noqa: BLE001 - diagnostics must never break login
         logger.warning("Could not decode the issued id_token for diagnostics: %s", exc)
         return
@@ -271,7 +310,15 @@ def _callback(event: dict[str, Any], request_id: str) -> dict[str, Any]:
         redirect_uri=entra_oauth.redirect_uri(),
     )
     _log_id_token_shape(tokens["id_token"], request_id)
-    body = json.dumps({"data": {"id_token": tokens["id_token"], "expires_in": tokens["expires_in"]}})
+    body = json.dumps(
+        {
+            "data": {
+                "id_token": tokens["id_token"],
+                "expires_in": tokens["expires_in"],
+                **_session_context(tokens["id_token"]),
+            }
+        }
+    )
     return {
         "statusCode": 200,
         # Set the session cookie; expire the one-shot transaction cookie.
@@ -330,7 +377,15 @@ def _refresh(event: dict[str, Any], request_id: str) -> dict[str, Any]:
         raise AuthenticationRequiredError()
 
     tokens = _refresher().refresh_id_token(refresh_token)
-    body = json.dumps({"data": {"id_token": tokens["id_token"], "expires_in": tokens["expires_in"]}})
+    body = json.dumps(
+        {
+            "data": {
+                "id_token": tokens["id_token"],
+                "expires_in": tokens["expires_in"],
+                **_session_context(tokens["id_token"]),
+            }
+        }
+    )
     return {
         "statusCode": 200,
         "headers": {**_STANDARD_HEADERS, "X-Request-Id": request_id},

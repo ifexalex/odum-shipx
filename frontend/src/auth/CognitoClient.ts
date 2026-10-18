@@ -11,6 +11,11 @@ export interface CognitoTokens {
   idToken: string
   accessToken: string
   refreshToken: string
+  /** Tenant/role resolved by the backend, for IdPs that don't put them in the
+   *  token (Entra External ID). Cognito leaves these unset — its token carries
+   *  custom:tenant_id / cognito:groups directly. */
+  tenantId?: string | null
+  role?: string | null
 }
 
 function readEnv(name: string): string {

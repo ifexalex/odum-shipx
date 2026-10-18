@@ -430,3 +430,75 @@ class TestCognitoClaimsMapper:
         assert isinstance(mapper, CognitoClaimsMapper)
         assert isinstance(mapper, ClaimsMapper)
         assert mapper is providers.get_claims_mapper()  # cached singleton
+
+
+# ---------------------------------------------------------------------------
+# Identity resolution from the DB (tokens with no tenant claim)
+# ---------------------------------------------------------------------------
+
+
+def _use_entra_mapper(monkeypatch) -> None:
+    """Switch the claims mapper to Entra (reads `oid`/`tenant_id`, not Cognito's
+    `sub`/`custom:tenant_id`) and reset the cached singleton."""
+    import shared.providers as providers
+
+    monkeypatch.setattr(providers, "AUTH_PROVIDER", "azure")
+    monkeypatch.setattr(providers, "_claims_mapper", None)
+
+
+class TestIdentityResolutionFallback:
+    """Entra External ID does not emit the custom-claims provider's tenant_id/
+    role into the token, so for tenant-scoped users those claims are simply
+    absent. `tenant_user.id` IS the IdP subject, so the oid in the token is
+    enough to resolve the same authoritative answer from the DB."""
+
+    def test_resolves_tenant_and_role_when_the_token_has_no_tenant_claim(self, monkeypatch):
+        _use_entra_mapper(monkeypatch)
+        monkeypatch.setattr("shared.auth._check_tenant_active", lambda tid: None)
+        monkeypatch.setattr("shared.auth.resolve_identity_from_db", lambda uid: (TENANT_ID, "tenant_admin"))
+        # An Entra token: oid present, no tenant_id/role, groups only holds GUIDs.
+        claims = {"oid": "entra-oid-1", "groups": ["some-directory-guid"]}
+        ctx = get_tenant_context(_event_with_claims(claims))
+        assert ctx.tenant_id == TENANT_ID
+        assert ctx.user_id == "entra-oid-1"
+        assert ctx.role == UserRole.TENANT_ADMIN
+        assert UserRole.TENANT_ADMIN in ctx.roles
+
+    def test_unresolvable_subject_is_denied(self, monkeypatch):
+        _use_entra_mapper(monkeypatch)
+        monkeypatch.setattr("shared.auth._check_tenant_active", lambda tid: None)
+        monkeypatch.setattr("shared.auth.resolve_identity_from_db", lambda uid: None)
+        with pytest.raises(AuthenticationRequiredError):
+            get_tenant_context(_event_with_claims({"oid": "unknown-oid"}))
+
+    def test_explicit_tenant_claim_skips_the_db_entirely(self, monkeypatch):
+        """A token that already carries the claim must not incur a DB lookup."""
+        _use_entra_mapper(monkeypatch)
+        monkeypatch.setattr("shared.auth._check_tenant_active", lambda tid: None)
+
+        def _boom(uid):  # pragma: no cover - must never be called
+            raise AssertionError("resolve_identity_from_db should not be called")
+
+        monkeypatch.setattr("shared.auth.resolve_identity_from_db", _boom)
+        claims = {"oid": "o1", "tenant_id": TENANT_ID, "role": "nigeria_office_staff"}
+        ctx = get_tenant_context(_event_with_claims(claims))
+        assert ctx.tenant_id == TENANT_ID
+        assert ctx.role == UserRole.NIGERIA_OFFICE_STAFF
+
+    def test_platform_admin_never_needs_the_db(self, monkeypatch):
+        """platform_admin derives PLATFORM from the group claim, so it must not
+        depend on a tenant_user row (it legitimately has none)."""
+        import shared.providers as providers
+
+        def _boom(uid):  # pragma: no cover - must never be called
+            raise AssertionError("resolve_identity_from_db should not be called")
+
+        monkeypatch.setattr("shared.auth.resolve_identity_from_db", _boom)
+        monkeypatch.setenv("ENTRA_PLATFORM_ADMIN_GROUP_ID", "group-guid-pa")
+        _use_entra_mapper(monkeypatch)
+        try:
+            ctx = get_tenant_context(_event_with_claims({"oid": "pa-1", "groups": ["group-guid-pa"]}))
+            assert ctx.tenant_id == "PLATFORM"
+            assert ctx.role == UserRole.PLATFORM_ADMIN
+        finally:
+            monkeypatch.setattr(providers, "_claims_mapper", None)

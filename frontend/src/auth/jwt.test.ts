@@ -264,3 +264,44 @@ describe('buildSession — Entra provider (CIAM GUID token)', () => {
     expect(session.role).toBe('nigeria_office_staff')
   })
 })
+
+// Entra External ID does not emit the claims provider's tenant_id/role into the
+// token, so the backend resolves them from tenant_user (by the oid that IS in
+// the token) and returns them alongside it.
+describe('buildSession — backend-resolved context', () => {
+  afterEach(() => vi.unstubAllEnvs())
+
+  it('uses the server tenant/role when the token carries no tenant claim', () => {
+    vi.stubEnv('VITE_AUTH_PROVIDER', 'entra')
+    const session = buildSession(
+      { oid: 'entra-oid-9', groups: ['an-unmapped-directory-guid'], exp: 1700000000 },
+      { tenantId: 'tenant-abc', role: 'nigeria_office_staff' },
+    )
+    expect(session.tenantId).toBe('tenant-abc')
+    expect(session.userId).toBe('entra-oid-9')
+    expect(session.role).toBe('nigeria_office_staff')
+    expect(session.roles).toEqual(['nigeria_office_staff'])
+  })
+
+  it('prefers a tenant_id already in the token over the server value', () => {
+    vi.stubEnv('VITE_AUTH_PROVIDER', 'entra')
+    const session = buildSession(
+      { oid: 'o1', tenant_id: 'from-token', role: 'tenant_admin', exp: 1700000000 },
+      { tenantId: 'from-server', role: 'customer' },
+    )
+    expect(session.tenantId).toBe('from-token')
+    expect(session.role).toBe('tenant_admin')
+  })
+
+  it('still throws when neither the token nor the server supplies a tenant', () => {
+    vi.stubEnv('VITE_AUTH_PROVIDER', 'entra')
+    expect(() => buildSession({ oid: 'o1', exp: 1700000000 }, {})).toThrow()
+  })
+
+  it('maps a server platform_admin role to the prefixless group', () => {
+    vi.stubEnv('VITE_AUTH_PROVIDER', 'entra')
+    const session = buildSession({ oid: 'pa', exp: 1700000000 }, { tenantId: 'PLATFORM', role: 'platform_admin' })
+    expect(session.isPlatformAdmin).toBe(true)
+    expect(session.role).toBe('platform_admin')
+  })
+})
