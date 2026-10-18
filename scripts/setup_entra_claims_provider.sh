@@ -23,6 +23,11 @@
 #      tenant_id + role claims.
 #   4. Binds it to the SPA app via an authenticationEventListener, so Entra calls
 #      it on every interactive sign-in.
+#   4b. Maps those claims INTO the token (acceptMappedClaims + optionalClaims).
+#      Binding alone only makes Entra call the provider — without this mapping the
+#      returned claims are silently discarded and every tenant-scoped sign-in
+#      fails with "JWT is missing required claims". One-time and app-level, not
+#      per user.
 #   5. Best-effort admin-consent for the extension's permission; prints the
 #      portal fallback if that needs a click.
 #   6. Prints the exact `entra_claims_caller_*` tfvars to set (so the deployed
@@ -196,6 +201,35 @@ if [ -z "${LISTENER_ID}" ]; then
   log "  bound."
 else
   log "Listener already bound (${LISTENER_ID})."
+fi
+
+# ── 4b. Emit the provider's claims into the token ─────────────────────────────
+# Binding the extension only makes Entra CALL the provider. The claims it returns
+# are still discarded unless the app both accepts mapped claims and declares each
+# one. Skipping this is silent: /token-claims returns 200 with tenant_id + role,
+# the token arrives without them, and the SPA fails with "JWT is missing required
+# claims (sub|oid / tenant id)" for every tenant-scoped role — while a
+# platform_admin still works, because that resolves from the group claim instead.
+# This is a one-time, app-level switch; it is NOT per user.
+log "Mapping tenant_id + role into the issued tokens…"
+CLAIMS_JSON='[
+  { "name": "tenant_id", "source": "customClaimsProvider", "essential": false, "additionalProperties": [] },
+  { "name": "role",      "source": "customClaimsProvider", "essential": false, "additionalProperties": [] }
+]'
+if az rest --method PATCH \
+  --url "https://graph.microsoft.com/v1.0/applications/${SPA_OBJECT_ID}" \
+  --headers "Content-Type=application/json" \
+  --body "{
+    \"api\": { \"acceptMappedClaims\": true, \"requestedAccessTokenVersion\": 2 },
+    \"optionalClaims\": { \"idToken\": ${CLAIMS_JSON}, \"accessToken\": ${CLAIMS_JSON}, \"saml2Token\": [] }
+  }" >/dev/null 2>&1; then
+  log "  mapped (acceptMappedClaims=true, tenant_id + role on id/access tokens)."
+else
+  warn "Could not set the claims mapping automatically. Do it in the portal:"
+  warn "  App registrations → ${SPA_APP_NAME} → Token configuration → Add optional claim"
+  warn "  (tenant_id, role — source: customClaimsProvider), and"
+  warn "  Manifest → api.acceptMappedClaims = true."
+  warn "Without it every tenant-scoped sign-in fails: 'JWT is missing required claims'."
 fi
 
 # ── 5. Admin consent (best-effort) ────────────────────────────────────────────
