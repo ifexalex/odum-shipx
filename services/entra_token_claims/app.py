@@ -24,7 +24,7 @@ from typing import Any
 
 from flask import Flask, Response, request
 
-from services.entra_token_claims.claims import build_claims_response
+from services.entra_token_claims.claims import build_claims_response, extract_object_id
 from services.entra_token_claims.db_lookup import DatabaseClaimsReader
 from services.entra_token_claims.security import is_authorized
 from shared.logging_config import setup_logging
@@ -98,4 +98,22 @@ def token_claims() -> Response:
     if event is None:
         return Response(status=400)
     body = build_claims_response(event, _reader)
+
+    # Log the outcome per request. Without this the only signal is the response
+    # SIZE in the access log (181 bytes = no claims, 256 = claims), which cannot
+    # be attributed to a user — so "the token has no tenant_id" was undebuggable.
+    # `oid` is a directory object id (the same UUID shape as user_id, which the
+    # logging standard permits); no email/name is logged.
+    oid = extract_object_id(event)
+    claims = (body.get("data", {}).get("actions") or [{}])[0].get("claims") or {}
+    if claims:
+        logger.info("Claims issued for oid=%s: %s", oid, {k: v for k, v in claims.items()})
+    else:
+        logger.warning(
+            "NO claims for oid=%s — no active tenant_user row matches this subject. "
+            "A tenant-scoped sign-in will fail with 'JWT is missing required claims'; "
+            "a platform_admin is unaffected (resolves from the group claim). Check "
+            "tenant_user.cognito_sub = this oid AND status = 'active'.",
+            oid,
+        )
     return Response(json.dumps(body), status=200, mimetype="application/json")
