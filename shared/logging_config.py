@@ -65,6 +65,17 @@ _RESERVED_ATTRS = frozenset(
 )
 
 
+def diagnostics_enabled() -> bool:
+    """Whether verbose diagnostic logging may run in this environment.
+
+    Dev only. Debug logging around auth — token/claim shapes especially — must
+    never run in staging or production: even claim *names* are more detail than
+    those logs should retain, and anything written there outlives the debugging
+    session. Genuine error logs are not gated by this; only verbose diagnostics.
+    """
+    return os.environ.get("ENVIRONMENT", "").strip().lower() in {"dev", "local"}
+
+
 def bind_log_context(
     *,
     request_id: str | None = None,

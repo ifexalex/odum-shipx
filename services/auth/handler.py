@@ -215,7 +215,14 @@ def _log_id_token_shape(id_token: str, request_id: str) -> None:
     is the SPA rejecting the token ("JWT is missing required claims"). This makes
     that answerable from the server side instead of needing the token out of the
     browser. Values are deliberately excluded — they include email and name.
+
+    Dev/local only: this is a debugging aid, and token detail must not accumulate
+    in staging or production logs.
     """
+    from shared.logging_config import diagnostics_enabled
+
+    if not diagnostics_enabled():
+        return
     try:
         payload = id_token.split(".")[1]
         payload += "=" * (-len(payload) % 4)

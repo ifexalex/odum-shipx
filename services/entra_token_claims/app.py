@@ -27,7 +27,7 @@ from flask import Flask, Response, request
 from services.entra_token_claims.claims import build_claims_response, extract_object_id
 from services.entra_token_claims.db_lookup import DatabaseClaimsReader
 from services.entra_token_claims.security import is_authorized
-from shared.logging_config import setup_logging
+from shared.logging_config import diagnostics_enabled, setup_logging
 
 setup_logging()
 logger = logging.getLogger("shipx_entra_claims")
@@ -107,7 +107,10 @@ def token_claims() -> Response:
     oid = extract_object_id(event)
     claims = (body.get("data", {}).get("actions") or [{}])[0].get("claims") or {}
     if claims:
-        logger.info("Claims issued for oid=%s: %s", oid, {k: v for k, v in claims.items()})
+        # Success detail is a dev-only diagnostic — in staging/prod the absence of
+        # a warning is sufficient signal, and claim detail should not accumulate.
+        if diagnostics_enabled():
+            logger.info("Claims issued for oid=%s: %s", oid, dict(claims))
     else:
         logger.warning(
             "NO claims for oid=%s — no active tenant_user row matches this subject. "
