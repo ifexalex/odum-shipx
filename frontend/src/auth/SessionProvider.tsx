@@ -93,7 +93,7 @@ export function SessionProvider({
   async function restoreFromCookie(): Promise<boolean> {
     const tokens = await silentRefresh()
     if (!tokens) return false
-    const next = sessionFromIdToken(tokens.idToken)
+    const next = sessionFromIdToken(tokens.idToken, { tenantId: tokens.tenantId, role: tokens.role })
     setActiveTokens({ idToken: tokens.idToken, tokenType: 'cognito' })
     applySession(next)
     scheduleRefresh(next)
@@ -143,7 +143,7 @@ export function SessionProvider({
     setStatus('loading')
     try {
       const tokens = await cognitoSignIn(email, password)
-      const next = sessionFromIdToken(tokens.idToken)
+      const next = sessionFromIdToken(tokens.idToken, { tenantId: tokens.tenantId, role: tokens.role })
       setActiveTokens({ idToken: tokens.idToken, tokenType: 'cognito' })
       applySession(next)
       setStatus('authenticated')
@@ -182,7 +182,7 @@ export function SessionProvider({
     setStatus('loading')
     try {
       const tokens = await completeInteractiveLogin(code, state)
-      const next = sessionFromIdToken(tokens.idToken)
+      const next = sessionFromIdToken(tokens.idToken, { tenantId: tokens.tenantId, role: tokens.role })
       setActiveTokens({ idToken: tokens.idToken, tokenType: 'cognito' })
       applySession(next)
       setStatus('authenticated')

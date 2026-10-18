@@ -28,6 +28,9 @@ _VALID_ROLES: set[str] = {r.value for r in UserRole}
 # Distributed Redis cache for tenant status — consistent across all Lambda instances.
 # TTL 60s. On Redis failure, get() returns None and the caller falls through to DB.
 _tenant_status_cache: DistributedCache = DistributedCache(default_ttl=15, key_prefix="tenant_status:")
+# Subject (IdP oid/sub) → "{tenant_id}:{role}", for tokens that carry no tenant
+# claim. See _resolve_identity_from_db.
+_identity_cache: DistributedCache = DistributedCache(default_ttl=60, key_prefix="identity:")
 
 
 def get_tenant_context(event: dict[str, Any]) -> TenantContext:
@@ -65,11 +68,29 @@ def get_tenant_context(event: dict[str, Any]) -> TenantContext:
         user_id: str = mapper.user_id(claims)
         tenant_id: str = mapper.tenant_id(claims)
 
-        if not user_id or not tenant_id:
+        if not user_id:
             raise AuthenticationRequiredError()
+
+        # No tenant claim in the token → resolve it from tenant_user by subject.
+        # Entra External ID does not emit the custom-claims provider's output
+        # (see resolve_identity_from_db), so for tenant-scoped users the claim is
+        # simply absent; the DB holds the same authoritative answer. A platform
+        # admin never reaches here — mapper.tenant_id derives PLATFORM from the
+        # group claim.
+        db_role: str | None = None
+        if not tenant_id:
+            resolved = resolve_identity_from_db(user_id)
+            if resolved is None:
+                raise AuthenticationRequiredError()
+            tenant_id, db_role = resolved
 
         roles = _parse_roles(claims, tenant_id)
         role = _parse_primary_role(claims, roles)
+        # The token carried no role either, so the group-derived default
+        # ('customer') is meaningless — trust the DB row instead.
+        if db_role is not None and db_role in _VALID_ROLES:
+            role = UserRole(db_role)
+            roles = frozenset({role}) if roles == frozenset({UserRole.CUSTOMER}) else roles | {role}
 
     except AuthenticationRequiredError:
         raise
@@ -174,6 +195,56 @@ def _parse_primary_role(claims: dict[str, Any], roles: frozenset[UserRole]) -> U
         if primary in roles:
             return primary
     return min(roles)
+
+
+def resolve_identity_from_db(user_id: str) -> tuple[str, str] | None:
+    """Resolve (tenant_id, role) for an IdP subject straight from `tenant_user`.
+
+    The authoritative source for a user's tenant and role is their `tenant_user`
+    row — `tenant_user.id` IS the IdP subject, so the `oid`/`sub` in the token is
+    enough to find it. This is the fallback for tokens that carry no tenant
+    claim.
+
+    Why this exists: on Entra External ID (CIAM) the custom-claims provider
+    returns `tenant_id`/`role` correctly, but Entra does not emit them into the
+    token — the documented app-registration `optionalClaims` route is silently
+    ignored there (CIAM honours a service-principal surface instead). Rather than
+    depend on that, we resolve the same data server-side from the same table the
+    provider reads. One source of truth either way.
+
+    Cached for 60s per subject, mirroring `_check_tenant_active`, so this costs
+    at most one DB round trip per user per minute on the auth path. Returns None
+    when no active row matches (e.g. a platform admin, who legitimately has no
+    `tenant_user` row and resolves from the group claim instead).
+    """
+    cached = _identity_cache.get(user_id)
+    if cached is not None:
+        if cached == "":  # negative result cached — do not re-query every request
+            return None
+        tenant_id, _, role = str(cached).partition(":")
+        return (tenant_id, role) if tenant_id and role else None
+
+    try:
+        from shared.db import execute_with_tenant
+
+        rows = execute_with_tenant(
+            tenant_id=PLATFORM_TENANT_ID,  # spans tenants, like the status check
+            query="SELECT tenant_id, role FROM tenant_user WHERE id = %s AND status = 'active' LIMIT 1",
+            params=(user_id,),
+        )
+    except Exception as exc:
+        # Do NOT cache a failure, and do not fail the request here: the caller
+        # raises AuthenticationRequiredError if the identity stays unresolved.
+        logger.warning("Identity resolution failed for subject %s: %s", user_id, exc)
+        return None
+
+    if not rows:
+        _identity_cache.set(user_id, "")
+        return None
+    tenant_id = str(rows[0]["tenant_id"])
+    role = str(rows[0]["role"])
+    _identity_cache.set(user_id, f"{tenant_id}:{role}")
+    return tenant_id, role
 
 
 def _check_tenant_active(tenant_id: str) -> None:

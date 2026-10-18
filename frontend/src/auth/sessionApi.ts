@@ -24,6 +24,10 @@ function authUrl(path: string): string {
 export interface RefreshedTokens {
   idToken: string
   expiresIn: number
+  /** Backend-resolved tenant/role — present when the token itself carries none
+   *  (Entra External ID does not emit the claims provider's output). */
+  tenantId?: string | null
+  role?: string | null
 }
 
 /**
@@ -57,8 +61,15 @@ export async function silentRefresh(): Promise<RefreshedTokens | null> {
       credentials: 'include',
     })
     if (!response.ok) return null
-    const envelope = (await response.json()) as { data: { id_token: string; expires_in: number } }
-    return { idToken: envelope.data.id_token, expiresIn: envelope.data.expires_in }
+    const envelope = (await response.json()) as {
+      data: { id_token: string; expires_in: number; tenant_id?: string; role?: string }
+    }
+    return {
+      idToken: envelope.data.id_token,
+      expiresIn: envelope.data.expires_in,
+      tenantId: envelope.data.tenant_id ?? null,
+      role: envelope.data.role ?? null,
+    }
   } catch {
     return null
   }

@@ -61,7 +61,7 @@ export async function completeLogin(code: string, state: string): Promise<Cognit
     body: JSON.stringify({ code, state }),
   })
   const body = (await resp.json().catch(() => ({}))) as {
-    data?: { id_token?: string }
+    data?: { id_token?: string; tenant_id?: string; role?: string }
     detail?: string
     title?: string
   }
@@ -71,7 +71,15 @@ export async function completeLogin(code: string, state: string): Promise<Cognit
   // The refresh token stays server-side in the httpOnly cookie the callback set;
   // only the id token comes back, to live in memory. accessToken mirrors it (the
   // app authenticates to its own API with the id token, as on Cognito).
-  return { idToken: body.data.id_token, accessToken: body.data.id_token, refreshToken: '' }
+  // tenant_id/role come from the backend: Entra External ID does not emit the
+  // claims provider's output into the token, so the SPA cannot read them there.
+  return {
+    idToken: body.data.id_token,
+    accessToken: body.data.id_token,
+    refreshToken: '',
+    tenantId: body.data.tenant_id ?? null,
+    role: body.data.role ?? null,
+  }
 }
 
 // Password sign-in is not used on Entra (interactive redirect instead); kept so
