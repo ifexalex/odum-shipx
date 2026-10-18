@@ -226,6 +226,28 @@ variable "entra_redirect_uri" {
   default     = ""
 }
 
+variable "entra_authorize_prompt" {
+  description = <<-EOT
+    OAuth2 `prompt` sent on the authorize request. "select_account" (default)
+    shows the account picker so a different user can sign in on a shared
+    browser; "login" forces re-authentication; "" omits the parameter and lets
+    Entra silently reuse its active SSO session.
+  EOT
+  type        = string
+  default     = "select_account"
+}
+
+variable "app_base_url" {
+  description = <<-EOT
+    Public base URL of the SPA, used to build activation and password links in
+    outbound email. Empty falls back to the origin of entra_redirect_uri; if
+    BOTH are empty the links render empty and activation email is useless, so
+    set this in every environment that sends mail.
+  EOT
+  type        = string
+  default     = ""
+}
+
 variable "auth_cookie_samesite" {
   description = "SameSite for the auth cookies. 'None' for cross-site (Azure FrontDoor↔ContainerApps); 'Strict' when SPA+API share a site."
   type        = string

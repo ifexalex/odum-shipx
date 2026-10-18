@@ -944,16 +944,53 @@ Register `http://localhost:5173/auth/callback` as an additional redirect URI on 
 then runs end-to-end from localhost. Build the SPA with `VITE_AUTH_PROVIDER=entra` (not
 `VITE_ENVIRONMENT=local`, which activates the dev shim instead).
 
-### 15.4 The one gap — the claims extension
+### 15.4 The claims extension — no longer a gap
 Entra calls the custom-claims provider at a **public HTTPS URL**, so it can never reach
-`localhost`. Two options:
-- **Accept it:** the deployed `shipx-dev-entra-claims` container stays the handler, but it
-  reads the *deployed* database — so a locally-created `tenant_user` will not be found and
-  the token arrives without `tenant_id`. Fine for testing provisioning; not for login.
-- **Tunnel it:** expose your local claims app (`docker-entrypoint.sh claims`, port 8080)
-  with a dev tunnel/ngrok and temporarily repoint the extension's `targetUrl` at it, so the
-  full login + claims chain runs against your local DB. Remember to point it back — the
-  extension is shared with the deployed environment.
+`localhost`. That used to break local login. It no longer does.
+
+On an Entra External ID (CIAM) tenant the claims provider's output is **discarded by Entra
+anyway** (see `docs/runbook.md` → "On CIAM the claims provider's output never reaches the
+token"), so `shared/auth.py::resolve_identity_from_db` resolves `tenant_id` + `role` from
+`tenant_user` by the token's `oid`. Locally that reads **your local database**, which is
+exactly what you want.
+
+So local login works provided the local DB has a matching row:
+
+```sql
+-- tenant_user.id IS the Entra oid, and status must be 'active'.
+SELECT id, tenant_id, role, status FROM tenant_user WHERE id = '<oid>';
+```
+
+If sign-in fails with `JWT is missing required claims`, that row is missing or inactive —
+not a tunnelling problem. Tunnelling the claims app (`docker-entrypoint.sh claims`, port
+8080) is now only useful if you are specifically working **on the claims provider itself**;
+if you do, remember to point `targetUrl` back, since the extension is shared with the
+deployed environment.
+
+### 15.4b One-time tenant setup
+
+Everything the *app* needs is in Terraform (the `entra_*` tfvars). Everything inside the
+Entra tenant is in two idempotent scripts — never portal clicks, so staging and prod get
+the same state:
+
+```bash
+az login --tenant <CIAM tenant id> --allow-no-subscriptions
+
+# Graph provisioning app + the 3 app permissions + consent + disable self-signup
+ENTRA_TENANT_ID=<CIAM tenant id> ./scripts/setup_entra_auth.sh
+#   DRY_RUN=1     report intended changes only
+#   SKIP_SECRET=1 reconcile permissions without rotating the client secret
+
+# Redirect URI (publicClient!) + claims provider; prints the issuer/JWKS to use
+./scripts/setup_entra_claims_provider.sh
+
+# platform_admin group
+./scripts/setup_entra_platform_admin.sh
+```
+
+`setup_entra_auth.sh` aborts unless the logged-in tenant matches `ENTRA_TENANT_ID` — ShipX
+spans two tenants (the subscription's workforce tenant and the CIAM tenant), and
+configuring the wrong one is not obviously recoverable.
 
 ### 15.5 Cleanup
 ```bash

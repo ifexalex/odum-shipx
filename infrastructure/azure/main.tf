@@ -10,6 +10,57 @@ resource "azurerm_resource_group" "main" {
   tags     = local.common_tags
 }
 
+# ─── Auth configuration guard ───────────────────────────────────────────────
+# auth_provider defaults to "azure", so an environment whose tfvars omit the
+# entra_* values deploys with Entra auth ENABLED and no configuration — the API
+# comes up healthy and every sign-in fails. That is the single most expensive
+# failure mode in this stack: it looks like a code bug and is a missing tfvar.
+#
+# Fail the plan instead. Each value below has to come from the Entra tenant
+# (the scripts under scripts/ print them); none can be derived from Terraform,
+# which is exactly why they are easy to forget.
+resource "terraform_data" "auth_config_guard" {
+  input = var.auth_provider
+
+  lifecycle {
+    precondition {
+      condition = var.auth_provider != "azure" || alltrue([
+        var.oidc_jwks_url != "",
+        var.oidc_audience != "",
+        var.entra_client_id != "",
+        var.entra_token_endpoint != "",
+        var.entra_redirect_uri != "",
+      ])
+      error_message = <<-EOT
+        auth_provider = "azure" but the Entra configuration is incomplete for
+        environment "${var.environment}". Required and currently empty-checked:
+          oidc_jwks_url, oidc_audience, entra_client_id,
+          entra_token_endpoint, entra_redirect_uri
+
+        Populate environments/${var.environment}.tfvars. To obtain the values,
+        run against the target Entra tenant (see docs/runbook.md):
+          scripts/setup_entra_auth.sh             (provisioning app + consent)
+          scripts/setup_entra_claims_provider.sh  (redirect URI + claims; prints
+                                                   the issuer/JWKS to use)
+          scripts/setup_entra_platform_admin.sh   (platform_admin group)
+
+        To stand the environment up without auth, set auth_provider = "aws".
+      EOT
+    }
+
+    precondition {
+      condition     = var.app_base_url != "" || var.entra_redirect_uri != ""
+      error_message = <<-EOT
+        Both app_base_url and entra_redirect_uri are empty for environment
+        "${var.environment}". Activation and password-reset emails build their
+        links from app_base_url, falling back to the origin of
+        entra_redirect_uri — with neither set, those emails ship an empty link
+        and a newly provisioned user can never set a password.
+      EOT
+    }
+  }
+}
+
 # User-assigned managed identity for the Container Apps compute (Phase 3). Kept
 # in the root to break the module cycle: Key Vault grants it access, and the
 # container_app module uses it for ACR pull + Key Vault/Storage auth.
@@ -227,6 +278,11 @@ module "container_app" {
   # cycle. Register this exact value on the app registration.
   entra_authorize_endpoint = var.entra_authorize_endpoint
   entra_redirect_uri       = var.entra_redirect_uri
+  entra_authorize_prompt   = var.entra_authorize_prompt
+
+  # Base URL for activation/password links in outbound email. Explicit for the
+  # same no-cycle reason as entra_redirect_uri above.
+  app_base_url = var.app_base_url
 
   # The API is served same-origin with the SPA via a Front Door /v1/* route
   # (see module.frontend.api_origin_host), so the auth cookies are first-party;

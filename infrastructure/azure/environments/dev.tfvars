@@ -30,9 +30,13 @@ auth_cookie_samesite = "Lax"
 # derived from the Front Door URL without a cycle). Must match the SPA redirect
 # URI registered on the app registration in the CIAM tenant.
 entra_redirect_uri = "https://shipx-dev-fde-a3d7cufpbwgwcgc2.z03.azurefd.net/auth/callback"
-oidc_jwks_url      = "https://shipxcustomer.ciamlogin.com/062cb98d-8990-4947-81c4-223cb1e9b8f3/discovery/v2.0/keys"
-oidc_audience      = "c6d0fc93-1fb5-43c5-9621-513abf93c5d6"
-entra_user_domain  = "shipxcustomer.onmicrosoft.com"
+# Base URL for activation / password-reset links in outbound email. Previously
+# unset and derived from entra_redirect_uri's origin, which happened to be
+# correct — made explicit so it does not depend on that coincidence.
+app_base_url      = "https://shipx-dev-fde-a3d7cufpbwgwcgc2.z03.azurefd.net"
+oidc_jwks_url     = "https://shipxcustomer.ciamlogin.com/062cb98d-8990-4947-81c4-223cb1e9b8f3/discovery/v2.0/keys"
+oidc_audience     = "c6d0fc93-1fb5-43c5-9621-513abf93c5d6"
+entra_user_domain = "shipxcustomer.onmicrosoft.com"
 # platform_admin GROUP object id in the CIAM tenant (fallback that resolves the
 # admin to platform_admin when the token has no tenant_id/role claim).
 entra_platform_admin_group_id = "7eec8dba-c70f-4043-b84d-5c3a82b86c37"
