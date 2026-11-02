@@ -26,6 +26,9 @@ export interface CreateWarehouseInput {
   city?: string
   state?: string
   phone?: string
+  // Promote this warehouse to the tenant's default as part of creating it. The
+  // first warehouse a tenant creates becomes the default server-side regardless.
+  is_default?: boolean
 }
 
 export type UpdateWarehouseInput = Partial<CreateWarehouseInput>
@@ -42,8 +45,22 @@ export const warehousesApi = {
   setDefault: (id: string) =>
     apiRequest<Warehouse>({ method: 'PATCH', path: `/v1/warehouses/${id}/set-default` }),
 
-  // Soft-deactivate (is_active = false). The backend refuses to remove the
-  // default or the last active warehouse.
+  /**
+   * Permanently delete a warehouse.
+   *
+   * Really deletes it — the name becomes reusable. Rejects with
+   * `BUSINESS_RULE_VIOLATION` / rule_id `WAREHOUSE_IN_USE` when a release note,
+   * pickup record, payment record or packing list references it, because those
+   * records must not lose the warehouse they were issued against. Callers should
+   * offer `deactivate` in that case. Also refuses the default warehouse
+   * (`WAREHOUSE_DEFAULT_IMMUTABLE`) and the last active one
+   * (`WAREHOUSE_LAST_ACTIVE`).
+   */
+  remove: (id: string) => apiRequest<Warehouse>({ method: 'DELETE', path: `/v1/warehouses/${id}` }),
+
+  // Retire without deleting (is_active = false) — the path for a warehouse that
+  // handover documents reference. It stops appearing in pickers, those records
+  // keep their history, and its name becomes reusable.
   deactivate: (id: string) =>
-    apiRequest<Warehouse>({ method: 'DELETE', path: `/v1/warehouses/${id}` }),
+    apiRequest<Warehouse>({ method: 'PATCH', path: `/v1/warehouses/${id}/deactivate` }),
 }

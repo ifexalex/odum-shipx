@@ -123,6 +123,16 @@ def error_response(
         problem["instance"] = instance
     if hasattr(error, "threshold_details") and error.threshold_details:
         problem["threshold_details"] = error.threshold_details
+    # BusinessRuleViolationError carries a rule_id naming *which* rule refused
+    # the request. It was never serialized, so every client saw an
+    # indistinguishable 422 and had to match on the prose message to branch on
+    # the cause. Exposing it lets a caller react to a specific rule (e.g. offer
+    # "deactivate instead" only for WAREHOUSE_IN_USE) without parsing English.
+    # Read once via getattr: rule_id lives on BusinessRuleViolationError, not on
+    # LogisticsBaseError, so the base type genuinely has no such attribute.
+    rule_id = getattr(error, "rule_id", None)
+    if rule_id:
+        problem["rule_id"] = rule_id
 
     return {
         "statusCode": error.status_code,

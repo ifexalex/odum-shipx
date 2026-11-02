@@ -172,7 +172,7 @@ local dev and would have returned 404 in AWS — the third occurrence of this gr
 | Claims | `POST /v1/claims/missing-items`, `POST /v1/claims/seized-items` |
 | Packing lists | `POST /v1/packing-lists/bulk-submit|bulk-approve|bulk-reject` |
 | Excel service | `POST /v1/manifests/import`; PDFs `GET /v1/packing-lists/{id}/pdf`, `/v1/release-notes/{id}/pdf`, `/v1/payments/{id}/receipt/pdf` |
-| Payments / warehouses | `POST /v1/payments/{billing-id}/verify`, `GET/POST /v1/warehouses`, `PATCH /v1/warehouses/{id}/set-default` |
+| Payments / warehouses | `POST /v1/payments/{billing-id}/verify`, `GET/POST /v1/warehouses`, `PATCH /v1/warehouses/{id}`, `PATCH /v1/warehouses/{id}/set-default`, `PATCH /v1/warehouses/{id}/deactivate`, `DELETE /v1/warehouses/{id}` |
 | Containers | `DELETE /v1/containers/{id}`, `…/cancel`, `…/events`, `…/documents` (+ `presigned-url`, `{doc-id}/download`) |
 | Tenant admin | `GET/PUT /v1/tenant/cbm-rate`, `GET /v1/tenant/rate-history`, `PATCH /v1/tenant/me`, `GET /v1/tenants/me/quota`, Paystack config (`PUT`/`DELETE`/`POST …/test`), webhook `rotate-secret`/`test`, notification-templates, `POST /v1/tenant/users/{id}/resend-invite|reset-password`, `POST /v1/customers/{id}/invite` |
 | Platform admin | `GET/PUT /v1/platform/plans`, `GET /v1/platform/settings/gateways`, `PUT`/`POST …/test` on `/v1/platform/settings/{gateway}`, `GET /v1/platform/tenants/{id}/config|users`, `POST …/quota-override|impersonate`, `DELETE /v1/platform/impersonation/{id}` |

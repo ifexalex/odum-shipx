@@ -176,6 +176,11 @@ def paginated(data: list, cursor: str | None, has_more: bool, total_count: int |
 
 def error_response(error: LogisticsBaseError, instance: str = "") -> dict:
     """Format an RFC 7807 error response from a LogisticsBaseError."""
+    # Emits `rule_id` when the error carries one (BusinessRuleViolationError).
+    # Fixed 2026-11-02: dozens of business rules across every service set a
+    # rule_id and it was never serialized, so a client could only tell *which*
+    # rule refused a request by matching the English message. Clients read it
+    # as ApiError.ruleId (frontend/src/api/client.ts).
 
 def validation_error(errors: list[dict], instance: str = "") -> dict:
     """Format a validation error with field-level details."""

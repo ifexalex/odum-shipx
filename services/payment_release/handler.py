@@ -102,8 +102,15 @@ _REISSUE_ROLES = (
     UserRole.TENANT_ADMIN,
     UserRole.NIGERIA_OFFICE_STAFF,
 )
+# Reading the warehouse list is not a Nigeria-side concern only: CHINA_OFFICE_STAFF
+# are the people who create packing lists, and a packing list records which
+# destination warehouse the cargo is bound for (migration 053). Omitting them
+# here 403'd the arrival-warehouse picker, and because the frontend swallowed the
+# failure the form showed "No warehouses configured" — a permission error
+# displayed as a configuration state. Writing stays tenant_admin-only.
 _WAREHOUSE_READ_ROLES = (
     UserRole.TENANT_ADMIN,
+    UserRole.CHINA_OFFICE_STAFF,
     UserRole.NIGERIA_OFFICE_STAFF,
     UserRole.WAREHOUSE_ATTENDANT,
 )
@@ -498,10 +505,19 @@ def _warehouse_routes(event: dict[str, Any], parts: list[str], method: str, ctx:
         result = service.update_warehouse(ctx.tenant_id, warehouse_id, req, actor_id=ctx.user_id, actor_role=str(ctx.role))
         return success(result, request_id=request_id)
 
-    # DELETE /v1/warehouses/{id} — soft-deactivate
-    if warehouse_id and action is None and method == "DELETE":
+    # PATCH /v1/warehouses/{id}/deactivate — retire without deleting.
+    # The path for a warehouse handover documents reference, so DELETE refuses it.
+    if warehouse_id and action == "deactivate" and method == "PATCH":
         ctx.assert_role(*_WAREHOUSE_WRITE_ROLES)
         result = service.deactivate_warehouse(ctx.tenant_id, warehouse_id, actor_id=ctx.user_id, actor_role=str(ctx.role))
+        return success(result, request_id=request_id)
+
+    # DELETE /v1/warehouses/{id} — a real delete. Refused with WAREHOUSE_IN_USE
+    # when a release note / pickup / payment record / packing list references it;
+    # the caller is then pointed at the deactivate route above.
+    if warehouse_id and action is None and method == "DELETE":
+        ctx.assert_role(*_WAREHOUSE_WRITE_ROLES)
+        result = service.delete_warehouse(ctx.tenant_id, warehouse_id, actor_id=ctx.user_id, actor_role=str(ctx.role))
         return success(result, request_id=request_id)
 
     raise ResourceNotFoundError("route", "/".join(parts))
