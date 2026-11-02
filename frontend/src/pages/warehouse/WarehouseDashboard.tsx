@@ -13,7 +13,7 @@ import { useCallback, useEffect, useState, type JSX } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { ApiError } from '../../api/client'
 import { releaseNotesApi, type DelegateIdType, type PickupResult, type ReleaseNote, type RecordPickupInput } from '../../api/releaseNotes'
-import { Banner, Button, Field, Icon, Mono, StatCard, ToggleSwitch } from '../../design/components'
+import { Banner, Button, Field, Icon, Mono, PhoneField, StatCard, ToggleSwitch } from '../../design/components'
 import styles from './WarehouseDashboard.module.css'
 
 // ---------------------------------------------------------------------------
@@ -127,7 +127,7 @@ function PickupSheet({ note, onCancel, onSuccess }: PickupSheetProps): JSX.Eleme
         {isDelegate && (
           <>
             <Field label="Delegate name" name="delegate_name" required value={delegateName} onChange={(e) => setDelegateName(e.target.value)} />
-            <Field label="Delegate phone" name="delegate_phone" required value={delegatePhone} onChange={(e) => setDelegatePhone(e.target.value)} />
+            <PhoneField label="Delegate phone" name="delegate_phone" required value={delegatePhone} onChange={setDelegatePhone} />
             <div>
               <label style={{ fontSize: '1rem', fontWeight: 600, display: 'block', marginBottom: 8 }}>
                 ID type <span style={{ color: 'var(--color-error)' }}>*</span>

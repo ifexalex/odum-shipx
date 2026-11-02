@@ -428,10 +428,18 @@ def get_customer_by_user_id(tenant_id: str, user_id: str) -> dict[str, Any] | No
     return rows[0] if rows else None
 
 
-def get_shipment_by_tracking_code_and_phone(tracking_code: str, phone: str) -> dict[str, Any] | None:
+def get_shipment_by_tracking_code_and_phone(tracking_code: str, phone_candidates: list[str]) -> dict[str, Any] | None:
     """Public lookup — bypasses RLS via PLATFORM scope.
 
     Verifies ownership by joining through packing_list → customer.phone.
+
+    Takes a LIST of acceptable phone forms rather than one string. Customer
+    phones are stored E.164 (`shared/phone.py`), but this endpoint is public and
+    the number arrives however the caller typed it — `08012345678` for a row
+    stored as `+2348012345678`. Matching a single exact string meant a customer
+    entering their own number in local format got "not found" (fixed 2026-11-02).
+    Rows predating normalisation may still hold a local-format value, so the
+    caller supplies both the normalised and the raw form.
     """
     rows = execute_with_tenant(
         PLATFORM_TENANT_ID,
@@ -451,10 +459,10 @@ def get_shipment_by_tracking_code_and_phone(tracking_code: str, phone: str) -> d
         JOIN customer c ON c.id          = code_map.customer_id
                        AND c.tenant_id   = code_map.tenant_id
         WHERE st.tracking_code = %s
-          AND (c.phone = %s OR c.whatsapp = %s)
+          AND (c.phone = ANY(%s) OR c.whatsapp = ANY(%s))
         LIMIT 1
         """,
-        (tracking_code, phone, phone),
+        (tracking_code, phone_candidates, phone_candidates),
     )
     return rows[0] if rows else None
 

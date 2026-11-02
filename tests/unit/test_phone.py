@@ -54,3 +54,59 @@ class TestMaskPhone:
 
     def test_short_number_fully_masked(self):
         assert mask_phone("1234") == "****"
+
+
+class TestFrontendDialCodesAgree:
+    """The frontend's own country list must not drift from `_DIAL_CODES`.
+
+    `shared/phone.py` normalises a LOCAL-format number by prepending the dial
+    code derived from the tenant's destination country, while the browser's
+    `PhoneField` submits E.164 assembled from `frontend/src/data/countries.ts`.
+    If the two tables disagreed on a country, a number entered for one market
+    could be stored under another's prefix — and nothing else would catch it,
+    because each side is internally consistent.
+
+    Asserted from the backend because the frontend's tsconfig carries no Node
+    types, so a vitest test cannot read this file without loosening that config
+    for a single test.
+    """
+
+    @staticmethod
+    def _frontend_countries() -> dict[str, str]:
+        """Parse {lowercased name: dial} out of the frontend dataset."""
+        import pathlib
+        import re
+
+        path = pathlib.Path(__file__).resolve().parents[2] / "frontend/src/data/countries.ts"
+        assert path.is_file(), f"frontend country dataset missing at {path}"
+        text = path.read_text(encoding="utf-8")
+        # Entries look like: { code: 'NG', name: 'Nigeria', dial: '234' }
+        pattern = re.compile(r"\{\s*code:\s*'([A-Z]{2})',\s*name:\s*(?:'([^']*)'|\"([^\"]*)\"),\s*dial:\s*'(\d+)'\s*\}")
+        found = {}
+        for _code, single, double, dial in pattern.findall(text):
+            found[(single or double).strip().lower()] = dial
+        assert found, "parsed no countries from countries.ts — did its shape change?"
+        return found
+
+    def test_every_backend_dial_code_matches_the_frontend(self) -> None:
+        from shared.phone import _DIAL_CODES
+
+        frontend = self._frontend_countries()
+        for name, dial in _DIAL_CODES.items():
+            assert name in frontend, f"shared/phone.py knows '{name}' but countries.ts does not"
+            assert frontend[name] == dial, f"dial code mismatch for '{name}': backend={dial} frontend={frontend[name]}"
+
+    def test_the_frontend_default_is_nigeria(self) -> None:
+        import pathlib
+        import re
+
+        from shared.phone import DEFAULT_DIAL_CODE
+
+        frontend = self._frontend_countries()
+        assert frontend["nigeria"] == DEFAULT_DIAL_CODE
+
+        path = pathlib.Path(__file__).resolve().parents[2] / "frontend/src/data/countries.ts"
+        text = path.read_text(encoding="utf-8")
+        default_code = re.search(r"DEFAULT_COUNTRY_CODE = '([A-Z]{2})'", text)
+        assert default_code is not None, "DEFAULT_COUNTRY_CODE not found in countries.ts"
+        assert default_code.group(1) == "NG", "the phone field must default to Nigeria"

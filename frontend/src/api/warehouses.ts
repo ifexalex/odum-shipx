@@ -15,6 +15,8 @@ export interface Warehouse {
   address: string | null
   city: string | null
   state: string | null
+  /** Destination country for this branch — anchors the state picker (migration 057). */
+  country?: string | null
   phone: string | null
   is_default: boolean
   is_active?: boolean
@@ -25,6 +27,7 @@ export interface CreateWarehouseInput {
   address?: string
   city?: string
   state?: string
+  country?: string
   phone?: string
   // Promote this warehouse to the tenant's default as part of creating it. The
   // first warehouse a tenant creates becomes the default server-side regardless.

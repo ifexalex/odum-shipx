@@ -12,7 +12,7 @@ import { useState, type FormEvent, type JSX } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { ApiError } from '../../api/client'
 import { companyOnboardingApi } from '../../api/customer'
-import { Banner, Button, Field, Icon } from '../../design/components'
+import { Banner, Button, CountrySelect, Field, Icon, PhoneField } from '../../design/components'
 import { AuthShell, FormHead } from './AuthShell'
 import styles from './LoginScreen.module.css'
 
@@ -134,29 +134,30 @@ export function RequestOnboardingScreen(): JSX.Element {
           autoComplete="email"
           required
         />
-        <Field
+        <PhoneField
           label="Phone number"
-          icon="phone"
           name="contact_phone"
-          placeholder="+234 801 234 5678"
           value={contactPhone}
-          onChange={(e) => setContactPhone(e.target.value)}
-          autoComplete="tel"
+          onChange={setContactPhone}
           optional
         />
         <div style={{ display: 'flex', gap: 12 }}>
-          <Field
-            label="Origin"
-            name="origin_country"
-            value={originCountry}
-            onChange={(e) => setOriginCountry(e.target.value)}
-          />
-          <Field
-            label="Destination"
-            name="destination_country"
-            value={destinationCountry}
-            onChange={(e) => setDestinationCountry(e.target.value)}
-          />
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <CountrySelect
+              label="Origin"
+              name="origin_country"
+              value={originCountry}
+              onChange={setOriginCountry}
+            />
+          </div>
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <CountrySelect
+              label="Destination"
+              name="destination_country"
+              value={destinationCountry}
+              onChange={setDestinationCountry}
+            />
+          </div>
         </div>
         <Field
           label="Approx. monthly volume"

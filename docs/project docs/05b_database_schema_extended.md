@@ -164,6 +164,31 @@ as wrong. `DELETE /v1/warehouses/{id}` is now a genuine delete and checks these
 references first, returning 422 `WAREHOUSE_IN_USE` with the counts; the FK is the
 database-level backstop, not the error an operator sees.
 
+### Migration 057 — `country` on `warehouse`
+
+The warehouse form asked for a **State** while the table had no country, so the
+field had no anchor: a picker could not know whose subdivisions to offer, and the
+value was necessarily free text.
+
+```sql
+ALTER TABLE warehouse ADD COLUMN country VARCHAR(100);
+UPDATE warehouse w SET country = COALESCE(NULLIF(TRIM(t.destination_country), ''), 'Nigeria')
+  FROM tenant t WHERE t.id = w.tenant_id AND w.country IS NULL;
+ALTER TABLE warehouse ALTER COLUMN country SET DEFAULT 'Nigeria';
+ALTER TABLE warehouse ALTER COLUMN country SET NOT NULL;
+```
+
+Added **nullable first** so the backfill decides each row's value rather than the
+column default stamping `'Nigeria'` onto every existing warehouse. Existing rows
+inherit their own tenant's `destination_country`, since warehouses are the
+destination-side branches — a tenant already configured for another market is not
+silently mislabelled. `NOT NULL DEFAULT 'Nigeria'` applies from then on.
+
+With a country on the row, `state` became a real dropdown (Nigeria's 36 states +
+FCT today; the frontend carries lists for the markets ShipX operates in and falls
+back to free text elsewhere). See `frontend/03_component_library.md` →
+`CountrySelect` / `StateSelect`.
+
 ### Migration 044 — `payment_claim` table
 
 ```sql
