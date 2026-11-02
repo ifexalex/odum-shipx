@@ -10,6 +10,8 @@ export interface ApiErrorShape {
   status: number
   detail: string
   error_code: string
+  // Present only on 422 BUSINESS_RULE_VIOLATION — names the specific rule.
+  rule_id?: string
   instance?: string
   errors?: { field: string; message: string }[]
 }
@@ -18,6 +20,10 @@ export class ApiError extends Error {
   readonly type: string
   readonly status: number
   readonly errorCode: string
+  // Names which business rule refused the request (422 BUSINESS_RULE_VIOLATION
+  // only). Lets a caller branch on the specific rule instead of matching the
+  // prose message.
+  readonly ruleId?: string
   readonly instance?: string
   readonly fieldErrors?: { field: string; message: string }[]
   readonly requestId: string | null
@@ -28,6 +34,7 @@ export class ApiError extends Error {
     this.type = shape.type
     this.status = shape.status
     this.errorCode = shape.error_code
+    this.ruleId = shape.rule_id
     this.instance = shape.instance
     this.fieldErrors = shape.errors
     this.requestId = requestId

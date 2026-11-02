@@ -905,6 +905,26 @@ def create_warehouse(tenant_id: str, req: Any, actor_id: str, actor_role: str) -
     # tenant's own warehouse list came back empty.
     is_first_warehouse = len(repo.list_warehouses(tenant_id)) == 0
 
+    # Reject a name already taken by an ACTIVE warehouse up front, so the caller
+    # gets "that name is in use" instead of a raw unique-index violation
+    # surfacing as a 500. Only active rows collide (migration 056 scoped the
+    # index), so reusing a retired warehouse's name is deliberately allowed.
+    from shared.exceptions import DuplicateResourceError
+
+    clash = repo.find_warehouse_by_name(tenant_id, req.name, active_only=True)
+    if clash:
+        raise DuplicateResourceError("warehouse", req.name)
+
+    # The first warehouse must become the default — nothing else ever sets
+    # is_default, so without this get_default_warehouse() stays None and every
+    # release note silently resolves no warehouse. Beyond the first, the caller
+    # can ask for it explicitly: creating a warehouse and *then* hunting for a
+    # "Set default" action was the only route before, which is not discoverable.
+    # `is True` rather than a truthiness test: only an explicit boolean promotes.
+    # Anything else (a missing attribute, a stub, a stray string) must not
+    # silently reassign a tenant's default warehouse as a side effect of create.
+    wants_default = is_first_warehouse or getattr(req, "is_default", False) is True
+
     row = repo.create_warehouse(
         tenant_id,
         {
@@ -914,12 +934,23 @@ def create_warehouse(tenant_id: str, req: Any, actor_id: str, actor_role: str) -
             "city": req.city,
             "state": req.state,
             "phone": req.phone,
+            # Created unflagged when promoting, then promoted below in one
+            # transaction: setting is_default here while another row still holds
+            # it would violate idx_warehouse_one_default mid-INSERT.
             "is_default": is_first_warehouse,
             "created_by": actor_id,
         },
     )
     if row is None:
         raise RuntimeError("create_warehouse returned None unexpectedly")
+
+    # Promote only when the caller asked for a default that the INSERT did not
+    # already set. The first warehouse was inserted with is_default = TRUE
+    # directly, so re-promoting it would be a redundant transaction.
+    if wants_default and not is_first_warehouse:
+        promoted = repo.set_default_warehouse(tenant_id, str(row["id"]))
+        if promoted is not None:
+            row = promoted
 
     log_audit(
         tenant_id=tenant_id,
@@ -928,7 +959,7 @@ def create_warehouse(tenant_id: str, req: Any, actor_id: str, actor_role: str) -
         action="CREATE",
         actor_id=actor_id,
         actor_role=actor_role,
-        after_state={"name": req.name, "is_default": is_first_warehouse},
+        after_state={"name": req.name, "is_default": bool(row.get("is_default"))},
     )
     return dict(row)
 
@@ -966,6 +997,31 @@ def update_warehouse(tenant_id: str, warehouse_id: str, req: Any, actor_id: str,
     # Only the fields the caller actually sent (exclude_unset) are patched, so a
     # PATCH that omits a field leaves it untouched rather than nulling it.
     updates = req.model_dump(exclude_unset=True) if hasattr(req, "model_dump") else dict(req)
+
+    # Deactivating must not be reachable here: the default-warehouse and
+    # last-active guards live on the delete/deactivate path, and a bare PATCH
+    # would walk straight past them and leave a tenant with no usable warehouse.
+    # Reactivating (is_active = True) is fine and stays allowed.
+    if updates.get("is_active") is False:
+        from shared.exceptions import BusinessRuleViolationError
+
+        raise BusinessRuleViolationError(
+            "Use DELETE /v1/warehouses/{id} to remove a warehouse — it checks that "
+            "this is not the default or the last active warehouse.",
+            rule_id="WAREHOUSE_DEACTIVATE_VIA_DELETE",
+        )
+
+    # Renaming onto a name another ACTIVE warehouse holds would hit the partial
+    # unique index as a 500; reject it as a 409 the caller can act on. Comparing
+    # against a different id lets a no-op rename of the row itself through.
+    new_name = updates.get("name")
+    if new_name:
+        clash = repo.find_warehouse_by_name(tenant_id, new_name, active_only=True)
+        if clash and str(clash["id"]) != str(warehouse_id):
+            from shared.exceptions import DuplicateResourceError
+
+            raise DuplicateResourceError("warehouse", new_name)
+
     row = repo.update_warehouse(tenant_id, warehouse_id, updates)
     if row is None:
         raise RuntimeError("update_warehouse returned None unexpectedly")
@@ -982,17 +1038,15 @@ def update_warehouse(tenant_id: str, warehouse_id: str, req: Any, actor_id: str,
     return dict(row)
 
 
-def deactivate_warehouse(tenant_id: str, warehouse_id: str, actor_id: str, actor_role: str) -> dict[str, Any]:
-    """Soft-remove a warehouse (is_active = FALSE). Never hard-deleted: historical
-    release notes / pickups / packing lists may reference it. Two guards keep the
-    tenant operable: the default warehouse can't be removed (reassign the default
-    first), and the last active warehouse can't be removed (release-note
-    generation must always resolve one)."""
-    from shared.exceptions import BusinessRuleViolationError, ResourceNotFoundError
+def _assert_warehouse_removable(tenant_id: str, existing: dict[str, Any], warehouse_id: str) -> None:
+    """Guards shared by delete and deactivate.
 
-    existing = repo.get_warehouse_by_id(tenant_id, warehouse_id)
-    if not existing:
-        raise ResourceNotFoundError("warehouse", warehouse_id)
+    The default warehouse can't be removed (reassign the default first) and the
+    last active one can't be removed — release-note generation must always
+    resolve a warehouse, so a tenant left with none is a broken tenant.
+    """
+    from shared.exceptions import BusinessRuleViolationError
+
     if existing.get("is_default"):
         raise BusinessRuleViolationError(
             "The default warehouse cannot be removed — set another warehouse as default first.",
@@ -1003,6 +1057,81 @@ def deactivate_warehouse(tenant_id: str, warehouse_id: str, actor_id: str, actor
             "At least one active warehouse is required.",
             rule_id="WAREHOUSE_LAST_ACTIVE",
         )
+
+
+def delete_warehouse(tenant_id: str, warehouse_id: str, actor_id: str, actor_role: str) -> dict[str, Any]:
+    """Permanently delete a warehouse when nothing references it.
+
+    Removing a warehouse used to only flip `is_active`, which produced two
+    surprises reported from live use: the warehouse appeared gone but still
+    reserved its name, so it could not be recreated; and there was no way to
+    actually get rid of a mistyped entry.
+
+    A warehouse is therefore really deleted — *unless* a handover document points
+    at it. `release_note` / `pickup_record` / `payment_record` are the record of
+    whose goods were released from where; `packing_list` records where cargo is
+    bound. Those must not lose their warehouse, so when any of them reference it
+    the delete is refused with the counts, and deactivating is offered instead.
+    The FKs would refuse regardless, but a foreign-key error is not an answer an
+    operator can act on.
+    """
+    from shared.exceptions import BusinessRuleViolationError, ResourceNotFoundError
+
+    existing = repo.get_warehouse_by_id(tenant_id, warehouse_id)
+    if not existing:
+        raise ResourceNotFoundError("warehouse", warehouse_id)
+    _assert_warehouse_removable(tenant_id, existing, warehouse_id)
+
+    references = repo.count_warehouse_references(tenant_id, warehouse_id)
+    if references:
+        detail = ", ".join(f"{count} {label}{'s' if count != 1 else ''}" for label, count in sorted(references.items()))
+        raise BusinessRuleViolationError(
+            f"This warehouse is referenced by {detail}, so deleting it would leave those "
+            "records without a warehouse. Deactivate it instead — it will stop appearing "
+            "in pickers while those records keep their history.",
+            rule_id="WAREHOUSE_IN_USE",
+        )
+
+    row = repo.delete_warehouse(tenant_id, warehouse_id)
+    if row is None:
+        # Deleted between the read above and here; the caller's intent is already
+        # satisfied, so report the row it asked about rather than failing.
+        return dict(existing)
+
+    # Audited before returning: a hard delete is unrecoverable, so the trail is
+    # the only remaining record that this warehouse ever existed. before_state
+    # carries enough to recreate it by hand.
+    log_audit(
+        tenant_id=tenant_id,
+        entity_type="warehouse",
+        entity_id=warehouse_id,
+        action="DELETE",
+        actor_id=actor_id,
+        actor_role=actor_role,
+        before_state={
+            "name": existing.get("name"),
+            "address": existing.get("address"),
+            "city": existing.get("city"),
+            "state": existing.get("state"),
+            "phone": existing.get("phone"),
+        },
+    )
+    return dict(row)
+
+
+def deactivate_warehouse(tenant_id: str, warehouse_id: str, actor_id: str, actor_role: str) -> dict[str, Any]:
+    """Retire a warehouse without deleting it (`is_active = FALSE`).
+
+    The path for a warehouse that handover documents reference: it stops
+    appearing in pickers, those records keep their history, and — since migration
+    056 scoped name uniqueness to active rows — its name becomes reusable.
+    """
+    from shared.exceptions import ResourceNotFoundError
+
+    existing = repo.get_warehouse_by_id(tenant_id, warehouse_id)
+    if not existing:
+        raise ResourceNotFoundError("warehouse", warehouse_id)
+    _assert_warehouse_removable(tenant_id, existing, warehouse_id)
 
     row = repo.update_warehouse(tenant_id, warehouse_id, {"is_active": False})
     if row is None:

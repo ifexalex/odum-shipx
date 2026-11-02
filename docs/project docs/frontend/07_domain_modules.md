@@ -1182,12 +1182,68 @@ Layout: the step-2 table was realigned with the new Type column and a compact CB
 
 A shipping company runs multiple destination warehouses (the migration-041 `warehouse` table, already used by release notes/pickups). Two additions let an admin manage them and tag each packing list with where its goods are bound.
 
-- **Admin config page `Warehouses`** (`/admin/config/warehouses`, tenant_admin, in the config nav under Container capacities): lists the tenant's warehouses, **Add**/**Edit** modal (name required; city/state/address/phone optional), **Set default** (one default per tenant, shown with a `Default` badge), and **Remove** (soft-deactivate). The default row hides Set-default/Remove — the backend refuses to deactivate the default or the last active warehouse (422). Mirrors `ContainerCapacities` structurally; uses the extended `warehousesApi` (`update`, `deactivate` added alongside the existing `list`/`create`/`setDefault`).
+- **Admin config page `Warehouses`** (`/admin/config/warehouses`, tenant_admin, in the config nav under Container capacities): lists the tenant's warehouses, **Add**/**Edit** modal (name required; city/state/address/phone optional), **Set default** (one default per tenant, shown with a `Default` badge), and **Remove** (soft-deactivate). The default row hides Set-default/Remove — the backend refuses to deactivate the default or the last active warehouse (422). ~~Remove = soft-deactivate~~ **superseded 2026-11-02: Remove is now "Delete" and is a real delete, falling back to an offered retire when records reference the warehouse — see the 2026-11-02 section below.** Mirrors `ContainerCapacities` structurally; uses the extended `warehousesApi` (`update`, `deactivate` added alongside the existing `list`/`create`/`setDefault`).
 - **Backend:** the `/v1/warehouses` surface (payment_release) gained `PATCH /{id}` (edit) and `DELETE /{id}` (deactivate). A **duplicate** `/v1/tenant/warehouses` CRUD surface in the tenant-management service — never wired to the frontend, Terraform, or Postman — was **removed** (see `13_api_payment_release.md`). `arrival_warehouse_id` added to packing-list create/update (migration 053).
 - **`CreatePackingList` step 1:** a searchable arrival-warehouse `Combobox` (pre-selects the tenant's default; filters on name/city). Sent as `arrival_warehouse_id`; omitting it defaults server-side to the tenant default. Prefilled on draft edit.
 - **`PackingListDetail`:** the hero meta line shows `· To {arrival_warehouse_name}` when set (resolved via a LEFT JOIN in the list/detail queries).
 
 Tests: `Warehouses.test.tsx` (list/badges/create/edit/set-default/deactivate — 6), `CreatePackingList.test.tsx` (+1: default warehouse pre-selected and sent), backend `TestWarehouseUpdateAndDeactivate` (5) + `TestResolveArrivalWarehouse` (4). Verified live against the local stack: first-warehouse-auto-default, set-default swap, edit, deactivate guards (default / last-active → 422), packing-list default resolution + explicit + invalid-404 + detail join; the removed `/v1/tenant/warehouses` route 404s while `/v1/warehouses` stays 200. 835 frontend + 1122 backend tests pass; tsc/eslint/ruff clean; terraform valid.
+
+## Warehouse fixes: empty picker, real delete, visible set-default (2026-11-02)
+
+Three defects reported from live use, each with a distinct root cause. The
+2026-10-03 section above is amended by this one where they conflict.
+
+**1. The arrival-warehouse picker was always empty on `CreatePackingList`.**
+`GET /v1/warehouses` was gated to Nigeria-side roles, omitting
+`china_office_staff` — who are exactly the role that creates packing lists. It
+403'd, and `CreatePackingList.tsx` caught it with `.catch(() => [])`, so the form
+rendered **"No warehouses configured"**: a permission error displayed as a
+configuration state, which is why it survived unnoticed. The saved data was never
+wrong (the backend applies the tenant default server-side), only the picker.
+
+The role was added backend-side, and the page now tracks a separate
+`warehouseError` so the two cases read differently — the placeholder becomes
+"Warehouses unavailable" and the helper text says the list could not be loaded
+*and* that the default is still applied on save. The rest of the form keeps
+loading: one optional field must not take the whole form down.
+
+**2. Delete is now a real delete.** "Remove" (soft-deactivate) became **Delete**,
+with a confirmation, calling `warehousesApi.remove` → `DELETE /v1/warehouses/{id}`.
+When the backend refuses with `rule_id: WAREHOUSE_IN_USE` (a release note, pickup,
+payment record or packing list references it) the page does not dead-end: it
+offers to **retire** it instead via the new `PATCH /{id}/deactivate`. Since
+migration 056 scoped name uniqueness to active rows, a retired warehouse's name is
+reusable either way — the original complaint was that a deleted name stayed
+blocked forever.
+
+**3. "Set default" looked like it did nothing.** The route and its transaction
+were correct. The page's only feedback was an error banner rendered at the **top
+of the page, above the table**, so a failure on a row further down was invisible.
+Fixed structurally rather than cosmetically: a `bannerRef` + `scrollIntoView`
+brings any failure into view, and success is now confirmed explicitly
+("X is now the default warehouse") instead of relying on a badge quietly changing.
+A `Make this the default warehouse` checkbox was also added to the **create**
+modal (`is_default` on `CreateWarehouseInput`) — promoting a warehouse previously
+required finding a separate row action afterwards. The checkbox is create-only;
+promoting an existing warehouse stays the dedicated Set-default action, which
+moves the flag atomically.
+
+**`ApiError.ruleId`** is new on the API client: `shared/responses.error_response`
+never serialized `BusinessRuleViolationError.rule_id`, so clients could only
+branch on a specific rule by matching its English message. The retire-instead
+prompt above is the first consumer.
+
+Tests: `Warehouses.test.tsx` (+6 — real delete, declined confirmation, retire-on-
+`WAREHOUSE_IN_USE`, success confirmation, surfaced failure, create-as-default),
+`CreatePackingList.test.tsx` (+2 — "unavailable" messaging never reads as "none
+configured"; the rest of the form still loads). Backend `TestWarehouses` +11.
+1380 backend + 877 frontend tests pass (7 frontend failures in
+`colorScheme.test.tsx`/`storage.test.ts` are pre-existing on `main` and unrelated).
+
+**Note:** `frontend/src/hooks/useWarehouses.ts` remains **unused** — every
+consumer calls `warehousesApi` directly. Left in place rather than deleted as
+out-of-scope cleanup, but it is dead code and a candidate for removal.
 
 ## Nigeria-ops dashboard overhaul — container pipeline redesign (2026-10-03)
 

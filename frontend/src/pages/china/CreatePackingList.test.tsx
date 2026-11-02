@@ -5,6 +5,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { packingListApi, type PackingList } from '../../api/packingList'
 import { containersApi, type Container } from '../../api/tracking'
 import { configApi, customersApi, type Customer } from '../../api/tenantManagement'
+import { warehousesApi } from '../../api/warehouses'
 import { CreatePackingList } from './CreatePackingList'
 
 vi.mock('../../api/packingList', async (importOriginal) => {
@@ -17,6 +18,8 @@ vi.mock('../../api/packingList', async (importOriginal) => {
 vi.mock('../../api/tracking', () => ({
   containersApi: { list: vi.fn() },
 }))
+import { ApiError } from '../../api/client'
+
 vi.mock('../../api/warehouses', () => ({
   warehousesApi: {
     list: vi.fn().mockResolvedValue([
@@ -328,5 +331,48 @@ describe('CreatePackingList', () => {
     await waitFor(() =>
       expect(screen.getByLabelText('Arrival warehouse')).toHaveTextContent('Lagos — Trade Fair'),
     )
+  })
+
+  // ── Reported live, 2026-11-02 ──────────────────────────────────────────────
+  // "The warehouse location isn't appearing when I create a packing list."
+  // Root cause was a 403 (china_office_staff were missing from the warehouse
+  // read roles) that the page caught and turned into an empty array, so the
+  // picker rendered "No warehouses configured" — a permission error shown as a
+  // configuration choice. The failure must stay visible.
+  it('says warehouses are unavailable rather than claiming none are configured', async () => {
+    vi.mocked(warehousesApi.list).mockRejectedValueOnce(
+      new ApiError(
+        {
+          type: 'about:blank',
+          title: 'Forbidden',
+          status: 403,
+          detail: 'You do not have permission to perform this action',
+          error_code: 'FORBIDDEN',
+        },
+        null,
+      ),
+    )
+    renderPage()
+    await screen.findByText(/could not be loaded/i)
+    expect(screen.queryByText('No warehouses configured')).toBeNull()
+  })
+
+  it('still loads the rest of the form when warehouses fail', async () => {
+    // One optional field must not take the whole form down with it.
+    vi.mocked(warehousesApi.list).mockRejectedValueOnce(
+      new ApiError(
+        {
+          type: 'about:blank',
+          title: 'Forbidden',
+          status: 403,
+          detail: 'You do not have permission to perform this action',
+          error_code: 'FORBIDDEN',
+        },
+        null,
+      ),
+    )
+    renderPage()
+    await screen.findByText(/could not be loaded/i)
+    expect(screen.getByLabelText('Arrival warehouse')).toBeInTheDocument()
   })
 })

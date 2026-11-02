@@ -7,11 +7,11 @@
  * arrival-warehouse picker when creating a packing list, and the release-note /
  * pickup letterhead. tenant_admin only (route-guarded).
  */
-import { useCallback, useEffect, useState, type JSX } from 'react'
+import { useCallback, useEffect, useRef, useState, type JSX } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { ApiError } from '../../api/client'
 import { warehousesApi, type CreateWarehouseInput, type Warehouse } from '../../api/warehouses'
-import { Badge, Banner, Button, Card, Field, Table } from '../../design/components'
+import { Badge, Banner, Button, Card, Check, Field, Table } from '../../design/components'
 import { useTopBarSlot } from '../../shell/TopBarContext'
 import styles from './admin.module.css'
 
@@ -28,6 +28,10 @@ function WarehouseModal({ existing, onCancel, onSuccess }: WarehouseModalProps):
   const [state, setState] = useState(existing?.state ?? '')
   const [address, setAddress] = useState(existing?.address ?? '')
   const [phone, setPhone] = useState(existing?.phone ?? '')
+  // Create-only. Promoting an existing warehouse is the dedicated "Set default"
+  // row action, which moves the flag atomically; offering it here too would be
+  // two routes to one outcome with different semantics.
+  const [makeDefault, setMakeDefault] = useState(false)
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
@@ -42,6 +46,7 @@ function WarehouseModal({ existing, onCancel, onSuccess }: WarehouseModalProps):
       state: state.trim() || undefined,
       address: address.trim() || undefined,
       phone: phone.trim() || undefined,
+      ...(isEdit ? {} : { is_default: makeDefault }),
     }
     try {
       if (isEdit && existing) {
@@ -116,6 +121,19 @@ function WarehouseModal({ existing, onCancel, onSuccess }: WarehouseModalProps):
           value={phone}
           onChange={(e) => setPhone(e.target.value)}
         />
+        {!isEdit && (
+          <label
+            style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 4, cursor: 'pointer' }}
+          >
+            <Check checked={makeDefault} onChange={setMakeDefault} disabled={submitting} />
+            <span style={{ fontSize: 13 }}>
+              Make this the default warehouse
+              <span style={{ color: 'var(--color-ink-3)', display: 'block', fontSize: 12 }}>
+                Pre-selected on new packing lists and used on release-note letterheads.
+              </span>
+            </span>
+          </label>
+        )}
         <div className={styles.modalActions}>
           <Button variant="ghost" onClick={onCancel} disabled={submitting}>
             Cancel
@@ -145,6 +163,20 @@ export function Warehouses(): JSX.Element {
     existing: null,
   })
   const [busyId, setBusyId] = useState<string | null>(null)
+  const [notice, setNotice] = useState<string | null>(null)
+  // The error banner renders at the top of the page, above the table. An action
+  // taken on a row further down could therefore fail with its only feedback
+  // scrolled out of view — reported as "I click it and nothing happens". Scroll
+  // the banner into view whenever one appears so a failure is never silent.
+  const bannerRef = useRef<HTMLDivElement | null>(null)
+
+  const fail = useCallback((message: string) => {
+    setError(message)
+    // After paint, so the banner exists to scroll to.
+    requestAnimationFrame(() => {
+      bannerRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' })
+    })
+  }, [])
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -152,11 +184,11 @@ export function Warehouses(): JSX.Element {
     try {
       setWarehouses(await warehousesApi.list())
     } catch (err) {
-      setError(err instanceof ApiError ? err.message : 'Could not load warehouses.')
+      fail(err instanceof ApiError ? err.message : 'Could not load warehouses.')
     } finally {
       setLoading(false)
     }
-  }, [])
+  }, [fail])
 
   useEffect(() => {
     void load()
@@ -165,24 +197,58 @@ export function Warehouses(): JSX.Element {
   async function handleSetDefault(id: string): Promise<void> {
     setBusyId(id)
     setError(null)
+    setNotice(null)
     try {
-      await warehousesApi.setDefault(id)
+      const updated = await warehousesApi.setDefault(id)
       await load()
+      // Confirm explicitly. The only previous signal was the row's badge
+      // changing, which is easy to miss and indistinguishable from nothing
+      // having happened.
+      setNotice(`${updated.name} is now the default warehouse.`)
     } catch (err) {
-      setError(err instanceof ApiError ? err.message : 'Could not set default warehouse.')
+      fail(err instanceof ApiError ? err.message : 'Could not set default warehouse.')
     } finally {
       setBusyId(null)
     }
   }
 
-  async function handleRemove(id: string): Promise<void> {
-    setBusyId(id)
+  /**
+   * Delete a warehouse for real.
+   *
+   * The backend refuses with rule_id WAREHOUSE_IN_USE when a release note,
+   * pickup record, payment record or packing list references it — those records
+   * must keep the warehouse they were issued against. Rather than dead-ending,
+   * offer to retire it instead, which hides it from pickers and (since migration
+   * 056) frees its name.
+   */
+  async function handleRemove(warehouse: Warehouse): Promise<void> {
+    if (!window.confirm(`Permanently delete “${warehouse.name}”? This cannot be undone.`)) return
+    setBusyId(warehouse.id)
     setError(null)
+    setNotice(null)
     try {
-      await warehousesApi.deactivate(id)
+      await warehousesApi.remove(warehouse.id)
       await load()
+      setNotice(`${warehouse.name} was deleted.`)
     } catch (err) {
-      setError(err instanceof ApiError ? err.message : 'Could not remove warehouse.')
+      if (err instanceof ApiError && err.ruleId === 'WAREHOUSE_IN_USE') {
+        const retire = window.confirm(
+          `${err.message}\n\nRetire “${warehouse.name}” instead?`,
+        )
+        if (retire) {
+          try {
+            await warehousesApi.deactivate(warehouse.id)
+            await load()
+            setNotice(`${warehouse.name} was retired. Its name is free to reuse.`)
+          } catch (retireErr) {
+            fail(
+              retireErr instanceof ApiError ? retireErr.message : 'Could not retire warehouse.',
+            )
+          }
+        }
+      } else {
+        fail(err instanceof ApiError ? err.message : 'Could not delete warehouse.')
+      }
     } finally {
       setBusyId(null)
     }
@@ -200,13 +266,22 @@ export function Warehouses(): JSX.Element {
 
   return (
     <div>
-      {error && (
-        <div className={styles.banner}>
-          <Banner variant="error" title="Error">
-            {error}
-          </Banner>
-        </div>
-      )}
+      <div ref={bannerRef}>
+        {error && (
+          <div className={styles.banner}>
+            <Banner variant="error" title="Error">
+              {error}
+            </Banner>
+          </div>
+        )}
+        {notice && !error && (
+          <div className={styles.banner}>
+            <Banner variant="success" title="Done">
+              {notice}
+            </Banner>
+          </div>
+        )}
+      </div>
 
       <Card padding={0}>
         <Table
@@ -256,9 +331,9 @@ export function Warehouses(): JSX.Element {
                     variant="ghost"
                     size="sm"
                     loading={busyId === w.id}
-                    onClick={() => void handleRemove(w.id)}
+                    onClick={() => void handleRemove(w)}
                   >
-                    Remove
+                    Delete
                   </Button>
                 )}
               </span>,

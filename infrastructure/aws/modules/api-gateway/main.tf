@@ -209,6 +209,7 @@ locals {
     "GET /v1/warehouses"                    = "payment_release"
     "POST /v1/warehouses"                   = "payment_release"
     "PATCH /v1/warehouses/{id}/set-default" = "payment_release"
+    "PATCH /v1/warehouses/{id}/deactivate"  = "payment_release"
     "PATCH /v1/warehouses/{id}"             = "payment_release"
     "DELETE /v1/warehouses/{id}"            = "payment_release"
 

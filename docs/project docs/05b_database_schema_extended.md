@@ -114,6 +114,16 @@ CREATE TABLE warehouse (
 );
 CREATE UNIQUE INDEX idx_warehouse_one_default ON warehouse(tenant_id) WHERE is_default;
 ```
+
+> **Superseded by migration 056:** the `UNIQUE (tenant_id, name)` above spanned
+> *every* row, including soft-deactivated ones, so a removed warehouse reserved
+> its name permanently. It is replaced by a partial index scoped to active rows:
+> ```sql
+> ALTER TABLE warehouse DROP CONSTRAINT warehouse_tenant_id_name_key;
+> CREATE UNIQUE INDEX idx_warehouse_active_name
+>     ON warehouse(tenant_id, name) WHERE is_active;
+> ```
+> See "Migration 056" below.
 RLS on, standard tenant-isolation policy. Per-tenant branches (the paper letterhead lists ~9 for one company) — replaces the single `tenant_config.warehouse_address` JSON blob that gave every release note the same one address regardless of which branch actually issued it. Migration backfills exactly one default warehouse per tenant from that blob (or a bare "Main Warehouse" placeholder).
 
 Also adds, all nullable/defaulted (purely additive — the existing suite and 58 non-test `carton_tags` call sites are unaffected):
@@ -123,6 +133,36 @@ Also adds, all nullable/defaulted (purely additive — the existing suite and 58
 - **`carryover_ledger`**: `due_date` (the form's "Debt Payment Date"), `granted_by`, `release_note_id` (links a carryover back to the release note that created the debt).
 
 **Ground-truth gaps in application code closed 2026-09-13** (the schema above already supported all of this — the bugs were in code silently dropping these columns): repository queries not joining `warehouse.phone`/`carryover_ledger.due_date`; `create_split_release_note` dropping every one of these columns on every split and reissue; no warehouse CRUD existing at all so a warehouse, once backfilled, could never be added to or promoted; tenants onboarded after this migration ran getting zero warehouse rows (the backfill only ever runs once). Full account in `13_api_payment_release.md` and `19_excel_import_export.md` (PDF export had the identical drop bug).
+
+### Migration 056 — warehouse name uniqueness scoped to active rows
+
+Reported from live use: *"I deleted a warehouse and tried to recreate it with the
+same name. I was not able to until I changed the name."*
+
+Migration 041's `UNIQUE (tenant_id, name)` covered all rows, but removal only set
+`is_active = FALSE` — so a deleted warehouse kept its name reserved forever, and
+the collision surfaced as a raw unique violation rather than an actionable
+message.
+
+```sql
+ALTER TABLE warehouse DROP CONSTRAINT IF EXISTS warehouse_tenant_id_name_key;
+CREATE UNIQUE INDEX IF NOT EXISTS idx_warehouse_active_name
+    ON warehouse(tenant_id, name) WHERE is_active;
+```
+
+An active tenant still cannot hold two warehouses with the same name. No data
+cleanup is needed first: the old global constraint already guaranteed at most one
+row per `(tenant_id, name)`, so every existing row satisfies the narrower index.
+
+**The FKs are deliberately left alone.** `release_note.warehouse_id`,
+`pickup_record.warehouse_id` and `payment_record.warehouse_id` carry **no
+`ON DELETE` action**, so Postgres refuses to delete a referenced warehouse — a
+handover document must never lose the warehouse that released the goods.
+`packing_list.arrival_warehouse_id` is `ON DELETE SET NULL` (migration 053) but is
+counted as a reference too, since a list silently losing its destination is just
+as wrong. `DELETE /v1/warehouses/{id}` is now a genuine delete and checks these
+references first, returning 422 `WAREHOUSE_IN_USE` with the counts; the FK is the
+database-level backstop, not the error an operator sees.
 
 ### Migration 044 — `payment_claim` table
 
