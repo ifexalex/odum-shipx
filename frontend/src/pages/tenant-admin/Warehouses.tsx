@@ -11,7 +11,18 @@ import { useCallback, useEffect, useRef, useState, type JSX } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { ApiError } from '../../api/client'
 import { warehousesApi, type CreateWarehouseInput, type Warehouse } from '../../api/warehouses'
-import { Badge, Banner, Button, Card, Check, Field, Table } from '../../design/components'
+import {
+  Badge,
+  Banner,
+  Button,
+  Card,
+  Check,
+  CountrySelect,
+  Field,
+  PhoneField,
+  StateSelect,
+  Table,
+} from '../../design/components'
 import { useTopBarSlot } from '../../shell/TopBarContext'
 import styles from './admin.module.css'
 
@@ -26,6 +37,9 @@ function WarehouseModal({ existing, onCancel, onSuccess }: WarehouseModalProps):
   const [name, setName] = useState(existing?.name ?? '')
   const [city, setCity] = useState(existing?.city ?? '')
   const [state, setState] = useState(existing?.state ?? '')
+  // Anchors the state picker (migration 057). Defaults to the platform's
+  // destination market for a new branch.
+  const [country, setCountry] = useState(existing?.country ?? 'Nigeria')
   const [address, setAddress] = useState(existing?.address ?? '')
   const [phone, setPhone] = useState(existing?.phone ?? '')
   // Create-only. Promoting an existing warehouse is the dedicated "Set default"
@@ -44,6 +58,7 @@ function WarehouseModal({ existing, onCancel, onSuccess }: WarehouseModalProps):
       name: name.trim(),
       city: city.trim() || undefined,
       state: state.trim() || undefined,
+      country: country.trim() || undefined,
       address: address.trim() || undefined,
       phone: phone.trim() || undefined,
       ...(isEdit ? {} : { is_default: makeDefault }),
@@ -88,21 +103,34 @@ function WarehouseModal({ existing, onCancel, onSuccess }: WarehouseModalProps):
           helper="Shown in the arrival-warehouse picker and on release-note letterheads."
         />
         <div className={styles.grid2}>
+          <CountrySelect
+            label="Country"
+            name="warehouse_country"
+            value={country}
+            onChange={(next) => {
+              setCountry(next)
+              // The state list is country-specific, so a state chosen for the
+              // previous country would be wrong (and unselectable) for the new
+              // one. Clear it rather than submit a mismatched pair.
+              setState('')
+            }}
+          />
+          <StateSelect
+            country={country}
+            name="warehouse_state"
+            optional
+            value={state}
+            onChange={setState}
+          />
+        </div>
+        <div className={styles.grid2}>
           <Field
             label="City"
             name="warehouse_city"
             optional
-            placeholder="e.g. Lagos"
+            placeholder="e.g. Onitsha"
             value={city}
             onChange={(e) => setCity(e.target.value)}
-          />
-          <Field
-            label="State"
-            name="warehouse_state"
-            optional
-            placeholder="e.g. Lagos"
-            value={state}
-            onChange={(e) => setState(e.target.value)}
           />
         </div>
         <Field
@@ -113,13 +141,12 @@ function WarehouseModal({ existing, onCancel, onSuccess }: WarehouseModalProps):
           value={address}
           onChange={(e) => setAddress(e.target.value)}
         />
-        <Field
+        <PhoneField
           label="Phone"
           name="warehouse_phone"
           optional
-          placeholder="e.g. 08012345678"
           value={phone}
-          onChange={(e) => setPhone(e.target.value)}
+          onChange={setPhone}
         />
         {!isEdit && (
           <label

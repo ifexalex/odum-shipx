@@ -5,7 +5,7 @@ import { ApiError } from '../../api/client'
 import { customerKeys } from '../../api/keys'
 import { customersApi, type Customer } from '../../api/tenantManagement'
 import { useCustomerList } from '../../hooks/useCustomers'
-import { Badge, Banner, Button, Card, Check, Chip, Field, Icon, Mono, StatCard, Table, ViewLink, ListFooter } from '../../design/components'
+import { Badge, Banner, Button, Card, Check, Chip, Field, Icon, Mono, PhoneField, StatCard, Table, ViewLink, ListFooter } from '../../design/components'
 import { useTopBarSlot } from '../../shell/TopBarContext'
 import styles from './admin.module.css'
 
@@ -80,14 +80,12 @@ function AddCustomerModal({ onCancel, onSuccess }: AddCustomerModalProps): JSX.E
           value={name}
           onChange={(e) => setName(e.target.value)}
         />
-        <Field
+        <PhoneField
           label="Phone"
           name="phone"
           optional
-          icon="phone"
-          placeholder="+234..."
           value={phone}
-          onChange={(e) => setPhone(e.target.value)}
+          onChange={setPhone}
         />
         <Field
           label="Email"

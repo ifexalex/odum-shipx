@@ -54,6 +54,68 @@ Task 02 (tokens must exist before components can consume them).
 | `ShipxWordmark` | "shipx" lowercase, copper-accented "x". `showBy` prop renders the small "by Odum" co-mark for pre-auth/marketing surfaces only. |
 | `TenantBrand` | Renders tenant `display_name` + optional uploaded logo in the sidebar brand slot once a tenant theme is active (Task 02). |
 
+## Form inputs for country, state and phone (2026-11-02)
+
+User instruction: *"Anywhere in the application where a country/state is
+required, use a drop down with search instead of typing"*, and *"phone number
+fields are typed manually, it should be a phone field with country code
+defaulted to Nigeria."* Three components, all built on the existing `Combobox`
+so searching and keyboard behaviour match the rest of the app.
+
+| Component | Emits | Notes |
+|---|---|---|
+| `CountrySelect` | country **name** | Searchable by name *or* dial code ("234" finds Nigeria). Operating markets listed first. |
+| `StateSelect` | subdivision name | Driven by a `country` prop. Label follows local usage — State / Province / Region. |
+| `PhoneField` | **E.164** (`+2348012345678`) | Dial-code picker + national number. Defaults to Nigeria. |
+
+**Why names, not ISO codes.** Every existing column stores a country name
+(`tenant.origin_country`, `warehouse.country`), so emitting a code would mean a
+migration plus a display mapping on every read. `countryByName()` resolves a
+stored name case-insensitively, and an **unrecognised** stored value is kept as
+its own option rather than silently dropped — a row typed by hand years ago must
+not lose its country because this list spells it differently.
+
+**Why `PhoneField` emits E.164.** It is what the database stores
+(`shared/phone.py` normalises every write path), so emitting it means customer
+de-duplication works and the backend never has to guess a country — a `+`-prefixed
+number is passed through untouched, so a dial code the backend's `_DIAL_CODES`
+table has never heard of is still stored correctly. The component is fully
+controlled: the country lives in the *parsed value*, not in local state, so there
+is one source of truth and no effect is needed to resync when a parent loads a
+record.
+
+**Deliberate free-text fallback.** `subdivisions.ts` carries lists only for the
+markets ShipX operates in (NG, CN, GH, ZA, GB, US). For any other country
+`StateSelect` renders a **text input** with an explanatory helper, because an
+empty dropdown would make the field impossible to fill — strictly worse than
+typing. A full ISO 3166-2 dataset would be tens of thousands of entries, almost
+none of them reachable in this business.
+
+**Accuracy of the dataset.** `countries.ts` is hand-curated (196 countries)
+rather than pulled from `libphonenumber-js`, which would add ~80KB+ to format one
+field. The risk of curating by hand is pinned by tests: `countries.test.ts`
+asserts structural invariants (unique codes, plausible dial codes, sorted
+subdivisions), and **`tests/unit/test_phone.py::TestFrontendDialCodesAgree`
+parses `countries.ts` from the backend suite** and asserts it agrees with
+`shared/phone.py::_DIAL_CODES` for every country the backend knows, plus that the
+frontend default is still Nigeria. That seam is where a wrong value would actually
+do damage, since the backend prepends a dial code to local-format numbers.
+
+**Known limitation.** Some dial codes are genuinely shared (+1 across the US,
+Canada and much of the Caribbean; +7 across Russia and Kazakhstan) and cannot be
+resolved from the prefix alone without area-code tables. `parsePhone` breaks the
+tie toward an operating market for determinism. The ambiguity is **cosmetic**:
+both candidates share the dial code, so `toE164` reassembles the identical string
+and the stored value is unaffected.
+
+**Bug caught during the rollout.** `toE164` tested for emptiness *before*
+stripping the trunk `0`, so a lone `"0"` — which exists for one keystroke while
+someone types `0803…` — emitted a bare `+234`. `parsePhone` then read those dial
+digits back as the national part, and the next keystroke produced `+234234…`,
+doubling the dial code and growing with every character. Fixed by stripping
+first, plus `parsePhone` treating a bare dial code as an empty national part.
+Pinned by a character-by-character type-in test.
+
 ## Implementation Notes
 
 - **One file per component**, not one giant `components.tsx` — this is the one place mockup-monolith structure should *not* be carried forward, since these will be imported individually across ~150 pages.

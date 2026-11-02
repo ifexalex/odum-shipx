@@ -9,7 +9,7 @@ import { useState, type JSX } from 'react'
 import { useLocation, useNavigate } from 'react-router-dom'
 import { ApiError } from '../../api/client'
 import { platformApi, type OnboardingRequest, type SubscriptionTier, type Tenant } from '../../api/tenantManagement'
-import { Banner, Button, Card, Field, Icon, Mono } from '../../design/components'
+import { Banner, Button, Card, Field, Icon, Mono, PhoneField } from '../../design/components'
 import { PageHeader } from '../../shell/PageHeader'
 import { SectionHead } from '../../shell/SectionHead'
 
@@ -148,7 +148,7 @@ export function CreateTenantPage(): JSX.Element {
         <Field label="Company name" name="company_name" required placeholder="Acme Logistics Ltd" value={companyName} onChange={(e) => setCompanyName(e.target.value)} />
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: 14 }}>
           <Field label="Primary contact email" name="contact_email" icon="mail" required placeholder="ops@acme.com" value={contactEmail} onChange={(e) => setContactEmail(e.target.value)} />
-          <Field label="Contact phone" name="contact_phone" icon="phone" optional placeholder="+234…" value={contactPhone} onChange={(e) => setContactPhone(e.target.value)} />
+          <PhoneField label="Contact phone" name="contact_phone" optional value={contactPhone} onChange={setContactPhone} />
         </div>
       </Card>
 

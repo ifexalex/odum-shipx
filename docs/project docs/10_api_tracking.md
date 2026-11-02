@@ -105,6 +105,33 @@ No date filter is applied when `created_after`/`created_before` (or `eta_after`/
 - Return: current_stage, stage_history, estimated_stages (optional)
 - Include tenant's company_name from branding config
 
+**Ground-truth gap found and fixed (2026-11-02): the phone match was
+unnormalised, so public tracking did not work for most customers.** The query
+compared the submitted number against `customer.phone` as **one exact string**:
+
+```sql
+WHERE st.tracking_code = %s
+  AND (c.phone = %s OR c.whatsapp = %s)
+```
+
+Customer phones are stored **E.164** (`shared/phone.py` normalises every write
+path), so a customer entering their number the way they always write it —
+`08012345678` — never matched their own stored `+2348012345678` and got a bare
+404. The feature only worked if you happened to type the full `+234` form.
+
+`service._phone_match_candidates()` now normalises the input and passes a **list**
+of acceptable forms, matched with `= ANY(...)`. Both forms are offered because:
+- the normalised value is what current rows hold, and
+- the **raw** value still matters — rows written before normalisation existed may
+  hold a local-format string, and a foreign number would be mangled by the
+  default dial code.
+
+No tenant is in scope at this point (a tracking code spans tenants), so the
+platform default dial code (Nigeria) is used. Fixing it server-side rather than
+only in the browser is deliberate: the endpoint is **public**, so saved links,
+old clients and direct API callers would otherwise still silently fail. Tests:
+`TestGetShipmentByCodeAndPhone` (+3).
+
 ### Bulk Tracking Update
 When container status changes, all `shipment_tracking` records for that container are bulk-updated to the corresponding tracking stage (see mapping in spec §2.3).
 

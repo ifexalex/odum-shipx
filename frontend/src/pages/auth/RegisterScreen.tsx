@@ -19,7 +19,7 @@ import { useState, type FormEvent, type JSX } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { ApiError } from '../../api/client'
 import { registerApi } from '../../api/customer'
-import { Banner, Button, Check, Field, Icon } from '../../design/components'
+import { Banner, Button, Check, Field, Icon, PhoneField } from '../../design/components'
 import { AuthShell, FormHead } from './AuthShell'
 import styles from './LoginScreen.module.css'
 
@@ -162,14 +162,11 @@ export function RegisterScreen(): JSX.Element {
           autoComplete="email"
           required
         />
-        <Field
+        <PhoneField
           label="Phone number"
-          icon="phone"
           name="phone"
-          placeholder="+234 801 234 5678"
           value={phone}
-          onChange={(e) => setPhone(e.target.value)}
-          autoComplete="tel"
+          onChange={setPhone}
           required
         />
         <Field

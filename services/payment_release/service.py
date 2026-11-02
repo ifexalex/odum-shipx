@@ -933,6 +933,7 @@ def create_warehouse(tenant_id: str, req: Any, actor_id: str, actor_role: str) -
             "address": req.address,
             "city": req.city,
             "state": req.state,
+            "country": req.country,
             "phone": req.phone,
             # Created unflagged when promoting, then promoted below in one
             # transaction: setting is_default here while another row still holds

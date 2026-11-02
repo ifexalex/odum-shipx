@@ -42,6 +42,9 @@ Implement the Payment & Release Lambda service: payment confirmation, release no
 is the single warehouse surface (a duplicate `/v1/tenant/warehouses` in the
 tenant-management service was removed — it was never wired to the frontend,
 Terraform, or Postman). Behaviour:
+- **`country`** (migration 057) — the branch's destination country, defaulting to
+  `'Nigeria'`. Accepted on create and PATCH, returned on reads. It anchors the
+  state/province picker; without it `state` could only be free text.
 - **POST** — a tenant's *first* warehouse is auto-promoted to default (otherwise
   `get_default_warehouse()` stays null and release-note generation resolves no
   warehouse). Later creates are non-default **unless `is_default: true` is sent**,

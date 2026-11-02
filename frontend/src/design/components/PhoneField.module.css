@@ -1,0 +1,34 @@
+/* Dial-code picker + national number on one line. The picker is intentionally
+   narrow (it shows "+234", not the country name) so the number itself keeps the
+   visual weight; the country name is still searchable inside the panel. */
+.row {
+  display: flex;
+  gap: 8px;
+  align-items: flex-start;
+}
+
+.dial {
+  flex: 0 0 116px;
+  min-width: 116px;
+}
+
+.number {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+/* At phone width the two stack, so the number keeps a usable tap/typing area
+   instead of being squeezed into ~40% of a narrow viewport. */
+@media (max-width: 420px) {
+  .row {
+    flex-direction: column;
+    gap: 6px;
+  }
+
+  .dial,
+  .number {
+    flex: 1 1 auto;
+    width: 100%;
+    min-width: 0;
+  }
+}

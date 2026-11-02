@@ -636,6 +636,60 @@ class TestListShipments:
 
 
 class TestGetShipmentByCodeAndPhone:
+    # Reported/found 2026-11-02: the lookup matched the submitted phone against
+    # customer.phone as one exact string, with no normalisation. Customer phones
+    # are stored E.164, so a customer entering their own number the way they
+    # always write it — 08012345678 — got "not found". Public tracking was
+    # effectively unusable unless you happened to type the full +234 form.
+
+    def test_a_local_format_number_matches_a_stored_e164_customer(self):
+        from services.tracking import service
+
+        with (
+            patch.object(
+                service.repo,
+                "get_shipment_by_tracking_code_and_phone",
+                return_value={
+                    "id": "s1",
+                    "tracking_code": "TK-001",
+                    "status": "in_transit",
+                    "company_name": "ACME",
+                    "branding_config": None,
+                },
+            ) as mock_lookup,
+            patch.object(service.repo, "get_tracking_events", return_value=[]),
+        ):
+            service.get_shipment_by_code_and_phone("TK-001", "08012345678")
+
+        candidates = mock_lookup.call_args.args[1]
+        assert "+2348012345678" in candidates, "the local-format number must be normalised to E.164 before matching"
+
+    def test_the_raw_input_is_also_offered_as_a_candidate(self):
+        """Rows written before normalisation existed may still hold a
+        local-format value, and a foreign number would be mangled by the default
+        Nigerian dial code — so the untouched input stays a candidate."""
+        from services.tracking import service
+
+        with (
+            patch.object(service.repo, "get_shipment_by_tracking_code_and_phone", return_value=None) as mock_lookup,
+            pytest.raises(ResourceNotFoundError),
+        ):
+            service.get_shipment_by_code_and_phone("TK-001", "08012345678")
+
+        candidates = mock_lookup.call_args.args[1]
+        assert "08012345678" in candidates
+
+    def test_an_e164_number_is_passed_through_unchanged(self):
+        from services.tracking import service
+
+        with (
+            patch.object(service.repo, "get_shipment_by_tracking_code_and_phone", return_value=None) as mock_lookup,
+            pytest.raises(ResourceNotFoundError),
+        ):
+            service.get_shipment_by_code_and_phone("TK-001", "+2348012345678")
+
+        assert mock_lookup.call_args.args[1] == ["+2348012345678"]
+
     def test_not_found_raises(self):
         from services.tracking import service
 
