@@ -192,7 +192,13 @@ az login                                    # a user who can manage app regs + g
 `scripts/setup_entra_claims_provider.sh` (idempotent — safe to re-run) performs every tenant step
 the pipeline can't:
 
-1. Adds the SPA **`/auth/callback` redirect URI** (interactive auth-code + PKCE login).
+1. Registers the **`/auth/callback` redirect URI under the `publicClient` platform** — and removes it
+   from the `spa` platform if an earlier run put it there. **The platform type is the part that
+   matters.** ShipX redeems the auth code in the backend (BFF, `services/auth/handler.py::_callback`)
+   with PKCE and no client secret, which is a public-client redemption. Registered as `spa`, Entra
+   then *requires* a cross-origin redemption and rejects the backend with
+   `AADSTS9002327`; adding an `Origin` header to satisfy that fails the other way with
+   `AADSTS9002326`. Only `publicClient` works, and it must not be in both.
 2. Ensures the **resource app** the extension authenticates to (exposes
    `CustomAuthenticationExtensions.Receive.Payload`; its appId is the `aud` the claims provider
    validates — `services/entra_token_claims/security.py`).
@@ -206,29 +212,46 @@ the pipeline can't:
 (The portal/Graph `/beta` equivalents are `customAuthenticationExtensions` + `authenticationEventListeners`
 under Enterprise apps → Custom authentication extensions, if you ever need to do it by hand.)
 
-> **The claims must also be *mapped into* the token.** Binding the extension only makes Entra **call**
-> the provider; the claims it returns are discarded unless the app registration sets
-> `api.acceptMappedClaims = true` **and** declares each claim under `optionalClaims`
-> (`tenant_id`, `role`, source `customClaimsProvider`). This is **one-time and app-level — never per
-> user.** Step 4b of `setup_entra_claims_provider.sh` now does it; it was missing originally, and the
-> failure is silent and confusing: `/token-claims` returns `200` with `tenant_id` + `role`, the token
-> arrives without them, and **every tenant-scoped role** fails at sign-in with
-> `JWT is missing required claims (sub|oid / tenant id)` — while a `platform_admin` still signs in
-> fine, because that resolves from the **group** claim instead and never needs the provider. If you
-> see exactly that split, this mapping is what's missing.
+> **On CIAM the claims provider's output never reaches the token — and ShipX does not rely on it.**
+> Binding the extension only makes Entra **call** the provider. Whether the returned claims land in
+> the token is a separate app-level setting (`api.acceptMappedClaims = true` plus each claim declared
+> under `optionalClaims` with source `customClaimsProvider`), and on an **Entra External ID (CIAM)**
+> tenant that setting **does not work**. Graph accepts the PATCH and reports success; CIAM honours a
+> different (service-principal) surface and caps custom claims from `onTokenIssuanceStart`.
+>
+> Measured on the dev CIAM tenant — the provider was called and returned the right values, and the
+> token carried neither:
+>
+> ```
+> claims provider  → Claims issued for oid=b541f352…: {'tenant_id': '530aa7c9…', 'role': 'tenant_admin'}
+> issued id_token  → [...'groups','iat','iss','name','nbf','nonce','oid',...]
+>                    has tenant_id=False  has role=False  has oid=True
+> ```
+>
+> **Resolution (PR #75):** `shared/auth.py::resolve_identity_from_db` resolves `tenant_id` + `role`
+> from `tenant_user` by the token's `oid` — the same authoritative row the claims provider reads —
+> cached 60s per subject with negative caching, and consulted *only* when the token lacks the claim.
+> `/v1/auth/callback` and `/v1/auth/refresh` also return them so the SPA can build its session.
+> Sign-in therefore works whether or not steps 2–5 above succeed. Step 4b is retained only because
+> it is harmless and *is* effective on a workforce (non-CIAM) tenant.
+>
+> A consequence worth knowing: on CIAM the `*-entra-claims` Container App is **not load-bearing**. It
+> is kept for workforce-tenant parity and as a second source of truth; it could be retired for a
+> CIAM-only deployment.
 
-**Verify:** sign in via the SPA, decode the **id_token**, and confirm it carries `tenant_id` +
-`role` (and `groups`):
+**Verify:** sign in via the SPA and confirm the dashboard loads. Decoding the **id_token** is still
+useful, but expect `tenant_id`/`role` to be **absent** on CIAM — presence of `oid` is what matters:
 
 ```bash
 python3 -c "import sys,json,base64; p=sys.argv[1].split('.')[1]; p+='='*(-len(p)%4); \
 print(sorted(json.loads(base64.urlsafe_b64decode(p)).keys()))" '<id_token>'
 ```
 
-If they're missing: the extension isn't bound (or propagation lag, a few minutes); if the claims
-provider 500s or returns empty claims, check the `*-entra-claims` Container App logs (DB connectivity
-/ the user's `cognito_sub` not matching their Entra `oid`). This step persists across deploys and
-does not need repeating.
+If sign-in fails with `JWT is missing required claims (sub|oid / tenant id)`, the DB resolution did
+not find the user. Check the API logs for `Identity resolution failed for subject <oid>` and confirm
+a `tenant_user` row exists with `id` = that `oid` **and** `status = 'active'`
+(`tenant_user.id` *is* the Entra `oid`). This step persists across deploys and does not need
+repeating.
 
 **Rollback / cloud switch:** flipping `DEPLOY_CLOUD` back to `aws` returns auth to Cognito with no
 Entra dependency; the Entra objects can stay in place, dormant.
@@ -241,19 +264,118 @@ it lives in the subscription's home tenant and is single-tenant, so it can't min
 the CIAM tenant (`DefaultAzureCredential` fails; `POST /v1/platform/tenants` → `500 Could not create
 tenant`). Provision a dedicated confidential app **in the CIAM tenant**:
 
-1. Register an app in the CIAM tenant (e.g. `shipx-graph-provisioner`). Add Microsoft Graph
-   **Application** permissions `User.ReadWrite.All` and `Group.ReadWrite.All`, then **Grant admin
-   consent** (these are app-only — no delegated/user context).
+**Use `scripts/setup_entra_auth.sh`** — it does steps 1–2 idempotently, *verifies* consent rather
+than trusting the command's exit code, and prints the tfvars to set:
+
+```bash
+az login --tenant <CIAM tenant id> --allow-no-subscriptions
+ENTRA_TENANT_ID=<CIAM tenant id> ./scripts/setup_entra_auth.sh
+#   DRY_RUN=1    report intended changes only
+#   SKIP_SECRET=1 reconcile permissions without rotating the secret
+```
+
+It refuses to run unless the logged-in tenant matches `ENTRA_TENANT_ID`, because ShipX spans two
+tenants (the subscription's workforce tenant and the CIAM tenant) and configuring the wrong one is
+not obviously recoverable.
+
+Equivalent manual steps:
+
+1. Register an app in the CIAM tenant (e.g. `shipx-graph-provisioner`) with these Microsoft Graph
+   **Application** permissions, then **Grant admin consent** (app-only — no delegated/user context):
+   - `User.ReadWrite.All` — create/update the tenant user
+   - `Group.ReadWrite.All` — add them to the `{tenant}:{role}` group
+   - `User-PasswordProfile.ReadWrite.All` — **set the initial password.** Microsoft split this out of
+     `User.ReadWrite.All`; without it `set_password` fails with
+     `403 Authorization_RequestDenied — Insufficient privileges` and activation cannot complete. After
+     granting it, **restart the API revision**: the Graph token is cached for ~1h, so the old token
+     without the role keeps being used and the 403 appears to persist.
 2. Create a **client secret** on that app.
-3. Set `entra_graph_tenant_id` (the CIAM tenant id — already in `dev.tfvars`) and
-   `entra_graph_client_id` (the new app's client id) in the environment's tfvars.
+3. Set `entra_graph_tenant_id` (the CIAM tenant id) and `entra_graph_client_id` (the new app's client
+   id) in the environment's tfvars.
 4. Add the secret as the **GitHub Environment secret `ENTRA_GRAPH_CLIENT_SECRET`** (injected at apply
    via `TF_VAR_entra_graph_client_secret` — never committed), then re-run `deploy-azure.yml` so the
    API/worker/job containers pick up `ENTRA_GRAPH_CLIENT_ID` + the secret.
+5. **Self-service sign-up must be OFF.** ShipX owns signup (company requests onboarding via the ShipX
+   form; a platform admin provisions). Left on, the hosted page offers "Create account" and a stranger
+   can mint a directory user with no `tenant_user` row — an account that authenticates and resolves to
+   nothing. `setup_entra_auth.sh` turns it off; portal path is
+   External Identities → User flows → *flow* → Settings → disable sign-up.
 
 With the client id empty, the provider falls back to the managed identity (provisioning stays
 disabled but nothing else breaks). This step persists across deploys. **Verify:** provision a tenant
 from the platform console; it should return 201 and the admin user should appear in the CIAM tenant.
+
+---
+
+## Azure security baseline (Defender for Cloud)
+
+Microsoft Defender for Cloud scored the subscription **30%**. Remediation policy, set by the
+business: **staging, demo and prod must satisfy every recommendation, paid and unpaid. Dev gets only
+the controls that are free.**
+
+### Why dev needs its own subscription
+
+Defender plans are enabled and **billed per subscription, not per resource group**. Today everything
+— `shipx-tfstate-rg` and `shipx-dev-rg` — lives in one subscription
+(`21156c4a-2977-448d-8de2-c523028d2f28`). Enabling the paid plans for prod there would enable and
+bill them for dev too, so the stated dev exemption is **not expressible** until dev is separated.
+Additional subscriptions under the same billing account are free.
+
+Target layout:
+
+| Subscription | Holds | Defender |
+|---|---|---|
+| dev | dev + tfstate | Free tier only |
+| hardened | staging, demo, prod | All plans Standard |
+
+### Applying it
+
+Subscription-scoped settings live in their own root, `infrastructure/azure/subscription/`, **not** in
+the per-environment stack — three environments sharing a subscription would each try to own the same
+settings and fight over them on every apply. Apply once per subscription:
+
+```bash
+cd infrastructure/azure/subscription
+terraform init  -backend-config=environments/hardened.backend.hcl
+terraform apply -var-file=environments/hardened.tfvars     # or dev.tfvars
+```
+
+It owns the six Defender plans (tier driven by `enable_paid_defender_plans`), the subscription
+security contact, and high-severity alert email. The dev tfvars writes tier `Free` **explicitly**
+rather than omitting the plans, so a plan enabled by hand in the portal shows up as drift instead of
+being silently ignored.
+
+Malware scanning is billed per GB, so `malware_scanning_cap_gb_per_month` (default 500) bounds a
+runaway upload.
+
+### Findings deliberately NOT remediated
+
+Three recommendations are wrong for this architecture. Each should carry a Defender **exemption with
+a written justification** — leaving them silently red is worse than exempting them on the record.
+
+| Finding | Why | Compensating control |
+|---|---|---|
+| Private link on the frontend storage account | It is the **SPA static-website** origin behind Front Door **Standard**. Private-link origins need Front Door **Premium** (~$330/mo vs ~$35), and locking it down breaks the public site. It hosts deliberately-public assets. | Front Door origin restriction; no anonymous blob access |
+| Private link on the tfstate account | Reached by GitHub Actions runners over the public internet; private link means self-hosted/VNet runners. | Runner IP allowlist + shared-key disabled + Entra-only auth |
+| VNet rules on the assets account | The app issues **shared-key SAS URLs that browsers hit directly** (`shared/providers/azure/blob.py`). Default-deny kills every upload/download: the browser comes from the customer's network, not the VNet. Same pattern as S3 presigned URLs. | SAS-only (no anonymous access), short expiry, HTTPS-only; move to user-delegation SAS so access is identity-bound and revocable |
+
+`There should be more than one owner assigned to subscriptions` (High) needs a second human granted
+Owner. Terraform could assign it, but hardcoding a person's object id into version control is worse
+than an operator action — do it in the portal.
+
+### Still outstanding
+
+- Free-tier environment hardening: Key Vault RBAC (needs *User Access Administrator* on the deploy
+  identity — the same prerequisite that keeps `grant_acr_pull = false`), Key Vault firewall + purge
+  protection, Key Vault/Service Bus diagnostic logs, Postgres Entra auth.
+- Paid environment hardening: private endpoints for Key Vault + Event Grid + assets storage; ACR
+  **Premium** (both ACR findings require it — Basic supports neither network rules nor private link).
+- Two app-code migrations, each its own PR:
+  - **Disable storage shared-key access** — requires `blob.py` to use managed identity *and* switch
+    presigned URLs to a **user-delegation SAS**. A credential swap alone is not enough: SAS
+    generation currently needs the account key.
+  - **Postgres Entra-auth-only** — requires `shared/db.py` to fetch an AAD access token as the
+    password per connection.
 
 ---
 

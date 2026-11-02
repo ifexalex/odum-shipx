@@ -154,6 +154,25 @@ variable "entra_redirect_uri" {
   default     = ""
 }
 
+variable "entra_authorize_prompt" {
+  description = "OAuth2 `prompt` on the authorize request. 'select_account' shows the account picker (so a second user can sign in on a shared browser); 'login' forces re-auth; '' lets Entra silently reuse its SSO session."
+  type        = string
+  default     = "select_account"
+}
+
+variable "app_base_url" {
+  description = <<-EOT
+    Public SPA base URL used to build activation/password links in outbound
+    email. Set it explicitly for the same reason as entra_redirect_uri: the
+    frontend module depends on container_app's api_fqdn, so referencing
+    module.frontend here would create a cycle. Empty falls back to the origin
+    of entra_redirect_uri — and if both are empty, activation emails ship an
+    empty link.
+  EOT
+  type        = string
+  default     = ""
+}
+
 variable "auth_cookie_samesite" {
   description = "SameSite for auth cookies. Default 'None' — the Azure SPA (Front Door) and API (Container Apps) are different sites, so cross-site cookies are required."
   type        = string

@@ -6,14 +6,17 @@
 # `deploy-azure.yml` run has created the resources. Idempotent: re-running
 # reconciles existing objects instead of failing.
 #
-# Login is broken until this runs — the claims Container App is deployed and
-# healthy, but Entra never calls it, so tokens carry no tenant_id/role and every
-# user resolves as an unprivileged `customer` (platform admin included). See
+# Step 1 (the redirect URI and its platform type) is REQUIRED for login to work
+# at all. Steps 2–5 configure the claims provider, which on an External ID
+# (CIAM) tenant is best-effort only: CIAM discards the claims it returns, so
+# `shared/auth.py` resolves tenant_id + role from `tenant_user` by the token's
+# `oid` instead. Sign-in does not depend on steps 2–5 succeeding. See
 # docs/runbook.md → "Azure deployment — required one-time setup (Entra auth)".
 #
 # What it does
-#   1. Adds the SPA callback as a Single-page-application redirect URI on the SPA
-#      app registration (interactive auth-code + PKCE login, frontend/src/auth).
+#   1. Registers the SPA callback as a PUBLIC CLIENT redirect URI (and removes it
+#      from the `spa` platform if an earlier run put it there). The platform type
+#      is the thing that matters — see the long comment at step 1.
 #   2. Ensures the "resource" app registration the custom extension authenticates
 #      to (Entra mints a token with aud = this app; the claims provider validates
 #      it — services/entra_token_claims/security.py). Exposes the
@@ -23,15 +26,15 @@
 #      tenant_id + role claims.
 #   4. Binds it to the SPA app via an authenticationEventListener, so Entra calls
 #      it on every interactive sign-in.
-#   4b. Maps those claims INTO the token (acceptMappedClaims + optionalClaims).
-#      Binding alone only makes Entra call the provider — without this mapping the
-#      returned claims are silently discarded and every tenant-scoped sign-in
-#      fails with "JWT is missing required claims". One-time and app-level, not
-#      per user.
+#   4b. Requests that those claims be mapped into the token (acceptMappedClaims +
+#      optionalClaims). Ineffective on CIAM — Graph accepts it and the token still
+#      omits them. Kept because it is harmless and IS effective on a workforce
+#      tenant. Not load-bearing: see the note above.
 #   5. Best-effort admin-consent for the extension's permission; prints the
 #      portal fallback if that needs a click.
-#   6. Prints the exact `entra_claims_caller_*` tfvars to set (so the deployed
-#      claims container validates the inbound token), and a verify command.
+#   6. Prints the exact `entra_claims_caller_*` tfvars to set, reading the issuer
+#      and JWKS from the tenant's OIDC discovery document rather than guessing
+#      the host (guessing it is how AADSTS1100001 happens — see step 6).
 #
 # Requirements: az CLI, logged in (`az login`) as a user able to manage app
 # registrations, service principals, grant admin consent, and create
@@ -97,20 +100,48 @@ SPA_OBJECT_ID="$(az ad app show --id "${SPA_APP_ID}" --query id -o tsv)" \
   || die "SPA app ${SPA_APP_ID} not found."
 log "SPA app: ${SPA_APP_ID} (object ${SPA_OBJECT_ID})"
 
-# ── 1. SPA redirect URI (interactive auth-code callback) ──────────────────────
-log "Ensuring SPA redirect URI: ${REDIRECT_URI}"
-EXISTING_SPA_URIS="$(az ad app show --id "${SPA_APP_ID}" --query 'spa.redirectUris' -o json)"
-if printf '%s' "${EXISTING_SPA_URIS}" | grep -qF "${REDIRECT_URI}"; then
-  log "  already present."
-else
-  MERGED="$(printf '%s' "${EXISTING_SPA_URIS}" | python3 -c \
-    "import sys,json; a=json.load(sys.stdin) or []; a.append(sys.argv[1]); print(json.dumps(sorted(set(a))))" \
-    "${REDIRECT_URI}")"
+# ── 1. Redirect URI, registered as a PUBLIC CLIENT platform ──────────────────
+# The platform TYPE matters more than the URI, and getting it wrong fails at the
+# token-redemption step with an opaque AADSTS code. ShipX redeems the auth code
+# in the BACKEND (BFF pattern, services/auth/handler.py `_callback`) with PKCE
+# and no client secret, so the URI must sit under `publicClient`:
+#
+#   publicClient (correct) — server-side redemption, no Origin header.
+#   spa          (wrong)   — Entra then REQUIRES a cross-origin redemption and
+#                            rejects the backend's call with AADSTS9002327
+#                            ("Tokens issued for the 'Single-Page Application'
+#                            client-type may only be redeemed via cross-origin
+#                            requests"). Adding an Origin header to satisfy it
+#                            then fails the other way, AADSTS9002326.
+#
+# So this step also REMOVES the URI from `spa` if an earlier run put it there —
+# leaving it in both platforms keeps the SPA rule in force and login stays
+# broken. Do not "helpfully" re-add it to spa.
+log "Ensuring publicClient redirect URI: ${REDIRECT_URI}"
+PLATFORMS="$(az ad app show --id "${SPA_APP_ID}" --query '{spa: spa.redirectUris, publicClient: publicClient.redirectUris}' -o json)"
+REDIRECT_PATCH="$(printf '%s' "${PLATFORMS}" | python3 -c '
+import sys, json
+want = sys.argv[1]
+cur = json.load(sys.stdin) or {}
+spa = [u for u in (cur.get("spa") or []) if u != want]
+public = sorted(set((cur.get("publicClient") or []) + [want]))
+changed = spa != (cur.get("spa") or []) or public != sorted(cur.get("publicClient") or [])
+print(json.dumps({
+    "changed": changed,
+    "body": {"spa": {"redirectUris": spa}, "publicClient": {"redirectUris": public}},
+}))' "${REDIRECT_URI}")"
+if [ "$(printf '%s' "${REDIRECT_PATCH}" | python3 -c 'import sys,json;print(json.load(sys.stdin)["changed"])')" = "True" ]; then
+  printf '%s' "${REDIRECT_PATCH}" \
+    | python3 -c 'import sys,json;print(json.dumps(json.load(sys.stdin)["body"]))' \
+    > "${TMP_REDIRECT_BODY:=$(mktemp)}"
   az rest --method PATCH \
     --url "${GRAPH_BETA}/applications/${SPA_OBJECT_ID}" \
     --headers "Content-Type=application/json" \
-    --body "{\"spa\": {\"redirectUris\": ${MERGED}}}"
-  log "  added."
+    --body "@${TMP_REDIRECT_BODY}"
+  rm -f "${TMP_REDIRECT_BODY}"
+  log "  set (publicClient only; removed from spa if present)."
+else
+  log "  already correct."
 fi
 
 # ── 2. Resource app the custom extension authenticates to ─────────────────────
@@ -203,15 +234,26 @@ else
   log "Listener already bound (${LISTENER_ID})."
 fi
 
-# ── 4b. Emit the provider's claims into the token ─────────────────────────────
-# Binding the extension only makes Entra CALL the provider. The claims it returns
-# are still discarded unless the app both accepts mapped claims and declares each
-# one. Skipping this is silent: /token-claims returns 200 with tenant_id + role,
-# the token arrives without them, and the SPA fails with "JWT is missing required
-# claims (sub|oid / tenant id)" for every tenant-scoped role — while a
-# platform_admin still works, because that resolves from the group claim instead.
-# This is a one-time, app-level switch; it is NOT per user.
-log "Mapping tenant_id + role into the issued tokens…"
+# ── 4b. Ask for the provider's claims to be emitted into the token ───────────
+# Binding the extension only makes Entra CALL the provider; whether the returned
+# claims land in the token is a separate, app-level setting. This step requests
+# that mapping.
+#
+# IMPORTANT — on Entra External ID (CIAM, *.ciamlogin.com) this step DOES NOT
+# WORK, and that is not a bug in this script. Graph accepts the PATCH and
+# reports success, including acceptMappedClaims=true, but CIAM honours a
+# different (service-principal) surface and caps custom claims from
+# onTokenIssuanceStart. Measured on the dev CIAM tenant: the provider was called
+# and returned {tenant_id, role}, and the issued id_token still carried neither.
+#
+# ShipX therefore does NOT depend on this mapping. `shared/auth.py`
+# (resolve_identity_from_db) resolves tenant_id + role from `tenant_user` by the
+# token's `oid`, which is the same authoritative row the claims provider reads.
+# Sign-in works whether or not this step succeeds.
+#
+# It is kept because it is harmless, idempotent, and IS effective on a workforce
+# (non-CIAM) tenant, so it keeps this script correct for both tenant types.
+log "Requesting tenant_id + role mapping into issued tokens (no-op on CIAM)…"
 CLAIMS_JSON='[
   { "name": "tenant_id", "source": "customClaimsProvider", "essential": false, "additionalProperties": [] },
   { "name": "role",      "source": "customClaimsProvider", "essential": false, "additionalProperties": [] }
@@ -223,13 +265,9 @@ if az rest --method PATCH \
     \"api\": { \"acceptMappedClaims\": true, \"requestedAccessTokenVersion\": 2 },
     \"optionalClaims\": { \"idToken\": ${CLAIMS_JSON}, \"accessToken\": ${CLAIMS_JSON}, \"saml2Token\": [] }
   }" >/dev/null 2>&1; then
-  log "  mapped (acceptMappedClaims=true, tenant_id + role on id/access tokens)."
+  log "  requested. On CIAM the token will still omit them — expected; see above."
 else
-  warn "Could not set the claims mapping automatically. Do it in the portal:"
-  warn "  App registrations → ${SPA_APP_NAME} → Token configuration → Add optional claim"
-  warn "  (tenant_id, role — source: customClaimsProvider), and"
-  warn "  Manifest → api.acceptMappedClaims = true."
-  warn "Without it every tenant-scoped sign-in fails: 'JWT is missing required claims'."
+  log "  not applied (expected on CIAM). Sign-in does not depend on it."
 fi
 
 # ── 5. Admin consent (best-effort) ────────────────────────────────────────────
@@ -244,8 +282,43 @@ if ! az ad app permission admin-consent --id "${RESOURCE_APP_ID}" 2>/dev/null; t
 fi
 
 # ── 6. Print the tfvars + verify ──────────────────────────────────────────────
-ISSUER="https://login.microsoftonline.com/${TENANT_ID}/v2.0"
-JWKS="https://login.microsoftonline.com/${TENANT_ID}/discovery/v2.0/keys"
+# Read issuer + jwks_uri from the tenant's OIDC discovery document rather than
+# assembling them from a known host. This is not defensiveness for its own sake:
+# hardcoding https://login.microsoftonline.com/<tid>/v2.0 here is WRONG for an
+# External ID (CIAM) tenant, and the failure is brutal to diagnose — the claims
+# extension 401s every call and token issuance dies with AADSTS1100001 /
+# 1003002, pointing at nothing. A CIAM tenant also stamps the issuer with the
+# tenant GUID host, not the tenant-NAME host, so even the right domain assembled
+# by hand is wrong. The discovery document is the only authority; ask it.
+log "Resolving the real issuer + JWKS from OIDC discovery…"
+DEFAULT_DOMAIN="$(az rest --method GET \
+  --url "https://graph.microsoft.com/v1.0/organization" \
+  --query 'value[0].verifiedDomains[?isDefault]|[0].name' -o tsv 2>/dev/null || true)"
+TENANT_SHORT="${DEFAULT_DOMAIN%%.*}"
+
+ISSUER=""
+JWKS=""
+for BASE in \
+  "https://${TENANT_SHORT}.ciamlogin.com/${TENANT_ID}/v2.0/.well-known/openid-configuration" \
+  "https://login.microsoftonline.com/${TENANT_ID}/v2.0/.well-known/openid-configuration"
+do
+  [ -n "${TENANT_SHORT}" ] || [ "${BASE}" = "${BASE#*ciamlogin}" ] || continue
+  DISCOVERY="$(curl -fsS "${BASE}" 2>/dev/null || true)"
+  [ -n "${DISCOVERY}" ] || continue
+  ISSUER="$(printf '%s' "${DISCOVERY}" | python3 -c 'import sys,json;print(json.load(sys.stdin).get("issuer",""))' 2>/dev/null || true)"
+  JWKS="$(printf '%s' "${DISCOVERY}" | python3 -c 'import sys,json;print(json.load(sys.stdin).get("jwks_uri",""))' 2>/dev/null || true)"
+  if [ -n "${ISSUER}" ] && [ -n "${JWKS}" ]; then
+    log "  from ${BASE}"
+    break
+  fi
+done
+if [ -z "${ISSUER}" ] || [ -z "${JWKS}" ]; then
+  warn "Could not read the OIDC discovery document. Do NOT guess these values —"
+  warn "fetch the document yourself and copy its \"issuer\" and \"jwks_uri\" verbatim:"
+  warn "  curl -s https://<tenant>.ciamlogin.com/${TENANT_ID}/v2.0/.well-known/openid-configuration | jq '{issuer, jwks_uri}'"
+  ISSUER="<copy \"issuer\" from the discovery document>"
+  JWKS="<copy \"jwks_uri\" from the discovery document>"
+fi
 cat <<DONE
 
 $(log 'Done.')

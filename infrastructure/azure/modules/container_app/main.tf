@@ -63,6 +63,16 @@ locals {
     # ENTRA_AUTHORIZE_ENDPOINT defaults to the token endpoint with /token→/authorize.
     ENTRA_AUTHORIZE_ENDPOINT = var.entra_authorize_endpoint
     ENTRA_REDIRECT_URI       = var.entra_redirect_uri
+    # Account picker. Without a `prompt`, Entra reuses its single active SSO
+    # session and the login button silently signs the same person back in, so a
+    # second user can never get in on a shared browser. Declared here rather
+    # than left to the code default so the behaviour is visible in the env.
+    ENTRA_AUTHORIZE_PROMPT = var.entra_authorize_prompt
+    # Base URL used to build activation/password links in outbound email
+    # (services/tenant_management/service.py `_app_base_url`). It falls back to
+    # ENTRA_REDIRECT_URI's origin, so dev worked by accident — but an
+    # environment with no redirect URI set would email an EMPTY link. Set it.
+    APP_BASE_URL = var.app_base_url
     # SPA and API are different sites on Azure (*.azurefd.net vs
     # *.azurecontainerapps.io), so the auth cookies must be SameSite=None to be
     # sent cross-site. (AWS shares a registrable domain → default Strict.)
