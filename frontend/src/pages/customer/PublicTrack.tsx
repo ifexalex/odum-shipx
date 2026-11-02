@@ -10,7 +10,7 @@ import { useState, type JSX } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { ApiError } from '../../api/client'
 import { publicTrackingApi, stageLabelFor, type PublicTrackingResult } from '../../api/customer'
-import { Banner, Button, Field } from '../../design/components'
+import { Banner, Button, Field, PhoneField } from '../../design/components'
 import styles from './customer.module.css'
 
 function TrackingTimeline({ result }: { result: PublicTrackingResult }): JSX.Element {
@@ -109,13 +109,13 @@ export function PublicTrack(): JSX.Element {
           value={trackingCode}
           onChange={(e) => { setTrackingCode(e.target.value); setResult(null) }}
         />
-        <Field
+        <PhoneField
           label="Phone number"
           name="phone"
           required
-          placeholder="e.g. +2348022222222"
           value={phone}
-          onChange={(e) => setPhone(e.target.value)}
+          onChange={setPhone}
+          helper="The number your shipping company has on file for you."
         />
 
         {error && <Banner variant="error">{error}</Banner>}

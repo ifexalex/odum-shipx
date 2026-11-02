@@ -19,7 +19,7 @@
 import { useEffect, useMemo, useState, type JSX } from 'react'
 import { type BrandingConfig } from '../../api/tenantManagement'
 import { isValidHexColor } from '../../design/deriveBrandShades'
-import { Banner, Button, Card, Field } from '../../design/components'
+import { Banner, Button, Card, Field, PhoneField } from '../../design/components'
 import { useBranding, useSaveBranding } from '../../hooks/useConfig'
 import { PageHeader } from '../../shell/PageHeader'
 import { SectionHead } from '../../shell/SectionHead'
@@ -205,6 +205,15 @@ export function CompanySettings(): JSX.Element {
     }
   }
 
+  // Value-based counterpart for controls that emit a value rather than a DOM
+  // event (PhoneField emits E.164, CountrySelect/StateSelect emit a name).
+  function setValue<K extends keyof FormState>(key: K) {
+    return (value: string) => {
+      setSaved(false)
+      setForm((f) => ({ ...f, [key]: value }))
+    }
+  }
+
   async function handleSave(): Promise<void> {
     setSaved(false)
     await save.mutateAsync(brandingFromForm(form))
@@ -291,11 +300,11 @@ export function CompanySettings(): JSX.Element {
             />
             <div className={styles.grid2}>
               <Field label="Pickup hours" name="pickup_hours" optional placeholder="Mon–Sat · 8:00 AM – 5:00 PM" value={form.pickup_hours} onChange={set('pickup_hours')} disabled={isLoading} />
-              <Field label="Pickup contact phone" name="pickup_phone" optional icon="phone" value={form.pickup_phone} onChange={set('pickup_phone')} disabled={isLoading} />
+              <PhoneField label="Pickup contact phone" name="pickup_phone" optional value={form.pickup_phone} onChange={setValue('pickup_phone')} disabled={isLoading} />
             </div>
             <div className={styles.grid2}>
               <Field label="Support email" name="support_email" optional type="email" icon="mail" value={form.support_email} onChange={set('support_email')} disabled={isLoading} />
-              <Field label="Support WhatsApp" name="support_whatsapp" optional icon="phone" value={form.support_whatsapp} onChange={set('support_whatsapp')} disabled={isLoading} />
+              <PhoneField label="Support WhatsApp" name="support_whatsapp" optional value={form.support_whatsapp} onChange={setValue('support_whatsapp')} disabled={isLoading} />
             </div>
           </Card>
 

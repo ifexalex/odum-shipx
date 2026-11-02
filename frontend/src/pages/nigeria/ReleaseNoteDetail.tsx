@@ -25,6 +25,7 @@ import {
   Icon,
   Kvp,
   Mono,
+  PhoneField,
   StatCard,
   ToggleSwitch,
   type BadgeVariant,
@@ -152,7 +153,7 @@ function RecordPickupModal({ note, onCancel, onSuccess }: RecordPickupModalProps
         {isDelegate && (
           <>
             <Field label="Delegate name" name="delegate_name" required value={delegateName} onChange={(e) => setDelegateName(e.target.value)} />
-            <Field label="Delegate phone" name="delegate_phone" required value={delegatePhone} onChange={(e) => setDelegatePhone(e.target.value)} />
+            <PhoneField label="Delegate phone" name="delegate_phone" required value={delegatePhone} onChange={setDelegatePhone} />
             <div>
               <label style={{ fontSize: '0.875rem', fontWeight: 600, display: 'block', marginBottom: 6 }}>
                 ID type <span style={{ color: 'var(--color-error)' }}>*</span>

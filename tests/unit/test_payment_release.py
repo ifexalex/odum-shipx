@@ -1973,6 +1973,7 @@ class TestWarehouses:
 
         with (
             patch.object(service.repo, "list_warehouses", return_value=[{"id": "wh-001"}]),
+            patch.object(service.repo, "find_warehouse_by_name", return_value=None),
             patch.object(service.repo, "create_warehouse", return_value={"id": "wh-002", "name": "Onitsha Office"}),
             patch("services.payment_release.service.log_audit") as mock_audit,
         ):
@@ -1998,6 +1999,7 @@ class TestWarehouses:
 
         with (
             patch.object(service.repo, "list_warehouses", return_value=[]),
+            patch.object(service.repo, "find_warehouse_by_name", return_value=None),
             patch.object(service.repo, "create_warehouse", return_value={"id": "wh-001"}) as mock_create,
             patch("services.payment_release.service.log_audit"),
         ):
@@ -2017,6 +2019,7 @@ class TestWarehouses:
 
         with (
             patch.object(service.repo, "list_warehouses", return_value=[{"id": "wh-001", "is_default": True}]),
+            patch.object(service.repo, "find_warehouse_by_name", return_value=None),
             patch.object(service.repo, "create_warehouse", return_value={"id": "wh-002"}) as mock_create,
             patch("services.payment_release.service.log_audit"),
         ):
@@ -2113,6 +2116,243 @@ class TestWarehouses:
         # event's own "sub" claim is irrelevant since get_tenant_context is
         # mocked to return this fixture directly.
         assert mock_create.call_args.kwargs["actor_id"] == "user-1"
+
+    # ── Reported live, 2026-11-02 ────────────────────────────────────────────
+    # Three real defects, each pinned here:
+    #   1. the arrival-warehouse picker was empty when creating a packing list
+    #   2. a deleted warehouse's name stayed reserved and could not be reused
+    #   3. there was no way to make a warehouse the default as you created it
+
+    def test_china_office_staff_can_read_the_warehouse_list(self):
+        """Regression: CHINA_OFFICE_STAFF create packing lists, and a packing
+        list records its arrival warehouse (migration 053) — yet they were
+        omitted from the read roles, so GET /v1/warehouses 403'd and the
+        picker rendered "No warehouses configured"."""
+        from services.payment_release import handler, service
+
+        event = {
+            "requestContext": {
+                "requestId": "req-wh-china",
+                "http": {"method": "GET", "path": "/v1/warehouses"},
+                "authorizer": {"claims": {"sub": "u1", "custom:tenant_id": TENANT_ID}},
+                "identity": {"sourceIp": "127.0.0.1"},
+            },
+            "headers": {},
+            "body": None,
+            "queryStringParameters": {},
+            "pathParameters": {},
+        }
+        ctx = _ctx(UserRole.CHINA_OFFICE_STAFF)
+        with (
+            patch("services.payment_release.handler.get_tenant_context", return_value=ctx),
+            patch.object(service, "list_warehouses", return_value=[{"id": "wh-001", "name": "Lagos"}]),
+        ):
+            resp = handler.lambda_handler(event, None)
+
+        assert resp["statusCode"] == 200
+
+    def test_create_rejects_a_name_an_active_warehouse_already_holds(self):
+        from services.payment_release import service
+        from shared.exceptions import DuplicateResourceError
+
+        req = MagicMock()
+        req.name = "Lagos — Trade Fair"
+        req.address = req.city = req.state = req.phone = None
+        req.is_default = False
+
+        with (
+            patch.object(service.repo, "list_warehouses", return_value=[{"id": "wh-001"}]),
+            patch.object(service.repo, "find_warehouse_by_name", return_value={"id": "wh-001"}),
+            patch.object(service.repo, "create_warehouse") as mock_create,
+            patch("services.payment_release.service.log_audit"),
+            pytest.raises(DuplicateResourceError),
+        ):
+            service.create_warehouse(TENANT_ID, req, actor_id="admin-1", actor_role="tenant_admin")
+
+        mock_create.assert_not_called()
+
+    def test_a_retired_warehouses_name_can_be_reused(self):
+        """The reported bug: delete "Lagos", recreate "Lagos" → blocked. The
+        duplicate check is scoped to ACTIVE rows (matching migration 056's
+        partial index), so a retired name is free again."""
+        from services.payment_release import service
+
+        req = MagicMock()
+        req.name = "Lagos — Trade Fair"
+        req.address = req.city = req.state = req.phone = None
+        req.is_default = False
+
+        with (
+            patch.object(service.repo, "list_warehouses", return_value=[{"id": "wh-001"}]),
+            # active_only=True finds nothing: the row holding this name is inactive.
+            patch.object(service.repo, "find_warehouse_by_name", return_value=None) as mock_find,
+            patch.object(service.repo, "create_warehouse", return_value={"id": "wh-009"}),
+            patch("services.payment_release.service.log_audit"),
+        ):
+            result = service.create_warehouse(TENANT_ID, req, actor_id="admin-1", actor_role="tenant_admin")
+
+        assert result["id"] == "wh-009"
+        assert mock_find.call_args.kwargs["active_only"] is True
+
+    def test_create_with_is_default_promotes_the_new_warehouse(self):
+        from services.payment_release import service
+
+        req = MagicMock()
+        req.name = "Kano — Sabon Gari"
+        req.address = req.city = req.state = req.phone = None
+        req.is_default = True
+
+        with (
+            patch.object(service.repo, "list_warehouses", return_value=[{"id": "wh-001", "is_default": True}]),
+            patch.object(service.repo, "find_warehouse_by_name", return_value=None),
+            patch.object(service.repo, "create_warehouse", return_value={"id": "wh-002", "is_default": False}),
+            patch.object(
+                service.repo, "set_default_warehouse", return_value={"id": "wh-002", "is_default": True}
+            ) as mock_promote,
+            patch("services.payment_release.service.log_audit"),
+        ):
+            result = service.create_warehouse(TENANT_ID, req, actor_id="admin-1", actor_role="tenant_admin")
+
+        mock_promote.assert_called_once_with(TENANT_ID, "wh-002")
+        assert result["is_default"] is True
+
+    def test_create_does_not_promote_on_a_non_boolean_is_default(self):
+        """`is True`, not truthiness: a stub or stray value must never silently
+        reassign a tenant's default warehouse as a side effect of create."""
+        from services.payment_release import service
+
+        req = MagicMock()  # req.is_default is a MagicMock — truthy, but not True
+        req.name = "Aba Office"
+        req.address = req.city = req.state = req.phone = None
+
+        with (
+            patch.object(service.repo, "list_warehouses", return_value=[{"id": "wh-001", "is_default": True}]),
+            patch.object(service.repo, "find_warehouse_by_name", return_value=None),
+            patch.object(service.repo, "create_warehouse", return_value={"id": "wh-002"}),
+            patch.object(service.repo, "set_default_warehouse") as mock_promote,
+            patch("services.payment_release.service.log_audit"),
+        ):
+            service.create_warehouse(TENANT_ID, req, actor_id="admin-1", actor_role="tenant_admin")
+
+        mock_promote.assert_not_called()
+
+    def test_delete_hard_deletes_an_unreferenced_warehouse(self):
+        from services.payment_release import service
+
+        with (
+            patch.object(
+                service.repo,
+                "get_warehouse_by_id",
+                return_value={"id": "wh-002", "name": "Aba Office", "is_default": False, "is_active": True},
+            ),
+            patch.object(service.repo, "count_active_warehouses", return_value=3),
+            patch.object(service.repo, "count_warehouse_references", return_value={}),
+            patch.object(service.repo, "delete_warehouse", return_value={"id": "wh-002"}) as mock_delete,
+            patch("services.payment_release.service.log_audit") as mock_audit,
+        ):
+            service.delete_warehouse(TENANT_ID, "wh-002", actor_id="admin-1", actor_role="tenant_admin")
+
+        mock_delete.assert_called_once_with(TENANT_ID, "wh-002")
+        # A hard delete is unrecoverable, so the audit trail is the only record
+        # the warehouse ever existed — it must carry enough to recreate it.
+        assert mock_audit.call_args.kwargs["action"] == "DELETE"
+        assert mock_audit.call_args.kwargs["before_state"]["name"] == "Aba Office"
+
+    def test_delete_refuses_a_warehouse_a_release_note_references(self):
+        """Handover documents must never lose the warehouse that released the
+        goods, so the delete is refused and deactivation offered instead."""
+        from services.payment_release import service
+        from shared.exceptions import BusinessRuleViolationError
+
+        with (
+            patch.object(
+                service.repo,
+                "get_warehouse_by_id",
+                return_value={"id": "wh-002", "is_default": False, "is_active": True},
+            ),
+            patch.object(service.repo, "count_active_warehouses", return_value=3),
+            patch.object(service.repo, "count_warehouse_references", return_value={"release note": 2, "pickup record": 1}),
+            patch.object(service.repo, "delete_warehouse") as mock_delete,
+            patch("services.payment_release.service.log_audit"),
+        ):
+            with pytest.raises(BusinessRuleViolationError) as exc:
+                service.delete_warehouse(TENANT_ID, "wh-002", actor_id="admin-1", actor_role="tenant_admin")
+
+        mock_delete.assert_not_called()
+        assert exc.value.rule_id == "WAREHOUSE_IN_USE"
+        # The message names what is blocking it, rather than "it is in use".
+        assert "2 release notes" in str(exc.value)
+        assert "1 pickup record" in str(exc.value)
+
+    def test_delete_refuses_the_default_warehouse(self):
+        from services.payment_release import service
+        from shared.exceptions import BusinessRuleViolationError
+
+        with (
+            patch.object(
+                service.repo, "get_warehouse_by_id", return_value={"id": "wh-001", "is_default": True, "is_active": True}
+            ),
+            patch.object(service.repo, "delete_warehouse") as mock_delete,
+            pytest.raises(BusinessRuleViolationError) as exc,
+        ):
+            service.delete_warehouse(TENANT_ID, "wh-001", actor_id="admin-1", actor_role="tenant_admin")
+
+        mock_delete.assert_not_called()
+        assert exc.value.rule_id == "WAREHOUSE_DEFAULT_IMMUTABLE"
+
+    def test_patch_cannot_deactivate_a_warehouse(self):
+        """is_active = False via PATCH would walk past the default-warehouse and
+        last-active guards that only the delete/deactivate path enforces."""
+        from services.payment_release import service
+        from shared.exceptions import BusinessRuleViolationError
+
+        req = MagicMock()
+        req.model_dump.return_value = {"is_active": False}
+
+        with (
+            patch.object(service.repo, "get_warehouse_by_id", return_value={"id": "wh-002", "is_default": False}),
+            patch.object(service.repo, "update_warehouse") as mock_update,
+            pytest.raises(BusinessRuleViolationError) as exc,
+        ):
+            service.update_warehouse(TENANT_ID, "wh-002", req, actor_id="admin-1", actor_role="tenant_admin")
+
+        mock_update.assert_not_called()
+        assert exc.value.rule_id == "WAREHOUSE_DEACTIVATE_VIA_DELETE"
+
+    def test_rename_onto_another_active_warehouses_name_is_rejected(self):
+        from services.payment_release import service
+        from shared.exceptions import DuplicateResourceError
+
+        req = MagicMock()
+        req.model_dump.return_value = {"name": "Lagos — Trade Fair"}
+
+        with (
+            patch.object(service.repo, "get_warehouse_by_id", return_value={"id": "wh-002", "is_default": False}),
+            patch.object(service.repo, "find_warehouse_by_name", return_value={"id": "wh-001"}),
+            patch.object(service.repo, "update_warehouse") as mock_update,
+            pytest.raises(DuplicateResourceError),
+        ):
+            service.update_warehouse(TENANT_ID, "wh-002", req, actor_id="admin-1", actor_role="tenant_admin")
+
+        mock_update.assert_not_called()
+
+    def test_renaming_a_warehouse_to_its_own_name_is_allowed(self):
+        """The clash check compares ids, so a no-op rename of the row itself
+        (or a PATCH that resends the unchanged name) is not a conflict."""
+        from services.payment_release import service
+
+        req = MagicMock()
+        req.model_dump.return_value = {"name": "Lagos — Trade Fair", "phone": "08012345678"}
+
+        with (
+            patch.object(service.repo, "get_warehouse_by_id", return_value={"id": "wh-001", "is_default": False}),
+            patch.object(service.repo, "find_warehouse_by_name", return_value={"id": "wh-001"}),
+            patch.object(service.repo, "update_warehouse", return_value={"id": "wh-001"}) as mock_update,
+            patch("services.payment_release.service.log_audit"),
+        ):
+            service.update_warehouse(TENANT_ID, "wh-001", req, actor_id="admin-1", actor_role="tenant_admin")
+
+        mock_update.assert_called_once()
 
     def test_set_default_route_forbidden_for_nigeria_office_staff(self):
         from services.payment_release import handler

@@ -146,11 +146,20 @@ def create_warehouse(tenant_id: str, data: dict[str, Any]) -> dict[str, Any] | N
     return execute_write_with_tenant(
         tenant_id,
         """
-        INSERT INTO warehouse (tenant_id, name, address, city, state, phone, is_default, created_by)
-        VALUES (%(tenant_id)s, %(name)s, %(address)s, %(city)s, %(state)s, %(phone)s, %(is_default)s, %(created_by)s)
+        INSERT INTO warehouse (tenant_id, name, address, city, state, country, phone, is_default, created_by)
+        VALUES (%(tenant_id)s, %(name)s, %(address)s, %(city)s, %(state)s,
+                COALESCE(%(country)s, 'Nigeria'), %(phone)s, %(is_default)s, %(created_by)s)
         RETURNING *
         """,
-        {"address": None, "city": None, "state": None, "phone": None, "is_default": False, **data},
+        {
+            "address": None,
+            "city": None,
+            "state": None,
+            "country": None,
+            "phone": None,
+            "is_default": False,
+            **data,
+        },
     )
 
 
@@ -170,7 +179,7 @@ def set_default_warehouse(tenant_id: str, warehouse_id: str) -> dict[str, Any] |
     )[-1]
 
 
-_WAREHOUSE_EDITABLE_FIELDS = ("name", "address", "city", "state", "phone", "is_active")
+_WAREHOUSE_EDITABLE_FIELDS = ("name", "address", "city", "state", "country", "phone", "is_active")
 
 
 def update_warehouse(tenant_id: str, warehouse_id: str, updates: dict[str, Any]) -> dict[str, Any] | None:
@@ -192,6 +201,74 @@ def update_warehouse(tenant_id: str, warehouse_id: str, updates: dict[str, Any])
         """,
         params,
     )
+
+
+# Tables whose rows point at a warehouse, as (table, column, human label).
+# release_note / pickup_record / payment_record carry NO ON DELETE action by
+# design (migration 041): a handover document must never lose the warehouse that
+# released the goods. packing_list is ON DELETE SET NULL (migration 053), but a
+# list still records where cargo is bound, so losing it silently is just as
+# wrong — it is counted here too and blocks a delete the same way.
+_WAREHOUSE_REFERENCES: tuple[tuple[str, str, str], ...] = (
+    ("release_note", "warehouse_id", "release note"),
+    ("pickup_record", "warehouse_id", "pickup record"),
+    ("payment_record", "warehouse_id", "payment record"),
+    ("packing_list", "arrival_warehouse_id", "packing list"),
+)
+
+
+def count_warehouse_references(tenant_id: str, warehouse_id: str) -> dict[str, int]:
+    """Count the rows that would be orphaned by deleting this warehouse.
+
+    Returns only the non-zero counts, keyed by the human label, so the caller can
+    name what is actually blocking the delete instead of saying "it is in use".
+    Table and column names come from the module-level allowlist above and are
+    never caller-supplied, so interpolating them into the SQL is safe; the
+    warehouse id stays a bound parameter.
+    """
+    counts: dict[str, int] = {}
+    for table, column, label in _WAREHOUSE_REFERENCES:
+        rows = execute_with_tenant(
+            tenant_id,
+            f"SELECT COUNT(*) AS cnt FROM {table} WHERE tenant_id = %s AND {column} = %s",
+            (tenant_id, warehouse_id),
+        )
+        count = int(rows[0]["cnt"]) if rows else 0
+        if count:
+            counts[label] = count
+    return counts
+
+
+def delete_warehouse(tenant_id: str, warehouse_id: str) -> dict[str, Any] | None:
+    """Hard-delete a warehouse. Returns the deleted row, or None if it was
+    already gone.
+
+    A genuine DELETE, not a flag flip: an operator who removes a warehouse they
+    added by mistake expects it gone, and expects its name to be reusable. The
+    caller must have established that nothing references it
+    (count_warehouse_references) — the FKs would refuse anyway, but the service
+    turns that into an actionable message first.
+    """
+    return execute_write_with_tenant(
+        tenant_id,
+        "DELETE FROM warehouse WHERE tenant_id = %s AND id = %s RETURNING *",
+        (tenant_id, warehouse_id),
+    )
+
+
+def find_warehouse_by_name(tenant_id: str, name: str, *, active_only: bool = False) -> dict[str, Any] | None:
+    """Look up a warehouse by exact name (case-insensitive).
+
+    Used to turn a would-be unique-index violation into a clear message, and to
+    offer restoring a deactivated warehouse rather than rejecting the name.
+    """
+    clause = "AND is_active" if active_only else ""
+    rows = execute_with_tenant(
+        tenant_id,
+        f"SELECT * FROM warehouse WHERE tenant_id = %s AND LOWER(name) = LOWER(%s) {clause} LIMIT 1",
+        (tenant_id, name),
+    )
+    return rows[0] if rows else None
 
 
 def count_active_warehouses(tenant_id: str) -> int:

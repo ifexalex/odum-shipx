@@ -2146,7 +2146,7 @@
         }
        ]
       },
-      "description": "Public endpoint \u2014 no auth required. Customer looks up shipment by tracking code + phone number."
+      "description": "Public endpoint \u2014 no auth required. Customer looks up shipment by tracking code + phone number.\n\nThe phone is normalised to E.164 before matching (fixed 2026-11-02). Customer phones are stored E.164 and this previously compared ONE exact string, so a local-format number never matched. Note this very request used phone=08012345678 \u2014 it would have returned 404 against a customer stored as +2348012345678. Both the normalised and the raw form are now accepted."
      }
     }
    ]
@@ -4417,7 +4417,7 @@
       ],
       "body": {
        "mode": "raw",
-       "raw": "{\n  \"name\": \"Lagos Island\",\n  \"address\": \"3rd Floor, Capital Plaza, 27 Sokoto Road\",\n  \"city\": \"Lagos\",\n  \"state\": \"Lagos\",\n  \"phone\": \"07066171191\"\n}"
+       "raw": "{\n  \"name\": \"Lagos Island\",\n  \"address\": \"3rd Floor, Capital Plaza, 27 Sokoto Road\",\n  \"city\": \"Lagos\",\n  \"state\": \"Lagos\",\n  \"phone\": \"07066171191\",\n  \"is_default\": false,\n  \"country\": \"Nigeria\"\n}"
       },
       "url": {
        "raw": "{{base_url}}/v1/warehouses",
@@ -4428,7 +4428,8 @@
         "v1",
         "warehouses"
        ]
-      }
+      },
+      "description": "Add a branch/office warehouse. tenant_admin only.\n\n`is_default` (optional, default false) promotes it to the tenant's default as part of creating it. The FIRST warehouse a tenant creates becomes the default regardless - nothing else sets is_default, and a tenant without one cannot generate a release note.\n\n409 DUPLICATE_RESOURCE if an ACTIVE warehouse already has this name. A retired (is_active=false) warehouse does NOT reserve its name - uniqueness is scoped to active rows (migration 056).\n\n`country` (migration 057, default 'Nigeria') is the branch's destination country. It anchors the state/province picker in the UI; without it `state` could only be free text."
      }
     },
     {
@@ -4508,7 +4509,7 @@
      }
     },
     {
-     "name": "Deactivate Warehouse",
+     "name": "Delete Warehouse",
      "request": {
       "method": "DELETE",
       "header": [
@@ -4539,7 +4540,45 @@
         "warehouses",
         "{{warehouse_id}}"
        ]
-      }
+      },
+      "description": "PERMANENTLY delete a warehouse. tenant_admin only.\n\nA real delete, not a flag flip: the row is removed and its name becomes reusable.\n\nRefusals (422 BUSINESS_RULE_VIOLATION, with `rule_id`):\n- WAREHOUSE_IN_USE - a release_note / pickup_record / payment_record / packing_list references it. Those records must keep the warehouse they were issued against, so use 'Deactivate Warehouse (retire)' instead.\n- WAREHOUSE_DEFAULT_IMMUTABLE - set another warehouse as default first.\n- WAREHOUSE_LAST_ACTIVE - a tenant must keep at least one active warehouse."
+     }
+    },
+    {
+     "name": "Deactivate Warehouse (retire)",
+     "request": {
+      "method": "PATCH",
+      "header": [
+       {
+        "key": "X-Tenant-ID",
+        "value": "{{tenant_id}}"
+       },
+       {
+        "key": "X-Role",
+        "value": "tenant_admin"
+       },
+       {
+        "key": "X-User-ID",
+        "value": "{{user_id}}"
+       },
+       {
+        "key": "Content-Type",
+        "value": "application/json"
+       }
+      ],
+      "url": {
+       "raw": "{{base_url}}/v1/warehouses/{{warehouse_id}}/deactivate",
+       "host": [
+        "{{base_url}}"
+       ],
+       "path": [
+        "v1",
+        "warehouses",
+        "{{warehouse_id}}",
+        "deactivate"
+       ]
+      },
+      "description": "Retire a warehouse without deleting it (is_active = false). tenant_admin only.\n\nThe path for a warehouse that handover documents reference, so DELETE refuses it. It stops appearing in pickers, those records keep their history, and its name becomes reusable (uniqueness is scoped to active rows).\n\nSame default-warehouse and last-active guards as DELETE."
      }
     }
    ]

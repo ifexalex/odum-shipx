@@ -131,7 +131,16 @@ class CreateWarehouseRequest(BaseModel):
     address: str | None = None
     city: str | None = None
     state: str | None = None
+    # Destination country for this branch. Defaults to the platform's primary
+    # market; it anchors the state/province picker (migration 057).
+    country: str | None = Field(default=None, max_length=100)
     phone: str | None = None
+    # Promote this warehouse to the tenant's default as part of creating it.
+    # The first warehouse becomes the default regardless (nothing else sets it,
+    # and a tenant with no default cannot generate a release note); this lets a
+    # later one be promoted in the same action instead of requiring a separate
+    # "Set default" click the operator has to go and find.
+    is_default: bool = False
 
 
 class UpdateWarehouseRequest(BaseModel):
@@ -143,7 +152,12 @@ class UpdateWarehouseRequest(BaseModel):
     address: str | None = None
     city: str | None = None
     state: str | None = None
+    country: str | None = Field(default=None, max_length=100)
     phone: str | None = None
+    # Reactivating a retired warehouse. Deactivating goes through the dedicated
+    # DELETE/deactivate path instead, which enforces the default-warehouse and
+    # last-active guards that a bare PATCH would bypass.
+    is_active: bool | None = None
 
 
 # ---------------------------------------------------------------------------
@@ -220,5 +234,6 @@ class WarehouseResponse(BaseModel):
     address: str | None = None
     city: str | None = None
     state: str | None = None
+    country: str | None = None
     phone: str | None = None
     is_default: bool = False

@@ -106,24 +106,45 @@ export function CreatePackingList(): JSX.Element {
   const [fxRate, setFxRate] = useState<number | null>(null)
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  // Tracked separately from `error`: failing to load warehouses must not read as
+  // "this tenant has none", but it also must not block the rest of the form.
+  const [warehouseError, setWarehouseError] = useState<string | null>(null)
 
   useEffect(() => {
     async function loadPickerData(): Promise<void> {
       try {
         // Only 'loading' containers can receive new packing lists — sealed/in-transit
         // containers are closed to additions (enforced by the backend too).
+        // The warehouse list is still tolerated failing — it is one optional
+        // field on a long form, and a tenant that has configured none is a
+        // legitimate state. But the failure must NOT be swallowed into an
+        // empty array: doing so rendered "No warehouses configured" for what
+        // was actually a 403 (china_office_staff were missing from the read
+        // roles), so a permission bug looked like a configuration choice for
+        // weeks. Record that it failed and say so in the UI instead.
         const [customerResult, containerResult, warehouseResult] = await Promise.all([
           customersApi.list(),
           containersApi.list({ status: 'loading' }),
-          warehousesApi.list().catch(() => [] as Warehouse[]),
+          warehousesApi.list().then(
+            (rows) => ({ ok: true as const, rows }),
+            (err: unknown) => ({ ok: false as const, err }),
+          ),
         ])
         setCustomers(customerResult.data)
         setContainers(containerResult.data)
-        setWarehouses(warehouseResult)
+        if (!warehouseResult.ok) {
+          const { err } = warehouseResult
+          setWarehouseError(
+            err instanceof ApiError ? err.message : 'Could not load warehouses.',
+          )
+          return
+        }
+        const warehouseRows = warehouseResult.rows
+        setWarehouses(warehouseRows)
         // Pre-select the tenant's default warehouse on a fresh create. On edit,
         // loadDraftForEdit sets the saved value instead (don't clobber it).
         if (!isEdit) {
-          const def = warehouseResult.find((w) => w.is_default)
+          const def = warehouseRows.find((w) => w.is_default)
           if (def) setArrivalWarehouseId((prev) => prev || def.id)
         }
       } catch (err) {
@@ -371,13 +392,20 @@ export function CreatePackingList(): JSX.Element {
                 onChange={setArrivalWarehouseId}
                 disabled={warehouses.length === 0}
                 placeholder={
-                  warehouses.length === 0 ? 'No warehouses configured' : 'Search or select a warehouse…'
+                  warehouseError
+                    ? 'Warehouses unavailable'
+                    : warehouses.length === 0
+                      ? 'No warehouses configured'
+                      : 'Search or select a warehouse…'
                 }
                 searchPlaceholder="Search by name or city…"
                 emptyText="No warehouse matches"
               />
               <span className={styles.fieldHelper}>
-                Defaults to your default warehouse — change it per shipment if needed.
+                {warehouseError
+                  ? `${warehouseError} The list could not be loaded, so this is left unset — ` +
+                    'your default warehouse is still applied automatically when you save.'
+                  : 'Defaults to your default warehouse — change it per shipment if needed.'}
               </span>
             </div>
           </div>

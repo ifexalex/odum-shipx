@@ -68,7 +68,12 @@ describe('AdminCustomerList — Add customer (B5a)', () => {
     await userEvent.click(screen.getByRole('button', { name: /add customer/i }))
     const dialog = screen.getByRole('dialog')
     await userEvent.type(within(dialog).getByLabelText(/full name/i, { selector: 'input' }), 'Emeka Eze')
-    await userEvent.type(within(dialog).getByLabelText('Phone', { exact: false, selector: 'input' }), '+2348037624419')
+    // The national part only — the dial code comes from the picker, which
+    // defaults to Nigeria. This is what a user actually types.
+    await userEvent.type(
+      within(dialog).getByLabelText('Phone', { exact: false, selector: 'input' }),
+      '8037624419',
+    )
     // sms is pre-ticked; add whatsapp consent (checkbox order: SMS, WhatsApp, Email)
     await userEvent.click(within(dialog).getAllByRole('checkbox')[1]!)
     await userEvent.click(within(dialog).getByRole('button', { name: /add customer/i }))

@@ -1256,3 +1256,95 @@ Fully mocked — no Microsoft Graph, credential, or network.
 - **`tests/unit/test_entra_claims.py`** (23): `EntraClaimsMapper` — `user_id` prefers `oid` then `sub`; tenant id from the configurable claim; `groups` from a list / JSON-array string / CSV normalized to `{tenant_id}:{role}`; `primary_role` from the role claim. Plus the ADR-004 addendum (2026-10-11) three-shape handling: bare object-id groups are dropped when unmapped; `platform_admin` / `{tenant_id}:{role}` are synthesized from the `role`+`tenant_id` optional claims; `ENTRA_PLATFORM_ADMIN_GROUP_ID` + `ENTRA_GROUP_ID_MAP` translate GUIDs (malformed JSON ignored); `ENTRA_TENANT_ID_CLAIM`/`ENTRA_ROLE_CLAIM` redirect to directory-extension claim names; and the CIAM case — `tenant_id` derived as `PLATFORM` from `platform_admin` group membership when no tenant claim is present (not derived for tenant-scoped users). `TestDualCloudRoleResolution` asserts the same `shared.auth` logic resolves platform/tenant admin from both a Cognito-shaped token and a native Entra/CIAM token (incl. the real group-GUID-only id_token), proving config-only cloud switching.
 - **`tests/unit/test_entra_token_claims.py`** (19): the Entra custom authentication extension (OnTokenIssuanceStart claims provider, `services/entra_token_claims/`, a Container App workload on the shared image) — `extract_object_id` from the event (and empty on missing pieces); `build_claims_response` maps an injected lookup into the Microsoft response envelope, passes the oid to the lookup, drops empty values, and fails open (empty claim set, valid envelope) for an unknown user or a `None` lookup; `is_authorized` accepts matching `aud`+`iss`, rejects either mismatch, and fails closed on unconfigured expected values; the `DatabaseClaimsReader` resolves tenant_id/role by oid with a PLATFORM-scoped parameterized read (short-circuits empty oid, empty on unknown user, fails open on DB error, honours custom output claim names); and the Flask `app.py` wiring (`/health` 200, 401 without a valid caller, full claims envelope when caller + lookup are stubbed). Pure logic / Flask test client — `execute_with_tenant` and the JWKS verify are stubbed, no DB or network.
 - **`tests/unit/test_entra_identity_provider.py`** (8): `EntraIdentityProvider` with `_graph` stubbed — `create_user`/`create_user_with_password` POST `/users` with the right `forceChangePasswordNextSignIn` and sync groups; disable/enable PATCH `accountEnabled`; `sync_user_groups` adds missing + removes stale groups scoped to the tenant prefix (leaving other tenants' groups); and with `urlopen`+token stubbed, `_graph` maps HTTP 409 → `DuplicateResourceError` and other codes → `ExternalServiceError`; factory selects Entra under `CLOUD_PROVIDER=azure`.
+
+### Warehouse management — reported defects pinned (2026-11-02)
+
+Three live-reported defects, each with a regression test that fails against the
+pre-fix code. Full root-cause account in `13_api_payment_release.md`.
+
+**Backend — `tests/unit/test_payment_release.py::TestWarehouses` (+11, 41 total):**
+- `test_china_office_staff_can_read_the_warehouse_list` — the role gate that
+  emptied the arrival-warehouse picker. A route-level test, since the defect was
+  in `_WAREHOUSE_READ_ROLES`, not in any service function.
+- `test_create_rejects_a_name_an_active_warehouse_already_holds` /
+  `test_a_retired_warehouses_name_can_be_reused` — the pair that encodes
+  migration 056's rule. The second asserts `active_only=True` is actually passed,
+  because the whole bug was a uniqueness check with the wrong scope.
+- `test_create_with_is_default_promotes_the_new_warehouse` /
+  `test_create_does_not_promote_on_a_non_boolean_is_default` — the latter exists
+  because the service reads `is_default` off a request object with `getattr`; a
+  truthiness test would make a `MagicMock` (or any stray value) silently
+  reassign the tenant's default, so promotion requires `is True`.
+- `test_delete_hard_deletes_an_unreferenced_warehouse` — asserts a real `DELETE`
+  and that the audit entry carries a `before_state` rich enough to recreate the
+  row, since a hard delete is unrecoverable and the trail is all that remains.
+- `test_delete_refuses_a_warehouse_a_release_note_references` — asserts
+  `rule_id == "WAREHOUSE_IN_USE"` **and** that the message names the counts
+  ("2 release notes", "1 pickup record"), not a generic "in use".
+- `test_delete_refuses_the_default_warehouse`,
+  `test_patch_cannot_deactivate_a_warehouse` (a bare PATCH must not bypass the
+  default/last-active guards), `test_rename_onto_another_active_warehouses_name_is_rejected`,
+  `test_renaming_a_warehouse_to_its_own_name_is_allowed` (the clash check compares
+  ids, so a no-op rename is not a conflict).
+
+**Frontend:**
+- `Warehouses.test.tsx` (+6) — real delete vs. deactivate (`expect(deactivate).not.toHaveBeenCalled()`
+  is the assertion that distinguishes the fix from the old behaviour), declined
+  confirmation, retire-on-`WAREHOUSE_IN_USE`, explicit success confirmation,
+  a surfaced set-default failure, and create-as-default.
+- `CreatePackingList.test.tsx` (+2) — the important one asserts both that
+  "could not be loaded" appears **and** that "No warehouses configured" does
+  *not*: the original defect was those two states being indistinguishable.
+
+**Totals:** 1380 backend, 877 frontend passing. 7 frontend failures
+(`colorScheme.test.tsx`, `storage.test.ts`) were verified identical on `main` by
+stashing the branch and re-running — pre-existing and unrelated.
+
+**Harness note:** `vite.config.ts` sets `test.exclude: ['node_modules', 'e2e']`
+as plain strings rather than globs. Running `vitest` from the repo root (instead
+of `frontend/`) therefore collects the Playwright specs under `frontend/e2e/`
+and reports hundreds of spurious failures. Always run it from `frontend/`.
+
+### Country/state pickers + phone field (2026-11-02)
+
+**The seam test is the important one.** `tests/unit/test_phone.py::TestFrontendDialCodesAgree`
+parses `frontend/src/data/countries.ts` **from the backend suite** and asserts it
+agrees with `shared/phone.py::_DIAL_CODES` for every country the backend knows,
+and that the frontend default is still Nigeria. Without it, each side could stay
+internally consistent while disagreeing on a dial code — and because the backend
+*prepends* a dial code to local-format numbers, that would store a number under
+the wrong country's prefix with nothing to catch it. It lives in pytest rather
+than vitest because the frontend tsconfig carries no Node types, and loosening
+that config for one test is the wrong trade.
+
+**Frontend:**
+- `src/data/phone.test.ts` (18) — parse/format round-trips, longest-dial-code
+  matching (+1268 beating +1), the shared-dial-code tie-break, and two tests that
+  exist because of a real bug: `toE164` tested emptiness *before* stripping the
+  trunk `0`, so a lone `"0"` emitted a bare `+234` that `parsePhone` read back as
+  national digits — the next keystroke produced `+234234…`. One test asserts the
+  lone-zero case directly; the other **simulates typing character by character**
+  through the controlled loop, which is the shape that actually failed.
+- `src/data/countries.test.ts` (12) — unique codes, plausible dial codes, picker
+  ordering, and that each subdivision list is sorted and duplicate-free.
+- `src/design/components/PhoneField.test.tsx` (8) — defaults to +234, splits a
+  stored E.164 back into its parts, parses a legacy local-format value, rewrites
+  the number when the country changes, and emits `''` (not `+234`) when cleared.
+- `src/design/components/StateSelect.test.tsx` (11) — includes `CountrySelect`.
+  Asserts the **free-text fallback** for a country with no list (Kenya), that an
+  unrecognised stored value is preserved rather than blanked, and that the label
+  follows local usage (Province for China, Region for Ghana).
+
+**Backend:** `TestGetShipmentByCodeAndPhone` (+3) — a local-format number must
+normalise to E.164 before matching, the raw input stays a candidate (for rows
+predating normalisation and for foreign numbers), and an E.164 input passes
+through unchanged.
+
+**Updated, not deleted:** `AdminCustomerList.test.tsx` and `Warehouses.test.tsx`
+typed a full `+234…` string into what is now the *national* box. Corrected to type
+the national part only — which is what a user does, and what surfaced the
+doubling bug above.
+
+**Totals:** 1385 backend, 927 frontend passing. The 7 frontend failures
+(`colorScheme.test.tsx`, `storage.test.ts`, `ThemeToggle.test.tsx`) remain the
+pre-existing, unrelated set verified against `main` earlier.

@@ -30,29 +30,81 @@ Implement the Payment & Release Lambda service: payment confirmation, release no
 | PATCH | `/v1/release-notes/{id}/release` | warehouse_attendant |
 | POST | `/v1/release-notes/{id}/split` | tenant_admin, nigeria_office_staff |
 | POST | `/v1/release-notes/{id}/reissue` | tenant_admin, nigeria_office_staff |
-| GET | `/v1/warehouses` | tenant_admin, nigeria_office_staff, warehouse_attendant |
+| GET | `/v1/warehouses` | tenant_admin, **china_office_staff**, nigeria_office_staff, warehouse_attendant |
 | POST | `/v1/warehouses` | tenant_admin |
 | PATCH | `/v1/warehouses/{id}` | tenant_admin — edit letterhead fields (name/address/city/state/phone) |
 | PATCH | `/v1/warehouses/{id}/set-default` | tenant_admin |
-| DELETE | `/v1/warehouses/{id}` | tenant_admin — soft-deactivate (`is_active = false`) |
+| PATCH | `/v1/warehouses/{id}/deactivate` | tenant_admin — retire (`is_active = false`) |
+| DELETE | `/v1/warehouses/{id}` | tenant_admin — **permanent delete** (refused when referenced) |
 | POST | `/v1/webhooks/payment` | No JWT — HMAC signature (Paystack / Flutterwave) |
 
 **Warehouse management (admin config page `Warehouses.tsx`).** `/v1/warehouses`
 is the single warehouse surface (a duplicate `/v1/tenant/warehouses` in the
 tenant-management service was removed — it was never wired to the frontend,
 Terraform, or Postman). Behaviour:
+- **`country`** (migration 057) — the branch's destination country, defaulting to
+  `'Nigeria'`. Accepted on create and PATCH, returned on reads. It anchors the
+  state/province picker; without it `state` could only be free text.
 - **POST** — a tenant's *first* warehouse is auto-promoted to default (otherwise
   `get_default_warehouse()` stays null and release-note generation resolves no
-  warehouse). Later creates are non-default.
+  warehouse). Later creates are non-default **unless `is_default: true` is sent**,
+  which promotes the new warehouse in the same action. Rejects (409
+  `DUPLICATE_RESOURCE`) a name an **active** warehouse already holds; a retired
+  warehouse does not reserve its name.
 - **PATCH `/{id}`** — `UpdateWarehouseRequest`, all fields optional; only fields
   sent are patched (`exclude_unset`), so an omitted field is untouched, not
   nulled. `is_default` is NOT editable here — use the set-default route.
+  `is_active: false` is **refused** (`WAREHOUSE_DEACTIVATE_VIA_DELETE`): it would
+  bypass the default/last-active guards. `is_active: true` (reactivate) is allowed.
+  A rename onto another active warehouse's name is a 409.
 - **PATCH `/{id}/set-default`** — atomically moves the one-default-per-tenant
   flag (`idx_warehouse_one_default` partial unique index).
-- **DELETE `/{id}`** — soft-deactivate, never hard-delete (historical release
-  notes / pickups / packing lists may reference it). Refused (422) when the
-  target is the default (`WAREHOUSE_DEFAULT_IMMUTABLE` — reassign default first)
-  or the last active warehouse (`WAREHOUSE_LAST_ACTIVE`).
+- **PATCH `/{id}/deactivate`** — retire without deleting (`is_active = false`).
+  The path for a warehouse handover documents reference. It leaves pickers, those
+  records keep their history, and (migration 056) its name becomes reusable.
+- **DELETE `/{id}`** — a **real delete**. Refused (422) with `rule_id` naming the
+  reason: `WAREHOUSE_IN_USE` (a `release_note` / `pickup_record` /
+  `payment_record` / `packing_list` references it — the message names the counts,
+  and the caller should offer deactivate instead), `WAREHOUSE_DEFAULT_IMMUTABLE`
+  (reassign the default first), or `WAREHOUSE_LAST_ACTIVE`. Audited with
+  `action="DELETE"` and a `before_state` carrying enough to recreate the row —
+  the trail is the only remaining record it existed.
+
+### Implementation notes / ground-truth gaps found (2026-11-02)
+
+Three defects reported from live use, all confirmed by reading the code before
+anything was changed:
+
+1. **The arrival-warehouse picker was always empty when creating a packing list.**
+   `_WAREHOUSE_READ_ROLES` omitted `china_office_staff` — who are precisely the
+   role that creates packing lists (`packing_list/handler.py::_WORKFLOW_ROLES`),
+   and a packing list records its arrival warehouse (migration 053). `GET
+   /v1/warehouses` therefore 403'd. Worse, `CreatePackingList.tsx` caught the
+   failure with `.catch(() => [])`, so the form rendered **"No warehouses
+   configured"** — a permission error displayed as a configuration state, which
+   is why it went unnoticed. The backend still applied the tenant's default
+   warehouse server-side (`_resolve_arrival_warehouse`), so the saved data was
+   correct; only the picker was broken. Fixed on both sides: the role was added,
+   and the frontend now distinguishes "could not load" from "none exist".
+2. **A deleted warehouse's name stayed reserved forever.** Migration 041 declared
+   `UNIQUE (tenant_id, name)` over *every* row while deletion only set
+   `is_active = FALSE`, so recreating a removed warehouse failed until it was
+   renamed. Migration 056 replaces the constraint with a partial unique index
+   over `WHERE is_active`, and the service pre-checks the name so the caller gets
+   a 409 instead of a raw unique violation surfacing as a 500.
+3. **"Set default" appeared to do nothing.** The route, its transaction and its
+   role gate were all correct and unit-tested. The page rendered its only
+   feedback — an error banner — at the **top of the page, above the table**, so a
+   failure on a row further down had no visible effect. The page now scrolls the
+   banner into view and confirms success explicitly. Separately, there was no way
+   to mark a warehouse default *while creating it*, which is the discoverable
+   action an operator looks for; `CreateWarehouseRequest` gained `is_default`.
+
+**Also fixed, generally:** `BusinessRuleViolationError.rule_id` was set by dozens
+of business rules across every service and **never serialized** into the RFC 7807
+error body, so no client could branch on which rule refused a request without
+matching the prose message. `shared/responses.error_response` now emits it and
+`ApiError` exposes it as `ruleId`.
 
 ## Payment Confirmation (POST /payments/{billing-id}/confirm)
 
