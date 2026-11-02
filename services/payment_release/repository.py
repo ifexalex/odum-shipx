@@ -146,11 +146,20 @@ def create_warehouse(tenant_id: str, data: dict[str, Any]) -> dict[str, Any] | N
     return execute_write_with_tenant(
         tenant_id,
         """
-        INSERT INTO warehouse (tenant_id, name, address, city, state, phone, is_default, created_by)
-        VALUES (%(tenant_id)s, %(name)s, %(address)s, %(city)s, %(state)s, %(phone)s, %(is_default)s, %(created_by)s)
+        INSERT INTO warehouse (tenant_id, name, address, city, state, country, phone, is_default, created_by)
+        VALUES (%(tenant_id)s, %(name)s, %(address)s, %(city)s, %(state)s,
+                COALESCE(%(country)s, 'Nigeria'), %(phone)s, %(is_default)s, %(created_by)s)
         RETURNING *
         """,
-        {"address": None, "city": None, "state": None, "phone": None, "is_default": False, **data},
+        {
+            "address": None,
+            "city": None,
+            "state": None,
+            "country": None,
+            "phone": None,
+            "is_default": False,
+            **data,
+        },
     )
 
 
@@ -170,7 +179,7 @@ def set_default_warehouse(tenant_id: str, warehouse_id: str) -> dict[str, Any] |
     )[-1]
 
 
-_WAREHOUSE_EDITABLE_FIELDS = ("name", "address", "city", "state", "phone", "is_active")
+_WAREHOUSE_EDITABLE_FIELDS = ("name", "address", "city", "state", "country", "phone", "is_active")
 
 
 def update_warehouse(tenant_id: str, warehouse_id: str, updates: dict[str, Any]) -> dict[str, Any] | None:

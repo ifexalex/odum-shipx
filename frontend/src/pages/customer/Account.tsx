@@ -15,7 +15,7 @@ import { useEffect, useState, type JSX } from 'react'
 import { ApiError } from '../../api/client'
 import { customersApi, type Customer } from '../../api/tenantManagement'
 import { useSession } from '../../auth/useSession'
-import { Avatar, Banner, Button, Card, Field, Icon, ToggleSwitch } from '../../design/components'
+import { Avatar, Banner, Button, Card, Field, Icon, PhoneField, ToggleSwitch } from '../../design/components'
 import { PageHeader } from '../../shell/PageHeader'
 import { SectionHead } from '../../shell/SectionHead'
 import { Tabs } from '../../shell/Tabs'
@@ -99,7 +99,7 @@ function ProfileTab({ customer, onSaved }: { customer: Customer; onSaved: (c: Cu
         />
       </div>
       <div className={styles.twoCol}>
-        <Field label="Phone number" name="phone" icon="phone" required value={phone} onChange={(e) => setPhone(e.target.value)} />
+        <PhoneField label="Phone number" name="phone" required value={phone} onChange={setPhone} />
         <Field
           label="WhatsApp number"
           name="whatsapp"

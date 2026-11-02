@@ -1304,3 +1304,47 @@ stashing the branch and re-running — pre-existing and unrelated.
 as plain strings rather than globs. Running `vitest` from the repo root (instead
 of `frontend/`) therefore collects the Playwright specs under `frontend/e2e/`
 and reports hundreds of spurious failures. Always run it from `frontend/`.
+
+### Country/state pickers + phone field (2026-11-02)
+
+**The seam test is the important one.** `tests/unit/test_phone.py::TestFrontendDialCodesAgree`
+parses `frontend/src/data/countries.ts` **from the backend suite** and asserts it
+agrees with `shared/phone.py::_DIAL_CODES` for every country the backend knows,
+and that the frontend default is still Nigeria. Without it, each side could stay
+internally consistent while disagreeing on a dial code — and because the backend
+*prepends* a dial code to local-format numbers, that would store a number under
+the wrong country's prefix with nothing to catch it. It lives in pytest rather
+than vitest because the frontend tsconfig carries no Node types, and loosening
+that config for one test is the wrong trade.
+
+**Frontend:**
+- `src/data/phone.test.ts` (18) — parse/format round-trips, longest-dial-code
+  matching (+1268 beating +1), the shared-dial-code tie-break, and two tests that
+  exist because of a real bug: `toE164` tested emptiness *before* stripping the
+  trunk `0`, so a lone `"0"` emitted a bare `+234` that `parsePhone` read back as
+  national digits — the next keystroke produced `+234234…`. One test asserts the
+  lone-zero case directly; the other **simulates typing character by character**
+  through the controlled loop, which is the shape that actually failed.
+- `src/data/countries.test.ts` (12) — unique codes, plausible dial codes, picker
+  ordering, and that each subdivision list is sorted and duplicate-free.
+- `src/design/components/PhoneField.test.tsx` (8) — defaults to +234, splits a
+  stored E.164 back into its parts, parses a legacy local-format value, rewrites
+  the number when the country changes, and emits `''` (not `+234`) when cleared.
+- `src/design/components/StateSelect.test.tsx` (11) — includes `CountrySelect`.
+  Asserts the **free-text fallback** for a country with no list (Kenya), that an
+  unrecognised stored value is preserved rather than blanked, and that the label
+  follows local usage (Province for China, Region for Ghana).
+
+**Backend:** `TestGetShipmentByCodeAndPhone` (+3) — a local-format number must
+normalise to E.164 before matching, the raw input stays a candidate (for rows
+predating normalisation and for foreign numbers), and an E.164 input passes
+through unchanged.
+
+**Updated, not deleted:** `AdminCustomerList.test.tsx` and `Warehouses.test.tsx`
+typed a full `+234…` string into what is now the *national* box. Corrected to type
+the national part only — which is what a user does, and what surfaced the
+doubling bug above.
+
+**Totals:** 1385 backend, 927 frontend passing. The 7 frontend failures
+(`colorScheme.test.tsx`, `storage.test.ts`, `ThemeToggle.test.tsx`) remain the
+pre-existing, unrelated set verified against `main` earlier.

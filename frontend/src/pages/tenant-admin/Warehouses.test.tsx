@@ -33,6 +33,7 @@ const OTHER_WH: Warehouse = {
   address: null,
   city: 'Aba',
   state: 'Abia',
+  country: 'Nigeria',
   phone: null,
   is_default: false,
 }
@@ -109,7 +110,47 @@ describe('Warehouses', () => {
     await waitFor(() =>
       expect(warehousesApi.update).toHaveBeenCalledWith(
         'wh2',
-        expect.objectContaining({ phone: '09098765432' }),
+        // Submitted as E.164, not as typed: PhoneField assembles the dial code
+        // so the stored value matches what the database holds. The trunk 0 the
+        // user typed is dropped, not doubled onto the +234.
+        expect.objectContaining({ phone: '+2349098765432' }),
+      ),
+    )
+  })
+
+  it('submits the warehouse country and state chosen from the pickers', async () => {
+    vi.mocked(warehousesApi.update).mockResolvedValue(OTHER_WH)
+    renderPage()
+    await screen.findByText('Aba — Ariaria')
+    const row = screen.getByText('Aba — Ariaria').closest('tr')!
+    await userEvent.click(within(row).getByRole('button', { name: 'Edit' }))
+    const dialog = screen.getByRole('dialog')
+    // The stored country/state round-trip through the pickers untouched.
+    await userEvent.click(within(dialog).getByRole('button', { name: /save changes/i }))
+    await waitFor(() =>
+      expect(warehousesApi.update).toHaveBeenCalledWith(
+        'wh2',
+        expect.objectContaining({ country: 'Nigeria', state: 'Abia' }),
+      ),
+    )
+  })
+
+  it('clears the state when the country changes', async () => {
+    // A state belongs to one country's list, so keeping "Abia" after switching
+    // to China would submit a mismatched pair the picker cannot even display.
+    vi.mocked(warehousesApi.update).mockResolvedValue(OTHER_WH)
+    renderPage()
+    await screen.findByText('Aba — Ariaria')
+    const row = screen.getByText('Aba — Ariaria').closest('tr')!
+    await userEvent.click(within(row).getByRole('button', { name: 'Edit' }))
+    const dialog = screen.getByRole('dialog')
+    await userEvent.click(within(dialog).getByLabelText('Country'))
+    await userEvent.click(await screen.findByText('China'))
+    await userEvent.click(within(dialog).getByRole('button', { name: /save changes/i }))
+    await waitFor(() =>
+      expect(warehousesApi.update).toHaveBeenCalledWith(
+        'wh2',
+        expect.objectContaining({ country: 'China', state: undefined }),
       ),
     )
   })

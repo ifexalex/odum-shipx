@@ -19,6 +19,15 @@ export { Chip } from './Chip'
 export type { ChipProps } from './Chip'
 export { Combobox } from './Combobox'
 export type { ComboboxOption, ComboboxProps } from './Combobox'
+
+export { CountrySelect } from './CountrySelect'
+export type { CountrySelectProps } from './CountrySelect'
+
+export { PhoneField } from './PhoneField'
+export type { PhoneFieldProps } from './PhoneField'
+
+export { StateSelect } from './StateSelect'
+export type { StateSelectProps } from './StateSelect'
 export { DateRangeFilter, DEFAULT_DATE_RANGE_PRESETS } from './DateRangeFilter'
 export type { DateRangeFilterProps, DateRangePreset } from './DateRangeFilter'
 export { Field } from './Field'

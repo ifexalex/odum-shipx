@@ -1241,9 +1241,57 @@ configured"; the rest of the form still loads). Backend `TestWarehouses` +11.
 1380 backend + 877 frontend tests pass (7 frontend failures in
 `colorScheme.test.tsx`/`storage.test.ts` are pre-existing on `main` and unrelated).
 
-**Note:** `frontend/src/hooks/useWarehouses.ts` remains **unused** — every
-consumer calls `warehousesApi` directly. Left in place rather than deleted as
-out-of-scope cleanup, but it is dead code and a candidate for removal.
+**Correction (same day):** an earlier draft of this note claimed
+`frontend/src/hooks/useWarehouses.ts` was dead code. **That was wrong** — the
+grep behind it excluded every line containing `hooks/useWarehouses`, which is
+exactly what an import statement contains, so it hid the real callers.
+`useWarehouses()` is used by `nigeria/BillingDetail.tsx` and
+`nigeria/ReleaseNoteDetail.tsx`. Only the two *mutation* hooks in that file,
+`useCreateWarehouse()` and `useSetDefaultWarehouse()`, are genuinely unused —
+`Warehouses.tsx` calls `warehousesApi` directly instead.
+
+## Searchable country/state pickers and a real phone field (2026-11-02)
+
+User instruction: *"Anywhere in the application where a country/state is required,
+use a drop down with search instead of typing"*, and *"phone number fields are
+typed manually, it should be a phone field with country code defaulted to
+Nigeria."* Component design is documented in
+[03_component_library.md](03_component_library.md); this is the rollout.
+
+**Phone — 11 sites**, all now `PhoneField` emitting E.164: warehouse phone
+(`Warehouses`), pickup contact + support WhatsApp (`CompanySettings`), customer
+self-registration (`RegisterScreen`), onboarding request
+(`RequestOnboardingScreen`), admin customer create (`AdminCustomerList`), tenant
+create (`CreateTenantPage`), delegate phone (`ReleaseNoteDetail` **and**
+`WarehouseDashboard` — the same modal duplicated in two places), customer account
+(`Account`), and the public tracking lookup (`PublicTrack`).
+
+**Country — 2 sites:** origin and destination on `RequestOnboardingScreen`.
+
+**State — 1 site:** `Warehouses`, which also gained a **Country** picker, since
+migration 057 added the column. Changing the country **clears** the state: a
+state belongs to one country's list, so keeping it would submit a mismatched pair
+the picker cannot even display.
+
+**City stays free text.** The instruction was country/state, and warehouse cities
+("Onitsha", "Trade Fair") are not a closed list worth maintaining.
+
+**`PublicTrack` is the one that was actually broken.** Its lookup compared the
+typed number against stored E.164 as one exact string, so a customer entering
+`08012345678` never matched their own `+2348012345678`. The new field fixes the
+browser, and the server-side normalisation (see
+[10_api_tracking.md](../10_api_tracking.md)) fixes the public API too — necessary
+because saved links and direct callers bypass the UI entirely.
+
+**`CompanySettings` needed a second setter.** Its `set(key)` helper returns a DOM
+*event* handler; `PhoneField` emits a value. Added `setValue(key)` beside it
+rather than making the component fake an event.
+
+Tests: `PhoneField.test.tsx` (8), `StateSelect.test.tsx` (11, covering
+`CountrySelect` too), `phone.test.ts` (18), `countries.test.ts` (12). Existing
+page tests updated where they typed a full E.164 into what is now the *national*
+box — `AdminCustomerList` and `Warehouses`, the latter of which is what surfaced
+the dial-code-doubling bug. 1385 backend + 927 frontend tests pass.
 
 ## Nigeria-ops dashboard overhaul — container pipeline redesign (2026-10-03)
 

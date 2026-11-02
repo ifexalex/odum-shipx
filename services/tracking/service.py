@@ -552,9 +552,33 @@ def list_shipments(
     return repo.list_shipments(tenant_id, filters, limit, cursor)
 
 
+def _phone_match_candidates(phone: str) -> list[str]:
+    """Every form of `phone` worth matching a stored customer number against.
+
+    The browser now submits E.164, but this endpoint is public: saved links, old
+    clients and direct API callers still send whatever a human typed. Normalising
+    here (rather than only in the UI) is what actually fixes the lookup.
+
+    No tenant is known at this point — the tracking code spans tenants — so the
+    platform default dial code (Nigeria) is used. The raw input is kept as a
+    candidate too, both for rows written before normalisation existed and for a
+    number from a country whose dial code the default would mangle.
+    """
+    from shared.phone import normalize_phone
+
+    candidates = []
+    normalized = normalize_phone(phone)
+    if normalized:
+        candidates.append(normalized)
+    raw = (phone or "").strip()
+    if raw and raw not in candidates:
+        candidates.append(raw)
+    return candidates
+
+
 def get_shipment_by_code_and_phone(tracking_code: str, phone: str) -> dict[str, Any]:
     """Public tracking lookup — no JWT required; phone used for ownership verification."""
-    row = repo.get_shipment_by_tracking_code_and_phone(tracking_code, phone)
+    row = repo.get_shipment_by_tracking_code_and_phone(tracking_code, _phone_match_candidates(phone))
     if not row:
         raise ResourceNotFoundError("shipment_tracking", tracking_code)
 
