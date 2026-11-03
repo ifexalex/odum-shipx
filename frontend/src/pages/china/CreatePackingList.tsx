@@ -291,7 +291,30 @@ export function CreatePackingList(): JSX.Element {
     }
   }
 
-  const canProceedFrom1 = Boolean(customerId && containerId)
+  // The user's LOCAL date, not UTC. The China office is UTC+8, so for several
+  // hours each evening their calendar date is already tomorrow in UTC —
+  // comparing against a UTC "today" would flag the date on their own wall
+  // calendar as a future date. (The backend allows one day past UTC for the
+  // same reason.) Built field by field rather than via toISOString(), which
+  // would silently convert to UTC.
+  const now = new Date()
+  const today = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(
+    now.getDate(),
+  ).padStart(2, '0')}`
+
+  // ISO date strings (YYYY-MM-DD) compare correctly as plain strings, so no
+  // Date parsing — and therefore no timezone shifting — is needed here.
+  const deliveryDateError =
+    deliveryDate && deliveryDate > today
+      ? 'Cannot be a future date — this is when the goods were received.'
+      : undefined
+  const loadingDateError =
+    loadingDate && deliveryDate && loadingDate < deliveryDate
+      ? 'Cannot be before the delivery date — goods must be received before they are loaded.'
+      : undefined
+
+  const canProceedFrom1 =
+    Boolean(customerId && containerId) && !deliveryDateError && !loadingDateError
   const canProceedFrom2 = items.length > 0 && items.every((item) => item.description.trim() !== '')
 
   return (
@@ -411,17 +434,12 @@ export function CreatePackingList(): JSX.Element {
           </div>
 
           <div className={styles.spacerLg} />
-          <SectionHead title="Shipment dates" sub="Optional — when the cargo loads and the expected delivery." />
+          <SectionHead
+            title="Goods dates"
+            sub="Delivery comes first — cargo has to reach the warehouse before it can be loaded."
+          />
           <div className={styles.spacerSm} />
           <div className={styles.grid2}>
-            <Field
-              label="Loading date"
-              name="loadingDate"
-              type="date"
-              optional
-              value={loadingDate}
-              onChange={(e) => setLoadingDate(e.target.value)}
-            />
             <Field
               label="Delivery date"
               name="deliveryDate"
@@ -429,6 +447,28 @@ export function CreatePackingList(): JSX.Element {
               optional
               value={deliveryDate}
               onChange={(e) => setDeliveryDate(e.target.value)}
+              // Caps the native date picker at today, so the commonest mistake
+              // is unreachable rather than merely rejected after submitting.
+              max={today}
+              error={deliveryDateError}
+              helper={
+                deliveryDateError ? undefined : 'Received in the China warehouse. Not a future date.'
+              }
+            />
+            <Field
+              label="Loading date"
+              name="loadingDate"
+              type="date"
+              optional
+              value={loadingDate}
+              onChange={(e) => setLoadingDate(e.target.value)}
+              // No max: a packing list is written against a container still
+              // loading, so a planned load date is legitimate.
+              min={deliveryDate || undefined}
+              error={loadingDateError}
+              helper={
+                loadingDateError ? undefined : 'Loaded into the container. Same day as delivery or later.'
+              }
             />
           </div>
 

@@ -2183,7 +2183,7 @@
       ],
       "body": {
        "mode": "raw",
-       "raw": "{\n  \"container_id\": \"{{container_id}}\",\n  \"customer_id\": \"{{customer_id}}\",\n  \"arrival_warehouse_id\": \"{{warehouse_id}}\",\n  \"items\": [\n    {\n      \"description\": \"Electronics - Phone Cases\",\n      \"weight_dispatch_kg\": 12.5,\n      \"weight_actual_kg\": 12.3,\n      \"length_cm\": 60,\n      \"width_cm\": 40,\n      \"height_cm\": 30,\n      \"received_date\": \"2026-02-20\"\n    },\n    {\n      \"description\": \"Clothing - T-Shirts\",\n      \"weight_dispatch_kg\": 8.0,\n      \"weight_actual_kg\": 7.8,\n      \"length_cm\": 50,\n      \"width_cm\": 35,\n      \"height_cm\": 25,\n      \"received_date\": \"2026-02-20\"\n    }\n  ]\n}"
+       "raw": "{\n  \"container_id\": \"{{container_id}}\",\n  \"customer_id\": \"{{customer_id}}\",\n  \"arrival_warehouse_id\": \"{{warehouse_id}}\",\n  \"delivery_date\": \"2026-11-01\",\n  \"loading_date\": \"2026-11-03\",\n  \"items\": [\n    {\n      \"description\": \"Electronics - Phone Cases\",\n      \"weight_dispatch_kg\": 12.5,\n      \"weight_actual_kg\": 12.3,\n      \"length_cm\": 60,\n      \"width_cm\": 40,\n      \"height_cm\": 30,\n      \"received_date\": \"2026-02-20\"\n    },\n    {\n      \"description\": \"Clothing - T-Shirts\",\n      \"weight_dispatch_kg\": 8.0,\n      \"weight_actual_kg\": 7.8,\n      \"length_cm\": 50,\n      \"width_cm\": 35,\n      \"height_cm\": 25,\n      \"received_date\": \"2026-02-20\"\n    }\n  ]\n}"
       },
       "url": {
        "raw": "{{base_url}}/v1/packing-lists",
@@ -2194,7 +2194,8 @@
         "v1",
         "packing-lists"
        ]
-      }
+      },
+      "description": "Goods dates (both optional, both origin-side, validated in order):\n- delivery_date - date the supplier DELIVERED the goods to the China warehouse. Cannot be in the future. This is NOT the expected customer delivery; that estimate lives on container.estimated_delivery_date.\n- loading_date - date the goods were LOADED into the container. Must be on or after delivery_date (same day is allowed). Deliberately unbounded above: a packing list is written against a container still in 'loading' status, so a planned load date is legitimate.\nViolations return 422. The rule is enforced on both POST and PUT."
      }
     },
     {
@@ -2318,7 +2319,7 @@
       ],
       "body": {
        "mode": "raw",
-       "raw": "{\n  \"arrival_warehouse_id\": \"{{warehouse_id}}\",\n  \"items\": [\n    {\n      \"description\": \"Electronics - Phone Cases (Updated)\",\n      \"weight_dispatch_kg\": 12.5,\n      \"weight_actual_kg\": 12.3,\n      \"length_cm\": 60,\n      \"width_cm\": 40,\n      \"height_cm\": 30,\n      \"received_date\": \"2026-02-20\"\n    }\n  ]\n}"
+       "raw": "{\n  \"arrival_warehouse_id\": \"{{warehouse_id}}\",\n  \"delivery_date\": \"2026-11-01\",\n  \"loading_date\": \"2026-11-03\",\n  \"items\": [\n    {\n      \"description\": \"Electronics - Phone Cases (Updated)\",\n      \"weight_dispatch_kg\": 12.5,\n      \"weight_actual_kg\": 12.3,\n      \"length_cm\": 60,\n      \"width_cm\": 40,\n      \"height_cm\": 30,\n      \"received_date\": \"2026-02-20\"\n    }\n  ]\n}"
       },
       "url": {
        "raw": "{{base_url}}/v1/packing-lists/{{packing_list_id}}",
@@ -2330,7 +2331,8 @@
         "packing-lists",
         "{{packing_list_id}}"
        ]
-      }
+      },
+      "description": "Goods dates (both optional, both origin-side, validated in order):\n- delivery_date - date the supplier DELIVERED the goods to the China warehouse. Cannot be in the future. This is NOT the expected customer delivery; that estimate lives on container.estimated_delivery_date.\n- loading_date - date the goods were LOADED into the container. Must be on or after delivery_date (same day is allowed). Deliberately unbounded above: a packing list is written against a container still in 'loading' status, so a planned load date is legitimate.\nViolations return 422. The rule is enforced on both POST and PUT."
      }
     },
     {

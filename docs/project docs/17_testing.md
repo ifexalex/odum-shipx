@@ -1348,3 +1348,30 @@ doubling bug above.
 **Totals:** 1385 backend, 927 frontend passing. The 7 frontend failures
 (`colorScheme.test.tsx`, `storage.test.ts`, `ThemeToggle.test.tsx`) remain the
 pre-existing, unrelated set verified against `main` earlier.
+
+### Packing-list goods dates (2026-11-03)
+
+**Backend — `TestShipmentDateOrdering` (8):** loading-before-delivery rejected;
+same-day allowed (goods received in the morning are loaded that afternoon);
+future `delivery_date` rejected; future `loading_date` **allowed** (unbounded on
+purpose); each date still optional on its own; and the same rules asserted on
+`UpdatePackingListRequest`, because the edit path has its own model and could
+otherwise write exactly the ordering the create path refuses.
+
+One test exists purely for a timezone trap:
+`test_todays_date_is_accepted_even_from_a_timezone_ahead_of_utc`. The China office
+is UTC+8, so a naive comparison against UTC "today" would reject the date on their
+own wall calendar for several hours each evening. The validator allows one day
+past UTC; the test pins that allowance so a later "tightening" cannot silently
+reintroduce the bug.
+
+**Frontend — `CreatePackingList.test.tsx` (+8):** DOM order (delivery before
+loading), both helper texts present, `max`/`min` attributes on the pickers, and
+the four rule cases.
+
+**A weak assertion caught while writing them:** the "Next is disabled" tests
+initially passed for the wrong reason — `canProceedFrom1` also requires a customer
+and container, so the button was disabled regardless of the dates. They now call
+`pickCustomerAndContainer()` first, so the step is genuinely valid and only the
+date rule can disable it. The two "accepts" cases are what exposed this, by
+failing where they should have passed.

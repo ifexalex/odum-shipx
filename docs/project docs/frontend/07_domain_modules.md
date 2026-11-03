@@ -1250,6 +1250,56 @@ exactly what an import statement contains, so it hid the real callers.
 `useCreateWarehouse()` and `useSetDefaultWarehouse()`, are genuinely unused —
 `Warehouses.tsx` calls `warehousesApi` directly instead.
 
+## Goods dates reordered and constrained on the packing-list wizard (2026-11-03)
+
+User: *"During packing list creation, the dates for loading date and arrival date,
+I want it to be flipped… the arrival date will be first and the loading date will
+be second. With a clear description stating what they are for."* On a follow-up they
+clarified that by "arrival date" they meant the **existing `delivery_date`** field,
+not a new one.
+
+**The semantics were wrong before this, not just the order.** Migration 052 and
+the section copy described `delivery_date` as the *expected customer delivery* — a
+destination-side future estimate. It is actually the date the **supplier delivered
+the goods to the China warehouse**. Both dates are origin-side events, which is why
+one must precede the other.
+
+| Field | Shown | Means | Rule |
+|---|---|---|---|
+| `delivery_date` | 1st | Received in the China warehouse | not a future date |
+| `loading_date` | 2nd | Loaded into the container | same day as delivery or later |
+
+Section head is now **"Goods dates"** with the sub *"Delivery comes first — cargo
+has to reach the warehouse before it can be loaded."*, and each field carries its
+own one-line helper rather than leaving the meaning to a shared subtitle.
+
+**Guarded three ways, deliberately:**
+1. `max={today}` on the delivery input and `min={deliveryDate}` on the loading
+   input, so the commonest mistakes are **unreachable in the native picker**
+   rather than merely rejected after the fact.
+2. Inline errors replace the helper text and **disable "Next"**, so an invalid pair
+   cannot even reach step 2.
+3. The same rules on the Pydantic models (see
+   [08_api_packing_list.md](../08_api_packing_list.md)) — the client guard is a
+   convenience, not the enforcement.
+
+**Timezone trap avoided.** "Today" is computed from the user's **local** date,
+built field by field rather than via `toISOString()`, which would convert to UTC.
+The China office is UTC+8, so for several hours each evening `toISOString()` would
+have flagged the date on their own wall calendar as a future date. The backend
+allows one day past UTC for the same reason. ISO `YYYY-MM-DD` strings are compared
+as plain strings, so no `Date` parsing — and no further timezone shifting — happens
+in the comparison.
+
+`loading_date` has **no upper bound**: a packing list is written against a
+container still in `loading` status, so a planned load date is legitimate.
+Both fields remain optional, as they were.
+
+Tests: `CreatePackingList.test.tsx` (+8) and `TestShipmentDateOrdering` (+8).
+Note the four frontend tests that assert "Next" is disabled now **select a
+customer and container first** — without that precondition the button is disabled
+anyway and the assertion proves nothing.
+
 ## Searchable country/state pickers and a real phone field (2026-11-02)
 
 User instruction: *"Anywhere in the application where a country/state is required,

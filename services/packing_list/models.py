@@ -1,6 +1,6 @@
 """Pydantic models for the Packing List service."""
 
-from datetime import date, datetime
+from datetime import UTC, date, datetime, timedelta
 from decimal import Decimal
 from enum import StrEnum
 
@@ -68,20 +68,58 @@ class ItemRejection(BaseModel):
 # ---------------------------------------------------------------------------
 
 
-class CreatePackingListRequest(BaseModel):
-    container_id: str
-    customer_id: str
+class _ShipmentDatesMixin(BaseModel):
+    """Shared validation for a packing list's two shipment dates.
+
+    The domain order is fixed: a supplier **delivers** goods to the China
+    warehouse, and only then can they be **loaded** into a container. So:
+
+      - `delivery_date` (goods received at the China warehouse) cannot be in the
+        future — it records something that has already happened.
+      - `loading_date` must be on or after `delivery_date`. Same day is fine;
+        goods received in the morning are often loaded that afternoon.
+
+    `loading_date` has no upper bound on purpose: packing lists are written
+    against containers still in `loading` status, so a planned load date is
+    legitimate. Both fields stay optional (they always were) — the rules only
+    apply to the values actually supplied.
+    """
+
     loading_date: date | None = None
     delivery_date: date | None = None
+
+    @model_validator(mode="after")
+    def _validate_shipment_dates(self) -> "_ShipmentDatesMixin":
+        if self.delivery_date is not None and self.delivery_date > _latest_acceptable_today():
+            raise ValueError("delivery_date cannot be in the future - it is the date the goods were " "received at the warehouse")
+        if self.loading_date is not None and self.delivery_date is not None and self.loading_date < self.delivery_date:
+            raise ValueError("loading_date cannot be before delivery_date - goods must be received " "before they can be loaded")
+        return self
+
+
+def _latest_acceptable_today() -> date:
+    """The latest date that still counts as "not in the future".
+
+    One day past the server's UTC date, NOT the UTC date itself. The China
+    office is UTC+8, so for several hours each evening their local calendar date
+    is already tomorrow in UTC; comparing against UTC "today" would reject the
+    date they can see on the wall as a future date. A one-day allowance covers
+    every real timezone (max UTC+14) and still rejects the mistakes this rule
+    exists for — a date next week or next year.
+    """
+    return datetime.now(UTC).date() + timedelta(days=1)
+
+
+class CreatePackingListRequest(_ShipmentDatesMixin):
+    container_id: str
+    customer_id: str
     # Destination warehouse the cargo is bound for. Omitted → the tenant's
     # default warehouse is applied server-side.
     arrival_warehouse_id: str | None = None
     items: list[PackingListItemInput] = Field(default_factory=list)
 
 
-class UpdatePackingListRequest(BaseModel):
-    loading_date: date | None = None
-    delivery_date: date | None = None
+class UpdatePackingListRequest(_ShipmentDatesMixin):
     arrival_warehouse_id: str | None = None
     items: list[UpdatePackingListItemInput] = Field(min_length=1)
 
