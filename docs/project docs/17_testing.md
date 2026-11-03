@@ -1348,3 +1348,32 @@ doubling bug above.
 **Totals:** 1385 backend, 927 frontend passing. The 7 frontend failures
 (`colorScheme.test.tsx`, `storage.test.ts`, `ThemeToggle.test.tsx`) remain the
 pre-existing, unrelated set verified against `main` earlier.
+
+### Cache invalidation (2026-11-03)
+
+Two test files, deliberately split, because the bug had two halves — a missing
+rule and missing wiring — and either alone would have let it through.
+
+**`api/cacheInvalidation.test.ts` (10) — the registry.** The load-bearing one
+scrapes every mutating path out of `api/*.ts` and asserts each matches a rule, so
+adding an endpoint without a mapping fails CI rather than silently going stale.
+It reads the sources via `import.meta.glob` rather than `node:fs`, because the app
+tsconfig carries no Node types and loosening it for one test is the wrong trade.
+A companion test asserts the scraper itself finds >50 paths — otherwise a change in
+how `api/*.ts` is written would make every other assertion here vacuously pass.
+Also covers: specific-before-generic ordering (`/v1/claims/seized-items/...` must
+not be swallowed by `/v1/claims/...`), query-string stripping, the named
+cross-domain effects, pre-auth paths mapping to an empty root set, and that no
+rule's roots are `undefined` (a typo'd key import would invalidate nothing while
+looking fine).
+
+**`api/client.test.ts` (+6) — the wiring.** That the client actually *applies* the
+rule: a container DELETE invalidates containers and packing lists; a GET
+invalidates nothing (invalidating on reads is how you build a refetch loop); a
+**failed** write invalidates nothing (it changed nothing, and refetching would
+mask the failure); and a write still resolves normally when invalidation itself
+throws — a cache problem must never turn a successful write into a UI error.
+
+**Totals:** 943 frontend passing, same 7 pre-existing failures. No existing test
+needed changing, which is the useful signal: the behaviour was added without
+altering any page's contract.

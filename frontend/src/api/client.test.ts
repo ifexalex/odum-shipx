@@ -1,4 +1,5 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { queryClient } from '../lib/queryClient'
 import { registerSessionActions } from '../auth/sessionBridge'
 import { clearTenantBlocked, getTenantBlocked } from '../auth/tenantGate'
 import { clearActiveTokens, setActiveLocalAuth, setActiveTokens } from '../auth/tokenStore'
@@ -283,5 +284,87 @@ describe('apiDownloadFile', () => {
 
     await expect(apiDownloadFile('/v1/billing/b1/export', 'pdf', 'billing-b1.pdf')).rejects.toThrow(ApiError)
     expect(openSpy).not.toHaveBeenCalled()
+  })
+})
+
+describe('apiRequest — cache invalidation on writes', () => {
+  // Proves the WIRING, not just the registry. cacheInvalidation.test.ts asserts
+  // every path has a rule; these assert the client actually applies it, which is
+  // the half that was missing and caused a deleted container to stay on screen.
+  let fetchMock: ReturnType<typeof vi.fn>
+  let invalidateSpy: ReturnType<typeof vi.spyOn>
+
+  beforeEach(() => {
+    vi.stubEnv('VITE_API_BASE_URL', 'https://api.test.shipx.co')
+    fetchMock = vi.fn()
+    vi.stubGlobal('fetch', fetchMock)
+    clearActiveTokens()
+    clearTenantBlocked()
+    registerSessionActions({
+      refreshNow: vi.fn().mockResolvedValue(undefined),
+      logout: vi.fn(),
+      exitImpersonation: vi.fn(),
+    })
+    invalidateSpy = vi.spyOn(queryClient, 'invalidateQueries').mockResolvedValue(undefined)
+  })
+
+  afterEach(() => {
+    invalidateSpy.mockRestore()
+  })
+
+  const invalidatedRoots = (): unknown[][] =>
+    (invalidateSpy.mock.calls as unknown as [{ queryKey: unknown[] }][]).map(
+      ([arg]) => arg.queryKey,
+    )
+
+  it('invalidates containers and packing lists when a container is deleted', async () => {
+    // The exact reported bug.
+    fetchMock.mockResolvedValue(jsonResponse({ data: { id: 'c1' } }))
+    await apiRequest({ method: 'DELETE', path: '/v1/containers/c1' })
+    expect(invalidatedRoots()).toEqual(
+      expect.arrayContaining([['containers'], ['packing-lists']]),
+    )
+  })
+
+  it('does not invalidate anything on a GET', async () => {
+    // Invalidating on reads is how you build a refetch loop.
+    fetchMock.mockResolvedValue(jsonResponse({ data: [] }))
+    await apiRequest({ method: 'GET', path: '/v1/containers' })
+    expect(invalidateSpy).not.toHaveBeenCalled()
+  })
+
+  it('does not invalidate when the write fails', async () => {
+    // A rejected write changed nothing, so refetching would be pure waste —
+    // and would mask the failure by repainting the list.
+    fetchMock.mockResolvedValue(problemResponse(409))
+    await expect(apiRequest({ method: 'POST', path: '/v1/containers' })).rejects.toThrow(ApiError)
+    expect(invalidateSpy).not.toHaveBeenCalled()
+  })
+
+  it('still returns the response when invalidation itself throws', async () => {
+    // A cache problem must never turn a write that actually succeeded into an
+    // error the user sees.
+    invalidateSpy.mockImplementation(() => {
+      throw new Error('cache exploded')
+    })
+    fetchMock.mockResolvedValue(jsonResponse({ data: { id: 'c1' } }))
+    await expect(apiRequest({ method: 'DELETE', path: '/v1/containers/c1' })).resolves.toEqual({ id: 'c1' })
+  })
+
+  it('reaches billing and containers when a packing list is approved', async () => {
+    // Cross-domain: approval consumes container CBM and can generate billing,
+    // neither of which the request path mentions.
+    fetchMock.mockResolvedValue(jsonResponse({ data: { id: 'pl1' } }))
+    await apiRequest({ method: 'PATCH', path: '/v1/packing-lists/pl1/approve' })
+    expect(invalidatedRoots()).toEqual(
+      expect.arrayContaining([['packing-lists'], ['containers'], ['billing']]),
+    )
+  })
+
+  it('invalidates nothing for a pre-auth path', async () => {
+    // Mapped to an empty root set, so it matches but invalidates nothing.
+    fetchMock.mockResolvedValue(jsonResponse({ data: { ok: true } }))
+    await apiRequest({ method: 'POST', path: '/v1/onboarding-requests' })
+    expect(invalidateSpy).not.toHaveBeenCalled()
   })
 })
