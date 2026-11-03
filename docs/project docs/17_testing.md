@@ -1403,3 +1403,46 @@ and container, so the button was disabled regardless of the dates. They now call
 `pickCustomerAndContainer()` first, so the step is genuinely valid and only the
 date rule can disable it. The two "accepts" cases are what exposed this, by
 failing where they should have passed.
+
+### Row-level security, tested for real (2026-11-03)
+
+`tests/tenant_isolation/test_rls_enforcement.py` (13 tests) is the first test in
+the repo that exercises **layer 3** — the Postgres policies themselves. Everything
+else under `tests/tenant_isolation/` tests the application layer: that services
+pass `tenant_id` and handlers reject the wrong role.
+
+**The design point is who connects.** Postgres exempts a table's owner from
+non-forced RLS, and exempts any `SUPERUSER`/`BYPASSRLS` role from RLS entirely.
+CI's Postgres service runs as `POSTGRES_USER=test_user`, which **is** a superuser
+— so a test connecting the normal way would pass whether or not RLS worked at
+all. Each test here creates a deliberately unprivileged probe role and connects
+as it, and the fixture **asserts** `NOT rolsuper AND NOT rolbypassrls` rather
+than trusting `CREATE ROLE`'s defaults: the test is worthless if the probe can
+bypass what it is measuring.
+
+Covered:
+- A tenant sees only its own `warehouse` rows, and cannot read another tenant's
+  even by asking for that `tenant_id` directly.
+- `PLATFORM` scope still reads across tenants — the access pattern migration
+  005's `::uuid` cast cannot support (`'PLATFORM'::uuid` raises).
+- A connection that never called `_set_tenant` sees **nothing** (fails closed:
+  `current_setting(..., TRUE)` is NULL, and `tenant_id::text = NULL` is NULL).
+- `WITH CHECK` blocks writing a row for another tenant — without it a scoped
+  session could create rows it then could not see.
+- Every repaired table is both `ENABLE`d **and** `FORCE`d (`pg_class`), and no
+  policy still references `app.tenant_id` (`pg_policy`) — the latter pins the
+  exact bug.
+
+These skip when no database is reachable, so a local run without the stack stays
+green; CI always has one, migrated before the suite.
+
+**Would have caught it:** run against pre-058 schema, the `FORCE` and
+`app.current_tenant_id` assertions fail outright.
+
+**Unexplained observation, recorded rather than guessed at:** during this work
+`tests/unit/test_azure_keyvault_provider.py::...::test_integrates_with_the_real_fernet_envelope`
+failed **once** in a combined `tests/unit tests/tenant_isolation` run, then passed
+in four subsequent runs including the identical invocation. It is not caused by
+the new file (the combined run passes with it present), `shared/encryption.py`
+has no cached global that would explain order-dependence, and no randomising
+pytest plugin is installed. Flagged as intermittent; cause unknown.
