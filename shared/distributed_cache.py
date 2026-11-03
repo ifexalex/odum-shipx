@@ -73,6 +73,17 @@ class DistributedCache:
             socket_connect_timeout=_CONNECT_TIMEOUT,
             socket_timeout=_SOCKET_TIMEOUT,
             health_check_interval=30,
+            # Pin RESP2 explicitly. redis-py <=5 defaulted to RESP2; redis-py 8
+            # defaults connections to RESP3, which negotiates with `HELLO 3` and
+            # needs a Redis server >= 6.0. Leaving it implicit would make a
+            # library upgrade silently change the wire protocol — and because
+            # every method here fails OPEN (returns None / logs a warning so the
+            # caller falls back to the database), a server that rejected the
+            # handshake would not raise: the cache would just stop working, and
+            # the only symptom would be extra database load. RESP3 is worth
+            # adopting deliberately, after confirming the server version in each
+            # environment — not as a side effect of a version bump.
+            protocol=2,
         )
         return self._client
 

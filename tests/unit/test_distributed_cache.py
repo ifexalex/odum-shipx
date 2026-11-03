@@ -47,3 +47,31 @@ class TestRedisClientConstruction:
         assert _construct_client_with_env({"REDIS_SSL": "TRUE"})["ssl"] is True
         assert _construct_client_with_env({"REDIS_SSL": "false"})["ssl"] is False
         assert _construct_client_with_env({})["ssl"] is False
+
+
+class TestWireProtocolIsPinned:
+    """redis-py 8 changed the DEFAULT wire protocol; this cache must not follow.
+
+    redis-py <= 5 defaulted connections to RESP2. redis-py 8 defaults them to
+    RESP3, which negotiates with `HELLO 3` and requires a Redis server >= 6.0.
+
+    That would be a silent change, which is why it is pinned and tested: every
+    method on DistributedCache fails OPEN (logs a warning, returns None, and the
+    caller falls back to the database), so a server rejecting the handshake would
+    not raise anything. The cache would simply stop working and the only symptom
+    would be extra database load — the hardest kind of regression to notice.
+    """
+
+    def test_resp2_is_requested_explicitly(self) -> None:
+        kwargs = _construct_client_with_env({})
+        assert kwargs["protocol"] == 2, (
+            "RESP2 must stay explicit — relying on the redis-py default is what " "changed between 5.x and 8.x"
+        )
+
+    def test_protocol_is_pinned_regardless_of_environment(self) -> None:
+        # Azure (TLS + key) and AWS (plain TCP) must agree on the protocol.
+        azure = _construct_client_with_env(
+            {"REDIS_HOST": "shipx.redis.cache.windows.net", "REDIS_PORT": "6380", "REDIS_SSL": "true"}
+        )
+        aws = _construct_client_with_env({"REDIS_HOST": "localhost", "REDIS_PORT": "6379"})
+        assert azure["protocol"] == aws["protocol"] == 2
