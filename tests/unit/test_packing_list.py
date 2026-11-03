@@ -1,4 +1,5 @@
 """Unit tests for services.packing_list.service — state machine, CBM calculation."""
+from datetime import UTC, date, datetime, timedelta
 from decimal import Decimal
 
 import pytest
@@ -782,3 +783,76 @@ class TestResolveArrivalWarehouse:
 
         with patch("services.payment_release.repository.get_default_warehouse", return_value=None):
             assert _resolve_arrival_warehouse(self._TENANT, None) is None
+
+
+class TestShipmentDateOrdering:
+    """`delivery_date` is when the supplier delivered the goods to the China
+    warehouse; `loading_date` is when they went into the container. The domain
+    order is fixed — goods must be received before they can be loaded — so the
+    rule is enforced on the models, not just in the browser.
+    """
+
+    @staticmethod
+    def _create(**dates):
+        from services.packing_list.models import CreatePackingListRequest
+
+        return CreatePackingListRequest(container_id="c-1", customer_id="cust-1", **dates)
+
+    def test_loading_before_delivery_is_rejected(self) -> None:
+        import pytest as _pytest
+
+        with _pytest.raises(ValueError, match="before delivery_date"):
+            self._create(delivery_date=date(2026, 11, 3), loading_date=date(2026, 11, 1))
+
+    def test_loading_on_the_same_day_as_delivery_is_allowed(self) -> None:
+        # Goods received in the morning are routinely loaded that afternoon.
+        req = self._create(delivery_date=date(2026, 11, 1), loading_date=date(2026, 11, 1))
+        assert req.loading_date == req.delivery_date
+
+    def test_loading_after_delivery_is_allowed(self) -> None:
+        req = self._create(delivery_date=date(2026, 11, 1), loading_date=date(2026, 11, 5))
+        assert req.loading_date > req.delivery_date
+
+    def test_a_future_delivery_date_is_rejected(self) -> None:
+        import pytest as _pytest
+
+        future = datetime.now(UTC).date() + timedelta(days=30)
+        with _pytest.raises(ValueError, match="cannot be in the future"):
+            self._create(delivery_date=future)
+
+    def test_a_future_loading_date_is_allowed(self) -> None:
+        """Deliberately unbounded: a packing list is written against a container
+        still in `loading` status, so a planned load date is legitimate."""
+        future = datetime.now(UTC).date() + timedelta(days=30)
+        req = self._create(delivery_date=date(2026, 11, 1), loading_date=future)
+        assert req.loading_date == future
+
+    def test_todays_date_is_accepted_even_from_a_timezone_ahead_of_utc(self) -> None:
+        """The China office is UTC+8. For several hours each evening their local
+        calendar date is already tomorrow in UTC, so comparing against UTC
+        "today" would reject the date on their own wall calendar. One day of
+        slack covers every real timezone and still rejects next week.
+        """
+        tomorrow_utc = datetime.now(UTC).date() + timedelta(days=1)
+        req = self._create(delivery_date=tomorrow_utc)
+        assert req.delivery_date == tomorrow_utc
+
+    def test_each_date_is_still_optional_on_its_own(self) -> None:
+        # Both were always nullable; the rules apply only to supplied values.
+        assert self._create().delivery_date is None
+        assert self._create(loading_date=date(2026, 11, 1)).delivery_date is None
+        assert self._create(delivery_date=date(2026, 11, 1)).loading_date is None
+
+    def test_the_same_rules_apply_when_editing_a_draft(self) -> None:
+        """The edit path has its own model, so the rule has to be on both or a
+        PATCH could write exactly the ordering the create path refuses."""
+        import pytest as _pytest
+
+        from services.packing_list.models import UpdatePackingListRequest
+
+        with _pytest.raises(ValueError, match="before delivery_date"):
+            UpdatePackingListRequest(
+                delivery_date=date(2026, 11, 3),
+                loading_date=date(2026, 11, 1),
+                items=[{"description": "shoes", "quantity": 1, "cbm": "0.5"}],
+            )

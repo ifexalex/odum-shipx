@@ -323,7 +323,28 @@ Create/edit wizard (`CreatePackingList.tsx`) and the `POST`/`PUT /v1/packing-lis
 - **Package type per item** — `PackingListItemInput.package_unit` (`carton` | `bag` | `pallet` | `bale` | `sack`, default `carton`). Reuses the existing `packing_list_item.package_unit` column and feeds CBM-rate bucketing (`shared/cbm_rate.normalize_package_unit`).
 - **Bale sizing** — for bale items the backend sets `packing_list_item.bale_type` to `BIG BALE` (effective CBM ≥ 0.3) or `SMALL BALE` (`services/packing_list/service.py::_bale_type_for`). The wizard shows an abbreviated `BIG BALE`/`SM BALE` badge live.
 - **Minimum CBM floor** — each line item's `cbm` is floored at the tenant's `min_cbm_per_item` (`shared/cbm_rate.apply_min_cbm`; default 0.1, configurable). A sub-0.1 parcel is stored/billed at the floor; the wizard shows the floored value with a `min` tag. The setting lives in `tenant_config` (`min_cbm_per_item`) and is surfaced on the CBM-rate admin page — see `07_api_tenant_management.md` (GET/PUT `/v1/tenant/cbm-rate` now carry `min_cbm_per_item`).
-- **Shipment dates** — `loading_date`/`delivery_date` on `CreatePackingListRequest`/`UpdatePackingListRequest` (migration 052), captured per packing list.
+- **Goods dates** — `delivery_date`/`loading_date` on
+  `CreatePackingListRequest`/`UpdatePackingListRequest` (migration 052), captured
+  per packing list. Both origin-side events, validated in order:
+  - `delivery_date` — the date the supplier **delivered the goods to the China
+    warehouse**. **Cannot be in the future** (it records something that happened).
+    Note this is *not* the expected customer delivery, which the original
+    migration comment wrongly implied; that estimate lives on
+    `container.estimated_delivery_date`.
+  - `loading_date` — the date the goods were **loaded into the container**. Must
+    be **on or after `delivery_date`**; same day is allowed, since goods received
+    in the morning are often loaded that afternoon. Deliberately **unbounded
+    above**: a packing list is written against a container still in `loading`
+    status, so a planned load date is legitimate.
+  - Both remain nullable; the rules apply only to values actually supplied.
+  - A `422` is returned on violation. The rule lives on a shared
+    `_ShipmentDatesMixin` used by both request models, so the PATCH path cannot
+    write an ordering the POST path refuses.
+  - **Timezone note:** "not in the future" allows one day past the server's UTC
+    date. The China office is UTC+8, so for several hours each evening their local
+    calendar date is already tomorrow in UTC — comparing against UTC "today"
+    would reject the date on their own wall calendar. One day covers every real
+    timezone (max UTC+14) and still rejects next week.
 - **Arrival warehouse** — `arrival_warehouse_id` on `CreatePackingListRequest`/`UpdatePackingListRequest` (migration 053: `packing_list.arrival_warehouse_id` FK → `warehouse`, `ON DELETE SET NULL`). Records which destination warehouse the customer's goods are bound for, chosen from the tenant's warehouses (`GET /v1/warehouses`). Server-side resolution (`service._resolve_arrival_warehouse`): an explicit id is validated to belong to the tenant (unknown → 404); when omitted it falls back to the tenant's **default** warehouse (same fallback the release-note flow uses), so a list always records a destination when one is configured. The wizard pre-selects the default and offers a searchable `Combobox`; create/detail/list responses carry `arrival_warehouse_name` (LEFT JOIN `warehouse`). Managed on the `Warehouses` admin config page — see `13_api_payment_release.md`.
 - **Draft editing** — `canEditPackingList` drafts now open the wizard at `/packing-lists/:id/edit` (reuses the create flow via `PUT /v1/packing-lists/{id}`, which was already draft/rejected-only). Customer/container are fixed; items + dates + arrival warehouse are editable. A new **Edit** button on `PackingListDetail` for draft lists links here.
 - **Input hardening (frontend)** — the quantity fields (weights, L×W×H, declared value) block negatives and non-numeric keystrokes (`min=0` + keydown guard + `sanitizeNumber`); the backend already rejected them (`ge=0`/`gt=0` on the Pydantic model), so this is purely entry UX.

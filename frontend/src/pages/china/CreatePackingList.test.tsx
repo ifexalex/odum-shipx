@@ -87,6 +87,11 @@ function renderPage() {
 
 // The customer + container pickers are searchable Comboboxes (a button that
 // opens a list), not native <select>s — open it and click the option by label.
+async function pickCustomerAndContainer(): Promise<void> {
+  await selectFromCombobox('Customer', 'Ngozi Okonkwo')
+  await selectFromCombobox('Container', 'MSCU1234567')
+}
+
 async function selectFromCombobox(controlName: string, optionLabel: string): Promise<void> {
   const control = screen.getByRole('button', { name: controlName })
   await waitFor(() => expect(control).toBeEnabled())
@@ -331,6 +336,85 @@ describe('CreatePackingList', () => {
     await waitFor(() =>
       expect(screen.getByLabelText('Arrival warehouse')).toHaveTextContent('Lagos — Trade Fair'),
     )
+  })
+
+  // ── Goods dates, 2026-11-03 ───────────────────────────────────────────────
+  // delivery_date = goods received in the China warehouse (the supplier's
+  // delivery); loading_date = goods loaded into the container. Delivery is
+  // shown first because that is the order the events happen in.
+
+  it('shows the delivery date before the loading date', async () => {
+    renderPage()
+    const delivery = await screen.findByLabelText(/^Delivery date/, { selector: 'input' })
+    const loading = screen.getByLabelText(/^Loading date/, { selector: 'input' })
+    // DOCUMENT_POSITION_FOLLOWING: loading comes after delivery in the DOM.
+    expect(delivery.compareDocumentPosition(loading) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+  })
+
+  it('explains what each date means', async () => {
+    renderPage()
+    expect(await screen.findByText(/received in the china warehouse/i)).toBeInTheDocument()
+    expect(screen.getByText(/loaded into the container/i)).toBeInTheDocument()
+  })
+
+  it('caps the delivery date picker at today so a future date is unreachable', async () => {
+    renderPage()
+    const delivery = await screen.findByLabelText(/^Delivery date/, { selector: 'input' })
+    const now = new Date()
+    const today = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(
+      now.getDate(),
+    ).padStart(2, '0')}`
+    expect(delivery).toHaveAttribute('max', today)
+  })
+
+  it('rejects a delivery date in the future and blocks the step', async () => {
+    renderPage()
+    await screen.findByText('Next: Add items')
+    await pickCustomerAndContainer()
+    const delivery = await screen.findByLabelText(/^Delivery date/, { selector: 'input' })
+    await userEvent.type(delivery, '2099-01-01')
+    expect(await screen.findByText(/cannot be a future date/i)).toBeInTheDocument()
+    expect(screen.getByText('Next: Add items')).toBeDisabled()
+  })
+
+  it('rejects a loading date before the delivery date', async () => {
+    // The core rule: goods cannot be loaded before they were received.
+    renderPage()
+    await screen.findByText('Next: Add items')
+    await pickCustomerAndContainer()
+    await userEvent.type(await screen.findByLabelText(/^Delivery date/, { selector: 'input' }), '2026-11-03')
+    await userEvent.type(screen.getByLabelText(/^Loading date/, { selector: 'input' }), '2026-11-01')
+    expect(await screen.findByText(/goods must be received before they are loaded/i)).toBeInTheDocument()
+    expect(screen.getByText('Next: Add items')).toBeDisabled()
+  })
+
+  it('accepts loading on the same day as delivery', async () => {
+    // Goods received in the morning are routinely loaded that afternoon.
+    renderPage()
+    await screen.findByText('Next: Add items')
+    await pickCustomerAndContainer()
+    await userEvent.type(await screen.findByLabelText(/^Delivery date/, { selector: 'input' }), '2026-11-03')
+    await userEvent.type(screen.getByLabelText(/^Loading date/, { selector: 'input' }), '2026-11-03')
+    expect(screen.queryByText(/goods must be received before/i)).toBeNull()
+    expect(screen.getByText('Next: Add items')).toBeEnabled()
+  })
+
+  it('accepts a future loading date', async () => {
+    // Unbounded on purpose: the container is still loading, so a planned date
+    // is legitimate.
+    renderPage()
+    await screen.findByText('Next: Add items')
+    await pickCustomerAndContainer()
+    await userEvent.type(await screen.findByLabelText(/^Delivery date/, { selector: 'input' }), '2026-11-03')
+    await userEvent.type(screen.getByLabelText(/^Loading date/, { selector: 'input' }), '2099-01-01')
+    expect(screen.queryByText(/cannot be/i)).toBeNull()
+    expect(screen.getByText('Next: Add items')).toBeEnabled()
+  })
+
+  it('bounds the loading date picker below by the delivery date', async () => {
+    renderPage()
+    await userEvent.type(await screen.findByLabelText(/^Delivery date/, { selector: 'input' }), '2026-11-03')
+    expect(screen.getByLabelText(/^Loading date/, { selector: 'input' })).toHaveAttribute('min', '2026-11-03')
   })
 
   // ── Reported live, 2026-11-02 ──────────────────────────────────────────────
