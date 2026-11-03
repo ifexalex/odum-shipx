@@ -9,7 +9,7 @@
  * (see e2e/support/mintInvite.ts for why).
  */
 import { expect, test } from '@playwright/test'
-import { mintTestInvite } from '../support/mintInvite'
+import { mintTestInvite, uniqueTestEmail } from '../support/mintInvite'
 
 // A strong password meeting every rule InviteClaimScreen checks, so tests
 // aren't tied to guessing which rule the UI enforces.
@@ -22,7 +22,7 @@ test.describe('customer invite claim', () => {
     await page.goto(`/invite/${token}`)
     await expect(page.getByText(/create your account|welcome/i)).toBeVisible()
 
-    const email = `e2e-${Date.now()}@example.com`
+    const email = uniqueTestEmail()
     await page.getByLabel(/email address/i).fill(email)
     await page.getByLabel(/^password/i).fill(STRONG_PASSWORD)
     await page.getByLabel(/confirm password/i).fill(STRONG_PASSWORD)
@@ -38,7 +38,7 @@ test.describe('customer invite claim', () => {
     await page.goto(`/invite/${token}`)
     await expect(page.getByText(/create your account|welcome/i)).toBeVisible()
 
-    await page.getByLabel(/email address/i).fill(`e2e-${Date.now()}@example.com`)
+    await page.getByLabel(/email address/i).fill(uniqueTestEmail())
     await page.getByLabel(/^password/i).fill(STRONG_PASSWORD)
     await page.getByLabel(/confirm password/i).fill(STRONG_PASSWORD + 'x')
 
@@ -52,7 +52,7 @@ test.describe('customer invite claim', () => {
     // Consume it once via a fresh context (claiming doesn't require staying
     // on the same page — this simulates "already used").
     await page.goto(`/invite/${token}`)
-    const email = `e2e-${Date.now()}@example.com`
+    const email = uniqueTestEmail()
     await page.getByLabel(/email address/i).fill(email)
     await page.getByLabel(/^password/i).fill(STRONG_PASSWORD)
     await page.getByLabel(/confirm password/i).fill(STRONG_PASSWORD)

@@ -46,3 +46,20 @@ export function mintTestInvite(): MintedInvite {
   }
   return { token, customerId }
 }
+
+/**
+ * A genuinely unique test email.
+ *
+ * `e2e-${Date.now()}@example.com` was not unique: `fullyParallel: true` starts
+ * several workers at once, and two reaching this line inside the same
+ * millisecond produce the same address. The second invite acceptance then fails
+ * with 409 DUPLICATE_RESOURCE, which is what made `e2e-local-stack` permanently
+ * red — three of four tests in auth-logout.spec.ts failed this way, and running
+ * the same spec with `--workers=1` left only one (timing) failure behind.
+ *
+ * randomUUID has no such window. The prefix stays, so throwaway accounts remain
+ * identifiable in the local database.
+ */
+export function uniqueTestEmail(prefix = 'e2e'): string {
+  return `${prefix}-${crypto.randomUUID()}@example.com`
+}

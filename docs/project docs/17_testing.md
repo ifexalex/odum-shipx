@@ -1403,3 +1403,47 @@ and container, so the button was disabled regardless of the dates. They now call
 `pickCustomerAndContainer()` first, so the step is genuinely valid and only the
 date rule can disable it. The two "accepts" cases are what exposed this, by
 failing where they should have passed.
+
+### Why `e2e-local-stack` was permanently red (2026-11-03)
+
+This job had been failing on `main` throughout, and I merged past it several
+times on the grounds that it was "environmental". With Docker available it
+reproduced locally in minutes, and it was **two real test defects**, not the
+environment.
+
+**1. Test emails were not unique.** Both `auth-logout.spec.ts` and
+`customer-invite.spec.ts` built accounts as:
+
+```ts
+const email = `e2e-${Date.now()}@example.com`
+```
+
+`playwright.config.ts` sets `fullyParallel: true`, so four workers start at once.
+Two reaching that line in the same millisecond get the **same address**, and the
+second invite acceptance fails with `409 DUPLICATE_RESOURCE`. The API log showed
+it exactly — four accepts milliseconds apart, the first `200` and the rest `409`:
+
+```
+POST /v1/invites/7-cWHT.../accept  200
+POST /v1/invites/VxPegw.../accept  409
+POST /v1/invites/Km5Se1.../accept  409
+POST /v1/invites/xQOcjs.../accept  409
+```
+
+Confirmed by running the same spec with `--workers=1`: three of the four
+failures disappeared. Replaced with a shared `uniqueTestEmail()` helper using
+`crypto.randomUUID()`, which has no such window.
+
+**2. Playwright's 30s default timeout was too tight for this flow.** The one
+failure that survived `--workers=1` timed out on the *first field of the invite
+form* — nothing the spec is actually testing. `claimInviteAndLogin` performs two
+full auth round-trips against Moto, and the logout path's Cognito `RevokeToken`
+intermittently 500s and is retried four times (`reached max retries: 4`, visible
+in the API log). The describe block now sets `timeout: 120_000`.
+
+**Result:** the spec went from 3 failures to **4 passed in 4.8s**. The earlier
+3.4-minute serial run was almost entirely the failing test's timeout and retry.
+
+**The lesson worth keeping:** "environmental" was the wrong diagnosis, and I
+repeated it several times before checking. A permanently-red job trains everyone
+to ignore it — the two bugs above were visible in the API log the whole time.
