@@ -1,4 +1,6 @@
+import { queryClient } from '../lib/queryClient'
 import { getSessionActions } from '../auth/sessionBridge'
+import { ruleForPath } from './cacheInvalidation'
 import { reportTenantBlocked } from '../auth/tenantGate'
 import { getActiveTokenType, getAuthHeaders } from '../auth/tokenStore'
 
@@ -140,6 +142,36 @@ async function parseError(response: Response): Promise<ApiError> {
   return new ApiError(shape, requestId)
 }
 
+/**
+ * Invalidate the query roots a successful write affects.
+ *
+ * Fire-and-forget by design: a cache problem must never turn a write that
+ * actually succeeded into an error the user sees, so nothing here is awaited or
+ * allowed to throw. An unmapped path is reported in dev only — the drift test in
+ * cacheInvalidation.test.ts is what enforces coverage, and a console error in
+ * production would be noise the user cannot act on.
+ */
+function invalidateForRequest(method: string, path: string): void {
+  if (method === 'GET') return
+  try {
+    const rule = ruleForPath(path)
+    if (!rule) {
+      if (import.meta.env.DEV) {
+        console.warn(
+          `[ShipX] No cache-invalidation rule for ${method} ${path}. ` +
+            'Add one in api/cacheInvalidation.ts, or the UI will show stale data after this write.',
+        )
+      }
+      return
+    }
+    for (const root of rule.roots) {
+      void queryClient.invalidateQueries({ queryKey: root })
+    }
+  } catch {
+    // Deliberately swallowed — see the note above.
+  }
+}
+
 // On a 401: impersonation tokens never silently refresh (they hard-expire by
 // design), so a 401 while impersonating means the session was revoked or hit
 // its 30-minute cap server-side — exit impersonation, don't try to refresh
@@ -175,6 +207,13 @@ async function fetchWithAuth(opts: RequestOptions): Promise<Response> {
   if (!response.ok) {
     throw await parseError(response)
   }
+
+  // A successful write makes some cached reads wrong. Doing this here, rather
+  // than at each call site, is what makes queryClient.ts's stated assumption
+  // ("mutations call invalidateQueries immediately") actually hold — 40 of 45
+  // mutating files did not, which is why a deleted container stayed on screen
+  // until a hard reload. See api/cacheInvalidation.ts.
+  invalidateForRequest(opts.method, opts.path)
 
   return response
 }

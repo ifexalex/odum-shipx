@@ -59,6 +59,54 @@ const { mutate, isPending } = useMutation({
 });
 ```
 
+### Invalidation is automatic (2026-11-03)
+
+**You no longer have to remember the `onSuccess` block above.** Every successful
+non-GET request invalidates the query roots its path affects, centrally, in
+`api/client.ts`. The example above still works and is still the clearest way to
+express a *narrow* invalidation (e.g. one detail key), but it is no longer what
+keeps the UI correct.
+
+**Why this changed.** `lib/queryClient.ts` justified `refetchOnWindowFocus: false`
+and a 3-minute `staleTime` with "mutations call invalidateQueries immediately".
+An audit found that true in **5 of 45** files that mutate. With nothing else to
+correct the cache, a deleted row stayed on screen until a hard reload — reported
+from live use as deleting a container and still seeing it in the list.
+
+`ContainerDetail.tsx` was typical and worth studying: it held its data in
+`useState`, called `containersApi.delete()` **directly**, and navigated back to a
+`ContainerList` reading a cached `useInfiniteQuery`. A `useDeleteContainer` hook
+that *would* have invalidated existed and was never wired up. Patching 40 call
+sites would have left the 41st free to reintroduce it, so the guarantee moved to
+one place.
+
+**How to add an endpoint.** Add a rule to `api/cacheInvalidation.ts`. If you
+forget, `api/cacheInvalidation.test.ts` fails: it scrapes every mutating path out
+of `api/*.ts` (via `import.meta.glob`, not `node:fs` — the app tsconfig has no
+Node types) and asserts each one matches a rule. A dev-only `console.warn` also
+fires at runtime.
+
+**Design decisions worth knowing:**
+
+| Decision | Reason |
+|---|---|
+| Invalidate **roots** (`['containers']`), not exact keys | A list key embeds its filters, and a mutation cannot know which filter combinations are cached. React Query only refetches queries with active observers, so cost is bounded by what is on screen. |
+| **Cross-domain effects are explicit** per rule | Deleting a container frees its packing lists; approving a packing list moves container CBM and can create billing. Those are listed in the rule, not left to callers. |
+| **Fire-and-forget**, never awaited, never throws | A cache problem must not turn a write that actually succeeded into an error the user sees. |
+| **Nothing on GET** | Invalidating on reads is how you build a refetch loop. |
+| **Nothing on a failed write** | It changed nothing, and refetching would repaint the list and mask the failure. |
+| Pre-auth paths map to an **empty** root set | They must still *match*, so the drift test cannot later be satisfied by an accidental catch-all. |
+
+**Known limitation.** This fixes *cross-page* staleness, which is the reported
+class of bug. A page that holds its own copy in `useState` (there are many —
+`ContainerDetail`, `Warehouses`, most config pages) is not a query observer, so
+invalidation cannot refresh it; those pages still reload themselves manually.
+Migrating them onto the existing mutation hooks is follow-up work, deliberately
+not bundled with this change.
+
+**Do not re-enable `refetchOnWindowFocus` to paper over staleness.** If something
+looks stale, the registry is missing a rule or a cross-domain effect.
+
 **Optimistic updates** are worth it only for high-frequency, low-risk actions (e.g. toggling a notification preference, marking a notification read). For anything with a state machine or money attached (approve/reject, payment recording, refund approval), wait for the real response — these are exactly the places a stale optimistic UI causes the most damage if the mutation actually fails (e.g. self-approval rejection, illegal transition).
 
 ## Read-Only Impersonation Interaction

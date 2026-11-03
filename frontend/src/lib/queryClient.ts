@@ -17,6 +17,15 @@ import { QueryClient } from '@tanstack/react-query'
  * refetchOnWindowFocus: false — logistics data doesn't change spontaneously. Tab switches
  * should NOT fire DB queries. Mutations + invalidateQueries handle freshness correctly.
  *
+ * HOW that is guaranteed (added 2026-11-03): it used to be an assumption, and a false
+ * one — 40 of the 45 files that mutate never invalidated anything, so with
+ * refetchOnWindowFocus off and a 3-minute staleTime, nothing corrected a stale list and
+ * a deleted row survived until a hard reload. Invalidation now happens centrally in
+ * `api/client.ts` on every successful non-GET, driven by the path→key registry in
+ * `api/cacheInvalidation.ts`. Do NOT re-enable refetchOnWindowFocus to paper over
+ * staleness: if something looks stale, the registry is missing a rule or a cross-domain
+ * effect, and `api/cacheInvalidation.test.ts` is where that gets pinned.
+ *
  * IMPORTANT: queryClient.clear() is called on every tenant-context switch (login, logout,
  * impersonation enter/exit) — wired in App.tsx via SessionProvider.onSessionChange.
  */
