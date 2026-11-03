@@ -449,6 +449,26 @@ ALTER TABLE packing_list
     ADD COLUMN delivery_date DATE;
 ```
 
+> **Semantics clarified 2026-11-03 (no schema change).** This migration and the
+> original UI described `delivery_date` as the *expected customer delivery* —
+> a destination-side, future estimate. That was wrong for how the field is used:
+> it is the date the **supplier delivered the goods to the China warehouse**,
+> i.e. when the cargo was received. Both dates are origin-side events, in order:
+>
+> | Column | Event | Rule |
+> |---|---|---|
+> | `delivery_date` | goods received at the China warehouse | cannot be in the future |
+> | `loading_date` | goods loaded into the container | `>= delivery_date` (same day allowed) |
+>
+> Enforced on `CreatePackingListRequest` **and** `UpdatePackingListRequest` via a
+> shared validator, so a PATCH cannot write an ordering the create path refuses.
+> `loading_date` is deliberately unbounded above — a packing list is written
+> against a container still in `loading` status, so a planned load date is
+> legitimate. Both columns stay nullable.
+>
+> Destination delivery estimation already lives on `container.estimated_delivery_date`
+> (migration 002), so nothing is lost by this field not meaning that.
+
 The item-entry enhancements (package type, bale sizing, minimum-CBM floor) reuse existing `packing_list_item` columns — `package_unit` and `bale_type` (migration 040) and `cbm` — so they need no migration. `bale_type` is now computed for bale items (`BIG BALE` ≥ 0.3 CBM, else `SMALL BALE`), and `cbm` is floored at the tenant's `min_cbm_per_item` (a `tenant_config` key, default 0.1 — no schema).
 
 ### Migration 053 — Packing-list arrival warehouse
