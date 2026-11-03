@@ -1446,3 +1446,34 @@ in four subsequent runs including the identical invocation. It is not caused by
 the new file (the combined run passes with it present), `shared/encryption.py`
 has no cached global that would explain order-dependence, and no randomising
 pytest plugin is installed. Flagged as intermittent; cause unknown.
+
+#### Extended for migration 059 (same day)
+
+Six more tests, and the important ones are **catalog-driven** rather than
+hardcoded — a hardcoded table list is exactly how four tables drifted onto a
+broken predicate for four migrations:
+
+- Every tenant-scoped table (RLS enabled **and** a `tenant_id` column) is
+  `FORCE`d. A table that is `ENABLE`-only is bypassed by the owner.
+- No policy casts to `::uuid` (raises on `'PLATFORM'`), references
+  `app.tenant_id` (the setting nothing sets), or lacks a PLATFORM branch (denies
+  platform-scoped reads). All three historical styles are rejected by name.
+- A guard asserting the catalog query finds **≥ 20** tables, because every
+  assertion above passes vacuously on an empty list.
+- Functional isolation on `customer` — one of migration 005's original 21, the
+  group whose uuid-cast predicate 059 replaced — proving the rewrite works on
+  them and not just the four 058 repaired.
+- `logistics_app` cannot log in (005 committed its password), and **has grants on
+  tables added after 005**: that `GRANT ... ON ALL TABLES` covered only tables
+  existing at the time, so the switchover would have failed with "permission
+  denied" on a newer table.
+
+**A future migration that adds a tenant-scoped table with a non-canonical policy
+fails CI**, which is the property the schema previously lacked.
+
+**Local verification was not possible and that is worth stating.** Docker is down
+and the Homebrew `postgresql@14` install is broken (`postgres` missing from its
+Cellar bin), so migrations 058/059 were reviewed by reading the generated SQL,
+not executed locally. Their `format('%I', ...)`-inside-`op.execute` pattern is
+the same one migration 005 uses and CI runs successfully, so the `%` handling is
+proven; the policy logic is verified by these tests in CI against `postgres:15`.

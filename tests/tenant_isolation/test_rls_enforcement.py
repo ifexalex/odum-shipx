@@ -240,3 +240,166 @@ class TestEveryRepairedTableIsForced:
                     assert "'app.tenant_id'" not in (qual or ""), f"{table}.{name} still reads the setting name nothing ever sets"
         finally:
             conn.close()
+
+
+class TestEveryTenantScopedTableUsesTheCanonicalPredicate:
+    """Catalog-driven, deliberately: a hardcoded table list is exactly how four
+    tables drifted onto a broken predicate for four migrations.
+
+    Migration 059 normalised every tenant-scoped policy onto one PLATFORM-aware
+    predicate. These assertions read `pg_class`/`pg_policy` and will fail if a
+    future migration introduces a table whose policy disagrees — including the
+    three historical styles this schema accumulated:
+
+        `= current_setting(...)::uuid`                raises on PLATFORM scope
+        `current_setting('app.tenant_id', TRUE)`      setting nothing ever sets
+        no PLATFORM branch                            denies platform-scoped reads
+    """
+
+    @staticmethod
+    def _tenant_scoped_rls_tables(cur) -> list[str]:
+        cur.execute(
+            """
+            SELECT c.relname
+              FROM pg_class c
+              JOIN pg_namespace ns ON ns.oid = c.relnamespace
+             WHERE ns.nspname = 'public'
+               AND c.relkind = 'r'
+               AND c.relrowsecurity
+               AND EXISTS (
+                   SELECT 1 FROM pg_attribute a
+                    WHERE a.attrelid = c.oid AND a.attname = 'tenant_id'
+                      AND a.attnum > 0 AND NOT a.attisdropped
+               )
+             ORDER BY c.relname
+            """
+        )
+        return [r[0] for r in cur.fetchall()]
+
+    def test_the_schema_actually_has_tenant_scoped_rls_tables(self) -> None:
+        # Guards the query itself: every assertion below would pass vacuously on
+        # an empty list.
+        conn = _admin_conn()
+        try:
+            with conn.cursor() as cur:
+                assert len(self._tenant_scoped_rls_tables(cur)) >= 20
+        finally:
+            conn.close()
+
+    def test_every_one_is_forced(self) -> None:
+        conn = _admin_conn()
+        try:
+            with conn.cursor() as cur:
+                tables = self._tenant_scoped_rls_tables(cur)
+                cur.execute(
+                    "SELECT relname FROM pg_class WHERE relname = ANY(%s) AND NOT relforcerowsecurity",
+                    (tables,),
+                )
+                unforced = [r[0] for r in cur.fetchall()]
+                assert unforced == [], f"RLS is not FORCED (owner bypasses it) on: {unforced}"
+        finally:
+            conn.close()
+
+    def test_every_policy_is_platform_aware_and_uuid_cast_free(self) -> None:
+        conn = _admin_conn()
+        try:
+            with conn.cursor() as cur:
+                offenders = []
+                for table in self._tenant_scoped_rls_tables(cur):
+                    cur.execute(
+                        "SELECT polname, pg_get_expr(polqual, polrelid), "
+                        "       pg_get_expr(polwithcheck, polrelid) "
+                        "  FROM pg_policy WHERE polrelid = %s::regclass",
+                        (table,),
+                    )
+                    policies = cur.fetchall()
+                    if not policies:
+                        offenders.append(f"{table}: RLS enabled but NO policy — denies everything")
+                        continue
+                    for name, using, check in policies:
+                        for label, expr in (("USING", using), ("WITH CHECK", check)):
+                            if expr is None:
+                                continue
+                            if "'PLATFORM'" not in expr:
+                                offenders.append(f"{table}.{name} {label}: no PLATFORM branch")
+                            if "::uuid" in expr:
+                                offenders.append(f"{table}.{name} {label}: casts to uuid — raises on 'PLATFORM'")
+                            if "app.tenant_id" in expr and "app.current_tenant_id" not in expr:
+                                offenders.append(f"{table}.{name} {label}: wrong setting name")
+                assert offenders == [], "non-canonical RLS policies:\n  " + "\n  ".join(offenders)
+        finally:
+            conn.close()
+
+    def test_a_core_005_table_isolates_by_tenant(self, probe_role, two_tenants) -> None:
+        """`customer` is one of migration 005's original 21 — the group whose
+        uuid-cast predicate 059 replaced. Proves the rewrite works on them too,
+        not just on the four 058 repaired."""
+        a, b = two_tenants
+        admin = _admin_conn()
+        admin.autocommit = True
+        try:
+            with admin.cursor() as cur:
+                cur.execute(f"GRANT SELECT, INSERT ON customer TO {PROBE_ROLE}")
+                for tid in (a, b):
+                    cur.execute(
+                        "INSERT INTO customer (tenant_id, name, phone) VALUES (%s, %s, %s)",
+                        (tid, f"Cust {tid[:8]}", f"+234800{tid[:7]}"),
+                    )
+        finally:
+            admin.close()
+
+        rows = _as_probe(a, "SELECT tenant_id FROM customer")
+        assert rows, "tenant A should see its own customer"
+        assert {str(r[0]) for r in rows} == {a}
+
+        platform = _as_probe("PLATFORM", "SELECT tenant_id FROM customer WHERE tenant_id IN (%s, %s)", (a, b))
+        assert {str(r[0]) for r in platform} == {a, b}, "PLATFORM scope must still cross tenants"
+
+        cleanup = _admin_conn()
+        cleanup.autocommit = True
+        with cleanup.cursor() as cur:
+            for tid in (a, b):
+                cur.execute("DELETE FROM customer WHERE tenant_id = %s", (tid,))
+        cleanup.close()
+
+
+class TestLogisticsAppRoleCannotLogIn:
+    """Migration 005 created `logistics_app` with the literal password
+    'CHANGE_ME_IN_SECRETS_MANAGER', and nothing ever connected as it. 059 strips
+    LOGIN; the switchover grants it back with a real credential."""
+
+    def test_it_has_grants_on_tables_added_after_migration_005(self) -> None:
+        """005's `GRANT ... ON ALL TABLES` covered only the tables that existed
+        then. Every table from 022 onward had no grant, so the switchover would
+        have failed with "permission denied" on whichever newer table was touched
+        first — a confusing way to find a 30-migration-old omission."""
+        conn = _admin_conn()
+        try:
+            with conn.cursor() as cur:
+                cur.execute("SELECT 1 FROM pg_roles WHERE rolname = 'logistics_app'")
+                if cur.fetchone() is None:
+                    pytest.skip("logistics_app not present in this database")
+                missing = []
+                # One table from each era after 005.
+                for table in ("container_document", "warehouse", "payment_claim", "tenant_user_activation"):
+                    cur.execute(
+                        "SELECT has_table_privilege('logistics_app', %s, 'SELECT')",
+                        (table,),
+                    )
+                    if not cur.fetchone()[0]:
+                        missing.append(table)
+                assert missing == [], f"logistics_app has no SELECT on: {missing}"
+        finally:
+            conn.close()
+
+    def test_the_role_exists_but_has_no_login(self) -> None:
+        conn = _admin_conn()
+        try:
+            with conn.cursor() as cur:
+                cur.execute("SELECT rolcanlogin FROM pg_roles WHERE rolname = 'logistics_app'")
+                row = cur.fetchone()
+                if row is None:
+                    pytest.skip("logistics_app not present in this database")
+                assert row[0] is False, "logistics_app can still log in with the password committed in migration 005"
+        finally:
+            conn.close()

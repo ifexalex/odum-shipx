@@ -190,17 +190,70 @@ Tenant isolation today therefore rests on **layer 2** — every repository
 function passing `tenant_id` — which is real but is a single layer, not the
 documented defence in depth.
 
-**Remaining work to make layer 3 real**, deliberately not bundled into 058
-because it is a credentials and rollout change rather than a schema one:
+### Migration 059 — every prerequisite except the credential
 
-1. Point the application at the non-owner `logistics_app` role migration 005
-   already creates (new secret, Terraform wiring, migrations still run as the
-   owner).
-2. Confirm that role has neither `SUPERUSER` nor `BYPASSRLS`
-   (`tests/tenant_isolation/test_rls_enforcement.py` asserts this of its own
-   probe role, so the pattern is established).
-3. Re-point migration 005's 21 core policies at the PLATFORM-aware predicate
-   058 introduces, or every platform-scoped read starts raising.
+Auditing beyond the four tables showed the problem was not confined to them.
+**No table in the schema had a policy compatible with how the application
+connects.** Three incompatible styles had accumulated:
 
-Step 3 is the one that must not be skipped: enforcing RLS without it would break
-public tracking, activation and sign-in simultaneously.
+| Migrations | Predicate | Under enforced RLS |
+|---|---|---|
+| 005 (21 core), 027, 039 | `tenant_id = current_setting(...)::uuid` | **raises** — `'PLATFORM'::uuid` is invalid |
+| 022, 024, 025, 041 | `current_setting('app.tenant_id', TRUE)` | denies every row (fixed in 058) |
+| 042, 044, 046, 048, 051, 055 | correct name, no PLATFORM branch | denies every platform-scoped read |
+
+Migration **059** normalises all of them onto one canonical predicate and sets
+`FORCE` on each:
+
+```sql
+current_setting('app.current_tenant_id', TRUE) = 'PLATFORM'
+OR tenant_id::text = current_setting('app.current_tenant_id', TRUE)
+```
+
+It is **catalog-driven** — every `public` table with RLS enabled *and* a
+`tenant_id` column — rather than a hardcoded list, because a hardcoded list is
+precisely how four tables drifted onto a broken predicate. Tables with no
+`tenant_id` (`tenant`, `platform_settings`, `platform_audit_log`,
+`tenant_onboarding_request`) are platform-scoped by design and left alone. The
+migration raises if it matches zero tables, so it cannot report success after
+silently doing nothing.
+
+059 also closes two things that would have broken the switchover:
+
+- **Stale grants.** 005's `GRANT ... ON ALL TABLES IN SCHEMA public` applied only
+  to tables existing at that moment. Every table from 022 onward had **no grant**,
+  so switching the app onto `logistics_app` would have failed with "permission
+  denied" on whichever newer table it touched first. 059 re-grants and adds
+  `ALTER DEFAULT PRIVILEGES`, so tables created by future migrations are covered
+  without anyone remembering.
+- **A login role with a committed password.** 005 created `logistics_app` with the
+  literal `'CHANGE_ME_IN_SECRETS_MANAGER'` and nothing ever connected as it. 059
+  strips `LOGIN`. Granting it back with a real credential belongs to the
+  switchover, not to version control.
+
+None of this changes observable behaviour while the application still connects on
+a role that bypasses RLS. It makes enforcement *possible*.
+
+### What is left: the switchover
+
+One step remains, and it is a credentials/rollout change rather than a schema one:
+
+1. Provision a real password for `logistics_app` (Key Vault / Secrets Manager),
+   `ALTER ROLE logistics_app LOGIN`, and point `DATABASE_USER` at it via
+   Terraform. **Migrations keep running as the owner** — they create tables and
+   must not be subject to RLS.
+2. Confirm the role has neither `SUPERUSER` nor `BYPASSRLS`.
+   `tests/tenant_isolation/test_rls_enforcement.py` asserts exactly that of its
+   own probe role, so the pattern is established.
+
+Do **not** reorder these before 059 is applied: switching the role first makes
+every platform-scoped read raise, which takes out public tracking, activation and
+sign-in simultaneously.
+
+**Verification already in place.** The RLS test suite is catalog-driven too: it
+asserts every tenant-scoped table is `FORCE`d, that no policy casts to `::uuid`
+or references `app.tenant_id`, that each carries a PLATFORM branch, and — as an
+unprivileged probe role — that a tenant sees only its own rows, that PLATFORM
+scope still crosses tenants, that an unscoped connection sees nothing, and that
+`WITH CHECK` blocks a cross-tenant write. A future migration adding a table with
+a non-canonical policy fails CI.
