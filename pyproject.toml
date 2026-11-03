@@ -10,11 +10,11 @@ requires-python = ">=3.13"
 # CLAUDE.md dependency standard.
 dependencies = [
     "aws-xray-sdk==2.14.0",
-    "boto3==1.34.0",
+    "boto3==1.43.123",
     "cryptography==50.0.2",
     "openpyxl==3.1.2",
     "psycopg2-binary==2.9.11",
-    "pydantic==2.12.5",
+    "pydantic==2.14.2",
     "redis==5.0.3",
     "reportlab==4.1.0",
 ]
@@ -51,7 +51,7 @@ dev = [
     "flask==3.1.3",
     "flask-cors==6.0.2",
     "locust==2.24.0",
-    "moto[all]==5.0.0",
+    "moto[all]==5.2.5",
     "mypy==1.19.1",
     "pytest==8.3.5",
     "pytest-asyncio==0.23.8",
@@ -59,7 +59,7 @@ dev = [
     "pytest-timeout==2.2.0",
     "requests==2.34.2",
     "ruff==0.2.0",
-    "safety==3.7.0",
+    "safety==3.8.1",
 ]
 # Extra packages the shared Lambda layer bundles beyond `dependencies` (alembic
 # for the migrate Lambda). The layer = project runtime deps + this group; the CI
