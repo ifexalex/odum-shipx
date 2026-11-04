@@ -1447,3 +1447,104 @@ in the API log). The describe block now sets `timeout: 120_000`.
 **The lesson worth keeping:** "environmental" was the wrong diagnosis, and I
 repeated it several times before checking. A permanently-red job trains everyone
 to ignore it — the two bugs above were visible in the API log the whole time.
+
+### Four more defects found by running the *whole* suite (2026-11-03)
+
+Fixing the two defects above made `auth-logout.spec.ts` pass in isolation, which
+is not the same as the job passing. A full `--project=local-stack` run against a
+freshly seeded stack still reported 8 failures across five other specs. All four
+root causes below were real; none were environmental.
+
+**3. Loading skeletons were counted as data rows.** `Table.tsx` renders
+`SKELETON_ROWS = 5` placeholder `<tr>`s with a full set of `<td>`s while a query
+is in flight, and `dataRows()` matched them. So **any row count taken mid-load
+returned 5**, regardless of the real data — a plausible-looking number that is
+simply wrong.
+
+This is what failed `container-list.spec.ts`'s status-chip test. The local stack
+held only two containers; instrumenting the test showed the truth:
+
+```
+initial 2 · chip "In transit0" · filtered immediate 5 · filtered +1.5s 0 · restored 2
+```
+
+The real filtered count was **0**; the test read **5** (the skeleton) and then
+compared it against the correctly-restored **2**, failing `restored >= filtered`.
+It also accounted for all three `bulk-packing-list-actions.spec.ts` failures.
+
+Fixed on both sides. `Table.tsx` now marks placeholder rows `aria-hidden="true"`
+(they convey nothing) and `data-skeleton-row`, and sets `aria-busy` on the
+`<table>`; `dataRows()` excludes `tr[data-skeleton-row]`. A new
+`waitForTableSettled()` waits for `aria-busy="false"`, replacing
+`clickFilterAndSettle`'s fixed 300ms guess — and correcting this file's earlier
+claim that "there is no DOM signal to poll for instead". There is one now.
+
+**4. `networkidle` is the wrong wait against this dev server.**
+`scripts/local_server.py` runs `threaded=False` **deliberately** — `shared/db.py`'s
+connection singleton is not thread-safe, and one request at a time is the
+faithful match to Lambda. So the whole API serializes. With Playwright's four
+workers all driving it, a page's own requests can stay pending long enough that
+no 500ms idle window ever opens, and `waitForLoadState('networkidle')` throws at
+30s.
+
+Four tests in `billing-payment-and-release.spec.ts` and
+`bulk-packing-list-actions.spec.ts` died on that exact line — never on an
+assertion — purely because other workers had the server busy. Settling is now an
+optimization, not a precondition: `settleNetwork()` waits up to 5s and **carries
+on if it times out**, with correctness left to auto-waiting assertions and
+`waitForTableSettled()`. Playwright's own docs discourage `networkidle` for this
+reason; all 18 direct uses across the specs were replaced.
+
+**5. No browser upload could ever work against Moto (local only).** Every upload
+in this app is a browser `PUT` straight to object storage against a presigned URL
+(`src/api/uploads.ts`); the API only mints the URL. It carries a `Content-Type`
+header, so the browser sends a CORS preflight first — and **Moto validates the
+presigned signature on that `OPTIONS`**, rejecting it:
+
+```
+HTTP/1.1 403 FORBIDDEN
+<Code>SignatureDoesNotMatch</Code>
+```
+
+The signature was computed for the `PUT`. Real S3 answers preflight
+unauthenticated, so this is a Moto-only limitation — but a fatal one, and it is
+why `manifest-import.spec.ts` failed while the identical import **succeeded under
+curl**, which ignores CORS. Two fixes, both local-dev only:
+
+- `scripts/bootstrap_local.sh` now applies a CORS rule to the Moto bucket,
+  mirroring the real bucket's `cors_rule` in
+  `infrastructure/aws/modules/s3/main.tf`. Necessary but not sufficient on its
+  own, because of the signature check above.
+- `vite.config.ts` proxies `/__storage` to the storage endpoint, and
+  `scripts/local_server.py` rewrites presigned URLs onto that prefix
+  (`LOCAL_UPLOAD_PROXY_BASE`). The `PUT` becomes **same-origin**, so no preflight
+  is sent at all. The signature still validates: SigV2's string-to-sign covers
+  the object path, which the proxy preserves, not the host.
+
+Production is untouched and already correct — the real bucket has a CORS rule, and
+handlers, `shared/storage` and the deployed stack are unchanged.
+
+**6. A stale spec and a missing form label.** `claims-and-refunds.spec.ts` typed
+into a free-text "container id or number" field that no longer exists:
+`MyClaimsNew.tsx` was changed on 2026-09-06 to a dropdown of the customer's
+*arrived* shipments, mirroring `_PRE_ARRIVAL_STATUSES` server-side. The spec had
+never been updated, so it timed out on a field that was gone.
+
+Fixing it surfaced a genuine accessibility defect: that `<select>` had a sibling
+`<label>` with **no `htmlFor`**, so it had no accessible name at all — nothing for
+a screen reader to announce, and nothing for `getByLabel` to find.
+`MyClaimsNew.tsx` now wires `htmlFor`/`id`.
+
+**Result: 86 passed, 15 skipped, 0 failed** on a freshly seeded stack.
+
+**Two things this exposed that are not fixed here:**
+
+- **The suite is not idempotent.** Several specs mutate seeded state and
+  `test.skip` when it has already been consumed, so re-running without
+  `make stack` silently converts failures into skips (15 of 101 on a clean run).
+  Each run also adds users, eventually tripping the tenant's plan limit — the
+  local DB reached 50 `tenant_user` rows against a starter limit of 10.
+- **7 frontend unit tests fail on `main`** (`src/auth/storage.test.ts`,
+  `src/design/colorScheme.test.tsx`, `src/design/components/ThemeToggle.test.tsx`),
+  verified pre-existing by stashing all of the above. `ci.yml` has no frontend
+  job, so nothing was catching them.

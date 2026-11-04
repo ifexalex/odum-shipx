@@ -22,7 +22,7 @@
  * real seeded data (not a mock) makes this necessary.
  */
 import { expect, test } from '@playwright/test'
-import { goToViaNav, switchRole } from '../support/roleSwitch'
+import { goToViaNav, settleNetwork, switchRole } from '../support/roleSwitch'
 
 const CUSTOMER_NAME = 'Ngozi Adeyemi'
 const CONTAINER_NUMBER = 'ACME001001'
@@ -54,7 +54,7 @@ test.describe('release note — count-based generation with warehouse and docume
     await switchRole(page, 'tenant_admin')
     await goToViaNav(page, /^billing$/i)
     await page.getByPlaceholder(/reference, customer, container/i).fill(CUSTOMER_NAME)
-    await page.waitForLoadState('networkidle')
+    await settleNetwork(page)
     const row = page.locator('table tbody tr')
       .filter({ hasText: CUSTOMER_NAME })
       .filter({ hasText: CONTAINER_NUMBER })

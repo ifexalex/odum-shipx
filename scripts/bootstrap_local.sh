@@ -123,6 +123,33 @@ aws --endpoint-url="${ENDPOINT}" --region "${REGION}" \
   s3 mb s3://logistics-assets 2>/dev/null \
   && echo "    Created: s3://logistics-assets" || echo "    Already exists: s3://logistics-assets"
 
+# CORS — required, not cosmetic. Every file upload in this app is a *browser*
+# PUT straight to object storage against a presigned URL (the API only mints
+# the URL; the bytes never pass through it). Without a CORS rule the browser
+# blocks that PUT before it is sent — net::ERR_FAILED, no server-side trace —
+# so manifest/packing-list import and all evidence uploads fail locally while
+# working perfectly under curl, which ignores CORS. This mirrors the real
+# bucket's cors_rule in infrastructure/aws/modules/s3/main.tf; keep the two in
+# step. Origins are the local frontends only: Vite's dev server and the
+# preview/ container ports.
+echo "    Applying CORS (browser presigned PUT)..."
+aws --endpoint-url="${ENDPOINT}" --region "${REGION}" \
+  s3api put-bucket-cors --bucket logistics-assets \
+  --cors-configuration '{
+    "CORSRules": [{
+      "AllowedHeaders": ["*"],
+      "AllowedMethods": ["GET", "PUT", "POST", "HEAD"],
+      "AllowedOrigins": [
+        "http://localhost:5173",
+        "http://127.0.0.1:5173",
+        "http://localhost:4173",
+        "http://localhost:8080"
+      ],
+      "ExposeHeaders": ["ETag"],
+      "MaxAgeSeconds": 3600
+    }]
+  }' && echo "    CORS applied." || echo "    WARNING: could not apply CORS — browser uploads will fail."
+
 # ─── Secrets Manager ──────────────────────────────────────────────────────────
 echo ""
 echo "==> Creating Secrets Manager secret..."

@@ -12,7 +12,7 @@
  * import) rather than real seeded data — safe to mutate status on repeatedly.
  */
 import { expect, test } from '@playwright/test'
-import { goToViaNav, switchRole } from '../support/roleSwitch'
+import { goToViaNav, settleNetwork, switchRole } from '../support/roleSwitch'
 
 const TEST_CONTAINER = 'E2E-TEST-001'
 
@@ -56,7 +56,7 @@ test.describe('manifest verify + container advance', () => {
     await goToViaNav(page, /^containers$/i)
 
     await page.getByPlaceholder(/container number, vessel name, voyage/i).fill(TEST_CONTAINER)
-    await page.waitForLoadState('networkidle')
+    await settleNetwork(page)
     const row = page.locator('table tbody tr').filter({ hasText: TEST_CONTAINER })
     test.skip((await row.count()) === 0, `${TEST_CONTAINER} not found — run manifest-import.spec.ts first`)
 

@@ -14,7 +14,7 @@
  * release-note form requires tags that actually exist on the container.
  */
 import { expect, test } from '@playwright/test'
-import { goToViaNav, switchRole } from '../support/roleSwitch'
+import { goToViaNav, settleNetwork, switchRole } from '../support/roleSwitch'
 
 const CUSTOMER_NAME = 'Ibrahim Musa'
 const CARTON_TAGS = ['ACME-001-003', 'ACME-001-004']
@@ -23,7 +23,7 @@ async function openBillingRecord(page: import('@playwright/test').Page): Promise
   await switchRole(page, 'tenant_admin')
   await goToViaNav(page, /^billing$/i)
   await page.getByPlaceholder(/reference, customer, container/i).fill(CUSTOMER_NAME)
-  await page.waitForLoadState('networkidle')
+  await settleNetwork(page)
   const row = page.locator('table tbody tr').filter({ hasText: CUSTOMER_NAME })
   await expect(row).toHaveCount(1)
   // BillingList.tsx's row action button label depends on payment status

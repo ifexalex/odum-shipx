@@ -1393,3 +1393,36 @@ User: "there is no way to onboard a shipping company … customers shouldn't be 
 - **Nav:** `navConfig.ts` gains an "Onboarding Requests" platform entry; `AppSidebar.tsx` overlays a live pending-lead count via `useOnboardingPendingCount` (gated to platform admins — no fetch for other roles). New hooks in `hooks/useOnboardingRequests.ts`; query keys in `api/keys.ts` (`onboardingRequestKeys`).
 
 Tests: `RequestOnboardingScreen.test.tsx`, `RegisterScreen.test.tsx`, `OnboardingRequests.test.tsx`, plus a platform-nav assertion in `AppSidebar.test.tsx` (harness wrapped in a `QueryClientProvider` for the new hook). 861 frontend tests pass; tsc clean; eslint 0 errors.
+
+---
+
+## Implementation notes / ground-truth gaps found — two component defects surfaced by the e2e suite (2026-11-03)
+
+Both were found while getting the full `e2e-local-stack` Playwright suite green,
+and both are real product defects rather than test-only concerns. Full testing
+account in `17_testing.md`.
+
+**`design/components/Table.tsx` — loading skeletons were indistinguishable from
+data.** The `loading` branch renders `SKELETON_ROWS = 5` placeholder `<tr>`s with
+a full set of `<td>`s, structurally identical to real rows and carrying no marker
+of any kind. Anything counting rows mid-load therefore saw **five rows that do not
+exist**. Beyond breaking tests, the placeholders were also announced to assistive
+technology as if they were table content, and nothing told a screen reader the
+table was busy.
+
+Fixed: placeholder rows are now `aria-hidden="true"` (they convey nothing) and
+carry `data-skeleton-row`, and the `<table>` sets `aria-busy={loading}`. The
+`aria-busy` attribute is also the DOM signal the e2e helpers now wait on, in place
+of a fixed 300ms sleep.
+
+**`pages/customer/MyClaimsNew.tsx` — the shipment `<select>` had no accessible
+name.** Step 1's "Which shipment?" label was a **sibling** `<label>` with no
+`htmlFor`, and the `<select>` had no `id`, so the two were never associated. A
+screen reader announced an unlabelled combobox, and `getByLabel(/which shipment/i)`
+found nothing. Fixed by wiring `htmlFor="claim-shipment"` / `id="claim-shipment"`.
+
+Worth noting for anyone reading the spec history: `claims-and-refunds.spec.ts` had
+been filling a free-text "container id or number" field that this page **stopped
+having on 2026-09-06**, when step 1 became a dropdown of the customer's *arrived*
+shipments (mirroring `_PRE_ARRIVAL_STATUSES` server-side). The spec was never
+updated and had been timing out on a field that no longer existed.

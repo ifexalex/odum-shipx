@@ -8,13 +8,13 @@
  * customer role." Untested until now.
  */
 import { expect, test } from '@playwright/test'
-import { switchRole } from '../support/roleSwitch'
+import { settleNetwork, switchRole } from '../support/roleSwitch'
 
 test.describe('customer refund request', () => {
   test('requesting a refund from billing succeeds with the customer correctly attributed', async ({ page }) => {
     await switchRole(page, 'customer')
     await page.getByRole('button', { name: /^billing$/i }).click()
-    await page.waitForLoadState('networkidle')
+    await settleNetwork(page)
 
     // MyBilling.tsx renders each billing record as a clickable card
     // (role="button"), not a table row.

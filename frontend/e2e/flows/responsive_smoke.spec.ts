@@ -8,7 +8,7 @@
  * rows without flex-wrap).
  */
 import { expect, type Page, test } from '@playwright/test'
-import { switchRole } from '../support/roleSwitch'
+import { settleNetwork, switchRole } from '../support/roleSwitch'
 
 test.use({ viewport: { width: 375, height: 800 } })
 
@@ -34,7 +34,7 @@ async function assertNoHorizontalOverflow(page: Page, label: string): Promise<vo
 test('BillingList renders card view at phone width, no horizontal overflow', async ({ page }) => {
   await switchRole(page, 'tenant_admin')
   await page.goto('/billing')
-  await page.waitForLoadState('networkidle')
+  await settleNetwork(page)
   await expect(page.locator('table')).toHaveCount(0)
   await assertNoHorizontalOverflow(page, 'BillingList')
 })
@@ -42,18 +42,18 @@ test('BillingList renders card view at phone width, no horizontal overflow', asy
 test('BillingDetail hero actions (multiple buttons) do not overflow at phone width', async ({ page }) => {
   await switchRole(page, 'tenant_admin')
   await page.goto('/billing')
-  await page.waitForLoadState('networkidle')
+  await settleNetwork(page)
   const firstCard = page.locator('[class*="card"]').first()
   test.skip((await firstCard.count()) === 0, 'No billing records seeded')
   await firstCard.click()
-  await page.waitForLoadState('networkidle')
+  await settleNetwork(page)
   await assertNoHorizontalOverflow(page, 'BillingDetail')
 })
 
 test('PackingListList bulk-selection bar does not overflow at phone width', async ({ page }) => {
   await switchRole(page, 'tenant_admin')
   await page.goto('/packing-lists')
-  await page.waitForLoadState('networkidle')
+  await settleNetwork(page)
 
   // Card view at 375px has no header checkbox row — select via the
   // per-card checkbox instead so the bulk bar actually renders.
@@ -69,7 +69,7 @@ test('PackingListList bulk-selection bar does not overflow at phone width', asyn
 test('customer Account page (all tabs) does not overflow at phone width', async ({ page }) => {
   await switchRole(page, 'customer')
   await page.goto('/account')
-  await page.waitForLoadState('networkidle')
+  await settleNetwork(page)
   await assertNoHorizontalOverflow(page, 'Account — Profile tab')
 
   for (const tabName of [/notifications/i, /privacy/i]) {
@@ -84,7 +84,7 @@ test('customer Account page (all tabs) does not overflow at phone width', async 
 test('customer-portal hamburger drawer opens, navigates, and closes at phone width', async ({ page }) => {
   await switchRole(page, 'customer')
   await page.goto('/my-shipments')
-  await page.waitForLoadState('networkidle')
+  await settleNetwork(page)
 
   const hamburger = page.getByRole('button', { name: /open menu/i })
   await expect(hamburger).toBeVisible()

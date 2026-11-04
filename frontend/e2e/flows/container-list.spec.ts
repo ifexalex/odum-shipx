@@ -10,13 +10,13 @@
  * Requires seeded containers (make stack / make seed / seed_stress.py).
  */
 import { expect, test } from '@playwright/test'
-import { dataRows, goToViaNav, switchRole } from '../support/roleSwitch'
+import { clickFilterAndSettle, dataRows, goToViaNav, settleNetwork, switchRole } from '../support/roleSwitch'
 
 test.describe('container list', () => {
   test.beforeEach(async ({ page }) => {
     await switchRole(page, 'china_office_staff')
     await expect(page).toHaveURL(/\/containers/)
-    await page.waitForLoadState('networkidle')
+    await settleNetwork(page)
   })
 
   test('search narrows the table to matching rows', async ({ page }) => {
@@ -27,7 +27,7 @@ test.describe('container list', () => {
     test.skip(!firstNumber?.trim(), 'Could not read a container number to search for')
 
     await page.getByPlaceholder(/container number, vessel name, voyage/i).fill(firstNumber!.trim())
-    await page.waitForLoadState('networkidle')
+    await settleNetwork(page)
 
     const visibleRows = await dataRows(page).count()
     expect(visibleRows).toBeGreaterThan(0)
@@ -36,7 +36,7 @@ test.describe('container list', () => {
 
   test('search for a nonsense string shows the empty state, not stale rows', async ({ page }) => {
     await page.getByPlaceholder(/container number, vessel name, voyage/i).fill('zzz-no-such-container-zzz')
-    await page.waitForLoadState('networkidle')
+    await settleNetwork(page)
     await expect(page.getByText(/no containers/i)).toBeVisible()
   })
 
@@ -49,16 +49,14 @@ test.describe('container list', () => {
     const chipCount = await chips.count()
     test.skip(chipCount === 0, 'No status chips beyond "All" rendered')
 
-    await chips.first().click()
-    await page.waitForLoadState('networkidle')
+    await clickFilterAndSettle(chips.first(), page)
     const filteredCount = await dataRows(page).count()
 
     // "All" alone is ambiguous — it also matches the sidebar's "All packing
     // lists" and the date filter's "All time". The status chip's accessible
     // name is "All <count>" (Chip.tsx renders the row count inside it), which
     // no other "All ..." control on this page has.
-    await page.getByRole('button', { name: /^all \d+$/i }).click()
-    await page.waitForLoadState('networkidle')
+    await clickFilterAndSettle(page.getByRole('button', { name: /^all \d+$/i }), page)
     const restoredCount = await dataRows(page).count()
 
     expect(restoredCount).toBeGreaterThanOrEqual(filteredCount)
