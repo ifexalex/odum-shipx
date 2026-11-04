@@ -1403,3 +1403,77 @@ and container, so the button was disabled regardless of the dates. They now call
 `pickCustomerAndContainer()` first, so the step is genuinely valid and only the
 date rule can disable it. The two "accepts" cases are what exposed this, by
 failing where they should have passed.
+
+### Row-level security, tested for real (2026-11-03)
+
+`tests/tenant_isolation/test_rls_enforcement.py` (13 tests) is the first test in
+the repo that exercises **layer 3** — the Postgres policies themselves. Everything
+else under `tests/tenant_isolation/` tests the application layer: that services
+pass `tenant_id` and handlers reject the wrong role.
+
+**The design point is who connects.** Postgres exempts a table's owner from
+non-forced RLS, and exempts any `SUPERUSER`/`BYPASSRLS` role from RLS entirely.
+CI's Postgres service runs as `POSTGRES_USER=test_user`, which **is** a superuser
+— so a test connecting the normal way would pass whether or not RLS worked at
+all. Each test here creates a deliberately unprivileged probe role and connects
+as it, and the fixture **asserts** `NOT rolsuper AND NOT rolbypassrls` rather
+than trusting `CREATE ROLE`'s defaults: the test is worthless if the probe can
+bypass what it is measuring.
+
+Covered:
+- A tenant sees only its own `warehouse` rows, and cannot read another tenant's
+  even by asking for that `tenant_id` directly.
+- `PLATFORM` scope still reads across tenants — the access pattern migration
+  005's `::uuid` cast cannot support (`'PLATFORM'::uuid` raises).
+- A connection that never called `_set_tenant` sees **nothing** (fails closed:
+  `current_setting(..., TRUE)` is NULL, and `tenant_id::text = NULL` is NULL).
+- `WITH CHECK` blocks writing a row for another tenant — without it a scoped
+  session could create rows it then could not see.
+- Every repaired table is both `ENABLE`d **and** `FORCE`d (`pg_class`), and no
+  policy still references `app.tenant_id` (`pg_policy`) — the latter pins the
+  exact bug.
+
+These skip when no database is reachable, so a local run without the stack stays
+green; CI always has one, migrated before the suite.
+
+**Would have caught it:** run against pre-058 schema, the `FORCE` and
+`app.current_tenant_id` assertions fail outright.
+
+**Unexplained observation, recorded rather than guessed at:** during this work
+`tests/unit/test_azure_keyvault_provider.py::...::test_integrates_with_the_real_fernet_envelope`
+failed **once** in a combined `tests/unit tests/tenant_isolation` run, then passed
+in four subsequent runs including the identical invocation. It is not caused by
+the new file (the combined run passes with it present), `shared/encryption.py`
+has no cached global that would explain order-dependence, and no randomising
+pytest plugin is installed. Flagged as intermittent; cause unknown.
+
+#### Extended for migration 059 (same day)
+
+Six more tests, and the important ones are **catalog-driven** rather than
+hardcoded — a hardcoded table list is exactly how four tables drifted onto a
+broken predicate for four migrations:
+
+- Every tenant-scoped table (RLS enabled **and** a `tenant_id` column) is
+  `FORCE`d. A table that is `ENABLE`-only is bypassed by the owner.
+- No policy casts to `::uuid` (raises on `'PLATFORM'`), references
+  `app.tenant_id` (the setting nothing sets), or lacks a PLATFORM branch (denies
+  platform-scoped reads). All three historical styles are rejected by name.
+- A guard asserting the catalog query finds **≥ 20** tables, because every
+  assertion above passes vacuously on an empty list.
+- Functional isolation on `customer` — one of migration 005's original 21, the
+  group whose uuid-cast predicate 059 replaced — proving the rewrite works on
+  them and not just the four 058 repaired.
+- `logistics_app` cannot log in (005 committed its password), and **has grants on
+  tables added after 005**: that `GRANT ... ON ALL TABLES` covered only tables
+  existing at the time, so the switchover would have failed with "permission
+  denied" on a newer table.
+
+**A future migration that adds a tenant-scoped table with a non-canonical policy
+fails CI**, which is the property the schema previously lacked.
+
+**Local verification was not possible and that is worth stating.** Docker is down
+and the Homebrew `postgresql@14` install is broken (`postgres` missing from its
+Cellar bin), so migrations 058/059 were reviewed by reading the generated SQL,
+not executed locally. Their `format('%I', ...)`-inside-`op.execute` pattern is
+the same one migration 005 uses and CI runs successfully, so the `%` handling is
+proven; the policy logic is verified by these tests in CI against `postgres:15`.
