@@ -1060,3 +1060,44 @@ next step is:
 
 This gives atomic alias-level rollback in under 30 seconds and automatic rollback on CloudWatch
 alarm breach. See the architecture review doc for full implementation details.
+
+## Artifact retention and the storage quota (2026-11-04)
+
+**Build artifacts are kept for 7 days, not 30.** The reason is worth recording,
+because the symptom looked nothing like the cause.
+
+`ci.yml` uploads `lambda-packages-${{ github.run_id }}` on every push to `main`,
+at roughly **105 MB each**. At 30 days' retention that accumulated **4.22 GB
+across 40 artifacts** (4.54 GB in total with the frontend bundles) and exhausted
+the account's artifact storage quota. Two consequences, neither obviously
+related to each other:
+
+- A `main` build failed with `Failed to CreateArtifact: Artifact storage quota
+  has been hit` — while `lint`, `test` and `security` all passed. A red build on
+  `main` caused by storage, not by code.
+- More confusingly, **GitHub stopped creating workflow runs for new pushes
+  altogether.** A push to a PR branch produced *zero* runs (verified via
+  `/actions/runs?head_sha=…` returning `total_count: 0`), so CI simply went
+  quiet rather than reporting anything. Nothing in the PR indicated why.
+
+Cleared by deleting the 40 oldest `lambda-packages-*` artifacts (4.54 GB →
+0.32 GB), keeping the three most recent for redeploy, and dropping retention to
+7 days here and in `frontend-ci.yml`.
+
+**If CI appears to stop reporting on new pushes, check this first:**
+
+```bash
+# Current usage, newest first
+gh api --paginate "/repos/<owner>/<repo>/actions/artifacts?per_page=100" \
+  -q '.artifacts[] | "\(.size_in_bytes)\t\(.name)\t\(.created_at)"' | sort -rn | head
+
+# Did a push actually create any runs?
+gh api "/repos/<owner>/<repo>/actions/runs?head_sha=<sha>" -q '.total_count'
+```
+
+A `total_count` of `0` for a pushed commit means the runs were never created —
+look at quota and billing, not at the workflow files.
+
+Anything older than the retention window is still reproducible: every artifact
+is a build output of a known commit, so a redeploy of an older build means
+re-running the build for that commit first.
