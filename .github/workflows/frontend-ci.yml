@@ -158,6 +158,31 @@ jobs:
       - name: Provision .env.local (gitignored — from the tracked sample)
         run: cp .env.local.sample .env.local
 
+      # The FRONTEND needs its own .env.local, and this step was missing —
+      # which is why e2e-local-stack had been red throughout while the same
+      # specs passed on any developer machine (where the file already exists).
+      #
+      # Without it VITE_API_BASE_URL is undefined, and src/api/client.ts throws
+      # "Missing required env var: VITE_API_BASE_URL" before any request is
+      # sent. So EVERY API call fails. InviteClaimScreen's token fetch rejects,
+      # loadState becomes 'invalid', the page renders "This link is no longer
+      # valid." and the email field never appears — the specs then timed out
+      # waiting for a field that could never render. Reproduced locally by
+      # moving frontend/.env.local aside: identical failure, and the one test
+      # that *expects* the invalid state ("an unknown token shows the same
+      # friendly invalid state") kept passing, which is the giveaway.
+      #
+      # Must run BEFORE `make bootstrap`: that script patches the freshly
+      # generated Cognito pool/client IDs into this file, but only if it
+      # already exists. auth-logout.spec.ts performs a real Cognito login
+      # against Moto, so it needs the generated IDs and the Moto endpoint.
+      - name: Provision frontend/.env.local (needed before bootstrap patches it)
+        run: |
+          cp frontend/.env.local.example frontend/.env.local
+          # Point the real-Cognito path at Moto (commented out in the example,
+          # since a developer only needs it to exercise the real /login screen).
+          echo "VITE_COGNITO_ENDPOINT=http://localhost:5100" >> frontend/.env.local
+
       - name: Start local stack (Postgres + Moto + Redis)
         run: make up
 

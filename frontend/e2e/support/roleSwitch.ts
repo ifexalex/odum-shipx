@@ -30,8 +30,37 @@ export async function switchRole(page: Page, role: string): Promise<void> {
  * manually only if a test switches role more than once.
  */
 export async function suppressRoleSwitcherOverlay(page: Page): Promise<void> {
-  await page.addStyleTag({ content: '#dev-role-switcher-panel { pointer-events: none; }' })
+  // addInitScript, not just addStyleTag: a style tag applies only to the
+  // document currently loaded, and page.goto() is a real navigation that
+  // throws it away. Several specs call switchRole() and then goto() a route,
+  // which silently brought the overlay back — and a click landing on it is not
+  // an error, it just never reaches the button underneath.
+  //
+  // That is how cbm-rate-config.spec.ts failed: after goto('/admin/config/
+  // cbm-rate') the click on "Naira (₦)" went to the switcher instead, so the
+  // currency never changed and the test timed out waiting for the ₦ labels —
+  // while the per-type labels it had already asserted were present in $.
+  // addInitScript re-runs on every navigation, so the suppression persists.
+  await page.addInitScript((css: string) => {
+    const inject = (): void => {
+      const el = document.createElement('style')
+      el.textContent = css
+      document.head.appendChild(el)
+    }
+    if (document.readyState === 'loading') {
+      document.addEventListener('DOMContentLoaded', inject, { once: true })
+    } else {
+      inject()
+    }
+  }, OVERLAY_SUPPRESSION_CSS)
+  // Also apply to the page as it stands right now, since addInitScript only
+  // takes effect from the next navigation onward.
+  await page.addStyleTag({ content: OVERLAY_SUPPRESSION_CSS }).catch(() => {
+    // No document yet (nothing navigated) — the init script will cover it.
+  })
 }
+
+const OVERLAY_SUPPRESSION_CSS = '#dev-role-switcher-panel { pointer-events: none !important; }'
 
 /**
  * Navigate to `path` **within the SPA** by clicking a nav link, rather than
@@ -126,11 +155,20 @@ export async function clickFilterAndSettle(locator: Locator, page: Page): Promis
  * there, which is correct — the card list has no row-count assertions.
  */
 export async function waitForTableSettled(page: Page): Promise<void> {
-  const table = page.locator('table[aria-busy="false"]').first()
-  await table.waitFor({ state: 'attached', timeout: 10_000 }).catch(() => {
-    // No table on the page (card layout, or an empty state rendered without
-    // one) — nothing to settle. Never fail a test for the absence of a table.
-  })
+  // Bail out immediately when the page has no table at all — card layout, or a
+  // route that simply isn't a list. count() resolves right away rather than
+  // waiting, which matters: waiting for `table[aria-busy="false"]` to attach on
+  // a page that will never have one burns the whole timeout on every single
+  // navigation. That alone pushed smoke-navigation.spec.ts past Playwright's
+  // 30s per-test limit and stretched the file from seconds to ~5 minutes.
+  if ((await page.locator('table').count()) === 0) return
+
+  await page.locator('table[aria-busy="false"]').first()
+    .waitFor({ state: 'attached', timeout: 10_000 })
+    .catch(() => {
+      // Still loading after 10s — leave it to the caller's own assertions,
+      // which auto-wait. Never fail a test merely for a slow table.
+    })
 }
 
 /**

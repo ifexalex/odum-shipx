@@ -1548,3 +1548,88 @@ a screen reader to announce, and nothing for `getByLabel` to find.
   `src/design/colorScheme.test.tsx`, `src/design/components/ThemeToggle.test.tsx`),
   verified pre-existing by stashing all of the above. `ci.yml` has no frontend
   job, so nothing was catching them.
+
+### Why CI stayed red after all of that, and the local/CI divergence behind it (2026-11-04)
+
+The suite was green locally and `e2e-local-stack` still failed. The cause was not
+in the specs at all.
+
+**7. CI never provisioned `frontend/.env.local`.** The job copies the backend's
+`.env.local.sample`, and nothing created the frontend's own env file. Without it
+`VITE_API_BASE_URL` is undefined and `src/api/client.ts` throws
+`Missing required env var: VITE_API_BASE_URL` **before any request is sent**, so
+every API call fails. `InviteClaimScreen`'s token fetch rejected, `loadState`
+became `'invalid'`, and the page rendered "This link is no longer valid." — the
+specs then waited 120s for an email field that could never appear.
+
+Reproduced locally by moving `frontend/.env.local` aside: byte-identical failure.
+The giveaway is which test *passed* — "an unknown token shows the same friendly
+invalid state", the one case that **expects** the invalid state.
+
+The workflow now copies `frontend/.env.local.example` **before** `make bootstrap`
+(which patches the freshly generated Cognito pool/client IDs into that file, but
+only if it already exists) and appends `VITE_COGNITO_ENDPOINT`, since
+`auth-logout.spec.ts` performs a real Cognito login against Moto.
+
+**The divergence that hid everything.** Playwright defaults `workers` to 1 on CI
+but to half the CPU count locally, so a local run and the CI run were simply
+different tests, each hiding what the other found:
+
+| | Local (4 workers) | CI (1 worker) |
+|---|---|---|
+| Specs sharing seed data | often **skipped** | **ran**, and failed |
+| `networkidle` waits | timed out under contention | fine |
+| Net result | 0 failed | 8 failed |
+
+`playwright.config.ts` now pins `workers: 1` everywhere. Serial is the honest
+model here anyway: one API connection, served one request at a time, and specs
+that share tenant state.
+
+**8. Four defects only a serial run reaches.**
+
+- **`.or()` is not "either outcome".** `bulk-packing-list-actions` asserted
+  `getByText(/succeeded/).or(getByText(/no packing lists/))`, and approving the
+  *last* pending list shows **both** — "1 succeeded · 0 failed" and an empty
+  list. That is a strict-mode violation, so the test failed **because it
+  worked**. Needs `.first()`.
+- **StrictMode's double fetch overwrites user input.** `main.tsx` wraps the app
+  in `<StrictMode>`, so in dev React runs `CbmRateConfig`'s load effect twice and
+  the second `getCbmRate()` is still in flight after the form renders. When it
+  resolves it re-applies the persisted config, discarding anything selected or
+  typed meanwhile. It silently reverted "By package type" to "Single rate"
+  mid-test, and reset a typed rate so the save persisted the **old** number —
+  the rate history recorded a `+$0` change. Dev-only (the form is gated on
+  `loading`), but it makes interacting before settling unsound. Fixed by
+  settling first, and by asserting `toHaveValue` before submitting so the race
+  fails loudly rather than silently saving the wrong value.
+- **A test depending on a sibling test having run.** `manifest-verify-and-advance`'s
+  sealing test needed an approved packing list *and* a verified manifest, and
+  established neither. No ordering fixes it: specs run alphabetically, so
+  `bulk-packing-list-actions` (which approves pending lists) runs **before**
+  `manifest-import` creates this container's list. The server was right to refuse
+  — "Container must have at least 1 approved packing list before sealing" — and
+  the test only ever "passed" by being skipped. It now sets up both over the API.
+  **Note the role:** approving wants `tenant_admin`, while verifying a manifest
+  requires `china_office_staff`/`nigeria_office_staff` and answers **403** to
+  `tenant_admin`. The first version used one role for both and ignored the
+  response, so the precondition looked satisfied and wasn't — hence `expectOk()`
+  on every setup call.
+- **A transient error asserted as a permanent one.** `smoke-navigation` asserted
+  `not.toBeVisible()` on an error message *during* load. `queryClient.ts` retries
+  a failed query once, so a query that loses a race against the serialized API
+  renders an error, retries, and succeeds. `/admin/customers` failed that way and
+  the captured snapshot contained **no error text at all**. The sweep now waits
+  for the page to arrive, settles, then asserts `toHaveCount(0)` — a settled
+  state rather than a moment in time. A page genuinely stuck on an error still
+  fails.
+
+**A regression of my own, worth recording.** `waitForTableSettled()` first waited
+for `table[aria-busy="false"]` to attach with a 10s timeout, and the `catch` only
+fires *after* that timeout — so every navigation to a page without a table burned
+the full 10s. That alone pushed `smoke-navigation` past the per-test limit and
+stretched the file from seconds to ~5 minutes. It now returns immediately when
+`page.locator('table').count()` is 0. Whole-suite wall clock: 9.8m → 5.1m.
+
+**Result: 86 passed, 15 skipped, 0 failed**, verified against a full CI replica —
+both env files built from their tracked samples, `make stack` from scratch, and a
+serial run.
