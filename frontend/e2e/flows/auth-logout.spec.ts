@@ -13,13 +13,13 @@
  * all — it's the genuine-login code path this bug lived in.
  */
 import { expect, test } from '@playwright/test'
-import { mintTestInvite } from '../support/mintInvite'
+import { mintTestInvite, uniqueTestEmail } from '../support/mintInvite'
 
 const STRONG_PASSWORD = 'Correct-Horse-9-Battery!'
 
 async function claimInviteAndLogin(page: import('@playwright/test').Page): Promise<string> {
   const { token } = mintTestInvite()
-  const email = `e2e-logout-${Date.now()}@example.com`
+  const email = uniqueTestEmail('e2e-logout')
 
   await page.goto(`/invite/${token}`)
   await page.getByLabel(/email address/i).fill(email)
@@ -38,6 +38,14 @@ async function claimInviteAndLogin(page: import('@playwright/test').Page): Promi
 }
 
 test.describe('real login/logout session lifecycle', () => {
+  // Each test claims an invite AND logs in — two full auth round-trips against
+  // Moto, plus a logout whose Cognito RevokeToken intermittently 500s and is
+  // retried four times ("reached max retries: 4" in the API log). Playwright's
+  // 30s default left no headroom: tests that do pass here take ~50s, and the
+  // one that failed under `--workers=1` timed out on the very first field of
+  // the invite form rather than on anything this spec is testing.
+  test.describe.configure({ timeout: 120_000 })
+
   test('logging out sends the customer to the login screen, not the dev-identity fallback', async ({ page }) => {
     await claimInviteAndLogin(page)
 

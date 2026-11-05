@@ -8,7 +8,7 @@
  * ones to test the staff-side workflows against.
  */
 import { expect, test } from '@playwright/test'
-import { dataRows, goToViaNav, switchRole } from '../support/roleSwitch'
+import { dataRows, goToViaNav, settleNetwork, switchRole } from '../support/roleSwitch'
 
 const CONTAINER_NUMBER = 'ACME001002'
 const CARTON_TAGS = 'ACME-002-001, ACME-002-002'
@@ -20,7 +20,20 @@ test.describe('claims and refunds', () => {
     await page.getByRole('button', { name: /file a claim|new claim|\+/i }).first().click()
 
     await expect(page).toHaveURL(/\/my-claims\/new/)
-    await page.getByLabel(/container id or number/i).fill(CONTAINER_NUMBER)
+
+    // Step 1 is a dropdown of the customer's *arrived* shipments, not a
+    // free-text container field — MyClaimsNew.tsx was changed to mirror
+    // `_PRE_ARRIVAL_STATUSES` server-side (2026-09-06) and this spec still
+    // typed into the field that change removed, which is why it timed out.
+    const shipmentSelect = page.getByLabel(/which shipment/i)
+    await expect(shipmentSelect).toBeVisible()
+    const option = shipmentSelect.locator(`option:has-text("${CONTAINER_NUMBER}")`)
+    test.skip(
+      (await option.count()) === 0,
+      `No arrived shipment for container ${CONTAINER_NUMBER} — reseed (make stack)`,
+    )
+    await shipmentSelect.selectOption({ value: await option.first().getAttribute('value') ?? '' })
+
     await page.getByLabel(/description of damage/i).fill('e2e test — two cartons arrived with water damage.')
     await page.getByLabel(/carton tags affected/i).fill(CARTON_TAGS)
 
@@ -45,7 +58,7 @@ test.describe('claims and refunds', () => {
     await switchRole(page, 'nigeria_office_staff')
     await goToViaNav(page, /^claims$/i)
     await page.getByPlaceholder(/claim id, customer, container/i).fill('DC-')
-    await page.waitForLoadState('networkidle')
+    await settleNetwork(page)
     await page.waitForTimeout(300)
 
     const row = dataRows(page).filter({ hasText: /filed|under inspection|inspection complete|pending resolution/i }).first()
@@ -115,7 +128,7 @@ test.describe('claims and refunds', () => {
     await switchRole(page, 'tenant_admin')
     await goToViaNav(page, /^claims$/i)
     await page.getByPlaceholder(/claim id, customer, container/i).fill('DC-')
-    await page.waitForLoadState('networkidle')
+    await settleNetwork(page)
     await page.waitForTimeout(300)
 
     const row = dataRows(page).filter({ hasText: /under inspection/i }).first()

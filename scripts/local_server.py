@@ -356,11 +356,45 @@ def _build_event() -> dict:
 # Convert Lambda response dict → Flask Response
 # ---------------------------------------------------------------------------
 
+# Local-dev-only: point presigned storage URLs at the Vite dev server's
+# /__storage proxy instead of Moto directly.
+#
+# Why this is necessary, not a convenience: every upload in this app is a
+# browser PUT straight to object storage against a presigned URL. It carries a
+# Content-Type header, so the browser sends a CORS preflight first — and Moto
+# validates the presigned signature on that OPTIONS request, rejecting it with
+# SignatureDoesNotMatch because the signature was computed for the PUT. Real S3
+# answers preflight unauthenticated, so this is purely a Moto limitation, but
+# it means NO browser upload can succeed against Moto directly. It is why
+# manifest import succeeded under curl (which ignores CORS) while failing in
+# the app and in e2e.
+#
+# Routing the PUT through the dev server makes it same-origin, so no preflight
+# is sent. The signature still validates: SigV2's string-to-sign covers the
+# object path, which the proxy preserves, not the host.
+#
+# This rewrite is confined to this dev shim — handlers, shared/storage and the
+# deployed stack are untouched, and production relies on the real bucket's CORS
+# rule (infrastructure/aws/modules/s3/main.tf). Set LOCAL_UPLOAD_PROXY_BASE
+# empty to disable it and get raw Moto URLs back (useful from curl/Postman,
+# which need no proxy).
+_STORAGE_ENDPOINT = os.environ.get("AWS_ENDPOINT_URL", "").rstrip("/")
+_UPLOAD_PROXY_BASE = os.environ.get("LOCAL_UPLOAD_PROXY_BASE", "http://localhost:5173/__storage").rstrip("/")
+
+
+def _proxy_storage_urls(body: str) -> str:
+    """Rewrite Moto storage URLs in a response body to the dev-server proxy."""
+    if not body or not _STORAGE_ENDPOINT or not _UPLOAD_PROXY_BASE:
+        return body
+    if _STORAGE_ENDPOINT not in body:
+        return body
+    return body.replace(_STORAGE_ENDPOINT, _UPLOAD_PROXY_BASE)
+
 
 def _to_flask_response(lambda_resp: dict) -> Response:
     status_code = lambda_resp.get("statusCode", 200)
     headers = lambda_resp.get("headers", {})
-    body = lambda_resp.get("body", "")
+    body = _proxy_storage_urls(lambda_resp.get("body", ""))
 
     content_type = headers.get("Content-Type", "application/json")
     resp = Response(body, status=status_code, content_type=content_type)

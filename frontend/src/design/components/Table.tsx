@@ -180,7 +180,7 @@ export function Table({
           )}
         </div>
       ) : (
-        <table className={styles.table}>
+        <table className={styles.table} aria-busy={loading}>
           <thead>
             <tr>
               {selectable && (
@@ -234,7 +234,12 @@ export function Table({
           <tbody>
             {loading ? (
               Array.from({ length: SKELETON_ROWS }, (_, rowIndex) => (
-                <tr key={rowIndex} className={styles.row}>
+                // Placeholder rows carry no information: hidden from assistive
+                // tech (the table's aria-busy already announces the load), and
+                // marked so tests can tell them apart from real data. They are
+                // structurally identical to data rows otherwise, so anything
+                // counting `tbody tr` reads five phantom rows mid-load.
+                <tr key={rowIndex} className={styles.row} aria-hidden="true" data-skeleton-row="">
                   {selectable && (
                     <td className={dense ? styles.tdSelectDense : styles.tdSelect} />
                   )}

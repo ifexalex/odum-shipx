@@ -16,7 +16,7 @@
  */
 import { expect, test } from '@playwright/test'
 import { navConfig } from '../../src/shell/navConfig'
-import { goToViaNav, switchRole } from '../support/roleSwitch'
+import { goToViaNav, settleNetwork, switchRole } from '../support/roleSwitch'
 
 const ROLES = Object.keys(navConfig) as (keyof typeof navConfig)[]
 
@@ -37,8 +37,21 @@ for (const role of ROLES) {
         // Not a strict path match: some nav destinations (e.g. a group whose
         // path is a parent of what actually loads) can redirect within the
         // same section. What matters is the page settled somewhere real.
-        await expect(page.getByText(/internal server error|something went wrong|unexpected error/i)).not.toBeVisible()
+        //
+        // Order matters. Assert the page has arrived FIRST, then that no error
+        // survives — the reverse checks a transient state and fails on a blip
+        // that the page recovers from by itself: queryClient.ts retries a
+        // failed query once, so a query that loses a race against the
+        // single-request-at-a-time local API renders an error, retries, and
+        // succeeds. /admin/customers failed exactly that way, and the captured
+        // snapshot held no error text at all, because by then there was none.
+        // toHaveCount(0) is a settled-state check rather than a moment-in-time
+        // one; a page genuinely stuck on an error still fails here.
         await expect(page.locator('main, [role="main"]').first()).toBeVisible()
+        await settleNetwork(page)
+        await expect(
+          page.getByText(/internal server error|something went wrong|unexpected error/i),
+        ).toHaveCount(0)
       })
     }
   })

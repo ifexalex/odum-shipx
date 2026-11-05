@@ -1477,3 +1477,273 @@ Cellar bin), so migrations 058/059 were reviewed by reading the generated SQL,
 not executed locally. Their `format('%I', ...)`-inside-`op.execute` pattern is
 the same one migration 005 uses and CI runs successfully, so the `%` handling is
 proven; the policy logic is verified by these tests in CI against `postgres:15`.
+
+### Why `e2e-local-stack` was permanently red (2026-11-03)
+
+This job had been failing on `main` throughout, and I merged past it several
+times on the grounds that it was "environmental". With Docker available it
+reproduced locally in minutes, and it was **two real test defects**, not the
+environment.
+
+**1. Test emails were not unique.** Both `auth-logout.spec.ts` and
+`customer-invite.spec.ts` built accounts as:
+
+```ts
+const email = `e2e-${Date.now()}@example.com`
+```
+
+`playwright.config.ts` sets `fullyParallel: true`, so four workers start at once.
+Two reaching that line in the same millisecond get the **same address**, and the
+second invite acceptance fails with `409 DUPLICATE_RESOURCE`. The API log showed
+it exactly — four accepts milliseconds apart, the first `200` and the rest `409`:
+
+```
+POST /v1/invites/7-cWHT.../accept  200
+POST /v1/invites/VxPegw.../accept  409
+POST /v1/invites/Km5Se1.../accept  409
+POST /v1/invites/xQOcjs.../accept  409
+```
+
+Confirmed by running the same spec with `--workers=1`: three of the four
+failures disappeared. Replaced with a shared `uniqueTestEmail()` helper using
+`crypto.randomUUID()`, which has no such window.
+
+**2. Playwright's 30s default timeout was too tight for this flow.** The one
+failure that survived `--workers=1` timed out on the *first field of the invite
+form* — nothing the spec is actually testing. `claimInviteAndLogin` performs two
+full auth round-trips against Moto, and the logout path's Cognito `RevokeToken`
+intermittently 500s and is retried four times (`reached max retries: 4`, visible
+in the API log). The describe block now sets `timeout: 120_000`.
+
+**Result:** the spec went from 3 failures to **4 passed in 4.8s**. The earlier
+3.4-minute serial run was almost entirely the failing test's timeout and retry.
+
+**The lesson worth keeping:** "environmental" was the wrong diagnosis, and I
+repeated it several times before checking. A permanently-red job trains everyone
+to ignore it — the two bugs above were visible in the API log the whole time.
+
+### Four more defects found by running the *whole* suite (2026-11-03)
+
+Fixing the two defects above made `auth-logout.spec.ts` pass in isolation, which
+is not the same as the job passing. A full `--project=local-stack` run against a
+freshly seeded stack still reported 8 failures across five other specs. All four
+root causes below were real; none were environmental.
+
+**3. Loading skeletons were counted as data rows.** `Table.tsx` renders
+`SKELETON_ROWS = 5` placeholder `<tr>`s with a full set of `<td>`s while a query
+is in flight, and `dataRows()` matched them. So **any row count taken mid-load
+returned 5**, regardless of the real data — a plausible-looking number that is
+simply wrong.
+
+This is what failed `container-list.spec.ts`'s status-chip test. The local stack
+held only two containers; instrumenting the test showed the truth:
+
+```
+initial 2 · chip "In transit0" · filtered immediate 5 · filtered +1.5s 0 · restored 2
+```
+
+The real filtered count was **0**; the test read **5** (the skeleton) and then
+compared it against the correctly-restored **2**, failing `restored >= filtered`.
+It also accounted for all three `bulk-packing-list-actions.spec.ts` failures.
+
+Fixed on both sides. `Table.tsx` now marks placeholder rows `aria-hidden="true"`
+(they convey nothing) and `data-skeleton-row`, and sets `aria-busy` on the
+`<table>`; `dataRows()` excludes `tr[data-skeleton-row]`. A new
+`waitForTableSettled()` waits for `aria-busy="false"`, replacing
+`clickFilterAndSettle`'s fixed 300ms guess — and correcting this file's earlier
+claim that "there is no DOM signal to poll for instead". There is one now.
+
+**4. `networkidle` is the wrong wait against this dev server.**
+`scripts/local_server.py` runs `threaded=False` **deliberately** — `shared/db.py`'s
+connection singleton is not thread-safe, and one request at a time is the
+faithful match to Lambda. So the whole API serializes. With Playwright's four
+workers all driving it, a page's own requests can stay pending long enough that
+no 500ms idle window ever opens, and `waitForLoadState('networkidle')` throws at
+30s.
+
+Four tests in `billing-payment-and-release.spec.ts` and
+`bulk-packing-list-actions.spec.ts` died on that exact line — never on an
+assertion — purely because other workers had the server busy. Settling is now an
+optimization, not a precondition: `settleNetwork()` waits up to 5s and **carries
+on if it times out**, with correctness left to auto-waiting assertions and
+`waitForTableSettled()`. Playwright's own docs discourage `networkidle` for this
+reason; all 18 direct uses across the specs were replaced.
+
+**5. No browser upload could ever work against Moto (local only).** Every upload
+in this app is a browser `PUT` straight to object storage against a presigned URL
+(`src/api/uploads.ts`); the API only mints the URL. It carries a `Content-Type`
+header, so the browser sends a CORS preflight first — and **Moto validates the
+presigned signature on that `OPTIONS`**, rejecting it:
+
+```
+HTTP/1.1 403 FORBIDDEN
+<Code>SignatureDoesNotMatch</Code>
+```
+
+The signature was computed for the `PUT`. Real S3 answers preflight
+unauthenticated, so this is a Moto-only limitation — but a fatal one, and it is
+why `manifest-import.spec.ts` failed while the identical import **succeeded under
+curl**, which ignores CORS. Two fixes, both local-dev only:
+
+- `scripts/bootstrap_local.sh` now applies a CORS rule to the Moto bucket,
+  mirroring the real bucket's `cors_rule` in
+  `infrastructure/aws/modules/s3/main.tf`. Necessary but not sufficient on its
+  own, because of the signature check above.
+- `vite.config.ts` proxies `/__storage` to the storage endpoint, and
+  `scripts/local_server.py` rewrites presigned URLs onto that prefix
+  (`LOCAL_UPLOAD_PROXY_BASE`). The `PUT` becomes **same-origin**, so no preflight
+  is sent at all. The signature still validates: SigV2's string-to-sign covers
+  the object path, which the proxy preserves, not the host.
+
+Production is untouched and already correct — the real bucket has a CORS rule, and
+handlers, `shared/storage` and the deployed stack are unchanged.
+
+**6. A stale spec and a missing form label.** `claims-and-refunds.spec.ts` typed
+into a free-text "container id or number" field that no longer exists:
+`MyClaimsNew.tsx` was changed on 2026-09-06 to a dropdown of the customer's
+*arrived* shipments, mirroring `_PRE_ARRIVAL_STATUSES` server-side. The spec had
+never been updated, so it timed out on a field that was gone.
+
+Fixing it surfaced a genuine accessibility defect: that `<select>` had a sibling
+`<label>` with **no `htmlFor`**, so it had no accessible name at all — nothing for
+a screen reader to announce, and nothing for `getByLabel` to find.
+`MyClaimsNew.tsx` now wires `htmlFor`/`id`.
+
+**Result: 86 passed, 15 skipped, 0 failed** on a freshly seeded stack.
+
+**Two things this exposed that are not fixed here:**
+
+- **The suite is not idempotent.** Several specs mutate seeded state and
+  `test.skip` when it has already been consumed, so re-running without
+  `make stack` silently converts failures into skips (15 of 101 on a clean run).
+  Each run also adds users, eventually tripping the tenant's plan limit — the
+  local DB reached 50 `tenant_user` rows against a starter limit of 10.
+- **7 frontend unit tests fail locally** (`src/auth/storage.test.ts`,
+  `src/design/colorScheme.test.tsx`, `src/design/components/ThemeToggle.test.tsx`),
+  verified pre-existing by stashing all of the above. **Corrected below** — these
+  do *not* fail on `main` in CI, and the reason they fail locally is a Node
+  version difference, not a missing CI job. See "Node 26 shadows jsdom's
+  localStorage".
+
+### Why CI stayed red after all of that, and the local/CI divergence behind it (2026-11-04)
+
+The suite was green locally and `e2e-local-stack` still failed. The cause was not
+in the specs at all.
+
+**7. CI never provisioned `frontend/.env.local`.** The job copies the backend's
+`.env.local.sample`, and nothing created the frontend's own env file. Without it
+`VITE_API_BASE_URL` is undefined and `src/api/client.ts` throws
+`Missing required env var: VITE_API_BASE_URL` **before any request is sent**, so
+every API call fails. `InviteClaimScreen`'s token fetch rejected, `loadState`
+became `'invalid'`, and the page rendered "This link is no longer valid." — the
+specs then waited 120s for an email field that could never appear.
+
+Reproduced locally by moving `frontend/.env.local` aside: byte-identical failure.
+The giveaway is which test *passed* — "an unknown token shows the same friendly
+invalid state", the one case that **expects** the invalid state.
+
+The workflow now copies `frontend/.env.local.example` **before** `make bootstrap`
+(which patches the freshly generated Cognito pool/client IDs into that file, but
+only if it already exists) and appends `VITE_COGNITO_ENDPOINT`, since
+`auth-logout.spec.ts` performs a real Cognito login against Moto.
+
+**The divergence that hid everything.** Playwright defaults `workers` to 1 on CI
+but to half the CPU count locally, so a local run and the CI run were simply
+different tests, each hiding what the other found:
+
+| | Local (4 workers) | CI (1 worker) |
+|---|---|---|
+| Specs sharing seed data | often **skipped** | **ran**, and failed |
+| `networkidle` waits | timed out under contention | fine |
+| Net result | 0 failed | 8 failed |
+
+`playwright.config.ts` now pins `workers: 1` everywhere. Serial is the honest
+model here anyway: one API connection, served one request at a time, and specs
+that share tenant state.
+
+**8. Four defects only a serial run reaches.**
+
+- **`.or()` is not "either outcome".** `bulk-packing-list-actions` asserted
+  `getByText(/succeeded/).or(getByText(/no packing lists/))`, and approving the
+  *last* pending list shows **both** — "1 succeeded · 0 failed" and an empty
+  list. That is a strict-mode violation, so the test failed **because it
+  worked**. Needs `.first()`.
+- **StrictMode's double fetch overwrites user input.** `main.tsx` wraps the app
+  in `<StrictMode>`, so in dev React runs `CbmRateConfig`'s load effect twice and
+  the second `getCbmRate()` is still in flight after the form renders. When it
+  resolves it re-applies the persisted config, discarding anything selected or
+  typed meanwhile. It silently reverted "By package type" to "Single rate"
+  mid-test, and reset a typed rate so the save persisted the **old** number —
+  the rate history recorded a `+$0` change. Dev-only (the form is gated on
+  `loading`), but it makes interacting before settling unsound. Fixed by
+  settling first, and by asserting `toHaveValue` before submitting so the race
+  fails loudly rather than silently saving the wrong value.
+- **A test depending on a sibling test having run.** `manifest-verify-and-advance`'s
+  sealing test needed an approved packing list *and* a verified manifest, and
+  established neither. No ordering fixes it: specs run alphabetically, so
+  `bulk-packing-list-actions` (which approves pending lists) runs **before**
+  `manifest-import` creates this container's list. The server was right to refuse
+  — "Container must have at least 1 approved packing list before sealing" — and
+  the test only ever "passed" by being skipped. It now sets up both over the API.
+  **Note the role:** approving wants `tenant_admin`, while verifying a manifest
+  requires `china_office_staff`/`nigeria_office_staff` and answers **403** to
+  `tenant_admin`. The first version used one role for both and ignored the
+  response, so the precondition looked satisfied and wasn't — hence `expectOk()`
+  on every setup call.
+- **A transient error asserted as a permanent one.** `smoke-navigation` asserted
+  `not.toBeVisible()` on an error message *during* load. `queryClient.ts` retries
+  a failed query once, so a query that loses a race against the serialized API
+  renders an error, retries, and succeeds. `/admin/customers` failed that way and
+  the captured snapshot contained **no error text at all**. The sweep now waits
+  for the page to arrive, settles, then asserts `toHaveCount(0)` — a settled
+  state rather than a moment in time. A page genuinely stuck on an error still
+  fails.
+
+**A regression of my own, worth recording.** `waitForTableSettled()` first waited
+for `table[aria-busy="false"]` to attach with a 10s timeout, and the `catch` only
+fires *after* that timeout — so every navigation to a page without a table burned
+the full 10s. That alone pushed `smoke-navigation` past the per-test limit and
+stretched the file from seconds to ~5 minutes. It now returns immediately when
+`page.locator('table').count()` is 0. Whole-suite wall clock: 9.8m → 5.1m.
+
+**Result: 86 passed, 15 skipped, 0 failed**, verified against a full CI replica —
+both env files built from their tracked samples, `make stack` from scratch, and a
+serial run.
+
+### Node 26 shadows jsdom's `localStorage` (2026-11-05)
+
+**Correcting an earlier claim in this file.** The 7 failing frontend unit tests
+were described above as "failing on `main`" with "`ci.yml` has no frontend job,
+so nothing was catching them". The second half is wrong, and so is the
+conclusion: **`frontend-ci.yml`'s `build-and-test` job does run `npm test`**, and
+it passed. The tests were failing on *this machine* only.
+
+The cause is the Node version. `frontend-ci.yml` pins `node-version: "22"`;
+locally this was Node **26.12.1**. Node 26 defines a global `localStorage` of its
+own that is `undefined` unless the process is started with
+`--localstorage-file`, and inside Vitest's jsdom environment that Node global
+**shadows jsdom's**. jsdom itself is fine — proven directly:
+
+```
+$ node -e "const {JSDOM}=require('jsdom'); …"
+jsdom window.localStorage: object
+node global localStorage:  undefined
+```
+
+So `window.localStorage` read back as `undefined` and every test touching it
+threw `Cannot read properties of undefined (reading 'setItem')`. The origin was
+never the issue (`http://localhost:3000`, non-opaque, which is what jsdom
+requires).
+
+`src/test/setup.ts` now installs a spec-shaped in-memory `Storage` for
+`localStorage`/`sessionStorage` **only when the global is missing**, defined
+`configurable`/`writable` so tests can still swap individual methods
+(`colorScheme.test.tsx` replaces `setItem` to assert it is never called). On
+Node 22 nothing changes, because jsdom's own Storage is present.
+
+Full frontend suite: **958 passed, 145 files, 0 failed**.
+
+**The real gap this exposes** is a Node version divergence: CI pins 22, nothing
+pins a local version (no `.nvmrc`, no `engines` field), so a developer on a newer
+Node runs a measurably different test suite. Worth pinning, and deliberately not
+done here — it belongs in its own change rather than inside an e2e fix.

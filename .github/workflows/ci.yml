@@ -183,5 +183,13 @@ jobs:
         with:
           name: lambda-packages-${{ github.run_id }}
           path: build/
-          retention-days: 30
+          # 7 days, not 30. Each of these is ~105 MB and one is produced per
+          # push to main, so 30 days of them reached 4.2 GB across 40 artifacts
+          # and exhausted the account's artifact storage quota. GitHub then
+          # stopped creating workflow runs at all ("Failed to CreateArtifact:
+          # Artifact storage quota has been hit"), so CI went silent on new
+          # pushes — a build failure on main that had nothing to do with the
+          # code. A week of redeployable builds is enough; anything older is
+          # rebuildable from its commit.
+          retention-days: 7
           if-no-files-found: error

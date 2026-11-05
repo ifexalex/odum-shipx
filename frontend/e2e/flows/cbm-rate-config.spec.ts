@@ -12,7 +12,7 @@
  * loading the real page against the real backend.
  */
 import { expect, test } from '@playwright/test'
-import { switchRole } from '../support/roleSwitch'
+import { settleNetwork, switchRole } from '../support/roleSwitch'
 
 test.describe('CBM rate config', () => {
   test('loads real rates from the backend without crashing, in both modes', async ({ page }) => {
@@ -22,6 +22,23 @@ test.describe('CBM rate config', () => {
     await page.goto('/admin/config/cbm-rate')
 
     await expect(page.getByText(/per CBM$/)).toBeVisible()
+    // Let the page's own GETs finish before touching the form.
+    //
+    // main.tsx wraps the app in <StrictMode>, so in dev React invokes this
+    // page's load effect TWICE and a second configApi.getCbmRate() is still in
+    // flight after the form renders. When it resolves it re-applies the
+    // persisted config — setRateMode/setCurrency/setCartonRate — silently
+    // discarding anything selected or typed in the meantime. Against the
+    // deliberately single-threaded local API that second response can be
+    // seconds late, which is precisely when a test has already clicked.
+    //
+    // It produced two failures that looked like nothing on screen: "By package
+    // type" reverting to "Single rate" (so the Cartons/Bags/Bales labels
+    // vanished mid-test), and a typed rate reset to the old value so the save
+    // persisted the wrong number. Not a production bug — StrictMode's double
+    // invoke is dev-only, and the form is gated on `loading` — but it makes
+    // interacting before settling unsound here.
+    await settleNetwork(page)
 
     await page.getByRole('button', { name: 'By package type' }).first().click()
     await expect(page.getByText(/Cartons \([$₦] per CBM\)/)).toBeVisible()
@@ -39,10 +56,25 @@ test.describe('CBM rate config', () => {
     await switchRole(page, 'tenant_admin')
     await page.goto('/admin/config/cbm-rate')
     await expect(page.getByText(/per CBM$/)).toBeVisible()
+    // Same StrictMode double-fetch caveat as the test above.
+    await settleNetwork(page)
 
+    // Pin the currency rather than inheriting whatever the last run persisted:
+    // the save sends the currently selected currency, so without this the
+    // assertions below ("$52.00 per CBM") depend on prior state and fail once
+    // another run has left the tenant on naira. This spec mutates shared
+    // tenant config, so it has to establish what it asserts on.
+    await page.getByRole('button', { name: 'Dollar ($)' }).click()
     await page.getByRole('button', { name: 'Single rate' }).first().click()
     const input = page.getByPlaceholder('e.g. 45')
     await input.fill('52')
+    // Guard the fill before submitting. The form seeds itself from the config
+    // GET, so a value typed while that is still settling can be overwritten
+    // back to the persisted one — and then "Update rate" saves the OLD number
+    // and every assertion below fails for a reason nothing on screen explains.
+    // Seen exactly that: the input read 45 again and the rate history recorded
+    // a +$0 change. Asserting the value first makes the race fail loudly here.
+    await expect(input).toHaveValue('52')
     await page.getByRole('button', { name: 'Update rate' }).click()
 
     await expect(page.getByText('CBM rate updated successfully.')).toBeVisible()
@@ -55,8 +87,17 @@ test.describe('CBM rate config', () => {
 
     // Restore the seeded default so this test doesn't permanently drift
     // shared tenant config for other tests/manual testing.
+    //
+    // The reload above restarts the StrictMode double fetch, so this needs the
+    // same settle-then-guard treatment as the first submit — the one place it
+    // was missing, and the only failure left in CI: `fill('45')` was being
+    // overwritten back to 52 by the late second GET, so the restore re-saved 52
+    // and "$45.00 per CBM" never appeared. It passed locally because a faster
+    // machine won the race.
+    await settleNetwork(page)
     await input.fill('45')
+    await expect(input).toHaveValue('45')
     await page.getByRole('button', { name: 'Update rate' }).click()
-    await expect(page.getByText('$45.00 per CBM')).toBeVisible()
+    await expect(page.getByText('$45.00 per CBM')).toBeVisible({ timeout: 15_000 })
   })
 })

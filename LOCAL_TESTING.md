@@ -13,6 +13,7 @@ Run the full ShipX platform on your laptop — no AWS account needed.
 5. [Test with Postman](#5-test-with-postman)
 6. [Typical development workflow](#6-typical-development-workflow)
 7. [Inspect SQS queues and S3](#7-inspect-sqs-queues-and-s3)
+   - [File uploads in local dev (`/__storage` proxy)](#file-uploads-in-local-dev-__storage-proxy)
    - [Seeing a notification actually send](#seeing-a-notification-actually-send)
    - [Test manifest for notification testing](#test-manifest-for-notification-testing)
 8. [Simulate EventBridge events](#8-simulate-eventbridge-events)
@@ -126,6 +127,26 @@ Then either prefix commands with `uv run` (e.g. `uv run pytest`, `uv run python 
 or activate the venv: `source .venv/bin/activate`.
 
 ### 3.4 Create your local env file
+
+**Two files, not one.** The backend and the frontend each need their own, both
+copied from tracked samples:
+
+```bash
+cp .env.local.sample .env.local                    # backend (Flask, scripts)
+cp frontend/.env.local.sample frontend/.env.local  # frontend (Vite)
+```
+
+Copy the frontend one **before** running `make bootstrap` / `make stack`: the
+bootstrap script rewrites its `VITE_COGNITO_USER_POOL_ID` /
+`VITE_COGNITO_CLIENT_ID` lines with the IDs Moto generates, but only if the file
+already exists. Skip it and `VITE_API_BASE_URL` is undefined, so
+`src/api/client.ts` throws before any request is sent and **every** API call
+fails — pages render but all data is missing, which is confusing to debug.
+
+Note the `.sample` suffix: the root `.gitignore` ignores `.env.*` and negates
+only `!.env.example` and `!.env.local.sample`, so a `.env.local.example` file is
+untracked and exists only on the machine that made it.
+
 
 `.env.local` is **gitignored** (it once held live Cognito IDs — commit 6c0f955), so a fresh
 checkout has none. Create it from the tracked, non-secret template:
@@ -373,6 +394,42 @@ aws --endpoint-url http://localhost:5100 sqs get-queue-attributes \
 # List S3 objects (claim evidence uploads)
 aws --endpoint-url http://localhost:5100 s3 ls s3://logistics-assets --recursive
 ```
+
+---
+
+## File uploads in local dev (`/__storage` proxy)
+
+Every upload in this app is a **browser `PUT` straight to object storage** against
+a presigned URL (`frontend/src/api/uploads.ts`) — the API only mints the URL, the
+bytes never pass through it. That path needs two things locally that you get for
+free in a deployed environment:
+
+1. **A CORS rule on the bucket.** `make bootstrap` now applies one to the Moto
+   bucket, mirroring the real bucket's `cors_rule` in
+   `infrastructure/aws/modules/s3/main.tf`.
+2. **A same-origin route to storage.** Necessary because Moto validates the
+   presigned signature on the CORS **preflight** `OPTIONS` and rejects it with
+   `SignatureDoesNotMatch` — the signature was computed for the `PUT`. Real S3
+   answers preflight unauthenticated, so this is Moto-only, but it means no
+   browser upload can succeed against Moto directly.
+
+So `vite.config.ts` proxies `/__storage` → the storage endpoint, and
+`scripts/local_server.py` rewrites the presigned URLs it returns onto that
+prefix. The `PUT` becomes same-origin and no preflight is sent. The signature
+still validates: SigV2's string-to-sign covers the object path, which the proxy
+preserves, not the host.
+
+| Env var | Default | Purpose |
+|---|---|---|
+| `LOCAL_UPLOAD_PROXY_BASE` | `http://localhost:5173/__storage` | Prefix the dev server rewrites presigned URLs onto. **Set it empty to disable the rewrite** and get raw Moto URLs back. |
+| `VITE_STORAGE_PROXY_TARGET` | `http://localhost:5100` | Where Vite forwards `/__storage`. |
+
+**From curl or Postman, set `LOCAL_UPLOAD_PROXY_BASE=` (empty).** Those clients
+ignore CORS and need no proxy, and with the rewrite on they would be sent through
+Vite, which must then be running.
+
+Note that both the Flask server and Vite must be **restarted** after changing
+either variable — the rewrite is read at import time and the proxy at startup.
 
 ---
 
@@ -676,6 +733,30 @@ psql -h 127.0.0.1 -U postgres -d logistics
 ```
 
 For a clean slate: `make stack` resets and re-migrates everything.
+
+### A file upload fails in the browser with `net::ERR_FAILED` / a CORS error
+
+The browser blocked the `PUT` to storage before sending it. Check, in order:
+
+```bash
+# 1. Does the bucket have a CORS rule? (make bootstrap applies one)
+aws --endpoint-url http://localhost:5100 s3api get-bucket-cors --bucket logistics-assets
+
+# 2. Is the presigned URL being rewritten onto the proxy?
+#    Expect http://localhost:5173/__storage/... — NOT http://localhost:5100/...
+curl -s -X POST http://localhost:3000/v1/packing-lists/import/presigned-url \
+     -H "X-Tenant-ID: 10000000-0000-0000-0000-000000000001" \
+     -H "X-Role: china_office_staff" -H "Content-Type: application/json" \
+     -d '{"content_type":"application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"}'
+```
+
+If the URL still points at `:5100`, the Flask server predates the rewrite or
+`LOCAL_UPLOAD_PROXY_BASE` is empty — restart it. If it points at `/__storage` but
+the request 404s, Vite predates the proxy config — restart Vite. See
+"File uploads in local dev" above for why this is needed.
+
+Note that `curl` ignores CORS, so an upload succeeding under curl tells you
+nothing about whether the browser path works.
 
 ### X-Ray `SegmentNotFoundException` warnings
 

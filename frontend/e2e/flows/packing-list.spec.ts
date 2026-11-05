@@ -8,7 +8,7 @@
  * Requires local stack running. Uses seeded data from scripts/seed.py.
  */
 import { expect, test } from '@playwright/test'
-import { dataRows, goToViaNav, switchRole } from '../support/roleSwitch'
+import { dataRows, goToViaNav, settleNetwork, switchRole } from '../support/roleSwitch'
 
 test.describe('packing list self-approval', () => {
   test('approve/reject buttons are hidden on a packing list the current user created', async ({ page }) => {
@@ -34,7 +34,7 @@ test.describe('packing list self-approval', () => {
     }
 
     await page.getByRole('button', { name: /^view$/i }).first().click()
-    await page.waitForLoadState('networkidle')
+    await settleNetwork(page)
 
     // On the detail page: if the current session user created this packing list,
     // no approve/reject buttons should appear. If someone else created it and

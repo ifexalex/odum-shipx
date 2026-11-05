@@ -142,10 +142,11 @@ export function MyClaimsNew(): JSX.Element {
             </Banner>
           ) : (
             <div className={styles.selectField}>
-              <label className={styles.selectLabel}>
+              <label className={styles.selectLabel} htmlFor="claim-shipment">
                 Which shipment? <span className={styles.required}>*</span>
               </label>
               <select
+                id="claim-shipment"
                 className={styles.select}
                 value={selectedShipmentId}
                 onChange={(e) => setSelectedShipmentId(e.target.value)}

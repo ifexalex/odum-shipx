@@ -7,7 +7,20 @@
  * This is the only e2e flow that works without the local stack backend —
  * the page and form render client-side; the API call only happens on submit.
  */
-import { expect, test } from '@playwright/test'
+import { expect, test, type Page } from '@playwright/test'
+import { settleNetwork } from '../support/roleSwitch'
+
+/**
+ * The phone input, not the country-code picker.
+ *
+ * /track now uses PhoneField (country-code dropdown + national-number input).
+ * Its dropdown button is labelled "Phone number country code", so a plain
+ * getByLabel(/phone/i) is a strict-mode violation — it matches both controls.
+ * Target the <input> itself.
+ */
+function phoneInput(page: Page) {
+  return page.getByRole('textbox', { name: /^phone number/i })
+}
 
 test.describe('public tracking page', () => {
   test('renders the tracking entry form at /track', async ({ page }) => {
@@ -30,7 +43,7 @@ test.describe('public tracking page', () => {
     await page.getByLabel(/tracking code/i).fill('ACME-TRK-20260704-0001')
     await expect(submitBtn).toBeDisabled()
 
-    await page.getByLabel(/phone/i).fill('+2348012345678')
+    await phoneInput(page).fill('8012345678')
     await expect(submitBtn).toBeEnabled()
   })
 
@@ -39,7 +52,7 @@ test.describe('public tracking page', () => {
 
     // Use seeded tracking code from scripts/seed.py
     const codeInput = page.getByLabel(/tracking code/i)
-    const phoneInput = page.getByLabel(/phone/i)
+    const phone = phoneInput(page)
 
     if (!(await codeInput.isVisible())) {
       test.skip(true, 'Tracking form not visible — check route')
@@ -47,12 +60,12 @@ test.describe('public tracking page', () => {
     }
 
     await codeInput.fill('SHX-2026-TEST-001')
-    if (await phoneInput.isVisible()) {
-      await phoneInput.fill('+2348012345678')
+    if (await phone.isVisible()) {
+      await phone.fill('8012345678')
     }
 
     await page.getByRole('button', { name: /track/i }).click()
-    await page.waitForLoadState('networkidle')
+    await settleNetwork(page)
 
     // Either a shipment detail renders or a "not found" message — either is a
     // valid non-error state that proves the flow completes without a crash.

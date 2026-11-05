@@ -96,7 +96,9 @@ jobs:
         with:
           name: frontend-dist-${{ github.sha }}
           path: frontend/dist/
-          retention-days: 30   # keep 30 days of builds for rollback
+          # 7 days — see the note on lambda-packages in ci.yml. These are far
+          # smaller, but one per push to main adds up for the same reason.
+          retention-days: 7
 
   # ──────────────────────────────────────────────────────────────────────────
   # Playwright smoke — runs the built artifact through a headless browser with
@@ -157,6 +159,35 @@ jobs:
 
       - name: Provision .env.local (gitignored — from the tracked sample)
         run: cp .env.local.sample .env.local
+
+      # The FRONTEND needs its own .env.local, and this step was missing —
+      # which is why e2e-local-stack had been red throughout while the same
+      # specs passed on any developer machine (where the file already exists).
+      #
+      # Without it VITE_API_BASE_URL is undefined, and src/api/client.ts throws
+      # "Missing required env var: VITE_API_BASE_URL" before any request is
+      # sent. So EVERY API call fails. InviteClaimScreen's token fetch rejects,
+      # loadState becomes 'invalid', the page renders "This link is no longer
+      # valid." and the email field never appears — the specs then timed out
+      # waiting for a field that could never render. Reproduced locally by
+      # moving frontend/.env.local aside: identical failure, and the one test
+      # that *expects* the invalid state ("an unknown token shows the same
+      # friendly invalid state") kept passing, which is the giveaway.
+      #
+      # Must run BEFORE `make bootstrap`: that script patches the freshly
+      # generated Cognito pool/client IDs into this file, but only if it
+      # already exists. auth-logout.spec.ts performs a real Cognito login
+      # against Moto, so it needs the generated IDs and the Moto endpoint.
+      - name: Provision frontend/.env.local (needed before bootstrap patches it)
+        # frontend/.env.local.sample, NOT .env.local.example: the root
+        # .gitignore ignores `.env.*` and negates only `!.env.example` and
+        # `!.env.local.sample`, so an ".example" file here is untracked and
+        # exists on developer machines only. The first version of this step
+        # copied one and failed on the runner with "No such file or directory",
+        # which is why the file is now tracked under the .sample name the
+        # backend already uses. It carries VITE_COGNITO_ENDPOINT too, so there
+        # is nothing to append here.
+        run: cp frontend/.env.local.sample frontend/.env.local
 
       - name: Start local stack (Postgres + Moto + Redis)
         run: make up

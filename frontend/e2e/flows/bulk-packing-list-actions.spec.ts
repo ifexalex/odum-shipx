@@ -58,8 +58,13 @@ test.describe('bulk packing-list actions', () => {
     // pending filter — proves the request round-tripped and was not the old
     // wrong_status:draft failure. bulk_set_status now dispatches per target
     // status instead of defaulting non-approved outcomes to "rejected".
+    // .first() matters: both alternatives can be on screen at once — acting on
+    // the last pending list shows "1 succeeded · 0 failed" AND leaves the
+    // filtered list empty ("No packing lists yet."). Without it, `.or()` is a
+    // strict-mode violation, so the test fails *because it worked* — which is
+    // exactly what happened once the suite ran serially and reached this case.
     await expect(
-      page.getByText(/succeeded/i).or(page.getByText(/no packing lists/i)),
+      page.getByText(/succeeded/i).or(page.getByText(/no packing lists/i)).first(),
     ).toBeVisible({ timeout: 10_000 })
   })
 
@@ -97,8 +102,13 @@ test.describe('bulk packing-list actions', () => {
     await page.getByRole('button', { name: /submit for approval/i }).click()
 
     await expect(page.getByText(/wrong_status/i)).not.toBeVisible()
+    // .first() matters: both alternatives can be on screen at once — acting on
+    // the last pending list shows "1 succeeded · 0 failed" AND leaves the
+    // filtered list empty ("No packing lists yet."). Without it, `.or()` is a
+    // strict-mode violation, so the test fails *because it worked* — which is
+    // exactly what happened once the suite ran serially and reached this case.
     await expect(
-      page.getByText(/succeeded/i).or(page.getByText(/no packing lists/i)),
+      page.getByText(/succeeded/i).or(page.getByText(/no packing lists/i)).first(),
     ).toBeVisible({ timeout: 10_000 })
   })
 })
