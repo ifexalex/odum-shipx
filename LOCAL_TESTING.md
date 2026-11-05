@@ -128,6 +128,26 @@ or activate the venv: `source .venv/bin/activate`.
 
 ### 3.4 Create your local env file
 
+**Two files, not one.** The backend and the frontend each need their own, both
+copied from tracked samples:
+
+```bash
+cp .env.local.sample .env.local                    # backend (Flask, scripts)
+cp frontend/.env.local.sample frontend/.env.local  # frontend (Vite)
+```
+
+Copy the frontend one **before** running `make bootstrap` / `make stack`: the
+bootstrap script rewrites its `VITE_COGNITO_USER_POOL_ID` /
+`VITE_COGNITO_CLIENT_ID` lines with the IDs Moto generates, but only if the file
+already exists. Skip it and `VITE_API_BASE_URL` is undefined, so
+`src/api/client.ts` throws before any request is sent and **every** API call
+fails — pages render but all data is missing, which is confusing to debug.
+
+Note the `.sample` suffix: the root `.gitignore` ignores `.env.*` and negates
+only `!.env.example` and `!.env.local.sample`, so a `.env.local.example` file is
+untracked and exists only on the machine that made it.
+
+
 `.env.local` is **gitignored** (it once held live Cognito IDs — commit 6c0f955), so a fresh
 checkout has none. Create it from the tracked, non-secret template:
 

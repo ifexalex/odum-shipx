@@ -179,11 +179,15 @@ jobs:
       # already exists. auth-logout.spec.ts performs a real Cognito login
       # against Moto, so it needs the generated IDs and the Moto endpoint.
       - name: Provision frontend/.env.local (needed before bootstrap patches it)
-        run: |
-          cp frontend/.env.local.example frontend/.env.local
-          # Point the real-Cognito path at Moto (commented out in the example,
-          # since a developer only needs it to exercise the real /login screen).
-          echo "VITE_COGNITO_ENDPOINT=http://localhost:5100" >> frontend/.env.local
+        # frontend/.env.local.sample, NOT .env.local.example: the root
+        # .gitignore ignores `.env.*` and negates only `!.env.example` and
+        # `!.env.local.sample`, so an ".example" file here is untracked and
+        # exists on developer machines only. The first version of this step
+        # copied one and failed on the runner with "No such file or directory",
+        # which is why the file is now tracked under the .sample name the
+        # backend already uses. It carries VITE_COGNITO_ENDPOINT too, so there
+        # is nothing to append here.
+        run: cp frontend/.env.local.sample frontend/.env.local
 
       - name: Start local stack (Postgres + Moto + Redis)
         run: make up
