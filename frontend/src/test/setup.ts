@@ -30,3 +30,59 @@ if (!window.matchMedia) {
     dispatchEvent: () => false,
   })) as unknown as typeof window.matchMedia
 }
+
+// Restore a working window.localStorage / sessionStorage.
+//
+// jsdom provides both (a real Storage object, given a non-opaque origin — and
+// the origin here is http://localhost:3000, so that is not the problem). Node
+// 26 also defines a global `localStorage` of its own, which is `undefined`
+// unless the process was started with --localstorage-file. Inside Vitest's
+// jsdom environment that Node global shadows jsdom's, so `window.localStorage`
+// reads back as undefined and anything touching it throws
+// "Cannot read properties of undefined (reading 'setItem')".
+//
+// That is what broke src/auth/storage.test.ts, src/design/colorScheme.test.tsx
+// and ThemeToggle.test.tsx — 7 failures with nothing wrong in the app code, on
+// tests written before this Node version. `ci.yml` has no frontend job, so
+// nothing caught it.
+//
+// Define a spec-shaped in-memory Storage when the global is missing, rather
+// than reaching into jsdom internals. configurable/writable so tests can still
+// spy on or replace individual methods (colorScheme.test.tsx swaps setItem).
+class MemoryWebStorage implements Storage {
+  private store = new Map<string, string>()
+
+  get length(): number {
+    return this.store.size
+  }
+
+  clear(): void {
+    this.store.clear()
+  }
+
+  getItem(key: string): string | null {
+    return this.store.has(key) ? (this.store.get(key) as string) : null
+  }
+
+  key(index: number): string | null {
+    return Array.from(this.store.keys())[index] ?? null
+  }
+
+  removeItem(key: string): void {
+    this.store.delete(key)
+  }
+
+  setItem(key: string, value: string): void {
+    this.store.set(key, String(value))
+  }
+}
+
+for (const name of ['localStorage', 'sessionStorage'] as const) {
+  if (!window[name]) {
+    Object.defineProperty(window, name, {
+      value: new MemoryWebStorage(),
+      configurable: true,
+      writable: true,
+    })
+  }
+}

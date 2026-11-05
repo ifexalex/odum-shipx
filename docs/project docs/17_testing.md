@@ -1544,10 +1544,12 @@ a screen reader to announce, and nothing for `getByLabel` to find.
   `make stack` silently converts failures into skips (15 of 101 on a clean run).
   Each run also adds users, eventually tripping the tenant's plan limit — the
   local DB reached 50 `tenant_user` rows against a starter limit of 10.
-- **7 frontend unit tests fail on `main`** (`src/auth/storage.test.ts`,
+- **7 frontend unit tests fail locally** (`src/auth/storage.test.ts`,
   `src/design/colorScheme.test.tsx`, `src/design/components/ThemeToggle.test.tsx`),
-  verified pre-existing by stashing all of the above. `ci.yml` has no frontend
-  job, so nothing was catching them.
+  verified pre-existing by stashing all of the above. **Corrected below** — these
+  do *not* fail on `main` in CI, and the reason they fail locally is a Node
+  version difference, not a missing CI job. See "Node 26 shadows jsdom's
+  localStorage".
 
 ### Why CI stayed red after all of that, and the local/CI divergence behind it (2026-11-04)
 
@@ -1633,3 +1635,41 @@ stretched the file from seconds to ~5 minutes. It now returns immediately when
 **Result: 86 passed, 15 skipped, 0 failed**, verified against a full CI replica —
 both env files built from their tracked samples, `make stack` from scratch, and a
 serial run.
+
+### Node 26 shadows jsdom's `localStorage` (2026-11-05)
+
+**Correcting an earlier claim in this file.** The 7 failing frontend unit tests
+were described above as "failing on `main`" with "`ci.yml` has no frontend job,
+so nothing was catching them". The second half is wrong, and so is the
+conclusion: **`frontend-ci.yml`'s `build-and-test` job does run `npm test`**, and
+it passed. The tests were failing on *this machine* only.
+
+The cause is the Node version. `frontend-ci.yml` pins `node-version: "22"`;
+locally this was Node **26.12.1**. Node 26 defines a global `localStorage` of its
+own that is `undefined` unless the process is started with
+`--localstorage-file`, and inside Vitest's jsdom environment that Node global
+**shadows jsdom's**. jsdom itself is fine — proven directly:
+
+```
+$ node -e "const {JSDOM}=require('jsdom'); …"
+jsdom window.localStorage: object
+node global localStorage:  undefined
+```
+
+So `window.localStorage` read back as `undefined` and every test touching it
+threw `Cannot read properties of undefined (reading 'setItem')`. The origin was
+never the issue (`http://localhost:3000`, non-opaque, which is what jsdom
+requires).
+
+`src/test/setup.ts` now installs a spec-shaped in-memory `Storage` for
+`localStorage`/`sessionStorage` **only when the global is missing**, defined
+`configurable`/`writable` so tests can still swap individual methods
+(`colorScheme.test.tsx` replaces `setItem` to assert it is never called). On
+Node 22 nothing changes, because jsdom's own Storage is present.
+
+Full frontend suite: **958 passed, 145 files, 0 failed**.
+
+**The real gap this exposes** is a Node version divergence: CI pins 22, nothing
+pins a local version (no `.nvmrc`, no `engines` field), so a developer on a newer
+Node runs a measurably different test suite. Worth pinning, and deliberately not
+done here — it belongs in its own change rather than inside an e2e fix.
