@@ -87,8 +87,17 @@ test.describe('CBM rate config', () => {
 
     // Restore the seeded default so this test doesn't permanently drift
     // shared tenant config for other tests/manual testing.
+    //
+    // The reload above restarts the StrictMode double fetch, so this needs the
+    // same settle-then-guard treatment as the first submit — the one place it
+    // was missing, and the only failure left in CI: `fill('45')` was being
+    // overwritten back to 52 by the late second GET, so the restore re-saved 52
+    // and "$45.00 per CBM" never appeared. It passed locally because a faster
+    // machine won the race.
+    await settleNetwork(page)
     await input.fill('45')
+    await expect(input).toHaveValue('45')
     await page.getByRole('button', { name: 'Update rate' }).click()
-    await expect(page.getByText('$45.00 per CBM')).toBeVisible()
+    await expect(page.getByText('$45.00 per CBM')).toBeVisible({ timeout: 15_000 })
   })
 })
