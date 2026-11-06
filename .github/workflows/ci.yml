@@ -24,6 +24,12 @@ jobs:
           enable-cache: true
       # uv auto-installs the interpreter pinned by requires-python (3.13).
       - run: uv sync --extra azure
+      # Fails if pyproject.toml and uv.lock disagree. uv.lock is the source of
+      # truth (CLAUDE.md), but nothing enforced that, and five Dependabot PRs
+      # in a row bumped pyproject.toml alone. `uv sync` would silently
+      # re-resolve, so the stale lock never surfaced.
+      - name: Check uv.lock is in sync with pyproject.toml
+        run: uv lock --check
       - name: Lint with ruff
         run: uv run ruff check .
       - name: Type-check with mypy

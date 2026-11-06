@@ -10,8 +10,13 @@ updates:
       prefix: "ci"
 
   # Python backend — CLAUDE.md requires exact pins + CVE gating; Dependabot
-  # proposes the bumps, CI (pip-audit/safety + tests) gates them.
-  - package-ecosystem: "pip"
+  # proposes the bumps, CI (safety + tests) gates them.
+  #
+  # "uv", not "pip": the pip ecosystem reads pyproject.toml but has no concept
+  # of uv.lock, so every bump it opened left the lockfile stale — #98, #91,
+  # #92, #93 and #94 were all incomplete for exactly this reason, and uv.lock
+  # is the source of truth per CLAUDE.md. The uv ecosystem updates both.
+  - package-ecosystem: "uv"
     directory: "/"
     schedule:
       interval: "weekly"
