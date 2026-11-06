@@ -278,11 +278,11 @@ jobs:
           cp services/migrate/handler.py build/migrate_pkg/handler.py
           cd build/migrate_pkg && zip -r ../../build/migrate.zip .
       - name: Upload lambda packages
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: lambda-packages-${{ github.run_id }}
           path: build/
-          retention-days: 30
+          retention-days: 7            # clamped by the repo setting — see below
           if-no-files-found: error
 ```
 
@@ -1102,3 +1102,39 @@ look at quota and billing, not at the workflow files.
 Anything older than the retention window is still reproducible: every artifact
 is a build output of a known commit, so a redeploy of an older build means
 re-running the build for that commit first.
+
+### `retention-days` is a ceiling request, not a guarantee (found 2026-11-06)
+
+`retention-days:` **cannot exceed the repository's "Artifact and log retention"
+setting, and is silently clamped to it** — no warning in the job log, no
+annotation. After the quota incident above that repo setting was 1 day, so every
+`retention-days: 7` in `ci.yml` and `frontend-ci.yml` was a **no-op**: artifacts
+really lived 1 day.
+
+That is not cosmetic. `Deploy Pipeline` fetches `lambda-packages-{run_id}` **by
+run id**, so a 1-day window meant only a build from the last 24 hours could be
+redeployed; anything older failed at the *Download lambda packages* step.
+
+It was found by reading an artifact's actual expiry rather than trusting the
+workflow, which is the only way to see it:
+
+```bash
+# What the repo allows (the real ceiling)
+gh api repos/:owner/:repo/actions/permissions/artifact-and-log-retention
+# -> {"days":7,"maximum_allowed_days":400}
+
+# What artifacts actually got — compare created_at to expires_at
+gh api "repos/:owner/:repo/actions/artifacts?per_page=100" \
+  -q '.artifacts[] | "\(.created_at) -> \(.expires_at)  \(.name)"' | sort | tail
+```
+
+Raised to 7 on 2026-11-06 so the workflow value is effective. **If artifacts
+expire sooner than `retention-days` says, this setting is why** — changing the
+workflow will not help. To change it:
+
+```bash
+gh api -X PUT repos/:owner/:repo/actions/permissions/artifact-and-log-retention -F days=7
+```
+
+Note `-F` (typed) not `-f` (string): `-f days=7` is rejected with
+`Invalid property /days: "7" is not of type integer`.
