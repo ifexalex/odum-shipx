@@ -85,6 +85,7 @@ Install these tools before starting:
 | Docker Desktop | 24+ | [docker.com](https://www.docker.com/products/docker-desktop/) |
 | AWS CLI v2 | 2.x | [aws.amazon.com/cli](https://aws.amazon.com/cli/) |
 | Terraform | 1.7+ | `brew install hashicorp/tap/terraform` |
+| Node.js | **22.x exactly** (see `frontend/.nvmrc`) | `nvm install` from `frontend/` |
 
 Verify:
 
@@ -93,7 +94,30 @@ python3 --version     # 3.11+
 docker --version      # 24+
 aws --version         # aws-cli/2.x
 terraform version     # 1.7+
+node --version        # must be v22.x — see below
 ```
+
+### Node.js version
+
+The frontend is pinned to the Node major in **`frontend/.nvmrc`** (`22.23.4`), and CI reads that
+same file via `node-version-file:` — so local and CI run the same major. `frontend/package.json`
+declares `"engines": { "node": "22.x" }`, so `npm ci` prints an `EBADENGINE` warning on any other
+version. The warning is **not** fatal (`engine-strict` is deliberately off, so a contributor
+without a version manager is never hard-blocked), but do not ignore it: a different major silently
+changes test behaviour.
+
+Concretely, Node 26 defines its own global `localStorage`, which **shadows jsdom's** inside Vitest
+and is `undefined` unless `--localstorage-file` is passed. That made 7 frontend tests fail locally
+while CI was green, and cost real debugging time before the cause was found. `src/test/setup.ts`
+now installs an in-memory `Storage` fallback so those tests pass on either major, but the pin is
+the actual fix.
+
+```bash
+cd frontend && nvm use     # reads .nvmrc
+```
+
+If you have no version manager installed, `brew install node@22` and put it on `PATH` ahead of any
+newer Node.
 
 ---
 
