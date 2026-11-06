@@ -108,21 +108,29 @@ const ColorSchemeContext = createContext<ColorSchemeValue | null>(null)
 
 export function ColorSchemeProvider({ children }: { children: ReactNode }): JSX.Element {
   const [preference, setPreferenceState] = useState<ColorSchemePreference>(readStoredPreference)
-  const [resolved, setResolved] = useState<ResolvedColorScheme>(() => resolve(readStoredPreference()))
+  // The OS setting is the only part that is genuinely external state. It is
+  // read once and then updated from the media-query listener below.
+  const [systemPref, setSystemPref] = useState<ResolvedColorScheme>(systemScheme)
 
-  // Apply on every preference change, and when 'system' flips at the OS level.
+  // `resolved` is derived, not stored: it is a function of `preference` and the
+  // OS setting. Keeping it in state meant an effect had to setState on every
+  // preference change, re-rendering the whole app a second time just to catch
+  // up with a value already known during the first render.
+  const resolved: ResolvedColorScheme = preference === 'system' ? systemPref : preference
+
+  // Writing to <html data-theme> is an external system, which is what effects
+  // are for.
   useEffect(() => {
-    const next = resolve(preference)
-    setResolved(next)
-    apply(next)
+    apply(resolved)
+  }, [resolved])
 
-    if (preference !== 'system') return
+  // Subscribe to OS-level changes while following the system setting. setState
+  // here is in a subscription callback, not the effect body, so it reacts to
+  // something outside React rather than cascading a render.
+  useEffect(() => {
+    if (preference !== 'system') return undefined
     const mq = window.matchMedia(DARK_QUERY)
-    const onChange = (): void => {
-      const sys = systemScheme()
-      setResolved(sys)
-      apply(sys)
-    }
+    const onChange = (): void => setSystemPref(systemScheme())
     mq.addEventListener('change', onChange)
     return () => mq.removeEventListener('change', onChange)
   }, [preference])

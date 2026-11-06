@@ -35,7 +35,9 @@ type LoadState = 'loading' | 'ready' | 'invalid'
 export function InviteClaimScreen(): JSX.Element {
   const navigate = useNavigate()
   const { token } = useParams<{ token: string }>()
-  const [loadState, setLoadState] = useState<LoadState>('loading')
+  // A missing token is known from the URL at render time, so it is the initial
+  // state rather than an effect that immediately corrects itself.
+  const [loadState, setLoadState] = useState<LoadState>(() => (token ? 'loading' : 'invalid'))
   const [invite, setInvite] = useState<InviteDetail | null>(null)
 
   const [email, setEmail] = useState('')
@@ -47,10 +49,7 @@ export function InviteClaimScreen(): JSX.Element {
   const [done, setDone] = useState(false)
 
   useEffect(() => {
-    if (!token) {
-      setLoadState('invalid')
-      return
-    }
+    if (!token) return
     let cancelled = false
     inviteApi
       .get(token)

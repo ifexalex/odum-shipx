@@ -110,6 +110,7 @@ export function CarryoverLedger(): JSX.Element {
   }, [statusFilter])
 
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- hand-rolled fetch effect; migrate to TanStack Query (master plan 7.150)
     void load()
   }, [load])
 

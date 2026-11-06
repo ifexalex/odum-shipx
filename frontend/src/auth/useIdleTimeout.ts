@@ -39,8 +39,12 @@ export function useIdleTimeout({ idleMs, warningMs, enabled, onWarn, onTimeout }
   // on every parent render.
   const onWarnRef = useRef(onWarn)
   const onTimeoutRef = useRef(onTimeout)
-  onWarnRef.current = onWarn
-  onTimeoutRef.current = onTimeout
+  // Assigned after commit, not during render: a ref write during render is not
+  // safe under concurrent rendering, where a render can be thrown away.
+  useEffect(() => {
+    onWarnRef.current = onWarn
+    onTimeoutRef.current = onTimeout
+  })
 
   const resetRef = useRef<() => void>(() => undefined)
 

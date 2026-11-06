@@ -33,26 +33,34 @@ export function useDateRangeFilter(): DateRangeFilterState {
   const [daysBack, setDaysBack] = useState<number | null>(null)
   const [dateFrom, setDateFrom] = useState('')
   const [dateTo, setDateTo] = useState('')
+  // Resolved when the preset is chosen, not during render. Date.now() is impure,
+  // so computing it per render also meant the window silently slid forward as
+  // the page sat open — two requests with the same "Last 7 days" selected could
+  // ask for different ranges. Pinning it at selection fixes both.
+  const [presetFrom, setPresetFrom] = useState<string | undefined>(undefined)
 
-  const presetFrom = daysBack ? new Date(Date.now() - daysBack * DAY_MS).toISOString().slice(0, 10) : undefined
   const createdAfter = dateFrom || presetFrom
   const createdBefore = dateTo || undefined
 
   function handlePreset(days: number | null): void {
     setDaysBack(days)
+    setPresetFrom(days ? new Date(Date.now() - days * DAY_MS).toISOString().slice(0, 10) : undefined)
     setDateFrom('')
     setDateTo('')
   }
   function handleCustomFrom(value: string): void {
     setDateFrom(value)
     setDaysBack(null)
+    setPresetFrom(undefined)
   }
   function handleCustomTo(value: string): void {
     setDateTo(value)
     setDaysBack(null)
+    setPresetFrom(undefined)
   }
   function clear(): void {
     setDaysBack(null)
+    setPresetFrom(undefined)
     setDateFrom('')
     setDateTo('')
   }

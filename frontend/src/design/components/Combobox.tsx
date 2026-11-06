@@ -64,14 +64,13 @@ export function Combobox({
     return () => document.removeEventListener('mousedown', onDown)
   }, [open])
 
-  // Focus the search box when opening; reset the query/active row.
+  // Focus the search box when opening. The query/active reset happens in the
+  // toggle handler below, not here: resetting state in an effect that watches
+  // `open` means the panel renders once with the stale query before being
+  // corrected, and is a cascading render. Focus genuinely belongs in an effect
+  // — it touches the DOM — and is deferred so the input exists.
   useEffect(() => {
-    if (open) {
-      setQuery('')
-      setActive(0)
-      // Defer so the input is mounted.
-      requestAnimationFrame(() => inputRef.current?.focus())
-    }
+    if (open) requestAnimationFrame(() => inputRef.current?.focus())
   }, [open])
 
   function choose(optValue: string): void {
@@ -106,7 +105,13 @@ export function Combobox({
         aria-expanded={open}
         className={[styles.control, disabled ? styles.disabled : ''].filter(Boolean).join(' ')}
         disabled={disabled}
-        onClick={() => !disabled && setOpen((o) => !o)}
+        onClick={() => {
+          if (disabled) return
+          // Reset before opening so the panel's first render is already clean.
+          setQuery('')
+          setActive(0)
+          setOpen((o) => !o)
+        }}
       >
         <span className={selected ? styles.value : styles.placeholder}>
           {selected ? selected.label : placeholder}

@@ -169,6 +169,7 @@ export function NotificationTemplates(): JSX.Element {
     }
   }, [])
 
+  // eslint-disable-next-line react-hooks/set-state-in-effect -- hand-rolled fetch effect; migrate to TanStack Query (master plan 7.150)
   useEffect(() => { void load() }, [load])
 
   function handleSaved(updated: NotificationTemplate): void {

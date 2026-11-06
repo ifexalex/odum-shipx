@@ -28,17 +28,20 @@ export default [
 
   {
     files: ['src/**/*.{ts,tsx}'],
-    // Was 'plugin:react-hooks/recommended'. In react-hooks 5.2 the flat config
-    // is `recommended-latest` (its `plugins` is an object); `recommended` and
-    // `recommended-legacy` are still eslintrc-shaped, with `plugins` as an
-    // array, which flat config rejects with
+    // Was 'plugin:react-hooks/recommended'. The flat configs moved in v7: they
+    // now live under `configs.flat[...]`, while the top-level `recommended` and
+    // `recommended-latest` are BOTH eslintrc-shaped (`plugins` as an array),
+    // which flat config rejects with
     // `Key "plugins": Key "0": Expected an object`.
+    //
+    // v7 brings the React Compiler rule set — 16 rules, up from v5's two
+    // (rules-of-hooks, exhaustive-deps).
     plugins: {
-      ...reactHooks.configs['recommended-latest'].plugins,
+      ...reactHooks.configs.flat.recommended.plugins,
       'react-refresh': reactRefresh,
     },
     rules: {
-      ...reactHooks.configs['recommended-latest'].rules,
+      ...reactHooks.configs.flat.recommended.rules,
       'react-refresh/only-export-components': ['warn', { allowConstantExport: true }],
       '@typescript-eslint/no-unused-vars': ['error', { argsIgnorePattern: '^_' }],
     },

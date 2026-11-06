@@ -5,15 +5,24 @@ import { type CBMDisputeStatus } from '../../api/billing'
 import { useDisputeList } from '../../hooks/useBilling'
 import { Badge, Banner, Card, Chip, Mono, Table, ViewLink, ListFooter, type BadgeVariant } from '../../design/components'
 import { useTopBarSlot } from '../../shell/TopBarContext'
+import { useNow } from '../../hooks/useNow'
 import styles from './DisputeList.module.css'
 
 const _DISPUTE_SLA_DAYS = 7
 
-function SLACountdown({ submittedAt, status }: { submittedAt: string; status: CBMDisputeStatus }): JSX.Element {
+function SLACountdown({
+  submittedAt,
+  status,
+  now,
+}: {
+  submittedAt: string
+  status: CBMDisputeStatus
+  now: number
+}): JSX.Element {
   if (isTerminalDisputeStatus(status)) return <span>—</span>
   const submitted = new Date(submittedAt)
   const deadlineMs = submitted.getTime() + _DISPUTE_SLA_DAYS * 24 * 60 * 60 * 1000
-  const msLeft = deadlineMs - Date.now()
+  const msLeft = deadlineMs - now
   if (msLeft <= 0) {
     return <span style={{ color: 'var(--color-error)', fontWeight: 600 }}>Overdue</span>
   }
@@ -62,6 +71,9 @@ function statusLabel(status: CBMDisputeStatus): string {
 
 export function DisputeList(): JSX.Element {
   const navigate = useNavigate()
+  // One clock for the whole table — see useNow. Also makes the countdown tick
+  // instead of only refreshing when something unrelated re-renders the list.
+  const now = useNow()
   const [statusFilter, setStatusFilter] = useState<CBMDisputeStatus | null>(null)
   const { items: disputes, isLoading: loading, error, hasMore, loadMore, isFetchingMore, totalCount } = useDisputeList(
     statusFilter ? { status: statusFilter } : {},
@@ -110,7 +122,7 @@ export function DisputeList(): JSX.Element {
                   {statusLabel(d.status)}
                 </Badge>,
                 <span key="date">{d.submitted_at.slice(0, 10)}</span>,
-                <SLACountdown key="sla" submittedAt={d.submitted_at} status={d.status} />,
+                <SLACountdown key="sla" submittedAt={d.submitted_at} status={d.status} now={now} />,
                 // Disputes are managed inline on BillingDetail — navigate there.
                 <ViewLink key="view" onClick={() => navigate(`/billing/${d.billing_id}`)} />,
               ],

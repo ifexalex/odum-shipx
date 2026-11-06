@@ -45,6 +45,7 @@ export function ActivityFeed({
 
   useEffect(() => {
     let active = true
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- hand-rolled fetch effect; migrate to TanStack Query (master plan 7.150)
     setEntries(null)
     void configApi
       .activity({ actorId, limit })
