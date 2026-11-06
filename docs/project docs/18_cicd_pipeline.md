@@ -311,9 +311,9 @@ jobs:
         working-directory: frontend
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v6
         with:
-          node-version: "22"
+          node-version-file: frontend/.nvmrc   # single source of truth; see LOCAL_TESTING.md §2
           cache: npm
           cache-dependency-path: frontend/package-lock.json
       - run: npm ci
