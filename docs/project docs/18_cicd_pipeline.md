@@ -147,13 +147,14 @@ jobs:
   lint:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - uses: actions/checkout@v7
+      - uses: astral-sh/setup-uv@v5
         with:
-          python-version: "3.12"
-      - run: pip install ruff==0.2.0 mypy==1.19.1 pydantic==2.12.5
-      - run: ruff check .
-      - run: mypy shared/ services/ --ignore-missing-imports
+          enable-cache: true
+      # uv auto-installs the interpreter pinned by requires-python (3.13).
+      - run: uv sync --extra azure
+      - run: uv run ruff check .
+      - run: uv run mypy shared/ services/ --ignore-missing-imports
 
   test:
     runs-on: ubuntu-latest
@@ -969,7 +970,7 @@ even a compromised deploy role cannot create an admin role.
 
 ## Acceptance Criteria
 
-- [x] CI runs lint (ruff==0.2.0 + mypy==1.19.1), unit tests, tenant isolation tests, and security scan
+- [x] CI runs lint (ruff==0.17.3 + mypy==1.19.1), unit tests, tenant isolation tests, and security scan
 - [x] Security scan includes bandit==1.7.7 (SAST), safety==3.7.0 (dependency vulns), and Trivy (filesystem scan, table format; SHA-pinned to v0.24.0)
 - [x] Tests run against a real PostgreSQL 15 (GitHub Actions service container)
 - [x] Build job produces a single immutable artifact (`lambda-packages-{run_id}`, retained 30 days)
