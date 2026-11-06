@@ -4,6 +4,7 @@ Revision ID: 020
 Revises: 019
 Create Date: 2024-01-01 00:00:19
 """
+
 from alembic import op
 
 revision = "020"
@@ -13,15 +14,14 @@ depends_on = None
 
 
 def upgrade() -> None:
-    op.execute("ALTER TABLE missing_item ADD COLUMN IF NOT EXISTS" " refund_request_id UUID REFERENCES refund_request(id)")
-    op.execute("ALTER TABLE seized_item ADD COLUMN IF NOT EXISTS" " refund_request_id UUID REFERENCES refund_request(id)")
+    op.execute("ALTER TABLE missing_item ADD COLUMN IF NOT EXISTS refund_request_id UUID REFERENCES refund_request(id)")
+    op.execute("ALTER TABLE seized_item ADD COLUMN IF NOT EXISTS refund_request_id UUID REFERENCES refund_request(id)")
     op.execute(
         "CREATE INDEX IF NOT EXISTS idx_missing_item_refund"
         " ON missing_item(refund_request_id) WHERE refund_request_id IS NOT NULL"
     )
     op.execute(
-        "CREATE INDEX IF NOT EXISTS idx_seized_item_refund"
-        " ON seized_item(refund_request_id) WHERE refund_request_id IS NOT NULL"
+        "CREATE INDEX IF NOT EXISTS idx_seized_item_refund ON seized_item(refund_request_id) WHERE refund_request_id IS NOT NULL"
     )
 
 

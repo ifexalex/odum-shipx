@@ -338,7 +338,7 @@ def upgrade() -> None:
     op.execute("CREATE INDEX idx_storage_fee_log_tenant ON storage_fee_log(tenant_id)")
     op.execute("CREATE INDEX idx_storage_fee_log_billing ON storage_fee_log(billing_id)")
     op.execute("CREATE INDEX idx_storage_fee_log_accrual ON storage_fee_log(tenant_id, accrual_date)")
-    op.execute("CREATE INDEX idx_storage_fee_log_unbilled ON storage_fee_log(tenant_id, is_billed) " "WHERE is_billed = FALSE")
+    op.execute("CREATE INDEX idx_storage_fee_log_unbilled ON storage_fee_log(tenant_id, is_billed) WHERE is_billed = FALSE")
 
     # ---------------------------------------------------------------------------
     # 11. carryover_ledger — outstanding balance carried forward to the next shipment

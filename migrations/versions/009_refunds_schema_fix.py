@@ -57,7 +57,7 @@ def upgrade() -> None:
     # ---------------------------------------------------------------------------
     # refund_request — fix customer_choice CHECK
     # ---------------------------------------------------------------------------
-    op.execute("ALTER TABLE refund_request " "DROP CONSTRAINT IF EXISTS refund_request_customer_choice_check")
+    op.execute("ALTER TABLE refund_request DROP CONSTRAINT IF EXISTS refund_request_customer_choice_check")
     op.execute(
         """
         ALTER TABLE refund_request ADD CONSTRAINT refund_request_customer_choice_check
@@ -71,7 +71,7 @@ def upgrade() -> None:
     # ---------------------------------------------------------------------------
     # refund_request — fix approval_level CHECK
     # ---------------------------------------------------------------------------
-    op.execute("ALTER TABLE refund_request " "DROP CONSTRAINT IF EXISTS refund_request_approval_level_check")
+    op.execute("ALTER TABLE refund_request DROP CONSTRAINT IF EXISTS refund_request_approval_level_check")
     op.execute(
         """
         ALTER TABLE refund_request ADD CONSTRAINT refund_request_approval_level_check
@@ -92,7 +92,7 @@ def upgrade() -> None:
     """
     )
     op.execute("ALTER TABLE refund_request ADD COLUMN amount_approved_ngn DECIMAL(15, 2)")
-    op.execute("ALTER TABLE refund_request ADD COLUMN damage_claim_id UUID " "REFERENCES damage_claim(id)")
+    op.execute("ALTER TABLE refund_request ADD COLUMN damage_claim_id UUID REFERENCES damage_claim(id)")
     op.execute("ALTER TABLE refund_request ADD COLUMN debt_check_passed BOOLEAN")
     op.execute("ALTER TABLE refund_request ADD COLUMN debt_check_notes TEXT")
 
@@ -106,7 +106,7 @@ def downgrade() -> None:
     op.execute("ALTER TABLE refund_request DROP COLUMN IF EXISTS refund_type")
 
     # Restore approval_level CHECK
-    op.execute("ALTER TABLE refund_request " "DROP CONSTRAINT IF EXISTS refund_request_approval_level_check")
+    op.execute("ALTER TABLE refund_request DROP CONSTRAINT IF EXISTS refund_request_approval_level_check")
     op.execute(
         """
         ALTER TABLE refund_request ADD CONSTRAINT refund_request_approval_level_check
@@ -115,7 +115,7 @@ def downgrade() -> None:
     )
 
     # Restore customer_choice CHECK
-    op.execute("ALTER TABLE refund_request " "DROP CONSTRAINT IF EXISTS refund_request_customer_choice_check")
+    op.execute("ALTER TABLE refund_request DROP CONSTRAINT IF EXISTS refund_request_customer_choice_check")
     op.execute(
         """
         ALTER TABLE refund_request ADD CONSTRAINT refund_request_customer_choice_check

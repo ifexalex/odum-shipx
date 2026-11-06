@@ -278,7 +278,7 @@ def list_billing_all(
         FROM billing b
         LEFT JOIN container c  ON c.id  = b.container_id  AND c.tenant_id  = b.tenant_id
         LEFT JOIN customer  cu ON cu.id = b.customer_id   AND cu.tenant_id = b.tenant_id
-        WHERE {' AND '.join(conditions)}
+        WHERE {" AND ".join(conditions)}
     """
     query, params = build_paginated_query(base, cursor, limit, sort_field=f"b.{sort_field}", sort_direction=sort_direction)
     params.update(extra)
@@ -862,7 +862,7 @@ def list_carryovers(
         LEFT JOIN billing src ON src.id = cl.source_billing_id
         LEFT JOIN container sc ON sc.id = src.container_id AND sc.tenant_id = src.tenant_id
         LEFT JOIN billing tgt ON tgt.id = cl.target_billing_id
-        WHERE {' AND '.join(conditions)}
+        WHERE {" AND ".join(conditions)}
     """
     query, params = build_paginated_query(base, cursor, limit, sort_field="cl.created_at")
     params.update(extra)

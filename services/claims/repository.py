@@ -224,7 +224,7 @@ def list_damage_claims(
         FROM damage_claim dc
         LEFT JOIN customer  cu ON cu.id = dc.customer_id  AND cu.tenant_id = dc.tenant_id
         LEFT JOIN container c  ON c.id  = dc.container_id AND c.tenant_id  = dc.tenant_id
-        WHERE {' AND '.join(conditions)}
+        WHERE {" AND ".join(conditions)}
     """
     query, params = build_paginated_query(base, cursor, limit, sort_field=f"dc.{sort_field}", sort_direction=sort_direction)
     params.update(extra)
@@ -379,7 +379,7 @@ def list_missing_items(
     if filters.get("container_id"):
         # missing_item links to manifest; filter via subquery
         conditions.append(
-            "manifest_id IN (" "SELECT id FROM manifest " "WHERE container_id = %(container_id)s AND tenant_id = %(tenant_id)s)"
+            "manifest_id IN (SELECT id FROM manifest WHERE container_id = %(container_id)s AND tenant_id = %(tenant_id)s)"
         )
         extra["container_id"] = filters["container_id"]
     if filters.get("customer_id"):

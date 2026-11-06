@@ -117,7 +117,7 @@ def list_containers(
     # repository.py::list_packing_lists for the same q_clause pattern.
     q_clause = ""
     if filters.get("q"):
-        q_clause = " AND (c.container_number ILIKE %(q)s" " OR c.vessel_name ILIKE %(q)s" " OR c.voyage_number ILIKE %(q)s)"
+        q_clause = " AND (c.container_number ILIKE %(q)s OR c.vessel_name ILIKE %(q)s OR c.voyage_number ILIKE %(q)s)"
         extra["q"] = f"%{filters['q']}%"
 
     # Wrap the correlated packing-list aggregates in a subquery so

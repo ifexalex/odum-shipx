@@ -1,4 +1,5 @@
 """Unit tests for shared.pagination — cursor encode/decode, query building, page extraction."""
+
 from datetime import UTC
 
 import pytest

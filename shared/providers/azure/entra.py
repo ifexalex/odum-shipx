@@ -62,7 +62,7 @@ def email_to_upn(email: str, user_domain: str) -> str:
     """
     if not user_domain or email.endswith(f"@{user_domain}"):
         return email
-    return f'{email.replace("@", "_")}@{user_domain}'
+    return f"{email.replace('@', '_')}@{user_domain}"
 
 
 class EntraIdentityProvider:

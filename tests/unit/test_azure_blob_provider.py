@@ -6,6 +6,7 @@ in for the Blob container client (put/get/size/delete round-trip in a dict), and
 SDK call shapes are verified without any external service. Real end-to-end proof
 against Azurite or a live account lives in `scripts/azure_smoke.py`, not pytest.
 """
+
 from types import SimpleNamespace
 
 import pytest
@@ -14,9 +15,7 @@ pytest.importorskip("azure.storage.blob")
 
 from shared.providers.base import StorageProvider, UploadTicket  # noqa: E402
 
-_DUMMY_CONN = (
-    "DefaultEndpointsProtocol=https;AccountName=acct;AccountKey=a2V5;" "BlobEndpoint=https://acct.blob.core.windows.net/;"
-)
+_DUMMY_CONN = "DefaultEndpointsProtocol=https;AccountName=acct;AccountKey=a2V5;BlobEndpoint=https://acct.blob.core.windows.net/;"
 
 
 class _FakeBlobClient:

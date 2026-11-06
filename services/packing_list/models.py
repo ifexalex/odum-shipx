@@ -91,9 +91,9 @@ class _ShipmentDatesMixin(BaseModel):
     @model_validator(mode="after")
     def _validate_shipment_dates(self) -> "_ShipmentDatesMixin":
         if self.delivery_date is not None and self.delivery_date > _latest_acceptable_today():
-            raise ValueError("delivery_date cannot be in the future - it is the date the goods were " "received at the warehouse")
+            raise ValueError("delivery_date cannot be in the future - it is the date the goods were received at the warehouse")
         if self.loading_date is not None and self.delivery_date is not None and self.loading_date < self.delivery_date:
-            raise ValueError("loading_date cannot be before delivery_date - goods must be received " "before they can be loaded")
+            raise ValueError("loading_date cannot be before delivery_date - goods must be received before they can be loaded")
         return self
 
 

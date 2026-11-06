@@ -6,6 +6,7 @@ to the correct tenant_id, preventing cross-tenant data leakage.
 Strategy: patch the repo to record the tenant_id passed to each function,
 then assert the correct tenant_id was used.
 """
+
 from decimal import Decimal
 from unittest.mock import MagicMock, patch
 

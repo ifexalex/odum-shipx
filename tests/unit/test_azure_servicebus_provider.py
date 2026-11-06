@@ -5,6 +5,7 @@ arm64, so (for a send-only adapter) these use a stubbed Service Bus client — t
 same rigor as the SES stub in `test_queue_email_providers.py`. A real
 `ServiceBusMessage` is constructed, so the body/queue wiring is genuinely checked.
 """
+
 import pytest
 
 pytest.importorskip("azure.servicebus")

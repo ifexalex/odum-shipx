@@ -10,6 +10,7 @@ Environment variables (injected by Terraform, same as all VPC Lambdas):
     DATABASE_PORT     DB port (default 5432)
     DB_SECRET_ARN     Secrets Manager ARN for the DB password
 """
+
 import json
 import logging
 import os

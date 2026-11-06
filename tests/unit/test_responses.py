@@ -1,4 +1,5 @@
 """Unit tests for shared.responses — formatting, headers, RFC 7807."""
+
 import json
 
 from shared.exceptions import (

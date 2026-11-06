@@ -1,4 +1,5 @@
 """Orchestration: fetch data → generate file → upload S3 → presigned URL."""
+
 import csv
 import io
 import logging
@@ -518,7 +519,7 @@ def generate_import_presigned_url(tenant_id: str, content_type: str) -> dict[str
     """
     if content_type not in _IMPORT_ALLOWED_CONTENT_TYPES:
         raise BusinessRuleViolationError(
-            f"content_type '{content_type}' not allowed. " f"Allowed: {', '.join(sorted(_IMPORT_ALLOWED_CONTENT_TYPES))}",
+            f"content_type '{content_type}' not allowed. Allowed: {', '.join(sorted(_IMPORT_ALLOWED_CONTENT_TYPES))}",
             rule_id="INVALID_CONTENT_TYPE",
         )
 

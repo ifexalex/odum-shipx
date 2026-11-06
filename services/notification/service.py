@@ -31,19 +31,18 @@ logger = logging.getLogger(__name__)
 _SMS_TEMPLATES: dict[str, str] = {
     "shipment_update": ("{company_name}: Your shipment {tracking_code} is now {status}."),
     "payment_due": (
-        "{company_name}: Container {container_number} arrived. " "Amount: {currency} {amount}. Pickup: {warehouse_address}"
+        "{company_name}: Container {container_number} arrived. Amount: {currency} {amount}. Pickup: {warehouse_address}"
     ),
-    "release_note_generated": ("{company_name}: Release note ready. " "Ref: {reference_number}. Collect {carton_count} cartons."),
+    "release_note_generated": ("{company_name}: Release note ready. Ref: {reference_number}. Collect {carton_count} cartons."),
     "container_arrived": (
-        "{company_name}: Your goods have arrived at our warehouse! "
-        "Container {container_number}. Your invoice is being prepared."
+        "{company_name}: Your goods have arrived at our warehouse! Container {container_number}. Your invoice is being prepared."
     ),
     "customer_registered": ("{company_name}: Welcome! Your account is ready. Check your email to set your password."),
     "customer_invite": (
-        "{company_name}: Hi {name}, create your account to track your shipments: {invite_link} " "(link expires in 48 hours)"
+        "{company_name}: Hi {name}, create your account to track your shipments: {invite_link} (link expires in 48 hours)"
     ),
     "account_activation": (
-        "{company_name}: Hi {name}, activate your account and set your password: {activation_link} " "(link expires in 48 hours)"
+        "{company_name}: Hi {name}, activate your account and set your password: {activation_link} (link expires in 48 hours)"
     ),
     "payment_claim_confirmed": ("{company_name}: Your payment of NGN {amount_ngn} has been confirmed. Thank you!"),
     "payment_claim_rejected": (
@@ -59,7 +58,7 @@ _DEFAULT_SMS_TEMPLATE = "{company_name}: You have a new notification."
 _SMS_TEMPLATES_ZH: dict[str, str] = {
     "shipment_update": "{company_name}: 您的货物 {tracking_code} 当前状态：{status}。",
     "payment_due": (
-        "{company_name}: 集装箱 {container_number} 已抵达。" "应付金额：{currency} {amount}。提货地址：{warehouse_address}"
+        "{company_name}: 集装箱 {container_number} 已抵达。应付金额：{currency} {amount}。提货地址：{warehouse_address}"
     ),
     "release_note_generated": "{company_name}: 提货单已生成。单号：{reference_number}，共 {carton_count} 件。",
     "container_arrived": "{company_name}: 您的货物已到达仓库！集装箱 {container_number}，正在准备账单。",
@@ -68,7 +67,7 @@ _SMS_TEMPLATES_ZH: dict[str, str] = {
     "account_activation": "{company_name}: 您好 {name}，激活账户并设置密码：{activation_link}（链接48小时后失效）",
     "payment_claim_confirmed": "{company_name}: 您的付款 NGN {amount_ngn} 已确认。谢谢！",
     "payment_claim_rejected": (
-        "{company_name}: 您的付款申报 NGN {amount_ngn} 未通过确认。" "原因：{reason}。请联系我们或重新提交正确的凭证。"
+        "{company_name}: 您的付款申报 NGN {amount_ngn} 未通过确认。原因：{reason}。请联系我们或重新提交正确的凭证。"
     ),
     "damage_claim_update": "{company_name}: 您的损坏索赔 {claim_reference} 当前状态：{status}。",
     "packing_list_approved": "{company_name}: 您的装箱单 {reference} 已获批准。",
@@ -479,7 +478,7 @@ def render_email_html(
         for k, v in template_data.items()
         if v is not None and not k.endswith("_link")
     )
-    table = f"<table style='border-collapse:collapse;width:100%;margin-top:12px;'>" f"{rows}</table>" if rows else ""
+    table = f"<table style='border-collapse:collapse;width:100%;margin-top:12px;'>{rows}</table>" if rows else ""
     _link_labels = {"activation_link": "Activate account", "invite_link": "Create your account"}
     buttons = "".join(
         f"<p style='margin:20px 0;'>"

@@ -98,9 +98,7 @@ class TestEntraGroupIdMap:
 
     def test_group_id_map_json(self, monkeypatch):
         gid = "22223333-4444-5555-6666-777788889999"
-        mapper = self._mapper_with_env(
-            monkeypatch, ENTRA_GROUP_ID_MAP=f'{{"{gid}": "t-9:tenant_admin"}}'
-        )
+        mapper = self._mapper_with_env(monkeypatch, ENTRA_GROUP_ID_MAP=f'{{"{gid}": "t-9:tenant_admin"}}')
         assert mapper.groups({"groups": [gid]}) == ["t-9:tenant_admin"]
 
     def test_malformed_group_id_map_is_ignored(self, monkeypatch):
@@ -143,8 +141,12 @@ class TestDualCloudRoleResolution:
 
     def test_entra_platform_admin_from_native_token(self, monkeypatch):
         # Real Entra shape: groups are object ids (unmapped here), role via claim.
-        claims = {"oid": "u", "tenant_id": "PLATFORM", "role": "platform_admin",
-                  "groups": ["11111111-2222-3333-4444-555555555555"]}
+        claims = {
+            "oid": "u",
+            "tenant_id": "PLATFORM",
+            "role": "platform_admin",
+            "groups": ["11111111-2222-3333-4444-555555555555"],
+        }
         assert self._roles(monkeypatch, EntraClaimsMapper(), claims) == {"platform_admin"}
 
     def test_entra_platform_admin_from_mapped_group_id(self, monkeypatch):

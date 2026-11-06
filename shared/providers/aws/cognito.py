@@ -5,6 +5,7 @@ Each tenant has groups named `{tenant_id}:{role}`. Behaviour is identical to the
 former `services/tenant_management/cognito_client.py` — only the location and
 class name changed, so it now sits behind the `IdentityProvider` port.
 """
+
 import logging
 import os
 from typing import Any

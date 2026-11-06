@@ -21,6 +21,7 @@ Usage:
 Each check is skipped (not failed) when its env vars are absent, so you can run a
 subset. Exit code is non-zero if any attempted check fails.
 """
+
 import argparse
 import os
 import sys

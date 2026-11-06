@@ -1,4 +1,5 @@
 """Integration test: CBM dispute → investigation → resolution → billing adjustment."""
+
 import json
 from decimal import Decimal
 from unittest.mock import patch

@@ -4,6 +4,7 @@ SQS is exercised against moto (real send/receive round-trip); SES is covered wit
 a stubbed client so the message structure is asserted without SES identity setup.
 Factory tests confirm the `CLOUD_PROVIDER` wiring and singleton caching.
 """
+
 from shared.providers.base import EmailProvider, QueueProvider
 
 

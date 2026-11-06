@@ -49,9 +49,7 @@ def upgrade() -> None:
         )
         """
     )
-    op.execute(
-        "CREATE INDEX idx_announcement_request_tenant_status " "ON announcement_request(tenant_id, status, created_at DESC)"
-    )
+    op.execute("CREATE INDEX idx_announcement_request_tenant_status ON announcement_request(tenant_id, status, created_at DESC)")
     op.execute("ALTER TABLE announcement_request ENABLE ROW LEVEL SECURITY")
     op.execute(
         """

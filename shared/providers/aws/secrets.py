@@ -1,4 +1,5 @@
 """AWS Secrets Manager provider."""
+
 import os
 from typing import Any
 

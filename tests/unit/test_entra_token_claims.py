@@ -96,7 +96,9 @@ class TestDatabaseClaimsReader:
     def test_custom_output_claim_names(self, monkeypatch):
         from services.entra_token_claims import db_lookup
 
-        monkeypatch.setattr(db_lookup, "execute_with_tenant", lambda *a, **k: [{"tenant_id": "PLATFORM", "role": "platform_admin"}])
+        monkeypatch.setattr(
+            db_lookup, "execute_with_tenant", lambda *a, **k: [{"tenant_id": "PLATFORM", "role": "platform_admin"}]
+        )
         reader = db_lookup.DatabaseClaimsReader(out_tenant_claim="tid", out_role_claim="rol")
         assert reader("oid") == {"tid": "PLATFORM", "rol": "platform_admin"}
 

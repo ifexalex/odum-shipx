@@ -11,6 +11,7 @@ Auth: `AZURE_SERVICE_BUS_CONNECTION_STRING` (namespace-level, or the
 managed-identity path would construct `ServiceBusClient(fully_qualified_namespace,
 credential=DefaultAzureCredential())` — wired alongside the Terraform module.
 """
+
 import os
 from typing import Any
 

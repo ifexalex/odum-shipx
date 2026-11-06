@@ -320,7 +320,7 @@ def _packing_list_predicates(tenant_id: str, filters: dict[str, Any]) -> tuple[s
         # Matches the search box's own placeholder: reference, customer name,
         # container. `reference` was missing, so searching for a PL number
         # found nothing even once the filter was wired up.
-        q_clause = " AND (cu.name ILIKE %(q)s" " OR c.container_number ILIKE %(q)s" " OR pl.reference ILIKE %(q)s)"
+        q_clause = " AND (cu.name ILIKE %(q)s OR c.container_number ILIKE %(q)s OR pl.reference ILIKE %(q)s)"
         extra["q"] = f"%{filters['q']}%"
 
     where_clause = " AND ".join(f"pl.{cond}" for cond in conditions)
@@ -507,7 +507,7 @@ def link_manifest(tenant_id: str, pl_id: str, manifest_id: str) -> None:
 def touch_updated_at(tenant_id: str, pl_id: str) -> None:
     execute_write_with_tenant(
         tenant_id,
-        "UPDATE packing_list SET updated_at = NOW() " "WHERE tenant_id = %(tenant_id)s AND id = %(id)s RETURNING id",
+        "UPDATE packing_list SET updated_at = NOW() WHERE tenant_id = %(tenant_id)s AND id = %(id)s RETURNING id",
         {"tenant_id": tenant_id, "id": pl_id},
     )
 

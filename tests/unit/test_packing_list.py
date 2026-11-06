@@ -1,4 +1,5 @@
 """Unit tests for services.packing_list.service — state machine, CBM calculation."""
+
 from datetime import UTC, date, datetime, timedelta
 from decimal import Decimal
 

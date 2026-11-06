@@ -10,6 +10,7 @@ still built in `shared/events.py`; this adapter only delivers. The EventBridge
 Auth: `AZURE_EVENT_GRID_ENDPOINT` + `AZURE_EVENT_GRID_KEY` (access-key), or the
 endpoint alone with `DefaultAzureCredential` (keyless/managed identity).
 """
+
 import os
 from typing import Any
 

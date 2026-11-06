@@ -96,7 +96,7 @@ def upgrade() -> None:
 
     if duplicates:
         details = "\n".join(
-            f"  tenant_id={row['tenant_id']} phone={row['phone']} count={row['n']} " f"customer_ids={row['customer_ids']}"
+            f"  tenant_id={row['tenant_id']} phone={row['phone']} count={row['n']} customer_ids={row['customer_ids']}"
             for row in duplicates
         )
         raise RuntimeError(
@@ -111,7 +111,7 @@ def upgrade() -> None:
     # idx_customer_tenant_phone — that index stays in place (redundant but
     # harmless; not worth editing an already-applied historical migration
     # for) and this one adds the actual uniqueness constraint.
-    op.execute("CREATE UNIQUE INDEX idx_customer_tenant_phone_unique" " ON customer(tenant_id, phone) WHERE phone IS NOT NULL")
+    op.execute("CREATE UNIQUE INDEX idx_customer_tenant_phone_unique ON customer(tenant_id, phone) WHERE phone IS NOT NULL")
 
 
 def downgrade() -> None:

@@ -5,6 +5,7 @@ put/get, presigned upload/download, HEAD size, versioned prefix purge — are re
 S3 behaviour, not mock assertions. The factory tests confirm the cloud-neutral
 wiring (`CLOUD_PROVIDER` selection, per-bucket caching, PUT-normalized ticket).
 """
+
 import pytest
 from moto import mock_aws
 

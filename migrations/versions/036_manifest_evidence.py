@@ -32,7 +32,7 @@ def upgrade() -> None:
         )
         """
     )
-    op.execute("CREATE INDEX IF NOT EXISTS idx_manifest_evidence_manifest " "ON manifest_evidence(manifest_id)")
+    op.execute("CREATE INDEX IF NOT EXISTS idx_manifest_evidence_manifest ON manifest_evidence(manifest_id)")
 
 
 def downgrade() -> None:

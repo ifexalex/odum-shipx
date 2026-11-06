@@ -3,6 +3,7 @@
 All external I/O (DB, EventBridge, SQS) is mocked. This test exercises the
 service-layer orchestration across multiple services end-to-end in memory.
 """
+
 import json
 from decimal import Decimal
 from unittest.mock import patch

@@ -1,4 +1,5 @@
 """Tests for shared.logging_config structured logging and trace context."""
+
 import json
 import logging
 

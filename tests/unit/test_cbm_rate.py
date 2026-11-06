@@ -6,6 +6,7 @@ number model.
 it's just the case where all three rates happen to be equal — so these
 tests exercise one code path throughout, not two.
 """
+
 from decimal import Decimal
 from unittest.mock import patch
 

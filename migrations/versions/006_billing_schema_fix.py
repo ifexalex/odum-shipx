@@ -37,7 +37,7 @@ def upgrade() -> None:
     )
     op.execute("ALTER TABLE billing ALTER COLUMN status SET DEFAULT 'unpaid'")
     op.execute("ALTER TABLE billing ADD COLUMN billed_at TIMESTAMPTZ")
-    op.execute("ALTER TABLE billing ADD COLUMN released_with_outstanding " "BOOLEAN NOT NULL DEFAULT FALSE")
+    op.execute("ALTER TABLE billing ADD COLUMN released_with_outstanding BOOLEAN NOT NULL DEFAULT FALSE")
 
     # ---------------------------------------------------------------------------
     # cbm_dispute — replace status CHECK + add new columns

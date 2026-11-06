@@ -215,7 +215,7 @@ def create_packing_list(
         raise ResourceNotFoundError("container", req.container_id)
     if container.get("status") != "loading":
         raise BusinessRuleViolationError(
-            f"Container must be in 'loading' status to add packing lists " f"(current: {container.get('status')})",
+            f"Container must be in 'loading' status to add packing lists (current: {container.get('status')})",
             rule_id="CONTAINER_NOT_LOADING",
         )
 
@@ -342,7 +342,7 @@ def update_packing_list(
     current_status = pl["status"]
     if current_status not in ("draft", "rejected"):
         raise BusinessRuleViolationError(
-            f"Packing list can only be updated when in 'draft' or 'rejected' status " f"(current: {current_status})",
+            f"Packing list can only be updated when in 'draft' or 'rejected' status (current: {current_status})",
             rule_id="INVALID_UPDATE_STATUS",
         )
 

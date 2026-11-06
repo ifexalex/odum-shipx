@@ -17,6 +17,7 @@ Usage:
     python3 scripts/create_wa_templates.py --priority --apply
     python3 scripts/create_wa_templates.py --apply         # all 11
 """
+
 import argparse
 import json
 import os
@@ -55,20 +56,19 @@ BODIES: dict[str, tuple[str, tuple[str, ...]]] = {
         ("Acme Shipping Ltd", "Ifesinachi Ugwuoke", "https://app.shipx.com/invite/3f9a2b7c1d"),
     ),
     "customer_welcome": (
-        "Your {{1}} account has been created, {{2}}. " "Check your email to set your password and start tracking your shipments.",
+        "Your {{1}} account has been created, {{2}}. Check your email to set your password and start tracking your shipments.",
         ("Acme Shipping Ltd", "Ifesinachi Ugwuoke"),
     ),
     "container_arrived_warehouse": (
-        "Your container {{2}} has arrived at the {{1}} warehouse. "
-        "We will contact you when your goods are ready for collection.",
+        "Your container {{2}} has arrived at the {{1}} warehouse. We will contact you when your goods are ready for collection.",
         ("Acme Shipping Ltd", "STL409"),
     ),
     "shipment_status_update": (
-        "Shipment update from {{1}}: your shipment {{2}} is now {{3}}. " "Reply to this message if you have any questions.",
+        "Shipment update from {{1}}: your shipment {{2}} is now {{3}}. Reply to this message if you have any questions.",
         ("Acme Shipping Ltd", "SHX-2026-004821", "cleared at destination"),
     ),
     "release_note_ready": (
-        "Your release note from {{1}} is ready. Reference {{2}} — " "please collect {{3}} carton(s) from our warehouse.",
+        "Your release note from {{1}} is ready. Reference {{2}} — please collect {{3}} carton(s) from our warehouse.",
         ("Acme Shipping Ltd", "RN-2026-01184", "12"),
     ),
     "payment_due_notification": (
@@ -77,11 +77,11 @@ BODIES: dict[str, tuple[str, tuple[str, ...]]] = {
         ("Acme Shipping Ltd", "STL409", "NGN", "485,000", "14 Balogun Street, Lagos Island, Lagos"),
     ),
     "damage_claim_update": (
-        "Update from {{1}} on your damage claim {{2}}: the status is now {{3}}. " "Reply here if you have questions.",
+        "Update from {{1}} on your damage claim {{2}}: the status is now {{3}}. Reply here if you have questions.",
         ("Acme Shipping Ltd", "CLM-2026-00317", "approved"),
     ),
     "cbm_dispute_update": (
-        "Your CBM dispute {{2}} with {{1}} has been updated. Status: {{3}}. " "Reply here if you have questions.",
+        "Your CBM dispute {{2}} with {{1}} has been updated. Status: {{3}}. Reply here if you have questions.",
         ("Acme Shipping Ltd", "DSP-2026-00092", "resolved in your favour"),
     ),
     "packing_list_approved": (
@@ -93,7 +93,7 @@ BODIES: dict[str, tuple[str, tuple[str, ...]]] = {
         ("ShipX", "Acme Shipping Ltd"),
     ),
     "tenant_suspended": (
-        "Your {{1}} account has been suspended. Reason: {{2}}. " "Contact support to restore access.",
+        "Your {{1}} account has been suspended. Reason: {{2}}. Contact support to restore access.",
         ("ShipX", "unpaid subscription invoice"),
     ),
 }
@@ -115,7 +115,7 @@ def validate() -> list[str]:
         placeholders = {int(n) for n in re.findall(r"\{\{(\d+)\}\}", body)}
         expected = expected_param_count(name)
         if placeholders != set(range(1, expected + 1)):
-            problems.append(f"{name}: body uses {sorted(placeholders)} but WA_TEMPLATE_PARAMS " f"implies {{1}}..{{{expected}}}")
+            problems.append(f"{name}: body uses {sorted(placeholders)} but WA_TEMPLATE_PARAMS implies {{1}}..{{{expected}}}")
         if len(samples) != expected:
             problems.append(f"{name}: {len(samples)} sample values, expected {expected}")
         # Meta rejects "leading or trailing params" (subcode 2388299). Trailing
@@ -171,7 +171,7 @@ def _print_status(lang: str) -> int:
         reason = t.get("rejected_reason")
         note = f"  ← {reason}" if t["status"] == "REJECTED" and reason != "NONE" else ""
         mark = "✓" if t["status"] == "APPROVED" else "·"
-        print(f"  {mark} {t['name']:<30} {t['language']:<6} {t.get('category', '?'):<9} " f"{t['status']}{note}")
+        print(f"  {mark} {t['name']:<30} {t['language']:<6} {t.get('category', '?'):<9} {t['status']}{note}")
     unsubmitted = sorted(set(BODIES) - {t["name"] for t in ours if t["language"] == lang})
     if unsubmitted:
         print(f"\nNot yet submitted in {lang}: {', '.join(unsubmitted)}")

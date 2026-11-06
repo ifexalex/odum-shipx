@@ -115,7 +115,7 @@ def _resolve_user_id(user_id: str, tenant_id: str, role: str) -> str:
     try:
         rows = execute_with_tenant(
             tenant_id,
-            "SELECT id FROM tenant_user WHERE tenant_id = %s AND role = %s " "ORDER BY created_at LIMIT 1",
+            "SELECT id FROM tenant_user WHERE tenant_id = %s AND role = %s ORDER BY created_at LIMIT 1",
             (tenant_id, role),
         )
     except Exception:

@@ -12,6 +12,7 @@ bound context for that line.
 
 See 00_CROSS_CUTTING_STANDARDS.md §3 for the logging standard.
 """
+
 import json
 import logging
 import os

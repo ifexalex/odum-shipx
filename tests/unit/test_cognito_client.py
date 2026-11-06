@@ -7,6 +7,7 @@ admin_remove_user_from_group / admin_list_groups_for_user), not just that
 where changing a staff member's role never actually updated their Cognito
 group membership — these are the regression tests for that fix.
 """
+
 import os
 
 import boto3

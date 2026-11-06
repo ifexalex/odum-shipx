@@ -14,6 +14,7 @@ Upload contract parity: the normalized PUT ticket carries the Azure-required
 single PUT path (which sends every `upload_headers` entry) works against Blob
 exactly as it does against S3.
 """
+
 import os
 from datetime import UTC, datetime, timedelta
 from typing import Any

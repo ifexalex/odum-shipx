@@ -16,6 +16,7 @@ Usage:
 
 Prints one line: "<token> <customer_id>"
 """
+
 import argparse
 import os
 import sys

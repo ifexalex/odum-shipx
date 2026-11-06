@@ -4,6 +4,7 @@ These tests verify that the Lambda handlers extract and enforce tenant_id from
 the Cognito JWT claims, and that cross-tenant requests either return 404 or
 are never routed to another tenant's data.
 """
+
 import json
 from unittest.mock import patch
 

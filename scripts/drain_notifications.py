@@ -14,6 +14,7 @@ Usage:
     python3 scripts/drain_notifications.py --watch    # poll until interrupted
     python3 scripts/drain_notifications.py --peek     # show messages, consume none
 """
+
 import argparse
 import json
 import logging

@@ -1,4 +1,5 @@
 """Non-production recipient guard — shared/notifications.py."""
+
 import os
 from unittest.mock import patch
 

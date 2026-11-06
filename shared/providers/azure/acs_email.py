@@ -7,6 +7,7 @@ so, like SES, this does not block on final delivery.
 
 Auth: `AZURE_COMMUNICATION_CONNECTION_STRING`.
 """
+
 import os
 from typing import Any
 

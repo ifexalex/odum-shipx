@@ -599,7 +599,7 @@ def list_customers(
     # customer's cargo on one container = one shipment). Correlated subquery is
     # wrapped below so the pagination cursor references unambiguous outer columns.
     shipment_count = (
-        "(SELECT COUNT(*) FROM packing_list pl" " WHERE pl.customer_id = c.id AND pl.tenant_id = c.tenant_id) AS shipment_count"
+        "(SELECT COUNT(*) FROM packing_list pl WHERE pl.customer_id = c.id AND pl.tenant_id = c.tenant_id) AS shipment_count"
     )
     if q:
         pattern = f"%{q}%"
@@ -610,7 +610,7 @@ def list_customers(
         )
         extra: dict[str, Any] = {"tenant_id": tenant_id, "q": pattern}
     else:
-        inner = f"SELECT c.*, {shipment_count}, {_PENDING_INVITE_EXPIRES_AT} FROM customer c" " WHERE c.tenant_id = %(tenant_id)s"
+        inner = f"SELECT c.*, {shipment_count}, {_PENDING_INVITE_EXPIRES_AT} FROM customer c WHERE c.tenant_id = %(tenant_id)s"
         extra = {"tenant_id": tenant_id}
 
     base = f"SELECT * FROM ({inner}) AS t WHERE 1=1"

@@ -1,4 +1,5 @@
 """Generate packing list .xlsx (2-sheet workbook) per spec §7.1."""
+
 import contextlib
 from datetime import datetime
 from io import BytesIO

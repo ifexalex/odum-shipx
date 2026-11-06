@@ -1,4 +1,5 @@
 """Pydantic request/response models for the Excel import/export service."""
+
 from enum import StrEnum
 
 from pydantic import BaseModel

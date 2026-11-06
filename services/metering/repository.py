@@ -4,6 +4,7 @@ Pure SQL — no business logic.
 All queries use parameterized statements (%s / %(name)s) — never f-strings on
 user-supplied values.
 """
+
 import logging
 from datetime import date
 from typing import Any

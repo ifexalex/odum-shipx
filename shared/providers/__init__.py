@@ -6,6 +6,7 @@ Factories return None when a capability is not configured, preserving the
 existing dev-fallback behaviour (e.g. no encryption key → values stored in
 plaintext with a warning).
 """
+
 import os
 
 from shared.providers.base import (

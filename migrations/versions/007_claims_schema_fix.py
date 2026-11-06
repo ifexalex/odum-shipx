@@ -44,14 +44,14 @@ def upgrade() -> None:
     # ---------------------------------------------------------------------------
     # claim_resolution — replace approval_level CHECK + add columns
     # ---------------------------------------------------------------------------
-    op.execute("ALTER TABLE claim_resolution DROP CONSTRAINT " "claim_resolution_approval_level_check")
+    op.execute("ALTER TABLE claim_resolution DROP CONSTRAINT claim_resolution_approval_level_check")
     op.execute(
         """
         ALTER TABLE claim_resolution ADD CONSTRAINT claim_resolution_approval_level_check
         CHECK (approval_level IN ('nigeria_staff', 'tenant_admin', 'head_of_finance'))
     """
     )
-    op.execute("ALTER TABLE claim_resolution ADD COLUMN " "refund_request_id UUID REFERENCES refund_request(id)")
+    op.execute("ALTER TABLE claim_resolution ADD COLUMN refund_request_id UUID REFERENCES refund_request(id)")
     op.execute("ALTER TABLE claim_resolution ADD COLUMN discount_percentage DECIMAL(5, 2)")
 
     # ---------------------------------------------------------------------------
@@ -70,12 +70,12 @@ def upgrade() -> None:
         ))
     """
     )
-    op.execute("ALTER TABLE missing_item ADD COLUMN " "carton_tags TEXT[] NOT NULL DEFAULT '{}'")
+    op.execute("ALTER TABLE missing_item ADD COLUMN carton_tags TEXT[] NOT NULL DEFAULT '{}'")
 
     # ---------------------------------------------------------------------------
     # seized_item — replace recovery_status CHECK + add carton_tags column
     # ---------------------------------------------------------------------------
-    op.execute("ALTER TABLE seized_item DROP CONSTRAINT " "seized_item_recovery_status_check")
+    op.execute("ALTER TABLE seized_item DROP CONSTRAINT seized_item_recovery_status_check")
     op.execute(
         """
         ALTER TABLE seized_item ADD CONSTRAINT seized_item_recovery_status_check
@@ -87,7 +87,7 @@ def upgrade() -> None:
         ))
     """
     )
-    op.execute("ALTER TABLE seized_item ADD COLUMN " "carton_tags TEXT[] NOT NULL DEFAULT '{}'")
+    op.execute("ALTER TABLE seized_item ADD COLUMN carton_tags TEXT[] NOT NULL DEFAULT '{}'")
 
 
 def downgrade() -> None:
@@ -118,7 +118,7 @@ def downgrade() -> None:
     # claim_resolution
     op.execute("ALTER TABLE claim_resolution DROP COLUMN IF EXISTS discount_percentage")
     op.execute("ALTER TABLE claim_resolution DROP COLUMN IF EXISTS refund_request_id")
-    op.execute("ALTER TABLE claim_resolution DROP CONSTRAINT " "claim_resolution_approval_level_check")
+    op.execute("ALTER TABLE claim_resolution DROP CONSTRAINT claim_resolution_approval_level_check")
     op.execute(
         """
         ALTER TABLE claim_resolution ADD CONSTRAINT claim_resolution_approval_level_check

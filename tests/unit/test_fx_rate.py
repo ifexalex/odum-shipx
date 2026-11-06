@@ -5,6 +5,7 @@ fetch_bybit_ngn_rate() is tested by mocking urllib.request.urlopen directly —
 the actual live endpoint/request-shape was verified by hand against the real
 Bybit API while designing this feature (see 07_api_tenant_management.md).
 """
+
 import json
 import urllib.error
 from decimal import Decimal
