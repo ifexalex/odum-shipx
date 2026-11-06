@@ -30,7 +30,7 @@ jobs:
       # Download the pre-built artifact from the CI run — the same binary
       # that passed lint/test/security. No pip install, no rebuild.
       - name: Download lambda packages
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           name: lambda-packages-${{ inputs.artifact_run_id }}
           path: build/
