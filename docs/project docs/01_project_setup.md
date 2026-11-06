@@ -200,17 +200,17 @@ logistics-system/
 name = "logistics-system"
 version = "1.0.0"
 description = "Multi-tenant Logistics & Cargo Management System"
-requires-python = ">=3.12"
+requires-python = ">=3.13"
 
 [tool.ruff]
-target-version = "py312"
-line-length = 120
+target-version = "py313"
+line-length = 130
 
 [tool.ruff.lint]
 select = ["E", "F", "I", "N", "W", "UP", "B", "SIM", "S"]  # S = bandit rules
 
 [tool.mypy]
-python_version = "3.12"
+python_version = "3.13"
 strict = true
 plugins = ["pydantic.mypy"]
 warn_return_any = true

@@ -52,7 +52,7 @@ Follow [PEP 8](https://peps.python.org/pep-0008/) as the baseline, extended by t
 
 - **Imports**: stdlib → third-party → local, each group alphabetically sorted, one import per line. No wildcard imports.
 - **Naming**: `snake_case` for functions/variables/modules, `PascalCase` for classes, `UPPER_SNAKE_CASE` for module-level constants.
-- **Line length**: 100 characters max.
+- **Line length**: 130 characters max — the value ruff enforces (`line-length` in `pyproject.toml`), which is the source of truth. This read 100 until 2026-11-06, but nothing enforced that and the codebase never matched it (603 lines in `shared/` + `services/` exceeded 100, across 85 of 149 files). A few lines still exceed 130 where the formatter cannot break them, e.g. a long URL or string.
 - **Type annotations**: required on all function signatures (parameters + return type). Use `X | Y` union syntax (Python 3.10+), not `Optional[X]` or `Union[X, Y]`.
 - **Docstrings**: Google-style docstrings on all public functions, classes, and modules. One-line docstrings for trivial helpers. Private helpers (`_foo`) do not require docstrings unless non-obvious.
 - **Exceptions**: always raise specific exception types; never `except Exception: pass`. Log at `WARNING` or above before re-raising or swallowing.

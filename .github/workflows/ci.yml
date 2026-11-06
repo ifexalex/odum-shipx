@@ -191,5 +191,14 @@ jobs:
           # pushes — a build failure on main that had nothing to do with the
           # code. A week of redeployable builds is enough; anything older is
           # rebuildable from its commit.
+          #
+          # NOTE: this value is CLAMPED by the repository's "Artifact and log
+          # retention" setting and cannot exceed it. That setting was 1 day
+          # (silently capping this to 1, so Deploy Pipeline — which fetches
+          # lambda-packages-{run_id} by run id — could only redeploy a build
+          # from the last 24h); raised to 7 on 2026-11-06 to match. Check it
+          # with:
+          #   gh api repos/:owner/:repo/actions/permissions/artifact-and-log-retention
+          # If artifacts expire sooner than this value, that setting is why.
           retention-days: 7
           if-no-files-found: error
