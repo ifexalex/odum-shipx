@@ -1103,6 +1103,32 @@ Anything older than the retention window is still reproducible: every artifact
 is a build output of a known commit, so a redeploy of an older build means
 re-running the build for that commit first.
 
+### `uv.lock` is gated in CI, and Dependabot uses the `uv` ecosystem (2026-11-06)
+
+`uv.lock` is the source of truth (fully resolved + hash-locked) per CLAUDE.md,
+but **nothing enforced that**, and five Dependabot PRs in a row — #98, #91, #92,
+#93, #94 — bumped `pyproject.toml` alone and left the lockfile stale. It never
+surfaced because `uv sync` silently re-resolves when the two disagree, so CI went
+green while the committed lock was being ignored.
+
+Two fixes, root cause and guard:
+
+1. **`.github/dependabot.yml` uses `package-ecosystem: "uv"`**, not `"pip"`. The
+   pip ecosystem reads `pyproject.toml` but has no concept of `uv.lock`, which is
+   precisely why every one of those PRs was incomplete. The uv ecosystem updates
+   both in the same PR.
+2. **`ci.yml`'s lint job runs `uv lock --check`**, which exits 1 when
+   `pyproject.toml` and `uv.lock` disagree (verified both ways: stale → exit 1,
+   in sync → exit 0). A bump that forgets the lock now fails the build instead of
+   passing quietly.
+
+```bash
+uv lock --check   # exit 1 if the lockfile needs regenerating
+uv lock           # regenerate it; never hand-edit uv.lock
+```
+
+---
+
 ### `retention-days` is a ceiling request, not a guarantee (found 2026-11-06)
 
 `retention-days:` **cannot exceed the repository's "Artifact and log retention"
