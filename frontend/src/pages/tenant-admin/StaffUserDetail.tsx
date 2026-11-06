@@ -91,6 +91,7 @@ export function StaffUserDetail(): JSX.Element {
   }, [id])
 
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- hand-rolled fetch effect; migrate to TanStack Query (master plan 7.150)
     if (stateUser === null) void load()
   }, [load, stateUser])
 

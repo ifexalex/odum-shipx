@@ -31,12 +31,13 @@ function fmtNgn(n: number): string {
 interface DonutSegment { label: string; value: number; color: string; amount: number }
 
 function DonutChart({ segments, total }: { segments: DonutSegment[]; total: number }): JSX.Element {
-  let acc = 0
-  const parts = segments.map((s) => {
-    const pct = total > 0 ? (s.value / total) * 100 : 0
-    const start = acc; acc += pct
-    return `${s.color} ${start.toFixed(1)}% ${acc.toFixed(1)}%`
-  })
+  // Cumulative offsets computed without mutating a variable across the map:
+  // reassigning a closed-over `let` during render is not safe when a render can
+  // be replayed or discarded. Segment counts are tiny, so the repeated sum is
+  // cheaper than the state it would otherwise need.
+  const pcts = segments.map((s) => (total > 0 ? (s.value / total) * 100 : 0))
+  const sumTo = (n: number): number => pcts.slice(0, n).reduce((sum, p) => sum + p, 0)
+  const parts = segments.map((s, i) => `${s.color} ${sumTo(i).toFixed(1)}% ${sumTo(i + 1).toFixed(1)}%`)
 
   return (
     <div className={styles.donutWrap}>

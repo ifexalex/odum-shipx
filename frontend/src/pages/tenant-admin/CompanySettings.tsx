@@ -16,7 +16,7 @@
  * tenant-scoped upload endpoint yet (the only presigned-upload route is
  * claim-scoped). The tile mirrors exactly what TenantBrand renders in-app.
  */
-import { useEffect, useMemo, useState, type JSX } from 'react'
+import { useMemo, useState, type JSX } from 'react'
 import { type BrandingConfig } from '../../api/tenantManagement'
 import { isValidHexColor } from '../../design/deriveBrandShades'
 import { Banner, Button, Card, Field, PhoneField } from '../../design/components'
@@ -178,18 +178,31 @@ function DocPreview({ form, doc }: { form: FormState; doc: 'pl' | 'rn' }): JSX.E
 // Page
 // ---------------------------------------------------------------------------
 
-export function CompanySettings(): JSX.Element {
-  const { branding, isLoading, error: loadError } = useBranding()
+/**
+ * Owns the editable form state, seeded from the branding it is given.
+ *
+ * Split out so the parent can re-seed it by changing `key` instead of by
+ * running an effect. The old shape hydrated the form with
+ * `useEffect(() => setForm(formFromBranding(branding)), [branding])`, which
+ * rendered once with the stale form and then cascaded a second render — and,
+ * because `branding` is a TanStack Query result, any invalidation of the
+ * config cache while someone was mid-edit silently replaced what they had
+ * typed. Remounting makes the same re-sync explicit and keeps it in one place.
+ */
+function CompanySettingsForm({
+  branding,
+  loadError,
+  isLoading,
+}: {
+  branding: BrandingConfig | null
+  loadError: Error | null
+  isLoading: boolean
+}): JSX.Element {
   const save = useSaveBranding()
 
-  const [form, setForm] = useState<FormState>(EMPTY_FORM)
+  const [form, setForm] = useState<FormState>(() => formFromBranding(branding))
   const [saved, setSaved] = useState(false)
   const [previewDoc, setPreviewDoc] = useState<'pl' | 'rn'>('pl')
-
-  // Hydrate the form once branding arrives (and re-sync after saves).
-  useEffect(() => {
-    setForm(formFromBranding(branding))
-  }, [branding])
 
   const dirty = useMemo(
     () => JSON.stringify(brandingFromForm(form)) !== JSON.stringify(brandingFromForm(formFromBranding(branding))),
@@ -381,5 +394,25 @@ export function CompanySettings(): JSX.Element {
         </div>
       </div>
     </div>
+  )
+}
+
+export function CompanySettings(): JSX.Element {
+  const { branding, isLoading, error: loadError } = useBranding()
+
+  // Keyed on whether branding has ARRIVED, not on its contents: the form needs
+  // seeding exactly once, when the fetch resolves. Keying on the contents would
+  // remount after every save — the save invalidates the config cache — which
+  // threw away the "Saved" confirmation along with the rest of the state.
+  //
+  // Re-syncing after a save is not needed: a successful save means the form
+  // already holds precisely what was persisted.
+  return (
+    <CompanySettingsForm
+      key={branding === null ? 'empty' : 'loaded'}
+      branding={branding}
+      loadError={loadError}
+      isLoading={isLoading}
+    />
   )
 }

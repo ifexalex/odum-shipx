@@ -1221,6 +1221,7 @@ export function BillingDetail(): JSX.Element {
 
   // Only fetch from API if we didn't get the billing from router state
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- hand-rolled fetch effect; migrate to TanStack Query (master plan 7.150)
     if (stateBilling === null) void load()
   }, [load, stateBilling])
 

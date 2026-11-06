@@ -20,7 +20,22 @@ export function AuthCallback(): JSX.Element {
   const navigate = useNavigate()
   const { completeLogin } = useSession()
   const [params] = useSearchParams()
-  const [error, setError] = useState<string | null>(null)
+  // Derived during render rather than set from an effect that would correct
+  // itself one frame later: these three refusals depend only on the URL and on
+  // whether this build has interactive sign-in at all.
+  const code = params.get('code')
+  const state = params.get('state')
+  const entraError = params.get('error_description') || params.get('error')
+  const initialError = entraError
+    ? entraError
+    : !code || !state
+      ? 'This sign-in link is missing its authorization code. Please start again.'
+      : !completeLogin
+        ? 'Interactive sign-in is not enabled for this build.'
+        : null
+
+  // Seeded from the above; only the token exchange can change it afterwards.
+  const [error, setError] = useState<string | null>(initialError)
   // React 18 StrictMode double-invokes effects in dev; the code is single-use,
   // so guard against a second exchange that would fail with invalid_grant.
   const ran = useRef(false)
@@ -29,22 +44,10 @@ export function AuthCallback(): JSX.Element {
     if (ran.current) return
     ran.current = true
 
-    const code = params.get('code')
-    const state = params.get('state')
-    const entraError = params.get('error_description') || params.get('error')
-
-    if (entraError) {
-      setError(entraError)
-      return
-    }
-    if (!code || !state) {
-      setError('This sign-in link is missing its authorization code. Please start again.')
-      return
-    }
-    if (!completeLogin) {
-      setError('Interactive sign-in is not enabled for this build.')
-      return
-    }
+    // Every reason to refuse is already known from the URL at render time and
+    // is the initial error above, so there is nothing to set here — only the
+    // exchange itself, whose failure is genuinely asynchronous.
+    if (initialError || !code || !state || !completeLogin) return
 
     completeLogin(code, state)
       .then((session) => navigate(homePathForRole(session.role), { replace: true }))

@@ -1,4 +1,4 @@
-import { useRef, type JSX } from 'react'
+import { type JSX, useRef, useState } from 'react'
 import { Banner, Button } from '../../design/components'
 import { useFileUpload, UPLOAD_ALLOWED_TYPES, type PresignedResponse } from '../../hooks/useFileUpload'
 import styles from './EvidenceUploader.module.css'
@@ -19,7 +19,12 @@ interface EvidenceUploaderProps {
 
 export function EvidenceUploader({ getPresignedUrl, onUploaded, disabled }: EvidenceUploaderProps): JSX.Element {
   const inputRef = useRef<HTMLInputElement>(null)
+  // The ref carries the filename between the two upload callbacks, which need it
+  // synchronously. Rendering it is separate: a ref read during render is not
+  // safe (React does not re-render when `.current` changes), so the displayed
+  // name is state, set at the moment the upload succeeds.
   const pendingFilename = useRef<string>('')
+  const [uploadedFilename, setUploadedFilename] = useState('')
 
   const { upload, progress, status, errorMessage, reset } = useFileUpload({
     getPresignedUrl: (file) => {
@@ -27,6 +32,7 @@ export function EvidenceUploader({ getPresignedUrl, onUploaded, disabled }: Evid
       return getPresignedUrl(file)
     },
     onSuccess: (result) => {
+      setUploadedFilename(pendingFilename.current)
       onUploaded({
         evidence_id: result.evidenceId,
         file_key: result.key,
@@ -89,7 +95,7 @@ export function EvidenceUploader({ getPresignedUrl, onUploaded, disabled }: Evid
       {status === 'done' && (
         <div className={styles.fileList}>
           <span className={styles.fileItem}>
-            ✓ {pendingFilename.current}
+            ✓ {uploadedFilename}
           </span>
         </div>
       )}

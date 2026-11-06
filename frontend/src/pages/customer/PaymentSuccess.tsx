@@ -22,18 +22,20 @@ export function PaymentSuccess(): JSX.Element {
   const { id } = useParams<{ id: string }>()
   const [searchParams] = useSearchParams()
   const navigate = useNavigate()
-  const [state, setState] = useState<ReconcileState>('verifying')
-  const [error, setError] = useState<string | null>(null)
+  // Whether there is anything to verify is known from the URL at render time,
+  // so it is the initial state rather than an effect that immediately corrects
+  // itself — which rendered 'verifying' for a frame and cascaded a re-render.
+  const reference = searchParams.get('reference') || searchParams.get('trxref')
+  // Someone can land here without ever going through Paystack (direct link,
+  // browser back/forward).
+  const missingReference = !id || !reference
+  const [state, setState] = useState<ReconcileState>(() => (missingReference ? 'error' : 'verifying'))
+  const [error, setError] = useState<string | null>(() =>
+    missingReference ? 'No payment reference found for this page.' : null,
+  )
 
   useEffect(() => {
-    const reference = searchParams.get('reference') || searchParams.get('trxref')
-    if (!id || !reference) {
-      // Someone landed here without ever going through Paystack (direct
-      // link, browser back/forward) — nothing to verify.
-      setState('error')
-      setError('No payment reference found for this page.')
-      return
-    }
+    if (!id || !reference) return
     void (async () => {
       try {
         const result = await billingApi.verifyPayment(id, reference)
@@ -47,7 +49,7 @@ export function PaymentSuccess(): JSX.Element {
         setError(err instanceof ApiError ? err.message : 'Could not confirm your payment automatically.')
       }
     })()
-  }, [id, searchParams])
+  }, [id, reference])
 
   if (state === 'verifying') {
     return (

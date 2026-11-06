@@ -114,6 +114,10 @@ export function ActivityLog(): JSX.Element {
   // day of that disputed charge"). Take precedence over the preset once set.
   const [dateFrom, setDateFrom] = useState('')
   const [dateTo, setDateTo] = useState('')
+  // Resolved when the preset is chosen, not during render: Date.now() is impure,
+  // and recomputing it per render let the window slide forward while the page
+  // sat open, so two loads with the same preset could query different ranges.
+  const [presetFrom, setPresetFrom] = useState<string | undefined>(undefined)
   const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('desc')
   const [cursor, setCursor] = useState<string | null>(null)
   const [hasMore, setHasMore] = useState(false)
@@ -133,30 +137,32 @@ export function ActivityLog(): JSX.Element {
   // clears a Record-type selection that no longer belongs to it.
   const activeCategory = CATEGORIES.find((c) => c.label === category)
   const entityOptions = activeCategory ? activeCategory.entityTypes : ALL_ENTITY_TYPES
-  useEffect(() => {
-    if (entityFilter && !entityOptions.includes(entityFilter)) setEntityFilter('')
-    // Only react to the category changing, not to entityOptions identity.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [category])
+  // Derived, not corrected by an effect: a Record-type selection that no longer
+  // belongs to the chosen category is simply not in effect. The old effect
+  // cleared it one render late, so the first render after switching category
+  // still queried with the stale entity type.
+  const effectiveEntityFilter = entityFilter && entityOptions.includes(entityFilter) ? entityFilter : ''
 
   // An explicit custom date always wins over the "last N days" preset —
   // picking one clears the other so the two controls never silently fight.
-  const presetFrom = daysBack ? new Date(Date.now() - daysBack * 86_400_000).toISOString().slice(0, 10) : undefined
   const createdAfter = dateFrom || presetFrom
   const createdBefore = dateTo || undefined
 
   function handlePreset(days: number | null): void {
     setDaysBack(days)
+    setPresetFrom(days ? new Date(Date.now() - days * 86_400_000).toISOString().slice(0, 10) : undefined)
     setDateFrom('')
     setDateTo('')
   }
   function handleCustomFrom(value: string): void {
     setDateFrom(value)
     setDaysBack(null)
+    setPresetFrom(undefined)
   }
   function handleCustomTo(value: string): void {
     setDateTo(value)
     setDaysBack(null)
+    setPresetFrom(undefined)
   }
 
   const load = useCallback(
@@ -164,7 +170,11 @@ export function ActivityLog(): JSX.Element {
       setLoading(true)
       setError(null)
       try {
-        const entityTypes = entityFilter ? [entityFilter] : activeCategory ? activeCategory.entityTypes : undefined
+        // Resolved here from `category` rather than closing over the
+        // `activeCategory` object: every dependency below is then a primitive,
+        // which is what lets the compiler preserve this memoization.
+        const cat = CATEGORIES.find((c) => c.label === category)
+        const entityTypes = effectiveEntityFilter ? [effectiveEntityFilter] : cat ? cat.entityTypes : undefined
         const result = await configApi.activity({
           entityTypes,
           action: actionFilter || undefined,
@@ -185,14 +195,17 @@ export function ActivityLog(): JSX.Element {
         setLoading(false)
       }
     },
-    [entityFilter, activeCategory, actionFilter, search, createdAfter, createdBefore, sortDirection],
+    [effectiveEntityFilter, category, actionFilter, search, createdAfter, createdBefore, sortDirection],
   )
 
   const loadRef = useRef(load)
-  loadRef.current = load
+  // Assigned after commit, not during render — see useIdleTimeout.
+  useEffect(() => {
+    loadRef.current = load
+  })
   useEffect(() => {
     void loadRef.current()
-  }, [entityFilter, category, actionFilter, search, createdAfter, createdBefore, sortDirection])
+  }, [effectiveEntityFilter, category, actionFilter, search, createdAfter, createdBefore, sortDirection])
 
   const expandedEntry = entries.find((e) => e.id === expandedId) ?? null
   const filtersActive = !!(category || actionFilter || search || daysBack || dateFrom || dateTo)
@@ -204,6 +217,7 @@ export function ActivityLog(): JSX.Element {
     setSearchInput('')
     setSearch('')
     setDaysBack(null)
+    setPresetFrom(undefined)
     setDateFrom('')
     setDateTo('')
   }
@@ -253,7 +267,7 @@ export function ActivityLog(): JSX.Element {
               id="activity_entity_type"
               className={styles.control}
               style={{ textTransform: 'capitalize' }}
-              value={entityFilter}
+              value={effectiveEntityFilter}
               onChange={(e) => setEntityFilter(e.target.value)}
             >
               <option value="">{activeCategory ? `All in ${activeCategory.label}` : 'All types'}</option>

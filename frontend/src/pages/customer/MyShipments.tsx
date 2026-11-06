@@ -53,6 +53,7 @@ export function MyShipments(): JSX.Element {
 
   useEffect(() => {
     let active = true
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- hand-rolled fetch effect; migrate to TanStack Query (master plan 7.150)
     setLoading(true)
     setError(null)
 
