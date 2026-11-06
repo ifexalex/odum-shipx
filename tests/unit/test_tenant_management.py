@@ -1,4 +1,5 @@
 """Unit tests for services.tenant_management.service — tenant CRUD, user management, config."""
+
 import json
 from decimal import Decimal
 from unittest.mock import MagicMock, patch

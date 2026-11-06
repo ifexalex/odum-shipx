@@ -1,4 +1,5 @@
 """AWS SES email provider."""
+
 import os
 from typing import Any
 

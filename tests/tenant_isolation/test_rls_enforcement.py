@@ -228,15 +228,15 @@ class TestEveryRepairedTableIsForced:
         try:
             with conn.cursor() as cur:
                 cur.execute(
-                    "SELECT polname, pg_get_expr(polqual, polrelid) FROM pg_policy " "WHERE polrelid = %s::regclass",
+                    "SELECT polname, pg_get_expr(polqual, polrelid) FROM pg_policy WHERE polrelid = %s::regclass",
                     (table,),
                 )
                 policies = cur.fetchall()
                 assert policies, f"{table} has RLS enabled but no policy — that denies everything"
                 for name, qual in policies:
-                    assert "app.current_tenant_id" in (
-                        qual or ""
-                    ), f"{table}.{name} does not reference app.current_tenant_id: {qual}"
+                    assert "app.current_tenant_id" in (qual or ""), (
+                        f"{table}.{name} does not reference app.current_tenant_id: {qual}"
+                    )
                     assert "'app.tenant_id'" not in (qual or ""), f"{table}.{name} still reads the setting name nothing ever sets"
         finally:
             conn.close()

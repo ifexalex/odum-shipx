@@ -45,9 +45,7 @@ def upgrade() -> None:
         "CREATE INDEX idx_staff_notification_banner_active "
         "ON staff_notification(tenant_id, target_role) WHERE banner_active = TRUE"
     )
-    op.execute(
-        "CREATE INDEX idx_staff_notification_announcement_group " "ON staff_notification(tenant_id, announcement_group_id)"
-    )
+    op.execute("CREATE INDEX idx_staff_notification_announcement_group ON staff_notification(tenant_id, announcement_group_id)")
 
 
 def downgrade() -> None:

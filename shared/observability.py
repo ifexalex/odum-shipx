@@ -5,6 +5,7 @@ any other cloud it is a no-op, since tracing there is wired at the platform leve
 (e.g. Azure Application Insights auto-instrumentation) rather than in-process.
 Call once at module load, next to `setup_logging()`.
 """
+
 from shared.providers import CLOUD_PROVIDER
 
 

@@ -1,5 +1,6 @@
 """Unit tests for services.excel.service — packing-list import presigned upload
 and billing export (incl. the customer-facing "download invoice" path)."""
+
 from unittest.mock import patch
 
 import pytest

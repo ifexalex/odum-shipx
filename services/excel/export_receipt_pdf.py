@@ -9,6 +9,7 @@ Mirrors export_release_note_pdf.py's layout:
   - Signature block
   - Footer
 """
+
 from datetime import date, datetime
 from decimal import Decimal
 from io import BytesIO

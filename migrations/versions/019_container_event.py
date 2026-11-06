@@ -4,6 +4,7 @@ Revision ID: 019
 Revises: 018
 Create Date: 2024-01-01 00:00:18
 """
+
 from alembic import op
 
 revision = "019"
@@ -27,8 +28,8 @@ def upgrade() -> None:
         )
         """
     )
-    op.execute("CREATE INDEX idx_container_event_tenant_container" " ON container_event(tenant_id, container_id)")
-    op.execute("CREATE INDEX idx_container_event_created" " ON container_event(created_at DESC)")
+    op.execute("CREATE INDEX idx_container_event_tenant_container ON container_event(tenant_id, container_id)")
+    op.execute("CREATE INDEX idx_container_event_created ON container_event(created_at DESC)")
 
 
 def downgrade() -> None:

@@ -10,6 +10,7 @@ Adapters so far: KeyProvider (crypto), StorageProvider (object storage). Queue /
 email / events / identity ports follow the same shape as they are migrated off
 boto3.
 """
+
 from dataclasses import dataclass
 from typing import Any, Protocol, runtime_checkable
 

@@ -144,11 +144,34 @@ Dependencies are managed with **uv** (install it once: `pip install uv` or
 and installs the locked deps — runtime + dev tools + flask (for `local_server.py`):
 
 ```bash
-uv sync --extra azure        # runtime + dev group + azure SDKs; omit --extra azure for AWS-only
+uv sync --extra azure        # runtime + dev group + azure SDKs — keep the extra, see the note below
 ```
 
 Then either prefix commands with `uv run` (e.g. `uv run pytest`, `uv run python scripts/...`)
 or activate the venv: `source .venv/bin/activate`.
+
+**Do not omit `--extra azure`.** A plain `uv sync` *prunes* the azure extra, and
+`tests/unit/test_entra_identity_provider.py` then fails with
+`ModuleNotFoundError: No module named 'azure'` — which looks like a code regression and is not
+one. CI always runs `uv sync --extra azure`, so match it locally.
+
+**Install the pre-commit hooks** (once per clone). They are what gate a commit locally, and they
+are *not* the same checks as CI:
+
+```bash
+uv run pre-commit install
+```
+
+| Hook | Scope | Notes |
+|---|---|---|
+| `ruff-check` (`--fix --exit-non-zero-on-fix`) | staged `*.py` | auto-fixes, then fails so you can inspect the fix |
+| `ruff-format` | staged `*.py` | CI does **not** run the formatter — only this hook does |
+| `mypy` | `shared/ services/` | `always_run`, so it ignores which files you staged |
+
+`ruff` is pinned in **two** places and both must move together: `pyproject.toml`
+(`ruff==0.17.3`, what CI runs via `uv run ruff check .`) and `.pre-commit-config.yaml`
+(`rev: v0.17.3`, what the hook runs). Dependabot only ever bumps the first, so a ruff PR from it
+is incomplete — bump the `rev` in the same change or local and CI silently diverge.
 
 ### 3.4 Create your local env file
 

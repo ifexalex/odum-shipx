@@ -1,4 +1,5 @@
 """Standards compliance tests — verify all services meet 00_CROSS_CUTTING_STANDARDS.md."""
+
 import json
 from unittest.mock import patch
 

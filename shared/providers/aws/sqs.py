@@ -1,4 +1,5 @@
 """AWS SQS queue provider."""
+
 import os
 from typing import Any
 

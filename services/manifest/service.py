@@ -212,7 +212,7 @@ def generate_evidence_upload(
     """
     if content_type not in _ALLOWED_CONTENT_TYPES:
         raise BusinessRuleViolationError(
-            f"content_type '{content_type}' is not allowed. " f"Allowed: {', '.join(sorted(_ALLOWED_CONTENT_TYPES))}",
+            f"content_type '{content_type}' is not allowed. Allowed: {', '.join(sorted(_ALLOWED_CONTENT_TYPES))}",
             rule_id="INVALID_CONTENT_TYPE",
         )
 

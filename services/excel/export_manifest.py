@@ -1,4 +1,5 @@
 """Generate manifest .xlsx (2-sheet workbook) per spec §7.2."""
+
 import contextlib
 from io import BytesIO
 from typing import Any

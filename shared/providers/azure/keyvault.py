@@ -9,6 +9,7 @@ so the envelope format (`base64(encrypted_key || "||" || ciphertext)`) is
 unchanged. (Values encrypted under one cloud's key can only be decrypted under
 that same key — cross-cloud re-encryption is an ADR-004 migration concern.)
 """
+
 import os
 from typing import Any
 

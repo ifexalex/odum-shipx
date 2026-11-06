@@ -267,7 +267,7 @@ def approve_refund(
         required_level = "head_of_finance"
         if ctx.role != UserRole.TENANT_ADMIN:
             raise InsufficientPermissionsError(
-                f"Damage/loss refunds above {_HOF_THRESHOLD_NGN} NGN require " "head_of_finance (tenant_admin) approval"
+                f"Damage/loss refunds above {_HOF_THRESHOLD_NGN} NGN require head_of_finance (tenant_admin) approval"
             )
     else:
         # overpayment or small damage_or_loss — manager level, any approved role

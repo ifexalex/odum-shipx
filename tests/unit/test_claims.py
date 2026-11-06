@@ -1,4 +1,5 @@
 """Unit tests for services.claims.service — lifecycle, approval thresholds."""
+
 from decimal import Decimal
 from unittest.mock import MagicMock, patch
 
@@ -338,9 +339,9 @@ class TestApprovalLevelRecorded:
 
         mock_resolution.assert_called_once()
         resolution_data = mock_resolution.call_args[0][1]
-        assert (
-            resolution_data["approval_level"] == "tenant_admin"
-        ), f"Expected tenant_admin approval, got {resolution_data['approval_level']!r}"
+        assert resolution_data["approval_level"] == "tenant_admin", (
+            f"Expected tenant_admin approval, got {resolution_data['approval_level']!r}"
+        )
 
     def test_approved_by_field_matches_actor_id(self):
         """The approved_by field in the resolution record must equal the actor_id."""

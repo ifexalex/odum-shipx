@@ -20,7 +20,7 @@ depends_on = None
 
 def upgrade() -> None:
     # gateway_transaction_id: unique so duplicate webhook deliveries can be detected
-    op.execute("ALTER TABLE payment_record ADD COLUMN IF NOT EXISTS" " gateway_transaction_id VARCHAR(255)")
+    op.execute("ALTER TABLE payment_record ADD COLUMN IF NOT EXISTS gateway_transaction_id VARCHAR(255)")
     op.execute(
         "CREATE UNIQUE INDEX IF NOT EXISTS idx_payment_record_gateway_tx"
         " ON payment_record(tenant_id, gateway_transaction_id)"

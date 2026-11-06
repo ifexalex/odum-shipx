@@ -4,6 +4,7 @@ Reads ShipX's logical identity fields out of a verified Cognito JWT's claims.
 The claim names (`sub`, `custom:tenant_id`, `cognito:groups`, `custom:role`) are
 the only Cognito-specific part; the role interpretation stays in `shared/auth.py`.
 """
+
 from typing import Any
 
 

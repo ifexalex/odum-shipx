@@ -7,6 +7,7 @@ attribute on the Drawing — every call to generate_receipt_pdf raised
 AttributeError before this fix, meaning the cash-receipt PDF export has never
 actually worked.
 """
+
 from datetime import date
 from decimal import Decimal
 

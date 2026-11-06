@@ -65,7 +65,7 @@ def upgrade() -> None:
     # Only one pending claim per billing at a time — a customer resubmitting
     # (e.g. wrong evidence) should replace, not pile up, an open claim.
     op.execute(
-        "CREATE UNIQUE INDEX idx_payment_claim_one_pending_per_billing" " ON payment_claim(billing_id) WHERE status = 'pending'"
+        "CREATE UNIQUE INDEX idx_payment_claim_one_pending_per_billing ON payment_claim(billing_id) WHERE status = 'pending'"
     )
 
 

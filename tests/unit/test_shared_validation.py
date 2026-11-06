@@ -10,6 +10,7 @@ which crashes with IndexError on exactly this class of error (a
 `@model_validator`, not a per-field one, reports an empty `loc` tuple).
 Consolidated into this one function, fixed once.
 """
+
 import pytest
 from pydantic import BaseModel, model_validator
 

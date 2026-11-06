@@ -2,6 +2,7 @@
 
 Database DDL migrations are defined in tasks 05a–05c.
 """
+
 import os
 from logging.config import fileConfig
 

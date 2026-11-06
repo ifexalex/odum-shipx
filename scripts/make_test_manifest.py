@@ -7,6 +7,7 @@ so an import can be run end to end without any real customer being reachable.
 Usage:
     python3 scripts/make_test_manifest.py [--out PATH] [--container REF]
 """
+
 import argparse
 from datetime import date, timedelta
 
@@ -41,22 +42,25 @@ def build(path: str, container_ref: str) -> None:
 
     header_row = 7
     headers = [
-        "DLVY NO.", "NAME", "CONTACT", "ITEM",
-        "QTY CTNS/PKG", "MEAS.", "KG", "BALE NO.", "BALE TYPE",
+        "DLVY NO.",
+        "NAME",
+        "CONTACT",
+        "ITEM",
+        "QTY CTNS/PKG",
+        "MEAS.",
+        "KG",
+        "BALE NO.",
+        "BALE TYPE",
     ]
     for col, name in enumerate(headers, start=1):
         ws.cell(row=header_row, column=col, value=name).font = Font(bold=True)
     # Second header line, as real exports carry — the parser must skip it.
-    for col, unit in enumerate(
-        ["", "", "", "", "CTNS/PKGS", "(CBM)", "KG", "", ""], start=1
-    ):
+    for col, unit in enumerate(["", "", "", "", "CTNS/PKGS", "(CBM)", "KG", "", ""], start=1):
         ws.cell(row=header_row + 1, column=col, value=unit)
 
     rows = [
-        (f"{container_ref}-001", TEST_CONSIGNEE, TEST_PHONE,
-         "Ladies handbags", "12CTNS", 1.85, 148.0, "", "CARTON"),
-        (f"{container_ref}-002", TEST_CONSIGNEE, TEST_PHONE,
-         "Cotton fabric rolls", "2BALES", 3.20, 415.5, "B-07", "MASTER BALE"),
+        (f"{container_ref}-001", TEST_CONSIGNEE, TEST_PHONE, "Ladies handbags", "12CTNS", 1.85, 148.0, "", "CARTON"),
+        (f"{container_ref}-002", TEST_CONSIGNEE, TEST_PHONE, "Cotton fabric rolls", "2BALES", 3.20, 415.5, "B-07", "MASTER BALE"),
     ]
     for offset, values in enumerate(rows):
         for col, value in enumerate(values, start=1):

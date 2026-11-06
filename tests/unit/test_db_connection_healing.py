@@ -9,6 +9,7 @@ aborted`. In production this is a warm Lambda container reusing the same
 module-level connection across invocations, so one such failure would break
 every request on that container until AWS recycles it.
 """
+
 from unittest.mock import MagicMock, patch
 
 import psycopg2.extensions
@@ -58,17 +59,20 @@ class TestConnectionSelfHeal:
         healthy_conn.rollback.assert_not_called()
 
     def test_creates_a_new_connection_when_none_exists(self) -> None:
-        with patch.object(db_module.psycopg2, "connect") as mock_connect, patch.dict(
-            "os.environ",
-            {
-                "DATABASE_HOST": "localhost",
-                "DATABASE_PORT": "5432",
-                "DATABASE_NAME": "test",
-                "DATABASE_USER": "test",
-                "DATABASE_PASSWORD": "test",
-                "DB_SECRET_ARN": "",  # forces the local-mode password path, not Secrets Manager
-            },
-            clear=False,
+        with (
+            patch.object(db_module.psycopg2, "connect") as mock_connect,
+            patch.dict(
+                "os.environ",
+                {
+                    "DATABASE_HOST": "localhost",
+                    "DATABASE_PORT": "5432",
+                    "DATABASE_NAME": "test",
+                    "DATABASE_USER": "test",
+                    "DATABASE_PASSWORD": "test",
+                    "DB_SECRET_ARN": "",  # forces the local-mode password path, not Secrets Manager
+                },
+                clear=False,
+            ),
         ):
             db_module._cached_password = None  # noqa: SLF001 — avoid leaking a cached prod password
             mock_connect.return_value = MagicMock(closed=False)

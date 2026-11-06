@@ -612,7 +612,7 @@ def list_release_notes(
         LEFT JOIN warehouse w    ON w.id    = rn.warehouse_id  AND w.tenant_id    = rn.tenant_id
         LEFT JOIN payment_record pr ON pr.id = rn.payment_record_id AND pr.tenant_id = rn.tenant_id
         LEFT JOIN carryover_ledger col ON col.release_note_id = rn.id AND col.tenant_id = rn.tenant_id
-        WHERE {' AND '.join(conditions)}
+        WHERE {" AND ".join(conditions)}
     """
     query, params = build_paginated_query(base, cursor, limit, sort_field="rn.created_at")
     params.update(extra)

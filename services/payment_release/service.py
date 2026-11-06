@@ -689,7 +689,7 @@ def generate_release_note(
         duplicate_tags = already_released_tags & set(carton_tags)
         if duplicate_tags:
             raise BusinessRuleViolationError(
-                "These carton tags are already on an active or picked-up release note: " f"{', '.join(sorted(duplicate_tags))}",
+                f"These carton tags are already on an active or picked-up release note: {', '.join(sorted(duplicate_tags))}",
                 rule_id="BR-RN-DUPLICATE-001",
             )
 

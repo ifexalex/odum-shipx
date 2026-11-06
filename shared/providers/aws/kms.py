@@ -1,4 +1,5 @@
 """AWS KMS envelope-key provider."""
+
 import os
 from typing import Any
 

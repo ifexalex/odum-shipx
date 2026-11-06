@@ -1,4 +1,5 @@
 """Unit tests for shared.auth — JWT parsing, role validation, suspension check."""
+
 import pytest
 
 from shared.auth import _parse_primary_role, _parse_roles, get_tenant_context
@@ -378,7 +379,7 @@ class TestReadOnlyImpersonation:
 
         source = inspect.getsource(fn)
         assert "assert_not_read_only" in source, (
-            "get_tenant_context must call assert_not_read_only — " "central enforcement was removed"
+            "get_tenant_context must call assert_not_read_only — central enforcement was removed"
         )
 
 

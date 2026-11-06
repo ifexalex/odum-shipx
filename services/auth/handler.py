@@ -164,7 +164,7 @@ def _read_refresh_cookie(event: dict[str, Any]) -> str | None:
 
 
 def _cookie_header(value: str, max_age: int, name: str = _COOKIE_NAME) -> str:
-    return f"{name}={value}; Path={_COOKIE_PATH}; Max-Age={max_age}; " f"HttpOnly; Secure; SameSite={_COOKIE_SAMESITE}"
+    return f"{name}={value}; Path={_COOKIE_PATH}; Max-Age={max_age}; HttpOnly; Secure; SameSite={_COOKIE_SAMESITE}"
 
 
 def _read_cookie(event: dict[str, Any], name: str) -> str | None:

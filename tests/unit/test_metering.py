@@ -7,6 +7,7 @@ outcome from the second api_calls record onward each day. Migration 010's
 own docstring documents the ON CONFLICT upsert this was always meant to use;
 record_usage() never actually used it.
 """
+
 from unittest.mock import patch
 
 from shared.metering import record_usage
@@ -18,8 +19,11 @@ class TestRecordUsageUpsert:
         this write could increment an existing day's total instead of
         failing outright on the second call — assert the actual SQL does
         that, not just that some write happens."""
-        with patch("shared.metering.execute_write_with_tenant") as mock_write, patch(
-            "shared.metering.publish_event",
+        with (
+            patch("shared.metering.execute_write_with_tenant") as mock_write,
+            patch(
+                "shared.metering.publish_event",
+            ),
         ):
             record_usage("tenant-1", "api_calls", value=1.0, request_id="req-1")
 
@@ -30,9 +34,13 @@ class TestRecordUsageUpsert:
     def test_a_write_failure_is_swallowed_not_raised(self) -> None:
         """record_usage is fire-and-forget by design — a DB error here must
         never break the request that triggered it."""
-        with patch(
-            "shared.metering.execute_write_with_tenant", side_effect=RuntimeError("boom"),
-        ), patch("shared.metering.publish_event"):
+        with (
+            patch(
+                "shared.metering.execute_write_with_tenant",
+                side_effect=RuntimeError("boom"),
+            ),
+            patch("shared.metering.publish_event"),
+        ):
             record_usage("tenant-1", "api_calls")  # must not raise
 
     def test_unknown_metric_type_is_skipped_without_a_db_call(self) -> None:

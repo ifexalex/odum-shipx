@@ -6,6 +6,7 @@ Returns the raw secret string so callers that store JSON parse it themselves
 vars (`DB_SECRET_ARN`, `IMPERSONATION_SECRET_ARN`) hold secret names on Azure.
 The vault is `AZURE_KEY_VAULT_URL`; auth is `DefaultAzureCredential`.
 """
+
 import os
 from typing import Any
 

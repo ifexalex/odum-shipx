@@ -1,5 +1,6 @@
 """Unit tests for services.excel.import_manifest (parser) and
 services.excel.service.process_manifest_import (orchestration)."""
+
 from io import BytesIO
 from unittest.mock import patch
 

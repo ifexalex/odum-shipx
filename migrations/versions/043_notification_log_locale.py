@@ -13,6 +13,7 @@ recorded locale, and `trigger_sms_fallback` already coalesces to "en".
 Revision ID: 043
 Revises: 042
 """
+
 import sqlalchemy as sa
 from alembic import op
 

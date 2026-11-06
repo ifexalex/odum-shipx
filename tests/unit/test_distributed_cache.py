@@ -65,7 +65,7 @@ class TestWireProtocolIsPinned:
     def test_resp2_is_requested_explicitly(self) -> None:
         kwargs = _construct_client_with_env({})
         assert kwargs["protocol"] == 2, (
-            "RESP2 must stay explicit — relying on the redis-py default is what " "changed between 5.x and 8.x"
+            "RESP2 must stay explicit — relying on the redis-py default is what changed between 5.x and 8.x"
         )
 
     def test_protocol_is_pinned_regardless_of_environment(self) -> None:

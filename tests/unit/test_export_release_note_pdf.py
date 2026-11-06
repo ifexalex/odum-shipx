@@ -7,6 +7,7 @@ silently dropped" bug already fixed twice elsewhere in this task
 (_fmt_release_note, create_split_release_note). build_meta_pairs is the pure
 field-completeness logic extracted so it's testable without rendering a PDF.
 """
+
 from datetime import datetime
 
 from services.excel.export_release_note_pdf import build_meta_pairs, generate_release_note_pdf

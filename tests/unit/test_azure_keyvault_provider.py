@@ -5,6 +5,7 @@ same rigor as the SES/Service-Bus stubs. The crypto test still exercises the rea
 `shared/encryption.py` Fernet envelope (only the Key-Vault wrap/unwrap is stubbed),
 so the envelope round-trip is genuinely validated end-to-end.
 """
+
 from types import SimpleNamespace
 
 import pytest

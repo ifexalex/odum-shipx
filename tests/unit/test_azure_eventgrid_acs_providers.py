@@ -5,6 +5,7 @@ rigor as the SES/Service-Bus stubs. They verify the port→SDK mapping (event
 subject/type/data, ACS message shape), the error-normalization contract, and
 factory selection.
 """
+
 from types import SimpleNamespace
 
 import pytest

@@ -5,6 +5,7 @@ and the Lambda handler's cookie handling (services/auth/handler.py). See
 docs/project docs/frontend/04_auth_and_session.md for the flow this closes —
 a page reload wiping the in-memory-only ID token used to force a full re-login.
 """
+
 import json
 from unittest.mock import MagicMock, patch
 

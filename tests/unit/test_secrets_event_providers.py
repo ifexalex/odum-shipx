@@ -5,6 +5,7 @@ round-trips are real SDK behaviour; the EventBridge failure path (which moto doe
 not naturally produce) is covered with a stubbed client. Factory tests confirm
 the `CLOUD_PROVIDER` wiring and singleton caching.
 """
+
 import json
 
 import pytest

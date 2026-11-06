@@ -1,4 +1,5 @@
 """Integration test: Tenant creation → config → users → suspend → activate."""
+
 import json
 from unittest.mock import patch
 

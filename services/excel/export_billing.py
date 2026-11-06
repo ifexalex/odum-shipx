@@ -1,4 +1,5 @@
 """Generate billing .xlsx (single-sheet, 14 columns) per spec §7.4."""
+
 import contextlib
 from io import BytesIO
 from typing import Any

@@ -26,7 +26,7 @@ def upgrade() -> None:
                 REFERENCES warehouse(id) ON DELETE SET NULL
         """
     )
-    op.execute("CREATE INDEX IF NOT EXISTS idx_packing_list_arrival_warehouse " "ON packing_list(arrival_warehouse_id)")
+    op.execute("CREATE INDEX IF NOT EXISTS idx_packing_list_arrival_warehouse ON packing_list(arrival_warehouse_id)")
 
 
 def downgrade() -> None:

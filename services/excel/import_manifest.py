@@ -12,6 +12,7 @@ See `19_excel_import_export.md` §"Manifest Import" for the full field
 reference (header-alias table, quantity/unit parsing rules, dedupe
 behaviour).
 """
+
 import re
 from datetime import date, datetime
 from io import BytesIO

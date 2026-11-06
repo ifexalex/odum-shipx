@@ -1,4 +1,5 @@
 """Field encryption + the KeyProvider abstraction (shared/providers)."""
+
 from unittest.mock import patch
 
 from shared import encryption

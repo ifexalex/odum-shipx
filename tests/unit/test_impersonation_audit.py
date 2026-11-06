@@ -23,6 +23,7 @@ action="IMPERSONATION_START"/"IMPERSONATION_END", ...)` — writing into the
    platform-level action, and already has no such CHECK constraint) —
    visible to platform admins only, via `PlatformAuditLog.tsx`.
 """
+
 from datetime import UTC, datetime
 from unittest.mock import patch
 

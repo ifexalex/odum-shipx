@@ -13,6 +13,7 @@ Layout:
     Accounting Officer, Warehouse Attendant), matching the paper form.
   - Footer, including the "goods must be confirmed before leaving" disclaimer.
 """
+
 from datetime import datetime
 from io import BytesIO
 from typing import Any

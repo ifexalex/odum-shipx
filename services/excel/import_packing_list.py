@@ -1,4 +1,5 @@
 """Parse and validate a packing list .xlsx for import per spec §7.3."""
+
 from collections import defaultdict
 from io import BytesIO
 from typing import Any
