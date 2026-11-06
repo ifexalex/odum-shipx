@@ -58,7 +58,7 @@ dev = [
     "pytest-cov==4.1.0",
     "pytest-timeout==2.2.0",
     "requests==2.34.2",
-    "ruff==0.2.0",
+    "ruff==0.17.3",
     "safety==3.8.1",
 ]
 # Extra packages the shared Lambda layer bundles beyond `dependencies` (alembic
@@ -72,11 +72,15 @@ layer = ["alembic==1.13.0"]
 package = false
 
 [tool.ruff]
-# ruff 0.2.0's newest known target is py312; the runtime is 3.13 (see mypy +
-# the Lambda runtime). py312 is a safe lower bound for the lint ruleset.
-target-version = "py312"
+# Matches the Lambda runtime and mypy. ruff 0.2.0 only knew targets up to py312,
+# which is why this used to read py312; 0.17.3 supports py313 directly.
+target-version = "py313"
 line-length = 130
 exclude = [
+    # ruff 0.17 formats Python fenced blocks inside Markdown. Our docs' snippets are
+    # illustrative spec, not compiled code, and line-length 130 is tuned for source —
+    # reformatting them only churns the docs and widens them in rendered output.
+    "*.md",
     ".builds",
     "**/.builds",
     "infrastructure/modules/lambda/.builds",
