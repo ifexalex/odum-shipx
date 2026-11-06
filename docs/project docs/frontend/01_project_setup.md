@@ -35,7 +35,9 @@ frontend/
 ├── tsconfig.json
 ├── package.json
 ├── .env.example
-├── .eslintrc.cjs
+├── .env.local.sample                # tracked; CI copies it to .env.local
+├── .nvmrc                           # pins Node 22.x for local + CI
+├── eslint.config.js                 # ESLint 9 flat config (replaced .eslintrc.cjs)
 ├── public/
 │   └── favicon.svg                 # Odum mark, see 02_design_tokens_and_theming.md
 └── src/
