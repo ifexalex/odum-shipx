@@ -79,7 +79,7 @@ jobs:
 
       - name: Azure — setup Terraform
         if: inputs.cloud == 'azure'
-        uses: hashicorp/setup-terraform@v3
+        uses: hashicorp/setup-terraform@v4
         with:
           terraform_version: "1.7.5"
 
