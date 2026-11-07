@@ -291,6 +291,16 @@ export const billingApi = {
   listForCustomer: (customerId: string) =>
     apiRequest<Billing[]>({ method: 'GET', path: `/v1/billing/${customerId}` }),
 
+  /**
+   * One billing record by its own id. Note the `/detail` suffix: the bare
+   * `/v1/billing/{id}` shape is `listForCustomer` above (a *customer* id), and
+   * both ids are UUIDs, so the single-record read needs its own path. Before
+   * this existed BillingDetail had to fetch page 1 of the list and search it
+   * client-side, which silently failed for any record past the first page.
+   */
+  get: (billingId: string) =>
+    apiRequest<Billing>({ method: 'GET', path: `/v1/billing/${billingId}/detail` }),
+
   /** Tenant-wide aggregates for the list stats row + status chips — staff only,
    *  SQL-computed so it stays correct as billing grows past a single page. */
   stats: () => apiRequest<BillingStats>({ method: 'GET', path: '/v1/billing/stats' }),

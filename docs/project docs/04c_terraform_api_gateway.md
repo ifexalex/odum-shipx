@@ -83,6 +83,7 @@ GET    /v1/shipments/{tracking-code}       → tracking Lambda
 PATCH  /v1/shipments/{id}/status           → tracking Lambda
 
 GET    /v1/billing/{customer-id}           → billing Lambda
+GET    /v1/billing/{billing-id}/detail     → billing Lambda
 POST   /v1/billing/{id}/dispute            → billing Lambda
 
 POST   /v1/claims                          → claims Lambda

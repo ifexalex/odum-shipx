@@ -9,7 +9,7 @@ import { billingApi, carryoverApi, disputeApi, paymentClaimApi } from '../../api
 import { BillingDetail } from './BillingDetail'
 
 vi.mock('../../api/billing', () => ({
-  billingApi: { list: vi.fn(), listForCustomer: vi.fn(), recordPayment: vi.fn(), cancel: vi.fn(), applyCarryover: vi.fn() },
+  billingApi: { list: vi.fn(), get: vi.fn(), listForCustomer: vi.fn(), recordPayment: vi.fn(), cancel: vi.fn(), applyCarryover: vi.fn() },
   disputeApi: { list: vi.fn(), acknowledge: vi.fn(), resolve: vi.fn(), reject: vi.fn() },
   carryoverApi: { list: vi.fn(), exempt: vi.fn() },
   paymentClaimApi: { listForBilling: vi.fn(), confirm: vi.fn(), reject: vi.fn(), getEvidenceUrl: vi.fn() },
@@ -101,7 +101,7 @@ function renderPage(role = 'nigeria_office_staff', routeState: object | null = {
 }
 
 beforeEach(() => {
-  vi.mocked(billingApi.list).mockReset()
+  vi.mocked(billingApi.get).mockReset()
   vi.mocked(billingApi.recordPayment).mockReset()
   vi.mocked(billingApi.cancel).mockReset()
   vi.mocked(disputeApi.acknowledge).mockReset()
@@ -119,16 +119,16 @@ describe('BillingDetail', () => {
     // Payments table
     expect(screen.getByText('CASH001')).toBeInTheDocument()
     // No API call since state was provided
-    expect(billingApi.list).not.toHaveBeenCalled()
+    expect(billingApi.get).not.toHaveBeenCalled()
   })
 
-  it('falls back to API fetch when no router state', async () => {
-    vi.mocked(billingApi.list).mockResolvedValue({
-      data: [BILLING_STUB],
-      meta: { pagination: { has_more: false, next_cursor: null, total_count: 1 } },
-    })
+  it('fetches the record by id when there is no router state', async () => {
+    vi.mocked(billingApi.get).mockResolvedValue(BILLING_STUB)
     renderPage('nigeria_office_staff', null)
-    await waitFor(() => expect(billingApi.list).toHaveBeenCalled())
+    // Addressed by billing id, not found by scanning page 1 of the list —
+    // that scan silently 'not found' any record past the first page.
+    await waitFor(() => expect(billingApi.get).toHaveBeenCalledWith(BILLING_STUB.id))
+    expect(billingApi.list).not.toHaveBeenCalled()
     await waitFor(() => expect(screen.getByText('ACME001')).toBeInTheDocument())
   })
 
@@ -183,7 +183,7 @@ describe('BillingDetail', () => {
 
   it('submits record payment and reloads', async () => {
     vi.mocked(billingApi.recordPayment).mockResolvedValue({ new_payment_status: 'paid', amount_ngn: '174375' })
-    vi.mocked(billingApi.list).mockResolvedValue({ data: [{ ...BILLING_STUB, payment_status: 'paid', total_paid_ngn: '174375.00', outstanding_ngn: '0.00' }], meta: { pagination: { has_more: false, next_cursor: null, total_count: 1 } } })
+    vi.mocked(billingApi.get).mockResolvedValue({ ...BILLING_STUB, payment_status: 'paid', total_paid_ngn: '174375.00', outstanding_ngn: '0.00' })
     renderPage()
     await waitFor(() => expect(screen.getByRole('button', { name: 'Record payment' })).toBeInTheDocument())
     await userEvent.click(screen.getByRole('button', { name: 'Record payment' }))
@@ -234,10 +234,7 @@ describe('BillingDetail', () => {
     it('confirming a payment claim invalidates the billing query cache, not just local state', async () => {
       vi.mocked(paymentClaimApi.listForBilling).mockResolvedValue([makeClaim()])
       vi.mocked(paymentClaimApi.confirm).mockResolvedValue(makeClaim({ status: 'confirmed' }))
-      vi.mocked(billingApi.list).mockResolvedValue({
-        data: [{ ...BILLING_STUB, payment_status: 'paid', outstanding_ngn: '0.00' }],
-        meta: { pagination: { has_more: false, next_cursor: null, total_count: 1 } },
-      })
+      vi.mocked(billingApi.get).mockResolvedValue({ ...BILLING_STUB, payment_status: 'paid', outstanding_ngn: '0.00' })
       const { queryClient } = renderPage()
       const invalidateSpy = vi.spyOn(queryClient, 'invalidateQueries')
 
@@ -264,10 +261,7 @@ describe('BillingDetail', () => {
 
     it('recording a payment invalidates the billing query cache so BillingList stops showing stale data', async () => {
       vi.mocked(billingApi.recordPayment).mockResolvedValue({ new_payment_status: 'paid', amount_ngn: '174375' })
-      vi.mocked(billingApi.list).mockResolvedValue({
-        data: [{ ...BILLING_STUB, payment_status: 'paid', outstanding_ngn: '0.00' }],
-        meta: { pagination: { has_more: false, next_cursor: null, total_count: 1 } },
-      })
+      vi.mocked(billingApi.get).mockResolvedValue({ ...BILLING_STUB, payment_status: 'paid', outstanding_ngn: '0.00' })
       const { queryClient } = renderPage()
       const invalidateSpy = vi.spyOn(queryClient, 'invalidateQueries')
 

@@ -1149,11 +1149,9 @@ export function BillingDetail(): JSX.Element {
     void qc.invalidateQueries({ queryKey: billingKeys.all })
   }, [qc])
 
-  // Primary source: billing object passed via router state from BillingList.
-  // The backend exposes no GET /v1/billing/{billing-id} endpoint — the
-  // GET /v1/billing/{resource-id} route takes a *customer* id, not billing id.
-  // Navigation state covers the normal flow; the fallback list fetch covers
-  // the case where someone links directly to /billing/:id.
+  // Router state from BillingList seeds the first paint so arriving from the
+  // list renders instantly; GET /v1/billing/{id}/detail is the real source and
+  // backs direct links plus every refresh after a mutation.
   const stateBilling = (location.state as { billing?: Billing } | null)?.billing ?? null
   const [billing, setBilling] = useState<Billing | null>(stateBilling)
   const [carryovers, setCarryovers] = useState<Carryover[]>([])
@@ -1204,16 +1202,13 @@ export function BillingDetail(): JSX.Element {
     setLoading(true)
     setError(null)
     try {
-      // Scan the billing list to find by ID — only needed on direct URL access.
-      const result = await billingApi.list()
-      const found = result.data.find((b) => b.id === id) ?? null
-      if (!found) {
-        setError('Billing record not found.')
-        return
-      }
-      setBilling(found)
+      setBilling(await billingApi.get(id))
     } catch (err) {
-      setError(err instanceof ApiError ? err.message : 'Could not load billing record.')
+      if (err instanceof ApiError && err.status === 404) {
+        setError('Billing record not found.')
+      } else {
+        setError(err instanceof ApiError ? err.message : 'Could not load billing record.')
+      }
     } finally {
       setLoading(false)
     }

@@ -318,12 +318,16 @@ export function MyBillingDetail(): JSX.Element {
     setLoading(true)
     setError(null)
     try {
-      const result = await billingApi.list()
-      const found = result.data.find((b) => b.id === id) ?? null
-      if (!found) { setError('Billing record not found.'); return }
-      setBilling(found)
+      // By billing id. This used to fetch page 1 of the customer's billing list
+      // and search it client-side, so a customer with more than a page of
+      // invoices got "Billing record not found." for every older one.
+      setBilling(await billingApi.get(id))
     } catch (err) {
-      setError(err instanceof ApiError ? err.message : 'Could not load this billing record.')
+      if (err instanceof ApiError && err.status === 404) {
+        setError('Billing record not found.')
+      } else {
+        setError(err instanceof ApiError ? err.message : 'Could not load this billing record.')
+      }
     } finally {
       setLoading(false)
     }
