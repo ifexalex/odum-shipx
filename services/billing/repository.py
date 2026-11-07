@@ -214,12 +214,21 @@ def create_billing(tenant_id: str, data: dict[str, Any]) -> dict[str, Any] | Non
 
 
 def get_billing_by_id(tenant_id: str, billing_id: str) -> dict[str, Any] | None:
+    """Fetch one billing row by its own id, joined the same way as list_billing_all.
+
+    The customer join matters: service._enrich_billing() reads customer_name /
+    customer_phone / customer_email off the row, so without it a single-record
+    read would return a billing whose customer fields are all null while the
+    same record listed via GET /v1/billing carries them.
+    """
     rows = execute_with_tenant(
         tenant_id,
         """
-        SELECT b.*, c.container_number
+        SELECT b.*, c.container_number,
+               cu.name AS customer_name, cu.phone AS customer_phone, cu.email AS customer_email
         FROM billing b
-        LEFT JOIN container c ON c.id = b.container_id AND c.tenant_id = b.tenant_id
+        LEFT JOIN container c  ON c.id  = b.container_id  AND c.tenant_id  = b.tenant_id
+        LEFT JOIN customer  cu ON cu.id = b.customer_id   AND cu.tenant_id = b.tenant_id
         WHERE b.tenant_id = %s AND b.id = %s
         LIMIT 1
         """,

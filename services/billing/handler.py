@@ -9,6 +9,7 @@ Routes:
   GET   /v1/billing/{billing-id}/storage-fees        — tenant_admin, nigeria_office_staff, customer (own)
   GET   /v1/billing/disputes                         — nigeria_office_staff, tenant_admin, china_office_staff
   GET   /v1/billing/{customer-id}                    — tenant_admin, nigeria_office_staff, customer (own)
+  GET   /v1/billing/{billing-id}/detail              — tenant_admin, nigeria_office_staff, customer (own)
   POST  /v1/billing/{billing-id}/dispute             — customer
   GET   /v1/billing/{billing-id}/disputes            — nigeria_office_staff, tenant_admin, customer (own)
   PATCH /v1/billing/disputes/{dispute-id}/acknowledge — nigeria_office_staff
@@ -362,6 +363,14 @@ def _billing_routes(
                 request_id=request_id,
             )
             return created(result, location=f"/v1/billing/{resource_id}/disputes", request_id=request_id)
+
+        if action == "detail" and method == "GET":
+            # GET /v1/billing/{billing-id}/detail — single record by its OWN id.
+            # It lives under /{billing-id}/ rather than at /v1/billing/{id}
+            # because that bare shape is already taken by the customer-id read
+            # above, and both ids are UUIDs so the two cannot be told apart.
+            ctx.assert_role(*_BILLING_READ_ROLES)
+            return success(service.get_billing(tenant_id, resource_id, ctx), request_id=request_id)
 
         if action == "disputes" and method == "GET":
             # GET /v1/billing/{billing-id}/disputes

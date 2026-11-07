@@ -99,6 +99,100 @@ class TestBillingService:
                 # requesting billing for customer-999, but ctx.user maps to customer-001
                 service.get_billing_for_customer(TENANT_ID, "customer-999", ctx)
 
+    def test_get_billing_by_id_returns_enriched_record(self):
+        """GET /v1/billing/{id}/detail returns the same shape as a list row."""
+        from services.billing import service
+
+        ctx = _ctx(UserRole.NIGERIA_OFFICE_STAFF)
+        row = _billing(
+            invoice_number="INV-001",
+            customer_name="Ada",
+            container_number="CONT-9",
+            total_cbm=Decimal("2.5"),
+            cbm_rate_usd=Decimal("250"),
+            exchange_rate_ngn=Decimal("1600"),
+            subtotal_usd=Decimal("625"),
+            subtotal_ngn=Decimal("1000000"),
+        )
+        with (
+            patch.object(service.repo, "get_billing_by_id", return_value=row),
+            patch.object(service.repo, "get_misc_charges", return_value=[]),
+            patch.object(service.repo, "get_payment_records", return_value=[]),
+            patch.object(service.repo, "get_applied_carryovers", return_value=[]),
+            patch.object(service.repo, "get_active_disputes", return_value=[]),
+        ):
+            result = service.get_billing(TENANT_ID, "billing-001", ctx)
+
+        assert result["id"] == "billing-001"
+        assert result["invoice_number"] == "INV-001"
+        assert result["customer_name"] == "Ada"
+        assert result["payment_status"] == "unpaid"
+
+    def test_get_billing_by_id_unknown_raises_not_found(self):
+        """An id that is not in this tenant is a 404, not an empty success."""
+        from services.billing import service
+        from shared.exceptions import ResourceNotFoundError
+
+        ctx = _ctx(UserRole.NIGERIA_OFFICE_STAFF)
+        with patch.object(service.repo, "get_billing_by_id", return_value=None):
+            with pytest.raises(ResourceNotFoundError):
+                service.get_billing(TENANT_ID, "billing-nope", ctx)
+
+    def test_get_billing_by_id_rejects_other_customers_record(self):
+        """A customer addressing another customer's billing id is refused.
+
+        The whole point of a by-id read is that the id is guessable from a URL,
+        so the ownership check has to live in the service, not in the caller.
+        """
+        from services.billing import service
+        from shared.exceptions import InsufficientPermissionsError
+
+        ctx = _ctx(UserRole.CUSTOMER, user_id="user-cust-001")
+        with (
+            patch.object(service.repo, "get_billing_by_id", return_value=_billing(customer_id="customer-999")),
+            patch.object(service.repo, "get_customer_by_user_id", return_value={"id": "customer-001"}),
+        ):
+            with pytest.raises(InsufficientPermissionsError):
+                service.get_billing(TENANT_ID, "billing-001", ctx)
+
+    def test_get_billing_by_id_allows_own_record(self):
+        """The same customer reading their own billing id succeeds."""
+        from services.billing import service
+
+        ctx = _ctx(UserRole.CUSTOMER, user_id="user-cust-001")
+        row = _billing(
+            customer_id="customer-001",
+            total_cbm=Decimal("1"),
+            cbm_rate_usd=Decimal("250"),
+            exchange_rate_ngn=Decimal("1600"),
+            subtotal_usd=Decimal("250"),
+            subtotal_ngn=Decimal("400000"),
+        )
+        with (
+            patch.object(service.repo, "get_billing_by_id", return_value=row),
+            patch.object(service.repo, "get_customer_by_user_id", return_value={"id": "customer-001"}),
+            patch.object(service.repo, "get_misc_charges", return_value=[]),
+            patch.object(service.repo, "get_payment_records", return_value=[]),
+            patch.object(service.repo, "get_applied_carryovers", return_value=[]),
+            patch.object(service.repo, "get_active_disputes", return_value=[]),
+        ):
+            result = service.get_billing(TENANT_ID, "billing-001", ctx)
+
+        assert result["customer_id"] == "customer-001"
+
+    def test_get_billing_by_id_fails_closed_when_customer_unmapped(self):
+        """A customer-role JWT with no customer row is denied, not served."""
+        from services.billing import service
+        from shared.exceptions import InsufficientPermissionsError
+
+        ctx = _ctx(UserRole.CUSTOMER, user_id="user-orphan")
+        with (
+            patch.object(service.repo, "get_billing_by_id", return_value=_billing()),
+            patch.object(service.repo, "get_customer_by_user_id", return_value=None),
+        ):
+            with pytest.raises(InsufficientPermissionsError):
+                service.get_billing(TENANT_ID, "billing-001", ctx)
+
     def test_get_billing_stats_normalises_row(self):
         """Stats aggregates: money fields returned as strings, counts as ints."""
         from services.billing import service

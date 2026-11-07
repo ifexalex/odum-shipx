@@ -16,6 +16,7 @@ Implement the Billing Lambda service: auto-billing on customs clearance, CBM-bas
 |---|---|---|
 | GET | `/v1/billing` | tenant_admin, nigeria_office_staff, customer (own only, force-scoped server-side) — paginated list, filterable by `?status=` / `?customer_id=` (staff only — a customer's `customer_id` filter is always overridden to their own) / `?q=` (free-text over invoice_number, customer name, container_number) / `?created_after=&created_before=` (over `billed_at`); sortable via `?sort=&direction=` |
 | GET | `/v1/billing/{customer-id}` | tenant_admin, nigeria_office_staff, customer (own only) |
+| GET | `/v1/billing/{billing-id}/detail` | tenant_admin, nigeria_office_staff, customer (own only) — one record by its **own** id; response is byte-identical to the matching `GET /v1/billing` row. The `/detail` suffix is required because the bare `/v1/billing/{id}` shape above takes a *customer* id and both ids are UUIDs |
 | POST | `/v1/billing/{id}/dispute` | customer |
 | GET | `/v1/billing/{id}/disputes` | nigeria_office_staff, tenant_admin, customer (own) |
 | PATCH | `/v1/billing/disputes/{id}/acknowledge` | nigeria_office_staff |
@@ -91,6 +92,52 @@ Note on semantics: a carryover is **outstanding debt carried forward** to the ne
 Verified live against the real local stack: `GET /v1/billing?status=unpaid,released_with_outstanding` returned exactly the 3 matching records out of 4 total; `created_after=2099-01-01` returned 0; `created_after=2020-01-01` returned only the 1 record with a non-null `billed_at`. Tests: `TestListBillingAllRepositoryFilters` (5 cases) and `TestBillingListHandlerQueryParams` (3 cases) in `tests/unit/test_billing.py`; `BillingList.test.tsx` gained 3 cases covering the date filter, the multi-select panel, and Clear all filters.
 
 **Follow-up (2026-09-07):** the user asked to check every page with a "calendar" filter, not just billing. Added an exact custom From/To date pair next to `BillingList.tsx`'s preset button (the backend already accepted `created_before` from the fix above, but the frontend never sent it) — same shared `useDateRangeFilter` hook now used by ContainerList, ClaimList, NotificationLog, and TenantReports. Tests: `BillingList.test.tsx` gained 1 more case.
+
+### GET /v1/billing/{billing-id}/detail — billing had no by-id read at all (2026-11-07)
+
+Ground-truth gap: the API had **no endpoint that reads one billing record by its own id**. The bare
+`GET /v1/billing/{resource-id}` route takes a *customer* id, and since both are UUIDs the two shapes
+cannot be told apart, so the single-record read needed its own path.
+
+Both detail pages worked around it the same way — `BillingDetail.tsx` and
+`MyBillingDetail.tsx` called `billingApi.list()` and searched the result client-side:
+
+```ts
+const result = await billingApi.list()
+const found = result.data.find((b) => b.id === id) ?? null
+if (!found) { setError('Billing record not found.') }
+```
+
+`billingApi.list()` passes no `limit`, so it got the server default of **50 rows**. Consequences:
+
+1. **Any record past the first page was unreachable.** Record 51+ opened as "Billing record not
+   found." on a direct link or a page refresh — the record exists, the customer is entitled to it,
+   and the page says it does not exist.
+2. **Worse after a mutation, not just on arrival.** `load()` is the refresh after recording a
+   payment, confirming a payment claim, waiving storage fees and removing a charge (6 call sites).
+   Arriving from the list seeded `billing` from router state, so an off-page record *displayed*
+   correctly — then the first payment recorded against it replaced the open record with "not found."
+3. **50 enriched rows fetched to display one.** `_enrich_billing()` issues 4 queries per row, so each
+   refresh of one invoice cost ~200 queries.
+
+Fixed by adding `GET /v1/billing/{billing-id}/detail` (`service.get_billing`), which returns the
+**byte-identical** shape to the matching `GET /v1/billing` row — verified by diffing both responses
+key-for-key against the live stack (no missing keys, no extra keys, no differing values). This
+required adding the `customer` join to `repo.get_billing_by_id()`, which previously selected only
+`b.* , c.container_number`; without it `_enrich_billing` would have returned a record whose
+`customer_name` / `customer_phone` / `customer_email` were all null while the same record carried
+them when listed.
+
+**Authorization.** A by-id read is addressable by guessing, so the ownership check lives in the
+service, not the caller: `CUSTOMER` role is resolved to its own `customer_id` and compared to the
+record's, the same force-scoping `list_billing()` and `get_billing_for_customer()` already use, and
+it **fails closed** — a customer-role token with no `customer` row is denied, not served. Verified
+live: owner → 200; a different customer → 403; `china_office_staff` (not a billing read role) → 403;
+another tenant's staff reading this id → 404, not a leak; unknown id → 404.
+
+Tests: 5 cases in `tests/unit/test_billing.py::TestBillingService` (enriched shape, 404, another
+customer refused, own record allowed, unmapped customer fails closed). `BillingDetail.test.tsx`
+asserts the page calls `billingApi.get(id)` and **never** `billingApi.list()`.
 
 ## Billing Calculation (Rule BR-BL-001)
 

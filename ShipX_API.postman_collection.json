@@ -2801,6 +2801,39 @@
      }
     },
     {
+     "name": "Get Billing by ID",
+     "request": {
+      "method": "GET",
+      "header": [
+       {
+        "key": "X-Tenant-ID",
+        "value": "{{tenant_id}}"
+       },
+       {
+        "key": "X-Role",
+        "value": "{{role}}"
+       },
+       {
+        "key": "X-User-ID",
+        "value": "{{user_id}}"
+       }
+      ],
+      "url": {
+       "raw": "{{base_url}}/v1/billing/{{billing_id}}/detail",
+       "host": [
+        "{{base_url}}"
+       ],
+       "path": [
+        "v1",
+        "billing",
+        "{{billing_id}}",
+        "detail"
+       ]
+      },
+      "description": "One billing record by its OWN id. Distinct from \"Get Billing for Customer\" above, which takes a *customer* id at the bare /v1/billing/{id} shape \u2014 both ids are UUIDs, so the by-id read needs the /detail suffix. Response is byte-identical to the matching row from List Billing Records. Customer role is scoped to its own records (403 otherwise)."
+     }
+    },
+    {
      "name": "Add Misc Charge",
      "request": {
       "method": "POST",

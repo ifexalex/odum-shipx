@@ -322,6 +322,42 @@ def get_tenant_report(
     return repo.get_tenant_report(tenant_id, created_after, created_before)
 
 
+def get_billing(tenant_id: str, billing_id: str, ctx: Any) -> dict[str, Any]:
+    """Return one enriched billing record addressed by its own id.
+
+    Backs GET /v1/billing/{billing-id}/detail. The sibling
+    GET /v1/billing/{resource-id} route takes a *customer* id, so a billing id
+    had no direct read path at all and the UI had to scan the paginated list to
+    find a record by id — which only ever searched the first page.
+
+    CUSTOMER role is scoped to their own records, the same force-scoping used by
+    list_billing() and get_billing_for_customer(), so a customer cannot read
+    another customer's invoice by addressing its billing id directly.
+
+    Args:
+        tenant_id: Owning tenant.
+        billing_id: The billing record's own id.
+        ctx: Tenant context, used for the customer-ownership check.
+
+    Returns:
+        The enriched billing record, same shape as a GET /v1/billing row.
+
+    Raises:
+        ResourceNotFoundError: No such billing record in this tenant.
+        InsufficientPermissionsError: Customer addressing someone else's record.
+    """
+    row = repo.get_billing_by_id(tenant_id, billing_id)
+    if not row:
+        raise ResourceNotFoundError("billing", billing_id)
+
+    if ctx is not None and ctx.role == UserRole.CUSTOMER:
+        customer = repo.get_customer_by_user_id(tenant_id, ctx.user_id)
+        if not customer or str(customer["id"]) != str(row.get("customer_id")):
+            raise InsufficientPermissionsError("Customers may only view their own billing records")
+
+    return _enrich_billing(tenant_id, dict(row))
+
+
 def get_billing_for_customer(
     tenant_id: str,
     customer_id: str,

@@ -16,7 +16,7 @@ import { billingApi, paymentClaimApi } from '../../api/billing'
 import { BillingDetail } from './BillingDetail'
 
 vi.mock('../../api/billing', () => ({
-  billingApi: { list: vi.fn(), listForCustomer: vi.fn(), recordPayment: vi.fn(), cancel: vi.fn(), applyCarryover: vi.fn() },
+  billingApi: { list: vi.fn(), get: vi.fn(), listForCustomer: vi.fn(), recordPayment: vi.fn(), cancel: vi.fn(), applyCarryover: vi.fn() },
   disputeApi: { list: vi.fn(), acknowledge: vi.fn(), resolve: vi.fn(), reject: vi.fn() },
   carryoverApi: { list: vi.fn(), exempt: vi.fn() },
   paymentClaimApi: { listForBilling: vi.fn(), confirm: vi.fn(), reject: vi.fn(), getEvidenceUrl: vi.fn() },
@@ -89,10 +89,7 @@ describe('BillingDetail — staff payment-claim review', () => {
   it('confirming calls the confirm endpoint and refreshes the claim', async () => {
     vi.mocked(paymentClaimApi.listForBilling).mockResolvedValue([CLAIM])
     vi.mocked(paymentClaimApi.confirm).mockResolvedValue({ ...CLAIM, status: 'confirmed' })
-    vi.mocked(billingApi.list).mockResolvedValue({
-      data: [{ ...BILLING_STUB, payment_status: 'paid', total_paid_ngn: '174375.00', outstanding_ngn: '0' }],
-      meta: { pagination: { has_more: false, next_cursor: null, total_count: 1 } },
-    })
+    vi.mocked(billingApi.get).mockResolvedValue({ ...BILLING_STUB, payment_status: 'paid', total_paid_ngn: '174375.00', outstanding_ngn: '0' })
     renderPage('nigeria_office_staff')
 
     await screen.findByText('Payment claims')

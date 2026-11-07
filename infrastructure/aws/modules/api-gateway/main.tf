@@ -73,9 +73,13 @@ locals {
     # --- Shipments (1 route; GET /{tracking-code} is public — see public_routes) ---
     "GET /v1/shipments" = "tracking"
 
-    # --- Billing (2 routes) -------------------------------------------------
-    "GET /v1/billing/{customer-id}" = "billing"
-    "POST /v1/billing/{id}/dispute" = "billing"
+    # --- Billing (3 routes) -------------------------------------------------
+    # {customer-id} really is a *customer* id, so the by-billing-id read needs
+    # the /detail suffix beside it — both ids are UUIDs, so the bare
+    # /v1/billing/{id} shape cannot serve both.
+    "GET /v1/billing/{customer-id}"       = "billing"
+    "GET /v1/billing/{billing-id}/detail" = "billing"
+    "POST /v1/billing/{id}/dispute"       = "billing"
 
     # --- Billing extension (7 routes) ---------------------------------------
     "GET /v1/billing/stats"                        = "billing"

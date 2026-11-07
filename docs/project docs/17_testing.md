@@ -1845,3 +1845,36 @@ and refunds it creates are not in the states those specs need
 `set -a; source .env.local; set +a` from the repo root **in the same shell**
 before `npx playwright test`, or `mint_test_invite.py` fails and takes the auth
 specs with it. CI does this; it is easy to forget locally.
+
+---
+
+## `GET /v1/billing/{billing-id}/detail` (2026-11-07, master plan 7.154)
+
+**Backend — `tests/unit/test_billing.py::TestBillingService`** (5 new cases):
+
+| Test | Asserts |
+|---|---|
+| `test_get_billing_by_id_returns_enriched_record` | the by-id read returns the same enriched shape as a list row (`invoice_number`, `customer_name`, `payment_status`) |
+| `test_get_billing_by_id_unknown_raises_not_found` | an id absent from this tenant raises `ResourceNotFoundError` — a 404, not an empty success |
+| `test_get_billing_by_id_rejects_other_customers_record` | a customer addressing another customer's billing id gets `InsufficientPermissionsError` |
+| `test_get_billing_by_id_allows_own_record` | the same customer reading their own record succeeds |
+| `test_get_billing_by_id_fails_closed_when_customer_unmapped` | a customer-role token with no `customer` row is **denied, not served** |
+
+The ownership cases carry the weight here: unlike a list, a by-id endpoint is
+addressable by guessing, so the check has to be asserted in the service rather
+than assumed of the caller.
+
+**Frontend — `BillingDetail.test.tsx`:** `fetches the record by id when there is
+no router state` asserts `billingApi.get` is called **with the id** and that
+`billingApi.list` is **never** called — the negative half is the point, since the
+bug being fixed was precisely a list call standing in for a record read.
+`BillingDetailPaymentClaims.test.tsx` and the customer-side specs mock
+`billingApi.get` for the post-mutation refresh.
+
+**What unit tests cannot cover here**, verified live against the seeded stack
+instead: cross-tenant isolation (another tenant's staff reading the id → **404,
+not a leak**), role gating through the real handler (`china_office_staff` → 403),
+and wire-shape parity — both responses diffed key-for-key, no missing keys, no
+extra keys, no differing values. The off-page failure itself never reproduces
+locally: the seed holds 3 billing rows against a page size of 50, which is why
+the bug survived this long.
