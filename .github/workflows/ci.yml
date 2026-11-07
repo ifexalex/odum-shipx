@@ -106,7 +106,9 @@ jobs:
           uv export --frozen --no-hashes --no-emit-project --no-default-groups --extra azure -o requirements-scan.txt
           uv run safety check -r requirements-scan.txt
       - name: Trivy filesystem scan
-        # Pinned to v0.35.0 — update via Dependabot, never float @master
+        # Pinned by SHA — update via Dependabot, never float @master. The
+        # version lives in the trailing comment on the `uses:` line, which
+        # Dependabot keeps in step; do not restate it here, or the two drift.
         uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25  # v0.36.0
         with:
           scan-type: 'fs'
