@@ -1747,3 +1747,42 @@ Full frontend suite: **958 passed, 145 files, 0 failed**.
 pins a local version (no `.nvmrc`, no `engines` field), so a developer on a newer
 Node runs a measurably different test suite. Worth pinning, and deliberately not
 done here — it belongs in its own change rather than inside an e2e fix.
+
+## jsdom gaps are an async-flake source, not just a missing API (2026-11-07)
+
+`Element.prototype.scrollIntoView` is **absent** in jsdom — not a no-op. Product
+code that calls it is correct in a browser; under test the call throws
+`TypeError: ... is not a function`.
+
+That is worse than a plain failure because of *where* it throws.
+`Warehouses.tsx` scrolls its error banner into view from inside a
+`requestAnimationFrame`, so the throw lands **after** the test's assertions have
+passed, in a callback nothing awaits. Vitest reports it as an unhandled error
+attributed to whichever file happened to be running, and only when the frame
+fires before the environment tears down.
+
+The symptom was therefore a drifting, unreproducible flake:
+
+| When | Symptom |
+|---|---|
+| first seen | `Errors 1 error`, exit 0 — gates nothing |
+| later | `Errors 4 errors`, exit 0 |
+| during the react-hooks 7 work | real failures in `App.test.tsx` and `CompanySettings.test.tsx`, each passing in isolation and on re-run |
+
+It never reproduced on demand (3 clean runs in a row while hunting it), so it was
+found by reading the code path rather than by repetition — the trigger is a
+timing race against teardown, not an input.
+
+**Beware the false guard.** `el?.scrollIntoView(...)` does **not** protect
+against this: the optional chain tests the *element*, not the *method*.
+
+`src/test/setup.ts` now installs a no-op only when the method is missing, beside
+the existing `matchMedia` and `ResizeObserver` stubs. Verified with four
+consecutive full runs: 958 passed, **0 errors, 0 failed files**.
+
+Checked for the same class elsewhere — `matchMedia` and `ResizeObserver` were
+already stubbed, `IntersectionObserver` is used only behind a
+`if (!('IntersectionObserver' in window))` feature check with a fallback
+(`LandingPage.tsx`), and `scrollTo`/`requestIdleCallback` are unused. When adding
+a browser API jsdom lacks, stub it in `setup.ts` **or** feature-check it; a call
+inside a timer or rAF will otherwise surface as someone else's flaky test.
