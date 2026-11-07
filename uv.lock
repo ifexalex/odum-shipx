@@ -1438,7 +1438,7 @@ dev = [
     { name = "pre-commit", specifier = "==4.5.1" },
     { name = "pytest", specifier = "==9.2.0" },
     { name = "pytest-cov", specifier = "==4.1.0" },
-    { name = "pytest-timeout", specifier = "==2.2.0" },
+    { name = "pytest-timeout", specifier = "==2.4.0" },
     { name = "requests", specifier = "==2.34.2" },
     { name = "ruff", specifier = "==0.17.3" },
     { name = "safety", specifier = "==3.8.1" },
@@ -2246,14 +2246,14 @@ wheels = [
 
 [[package]]
 name = "pytest-timeout"
-version = "2.2.0"
+version = "2.4.0"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "pytest" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/2a/b0/8e3182e9ed65ad5b247f9d13769f214fc52b0d3522c3e1c8dbfa2f879e5a/pytest-timeout-2.2.0.tar.gz", hash = "sha256:3b0b95dabf3cb50bac9ef5ca912fa0cfc286526af17afc806824df20c2f72c90", size = 16391, upload-time = "2023-10-08T10:14:25.196Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/ac/82/4c9ecabab13363e72d880f2fb504c5f750433b2b6f16e99f4ec21ada284c/pytest_timeout-2.4.0.tar.gz", hash = "sha256:7e68e90b01f9eff71332b25001f85c75495fc4e3a836701876183c4bcfd0540a", size = 17973, upload-time = "2025-05-05T19:44:34.99Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/e2/3e/abfdb7319d71a179bb8f5980e211d93e7db03f0c0091794dbcd652d642da/pytest_timeout-2.2.0-py3-none-any.whl", hash = "sha256:bde531e096466f49398a59f2dde76fa78429a09a12411466f88a07213e220de2", size = 13142, upload-time = "2023-10-08T10:14:23.014Z" },
+    { url = "https://files.pythonhosted.org/packages/fa/b6/3127540ecdf1464a00e5a01ee60a1b09175f6913f0644ac748494d9c4b21/pytest_timeout-2.4.0-py3-none-any.whl", hash = "sha256:c42667e5cdadb151aeb5b26d114aff6bdf5a907f176a007a30b940d3d865b5c2", size = 14382, upload-time = "2025-05-05T19:44:33.502Z" },
 ]
 
 [[package]]
