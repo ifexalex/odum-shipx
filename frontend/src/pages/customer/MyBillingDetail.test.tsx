@@ -3,12 +3,14 @@
  * and redirects to the hosted authorization_url; failures surface inline and
  * never navigate away.
  */
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { MemoryRouter, Route, Routes } from 'react-router-dom'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { ApiError } from '../../api/client'
-import { billingApi } from '../../api/billing'
+import { billingApi, paymentClaimApi } from '../../api/billing'
+import { configApi } from '../../api/tenantManagement'
 import { MyBillingDetail } from './MyBillingDetail'
 
 vi.mock('../../api/billing', async (importOriginal) => {
@@ -17,7 +19,16 @@ vi.mock('../../api/billing', async (importOriginal) => {
     ...original,
     billingApi: { ...original.billingApi, get: vi.fn(), initializePayment: vi.fn(), export: vi.fn() },
     disputeApi: { ...original.disputeApi, file: vi.fn() },
+    paymentClaimApi: { ...original.paymentClaimApi, listForBilling: vi.fn(), submit: vi.fn() },
   }
+})
+
+// The page reads bank-transfer details and its own payment claims through
+// TanStack Query (master plan 7.150). Both are stubbed so no real request is
+// attempted and the panel starts closed.
+vi.mock('../../api/tenantManagement', async (importOriginal) => {
+  const original = await importOriginal<typeof import('../../api/tenantManagement')>()
+  return { ...original, configApi: { ...original.configApi, getConfig: vi.fn() } }
 })
 
 const BILLING = {
@@ -32,13 +43,17 @@ const BILLING = {
 }
 
 function renderPage() {
-  return render(
-    <MemoryRouter initialEntries={[{ pathname: '/my-billing/b1', state: { billing: BILLING } }]}>
-      <Routes>
-        <Route path="/my-billing/:id" element={<MyBillingDetail />} />
-      </Routes>
-    </MemoryRouter>,
+  const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+  render(
+    <QueryClientProvider client={queryClient}>
+      <MemoryRouter initialEntries={[{ pathname: '/my-billing/b1', state: { billing: BILLING } }]}>
+        <Routes>
+          <Route path="/my-billing/:id" element={<MyBillingDetail />} />
+        </Routes>
+      </MemoryRouter>
+    </QueryClientProvider>,
   )
+  return { queryClient }
 }
 
 describe('MyBillingDetail — pay online (B12)', () => {
@@ -46,6 +61,8 @@ describe('MyBillingDetail — pay online (B12)', () => {
 
   beforeEach(() => {
     vi.clearAllMocks()
+    vi.mocked(paymentClaimApi.listForBilling).mockResolvedValue([])
+    vi.mocked(configApi.getConfig).mockResolvedValue({} as never)
     // window.location.assign is not writable directly in jsdom
     Object.defineProperty(window, 'location', {
       value: { ...window.location, assign: assignSpy, origin: 'https://acme.shipx.co' },
@@ -97,7 +114,11 @@ describe('MyBillingDetail — pay online (B12)', () => {
 // actually download an invoice; GET /v1/billing/{id}/export was staff-only
 // and this button didn't exist at all.
 describe('MyBillingDetail — download invoice', () => {
-  beforeEach(() => vi.clearAllMocks())
+  beforeEach(() => {
+    vi.clearAllMocks()
+    vi.mocked(paymentClaimApi.listForBilling).mockResolvedValue([])
+    vi.mocked(configApi.getConfig).mockResolvedValue({} as never)
+  })
 
   it('downloads the invoice as a pdf', async () => {
     vi.mocked(billingApi.export).mockResolvedValue(undefined)

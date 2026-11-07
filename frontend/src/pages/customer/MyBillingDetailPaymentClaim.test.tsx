@@ -7,6 +7,7 @@
  * confirmation" banner; a rejected claim (no pending one) surfaces the
  * reason and restores the normal payment options.
  */
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { render, screen } from '@testing-library/react'
 import { MemoryRouter, Route, Routes } from 'react-router-dom'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
@@ -48,13 +49,17 @@ function claim(status: 'pending' | 'confirmed' | 'rejected', overrides: Record<s
 }
 
 function renderPage() {
-  return render(
-    <MemoryRouter initialEntries={[{ pathname: '/my-billing/b1', state: { billing: BILLING } }]}>
-      <Routes>
-        <Route path="/my-billing/:id" element={<MyBillingDetail />} />
-      </Routes>
-    </MemoryRouter>,
+  const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+  render(
+    <QueryClientProvider client={queryClient}>
+      <MemoryRouter initialEntries={[{ pathname: '/my-billing/b1', state: { billing: BILLING } }]}>
+        <Routes>
+          <Route path="/my-billing/:id" element={<MyBillingDetail />} />
+        </Routes>
+      </MemoryRouter>
+    </QueryClientProvider>,
   )
+  return { queryClient }
 }
 
 describe('MyBillingDetail — payment options reflect an in-flight claim', () => {

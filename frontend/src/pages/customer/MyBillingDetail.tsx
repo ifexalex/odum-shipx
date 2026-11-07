@@ -1,8 +1,12 @@
-import { useCallback, useEffect, useRef, useState, type JSX } from 'react'
+import { useRef, useState, type JSX } from 'react'
 import { useLocation, useNavigate, useParams } from 'react-router-dom'
+import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { ApiError } from '../../api/client'
 import { billingApi, disputeApi, paymentClaimApi, type Billing, type PaymentClaim } from '../../api/billing'
-import { configApi, type BankTransferConfig } from '../../api/tenantManagement'
+import { billingKeys } from '../../api/keys'
+import { type BankTransferConfig } from '../../api/tenantManagement'
+import { useBankTransferConfig } from '../../hooks/useConfig'
+import { STALE_30S } from '../../lib/queryClient'
 import { Field } from '../../design/components'
 import { Badge, Banner, Button, Card, Kvp, Mono, StatCard, type BadgeVariant } from '../../design/components'
 import { SectionHead } from '../../shell/SectionHead'
@@ -251,36 +255,52 @@ export function MyBillingDetail(): JSX.Element {
   const { id } = useParams<{ id: string }>()
   const location = useLocation()
   const navigate = useNavigate()
+  const qc = useQueryClient()
+
+  // Router state from MyBilling seeds the first paint; the record itself lives
+  // at billingKeys.detail(id), the same cache slot the staff BillingDetail uses,
+  // so a mutation on either side is seen by both.
   const stateBilling = (location.state as { billing?: Billing } | null)?.billing ?? null
-  const [billing, setBilling] = useState<Billing | null>(stateBilling)
-  const [loading, setLoading] = useState(stateBilling === null)
-  const [error, setError] = useState<string | null>(null)
-  const [showTransfer, setShowTransfer] = useState(false)
+  const {
+    data: billing = null,
+    isLoading,
+    error: loadError,
+  } = useQuery({
+    queryKey: billingKeys.detail(id ?? ''),
+    queryFn: () => billingApi.get(id!),
+    enabled: !!id,
+    ...(stateBilling ? { initialData: stateBilling } : {}),
+    staleTime: STALE_30S,
+  })
+
   const [payLoading, setPayLoading] = useState(false)
   const [payError, setPayError] = useState<string | null>(null)
   const [invoiceLoading, setInvoiceLoading] = useState(false)
   const [invoiceError, setInvoiceError] = useState<string | null>(null)
-  const [bankConfig, setBankConfig] = useState<BankTransferConfig | null>(null)
-  const [claims, setClaims] = useState<PaymentClaim[]>([])
 
-  useEffect(() => {
-    void configApi.getConfig().then((res) => setBankConfig(res.bank_transfer_config ?? null)).catch(() => setBankConfig(null))
-  }, [])
+  const { bankConfig } = useBankTransferConfig()
 
-  const billingId = billing?.id
-  useEffect(() => {
-    if (!billingId) return
-    void paymentClaimApi
-      .listForBilling(billingId)
-      .then((result) => {
-        setClaims(result)
-        // A customer who already submitted a claim (this session or a
-        // previous one) should see its status without re-clicking "Show
-        // bank details" first.
-        if (result.length > 0) setShowTransfer(true)
-      })
-      .catch(() => setClaims([]))
-  }, [billingId])
+  const claimsKey = [...billingKeys.detail(id ?? ''), 'payment-claims']
+  const { data: claims = [] } = useQuery({
+    queryKey: claimsKey,
+    queryFn: () => paymentClaimApi.listForBilling(id!),
+    enabled: !!id,
+    staleTime: STALE_30S,
+  })
+
+  // A customer who already submitted a claim (this session or a previous one)
+  // should see its status without clicking "Show bank details" first. Derived
+  // rather than pushed into state by an effect — the panel only ever opens.
+  const [transferOpened, setTransferOpened] = useState(false)
+  const showTransfer = transferOpened || claims.length > 0
+
+  const error = loadError
+    ? loadError instanceof ApiError && loadError.status === 404
+      ? 'Billing record not found.'
+      : loadError instanceof ApiError
+        ? loadError.message
+        : 'Could not load this billing record.'
+    : null
 
   async function handleDownloadInvoice(): Promise<void> {
     if (!billing) return
@@ -313,32 +333,7 @@ export function MyBillingDetail(): JSX.Element {
   const [showDispute, setShowDispute] = useState(false)
   const [disputeFiled, setDisputeFiled] = useState(false)
 
-  const load = useCallback(async () => {
-    if (!id) return
-    setLoading(true)
-    setError(null)
-    try {
-      // By billing id. This used to fetch page 1 of the customer's billing list
-      // and search it client-side, so a customer with more than a page of
-      // invoices got "Billing record not found." for every older one.
-      setBilling(await billingApi.get(id))
-    } catch (err) {
-      if (err instanceof ApiError && err.status === 404) {
-        setError('Billing record not found.')
-      } else {
-        setError(err instanceof ApiError ? err.message : 'Could not load this billing record.')
-      }
-    } finally {
-      setLoading(false)
-    }
-  }, [id])
-
-  useEffect(() => {
-    // eslint-disable-next-line react-hooks/set-state-in-effect -- hand-rolled fetch effect; migrate to TanStack Query (master plan 7.150)
-    if (stateBilling === null) void load()
-  }, [load, stateBilling])
-
-  if (loading && !billing) return <div style={{ padding: 32, color: 'var(--color-text-muted)' }}>Loading…</div>
+  if (isLoading && !billing) return <div style={{ padding: 32, color: 'var(--color-text-muted)' }}>Loading…</div>
   if (error && !billing) return (
     <div className={styles.page}>
       <Banner variant="error">{error ?? 'Not found.'}</Banner>
@@ -548,12 +543,14 @@ export function MyBillingDetail(): JSX.Element {
                         <PaymentClaimPanel
                           billingId={billing.id}
                           outstandingNgn={outstanding}
-                          onSubmitted={(claim) => setClaims((prev) => [claim, ...prev])}
+                          onSubmitted={(claim) =>
+                            qc.setQueryData<PaymentClaim[]>(claimsKey, (prev) => [claim, ...(prev ?? [])])
+                          }
                         />
                       </div>
                     </>
                   ) : (
-                    <Button variant="secondary" onClick={() => setShowTransfer(true)}>
+                    <Button variant="secondary" onClick={() => setTransferOpened(true)}>
                       Show bank details
                     </Button>
                   )}

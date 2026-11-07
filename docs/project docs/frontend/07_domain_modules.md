@@ -92,6 +92,15 @@ Both `BillingDetail.tsx` and `MyBillingDetail.tsx` previously worked around the 
 
 **Payment recording endpoint is in `payment_release` handler, not `billing`.** `POST /v1/payments/{billing-id}/confirm` goes to `services/payment_release/handler.py`. `billing.ts`'s `billingApi.recordPayment()` correctly calls `/v1/payments/${id}/confirm`.
 
+**Customer billing pages migrated to TanStack Query (2026-11-07, master plan 7.150 — customer billing slice).**
+
+- `MyBilling.tsx` now uses the existing **`useBillingList`** hook — the same paginated hook the staff `BillingList` uses — instead of hand-rolling `billingApi.list()` in a `useEffect`. This fixed a real truncation as a side effect: the page fetched one page with **no `limit`** and rendered it with no "Load more", so a customer with more than 50 invoices simply could not reach the older ones. It now renders the shared `ListFooter` with `hasMore`/`loadMore`, matching the staff list.
+- `MyBillingDetail.tsx` had **three** hand-rolled fetch effects (the billing record, the tenant bank-transfer config, and its own payment claims); only the first was lint-flagged, because the other two set state inside `.then()` callbacks rather than synchronously. All three are now queries. The record lives at `billingKeys.detail(id)` — **the same cache slot the staff `BillingDetail` uses**, so a mutation on either side is seen by both — with router state from `MyBilling` passed as `initialData` to keep the instant first paint.
+- The bank config reads through a new **`useBankTransferConfig()`** hook in `hooks/useConfig.ts`, sharing `configKeys.tenantConfig()` with the existing `useBranding()`; both read the same `GET /v1/tenant/config` response, so the page reuses whatever the shell already fetched instead of issuing its own request.
+- `showTransfer` was state that an effect pushed to `true` whenever claims existed. It is now **derived** (`transferOpened || claims.length > 0`), which is correct because the panel only ever opens, never closes.
+
+Test-harness consequence worth noting: once a page uses queries it needs a `QueryClientProvider`, and without one it throws `No QueryClient set` at render. `MyBillingDetail.test.tsx` and `MyBillingDetailPaymentClaim.test.tsx` both gained one (with `retry: false`), plus stubs for the two newly-queried endpoints.
+
 **Dispute actions on `BillingDetail` are inline, not on a separate detail page.** The `_active_disputes` array is already embedded in the billing response by `_enrich_billing()` — no extra fetch is needed. Acknowledge/resolve/reject modals/inputs are rendered directly within `DisputeCard` components inside `BillingDetail`.
 
 **`china_office_staff` has a "Disputes" nav entry** — `_DISPUTE_LIST_ALL_ROLES` in `billing/handler.py` includes china, and they can also resolve disputes (via `_RESOLVE_ROLES`). Added a Billing & Disputes nav group for china staff containing only the Disputes link. `routeTable.ts`'s `/billing/disputes` `allow` array updated to include `china_office_staff`. `/billing/disputes/:id` route removed — no separate dispute detail page exists; disputes are managed inline on `BillingDetail` via `DisputeCard`.
