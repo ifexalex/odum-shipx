@@ -14,7 +14,7 @@
  * release-note form requires tags that actually exist on the container.
  */
 import { expect, test } from '@playwright/test'
-import { goToViaNav, settleNetwork, switchRole } from '../support/roleSwitch'
+import { actionAvailable, goToViaNav, settleNetwork, switchRole } from '../support/roleSwitch'
 
 const CUSTOMER_NAME = 'Ibrahim Musa'
 const CARTON_TAGS = ['ACME-001-003', 'ACME-001-004']
@@ -77,7 +77,7 @@ test.describe('billing payment and release note', () => {
     await openBillingRecord(page)
 
     const generateBtn = page.getByRole('button', { name: /generate release note/i })
-    test.skip(!(await generateBtn.isVisible().catch(() => false)), 'No "Generate release note" action available for this billing status')
+    test.skip(!(await actionAvailable(page, /generate release note/i)), 'No "Generate release note" action available for this billing status')
 
     await generateBtn.click()
     const dialog = page.getByRole('dialog')
@@ -138,7 +138,7 @@ test.describe('billing payment and release note', () => {
     await expect(page.getByRole('heading', { level: 1 })).toBeVisible()
 
     const pickupBtn = page.getByRole('button', { name: /^record pickup$/i })
-    test.skip(!(await pickupBtn.isVisible().catch(() => false)), 'Already picked up — nothing left to test')
+    test.skip(!(await actionAvailable(page, /^record pickup$/i)), 'Already picked up — nothing left to test')
 
     await pickupBtn.click()
     const pickupDialog = page.getByRole('dialog')

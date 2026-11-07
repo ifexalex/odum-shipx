@@ -9,7 +9,7 @@
  * release-note-migration-fields.spec.ts (Ngozi Adeyemi, ACME001001).
  */
 import { expect, test } from '@playwright/test'
-import { goToViaNav, settleNetwork, switchRole } from '../support/roleSwitch'
+import { actionAvailable, goToViaNav, settleNetwork, switchRole } from '../support/roleSwitch'
 
 const CUSTOMER_NAME = 'Ngozi Adeyemi'
 const CONTAINER_NUMBER = 'ACME001002'
@@ -77,7 +77,7 @@ test.describe('release note — split', () => {
     await expect(page).toHaveURL(/\/release-notes\//)
 
     const splitBtn = page.getByRole('button', { name: /split note/i })
-    test.skip(!(await splitBtn.isVisible().catch(() => false)), 'Split not available — already split, picked up, or a single-tag note')
+    test.skip(!(await actionAvailable(page, /split note/i)), 'Split not available — already split, picked up, or a single-tag note')
 
     await splitBtn.click()
     const splitDialog = page.getByRole('dialog')
