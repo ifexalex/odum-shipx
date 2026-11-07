@@ -1,8 +1,9 @@
-import { useCallback, useEffect, useState, type JSX } from 'react'
+import { type JSX } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { ApiError } from '../../api/client'
-import { billingApi, type Billing } from '../../api/billing'
-import { Badge, Banner, Mono, type BadgeVariant } from '../../design/components'
+import { type Billing } from '../../api/billing'
+import { useBillingList } from '../../hooks/useBilling'
+import { Badge, Banner, ListFooter, Mono, type BadgeVariant } from '../../design/components'
 import { PageHeader } from '../../shell/PageHeader'
 import styles from './customer.module.css'
 
@@ -30,25 +31,25 @@ function statusLabel(s: Billing['payment_status']): string {
 
 export function MyBilling(): JSX.Element {
   const navigate = useNavigate()
-  const [records, setRecords] = useState<Billing[]>([])
-  const [loading, setLoading] = useState(true)
-  const [error, setError] = useState<string | null>(null)
 
-  const load = useCallback(async () => {
-    setLoading(true)
-    setError(null)
-    try {
-      const result = await billingApi.list()
-      setRecords(result.data)
-    } catch (err) {
-      setError(err instanceof ApiError ? err.message : 'Could not load billing records.')
-    } finally {
-      setLoading(false)
-    }
-  }, [])
+  // `useBillingList` is the same paginated hook the staff BillingList uses — the
+  // backend force-scopes GET /v1/billing to the caller's own customer_id for the
+  // customer role, so no client-side filter is needed or trusted here.
+  const {
+    items: records,
+    isLoading: loading,
+    error: loadError,
+    hasMore,
+    loadMore,
+    isFetchingMore,
+    totalCount,
+  } = useBillingList()
 
-  // eslint-disable-next-line react-hooks/set-state-in-effect -- hand-rolled fetch effect; migrate to TanStack Query (master plan 7.150)
-  useEffect(() => { void load() }, [load])
+  const error = loadError
+    ? loadError instanceof ApiError
+      ? loadError.message
+      : 'Could not load billing records.'
+    : null
 
   return (
     <div className={styles.page}>
@@ -100,6 +101,15 @@ export function MyBilling(): JSX.Element {
           )
         })}
       </div>
+
+      <ListFooter
+        shown={records.length}
+        total={totalCount}
+        hasMore={hasMore}
+        loading={isFetchingMore}
+        onLoadMore={loadMore}
+        noun="billing records"
+      />
     </div>
   )
 }

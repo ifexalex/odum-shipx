@@ -84,6 +84,23 @@ export function useBranding(enabled = true) {
   return { ...query, branding: query.data?.branding_config ?? null }
 }
 
+/**
+ * Bank-transfer details for the customer-facing manual-payment panel.
+ *
+ * Shares `configKeys.tenantConfig()` with `useBranding` — both read the same
+ * GET /v1/tenant/config response, so the customer billing page reuses whatever
+ * the shell already fetched instead of issuing its own request.
+ */
+export function useBankTransferConfig(enabled = true) {
+  const query = useQuery({
+    queryKey: configKeys.tenantConfig(),
+    queryFn: () => configApi.getConfig(),
+    staleTime: STALE_FOREVER,
+    enabled,
+  })
+  return { ...query, bankConfig: query.data?.bank_transfer_config ?? null }
+}
+
 export function useSaveBranding() {
   const qc = useQueryClient()
   return useMutation({

@@ -625,7 +625,7 @@ Test files live in `infrastructure/aws/tests/`. Add new `.tftest.hcl` files for 
 PYTHONPATH=. python3 -m pytest tests/unit/ -v
 ```
 
-All unit tests use `unittest.mock` — no database or Moto needed. Should show 356 passed.
+All unit tests use `unittest.mock` — no database or Moto needed. Should show **1400 passed** (this read 356 until 2026-11-07, which had been stale for a long time).
 
 ### Integration tests (containers must be running)
 
@@ -633,6 +633,29 @@ All unit tests use `unittest.mock` — no database or Moto needed. Should show 3
 set -a; source .env.local; set +a
 PYTHONPATH=. python3 -m pytest tests/integration/ -v
 ```
+
+### Frontend checks
+
+```bash
+cd frontend
+npm run typecheck   # tsc -b --noEmit
+npm run lint        # 0 errors, 6 known warnings
+npx vitest run      # 958 passed / 145 files
+```
+
+**Use `npm run typecheck`, never a bare `npx tsc --noEmit`.** `frontend/tsconfig.json`
+is a solution-style config — `"files": []` plus references to `tsconfig.app.json`
+and `tsconfig.node.json` — so plain `tsc` resolves **zero input files**, prints
+nothing and exits 0. It looks exactly like a clean typecheck while having checked
+nothing at all. Only build mode (`tsc -b`) follows project references, which is
+what the npm script and CI (`frontend-ci.yml`) both run.
+
+Two follow-on traps worth knowing:
+
+- `tsc -b` is **incremental**. After fixing an error it may report success from
+  cache without re-reading the file. Add `--force` when you need certainty.
+- `npm run typecheck | tail` reports **`tail`'s** exit code, not tsc's. Redirect
+  to a file and check `$?` directly, or read the output.
 
 ### With coverage report
 

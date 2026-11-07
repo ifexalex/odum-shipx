@@ -1878,3 +1878,51 @@ and wire-shape parity — both responses diffed key-for-key, no missing keys, no
 extra keys, no differing values. The off-page failure itself never reproduces
 locally: the seed holds 3 billing rows against a page size of 50, which is why
 the bug survived this long.
+
+---
+
+## A `QueryClientProvider` is required once a page uses queries (2026-11-07, master plan 7.155)
+
+Migrating a page off hand-rolled fetch effects onto TanStack Query breaks its
+existing tests in a way that looks unrelated to the change:
+
+```
+Error: No QueryClient set, use QueryClientProvider to set one
+    at useQueryClient (.../QueryClientProvider.js:15:11)
+    at MyBillingDetail (src/pages/customer/MyBillingDetail.tsx:258:14)
+```
+
+The render helper needs the provider, with retries off so a failing stub fails
+fast instead of being retried three times:
+
+```tsx
+function renderPage() {
+  const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+  render(
+    <QueryClientProvider client={queryClient}>
+      {/* …router + routes… */}
+    </QueryClientProvider>,
+  )
+  return { queryClient }
+}
+```
+
+`BillingDetail.test.tsx` already followed this shape; `MyBillingDetail.test.tsx`
+and `MyBillingDetailPaymentClaim.test.tsx` gained it in 7.155.
+
+**Also stub every endpoint the page newly reads through a query.** An effect that
+swallowed its own failure (`.catch(() => setX(null))`) becomes a query that
+retries and logs, so `configApi.getConfig` and `paymentClaimApi.listForBilling`
+both needed mocks they had not needed before.
+
+### `npx tsc --noEmit` is not a typecheck in this repo
+
+`frontend/tsconfig.json` is solution-style — `"files": []` plus references to
+`tsconfig.app.json` and `tsconfig.node.json` — so a bare `tsc` resolves **zero
+input files**, prints nothing and exits 0. That is indistinguishable from a
+clean run and it checked nothing.
+
+Use **`npm run typecheck`** (`tsc -b --noEmit`), which is also what
+`frontend-ci.yml` runs. `tsc -b` is incremental, so pass `--force` when you need
+certainty after a fix, and read the output rather than piping to `tail` and
+checking `$?` — that reports `tail`'s status, not tsc's.
