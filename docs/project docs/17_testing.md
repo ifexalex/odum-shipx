@@ -1786,3 +1786,62 @@ already stubbed, `IntersectionObserver` is used only behind a
 (`LandingPage.tsx`), and `scrollTo`/`requestIdleCallback` are unused. When adding
 a browser API jsdom lacks, stub it in `setup.ts` **or** feature-check it; a call
 inside a timer or rAF will otherwise surface as someone else's flaky test.
+
+## A one-shot `isVisible()` inside `test.skip()` silently deletes coverage (2026-11-07)
+
+15 of 101 `local-stack` specs skipped on a **freshly seeded** stack, i.e. they
+were never testing anything — behind a green CI check. The cause was not seed
+data. Several specs decided availability with:
+
+```js
+test.skip(!(await btn.isVisible().catch(() => false)), '...')
+```
+
+`isVisible()` is a **one-shot check with no retry**, so "the page has not
+finished rendering" was recorded as "this action does not apply".
+
+Proved rather than inferred — on the billing detail page, for a `paid` billing
+as `tenant_admin`:
+
+```
+PROBE gen visible immediately: false
+PROBE gen visible after 3s:    true        (same URL)
+```
+
+The action was available throughout. And because the **first** test in the
+release-note chain gave up early, every later test in it skipped on "run the
+generation test first" — **one premature check cost eight tests**.
+
+**A settle marker is not a fix, and was tried first.** The unconditional
+`Export` button in the same action row becomes visible *before* the conditional
+actions beside it, so waiting on Export still reported "Generate release note"
+as missing.
+
+Use `actionAvailable(page, /name/i)` from `e2e/support/roleSwitch.ts`: it waits
+for the action itself and only then answers. When an action genuinely is
+unavailable the caller pays the timeout once — **a slow skip is cheap, a false
+skip is invisible lost coverage.**
+
+CI, clean environment: **15 skipped / 86 passed → 7 skipped / 94 passed.**
+
+### The suite is still not idempotent
+
+Measured across two consecutive runs without `make stack` in between:
+
+| Run | Skipped |
+|---|---|
+| 1 — fresh `make stack` | 15 |
+| 2 — same DB, after run 1 | 17 |
+
+Run 1 consumed the preconditions for two `bulk-packing-list-actions` tests and
+a manifest verification, so **coverage degrades silently on re-run**. Re-seed
+with `make stack` before trusting a local run. The remaining 7 skips are
+genuine missing fixtures — the seed creates no release notes, and the claims
+and refunds it creates are not in the states those specs need
+(`scripts/seed.py` has no `create_claim` / `create_refund` / `create_release_note`).
+
+### Local-stack runs need the backend env
+
+`set -a; source .env.local; set +a` from the repo root **in the same shell**
+before `npx playwright test`, or `mint_test_invite.py` fails and takes the auth
+specs with it. CI does this; it is easy to forget locally.
