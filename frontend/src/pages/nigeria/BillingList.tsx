@@ -57,11 +57,20 @@ function fmtNgn(val: string | number | null | undefined): string {
   return `₦${n.toLocaleString('en-NG', { maximumFractionDigits: 0 })}`
 }
 
-function rowAction(b: Billing, navigate: (p: string) => void): JSX.Element {
+// `openBilling` must carry the record in router state. BillingDetail reads
+// `location.state.billing` and only falls back to load() otherwise — and that
+// fallback fetches the FIRST PAGE of the billing list and searches it by id
+// client-side, because the API has no GET /v1/billing/{billing-id}. With the
+// default page size of 20 (shared/pagination.py), any older billing opened
+// without state renders "Billing record not found."
+//
+// AdminCustomerDetail already passes state when opening a billing; this list
+// was the outlier that did not.
+function rowAction(b: Billing, openBilling: (b: Billing) => void): JSX.Element {
   if (b.payment_status === 'unpaid' || b.payment_status === 'partially_paid') {
     return (
       <Button variant="accent" size="sm" icon="coin"
-        onClick={(e) => { e.stopPropagation(); navigate(`/billing/${b.id}`) }}>
+        onClick={(e) => { e.stopPropagation(); openBilling(b) }}>
         Record payment
       </Button>
     )
@@ -69,14 +78,14 @@ function rowAction(b: Billing, navigate: (p: string) => void): JSX.Element {
   if (b.payment_status === 'paid') {
     return (
       <Button variant="secondary" size="sm" icon="card"
-        onClick={(e) => { e.stopPropagation(); navigate(`/billing/${b.id}`) }}>
+        onClick={(e) => { e.stopPropagation(); openBilling(b) }}>
         Release
       </Button>
     )
   }
   return (
     <Button variant="ghost" size="sm"
-      onClick={(e) => { e.stopPropagation(); navigate(`/billing/${b.id}`) }}>
+      onClick={(e) => { e.stopPropagation(); openBilling(b) }}>
       View
     </Button>
   )
@@ -84,6 +93,11 @@ function rowAction(b: Billing, navigate: (p: string) => void): JSX.Element {
 
 export function BillingList(): JSX.Element {
   const navigate = useNavigate()
+  // Carries the record in router state so BillingDetail does not fall back to
+  // its paginated list-scan — see rowAction above.
+  const openBilling = (b: Billing): void => {
+    void navigate(`/billing/${b.id}`, { state: { billing: b } })
+  }
   const { session } = useSession()
   // Single-select via the top chips; the Filters panel below offers a
   // granular multi-select over the same state (same idiom as
@@ -299,7 +313,7 @@ export function BillingList(): JSX.Element {
                   : '—'}
               </span>,
               <div key="action" className={styles.rowActions}>
-                {rowAction(b, navigate)}
+                {rowAction(b, openBilling)}
               </div>,
             ],
           }))}

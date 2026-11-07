@@ -22,7 +22,7 @@
  * real seeded data (not a mock) makes this necessary.
  */
 import { expect, test } from '@playwright/test'
-import { goToViaNav, settleNetwork, switchRole } from '../support/roleSwitch'
+import { actionAvailable, goToViaNav, settleNetwork, switchRole } from '../support/roleSwitch'
 
 const CUSTOMER_NAME = 'Ngozi Adeyemi'
 const CONTAINER_NUMBER = 'ACME001001'
@@ -65,7 +65,7 @@ test.describe('release note — count-based generation with warehouse and docume
     await expect(page.getByText('Outstanding', { exact: true }).first()).toBeVisible()
 
     const generateBtn = page.getByRole('button', { name: /generate release note/i })
-    test.skip(!(await generateBtn.isVisible().catch(() => false)), 'No "Generate release note" action available for this billing status')
+    test.skip(!(await actionAvailable(page, /generate release note/i)), 'No "Generate release note" action available for this billing status')
 
     await generateBtn.click()
     const dialog = page.getByRole('dialog')
@@ -135,7 +135,7 @@ test.describe('release note — count-based generation with warehouse and docume
     await expect(page).toHaveURL(/\/release-notes\//)
 
     const pickupBtn = page.getByRole('button', { name: /^record pickup$/i })
-    test.skip(!(await pickupBtn.isVisible().catch(() => false)), 'Already picked up — nothing left to test')
+    test.skip(!(await actionAvailable(page, /^record pickup$/i)), 'Already picked up — nothing left to test')
 
     await pickupBtn.click()
     const dialog = page.getByRole('dialog')

@@ -8,7 +8,7 @@
  * customer role." Untested until now.
  */
 import { expect, test } from '@playwright/test'
-import { settleNetwork, switchRole } from '../support/roleSwitch'
+import { actionAvailable, settleNetwork, switchRole } from '../support/roleSwitch'
 
 test.describe('customer refund request', () => {
   test('requesting a refund from billing succeeds with the customer correctly attributed', async ({ page }) => {
@@ -24,7 +24,7 @@ test.describe('customer refund request', () => {
     await expect(page).toHaveURL(/\/my-billing\//)
 
     const requestBtn = page.getByRole('button', { name: /request.*refund/i })
-    test.skip(!(await requestBtn.isVisible().catch(() => false)), 'No "Request refund" action on this billing record')
+    test.skip(!(await actionAvailable(page, /request.*refund/i)), 'No "Request refund" action on this billing record')
     await requestBtn.click()
     await expect(page).toHaveURL(/\/refund-request/)
 

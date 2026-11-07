@@ -189,3 +189,37 @@ export function dataRows(page: Page): Locator {
     .locator('table tbody tr:not([data-skeleton-row])')
     .filter({ has: page.locator('td:nth-child(2)') })
 }
+
+/**
+ * Is a page action genuinely unavailable, or has it simply not rendered yet?
+ *
+ * `locator.isVisible()` is a ONE-SHOT check with no retry. Several specs used it
+ * directly inside `test.skip(...)`, which silently turned "the page had not
+ * finished rendering" into "this action does not apply" — so the test reported
+ * as skipped and never ran. On a freshly seeded stack that hid real coverage:
+ * the whole release-note chain skipped because the first test in it gave up
+ * before the action row rendered.
+ *
+ * Waiting for a settle marker is not enough either. On the billing detail page
+ * the unconditional Export button becomes visible BEFORE the conditional
+ * actions beside it, so waiting on Export still reported "Generate release
+ * note" as missing when it appeared ~instants later.
+ *
+ * This waits for the action itself and only then answers. When the action
+ * really is unavailable the caller pays `timeout` once before skipping, which
+ * is the right trade: a slow skip is cheap, a false skip is invisible lost
+ * coverage.
+ */
+export async function actionAvailable(
+  page: import('@playwright/test').Page,
+  name: RegExp,
+  timeout = 7_000,
+): Promise<boolean> {
+  const button = page.getByRole('button', { name }).first()
+  try {
+    await button.waitFor({ state: 'visible', timeout })
+    return true
+  } catch {
+    return false
+  }
+}

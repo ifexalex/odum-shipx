@@ -8,7 +8,7 @@
  * ones to test the staff-side workflows against.
  */
 import { expect, test } from '@playwright/test'
-import { dataRows, goToViaNav, settleNetwork, switchRole } from '../support/roleSwitch'
+import { actionAvailable, dataRows, goToViaNav, settleNetwork, switchRole } from '../support/roleSwitch'
 
 const CONTAINER_NUMBER = 'ACME001002'
 const CARTON_TAGS = 'ACME-002-001, ACME-002-002'
@@ -87,7 +87,7 @@ test.describe('claims and refunds', () => {
 
     await expect(page.getByText('Claim details')).toBeVisible()
     const resolveBtn = page.getByRole('button', { name: /resolve claim/i })
-    test.skip(!(await resolveBtn.isVisible().catch(() => false)), 'Claim already resolved by a previous run')
+    test.skip(!(await actionAvailable(page, /resolve claim/i)), 'Claim already resolved by a previous run')
     await resolveBtn.click()
 
     const resolveDialog = page.getByRole('dialog')
@@ -137,7 +137,7 @@ test.describe('claims and refunds', () => {
     await expect(page.getByText('Claim details')).toBeVisible()
 
     const resolveBtn = page.getByRole('button', { name: /resolve claim/i })
-    test.skip(!(await resolveBtn.isVisible().catch(() => false)), 'Claim not resolvable in its current state')
+    test.skip(!(await actionAvailable(page, /resolve claim/i)), 'Claim not resolvable in its current state')
     await resolveBtn.click()
 
     const resolveDialog = page.getByRole('dialog')
@@ -187,7 +187,7 @@ test.describe('refund review, approve, and reject', () => {
     await expect(page.getByRole('heading', { level: 1 })).toBeVisible()
 
     const approveBtn = page.getByRole('button', { name: /^approve$/i })
-    test.skip(!(await approveBtn.isVisible().catch(() => false)), 'No approvable refund in this state')
+    test.skip(!(await actionAvailable(page, /^approve$/i)), 'No approvable refund in this state')
     await approveBtn.click()
 
     const approveDialog = page.getByRole('dialog')
@@ -210,7 +210,7 @@ test.describe('refund review, approve, and reject', () => {
     await expect(page.getByRole('heading', { level: 1 })).toBeVisible()
 
     const rejectBtn = page.getByRole('button', { name: /^reject$/i })
-    test.skip(!(await rejectBtn.isVisible().catch(() => false)), 'No rejectable refund in this state')
+    test.skip(!(await actionAvailable(page, /^reject$/i)), 'No rejectable refund in this state')
     await rejectBtn.click()
 
     const rejectDialog = page.getByRole('dialog')
