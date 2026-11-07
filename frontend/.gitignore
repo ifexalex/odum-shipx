@@ -12,6 +12,11 @@ dist
 dist-ssr
 *.local
 
+# Vite dependency cache. The real cache lives in node_modules/.vite; this
+# top-level copy is a stale leftover that was committed by accident in #63
+# (2.7 MB) and kept churning `git status` as vite rewrote it.
+/.vite/
+
 # Playwright
 /test-results/
 /playwright-report/
