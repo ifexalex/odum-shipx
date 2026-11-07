@@ -86,3 +86,24 @@ for (const name of ['localStorage', 'sessionStorage'] as const) {
     })
   }
 }
+
+// jsdom does not implement Element.prototype.scrollIntoView — it is absent, not
+// a no-op. Product code that calls it is correct in a browser; here the call
+// throws `TypeError: ... is not a function`.
+//
+// That matters more than it looks. Warehouses.tsx scrolls its error banner into
+// view from inside a requestAnimationFrame, so the throw happens AFTER the test's
+// assertions have passed, in a callback nothing awaits. Vitest reports it as an
+// unhandled error attributed to whichever file happened to be running, and only
+// when the frame fires before the environment tears down — which is why it
+// surfaced intermittently (1 error, then 4, then real test failures in
+// App.test.tsx and CompanySettings.test.tsx that passed in isolation) and never
+// reproduced on demand.
+//
+// Note `el?.scrollIntoView(...)` does NOT guard this: the optional chain tests
+// the element, not the method.
+if (typeof Element !== 'undefined' && !Element.prototype.scrollIntoView) {
+  Element.prototype.scrollIntoView = function scrollIntoView(): void {
+    /* no-op: layout is not simulated in jsdom */
+  }
+}
