@@ -7,10 +7,11 @@
  * arrival-warehouse picker when creating a packing list, and the release-note /
  * pickup letterhead. tenant_admin only (route-guarded).
  */
-import { useCallback, useEffect, useRef, useState, type JSX } from 'react'
+import { useCallback, useRef, useState, type JSX } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { ApiError } from '../../api/client'
 import { warehousesApi, type CreateWarehouseInput, type Warehouse } from '../../api/warehouses'
+import { useSetDefaultWarehouse, useWarehouses } from '../../hooks/useWarehouses'
 import {
   Badge,
   Banner,
@@ -182,9 +183,7 @@ function WarehouseModal({ existing, onCancel, onSuccess }: WarehouseModalProps):
 
 export function Warehouses(): JSX.Element {
   const navigate = useNavigate()
-  const [warehouses, setWarehouses] = useState<Warehouse[]>([])
-  const [loading, setLoading] = useState(true)
-  const [error, setError] = useState<string | null>(null)
+  const [actionError, setActionError] = useState<string | null>(null)
   const [modal, setModal] = useState<{ open: boolean; existing: Warehouse | null }>({
     open: false,
     existing: null,
@@ -198,37 +197,39 @@ export function Warehouses(): JSX.Element {
   const bannerRef = useRef<HTMLDivElement | null>(null)
 
   const fail = useCallback((message: string) => {
-    setError(message)
+    setActionError(message)
     // After paint, so the banner exists to scroll to.
     requestAnimationFrame(() => {
       bannerRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' })
     })
   }, [])
 
-  const load = useCallback(async () => {
-    setLoading(true)
-    setError(null)
-    try {
-      setWarehouses(await warehousesApi.list())
-    } catch (err) {
-      fail(err instanceof ApiError ? err.message : 'Could not load warehouses.')
-    } finally {
-      setLoading(false)
-    }
-  }, [fail])
+  // 7.150 flagged this page specifically: it hand-rolled a loader calling
+  // warehousesApi.list() directly while `useWarehouses` already existed and
+  // read the very same warehouseKeys.all slot.
+  const { data: warehouses = [], isLoading: loading, error: loadError } = useWarehouses()
 
-  useEffect(() => {
-    // eslint-disable-next-line react-hooks/set-state-in-effect -- hand-rolled fetch effect; migrate to TanStack Query (master plan 7.150)
-    void load()
-  }, [load])
+  // `handleSetDefault` previously called warehousesApi.setDefault directly,
+  // duplicating this mutation hook — the other half of what 7.150 flagged here.
+  const setDefaultWarehouse = useSetDefaultWarehouse()
+
+  // A load failure renders the banner without the scroll-into-view that `fail`
+  // does. That scroll exists for a row action failing below the fold; when the
+  // list itself could not load there are no rows to be scrolled away from.
+  const error =
+    actionError ??
+    (loadError
+      ? loadError instanceof ApiError
+        ? loadError.message
+        : 'Could not load warehouses.'
+      : null)
 
   async function handleSetDefault(id: string): Promise<void> {
     setBusyId(id)
-    setError(null)
+    setActionError(null)
     setNotice(null)
     try {
-      const updated = await warehousesApi.setDefault(id)
-      await load()
+      const updated = await setDefaultWarehouse.mutateAsync(id)
       // Confirm explicitly. The only previous signal was the row's badge
       // changing, which is easy to miss and indistinguishable from nothing
       // having happened.
@@ -252,11 +253,10 @@ export function Warehouses(): JSX.Element {
   async function handleRemove(warehouse: Warehouse): Promise<void> {
     if (!window.confirm(`Permanently delete “${warehouse.name}”? This cannot be undone.`)) return
     setBusyId(warehouse.id)
-    setError(null)
+    setActionError(null)
     setNotice(null)
     try {
       await warehousesApi.remove(warehouse.id)
-      await load()
       setNotice(`${warehouse.name} was deleted.`)
     } catch (err) {
       if (err instanceof ApiError && err.ruleId === 'WAREHOUSE_IN_USE') {
@@ -266,7 +266,6 @@ export function Warehouses(): JSX.Element {
         if (retire) {
           try {
             await warehousesApi.deactivate(warehouse.id)
-            await load()
             setNotice(`${warehouse.name} was retired. Its name is free to reuse.`)
           } catch (retireErr) {
             fail(
@@ -387,7 +386,6 @@ export function Warehouses(): JSX.Element {
           onCancel={() => setModal({ open: false, existing: null })}
           onSuccess={() => {
             setModal({ open: false, existing: null })
-            void load()
           }}
         />
       )}

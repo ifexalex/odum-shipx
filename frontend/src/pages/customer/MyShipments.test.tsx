@@ -7,6 +7,7 @@
 import { render, screen } from '@testing-library/react'
 import { MemoryRouter } from 'react-router-dom'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { withQuery } from '../../test/queryWrapper'
 import { billingApi } from '../../api/billing'
 import { packingListApi } from '../../api/packingList'
 import { useSession } from '../../auth/useSession'
@@ -18,7 +19,7 @@ vi.mock('../../api/packingList', async (importOriginal) => {
 })
 vi.mock('../../api/billing', async (importOriginal) => {
   const original = await importOriginal<typeof import('../../api/billing')>()
-  return { ...original, billingApi: { ...original.billingApi, listForCustomer: vi.fn() } }
+  return { ...original, billingApi: { ...original.billingApi, list: vi.fn(), listForCustomer: vi.fn() } }
 })
 vi.mock('../../auth/useSession')
 
@@ -39,9 +40,11 @@ function shipment(id: string, reference: string, status: string) {
 
 function renderPage() {
   return render(
-    <MemoryRouter>
-      <MyShipments />
-    </MemoryRouter>,
+    withQuery(
+      <MemoryRouter>
+        <MyShipments />
+      </MemoryRouter>,
+    ),
   )
 }
 
@@ -51,7 +54,35 @@ describe('MyShipments — all active shipments render, not just the latest', () 
     vi.mocked(useSession).mockReturnValue({
       session: { userId: 'c1', name: 'Ify Ugwuoke' },
     } as never)
-    vi.mocked(billingApi.listForCustomer).mockResolvedValue([])
+    vi.mocked(billingApi.list).mockResolvedValue({
+      data: [],
+      meta: { pagination: { has_more: false, next_cursor: null, total_count: 0 } },
+    } as never)
+  })
+
+  // Regression guard for the 7.150 find: the billing half called
+  // billingApi.listForCustomer(session.userId), but that endpoint takes a
+  // *customer* id and the backend compares it against the customer row resolved
+  // from the caller's user_id — so it returned 403 on every call (verified live
+  // against the local stack). Promise.allSettled swallowed it and billing was
+  // always [], so the outstanding-balance greeting silently always read zero.
+  it('reads billing from the force-scoped list endpoint, never by user id', async () => {
+    vi.mocked(packingListApi.list).mockResolvedValue({
+      data: [shipment('pl1', 'PL-001', 'sealed')],
+      meta: { pagination: { has_more: false, next_cursor: null, total_count: 1 } },
+    } as never)
+    vi.mocked(billingApi.list).mockResolvedValue({
+      data: [{ container_id: 'cont-pl1', outstanding_ngn: '50656' }],
+      meta: { pagination: { has_more: false, next_cursor: null, total_count: 1 } },
+    } as never)
+
+    renderPage()
+
+    // The outstanding total reaches the greeting, which it never could while
+    // the request 403'd.
+    expect(await screen.findByText(/outstanding balance to settle/)).toBeInTheDocument()
+    expect(billingApi.list).toHaveBeenCalled()
+    expect(billingApi.listForCustomer).not.toHaveBeenCalled()
   })
 
   it('renders a card for every active shipment, not just the first', async () => {

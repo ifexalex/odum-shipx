@@ -10,6 +10,7 @@ import { render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { MemoryRouter, Route, Routes } from 'react-router-dom'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { withQuery } from '../../test/queryWrapper'
 import { billingApi } from '../../api/billing'
 import { packingListApi } from '../../api/packingList'
 import { MyShipmentDetail } from './MyShipmentDetail'
@@ -63,13 +64,15 @@ const BILLING = {
 
 function renderPage() {
   return render(
-    <MemoryRouter initialEntries={['/my-shipments/pl1']}>
-      <Routes>
-        <Route path="/my-shipments/:code" element={<MyShipmentDetail />} />
-        <Route path="/my-billing/:id" element={<div>Billing detail page</div>} />
-        <Route path="/my-claims/new" element={<div>File claim wizard</div>} />
-      </Routes>
-    </MemoryRouter>,
+    withQuery(
+      <MemoryRouter initialEntries={['/my-shipments/pl1']}>
+        <Routes>
+          <Route path="/my-shipments/:code" element={<MyShipmentDetail />} />
+          <Route path="/my-billing/:id" element={<div>Billing detail page</div>} />
+          <Route path="/my-claims/new" element={<div>File claim wizard</div>} />
+        </Routes>
+      </MemoryRouter>,
+    ),
   )
 }
 
