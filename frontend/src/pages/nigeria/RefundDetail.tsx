@@ -1,7 +1,10 @@
-import { useCallback, useEffect, useState, type JSX } from 'react'
+import { useQuery, useQueryClient } from '@tanstack/react-query'
+import { useState, type JSX } from 'react'
 import { useLocation, useNavigate, useParams } from 'react-router-dom'
 import { ApiError } from '../../api/client'
 import { refundsApi, type AccountsReviewInput, type ApproveRefundInput, type Refund, type RefundStatus } from '../../api/refunds'
+import { refundKeys } from '../../api/keys'
+import { STALE_30S } from '../../lib/queryClient'
 import {
   approvalLevelLabel,
   canApproveRefund,
@@ -392,33 +395,29 @@ export function RefundDetail(): JSX.Element {
   const { session } = useSession()
   const role = session?.role ?? 'nigeria_office_staff'
 
+  const qc = useQueryClient()
   const stateRefund = (location.state as { refund?: Refund } | null)?.refund ?? null
-  const [refund, setRefund] = useState<Refund | null>(stateRefund)
-  const [loading, setLoading] = useState(stateRefund === null)
-  const [error, setError] = useState<string | null>(null)
+  const { data: refund = null, isLoading: loading, error: loadError } = useQuery({
+    queryKey: refundKeys.detail(id ?? ''),
+    queryFn: () => refundsApi.get(id!),
+    enabled: !!id,
+    ...(stateRefund ? { initialData: stateRefund } : {}),
+    staleTime: STALE_30S,
+  })
+  const applyUpdated = (updated: Refund): void => {
+    qc.setQueryData(refundKeys.detail(id ?? ''), updated)
+  }
+
+  const error = loadError
+    ? loadError instanceof ApiError
+      ? loadError.message
+      : 'Could not load this refund request.'
+    : null
 
   const [showReview, setShowReview] = useState(false)
   const [showApprove, setShowApprove] = useState(false)
   const [showReject, setShowReject] = useState(false)
 
-  const load = useCallback(async () => {
-    if (!id) return
-    setLoading(true)
-    setError(null)
-    try {
-      const result = await refundsApi.get(id)
-      setRefund(result)
-    } catch (err) {
-      setError(err instanceof ApiError ? err.message : 'Could not load this refund request.')
-    } finally {
-      setLoading(false)
-    }
-  }, [id])
-
-  useEffect(() => {
-    // eslint-disable-next-line react-hooks/set-state-in-effect -- hand-rolled fetch effect; migrate to TanStack Query (master plan 7.150)
-    if (stateRefund === null) void load()
-  }, [load, stateRefund])
 
   if (loading && !refund) return <div className={styles.loadingState}>Loading refund…</div>
   if (error && !refund) {
@@ -540,7 +539,7 @@ export function RefundDetail(): JSX.Element {
         <AccountsReviewModal
           refund={refund}
           onCancel={() => setShowReview(false)}
-          onSuccess={(updated) => { setShowReview(false); setRefund(updated) }}
+          onSuccess={(updated) => { setShowReview(false); applyUpdated(updated) }}
         />
       )}
       {showApprove && (
@@ -548,14 +547,14 @@ export function RefundDetail(): JSX.Element {
           refund={refund}
           role={role}
           onCancel={() => setShowApprove(false)}
-          onSuccess={(updated) => { setShowApprove(false); setRefund(updated) }}
+          onSuccess={(updated) => { setShowApprove(false); applyUpdated(updated) }}
         />
       )}
       {showReject && (
         <RejectModal
           refundId={refund.id}
           onCancel={() => setShowReject(false)}
-          onSuccess={(updated) => { setShowReject(false); setRefund(updated) }}
+          onSuccess={(updated) => { setShowReject(false); applyUpdated(updated) }}
         />
       )}
     </div>

@@ -5,9 +5,12 @@
  * released-with-outstanding billings. tenant_admin can exempt an entry
  * (the backend rolls the debt forward as a new outstanding row).
  */
-import { useCallback, useEffect, useState, type JSX } from 'react'
+import { useQuery } from '@tanstack/react-query'
+import { useState, type JSX } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { carryoverApi, type Carryover, type CarryoverStatus } from '../../api/billing'
+import { billingKeys } from '../../api/keys'
+import { STALE_30S } from '../../lib/queryClient'
 import { ApiError } from '../../api/client'
 import { useSession } from '../../auth/useSession'
 import { Badge, Banner, Button, Card, Chip, Field, Mono, StatCard, Table, UserCell, type BadgeVariant } from '../../design/components'
@@ -88,31 +91,27 @@ function ExemptModal({ carryover, onCancel, onSuccess }: { carryover: Carryover;
 export function CarryoverLedger(): JSX.Element {
   const navigate = useNavigate()
   const { session } = useSession()
-  const [carryovers, setCarryovers] = useState<Carryover[]>([])
   const [statusFilter, setStatusFilter] = useState<CarryoverStatus | null>(null)
-  const [loading, setLoading] = useState(true)
-  const [error, setError] = useState<string | null>(null)
   const [exempting, setExempting] = useState<Carryover | null>(null)
 
   const canExempt = session?.role === 'tenant_admin'
 
-  const load = useCallback(async () => {
-    setLoading(true)
-    setError(null)
-    try {
-      const result = await carryoverApi.list(statusFilter ? { status: statusFilter } : {})
-      setCarryovers(result.data)
-    } catch (err) {
-      setError(err instanceof ApiError ? err.message : 'Could not load the carryover ledger.')
-    } finally {
-      setLoading(false)
-    }
-  }, [statusFilter])
+  // The status filter is part of the key, so switching it swaps cached pages
+  // instead of refetching into shared state.
+  const listParams = statusFilter ? { status: statusFilter } : {}
+  const { data: page, isLoading: loading, error: loadError } = useQuery({
+    queryKey: billingKeys.carryovers(listParams),
+    queryFn: () => carryoverApi.list(listParams),
+    staleTime: STALE_30S,
+  })
+  const carryovers = page?.data ?? []
 
-  useEffect(() => {
-    // eslint-disable-next-line react-hooks/set-state-in-effect -- hand-rolled fetch effect; migrate to TanStack Query (master plan 7.150)
-    void load()
-  }, [load])
+  const error = loadError
+    ? loadError instanceof ApiError
+      ? loadError.message
+      : 'Could not load the carryover ledger.'
+    : null
+
 
   const outstandingTotal = carryovers
     .filter((c) => c.status === 'outstanding')
@@ -183,7 +182,6 @@ export function CarryoverLedger(): JSX.Element {
           onCancel={() => setExempting(null)}
           onSuccess={() => {
             setExempting(null)
-            void load()
           }}
         />
       )}

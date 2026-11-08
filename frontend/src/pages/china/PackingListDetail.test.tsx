@@ -2,6 +2,7 @@ import { render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { MemoryRouter, Route, Routes } from 'react-router-dom'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { withQuery } from '../../test/queryWrapper'
 import { SessionContext, type SessionContextValue } from '../../auth/SessionContext'
 import type { Session, UserRole } from '../../auth/types'
 import { packingListApi, type PackingList } from '../../api/packingList'
@@ -82,13 +83,15 @@ function plStub(overrides: Partial<PackingList> = {}): PackingList {
 
 function renderPage(role: UserRole, userId: string) {
   return render(
-    <SessionContext.Provider value={makeContextValue(role, userId)}>
-      <MemoryRouter initialEntries={['/packing-lists/pl1']}>
-        <Routes>
-          <Route path="/packing-lists/:id" element={<PackingListDetail />} />
-        </Routes>
-      </MemoryRouter>
-    </SessionContext.Provider>,
+    withQuery(
+      <SessionContext.Provider value={makeContextValue(role, userId)}>
+        <MemoryRouter initialEntries={['/packing-lists/pl1']}>
+          <Routes>
+            <Route path="/packing-lists/:id" element={<PackingListDetail />} />
+          </Routes>
+        </MemoryRouter>
+      </SessionContext.Provider>,
+    ),
   )
 }
 

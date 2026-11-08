@@ -1,4 +1,5 @@
-import { useCallback, useEffect, useState, type JSX } from 'react'
+import { useQuery, useQueryClient } from '@tanstack/react-query'
+import { useState, type JSX } from 'react'
 import { useLocation, useNavigate, useParams } from 'react-router-dom'
 import { ApiError } from '../../api/client'
 import {
@@ -16,6 +17,8 @@ import {
   CLAIM_STATUS_ORDER,
   isTerminalClaimStatus,
 } from '../../api/claimsRules'
+import { claimKeys } from '../../api/keys'
+import { STALE_30S } from '../../lib/queryClient'
 import { useSession } from '../../auth/useSession'
 import { Action, Badge, Banner, Button, Card, Field, Kvp, Mono, type BadgeVariant } from '../../design/components'
 import { SectionHead } from '../../shell/SectionHead'
@@ -280,31 +283,32 @@ export function ClaimDetail(): JSX.Element {
   const { session } = useSession()
   const role = session?.role ?? 'nigeria_office_staff'
 
-  const stateClaim = (location.state as { claim?: Claim } | null)?.claim ?? null
-  const [claim, setClaim] = useState<Claim | null>(stateClaim)
-  const [loading, setLoading] = useState(stateClaim === null)
-  const [error, setError] = useState<string | null>(null)
+  const qc = useQueryClient()
   const [showInspect, setShowInspect] = useState(false)
   const [showResolve, setShowResolve] = useState(false)
 
-  const load = useCallback(async () => {
-    if (!id) return
-    setLoading(true)
-    setError(null)
-    try {
-      const result = await claimsApi.get(id)
-      setClaim(result)
-    } catch (err) {
-      setError(err instanceof ApiError ? err.message : 'Could not load this claim.')
-    } finally {
-      setLoading(false)
-    }
-  }, [id])
+  // Router state from ClaimList seeds the first paint; claimKeys.detail(id) is
+  // the slot the existing `useClaim` hook reads, so the two share one entry.
+  const stateClaim = (location.state as { claim?: Claim } | null)?.claim ?? null
+  const { data: claim = null, isLoading: loading, error: loadError } = useQuery({
+    queryKey: claimKeys.detail(id ?? ''),
+    queryFn: () => claimsApi.get(id!),
+    enabled: !!id,
+    ...(stateClaim ? { initialData: stateClaim } : {}),
+    staleTime: STALE_30S,
+  })
 
-  useEffect(() => {
-    // eslint-disable-next-line react-hooks/set-state-in-effect -- hand-rolled fetch effect; migrate to TanStack Query (master plan 7.150)
-    if (stateClaim === null) void load()
-  }, [load, stateClaim])
+  const error = loadError
+    ? loadError instanceof ApiError
+      ? loadError.message
+      : 'Could not load this claim.'
+    : null
+
+  // The inspect/resolve responses carry the updated claim, so write it into the
+  // cache directly instead of replacing local state.
+  const applyUpdated = (updated: Claim): void => {
+    qc.setQueryData(claimKeys.detail(id ?? ''), updated)
+  }
 
   if (loading) return <div className={styles.loadingState}>Loading claim…</div>
   if (error || !claim) {
@@ -404,7 +408,7 @@ export function ClaimDetail(): JSX.Element {
         <StartInspectionModal
           claimId={claim.id}
           onCancel={() => setShowInspect(false)}
-          onSuccess={(updated) => { setShowInspect(false); setClaim(updated) }}
+          onSuccess={(updated) => { setShowInspect(false); applyUpdated(updated) }}
         />
       )}
       {showResolve && (
@@ -412,7 +416,7 @@ export function ClaimDetail(): JSX.Element {
           claimId={claim.id}
           role={role}
           onCancel={() => setShowResolve(false)}
-          onSuccess={(updated) => { setShowResolve(false); setClaim(updated) }}
+          onSuccess={(updated) => { setShowResolve(false); applyUpdated(updated) }}
         />
       )}
     </div>

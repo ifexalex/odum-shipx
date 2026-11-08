@@ -39,6 +39,9 @@ export const billingKeys = {
   report: (params?: Record<string, unknown>) => [...billingKeys.all, 'report', params ?? {}] as const,
   detail: (id: string) => [...billingKeys.all, 'detail', id] as const,
   forCustomer: (customerId: string) => [...billingKeys.all, 'customer', customerId] as const,
+  // GET /v1/billing/carryovers — a child of billingKeys.all, which the
+  // /v1/billing/carryovers/ invalidation rule already covers.
+  carryovers: (params?: Record<string, unknown>) => [...billingKeys.all, 'carryovers', params ?? {}] as const,
 }
 
 // ─── Claims ───────────────────────────────────────────────────────────────────

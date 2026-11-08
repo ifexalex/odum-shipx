@@ -1,8 +1,9 @@
-import { useCallback, useEffect, useState, type JSX } from 'react'
+import { useState, type JSX } from 'react'
 import { useLocation, useNavigate, useParams } from 'react-router-dom'
-import { useQueryClient } from '@tanstack/react-query'
+import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { ApiError } from '../../api/client'
 import { releaseNoteKeys } from '../../api/keys'
+import { STALE_30S } from '../../lib/queryClient'
 import { releaseNotesApi, type DelegateIdType, type PickupResult, type ReleaseNote, type RecordPickupInput } from '../../api/releaseNotes'
 import {
   canRecordPickup,
@@ -387,32 +388,25 @@ export function ReleaseNoteDetail(): JSX.Element {
   const role = session?.role ?? 'nigeria_office_staff'
 
   const stateNote = (location.state as { note?: ReleaseNote } | null)?.note ?? null
-  const [note, setNote] = useState<ReleaseNote | null>(stateNote)
-  const [loading, setLoading] = useState(stateNote === null)
-  const [error, setError] = useState<string | null>(null)
+  const { data: note = null, isLoading: loading, error: loadError } = useQuery({
+    queryKey: releaseNoteKeys.detail(id ?? ''),
+    queryFn: () => releaseNotesApi.get(id!),
+    enabled: !!id,
+    ...(stateNote ? { initialData: stateNote } : {}),
+    staleTime: STALE_30S,
+  })
+
+  const error = loadError
+    ? loadError instanceof ApiError
+      ? loadError.message
+      : 'Could not load this release note.'
+    : null
+
   const [showPickup, setShowPickup] = useState(false)
   const [showSplit, setShowSplit] = useState(false)
   const [showReissue, setShowReissue] = useState(false)
   const [pickupResult, setPickupResult] = useState<PickupResult | null>(null)
 
-  const load = useCallback(async () => {
-    if (!id) return
-    setLoading(true)
-    setError(null)
-    try {
-      const result = await releaseNotesApi.get(id)
-      setNote(result)
-    } catch (err) {
-      setError(err instanceof ApiError ? err.message : 'Could not load this release note.')
-    } finally {
-      setLoading(false)
-    }
-  }, [id])
-
-  useEffect(() => {
-    // eslint-disable-next-line react-hooks/set-state-in-effect -- hand-rolled fetch effect; migrate to TanStack Query (master plan 7.150)
-    if (stateNote === null) void load()
-  }, [load, stateNote])
 
   if (loading && !note) return <div className={styles.loadingState}>Loading release note…</div>
   if (error && !note) {
@@ -605,7 +599,7 @@ export function ReleaseNoteDetail(): JSX.Element {
             setShowPickup(false)
             setPickupResult(result)
             if (result.release_note_status !== note.status) {
-              setNote({ ...note, status: result.release_note_status })
+              qc.setQueryData(releaseNoteKeys.detail(id ?? ''), { ...note, status: result.release_note_status })
             }
             // Ground-truth gap found live: none of this page's mutations
             // (pickup, split, reissue) ever invalidated the release-notes
@@ -623,7 +617,9 @@ export function ReleaseNoteDetail(): JSX.Element {
           onCancel={() => setShowSplit(false)}
           onSuccess={(_child) => {
             setShowSplit(false)
-            void load()
+            // releaseNoteKeys.detail(id) is a child of releaseNoteKeys.all, so
+            // this one invalidation now refreshes this page as well as the list
+            // — the explicit reload it replaced is redundant.
             void qc.invalidateQueries({ queryKey: releaseNoteKeys.all })
           }}
         />

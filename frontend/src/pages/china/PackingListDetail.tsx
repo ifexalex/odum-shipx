@@ -1,8 +1,11 @@
-import { useCallback, useEffect, useState, type JSX } from 'react'
+import { useQuery, useQueryClient } from '@tanstack/react-query'
+import { useState, type JSX } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { ApiError } from '../../api/client'
 import { formatCbm } from '../../api/decimal'
 import { packingListApi, type PackingList, type PackingListItem, type UpdatePackingListItemInput } from '../../api/packingList'
+import { packingListKeys } from '../../api/keys'
+import { STALE_30S } from '../../lib/queryClient'
 import { canApproveOrReject, canEditPackingList, computeCbm, formatPackageMix, formatPackageUnit } from '../../api/packingListRules'
 import { useSession } from '../../auth/useSession'
 import { Badge, Banner, Button, Card, ExportButton, Field, Icon, Mono, Table, type BadgeVariant } from '../../design/components'
@@ -88,9 +91,31 @@ export function PackingListDetail(): JSX.Element {
   const { id } = useParams<{ id: string }>()
   const navigate = useNavigate()
   const { session } = useSession()
-  const [pl, setPl] = useState<PackingList | null>(null)
-  const [loading, setLoading] = useState(true)
-  const [error, setError] = useState<string | null>(null)
+  const qc = useQueryClient()
+
+  const { data: pl = null, isLoading: loading, error: loadError } = useQuery({
+    queryKey: packingListKeys.detail(id ?? ''),
+    queryFn: () => packingListApi.get(id!),
+    enabled: !!id,
+    staleTime: STALE_30S,
+  })
+
+  const [actionError, setActionError] = useState<string | null>(null)
+
+  const error =
+    actionError ??
+    (loadError
+      ? loadError instanceof ApiError
+        ? loadError.message
+        : 'Could not load this packing list.'
+      : null)
+
+  // Each mutation returns the updated packing list, so it goes straight into
+  // the cache. api/cacheInvalidation.ts also invalidates packingListKeys.all
+  // for /v1/packing-lists writes, which reconciles against the server.
+  const setPl = (updated: PackingList): void => {
+    qc.setQueryData(packingListKeys.detail(id ?? ''), updated)
+  }
   const [showRejectModal, setShowRejectModal] = useState(false)
   const [actionSubmitting, setActionSubmitting] = useState(false)
   const [editing, setEditing] = useState(false)
@@ -100,34 +125,16 @@ export function PackingListDetail(): JSX.Element {
     return { description: '' }
   }
 
-  const load = useCallback(async () => {
-    if (!id) return
-    setLoading(true)
-    setError(null)
-    try {
-      const result = await packingListApi.get(id)
-      setPl(result)
-    } catch (err) {
-      setError(err instanceof ApiError ? err.message : 'Could not load this packing list.')
-    } finally {
-      setLoading(false)
-    }
-  }, [id])
-
-  useEffect(() => {
-    // eslint-disable-next-line react-hooks/set-state-in-effect -- hand-rolled fetch effect; migrate to TanStack Query (master plan 7.150)
-    void load()
-  }, [load])
 
   async function handleApprove(): Promise<void> {
     if (!pl) return
     setActionSubmitting(true)
-    setError(null)
+    setActionError(null)
     try {
       const updated = await packingListApi.approve(pl.id)
       setPl(updated)
     } catch (err) {
-      setError(err instanceof ApiError ? err.message : 'Could not approve this packing list.')
+      setActionError(err instanceof ApiError ? err.message : 'Could not approve this packing list.')
     } finally {
       setActionSubmitting(false)
     }
@@ -136,13 +143,13 @@ export function PackingListDetail(): JSX.Element {
   async function handleReject(comments: string): Promise<void> {
     if (!pl) return
     setActionSubmitting(true)
-    setError(null)
+    setActionError(null)
     try {
       const updated = await packingListApi.reject(pl.id, { comments })
       setPl(updated)
       setShowRejectModal(false)
     } catch (err) {
-      setError(err instanceof ApiError ? err.message : 'Could not reject this packing list.')
+      setActionError(err instanceof ApiError ? err.message : 'Could not reject this packing list.')
     } finally {
       setActionSubmitting(false)
     }
@@ -150,7 +157,7 @@ export function PackingListDetail(): JSX.Element {
 
   function startEditing(): void {
     if (!pl) return
-    setError(null)
+    setActionError(null)
     setEditItems(pl.items.map((item) => ({
       id: item.id,
       description: item.description,
@@ -174,12 +181,12 @@ export function PackingListDetail(): JSX.Element {
   async function handleSubmitForApproval(): Promise<void> {
     if (!pl) return
     setActionSubmitting(true)
-    setError(null)
+    setActionError(null)
     try {
       const submitted = await packingListApi.submit(pl.id)
       setPl(submitted)
     } catch (err) {
-      setError(err instanceof ApiError ? err.message : 'Could not submit this packing list for approval.')
+      setActionError(err instanceof ApiError ? err.message : 'Could not submit this packing list for approval.')
     } finally {
       setActionSubmitting(false)
     }
@@ -194,7 +201,7 @@ export function PackingListDetail(): JSX.Element {
       setPl(resubmitted)
       setEditing(false)
     } catch (err) {
-      setError(err instanceof ApiError ? err.message : 'Could not resubmit this packing list.')
+      setActionError(err instanceof ApiError ? err.message : 'Could not resubmit this packing list.')
     } finally {
       setActionSubmitting(false)
     }
@@ -277,7 +284,7 @@ export function PackingListDetail(): JSX.Element {
                 variant="danger-outline"
                 icon="x"
                 onClick={() => {
-                  setError(null)
+                  setActionError(null)
                   setShowRejectModal(true)
                 }}
               >
