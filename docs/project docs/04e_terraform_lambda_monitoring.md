@@ -164,3 +164,19 @@ set nowhere in Terraform.
 - [ ] 5 CloudWatch alarms configured
 - [ ] SNS topic for alerts
 - [ ] `terraform plan` succeeds
+
+## Database credential split (2026-11-08, migration 060)
+
+`common_env_vars` sets `DATABASE_USER = "logistics_app"` with
+`DB_SECRET_ARN = var.db_app_secret_arn`, and the shared service role's IAM reads
+**only** that secret — the service Lambdas have no reason to read the master
+credential, so least privilege means they cannot.
+
+The **migrate** Lambda is deliberately different: it keeps
+`DATABASE_USER = "postgres"` because DDL must be owner-run and `logistics_app`
+holds only DML. It also receives `APP_DB_SECRET_ARN` and reads *both* secrets,
+because migration 060 is what sets the app role's password.
+
+`APP_DB_SECRET_ARN` is an ARN, not a value: `services/migrate/handler.py`
+fetches it at runtime via `_inject_app_db_password()`, so the plaintext never
+enters a Lambda environment variable or Terraform state.

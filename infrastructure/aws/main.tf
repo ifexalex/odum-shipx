@@ -107,6 +107,7 @@ module "lambda" {
   rds_proxy_endpoint       = module.aurora.rds_proxy_endpoint
   db_name                  = module.aurora.db_name
   db_secret_arn            = module.aurora.db_secret_arn
+  db_app_secret_arn        = module.aurora.db_app_secret_arn
   cluster_arn              = module.aurora.cluster_arn
   bucket_name              = module.s3.bucket_name
   event_bus_name           = module.eventbridge.event_bus_name

@@ -44,6 +44,8 @@ from typing import Any
 import psycopg2
 import psycopg2.extras
 
+from shared.db_credentials import admin_db_params
+
 TENANT_TABLE = "tenant"
 
 # Carries a tenant_id but is NOT tenant-owned data: an onboarding lead outlives
@@ -53,12 +55,12 @@ SPECIAL_TABLES = {"tenant_onboarding_request"}
 
 
 def _connect() -> Any:
+    # The OWNER credential, and this one matters more than most: a purge run as
+    # the RLS-enforced application role would match no rows outside whatever
+    # tenant scope happened to be set, report success, and delete nothing.
+    # A purge that silently does nothing is worse than one that fails.
     return psycopg2.connect(
-        host=os.environ["DATABASE_HOST"],
-        port=os.environ.get("DATABASE_PORT", "5432"),
-        user=os.environ["DATABASE_USER"],
-        password=os.environ["DATABASE_PASSWORD"],
-        dbname=os.environ["DATABASE_NAME"],
+        **admin_db_params(),
         sslmode=os.environ.get("DATABASE_SSLMODE", "require"),
     )
 

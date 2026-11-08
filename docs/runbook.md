@@ -452,6 +452,77 @@ to prod.
 
 ---
 
+## RLS credential switchover (migration 060)
+
+The application connects as `logistics_app`, not the Aurora master user. If a
+deploy leaves the app unable to reach the database, this is the first thing to
+check.
+
+### What is in play
+
+| | role | secret | why |
+|---|---|---|---|
+| service Lambdas | `logistics_app` | `<prefix>-db-app-password` | DML only, no BYPASSRLS → RLS enforced |
+| migrate Lambda | `postgres` | `<prefix>-db-password` **and** the app secret | DDL needs the owner; it also sets the app role's password |
+| RDS Proxy | both | both auth blocks | the proxy rejects a user it holds no secret for |
+
+### Symptoms and causes
+
+**`FATAL: password authentication failed for user "logistics_app"`**
+Either migration 060 has not run in this environment, or it ran without
+`APP_DB_SECRET_ARN` (it then logs `APP_DB_SECRET_ARN not set — migration 060
+will leave logistics_app NOLOGIN` and leaves the role unable to log in, by
+design). Confirm, as the master user:
+
+```sql
+SELECT rolcanlogin, rolbypassrls FROM pg_roles WHERE rolname = 'logistics_app';
+-- expected: t | f
+```
+
+Then re-invoke the migrate Lambda. 060 is idempotent — it re-sets the same
+password from the same secret.
+
+**`PAM authentication failed` / proxy-level auth error, with the role looking
+correct in `pg_roles`**
+The RDS Proxy is missing the second `auth` block, so it will not proxy that
+user at all. Check the proxy's auth entries list both secrets.
+
+**Every query returns zero rows, no error**
+`app.current_tenant_id` is not being set on the connection. Under the canonical
+policy an unset tenant matches nothing — it **fails closed**, which is correct
+but looks like an empty database. `shared/db.py::_set_tenant` is the only place
+that sets it.
+
+**`permission denied for table <x>`**
+A table created without the app role's grants. Migration 059 ran
+`ALTER DEFAULT PRIVILEGES`, so any table created by the migration owner is
+granted automatically — a table created by some other role will not be. Fix
+forward with an explicit `GRANT` in a migration; do not grant by hand in
+production, or the next environment will differ.
+
+### Rolling back the cutover
+
+Rollback is a **config** change, not a migration — deliberately, so it needs no
+DB write under pressure:
+
+1. Set the service Lambdas' `DATABASE_USER` back to `postgres` and
+   `DB_SECRET_ARN` back to the master secret (`modules/lambda/main.tf`,
+   `common_env_vars`), and apply.
+
+That is the whole rollback. Leaving `logistics_app` able to log in is harmless;
+nothing connects as it once `DATABASE_USER` is repointed.
+
+Do **not** `alembic downgrade 059` to roll this back. The downgrade strips
+LOGIN, which breaks the app *harder* if anything is still pointed at the role,
+and it does nothing that repointing `DATABASE_USER` does not already do.
+
+### What this does NOT protect against
+
+RLS is layer 3 of four. It constrains the **database connection**, so it stops a
+query that forgets its `tenant_id` predicate from returning other tenants' rows.
+It does not validate JWT claims, check roles, or scope S3 keys — a request
+authenticated as the wrong tenant is still scoped to *that* tenant's data.
+
 ## Rollback Procedure
 
 ### Lambda rollback — re-deploy a previous tag

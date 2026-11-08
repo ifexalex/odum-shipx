@@ -114,7 +114,7 @@ Steps:
 - [x] RLS enabled on all tenant-scoped tables (25 as of migration 041: +container_document migration 022, +notification_template migration 024, +rate_history migration 025, +warehouse migration 041)
 - [x] Both SELECT and INSERT policies created
 - [x] `FORCE ROW LEVEL SECURITY` applied so RLS works for table owner too — **true only of migration 005's 21 core tables until migration 058**; the four later tables were `ENABLE`-only, see the audit below
-- [x] Application role `logistics_app` created with appropriate grants — **created, but nothing connects as it**; the application connects as the database owner, see the audit below
+- [x] Application role `logistics_app` created with appropriate grants — and **the application connects as it** since migration 060 (2026-11-08); see the switchover section below
 - [x] Seed data creates 2 tenants with realistic data
 - [x] Seed data uses correct billing status values (`unpaid`, `partially_paid`, `paid` — not `draft`/`sent`)
 - [x] Seed data includes data in various states (draft packing lists, approved ones, paid/unpaid billing)
@@ -234,21 +234,72 @@ silently doing nothing.
 None of this changes observable behaviour while the application still connects on
 a role that bypasses RLS. It makes enforcement *possible*.
 
-### What is left: the switchover
+### ~~What is left: the switchover~~ Done — migration 060, 2026-11-08
 
-One step remains, and it is a credentials/rollout change rather than a schema one:
+Both halves are in place:
 
-1. Provision a real password for `logistics_app` (Key Vault / Secrets Manager),
-   `ALTER ROLE logistics_app LOGIN`, and point `DATABASE_USER` at it via
-   Terraform. **Migrations keep running as the owner** — they create tables and
-   must not be subject to RLS.
-2. Confirm the role has neither `SUPERUSER` nor `BYPASSRLS`.
-   `tests/tenant_isolation/test_rls_enforcement.py` asserts exactly that of its
-   own probe role, so the pattern is established.
+1. **The credential** — migration `060_app_role_login.py` runs
+   `ALTER ROLE logistics_app LOGIN PASSWORD …` from `APP_DB_PASSWORD`, and
+   asserts `NOBYPASSRLS` while it is there. The password is bound as a
+   parameter into a transaction-local `SET` and quoted inside the DO block with
+   `format('%L', …)`, so it is never interpolated into SQL by Python.
+   **Unset is not an error**: the migration logs a notice and leaves the role
+   NOLOGIN, so an environment whose secret is not provisioned still migrates
+   rather than blocking its own deploy.
+2. **The cutover** — `DATABASE_USER` now points at `logistics_app` for the
+   service Lambdas, with its own Secrets Manager secret
+   (`aurora.db_app_secret_arn`) and a second `auth` block on the RDS Proxy.
+   Without that second auth block the proxy rejects the user outright, and the
+   failure looks like a bad password rather than a missing entry.
 
-Do **not** reorder these before 059 is applied: switching the role first makes
-every platform-scoped read raise, which takes out public tracking, activation and
-sign-in simultaneously.
+**Migrations keep running as the owner**, by design rather than omission: DDL
+cannot be run by a role holding only DML. The migrate Lambda therefore stays on
+`postgres` and additionally reads the app secret, because 060 is what sets the
+app role's password. Locally and in CI the same split is expressed as
+`DATABASE_ADMIN_USER` / `DATABASE_ADMIN_PASSWORD`, resolved by
+`shared/db_credentials.py` with a fallback to `DATABASE_*` so an environment
+that has not been cut over behaves exactly as before.
+
+#### What this actually changed, stated precisely
+
+Measured on the local stack before and after:
+
+| connection | rows visible in `billing` | distinct tenants |
+|---|---|---|
+| `postgres`, scoped to tenant 1 | 4 | **2 — leaked** |
+| `logistics_app`, scoped to tenant 1 | 3 | 1 |
+| `logistics_app`, scoped to tenant 2 | 1 | 1 |
+| `logistics_app`, no tenant set | 0 | — (fails closed) |
+| `logistics_app`, `PLATFORM` | 4 | 2 (deliberate, still works) |
+
+**The leak was local, not production.** `FORCE ROW LEVEL SECURITY` makes the
+table *owner* subject to its policies; only `BYPASSRLS` defeats them. The local
+Docker superuser has `BYPASSRLS`, so RLS was inert there and in CI. A managed
+RDS master user does not get `BYPASSRLS`, so with 059's `FORCE` applied the
+predicate should already have been engaging in AWS — that part is **documented
+RDS behaviour, not verified against the live cluster**, so treat it as the
+likely rather than the confirmed prior state.
+
+What the switchover buys, then, is less "turning isolation on in production" and
+more:
+
+- **Local and CI now match production**, so layer 3 is finally exercisable at
+  all — CI runs the isolation suite as the real app credential.
+- **Least privilege that does not depend on a coincidence.** The app can no
+  longer run DDL (asserted by a test), cannot read the master secret (IAM), and
+  does not rely on "the master user happens not to have BYPASSRLS".
+
+#### Not done: Azure
+
+`infrastructure/azure` still points the container app at
+`module.postgres.administrator_login`. Azure has its own `migrate` Container App
+Job, so the same owner/app split applies cleanly, but it needs Key Vault secret
+plumbing that cannot be verified from a local environment. Tracked as a separate
+item rather than shipped unverified.
+
+Do **not** reorder any of this before 059 is applied: switching the role first
+makes every platform-scoped read raise, which takes out public tracking,
+activation and sign-in simultaneously.
 
 **Verification already in place.** The RLS test suite is catalog-driven too: it
 asserts every tenant-scoped table is `FORCE`d, that no policy casts to `::uuid`

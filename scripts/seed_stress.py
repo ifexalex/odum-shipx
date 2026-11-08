@@ -18,7 +18,7 @@ Safe to re-run: no-ops if the marker container (ACME9001) already exists.
 
 Usage:
     DATABASE_HOST=localhost DATABASE_NAME=logistics \\
-    DATABASE_USER=postgres DATABASE_PASSWORD=secret \\
+    DATABASE_ADMIN_USER=postgres DATABASE_ADMIN_PASSWORD=secret \\
     python scripts/seed_stress.py
 """
 

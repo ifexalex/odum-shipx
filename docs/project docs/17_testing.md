@@ -1966,3 +1966,38 @@ parts no longer land together. `WarehouseDashboard`'s stat labels can paint a
 tick before their counts, so those assertions became `await screen.findByText(…)`.
 This is a real property of the new code, not a flake to paper over — the labels
 genuinely render first.
+
+---
+
+## Tenant isolation measured through the real credential (2026-11-08, migration 060)
+
+`tests/tenant_isolation/test_rls_enforcement.py` previously proved the
+*policies* worked, using a synthetic `probe_role` created by the fixture. That
+says nothing about whether the application connects on a role those policies
+apply to — and for most of this project's life it did not.
+
+Three cases added under `TestTheRealApplicationCredentialIsSubjectToRls`, which
+connect as `DATABASE_USER` itself:
+
+| Test | Asserts |
+|---|---|
+| `test_it_sees_only_the_scoped_tenant` | exactly one tenant visible with `app.current_tenant_id` set |
+| `test_an_unscoped_connection_sees_nothing` | no tenant set → 0 rows, i.e. fails closed |
+| `test_it_cannot_run_ddl` | `CREATE TABLE` is refused — an app role able to alter the schema could drop its own constraints |
+
+They **skip** unless `DATABASE_ADMIN_USER` is set, which is the signal that
+`DATABASE_USER` has genuinely been repointed off the owner. CI sets both, so
+these run there rather than skipping.
+
+`TestLogisticsAppRoleCannotLogIn` was renamed to `TestLogisticsAppRole` and its
+`test_the_role_exists_but_has_no_login` replaced. That assertion was correct
+*between* migrations 059 and 060 and is deliberately inverted by 060; the
+replacement asserts what actually matters — the role is neither superuser nor
+`BYPASSRLS`, since `BYPASSRLS` overrides `FORCE ROW LEVEL SECURITY` and would
+leave every policy inert while the catalog still looked correct.
+
+**The fixtures now need the owner explicitly.** `_admin_conn()` resolves
+`DATABASE_ADMIN_*` via `shared/db_credentials.py` instead of using
+`DATABASE_USER`. Without that change six tests error with `new row violates
+row-level security policy for table "warehouse"` — which is the switchover
+working correctly, and useless for setting up a two-tenant fixture.

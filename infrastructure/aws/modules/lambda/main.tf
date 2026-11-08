@@ -107,10 +107,14 @@ locals {
   # DATABASE_HOST, DB_SECRET_ARN, DATABASE_PASSWORD, etc. without touching CI/CD.
   common_env_vars = merge(
     {
-      DATABASE_HOST         = var.rds_proxy_endpoint
-      DATABASE_NAME         = var.db_name
-      DATABASE_USER         = "postgres"
-      DB_SECRET_ARN         = var.db_secret_arn
+      DATABASE_HOST = var.rds_proxy_endpoint
+      DATABASE_NAME = var.db_name
+      # The application role, NOT the master user. logistics_app holds only DML
+      # and has no BYPASSRLS, so the canonical RLS predicate from migration 059
+      # is actually enforced — connecting as `postgres` left it inert, because
+      # BYPASSRLS overrides FORCE ROW LEVEL SECURITY.
+      DATABASE_USER         = "logistics_app"
+      DB_SECRET_ARN         = var.db_app_secret_arn
       S3_BUCKET             = var.bucket_name
       EVENT_BUS_NAME        = var.event_bus_name
       COGNITO_USER_POOL_ID  = var.cognito_user_pool_id
@@ -222,9 +226,11 @@ resource "aws_iam_role_policy" "db_access" {
     Version = "2012-10-17"
     Statement = [
       {
-        Effect   = "Allow"
-        Action   = ["secretsmanager:GetSecretValue"]
-        Resource = [var.db_secret_arn]
+        Effect = "Allow"
+        Action = ["secretsmanager:GetSecretValue"]
+        # Only the application credential. The service Lambdas have no business
+        # reading the master secret, and least privilege means they cannot.
+        Resource = [var.db_app_secret_arn]
       },
       {
         Effect   = "Allow"
@@ -706,9 +712,12 @@ resource "aws_iam_role_policy" "migrate_db_access" {
     Version = "2012-10-17"
     Statement = [
       {
-        Effect   = "Allow"
-        Action   = ["secretsmanager:GetSecretValue"]
-        Resource = [var.db_secret_arn]
+        Effect = "Allow"
+        Action = ["secretsmanager:GetSecretValue"]
+        # Both: the master credential to run DDL as the owner, and the
+        # application credential because migration 060 sets it on the
+        # logistics_app role (handler injects it as APP_DB_PASSWORD).
+        Resource = [var.db_secret_arn, var.db_app_secret_arn]
       },
       {
         Effect   = "Allow"
@@ -743,10 +752,16 @@ resource "aws_lambda_function" "migrate" {
     variables = {
       DATABASE_HOST = var.rds_proxy_endpoint
       DATABASE_NAME = var.db_name
+      # Migrations run as the OWNER by design: DDL cannot be run by
+      # logistics_app, which holds only DML (migration 059).
       DATABASE_USER = "postgres"
       DATABASE_PORT = "5432"
       DB_SECRET_ARN = var.db_secret_arn
-      ENVIRONMENT   = var.environment
+      # Migration 060 reads APP_DB_PASSWORD to set logistics_app's password.
+      # Passed as an ARN, not a value: the handler fetches it at runtime, so the
+      # plaintext never enters a Lambda environment variable or Terraform state.
+      APP_DB_SECRET_ARN = var.db_app_secret_arn
+      ENVIRONMENT       = var.environment
     }
   }
 

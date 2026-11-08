@@ -17,7 +17,6 @@ Usage:
     python scripts/seed.py
 """
 
-import os
 import re
 import sys
 from datetime import date, timedelta
@@ -26,20 +25,19 @@ from decimal import Decimal
 import psycopg2
 import psycopg2.extras
 
+from shared.db_credentials import admin_db_params
+
 # ---------------------------------------------------------------------------
 # Connection helpers
 # ---------------------------------------------------------------------------
 
 
 def _connect() -> psycopg2.extensions.connection:
-    dsn = (
-        f"host={os.environ['DATABASE_HOST']} "
-        f"port={os.environ.get('DATABASE_PORT', '5432')} "
-        f"dbname={os.environ['DATABASE_NAME']} "
-        f"user={os.environ['DATABASE_USER']} "
-        f"password={os.environ['DATABASE_PASSWORD']}"
-    )
-    conn = psycopg2.connect(dsn, cursor_factory=psycopg2.extras.RealDictCursor)
+    # The OWNER credential, not the application role: this script writes fixture
+    # rows for several tenants in one connection, which an RLS-enforced role
+    # cannot do without setting the tenant GUC before every statement. See
+    # shared/db_credentials.py.
+    conn = psycopg2.connect(**admin_db_params(), cursor_factory=psycopg2.extras.RealDictCursor)
     conn.autocommit = False
     return conn
 

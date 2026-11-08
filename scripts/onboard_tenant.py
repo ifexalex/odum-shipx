@@ -2,7 +2,7 @@
 
 Usage:
     DATABASE_HOST=localhost DATABASE_NAME=logistics \\
-    DATABASE_USER=postgres DATABASE_PASSWORD=secret \\
+    DATABASE_ADMIN_USER=postgres DATABASE_ADMIN_PASSWORD=secret \\
     AWS_REGION=eu-west-1 COGNITO_USER_POOL_ID=eu-west-1_XXXXXXXX \\
     python scripts/onboard_tenant.py \\
         --company-name "New Shipping Co" \\
@@ -31,20 +31,18 @@ import boto3
 import psycopg2
 import psycopg2.extras
 
+from shared.db_credentials import admin_db_params
+
 # ---------------------------------------------------------------------------
 # Connection helpers
 # ---------------------------------------------------------------------------
 
 
 def _connect() -> psycopg2.extensions.connection:
-    dsn = (
-        f"host={os.environ['DATABASE_HOST']} "
-        f"port={os.environ.get('DATABASE_PORT', '5432')} "
-        f"dbname={os.environ['DATABASE_NAME']} "
-        f"user={os.environ['DATABASE_USER']} "
-        f"password={os.environ['DATABASE_PASSWORD']}"
-    )
-    conn = psycopg2.connect(dsn, cursor_factory=psycopg2.extras.RealDictCursor)
+    # The OWNER credential: this script creates a tenant and its first user
+    # before any tenant scope exists to set, which the RLS-enforced application
+    # role cannot do. See shared/db_credentials.py.
+    conn = psycopg2.connect(**admin_db_params(), cursor_factory=psycopg2.extras.RealDictCursor)
     conn.autocommit = False
     return conn
 
