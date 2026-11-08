@@ -246,11 +246,23 @@ Both halves are in place:
    **Unset is not an error**: the migration logs a notice and leaves the role
    NOLOGIN, so an environment whose secret is not provisioned still migrates
    rather than blocking its own deploy.
-2. **The cutover** — `DATABASE_USER` now points at `logistics_app` for the
-   service Lambdas, with its own Secrets Manager secret
-   (`aurora.db_app_secret_arn`) and a second `auth` block on the RDS Proxy.
-   Without that second auth block the proxy rejects the user outright, and the
-   failure looks like a bad password rather than a missing entry.
+2. **The cutover, in two phases.** Phase 1 (done) provisions the credential
+   everywhere: the Secrets Manager secret and the RDS Proxy's second `auth`
+   block on AWS, the Key Vault secret on Azure, and `APP_DB_PASSWORD` for both
+   migrate jobs so 060 actually sets the role's password. **No environment is
+   repointed yet** — `DATABASE_USER` still names the owner. Phase 2 flips it.
+
+   The split is not caution for its own sake. Changing `DATABASE_USER` takes
+   effect the moment infrastructure applies, but migrations run *later* in the
+   deploy: Azure is `apply → build → migrate → roll`, and on AWS the env flip
+   and the migration are in **separate pipelines** altogether (`terraform.yml`
+   vs `deploy.yml`). Bundling the flip with the provisioning would therefore
+   start the application on a role that has no password yet — an outage lasting
+   as long as the build plus migration on Azure, and open-ended on AWS, where a
+   Terraform apply alone contains no migration step at all.
+
+   Without the proxy's second auth block the proxy rejects the user outright,
+   and the failure looks like a bad password rather than a missing entry.
 
 **Migrations keep running as the owner**, by design rather than omission: DDL
 cannot be run by a role holding only DML. The migrate Lambda therefore stays on
@@ -295,13 +307,11 @@ more:
 `module.postgres.administrator_login`. Azure has its own `migrate` Container App
 Job, so the same owner/app split applies cleanly.
 
-**Read the scope of the AWS work above with this in mind.** `vars.DEPLOY_CLOUD`
-is `azure`, and every AWS deploy job is gated on `DEPLOY_CLOUD != 'azure'` (AWS
-also deploys only on a version tag). So the AWS switchover is **staged in `main`
-but not applied**, and the environment that is actually running still connects as
-its admin login. The AWS configuration is correct and will take effect if and
-when that variable changes or a release tag is pushed — it is simply not live
-today.
+**`vars.DEPLOY_CLOUD` is `azure`.** Every AWS deploy job is gated on
+`DEPLOY_CLOUD != 'azure'`, and AWS also deploys only on a version tag, so the
+AWS configuration is staged in `main` and not applied. Azure is the cloud that
+actually runs — which is why phase 1 now covers both, and why phase 2 will need
+to be done per cloud.
 
 What this means in practice:
 

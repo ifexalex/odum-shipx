@@ -68,7 +68,21 @@ variable "enable_redis" {
 variable "db_host" { type = string }
 variable "db_port" { type = number }
 variable "db_name" { type = string }
-variable "db_user" { type = string }
+variable "db_user" {
+  description = "The OWNER login. Used by the migrate job only — DDL cannot be run by the application role."
+  type        = string
+}
+
+variable "db_app_user" {
+  description = "The role the application connects as (logistics_app) — DML only, no BYPASSRLS, so RLS is enforced."
+  type        = string
+}
+
+variable "db_app_password" {
+  description = "Password for db_app_user. The app containers' DATABASE_PASSWORD and the migrate job's APP_DB_PASSWORD."
+  type        = string
+  sensitive   = true
+}
 variable "db_password" {
   type      = string
   sensitive = true

@@ -500,14 +500,46 @@ granted automatically — a table created by some other role will not be. Fix
 forward with an explicit `GRANT` in a migration; do not grant by hand in
 production, or the next environment will differ.
 
+### Two phases — know which one you are in
+
+**Phase 1** provisions the credential and repoints nothing: the secret exists,
+and migration 060 has set the password on `logistics_app`. `DATABASE_USER` still
+names the owner, so the symptoms above cannot occur yet.
+
+**Phase 2** flips `DATABASE_USER` (and, on AWS, `DB_SECRET_ARN` plus the IAM
+resource). Only after phase 2 is the application actually subject to RLS.
+
+To check which phase an environment is in:
+
+```sql
+SELECT rolcanlogin FROM pg_roles WHERE rolname = 'logistics_app';  -- t after phase 1
+```
+```bash
+# AWS
+aws lambda get-function-configuration --function-name logistics-api-<env> \
+  --query 'Environment.Variables.DATABASE_USER'
+# Azure
+az containerapp show -g <rg> -n <api-app> \
+  --query "properties.template.containers[0].env[?name=='DATABASE_USER'].value"
+```
+
+The phases are deliberately separate. `DATABASE_USER` takes effect the moment
+infrastructure applies, but migrations run later in the deploy — and on AWS the
+two are in **different pipelines** (`terraform.yml` vs `deploy.yml`), so an
+apply alone contains no migration step at all. Flipping in the same change as
+provisioning would start the app on a password-less role.
+
 ### Rolling back the cutover
 
 Rollback is a **config** change, not a migration — deliberately, so it needs no
 DB write under pressure:
 
-1. Set the service Lambdas' `DATABASE_USER` back to `postgres` and
-   `DB_SECRET_ARN` back to the master secret (`modules/lambda/main.tf`,
-   `common_env_vars`), and apply.
+- **AWS:** set `DATABASE_USER` back to `postgres` and `DB_SECRET_ARN` back to
+  the master secret (`modules/lambda/main.tf`, `common_env_vars`), and apply.
+- **Azure:** set `DATABASE_USER` back to `var.db_user` and `DATABASE_PASSWORD`
+  back to the `database-password` secret
+  (`modules/container_app/main.tf`, `plain_env` / `secret_env`), apply, and let
+  the deploy roll the revisions.
 
 That is the whole rollback. Leaving `logistics_app` able to log in is harmless;
 nothing connects as it once `DATABASE_USER` is repointed.

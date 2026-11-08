@@ -14,13 +14,24 @@ output "database_name" {
 }
 
 output "administrator_login" {
-  description = "Set as DATABASE_USER."
+  description = "The OWNER login. Used by the migrate job only — the application connects as application_login."
   value       = azurerm_postgresql_flexible_server.main.administrator_login
 }
 
 output "administrator_password" {
-  description = "Admin password — set as DATABASE_PASSWORD (prefer the Key Vault secret reference in Container Apps)."
+  description = "Admin (owner) password — the migrate job's DATABASE_PASSWORD. Not the application's."
   value       = random_password.admin.result
+  sensitive   = true
+}
+
+output "application_login" {
+  description = "The role the APPLICATION connects as — DML only, no BYPASSRLS, so RLS is enforced. Created by migration 005, given LOGIN by 060."
+  value       = "logistics_app"
+}
+
+output "application_password" {
+  description = "Password for logistics_app — the app containers' DATABASE_PASSWORD, and the migrate job's APP_DB_PASSWORD (migration 060 sets it on the role)."
+  value       = random_password.app.result
   sensitive   = true
 }
 
