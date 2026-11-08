@@ -1,8 +1,9 @@
-import { useCallback, useEffect, useState, type JSX } from 'react'
+import { type JSX } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { ApiError } from '../../api/client'
-import { claimsApi, type Claim, type DamageClaimStatus } from '../../api/claims'
+import { type DamageClaimStatus } from '../../api/claims'
 import { CLAIM_STATUS_ORDER } from '../../api/claimsRules'
+import { useClaimList } from '../../hooks/useClaims'
 import { Badge, Banner, Button, type BadgeVariant } from '../../design/components'
 import { PageHeader } from '../../shell/PageHeader'
 import styles from './customer.module.css'
@@ -41,25 +42,17 @@ function ClaimProgressBar({ status }: { status: DamageClaimStatus }): JSX.Elemen
 
 export function MyClaims(): JSX.Element {
   const navigate = useNavigate()
-  const [claims, setClaims] = useState<Claim[]>([])
-  const [loading, setLoading] = useState(true)
-  const [error, setError] = useState<string | null>(null)
 
-  const load = useCallback(async () => {
-    setLoading(true)
-    setError(null)
-    try {
-      const result = await claimsApi.list()
-      setClaims(result.data)
-    } catch (err) {
-      setError(err instanceof ApiError ? err.message : 'Could not load your claims.')
-    } finally {
-      setLoading(false)
-    }
-  }, [])
+  // `useClaimList` already existed and this page hand-rolled the same fetch.
+  // The backend scopes GET /v1/claims to the caller's own customer record for
+  // the customer role, so no client-side filtering is needed here.
+  const { items: claims, isLoading: loading, error: loadError } = useClaimList()
 
-  // eslint-disable-next-line react-hooks/set-state-in-effect -- hand-rolled fetch effect; migrate to TanStack Query (master plan 7.150)
-  useEffect(() => { void load() }, [load])
+  const error = loadError
+    ? loadError instanceof ApiError
+      ? loadError.message
+      : 'Could not load your claims.'
+    : null
 
   return (
     <div className={styles.page}>

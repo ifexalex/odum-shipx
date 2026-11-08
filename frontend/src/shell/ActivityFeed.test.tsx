@@ -6,6 +6,7 @@
 import { render, screen, waitFor } from '@testing-library/react'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { configApi, type TenantActivityEntry } from '../api/tenantManagement'
+import { withQuery } from '../test/queryWrapper'
 import { ActivityFeed } from './ActivityFeed'
 
 vi.mock('../api/tenantManagement', async (importOriginal) => {
@@ -35,7 +36,7 @@ describe('ActivityFeed (B6)', () => {
       entry({ action: 'CREATE', entity_type: 'packing_list' }),
       entry({ id: 'a2', action: 'STATUS_CHANGE', entity_type: 'container', actor_name: 'Amara Okafor' }),
     ]))
-    render(<ActivityFeed />)
+    render(withQuery(<ActivityFeed />))
 
     await waitFor(() => expect(screen.getByText('packing list')).toBeInTheDocument())
     expect(screen.getByText('container')).toBeInTheDocument()
@@ -46,7 +47,7 @@ describe('ActivityFeed (B6)', () => {
 
   it('scopes the request to a single actor when actorId is given, and hides the actor name', async () => {
     vi.mocked(configApi.activity).mockResolvedValue(ok([entry({})]))
-    render(<ActivityFeed actorId="u1" showActor={false} />)
+    render(withQuery(<ActivityFeed actorId="u1" showActor={false} />))
 
     await waitFor(() => expect(configApi.activity).toHaveBeenCalledWith({ actorId: 'u1', limit: 8 }))
     // Actor name suppressed on the staff profile
@@ -55,7 +56,7 @@ describe('ActivityFeed (B6)', () => {
 
   it('shows an empty state when there is no activity', async () => {
     vi.mocked(configApi.activity).mockResolvedValue(ok([]))
-    render(<ActivityFeed />)
+    render(withQuery(<ActivityFeed />))
     await waitFor(() => expect(screen.getByText('No recent activity.')).toBeInTheDocument())
   })
 })

@@ -116,6 +116,9 @@ export const configKeys = {
   // GET /v1/tenant/config (webhook + branding live in the same response —
   // webhook() above predates this and is kept for WebhookConfig's cache slot).
   tenantConfig: () => [...configKeys.all, 'tenant-config'] as const,
+  // GET /v1/tenant/activity — the shared ActivityFeed widget; `actorId`
+  // narrows it to one staff member, so it is part of the key.
+  activity: (params?: Record<string, unknown>) => [...configKeys.all, 'activity', params ?? {}] as const,
 }
 
 // ─── Notifications log ────────────────────────────────────────────────────────
@@ -154,6 +157,12 @@ export const platformTenantKeys = {
   all: ['platform-tenants'] as const,
   list: () => [...platformTenantKeys.all, 'list'] as const,
   detail: (id: string) => [...platformTenantKeys.all, 'detail', id] as const,
+}
+
+// ─── Platform audit log (cross-tenant) ────────────────────────────────────────
+export const platformAuditKeys = {
+  all: ['platform-audit'] as const,
+  list: (params?: Record<string, unknown>) => [...platformAuditKeys.all, 'list', params ?? {}] as const,
 }
 
 // ─── Platform onboarding requests (shipping-company leads) ────────────────────

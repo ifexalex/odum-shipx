@@ -4,8 +4,11 @@
  * /v1/tenant/activity (admin-only, tenant-scoped audit log); pass `actorId`
  * to narrow to one staff member.
  */
-import { useEffect, useState, type JSX } from 'react'
+import { useQuery } from '@tanstack/react-query'
+import { type JSX } from 'react'
 import { configApi, type TenantActivityEntry } from '../api/tenantManagement'
+import { configKeys } from '../api/keys'
+import { STALE_30S } from '../lib/queryClient'
 import { Badge, type BadgeVariant } from '../design/components'
 import styles from './ActivityFeed.module.css'
 
@@ -41,24 +44,16 @@ export function ActivityFeed({
   /** Hide the actor name (redundant on the staff-profile, where it's always this user). */
   showActor?: boolean
 }): JSX.Element {
-  const [entries, setEntries] = useState<TenantActivityEntry[] | null>(null)
+  const { data, isPending } = useQuery({
+    queryKey: configKeys.activity({ actorId, limit }),
+    queryFn: () => configApi.activity({ actorId, limit }),
+    staleTime: STALE_30S,
+  })
 
-  useEffect(() => {
-    let active = true
-    // eslint-disable-next-line react-hooks/set-state-in-effect -- hand-rolled fetch effect; migrate to TanStack Query (master plan 7.150)
-    setEntries(null)
-    void configApi
-      .activity({ actorId, limit })
-      .then((r) => {
-        if (active) setEntries(r.data)
-      })
-      .catch(() => {
-        if (active) setEntries([])
-      })
-    return () => {
-      active = false
-    }
-  }, [actorId, limit])
+  // A failed fetch renders as "No recent activity." — the pre-migration
+  // behaviour, and the right one for a dashboard widget that must not break
+  // the page around it. `null` means still loading, nothing else.
+  const entries: TenantActivityEntry[] | null = isPending ? null : (data?.data ?? [])
 
   if (entries === null) {
     return <div className={styles.empty}>Loading activity…</div>
