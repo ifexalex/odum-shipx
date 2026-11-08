@@ -153,3 +153,26 @@ Module: `infrastructure/aws/modules/elasticache/`
 - [ ] `terraform plan` succeeds with no errors
 - [x] ElastiCache Redis `cache.t4g.micro` in private subnets — tenant status distributed cache
 - [x] Lambda SG egress rule added for port 6379 to ElastiCache SG
+
+## Two database credentials (2026-11-08, migration 060)
+
+The Aurora module now provisions **two** secrets, and the RDS Proxy carries an
+`auth` block for each:
+
+| secret | role | consumer |
+|---|---|---|
+| `<prefix>-db-password` | `postgres` (owner) | migrate Lambda only |
+| `<prefix>-db-app-password` | `logistics_app` | every service Lambda |
+
+Exposed as `module.aurora.db_secret_arn` and `module.aurora.db_app_secret_arn`.
+
+`logistics_app` holds only SELECT/INSERT/UPDATE/DELETE (migration 059) and has
+no `BYPASSRLS`, which is what makes the canonical row-level-security predicate
+enforced against the application. The proxy's IAM policy reads both secrets,
+because it authenticates to Aurora on behalf of whichever user the client
+connected as.
+
+**The second `auth` block is not optional.** RDS Proxy refuses to proxy a user
+it holds no secret for, and the resulting error reads as failed password
+authentication rather than a missing configuration entry — a misleading symptom
+worth knowing before debugging it live. See `docs/runbook.md`.

@@ -30,6 +30,45 @@ resource "aws_secretsmanager_secret_version" "db_password" {
 }
 
 # ---------------------------------------------------------------------------
+# Application role password — `logistics_app`
+#
+# The application connects as this role, not as the master user. `logistics_app`
+# holds only SELECT/INSERT/UPDATE/DELETE (migration 059) and has no BYPASSRLS,
+# which is what makes the canonical row-level-security predicate 059 installed
+# actually enforced. Connecting as the master user left all of it inert.
+#
+# Migration 060 sets this password on the role, reading it from APP_DB_PASSWORD
+# in the migrate Lambda's environment. The secret therefore has to exist before
+# the migration runs, which it does: Terraform applies before the deploy
+# pipeline invokes the migrate Lambda.
+# ---------------------------------------------------------------------------
+
+resource "random_password" "db_app" {
+  length           = 24
+  special          = false # psycopg2 DSN is sensitive to some special chars
+  override_special = ""
+}
+
+resource "aws_secretsmanager_secret" "db_app_password" {
+  name        = "${local.name_prefix}-db-app-password"
+  description = "Password for the logistics_app database role (the application's own credential, subject to RLS) in ${var.environment}."
+
+  tags = {
+    Name = "${local.name_prefix}-db-app-password"
+  }
+}
+
+resource "aws_secretsmanager_secret_version" "db_app_password" {
+  secret_id = aws_secretsmanager_secret.db_app_password.id
+  # `username` is required by RDS Proxy's SECRETS auth scheme; `password` is what
+  # shared/db.py reads. Both keys live in the one secret.
+  secret_string = jsonencode({
+    username = "logistics_app"
+    password = random_password.db_app.result
+  })
+}
+
+# ---------------------------------------------------------------------------
 # Aurora Serverless v2 Cluster
 # ---------------------------------------------------------------------------
 
@@ -106,9 +145,15 @@ resource "aws_iam_role" "rds_proxy" {
 
 data "aws_iam_policy_document" "rds_proxy_secrets" {
   statement {
-    effect    = "Allow"
-    actions   = ["secretsmanager:GetSecretValue"]
-    resources = [aws_secretsmanager_secret.db_password.arn]
+    effect  = "Allow"
+    actions = ["secretsmanager:GetSecretValue"]
+    # Both credentials: the proxy authenticates to Aurora on behalf of whichever
+    # user the client connected as, so it needs the secret for each one it is
+    # allowed to proxy.
+    resources = [
+      aws_secretsmanager_secret.db_password.arn,
+      aws_secretsmanager_secret.db_app_password.arn,
+    ]
   }
 }
 
@@ -134,9 +179,19 @@ resource "aws_db_proxy" "main" {
 
   auth {
     auth_scheme = "SECRETS"
-    description = "Aurora master password"
+    description = "Aurora master password (migrations and admin only)"
     iam_auth    = "DISABLED"
     secret_arn  = aws_secretsmanager_secret.db_password.arn
+  }
+
+  # Without this the application cannot connect through the proxy as
+  # logistics_app at all — the proxy rejects a user it holds no secret for, and
+  # the failure looks like bad credentials rather than a missing auth entry.
+  auth {
+    auth_scheme = "SECRETS"
+    description = "logistics_app — the application role, subject to RLS"
+    iam_auth    = "DISABLED"
+    secret_arn  = aws_secretsmanager_secret.db_app_password.arn
   }
 
   tags = {

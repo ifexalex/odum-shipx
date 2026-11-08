@@ -3,11 +3,12 @@
 Database DDL migrations are defined in tasks 05a–05c.
 """
 
-import os
 from logging.config import fileConfig
 
 from alembic import context
 from sqlalchemy import engine_from_config, pool
+
+from shared.db_credentials import admin_sqlalchemy_url
 
 config = context.config
 
@@ -18,16 +19,17 @@ target_metadata = None
 
 
 def get_url() -> str:
-    # Pin the driver to psycopg2 explicitly: SQLAlchemy 2.1 changed the default
-    # DBAPI for `postgresql://` from psycopg2 to psycopg (v3), which this project
-    # does not install (it uses psycopg2-binary). Without the `+psycopg2` the
-    # migrate step fails with "No module named 'psycopg'" under SQLAlchemy >= 2.1
-    # — in CI and in the production migrate Lambda alike.
-    return (
-        f"postgresql+psycopg2://{os.environ['DATABASE_USER']}:{os.environ['DATABASE_PASSWORD']}"
-        f"@{os.environ['DATABASE_HOST']}:{os.environ.get('DATABASE_PORT', '5432')}"
-        f"/{os.environ['DATABASE_NAME']}"
-    )
+    # Migrations connect as the table OWNER, not as the application role.
+    # `logistics_app` holds only DML (migration 059) and has no BYPASSRLS, so it
+    # cannot run DDL — see shared/db_credentials.py for the split and its
+    # fallback, which keeps environments that have not been cut over working.
+    #
+    # The driver is pinned to psycopg2 explicitly: SQLAlchemy 2.1 changed the
+    # default DBAPI for `postgresql://` from psycopg2 to psycopg (v3), which this
+    # project does not install (it uses psycopg2-binary). Without the `+psycopg2`
+    # the migrate step fails with "No module named 'psycopg'" under
+    # SQLAlchemy >= 2.1 — in CI and in the production migrate Lambda alike.
+    return admin_sqlalchemy_url()
 
 
 def run_migrations_offline() -> None:

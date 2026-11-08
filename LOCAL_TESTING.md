@@ -634,6 +634,41 @@ set -a; source .env.local; set +a
 PYTHONPATH=. python3 -m pytest tests/integration/ -v
 ```
 
+### Two database credentials (since migration 060)
+
+`.env.local` now carries both, and they are not interchangeable:
+
+| variable | role | used by |
+|---|---|---|
+| `DATABASE_USER` / `DATABASE_PASSWORD` | `logistics_app` | the application (`shared/db.py`) |
+| `DATABASE_ADMIN_USER` / `DATABASE_ADMIN_PASSWORD` | `postgres` (owner) | `reset_db.py`, alembic, `seed.py` |
+| `APP_DB_PASSWORD` | — | migration 060, which sets it on `logistics_app` |
+
+`APP_DB_PASSWORD` **must equal** `DATABASE_PASSWORD`. If they drift, the stack
+builds fine and then every request fails with
+`password authentication failed for user "logistics_app"`.
+
+Why the split: `logistics_app` holds only SELECT/INSERT/UPDATE/DELETE and has no
+`BYPASSRLS`, so the row-level-security policies are actually enforced against
+it. DDL and the cross-tenant fixture writes in `seed.py` need the owner.
+`shared/db_credentials.py` resolves the admin pair and **falls back** to
+`DATABASE_*`, so an old `.env.local` without the new variables keeps working
+exactly as before — it simply runs everything as the owner, with RLS inert.
+
+To check enforcement is real:
+
+```bash
+set -a; source .env.local; set +a
+PGPASSWORD=$DATABASE_PASSWORD psql -h $DATABASE_HOST -U $DATABASE_USER -d $DATABASE_NAME -tAc "
+SET app.current_tenant_id = '10000000-0000-0000-0000-000000000001';
+SELECT count(*), count(DISTINCT tenant_id) FROM billing;"
+# expected: one tenant only. As DATABASE_ADMIN_USER you get every tenant's rows,
+# because the local superuser has BYPASSRLS.
+```
+
+An unscoped connection returning **0 rows is correct** — the policy fails
+closed. It is not an empty database.
+
 ### Frontend checks
 
 ```bash

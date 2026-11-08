@@ -1164,3 +1164,20 @@ gh api -X PUT repos/:owner/:repo/actions/permissions/artifact-and-log-retention 
 
 Note `-F` (typed) not `-f` (string): `-f days=7` is rejected with
 `Invalid property /days: "7" is not of type integer`.
+
+## CI runs the isolation suite as the application role (2026-11-08)
+
+The `test` job sets `APP_DB_PASSWORD` for the migration step and then runs
+`tests/tenant_isolation/` with `DATABASE_USER=logistics_app` plus
+`DATABASE_ADMIN_USER=test_user`.
+
+That split is the point. With `DATABASE_USER` left as the owner, the three
+`TestTheRealApplicationCredentialIsSubjectToRls` cases skip and the suite only
+ever proves the *policies* are correct using a synthetic probe role — never that
+the credential the application actually uses is subject to them. The fixtures
+still need the owner, because they write rows for two tenants on one connection,
+which RLS correctly forbids the app role from doing.
+
+The CI password is a throwaway value for an ephemeral container, committed
+deliberately and marked as such in the workflow; it is not a secret and never
+reaches a deployed environment.

@@ -50,9 +50,20 @@ def _dsn(user: str | None = None, password: str | None = None) -> dict[str, obje
 
 
 def _admin_conn():
-    """Owner/superuser connection, used only to set the fixture up."""
+    """Owner/superuser connection, used only to set the fixtures up.
+
+    Must be the OWNER, not whatever `DATABASE_USER` happens to be. Since the
+    RLS credential switchover (migration 060) `DATABASE_USER` is normally
+    `logistics_app`, which is subject to the policies these tests measure — the
+    cross-tenant fixture inserts below would fail with "new row violates
+    row-level security policy", which is correct behaviour and useless for
+    setup. `shared/db_credentials.admin_db_params()` resolves
+    `DATABASE_ADMIN_*` with a fallback to `DATABASE_*`.
+    """
+    from shared.db_credentials import admin_db_params
+
     try:
-        return psycopg2.connect(**_dsn())
+        return psycopg2.connect(**admin_db_params(), connect_timeout=5)
     except Exception as exc:  # pragma: no cover - environment dependent
         pytest.skip(f"no database reachable for RLS tests: {exc}")
 
@@ -363,10 +374,16 @@ class TestEveryTenantScopedTableUsesTheCanonicalPredicate:
         cleanup.close()
 
 
-class TestLogisticsAppRoleCannotLogIn:
+class TestLogisticsAppRole:
     """Migration 005 created `logistics_app` with the literal password
-    'CHANGE_ME_IN_SECRETS_MANAGER', and nothing ever connected as it. 059 strips
-    LOGIN; the switchover grants it back with a real credential."""
+    'CHANGE_ME_IN_SECRETS_MANAGER', and nothing ever connected as it. 059 stripped
+    LOGIN; 060 grants it back with a real credential from the environment.
+
+    This class previously asserted the role *could not* log in, which was the
+    correct invariant between 059 and 060. 060 inverts it deliberately, so the
+    assertion now covers what actually matters: the role can authenticate, and it
+    is subject to the policies it is meant to be subject to.
+    """
 
     def test_it_has_grants_on_tables_added_after_migration_005(self) -> None:
         """005's `GRANT ... ON ALL TABLES` covered only the tables that existed
@@ -392,7 +409,39 @@ class TestLogisticsAppRoleCannotLogIn:
         finally:
             conn.close()
 
-    def test_the_role_exists_but_has_no_login(self) -> None:
+    def test_it_is_never_allowed_to_bypass_rls(self) -> None:
+        """The one attribute that makes the whole switchover meaningful.
+
+        BYPASSRLS overrides FORCE ROW LEVEL SECURITY, so a `logistics_app` that
+        inherited it would leave every policy 059 installed inert while looking
+        correct in the catalog — which is exactly the state the application was
+        in while connecting as `postgres`.
+        """
+        conn = _admin_conn()
+        try:
+            with conn.cursor() as cur:
+                cur.execute(
+                    "SELECT rolsuper, rolbypassrls FROM pg_roles WHERE rolname = 'logistics_app'",
+                )
+                row = cur.fetchone()
+                if row is None:
+                    pytest.skip("logistics_app not present in this database")
+                is_super, bypasses = row
+                assert not is_super, "logistics_app must not be a superuser"
+                assert not bypasses, "logistics_app must not have BYPASSRLS - RLS would be inert"
+        finally:
+            conn.close()
+
+    def test_migration_060_gave_it_a_working_credential(self) -> None:
+        """After 060 the role can authenticate; before it, it could not.
+
+        Skipped rather than failed when `APP_DB_PASSWORD` is unset, because 060
+        deliberately no-ops in an environment whose secret has not been
+        provisioned yet.
+        """
+        if not os.environ.get("APP_DB_PASSWORD"):
+            pytest.skip("APP_DB_PASSWORD unset - migration 060 leaves the role NOLOGIN by design")
+
         conn = _admin_conn()
         try:
             with conn.cursor() as cur:
@@ -400,6 +449,60 @@ class TestLogisticsAppRoleCannotLogIn:
                 row = cur.fetchone()
                 if row is None:
                     pytest.skip("logistics_app not present in this database")
-                assert row[0] is False, "logistics_app can still log in with the password committed in migration 005"
+                assert row[0] is True, "migration 060 should have granted LOGIN"
+        finally:
+            conn.close()
+
+
+@pytest.mark.isolation
+class TestTheRealApplicationCredentialIsSubjectToRls:
+    """Isolation measured through the credential the application actually uses.
+
+    Every other test here uses a synthetic `probe_role`, which proves the
+    *policies* work but says nothing about whether production connects on a role
+    those policies apply to. For most of this project's life it did not: the app
+    connected as `postgres`, whose BYPASSRLS made all of it inert.
+
+    Skipped unless `DATABASE_ADMIN_USER` is set, i.e. unless `DATABASE_USER` has
+    genuinely been repointed off the owner.
+    """
+
+    @staticmethod
+    def _app_conn():
+        if not os.environ.get("DATABASE_ADMIN_USER"):
+            pytest.skip("DATABASE_USER is still the owner - switchover not applied in this environment")
+        return psycopg2.connect(**_dsn())
+
+    def test_it_sees_only_the_scoped_tenant(self, two_tenants) -> None:
+        a, _b = two_tenants
+        conn = self._app_conn()
+        try:
+            with conn.cursor() as cur:
+                cur.execute("SET app.current_tenant_id = %s", (a,))
+                cur.execute("SELECT count(*), count(DISTINCT tenant_id) FROM warehouse")
+                rows, tenants = cur.fetchone()
+                assert rows >= 1, "the scoped tenant's own row must be visible"
+                assert tenants == 1, "more than one tenant visible - isolation is not being enforced"
+        finally:
+            conn.close()
+
+    def test_an_unscoped_connection_sees_nothing(self) -> None:
+        """Fails closed: no `app.current_tenant_id` means no rows, not all rows."""
+        conn = self._app_conn()
+        try:
+            with conn.cursor() as cur:
+                cur.execute("SELECT count(*) FROM warehouse")
+                assert cur.fetchone()[0] == 0
+        finally:
+            conn.close()
+
+    def test_it_cannot_run_ddl(self) -> None:
+        """DML only (059). An app role able to ALTER the schema could drop the
+        very policies that constrain it."""
+        conn = self._app_conn()
+        try:
+            with conn.cursor() as cur:
+                with pytest.raises(psycopg2.Error):
+                    cur.execute("CREATE TABLE rls_switchover_probe (id int)")
         finally:
             conn.close()

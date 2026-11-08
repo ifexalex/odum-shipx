@@ -1,21 +1,20 @@
 #!/usr/bin/env python3
 """Drop and recreate the logistics database.
 
-Uses the same DATABASE_* env vars as migrate.py so it always targets
-the correct postgres instance regardless of local vs Docker setup.
+Uses the same DATABASE_* env vars as migrate.py so it always targets the correct
+postgres instance regardless of local vs Docker setup — and the same
+owner-not-application credential, since DROP/CREATE DATABASE needs privileges
+`logistics_app` does not have. See shared/db_credentials.py.
 """
-
-import os
 
 import psycopg2
 
-host = os.environ["DATABASE_HOST"]
-port = os.environ.get("DATABASE_PORT", "5432")
-user = os.environ["DATABASE_USER"]
-password = os.environ["DATABASE_PASSWORD"]
-dbname = os.environ["DATABASE_NAME"]
+from shared.db_credentials import admin_db_params
 
-conn = psycopg2.connect(host=host, port=port, user=user, password=password, dbname="postgres")
+params = admin_db_params()
+dbname = params["dbname"]
+
+conn = psycopg2.connect(**{**params, "dbname": "postgres"})
 conn.autocommit = True
 cur = conn.cursor()
 

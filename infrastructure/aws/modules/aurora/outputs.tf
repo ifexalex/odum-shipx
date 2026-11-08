@@ -19,8 +19,13 @@ output "db_name" {
 }
 
 output "db_secret_arn" {
-  description = "ARN of the Secrets Manager secret containing DB credentials"
+  description = "ARN of the Secrets Manager secret holding the MASTER (owner) DB credentials — migrations and admin only"
   value       = aws_secretsmanager_secret.db_password.arn
+}
+
+output "db_app_secret_arn" {
+  description = "ARN of the Secrets Manager secret holding the logistics_app credentials — what the application connects with (subject to RLS)"
+  value       = aws_secretsmanager_secret.db_app_password.arn
 }
 
 output "cluster_arn" {

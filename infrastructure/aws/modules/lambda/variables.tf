@@ -34,7 +34,12 @@ variable "db_name" {
 }
 
 variable "db_secret_arn" {
-  description = "Secrets Manager ARN for Aurora DB credentials"
+  description = "Secrets Manager ARN for the MASTER (owner) Aurora credentials — migrations only"
+  type        = string
+}
+
+variable "db_app_secret_arn" {
+  description = "Secrets Manager ARN for the logistics_app credentials — what the service Lambdas connect with (subject to RLS)"
   type        = string
 }
 

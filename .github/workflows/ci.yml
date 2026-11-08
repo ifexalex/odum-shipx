@@ -64,6 +64,13 @@ jobs:
           DATABASE_NAME: logistics_test
           DATABASE_USER: test_user
           DATABASE_PASSWORD: test_pass
+          # Migration 060 sets this as logistics_app's password, completing the
+          # RLS credential switchover. Set here so CI exercises the real thing:
+          # without it 060 no-ops and the isolation tests below fall back to a
+          # synthetic probe role, which proves the policies work but not that
+          # the credential the application uses is subject to them.
+          # A throwaway value for an ephemeral container, not a secret.
+          APP_DB_PASSWORD: ci_app_pass_not_a_secret
         run: uv run python scripts/migrate.py
       - name: Run unit tests
         env:
@@ -75,8 +82,16 @@ jobs:
           DATABASE_HOST: localhost
           DATABASE_PORT: 5432
           DATABASE_NAME: logistics_test
-          DATABASE_USER: test_user
-          DATABASE_PASSWORD: test_pass
+          # DATABASE_* is the APPLICATION role, exactly as a deployed service
+          # sees it, so TestTheRealApplicationCredentialIsSubjectToRls actually
+          # runs instead of skipping. DATABASE_ADMIN_* is the owner, used by the
+          # fixtures to write cross-tenant rows that RLS correctly forbids the
+          # app role from writing.
+          DATABASE_USER: logistics_app
+          DATABASE_PASSWORD: ci_app_pass_not_a_secret
+          DATABASE_ADMIN_USER: test_user
+          DATABASE_ADMIN_PASSWORD: test_pass
+          APP_DB_PASSWORD: ci_app_pass_not_a_secret
         run: uv run pytest tests/tenant_isolation/ -v
       - name: Upload coverage
         uses: codecov/codecov-action@v3
