@@ -8,7 +8,7 @@
  * the page and form render client-side; the API call only happens on submit.
  */
 import { expect, test, type Page } from '@playwright/test'
-import { settleNetwork } from '../support/roleSwitch'
+import { becomesVisible, settleNetwork } from '../support/roleSwitch'
 
 /**
  * The phone input, not the country-code picker.
@@ -69,8 +69,9 @@ test.describe('public tracking page', () => {
 
     // Either a shipment detail renders or a "not found" message — either is a
     // valid non-error state that proves the flow completes without a crash.
-    const hasResult = await page.getByText(/in transit|at warehouse|delivered|not found|no shipment/i)
-      .first().isVisible().catch(() => false)
+    const hasResult = await becomesVisible(
+      page.getByText(/in transit|at warehouse|delivered|not found|no shipment/i),
+    )
     expect(hasResult).toBe(true)
   })
 })

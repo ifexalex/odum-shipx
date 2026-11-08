@@ -8,7 +8,7 @@
  * ones to test the staff-side workflows against.
  */
 import { expect, test } from '@playwright/test'
-import { actionAvailable, dataRows, goToViaNav, settleNetwork, switchRole } from '../support/roleSwitch'
+import { actionAvailable, dataRows, goToViaNav, hasRows, settleNetwork, switchRole } from '../support/roleSwitch'
 
 const CONTAINER_NUMBER = 'ACME001002'
 const CARTON_TAGS = 'ACME-002-001, ACME-002-002'
@@ -28,8 +28,11 @@ test.describe('claims and refunds', () => {
     const shipmentSelect = page.getByLabel(/which shipment/i)
     await expect(shipmentSelect).toBeVisible()
     const option = shipmentSelect.locator(`option:has-text("${CONTAINER_NUMBER}")`)
+    // The <select> is already asserted visible above, so its options are
+    // rendered — but hasRows keeps the whole file on one idiom rather than
+    // leaving a lone count() for someone to copy.
     test.skip(
-      (await option.count()) === 0,
+      !(await hasRows(option)),
       `No arrived shipment for container ${CONTAINER_NUMBER} — reseed (make stack)`,
     )
     await shipmentSelect.selectOption({ value: await option.first().getAttribute('value') ?? '' })
@@ -62,7 +65,7 @@ test.describe('claims and refunds', () => {
     await page.waitForTimeout(300)
 
     const row = dataRows(page).filter({ hasText: /filed|under inspection|inspection complete|pending resolution/i }).first()
-    test.skip((await row.count()) === 0, 'No open claim found — run the filing test first')
+    test.skip(!(await hasRows(row)), 'No open claim found — run the filing test first')
     // ClaimList.tsx's row action label depends on status (rowAction()):
     // "Start inspection" / "Complete" / "Resolve" / "View" — not a fixed
     // label, same pattern as BillingList.tsx.
@@ -76,7 +79,7 @@ test.describe('claims and refunds', () => {
 
     // Start inspection if still 'filed' — resolve requires under_inspection+.
     const startBtn = page.getByRole('button', { name: /start inspection/i })
-    if (await startBtn.isVisible().catch(() => false)) {
+    if (await actionAvailable(page, /start inspection/i)) {
       await startBtn.click()
       const inspectDialog = page.getByRole('dialog')
       await expect(inspectDialog).toBeVisible()
@@ -132,7 +135,7 @@ test.describe('claims and refunds', () => {
     await page.waitForTimeout(300)
 
     const row = dataRows(page).filter({ hasText: /under inspection/i }).first()
-    test.skip((await row.count()) === 0, 'No under-inspection claim found — run the prior tests first')
+    test.skip(!(await hasRows(row)), 'No under-inspection claim found — run the prior tests first')
     await row.getByRole('button', { name: /start inspection|complete|resolve|^view$/i }).click()
     await expect(page.getByText('Claim details')).toBeVisible()
 
@@ -161,13 +164,13 @@ test.describe('refund review, approve, and reject', () => {
     await expect(page.getByRole('heading', { level: 1 })).toBeVisible()
 
     const row = dataRows(page).filter({ hasText: /pending review/i }).first()
-    test.skip((await row.count()) === 0, 'No pending_review refund found — run the claims tests first')
+    test.skip(!(await hasRows(row)), 'No pending_review refund found — run the claims tests first')
     await row.getByRole('button', { name: /^view$/i }).click()
     await expect(page).toHaveURL(/\/refunds\//)
     await expect(page.getByRole('heading', { level: 1 })).toBeVisible()
 
     const reviewBtn = page.getByRole('button', { name: /accounts review/i })
-    if (await reviewBtn.isVisible().catch(() => false)) {
+    if (await actionAvailable(page, /accounts review/i)) {
       await reviewBtn.click()
       const reviewDialog = page.getByRole('dialog')
       await expect(reviewDialog.getByRole('heading', { name: 'Accounts review' })).toBeVisible()
@@ -182,7 +185,7 @@ test.describe('refund review, approve, and reject', () => {
     await switchRole(page, 'tenant_admin')
     await goToViaNav(page, /^refunds$/i)
     const pendingApprovalRow = dataRows(page).filter({ hasText: /pending approval/i }).first()
-    test.skip((await pendingApprovalRow.count()) === 0, 'No pending_approval refund found')
+    test.skip(!(await hasRows(pendingApprovalRow)), 'No pending_approval refund found')
     await pendingApprovalRow.getByRole('button', { name: /^view$/i }).click()
     await expect(page.getByRole('heading', { level: 1 })).toBeVisible()
 
@@ -205,7 +208,7 @@ test.describe('refund review, approve, and reject', () => {
     await goToViaNav(page, /^refunds$/i)
 
     const row = dataRows(page).filter({ hasText: /pending review/i }).first()
-    test.skip((await row.count()) === 0, 'No pending_review refund found')
+    test.skip(!(await hasRows(row)), 'No pending_review refund found')
     await row.getByRole('button', { name: /^view$/i }).click()
     await expect(page.getByRole('heading', { level: 1 })).toBeVisible()
 

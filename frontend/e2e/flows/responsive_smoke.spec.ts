@@ -8,7 +8,7 @@
  * rows without flex-wrap).
  */
 import { expect, type Page, test } from '@playwright/test'
-import { settleNetwork, switchRole } from '../support/roleSwitch'
+import { becomesVisible, hasRows, settleNetwork, switchRole } from '../support/roleSwitch'
 
 test.use({ viewport: { width: 375, height: 800 } })
 
@@ -44,7 +44,7 @@ test('BillingDetail hero actions (multiple buttons) do not overflow at phone wid
   await page.goto('/billing')
   await settleNetwork(page)
   const firstCard = page.locator('[class*="card"]').first()
-  test.skip((await firstCard.count()) === 0, 'No billing records seeded')
+  test.skip(!(await hasRows(firstCard)), 'No billing records seeded')
   await firstCard.click()
   await settleNetwork(page)
   await assertNoHorizontalOverflow(page, 'BillingDetail')
@@ -58,7 +58,7 @@ test('PackingListList bulk-selection bar does not overflow at phone width', asyn
   // Card view at 375px has no header checkbox row — select via the
   // per-card checkbox instead so the bulk bar actually renders.
   const cardCheckbox = page.getByRole('checkbox').first()
-  test.skip((await cardCheckbox.count()) === 0, 'No packing lists seeded')
+  test.skip(!(await hasRows(cardCheckbox)), 'No packing lists seeded')
   await cardCheckbox.click()
 
   const bulkBar = page.getByText(/packing list\(s\) selected/i)
@@ -74,7 +74,7 @@ test('customer Account page (all tabs) does not overflow at phone width', async 
 
   for (const tabName of [/notifications/i, /privacy/i]) {
     const tab = page.getByRole('tab', { name: tabName })
-    if (await tab.isVisible().catch(() => false)) {
+    if (await becomesVisible(tab)) {
       await tab.click()
       await assertNoHorizontalOverflow(page, `Account — ${tabName}`)
     }

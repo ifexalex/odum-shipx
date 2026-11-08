@@ -14,7 +14,7 @@
  * release-note form requires tags that actually exist on the container.
  */
 import { expect, test } from '@playwright/test'
-import { actionAvailable, goToViaNav, settleNetwork, switchRole } from '../support/roleSwitch'
+import { actionAvailable, becomesVisible, goToViaNav, hasRows, settleNetwork, switchRole } from '../support/roleSwitch'
 
 const CUSTOMER_NAME = 'Ibrahim Musa'
 const CARTON_TAGS = ['ACME-001-003', 'ACME-001-004']
@@ -51,7 +51,7 @@ test.describe('billing payment and release note', () => {
   const outstandingBefore = await outstandingCard.textContent()
 
     const recordBtn = page.getByRole('button', { name: /record payment/i })
-    if (!(await recordBtn.isVisible().catch(() => false))) {
+    if (!(await actionAvailable(page, /record payment/i))) {
       // canRecordPayment() is false — already fully settled by a previous
       // run (paid, overpaid, or released_with_outstanding all hide this
       // button). Nothing further to test on this pass.
@@ -110,7 +110,7 @@ test.describe('billing payment and release note', () => {
       expect(failedAlready).toBeVisible({ timeout: 10_000 }),
     ])
 
-    if (await dialog.isVisible().catch(() => false)) {
+    if (await becomesVisible(dialog)) {
       await dialog.getByRole('button', { name: /cancel/i }).click()
     }
 
@@ -131,7 +131,7 @@ test.describe('billing payment and release note', () => {
     // settles — a one-shot .count() can race the Table's loading skeleton
     // (blank rows). toHaveCount retries until real rows render or time out.
     await expect(noteRow).toHaveCount(1, { timeout: 10_000 }).catch(() => undefined)
-    test.skip((await noteRow.count()) === 0, 'No release note found for this customer — run the generation test first')
+    test.skip(!(await hasRows(noteRow)), 'No release note found for this customer — run the generation test first')
 
     await noteRow.getByRole('button', { name: /^view$/i }).click()
     await expect(page).toHaveURL(/\/release-notes\//)

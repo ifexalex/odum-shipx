@@ -321,6 +321,81 @@ def create_billing(
     )
 
 
+def create_refund_request(
+    cur,
+    tenant_id: str,
+    customer_id: str,
+    billing_id: str,
+    amount_ngn: float,
+    reason: str,
+    status: str = "pending_review",
+) -> dict:
+    """A refund request, defaulting to the state the review flow starts in.
+
+    Seeded so `claims-and-refunds.spec.ts`'s review/approve tests do not depend
+    on an earlier spec in the same run having created one through the UI — which
+    is what made them skip whenever that earlier spec itself skipped.
+
+    The CHECK-constrained columns, since they are not guessable (migration 009):
+    `status` is one of pending_review / accounts_reviewed / pending_approval /
+    approved / rejected / processed / applied_as_credit; `customer_choice` is
+    immediate_refund or credit_next_shipment (or NULL); `refund_type` is
+    overpayment / cbm_correction / damage_or_loss and is NOT NULL.
+    """
+    return _one(
+        cur,
+        """
+        INSERT INTO refund_request (
+            tenant_id, customer_id, billing_id, amount_ngn, reason, status,
+            customer_choice, refund_type
+        ) VALUES (%s, %s, %s, %s, %s, %s, 'immediate_refund', 'overpayment')
+        RETURNING *
+        """,
+        (tenant_id, customer_id, billing_id, amount_ngn, reason, status),
+    )
+
+
+def create_release_note(
+    cur,
+    tenant_id: str,
+    billing_id: str,
+    customer_id: str,
+    container_id: str,
+    reference_number: str,
+    carton_tags: list[str],
+    issued_by: str,
+    status: str = "active",
+) -> dict:
+    """A release note, defaulting to `active` — the only state a split applies to.
+
+    `release-note-split.spec.ts` needs an active note with **at least two**
+    carton tags: splitting moves one tag into a child note, so a single-tag note
+    offers no Split action at all. Seeding it decouples that spec from the
+    generation test that previously had to run first.
+    """
+    return _one(
+        cur,
+        """
+        INSERT INTO release_note (
+            tenant_id, billing_id, customer_id, container_id, reference_number,
+            carton_tags, total_cartons, status, issued_by, valid_until
+        ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, CURRENT_DATE + 14)
+        RETURNING *
+        """,
+        (
+            tenant_id,
+            billing_id,
+            customer_id,
+            container_id,
+            reference_number,
+            carton_tags,
+            len(carton_tags),
+            status,
+            issued_by,
+        ),
+    )
+
+
 def create_payment(
     cur, billing_id: str, tenant_id: str, amount_ngn: float, method: str, reference: str, payment_date, recorded_by: str
 ) -> dict:
@@ -560,7 +635,7 @@ def seed_tenant_a(cur) -> dict:
     create_shipment_tracking(cur, tid, str(item3b["id"]), "TRK002002", "at_warehouse")
 
     # Unpaid billing for container 2
-    create_billing(
+    b_con2 = create_billing(
         cur,
         tid,
         str(cust1["id"]),
@@ -576,7 +651,67 @@ def seed_tenant_a(cur) -> dict:
         due_date=today + timedelta(days=14),
     )
 
+    # ── e2e fixtures ────────────────────────────────────────────────────────
+    # These exist so specs stop depending on an *earlier spec in the same run*
+    # having produced their precondition through the UI. That coupling is what
+    # made the suite report 7 skips with messages like "run the claims tests
+    # first": when the upstream spec skipped, everything downstream of it
+    # skipped too, and a green run could be hiding a whole chain.
+    #
+    # Each row below is the state some spec needs and the seed never produced.
+
+    # A DRAFT packing list — `bulk-packing-list-actions.spec.ts`'s bulk-submit
+    # case filters to Draft and had nothing to act on (0 draft lists seeded).
+    pl_draft = create_packing_list(cur, tid, str(con2["id"]), str(man2["id"]), str(cust2["id"]), "draft", str(china_staff["id"]))
+    create_packing_list_item(cur, str(pl_draft["id"]), "Draft carton A", "ACME-002-101", "TRK002101", 12.0, 0.3)
+    create_packing_list_item(cur, str(pl_draft["id"]), "Draft carton B", "ACME-002-102", "TRK002102", 14.0, 0.4)
+
+    # Two MORE pending_approval lists. One was already seeded, but the bulk
+    # specs *consume* it — bulk-approve moves it to `approved` — so the next
+    # spec in the file found an empty filter and skipped. This is the
+    # "coverage degrades silently on re-run" effect measured in 17_testing.md;
+    # extra rows mean a second spec, and a second run, still have material.
+    for n, cust in ((1, cust2), (2, cust1)):
+        pl_pending = create_packing_list(
+            cur, tid, str(con2["id"]), str(man2["id"]), str(cust["id"]), "pending_approval", str(china_staff["id"])
+        )
+        create_packing_list_item(cur, str(pl_pending["id"]), f"Pending carton {n}", f"ACME-002-20{n}", f"TRK00220{n}", 16.0, 0.4)
+
+    # A pending_review REFUND — `claims-and-refunds.spec.ts`'s review/approve
+    # tests skipped with "run the claims tests first" because nothing seeded a
+    # refund and the upstream customer-refund spec was itself skipping.
+    create_refund_request(
+        cur,
+        tid,
+        str(cust2["id"]),
+        str(b2["id"]),
+        15000.00,
+        "Overpaid on invoice INV-A-002 — seeded fixture for the refund review flow",
+    )
+
+    # An ACTIVE release note with TWO carton tags — `release-note-split.spec.ts`
+    # needs both: `active` because a picked-up note cannot be split, and two
+    # tags because splitting moves one tag out, so a single-tag note shows no
+    # Split action at all.
+    #
+    # It must sit on the billing the spec actually navigates to: it searches the
+    # billing list for "Ngozi Adeyemi" + ACME001002 + INV-A-003, i.e. cust1's
+    # unpaid billing on container 2 — NOT container 1. My first attempt put the
+    # note on INV-A-001 and the spec kept skipping, because the note existed but
+    # not where the spec looks.
+    create_release_note(
+        cur,
+        tid,
+        str(b_con2["id"]),
+        str(cust1["id"]),
+        str(con2["id"]),
+        "RN-A-E2E-001",
+        ["ACME-002-001", "ACME-002-002"],
+        str(ng_staff["id"]),
+    )
+
     print(f"  containers: {con1['id']} (fully_released), {con2['id']} (at_warehouse)")
+    print("  e2e fixtures: 1 draft + 2 pending_approval packing lists, 1 pending_review refund, 1 active 2-tag release note")
     return {"tenant": tenant, "admin": admin, "customers": [cust1, cust2]}
 
 
