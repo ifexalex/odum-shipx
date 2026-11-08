@@ -7,6 +7,7 @@ import { render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { MemoryRouter, Route, Routes } from 'react-router-dom'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { withQuery } from '../../test/queryWrapper'
 import { SessionContext, type SessionContextValue } from '../../auth/SessionContext'
 import type { Session } from '../../auth/types'
 import { billingApi } from '../../api/billing'
@@ -133,15 +134,17 @@ function makeCtx(readOnly = false): SessionContextValue {
 
 function renderPage() {
   return render(
-    <SessionContext.Provider value={makeCtx()}>
-      <MemoryRouter initialEntries={['/admin/customers/c1']}>
-        <Routes>
-          <Route path="/admin/customers/:id" element={<AdminCustomerDetail />} />
-          <Route path="/packing-lists/:id" element={<div>PL detail page</div>} />
-          <Route path="/billing/:id" element={<div>Billing detail page</div>} />
-        </Routes>
-      </MemoryRouter>
-    </SessionContext.Provider>,
+    withQuery(
+      <SessionContext.Provider value={makeCtx()}>
+        <MemoryRouter initialEntries={['/admin/customers/c1']}>
+          <Routes>
+            <Route path="/admin/customers/:id" element={<AdminCustomerDetail />} />
+            <Route path="/packing-lists/:id" element={<div>PL detail page</div>} />
+            <Route path="/billing/:id" element={<div>Billing detail page</div>} />
+          </Routes>
+        </MemoryRouter>
+      </SessionContext.Provider>,
+    ),
   )
 }
 

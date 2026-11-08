@@ -9,10 +9,13 @@
  *  - Modal goes to full-screen on narrow viewports
  */
 
-import { useCallback, useEffect, useState, type JSX } from 'react'
+import { useQuery, useQueryClient } from '@tanstack/react-query'
+import { useMemo, useState, type JSX } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { ApiError } from '../../api/client'
+import { ApiError, type ListResponse } from '../../api/client'
 import { releaseNotesApi, type DelegateIdType, type PickupResult, type ReleaseNote, type RecordPickupInput } from '../../api/releaseNotes'
+import { releaseNoteKeys } from '../../api/keys'
+import { STALE_30S } from '../../lib/queryClient'
 import { Banner, Button, Field, Icon, Mono, PhoneField, StatCard, ToggleSwitch } from '../../design/components'
 import styles from './WarehouseDashboard.module.css'
 
@@ -229,53 +232,72 @@ function NoteCard({ note, onPickup, lastPickup }: NoteCardProps): JSX.Element {
 
 export function WarehouseDashboard(): JSX.Element {
   const navigate = useNavigate()
-  const [activeNotes, setActiveNotes] = useState<ReleaseNote[]>([])
-  const [doneToday, setDoneToday] = useState<number | null>(null)
-  const [expiredCount, setExpiredCount] = useState<string | null>(null)
-  const [loading, setLoading] = useState(true)
-  const [error, setError] = useState<string | null>(null)
+  const qc = useQueryClient()
   const [pickingNote, setPickingNote] = useState<ReleaseNote | null>(null)
   const [lastPickup, setLastPickup] = useState<PickupResult | null>(null)
   const [lookupRef, setLookupRef] = useState('')
   const [lookupError, setLookupError] = useState<string | null>(null)
   const [lookupBusy, setLookupBusy] = useState(false)
 
-  const load = useCallback(async () => {
-    setLoading(true)
-    setError(null)
-    try {
-      // Queue + real completed-today count + expired backlog, in parallel (P2-2).
-      const [active, pickedUp, expired] = await Promise.all([
-        releaseNotesApi.list({ status: 'active' }),
-        releaseNotesApi.list({ status: 'picked_up', limit: 50 }),
-        releaseNotesApi.list({ status: 'expired', limit: 50 }),
-      ])
-      // Oldest first — urgency order, matching the prototype queue.
-      setActiveNotes(
-        [...active.data].sort((a, b) => a.authorized_at.localeCompare(b.authorized_at)),
-      )
-      setDoneToday(pickedUp.data.filter((n) => isToday(n.picked_up_at)).length)
-      setExpiredCount(
-        expired.meta.pagination.has_more ? `${expired.data.length}+` : String(expired.data.length),
-      )
-    } catch (err) {
-      setError(err instanceof ApiError ? err.message : 'Could not load release notes.')
-    } finally {
-      setLoading(false)
-    }
-  }, [])
+  // Queue + real completed-today count + expired backlog, still in parallel
+  // (P2-2) but as three cached queries rather than one Promise.all in an
+  // effect, so each status list shares a cache slot with the release-note list
+  // screens and a pickup elsewhere refreshes this dashboard.
+  const ACTIVE_PARAMS = { status: 'active' as const }
+  const PICKED_UP_PARAMS = { status: 'picked_up' as const, limit: 50 }
+  const EXPIRED_PARAMS = { status: 'expired' as const, limit: 50 }
 
-  // eslint-disable-next-line react-hooks/set-state-in-effect -- hand-rolled fetch effect; migrate to TanStack Query (master plan 7.150)
-  useEffect(() => { void load() }, [load])
+  const activeQ = useQuery({
+    queryKey: releaseNoteKeys.list(ACTIVE_PARAMS),
+    queryFn: () => releaseNotesApi.list(ACTIVE_PARAMS),
+    staleTime: STALE_30S,
+  })
+  const pickedUpQ = useQuery({
+    queryKey: releaseNoteKeys.list(PICKED_UP_PARAMS),
+    queryFn: () => releaseNotesApi.list(PICKED_UP_PARAMS),
+    staleTime: STALE_30S,
+  })
+  const expiredQ = useQuery({
+    queryKey: releaseNoteKeys.list(EXPIRED_PARAMS),
+    queryFn: () => releaseNotesApi.list(EXPIRED_PARAMS),
+    staleTime: STALE_30S,
+  })
+
+  const loading = activeQ.isLoading || pickedUpQ.isLoading || expiredQ.isLoading
+  const firstError = activeQ.error ?? pickedUpQ.error ?? expiredQ.error
+  const error = firstError
+    ? firstError instanceof ApiError
+      ? firstError.message
+      : 'Could not load release notes.'
+    : null
+
+  // Oldest first — urgency order, matching the prototype queue.
+  const activeNotes = useMemo(
+    () => [...(activeQ.data?.data ?? [])].sort((a, b) => a.authorized_at.localeCompare(b.authorized_at)),
+    [activeQ.data],
+  )
+  const doneToday = pickedUpQ.data ? pickedUpQ.data.data.filter((n) => isToday(n.picked_up_at)).length : null
+  const expiredCount = expiredQ.data
+    ? expiredQ.data.meta.pagination.has_more
+      ? `${expiredQ.data.data.length}+`
+      : String(expiredQ.data.data.length)
+    : null
 
   function handlePickupSuccess(result: PickupResult): void {
     setPickingNote(null)
     setLastPickup(result)
     if (result.release_note_status === 'picked_up') {
-      setDoneToday((prev) => (prev ?? 0) + 1)
-      // Remove fully-collected note from queue after a short delay so staff sees ✓
+      // Drop the fully-collected note from the queue after a short delay so
+      // staff sees the ✓ first. Written into the cache rather than local state;
+      // the pickup POST has already triggered an invalidation of
+      // releaseNoteKeys.all, so the server's own view lands shortly after and
+      // reconciles either way.
       setTimeout(() => {
-        setActiveNotes((prev) => prev.filter((n) => n.id !== result.release_note_id))
+        qc.setQueryData<ListResponse<ReleaseNote>>(releaseNoteKeys.list(ACTIVE_PARAMS), (prev) =>
+          prev
+            ? { ...prev, data: prev.data.filter((n) => n.id !== result.release_note_id) }
+            : prev,
+        )
         setLastPickup(null)
       }, 2000)
     }

@@ -161,6 +161,10 @@ export const platformTenantKeys = {
   all: ['platform-tenants'] as const,
   list: () => [...platformTenantKeys.all, 'list'] as const,
   detail: (id: string) => [...platformTenantKeys.all, 'detail', id] as const,
+  // GET /v1/platform/tenants/{id}/usage — a child of platformTenantKeys.all,
+  // which the /v1/platform/tenants/ invalidation rule already covers (and
+  // quota-override lives under that same path).
+  usage: (id: string) => [...platformTenantKeys.all, 'usage', id] as const,
 }
 
 // ─── Platform audit log (cross-tenant) ────────────────────────────────────────
