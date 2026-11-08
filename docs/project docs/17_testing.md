@@ -1926,3 +1926,43 @@ Use **`npm run typecheck`** (`tsc -b --noEmit`), which is also what
 `frontend-ci.yml` runs. `tsc -b` is incremental, so pass `--force` when you need
 certainty after a fix, and read the output rather than piping to `tail` and
 checking `$?` — that reports `tail`'s status, not tsc's.
+
+---
+
+## `withQuery()` — the shared provider helper (2026-11-08, master plan 7.156)
+
+`src/test/queryWrapper.tsx` exports `withQuery(children, client?)` and
+`createTestQueryClient()`. Thirteen harnesses adopted it while completing 7.150;
+use it for any page that reads through TanStack Query.
+
+```tsx
+function renderPage() {
+  return render(
+    withQuery(
+      <MemoryRouter initialEntries={['/thing/1']}>
+        <Routes>…</Routes>
+      </MemoryRouter>,
+    ),
+  )
+}
+```
+
+It composes with whatever providers a harness already has rather than replacing
+them, which matters because the existing harnesses nest session, router and
+top-bar providers in several different orders.
+
+`retry: false` is deliberate. A stubbed endpoint that rejects would otherwise be
+retried three times with backoff, turning a clear assertion failure into a
+timeout.
+
+**Also stub every endpoint a migrated page newly reads.** An effect that
+swallowed its own failure (`.catch(() => setX([]))`) becomes a query that retries
+and logs, so endpoints that previously needed no mock now do.
+
+### Expect some assertions to need `find*` instead of `get*`
+
+Where a page replaced one `Promise.all` with several independent queries, the
+parts no longer land together. `WarehouseDashboard`'s stat labels can paint a
+tick before their counts, so those assertions became `await screen.findByText(…)`.
+This is a real property of the new code, not a flake to paper over — the labels
+genuinely render first.

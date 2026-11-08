@@ -15,6 +15,7 @@ export const containerKeys = {
   stats: () => [...containerKeys.all, 'stats'] as const,
   detail: (id: string) => [...containerKeys.all, 'detail', id] as const,
   events: (id: string) => [...containerKeys.all, 'detail', id, 'events'] as const,
+  documents: (id: string) => [...containerKeys.all, 'detail', id, 'documents'] as const,
 }
 
 // ─── Packing lists ────────────────────────────────────────────────────────────

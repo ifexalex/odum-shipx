@@ -3,6 +3,7 @@ import userEvent from '@testing-library/user-event'
 import { MemoryRouter, Route, Routes } from 'react-router-dom'
 import { useState, type ReactNode } from 'react'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { withQuery } from '../../test/queryWrapper'
 import { SessionContext, type SessionContextValue } from '../../auth/SessionContext'
 import type { Session, UserRole } from '../../auth/types'
 import { containersApi, type Container } from '../../api/tracking'
@@ -108,15 +109,17 @@ const plStub: PackingList = {
 
 function renderPage(role: UserRole) {
   return render(
-    <SessionContext.Provider value={makeContextValue(role)}>
-      <MemoryRouter initialEntries={['/containers/c1']}>
-        <TopBarWrapper>
-          <Routes>
-            <Route path="/containers/:id" element={<ContainerDetail />} />
-          </Routes>
-        </TopBarWrapper>
-      </MemoryRouter>
-    </SessionContext.Provider>,
+    withQuery(
+      <SessionContext.Provider value={makeContextValue(role)}>
+        <MemoryRouter initialEntries={['/containers/c1']}>
+          <TopBarWrapper>
+            <Routes>
+              <Route path="/containers/:id" element={<ContainerDetail />} />
+            </Routes>
+          </TopBarWrapper>
+        </MemoryRouter>
+      </SessionContext.Provider>,
+    ),
   )
 }
 

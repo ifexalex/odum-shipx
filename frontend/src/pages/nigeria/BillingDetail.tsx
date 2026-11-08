@@ -26,6 +26,7 @@ import { releaseNotesApi } from '../../api/releaseNotes'
 import { useSession } from '../../auth/useSession'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { billingKeys, releaseNoteKeys } from '../../api/keys'
+import { STALE_30S } from '../../lib/queryClient'
 import { configApi, type ChargeType } from '../../api/tenantManagement'
 import { useWarehouses } from '../../hooks/useWarehouses'
 import { Action, Badge, Banner, Button, Card, ExportButton, Field, Icon, Mono, StatCard, Table, type BadgeVariant } from '../../design/components'
@@ -1131,20 +1132,18 @@ export function BillingDetail(): JSX.Element {
   const role = session?.role ?? 'nigeria_office_staff'
   const qc = useQueryClient()
 
-  // Ground-truth gap found live, reported by the user: "i approved a
-  // payment, but it did not record the payment as paid, until i refreshed
-  // the page." Every mutation on this page (record payment, confirm/reject
-  // a claim, waive fees, remove a charge, apply a carryover, cancel, a
-  // dispute update) only ever refreshed this component's own local
-  // `billing`/`carryovers` state (via `load()`/`setBilling()`) — it never
-  // invalidated react-query's cache, so `BillingList.tsx`'s own
-  // `billingKeys.list(...)` query (5-minute staleTime) kept serving the
-  // pre-mutation row on every other screen until a hard refresh discarded
-  // the whole QueryClient. Every comparable mutation elsewhere in this
-  // codebase (useRecordPayment, useFileDispute, useResolveDispute — see
-  // useBilling.ts) already invalidates billingKeys on success; this page's
-  // hand-rolled mutations just never did. One shared call, invoked after
-  // every local refresh below.
+  // Ground-truth gap found live, reported by the user: "i approved a payment,
+  // but it did not record the payment as paid, until i refreshed the page."
+  // Every mutation on this page used to refresh only this component's own local
+  // `billing` state, never react-query's cache, so `BillingList.tsx`'s
+  // `billingKeys.list(...)` query kept serving the pre-mutation row on every
+  // other screen until a hard refresh.
+  //
+  // Since 7.150 the record itself is a query at `billingKeys.detail(id)`, which
+  // is a *child* of `billingKeys.all` — so this one invalidation now refreshes
+  // this page as well as every list. That is why the six `await load()` calls
+  // that used to sit beside each of these calls are gone rather than rewritten:
+  // the reload they did is what the invalidation already does.
   const invalidateBillingCaches = useCallback(() => {
     void qc.invalidateQueries({ queryKey: billingKeys.all })
   }, [qc])
@@ -1153,10 +1152,29 @@ export function BillingDetail(): JSX.Element {
   // list renders instantly; GET /v1/billing/{id}/detail is the real source and
   // backs direct links plus every refresh after a mutation.
   const stateBilling = (location.state as { billing?: Billing } | null)?.billing ?? null
-  const [billing, setBilling] = useState<Billing | null>(stateBilling)
+  const { data: billing = null, isLoading: loading, error: loadError } = useQuery({
+    queryKey: billingKeys.detail(id ?? ''),
+    queryFn: () => billingApi.get(id!),
+    enabled: !!id,
+    ...(stateBilling ? { initialData: stateBilling } : {}),
+    staleTime: STALE_30S,
+  })
   const [carryovers, setCarryovers] = useState<Carryover[]>([])
-  const [loading, setLoading] = useState(stateBilling === null)
-  const [error, setError] = useState<string | null>(null)
+  const [actionError, setActionError] = useState<string | null>(null)
+
+  const error =
+    actionError ??
+    (loadError
+      ? loadError instanceof ApiError && loadError.status === 404
+        ? 'Billing record not found.'
+        : loadError instanceof ApiError
+          ? loadError.message
+          : 'Could not load billing record.'
+      : null)
+
+  const applyBilling = (updated: Billing): void => {
+    qc.setQueryData(billingKeys.detail(id ?? ''), updated)
+  }
 
   const [showPaymentModal, setShowPaymentModal] = useState(false)
   const [showCancelModal, setShowCancelModal] = useState(false)
@@ -1197,28 +1215,6 @@ export function BillingDetail(): JSX.Element {
   const [rejectReason, setRejectReason] = useState('')
   const [claimActionError, setClaimActionError] = useState<string | null>(null)
 
-  const load = useCallback(async () => {
-    if (!id) return
-    setLoading(true)
-    setError(null)
-    try {
-      setBilling(await billingApi.get(id))
-    } catch (err) {
-      if (err instanceof ApiError && err.status === 404) {
-        setError('Billing record not found.')
-      } else {
-        setError(err instanceof ApiError ? err.message : 'Could not load billing record.')
-      }
-    } finally {
-      setLoading(false)
-    }
-  }, [id])
-
-  // Only fetch from API if we didn't get the billing from router state
-  useEffect(() => {
-    // eslint-disable-next-line react-hooks/set-state-in-effect -- hand-rolled fetch effect; migrate to TanStack Query (master plan 7.150)
-    if (stateBilling === null) void load()
-  }, [load, stateBilling])
 
   async function loadCarryovers(): Promise<void> {
     if (!billing) return
@@ -1239,7 +1235,7 @@ export function BillingDetail(): JSX.Element {
 
   function handleDisputeUpdated(updated: CBMDispute): void {
     if (!billing) return
-    setBilling({
+    applyBilling({
       ...billing,
       _active_disputes: billing._active_disputes.map((d) => (d.id === updated.id ? updated : d)),
     })
@@ -1275,10 +1271,10 @@ export function BillingDetail(): JSX.Element {
     setWaivingFees(true)
     try {
       const updated = await billingApi.waiveStorageFees(billing.id, 'Waived by staff')
-      setBilling(updated)
+      applyBilling(updated)
       invalidateBillingCaches()
     } catch (err) {
-      setError(err instanceof ApiError ? err.message : 'Could not waive storage fees.')
+      setActionError(err instanceof ApiError ? err.message : 'Could not waive storage fees.')
     } finally {
       setWaivingFees(false)
     }
@@ -1290,10 +1286,9 @@ export function BillingDetail(): JSX.Element {
     try {
       await billingApi.deleteMiscCharge(billing.id, chargeId)
       await refetchCharges()
-      await load() // totals changed
       invalidateBillingCaches()
     } catch (err) {
-      setError(err instanceof ApiError ? err.message : 'Could not remove charge.')
+      setActionError(err instanceof ApiError ? err.message : 'Could not remove charge.')
     } finally {
       setRemovingChargeId(null)
     }
@@ -1305,7 +1300,6 @@ export function BillingDetail(): JSX.Element {
     try {
       await paymentClaimApi.confirm(claimId)
       await refetchClaims()
-      await load() // the confirmed claim just created a real payment — totals changed
       invalidateBillingCaches()
     } catch (err) {
       setClaimActionError(err instanceof ApiError ? err.message : 'Could not confirm this payment claim.')
@@ -1739,7 +1733,6 @@ export function BillingDetail(): JSX.Element {
           onSuccess={() => {
             setShowAddChargeModal(false)
             void refetchCharges()
-            void load() // totals changed
             invalidateBillingCaches()
           }}
         />
@@ -1750,7 +1743,6 @@ export function BillingDetail(): JSX.Element {
           onCancel={() => setShowPaymentModal(false)}
           onSuccess={() => {
             setShowPaymentModal(false)
-            void load()
             invalidateBillingCaches()
           }}
         />
@@ -1763,7 +1755,7 @@ export function BillingDetail(): JSX.Element {
           onCancel={() => setShowCancelModal(false)}
           onSuccess={(updated) => {
             setShowCancelModal(false)
-            setBilling(updated)
+            applyBilling(updated)
             invalidateBillingCaches()
           }}
         />
@@ -1776,7 +1768,6 @@ export function BillingDetail(): JSX.Element {
           onCancel={() => setShowCarryoverModal(false)}
           onSuccess={() => {
             setShowCarryoverModal(false)
-            void load()
             invalidateBillingCaches()
           }}
         />

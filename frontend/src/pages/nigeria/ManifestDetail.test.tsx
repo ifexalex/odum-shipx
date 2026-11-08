@@ -2,6 +2,7 @@ import { render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { MemoryRouter, Route, Routes } from 'react-router-dom'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { withQuery } from '../../test/queryWrapper'
 import { manifestApi, type Manifest } from '../../api/manifest'
 import { SessionContext, type SessionContextValue } from '../../auth/SessionContext'
 import type { Session, UserRole } from '../../auth/types'
@@ -83,13 +84,15 @@ function manifestStub(overrides: Partial<Manifest> = {}): Manifest {
 
 function renderPage(role: UserRole) {
   return render(
-    <SessionContext.Provider value={makeContextValue(role)}>
-      <MemoryRouter initialEntries={['/manifests/mf1']}>
-        <Routes>
-          <Route path="/manifests/:id" element={<ManifestDetail />} />
-        </Routes>
-      </MemoryRouter>
-    </SessionContext.Provider>,
+    withQuery(
+      <SessionContext.Provider value={makeContextValue(role)}>
+        <MemoryRouter initialEntries={['/manifests/mf1']}>
+          <Routes>
+            <Route path="/manifests/:id" element={<ManifestDetail />} />
+          </Routes>
+        </MemoryRouter>
+      </SessionContext.Provider>,
+    ),
   )
 }
 

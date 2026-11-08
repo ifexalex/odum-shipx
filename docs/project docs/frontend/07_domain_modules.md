@@ -92,6 +92,21 @@ Both `BillingDetail.tsx` and `MyBillingDetail.tsx` previously worked around the 
 
 **Payment recording endpoint is in `payment_release` handler, not `billing`.** `POST /v1/payments/{billing-id}/confirm` goes to `services/payment_release/handler.py`. `billing.ts`'s `billingApi.recordPayment()` correctly calls `/v1/payments/${id}/confirm`.
 
+**7.150 complete — every page now reads through TanStack Query (2026-11-08).** The 23 remaining hand-rolled fetch effects were migrated across all five areas; `grep -rn 'migrate to TanStack Query' frontend/src` returns nothing.
+
+What this changes for anyone adding a page:
+
+- **Do not hand-roll a `load()` useCallback invoked from an effect.** Read through `useQuery` (or an existing domain hook) keyed with `src/api/keys.ts`. Several pages were duplicating a hook that already existed and read the very same cache slot — `Warehouses`/`useWarehouses`, `MyClaims`/`useClaimList`, `MyBilling`/`useBillingList`, `ContainerCapacities`/the slot `CreateContainer` reads.
+- **Do not reload after a mutation.** `api/client.ts` invalidates the affected roots after every successful non-GET, so a page whose key sits under an invalidated root refreshes itself. The one exception is a write that bypasses the API client — currently only the container document upload (direct PUT to presigned storage), where `DocumentsTab` invalidates `containerKeys.documents(id)` explicitly because the presign POST fires before the bytes land.
+- **A mutation response that carries the updated record** goes into the cache with `setQueryData`, not into local state, so the open page and every list showing that row move together.
+- **Keep mutation errors in their own `actionError`.** Merging them into the load error made a failed write render as a failed load.
+- **An editable field seeded from the server needs a draft**, not derivation — see `StaffUserDetail`'s `localeDraft`. Deriving it discards a half-made edit on refetch (the 7.149 `CompanySettings` bug class).
+- **Tests need `withQuery()`** from `src/test/queryWrapper.tsx`. Without a provider the page throws `No QueryClient set` with a stack pointing at the component, which reads like a product bug.
+
+`ActivityLog.tsx` still hand-rolls a loader and that is intentional: it was never one of the 25 and carries no suppression, because 7.149 resolved its render-purity problems differently.
+
+**A real bug this surfaced:** `MyShipments` had been calling `billingApi.listForCustomer(session.userId)` — a *customer*-id endpoint handed a user id — which returned **403 on every call**, swallowed by `Promise.allSettled`. The outstanding-balance greeting therefore always read ₦0 and the per-shipment billing lookup was always empty. See `11_api_billing.md` and the 7.156 master-plan entry.
+
 **Customer billing pages migrated to TanStack Query (2026-11-07, master plan 7.150 — customer billing slice).**
 
 - `MyBilling.tsx` now uses the existing **`useBillingList`** hook — the same paginated hook the staff `BillingList` uses — instead of hand-rolling `billingApi.list()` in a `useEffect`. This fixed a real truncation as a side effect: the page fetched one page with **no `limit`** and rendered it with no "Load more", so a customer with more than 50 invoices simply could not reach the older ones. It now renders the shared `ListFooter` with `hasMore`/`loadMore`, matching the staff list.

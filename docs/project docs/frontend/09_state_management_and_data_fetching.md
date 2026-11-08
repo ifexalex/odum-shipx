@@ -97,12 +97,20 @@ fires at runtime.
 | **Nothing on a failed write** | It changed nothing, and refetching would repaint the list and mask the failure. |
 | Pre-auth paths map to an **empty** root set | They must still *match*, so the drift test cannot later be satisfied by an accidental catch-all. |
 
-**Known limitation.** This fixes *cross-page* staleness, which is the reported
-class of bug. A page that holds its own copy in `useState` (there are many —
-`ContainerDetail`, `Warehouses`, most config pages) is not a query observer, so
-invalidation cannot refresh it; those pages still reload themselves manually.
-Migrating them onto the existing mutation hooks is follow-up work, deliberately
-not bundled with this change.
+**~~Known limitation.~~ Closed 2026-11-08 (master plan 7.150).** This originally
+fixed only *cross-page* staleness: a page holding its own copy in `useState` is
+not a query observer, so invalidation could not refresh it, and those pages
+reloaded themselves manually. Every page named here (`ContainerDetail`,
+`Warehouses`, the config pages) now reads through a query, so the automatic
+invalidation reaches the open page as well as the lists — which is why the
+manual `load()` reloads beside each mutation could be **deleted** rather than
+rewritten.
+
+One consequence worth knowing when adding a page: a mutation whose write does
+not pass through `api/client.ts` is not covered. The only current case is the
+container **document upload**, a direct PUT to presigned storage — the presign
+POST fires the invalidation *before* the bytes land, so `DocumentsTab`
+invalidates `containerKeys.documents(id)` explicitly after the upload resolves.
 
 **Do not re-enable `refetchOnWindowFocus` to paper over staleness.** If something
 looks stale, the registry is missing a rule or a cross-domain effect.
@@ -144,7 +152,8 @@ Constants exported from `src/lib/queryClient.ts`: `STALE_FOREVER`, `STALE_5_MIN`
 - `src/hooks/useCursorPagination.ts` — generic `useInfiniteQuery` wrapper; exposes `{ items, hasMore, totalCount, loadMore, isLoading, isFetchingMore, error, refetch }`.
 - `src/api/keys.ts` — query key factories for all 10 domains; `tenantId` never appears in any key.
 - Domain hooks: `useContainers`, `usePackingLists`, `useManifests`, `useBilling`, `useClaims`, `useRefunds`, `useNotifications`, `useConfig`, `useStaff` — each exports list, detail, and mutation hooks with correct `invalidateQueries` wiring.
-- Pages refactored: `ContainerList`, `BillingList`, `ClaimList`. Remaining pages follow the same pattern — replace `useEffect`+`useState` with the corresponding domain hook.
+- `src/test/queryWrapper.tsx` — `withQuery()` / `createTestQueryClient()` for tests. A component calling `useQuery` without a provider throws `No QueryClient set` with a stack pointing at the component, not the test, so it reads like a product bug.
+- Pages refactored: **all of them**, as of master plan 7.150 (2026-11-08). `ContainerList`, `BillingList` and `ClaimList` came first; the remaining 25 hand-rolled `useEffect`+`useState` fetches were migrated area by area and the greppable `migrate to TanStack Query` suppressions are now at **zero**. The one surviving hand-rolled loader, `ActivityLog.tsx`, was never part of that set — 7.149 resolved its render-purity problems a different way, so it carries no suppression; migrating it is optional follow-up.
 
 ## Acceptance Criteria
 
