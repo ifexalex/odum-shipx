@@ -2,6 +2,7 @@ import { render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { MemoryRouter } from 'react-router-dom'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { withQuery } from '../../test/queryWrapper'
 import { containerCapacitiesApi, type ContainerCapacity } from '../../api/tenantManagement'
 import { TopBarTestWrapper } from '../../test/TopBarTestWrapper'
 import { ContainerCapacities } from './ContainerCapacities'
@@ -27,11 +28,13 @@ const CUSTOM_ROW: ContainerCapacity = {
 
 function renderPage() {
   return render(
-    <MemoryRouter>
-      <TopBarTestWrapper>
-        <ContainerCapacities />
-      </TopBarTestWrapper>
-    </MemoryRouter>,
+    withQuery(
+      <MemoryRouter>
+        <TopBarTestWrapper>
+          <ContainerCapacities />
+        </TopBarTestWrapper>
+      </MemoryRouter>,
+    ),
   )
 }
 

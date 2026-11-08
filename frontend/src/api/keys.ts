@@ -113,6 +113,7 @@ export const configKeys = {
   cbm: () => [...configKeys.all, 'cbm-rate'] as const,
   webhook: () => [...configKeys.all, 'webhook'] as const,
   notifications: () => [...configKeys.all, 'notification-templates'] as const,
+  chargeTypes: () => [...configKeys.all, 'charge-types'] as const,
   // GET /v1/tenant/config (webhook + branding live in the same response —
   // webhook() above predates this and is kept for WebhookConfig's cache slot).
   tenantConfig: () => [...configKeys.all, 'tenant-config'] as const,

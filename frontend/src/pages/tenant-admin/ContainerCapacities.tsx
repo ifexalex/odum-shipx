@@ -6,10 +6,13 @@
  * presets populate the create-container capacity picker and drive each
  * container's utilization bar. tenant_admin only (route-guarded).
  */
-import { useCallback, useEffect, useState, type JSX } from 'react'
+import { useQuery } from '@tanstack/react-query'
+import { useState, type JSX } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { ApiError } from '../../api/client'
 import { containerCapacitiesApi, type ContainerCapacity } from '../../api/tenantManagement'
+import { containerCapacityKeys } from '../../api/keys'
+import { STALE_5_MIN } from '../../lib/queryClient'
 import { Badge, Banner, Button, Card, Field, Mono, Table } from '../../design/components'
 import { useTopBarSlot } from '../../shell/TopBarContext'
 import styles from './admin.module.css'
@@ -146,39 +149,39 @@ function CapacityModal({ existing, onCancel, onSuccess }: CapacityModalProps): J
 
 export function ContainerCapacities(): JSX.Element {
   const navigate = useNavigate()
-  const [capacities, setCapacities] = useState<ContainerCapacity[]>([])
-  const [loading, setLoading] = useState(true)
-  const [error, setError] = useState<string | null>(null)
   const [modal, setModal] = useState<{ open: boolean; existing: ContainerCapacity | null }>({
     open: false,
     existing: null,
   })
   const [removingId, setRemovingId] = useState<string | null>(null)
+  const [actionError, setActionError] = useState<string | null>(null)
 
-  const load = useCallback(async () => {
-    setLoading(true)
-    setError(null)
-    try {
-      setCapacities(await containerCapacitiesApi.list())
-    } catch (err) {
-      setError(err instanceof ApiError ? err.message : 'Could not load container capacities.')
-    } finally {
-      setLoading(false)
-    }
-  }, [])
+  // containerCapacityKeys.list() is the slot CreateContainer.tsx already reads,
+  // so the two screens now share one cached list instead of fetching separately.
+  const { data: capacities = [], isLoading: loading, error: loadError } = useQuery({
+    queryKey: containerCapacityKeys.list(),
+    queryFn: () => containerCapacitiesApi.list(),
+    staleTime: STALE_5_MIN,
+  })
 
-  useEffect(() => {
-    // eslint-disable-next-line react-hooks/set-state-in-effect -- hand-rolled fetch effect; migrate to TanStack Query (master plan 7.150)
-    void load()
-  }, [load])
+  const error =
+    actionError ??
+    (loadError
+      ? loadError instanceof ApiError
+        ? loadError.message
+        : 'Could not load container capacities.'
+      : null)
 
+  // No manual reload: api/cacheInvalidation.ts invalidates
+  // containerCapacityKeys.all on any successful non-GET to
+  // /v1/tenant/container-capacities.
   async function handleRemove(id: string): Promise<void> {
     setRemovingId(id)
+    setActionError(null)
     try {
       await containerCapacitiesApi.remove(id)
-      await load()
     } catch (err) {
-      setError(err instanceof ApiError ? err.message : 'Could not remove capacity.')
+      setActionError(err instanceof ApiError ? err.message : 'Could not remove capacity.')
     } finally {
       setRemovingId(null)
     }
@@ -262,10 +265,7 @@ export function ContainerCapacities(): JSX.Element {
         <CapacityModal
           existing={modal.existing}
           onCancel={() => setModal({ open: false, existing: null })}
-          onSuccess={() => {
-            setModal({ open: false, existing: null })
-            void load()
-          }}
+          onSuccess={() => setModal({ open: false, existing: null })}
         />
       )}
     </div>
