@@ -289,13 +289,35 @@ more:
   longer run DDL (asserted by a test), cannot read the master secret (IAM), and
   does not rely on "the master user happens not to have BYPASSRLS".
 
-#### Not done: Azure
+#### Not done: Azure — and Azure is the cloud that actually deploys
 
 `infrastructure/azure` still points the container app at
 `module.postgres.administrator_login`. Azure has its own `migrate` Container App
-Job, so the same owner/app split applies cleanly, but it needs Key Vault secret
-plumbing that cannot be verified from a local environment. Tracked as a separate
-item rather than shipped unverified.
+Job, so the same owner/app split applies cleanly.
+
+**Read the scope of the AWS work above with this in mind.** `vars.DEPLOY_CLOUD`
+is `azure`, and every AWS deploy job is gated on `DEPLOY_CLOUD != 'azure'` (AWS
+also deploys only on a version tag). So the AWS switchover is **staged in `main`
+but not applied**, and the environment that is actually running still connects as
+its admin login. The AWS configuration is correct and will take effect if and
+when that variable changes or a release tag is pushed — it is simply not live
+today.
+
+What this means in practice:
+
+- **Local and CI** enforce RLS for real. That is the part of this work that is
+  in effect, and it is the part that makes tenant-isolation bugs visible before
+  they reach production.
+- **Azure's live behaviour is unchanged.** Migration 060 runs there and
+  correctly no-ops, because the Azure migrate job has no `APP_DB_SECRET_ARN`.
+  That no-op path was built so an unprovisioned environment would not block its
+  own deploy; it is doing exactly that.
+- **Azure's outstanding gap is least privilege, not isolation.** An Azure
+  Flexible Server admin login is not a superuser and so has no `BYPASSRLS`,
+  which means 059's `FORCE` should already be enforcing tenant isolation there.
+  Unverified against the live server — the same caveat as the AWS claim above.
+
+Tracked as master plan 7.158.
 
 Do **not** reorder any of this before 059 is applied: switching the role first
 makes every platform-scoped read raise, which takes out public tracking,
