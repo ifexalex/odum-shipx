@@ -248,17 +248,17 @@ export function WarehouseDashboard(): JSX.Element {
   const EXPIRED_PARAMS = { status: 'expired' as const, limit: 50 }
 
   const activeQ = useQuery({
-    queryKey: releaseNoteKeys.list(ACTIVE_PARAMS),
+    queryKey: releaseNoteKeys.lookup(ACTIVE_PARAMS),
     queryFn: () => releaseNotesApi.list(ACTIVE_PARAMS),
     staleTime: STALE_30S,
   })
   const pickedUpQ = useQuery({
-    queryKey: releaseNoteKeys.list(PICKED_UP_PARAMS),
+    queryKey: releaseNoteKeys.lookup(PICKED_UP_PARAMS),
     queryFn: () => releaseNotesApi.list(PICKED_UP_PARAMS),
     staleTime: STALE_30S,
   })
   const expiredQ = useQuery({
-    queryKey: releaseNoteKeys.list(EXPIRED_PARAMS),
+    queryKey: releaseNoteKeys.lookup(EXPIRED_PARAMS),
     queryFn: () => releaseNotesApi.list(EXPIRED_PARAMS),
     staleTime: STALE_30S,
   })

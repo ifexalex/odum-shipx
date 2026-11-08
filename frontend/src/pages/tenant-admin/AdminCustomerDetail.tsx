@@ -474,7 +474,7 @@ export function AdminCustomerDetail(): JSX.Element {
   const claimParams = { customer_id: id ?? '', limit: 100 }
 
   const shipmentsQ = useQuery({
-    queryKey: packingListKeys.list(shipmentParams),
+    queryKey: packingListKeys.lookup(shipmentParams),
     queryFn: () => packingListApi.list(shipmentParams),
     enabled: !!id,
     staleTime: STALE_30S,
@@ -486,7 +486,7 @@ export function AdminCustomerDetail(): JSX.Element {
     staleTime: STALE_30S,
   })
   const claimsQ = useQuery({
-    queryKey: claimKeys.list(claimParams),
+    queryKey: claimKeys.lookup(claimParams),
     queryFn: () => claimsApi.list(claimParams),
     enabled: !!id,
     staleTime: STALE_30S,

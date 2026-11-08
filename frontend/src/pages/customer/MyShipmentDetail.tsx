@@ -94,7 +94,7 @@ export function MyShipmentDetail(): JSX.Element {
   // Billing is non-fatal — the page renders without it, so this query's error
   // is deliberately not surfaced.
   const { data: billingPage } = useQuery({
-    queryKey: billingKeys.list({}),
+    queryKey: billingKeys.lookup({}),
     queryFn: () => billingApi.list(),
     staleTime: STALE_30S,
   })

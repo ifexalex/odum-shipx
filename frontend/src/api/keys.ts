@@ -23,6 +23,17 @@ export const packingListKeys = {
   all: ['packing-lists'] as const,
   list: (params?: Record<string, unknown>) => [...packingListKeys.all, 'list', params ?? {}] as const,
   detail: (id: string) => [...packingListKeys.all, 'detail', id] as const,
+  /**
+   * A FLAT one-shot read, for a page that needs the whole set as a lookup
+   * table rather than a paginated screen.
+   *
+   * Deliberately NOT `list()`. That key belongs to the `useCursorPagination`
+   * hook for this domain, which is an INFINITE query caching
+   * `{pages: ListResponse[], pageParams}`; a plain `useQuery` on the same key
+   * caches a bare `ListResponse`. Whichever mounts first wins and the other
+   * reads garbage. Still a child of `all`, so automatic invalidation reaches it.
+   */
+  lookup: (params?: Record<string, unknown>) => [...packingListKeys.all, 'lookup', params ?? {}] as const,
 }
 
 // ─── Manifests ────────────────────────────────────────────────────────────────
@@ -43,6 +54,17 @@ export const billingKeys = {
   // GET /v1/billing/carryovers — a child of billingKeys.all, which the
   // /v1/billing/carryovers/ invalidation rule already covers.
   carryovers: (params?: Record<string, unknown>) => [...billingKeys.all, 'carryovers', params ?? {}] as const,
+  /**
+   * A FLAT one-shot read of GET /v1/billing, for pages that only need a
+   * lookup table (e.g. billing-by-container on the customer shipment pages).
+   *
+   * Deliberately NOT `list()`: that key belongs to `useBillingList`, which is
+   * an infinite query and caches `{pages: ListResponse[], pageParams}`. A plain
+   * `useQuery` on the same key caches a bare `ListResponse`, so the two
+   * overwrite each other's shape and whichever reads second gets garbage —
+   * `/my-shipments` then `/my-billing` crashed MyBilling exactly this way.
+   */
+  lookup: (params?: Record<string, unknown>) => [...billingKeys.all, 'lookup', params ?? {}] as const,
 }
 
 // ─── Claims ───────────────────────────────────────────────────────────────────
@@ -68,6 +90,17 @@ export const claimKeys = {
   list: (params?: Record<string, unknown>) => [...claimKeys.all, 'list', params ?? {}] as const,
   stats: () => [...claimKeys.all, 'stats'] as const,
   detail: (id: string) => [...claimKeys.all, 'detail', id] as const,
+  /**
+   * A FLAT one-shot read, for a page that needs the whole set as a lookup
+   * table rather than a paginated screen.
+   *
+   * Deliberately NOT `list()`. That key belongs to the `useCursorPagination`
+   * hook for this domain, which is an INFINITE query caching
+   * `{pages: ListResponse[], pageParams}`; a plain `useQuery` on the same key
+   * caches a bare `ListResponse`. Whichever mounts first wins and the other
+   * reads garbage. Still a child of `all`, so automatic invalidation reaches it.
+   */
+  lookup: (params?: Record<string, unknown>) => [...claimKeys.all, 'lookup', params ?? {}] as const,
 }
 
 // ─── Refunds ──────────────────────────────────────────────────────────────────
@@ -82,6 +115,17 @@ export const releaseNoteKeys = {
   all: ['release-notes'] as const,
   list: (params?: Record<string, unknown>) => [...releaseNoteKeys.all, 'list', params ?? {}] as const,
   detail: (id: string) => [...releaseNoteKeys.all, 'detail', id] as const,
+  /**
+   * A FLAT one-shot read, for a page that needs the whole set as a lookup
+   * table rather than a paginated screen.
+   *
+   * Deliberately NOT `list()`. That key belongs to the `useCursorPagination`
+   * hook for this domain, which is an INFINITE query caching
+   * `{pages: ListResponse[], pageParams}`; a plain `useQuery` on the same key
+   * caches a bare `ListResponse`. Whichever mounts first wins and the other
+   * reads garbage. Still a child of `all`, so automatic invalidation reaches it.
+   */
+  lookup: (params?: Record<string, unknown>) => [...releaseNoteKeys.all, 'lookup', params ?? {}] as const,
 }
 
 // ─── Warehouses (branch/office letterheads) ───────────────────────────────────
@@ -131,6 +175,8 @@ export const notifLogKeys = {
   all: ['notif-log'] as const,
   list: (params?: Record<string, unknown>) => [...notifLogKeys.all, 'list', params ?? {}] as const,
   detail: (id: string) => [...notifLogKeys.all, 'detail', id] as const,
+  /** Flat sample for the stats window — see the `lookup` note on billingKeys. */
+  lookup: (params?: Record<string, unknown>) => [...notifLogKeys.all, 'lookup', params ?? {}] as const,
 }
 
 // ─── Staff notifications (TopBar bell) ────────────────────────────────────────

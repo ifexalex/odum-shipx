@@ -72,8 +72,12 @@ export function NotificationLog(): JSX.Element {
   })
 
   // Stats window — a larger cached sample, separate from the live table below.
+  // On `lookup`, not `list`: `list` belongs to the infinite useNotifLogPolling
+  // below, and a plain useQuery there caches an incompatible shape. The old
+  // `{ scope: 'stats' }` sentinel avoided the clash only because no filter
+  // combination happened to produce it; the params now describe the request.
   const { data: allData } = useQuery({
-    queryKey: notifLogKeys.list({ scope: 'stats' }),
+    queryKey: notifLogKeys.lookup({ limit: 500 }),
     queryFn: () => notificationLogApi.list({ limit: 500 }),
     staleTime: STALE_5_MIN,
   })

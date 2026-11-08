@@ -52,7 +52,7 @@ export function MyShipments(): JSX.Element {
 
   const shipmentParams = { limit: 100 }
   const { data: shipmentPage, isLoading: loading, error: loadError } = useQuery({
-    queryKey: packingListKeys.list(shipmentParams),
+    queryKey: packingListKeys.lookup(shipmentParams),
     queryFn: () => packingListApi.list(shipmentParams),
     staleTime: STALE_30S,
   })
@@ -79,7 +79,7 @@ export function MyShipments(): JSX.Element {
   // Still non-fatal: the page renders without billing, so this query's error is
   // deliberately not surfaced.
   const { data: billingPage } = useQuery({
-    queryKey: billingKeys.list({}),
+    queryKey: billingKeys.lookup({}),
     queryFn: () => billingApi.list(),
     staleTime: STALE_30S,
   })

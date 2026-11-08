@@ -592,7 +592,7 @@ export function ContainerDetail(): JSX.Element {
     staleTime: STALE_30S,
   })
   const packingListsQ = useQuery({
-    queryKey: packingListKeys.list(plParams),
+    queryKey: packingListKeys.lookup(plParams),
     queryFn: () => fetchAllPackingLists(id!),
     enabled: !!id,
     staleTime: STALE_30S,
