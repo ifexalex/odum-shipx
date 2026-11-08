@@ -2,6 +2,7 @@ import { render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { MemoryRouter, Route, Routes } from 'react-router-dom'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { withQuery } from '../../test/queryWrapper'
 import { SessionContext, type SessionContextValue } from '../../auth/SessionContext'
 import type { Session } from '../../auth/types'
 import { claimsApi } from '../../api/claims'
@@ -40,11 +41,13 @@ const CLAIM_STUB = {
 
 function renderPage(role = 'nigeria_office_staff', routeState: object | null = { claim: CLAIM_STUB }) {
   render(
-    <MemoryRouter initialEntries={[{ pathname: '/claims/c1', state: routeState ?? undefined }]}>
-      <SessionContext.Provider value={makeCtx(role)}>
-        <Routes><Route path="/claims/:id" element={<ClaimDetail />} /></Routes>
-      </SessionContext.Provider>
-    </MemoryRouter>,
+    withQuery(
+      <MemoryRouter initialEntries={[{ pathname: '/claims/c1', state: routeState ?? undefined }]}>
+        <SessionContext.Provider value={makeCtx(role)}>
+          <Routes><Route path="/claims/:id" element={<ClaimDetail />} /></Routes>
+        </SessionContext.Provider>
+      </MemoryRouter>,
+    ),
   )
 }
 

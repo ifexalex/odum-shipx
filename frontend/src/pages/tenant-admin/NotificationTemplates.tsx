@@ -9,9 +9,12 @@
  * This is a cost/deliverability signal, NOT validation that blocks save.
  */
 
-import { useCallback, useEffect, useState, type JSX } from 'react'
+import { useQuery, useQueryClient } from '@tanstack/react-query'
+import { useState, type JSX } from 'react'
 import { ApiError } from '../../api/client'
 import { configApi, type NotificationTemplate } from '../../api/tenantManagement'
+import { configKeys } from '../../api/keys'
+import { STALE_5_MIN } from '../../lib/queryClient'
 import { Banner, Button, Field } from '../../design/components'
 import { PageHeader } from '../../shell/PageHeader'
 import styles from './admin.module.css'
@@ -152,29 +155,27 @@ function TemplateCard({ template, onSaved }: TemplateCardProps): JSX.Element {
 // ---------------------------------------------------------------------------
 
 export function NotificationTemplates(): JSX.Element {
-  const [templates, setTemplates] = useState<NotificationTemplate[]>([])
-  const [loading, setLoading] = useState(true)
-  const [error, setError] = useState<string | null>(null)
+  const qc = useQueryClient()
 
-  const load = useCallback(async () => {
-    setLoading(true)
-    setError(null)
-    try {
-      const data = await configApi.listNotificationTemplates()
-      setTemplates(data)
-    } catch (err) {
-      setError(err instanceof ApiError ? err.message : 'Could not load templates.')
-    } finally {
-      setLoading(false)
-    }
-  }, [])
+  const { data: templates = [], isLoading: loading, error: loadError } = useQuery({
+    queryKey: configKeys.notifications(),
+    queryFn: () => configApi.listNotificationTemplates(),
+    staleTime: STALE_5_MIN,
+  })
 
-  // eslint-disable-next-line react-hooks/set-state-in-effect -- hand-rolled fetch effect; migrate to TanStack Query (master plan 7.150)
-  useEffect(() => { void load() }, [load])
+  const error = loadError
+    ? loadError instanceof ApiError
+      ? loadError.message
+      : 'Could not load templates.'
+    : null
 
+  // The PUT response carries the saved template, so write it straight into the
+  // cache for an immediate frame. api/cacheInvalidation.ts also invalidates
+  // configKeys.all for /v1/tenant/notification-templates, which reconciles
+  // against the server right after — this just avoids a visible round-trip.
   function handleSaved(updated: NotificationTemplate): void {
-    setTemplates((prev) =>
-      prev.map((t) =>
+    qc.setQueryData<NotificationTemplate[]>(configKeys.notifications(), (prev) =>
+      (prev ?? []).map((t) =>
         t.event_type === updated.event_type && t.channel === updated.channel ? updated : t,
       ),
     )

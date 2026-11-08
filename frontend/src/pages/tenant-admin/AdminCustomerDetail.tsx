@@ -15,13 +15,16 @@
  * audit endpoint exists (AUDIT_GAPS.md B-pattern, same as B3/B6).
  */
 
-import { useCallback, useEffect, useState, type JSX, type ReactNode } from 'react'
+import { useQuery, useQueryClient } from '@tanstack/react-query'
+import { useState, type JSX, type ReactNode } from 'react'
 import { useLocation, useNavigate, useParams } from 'react-router-dom'
 import { ApiError } from '../../api/client'
 import { billingApi, type Billing, type PaymentStatus } from '../../api/billing'
 import { claimsApi, type Claim, type DamageClaimStatus } from '../../api/claims'
 import { packingListApi, type PackingList } from '../../api/packingList'
 import { customersApi, type Customer } from '../../api/tenantManagement'
+import { billingKeys, claimKeys, customerKeys, packingListKeys } from '../../api/keys'
+import { STALE_30S } from '../../lib/queryClient'
 import { useSession } from '../../auth/useSession'
 import {
   Action,
@@ -435,52 +438,68 @@ export function AdminCustomerDetail(): JSX.Element {
   const { session } = useSession()
   const stateCustomer = (location.state as { customer?: Customer } | null)?.customer ?? null
 
-  const [customer, setCustomer] = useState<Customer | null>(stateCustomer)
-  const [loading, setLoading] = useState(stateCustomer === null)
-  const [error, setError] = useState<string | null>(null)
+  const qc = useQueryClient()
+
+  const { data: customer = null, isLoading: loading, error: loadError } = useQuery({
+    queryKey: customerKeys.detail(id ?? ''),
+    queryFn: () => customersApi.get(id!),
+    enabled: !!id,
+    ...(stateCustomer ? { initialData: stateCustomer } : {}),
+    staleTime: STALE_30S,
+  })
+  const [actionError, setActionError] = useState<string | null>(null)
   const [tab, setTab] = useState('profile')
   const [showAnonymise, setShowAnonymise] = useState(false)
   const [exporting, setExporting] = useState(false)
   const [invitingAccount, setInvitingAccount] = useState(false)
   const [inviteMessage, setInviteMessage] = useState<string | null>(null)
 
-  // Related records — null = still loading; degrade to '—'/empty on failure.
-  const [shipments, setShipments] = useState<PackingList[] | null>(null)
-  const [billing, setBilling] = useState<Billing[] | null>(null)
-  const [claims, setClaims] = useState<Claim[] | null>(null)
+  const error =
+    actionError ??
+    (loadError
+      ? loadError instanceof ApiError
+        ? loadError.message
+        : 'Could not load customer.'
+      : null)
 
-  const load = useCallback(async () => {
-    if (!id) return
-    setLoading(true)
-    setError(null)
-    try {
-      const result = await customersApi.get(id)
-      setCustomer(result)
-    } catch (err) {
-      setError(err instanceof ApiError ? err.message : 'Could not load customer.')
-    } finally {
-      setLoading(false)
-    }
-  }, [id])
+  // Related records for the Profile tab's lifetime stats. Each is non-fatal:
+  // `null` while loading, `[]` once settled, so a failed sub-fetch shows an
+  // empty tab rather than breaking the page — the query errors are therefore
+  // deliberately not surfaced.
+  //
+  // Note listForCustomer is correct here (unlike the customer-facing
+  // MyShipments, where it was handed a user id): `id` is the customer id from
+  // the route, and this page is staff-only.
+  const shipmentParams = { customer_id: id ?? '', limit: 100 }
+  const claimParams = { customer_id: id ?? '', limit: 100 }
 
-  useEffect(() => {
-    // eslint-disable-next-line react-hooks/set-state-in-effect -- hand-rolled fetch effect; migrate to TanStack Query (master plan 7.150)
-    if (stateCustomer === null) void load()
-  }, [load, stateCustomer])
+  const shipmentsQ = useQuery({
+    queryKey: packingListKeys.lookup(shipmentParams),
+    queryFn: () => packingListApi.list(shipmentParams),
+    enabled: !!id,
+    staleTime: STALE_30S,
+  })
+  const billingQ = useQuery({
+    queryKey: billingKeys.forCustomer(id ?? ''),
+    queryFn: () => billingApi.listForCustomer(id!),
+    enabled: !!id,
+    staleTime: STALE_30S,
+  })
+  const claimsQ = useQuery({
+    queryKey: claimKeys.lookup(claimParams),
+    queryFn: () => claimsApi.list(claimParams),
+    enabled: !!id,
+    staleTime: STALE_30S,
+  })
 
-  // The Profile tab's lifetime stats need all three — fetch once, non-fatally
-  // (a failed sub-fetch shows an empty tab, not a broken page).
-  useEffect(() => {
-    if (!id) return
-    void packingListApi.list({ customer_id: id, limit: 100 }).then((r) => setShipments(r.data)).catch(() => setShipments([]))
-    void billingApi.listForCustomer(id).then(setBilling).catch(() => setBilling([]))
-    void claimsApi.list({ customer_id: id, limit: 100 }).then((r) => setClaims(r.data)).catch(() => setClaims([]))
-  }, [id])
+  const shipments: PackingList[] | null = shipmentsQ.isPending ? null : (shipmentsQ.data?.data ?? [])
+  const billing: Billing[] | null = billingQ.isPending ? null : (billingQ.data ?? [])
+  const claims: Claim[] | null = claimsQ.isPending ? null : (claimsQ.data?.data ?? [])
 
   async function handleExport(): Promise<void> {
     if (!customer) return
     setExporting(true)
-    setError(null)
+    setActionError(null)
     try {
       const data = await customersApi.export(customer.id)
       // Download as JSON file — never log PII to console
@@ -492,7 +511,7 @@ export function AdminCustomerDetail(): JSX.Element {
       a.click()
       URL.revokeObjectURL(url)
     } catch (err) {
-      setError(err instanceof ApiError ? err.message : 'Export failed.')
+      setActionError(err instanceof ApiError ? err.message : 'Export failed.')
     } finally {
       setExporting(false)
     }
@@ -608,7 +627,7 @@ export function AdminCustomerDetail(): JSX.Element {
       <Tabs items={TABS} active={tab} onChange={setTab} />
       <div style={{ height: 16 }} />
 
-      {tab === 'profile' && <ProfileTab customer={customer} shipments={shipments} billing={billing} claims={claims} onSaved={setCustomer} />}
+      {tab === 'profile' && <ProfileTab customer={customer} shipments={shipments} billing={billing} claims={claims} onSaved={(updated) => qc.setQueryData(customerKeys.detail(id ?? ''), updated)} />}
       {tab === 'shipments' && (
         <ShipmentsTab customer={customer} shipments={shipments} onOpen={(plId) => navigate(`/packing-lists/${plId}`)} />
       )}
@@ -634,7 +653,6 @@ export function AdminCustomerDetail(): JSX.Element {
           onCancel={() => setShowAnonymise(false)}
           onSuccess={() => {
             setShowAnonymise(false)
-            void load()
           }}
         />
       )}

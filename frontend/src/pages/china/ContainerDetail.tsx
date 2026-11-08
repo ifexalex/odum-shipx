@@ -1,4 +1,5 @@
-import { useCallback, useEffect, useMemo, useState, type JSX } from 'react'
+import { useQuery, useQueryClient } from '@tanstack/react-query'
+import { useMemo, useState, type JSX } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { ApiError } from '../../api/client'
 import {
@@ -12,6 +13,8 @@ import {
   utilizationLevel,
 } from '../../api/containerRules'
 import { formatCbm } from '../../api/decimal'
+import { containerKeys, packingListKeys } from '../../api/keys'
+import { STALE_30S } from '../../lib/queryClient'
 import { packingListApi, type PackingList } from '../../api/packingList'
 import {
   containerDocumentsApi,
@@ -372,35 +375,36 @@ const DOC_TYPES: { value: ContainerDocumentType; label: string }[] = [
 const DOC_ACCEPT = 'application/pdf,image/jpeg,image/png,image/webp'
 
 function DocumentsTab({ containerId, containerNumber }: { containerId: string; containerNumber: string | null }): JSX.Element {
-  const [docs, setDocs] = useState<ContainerDocument[]>([])
-  const [loading, setLoading] = useState(true)
-  const [error, setError] = useState<string | null>(null)
+  const qc = useQueryClient()
+
+  const { data: docs = [], isLoading: loading, error: loadError } = useQuery({
+    queryKey: containerKeys.documents(containerId),
+    queryFn: () => containerDocumentsApi.list(containerId),
+    enabled: !!containerId,
+    staleTime: STALE_30S,
+  })
+
+  const [actionError, setActionError] = useState<string | null>(null)
+
+  const error =
+    actionError ??
+    (loadError
+      ? loadError instanceof ApiError
+        ? loadError.message
+        : 'Could not load documents.'
+      : null)
+
   const [showUpload, setShowUpload] = useState(false)
   const [docType, setDocType] = useState<ContainerDocumentType>('bill_of_lading')
   const [file, setFile] = useState<File | null>(null)
   const [uploading, setUploading] = useState(false)
   const [downloadingId, setDownloadingId] = useState<string | null>(null)
 
-  const loadDocs = useCallback(async () => {
-    setLoading(true)
-    try {
-      setDocs(await containerDocumentsApi.list(containerId))
-    } catch (err) {
-      setError(err instanceof ApiError ? err.message : 'Could not load documents.')
-    } finally {
-      setLoading(false)
-    }
-  }, [containerId])
-
-  useEffect(() => {
-    // eslint-disable-next-line react-hooks/set-state-in-effect -- hand-rolled fetch effect; migrate to TanStack Query (master plan 7.150)
-    void loadDocs()
-  }, [loadDocs])
 
   async function handleUpload(): Promise<void> {
     if (!file) return
     setUploading(true)
-    setError(null)
+    setActionError(null)
     try {
       const presigned = await containerDocumentsApi.presignUpload(containerId, {
         filename: file.name,
@@ -410,9 +414,14 @@ function DocumentsTab({ containerId, containerNumber }: { containerId: string; c
       await uploadToPresignedUrl(presigned, file)
       setShowUpload(false)
       setFile(null)
-      await loadDocs()
+      // Explicit, unlike the other pages in this migration: the automatic
+      // invalidation in api/client.ts fires on the presign POST, which happens
+      // *before* the bytes land, and the upload itself is a direct PUT to
+      // storage that never passes through the API client. So nothing would
+      // otherwise tell this list the new document exists.
+      await qc.invalidateQueries({ queryKey: containerKeys.documents(containerId) })
     } catch (err) {
-      setError(err instanceof ApiError ? err.message : 'Upload failed. Please try again.')
+      setActionError(err instanceof ApiError ? err.message : 'Upload failed. Please try again.')
     } finally {
       setUploading(false)
     }
@@ -424,7 +433,7 @@ function DocumentsTab({ containerId, containerNumber }: { containerId: string; c
       const { download_url } = await containerDocumentsApi.downloadUrl(containerId, doc.id)
       window.open(download_url, '_blank', 'noopener')
     } catch (err) {
-      setError(err instanceof ApiError ? err.message : 'Could not generate download link.')
+      setActionError(err instanceof ApiError ? err.message : 'Could not generate download link.')
     } finally {
       setDownloadingId(null)
     }
@@ -565,15 +574,47 @@ export function ContainerDetail(): JSX.Element {
   const navigate = useNavigate()
   const { session } = useSession()
   const [tab, setTab] = useState<'overview' | 'packing-lists' | 'tracking' | 'documents'>('overview')
-  const [container, setContainer] = useState<Container | null>(null)
-  const [packingLists, setPackingLists] = useState<PackingList[]>([])
   // 'Ref #' sort on the packing-lists sub-table — this list is already fully
   // loaded in memory for one container (not a paginated endpoint), so sorting
   // is pure client-side: no query param, no backend change.
   const [plSortDirection, setPlSortDirection] = useState<TableSort['direction'] | null>(null)
-  const [events, setEvents] = useState<ContainerEvent[]>([])
-  const [loading, setLoading] = useState(true)
-  const [error, setError] = useState<string | null>(null)
+  const qc = useQueryClient()
+
+  // Three queries where there was one Promise.all. containerKeys.detail(id) and
+  // .events(id) are the slots the container list screens already use, and
+  // fetchAllPackingLists walks every page for this container, so it gets its
+  // own filtered list slot.
+  const plParams = { container_id: id ?? '' }
+  const containerQ = useQuery({
+    queryKey: containerKeys.detail(id ?? ''),
+    queryFn: () => containersApi.get(id!),
+    enabled: !!id,
+    staleTime: STALE_30S,
+  })
+  const packingListsQ = useQuery({
+    queryKey: packingListKeys.lookup(plParams),
+    queryFn: () => fetchAllPackingLists(id!),
+    enabled: !!id,
+    staleTime: STALE_30S,
+  })
+  const eventsQ = useQuery({
+    queryKey: containerKeys.events(id ?? ''),
+    queryFn: () => containersApi.events(id!),
+    enabled: !!id,
+    staleTime: STALE_30S,
+  })
+
+  const container = containerQ.data ?? null
+  const packingLists = packingListsQ.data ?? []
+  const events = eventsQ.data ?? []
+  const loading = containerQ.isLoading || packingListsQ.isLoading || eventsQ.isLoading
+  const firstError = containerQ.error ?? packingListsQ.error ?? eventsQ.error
+  const error = firstError
+    ? firstError instanceof ApiError
+      ? firstError.message
+      : 'Could not load this container.'
+    : null
+
   const [showAdvanceModal, setShowAdvanceModal] = useState(false)
   const [showDeleteModal, setShowDeleteModal] = useState(false)
   const [showCancelModal, setShowCancelModal] = useState(false)
@@ -591,30 +632,6 @@ export function ContainerDetail(): JSX.Element {
     return plSortDirection === 'asc' ? sorted : sorted.reverse()
   }, [packingLists, plSortDirection])
 
-  const load = useCallback(async () => {
-    if (!id) return
-    setLoading(true)
-    setError(null)
-    try {
-      const [containerResult, allPackingLists, eventsResult] = await Promise.all([
-        containersApi.get(id),
-        fetchAllPackingLists(id),
-        containersApi.events(id),
-      ])
-      setContainer(containerResult)
-      setPackingLists(allPackingLists)
-      setEvents(eventsResult)
-    } catch (err) {
-      setError(err instanceof ApiError ? err.message : 'Could not load this container.')
-    } finally {
-      setLoading(false)
-    }
-  }, [id])
-
-  useEffect(() => {
-    // eslint-disable-next-line react-hooks/set-state-in-effect -- hand-rolled fetch effect; migrate to TanStack Query (master plan 7.150)
-    void load()
-  }, [load])
 
   // Must be called unconditionally (before any early returns) — React hook rules.
   // The suffix is null until the container loads, then becomes the container number,
@@ -662,7 +679,7 @@ export function ContainerDetail(): JSX.Element {
     setActionError(null)
     try {
       const updated = await containersApi.cancel(id)
-      setContainer(updated)
+      qc.setQueryData(containerKeys.detail(id ?? ''), updated)
       setShowCancelModal(false)
     } catch (err) {
       setActionError(err instanceof ApiError ? err.message : 'Could not cancel this container.')
@@ -1057,7 +1074,7 @@ export function ContainerDetail(): JSX.Element {
           customerCount={new Set(packingLists.map((pl) => pl.customer_id)).size}
           onClose={() => setShowAdvanceModal(false)}
           onAdvanced={(updated) => {
-            setContainer(updated)
+            qc.setQueryData(containerKeys.detail(id ?? ''), updated)
             setShowAdvanceModal(false)
           }}
         />

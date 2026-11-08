@@ -15,11 +15,14 @@
  * cartons + container status; billing comes from the customer's own billing
  * list matched by container.
  */
-import { useEffect, useMemo, useState, type JSX } from 'react'
+import { useQuery } from '@tanstack/react-query'
+import { useMemo, type JSX } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { ApiError } from '../../api/client'
-import { billingApi, paymentClaimApi, type Billing, type PaymentClaim } from '../../api/billing'
-import { packingListApi, type PackingList } from '../../api/packingList'
+import { billingApi, paymentClaimApi, type Billing } from '../../api/billing'
+import { billingKeys, packingListKeys } from '../../api/keys'
+import { packingListApi } from '../../api/packingList'
+import { STALE_30S } from '../../lib/queryClient'
 import { Badge, Banner, Button, Card, Icon, Kvp, Mono, Table, type BadgeVariant } from '../../design/components'
 import { SectionHead } from '../../shell/SectionHead'
 import { CustomerStepper } from './CustomerStepper'
@@ -75,40 +78,27 @@ function fmtNgn(value: number): string {
 export function MyShipmentDetail(): JSX.Element {
   const { code } = useParams<{ code: string }>()
   const navigate = useNavigate()
-  const [pl, setPl] = useState<PackingList | null>(null)
-  const [billing, setBilling] = useState<Billing[] | null>(null)
-  const [loading, setLoading] = useState(true)
-  const [error, setError] = useState<string | null>(null)
+  const { data: pl = null, isLoading: loading, error: loadError } = useQuery({
+    queryKey: packingListKeys.detail(code ?? ''),
+    queryFn: () => packingListApi.get(code!),
+    enabled: !!code,
+    staleTime: STALE_30S,
+  })
 
-  useEffect(() => {
-    if (!code) return
-    let active = true
-    // eslint-disable-next-line react-hooks/set-state-in-effect -- hand-rolled fetch effect; migrate to TanStack Query (master plan 7.150)
-    setLoading(true)
-    setError(null)
-    void (async () => {
-      try {
-        const result = await packingListApi.get(code)
-        if (active) setPl(result)
-      } catch (err) {
-        if (active) setError(err instanceof ApiError ? err.message : 'Could not load this shipment.')
-      } finally {
-        if (active) setLoading(false)
-      }
-    })()
-    // Billing is non-fatal — the page still renders without it.
-    void billingApi
-      .list()
-      .then((r) => {
-        if (active) setBilling(r.data)
-      })
-      .catch(() => {
-        if (active) setBilling([])
-      })
-    return () => {
-      active = false
-    }
-  }, [code])
+  const error = loadError
+    ? loadError instanceof ApiError
+      ? loadError.message
+      : 'Could not load this shipment.'
+    : null
+
+  // Billing is non-fatal — the page renders without it, so this query's error
+  // is deliberately not surfaced.
+  const { data: billingPage } = useQuery({
+    queryKey: billingKeys.lookup({}),
+    queryFn: () => billingApi.list(),
+    staleTime: STALE_30S,
+  })
+  const billing: Billing[] | null = billingPage?.data ?? null
 
   // The billing record for this shipment's container (customer-scoped list).
   const shipmentBilling = useMemo(() => {
@@ -119,22 +109,14 @@ export function MyShipmentDetail(): JSX.Element {
   // A pending "I've made this payment" claim means the outstanding amount
   // may already be on its way — the Pay CTA must not invite a duplicate
   // payment while one is in flight (see MyBillingDetail.tsx's matching fix).
-  const [paymentClaims, setPaymentClaims] = useState<PaymentClaim[]>([])
-  useEffect(() => {
-    if (!shipmentBilling) return
-    let active = true
-    void paymentClaimApi
-      .listForBilling(shipmentBilling.id)
-      .then((result) => {
-        if (active) setPaymentClaims(result)
-      })
-      .catch(() => {
-        if (active) setPaymentClaims([])
-      })
-    return () => {
-      active = false
-    }
-  }, [shipmentBilling])
+  // Keyed under billingKeys.detail(id) so it shares the slot MyBillingDetail
+  // and the staff BillingDetail already use for the same billing's claims.
+  const { data: paymentClaims = [] } = useQuery({
+    queryKey: [...billingKeys.detail(shipmentBilling?.id ?? ''), 'payment-claims'],
+    queryFn: () => paymentClaimApi.listForBilling(shipmentBilling!.id),
+    enabled: !!shipmentBilling,
+    staleTime: STALE_30S,
+  })
   const pendingClaim = paymentClaims.find((c) => c.status === 'pending') ?? null
 
   if (loading) return <div style={{ padding: 32, color: 'var(--color-text-muted)' }}>Loading your shipment…</div>

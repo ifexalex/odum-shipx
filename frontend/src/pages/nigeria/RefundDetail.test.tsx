@@ -1,6 +1,7 @@
 import { render, screen } from '@testing-library/react'
 import { MemoryRouter, Route, Routes } from 'react-router-dom'
 import { describe, expect, it, vi } from 'vitest'
+import { withQuery } from '../../test/queryWrapper'
 import * as refundsModule from '../../api/refunds'
 import { SessionContext } from '../../auth/SessionContext'
 import type { Session } from '../../auth/types'
@@ -42,18 +43,20 @@ const REFUND: refundsModule.Refund = {
 function renderPage(refund = REFUND) {
   vi.spyOn(refundsModule.refundsApi, 'get').mockResolvedValue(refund)
   return render(
-    <MemoryRouter initialEntries={['/refunds/r-001']}>
-      <Routes>
-        <Route
-          path="/refunds/:id"
-          element={
-            <SessionContext.Provider value={{ session: SESSION, status: 'authenticated', login: vi.fn(), logout: vi.fn(), refreshNow: vi.fn(), setActiveRole: vi.fn(), startImpersonation: vi.fn(), exitImpersonation: vi.fn() }}>
-              <RefundDetail />
-            </SessionContext.Provider>
-          }
-        />
-      </Routes>
-    </MemoryRouter>,
+    withQuery(
+      <MemoryRouter initialEntries={['/refunds/r-001']}>
+        <Routes>
+          <Route
+            path="/refunds/:id"
+            element={
+              <SessionContext.Provider value={{ session: SESSION, status: 'authenticated', login: vi.fn(), logout: vi.fn(), refreshNow: vi.fn(), setActiveRole: vi.fn(), startImpersonation: vi.fn(), exitImpersonation: vi.fn() }}>
+                <RefundDetail />
+              </SessionContext.Provider>
+            }
+          />
+        </Routes>
+      </MemoryRouter>,
+    ),
   )
 }
 

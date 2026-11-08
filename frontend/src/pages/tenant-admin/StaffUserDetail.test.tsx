@@ -8,6 +8,7 @@ import { render, screen, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { MemoryRouter, Route, Routes } from 'react-router-dom'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { withQuery } from '../../test/queryWrapper'
 import { usersApi, type TenantUser } from '../../api/tenantManagement'
 import { SessionContext, type SessionContextValue } from '../../auth/SessionContext'
 import type { Session } from '../../auth/types'
@@ -60,6 +61,7 @@ function user(overrides: Partial<TenantUser> = {}): TenantUser {
 
 function renderPage(stateUser?: TenantUser) {
   return render(
+    withQuery(
     <SessionContext.Provider value={makeContextValue()}>
       <MemoryRouter initialEntries={[{ pathname: '/admin/users/u1', state: stateUser ? { user: stateUser } : null }]}>
         <Routes>
@@ -68,6 +70,7 @@ function renderPage(stateUser?: TenantUser) {
         </Routes>
       </MemoryRouter>
     </SessionContext.Provider>,
+    ),
   )
 }
 

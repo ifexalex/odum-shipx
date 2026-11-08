@@ -4,9 +4,13 @@
  * Cross-tenant audit trail: tenant lifecycle events, impersonation sessions,
  * settings changes. Filters by tenant and action; expandable JSON details.
  */
-import { useCallback, useEffect, useState, type JSX } from 'react'
+import { useCallback, useMemo, useState, type JSX } from 'react'
 import { ApiError } from '../../api/client'
-import { platformApi, type PlatformAuditEntry, type Tenant } from '../../api/tenantManagement'
+import { platformApi } from '../../api/tenantManagement'
+import { platformAuditKeys } from '../../api/keys'
+import { useCursorPagination } from '../../hooks/useCursorPagination'
+import { usePlatformTenantList } from '../../hooks/usePlatformTenants'
+import { STALE_30S } from '../../lib/queryClient'
 import { Badge, Banner, Button, Card, ListFooter, Mono, Table, type BadgeVariant } from '../../design/components'
 import { useTopBarSlot } from '../../shell/TopBarContext'
 
@@ -18,15 +22,40 @@ function actionVariant(action: string): BadgeVariant {
 }
 
 export function PlatformAuditLog(): JSX.Element {
-  const [entries, setEntries] = useState<PlatformAuditEntry[]>([])
-  const [tenants, setTenants] = useState<Tenant[]>([])
   const [tenantFilter, setTenantFilter] = useState('')
-  const [cursor, setCursor] = useState<string | null>(null)
-  const [hasMore, setHasMore] = useState(false)
-  const [totalCount, setTotalCount] = useState(0)
-  const [loading, setLoading] = useState(true)
-  const [error, setError] = useState<string | null>(null)
   const [expandedId, setExpandedId] = useState<string | null>(null)
+
+  // The hand-rolled version kept its own cursor/hasMore/totalCount state and
+  // appended pages by hand; `useCursorPagination` is that exact pattern, and
+  // the tenant filter is part of the key so switching it starts a fresh page 1
+  // instead of appending onto the previous tenant's rows.
+  const listParams = tenantFilter ? { tenant_id: tenantFilter } : {}
+  const {
+    items: entries,
+    hasMore,
+    totalCount,
+    loadMore,
+    isLoading: loading,
+    isFetchingMore,
+    error: loadError,
+  } = useCursorPagination(
+    platformAuditKeys.list(listParams),
+    (cursor) => platformApi.auditLog({ ...listParams, ...(cursor ? { cursor } : {}), limit: 50 }),
+    { staleTime: STALE_30S },
+  )
+
+  const error = loadError
+    ? loadError instanceof ApiError
+      ? loadError.message
+      : 'Could not load the audit log.'
+    : null
+
+  // The filter dropdown degrades to truncated raw IDs if this fails — non-fatal,
+  // so the query's error is deliberately not surfaced.
+  const { data: tenantList } = usePlatformTenantList()
+  // Memoised because `?? []` would be a fresh array every render, which would
+  // re-create the `tenantName` callback below on every render.
+  const tenants = useMemo(() => tenantList?.data ?? [], [tenantList])
 
   const tenantName = useCallback(
     (id: string | null): string => {
@@ -35,44 +64,6 @@ export function PlatformAuditLog(): JSX.Element {
     },
     [tenants],
   )
-
-  const load = useCallback(
-    async (nextCursor?: string) => {
-      setLoading(true)
-      setError(null)
-      try {
-        const result = await platformApi.auditLog({
-          ...(tenantFilter ? { tenant_id: tenantFilter } : {}),
-          ...(nextCursor ? { cursor: nextCursor } : {}),
-          limit: 50,
-        })
-        setEntries((prev) => (nextCursor ? [...prev, ...result.data] : result.data))
-        setCursor(result.meta.pagination.next_cursor)
-        setHasMore(result.meta.pagination.has_more)
-        setTotalCount(result.meta.pagination.total_count)
-      } catch (err) {
-        setError(err instanceof ApiError ? err.message : 'Could not load the audit log.')
-      } finally {
-        setLoading(false)
-      }
-    },
-    [tenantFilter],
-  )
-
-  useEffect(() => {
-    // eslint-disable-next-line react-hooks/set-state-in-effect -- hand-rolled fetch effect; migrate to TanStack Query (master plan 7.150)
-    void load()
-  }, [load])
-
-  useEffect(() => {
-    void (async () => {
-      try {
-        setTenants((await platformApi.listTenants()).data)
-      } catch {
-        // filter dropdown degrades to raw IDs — non-fatal
-      }
-    })()
-  }, [])
 
   useTopBarSlot({ subtitle: 'Every platform-level action — tenant lifecycle, impersonation sessions, settings changes.' })
 
@@ -146,8 +137,8 @@ export function PlatformAuditLog(): JSX.Element {
         shown={entries.length}
         total={totalCount}
         hasMore={hasMore}
-        loading={loading}
-        onLoadMore={() => void load(cursor ?? undefined)}
+        loading={isFetchingMore}
+        onLoadMore={loadMore}
         noun="audit entries"
       />
     </div>

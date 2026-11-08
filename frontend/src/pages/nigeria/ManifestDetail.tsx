@@ -1,4 +1,5 @@
-import { useCallback, useEffect, useState, type JSX } from 'react'
+import { useQuery, useQueryClient } from '@tanstack/react-query'
+import { useState, type JSX } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { ApiError } from '../../api/client'
 import { formatCbm } from '../../api/decimal'
@@ -10,6 +11,8 @@ import {
   type ManifestMissingItem,
   type VerificationStatus,
 } from '../../api/manifest'
+import { manifestKeys } from '../../api/keys'
+import { STALE_30S } from '../../lib/queryClient'
 import { canResolveDiscrepancy, canRevokeVerification, canVerifyManifest } from '../../api/manifestRules'
 import { useSession } from '../../auth/useSession'
 import { EvidenceUploader } from './EvidenceUploader'
@@ -347,32 +350,36 @@ export function ManifestDetail(): JSX.Element {
   const { id } = useParams<{ id: string }>()
   const navigate = useNavigate()
   const { session } = useSession()
-  const [manifest, setManifest] = useState<Manifest | null>(null)
-  const [loading, setLoading] = useState(true)
-  const [error, setError] = useState<string | null>(null)
+  const qc = useQueryClient()
+
+  const { data: manifest = null, isLoading: loading, error: loadError } = useQuery({
+    queryKey: manifestKeys.detail(id ?? ''),
+    queryFn: () => manifestApi.get(id!),
+    enabled: !!id,
+    staleTime: STALE_30S,
+  })
+
+  const [actionError, setActionError] = useState<string | null>(null)
+
+  const error =
+    actionError ??
+    (loadError
+      ? loadError instanceof ApiError
+        ? loadError.message
+        : 'Could not load this manifest.'
+      : null)
+
+  // Verify/resolve/revoke all return the updated manifest; writing it to the
+  // cache keeps this page and the manifest list in step.
+  const applyUpdated = (updated: Manifest): void => {
+    qc.setQueryData(manifestKeys.detail(id ?? ''), updated)
+  }
+
   const [showVerifyModal, setShowVerifyModal] = useState(false)
   const [showResolveModal, setShowResolveModal] = useState(false)
   const [showRevokeConfirm, setShowRevokeConfirm] = useState(false)
   const [revoking, setRevoking] = useState(false)
 
-  const load = useCallback(async () => {
-    if (!id) return
-    setLoading(true)
-    setError(null)
-    try {
-      const result = await manifestApi.get(id)
-      setManifest(result)
-    } catch (err) {
-      setError(err instanceof ApiError ? err.message : 'Could not load this manifest.')
-    } finally {
-      setLoading(false)
-    }
-  }, [id])
-
-  useEffect(() => {
-    // eslint-disable-next-line react-hooks/set-state-in-effect -- hand-rolled fetch effect; migrate to TanStack Query (master plan 7.150)
-    void load()
-  }, [load])
 
   if (loading && !manifest) return <div className={styles.loadingState}>Loading manifest…</div>
   if (error && !manifest) {
@@ -396,13 +403,13 @@ export function ManifestDetail(): JSX.Element {
   async function handleRevoke(): Promise<void> {
     if (!manifest) return
     setRevoking(true)
-    setError(null)
+    setActionError(null)
     try {
       const updated = await manifestApi.revokeVerification(manifest.id)
-      setManifest(updated)
+      applyUpdated(updated)
       setShowRevokeConfirm(false)
     } catch (err) {
-      setError(err instanceof ApiError ? err.message : 'Could not revoke verification.')
+      setActionError(err instanceof ApiError ? err.message : 'Could not revoke verification.')
       setShowRevokeConfirm(false)
     } finally {
       setRevoking(false)
@@ -654,7 +661,7 @@ export function ManifestDetail(): JSX.Element {
           manifest={manifest}
           onCancel={() => setShowVerifyModal(false)}
           onVerified={(updated) => {
-            setManifest(updated)
+            applyUpdated(updated)
             setShowVerifyModal(false)
           }}
         />
@@ -664,7 +671,7 @@ export function ManifestDetail(): JSX.Element {
           manifest={manifest}
           onCancel={() => setShowResolveModal(false)}
           onResolved={(updated) => {
-            setManifest(updated)
+            applyUpdated(updated)
             setShowResolveModal(false)
           }}
         />

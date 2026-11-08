@@ -2,6 +2,7 @@ import { render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { MemoryRouter, Route, Routes } from 'react-router-dom'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { withQuery } from '../../test/queryWrapper'
 import * as rnModule from '../../api/releaseNotes'
 import type { ReleaseNote, ReleaseNoteListParams } from '../../api/releaseNotes'
 import { SessionContext } from '../../auth/SessionContext'
@@ -50,14 +51,16 @@ function mockLists({ active = [], pickedUp = [], expired = [] }: { active?: Rele
 
 function renderPage() {
   return render(
-    <MemoryRouter>
-      <SessionContext.Provider value={{ session: SESSION, status: 'authenticated', login: vi.fn(), logout: vi.fn(), refreshNow: vi.fn(), setActiveRole: vi.fn(), startImpersonation: vi.fn(), exitImpersonation: vi.fn() }}>
-        <Routes>
-          <Route path="/" element={<WarehouseDashboard />} />
-          <Route path="/release-notes/:id" element={<div>Release note detail</div>} />
-        </Routes>
-      </SessionContext.Provider>
-    </MemoryRouter>,
+    withQuery(
+      <MemoryRouter>
+        <SessionContext.Provider value={{ session: SESSION, status: 'authenticated', login: vi.fn(), logout: vi.fn(), refreshNow: vi.fn(), setActiveRole: vi.fn(), startImpersonation: vi.fn(), exitImpersonation: vi.fn() }}>
+          <Routes>
+            <Route path="/" element={<WarehouseDashboard />} />
+            <Route path="/release-notes/:id" element={<div>Release note detail</div>} />
+          </Routes>
+        </SessionContext.Provider>
+      </MemoryRouter>,
+    ),
   )
 }
 
@@ -94,9 +97,12 @@ describe('WarehouseDashboard', () => {
     renderPage()
 
     await waitFor(() => expect(screen.getByText('Completed today')).toBeInTheDocument())
-    // Distinct values: completed today = 2 (only today's pickups), expired = 3
-    expect(screen.getByText('2')).toBeInTheDocument()
-    expect(screen.getByText('3')).toBeInTheDocument()
+    // Distinct values: completed today = 2 (only today's pickups), expired = 3.
+    // These are `find*` rather than `get*` because the three status lists are
+    // now three independent queries (7.150) instead of one Promise.all, so the
+    // labels can paint a tick before their counts do.
+    expect(await screen.findByText('2')).toBeInTheDocument()
+    expect(await screen.findByText('3')).toBeInTheDocument()
     expect(screen.getByText('Expired · not collected')).toBeInTheDocument()
   })
 

@@ -5,10 +5,13 @@
  * amount, description). Used by BillingDetail's AddChargeModal to pre-fill
  * charges. tenant_admin only (route-guarded).
  */
-import { useCallback, useEffect, useState, type JSX } from 'react'
+import { useQuery } from '@tanstack/react-query'
+import { useState, type JSX } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { ApiError } from '../../api/client'
 import { configApi, type ChargeType } from '../../api/tenantManagement'
+import { configKeys } from '../../api/keys'
+import { STALE_5_MIN } from '../../lib/queryClient'
 import { Badge, Banner, Button, Card, Field, Mono, Table } from '../../design/components'
 import { useTopBarSlot } from '../../shell/TopBarContext'
 import styles from './admin.module.css'
@@ -141,39 +144,37 @@ function ChargeTypeModal({ existing, onCancel, onSuccess }: ChargeTypeModalProps
 
 export function ChargeTypes(): JSX.Element {
   const navigate = useNavigate()
-  const [chargeTypes, setChargeTypes] = useState<ChargeType[]>([])
-  const [loading, setLoading] = useState(true)
-  const [error, setError] = useState<string | null>(null)
   const [modal, setModal] = useState<{ open: boolean; existing: ChargeType | null }>({
     open: false,
     existing: null,
   })
   const [deactivatingId, setDeactivatingId] = useState<string | null>(null)
+  const [actionError, setActionError] = useState<string | null>(null)
 
-  const load = useCallback(async () => {
-    setLoading(true)
-    setError(null)
-    try {
-      setChargeTypes(await configApi.listChargeTypes())
-    } catch (err) {
-      setError(err instanceof ApiError ? err.message : 'Could not load charge types.')
-    } finally {
-      setLoading(false)
-    }
-  }, [])
+  const { data: chargeTypes = [], isLoading: loading, error: loadError } = useQuery({
+    queryKey: configKeys.chargeTypes(),
+    queryFn: () => configApi.listChargeTypes(),
+    staleTime: STALE_5_MIN,
+  })
 
-  useEffect(() => {
-    // eslint-disable-next-line react-hooks/set-state-in-effect -- hand-rolled fetch effect; migrate to TanStack Query (master plan 7.150)
-    void load()
-  }, [load])
+  const error =
+    actionError ??
+    (loadError
+      ? loadError instanceof ApiError
+        ? loadError.message
+        : 'Could not load charge types.'
+      : null)
 
+  // No manual reload after the write: api/cacheInvalidation.ts invalidates
+  // configKeys.all for any successful non-GET on /v1/tenant/charge-types, and
+  // this query lives under that root.
   async function handleDeactivate(id: string): Promise<void> {
     setDeactivatingId(id)
+    setActionError(null)
     try {
       await configApi.deactivateChargeType(id)
-      await load()
     } catch (err) {
-      setError(err instanceof ApiError ? err.message : 'Could not deactivate charge type.')
+      setActionError(err instanceof ApiError ? err.message : 'Could not deactivate charge type.')
     } finally {
       setDeactivatingId(null)
     }
@@ -274,10 +275,7 @@ export function ChargeTypes(): JSX.Element {
         <ChargeTypeModal
           existing={modal.existing}
           onCancel={() => setModal({ open: false, existing: null })}
-          onSuccess={() => {
-            setModal({ open: false, existing: null })
-            void load()
-          }}
+          onSuccess={() => setModal({ open: false, existing: null })}
         />
       )}
     </div>

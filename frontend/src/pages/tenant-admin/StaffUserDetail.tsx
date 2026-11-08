@@ -1,7 +1,10 @@
-import { useCallback, useEffect, useState, type JSX } from 'react'
+import { useQuery, useQueryClient } from '@tanstack/react-query'
+import { useState, type JSX } from 'react'
 import { useLocation, useNavigate, useParams } from 'react-router-dom'
 import { ApiError } from '../../api/client'
 import { usersApi, type TenantUser, type TenantUserRole } from '../../api/tenantManagement'
+import { staffKeys } from '../../api/keys'
+import { STALE_30S } from '../../lib/queryClient'
 import { useSession } from '../../auth/useSession'
 import { Action, Badge, Banner, Button, Card, Kvp, LocaleCard, type BadgeVariant, type StaffLocale } from '../../design/components'
 import { PageHeader } from '../../shell/PageHeader'
@@ -66,49 +69,58 @@ export function StaffUserDetail(): JSX.Element {
   const navigate = useNavigate()
   const stateUser = (location.state as { user?: TenantUser } | null)?.user ?? null
 
-  const [user, setUser] = useState<TenantUser | null>(stateUser)
-  const [loading, setLoading] = useState(stateUser === null)
-  const [error, setError] = useState<string | null>(null)
+  const qc = useQueryClient()
+
+  const { data: user = null, isLoading: loading, error: loadError } = useQuery({
+    queryKey: staffKeys.detail(id ?? ''),
+    queryFn: () => usersApi.get(id!),
+    enabled: !!id,
+    ...(stateUser ? { initialData: stateUser } : {}),
+    staleTime: STALE_30S,
+  })
+
   const [editRoles, setEditRoles] = useState<TenantUserRole[] | null>(null)
   const [editPrimaryRole, setEditPrimaryRole] = useState<TenantUserRole | null>(null)
   const [saving, setSaving] = useState(false)
   const [actionMsg, setActionMsg] = useState<string | null>(null)
-  const [locale, setLocale] = useState<StaffLocale>('en')
   const [savingLocale, setSavingLocale] = useState(false)
+  const [actionError, setActionError] = useState<string | null>(null)
 
-  const load = useCallback(async () => {
-    if (!id) return
-    setLoading(true)
-    try {
-      const result = await usersApi.get(id)
-      setUser(result)
-      setLocale(result.locale === 'zh' ? 'zh' : 'en')
-    } catch (err) {
-      setError(err instanceof ApiError ? err.message : 'Could not load user.')
-    } finally {
-      setLoading(false)
-    }
-  }, [id])
+  const error =
+    actionError ??
+    (loadError
+      ? loadError instanceof ApiError
+        ? loadError.message
+        : 'Could not load user.'
+      : null)
 
-  useEffect(() => {
-    // eslint-disable-next-line react-hooks/set-state-in-effect -- hand-rolled fetch effect; migrate to TanStack Query (master plan 7.150)
-    if (stateUser === null) void load()
-  }, [load, stateUser])
+  // The locale select is an *editable* field previously seeded from inside the
+  // fetch (`setLocale(result.locale …)`). Deriving it outright would discard a
+  // half-made choice whenever the query refetched — the CompanySettings bug
+  // class from 7.149. So `localeDraft` holds only a choice the user has
+  // actually made, and the server value shows through until then; saving clears
+  // the draft so the refetched value takes over again.
+  const [localeDraft, setLocaleDraft] = useState<StaffLocale | null>(null)
+  const locale: StaffLocale = localeDraft ?? (user?.locale === 'zh' ? 'zh' : 'en')
+
+  const applyUser = (updated: TenantUser): void => {
+    qc.setQueryData(staffKeys.detail(id ?? ''), updated)
+  }
 
   async function handleSaveRoles(): Promise<void> {
     if (!user || !editRoles || editRoles.length === 0) return
     setSaving(true)
-    setError(null)
+    setActionError(null)
     try {
       const updated = await usersApi.update(user.id, {
         roles: editRoles,
         primary_role: editPrimaryRole ?? editRoles[0],
       })
-      setUser(updated)
+      applyUser(updated)
       setEditRoles(null)
       setEditPrimaryRole(null)
     } catch (err) {
-      setError(err instanceof ApiError ? err.message : 'Could not update roles.')
+      setActionError(err instanceof ApiError ? err.message : 'Could not update roles.')
     } finally {
       setSaving(false)
     }
@@ -117,7 +129,7 @@ export function StaffUserDetail(): JSX.Element {
   async function handleAction(action: 'resend' | 'activate' | 'reset' | 'deactivate'): Promise<void> {
     if (!user) return
     setSaving(true)
-    setError(null)
+    setActionError(null)
     try {
       if (action === 'resend') {
         await usersApi.resendInvite(user.id)
@@ -130,11 +142,11 @@ export function StaffUserDetail(): JSX.Element {
         setActionMsg('Password reset email sent.')
       } else {
         await usersApi.deactivate(user.id)
-        setUser({ ...user, status: 'inactive' })
+        applyUser({ ...user, status: 'inactive' })
         setActionMsg('User deactivated.')
       }
     } catch (err) {
-      setError(err instanceof ApiError ? err.message : 'Action failed.')
+      setActionError(err instanceof ApiError ? err.message : 'Action failed.')
     } finally {
       setSaving(false)
     }
@@ -143,13 +155,14 @@ export function StaffUserDetail(): JSX.Element {
   async function handleSaveLocale(): Promise<void> {
     if (!user) return
     setSavingLocale(true)
-    setError(null)
+    setActionError(null)
     try {
       const updated = await usersApi.update(user.id, { locale })
-      setUser(updated)
+      applyUser(updated)
+      setLocaleDraft(null)
       setActionMsg('Notification language updated.')
     } catch (err) {
-      setError(err instanceof ApiError ? err.message : 'Could not update locale.')
+      setActionError(err instanceof ApiError ? err.message : 'Could not update locale.')
     } finally {
       setSavingLocale(false)
     }
@@ -268,7 +281,7 @@ export function StaffUserDetail(): JSX.Element {
 
       <SectionHead title="Notification language" />
       <Card padding={20}>
-        <LocaleCard value={locale} onChange={setLocale} />
+        <LocaleCard value={locale} onChange={setLocaleDraft} />
         <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: 16 }}>
           <Action variant="primary" size="sm" loading={savingLocale} onClick={() => void handleSaveLocale()}>
             Save language

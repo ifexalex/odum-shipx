@@ -1,8 +1,11 @@
-import { useEffect, useMemo, useState, type JSX } from 'react'
+import { useQuery } from '@tanstack/react-query'
+import { useMemo, type JSX } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { ApiError } from '../../api/client'
 import { billingApi, type Billing } from '../../api/billing'
-import { packingListApi, type PackingList } from '../../api/packingList'
+import { billingKeys, packingListKeys } from '../../api/keys'
+import { packingListApi } from '../../api/packingList'
+import { STALE_30S } from '../../lib/queryClient'
 import { Badge, Banner, Button, Card, Icon, Mono, Table, ViewLink } from '../../design/components'
 import { SectionHead } from '../../shell/SectionHead'
 import { useSession } from '../../auth/useSession'
@@ -46,39 +49,41 @@ function CustStat({ label, value, color }: { label: string; value: string; color
 export function MyShipments(): JSX.Element {
   const navigate = useNavigate()
   const { session } = useSession()
-  const [shipments, setShipments] = useState<PackingList[]>([])
-  const [billing, setBilling] = useState<Billing[]>([])
-  const [loading, setLoading] = useState(true)
-  const [error, setError] = useState<string | null>(null)
 
-  useEffect(() => {
-    let active = true
-    // eslint-disable-next-line react-hooks/set-state-in-effect -- hand-rolled fetch effect; migrate to TanStack Query (master plan 7.150)
-    setLoading(true)
-    setError(null)
+  const shipmentParams = { limit: 100 }
+  const { data: shipmentPage, isLoading: loading, error: loadError } = useQuery({
+    queryKey: packingListKeys.lookup(shipmentParams),
+    queryFn: () => packingListApi.list(shipmentParams),
+    staleTime: STALE_30S,
+  })
+  const shipments = shipmentPage?.data ?? []
 
-    async function loadAll(): Promise<void> {
-      try {
-        const [plResult, billingResult] = await Promise.allSettled([
-          packingListApi.list({ limit: 100 }),
-          session?.userId ? billingApi.listForCustomer(session.userId) : Promise.resolve([]),
-        ])
-        if (!active) return
-        if (plResult.status === 'fulfilled') setShipments(plResult.value.data)
-        else throw plResult.reason
-        if (billingResult.status === 'fulfilled') {
-          const b = billingResult.value
-          setBilling(Array.isArray(b) ? b : [])
-        }
-      } catch (err) {
-        if (active) setError(err instanceof ApiError ? err.message : 'Could not load your shipments.')
-      } finally {
-        if (active) setLoading(false)
-      }
-    }
-    void loadAll()
-    return () => { active = false }
-  }, [session?.userId])
+  const error = loadError
+    ? loadError instanceof ApiError
+      ? loadError.message
+      : 'Could not load your shipments.'
+    : null
+
+  // Ground-truth bug found while migrating this page (7.150): the billing half
+  // used to call `billingApi.listForCustomer(session.userId)`. That endpoint
+  // takes a *customer* id, and the backend compares it against the customer row
+  // resolved from the caller's user_id — two different values — so it returned
+  // **403 on every call**, verified live. Because the old code fetched it under
+  // Promise.allSettled and treated billing as non-fatal, the failure was
+  // swallowed: `billing` was always `[]`, which silently meant the outstanding
+  // -balance greeting always read ₦0 and the per-shipment billing lookup below
+  // never resolved anything. Fixed by using GET /v1/billing, which the backend
+  // force-scopes to the caller's own customer_id — the same call the sibling
+  // MyShipmentDetail already made correctly.
+  //
+  // Still non-fatal: the page renders without billing, so this query's error is
+  // deliberately not surfaced.
+  const { data: billingPage } = useQuery({
+    queryKey: billingKeys.lookup({}),
+    queryFn: () => billingApi.list(),
+    staleTime: STALE_30S,
+  })
+  const billing: Billing[] = billingPage?.data ?? []
 
   // Split into active and past
   const { active: activeShipments, past: pastShipments } = useMemo(() => {

@@ -1,13 +1,15 @@
-import { useCallback, useEffect, useState, type JSX } from 'react'
+import { useQuery, useQueryClient } from '@tanstack/react-query'
+import { useEffect, useState, type JSX } from 'react'
 import { useLocation, useNavigate, useParams } from 'react-router-dom'
 import { ApiError } from '../../api/client'
 import { platformApi, type Tenant, type TenantStatus } from '../../api/tenantManagement'
+import { platformTenantKeys } from '../../api/keys'
+import { STALE_30S } from '../../lib/queryClient'
 import { useSession } from '../../auth/useSession'
 import { Badge, Banner, Button, Card, Field, Kvp, Mono, Table, UserCell, type BadgeVariant } from '../../design/components'
 import {
   platformApi as platformExtras,
   type PlanLimits,
-  type TenantUsage,
   type TenantUser,
 } from '../../api/tenantManagement'
 import { Tabs } from '../../shell/Tabs'
@@ -142,28 +144,28 @@ function QuotaBar({ label, used, max }: { label: string; used: number; max: numb
 }
 
 function UsageTab({ tenantId }: { tenantId: string }): JSX.Element {
-  const [usage, setUsage] = useState<TenantUsage | null>(null)
-  const [error, setError] = useState<string | null>(null)
+  const { data: usage = null, error: loadError } = useQuery({
+    queryKey: platformTenantKeys.usage(tenantId),
+    queryFn: () => platformExtras.tenantUsage(tenantId),
+    enabled: !!tenantId,
+    staleTime: STALE_30S,
+  })
   const [override, setOverride] = useState<{ users: string; containers: string; storage: string }>({ users: '', containers: '', storage: '' })
   const [saving, setSaving] = useState(false)
   const [saved, setSaved] = useState(false)
+  const [actionError, setActionError] = useState<string | null>(null)
 
-  const load = useCallback(async () => {
-    try {
-      setUsage(await platformExtras.tenantUsage(tenantId))
-    } catch (err) {
-      setError(err instanceof ApiError ? err.message : 'Could not load usage.')
-    }
-  }, [tenantId])
-
-  useEffect(() => {
-    // eslint-disable-next-line react-hooks/set-state-in-effect -- hand-rolled fetch effect; migrate to TanStack Query (master plan 7.150)
-    void load()
-  }, [load])
+  const error =
+    actionError ??
+    (loadError
+      ? loadError instanceof ApiError
+        ? loadError.message
+        : 'Could not load usage.'
+      : null)
 
   async function handleOverride(): Promise<void> {
     setSaving(true)
-    setError(null)
+    setActionError(null)
     setSaved(false)
     try {
       const body: Partial<PlanLimits> = {}
@@ -172,9 +174,8 @@ function UsageTab({ tenantId }: { tenantId: string }): JSX.Element {
       if (override.storage) body.storage_gb = Number(override.storage)
       await platformExtras.setQuotaOverride(tenantId, body)
       setSaved(true)
-      await load()
     } catch (err) {
-      setError(err instanceof ApiError ? err.message : 'Could not set override.')
+      setActionError(err instanceof ApiError ? err.message : 'Could not set override.')
     } finally {
       setSaving(false)
     }
@@ -294,30 +295,28 @@ export function PlatformTenantDetail(): JSX.Element {
   const navigate = useNavigate()
   const stateTenant = (location.state as { tenant?: Tenant } | null)?.tenant ?? null
 
-  const [tenant, setTenant] = useState<Tenant | null>(stateTenant)
-  const [loading, setLoading] = useState(stateTenant === null)
-  const [error, setError] = useState<string | null>(null)
+  const qc = useQueryClient()
+
+  const { data: tenant = null, isLoading: loading, error: loadError } = useQuery({
+    queryKey: platformTenantKeys.detail(id ?? ''),
+    queryFn: () => platformApi.getTenant(id!),
+    enabled: !!id,
+    ...(stateTenant ? { initialData: stateTenant } : {}),
+    staleTime: STALE_30S,
+  })
+
   const [activeModal, setActiveModal] = useState<'suspend' | 'activate' | 'offboard' | null>(null)
   const [tab, setTab] = useState('overview')
   const [impersonating, setImpersonating] = useState(false)
+  const [pageError, setPageError] = useState<string | null>(null)
 
-  const load = useCallback(async () => {
-    if (!id) return
-    setLoading(true)
-    try {
-      const result = await platformApi.getTenant(id)
-      setTenant(result)
-    } catch (err) {
-      setError(err instanceof ApiError ? err.message : 'Could not load tenant.')
-    } finally {
-      setLoading(false)
-    }
-  }, [id])
-
-  useEffect(() => {
-    // eslint-disable-next-line react-hooks/set-state-in-effect -- hand-rolled fetch effect; migrate to TanStack Query (master plan 7.150)
-    if (stateTenant === null) void load()
-  }, [load, stateTenant])
+  const error =
+    pageError ??
+    (loadError
+      ? loadError instanceof ApiError
+        ? loadError.message
+        : 'Could not load tenant.'
+      : null)
 
   async function handleImpersonate(): Promise<void> {
     if (!tenant) return
@@ -327,7 +326,7 @@ export function PlatformTenantDetail(): JSX.Element {
       startImpersonation(result.token, tenant.company_name)
       navigate('/dashboard')
     } catch (err) {
-      setError(err instanceof ApiError ? err.message : 'Could not start impersonation.')
+      setPageError(err instanceof ApiError ? err.message : 'Could not start impersonation.')
       setImpersonating(false)
     }
   }
@@ -406,7 +405,7 @@ export function PlatformTenantDetail(): JSX.Element {
           tenant={tenant}
           onCancel={() => setActiveModal(null)}
           onSuccess={(updated) => {
-            setTenant(updated)
+            qc.setQueryData(platformTenantKeys.detail(id ?? ''), updated)
             setActiveModal(null)
           }}
         />

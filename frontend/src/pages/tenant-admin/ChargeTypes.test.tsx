@@ -7,6 +7,7 @@
 import { render, screen, waitFor, within } from '@testing-library/react'
 import { MemoryRouter } from 'react-router-dom'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { withQuery } from '../../test/queryWrapper'
 import { configApi, type ChargeType } from '../../api/tenantManagement'
 import { ChargeTypes } from './ChargeTypes'
 
@@ -24,9 +25,11 @@ function type(overrides: Partial<ChargeType>): ChargeType {
 
 function renderPage() {
   return render(
-    <MemoryRouter>
-      <ChargeTypes />
-    </MemoryRouter>,
+    withQuery(
+      <MemoryRouter>
+        <ChargeTypes />
+      </MemoryRouter>,
+    ),
   )
 }
 

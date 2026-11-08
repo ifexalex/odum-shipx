@@ -2,6 +2,7 @@ import { render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { MemoryRouter } from 'react-router-dom'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { withQuery } from '../../test/queryWrapper'
 import { ApiError } from '../../api/client'
 import { warehousesApi, type Warehouse } from '../../api/warehouses'
 import { TopBarTestWrapper } from '../../test/TopBarTestWrapper'
@@ -40,11 +41,13 @@ const OTHER_WH: Warehouse = {
 
 function renderPage() {
   return render(
-    <MemoryRouter>
-      <TopBarTestWrapper>
-        <Warehouses />
-      </TopBarTestWrapper>
-    </MemoryRouter>,
+    withQuery(
+      <MemoryRouter>
+        <TopBarTestWrapper>
+          <Warehouses />
+        </TopBarTestWrapper>
+      </MemoryRouter>,
+    ),
   )
 }
 
