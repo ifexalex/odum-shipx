@@ -566,6 +566,50 @@ The check in step 2 is the whole point: `t` means step 1 worked, and a `f` here
 is the difference between a clean bring-up and an environment that comes up
 unable to reach its database.
 
+### Incident 2026-11-09: phase 2 rolled back, `logistics_app` could not log in
+
+Phase 2 was merged after phase 1's Azure deploy reported success, on the
+inference that migration 060 must therefore have set the role's password. That
+inference was **wrong**, and the deploy's new DB-reachability probe caught it:
+
+```
+health: 200
+db reachability (/v1/invites/<bogus>): 500
+FAIL: expected 404 (database reachable, token absent), got 500
+```
+
+Note `health: 200` beside it. Every pre-existing smoke check passed. Without the
+probe added in the same change, this deploy would have gone green with an API
+that could not reach its database at all.
+
+Rolled back by reverting the two Terraform env changes (owner credential
+restored); the probe was deliberately kept.
+
+**What to check before attempting phase 2 again** — in order, because each
+answers a different cause:
+
+```sql
+-- 1. Does the role exist, and can it log in?
+SELECT rolname, rolcanlogin, rolbypassrls FROM pg_roles WHERE rolname = 'logistics_app';
+```
+
+If `rolcanlogin = f`, migration 060 took its no-op branch — it logs
+`APP_DB_PASSWORD not set - leaving logistics_app NOLOGIN` and still **succeeds**,
+so a green migration step proves nothing. Read the migrate job's own log:
+
+```bash
+az containerapp job logs show -g <rg> --name <prefix>-job-migrate \
+  --execution <exec> --container migrate --tail 200 | grep -i logistics_app
+```
+
+If `rolcanlogin = t` but the app still 500s, the role's password and the
+`db-app-password` secret have diverged — 060 set it from `APP_DB_PASSWORD` at
+some earlier apply, and `random_password.app` has since been regenerated.
+Re-running the migrate job re-sets it from the current secret.
+
+Do not re-apply phase 2 until that first query returns `t` **and** a manual
+`psql` as `logistics_app` against the target server succeeds.
+
 ### Rolling back the cutover
 
 Rollback is a **config** change, not a migration — deliberately, so it needs no

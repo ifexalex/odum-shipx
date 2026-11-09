@@ -109,27 +109,21 @@ locals {
     {
       DATABASE_HOST = var.rds_proxy_endpoint
       DATABASE_NAME = var.db_name
-      # PHASE 2 of the RLS credential switchover: the application credential.
+      # PHASE 1 of the RLS credential switchover: still the master user.
       #
-      # The service Lambdas now connect as a role with DML only and no
-      # BYPASSRLS, so migration 059's FORCE ROW LEVEL SECURITY policies bind to
-      # them and tenant isolation is enforced by the database.
+      # Flipping these two to logistics_app / db_app_secret_arn is phase 2, and
+      # must not be bundled with phase 1. On AWS the env flip and the migration
+      # live in SEPARATE pipelines — terraform.yml applies infrastructure,
+      # deploy.yml runs migrations and then deploys code — so a Terraform apply
+      # on its own would repoint every Lambda at a role migration 060 has not
+      # yet given a password to, with no migration anywhere in that pipeline to
+      # fix it.
       #
-      # ORDERING HAZARD, and why this is its own phase: on AWS the env flip and
-      # the migration live in SEPARATE pipelines — terraform.yml applies
-      # infrastructure, deploy.yml runs migrations and then deploys code. A
-      # Terraform apply on its own repoints every Lambda and runs no migration,
-      # so this flip is only safe once 060 has already run in the target
-      # account. Phase 1 (7.157) did that by giving the migrate Lambda
-      # APP_DB_SECRET_ARN.
-      #
-      # PRECONDITION — verify per account before applying this:
-      #   SELECT rolcanlogin FROM pg_roles WHERE rolname = 'logistics_app'; -- t
-      # If it is `f`, applying this takes the API down until the migrate Lambda
-      # is invoked. Rollback is these two lines plus the IAM Resource below,
-      # back to "postgres" / var.db_secret_arn.
-      DATABASE_USER         = "logistics_app"
-      DB_SECRET_ARN         = var.db_app_secret_arn
+      # Phase 1 provisions the credential: the migrate Lambda below receives
+      # APP_DB_SECRET_ARN, so 060 sets the role's password on the next deploy.
+      # Phase 2 then flips these two lines against a role that already works.
+      DATABASE_USER         = "postgres"
+      DB_SECRET_ARN         = var.db_secret_arn
       S3_BUCKET             = var.bucket_name
       EVENT_BUS_NAME        = var.event_bus_name
       COGNITO_USER_POOL_ID  = var.cognito_user_pool_id
@@ -243,12 +237,10 @@ resource "aws_iam_role_policy" "db_access" {
       {
         Effect = "Allow"
         Action = ["secretsmanager:GetSecretValue"]
-        # PHASE 2: the app secret alone, matching DATABASE_USER above. The
-        # service Lambdas have no business reading the master credential now
-        # that they no longer use it — this is the least-privilege half of the
-        # switchover, and the half that a working app would not have forced.
-        # The migrate Lambda keeps its own broader policy (it needs both).
-        Resource = [var.db_app_secret_arn]
+        # PHASE 1: the master secret, matching DATABASE_USER above. Phase 2
+        # narrows this to var.db_app_secret_arn alone — the service Lambdas have
+        # no business reading the master credential once they stop using it.
+        Resource = [var.db_secret_arn]
       },
       {
         Effect   = "Allow"
