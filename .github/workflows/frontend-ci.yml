@@ -1,12 +1,49 @@
 name: Frontend CI
 
+# The path filter also covers the files that decide whether the LOCAL STACK
+# comes up at all, not just frontend sources. `e2e-local-stack` runs the real
+# backend, so a backend-only change can break every spec in it — and with a
+# frontend-only filter that job never runs on such a PR, so the break lands on
+# main silently and is first seen by whichever unrelated frontend PR comes next.
+#
+# That is not hypothetical: #126 repointed DATABASE_USER at `logistics_app` and
+# left `.env.local.sample` with two mismatched password placeholders. It touched
+# no frontend file, so this job never ran; the next frontend PR inherited 25
+# failures across specs it had not touched.
+#
+# Deliberately NOT `services/**`: that would put a ~12-minute e2e run on every
+# backend PR. These are the narrower set that governs stack bring-up — env
+# sample, migrations, the dev scripts, the DB layer, compose and the Makefile.
+#
+# The two lists are duplicated on purpose: GitHub Actions' workflow parser does
+# not support YAML anchors, so a `&stack_paths` / `*stack_paths` pair is a
+# parse error here even though every local YAML tool accepts it. Keep them in
+# sync by hand.
 on:
   pull_request:
     branches: [main]
-    paths: ["frontend/**", ".github/workflows/frontend-ci.yml"]
+    paths:
+      - "frontend/**"
+      - ".github/workflows/frontend-ci.yml"
+      - ".env.local.sample"
+      - "migrations/**"
+      - "scripts/**"
+      - "shared/db.py"
+      - "shared/db_credentials.py"
+      - "docker-compose.local.yml"
+      - "Makefile"
   push:
     branches: [main]
-    paths: ["frontend/**", ".github/workflows/frontend-ci.yml"]
+    paths:
+      - "frontend/**"
+      - ".github/workflows/frontend-ci.yml"
+      - ".env.local.sample"
+      - "migrations/**"
+      - "scripts/**"
+      - "shared/db.py"
+      - "shared/db_credentials.py"
+      - "docker-compose.local.yml"
+      - "Makefile"
 
 concurrency:
   group: frontend-ci-${{ github.ref }}

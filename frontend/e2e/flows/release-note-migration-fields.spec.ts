@@ -22,7 +22,7 @@
  * real seeded data (not a mock) makes this necessary.
  */
 import { expect, test } from '@playwright/test'
-import { actionAvailable, goToViaNav, settleNetwork, switchRole } from '../support/roleSwitch'
+import { actionAvailable, becomesVisible, goToViaNav, hasRows, settleNetwork, switchRole } from '../support/roleSwitch'
 
 const CUSTOMER_NAME = 'Ngozi Adeyemi'
 const CONTAINER_NUMBER = 'ACME001001'
@@ -78,7 +78,7 @@ test.describe('release note — count-based generation with warehouse and docume
     await dialog.getByLabel(/package unit/i).fill('cartons')
 
     const warehouseSelect = dialog.getByLabel(/warehouse.*branch/i)
-    if (await warehouseSelect.isVisible().catch(() => false)) {
+    if (await becomesVisible(warehouseSelect)) {
       const optionCount = await warehouseSelect.locator('option').count()
       if (optionCount > 1) await warehouseSelect.selectOption({ index: 1 })
     }
@@ -106,7 +106,7 @@ test.describe('release note — count-based generation with warehouse and docume
 
   test('release note detail page displays warehouse, document number, invoice numbers and package count', async ({ page }) => {
     const row = await findReleaseNoteRow(page)
-    test.skip((await row.count()) === 0, 'No release note found for this customer yet — run the generation test first')
+    test.skip(!(await hasRows(row)), 'No release note found for this customer yet — run the generation test first')
 
     await row.getByRole('button', { name: /^view$/i }).click()
     await expect(page).toHaveURL(/\/release-notes\//)
@@ -129,7 +129,7 @@ test.describe('release note — count-based generation with warehouse and docume
       .filter({ hasText: CONTAINER_NUMBER })
       .first()
     await expect(row).toHaveCount(1, { timeout: 10_000 }).catch(() => undefined)
-    test.skip((await row.count()) === 0, 'No release note found for this customer — run the generation test first')
+    test.skip(!(await hasRows(row)), 'No release note found for this customer — run the generation test first')
 
     await row.getByRole('button', { name: /^view$/i }).click()
     await expect(page).toHaveURL(/\/release-notes\//)
@@ -149,17 +149,17 @@ test.describe('release note — count-based generation with warehouse and docume
     // addition under test. All optional; exercise them when the tenant has
     // warehouses/staff configured (real seeded data, not guaranteed empty).
     const warehouseSelect = dialog.getByLabel(/warehouse.*branch/i)
-    if (await warehouseSelect.isVisible().catch(() => false)) {
+    if (await becomesVisible(warehouseSelect)) {
       const count = await warehouseSelect.locator('option').count()
       if (count > 1) await warehouseSelect.selectOption({ index: 1 })
     }
     const csoSelect = dialog.getByLabel(/customer service officer/i)
-    if (await csoSelect.isVisible().catch(() => false)) {
+    if (await becomesVisible(csoSelect)) {
       const count = await csoSelect.locator('option').count()
       if (count > 1) await csoSelect.selectOption({ index: 1 })
     }
     const accountingSelect = dialog.getByLabel(/accounting officer/i)
-    if (await accountingSelect.isVisible().catch(() => false)) {
+    if (await becomesVisible(accountingSelect)) {
       const count = await accountingSelect.locator('option').count()
       if (count > 1) await accountingSelect.selectOption({ index: 1 })
     }
@@ -173,7 +173,7 @@ test.describe('release note — count-based generation with warehouse and docume
 
   test('print view shows the document number, invoice numbers and paper-form signature lines', async ({ page }) => {
     const row = await findReleaseNoteRow(page)
-    test.skip((await row.count()) === 0, 'No release note found for this customer — run the generation test first')
+    test.skip(!(await hasRows(row)), 'No release note found for this customer — run the generation test first')
 
     await row.getByRole('button', { name: /^view$/i }).click()
     await expect(page).toHaveURL(/\/release-notes\//)
@@ -191,7 +191,7 @@ test.describe('release note — count-based generation with warehouse and docume
 
   test('PDF export opens a document from the release-note detail page', async ({ page }) => {
     const row = await findReleaseNoteRow(page)
-    test.skip((await row.count()) === 0, 'No release note found for this customer — run the generation test first')
+    test.skip(!(await hasRows(row)), 'No release note found for this customer — run the generation test first')
 
     await row.getByRole('button', { name: /^view$/i }).click()
     await expect(page).toHaveURL(/\/release-notes\//)

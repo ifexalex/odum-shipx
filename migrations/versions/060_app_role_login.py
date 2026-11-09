@@ -101,8 +101,46 @@ _GRANT_LOGIN = sa.text(
 )
 
 
+def _warn_if_app_password_disagrees(app_password: str) -> None:
+    """Shout when this migration is about to set a password the app won't use.
+
+    The two values must agree: this migration sets `logistics_app`'s password
+    from `APP_DB_PASSWORD`, while the application authenticates as
+    `DATABASE_USER`/`DATABASE_PASSWORD`. Disagree, and the stack builds
+    perfectly and then every single request dies with `FATAL: password
+    authentication failed for user "logistics_app"` — a message that points at
+    the database and says nothing about the env file that caused it.
+
+    That is not hypothetical. `.env.local.sample` shipped the two as
+    `paste-the-generated-value-here` and `paste-the-same-generated-value-here`,
+    and both `make env` and the frontend-ci workflow copy that file unedited —
+    so a fresh clone and CI both got a mismatch, and CI spent a full e2e run
+    (25 failures across unrelated specs) before anything named the real cause.
+
+    A notice, not an error: an environment that has not been cut over yet has
+    no `APP_DB_PASSWORD` at all, which is a supported state, and a migration
+    that refuses to run would block its deploy.
+    """
+    if not app_password:
+        return
+    if os.environ.get("DATABASE_USER") != "logistics_app":
+        # Still connecting as the owner — the app password is being provisioned
+        # ahead of the cutover, so there is nothing to disagree with yet.
+        return
+    if os.environ.get("DATABASE_PASSWORD") == app_password:
+        return
+    print(
+        "WARNING: APP_DB_PASSWORD does not match DATABASE_PASSWORD while "
+        "DATABASE_USER=logistics_app. This migration will set a password the "
+        "application does not have, and every request will then fail with "
+        "'password authentication failed for user \"logistics_app\"'. "
+        "Set both to the same value."
+    )
+
+
 def upgrade() -> None:
     password = os.environ.get("APP_DB_PASSWORD", "")
+    _warn_if_app_password_disagrees(password)
 
     # Bound as a parameter, transaction-local so it does not outlive this
     # migration on a pooled connection.

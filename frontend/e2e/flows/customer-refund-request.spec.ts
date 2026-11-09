@@ -8,7 +8,7 @@
  * customer role." Untested until now.
  */
 import { expect, test } from '@playwright/test'
-import { actionAvailable, settleNetwork, switchRole } from '../support/roleSwitch'
+import { actionAvailable, hasRows, settleNetwork, switchRole } from '../support/roleSwitch'
 
 test.describe('customer refund request', () => {
   test('requesting a refund from billing succeeds with the customer correctly attributed', async ({ page }) => {
@@ -18,8 +18,22 @@ test.describe('customer refund request', () => {
 
     // MyBilling.tsx renders each billing record as a clickable card
     // (role="button"), not a table row.
-    const card = page.getByRole('button', { name: /ACME/i }).first()
-    test.skip((await card.count()) === 0, 'No billing records for the seeded customer identity')
+    // Two fixes here, both found by checking the data behind the skip rather
+    // than trusting its message:
+    //
+    // 1. hasRows, not count(). count() reads the DOM once, right after the
+    //    click above, so it recorded "no billing records" for "the cards have
+    //    not rendered yet".
+    // 2. Filter to a card with an outstanding balance. "Request refund" is
+    //    gated on `outstanding > 0 && !isPaid` (MyBillingDetail.tsx), and the
+    //    seeded customer's *first* card is a fully-paid invoice — so .first()
+    //    opened a record that can never offer the action, and the test skipped
+    //    on the next guard for a reason that looked like a fixture gap.
+    const card = page
+      .getByRole('button', { name: /ACME/i })
+      .filter({ hasText: /outstanding/i })
+      .first()
+    test.skip(!(await hasRows(card)), 'No billing record with an outstanding balance for the seeded customer')
     await card.click()
     await expect(page).toHaveURL(/\/my-billing\//)
 

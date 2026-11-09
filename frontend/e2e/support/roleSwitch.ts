@@ -223,3 +223,60 @@ export async function actionAvailable(
     return false
   }
 }
+
+/**
+ * Does `locator` match at least one element, waiting for it to appear?
+ *
+ * The companion to `actionAvailable`, for the other half of the same bug.
+ * 7.153 established that `isVisible()` is a one-shot check with no retry, so
+ * `test.skip(!(await x.isVisible()), …)` silently records "this does not apply"
+ * for "the page has not rendered yet". **`count()` has exactly the same
+ * problem** and was left unconverted: `test.skip((await rows.count()) === 0, …)`
+ * reads the DOM once, immediately after a navigation.
+ *
+ * Found by checking the data behind a skip rather than trusting its message:
+ * `customer-refund-request` skipped with "No billing records for the seeded
+ * customer identity" while that identity demonstrably had two. Returns false
+ * only after genuinely waiting, so a skip means the data is absent rather than
+ * merely late.
+ */
+export async function hasRows(
+  locator: import('@playwright/test').Locator,
+  timeout = 7_000,
+): Promise<boolean> {
+  try {
+    await locator.first().waitFor({ state: 'attached', timeout })
+    return true
+  } catch {
+    return false
+  }
+}
+
+/**
+ * Is `locator` visible, waiting for it rather than checking once?
+ *
+ * For the *non-button*, genuinely-optional elements — a form field only some
+ * configurations render, a dialog that may not open. `actionAvailable` covers
+ * buttons; this covers everything else.
+ *
+ * Inside an `if (...)` the one-shot version fails silently and worse than in a
+ * `test.skip`: the step is simply not performed, the test continues, and
+ * something much later fails for an unrelated-looking reason. That is how
+ * `claims-and-refunds.spec.ts`'s accounts-review step came to be skipped,
+ * leaving the refund in `pending_review` so the next guard reported
+ * "No pending_approval refund found" and hid the real cause.
+ *
+ * Shorter default than `actionAvailable`: absence is a legitimate outcome here,
+ * so waiting the full 7s on each would cost real time for no information.
+ */
+export async function becomesVisible(
+  locator: import('@playwright/test').Locator,
+  timeout = 3_000,
+): Promise<boolean> {
+  try {
+    await locator.first().waitFor({ state: 'visible', timeout })
+    return true
+  } catch {
+    return false
+  }
+}

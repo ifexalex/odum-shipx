@@ -9,7 +9,7 @@
  * release-note-migration-fields.spec.ts (Ngozi Adeyemi, ACME001001).
  */
 import { expect, test } from '@playwright/test'
-import { actionAvailable, goToViaNav, settleNetwork, switchRole } from '../support/roleSwitch'
+import { actionAvailable, becomesVisible, goToViaNav, settleNetwork, switchRole } from '../support/roleSwitch'
 
 const CUSTOMER_NAME = 'Ngozi Adeyemi'
 const CONTAINER_NUMBER = 'ACME001002'
@@ -32,7 +32,7 @@ test.describe('release note — split', () => {
     await expect(page.getByText('Outstanding', { exact: true }).first()).toBeVisible()
 
     const generateBtn = page.getByRole('button', { name: /generate release note/i })
-    if (await generateBtn.isVisible().catch(() => false)) {
+    if (await actionAvailable(page, /generate release note/i)) {
       await generateBtn.click()
       const dialog = page.getByRole('dialog')
       await expect(dialog.getByRole('heading', { name: 'Generate release note' })).toBeVisible()
@@ -50,7 +50,7 @@ test.describe('release note — split', () => {
       // already on the note from an earlier pass) leaves the dialog open
       // with an error alert, and its overlay would otherwise block every
       // subsequent click on the page. Close it before navigating on.
-      if (await dialog.isVisible().catch(() => false)) {
+      if (await becomesVisible(dialog)) {
         await dialog.getByRole('button', { name: /cancel/i }).click()
         await expect(dialog).not.toBeVisible({ timeout: 5_000 })
       }

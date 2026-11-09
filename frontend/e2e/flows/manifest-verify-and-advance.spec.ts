@@ -12,7 +12,7 @@
  * import) rather than real seeded data — safe to mutate status on repeatedly.
  */
 import { expect, test, type APIResponse, type Page } from '@playwright/test'
-import { goToViaNav, settleNetwork, switchRole } from '../support/roleSwitch'
+import { actionAvailable, goToViaNav, hasRows, settleNetwork, switchRole } from '../support/roleSwitch'
 
 const TEST_CONTAINER = 'E2E-TEST-001'
 const TENANT_ID = '10000000-0000-0000-0000-000000000001'  // Acme Shipping Ltd (seed)
@@ -121,18 +121,20 @@ test.describe('manifest verify + container advance', () => {
     await goToViaNav(page, /^manifests$/i)
 
     const row = page.locator('table tbody tr').filter({ hasText: TEST_CONTAINER })
-    test.skip((await row.count()) === 0, `${TEST_CONTAINER} has no manifest yet — run manifest-import.spec.ts first`)
+    test.skip(!(await hasRows(row)), `${TEST_CONTAINER} has no manifest yet — run manifest-import.spec.ts first`)
 
     await row.getByRole('button', { name: /^view$/i }).click()
     await expect(page).toHaveURL(/\/manifests\//)
     await expect(page.getByRole('heading', { name: TEST_CONTAINER })).toBeVisible()
 
     const verifyBtn = page.getByRole('button', { name: /verify manifest/i })
-    // isVisible() is a one-shot check with no retry — right after navigation
-    // it can run before the button has rendered, wrongly taking the
-    // already-verified branch below. Give it the same chance to appear that
-    // an assertion would.
-    const verifyBtnAppeared = await verifyBtn.isVisible().catch(() => false)
+    // This comment used to correctly describe the problem — "isVisible() is a
+    // one-shot check with no retry ... give it the same chance to appear that an
+    // assertion would" — and then call isVisible() anyway. The right diagnosis
+    // with the wrong code, so the bug it warned about was live: run before the
+    // button rendered and the test silently takes the already-verified branch
+    // and never exercises verification at all.
+    const verifyBtnAppeared = await actionAvailable(page, /verify manifest/i)
     if (!verifyBtnAppeared) {
       // Already verified by a previous run of this same test — that's fine,
       // confirm the status reflects it rather than failing.
@@ -157,7 +159,7 @@ test.describe('manifest verify + container advance', () => {
     await page.getByPlaceholder(/container number, vessel name, voyage/i).fill(TEST_CONTAINER)
     await settleNetwork(page)
     const row = page.locator('table tbody tr').filter({ hasText: TEST_CONTAINER })
-    test.skip((await row.count()) === 0, `${TEST_CONTAINER} not found — run manifest-import.spec.ts first`)
+    test.skip(!(await hasRows(row)), `${TEST_CONTAINER} not found — run manifest-import.spec.ts first`)
 
     // ContainerList.tsx rows use KebabBtn ("Open {container_number}"), not
     // ViewLink's "View" — a different action component than packing lists use.
