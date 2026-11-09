@@ -646,7 +646,16 @@ PYTHONPATH=. python3 -m pytest tests/integration/ -v
 
 `APP_DB_PASSWORD` **must equal** `DATABASE_PASSWORD`. If they drift, the stack
 builds fine and then every request fails with
-`password authentication failed for user "logistics_app"`.
+`password authentication failed for user "logistics_app"`. Migration 060 prints
+a `WARNING:` naming the mismatch when it sees one, so the failure is no longer
+silent until the first request.
+
+`.env.local.sample` pre-fills both with the **same** local-only literal, so a
+verbatim copy works — which is how it is used: `make env` and
+`.github/workflows/frontend-ci.yml` both copy it unedited. It briefly shipped two
+*different* placeholders (`paste-the-generated-value-here` vs
+`paste-the-same-generated-value-here`), which broke every fresh clone and the
+`e2e-local-stack` job. To use your own value, change both.
 
 Why the split: `logistics_app` holds only SELECT/INSERT/UPDATE/DELETE and has no
 `BYPASSRLS`, so the row-level-security policies are actually enforced against

@@ -1835,10 +1835,12 @@ Measured across two consecutive runs without `make stack` in between:
 
 Run 1 consumed the preconditions for two `bulk-packing-list-actions` tests and
 a manifest verification, so **coverage degrades silently on re-run**. Re-seed
-with `make stack` before trusting a local run. The remaining 7 skips are
-genuine missing fixtures — the seed creates no release notes, and the claims
-and refunds it creates are not in the states those specs need
-(`scripts/seed.py` has no `create_claim` / `create_refund` / `create_release_note`).
+with `make stack` before trusting a local run.
+
+**The "remaining 7 are genuine missing fixtures" conclusion was wrong** — see
+the 2026-11-08 section below. Two of the seven had the data they needed and were
+skipping on a race; the seed gaps that were real are now filled. A fresh run is
+**1 skipped / 100 passed**.
 
 ### Local-stack runs need the backend env
 
@@ -2001,3 +2003,90 @@ leave every policy inert while the catalog still looked correct.
 `DATABASE_USER`. Without that change six tests error with `new row violates
 row-level security policy for table "warehouse"` — which is the switchover
 working correctly, and useless for setting up a two-tenant fixture.
+
+---
+
+## e2e skips: 7 → 1 (2026-11-08)
+
+A fresh `make stack` run now reports **1 skipped / 100 passed**, from 7 / 94.
+The seven were not one problem, and the skip *messages* were actively
+misleading — two of them named a fixture gap that did not exist.
+
+### Two were races, not missing data
+
+`customer-refund-request` skipped with "No billing records for the seeded
+customer identity" while that identity demonstrably had two (checked against
+`GET /v1/billing` directly rather than trusting the message). Its guard was:
+
+```ts
+test.skip((await card.count()) === 0, '…')
+```
+
+**`count()` has exactly the same flaw as the `isVisible()` guards 7.153 fixed**
+— a single DOM read, here immediately after a navigation — and 7.153 converted
+only the `isVisible()` ones. All **15** `count()`-based skip guards across the
+suite are now `hasRows()`, which waits before deciding, so a skip means the data
+is absent rather than merely late.
+
+Worse, ten more one-shot `isVisible()` checks survived inside `if (...)` rather
+than `test.skip(...)`, where the failure is **silent and more damaging**: the
+step is simply not performed, the test continues, and something later fails for
+an unrelated-looking reason. That is exactly how `claims-and-refunds`'s
+accounts-review step came to be skipped, leaving the refund in `pending_review`
+so the *next* guard reported "No pending_approval refund found". All ten are now
+`actionAvailable()` or the new `becomesVisible()`.
+
+One of them deserves special mention: `manifest-verify-and-advance.spec.ts`
+carried a comment correctly describing the one-shot trap — *"isVisible() is a
+one-shot check with no retry … give it the same chance to appear that an
+assertion would"* — and then called `isVisible()` anyway. The right diagnosis
+with the wrong code, so the bug it warned about was live.
+
+### One was a spec targeting an ineligible record
+
+`customer-refund-request` clicked `.first()` ACME billing card, which for the
+seeded customer is a **fully paid** invoice. "Request refund" is gated on
+`outstanding > 0 && !isPaid`, so that record can never offer the action. The
+spec now filters to a card with an outstanding balance.
+
+### Four were genuine seed gaps
+
+`scripts/seed.py` gained `create_refund_request` and `create_release_note`, plus
+fixture rows in `seed_tenant_a`:
+
+| fixture | why |
+|---|---|
+| 1 `draft` packing list | bulk-submit filtered to Draft and found nothing (0 seeded) |
+| 2 extra `pending_approval` lists | the bulk specs *consume* the one that existed, starving the next spec and the next run |
+| 1 `pending_review` refund | the review/approve tests depended on an upstream spec creating one through the UI |
+| 1 `active` 2-tag release note | split needs `active` (picked-up cannot split) **and** ≥2 tags (splitting moves one out) |
+
+The release note has to sit on the billing the spec actually navigates to —
+Ngozi Adeyemi / ACME001002 / INV-A-003. My first attempt put it on INV-A-001 and
+the spec kept skipping: the fixture existed, just not where the spec looks.
+
+`refund_request`'s CHECK-constrained columns are now documented on the helper,
+because I got `customer_choice` wrong on the first try: it is
+`immediate_refund` | `credit_next_shipment`, and `refund_type`
+(`overpayment` | `cbm_correction` | `damage_or_loss`) is NOT NULL.
+
+### The one that remains
+
+`manifest-verify-and-advance.spec.ts:119` still skips in a full run while
+**passing in isolation** immediately after `manifest-import`. The container and
+its manifest demonstrably exist in the API at that point, so it is a
+render/navigation race with a tail longer than the 7s guard, not a fixture gap.
+
+Suspected cause, unconfirmed: `waitForTableSettled()` early-outs on
+`(await page.locator('table').count()) === 0` — the same one-shot pattern, in the
+**shared** helper, which would explain intermittency across unrelated specs. A
+short bounded wait there was tried and **did not fix it**, so it was reverted
+rather than kept as an unjustified change. Worth another look with a trace.
+
+### Honest note on run-to-run variance
+
+Across four fresh-stack runs during this work I saw `1 skipped / 100 passed`
+three times and one run with an additional **failure** in
+`billing-payment-and-release` that did not reproduce — in isolation on fresh
+seed that whole file passes 3/3. Treat a single red run here as a flake to
+re-run, not a verdict; and a single green run as weaker evidence than it looks.

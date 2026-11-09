@@ -469,7 +469,14 @@ check.
 ### Symptoms and causes
 
 **`FATAL: password authentication failed for user "logistics_app"`**
-Either migration 060 has not run in this environment, or it ran without
+Three causes. The cheap one first: **the two passwords disagree** — the role's
+password came from `APP_DB_PASSWORD`, the application connects with
+`DATABASE_PASSWORD`, and they must be the same value. Migration 060 prints a
+`WARNING:` when it detects this, so check the migrate output before anything
+else. (This is what broke `e2e-local-stack`: `.env.local.sample` shipped two
+different placeholders and the workflow copies that file unedited.)
+
+Otherwise: either migration 060 has not run in this environment, or it ran without
 `APP_DB_SECRET_ARN` (it then logs `APP_DB_SECRET_ARN not set — migration 060
 will leave logistics_app NOLOGIN` and leaves the role unable to log in, by
 design). Confirm, as the master user:

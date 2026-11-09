@@ -8,7 +8,7 @@
  * Requires local stack running. Uses seeded data from scripts/seed.py.
  */
 import { expect, test } from '@playwright/test'
-import { dataRows, goToViaNav, settleNetwork, switchRole } from '../support/roleSwitch'
+import { dataRows, goToViaNav, hasRows, settleNetwork, switchRole } from '../support/roleSwitch'
 
 test.describe('packing list self-approval', () => {
   test('approve/reject buttons are hidden on a packing list the current user created', async ({ page }) => {
@@ -55,7 +55,7 @@ test.describe('packing list self-approval', () => {
 
     // Look for any row with "pending approval" badge and click it
     const pendingRow = page.locator('table tbody tr').filter({ hasText: /pending/i }).first()
-    const exists = await pendingRow.isVisible().catch(() => false)
+    const exists = await hasRows(pendingRow)
 
     if (!exists) {
       test.skip(true, 'No pending packing lists — create one first via the UI or seed')

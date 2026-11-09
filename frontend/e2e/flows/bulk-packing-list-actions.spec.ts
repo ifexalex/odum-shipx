@@ -12,7 +12,7 @@
  *    since they aren't the creator (canApprove / canApproveOrReject rules).
  */
 import { expect, test } from '@playwright/test'
-import { clickFilterAndSettle, dataRows, goToViaNav, switchRole } from '../support/roleSwitch'
+import { becomesVisible, clickFilterAndSettle, dataRows, goToViaNav, hasRows, switchRole } from '../support/roleSwitch'
 
 test.describe('bulk packing-list actions', () => {
   test('china_office_staff: selecting only self-created pending lists disables Bulk approve', async ({ page }) => {
@@ -21,8 +21,7 @@ test.describe('bulk packing-list actions', () => {
 
     await clickFilterAndSettle(page.getByRole('button', { name: /^pending approval$/i }), page)
 
-    const rowCount = await dataRows(page).count()
-    test.skip(rowCount === 0, 'No pending_approval packing lists seeded')
+    test.skip(!(await hasRows(dataRows(page))), 'No pending_approval packing lists seeded')
 
     // Select all pending rows via the header checkbox (clickFilterAndSettle
     // above already covers the react-query settle race).
@@ -35,7 +34,7 @@ test.describe('bulk packing-list actions', () => {
     // approve button must be disabled rather than let staff fire a request
     // every row will reject.
     const hint = page.getByText(/you created all of these|need another approver/i)
-    if (await hint.isVisible().catch(() => false)) {
+    if (await becomesVisible(hint)) {
       await expect(page.getByRole('button', { name: /bulk approve/i })).toBeDisabled()
     }
   })
@@ -46,8 +45,7 @@ test.describe('bulk packing-list actions', () => {
 
     await clickFilterAndSettle(page.getByRole('button', { name: /^pending approval$/i }), page)
 
-    const rowCount = await dataRows(page).count()
-    test.skip(rowCount === 0, 'No pending_approval packing lists seeded')
+    test.skip(!(await hasRows(dataRows(page))), 'No pending_approval packing lists seeded')
 
     await dataRows(page).first().getByRole('checkbox').click()
     const approveBtn = page.getByRole('button', { name: /bulk approve/i })
@@ -74,8 +72,7 @@ test.describe('bulk packing-list actions', () => {
 
     await clickFilterAndSettle(page.getByRole('button', { name: /^pending approval$/i }), page)
 
-    const rowCount = await dataRows(page).count()
-    test.skip(rowCount === 0, 'No pending_approval packing lists seeded')
+    test.skip(!(await hasRows(dataRows(page))), 'No pending_approval packing lists seeded')
 
     await dataRows(page).first().getByRole('checkbox').click()
     await page.getByRole('button', { name: /bulk reject/i }).click()
@@ -95,8 +92,7 @@ test.describe('bulk packing-list actions', () => {
 
     await clickFilterAndSettle(page.getByRole('button', { name: /^draft$/i }), page)
 
-    const rowCount = await dataRows(page).count()
-    test.skip(rowCount === 0, 'No draft packing lists seeded')
+    test.skip(!(await hasRows(dataRows(page))), 'No draft packing lists seeded')
 
     await dataRows(page).first().getByRole('checkbox').click()
     await page.getByRole('button', { name: /submit for approval/i }).click()
