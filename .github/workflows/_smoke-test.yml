@@ -48,6 +48,38 @@ jobs:
           done
           exit $failed
 
+      - name: Database reachability — a public DB-backed route must not 5xx
+        env:
+          API_BASE: ${{ secrets.API_BASE_URL }}
+        run: |
+          # /health is a static response and a 401 is produced by the auth layer
+          # before any query runs — so BOTH pass with a completely broken database
+          # credential. Verified by pointing a local server at a wrong password:
+          # /health still answered 200 while every authenticated route 500'd.
+          #
+          # This probe is the only smoke step that reaches Postgres. GET
+          # /v1/invites/{token} is public (shared/http_routing.PUBLIC_ROUTES) and
+          # looks the token up, so a bogus one is a real round trip:
+          #   404 → the app authenticated to the database and found nothing (good)
+          #   5xx → it could not reach or log in to the database (bad)
+          # It exists for the RLS credential switchover (migrations 059/060): the
+          # whole failure mode of pointing DATABASE_USER at `logistics_app` before
+          # that role has a password is invisible to every other check here.
+          #
+          # Not /v1/shipments/{tracking-code}: that 404s at ROUTING, without ever
+          # touching the database, so it would pass just as happily.
+          token=0000000000000000000000000000000000000000000000000000000000000000
+          status=$(curl -s -o /dev/null -w "%{http_code}" --max-time 15 "$API_BASE/v1/invites/$token")
+          echo "db reachability (/v1/invites/<bogus>): $status"
+          if [ "$status" != "404" ]; then
+            echo "FAIL: expected 404 (database reachable, token absent), got $status"
+            echo "      A 5xx here usually means the application cannot authenticate to"
+            echo "      Postgres. Check DATABASE_USER / the app secret, and whether"
+            echo "      migration 060 has run:"
+            echo "      SELECT rolcanlogin FROM pg_roles WHERE rolname = 'logistics_app';"
+            exit 1
+          fi
+
       - name: Response time SLA — health endpoint must respond within 2s
         env:
           API_BASE: ${{ secrets.API_BASE_URL }}

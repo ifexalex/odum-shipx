@@ -536,6 +536,36 @@ two are in **different pipelines** (`terraform.yml` vs `deploy.yml`), so an
 apply alone contains no migration step at all. Flipping in the same change as
 provisioning would start the app on a password-less role.
 
+#### The one case the phasing no longer protects: a brand-new environment
+
+Both phases are now in `main`. The separation was between two *deploys* of a
+codebase that changed in between — it is **not** a property of the code. So an
+environment that has never run either phase gets both in its first apply, which
+is precisely the combination the phasing existed to avoid: the app comes up as
+`logistics_app` before migration 060 has ever run there, and cannot
+authenticate until it does.
+
+This applies to a fresh account, a new region, a rebuilt stack, and to any
+environment whose `terraform apply` has been failing — check before assuming an
+environment is on phase 1 merely because phase 1 was merged.
+
+For a first-ever bring-up, apply in two steps rather than one:
+
+```bash
+# 1. Provision and migrate, with the app still on the owner.
+terraform apply -var-file=environments/<env>.tfvars \
+  -var 'db_user_override=postgres'      # or revert the two phase-2 lines locally
+<run the migrate job / migrate Lambda>
+
+# 2. Confirm, then apply normally.
+psql -c "SELECT rolcanlogin FROM pg_roles WHERE rolname = 'logistics_app';"  -- t
+terraform apply -var-file=environments/<env>.tfvars
+```
+
+The check in step 2 is the whole point: `t` means step 1 worked, and a `f` here
+is the difference between a clean bring-up and an environment that comes up
+unable to reach its database.
+
 ### Rolling back the cutover
 
 Rollback is a **config** change, not a migration — deliberately, so it needs no

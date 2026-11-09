@@ -1181,3 +1181,42 @@ which RLS correctly forbids the app role from doing.
 The CI password is a throwaway value for an ephemeral container, committed
 deliberately and marked as such in the workflow; it is not a secret and never
 reaches a deployed environment.
+
+## Smoke tests could not see a broken database credential (2026-11-09)
+
+Both smoke suites — `_smoke-test.yml` (AWS) and the smoke step in
+`_deploy-azure-env.yml` — checked exactly two things: `/health` returns 200, and
+a handful of authenticated routes return 401.
+
+**Neither touches the database.** `/health` is a static response, and a 401 is
+produced by the auth layer *before* any query runs. So a deploy whose
+application cannot log in to Postgres at all passes both, and reports green.
+
+Demonstrated rather than reasoned about: a local server started with
+`DATABASE_PASSWORD=deliberately_wrong_password` still answered `/health` → **200**,
+while `/v1/invites/<bogus>` → **500**.
+
+That gap mattered because of the RLS credential switchover (migrations 059/060,
+master plan 7.157–7.159). The entire failure mode of pointing `DATABASE_USER` at
+`logistics_app` before migration 060 has given that role a password is *exactly*
+"every database query fails, nothing else changes" — invisible to every check
+these suites performed.
+
+### The probe
+
+Both suites now call `GET /v1/invites/{token}` with an obviously-absent token:
+
+| result | meaning |
+|---|---|
+| `404` | the app authenticated to Postgres and found no such token — healthy |
+| `5xx` | it could not reach or log in to Postgres — fail the deploy |
+
+`/v1/invites/{token}` is public (`shared/http_routing.PUBLIC_ROUTES`), so it needs
+no credentials, and it performs a real `customer_invite` lookup.
+
+**Not `/v1/shipments/{tracking-code}`**, the other obvious candidate: it 404s at
+*routing*, without ever reaching the database, so it would pass just as happily.
+The two 404s are indistinguishable by status code alone — only the response body
+(`"route '...'"` vs `"customer_invite '...'"`) tells them apart. Checked before
+choosing, which is the only reason the right one was picked.
+
