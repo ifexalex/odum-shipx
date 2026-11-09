@@ -26,19 +26,28 @@ locals {
     DATABASE_HOST  = var.db_host
     DATABASE_PORT  = tostring(var.db_port)
     DATABASE_NAME  = var.db_name
-    # PHASE 1 of the RLS credential switchover: still the admin login.
+    # PHASE 2 of the RLS credential switchover: the application credential.
     #
-    # Flipping this to var.db_app_user is phase 2, and must not be bundled with
-    # phase 1. `terraform apply` updates a Container App's env immediately,
-    # creating and activating a new revision — but the deploy pipeline runs
-    # migrations *after* apply (build → migrate → roll). So flipping it in the
-    # same change would start the API as `logistics_app` minutes before
-    # migration 060 gives that role a password: a self-inflicted outage window
-    # lasting as long as the image build plus the migration.
+    # This is the line that makes migration 059's policies actually bind. The
+    # app now connects as a role with DML only and no BYPASSRLS, so FORCE ROW
+    # LEVEL SECURITY applies to it and tenant isolation is enforced by the
+    # database rather than resting entirely on the application's own
+    # `tenant_id` predicates.
     #
-    # Phase 1 provisions the credential and lets 060 set it. Phase 2 flips this
-    # one line, by which point the role already works.
-    DATABASE_USER               = var.db_user
+    # Phase 1 (7.158) provisioned the credential and let migration 060 set its
+    # password, deliberately separately: `terraform apply` updates a Container
+    # App's env immediately, creating and activating a new revision, while the
+    # deploy pipeline runs migrations *after* apply (build → migrate → roll).
+    # Bundling the two would have started the API as `logistics_app` minutes
+    # before 060 gave that role a password.
+    #
+    # PRECONDITION, already satisfied by phase 1's deploy:
+    #   SELECT rolcanlogin FROM pg_roles WHERE rolname = 'logistics_app'; -- t
+    # If that is `f`, this revision cannot authenticate at all. Rollback is this
+    # line and the DATABASE_PASSWORD mapping below, back to var.db_user /
+    # "database-password" — no migration required, which is why the credential
+    # was provisioned as its own phase.
+    DATABASE_USER               = var.db_app_user
     DATABASE_SSLMODE            = "require"
     REDIS_HOST                  = var.redis_host
     REDIS_PORT                  = tostring(var.redis_port)
@@ -132,9 +141,10 @@ locals {
   # tomap(): the conditional fragment makes this an object; for_each needs a map.
   secret_env = tomap(merge(
     {
-      # PHASE 1: still the owner's password, matching DATABASE_USER above.
-      # Phase 2 switches both together to the application credential.
-      DATABASE_PASSWORD                     = "database-password"
+      # PHASE 2: the application role's password, matching DATABASE_USER above.
+      # These two move together — a mismatch is an auth failure on every
+      # request, not a degraded mode.
+      DATABASE_PASSWORD                     = "db-app-password"
       AZURE_SERVICE_BUS_CONNECTION_STRING   = "service-bus-connection"
       AZURE_EVENT_GRID_KEY                  = "event-grid-key"
       AZURE_COMMUNICATION_CONNECTION_STRING = "acs-connection"
@@ -523,10 +533,11 @@ locals {
   # Migrations run as the OWNER by design, not omission: DDL cannot be run by
   # logistics_app, which holds only DML (migration 059).
   #
-  # In phase 1 the app-facing defaults are already the owner, so these overrides
-  # are a no-op for DATABASE_USER/PASSWORD — stated explicitly so that phase 2,
-  # which flips the defaults to the application role, needs no change here and
-  # cannot accidentally leave migrations running as a role that cannot run DDL.
+  # These overrides are load-bearing as of phase 2: the app-facing defaults are
+  # now `logistics_app`, which holds only DML, so without them the migrate job
+  # would inherit a role that cannot run DDL and every migration would fail.
+  # They were written in phase 1, while still a no-op, precisely so that the
+  # flip needed no change here.
   migrate_env = {
     DATABASE_USER = var.db_user
   }
