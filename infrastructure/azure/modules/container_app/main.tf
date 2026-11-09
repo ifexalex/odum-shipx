@@ -21,11 +21,23 @@
 locals {
   # Non-secret env — plain values. CLOUD_PROVIDER=azure drives adapter selection.
   plain_env = {
-    CLOUD_PROVIDER              = "azure"
-    AUTH_PROVIDER               = var.auth_provider
-    DATABASE_HOST               = var.db_host
-    DATABASE_PORT               = tostring(var.db_port)
-    DATABASE_NAME               = var.db_name
+    CLOUD_PROVIDER = "azure"
+    AUTH_PROVIDER  = var.auth_provider
+    DATABASE_HOST  = var.db_host
+    DATABASE_PORT  = tostring(var.db_port)
+    DATABASE_NAME  = var.db_name
+    # PHASE 1 of the RLS credential switchover: still the admin login.
+    #
+    # Flipping this to var.db_app_user is phase 2, and must not be bundled with
+    # phase 1. `terraform apply` updates a Container App's env immediately,
+    # creating and activating a new revision — but the deploy pipeline runs
+    # migrations *after* apply (build → migrate → roll). So flipping it in the
+    # same change would start the API as `logistics_app` minutes before
+    # migration 060 gives that role a password: a self-inflicted outage window
+    # lasting as long as the image build plus the migration.
+    #
+    # Phase 1 provisions the credential and lets 060 set it. Phase 2 flips this
+    # one line, by which point the role already works.
     DATABASE_USER               = var.db_user
     DATABASE_SSLMODE            = "require"
     REDIS_HOST                  = var.redis_host
@@ -101,6 +113,7 @@ locals {
   secret_values = merge(
     {
       database-password      = var.db_password
+      db-app-password        = var.db_app_password
       service-bus-connection = var.service_bus_connection_string
       event-grid-key         = var.event_grid_key
       acs-connection         = var.acs_connection_string
@@ -119,6 +132,8 @@ locals {
   # tomap(): the conditional fragment makes this an object; for_each needs a map.
   secret_env = tomap(merge(
     {
+      # PHASE 1: still the owner's password, matching DATABASE_USER above.
+      # Phase 2 switches both together to the application credential.
       DATABASE_PASSWORD                     = "database-password"
       AZURE_SERVICE_BUS_CONNECTION_STRING   = "service-bus-connection"
       AZURE_EVENT_GRID_KEY                  = "event-grid-key"
@@ -469,15 +484,17 @@ resource "azurerm_container_app_job" "migrate" {
       memory = var.job_memory
       args   = ["migrate"]
 
+      # The only container that connects as the OWNER. merge() puts the
+      # migrate_* overrides last so they win over the app-facing defaults.
       dynamic "env" {
-        for_each = local.plain_env
+        for_each = merge(local.plain_env, local.migrate_env)
         content {
           name  = env.key
           value = env.value
         }
       }
       dynamic "env" {
-        for_each = local.secret_env
+        for_each = merge(local.secret_env, local.migrate_secret_env)
         content {
           name        = env.key
           secret_name = env.value
@@ -503,6 +520,24 @@ locals {
   # Inbound-verify + output-claim config on top of the shared app env
   # (local.plain_env/secret_env give it DB connectivity — it reads tenant_id/role
   # from tenant_user by the Entra oid, so no Graph permission is needed).
+  # Migrations run as the OWNER by design, not omission: DDL cannot be run by
+  # logistics_app, which holds only DML (migration 059).
+  #
+  # In phase 1 the app-facing defaults are already the owner, so these overrides
+  # are a no-op for DATABASE_USER/PASSWORD — stated explicitly so that phase 2,
+  # which flips the defaults to the application role, needs no change here and
+  # cannot accidentally leave migrations running as a role that cannot run DDL.
+  migrate_env = {
+    DATABASE_USER = var.db_user
+  }
+  # APP_DB_PASSWORD is the one that matters today: migration 060 reads it to set
+  # logistics_app's password. Without it 060 logs a notice and leaves the role
+  # NOLOGIN, which is exactly the state phase 2 depends on NOT being in.
+  migrate_secret_env = {
+    DATABASE_PASSWORD = "database-password"
+    APP_DB_PASSWORD   = "db-app-password"
+  }
+
   claims_env = {
     CALLER_JWKS_URL  = var.claims_caller_jwks_url
     CALLER_AUDIENCE  = var.claims_caller_audience

@@ -167,10 +167,20 @@ set nowhere in Terraform.
 
 ## Database credential split (2026-11-08, migration 060)
 
-`common_env_vars` sets `DATABASE_USER = "logistics_app"` with
-`DB_SECRET_ARN = var.db_app_secret_arn`, and the shared service role's IAM reads
-**only** that secret — the service Lambdas have no reason to read the master
-credential, so least privilege means they cannot.
+**Phase 1 (current).** `common_env_vars` still sets
+`DATABASE_USER = "postgres"` with the master secret, and the service role's IAM
+reads the master secret. Nothing is repointed yet.
+
+**Phase 2** flips `DATABASE_USER` to `logistics_app`, `DB_SECRET_ARN` to
+`var.db_app_secret_arn`, and narrows the IAM to the app secret alone.
+
+The phases are separate because on AWS the env flip and the migration are in
+**different pipelines**: `terraform.yml` applies infrastructure, `deploy.yml`
+runs migrations and then deploys code. A Terraform apply on its own would
+repoint every Lambda at a role that migration 060 has not yet given a password
+to, and that pipeline contains no migration step to repair it. Phase 1 makes the
+credential exist and work; phase 2 is then a two-line change against a role that
+already authenticates.
 
 The **migrate** Lambda is deliberately different: it keeps
 `DATABASE_USER = "postgres"` because DDL must be owner-run and `logistics_app`

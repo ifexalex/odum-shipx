@@ -221,11 +221,13 @@ module "container_app" {
   notification_allowlist = var.notification_allowlist
 
   # Postgres
-  db_host     = module.postgres.host
-  db_port     = module.postgres.port
-  db_name     = module.postgres.database_name
-  db_user     = module.postgres.administrator_login
-  db_password = module.postgres.administrator_password
+  db_host         = module.postgres.host
+  db_port         = module.postgres.port
+  db_name         = module.postgres.database_name
+  db_user         = module.postgres.administrator_login
+  db_password     = module.postgres.administrator_password
+  db_app_user     = module.postgres.application_login
+  db_app_password = module.postgres.application_password
 
   # Redis
   redis_host     = var.enable_redis ? module.redis[0].hostname : ""
