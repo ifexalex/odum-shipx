@@ -51,7 +51,7 @@ frontend/
     │   ├── tracking.ts
     │   ├── billing.ts
     │   ├── claims.ts
-    │   ├── paymentRelease.ts
+    │   ├── releaseNotes.ts           # payment/release — see note below
     │   ├── refunds.ts
     │   ├── notifications.ts
     │   └── excel.ts
@@ -90,14 +90,29 @@ frontend/
     │   ├── warehouse/
     │   ├── customer/
     │   └── reports/
-    ├── hooks/                      # see 09
-    ├── lib/
-    │   ├── pagination.ts              # cursor encode/decode helpers
-    │   ├── idempotency.ts             # UUID generation per mutation
-    │   └── rfc7807.ts                 # error shape parsing/typing
-    └── types/
-        └── api.ts                    # generated/maintained API response types
+    ├── hooks/                      # see 09; useCursorPagination.ts is the
+    │                               #   cursor layer (no lib/pagination.ts)
+    └── lib/
+        ├── format.ts                  # currency/number display helpers
+        ├── localDevSession.ts         # dev auth shim identity
+        └── queryClient.ts             # TanStack Query client config
 ```
+
+**No `src/types/` and no `lib/idempotency.ts` / `lib/rfc7807.ts` / `lib/pagination.ts`.**
+FE-01 scaffolded those four as `TODO(FE-05)` placeholders; each was then built
+somewhere better and the placeholder was never removed, so they sat as two-line
+`export {}` files with zero importers until 2026-11-09:
+
+| planned placeholder | what actually implements it |
+|---|---|
+| `lib/idempotency.ts` | `api/useIdempotencyKey.ts` — a hook, so the key is stable across re-renders of one mutation |
+| `lib/rfc7807.ts` | `api/client.ts` (`ApiErrorShape` / `ApiError`, i.e. type/title/status/detail) + `api/errorBehavior.ts` for the status → UI mapping |
+| `lib/pagination.ts` | `hooks/useCursorPagination.ts` |
+| `types/api.ts` | response types co-located with the service that returns them (`api/billing.ts` exports `Billing`, and so on) rather than one central file |
+
+The last one was a real design choice, not drift: a single shared types file has
+to be kept in step with every service by hand, whereas a type beside its own
+`apiRequest` call changes in the same edit as the call.
 
 ## Environment Variables
 
