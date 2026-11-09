@@ -1220,3 +1220,59 @@ The two 404s are indistinguishable by status code alone — only the response bo
 (`"route '...'"` vs `"customer_invite '...'"`) tells them apart. Checked before
 choosing, which is the only reason the right one was picked.
 
+## `Terraform (Azure)` was permanently red, and that is why nobody saw it (2026-11-09)
+
+`terraform-azure.yml` failed **12 consecutive runs**, 2026-10-14 → 2026-11-09.
+Per-job, every one of them looked like this:
+
+```
+terraform-dev:     success
+terraform-demo:    skipped
+terraform-staging: failure     <- azure/login: "Not all values are present"
+terraform-prod:    skipped     <- needs: terraform-staging
+```
+
+### What was actually wrong
+
+Only staging. Its GitHub Environment holds no `AZURE_CLIENT_ID` /
+`AZURE_TENANT_ID` / `AZURE_SUBSCRIPTION_ID`, because **staging does not exist
+yet** — so `azure/login` fails and Terraform never gets `ARM_*` credentials.
+`ARM_*` is how the `azurerm` provider authenticates to Azure Resource Manager;
+the workflow maps the three `AZURE_*` secrets onto them.
+
+`terraform-dev` succeeded in all 12. The dev plan review was working the entire
+time.
+
+### Why it still mattered
+
+The run-level conclusion was `failure`, and that is the only thing anyone reads
+— a PR check, a run list, a notification. **A check that is permanently red
+carries no information:** it cannot tell you something broke, because it is
+already broken. It had also been red long enough to be ambient.
+
+It misled an actual reader: while gating master plan 7.159, this was first
+written up as "the Azure infra-review gate has been dead for a month, #128's
+Terraform was never reviewed by CI." That was wrong — dev plans had reviewed it
+all along. The correction came from reading per-job conclusions instead of the
+run's.
+
+### The fix
+
+`terraform-staging` and `terraform-prod` are now gated on repo variables
+`AZURE_STAGING_READY` / `AZURE_PROD_READY`. Unset, they skip cleanly and the
+workflow is green, so the dev plan is a signal again. Set one to `true` once that
+Environment has its three secrets.
+
+Repo **variables**, not a secret-presence check: a job-level `if` cannot see
+Environment secrets, because the environment is not resolved until the job
+starts.
+
+### Why the deploy pipeline was left alone
+
+`deploy-azure.yml`'s staging/prod jobs fire only on an explicit `-rc`/release tag
+or `workflow_dispatch` — never automatically on push, so they never go red
+unprompted. And there a hard failure is *correct*: a staging deploy was asked
+for and staging is not set up. Silently skipping a requested deploy would be
+worse than failing it. The plan job differs precisely because nobody asked for
+it.
+
