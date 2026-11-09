@@ -9,6 +9,14 @@ on:
     paths:
       - "infrastructure/aws/**"
       - "infrastructure/common/**"
+      # The workflow file itself, so a change to this file is exercised by the
+      # workflow it changes. frontend-ci.yml already does this; these two did
+      # not, and it cost a real verification: #133 fixed this workflow's
+      # permanently-failing staging job, touched nothing else, and therefore
+      # never ran — leaving the fix unverified until some unrelated infra change
+      # happened along. A CI fix you cannot trigger is a CI fix you have not
+      # tested.
+      - ".github/workflows/terraform.yml"
   workflow_dispatch:
     inputs:
       environment:
