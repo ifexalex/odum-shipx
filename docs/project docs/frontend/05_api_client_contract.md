@@ -119,7 +119,11 @@ export const packingListApi = {
 };
 ```
 
-**Implementation note:** the per-service wrapper files (`tenantManagement.ts`, `packingList.ts`, `manifest.ts`, `billing.ts`, `claims.ts`, `refunds.ts`, `paymentRelease.ts`, `tracking.ts`, `notifications.ts`, `excel.ts`) are left as their FE-01 `TODO(FE-05/FE-07)` stubs for now. Fleshing them out requires the real request/response types for each domain, which come from reading Tasks 07–15 screen-by-screen — that work happens in Task 07 as each module is built, not speculatively here. FE-05's deliverable is the generic `apiRequest`/`ApiError`/pagination-types/idempotency/error-behavior layer every one of those wrappers will call into.
+**Implementation note (corrected 2026-11-09).** This previously said the per-service wrapper files "are left as their FE-01 `TODO(FE-05/FE-07)` stubs for now". That is no longer true and had not been for some time: `tenantManagement.ts`, `packingList.ts`, `manifest.ts`, `billing.ts`, `claims.ts`, `refunds.ts`, `tracking.ts`, `notifications.ts` and `excel.ts` are all implemented, most with their own test file. The plan described here was followed — each was fleshed out in Task 07 as its module was built, not speculatively — so the note described the intent accurately and simply outlived it.
+
+`paymentRelease.ts` was the one that never got written, because the work landed under a different name: release notes are `api/releaseNotes.ts` (+ `releaseNotesRules.ts`), and recording a payment is `billingApi.recordPayment` in `api/billing.ts`. The empty `paymentRelease.ts` placeholder was deleted on 2026-11-09 along with three other FE-01 placeholders; see `01_project_setup.md` for the full mapping.
+
+FE-05's own deliverable — the generic `apiRequest` / `ApiError` / pagination / idempotency / error-behavior layer that every wrapper calls into — exists as described, though idempotency ended up as a hook (`api/useIdempotencyKey.ts`) rather than a plain helper.
 
 ## Request ID Propagation
 
