@@ -10,6 +10,12 @@
  *
  * Uses the E2E-TEST-001 container (from manifest-import.spec.ts's fixture
  * import) rather than real seeded data — safe to mutate status on repeatedly.
+ *
+ * Both tests establish their own preconditions over the API. That principle was
+ * applied to the second test when it was written and NOT to the first, which is
+ * why the first skipped on every clean run for as long as it existed: it needed
+ * an approved packing list (the only thing that creates a manifest) and waited
+ * for one nobody had approved.
  */
 import { expect, test, type APIResponse, type Page } from '@playwright/test'
 import { actionAvailable, goToViaNav, hasRows, settleNetwork, switchRole } from '../support/roleSwitch'
@@ -118,10 +124,33 @@ async function ensureManifestVerified(page: Page, containerNumber: string): Prom
 test.describe('manifest verify + container advance', () => {
   test('verifying a pending manifest updates its status', async ({ page }) => {
     await switchRole(page, 'china_office_staff')
+
+    // Establish this test's OWN precondition, rather than inheriting one.
+    //
+    // A `manifest` row is created in exactly one place: the packing-list
+    // approval side-effects (`_apply_approval_side_effects`, which is the only
+    // caller of `create_manifest`). Importing a forwarder manifest does NOT
+    // create one — it creates the container and a packing list, and the
+    // manifest appears only once that list is approved.
+    //
+    // So this test skipped on every clean serial run, and its message
+    // ("run manifest-import.spec.ts first") pointed at the wrong fixture:
+    // manifest-import HAD run, immediately before, and passed. Proved from a
+    // Playwright trace — GET /v1/manifests returned 200 with two rows, neither
+    // of them this container, and the row was written 11.9s LATER by the next
+    // test in this same file, which approves the packing list as its own setup.
+    //
+    // It also explains a misleading pass: run this file alone after a previous
+    // full run and it passes, because that run's second test left a manifest
+    // behind. Isolation was testing leftover state, not the fixture.
+    await approvePackingListsFor(page, TEST_CONTAINER)
+
     await goToViaNav(page, /^manifests$/i)
 
     const row = page.locator('table tbody tr').filter({ hasText: TEST_CONTAINER })
-    test.skip(!(await hasRows(row)), `${TEST_CONTAINER} has no manifest yet — run manifest-import.spec.ts first`)
+    // Now a skip means the CONTAINER is missing — manifest-import really did
+    // not run — which is the only remaining honest reason to skip.
+    test.skip(!(await hasRows(row)), `${TEST_CONTAINER} not found — run manifest-import.spec.ts first`)
 
     await row.getByRole('button', { name: /^view$/i }).click()
     await expect(page).toHaveURL(/\/manifests\//)
