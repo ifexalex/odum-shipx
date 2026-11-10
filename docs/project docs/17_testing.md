@@ -2090,3 +2090,71 @@ three times and one run with an additional **failure** in
 `billing-payment-and-release` that did not reproduce — in isolation on fresh
 seed that whole file passes 3/3. Treat a single red run here as a flake to
 re-run, not a verdict; and a single green run as weaker evidence than it looks.
+
+## The last e2e skip: a correct guard on a precondition that never existed (2026-11-09)
+
+The suite's one remaining skip —
+`manifest-verify-and-advance.spec.ts` › "verifying a pending manifest updates
+its status" — is fixed. **0 skipped / 101 passed** on a fresh stack.
+
+### What it actually was
+
+A `manifest` row is created in exactly one place: `_apply_approval_side_effects`
+in `services/packing_list/service.py`, the only caller of `create_manifest`.
+It runs when a **packing list is approved**.
+
+Importing a forwarder manifest does *not* create a manifest. It creates the
+container and a packing list. So the test waited for a row that nothing had
+produced, and skipped on every clean serial run.
+
+Its skip message said `run manifest-import.spec.ts first`. That spec **had** run
+— immediately before, tests 41 and 42, both passing. The message named the wrong
+fixture, which is why the skip survived an earlier attempt to fix it.
+
+### How it was pinned down
+
+A Playwright trace, read rather than reasoned about:
+
+| evidence | value |
+|---|---|
+| `GET /v1/manifests` fired at | `23:39:22.169` → **200**, two rows, neither this container |
+| the container's manifest row written at | `23:39:34.024` |
+| gap | **11.9 s later**, by the *next test in the same file* |
+
+That next test approves the packing list as its own setup — so it created the
+very row its sibling had just given up waiting for.
+
+### Four hypotheses that died on evidence
+
+Recorded because each was plausible and each would have produced a wrong fix:
+
+1. **Pagination** — 4 manifests against `limit = 50`, sorted `created_at DESC`;
+   the row would have been *first*, not off-page.
+2. **Tenant mismatch** — the dev shim sends the same Acme tenant the spec's API
+   helpers use. (The `…011`/`…012` values in `LocalAuthProvider` are *user* ids.)
+3. **Parallel-worker congestion against single-threaded Flask** — CI runs
+   `workers: 1` and skips the identical test.
+4. **`waitForTableSettled`'s one-shot `count()` early-out** — the inherited
+   theory, and the reason a previous fix attempt failed and was reverted. The
+   mechanism was never involved.
+
+### The misleading "pass" that cost the most time
+
+Running the file alone **passed**, which looked like proof the fixture was fine
+and the problem was timing. It was not: the *previous* full run's second test had
+left a manifest in the database. Isolation was exercising leftover state.
+
+A test that passes in isolation and skips in a suite is not automatically a
+flake. It can be a test whose precondition is supplied by whatever ran before
+it — which is the same defect either way.
+
+### The fix
+
+The first test now approves the packing list over the API before navigating,
+exactly as the second test already did. The file's own docstring said *"A test
+should not depend on a sibling having actually run"* — that principle had been
+applied to the second test and not the first.
+
+The guard stays. It now means what it says: the **container** is missing, so
+`manifest-import` genuinely did not run.
+
