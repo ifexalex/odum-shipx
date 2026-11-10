@@ -304,3 +304,37 @@ quoted by `format('%L')` inside a DO block: `ALTER ROLE` cannot take a bind
 parameter, and the project forbids interpolating values into SQL text. A test
 asserts the secret never appears in any statement string.
 
+### `NOBYPASSRLS` requires SUPERUSER, so it is conditional (2026-11-10)
+
+The first version of `ensure_app_role_password()` ran
+`ALTER ROLE logistics_app NOBYPASSRLS` unconditionally. That **failed every Azure
+deploy** with `must be superuser to change bypassrls attribute`, while passing
+locally — the local Docker Postgres superuser can run it; a managed Flexible
+Server / RDS admin login cannot.
+
+Two changes:
+
+1. **The statement is conditional.** `CREATE ROLE` defaults to NOBYPASSRLS, so
+   the attribute is already correct and nothing is issued. It runs only when the
+   role genuinely has BYPASSRLS, and then the error is allowed to propagate —
+   an app role that bypasses RLS makes 059's policies inert.
+2. **The password is committed first.** The two statements were one DO block, so
+   the privilege error rolled the password back as well: a failed deploy *also*
+   left the credential unset, two problems reported as one. Verified against a
+   real non-superuser — `rolcanlogin` goes `false → true` even when the BYPASSRLS
+   change raises.
+
+Migration 060 carried the identical statement and the identical latent bug. It
+escaped only because it took its no-op branch on the one managed server it ran
+against; it is now guarded the same way.
+
+Verified by simulating the managed-server privilege model locally — a
+`CREATEROLE NOSUPERUSER` role — rather than trusting the local superuser:
+
+| case | result |
+|---|---|
+| non-superuser, role already NOBYPASSRLS | `set`, app connects |
+| non-superuser, old unconditional statement | `ERROR: must be superuser…` (the regression) |
+| non-superuser, role **has** BYPASSRLS | raises `InsufficientPrivilege` — correct |
+| superuser, role **has** BYPASSRLS | `set-and-stripped-bypassrls` |
+

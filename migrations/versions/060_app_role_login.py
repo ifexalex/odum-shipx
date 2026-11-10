@@ -117,7 +117,21 @@ _GRANT_LOGIN = sa.text(
         -- The application role must never bypass the policies 059 installed.
         -- Asserted rather than assumed: an inherited BYPASSRLS would make the
         -- whole switchover silently pointless.
-        ALTER ROLE logistics_app NOBYPASSRLS;
+        --
+        -- But CONDITIONALLY, because ALTER ROLE ... NOBYPASSRLS requires
+        -- SUPERUSER and a managed Postgres admin login is not one. Azure
+        -- Flexible Server answers 'must be superuser to change bypassrls
+        -- attribute'; RDS behaves the same. This migration never hit it only
+        -- because it took the no-op branch above on the one managed server it
+        -- ran against — the statement was a latent deploy failure for any
+        -- environment that reached it with a password set.
+        --
+        -- CREATE ROLE defaults to NOBYPASSRLS, so the common case issues
+        -- nothing. If the attribute really is set, the error propagates: an app
+        -- role that bypasses RLS defeats the entire switchover.
+        IF (SELECT rolbypassrls FROM pg_roles WHERE rolname = 'logistics_app') THEN
+            ALTER ROLE logistics_app NOBYPASSRLS;
+        END IF;
 
         RAISE NOTICE 'logistics_app can now log in';
     END $outer$
