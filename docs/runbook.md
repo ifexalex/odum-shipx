@@ -489,6 +489,22 @@ SELECT rolcanlogin, rolbypassrls FROM pg_roles WHERE rolname = 'logistics_app';
 Then re-invoke the migrate Lambda. 060 is idempotent — it re-sets the same
 password from the same secret.
 
+**Migrate job fails: `must be superuser to change bypassrls attribute`**
+`ALTER ROLE ... NOBYPASSRLS` requires SUPERUSER, and a **managed** Postgres admin
+login is not a superuser — neither Azure Flexible Server's nor RDS's. Both
+migration 060 and `ensure_app_role_password` now issue that statement **only when
+the role actually has BYPASSRLS set**, which it does not by default
+(`CREATE ROLE` defaults to NOBYPASSRLS), so the normal path needs no privilege.
+
+If you do see it, the role genuinely has BYPASSRLS and the error is correct to
+surface: an application role that bypasses RLS makes migration 059's policies
+inert, which is the entire thing the switchover exists to fix. It cannot be
+cleared from SQL on a managed server — raise it with the platform, or recreate
+the role.
+
+This failed every Azure deploy once while passing locally, because a local
+Docker superuser *can* run the statement.
+
 **`PAM authentication failed` / proxy-level auth error, with the role looking
 correct in `pg_roles`**
 The RDS Proxy is missing the second `auth` block, so it will not proxy that

@@ -103,7 +103,7 @@ class TestEnsureAppRolePassword:
         """The project forbids interpolating values into SQL; ALTER ROLE cannot bind."""
         import psycopg2
 
-        conn = _FakeConn(role_exists=True)
+        conn = _FakeConn()
         monkeypatch.setenv("APP_DB_PASSWORD", "fake_sentinel_not_a_secret")
         monkeypatch.setattr(psycopg2, "connect", lambda **_: conn)
 
@@ -117,28 +117,87 @@ class TestEnsureAppRolePassword:
             ("fake_sentinel_not_a_secret",),
         ) in conn.cursor_obj.executed
 
-    def test_strips_bypassrls_so_the_switchover_is_not_silently_pointless(self, monkeypatch: pytest.MonkeyPatch) -> None:
+    def test_does_not_touch_bypassrls_when_it_is_already_correct(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """Regression: ALTER ROLE ... NOBYPASSRLS requires SUPERUSER.
+
+        A managed Postgres admin login is not one — Azure Flexible Server
+        answers `must be superuser to change bypassrls attribute`. The first
+        version issued it unconditionally and failed every Azure deploy while
+        passing locally, because the local Docker superuser *can* run it.
+
+        CREATE ROLE defaults to NOBYPASSRLS, so the common path must issue
+        nothing and require no privilege.
+        """
         import psycopg2
 
-        conn = _FakeConn(role_exists=True)
+        conn = _FakeConn(has_bypassrls=False)
+        monkeypatch.setenv("APP_DB_PASSWORD", "fake_value_not_a_secret")
+        monkeypatch.setattr(psycopg2, "connect", lambda **_: conn)
+
+        assert ensure_app_role_password() == "set"
+        assert not any("BYPASSRLS" in sql for sql, _ in conn.cursor_obj.executed)
+
+    def test_strips_bypassrls_when_the_role_really_has_it(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """An app role that bypasses RLS makes migration 059's policies inert."""
+        import psycopg2
+
+        conn = _FakeConn(has_bypassrls=True)
+        monkeypatch.setenv("APP_DB_PASSWORD", "fake_value_not_a_secret")
+        monkeypatch.setattr(psycopg2, "connect", lambda **_: conn)
+
+        assert ensure_app_role_password() == "set-and-stripped-bypassrls"
+        assert any("NOBYPASSRLS" in sql for sql, _ in conn.cursor_obj.executed)
+
+    def test_commits_the_password_before_attempting_bypassrls(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """The two were one DO block, so a privilege error rolled back both.
+
+        A failed deploy then ALSO left the credential unset — two problems
+        reported as one. Confirmed against a real non-superuser: `rolcanlogin`
+        goes false -> true even when the BYPASSRLS change raises.
+        """
+        import psycopg2
+
+        conn = _FakeConn(has_bypassrls=True)
         monkeypatch.setenv("APP_DB_PASSWORD", "fake_value_not_a_secret")
         monkeypatch.setattr(psycopg2, "connect", lambda **_: conn)
 
         ensure_app_role_password()
 
-        assert any("NOBYPASSRLS" in sql for sql, _ in conn.cursor_obj.executed)
+        statements = [sql for sql, _ in conn.cursor_obj.executed]
+        assert conn.commits >= 2, "password must be committed before the BYPASSRLS attempt"
+        assert statements[-1] == "ALTER ROLE logistics_app NOBYPASSRLS"
+
+    def test_closes_the_connection_even_when_bypassrls_fails(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        import psycopg2
+
+        class _Boom(_FakeConn):
+            def cursor(self) -> _FakeCursor:
+                if self.commits:  # the post-commit BYPASSRLS cursor
+                    raise RuntimeError("must be superuser to change bypassrls attribute")
+                return self.cursor_obj
+
+        conn = _Boom(has_bypassrls=True)
+        monkeypatch.setenv("APP_DB_PASSWORD", "fake_value_not_a_secret")
+        monkeypatch.setattr(psycopg2, "connect", lambda **_: conn)
+
+        with pytest.raises(RuntimeError):
+            ensure_app_role_password()
+
+        assert conn.closed, "connection leaked on the error path"
 
 
 class _FakeCursor:
-    def __init__(self, role_exists: bool) -> None:
+    def __init__(self, role_exists: bool, has_bypassrls: bool) -> None:
         self.role_exists = role_exists
+        self.has_bypassrls = has_bypassrls
         self.executed: list[tuple[str, object]] = []
 
     def execute(self, sql: str, params: object = None) -> None:
         self.executed.append((sql, params))
 
-    def fetchone(self) -> tuple[int] | None:
-        return (1,) if self.role_exists else None
+    def fetchone(self) -> tuple[bool] | None:
+        """The first query selects `rolbypassrls`; None means no such role."""
+        return (self.has_bypassrls,) if self.role_exists else None
 
     def __enter__(self) -> "_FakeCursor":
         return self
@@ -148,14 +207,16 @@ class _FakeCursor:
 
 
 class _FakeConn:
-    def __init__(self, role_exists: bool) -> None:
-        self.cursor_obj = _FakeCursor(role_exists)
+    def __init__(self, role_exists: bool = True, has_bypassrls: bool = False) -> None:
+        self.cursor_obj = _FakeCursor(role_exists, has_bypassrls)
+        self.commits = 0
+        self.closed = False
 
     def cursor(self) -> _FakeCursor:
         return self.cursor_obj
 
-    def __enter__(self) -> "_FakeConn":
-        return self
+    def commit(self) -> None:
+        self.commits += 1
 
-    def __exit__(self, *_: object) -> None:
-        return None
+    def close(self) -> None:
+        self.closed = True

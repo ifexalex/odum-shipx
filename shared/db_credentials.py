@@ -89,9 +89,24 @@ def ensure_app_role_password() -> str:
     Unset ``APP_DB_PASSWORD`` is not an error: an environment that has not been
     cut over has no such secret, and refusing to migrate would block its deploy.
 
+    ``NOBYPASSRLS`` needs SUPERUSER, so it is conditional
+    -----------------------------------------------------
+    ``ALTER ROLE ... NOBYPASSRLS`` requires superuser, and a **managed** Postgres
+    admin login is not one — Azure Flexible Server answers ``must be superuser to
+    change bypassrls attribute``, and RDS behaves the same. The first version of
+    this function ran it unconditionally and failed every Azure deploy, while
+    passing locally, because the local Docker superuser *can* run it.
+
+    ``CREATE ROLE`` defaults to NOBYPASSRLS, so the attribute is already correct
+    in practice and the statement is only issued when the role genuinely has
+    BYPASSRLS set. In that case the error is allowed to propagate: an application
+    role that bypasses RLS makes migration 059's policies inert, which is the
+    whole thing the switchover exists to fix.
+
     Returns:
-        A short status string for logging: ``"set"``, ``"skipped-no-password"``,
-        or ``"skipped-no-role"``.
+        A short status string for logging: ``"set"``,
+        ``"set-and-stripped-bypassrls"``, ``"skipped-no-password"``, or
+        ``"skipped-no-role"``.
 
     Raises:
         psycopg2.Error: The connection or the ``ALTER ROLE`` failed. Deliberately
@@ -104,16 +119,19 @@ def ensure_app_role_password() -> str:
     if not password:
         return "skipped-no-password"
 
-    with psycopg2.connect(**admin_db_params()) as conn:
+    conn = psycopg2.connect(**admin_db_params())
+    try:
         with conn.cursor() as cur:
-            cur.execute("SELECT 1 FROM pg_roles WHERE rolname = 'logistics_app'")
-            if cur.fetchone() is None:
+            cur.execute("SELECT rolbypassrls FROM pg_roles WHERE rolname = 'logistics_app'")
+            row = cur.fetchone()
+            if row is None:
                 return "skipped-no-role"
+            has_bypassrls = bool(row[0])
 
-            # Same technique as migration 060: the value is bound as a parameter
-            # into a transaction-local setting, then quoted by format('%L')
-            # inside the DO block. ALTER ROLE cannot take a bind parameter, and
-            # the project forbids interpolating values into SQL text.
+            # The value is bound as a parameter into a transaction-local setting,
+            # then quoted by format('%L') inside the DO block. ALTER ROLE cannot
+            # take a bind parameter, and the project forbids interpolating values
+            # into SQL text.
             cur.execute("SELECT set_config('shipx.app_db_password', %s, true)", (password,))
             cur.execute(
                 """
@@ -122,8 +140,30 @@ def ensure_app_role_password() -> str:
                     pw TEXT := current_setting('shipx.app_db_password', TRUE);
                 BEGIN
                     EXECUTE format('ALTER ROLE logistics_app LOGIN PASSWORD %L', pw);
-                    ALTER ROLE logistics_app NOBYPASSRLS;
                 END $outer$
                 """
             )
+        # Committed before touching BYPASSRLS, so a privilege error there cannot
+        # roll back the password. They were one DO block once, and the rollback
+        # meant a failed deploy ALSO left the credential unset — two problems
+        # reported as one.
+        conn.commit()
+
+        if has_bypassrls:
+            # Only reached when the attribute is actually set, because changing
+            # it requires SUPERUSER and a managed Postgres admin login is not
+            # one: Azure Flexible Server answers `must be superuser to change
+            # bypassrls attribute`, and so does RDS. CREATE ROLE defaults to
+            # NOBYPASSRLS, so the normal path never executes this and never
+            # needs the privilege.
+            #
+            # If it IS set, that is a real finding and not something to swallow:
+            # an application role with BYPASSRLS makes migration 059's policies
+            # inert, which is the entire point of the switchover. Let it raise.
+            with conn.cursor() as cur:
+                cur.execute("ALTER ROLE logistics_app NOBYPASSRLS")
+            conn.commit()
+            return "set-and-stripped-bypassrls"
+    finally:
+        conn.close()
     return "set"
