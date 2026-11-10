@@ -33,6 +33,28 @@ NOLOGIN, so an environment that has not been cut over yet still migrates
 cleanly. That matters because the alternative — failing the migration — would
 block deploys on an environment whose secret has not been provisioned.
 
+.. warning::
+
+   **That no-op is permanent, and this migration is no longer the thing you
+   rely on.** Alembic runs a migration exactly once per database. An
+   environment that applied 060 *before* its secret existed got the notice
+   below, a role left NOLOGIN, and `060` recorded as applied — and provisioning
+   the secret afterwards changes nothing, because 060 never runs again.
+
+   Azure dev hit exactly this: 060 shipped in #126 and deployed 2026-11-08, a
+   day before #128 created the `db-app-password` secret. The phase-2 cutover
+   then failed authentication on every request.
+
+   An earlier version of this docstring said "Provision the secret and re-run to
+   complete the RLS switchover." **Alembic makes that impossible**, and the
+   sentence has been removed rather than left to mislead.
+
+   The credential is now applied by ``shared.db_credentials.ensure_app_role_password``
+   after *every* successful upgrade, from both migrate entrypoints
+   (``scripts/migrate.py`` and ``services/migrate/handler.py``). That is
+   idempotent and self-healing. This migration is kept for environments where it
+   did work, and as the record of why the role exists.
+
 Keeping the password out of SQL text
 ------------------------------------
 The value is bound as a parameter into a `SET`, then read back inside the DO
@@ -82,7 +104,9 @@ _GRANT_LOGIN = sa.text(
         IF pw IS NULL OR pw = '' THEN
             RAISE NOTICE
                 'APP_DB_PASSWORD not set - leaving logistics_app NOLOGIN. '
-                'Provision the secret and re-run to complete the RLS switchover.';
+                'This migration will NOT run again (alembic applies each once); '
+                'the credential is applied after every upgrade by '
+                'shared.db_credentials.ensure_app_role_password.';
             RETURN;
         END IF;
 

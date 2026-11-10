@@ -585,8 +585,34 @@ that could not reach its database at all.
 Rolled back by reverting the two Terraform env changes (owner credential
 restored); the probe was deliberately kept.
 
-**What to check before attempting phase 2 again** — in order, because each
-answers a different cause:
+**Resolved 2026-11-10 — root cause, and why no diagnosis is needed any more.**
+
+Migration 060 sets the role's password from `APP_DB_PASSWORD`, but **Alembic runs
+a migration exactly once per database**. 060 shipped in #126 and deployed to
+Azure dev on 2026-11-08 — a day before #128 created the `db-app-password`
+secret. So 060 took its no-op branch, left the role NOLOGIN, and recorded itself
+as applied. #128 then provisioned the secret and 060 never ran again.
+
+The credential is now applied by `shared.db_credentials.ensure_app_role_password`
+after **every** successful upgrade, from both migrate entrypoints
+(`scripts/migrate.py`, which is the container image's `migrate` command, and
+`services/migrate/handler.py` for AWS). It is idempotent and repairs both
+possible causes without anyone having to work out which occurred — 060 consumed
+as a no-op, or the password drifting from the secret.
+
+**So the fix is: run the migrate job.** No manual SQL, no re-attempt ceremony.
+
+Verified against the reproduced failure state (role set NOLOGIN, alembic pinned
+at 060 so no migration could run):
+
+```
+before:  psql -U logistics_app  ->  FATAL: role "logistics_app" is not permitted to log in
+         python scripts/migrate.py  ->  (no migrations) "App role credential: set"
+after:   rolcanlogin = t, rolbypassrls = f, app connects
+```
+
+**If it still fails after a migrate run** — in order, because each answers a
+different cause:
 
 ```sql
 -- 1. Does the role exist, and can it log in?
