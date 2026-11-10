@@ -24,7 +24,30 @@ def main() -> None:
         ["alembic", "-c", str(ALEMBIC_INI)] + args,
         cwd=PROJECT_ROOT,
     )
+    if result.returncode == 0 and args[0] == "upgrade":
+        _apply_app_role_credential()
     sys.exit(result.returncode)
+
+
+def _apply_app_role_credential() -> None:
+    """Re-apply ``logistics_app``'s password from ``APP_DB_PASSWORD``.
+
+    Only after a successful ``upgrade`` — a ``downgrade`` or a read-only
+    ``current``/``history`` has no business touching a credential.
+
+    This is the container image's migrate entrypoint (``docker-entrypoint.sh``
+    ``migrate`` → here), so this is where Azure and local/CI get the credential.
+    The AWS migrate Lambda does the same in ``services/migrate/handler.py``.
+
+    See ``shared.db_credentials.ensure_app_role_password`` for why this cannot
+    live in migration 060 alone: Alembic runs a migration once per database, and
+    060's effect depends on an environment variable, so an environment that
+    applied it before its secret existed can never pick the credential up.
+    """
+    sys.path.insert(0, str(PROJECT_ROOT))
+    from shared.db_credentials import ensure_app_role_password
+
+    print(f"App role credential: {ensure_app_role_password()}")
 
 
 if __name__ == "__main__":

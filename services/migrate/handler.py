@@ -21,6 +21,7 @@ import os
 from alembic import command
 from alembic.config import Config
 
+from shared.db_credentials import ensure_app_role_password
 from shared.logging_config import setup_logging
 from shared.providers import get_secrets_provider
 
@@ -49,8 +50,16 @@ def lambda_handler(event: dict[str, object], context: object) -> dict[str, objec
     cfg = Config("migrations/alembic.ini")
     command.upgrade(cfg, "head")
 
+    # After the upgrade, not inside it. Migration 060 sets this same password,
+    # but Alembic runs a migration once per database — so an environment that
+    # applied 060 before its secret existed recorded 060 as done with the role
+    # still NOLOGIN, and provisioning the secret later changes nothing. Applying
+    # it here instead makes it idempotent and self-healing.
+    status = ensure_app_role_password()
+    logger.info("App role credential: %s", status)
+
     logger.info("Migrations complete")
-    return {"status": "ok"}
+    return {"status": "ok", "app_role_credential": status}
 
 
 def _inject_db_password() -> None:
