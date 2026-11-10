@@ -723,3 +723,30 @@ directly. This is the ADR-004 dual-run seam: run compute + data on Azure (`CLOUD
 while auth stays on Cognito (`AUTH_PROVIDER=aws` + `OIDC_JWKS_URL`/`OIDC_AUDIENCE` pointed at the
 Cognito pool) — so the Azure API validates Cognito JWTs with the Cognito claims mapper. Default
 behavior is unchanged (unset → equals `CLOUD_PROVIDER`).
+
+## `shared/db_credentials.py` — `ensure_app_role_password()` (2026-11-10)
+
+Applies `logistics_app`'s password from `APP_DB_PASSWORD`, idempotently, after
+every successful Alembic upgrade. Called from both migrate entrypoints:
+`scripts/migrate.py` (the container image's `migrate` command, so Azure and
+local/CI) and `services/migrate/handler.py` (AWS).
+
+**Why it is not just migration 060.** 060 sets the same password, but Alembic
+runs a migration once per database and 060's effect depends on an *environment
+variable*, not on the schema. An environment that applied 060 before its secret
+existed got the no-op branch, a role left NOLOGIN, and 060 permanently recorded
+as applied — provisioning the secret afterwards changed nothing. Azure dev hit
+exactly this and the phase-2 cutover failed authentication on every request.
+
+Returns a status string (`"set"`, `"skipped-no-password"`, `"skipped-no-role"`)
+which both entrypoints log, so a deploy says what it did to the credential.
+
+An unset `APP_DB_PASSWORD` is not an error — an environment awaiting cutover has
+no such secret, and refusing to migrate would block its deploy. The skip happens
+*before* connecting, which `tests/unit/test_db_credentials.py` asserts directly.
+
+The password is bound as a parameter into a transaction-local `set_config`, then
+quoted by `format('%L')` inside a DO block: `ALTER ROLE` cannot take a bind
+parameter, and the project forbids interpolating values into SQL text. A test
+asserts the secret never appears in any statement string.
+
