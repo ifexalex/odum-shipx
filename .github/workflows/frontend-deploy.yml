@@ -26,19 +26,33 @@ name: Frontend Deploy (AWS or Azure)
 #   are read from Terraform state — NOT secrets — so there is nothing extra to keep
 #   in sync (matches the backend deploy-azure.yml pattern).
 
+# Defaults are deliberately the SAFE targets, because a workflow_dispatch run
+# that nobody edits takes them. They used to be `aws` / `prod`:
+#
+#   - `aws` is the cloud this project does NOT deploy (`vars.DEPLOY_CLOUD` is
+#     azure), so an unedited dispatch targeted infrastructure that does not
+#     exist. On 2026-11-11 one did exactly that, failed 12 retries deep in
+#     `aws-actions/configure-aws-credentials`, and deployed nothing — while the
+#     Azure dev frontend it was meant to refresh stayed 24 commits stale.
+#   - `prod` is worse, and only failed safely by accident. The AWS credentials
+#     happen to be absent; the moment they are configured, dispatching this
+#     workflow without touching the dropdowns deploys to PRODUCTION. The
+#     dangerous option should never be the one you get by not choosing.
+#
+# `prod` is still selectable — it just has to be chosen on purpose.
 on:
   workflow_dispatch:
     inputs:
       cloud:
         description: "Target cloud"
         type: choice
-        options: [aws, azure]
-        default: aws
+        options: [azure, aws]
+        default: azure
       environment:
-        description: "Environment"
+        description: "Environment (prod must be chosen deliberately)"
         type: choice
-        options: [prod, staging, dev, demo]
-        default: prod
+        options: [dev, staging, demo, prod]
+        default: dev
 
 concurrency:
   group: frontend-deploy-${{ inputs.cloud }}-${{ inputs.environment }}
