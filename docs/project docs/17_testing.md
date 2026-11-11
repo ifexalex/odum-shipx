@@ -137,16 +137,16 @@ def api_gateway_event():
 
 ## Acceptance Criteria
 
-- [ ] ≥80% code coverage across all services
-- [ ] Every state machine transition tested (valid + invalid)
-- [ ] Billing arithmetic tests with edge cases (zero CBM, zero rate, negative outstanding)
-- [ ] All 6 role types tested for authorization on each endpoint
-- [ ] Tenant isolation tests verify RLS blocks cross-tenant access
-- [ ] Integration tests cover end-to-end flows
-- [ ] All tests pass with `pytest tests/ -v`
-- [ ] Tests use mocks for AWS services (moto for Cognito, S3, SQS)
-- [ ] Standards compliance tests pass (see below)
-- [ ] Load test script exists (locust) for smoke/performance testing
+- [ ] ≥80% code coverage across all services — **NOT MET. Measured 61% on 2026-11-11** (`pytest tests/unit --cov=services --cov=shared`: 12,959 statements, 5,093 uncovered). This had never been measured: the Codecov upload has failed on every run since it was added, because this is a private repo and no `CODECOV_TOKEN` was configured, with `fail_ci_if_error: false` turning the failure green (see `18_cicd_pipeline.md` and master plan 7.171). So the target was never enforced *or* observed. Left unchecked deliberately — closing a 19-point gap is real work, not a tick.
+- [x] Every state machine transition tested (valid + invalid)
+- [x] Billing arithmetic tests with edge cases (zero CBM, zero rate, negative outstanding)
+- [x] All 6 role types tested for authorization on each endpoint
+- [x] Tenant isolation tests verify RLS blocks cross-tenant access
+- [x] Integration tests cover end-to-end flows
+- [x] All tests pass with `pytest tests/ -v`
+- [x] Tests use mocks for AWS services (moto for Cognito, S3, SQS)
+- [x] Standards compliance tests pass (see below)
+- [x] Load test script exists (locust) for smoke/performance testing
 
 ---
 

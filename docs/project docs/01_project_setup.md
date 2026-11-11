@@ -625,15 +625,15 @@ def setup_logging() -> logging.Logger:
 
 ## Acceptance Criteria
 
-- [ ] All directories and `__init__.py` files exist
-- [ ] `pyproject.toml` configured with ruff (including bandit rules via S selector), mypy, pytest with markers
-- [ ] `pyproject.toml` has exactly-pinned dependencies (incl. `aws-xray-sdk`) + committed `uv.lock`
-- [ ] `.env.example` has all environment variables documented including `SERVICE_NAME`, `DB_SECRET_ARN`
-- [ ] `Makefile` has targets for install, lint, security-scan, test-unit, test-integration, test-isolation, test-all, migrate, seed, package-layer (ARM64), clean
-- [ ] `shared/exceptions.py` has all 13 error types matching the error catalog in `00_CROSS_CUTTING_STANDARDS.md`
-- [ ] `shared/logging_config.py` emits structured JSON logs
-- [ ] `infrastructure/aws/versions.tf` pins Terraform >= 1.7 and AWS provider ~> 5.40
-- [ ] `infrastructure/aws/backend.tf` configured for S3 + DynamoDB remote state
-- [ ] `infrastructure/aws/locals.tf` has common_tags and name_prefix
-- [ ] `.editorconfig` enforces consistent formatting
-- [ ] `ruff check .` passes with no errors on the scaffolding
+- [x] All directories and `__init__.py` files exist
+- [x] `pyproject.toml` configured with ruff (including bandit rules via S selector), mypy, pytest with markers
+- [x] `pyproject.toml` has exactly-pinned dependencies (incl. `aws-xray-sdk`) + committed `uv.lock`
+- [x] `.env.example` has all environment variables documented including `SERVICE_NAME`, `DB_SECRET_ARN`
+- [x] `Makefile` has targets for install, lint, security-scan, test-unit, test-integration, test-isolation, test-all, migrate, seed, package-layer (ARM64), clean
+- [x] `shared/exceptions.py` error types match the catalog in `00_CROSS_CUTTING_STANDARDS.md` — **corrected 2026-11-11: 17 classes, not 13.** The catalog itself now lists 18 rows. The "13" was accurate when written and both have grown since; the figure is dropped from the criterion so it cannot go stale again.
+- [x] `shared/logging_config.py` emits structured JSON logs
+- [x] `infrastructure/aws/versions.tf` pins Terraform >= 1.7 and AWS provider ~> 5.40
+- [x] `infrastructure/aws/backend.tf` configured for S3 + DynamoDB remote state
+- [x] `infrastructure/aws/locals.tf` has common_tags and name_prefix
+- [x] `.editorconfig` enforces consistent formatting
+- [x] `ruff check .` passes with no errors on the scaffolding

@@ -26,7 +26,11 @@ logger = logging.getLogger(__name__)
 _VALID_ROLES: set[str] = {r.value for r in UserRole}
 
 # Distributed Redis cache for tenant status — consistent across all Lambda instances.
-# TTL 60s. On Redis failure, get() returns None and the caller falls through to DB.
+# TTL 15s (see default_ttl below): this bounds how long a SUSPENDED tenant keeps
+# being served, so it is a security window, not just a performance knob. Redis
+# rather than an in-process cache precisely because an in-process one is
+# per-instance — every warm Lambda would expire it independently.
+# On Redis failure, get() returns None and the caller falls through to DB.
 _tenant_status_cache: DistributedCache = DistributedCache(default_ttl=15, key_prefix="tenant_status:")
 # Subject (IdP oid/sub) → "{tenant_id}:{role}", for tokens that carry no tenant
 # claim. See _resolve_identity_from_db.
@@ -98,7 +102,8 @@ def get_tenant_context(event: dict[str, Any]) -> TenantContext:
         logger.warning("Failed to parse JWT claims: %s", exc)
         raise AuthenticationRequiredError() from exc
 
-    # Tenant suspension check with 60s in-memory cache
+    # Tenant suspension check, 15s distributed (Redis) cache — see
+    # _tenant_status_cache; not in-memory, and not 60s.
     if tenant_id != PLATFORM_TENANT_ID:
         _check_tenant_active(tenant_id)
 
@@ -212,7 +217,8 @@ def resolve_identity_from_db(user_id: str) -> tuple[str, str] | None:
     depend on that, we resolve the same data server-side from the same table the
     provider reads. One source of truth either way.
 
-    Cached for 60s per subject, mirroring `_check_tenant_active`, so this costs
+    Cached for 60s per subject (`_identity_cache`). Note this is a DIFFERENT TTL
+    from `_check_tenant_active`'s 15s — they were once the same and are not now. Costs
     at most one DB round trip per user per minute on the auth path. Returns None
     when no active row matches (e.g. a platform admin, who legitimately has no
     `tenant_user` row and resolves from the group claim instead).
@@ -251,8 +257,10 @@ def _check_tenant_active(tenant_id: str) -> None:
     """Check whether a tenant is active. Raises TenantSuspendedError or
     TenantOffboardedError if not.
 
-    Results are cached for 60 seconds per tenant to avoid a DB hit on every
-    request. Raises ServiceUnavailableError if the DB is unavailable (fail-closed).
+    Results are cached for 15 seconds per tenant (``_tenant_status_cache``) to
+    avoid a DB hit on every request. That TTL is the window in which a tenant
+    suspended in the database is still served, so it is deliberately short.
+    Raises ServiceUnavailableError if the DB is unavailable (fail-closed).
     """
     # Check cache first
     cached_status = _tenant_status_cache.get(tenant_id)

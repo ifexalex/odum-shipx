@@ -240,34 +240,34 @@ def lambda_handler(event: dict, context) -> dict:
 
 ## Acceptance Criteria
 
-- [ ] `db.py`: Connection reuse works across Lambda invocations
-- [ ] `db.py`: `SET LOCAL app.current_tenant_id` is called before EVERY query
-- [ ] `db.py`: Transactions rollback on error
-- [ ] `auth.py`: Correctly parses Cognito JWT claims from API Gateway event
-- [ ] `auth.py`: Tenant suspension check with 60s cache (uses `shared/cache.py`)
-- [ ] `auth.py`: `@require_roles` decorator blocks unauthorized access
-- [ ] `responses.py`: All response formats match the API contract spec
-- [ ] `responses.py`: Security headers included on every response (see Standards §1.4)
-- [ ] `responses.py`: `X-Request-Id` header included on every response
-- [ ] `responses.py`: `created()` includes `Location` header
-- [ ] `responses.py`: `no_content()` returns 204 with empty body
-- [ ] `events.py`: Publishes to correct EventBridge bus with full envelope including `request_id`
-- [ ] `pagination.py`: Cursor-based pagination produces correct SQL
-- [ ] `idempotency.py`: Checks and stores idempotency keys with 24h TTL
-- [ ] `cache.py`: TTL-based in-memory cache with per-key expiry
-- [ ] `circuit_breaker.py`: Tracks failures, opens circuit after threshold, recovers after timeout
-- [ ] `metering.py`: `record_usage()` publishes UsageRecorded events
+- [x] `db.py`: Connection reuse works across Lambda invocations
+- [x] `db.py`: `SET LOCAL app.current_tenant_id` is called before EVERY query
+- [x] `db.py`: Transactions rollback on error
+- [x] `auth.py`: Correctly parses Cognito JWT claims from API Gateway event
+- [x] `auth.py`: Tenant suspension check, cached (**corrected 2026-11-11:** it is a *distributed* Redis cache — `DistributedCache` in `shared/distributed_cache.py`, not `shared/cache.py` — and the tenant-status TTL is **15s**, not 60s. The original criterion named the wrong mechanism and a TTL 4× too long; four comments in `shared/auth.py` repeated the 60s figure and have been corrected. Redis was chosen deliberately: an in-process cache is per-Lambda-instance, so a suspended tenant could keep working for the TTL on every warm instance independently.)
+- [x] `auth.py`: `@require_roles` decorator blocks unauthorized access
+- [x] `responses.py`: All response formats match the API contract spec
+- [x] `responses.py`: Security headers included on every response (see Standards §1.4)
+- [x] `responses.py`: `X-Request-Id` header included on every response
+- [x] `responses.py`: `created()` includes `Location` header
+- [x] `responses.py`: `no_content()` returns 204 with empty body
+- [x] `events.py`: Publishes to correct EventBridge bus with full envelope including `request_id`
+- [x] `pagination.py`: Cursor-based pagination produces correct SQL
+- [x] `idempotency.py`: Checks and stores idempotency keys with 24h TTL
+- [x] `cache.py`: TTL-based in-memory cache with per-key expiry
+- [x] `circuit_breaker.py`: Tracks failures, opens circuit after threshold, recovers after timeout
+- [x] `metering.py`: `record_usage()` publishes UsageRecorded events
 - [x] `notifications.py`: `enqueue_notifications()` checks preferences before SQS enqueue; looks up `notification_template` per channel and embeds custom copy as `template_override` in SQS payload
 - [x] `notifications.py`: `enqueue_notification()` (singular) accepts `locale: str = "en"` and includes it in the SQS message body so notification Lambdas select the correct template language
 - [x] `webhook.py`: `fire_tenant_webhook()` signs outbound HTTP POST with HMAC-SHA256 (`X-ShipX-Signature-256: sha256=<hex>`); `test_fire_tenant_webhook()` sends a test event and returns `{success, status_code, error}`
 - [x] `fx_rate.py` (2026-09-19): `get_effective_dollar_rate(tenant_id)` centralizes what used to be four independent `tenant_config['dollar_rate']` readers; base rate fetched live from Bybit's public P2P order book (`fetch_bybit_ngn_rate()`, circuit-breaker guarded), cached in Redis (`DistributedCache`, 10 min TTL) with a `platform_settings`-persisted last-known-good fallback for outages; `ssl_context.py::verified_ssl_context()` shares a small TLS-context helper with `paystack.py` rather than duplicating it a second time. See `02_shared_utilities.md`.
 - [x] `cbm_rate.py` (2026-09-20): `get_cbm_rate_config(tenant_id)` + `compute_cbm_charge(cbm_by_unit, config)` centralize CBM freight pricing — a tenant admin picks a currency (USD/NGN) and either one flat rate or separate carton/bag/bale rates ("flat" is just the case where all three are equal, one code path, no mode branching in the money math). `normalize_package_unit()` folds any package type other than exact "bag"/"bale" into the carton bucket. Backward-compatible at read time with the pre-2026-09-20 single-rate shape — no data migration. See `02_shared_utilities.md`.
-- [ ] `logging_config.py`: Structured JSON formatter with service, environment, request_id, tenant_id
-- [ ] Handler pattern includes X-Ray tracing initialization
-- [ ] Handler pattern includes idempotency key handling for POST
-- [ ] Handler pattern includes request timing and structured logging
-- [ ] All modules have comprehensive logging
-- [ ] All functions have type hints
+- [x] `logging_config.py`: Structured JSON formatter with service, environment, request_id, tenant_id
+- [x] Handler pattern includes X-Ray tracing initialization
+- [x] Handler pattern includes idempotency key handling for POST
+- [ ] Handler pattern includes request timing and structured logging — **partially: structured logging is universal** (every handler goes through `shared/logging_config.py`), **but explicit request timing is in 4 of 14 handlers** (`auth`, `excel`, `payment_release`, `tracking`). `logging_config` only passes a caller-supplied `duration_ms` through; it does not measure. Audited 2026-11-11.
+- [ ] All modules have comprehensive logging — **not met: 20 of 32 `shared/` modules bind a logger.** The remaining 12 are mostly pure helpers with nothing worth logging, so the gap may be correct — but "all" is not true, and this stays unchecked rather than being ticked on a generous reading. Audited 2026-11-11.
+- [x] All functions have type hints
 
 ### `shared/url_safety.py` — added 2026-09-23
 

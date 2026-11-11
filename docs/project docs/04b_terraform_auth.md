@@ -73,9 +73,9 @@ Groups are created dynamically by the Tenant Management Lambda when users are pr
 
 ## Acceptance Criteria
 
-- [ ] User Pool has `custom:tenant_id` as immutable custom attribute
-- [ ] User Pool Client cannot write `custom:tenant_id` (prevents user self-modification)
-- [ ] Admin-only user creation (no self-registration)
-- [ ] Token validity: 1h access, 1h id, 30d refresh
-- [ ] Password policy: min 8 chars, upper+lower+numbers required
-- [ ] `terraform plan` succeeds
+- [x] User Pool has `custom:tenant_id` as immutable custom attribute
+- [x] User Pool Client cannot write `custom:tenant_id` (prevents user self-modification)
+- [x] Admin-only user creation (no self-registration)
+- [x] Token validity: 1h access, 1h id, 30d refresh
+- [x] Password policy: min 8 chars, upper+lower+numbers required
+- [ ] `terraform plan` succeeds — **`terraform validate` passes (audited 2026-11-11); a real `plan` needs AWS credentials this environment does not have, so the stronger claim is unverified.** Same caveat as `04c_terraform_api_gateway.md`.

@@ -263,15 +263,15 @@ def log_audit(
 
 ## Acceptance Criteria
 
-- [ ] `TenantContext` dataclass correctly parses JWT claims
-- [ ] `get_tenant_context()` raises `TenantSuspendedError` for suspended tenants
-- [ ] `get_tenant_context()` raises `AuthenticationRequired` for missing/invalid JWT
-- [ ] `db.py` always sets `SET LOCAL app.current_tenant_id` before queries
-- [ ] `db.py` uses connection reuse pattern (module-level `_connection` variable)
-- [ ] `responses.py` produces correct RFC 7807 format for all error types
-- [ ] `events.py` publishes to EventBridge with correct envelope including `tenant_id`
-- [ ] `pagination.py` handles cursor encoding/decoding and query building
-- [ ] All functions have type hints
+- [x] `TenantContext` dataclass correctly parses JWT claims — it lives in `shared/tenant_context.py`, not `shared/auth.py` as a reader might assume from the surrounding items (noted 2026-11-11, after first looking in the wrong file).
+- [x] `get_tenant_context()` raises `TenantSuspendedError` for suspended tenants
+- [x] `get_tenant_context()` raises `AuthenticationRequired` for missing/invalid JWT
+- [x] `db.py` always sets `SET LOCAL app.current_tenant_id` before queries
+- [x] `db.py` uses connection reuse pattern (module-level `_connection` variable)
+- [x] `responses.py` produces correct RFC 7807 format for all error types
+- [x] `events.py` publishes to EventBridge with correct envelope including `tenant_id`
+- [x] `pagination.py` handles cursor encoding/decoding and query building
+- [x] All functions have type hints
 - [x] `distributed_cache.py` — Redis-backed `DistributedCache` for tenant status, fail-soft on Redis errors
 
 

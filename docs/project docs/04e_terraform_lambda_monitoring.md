@@ -153,17 +153,17 @@ set nowhere in Terraform.
 
 ## Acceptance Criteria
 
-- [ ] All Lambda functions created with correct runtime, memory, timeout
-- [ ] VPC-attached Lambdas in private subnets with Lambda security group
+- [x] All Lambda functions created with correct runtime, memory, timeout
+- [x] VPC-attached Lambdas in private subnets with Lambda security group
 - [ ] ~~Notification Lambdas outside VPC (no NAT Gateway needed)~~ — the SQS consumers still are, but they need Aurora for `notification_log`/metering; see the Known gap above. The notification *HTTP* Lambdas are VPC-attached by design
-- [ ] Shared Lambda Layer created and attached to all functions
-- [ ] IAM roles follow least-privilege (each Lambda gets only needed permissions)
-- [ ] SQS event source mappings for notification + metering Lambdas
-- [ ] EventBridge scheduled rule targets for cron job Lambdas
-- [ ] CloudWatch log groups with appropriate retention
-- [ ] 5 CloudWatch alarms configured
-- [ ] SNS topic for alerts
-- [ ] `terraform plan` succeeds
+- [x] Shared Lambda Layer created and attached to all functions
+- [x] IAM roles follow least-privilege (each Lambda gets only needed permissions)
+- [x] SQS event source mappings for notification + metering Lambdas
+- [x] EventBridge scheduled rule targets for cron job Lambdas
+- [x] CloudWatch log groups with appropriate retention
+- [x] 5 CloudWatch alarms configured
+- [x] SNS topic for alerts
+- [ ] `terraform plan` succeeds — **`terraform validate` passes (audited 2026-11-11); a real `plan` needs AWS credentials this environment does not have, so the stronger claim is unverified.** Same caveat as `04c_terraform_api_gateway.md`.
 
 ## Database credential split (2026-11-08, migration 060)
 
