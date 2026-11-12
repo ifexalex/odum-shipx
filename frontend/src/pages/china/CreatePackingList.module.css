@@ -308,6 +308,10 @@
 .itemsTable td {
   padding: 10px 14px;
   border-bottom: 1px solid var(--color-line);
+  /* Explicit rather than relying on the UA default, so a cell holding a
+     stacked control (the Qty cell) centres against the single-input cells
+     beside it instead of riding high or low. */
+  vertical-align: middle;
 }
 
 .right {
@@ -315,6 +319,20 @@
 }
 
 .center {
+  text-align: center;
+}
+
+/* `.itemsTable th` is (0,1,1) and `.right`/`.center` are (0,1,0), so the
+   header alignment classes were silently losing to the `text-align: left` above
+   and EVERY right/centre column had a left-aligned header over right-aligned
+   cells. Re-stated at matching specificity so the heading sits over its own
+   numbers. Pre-existing — it affected Wt disp., Wt act., L x W x H, CBM and
+   Decl. long before the Qty column joined them. */
+.itemsTable th.right {
+  text-align: right;
+}
+
+.itemsTable th.center {
   text-align: center;
 }
 
@@ -612,29 +630,77 @@
 
 /* ── Bulk quantity ───────────────────────────────────────────────────────── */
 
-/* The "identical" affirmation sits directly above its quantity input so the
-   two read as one control: you cannot reach the number without passing the
-   assertion. */
-.qtyConfirm {
+/* The affirmation and its input are one control, so they are laid out as one
+   stack and centred as a unit. A fixed min-height keeps a bulk row exactly as
+   tall as a plain row: without it the table jolted taller the moment a
+   checkbox appeared, which is what made the column look misaligned against its
+   neighbours. 32px input + 4px gap + 14px label == the 50px the other cells
+   occupy once their padding is counted. */
+.qtyCell {
   display: flex;
+  flex-direction: column;
   align-items: center;
   justify-content: center;
   gap: 4px;
-  margin-bottom: 4px;
-  font-size: var(--font-size-xs);
-  color: var(--color-text-secondary);
+  min-height: 50px;
+}
+
+/* Sits directly above the input it unlocks, so the relationship reads without
+   explanation: you cannot reach the number without passing the assertion.
+   Kept deliberately quiet — it is a precondition, not a warning. */
+.qtyConfirm {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--color-ink-3);
   white-space: nowrap;
   cursor: pointer;
+  user-select: none;
 }
 
 .qtyConfirm input {
+  width: 13px;
+  height: 13px;
+  margin: 0;
   cursor: pointer;
+  accent-color: var(--color-primary);
 }
 
-/* A quantity line explains itself on the row beneath. Deliberately quiet —
-   it is a confirmation of what was typed, not a warning. */
+/* Reads as live once armed, so the row shows at a glance which lines are bulk. */
+.qtyConfirmOn {
+  color: var(--color-primary);
+}
+
+/* Narrower than the measurement inputs and centred: this is a count, not a
+   dimension, and a right-aligned 90px box left the digits drifting away from
+   the column heading. */
+.qtyInput {
+  width: 62px;
+  height: 32px;
+  border: 1px solid var(--color-line);
+  border-radius: 6px;
+  padding: 0 8px;
+  font-family: var(--font-mono);
+  font-size: 12px;
+  text-align: center;
+  color: var(--color-ink);
+}
+
+.qtyInput:disabled {
+  background: var(--color-page);
+  color: var(--color-ink-4);
+  cursor: not-allowed;
+}
+
+/* The expansion preview hangs off the row above, so it loses the top border and
+   the vertical padding that would otherwise detach it from its own line. */
 .qtyPreviewRow td {
   padding-top: 0;
+  padding-bottom: 10px;
   border-top: none;
 }
 
@@ -642,9 +708,11 @@
   display: inline-flex;
   align-items: center;
   gap: 6px;
-  padding: 2px 8px;
-  border-radius: var(--radius-sm);
-  background: var(--color-surface-subtle);
-  color: var(--color-text-secondary);
-  font-size: var(--font-size-xs);
+  padding: 3px 10px;
+  border-radius: 999px;
+  background: var(--color-page);
+  border: 1px solid var(--color-line);
+  color: var(--color-ink-3);
+  font-size: 11px;
+  line-height: 1.4;
 }

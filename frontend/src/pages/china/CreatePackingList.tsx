@@ -19,6 +19,57 @@ import { PageHeader } from '../../shell/PageHeader'
 import { SectionHead } from '../../shell/SectionHead'
 import styles from './CreatePackingList.module.css'
 
+/** Turn an expanded batch back into the one line that produced it.
+ *
+ *  The API returns a bulk line already expanded — 100 rows for `quantity: 100`
+ *  — because that is what it stores. Rendering those 100 rows is what "the
+ *  quantity is not being retained" looked like from the warehouse: you type one
+ *  line, save, reopen, and get a hundred rows back with the number you entered
+ *  nowhere on screen.
+ *
+ *  Collapsing is lossless: the server re-expands on save from the same
+ *  `batch_ref`, so the round trip reproduces the identical rows rather than
+ *  duplicating cargo.
+ *
+ *  Only collapsed when every row in the group still matches. If one package of
+ *  a batch was edited directly, the rows stay expanded — folding them would
+ *  silently discard that edit, which is worse than showing more rows than
+ *  expected.
+ */
+function collapseBatches(items: PackingListItemInput[]): PackingListItemInput[] {
+  const out: PackingListItemInput[] = []
+  const seen = new Set<string>()
+
+  for (const item of items) {
+    const ref = item.batch_ref
+    if (!ref) {
+      out.push(item)
+      continue
+    }
+    if (seen.has(ref)) continue
+    seen.add(ref)
+
+    const group = items.filter((other) => other.batch_ref === ref)
+    const matchesFirst = (other: PackingListItemInput): boolean =>
+      other.description === item.description &&
+      other.package_unit === item.package_unit &&
+      other.length_cm === item.length_cm &&
+      other.width_cm === item.width_cm &&
+      other.height_cm === item.height_cm &&
+      other.weight_dispatch_kg === item.weight_dispatch_kg &&
+      other.weight_actual_kg === item.weight_actual_kg &&
+      other.declared_value_usd === item.declared_value_usd &&
+      other.received_date === item.received_date
+
+    if (group.length > 1 && group.every(matchesFirst)) {
+      out.push({ ...item, quantity: group.length, identical_confirmed: true })
+    } else {
+      out.push(...group)
+    }
+  }
+  return out
+}
+
 /** Keep a typed quantity inside 1..MAX, tolerating an emptied field.
  *
  *  Clamping rather than rejecting: someone mid-edit who has cleared the box
@@ -200,7 +251,11 @@ export function CreatePackingList(): JSX.Element {
         setLoadingDate(pl.loading_date ?? '')
         setDeliveryDate(pl.delivery_date ?? '')
         setItems(
-          pl.items.length > 0
+          // collapseBatches folds an expanded bulk line back into the single
+          // row that produced it, so the quantity the user typed is what they
+          // see when they reopen the draft.
+          collapseBatches(
+            pl.items.length > 0
             ? pl.items.map((it) => ({
                 description: it.description,
                 weight_dispatch_kg: it.weight_dispatch_kg != null ? Number(it.weight_dispatch_kg) : undefined,
@@ -210,12 +265,20 @@ export function CreatePackingList(): JSX.Element {
                 height_cm: it.height_cm != null ? Number(it.height_cm) : undefined,
                 declared_value_usd: it.declared_value_usd != null ? Number(it.declared_value_usd) : undefined,
                 package_unit: (it.package_unit as PackageUnit) ?? 'carton',
+                // Carried through because the server falls back to
+                // `received_date or date.today()`. Dropping it meant editing a
+                // draft silently re-dated every item to today — and the
+                // tracking code is derived from customer + received date, so
+                // the grouping moved with it. Worst on an imported list, where
+                // that date is real rather than the day of entry.
+                received_date: it.received_date ?? undefined,
                 // Carried through so an edit round trip keeps the grouping. The
                 // rows arrive already expanded — one per package — so quantity
                 // stays 1 here; re-expanding them would duplicate the cargo.
                 batch_ref: it.batch_ref ?? null,
               }))
             : [emptyItem()],
+          ),
         )
         // Ensure the fixed customer/container show even though the pickers only
         // list open containers — inject the current one if missing.
@@ -743,51 +806,69 @@ export function CreatePackingList(): JSX.Element {
                           </div>
                         </td>
                         <td className={styles.center}>
-                          {/* Quantity is gated on an explicit affirmation rather
-                              than freely editable. The hazard here is not a
-                              typo — a typo looks wrong — it is an oversight:
-                              100 cartons recorded at one carton's weight and
-                              dimensions because they were nearly identical.
-                              Making someone assert "identical" is the moment
-                              that gets checked. The server enforces the same
-                              rule, so this is a prompt, not the protection. */}
-                          <label className={styles.qtyConfirm}>
+                          {/* The affirmation sits directly above the input it
+                              unlocks, so the relationship reads without
+                              explanation. Kept there rather than moved beside
+                              the row or into the preview: the hazard is not a
+                              typo — a typo looks wrong — it is an oversight,
+                              100 cartons recorded at one carton's weight
+                              because they were nearly identical. Putting the
+                              assertion in the path to the number is the whole
+                              point, and anywhere else loosens that. The server
+                              enforces the same rule, so this is a prompt, not
+                              the protection. */}
+                          <div className={styles.qtyCell}>
+                            <label
+                              className={[
+                                styles.qtyConfirm,
+                                item.identical_confirmed ? styles.qtyConfirmOn : '',
+                              ]
+                                .filter(Boolean)
+                                .join(' ')}
+                              title={
+                                'Tick only when every package on this line has the same dimensions ' +
+                                'and weight. One wrong measurement is repeated across all of them, ' +
+                                'and CBM drives billing.'
+                              }
+                            >
+                              <input
+                                type="checkbox"
+                                checked={item.identical_confirmed ?? false}
+                                aria-label={`Item ${index + 1}: all packages identical`}
+                                onChange={(event) =>
+                                  updateItem(index, {
+                                    identical_confirmed: event.target.checked,
+                                    // Unticking returns the line to a single
+                                    // package, so a stale 100 cannot be saved
+                                    // by clearing the box and missing the
+                                    // input.
+                                    ...(event.target.checked ? {} : { quantity: 1 }),
+                                  })
+                                }
+                              />
+                              <span>identical</span>
+                            </label>
                             <input
-                              type="checkbox"
-                              checked={item.identical_confirmed ?? false}
-                              aria-label={`Item ${index + 1}: all packages identical`}
+                              className={styles.qtyInput}
+                              type="number"
+                              min={1}
+                              max={MAX_ITEM_QUANTITY}
+                              step={1}
+                              inputMode="numeric"
+                              aria-label={`Item ${index + 1}: quantity`}
+                              disabled={!(item.identical_confirmed ?? false)}
+                              title={
+                                item.identical_confirmed
+                                  ? `How many identical packages (up to ${MAX_ITEM_QUANTITY})`
+                                  : 'Tick "identical" first — each package is created separately'
+                              }
+                              value={item.quantity ?? ''}
+                              onKeyDown={blockInvalidNumberKeys}
                               onChange={(event) =>
-                                updateItem(index, {
-                                  identical_confirmed: event.target.checked,
-                                  // Unticking returns the line to a single
-                                  // package, so a stale 100 cannot be saved by
-                                  // clearing the box and missing the input.
-                                  ...(event.target.checked ? {} : { quantity: 1 }),
-                                })
+                                updateItem(index, { quantity: clampQuantity(event.target.value) })
                               }
                             />
-                            <span>identical</span>
-                          </label>
-                          <input
-                            className={styles.cellInputNumber}
-                            type="number"
-                            min={1}
-                            max={MAX_ITEM_QUANTITY}
-                            step={1}
-                            inputMode="numeric"
-                            aria-label={`Item ${index + 1}: quantity`}
-                            disabled={!(item.identical_confirmed ?? false)}
-                            title={
-                              item.identical_confirmed
-                                ? `Up to ${MAX_ITEM_QUANTITY} identical packages`
-                                : 'Tick "identical" to enter a quantity'
-                            }
-                            value={item.quantity ?? ''}
-                            onKeyDown={blockInvalidNumberKeys}
-                            onChange={(event) =>
-                              updateItem(index, { quantity: clampQuantity(event.target.value) })
-                            }
-                          />
+                          </div>
                         </td>
                         <td className={styles.right}>
                           <input
@@ -834,7 +915,7 @@ export function CreatePackingList(): JSX.Element {
                            CBM" than as a digit in a small box. */
                         <tr className={styles.qtyPreviewRow}>
                           <td />
-                          <td colSpan={8}>
+                          <td colSpan={9}>
                             <span className={styles.qtyPreview}>
                               <Icon name="plus" size={12} />
                               {[
@@ -872,6 +953,11 @@ export function CreatePackingList(): JSX.Element {
                     <td className={styles.right}>
                       <Mono color="var(--color-success)">{totals.cbm.toFixed(3)}</Mono>
                     </td>
+                    {/* Qty has no meaningful total of its own — the package
+                        count is already stated as "N item(s)" on the left — but
+                        the cell must exist, or every figure after CBM shifts a
+                        column left and the declared total lands under Qty. */}
+                    <td />
                     <td className={styles.right}>
                       <Mono>${totals.declaredUsd.toFixed(0)}</Mono>
                     </td>

@@ -1491,3 +1491,41 @@ the row belongs to one, with the count in its label and tooltip.
 value (`undefined`, which reads as one package everywhere). Worth recording
 because it would have been a daily irritation for the people this feature is
 meant to help.
+
+### Alignment and the draft round trip (2026-11-12, follow-up)
+
+Three defects found by **screenshotting the table** rather than reasoning about
+the CSS. Two were pre-existing.
+
+**1. Every right/centre header was left-aligned** (pre-existing). `.itemsTable
+th` is specificity (0,1,1) and `.right` / `.center` are (0,1,0), so the header
+alignment classes lost to the `text-align: left` in the element rule — Wt disp.,
+Wt act., L × W × H, CBM and Decl. all had a left-aligned heading over
+right-aligned numbers. Restated as `.itemsTable th.right` / `th.center`.
+
+**2. The totals footer was one cell short** (mine). Adding the Qty column to the
+header and body without adding a `<td />` to `<tfoot>` pushed every figure after
+CBM one column left, so the declared-value total rendered under **Qty**. Only
+visible in a screenshot; no test asserts footer cell positions.
+
+**3. A saved draft did not give back what was typed** — reported from the
+warehouse as *"the quantity is not being retained"*. The API stores a bulk line
+expanded, so reopening returned 100 rows and the number entered appeared
+nowhere. `collapseBatches()` folds a group sharing one `batch_ref` back into a
+single line carrying `quantity`, which is lossless because the server re-expands
+from the same ref on save. A group is only folded when every row still matches —
+if one package was edited directly, the rows stay expanded, since folding would
+silently discard that edit.
+
+**Also fixed in the same pass:** the edit load dropped `received_date`
+(pre-existing). The server falls back to `received_date or date.today()`, so
+editing any draft silently re-dated every item to today — and the tracking code
+is derived from customer + received date, so the grouping moved with it. Worst
+on imported lists, where that date is real rather than the day of entry.
+
+The Qty cell itself is a centred flex stack with a fixed `min-height`, so a
+bulk row is exactly as tall as a plain one; without it the table jolted taller
+the moment a checkbox appeared, which is what made the column look misaligned.
+The quantity input is narrower than the measurement inputs and centre-aligned —
+it is a count, not a dimension.
+

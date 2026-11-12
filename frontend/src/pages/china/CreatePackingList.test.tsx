@@ -558,3 +558,96 @@ describe('CreatePackingList — bulk quantity', () => {
   })
 })
 
+describe('CreatePackingList — reopening a saved draft', () => {
+  beforeEach(() => {
+    vi.mocked(packingListApi.get).mockReset()
+    vi.mocked(packingListApi.update).mockReset()
+    vi.mocked(customersApi.list).mockResolvedValue({
+      data: [customerStub],
+      meta: { pagination: { has_more: false, next_cursor: null, total_count: 1 } },
+    })
+    vi.mocked(containersApi.list).mockResolvedValue({
+      data: [containerStub],
+      meta: { pagination: { has_more: false, next_cursor: null, total_count: 1 } },
+    })
+  })
+
+  /** The server stores a bulk line EXPANDED, so this is what a reopened draft
+   *  actually returns: N rows sharing one batch_ref. */
+  function expandedBatch(n: number, batchRef = 'batch-1') {
+    return Array.from({ length: n }, (_, i) => ({
+      id: `it${i}`,
+      packing_list_id: 'pl1',
+      description: 'Ladies shoes',
+      package_unit: 'carton',
+      length_cm: 60,
+      width_cm: 40,
+      height_cm: 40,
+      weight_actual_kg: 12,
+      weight_dispatch_kg: 12,
+      declared_value_usd: 50,
+      received_date: '2026-11-01',
+      carton_tag: `ACM-C1-${String(i + 1).padStart(3, '0')}`,
+      cbm: 0.1,
+      batch_ref: batchRef,
+    }))
+  }
+
+  async function renderEdit(items: unknown[]) {
+    vi.mocked(packingListApi.get).mockResolvedValue({
+      id: 'pl1',
+      status: 'draft',
+      container_id: containerStub.id,
+      customer_id: customerStub.id,
+      items,
+    } as never)
+    render(
+      <MemoryRouter initialEntries={['/packing-lists/pl1/edit']}>
+        <Routes>
+          <Route path="/packing-lists/:id/edit" element={<CreatePackingList />} />
+        </Routes>
+      </MemoryRouter>,
+    )
+    // The wizard opens on step 1 even when editing; the items table lives on
+    // step 2.
+    const next = await screen.findByText('Next: Add items')
+    await waitFor(() => expect(next).toBeEnabled())
+    await userEvent.click(next)
+  }
+
+  it('shows a saved bulk line as ONE row carrying its quantity', async () => {
+    // The bug reported from the warehouse: you key one line of 100, save, and
+    // reopen to find a hundred rows and no quantity anywhere.
+    await renderEdit(expandedBatch(100))
+
+    const qty = await screen.findByRole('spinbutton', { name: /item 1: quantity/i })
+    expect(qty).toHaveValue(100)
+    expect(screen.queryByRole('spinbutton', { name: /item 2: quantity/i })).not.toBeInTheDocument()
+  })
+
+  it('shows the batch as already affirmed, so the quantity stays editable', async () => {
+    await renderEdit(expandedBatch(100))
+
+    expect(await screen.findByRole('checkbox', { name: /item 1: all packages identical/i })).toBeChecked()
+    expect(await screen.findByRole('spinbutton', { name: /item 1: quantity/i })).toBeEnabled()
+  })
+
+  it('keeps rows expanded when one package of a batch was edited away', async () => {
+    // Folding them would silently discard that edit.
+    const items = expandedBatch(3)
+    items[1] = { ...items[1], weight_actual_kg: 99 } as never
+
+    await renderEdit(items)
+
+    expect(await screen.findByRole('spinbutton', { name: /item 3: quantity/i })).toBeInTheDocument()
+  })
+
+  it('leaves individually-keyed rows alone', async () => {
+    const items = expandedBatch(2).map((it) => ({ ...it, batch_ref: null }))
+
+    await renderEdit(items)
+
+    expect(await screen.findByRole('spinbutton', { name: /item 2: quantity/i })).toBeInTheDocument()
+  })
+})
+
