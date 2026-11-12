@@ -30,7 +30,7 @@ azure = [
     "azure-keyvault-keys==4.11.3",
     "azure-keyvault-secrets==4.11.3",
     "azure-servicebus==7.14.3",
-    "azure-storage-blob==12.31.0",
+    "azure-storage-blob==12.31.1",
 ]
 # Container runtime (Azure Container Apps) — the WSGI stack the in-process HTTP
 # app needs. Not in the AWS Lambda bundle (handlers run without a web server
