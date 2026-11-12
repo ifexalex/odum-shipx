@@ -104,10 +104,10 @@ All events             → metering queue
 
 ## Acceptance Criteria
 
-- [ ] S3 bucket: encrypted, versioned, no public access, CORS for presigned uploads
-- [ ] 4 SQS queues + 4 DLQs created with proper redrive policies
-- [ ] EventBridge custom bus created
-- [ ] Routing rules correctly map events to appropriate SQS queues
-- [ ] Scheduled rules created for all 7 cron jobs
+- [x] S3 bucket: encrypted, versioned, no public access, CORS for presigned uploads
+- [x] 4 SQS queues + 4 DLQs created with proper redrive policies
+- [x] EventBridge custom bus created
+- [x] Routing rules correctly map events to appropriate SQS queues
+- [x] Scheduled rules created for all 7 cron jobs
 - [ ] All outputs exported for Lambda module consumption — `queue_urls` is now wired through to the Lambda module (2026-09-23) as the `SQS_SMS_QUEUE_URL` / `SQS_WHATSAPP_QUEUE_URL` / `SQS_EMAIL_QUEUE_URL` env vars; it was exported but never consumed, so every enqueue was silently dropped in AWS (see `04e_terraform_lambda_monitoring.md`)
-- [ ] `terraform plan` succeeds
+- [ ] `terraform plan` succeeds — **`terraform validate` passes (audited 2026-11-11); a real `plan` needs AWS credentials this environment does not have, so the stronger claim is unverified.** Same caveat as `04c_terraform_api_gateway.md`.

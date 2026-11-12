@@ -142,8 +142,8 @@ variable "lambda_arns" {
 
 ## Acceptance Criteria
 
-- [ ] All 22 additional routes added to API Gateway
-- [ ] 4 public routes configured with `authorization_type = "NONE"`
-- [ ] Excel Lambda added to Lambda module (Task 04e)
-- [ ] `lambda_arns` variable updated with `excel` entry
-- [ ] `terraform plan` succeeds with all routes
+- [x] All 22 additional routes added to API Gateway
+- [x] Public routes configured with `authorization_type = "NONE"` — **corrected 2026-11-11: there are now 18, not 4.** They are declared in `local.public_routes` and the single `aws_apigatewayv2_route.public_routes` resource applies `authorization_type = "NONE"` over `for_each`, so the count grows without the mechanism changing. The mechanism is what the criterion was really asserting; the number had simply moved on (register, invites, activate, `auth/*`, onboarding-requests, webhooks).
+- [x] Excel Lambda added to Lambda module (Task 04e)
+- [x] `lambda_arns` variable updated with `excel` entry
+- [ ] `terraform plan` succeeds with all routes — **`terraform validate` passes (audited 2026-11-11); a real `plan` needs AWS credentials this environment does not have, so the stronger claim is unverified.** Same caveat as `04c_terraform_api_gateway.md`.
