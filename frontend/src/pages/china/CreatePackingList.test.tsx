@@ -538,7 +538,7 @@ describe('CreatePackingList — bulk quantity', () => {
     await userEvent.type(qty, '100')
     await userEvent.type(screen.getAllByPlaceholderText('e.g. Electronics (mixed)')[0]!, 'Shoes')
 
-    await userEvent.click(screen.getByRole('button', { name: /save draft/i }))
+    await userEvent.click(screen.getByRole('button', { name: /save (as )?draft/i }))
 
     expect(await screen.findByText(/Create 100 packages\?/i)).toBeInTheDocument()
     // Cancelling must not write anything.
@@ -551,7 +551,7 @@ describe('CreatePackingList — bulk quantity', () => {
     await reachItemsStep()
     await userEvent.type(screen.getAllByPlaceholderText('e.g. Electronics (mixed)')[0]!, 'One carton')
 
-    await userEvent.click(screen.getByRole('button', { name: /save draft/i }))
+    await userEvent.click(screen.getByRole('button', { name: /save (as )?draft/i }))
 
     await waitFor(() => expect(packingListApi.create).toHaveBeenCalled())
     expect(screen.queryByText(/packages\?$/i)).not.toBeInTheDocument()
@@ -698,6 +698,67 @@ describe('CreatePackingList — review step shows the full item detail', () => {
     // Twice over: the "ready to submit" banner and the document preview's
     // totals line. Both used to say "carton(s)" regardless of the goods.
     expect((await screen.findAllByText(/100 cartons/)).length).toBeGreaterThanOrEqual(2)
+  })
+})
+
+describe('CreatePackingList — saving twice must not make two lists', () => {
+  beforeEach(() => {
+    vi.mocked(packingListApi.create).mockReset()
+    vi.mocked(packingListApi.update).mockReset()
+    vi.mocked(packingListApi.submit).mockReset()
+    vi.mocked(customersApi.list).mockResolvedValue({
+      data: [customerStub],
+      meta: { pagination: { has_more: false, next_cursor: null, total_count: 1 } },
+    })
+    vi.mocked(containersApi.list).mockResolvedValue({
+      data: [containerStub],
+      meta: { pagination: { has_more: false, next_cursor: null, total_count: 1 } },
+    })
+  })
+
+  async function fillAndSave(): Promise<void> {
+    await userEvent.type(screen.getAllByPlaceholderText('e.g. Electronics (mixed)')[0]!, 'Widget')
+    await userEvent.click(screen.getByRole('button', { name: /save (as )?draft/i }))
+  }
+
+  it('creates on the first save and UPDATES on the second', async () => {
+    // Reported as "it keeps saving a new copy of that same item to the draft".
+    // The page never recorded the id it had just created, so every save took
+    // the create branch and made another list holding the same cargo.
+    vi.mocked(packingListApi.create).mockResolvedValue({ id: 'pl-new' } as never)
+    vi.mocked(packingListApi.update).mockResolvedValue({ id: 'pl-new' } as never)
+
+    renderPage()
+    await completeStep1()
+    await fillAndSave()
+    await waitFor(() => expect(packingListApi.create).toHaveBeenCalledTimes(1))
+
+    await userEvent.click(screen.getByRole('button', { name: /save (as )?draft/i }))
+
+    await waitFor(() => expect(packingListApi.update).toHaveBeenCalledTimes(1))
+    expect(packingListApi.create).toHaveBeenCalledTimes(1)
+    expect(vi.mocked(packingListApi.update).mock.calls[0]![0]).toBe('pl-new')
+  })
+
+  it('still creates only once when the first save failed to submit', async () => {
+    // The nastiest version: create succeeds, submit throws, the user presses
+    // save again. Previously that produced a second list every time.
+    vi.mocked(packingListApi.create).mockResolvedValue({ id: 'pl-new' } as never)
+    vi.mocked(packingListApi.update).mockResolvedValue({ id: 'pl-new' } as never)
+    vi.mocked(packingListApi.submit).mockRejectedValueOnce(new Error('network'))
+
+    renderPage()
+    await completeStep1()
+    await userEvent.type(screen.getAllByPlaceholderText('e.g. Electronics (mixed)')[0]!, 'Widget')
+    // "Submit for approval" lives on the review step, not the items step.
+    await userEvent.click(screen.getByText('Next: Review'))
+    await userEvent.click(await screen.findByRole('button', { name: /submit for approval/i }))
+    await waitFor(() => expect(packingListApi.create).toHaveBeenCalledTimes(1))
+
+    await userEvent.click(screen.getByRole('button', { name: /save (as )?draft/i }))
+
+    await waitFor(() => expect(packingListApi.update).toHaveBeenCalled())
+    expect(packingListApi.create).toHaveBeenCalledTimes(1)
   })
 })
 

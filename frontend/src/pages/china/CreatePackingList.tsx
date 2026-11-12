@@ -149,8 +149,25 @@ function WizardSteps({ current }: WizardStepsProps): JSX.Element {
 export function CreatePackingList(): JSX.Element {
   const navigate = useNavigate()
   const { id: editId } = useParams<{ id: string }>()
-  const isEdit = Boolean(editId)
-  const { key, regenerate } = useIdempotencyKey()
+
+  // The list THIS page created, if it already saved once.
+  //
+  // Without it, every save took the create branch: a second "Save draft" made
+  // a second packing list holding the same cargo, which is what "it keeps
+  // saving a new copy" meant. The page normally navigates away after saving,
+  // so it needs a returning user, a failed navigation, or a save that errors
+  // after the create succeeded — but all three happen, and duplicated cargo is
+  // expensive to notice later.
+  //
+  // Once a list exists, this page edits it. That is also what makes the save
+  // button safe to press twice.
+  const [createdId, setCreatedId] = useState<string | null>(null)
+  const targetListId = editId ?? createdId
+  const isEdit = Boolean(targetListId)
+  // `regenerate` is intentionally unused: this page creates at most one
+  // packing list, then edits it. Regenerating after a successful create
+  // would discard the only thing protecting a double-submit.
+  const { key } = useIdempotencyKey()
   const [step, setStep] = useState<1 | 2 | 3>(1)
   const [customers, setCustomers] = useState<Customer[]>([])
   const [containers, setContainers] = useState<Container[]>([])
@@ -403,8 +420,8 @@ export function CreatePackingList(): JSX.Element {
     setError(null)
     try {
       let targetId: string
-      if (isEdit) {
-        const updated = await packingListApi.update(editId!, {
+      if (targetListId) {
+        const updated = await packingListApi.update(targetListId, {
           loading_date: loadingDate || undefined,
           delivery_date: deliveryDate || undefined,
           arrival_warehouse_id: arrivalWarehouseId || undefined,
@@ -423,7 +440,10 @@ export function CreatePackingList(): JSX.Element {
           },
           key,
         )
-        regenerate()
+        // Remember it, so a second save edits this list instead of making
+        // another one. The idempotency key is deliberately NOT regenerated
+        // here: it guarded this create, and the next save is an update.
+        setCreatedId(created.id)
         targetId = created.id
       }
       if (submitForApproval) {

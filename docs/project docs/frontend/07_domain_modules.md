@@ -1575,3 +1575,46 @@ the cargo loads, when it lands, or where it is going. Added to both, rendering
 They sit in the existing two-column meta grids, which wrap, so no layout change
 was needed; verified by screenshot rather than assumed.
 
+### Saving a draft twice created two packing lists (2026-11-12)
+
+Reported as *"when I save item to draft, it keeps saving a new copy of that
+same item to the draft … I was expecting it to be a unique item saved as draft,
+that can be edited or removed, and not resaving them as more drafts."*
+
+`CreatePackingList` decided create-vs-update from the **route param alone**:
+
+```ts
+const { id: editId } = useParams()
+const isEdit = Boolean(editId)
+```
+
+On `/packing-lists/new` there is no param, so *every* save took the create
+branch. The first produced a list; the second produced **another list holding
+the same cargo**, and so on.
+
+It normally navigates away after saving, which hides this — but not always:
+
+- a save that **errors after the create succeeded** (e.g. `submit` fails on the
+  review step) leaves the user on the page with a created list and a visible
+  error, and pressing save again duplicates it
+- any return to the form without a route param does the same
+
+The page now remembers what it created:
+
+```ts
+const [createdId, setCreatedId] = useState<string | null>(null)
+const targetListId = editId ?? createdId
+```
+
+so the second save **updates** the list the first one made. The update path
+already deletes and re-inserts items, so repeated saves converge rather than
+accumulate.
+
+`regenerate()` is no longer called after a successful create. It was discarding
+the idempotency key that guarded that create, immediately after it had been
+used — leaving nothing to protect a double submit. The page creates at most one
+list and then edits it, so the key never needs replacing.
+
+**Noted, not changed:** step 2's button says "Save draft" and step 3's says
+"Save as draft" for the identical action.
+
