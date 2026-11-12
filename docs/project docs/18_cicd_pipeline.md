@@ -1316,3 +1316,47 @@ token). Until then the step skips, which is the honest state: **there is no
 coverage data in Codecov for this project and there never has been**, so any
 coverage figure quoted from it would be wrong.
 
+## The frontend now auto-deploys to dev, like the backend (2026-11-11)
+
+`frontend-deploy.yml` was **`workflow_dispatch`-only** while `deploy-azure.yml`
+auto-deploys on every successful CI run on `main`. The asymmetry produced exactly
+what it guarantees: the deployed SPA sat at commit `c371280` (2026-10-17) for 25
+days — **24 frontend commits behind** — while the backend shipped **17 commits and
+20 migrations** past it. A user hit the result as "logged in, nothing loads".
+
+### What changed
+
+```yaml
+on:
+  workflow_run:
+    workflows: ["Frontend CI"]
+    types: [completed]
+    branches: [main]
+  workflow_dispatch: ...
+```
+
+- **dev only** is automatic; staging/prod stay deliberate dispatches
+- gated on **Frontend CI succeeding**, so a red build is never published
+- gated on `vars.DEPLOY_CLOUD == 'azure'` for automatic runs
+
+### The trap this had to avoid
+
+The job's steps are all gated `if: inputs.cloud == 'azure'`, and on a
+`workflow_run` event **every `inputs.*` is empty**. Adding the trigger naively
+would have produced a job that completed **green having deployed nothing** —
+worse than the drift it was fixing, because it would look solved.
+
+So a `resolve` job computes the target once and the deploy job reads
+`needs.resolve.outputs.*`. `environment:` can read `needs.*.outputs` where it
+cannot read `env`, which is why a plain job-level `env` would not work here.
+
+Workflow-level `concurrency` cannot see `needs` at all, so it keeps
+`inputs.* || 'default'` fallbacks.
+
+### Defaults were also inverted
+
+`cloud` defaulted to `aws` (the cloud this project does not deploy) and
+`environment` to **`prod`**. An unedited dispatch therefore attempted an AWS
+*production* frontend deploy; it failed only because AWS credentials are absent.
+Now `azure` / `dev`, with `prod` selectable but never the unchosen default.
+

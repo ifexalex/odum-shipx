@@ -26,22 +26,50 @@ name: Frontend Deploy (AWS or Azure)
 #   are read from Terraform state — NOT secrets — so there is nothing extra to keep
 #   in sync (matches the backend deploy-azure.yml pattern).
 
+# Defaults are deliberately the SAFE targets, because a workflow_dispatch run
+# that nobody edits takes them. They used to be `aws` / `prod`:
+#
+#   - `aws` is the cloud this project does NOT deploy (`vars.DEPLOY_CLOUD` is
+#     azure), so an unedited dispatch targeted infrastructure that does not
+#     exist. On 2026-11-11 one did exactly that, failed 12 retries deep in
+#     `aws-actions/configure-aws-credentials`, and deployed nothing — while the
+#     Azure dev frontend it was meant to refresh stayed 24 commits stale.
+#   - `prod` is worse, and only failed safely by accident. The AWS credentials
+#     happen to be absent; the moment they are configured, dispatching this
+#     workflow without touching the dropdowns deploys to PRODUCTION. The
+#     dangerous option should never be the one you get by not choosing.
+#
+# `prod` is still selectable — it just has to be chosen on purpose.
+# Auto-deploys to DEV on every successful Frontend CI run on main, mirroring the
+# backend (`deploy-azure.yml` triggers on "CI Pipeline" the same way).
+#
+# It was dispatch-only, and that cost a real outage: the deployed SPA sat at
+# 2026-10-17 for 25 days — 24 frontend commits behind — while the backend
+# auto-deployed 17 commits and 20 migrations past it. A frontend that only ships
+# when somebody remembers will drift from a backend that ships on every merge.
+#
+# Gated on Frontend CI *succeeding*, so a red build is never published. Only dev
+# is automatic; staging/prod remain deliberate dispatches.
 on:
+  workflow_run:
+    workflows: ["Frontend CI"]
+    types: [completed]
+    branches: [main]
   workflow_dispatch:
     inputs:
       cloud:
         description: "Target cloud"
         type: choice
-        options: [aws, azure]
-        default: aws
+        options: [azure, aws]
+        default: azure
       environment:
-        description: "Environment"
+        description: "Environment (prod must be chosen deliberately)"
         type: choice
-        options: [prod, staging, dev, demo]
-        default: prod
+        options: [dev, staging, demo, prod]
+        default: dev
 
 concurrency:
-  group: frontend-deploy-${{ inputs.cloud }}-${{ inputs.environment }}
+  group: frontend-deploy-${{ inputs.cloud || 'azure' }}-${{ inputs.environment || 'dev' }}
   cancel-in-progress: false
 
 permissions:
@@ -49,9 +77,32 @@ permissions:
   id-token: write # OIDC for both AWS assume-role and Azure login
 
 jobs:
-  deploy:
+  # Resolve the target once. On a workflow_run event `inputs.*` is empty, so
+  # every `if: needs.resolve.outputs.cloud == 'azure'` below would be false and the job would
+  # complete green having deployed nothing. Defaults are applied here instead,
+  # and `environment:` can read `needs.*.outputs` where it cannot read `env`.
+  resolve:
     runs-on: ubuntu-latest
-    environment: ${{ inputs.environment }}
+    # Never publish from a failed CI run. A manual dispatch is always allowed;
+    # an automatic one requires Frontend CI to have succeeded, and requires this
+    # project to actually be deploying Azure.
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      (github.event.workflow_run.conclusion == 'success' && vars.DEPLOY_CLOUD == 'azure')
+    outputs:
+      cloud: ${{ steps.pick.outputs.cloud }}
+      environment: ${{ steps.pick.outputs.environment }}
+    steps:
+      - id: pick
+        run: |
+          echo "cloud=${{ inputs.cloud || vars.DEPLOY_CLOUD || 'azure' }}" >> "$GITHUB_OUTPUT"
+          echo "environment=${{ inputs.environment || 'dev' }}" >> "$GITHUB_OUTPUT"
+          echo "Target: ${{ inputs.cloud || vars.DEPLOY_CLOUD || 'azure' }} / ${{ inputs.environment || 'dev' }} (event: ${{ github.event_name }})"
+
+  deploy:
+    needs: resolve
+    runs-on: ubuntu-latest
+    environment: ${{ needs.resolve.outputs.environment }}
     defaults:
       run:
         working-directory: frontend
@@ -70,7 +121,7 @@ jobs:
       # ── Azure: login + resolve infra from Terraform state (before build, so the
       #    SPA can be built against the real Azure API URL) ────────────────────
       - name: Azure — login (OIDC)
-        if: inputs.cloud == 'azure'
+        if: needs.resolve.outputs.cloud == 'azure'
         uses: azure/login@v3
         with:
           client-id: ${{ secrets.AZURE_CLIENT_ID }}
@@ -78,13 +129,13 @@ jobs:
           subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
 
       - name: Azure — setup Terraform
-        if: inputs.cloud == 'azure'
+        if: needs.resolve.outputs.cloud == 'azure'
         uses: hashicorp/setup-terraform@v4
         with:
           terraform_version: "1.7.5"
 
       - name: Azure — read infra outputs
-        if: inputs.cloud == 'azure'
+        if: needs.resolve.outputs.cloud == 'azure'
         id: tf
         working-directory: infrastructure/azure
         env:
@@ -93,7 +144,7 @@ jobs:
           ARM_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
           ARM_SUBSCRIPTION_ID: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
         run: |
-          terraform init -backend-config=environments/${{ inputs.environment }}.backend.hcl
+          terraform init -backend-config=environments/${{ needs.resolve.outputs.environment }}.backend.hcl
           SA=$(terraform output -raw frontend_storage_account)
           RG=$(terraform output -raw resource_group)
           {
@@ -123,7 +174,7 @@ jobs:
           echo "::add-mask::$KEY"
           echo "storage_key=$KEY" >> "$GITHUB_OUTPUT"
 
-      - name: Build (${{ inputs.cloud }} / ${{ inputs.environment }})
+      - name: Build (${{ needs.resolve.outputs.cloud }} / ${{ needs.resolve.outputs.environment }})
         run: npm run build
         env:
           # Azure: the Front Door URL (same-origin API via /v1/*); AWS: the secret.
@@ -139,38 +190,38 @@ jobs:
           # Entra group-id → canonical role mapping (SPA mirrors the backend mapper).
           VITE_ENTRA_PLATFORM_ADMIN_GROUP_ID: ${{ steps.tf.outputs.entra_platform_admin_group_id || secrets.VITE_ENTRA_PLATFORM_ADMIN_GROUP_ID }}
           VITE_ENTRA_GROUP_ID_MAP: ${{ steps.tf.outputs.entra_group_id_map || secrets.VITE_ENTRA_GROUP_ID_MAP }}
-          VITE_ENVIRONMENT: ${{ inputs.environment }}
+          VITE_ENVIRONMENT: ${{ needs.resolve.outputs.environment }}
 
       # ----------------------------------------------------------------- AWS
       - name: AWS — configure credentials (OIDC)
-        if: inputs.cloud == 'aws'
+        if: needs.resolve.outputs.cloud == 'aws'
         uses: aws-actions/configure-aws-credentials@v6
         with:
           role-to-assume: ${{ secrets.FRONTEND_DEPLOY_ROLE_ARN }}
           aws-region: eu-west-1
 
       - name: AWS — sync hashed assets (immutable)
-        if: inputs.cloud == 'aws'
+        if: needs.resolve.outputs.cloud == 'aws'
         run: |
           aws s3 sync dist/ s3://${{ secrets.FRONTEND_S3_BUCKET }} \
             --delete --exclude "index.html" \
             --cache-control "max-age=31536000,immutable" --metadata-directive REPLACE
 
       - name: AWS — upload index.html (no-cache)
-        if: inputs.cloud == 'aws'
+        if: needs.resolve.outputs.cloud == 'aws'
         run: |
           aws s3 cp dist/index.html s3://${{ secrets.FRONTEND_S3_BUCKET }}/index.html \
             --cache-control "no-cache,no-store,must-revalidate" --metadata-directive REPLACE
 
       - name: AWS — invalidate CloudFront /index.html
-        if: inputs.cloud == 'aws'
+        if: needs.resolve.outputs.cloud == 'aws'
         run: |
           aws cloudfront create-invalidation \
             --distribution-id ${{ secrets.FRONTEND_CLOUDFRONT_ID }} --paths "/index.html"
 
       # --------------------------------------------------------------- Azure
       - name: Azure — upload hashed assets (immutable)
-        if: inputs.cloud == 'azure'
+        if: needs.resolve.outputs.cloud == 'azure'
         run: |
           az storage blob upload-batch \
             --account-name "${{ steps.tf.outputs.storage_account }}" \
@@ -179,7 +230,7 @@ jobs:
             --content-cache 'public, max-age=31536000, immutable' --overwrite
 
       - name: Azure — upload index.html (no-cache)
-        if: inputs.cloud == 'azure'
+        if: needs.resolve.outputs.cloud == 'azure'
         run: |
           az storage blob upload \
             --account-name "${{ steps.tf.outputs.storage_account }}" \
@@ -188,7 +239,7 @@ jobs:
             --content-cache 'no-cache, no-store, must-revalidate' --overwrite
 
       - name: Azure — purge Front Door
-        if: inputs.cloud == 'azure'
+        if: needs.resolve.outputs.cloud == 'azure'
         run: |
           az afd endpoint purge \
             --resource-group "${{ steps.tf.outputs.rg }}" \
@@ -197,4 +248,4 @@ jobs:
             --content-paths '/*'
 
       - name: Summary
-        run: echo "✅ Frontend deployed to ${{ inputs.cloud }} (${{ inputs.environment }}) — commit ${{ github.sha }}"
+        run: echo "✅ Frontend deployed to ${{ needs.resolve.outputs.cloud }} (${{ needs.resolve.outputs.environment }}) — commit ${{ github.sha }}"
