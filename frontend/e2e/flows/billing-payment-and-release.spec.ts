@@ -66,11 +66,25 @@ test.describe('billing payment and release note', () => {
     await dialog.getByRole('button', { name: /confirm payment/i }).click()
 
     await expect(dialog).not.toBeVisible({ timeout: 10_000 })
+
     // The page must reflect the new amount, not silently keep showing stale
     // data (a real regression class: a write succeeding but the detail view
     // not refetching).
-    const outstandingAfter = await outstandingCard.textContent()
-    expect(outstandingAfter).not.toBe(outstandingBefore)
+    //
+    // A RETRYING assertion, not `textContent()` + `not.toBe()`. This test was
+    // intermittently flaky and that was the cause: `textContent()` waits for
+    // the element to be ATTACHED but does not retry the VALUE, and the
+    // Outstanding card is attached the whole time — showing the old figure. So
+    // the read could land in the window between the dialog closing and the
+    // invalidated query committing its refetch to the DOM, and compare the
+    // stale value against itself.
+    //
+    // Third member of a family already fixed twice: `isVisible()` (7.153) and
+    // `count()` (7.160). The lesson that generalises is not "this helper is
+    // one-shot" but "assert with `expect(locator)`, which retries, rather than
+    // reading a value into a variable and asserting on the variable".
+    expect(outstandingBefore, 'Outstanding card had no text to compare against').toBeTruthy()
+    await expect(outstandingCard).not.toHaveText(outstandingBefore!, { timeout: 10_000 })
   })
 
   test('generating a release note with real carton tags succeeds, then pickup can be recorded', async ({ page }) => {

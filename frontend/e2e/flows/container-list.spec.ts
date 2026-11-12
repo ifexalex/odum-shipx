@@ -10,7 +10,7 @@
  * Requires seeded containers (make stack / make seed / seed_stress.py).
  */
 import { expect, test } from '@playwright/test'
-import { clickFilterAndSettle, dataRows, goToViaNav, settleNetwork, switchRole } from '../support/roleSwitch'
+import { clickFilterAndSettle, dataRows, hasRows, settleNetwork, switchRole } from '../support/roleSwitch'
 
 test.describe('container list', () => {
   test.beforeEach(async ({ page }) => {
@@ -20,8 +20,11 @@ test.describe('container list', () => {
   })
 
   test('search narrows the table to matching rows', async ({ page }) => {
-    const rowCount = await dataRows(page).count()
-    test.skip(rowCount === 0, 'No containers seeded')
+    // hasRows(), not count(): a one-shot count taken right after navigation
+    // turns "the table has not rendered yet" into "there is no data", and the
+    // test reports as skipped having never run. 7.160 converted fifteen of
+    // these; this file was not among the ten it touched, so two survived here.
+    test.skip(!(await hasRows(dataRows(page))), 'No containers seeded')
 
     const firstNumber = await dataRows(page).first().locator('td').first().textContent()
     test.skip(!firstNumber?.trim(), 'Could not read a container number to search for')
@@ -29,8 +32,9 @@ test.describe('container list', () => {
     await page.getByPlaceholder(/container number, vessel name, voyage/i).fill(firstNumber!.trim())
     await settleNetwork(page)
 
-    const visibleRows = await dataRows(page).count()
-    expect(visibleRows).toBeGreaterThan(0)
+    // Retrying assertion rather than a counted-then-asserted variable: the
+    // search refetch may not have committed when the count is taken.
+    await expect(dataRows(page)).not.toHaveCount(0)
     await expect(page.locator('table tbody')).toContainText(firstNumber!.trim())
   })
 

@@ -2158,3 +2158,75 @@ applied to the second test and not the first.
 The guard stays. It now means what it says: the **container** is missing, so
 `manifest-import` genuinely did not run.
 
+## The `billing-payment-and-release` flake: a third one-shot read (2026-11-11)
+
+`billing-payment-and-release.spec.ts:42` ("recording a payment reduces the
+outstanding balance") failed intermittently — once as a hard failure on
+2026-11-09, then as `1 flaky` (failed, passed on retry) on 2026-11-10.
+
+### Cause
+
+```ts
+const outstandingAfter = await outstandingCard.textContent()
+expect(outstandingAfter).not.toBe(outstandingBefore)
+```
+
+`locator.textContent()` waits for the element to be **attached**, but does not
+retry the **value**. The Outstanding card is attached the entire time, showing
+the old figure — so the read could land in the window between the dialog closing
+and the invalidated query committing its refetch, and compare the stale value
+against itself.
+
+Now a retrying assertion:
+
+```ts
+await expect(outstandingCard).not.toHaveText(outstandingBefore!, { timeout: 10_000 })
+```
+
+### The rule this should have produced two fixes ago
+
+This is the **third** member of one family:
+
+| fixed in | one-shot call |
+|---|---|
+| 7.153 | `isVisible()` |
+| 7.160 | `count()` |
+| 7.169 | `textContent()` |
+
+Each time the lesson was recorded as "that particular helper does not retry",
+which is why a third instance survived. The rule that actually generalises:
+
+> **Assert with `expect(locator)`, which retries. Do not read a value into a
+> variable and assert on the variable.**
+
+`expect(locator).toHaveText / toHaveCount / toBeVisible` poll until the timeout.
+`await locator.textContent()` / `.count()` / `.isVisible()` sample once, and any
+assertion built on the sample inherits that.
+
+### Two more `count()` instances, in a file 7.160 missed
+
+`container-list.spec.ts` still had two — one in a `test.skip` guard, one in an
+assertion. 7.160 converted fifteen call sites across ten files; this file was not
+among them, so the sweep was incomplete and reported as complete.
+
+A pre-existing unused import (`goToViaNav`) was removed from the same file. It
+had survived because **`e2e/**` is in eslint's `ignores`**, so dead code there is
+never reported — worth revisiting whether that ignore still earns its place.
+
+### Verification
+
+| run | state | result |
+|---|---|---|
+| 1 | fresh `reset_db` + `seed` — the condition CI uses | **101 passed, 0 skipped, 0 flaky** |
+| 2 | run 1's mutated state | 95 passed, 6 skipped |
+| 3 | run 2's mutated state | 95 passed, 6 skipped — identical |
+
+All 6 skips on a dirty stack are the documented "already consumed by a previous
+run" guards (release note generated, pickup recorded, drafts submitted, container
+Sealed, note split) — verified by name, not assumed. `0 flaky` in all three.
+
+**What this does not claim.** The flake was never reproduced locally; it appeared
+twice in CI. The evidence here is a correct structural fix for a defect visible
+in the code — `expect(locator)` polls, so the stale-read window no longer exists
+— which is weaker than a reproduction, and is stated as such.
+
