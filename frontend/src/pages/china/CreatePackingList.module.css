@@ -609,3 +609,42 @@
   padding: 1px 5px;
   border-radius: 4px;
 }
+
+/* ── Bulk quantity ───────────────────────────────────────────────────────── */
+
+/* The "identical" affirmation sits directly above its quantity input so the
+   two read as one control: you cannot reach the number without passing the
+   assertion. */
+.qtyConfirm {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  margin-bottom: 4px;
+  font-size: var(--font-size-xs);
+  color: var(--color-text-secondary);
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.qtyConfirm input {
+  cursor: pointer;
+}
+
+/* A quantity line explains itself on the row beneath. Deliberately quiet —
+   it is a confirmation of what was typed, not a warning. */
+.qtyPreviewRow td {
+  padding-top: 0;
+  border-top: none;
+}
+
+.qtyPreview {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 2px 8px;
+  border-radius: var(--radius-sm);
+  background: var(--color-surface-subtle);
+  color: var(--color-text-secondary);
+  font-size: var(--font-size-xs);
+}

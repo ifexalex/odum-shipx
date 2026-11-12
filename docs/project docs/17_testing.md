@@ -2230,3 +2230,35 @@ twice in CI. The evidence here is a correct structural fix for a defect visible
 in the code — `expect(locator)` polls, so the stale-read window no longer exists
 — which is weaker than a reproduction, and is stated as such.
 
+## Bulk-quantity entry (2026-11-12)
+
+**Backend** — `tests/unit/test_packing_list.py`, 17 new cases in two classes.
+`TestBulkQuantityExpansion` pins the correctness properties rather than the
+mechanics:
+
+- a quantity expands into that many rows
+- every row gets its **own** carton tag (a shared tag would break release notes)
+- CBM is **per package**, so `SUM(cbm)` bills every one — the reason for
+  expanding at all
+- the **minimum-CBM floor applies per package**, matching hand entry; a bulk row
+  would have floored the line once
+- `quantity` on the row is **left alone**, so `SUM(COALESCE(quantity, 1))`
+  package counts read 100 and not 10,000
+- batch refs: shared within a line, distinct between lines, absent for a single
+  package, and preserved across an edit
+- tag sequence is unbroken across mixed bulk and single lines
+
+`TestBulkQuantitySafeguard` covers the model-level gate: `quantity > 1` without
+`identical_confirmed` raises; the cap and its boundary; zero and negative; and
+that ticking the box alone changes nothing.
+
+**Frontend** — 6 cases in `CreatePackingList.test.tsx`: the input stays disabled
+until affirmed, unticking resets the value, the preview states the CBM, the cap
+clamps, saving a large quantity asks and can be cancelled without writing, and a
+single-package list saves without interruption.
+
+**Against a real database** — verified through the running API, not only in
+unit tests: `quantity: 100` produced 100 rows with 100 unique tags
+(`ACM-ACME002001-001 … -100`), one shared `batch_ref`, `quantity` left at 1, in
+168 ms; `quantity: 500` in 229 ms; 501 and unconfirmed quantities both rejected
+with 422; and a mixed list kept one unbroken tag sequence.

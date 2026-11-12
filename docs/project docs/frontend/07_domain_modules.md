@@ -1452,3 +1452,42 @@ been filling a free-text "container id or number" field that this page **stopped
 having on 2026-09-06**, when step 1 became a dropdown of the customer's *arrived*
 shipments (mirroring `_PRE_ARRIVAL_STATUSES` server-side). The spec was never
 updated and had been timing out on a field that no longer existed.
+
+## Packing list — bulk quantity entry (2026-11-12)
+
+`CreatePackingList.tsx` gains a **Qty** column with a three-part safeguard. The
+risk being designed against is not a typo — a typo looks wrong — but an
+*oversight*: 100 cartons recorded at one carton's weight because they were
+nearly identical.
+
+1. **The quantity input is disabled** until an "identical" checkbox on the same
+   cell is ticked, so the number cannot be reached without passing the
+   assertion. Unticking resets the quantity to 1, so a stale 100 cannot be saved
+   by clearing the box and missing the input.
+2. **The line states what it will create** on a row beneath it — count, total
+   CBM, total weight. "500" in a narrow input looks much like "50"; the CBM it
+   implies does not.
+3. **Saving asks** when any line is ≥ `BULK_CONFIRM_THRESHOLD` (25), restating
+   the package count, CBM and weight. Only above the threshold: prompting on
+   every "2" would train people to dismiss it, which is worse than not asking.
+
+The server enforces the same rule, so the form is a prompt rather than the
+protection.
+
+**The totals multiply by quantity** — package count, weights, CBM, declared
+value, and therefore the live shipping price. They are the real safeguard, and
+had they been left per-row they would have quietly understated every bulk line.
+
+**Editing.** The API returns a bulk line already expanded — one row per package
+— so the form shows them individually with `quantity` at 1; re-expanding would
+duplicate the cargo. `batch_ref` is carried through the load so the grouping
+survives a save, and the row's remove button removes **the whole batch** when
+the row belongs to one, with the count in its label and tooltip.
+
+### A bug the tests caught
+
+`clampQuantity` first coerced an emptied field to 1, so clearing the box left a
+"1" behind and typing "40" produced **140**. It now allows a transiently empty
+value (`undefined`, which reads as one package everywhere). Worth recording
+because it would have been a daily irritation for the people this feature is
+meant to help.

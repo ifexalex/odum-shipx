@@ -195,3 +195,25 @@ class PaginationMeta(BaseModel):
 - [x] Monetary fields use `Decimal` with `ge=0` where appropriate
 - [x] All response models have `model_config = ConfigDict(from_attributes=True)` for ORM compatibility
 - [x] Carton tag and tracking code format patterns are validated via regex where used as input
+
+## `PackingListItemInput` — bulk quantity (2026-11-12)
+
+```python
+MAX_ITEM_QUANTITY = 500
+
+quantity: int = Field(default=1, ge=1, le=MAX_ITEM_QUANTITY)
+identical_confirmed: bool = False
+batch_ref: str | None = None
+```
+
+A `model_validator` raises when `quantity > 1` and `identical_confirmed` is
+false. Deliberately a hard error rather than a silent clamp to 1 — quietly
+dropping 99 cartons would be far worse than refusing the request.
+
+The cap is a guard against a slip (a leant-on key), not a business rule. Raise it
+if a tenant genuinely ships more than 500 identical packages in one batch; the
+only cost is a larger single insert.
+
+See `08_api_packing_list.md` for why the quantity is expanded into rows rather
+than stored on one, which is a billing-correctness matter rather than a
+stylistic one.

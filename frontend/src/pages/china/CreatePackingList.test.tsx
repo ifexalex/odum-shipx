@@ -2,7 +2,7 @@ import { render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { MemoryRouter, Route, Routes } from 'react-router-dom'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-import { packingListApi, type PackingList } from '../../api/packingList'
+import { MAX_ITEM_QUANTITY, packingListApi, type PackingList } from '../../api/packingList'
 import { containersApi, type Container } from '../../api/tracking'
 import { configApi, customersApi, type Customer } from '../../api/tenantManagement'
 import { warehousesApi } from '../../api/warehouses'
@@ -460,3 +460,101 @@ describe('CreatePackingList', () => {
     expect(screen.getByLabelText('Arrival warehouse')).toBeInTheDocument()
   })
 })
+
+describe('CreatePackingList — bulk quantity', () => {
+  beforeEach(() => {
+    vi.mocked(packingListApi.create).mockReset()
+    vi.mocked(packingListApi.submit).mockReset()
+    vi.mocked(customersApi.list).mockReset()
+    vi.mocked(containersApi.list).mockReset()
+    vi.mocked(customersApi.list).mockResolvedValue({
+      data: [customerStub],
+      meta: { pagination: { has_more: false, next_cursor: null, total_count: 1 } },
+    })
+    vi.mocked(containersApi.list).mockResolvedValue({
+      data: [containerStub],
+      meta: { pagination: { has_more: false, next_cursor: null, total_count: 1 } },
+    })
+  })
+
+  async function reachItemsStep(): Promise<void> {
+    renderPage()
+    await completeStep1()
+  }
+
+  it('leaves the quantity input disabled until "identical" is affirmed', async () => {
+    await reachItemsStep()
+
+    const qty = screen.getByRole('spinbutton', { name: /item 1: quantity/i })
+    expect(qty).toBeDisabled()
+
+    await userEvent.click(screen.getByRole('checkbox', { name: /item 1: all packages identical/i }))
+    expect(qty).toBeEnabled()
+  })
+
+  it('resets a quantity back to one when the affirmation is withdrawn', async () => {
+    // Otherwise a stale 100 could be saved by unticking the box and not
+    // noticing the number left behind.
+    await reachItemsStep()
+    const confirm = screen.getByRole('checkbox', { name: /item 1: all packages identical/i })
+    const qty = screen.getByRole('spinbutton', { name: /item 1: quantity/i })
+
+    await userEvent.click(confirm)
+    await userEvent.clear(qty)
+    await userEvent.type(qty, '40')
+    expect(qty).toHaveValue(40)
+
+    await userEvent.click(confirm)
+    expect(qty).toHaveValue(1)
+  })
+
+  it('shows what a quantity line will create, in CBM as well as count', async () => {
+    await reachItemsStep()
+    await userEvent.click(screen.getByRole('checkbox', { name: /item 1: all packages identical/i }))
+    const qty = screen.getByRole('spinbutton', { name: /item 1: quantity/i })
+    await userEvent.clear(qty)
+    await userEvent.type(qty, '10')
+
+    // The count alone is weak evidence; the CBM is what the staffer is really
+    // being asked to sanity-check, because it drives billing.
+    expect(await screen.findByText(/Creates 10 cartons/i)).toBeInTheDocument()
+  })
+
+  it('clamps a quantity above the cap rather than letting the API refuse it', async () => {
+    await reachItemsStep()
+    await userEvent.click(screen.getByRole('checkbox', { name: /item 1: all packages identical/i }))
+    const qty = screen.getByRole('spinbutton', { name: /item 1: quantity/i })
+    await userEvent.clear(qty)
+    await userEvent.type(qty, '9999')
+
+    expect(qty).toHaveValue(MAX_ITEM_QUANTITY)
+  })
+
+  it('asks for confirmation before saving a large quantity, and can be cancelled', async () => {
+    await reachItemsStep()
+    await userEvent.click(screen.getByRole('checkbox', { name: /item 1: all packages identical/i }))
+    const qty = screen.getByRole('spinbutton', { name: /item 1: quantity/i })
+    await userEvent.clear(qty)
+    await userEvent.type(qty, '100')
+    await userEvent.type(screen.getAllByRole('textbox')[1] ?? document.body, 'Shoes')
+
+    await userEvent.click(screen.getByRole('button', { name: /save draft/i }))
+
+    expect(await screen.findByText(/Create 100 packages\?/i)).toBeInTheDocument()
+    // Cancelling must not write anything.
+    await userEvent.click(screen.getByRole('button', { name: /go back/i }))
+    expect(packingListApi.create).not.toHaveBeenCalled()
+  })
+
+  it('does not interrupt a save when every line is a single package', async () => {
+    vi.mocked(packingListApi.create).mockResolvedValue({ id: 'pl1' } as PackingList)
+    await reachItemsStep()
+    await userEvent.type(screen.getAllByRole('textbox')[1] ?? document.body, 'One carton')
+
+    await userEvent.click(screen.getByRole('button', { name: /save draft/i }))
+
+    await waitFor(() => expect(packingListApi.create).toHaveBeenCalled())
+    expect(screen.queryByText(/packages\?$/i)).not.toBeInTheDocument()
+  })
+})
+

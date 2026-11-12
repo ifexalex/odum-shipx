@@ -6,6 +6,7 @@ event publishing, and audit logging.
 
 import json
 import logging
+import uuid
 from datetime import date, datetime
 from decimal import Decimal
 from typing import Any
@@ -172,27 +173,47 @@ def _build_item_rows(
         # floor. Applied to the stored cbm, so totals + billing use it too.
         cbm = apply_min_cbm(_compute_cbm(item.length_cm, item.width_cm, item.height_cm), min_cbm)
         package_unit = getattr(item, "package_unit", None)
-        carton_tag = f"{tenant_short}-{container_number}-{seq:03d}"
 
-        rows.append(
-            {
-                "packing_list_id": pl_id,
-                "description": item.description,
-                "weight_dispatch_kg": float(item.weight_dispatch_kg) if item.weight_dispatch_kg is not None else None,
-                "weight_actual_kg": float(item.weight_actual_kg) if item.weight_actual_kg is not None else None,
-                "carton_tag": carton_tag,
-                "tracking_code": tracking_code,
-                "cbm": float(cbm),
-                "length_cm": float(item.length_cm) if item.length_cm is not None else None,
-                "width_cm": float(item.width_cm) if item.width_cm is not None else None,
-                "height_cm": float(item.height_cm) if item.height_cm is not None else None,
-                "received_date": item_date,
-                "declared_value_usd": float(item.declared_value_usd) if item.declared_value_usd is not None else None,
-                "package_unit": (package_unit or "carton"),
-                "bale_type": _bale_type_for(package_unit, cbm),
-            }
-        )
-        seq += 1
+        # One input line can stand for several identical packages. Expand it
+        # into that many rows rather than storing `quantity = N` on one row:
+        # every consumer of CBM (billing, manifest totals, tracking,
+        # payment_release) does a plain SUM(pli.cbm) with no quantity factor, so
+        # a single row holding a per-package CBM would bill N packages as one.
+        # Expanded rows are indistinguishable from hand-keyed ones, which is
+        # precisely why nothing downstream needs to know about this feature.
+        quantity = max(1, int(getattr(item, "quantity", 1) or 1))
+
+        # Shared by the whole group so it can be shown together and removed in
+        # one action. Preserved when editing a list that already has a batch;
+        # generated when a new one is expanded. A single package gets whatever
+        # it already had (normally None) — it is not a batch.
+        batch_ref = getattr(item, "batch_ref", None)
+        if quantity > 1 and not batch_ref:
+            batch_ref = str(uuid.uuid4())
+
+        for _ in range(quantity):
+            rows.append(
+                {
+                    "packing_list_id": pl_id,
+                    "description": item.description,
+                    "weight_dispatch_kg": (float(item.weight_dispatch_kg) if item.weight_dispatch_kg is not None else None),
+                    "weight_actual_kg": float(item.weight_actual_kg) if item.weight_actual_kg is not None else None,
+                    # Each package gets its own tag; `seq` keeps running, so the
+                    # tags are the same unbroken sequence as hand entry.
+                    "carton_tag": f"{tenant_short}-{container_number}-{seq:03d}",
+                    "tracking_code": tracking_code,
+                    "cbm": float(cbm),
+                    "length_cm": float(item.length_cm) if item.length_cm is not None else None,
+                    "width_cm": float(item.width_cm) if item.width_cm is not None else None,
+                    "height_cm": float(item.height_cm) if item.height_cm is not None else None,
+                    "received_date": item_date,
+                    "declared_value_usd": (float(item.declared_value_usd) if item.declared_value_usd is not None else None),
+                    "package_unit": (package_unit or "carton"),
+                    "bale_type": _bale_type_for(package_unit, cbm),
+                    "batch_ref": batch_ref,
+                }
+            )
+            seq += 1
 
     return rows
 
