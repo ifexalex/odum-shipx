@@ -538,7 +538,7 @@ describe('CreatePackingList — bulk quantity', () => {
     await userEvent.type(qty, '100')
     await userEvent.type(screen.getAllByPlaceholderText('e.g. Electronics (mixed)')[0]!, 'Shoes')
 
-    await userEvent.click(screen.getByRole('button', { name: /save (as )?draft/i }))
+    await userEvent.click(screen.getByRole('button', { name: /save draft/i }))
 
     expect(await screen.findByText(/Create 100 packages\?/i)).toBeInTheDocument()
     // Cancelling must not write anything.
@@ -551,7 +551,7 @@ describe('CreatePackingList — bulk quantity', () => {
     await reachItemsStep()
     await userEvent.type(screen.getAllByPlaceholderText('e.g. Electronics (mixed)')[0]!, 'One carton')
 
-    await userEvent.click(screen.getByRole('button', { name: /save (as )?draft/i }))
+    await userEvent.click(screen.getByRole('button', { name: /save draft/i }))
 
     await waitFor(() => expect(packingListApi.create).toHaveBeenCalled())
     expect(screen.queryByText(/packages\?$/i)).not.toBeInTheDocument()
@@ -718,7 +718,7 @@ describe('CreatePackingList — saving twice must not make two lists', () => {
 
   async function fillAndSave(): Promise<void> {
     await userEvent.type(screen.getAllByPlaceholderText('e.g. Electronics (mixed)')[0]!, 'Widget')
-    await userEvent.click(screen.getByRole('button', { name: /save (as )?draft/i }))
+    await userEvent.click(screen.getByRole('button', { name: /save draft/i }))
   }
 
   it('creates on the first save and UPDATES on the second', async () => {
@@ -733,7 +733,7 @@ describe('CreatePackingList — saving twice must not make two lists', () => {
     await fillAndSave()
     await waitFor(() => expect(packingListApi.create).toHaveBeenCalledTimes(1))
 
-    await userEvent.click(screen.getByRole('button', { name: /save (as )?draft/i }))
+    await userEvent.click(screen.getByRole('button', { name: /save draft/i }))
 
     await waitFor(() => expect(packingListApi.update).toHaveBeenCalledTimes(1))
     expect(packingListApi.create).toHaveBeenCalledTimes(1)
@@ -755,7 +755,7 @@ describe('CreatePackingList — saving twice must not make two lists', () => {
     await userEvent.click(await screen.findByRole('button', { name: /submit for approval/i }))
     await waitFor(() => expect(packingListApi.create).toHaveBeenCalledTimes(1))
 
-    await userEvent.click(screen.getByRole('button', { name: /save (as )?draft/i }))
+    await userEvent.click(screen.getByRole('button', { name: /save draft/i }))
 
     await waitFor(() => expect(packingListApi.update).toHaveBeenCalled())
     expect(packingListApi.create).toHaveBeenCalledTimes(1)

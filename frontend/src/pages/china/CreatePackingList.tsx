@@ -1203,7 +1203,7 @@ export function CreatePackingList(): JSX.Element {
             </Button>
             <div className={styles.actionsGroup}>
               <Button variant="secondary" loading={submitting} onClick={() => void requestSave(false)}>
-                Save as draft
+                Save draft
               </Button>
               <Button variant="accent" icon="check" loading={submitting} onClick={() => void requestSave(true)}>
                 Submit for approval

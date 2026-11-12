@@ -1615,6 +1615,9 @@ the idempotency key that guarded that create, immediately after it had been
 used — leaving nothing to protect a double submit. The page creates at most one
 list and then edits it, so the key never needs replacing.
 
-**Noted, not changed:** step 2's button says "Save draft" and step 3's says
-"Save as draft" for the identical action.
+**Harmonised:** step 2's button said "Save draft" and step 3's "Save as draft"
+for the identical action. Both are now **"Save draft"** — the imperative form
+matching the surrounding buttons ("Submit for approval", "Create packing
+list"), and still unambiguous on step 3 where it sits beside Submit. The test
+matcher was tightened back to the exact string once there was only one.
 
