@@ -189,9 +189,9 @@ class PaginationMeta(BaseModel):
 
 ## Acceptance Criteria
 
-- [ ] All enums match exactly the CHECK constraints in the database DDL
-- [ ] All request models have proper Pydantic validators (e.g., positive numbers, non-empty strings)
-- [ ] CBM auto-calculation: `(length_cm * width_cm * height_cm) / 1_000_000` in PackingListItemInput
-- [ ] Monetary fields use `Decimal` with `ge=0` where appropriate
-- [ ] All response models have `model_config = ConfigDict(from_attributes=True)` for ORM compatibility
-- [ ] Carton tag and tracking code format patterns are validated via regex where used as input
+- [x] All enums match exactly the CHECK constraints in the database DDL
+- [x] All request models have proper Pydantic validators (e.g., positive numbers, non-empty strings)
+- [x] CBM auto-calculation in `PackingListItemInput` (`services/packing_list/models.py`) — note it divides by `Decimal("1000000")`, not the literal `1_000_000`, so a grep for the underscored form finds nothing (verified 2026-11-11).
+- [x] Monetary fields use `Decimal` with `ge=0` where appropriate
+- [x] All response models have `model_config = ConfigDict(from_attributes=True)` for ORM compatibility
+- [x] Carton tag and tracking code format patterns are validated via regex where used as input

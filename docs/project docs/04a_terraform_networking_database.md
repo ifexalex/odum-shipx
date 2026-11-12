@@ -142,15 +142,15 @@ Module: `infrastructure/aws/modules/elasticache/`
 
 ## Acceptance Criteria
 
-- [ ] VPC has DNS hostnames enabled
-- [ ] Private subnets span 2 AZs
-- [ ] Aurora Serverless v2 with PostgreSQL 15.4, encrypted at rest
-- [ ] RDS Proxy configured with connection pooling at 80%
-- [ ] VPC Endpoints created for S3, SQS, EventBridge, SES, Secrets Manager
-- [ ] Security groups follow least-privilege (Lambda → Aurora only on 5432)
-- [ ] DB password stored in Secrets Manager (not hardcoded)
-- [ ] Outputs exported for use by other modules
-- [ ] `terraform plan` succeeds with no errors
+- [x] VPC has DNS hostnames enabled
+- [x] Private subnets span 2 AZs
+- [x] Aurora Serverless v2 with PostgreSQL 15.4, encrypted at rest
+- [x] RDS Proxy configured with connection pooling at 80%
+- [x] VPC Endpoints created for S3, SQS, EventBridge, SES, Secrets Manager
+- [x] Security groups follow least-privilege (Lambda → Aurora only on 5432)
+- [x] DB password stored in Secrets Manager (not hardcoded)
+- [x] Outputs exported for use by other modules
+- [ ] `terraform plan` succeeds with no errors — **`terraform validate` passes (audited 2026-11-11); a real `plan` needs AWS credentials this environment does not have, so the stronger claim is unverified.** Same caveat as `04c_terraform_api_gateway.md`.
 - [x] ElastiCache Redis `cache.t4g.micro` in private subnets — tenant status distributed cache
 - [x] Lambda SG egress rule added for port 6379 to ElastiCache SG
 
