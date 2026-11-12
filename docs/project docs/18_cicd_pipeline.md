@@ -1276,3 +1276,43 @@ for and staging is not set up. Silently skipping a requested deploy would be
 worse than failing it. The plan job differs precisely because nobody asked for
 it.
 
+## Coverage upload had never worked, silently (2026-11-11)
+
+Investigating Dependabot #5 (`codecov/codecov-action` v3 → v7) showed the version
+was never the problem. Every CI run on `main` logged:
+
+```
+['info'] -> No token specified or token is empty
+['error'] There was an error running the uploader: 429 -
+         {"message":"Rate limit reached. Please upload with the Codecov
+          repository upload token to resolve issue."}
+['info'] Codecov will exit with status code 0.
+```
+
+This repository is **private**, and Codecov requires an upload token for private
+repos. None was configured — `CODECOV_TOKEN` appears nowhere in `.github/`. And
+`fail_ci_if_error: false` turned the failure into a green step, so nothing ever
+surfaced it.
+
+**The bump alone would not have fixed it.** codecov-action **v4+ makes the token
+mandatory**, so v7 without a token fails too — just with a different message.
+
+### What changed
+
+- the step is **skipped** when `CODECOV_TOKEN` is unset, so it stops pretending
+  to do something
+- it passes the token and uses `@v7` when one is set — no further change needed
+  once the secret is added
+- `fail_ci_if_error: false` stays, deliberately: coverage reporting being down
+  should not fail everyone's build
+
+`CODECOV_TOKEN` is set at **job** level because a step cannot read its own `env:`
+in its own `if`, and the `secrets` context is not dependable there.
+
+### To actually get coverage reporting
+
+Add `CODECOV_TOKEN` as a repository secret (Codecov → repo settings → upload
+token). Until then the step skips, which is the honest state: **there is no
+coverage data in Codecov for this project and there never has been**, so any
+coverage figure quoted from it would be wrong.
+
