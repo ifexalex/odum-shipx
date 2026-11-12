@@ -1082,6 +1082,23 @@ export function CreatePackingList(): JSX.Element {
                         <div className={styles.previewMetaValue}>{selectedContainer.vessel_name}{selectedContainer.voyage_number ? ` · Voy ${selectedContainer.voyage_number}` : ''}</div>
                       )}
                     </div>
+                    {/* Both dates are entered on step 1 and appeared on no
+                        preview, so the screen used to verify a list before
+                        submitting could not show when it loads or lands. */}
+                    <div>
+                      <div className={styles.previewMetaLabel}>Loading date</div>
+                      <div className={styles.previewMetaValue}>{loadingDate || '—'}</div>
+                    </div>
+                    <div>
+                      <div className={styles.previewMetaLabel}>Delivery date</div>
+                      <div className={styles.previewMetaValue}>{deliveryDate || '—'}</div>
+                    </div>
+                    <div>
+                      <div className={styles.previewMetaLabel}>Arrival warehouse</div>
+                      <div className={styles.previewMetaValue}>
+                        {warehouses.find((w) => w.id === arrivalWarehouseId)?.name ?? '—'}
+                      </div>
+                    </div>
                   </div>
                   {/* Items table */}
                   <div className={styles.previewTableHead}>

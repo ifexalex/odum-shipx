@@ -74,6 +74,23 @@ export function PrintPackingList(): JSX.Element {
           <span className={styles.metaLabel}>Created</span>
           <span className={styles.metaValue}>{pl.created_at.slice(0, 10)}</span>
         </div>
+        {/* Loading and delivery dates are captured on the form and were on no
+            document at all, so the printed list could not answer when the
+            cargo loads or lands — the two dates a customer actually asks
+            about. The arrival warehouse is captured alongside them and was
+            likewise absent. */}
+        <div className={styles.metaRow}>
+          <span className={styles.metaLabel}>Loading date</span>
+          <span className={styles.metaValue}>{pl.loading_date ?? '—'}</span>
+        </div>
+        <div className={styles.metaRow}>
+          <span className={styles.metaLabel}>Delivery date</span>
+          <span className={styles.metaValue}>{pl.delivery_date ?? '—'}</span>
+        </div>
+        <div className={styles.metaRow}>
+          <span className={styles.metaLabel}>Arrival warehouse</span>
+          <span className={styles.metaValue}>{pl.arrival_warehouse_name ?? '—'}</span>
+        </div>
       </div>
 
       <table className={styles.table}>

@@ -1564,3 +1564,14 @@ heading; both now declare the same nine tracks, and a comment says so. Mono
 cells in the printed table are `nowrap` — carton tags and ISO dates were
 breaking mid-token into two ragged lines per row.
 
+### Loading date, delivery date and arrival warehouse on both documents (2026-11-12)
+
+All three are captured on step 1 of the wizard and appeared on **neither** the
+review preview nor the printed document — so the screen used to verify a list
+before submitting, and the document handed to a customer, could not answer when
+the cargo loads, when it lands, or where it is going. Added to both, rendering
+`—` when unset.
+
+They sit in the existing two-column meta grids, which wrap, so no layout change
+was needed; verified by screenshot rather than assumed.
+
