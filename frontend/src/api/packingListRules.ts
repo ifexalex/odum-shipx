@@ -164,3 +164,42 @@ export function dominantPackageUnit(mix: PackageMix | null | undefined): string 
   const units = Object.entries(mix ?? {}).filter(([, count]) => count > 0)
   return units.length === 1 ? units[0]![0] : null
 }
+
+/** How many packages one row stands for.
+ *
+ *  A row has meant "N packages" since migration 040 (the Excel manifest
+ *  import), so a row count is not a package count. Manually expanded bulk
+ *  lines leave `quantity` at 1 because they are already one row per package —
+ *  both cases are handled by the same `?? 1`.
+ */
+export function packagesInRow(item: { quantity?: number | null }): number {
+  const q = item.quantity ?? 1
+  return Number.isFinite(q) && q > 0 ? Math.floor(q) : 1
+}
+
+/** Total packages across rows — NOT `items.length`.
+ *
+ *  The printed packing list counted rows, so an imported manifest line meaning
+ *  50 cartons printed as "Total cartons: 1".
+ */
+export function totalPackages(items: ReadonlyArray<{ quantity?: number | null }>): number {
+  return items.reduce((sum, item) => sum + packagesInRow(item), 0)
+}
+
+/** Build a package mix from line items, so a view can say "100 cartons · 2 bags".
+ *
+ *  Mirrors the server's `_PACKAGE_MIX_LATERAL`, which groups by package_unit
+ *  and sums `COALESCE(quantity, 1)`. Having both means a list reads the same
+ *  on screen, on the printed document, and in the manifest.
+ */
+export function buildPackageMix(
+  items: ReadonlyArray<{ package_unit?: string | null; quantity?: number | null }>,
+): PackageMix {
+  const mix: PackageMix = {}
+  for (const item of items) {
+    const unit = item.package_unit?.trim() || 'unspecified'
+    mix[unit] = (mix[unit] ?? 0) + packagesInRow(item)
+  }
+  return mix
+}
+

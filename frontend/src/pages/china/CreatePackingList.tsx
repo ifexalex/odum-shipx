@@ -1,7 +1,7 @@
 import { Fragment, useEffect, useState, type JSX, type KeyboardEvent as ReactKeyboardEvent } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { ApiError } from '../../api/client'
-import { applyMinCbm, baleSizeAbbr, computeCbm } from '../../api/packingListRules'
+import { applyMinCbm, baleSizeAbbr, buildPackageMix, computeCbm, formatPackageMix } from '../../api/packingListRules'
 import {
   BULK_CONFIRM_THRESHOLD,
   MAX_ITEM_QUANTITY,
@@ -941,7 +941,7 @@ export function CreatePackingList(): JSX.Element {
                 <tfoot>
                   <tr>
                     <td colSpan={3} className={styles.totalsLabel}>
-                      Totals — {totals.cartons} item(s)
+                      Totals — {formatPackageMix(buildPackageMix(items))}
                     </td>
                     <td className={styles.right}>
                       <Mono>{totals.weightDispatch.toFixed(1)} kg</Mono>
@@ -1039,7 +1039,11 @@ export function CreatePackingList(): JSX.Element {
               <SectionHead title="Ready to submit" sub="Review the summary, then submit for approval." />
               <div className={styles.spacerSm} />
               <Banner variant="success" title="All items look valid">
-                {totals.cartons} carton(s) captured · all dimensions present · CBM totals computed.
+                {/* "carton(s)" was hardcoded, so a list of bales or sacks
+                    described itself as cartons on the very screen meant for
+                    checking it. */}
+                {formatPackageMix(buildPackageMix(items))} captured · all dimensions present · CBM totals
+                computed.
               </Banner>
             </Card>
             <div className={styles.spacerSm} />
@@ -1083,7 +1087,13 @@ export function CreatePackingList(): JSX.Element {
                   <div className={styles.previewTableHead}>
                     <span className={styles.previewCol}>Tag</span>
                     <span className={[styles.previewCol, styles.previewColDesc].join(' ')}>Description</span>
-                    <span className={[styles.previewCol, styles.previewColRight].join(' ')}>Wt (kg)</span>
+                    {/* Type and Qty were missing here, so the review step could
+                        not answer "cartons or bales, and how many?" — the two
+                        things a checker most needs before submitting. */}
+                    <span className={styles.previewCol}>Type</span>
+                    <span className={[styles.previewCol, styles.previewColRight].join(' ')}>Qty</span>
+                    <span className={[styles.previewCol, styles.previewColRight].join(' ')}>Wt disp.</span>
+                    <span className={[styles.previewCol, styles.previewColRight].join(' ')}>Wt act.</span>
                     <span className={[styles.previewCol, styles.previewColRight].join(' ')}>L×W×H</span>
                     <span className={[styles.previewCol, styles.previewColRight].join(' ')}>CBM</span>
                     <span className={[styles.previewCol, styles.previewColRight].join(' ')}>USD</span>
@@ -1092,30 +1102,47 @@ export function CreatePackingList(): JSX.Element {
                     const cbm = item.length_cm != null && item.width_cm != null && item.height_cm != null
                       ? computeCbm(item.length_cm, item.width_cm, item.height_cm)
                       : null
+                    const qty = qtyOf(item)
                     return (
                       <div key={i} className={styles.previewRow}>
-                        <span className={[styles.previewCol, styles.previewMono].join(' ')}>—</span>
+                        <span className={[styles.previewCol, styles.previewMono].join(' ')}>
+                          {qty > 1 ? `×${qty}` : '—'}
+                        </span>
                         <span className={[styles.previewCol, styles.previewColDesc].join(' ')}>{item.description || '—'}</span>
-                        <span className={[styles.previewCol, styles.previewColRight, styles.previewMono].join(' ')}>{item.weight_actual_kg ?? '—'}</span>
+                        <span className={styles.previewCol}>{item.package_unit ?? 'carton'}</span>
+                        <span className={[styles.previewCol, styles.previewColRight, styles.previewMono].join(' ')}>{qty}</span>
+                        <span className={[styles.previewCol, styles.previewColRight, styles.previewMono].join(' ')}>
+                          {item.weight_dispatch_kg != null ? (item.weight_dispatch_kg * qty).toFixed(1) : '—'}
+                        </span>
+                        <span className={[styles.previewCol, styles.previewColRight, styles.previewMono].join(' ')}>
+                          {item.weight_actual_kg != null ? (item.weight_actual_kg * qty).toFixed(1) : '—'}
+                        </span>
                         <span className={[styles.previewCol, styles.previewColRight, styles.previewMono].join(' ')}>
                           {item.length_cm != null ? `${item.length_cm}×${item.width_cm}×${item.height_cm}` : '—'}
                         </span>
                         <span className={[styles.previewCol, styles.previewColRight, styles.previewMono, styles.previewCbm].join(' ')}>
-                          {cbm != null ? cbm.toFixed(3) : '—'}
+                          {/* Line total, not per package: the row stands for
+                              `qty` packages and this is the figure that is
+                              billed. */}
+                          {cbm != null ? (applyMinCbm(cbm, minCbm) * qty).toFixed(3) : '—'}
                         </span>
                         <span className={[styles.previewCol, styles.previewColRight, styles.previewMono].join(' ')}>
-                          {item.declared_value_usd != null ? `$${item.declared_value_usd}` : '—'}
+                          {item.declared_value_usd != null ? `$${(item.declared_value_usd * qty).toFixed(0)}` : '—'}
                         </span>
                       </div>
                     )
                   })}
                   {/* Totals */}
                   <div className={styles.previewTotals}>
-                    <span>{totals.cartons} carton(s)</span>
+                    <span>{formatPackageMix(buildPackageMix(items))}</span>
                     <span>·</span>
-                    <span>{totals.weight.toFixed(1)} kg</span>
+                    <span>{totals.weightDispatch.toFixed(1)} kg disp.</span>
+                    <span>·</span>
+                    <span>{totals.weight.toFixed(1)} kg act.</span>
                     <span>·</span>
                     <span className={styles.previewCbm}>{totals.cbm.toFixed(3)} CBM</span>
+                    <span>·</span>
+                    <span>${totals.declaredUsd.toFixed(0)}</span>
                   </div>
                 </div>
               </div>

@@ -1529,3 +1529,38 @@ the moment a checkbox appeared, which is what made the column look misaligned.
 The quantity input is narrower than the measurement inputs and centre-aligned —
 it is a count, not a dimension.
 
+### Review step and printed document now carry the full item detail (2026-11-12)
+
+Reported as *"a lot of information is missing when I preview the packing list …
+quantity, the package type, carton or bag … I want the preview to contain every
+single information"*. Both views were showing a subset.
+
+**Review step (document preview)** gained **Type**, **Qty**, **Wt disp.** and
+**Wt act.** (it showed only one weight), and the money/CBM figures are now line
+totals — `value × quantity` — matching what will actually be created and billed.
+
+**Printed document** (`PrintPackingList.tsx`) gained **Type**, **Qty**,
+**Wt act.** and **Received**, alongside the dispatch weight it already had.
+
+**A counting bug fixed with them.** The printed total was `pl.items.length` —
+a *row* count. A row has meant "N packages" since migration 040, so an imported
+manifest line of 50 cartons printed as **"Total cartons: 1"**. It is now
+`totalPackages()` (summing `quantity`), labelled "Total packages", with a
+**Package mix** line beside it: *"3 cartons · 1 sack"*.
+
+**"carton(s)" was hardcoded** in the review banner and both totals lines, so a
+list of bales or sacks described itself as cartons on the very screen meant for
+checking it. All three now use `formatPackageMix(buildPackageMix(items))`.
+
+New shared helpers in `api/packingListRules.ts` — `packagesInRow`,
+`totalPackages`, `buildPackageMix` — so the form, the review preview and the
+printed document cannot drift apart. `buildPackageMix` deliberately mirrors the
+server's `_PACKAGE_MIX_LATERAL`, which groups by `package_unit` and sums
+`COALESCE(quantity, 1)`.
+
+Layout: the preview document's header and row are **separate CSS grids**, so
+adding columns to one and not the other would shear every value away from its
+heading; both now declare the same nine tracks, and a comment says so. Mono
+cells in the printed table are `nowrap` — carton tags and ISO dates were
+breaking mid-token into two ragged lines per row.
+

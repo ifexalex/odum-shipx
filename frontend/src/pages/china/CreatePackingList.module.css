@@ -533,7 +533,11 @@
 
 .previewTableHead {
   display: grid;
-  grid-template-columns: 60px 1fr 52px 64px 40px 50px;
+  /* Tag · Description · Type · Qty · Wt disp. · Wt act. · L×W×H · CBM · USD.
+     The head and the row MUST hold the same nine tracks — they are separate
+     rules, so adding a column to one and not the other silently shears every
+     value away from its heading. */
+  grid-template-columns: 38px minmax(58px, 1fr) 38px 24px 46px 44px 52px 38px 34px;
   gap: 4px;
   background: var(--color-surface-muted);
   padding: 4px 8px;
@@ -548,7 +552,11 @@
 
 .previewRow {
   display: grid;
-  grid-template-columns: 60px 1fr 52px 64px 40px 50px;
+  /* Tag · Description · Type · Qty · Wt disp. · Wt act. · L×W×H · CBM · USD.
+     The head and the row MUST hold the same nine tracks — they are separate
+     rules, so adding a column to one and not the other silently shears every
+     value away from its heading. */
+  grid-template-columns: 38px minmax(58px, 1fr) 38px 24px 46px 44px 52px 38px 34px;
   gap: 4px;
   padding: 4px 8px;
   border-bottom: 1px solid var(--color-line);

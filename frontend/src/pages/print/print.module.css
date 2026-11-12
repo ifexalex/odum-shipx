@@ -98,6 +98,9 @@
 .mono {
   font-family: var(--font-mono);
   font-size: 11.5px;
+  /* Carton tags and ISO dates are atomic — wrapping them mid-token made the
+     packing list read as two ragged lines per row. */
+  white-space: nowrap;
 }
 
 .totals {

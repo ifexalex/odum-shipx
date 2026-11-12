@@ -536,7 +536,7 @@ describe('CreatePackingList — bulk quantity', () => {
     const qty = screen.getByRole('spinbutton', { name: /item 1: quantity/i })
     await userEvent.clear(qty)
     await userEvent.type(qty, '100')
-    await userEvent.type(screen.getAllByRole('textbox')[1] ?? document.body, 'Shoes')
+    await userEvent.type(screen.getAllByPlaceholderText('e.g. Electronics (mixed)')[0]!, 'Shoes')
 
     await userEvent.click(screen.getByRole('button', { name: /save draft/i }))
 
@@ -549,7 +549,7 @@ describe('CreatePackingList — bulk quantity', () => {
   it('does not interrupt a save when every line is a single package', async () => {
     vi.mocked(packingListApi.create).mockResolvedValue({ id: 'pl1' } as PackingList)
     await reachItemsStep()
-    await userEvent.type(screen.getAllByRole('textbox')[1] ?? document.body, 'One carton')
+    await userEvent.type(screen.getAllByPlaceholderText('e.g. Electronics (mixed)')[0]!, 'One carton')
 
     await userEvent.click(screen.getByRole('button', { name: /save draft/i }))
 
@@ -648,6 +648,56 @@ describe('CreatePackingList — reopening a saved draft', () => {
     await renderEdit(items)
 
     expect(await screen.findByRole('spinbutton', { name: /item 2: quantity/i })).toBeInTheDocument()
+  })
+})
+
+describe('CreatePackingList — review step shows the full item detail', () => {
+  beforeEach(() => {
+    vi.mocked(customersApi.list).mockResolvedValue({
+      data: [customerStub],
+      meta: { pagination: { has_more: false, next_cursor: null, total_count: 1 } },
+    })
+    vi.mocked(containersApi.list).mockResolvedValue({
+      data: [containerStub],
+      meta: { pagination: { has_more: false, next_cursor: null, total_count: 1 } },
+    })
+  })
+
+  async function reachReview(): Promise<void> {
+    renderPage()
+    await completeStep1()
+    await userEvent.type(screen.getAllByPlaceholderText('e.g. Electronics (mixed)')[0]!, 'Ladies shoes')
+    const spin = screen.getAllByRole('spinbutton')
+    // wt disp, wt act, L, W, H
+    for (const [i, v] of [[0, '12'], [1, '12'], [2, '60'], [3, '40'], [4, '40']] as const) {
+      await userEvent.clear(spin[i]!)
+      await userEvent.type(spin[i]!, v)
+    }
+    await userEvent.click(screen.getByRole('checkbox', { name: /item 1: all packages identical/i }))
+    const qty = screen.getByRole('spinbutton', { name: /item 1: quantity/i })
+    await userEvent.clear(qty)
+    await userEvent.type(qty, '100')
+    await userEvent.click(screen.getByText('Next: Review'))
+  }
+
+  it('states the package type and quantity, not just a description', async () => {
+    // Reported as: "a lot of information is missing when I preview the packing
+    // list … quantity, the package type, carton or bag". Both were absent.
+    await reachReview()
+
+    expect(await screen.findByText('Type')).toBeInTheDocument()
+    expect(screen.getByText('Qty')).toBeInTheDocument()
+    expect(screen.getByText('carton')).toBeInTheDocument()
+  })
+
+  it('describes the totals by package type rather than hardcoding "carton"', async () => {
+    // The summary said "N carton(s)" whatever the goods were, so a list of
+    // bales described itself as cartons on the screen meant for checking it.
+    await reachReview()
+
+    // Twice over: the "ready to submit" banner and the document preview's
+    // totals line. Both used to say "carton(s)" regardless of the goods.
+    expect((await screen.findAllByText(/100 cartons/)).length).toBeGreaterThanOrEqual(2)
   })
 })
 
