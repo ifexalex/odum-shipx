@@ -1504,6 +1504,65 @@ def deactivate_user(
     return updated
 
 
+def reactivate_user(
+    tenant_id: str,
+    user_id: str,
+    actor_id: str,
+    ip_address: str | None = None,
+) -> dict[str, Any]:
+    """Bring a deactivated staff user back, in both the directory and the database.
+
+    Deactivation was a one-way door: `deactivate_user` disabled the identity and
+    set `status = 'deactivated'`, and nothing could undo either. `enable_user`
+    had existed on every provider (Cognito, Entra, the base class) since they
+    were written and was never called from anywhere — so the capability was
+    there, just never wired up. A tenant admin who deactivated someone by
+    mistake had no way back from the product.
+
+    The seat limit is re-checked here, and that is the part worth not skipping.
+    Deactivating frees a seat (`count_active_users` counts active rows), so
+    without this a tenant sitting at its tier limit could deactivate one user,
+    reactivate another, and quietly run over the plan — the same ceiling
+    `create_user` enforces, bypassed by a different door.
+
+    Raises:
+        BusinessRuleViolationError: The user is not deactivated.
+        UsageLimitExceededError: The tenant is already at its seat limit.
+    """
+    existing = get_user(tenant_id, user_id)
+    if existing["status"] != "deactivated":
+        # Mirrors deactivate_user's own guard, so the two refuse symmetrically
+        # rather than one erroring and the other silently succeeding.
+        raise BusinessRuleViolationError(f"User is not deactivated (status: {existing['status']})")
+
+    tenant = get_tenant(tenant_id)
+    limit = TIER_USER_LIMITS.get(tenant["subscription_tier"], 10)
+    current_count = repo.count_active_users(tenant_id)
+    if current_count >= limit:
+        raise UsageLimitExceededError("users", current_count, limit)
+
+    cognito = get_identity_provider()
+    if existing.get("email"):
+        cognito.enable_user(existing["email"])
+
+    updated = repo.set_user_status(tenant_id, user_id, "active")
+    if updated is None:
+        raise RuntimeError("set_user_status returned None unexpectedly")
+
+    log_audit(
+        tenant_id=tenant_id,
+        entity_type="tenant_user",
+        entity_id=user_id,
+        action="STATUS_CHANGE",
+        actor_id=actor_id,
+        actor_role="tenant_admin",
+        before_state={"status": "deactivated"},
+        after_state={"status": "active"},
+        ip_address=ip_address,
+    )
+    return updated
+
+
 def resend_user_invite(tenant_id: str, user_id: str) -> None:
     """Resend the Cognito temporary-password email for an existing staff user."""
     user = get_user(tenant_id, user_id)

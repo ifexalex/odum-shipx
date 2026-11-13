@@ -8,6 +8,7 @@ import { render, screen, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { MemoryRouter, Route, Routes } from 'react-router-dom'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { ApiError } from '../../api/client'
 import { withQuery } from '../../test/queryWrapper'
 import { usersApi, type TenantUser } from '../../api/tenantManagement'
 import { SessionContext, type SessionContextValue } from '../../auth/SessionContext'
@@ -18,7 +19,7 @@ vi.mock('../../api/tenantManagement', async (importOriginal) => {
   const original = await importOriginal<typeof import('../../api/tenantManagement')>()
   return {
     ...original,
-    usersApi: { ...original.usersApi, get: vi.fn(), update: vi.fn() },
+    usersApi: { ...original.usersApi, get: vi.fn(), update: vi.fn(), deactivate: vi.fn(), reactivate: vi.fn() },
     configApi: { ...original.configApi, activity: vi.fn().mockResolvedValue({ data: [], meta: { pagination: { has_more: false, next_cursor: null, total_count: 0 } } }) },
   }
 })
@@ -162,5 +163,77 @@ describe('StaffUserDetail — multi-role editing', () => {
     expect(usersApi.update).not.toHaveBeenCalled()
     // Back to the read view — original badges restored, Change button back.
     expect(await screen.findByText('Change')).toBeInTheDocument()
+  })
+})
+
+/**
+ * Reactivation (2026-11-13) — deactivation used to be a one-way door in the
+ * UI: the button was rendered only for an active user, so once a tenant admin
+ * deactivated someone the control vanished and nothing took its place. The
+ * optimistic update also wrote `status: 'inactive'`, a value the database
+ * cannot hold, which meant even a corrected branch would not have matched.
+ */
+describe('StaffUserDetail — activation controls', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+  })
+
+  it('offers Deactivate for an active user and not Reactivate', async () => {
+    renderPage(user({ status: 'active' }))
+
+    expect(await screen.findByText('Deactivate user')).toBeInTheDocument()
+    expect(screen.queryByText('Reactivate user')).not.toBeInTheDocument()
+  })
+
+  it('offers Reactivate for a deactivated user and not Deactivate', async () => {
+    renderPage(user({ status: 'deactivated' }))
+
+    expect(await screen.findByText('Reactivate user')).toBeInTheDocument()
+    expect(screen.queryByText('Deactivate user')).not.toBeInTheDocument()
+  })
+
+  it('swaps Deactivate for Reactivate once deactivation succeeds', async () => {
+    vi.mocked(usersApi.deactivate).mockResolvedValue(undefined)
+    renderPage(user({ status: 'active' }))
+
+    await userEvent.click(await screen.findByText('Deactivate user'))
+
+    expect(usersApi.deactivate).toHaveBeenCalledWith('u1')
+    // The whole point of the fix: the way back is present immediately, from
+    // the optimistic status alone — DELETE returns 204 with no body.
+    expect(await screen.findByText('Reactivate user')).toBeInTheDocument()
+  })
+
+  it('reactivates from the server-returned row and restores the Deactivate control', async () => {
+    vi.mocked(usersApi.reactivate).mockResolvedValue(user({ status: 'active' }))
+    renderPage(user({ status: 'deactivated' }))
+
+    await userEvent.click(await screen.findByText('Reactivate user'))
+
+    expect(usersApi.reactivate).toHaveBeenCalledWith('u1')
+    expect(await screen.findByText('Deactivate user')).toBeInTheDocument()
+  })
+
+  it('surfaces a refused reactivation and keeps the control available', async () => {
+    // What a tenant at its tier seat limit actually gets: deactivating frees a
+    // seat, so reactivating is re-checked against the plan and can be refused.
+    vi.mocked(usersApi.reactivate).mockRejectedValue(
+      new ApiError(
+        {
+          type: 'about:blank',
+          title: 'Usage limit exceeded',
+          status: 429,
+          detail: 'Usage limit exceeded for users: 10/10',
+          error_code: 'USAGE_LIMIT_EXCEEDED',
+        },
+        null,
+      ),
+    )
+    renderPage(user({ status: 'deactivated' }))
+
+    await userEvent.click(await screen.findByText('Reactivate user'))
+
+    expect(await screen.findByText(/Usage limit exceeded for users: 10\/10/)).toBeInTheDocument()
+    expect(screen.getByText('Reactivate user')).toBeInTheDocument()
   })
 })

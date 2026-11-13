@@ -227,7 +227,7 @@ Notification template editor (`NotificationTemplatesPage`) needs a per-channel S
 
 **Pages built:**
 - `Dashboard` (`/dashboard`) — tenant_admin + nigeria_office_staff. Shows container count, unpaid billing count, outstanding total. Quick-link cards to Operations, Billing/Claims, and Administration (admin-only).
-- `StaffUserList` / `StaffUserDetail` — invite, role-change (multi-role checkbox + primary radio, migration 039 — see 2026-07-20 notes below), deactivate, resend invite, reset password.
+- `StaffUserList` / `StaffUserDetail` — invite, role-change (multi-role checkbox + primary radio, migration 039 — see 2026-07-20 notes below), deactivate **and reactivate** (2026-11-13 — see notes below), resend invite, reset password.
 - `AdminCustomerList` / `AdminCustomerDetail` — search customers; full GDPR anonymise + export flows.
 - `ConfigOverview` — links to dollar-rate, CBM-rate, charge-types, notifications, webhooks sub-pages.
 - `DollarRateConfig` / `CbmRateConfig` — view and update rates.
@@ -592,6 +592,35 @@ Frontend surface, all in `pages/tenant-admin/`:
   disabled submit when unchecked), `RoleGuard.test.tsx` extended (multi-role
   allow/deny), `jwt.test.ts`/`SessionProvider.test.tsx`/`LocalAuthProvider.test.tsx`
   extended for `roles` parsing and `setActiveRole`.
+
+
+### Implementation notes (2026-11-13 — reactivating a deactivated user)
+
+`StaffUserDetail`'s Deactivate button was rendered under
+`user.status === 'active' && …`, so deactivating a user made the control
+disappear with nothing in its place: from the product there was no way back.
+Two further things made this more than a missing branch —
+
+- **The status type named a value the database cannot hold.** `TenantUser.status`
+  was `'active' | 'inactive'`, while the column's CHECK constraint is
+  `('active','deactivated')`. The deactivate handler optimistically wrote
+  `'inactive'`, so even a correct branch would have been comparing against a
+  status that never occurs. Corrected to `'active' | 'deactivated'`.
+- **`usersApi.deactivate` was typed `apiRequest<TenantUser>`** although
+  `DELETE /v1/tenant/users/{id}` returns 204 with no body — the result is
+  `undefined` at runtime. Retyped `apiRequest<void>`; `usersApi.reactivate` is
+  the one that returns the updated row, and the UI takes the server's status
+  from it rather than assuming.
+
+The button is now a ternary whose else-branch is "Reactivate user", calling
+`POST /v1/tenant/users/{id}/reactivate`. Reactivation is re-checked against the
+tenant's tier seat limit (deactivation frees a seat), so a tenant at its ceiling
+gets a `429` rendered in the action banner — `Usage limit exceeded for users:
+14/10` — with the control still available once a seat is free.
+
+Tests: `StaffUserDetail.test.tsx` — "activation controls" describe block
+(per-status control, swap-on-deactivate, reactivate-from-server-row, and the
+refused-at-seat-limit case).
 
 
 ## 7.2b — Import from Excel (two modes)

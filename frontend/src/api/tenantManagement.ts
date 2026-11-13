@@ -167,7 +167,11 @@ export interface TenantUser {
   role: TenantUserRole
   /** Every role assigned to this user (multi-role staff support). Always includes `role`. */
   roles: TenantUserRole[]
-  status: 'active' | 'inactive'
+  /** Only these two exist. The DB CHECK constraint on `tenant_user.status`
+   *  is `('active','deactivated')` — this said `'inactive'`, a value the
+   *  database can never contain, so anything comparing against it never
+   *  matched real data. */
+  status: 'active' | 'deactivated'
   /** Notification template language — 'en' (default) or 'zh'. Only relevant for China Office Staff. */
   locale: 'en' | 'zh' | null
   created_at: string
@@ -206,8 +210,18 @@ export const usersApi = {
   update: (id: string, body: UpdateUserInput) =>
     apiRequest<TenantUser>({ method: 'PATCH', path: `/v1/tenant/users/${id}`, body }),
 
+  /** Returns 204 with no body — the caller gets `undefined`, not a row. This
+   *  was typed `TenantUser`, which let a caller believe it could read the new
+   *  status off the result; the only honest source for that is the next fetch
+   *  or an optimistic value. `reactivate` below does return the updated row. */
   deactivate: (id: string) =>
-    apiRequest<TenantUser>({ method: 'DELETE', path: `/v1/tenant/users/${id}` }),
+    apiRequest<void>({ method: 'DELETE', path: `/v1/tenant/users/${id}` }),
+
+  /** Undo a deactivation: re-enables the identity and sets status back to
+   *  active. Refused with 429 when the tenant is at its seat limit, by the
+   *  same rule that blocks creating a user. */
+  reactivate: (id: string) =>
+    apiRequest<TenantUser>({ method: 'POST', path: `/v1/tenant/users/${id}/reactivate`, body: {} }),
 
   resendInvite: (id: string) =>
     apiRequest<{ message: string }>({ method: 'POST', path: `/v1/tenant/users/${id}/resend-invite`, body: {} }),

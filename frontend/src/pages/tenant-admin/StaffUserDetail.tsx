@@ -126,7 +126,9 @@ export function StaffUserDetail(): JSX.Element {
     }
   }
 
-  async function handleAction(action: 'resend' | 'activate' | 'reset' | 'deactivate'): Promise<void> {
+  async function handleAction(
+    action: 'resend' | 'activate' | 'reset' | 'deactivate' | 'reactivate',
+  ): Promise<void> {
     if (!user) return
     setSaving(true)
     setActionError(null)
@@ -140,9 +142,19 @@ export function StaffUserDetail(): JSX.Element {
       } else if (action === 'reset') {
         await usersApi.resetPassword(user.id)
         setActionMsg('Password reset email sent.')
+      } else if (action === 'reactivate') {
+        // Returns the updated row, so take the server's word for the status
+        // rather than assuming it.
+        const updated = await usersApi.reactivate(user.id)
+        applyUser({ ...user, ...updated })
+        setActionMsg('User reactivated — they can sign in again.')
       } else {
         await usersApi.deactivate(user.id)
-        applyUser({ ...user, status: 'inactive' })
+        // 'deactivated', not 'inactive'. The DELETE returns 204 with no body,
+        // so this optimistic value is all the UI has until a refetch — and it
+        // previously wrote a status the database cannot hold, which meant the
+        // reactivate control below would never appear.
+        applyUser({ ...user, status: 'deactivated' })
         setActionMsg('User deactivated.')
       }
     } catch (err) {
@@ -271,9 +283,15 @@ export function StaffUserDetail(): JSX.Element {
           <Button variant="secondary" size="sm" loading={saving} onClick={() => void handleAction('reset')}>
             Reset password
           </Button>
-          {user.status === 'active' && (
+          {user.status === 'active' ? (
             <Button variant="danger-outline" size="sm" loading={saving} onClick={() => void handleAction('deactivate')}>
               Deactivate user
+            </Button>
+          ) : (
+            /* Deactivation used to be a one-way door: this branch did not
+               exist, so the button simply vanished and left no way back. */
+            <Button variant="primary" size="sm" loading={saving} onClick={() => void handleAction('reactivate')}>
+              Reactivate user
             </Button>
           )}
         </div>

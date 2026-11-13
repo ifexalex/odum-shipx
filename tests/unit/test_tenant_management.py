@@ -1151,6 +1151,68 @@ class TestDeactivateUser:
                 service.deactivate_user(TENANT_ID, "user-001", actor_id="admin")
 
 
+class TestReactivateUser:
+    """Reactivation, including the seat limit that stops it being a plan bypass."""
+
+    def test_deactivated_user_reactivated(self):
+        from services.tenant_management import service
+
+        user = _user(status="deactivated")
+        reactivated = {**user, "status": "active"}
+        cognito = MagicMock()
+
+        with (
+            patch.object(service.repo, "get_user_by_id", return_value=user),
+            patch.object(service.repo, "get_tenant_by_id", return_value=_tenant()),
+            patch.object(service.repo, "count_active_users", return_value=9),
+            patch.object(service.repo, "set_user_status", return_value=reactivated),
+            patch("services.tenant_management.service.get_identity_provider", return_value=cognito),
+            patch("services.tenant_management.service.log_audit"),
+        ):
+            result = service.reactivate_user(TENANT_ID, "user-001", actor_id="admin")
+
+        assert result["status"] == "active"
+        cognito.enable_user.assert_called_once_with("staff@acme.com")
+
+    def test_already_active_raises(self):
+        from services.tenant_management import service
+
+        with patch.object(service.repo, "get_user_by_id", return_value=_user(status="active")):
+            with pytest.raises(BusinessRuleViolationError):
+                service.reactivate_user(TENANT_ID, "user-001", actor_id="admin")
+
+    def test_at_seat_limit_raises(self):
+        """A tenant at its tier ceiling cannot reactivate its way past it.
+
+        Deactivating frees a seat, so without this check a starter tenant could
+        deactivate one user and reactivate another indefinitely.
+        """
+        from services.tenant_management import service
+
+        cognito = MagicMock()
+        with (
+            patch.object(service.repo, "get_user_by_id", return_value=_user(status="deactivated")),
+            patch.object(service.repo, "get_tenant_by_id", return_value=_tenant(subscription_tier="starter")),
+            patch.object(service.repo, "count_active_users", return_value=10),
+            patch.object(service.repo, "set_user_status") as mock_set,
+            patch("services.tenant_management.service.get_identity_provider", return_value=cognito),
+        ):
+            with pytest.raises(UsageLimitExceededError):
+                service.reactivate_user(TENANT_ID, "user-001", actor_id="admin")
+
+        # Refused before touching either the directory or the database, so a
+        # rejected reactivation leaves no half-enabled identity behind.
+        cognito.enable_user.assert_not_called()
+        mock_set.assert_not_called()
+
+    def test_missing_user_raises_not_found(self):
+        from services.tenant_management import service
+
+        with patch.object(service.repo, "get_user_by_id", return_value=None):
+            with pytest.raises(ResourceNotFoundError):
+                service.reactivate_user(TENANT_ID, "nope", actor_id="admin")
+
+
 # ---------------------------------------------------------------------------
 # update_user — roles/primary_role (multi-role staff support, Cognito group sync fix)
 # ---------------------------------------------------------------------------
