@@ -42,6 +42,7 @@ from .models import (
     CustomerRegistrationRequest,
     OnboardingRequestStatusUpdate,
     PaystackConfigRequest,
+    SelfRegistrationUpdateRequest,
     SuspendTenantRequest,
     UpdateCbmRateRequest,
     UpdateDollarRateMarkupRequest,
@@ -672,6 +673,29 @@ def _tenant_admin_routes(
             sort_direction=_qp(event, "sort", "desc"),
         )
         return paginated(page, next_cursor, has_more, request_id=request_id)
+
+    # /v1/tenant/registration-link — the company-facing view of the public
+    # customer signup link, and the switch that governs it.
+    #
+    # Read is open to any staff role: knowing your own company's signup link is
+    # not privileged, and staff share it. Changing it is tenant_admin only,
+    # because turning it on opens an unauthenticated route into the tenant.
+    if resource == "registration-link":
+        if method == "GET":
+            return success(service.get_self_registration_setting(tenant_id), request_id=request_id)
+
+        if method == "PATCH":
+            ctx.assert_role(UserRole.TENANT_ADMIN)
+            body = _parse_body(event)
+            req = parse_validated(SelfRegistrationUpdateRequest, body)
+            result = service.set_self_registration_enabled(
+                tenant_id,
+                req.enabled,
+                actor_id=ctx.user_id,
+                actor_role=ctx.role.value if ctx.role else "",
+                ip_address=ip_address,
+            )
+            return success(result, request_id=request_id)
 
     # /v1/tenant/config[/webhook/(rotate-secret|test)][/paystack[/test]]
     if resource == "config":

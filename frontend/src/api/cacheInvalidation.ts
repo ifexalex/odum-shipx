@@ -157,6 +157,9 @@ const RULES: Rule[] = [
   { test: /^\/v1\/tenant\/(cbm-rate|dollar-rate)$/, roots: [configKeys.all, billingKeys.all] },
   { test: /^\/v1\/tenant\/notification-templates(\/|$)/, roots: [configKeys.all] },
   { test: /^\/v1\/tenant\/config(\/|$)/, roots: [configKeys.all] },
+  // Toggling the public signup link is tenant configuration; the card
+  // showing it reads through the same config root.
+  { test: /^\/v1\/tenant\/registration-link$/, roots: [configKeys.all] },
   { test: /^\/v1\/tenant\/users(\/|$)/, roots: [staffKeys.all] },
   // The signed-in user's own profile feeds the shell, and their name appears as
   // an actor on staff lists.

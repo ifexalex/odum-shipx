@@ -1379,6 +1379,11 @@ class TestSelfRegisterCustomer:
 
         with (
             patch.object(service.repo, "get_tenant_by_slug", return_value=self._tenant()),
+            # Added with the self-registration switch and the phone
+            # uniqueness guard: both are consulted on this path now.
+            # Empty configs means "enabled", which is the default.
+            patch.object(service.repo, "get_all_configs", return_value=[]),
+            patch.object(service.repo, "get_customer_by_phone", return_value=None),
             patch.object(service.repo, "get_customer_by_email", return_value=None),
             patch.object(service.repo, "create_tenant_user", return_value=portal_user) as mock_create_user,
             patch.object(service.repo, "create_customer", return_value=created_customer) as mock_create_customer,
@@ -1412,6 +1417,11 @@ class TestSelfRegisterCustomer:
 
         with (
             patch.object(service.repo, "get_tenant_by_slug", return_value=self._tenant()) as mock_get_slug,
+            # Added with the self-registration switch and the phone
+            # uniqueness guard: both are consulted on this path now.
+            # Empty configs means "enabled", which is the default.
+            patch.object(service.repo, "get_all_configs", return_value=[]),
+            patch.object(service.repo, "get_customer_by_phone", return_value=None),
             patch.object(service.repo, "get_tenant_by_custom_domain") as mock_get_domain,
             patch.object(service.repo, "get_customer_by_email", return_value=None),
             patch.object(service.repo, "create_tenant_user", return_value={"id": "tu-001"}),
@@ -1441,6 +1451,11 @@ class TestSelfRegisterCustomer:
         req = CustomerRegistrationRequest(name="Ngozi", email="ngozi@example.com", phone="08012345678")
         with (
             patch.object(service.repo, "get_tenant_by_slug", return_value=self._tenant()),
+            # Added with the self-registration switch and the phone
+            # uniqueness guard: both are consulted on this path now.
+            # Empty configs means "enabled", which is the default.
+            patch.object(service.repo, "get_all_configs", return_value=[]),
+            patch.object(service.repo, "get_customer_by_phone", return_value=None),
             patch.object(service.repo, "get_customer_by_email", return_value={"id": "existing"}),
         ):
             with pytest.raises(DuplicateResourceError):
@@ -3019,3 +3034,81 @@ class TestUpdateContainerCapacity:
         with patch.object(service.repo, "get_container_capacity_by_id", return_value=None):
             with pytest.raises(ResourceNotFoundError):
                 service.update_container_capacity(TENANT_ID, "cap-x", {"recommended_cbm": 10}, actor_id="u1")
+
+
+class TestSelfRegistrationSetting:
+    """The company-facing switch over customer self-signup.
+
+    `POST /v1/register/{slug}` was public and ungated from the day it was
+    written, so every tenant has had a working signup link whether or not
+    anyone told them. These tests pin the two things that changed: the company
+    can now see it, and can now turn it off.
+    """
+
+    def test_defaults_to_enabled_because_it_already_was(self, monkeypatch):
+        """Defaulting to off would have silently cut off any customer already
+        using a link — there is no telemetry to say nobody is."""
+        from services.tenant_management import service
+
+        monkeypatch.setattr(service.repo, "get_all_configs", lambda *_: [])
+        monkeypatch.setattr(service.repo, "get_tenant_by_id", lambda *_: {"slug": "acme"})
+
+        assert service.get_self_registration_setting("t1")["enabled"] is True
+
+    def test_reports_the_slug_so_the_link_can_be_built(self, monkeypatch):
+        from services.tenant_management import service
+
+        monkeypatch.setattr(service.repo, "get_all_configs", lambda *_: [])
+        monkeypatch.setattr(service.repo, "get_tenant_by_id", lambda *_: {"slug": "acme-shipping"})
+
+        assert service.get_self_registration_setting("t1")["slug"] == "acme-shipping"
+
+    def test_a_stored_false_disables_it(self, monkeypatch):
+        from services.tenant_management import service
+
+        monkeypatch.setattr(
+            service.repo,
+            "get_all_configs",
+            lambda *_: [{"config_key": "self_registration", "config_value": {"enabled": False}, "updated_at": None}],
+        )
+        monkeypatch.setattr(service.repo, "get_tenant_by_id", lambda *_: {"slug": "acme"})
+
+        assert service.get_self_registration_setting("t1")["enabled"] is False
+
+    def test_a_json_string_value_is_parsed(self, monkeypatch):
+        """jsonb comes back as a dict from psycopg2, but a string from some
+        drivers and from older rows — tolerate both rather than crash on read."""
+        from services.tenant_management import service
+
+        monkeypatch.setattr(
+            service.repo,
+            "get_all_configs",
+            lambda *_: [{"config_key": "self_registration", "config_value": '{"enabled": false}', "updated_at": None}],
+        )
+        monkeypatch.setattr(service.repo, "get_tenant_by_id", lambda *_: {"slug": "acme"})
+
+        assert service.get_self_registration_setting("t1")["enabled"] is False
+
+    def test_turning_it_off_is_audited(self, monkeypatch):
+        """Turning it ON opens an unauthenticated route into the tenant, so who
+        changed it has to be recoverable afterwards."""
+        from services.tenant_management import service
+
+        audits = []
+        stored = {}
+        monkeypatch.setattr(
+            service.repo,
+            "get_all_configs",
+            lambda *_: [{"config_key": "self_registration", "config_value": stored, "updated_at": None}] if stored else [],
+        )
+        monkeypatch.setattr(service.repo, "get_tenant_by_id", lambda *_: {"slug": "acme"})
+        monkeypatch.setattr(service.repo, "upsert_config", lambda *a, **k: stored.update(a[2]))
+        monkeypatch.setattr(service, "log_audit", lambda **kw: audits.append(kw))
+
+        service.set_self_registration_enabled("t1", False, actor_id="u1", actor_role="tenant_admin")
+
+        assert len(audits) == 1
+        assert audits[0]["action"] == "UPDATE_SELF_REGISTRATION"
+        assert audits[0]["before_state"] == {"enabled": True}
+        assert audits[0]["after_state"] == {"enabled": False}
+        assert audits[0]["actor_id"] == "u1"

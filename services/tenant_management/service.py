@@ -28,6 +28,7 @@ from shared.exceptions import (
 from shared.fx_rate import get_effective_dollar_rate
 from shared.metering import record_usage
 from shared.providers import get_identity_provider
+from shared.rate_limit import check_rate_limit
 from shared.tenant_context import PLATFORM_TENANT_ID
 from shared.webhook import test_fire_tenant_webhook
 
@@ -2146,6 +2147,78 @@ def upsert_notification_template(
 # ---------------------------------------------------------------------------
 
 
+# tenant_config key holding the self-registration switch. A config row rather
+# than a tenant column: tenant_config is already a generic key/value store with
+# RLS and an audit trail, so this needs no migration and no schema churn.
+SELF_REGISTRATION_CONFIG_KEY = "self_registration"
+
+
+def _self_registration_enabled(tenant_id: str) -> bool:
+    """Just the switch, without the tenant lookup.
+
+    Split out because the signup path already holds the tenant row — calling
+    the full accessor there would re-fetch it on every registration purely to
+    report a slug the caller does not need.
+    """
+    rows = repo.get_all_configs(tenant_id)
+    row = next((r for r in rows if r["config_key"] == SELF_REGISTRATION_CONFIG_KEY), None)
+    value = row["config_value"] if row else {}
+    if isinstance(value, str):
+        value = json.loads(value)
+    return bool(value.get("enabled", True))
+
+
+def get_self_registration_setting(tenant_id: str) -> dict[str, Any]:
+    """Whether this tenant accepts customer self-signup, and on which slug.
+
+    Defaults to **enabled**, because it already was. `POST /v1/register/{slug}`
+    has been public and ungated since it was written, so every tenant has had a
+    working signup link whether or not anyone told them. Defaulting to disabled
+    would have silently cut off any customer already using one.
+
+    What changes is that the company can now see the link and switch it off.
+    """
+    rows = repo.get_all_configs(tenant_id)
+    row = next((r for r in rows if r["config_key"] == SELF_REGISTRATION_CONFIG_KEY), None)
+    tenant = repo.get_tenant_by_id(tenant_id)
+    return {
+        "enabled": _self_registration_enabled(tenant_id),
+        "slug": (tenant or {}).get("slug"),
+        "updated_at": (row or {}).get("updated_at"),
+    }
+
+
+def set_self_registration_enabled(
+    tenant_id: str,
+    enabled: bool,
+    actor_id: str | None = None,
+    actor_role: str = "",
+    ip_address: str | None = None,
+) -> dict[str, Any]:
+    """Turn customer self-signup on or off for this tenant.
+
+    Audited like any other state change: turning it on opens an
+    unauthenticated door into the tenant, and whoever opened it should be
+    recoverable afterwards.
+    """
+    before = get_self_registration_setting(tenant_id)
+    repo.upsert_config(tenant_id, SELF_REGISTRATION_CONFIG_KEY, {"enabled": enabled}, updated_by=actor_id)
+    after = get_self_registration_setting(tenant_id)
+
+    log_audit(
+        tenant_id=tenant_id,
+        entity_type="tenant_config",
+        entity_id=SELF_REGISTRATION_CONFIG_KEY,
+        action="UPDATE_SELF_REGISTRATION",
+        actor_id=actor_id,
+        actor_role=actor_role,
+        before_state={"enabled": before["enabled"]},
+        after_state={"enabled": after["enabled"]},
+        ip_address=ip_address,
+    )
+    return after
+
+
 def self_register_customer(
     req: CustomerRegistrationRequest,
     slug: str | None = None,
@@ -2192,6 +2265,20 @@ def self_register_customer(
     if not tenant:
         raise ResourceNotFoundError("tenant", resolved_slug or host)
 
+    # Throttle per IP, and only once a tenant has been resolved, so a scripted
+    # caller cannot burn another tenant's allowance by guessing slugs. Placed
+    # before the account work but after resolution for that reason.
+    check_rate_limit("self_register", ip_address)
+
+    if not _self_registration_enabled(str(tenant["id"])):
+        # Same shape as the suspended-tenant refusal below, deliberately: an
+        # unauthenticated caller should not be able to tell "this company
+        # switched signup off" from "this company is suspended".
+        raise BusinessRuleViolationError(
+            "This tenant is not accepting new registrations",
+            rule_id="SELF_REGISTRATION_DISABLED",
+        )
+
     if tenant["status"] != "active":
         raise BusinessRuleViolationError(
             "This tenant is not accepting new registrations",
@@ -2207,6 +2294,18 @@ def self_register_customer(
     dial_code = dial_code_for_country(tenant.get("destination_country"))
     phone = normalize_phone(req.phone, dial_code)
     whatsapp = normalize_phone(req.whatsapp, dial_code) if req.whatsapp else None
+
+    # Phone is unique per tenant (idx_customer_tenant_phone_unique), and only
+    # email was being checked — so a returning customer who signed up again
+    # with a different email got a raw psycopg2.UniqueViolation surfacing as an
+    # unexplained 500. Checked AFTER normalisation, because the index is on the
+    # normalised value: comparing the raw input would miss "0816..." against a
+    # stored "+234816...".
+    # `phone` is Optional because normalize_phone returns None for input it
+    # cannot parse. Nothing to collide with in that case — and the insert will
+    # reject it on its own — so only check when there is a value.
+    if phone and repo.get_customer_by_phone(tenant_id, phone):
+        raise DuplicateResourceError("customer", req.phone)
 
     # Provision Cognito user (sends temp-password email via Cognito)
     cognito = get_identity_provider()

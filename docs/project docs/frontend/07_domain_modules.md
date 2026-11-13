@@ -1452,3 +1452,36 @@ been filling a free-text "container id or number" field that this page **stopped
 having on 2026-09-06**, when step 1 became a dropdown of the customer's *arrived*
 shipments (mirroring `_PRE_ARRIVAL_STATUSES` server-side). The spec was never
 updated and had been timing out on a field that no longer existed.
+
+## Customer signup link card (2026-11-13)
+
+`CustomerSignupLink.tsx`, mounted on the **Customers** page beside the invite
+flow — the two ways a customer gets an account, shown in one place. Invites are
+unchanged.
+
+Shows the link (`{origin}/register/{slug}`), a copy button, an on/off switch, and
+a QR code on request with an SVG download for printing.
+
+- the URL is built from `window.location.origin`, not a configured host: it is
+  the address a customer will visit, and a hardcoded one would hand out a link
+  to the wrong environment the moment either moved
+- the QR is `QRCodeSVG` at error-correction level **H** — a code on a shopfront
+  or a receipt gets scuffed, folded and photographed at an angle
+- SVG download rather than PNG, so it prints at poster size without blurring
+- "Copied" reverts after two seconds; a permanent one would be lying about the
+  clipboard minutes later
+- the copy button shows **no** icon until it has copied: the design system has
+  no copy glyph, and borrowing a near-miss says the wrong thing
+
+New dependency: `qrcode.react@^4.2.0` (caret, matching this project's frontend
+convention — exact pinning is the Python rule here).
+
+**Two drift guards caught this change**, both correctly, and both worth knowing
+about before adding the next route:
+
+1. `cacheInvalidation.test.ts` — every mutating API path needs an invalidation
+   rule; the new `PATCH` had none.
+2. `test_infrastructure_contracts.py::test_every_frontend_api_call_is_routable`
+   — the route was missing from the API Gateway map, which 404s **in production
+   only**. That is exactly how the billing-detail route broke earlier this
+   month.

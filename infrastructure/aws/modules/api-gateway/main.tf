@@ -37,6 +37,8 @@ locals {
     "GET /v1/tenant/users/{id}"           = "tenant_management"
     "PATCH /v1/tenant/users/{id}"         = "tenant_management"
     "DELETE /v1/tenant/users/{id}"        = "tenant_management"
+    "GET /v1/tenant/registration-link"    = "tenant_management"
+    "PATCH /v1/tenant/registration-link"  = "tenant_management"
     "GET /v1/tenant/dollar-rate"          = "tenant_management"
     "PUT /v1/tenant/dollar-rate"          = "tenant_management"
     "POST /v1/tenant/charge-types"        = "tenant_management"

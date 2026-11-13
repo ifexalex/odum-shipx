@@ -850,3 +850,67 @@ Repository functions (`insert_onboarding_request`, `list_onboarding_requests`, `
 - [x] POST /v1/tenant/config/webhook/rotate-secret — generates cryptographically random 64-char hex secret via `secrets.token_hex(32)`; returns plaintext once; audited
 - [x] POST /v1/tenant/config/webhook/test — sends signed test event to configured URL using same HMAC-SHA256 path as real events; returns `{success, status_code, error}`
 - [x] Locale (EN/ZH): `tenant_user.locale` writable via PATCH /v1/tenant/users/{id} (tenant_admin) and PATCH /v1/tenant/me (any authenticated role); validated against `{"en","zh"}`; locale NOT synced to Cognito (DB-only); tracking service passes `locale` from `get_customers_for_container` to `enqueue_notifications` so ZH customers receive Chinese-language notifications
+
+## Customer signup link — `/v1/tenant/registration-link` (2026-11-13)
+
+A company can now see, share and switch off the public customer signup link.
+**It did not create that link.** `POST /v1/register/{slug}` has been public and
+ungated since it was written, so every tenant already had a working signup
+route whether or not anyone told them — what was missing was any way to see it
+or turn it off.
+
+### Endpoints
+
+| method | path | role | notes |
+|---|---|---|---|
+| `GET` | `/v1/tenant/registration-link` | any staff | returns `{enabled, slug, updated_at}` |
+| `PATCH` | `/v1/tenant/registration-link` | `tenant_admin` | body `{"enabled": bool}` |
+
+Read is open to any staff role — knowing your own company's signup link is not
+privileged, and staff share it. Writing is `tenant_admin` only, because turning
+it **on** opens an unauthenticated route into the tenant. Every change is
+audited (`UPDATE_SELF_REGISTRATION`, with before/after).
+
+### The switch
+
+Stored in `tenant_config` under `self_registration` as `{"enabled": bool}` — a
+config row rather than a tenant column, since `tenant_config` is already a
+generic key/value store with RLS and an audit trail, so this needed no
+migration.
+
+**Defaults to enabled**, deliberately. Defaulting to disabled would have
+silently cut off any customer already using a link, and there is no telemetry
+to say nobody is.
+
+When disabled, `POST /v1/register/{slug}` returns the **same** refusal as a
+suspended tenant (`422`, "This tenant is not accepting new registrations"). The
+message is identical on purpose: an unauthenticated caller should not be able
+to distinguish "this company switched signup off" from "this company is
+suspended".
+
+### Rate limiting (new)
+
+The public register endpoint creates a Cognito user and two rows, needs no
+credentials, and **had no throttle at all**. That was survivable while the link
+was undiscoverable; it stops being survivable once companies put it on a QR
+poster.
+
+`shared/rate_limit.py` adds a fixed window — 10 attempts per IP per 15 minutes
+— counted *after* tenant resolution so a caller cannot burn another tenant's
+allowance by guessing slugs. All attempts count, not only successes. Returns
+`429` via `RateLimitExceededError`, a `LogisticsBaseError`, so it maps through
+the normal RFC 7807 path. The message names no slug, company or address.
+
+**Fails open** when Redis is unreachable, matching `shared/auth.py`'s
+tenant-status cache. A Redis blip should not stop the world signing up; the
+cost is that whoever can take Redis down also removes the throttle, which is
+why it is one layer among several.
+
+### A pre-existing 500 fixed alongside
+
+Self-registration validated email uniqueness but not phone, while
+`idx_customer_tenant_phone_unique` enforces one customer per phone per tenant.
+A returning customer signing up with a different email hit a raw
+`psycopg2.UniqueViolation` surfacing as an **unexplained 500**. Now a clean
+`409`. Checked *after* normalisation, because the index is on the normalised
+value — comparing raw input would miss `0816…` against a stored `+234816…`.

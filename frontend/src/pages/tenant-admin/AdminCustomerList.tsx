@@ -7,6 +7,7 @@ import { customersApi, type Customer } from '../../api/tenantManagement'
 import { useCustomerList } from '../../hooks/useCustomers'
 import { Badge, Banner, Button, Card, Check, Chip, Field, Icon, Mono, PhoneField, StatCard, Table, ViewLink, ListFooter } from '../../design/components'
 import { useTopBarSlot } from '../../shell/TopBarContext'
+import { CustomerSignupLink } from './CustomerSignupLink'
 import styles from './admin.module.css'
 
 // ---------------------------------------------------------------------------
@@ -281,6 +282,13 @@ export function AdminCustomerList(): JSX.Element {
           <Banner variant="error">{error.message}</Banner>
         </div>
       )}
+
+      {/* Beside the invite flow, not instead of it: these are the two ways a
+          customer gets an account, and a company choosing between them should
+          see both in one place. */}
+      <div className={styles.banner}>
+        <CustomerSignupLink />
+      </div>
 
       <div className={styles.statsRow}>
         <StatCard
