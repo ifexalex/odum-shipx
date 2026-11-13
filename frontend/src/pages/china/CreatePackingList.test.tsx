@@ -2,7 +2,7 @@ import { render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { MemoryRouter, Route, Routes } from 'react-router-dom'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-import { packingListApi, type PackingList } from '../../api/packingList'
+import { MAX_ITEM_QUANTITY, packingListApi, type PackingList } from '../../api/packingList'
 import { containersApi, type Container } from '../../api/tracking'
 import { configApi, customersApi, type Customer } from '../../api/tenantManagement'
 import { warehousesApi } from '../../api/warehouses'
@@ -460,3 +460,305 @@ describe('CreatePackingList', () => {
     expect(screen.getByLabelText('Arrival warehouse')).toBeInTheDocument()
   })
 })
+
+describe('CreatePackingList — bulk quantity', () => {
+  beforeEach(() => {
+    vi.mocked(packingListApi.create).mockReset()
+    vi.mocked(packingListApi.submit).mockReset()
+    vi.mocked(customersApi.list).mockReset()
+    vi.mocked(containersApi.list).mockReset()
+    vi.mocked(customersApi.list).mockResolvedValue({
+      data: [customerStub],
+      meta: { pagination: { has_more: false, next_cursor: null, total_count: 1 } },
+    })
+    vi.mocked(containersApi.list).mockResolvedValue({
+      data: [containerStub],
+      meta: { pagination: { has_more: false, next_cursor: null, total_count: 1 } },
+    })
+  })
+
+  async function reachItemsStep(): Promise<void> {
+    renderPage()
+    await completeStep1()
+  }
+
+  it('leaves the quantity input disabled until "identical" is affirmed', async () => {
+    await reachItemsStep()
+
+    const qty = screen.getByRole('spinbutton', { name: /item 1: quantity/i })
+    expect(qty).toBeDisabled()
+
+    await userEvent.click(screen.getByRole('checkbox', { name: /item 1: all packages identical/i }))
+    expect(qty).toBeEnabled()
+  })
+
+  it('resets a quantity back to one when the affirmation is withdrawn', async () => {
+    // Otherwise a stale 100 could be saved by unticking the box and not
+    // noticing the number left behind.
+    await reachItemsStep()
+    const confirm = screen.getByRole('checkbox', { name: /item 1: all packages identical/i })
+    const qty = screen.getByRole('spinbutton', { name: /item 1: quantity/i })
+
+    await userEvent.click(confirm)
+    await userEvent.clear(qty)
+    await userEvent.type(qty, '40')
+    expect(qty).toHaveValue(40)
+
+    await userEvent.click(confirm)
+    expect(qty).toHaveValue(1)
+  })
+
+  it('shows what a quantity line will create, in CBM as well as count', async () => {
+    await reachItemsStep()
+    await userEvent.click(screen.getByRole('checkbox', { name: /item 1: all packages identical/i }))
+    const qty = screen.getByRole('spinbutton', { name: /item 1: quantity/i })
+    await userEvent.clear(qty)
+    await userEvent.type(qty, '10')
+
+    // The count alone is weak evidence; the CBM is what the staffer is really
+    // being asked to sanity-check, because it drives billing.
+    expect(await screen.findByText(/Creates 10 cartons/i)).toBeInTheDocument()
+  })
+
+  it('clamps a quantity above the cap rather than letting the API refuse it', async () => {
+    await reachItemsStep()
+    await userEvent.click(screen.getByRole('checkbox', { name: /item 1: all packages identical/i }))
+    const qty = screen.getByRole('spinbutton', { name: /item 1: quantity/i })
+    await userEvent.clear(qty)
+    await userEvent.type(qty, '9999')
+
+    expect(qty).toHaveValue(MAX_ITEM_QUANTITY)
+  })
+
+  it('asks for confirmation before saving a large quantity, and can be cancelled', async () => {
+    await reachItemsStep()
+    await userEvent.click(screen.getByRole('checkbox', { name: /item 1: all packages identical/i }))
+    const qty = screen.getByRole('spinbutton', { name: /item 1: quantity/i })
+    await userEvent.clear(qty)
+    await userEvent.type(qty, '100')
+    await userEvent.type(screen.getAllByPlaceholderText('e.g. Electronics (mixed)')[0]!, 'Shoes')
+
+    await userEvent.click(screen.getByRole('button', { name: /save draft/i }))
+
+    expect(await screen.findByText(/Create 100 packages\?/i)).toBeInTheDocument()
+    // Cancelling must not write anything.
+    await userEvent.click(screen.getByRole('button', { name: /go back/i }))
+    expect(packingListApi.create).not.toHaveBeenCalled()
+  })
+
+  it('does not interrupt a save when every line is a single package', async () => {
+    vi.mocked(packingListApi.create).mockResolvedValue({ id: 'pl1' } as PackingList)
+    await reachItemsStep()
+    await userEvent.type(screen.getAllByPlaceholderText('e.g. Electronics (mixed)')[0]!, 'One carton')
+
+    await userEvent.click(screen.getByRole('button', { name: /save draft/i }))
+
+    await waitFor(() => expect(packingListApi.create).toHaveBeenCalled())
+    expect(screen.queryByText(/packages\?$/i)).not.toBeInTheDocument()
+  })
+})
+
+describe('CreatePackingList — reopening a saved draft', () => {
+  beforeEach(() => {
+    vi.mocked(packingListApi.get).mockReset()
+    vi.mocked(packingListApi.update).mockReset()
+    vi.mocked(customersApi.list).mockResolvedValue({
+      data: [customerStub],
+      meta: { pagination: { has_more: false, next_cursor: null, total_count: 1 } },
+    })
+    vi.mocked(containersApi.list).mockResolvedValue({
+      data: [containerStub],
+      meta: { pagination: { has_more: false, next_cursor: null, total_count: 1 } },
+    })
+  })
+
+  /** The server stores a bulk line EXPANDED, so this is what a reopened draft
+   *  actually returns: N rows sharing one batch_ref. */
+  function expandedBatch(n: number, batchRef = 'batch-1') {
+    return Array.from({ length: n }, (_, i) => ({
+      id: `it${i}`,
+      packing_list_id: 'pl1',
+      description: 'Ladies shoes',
+      package_unit: 'carton',
+      length_cm: 60,
+      width_cm: 40,
+      height_cm: 40,
+      weight_actual_kg: 12,
+      weight_dispatch_kg: 12,
+      declared_value_usd: 50,
+      received_date: '2026-11-01',
+      carton_tag: `ACM-C1-${String(i + 1).padStart(3, '0')}`,
+      cbm: 0.1,
+      batch_ref: batchRef,
+    }))
+  }
+
+  async function renderEdit(items: unknown[]) {
+    vi.mocked(packingListApi.get).mockResolvedValue({
+      id: 'pl1',
+      status: 'draft',
+      container_id: containerStub.id,
+      customer_id: customerStub.id,
+      items,
+    } as never)
+    render(
+      <MemoryRouter initialEntries={['/packing-lists/pl1/edit']}>
+        <Routes>
+          <Route path="/packing-lists/:id/edit" element={<CreatePackingList />} />
+        </Routes>
+      </MemoryRouter>,
+    )
+    // The wizard opens on step 1 even when editing; the items table lives on
+    // step 2.
+    const next = await screen.findByText('Next: Add items')
+    await waitFor(() => expect(next).toBeEnabled())
+    await userEvent.click(next)
+  }
+
+  it('shows a saved bulk line as ONE row carrying its quantity', async () => {
+    // The bug reported from the warehouse: you key one line of 100, save, and
+    // reopen to find a hundred rows and no quantity anywhere.
+    await renderEdit(expandedBatch(100))
+
+    const qty = await screen.findByRole('spinbutton', { name: /item 1: quantity/i })
+    expect(qty).toHaveValue(100)
+    expect(screen.queryByRole('spinbutton', { name: /item 2: quantity/i })).not.toBeInTheDocument()
+  })
+
+  it('shows the batch as already affirmed, so the quantity stays editable', async () => {
+    await renderEdit(expandedBatch(100))
+
+    expect(await screen.findByRole('checkbox', { name: /item 1: all packages identical/i })).toBeChecked()
+    expect(await screen.findByRole('spinbutton', { name: /item 1: quantity/i })).toBeEnabled()
+  })
+
+  it('keeps rows expanded when one package of a batch was edited away', async () => {
+    // Folding them would silently discard that edit.
+    const items = expandedBatch(3)
+    items[1] = { ...items[1], weight_actual_kg: 99 } as never
+
+    await renderEdit(items)
+
+    expect(await screen.findByRole('spinbutton', { name: /item 3: quantity/i })).toBeInTheDocument()
+  })
+
+  it('leaves individually-keyed rows alone', async () => {
+    const items = expandedBatch(2).map((it) => ({ ...it, batch_ref: null }))
+
+    await renderEdit(items)
+
+    expect(await screen.findByRole('spinbutton', { name: /item 2: quantity/i })).toBeInTheDocument()
+  })
+})
+
+describe('CreatePackingList — review step shows the full item detail', () => {
+  beforeEach(() => {
+    vi.mocked(customersApi.list).mockResolvedValue({
+      data: [customerStub],
+      meta: { pagination: { has_more: false, next_cursor: null, total_count: 1 } },
+    })
+    vi.mocked(containersApi.list).mockResolvedValue({
+      data: [containerStub],
+      meta: { pagination: { has_more: false, next_cursor: null, total_count: 1 } },
+    })
+  })
+
+  async function reachReview(): Promise<void> {
+    renderPage()
+    await completeStep1()
+    await userEvent.type(screen.getAllByPlaceholderText('e.g. Electronics (mixed)')[0]!, 'Ladies shoes')
+    const spin = screen.getAllByRole('spinbutton')
+    // wt disp, wt act, L, W, H
+    for (const [i, v] of [[0, '12'], [1, '12'], [2, '60'], [3, '40'], [4, '40']] as const) {
+      await userEvent.clear(spin[i]!)
+      await userEvent.type(spin[i]!, v)
+    }
+    await userEvent.click(screen.getByRole('checkbox', { name: /item 1: all packages identical/i }))
+    const qty = screen.getByRole('spinbutton', { name: /item 1: quantity/i })
+    await userEvent.clear(qty)
+    await userEvent.type(qty, '100')
+    await userEvent.click(screen.getByText('Next: Review'))
+  }
+
+  it('states the package type and quantity, not just a description', async () => {
+    // Reported as: "a lot of information is missing when I preview the packing
+    // list … quantity, the package type, carton or bag". Both were absent.
+    await reachReview()
+
+    expect(await screen.findByText('Type')).toBeInTheDocument()
+    expect(screen.getByText('Qty')).toBeInTheDocument()
+    expect(screen.getByText('carton')).toBeInTheDocument()
+  })
+
+  it('describes the totals by package type rather than hardcoding "carton"', async () => {
+    // The summary said "N carton(s)" whatever the goods were, so a list of
+    // bales described itself as cartons on the screen meant for checking it.
+    await reachReview()
+
+    // Twice over: the "ready to submit" banner and the document preview's
+    // totals line. Both used to say "carton(s)" regardless of the goods.
+    expect((await screen.findAllByText(/100 cartons/)).length).toBeGreaterThanOrEqual(2)
+  })
+})
+
+describe('CreatePackingList — saving twice must not make two lists', () => {
+  beforeEach(() => {
+    vi.mocked(packingListApi.create).mockReset()
+    vi.mocked(packingListApi.update).mockReset()
+    vi.mocked(packingListApi.submit).mockReset()
+    vi.mocked(customersApi.list).mockResolvedValue({
+      data: [customerStub],
+      meta: { pagination: { has_more: false, next_cursor: null, total_count: 1 } },
+    })
+    vi.mocked(containersApi.list).mockResolvedValue({
+      data: [containerStub],
+      meta: { pagination: { has_more: false, next_cursor: null, total_count: 1 } },
+    })
+  })
+
+  async function fillAndSave(): Promise<void> {
+    await userEvent.type(screen.getAllByPlaceholderText('e.g. Electronics (mixed)')[0]!, 'Widget')
+    await userEvent.click(screen.getByRole('button', { name: /save draft/i }))
+  }
+
+  it('creates on the first save and UPDATES on the second', async () => {
+    // Reported as "it keeps saving a new copy of that same item to the draft".
+    // The page never recorded the id it had just created, so every save took
+    // the create branch and made another list holding the same cargo.
+    vi.mocked(packingListApi.create).mockResolvedValue({ id: 'pl-new' } as never)
+    vi.mocked(packingListApi.update).mockResolvedValue({ id: 'pl-new' } as never)
+
+    renderPage()
+    await completeStep1()
+    await fillAndSave()
+    await waitFor(() => expect(packingListApi.create).toHaveBeenCalledTimes(1))
+
+    await userEvent.click(screen.getByRole('button', { name: /save draft/i }))
+
+    await waitFor(() => expect(packingListApi.update).toHaveBeenCalledTimes(1))
+    expect(packingListApi.create).toHaveBeenCalledTimes(1)
+    expect(vi.mocked(packingListApi.update).mock.calls[0]![0]).toBe('pl-new')
+  })
+
+  it('still creates only once when the first save failed to submit', async () => {
+    // The nastiest version: create succeeds, submit throws, the user presses
+    // save again. Previously that produced a second list every time.
+    vi.mocked(packingListApi.create).mockResolvedValue({ id: 'pl-new' } as never)
+    vi.mocked(packingListApi.update).mockResolvedValue({ id: 'pl-new' } as never)
+    vi.mocked(packingListApi.submit).mockRejectedValueOnce(new Error('network'))
+
+    renderPage()
+    await completeStep1()
+    await userEvent.type(screen.getAllByPlaceholderText('e.g. Electronics (mixed)')[0]!, 'Widget')
+    // "Submit for approval" lives on the review step, not the items step.
+    await userEvent.click(screen.getByText('Next: Review'))
+    await userEvent.click(await screen.findByRole('button', { name: /submit for approval/i }))
+    await waitFor(() => expect(packingListApi.create).toHaveBeenCalledTimes(1))
+
+    await userEvent.click(screen.getByRole('button', { name: /save draft/i }))
+
+    await waitFor(() => expect(packingListApi.update).toHaveBeenCalled())
+    expect(packingListApi.create).toHaveBeenCalledTimes(1)
+  })
+})
+

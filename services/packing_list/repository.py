@@ -212,28 +212,61 @@ def set_packing_list_dates(tenant_id: str, pl_id: str, loading_date: Any, delive
     )
 
 
+# Columns written by insert_packing_list_items, with the cast each array needs.
+# Kept beside the query so adding a column cannot silently desynchronise the
+# column list from the UNNEST list — they are generated from this one tuple.
+_ITEM_INSERT_COLUMNS: tuple[tuple[str, str], ...] = (
+    ("packing_list_id", "uuid"),
+    ("description", "text"),
+    ("weight_dispatch_kg", "numeric"),
+    ("weight_actual_kg", "numeric"),
+    ("carton_tag", "varchar"),
+    ("tracking_code", "varchar"),
+    ("cbm", "numeric"),
+    ("length_cm", "numeric"),
+    ("width_cm", "numeric"),
+    ("height_cm", "numeric"),
+    ("received_date", "date"),
+    ("declared_value_usd", "numeric"),
+    ("package_unit", "varchar"),
+    ("bale_type", "varchar"),
+    ("batch_ref", "uuid"),
+)
+
+
 def insert_packing_list_items(tenant_id: str, items: list[dict[str, Any]]) -> list[dict[str, Any] | None]:
-    """Insert packing list items individually, returning all inserted rows."""
-    results: list[dict[str, Any] | None] = []
-    for item in items:
-        row = execute_write_with_tenant(
-            tenant_id,
-            """
-            INSERT INTO packing_list_item (
-                packing_list_id, description, weight_dispatch_kg, weight_actual_kg,
-                carton_tag, tracking_code, cbm, length_cm, width_cm, height_cm,
-                received_date, declared_value_usd, package_unit, bale_type
-            ) VALUES (
-                %(packing_list_id)s, %(description)s, %(weight_dispatch_kg)s,
-                %(weight_actual_kg)s, %(carton_tag)s, %(tracking_code)s, %(cbm)s,
-                %(length_cm)s, %(width_cm)s, %(height_cm)s, %(received_date)s,
-                %(declared_value_usd)s, %(package_unit)s, %(bale_type)s
-            ) RETURNING *
-            """,
-            item,
-        )
-        results.append(row)
-    return results
+    """Insert packing list items in ONE statement, returning the inserted rows.
+
+    This was a loop doing one round trip per item, which was tolerable while a
+    list was a handful of hand-keyed lines. Quantity entry changed that: one
+    line can now expand into hundreds of rows, and a per-row round trip would
+    make saving a 500-carton consignment hundreds of sequential network calls.
+
+    Built with UNNEST over one array per column rather than a generated VALUES
+    list, so every value stays a bound parameter — no interpolation, which the
+    project forbids and which would be especially unwise on a path that now
+    takes bulk input.
+
+    Order is preserved: UNNEST over parallel arrays yields rows in array order,
+    so the returned rows match `items`, and carton_tag sequence is unaffected.
+    """
+    if not items:
+        return []
+
+    columns = ", ".join(name for name, _ in _ITEM_INSERT_COLUMNS)
+    unnest = ", ".join(f"%({name})s::{cast}[]" for name, cast in _ITEM_INSERT_COLUMNS)
+    params = {name: [item.get(name) for item in items] for name, _ in _ITEM_INSERT_COLUMNS}
+
+    rows = execute_write_with_tenant_many(
+        tenant_id,
+        f"""
+        INSERT INTO packing_list_item ({columns})
+        SELECT * FROM UNNEST({unnest})
+        RETURNING *
+        """,
+        params,
+    )
+    return list(rows)
 
 
 def get_packing_list_by_id(tenant_id: str, pl_id: str) -> dict[str, Any] | None:
