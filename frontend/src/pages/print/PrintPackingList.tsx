@@ -7,6 +7,7 @@ import { useEffect, useState, type JSX } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { ApiError } from '../../api/client'
 import { packingListApi, type PackingList } from '../../api/packingList'
+import { buildPackageMix, formatPackageMix, packagesInRow, totalPackages } from '../../api/packingListRules'
 import { Button } from '../../design/components'
 import { useBranding } from '../../hooks/useConfig'
 import { PrintBrandFoot, PrintBrandHead } from './PrintBrand'
@@ -35,6 +36,7 @@ export function PrintPackingList(): JSX.Element {
 
   const totalCbm = pl.items.reduce((s, i) => s + Number(i.cbm ?? 0), 0)
   const totalWeight = pl.items.reduce((s, i) => s + Number(i.weight_dispatch_kg ?? 0), 0)
+  const totalWeightActual = pl.items.reduce((s, i) => s + Number(i.weight_actual_kg ?? 0), 0)
 
   return (
     <div className={styles.page}>
@@ -72,6 +74,23 @@ export function PrintPackingList(): JSX.Element {
           <span className={styles.metaLabel}>Created</span>
           <span className={styles.metaValue}>{pl.created_at.slice(0, 10)}</span>
         </div>
+        {/* Loading and delivery dates are captured on the form and were on no
+            document at all, so the printed list could not answer when the
+            cargo loads or lands — the two dates a customer actually asks
+            about. The arrival warehouse is captured alongside them and was
+            likewise absent. */}
+        <div className={styles.metaRow}>
+          <span className={styles.metaLabel}>Loading date</span>
+          <span className={styles.metaValue}>{pl.loading_date ?? '—'}</span>
+        </div>
+        <div className={styles.metaRow}>
+          <span className={styles.metaLabel}>Delivery date</span>
+          <span className={styles.metaValue}>{pl.delivery_date ?? '—'}</span>
+        </div>
+        <div className={styles.metaRow}>
+          <span className={styles.metaLabel}>Arrival warehouse</span>
+          <span className={styles.metaValue}>{pl.arrival_warehouse_name ?? '—'}</span>
+        </div>
       </div>
 
       <table className={styles.table}>
@@ -80,9 +99,17 @@ export function PrintPackingList(): JSX.Element {
             <th>#</th>
             <th>Carton tag</th>
             <th>Description</th>
+            {/* Type and Qty were absent, so a printed list could not say
+                whether a line was cartons or bales, nor how many packages it
+                stood for — and for an imported manifest row, one line can mean
+                fifty. Both are on the document now. */}
+            <th>Type</th>
+            <th className={styles.right}>Qty</th>
             <th className={styles.right}>Dimensions (cm)</th>
             <th className={styles.right}>CBM</th>
-            <th className={styles.right}>Weight (kg)</th>
+            <th className={styles.right}>Wt disp. (kg)</th>
+            <th className={styles.right}>Wt act. (kg)</th>
+            <th className={styles.right}>Received</th>
           </tr>
         </thead>
         <tbody>
@@ -91,6 +118,8 @@ export function PrintPackingList(): JSX.Element {
               <td className={styles.mono}>{i + 1}</td>
               <td className={styles.mono}>{item.carton_tag ?? '—'}</td>
               <td>{item.description}</td>
+              <td>{item.package_unit ?? '—'}</td>
+              <td className={`${styles.right} ${styles.mono}`}>{packagesInRow(item)}</td>
               <td className={`${styles.right} ${styles.mono}`}>
                 {item.length_cm && item.width_cm && item.height_cm
                   ? `${Number(item.length_cm)}×${Number(item.width_cm)}×${Number(item.height_cm)}`
@@ -98,6 +127,8 @@ export function PrintPackingList(): JSX.Element {
               </td>
               <td className={`${styles.right} ${styles.mono}`}>{item.cbm ? Number(item.cbm).toFixed(3) : '—'}</td>
               <td className={`${styles.right} ${styles.mono}`}>{item.weight_dispatch_kg ? Number(item.weight_dispatch_kg).toFixed(1) : '—'}</td>
+              <td className={`${styles.right} ${styles.mono}`}>{item.weight_actual_kg ? Number(item.weight_actual_kg).toFixed(1) : '—'}</td>
+              <td className={`${styles.right} ${styles.mono}`}>{item.received_date ?? '—'}</td>
             </tr>
           ))}
         </tbody>
@@ -106,16 +137,27 @@ export function PrintPackingList(): JSX.Element {
       <div className={styles.totals}>
         <div className={styles.totalsBox}>
           <div className={styles.metaRow}>
-            <span className={styles.metaLabel}>Total cartons</span>
-            <span className={`${styles.metaValue} ${styles.mono}`}>{pl.items.length}</span>
+            {/* Was `pl.items.length`, which counts ROWS. A row has meant "N
+                packages" since migration 040, so an imported manifest line of
+                50 cartons printed as "Total cartons: 1". */}
+            <span className={styles.metaLabel}>Total packages</span>
+            <span className={`${styles.metaValue} ${styles.mono}`}>{totalPackages(pl.items)}</span>
+          </div>
+          <div className={styles.metaRow}>
+            <span className={styles.metaLabel}>Package mix</span>
+            <span className={styles.metaValue}>{formatPackageMix(buildPackageMix(pl.items))}</span>
           </div>
           <div className={styles.metaRow}>
             <span className={styles.metaLabel}>Total CBM</span>
             <span className={`${styles.metaValue} ${styles.mono}`}>{totalCbm.toFixed(3)}</span>
           </div>
           <div className={styles.metaRow}>
-            <span className={styles.metaLabel}>Total weight</span>
+            <span className={styles.metaLabel}>Total weight (dispatch)</span>
             <span className={`${styles.metaValue} ${styles.mono}`}>{totalWeight.toFixed(1)} kg</span>
+          </div>
+          <div className={styles.metaRow}>
+            <span className={styles.metaLabel}>Total weight (actual)</span>
+            <span className={`${styles.metaValue} ${styles.mono}`}>{totalWeightActual.toFixed(1)} kg</span>
           </div>
         </div>
       </div>

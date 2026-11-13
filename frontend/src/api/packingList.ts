@@ -35,7 +35,10 @@ export interface PackingListItem {
   quantity_raw?: string | null
   /** Verbatim BALE TYPE, e.g. "BIG BALE"; package_unit collapses to 'bale'. */
   bale_type?: string | null
-  bale_no?: string | null
+  bale_no?: string | null  /** Set when this row came from a quantity entry; shared by the whole batch.
+   *  Null for rows keyed or imported one at a time. */
+  batch_ref?: string | null
+
 }
 
 export interface ItemRejectionEntry {
@@ -100,6 +103,12 @@ export const PACKAGE_UNITS: { value: PackageUnit; label: string }[] = [
   { value: 'sack', label: 'Sack' },
 ]
 
+/** Upper bound on one bulk line — mirrors MAX_ITEM_QUANTITY in the service. */
+export const MAX_ITEM_QUANTITY = 500
+
+/** Above this, saving asks for an explicit confirmation of the total. */
+export const BULK_CONFIRM_THRESHOLD = 25
+
 export interface PackingListItemInput {
   description: string
   weight_dispatch_kg?: number
@@ -110,6 +119,20 @@ export interface PackingListItemInput {
   received_date?: string
   declared_value_usd?: number
   package_unit?: PackageUnit
+  /**
+   * How many identical packages this line stands for. The SERVER expands it
+   * into that many rows, each with its own carton tag and its own CBM — it is
+   * not stored as a quantity on one row, because nothing downstream multiplies
+   * CBM by quantity, so one row would bill N packages as one.
+   *
+   * Which means the totals shown beside the form must multiply by it, or the
+   * figures (and the live shipping price) understate what is being created.
+   */
+  quantity?: number
+  /** Required by the API whenever quantity > 1; the form gates on it too. */
+  identical_confirmed?: boolean
+  /** Groups the rows one quantity entry produced. Round-tripped on edit. */
+  batch_ref?: string | null
 }
 
 export interface CreatePackingListInput {

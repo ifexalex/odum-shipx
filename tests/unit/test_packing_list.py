@@ -857,3 +857,200 @@ class TestShipmentDateOrdering:
                 loading_date=date(2026, 11, 1),
                 items=[{"description": "shoes", "quantity": 1, "cbm": "0.5"}],
             )
+
+
+class TestBulkQuantityExpansion:
+    """One keyed line standing for N identical packages becomes N real rows.
+
+    The expansion is not a convenience detail — it is the correctness mechanism.
+    `packing_list_item.quantity` already exists for the Excel manifest import,
+    where a row means "N packages" and CBM is read off the forwarder's sheet as
+    a line total. **Nothing in the codebase multiplies CBM by quantity**: every
+    consumer does a plain ``SUM(pli.cbm)``. Manual entry computes CBM from the
+    dimensions typed in, so it is per package, and a single row carrying
+    ``quantity = 100`` would be billed as one carton. These tests pin that down.
+    """
+
+    @pytest.fixture(autouse=True)
+    def _no_db(self, monkeypatch):
+        """Stub the two tracking-code lookups so this exercises expansion only."""
+        from services.packing_list import repository as repo
+
+        monkeypatch.setattr(repo, "get_existing_tracking_code", lambda *a, **k: None)
+        monkeypatch.setattr(repo, "get_next_tracking_sequence", lambda *a, **k: 1)
+
+    @staticmethod
+    def _rows(items, *, seq_start=1, min_cbm=Decimal("0.01")):
+        from services.packing_list.service import _build_item_rows
+
+        return _build_item_rows(
+            tenant_id="t1",
+            pl_id="pl1",
+            items=items,
+            container_id="c1",
+            customer_id="cust1",
+            tenant_short="ACM",
+            container_number="CONT001",
+            carton_seq_start=seq_start,
+            min_cbm=min_cbm,
+        )
+
+    @staticmethod
+    def _item(**kwargs):
+        from services.packing_list.models import PackingListItemInput
+
+        base = {
+            "description": "Shoes",
+            "package_unit": "carton",
+            "length_cm": Decimal("60"),
+            "width_cm": Decimal("40"),
+            "height_cm": Decimal("40"),
+            "weight_actual_kg": Decimal("12"),
+        }
+        base.update(kwargs)
+        return PackingListItemInput(**base)
+
+    def test_quantity_expands_into_that_many_rows(self):
+        rows = self._rows([self._item(quantity=100, identical_confirmed=True)])
+
+        assert len(rows) == 100
+
+    def test_every_expanded_row_gets_its_own_carton_tag(self):
+        """A shared tag would break release notes, which key off carton_tag."""
+        rows = self._rows([self._item(quantity=25, identical_confirmed=True)])
+
+        tags = [r["carton_tag"] for r in rows]
+        assert len(set(tags)) == 25
+        assert tags[0] == "ACM-CONT001-001"
+        assert tags[-1] == "ACM-CONT001-025"
+
+    def test_cbm_is_per_package_so_the_sum_bills_every_package(self):
+        """The whole reason for expanding rather than storing quantity = N."""
+        rows = self._rows([self._item(quantity=10, identical_confirmed=True)])
+
+        per_package = Decimal("60") * Decimal("40") * Decimal("40") / Decimal("1000000")
+        assert all(Decimal(str(r["cbm"])) == per_package for r in rows)
+        assert sum(Decimal(str(r["cbm"])) for r in rows) == per_package * 10
+
+    def test_minimum_cbm_floor_applies_per_package_not_per_line(self):
+        """Hand entry floors each package; expansion must match it exactly.
+
+        A single bulk row would have floored the line once, producing a
+        different — and smaller — billable figure.
+        """
+        tiny = self._item(
+            quantity=10,
+            identical_confirmed=True,
+            length_cm=Decimal("10"),
+            width_cm=Decimal("10"),
+            height_cm=Decimal("10"),
+        )
+        rows = self._rows([tiny], min_cbm=Decimal("0.1"))
+
+        assert all(Decimal(str(r["cbm"])) == Decimal("0.1") for r in rows)
+        assert sum(Decimal(str(r["cbm"])) for r in rows) == Decimal("1.0")
+
+    def test_quantity_column_is_left_alone_so_package_counts_stay_right(self):
+        """Manifest counts do SUM(COALESCE(quantity, 1)); 100 rows must read 100.
+
+        Setting quantity = 100 on each of 100 expanded rows would report 10,000
+        packages.
+        """
+        rows = self._rows([self._item(quantity=100, identical_confirmed=True)])
+
+        assert all(r.get("quantity") in (None, 1) for r in rows)
+
+    def test_expanded_rows_share_one_batch_ref(self):
+        rows = self._rows([self._item(quantity=5, identical_confirmed=True)])
+
+        refs = {r["batch_ref"] for r in rows}
+        assert len(refs) == 1
+        assert refs.pop() is not None
+
+    def test_a_single_package_is_not_a_batch(self):
+        rows = self._rows([self._item()])
+
+        assert len(rows) == 1
+        assert rows[0]["batch_ref"] is None
+
+    def test_an_existing_batch_ref_survives_an_edit(self):
+        """Editing a list re-sends its items; the grouping must not be reissued."""
+        rows = self._rows([self._item(batch_ref="11111111-1111-1111-1111-111111111111")])
+
+        assert rows[0]["batch_ref"] == "11111111-1111-1111-1111-111111111111"
+
+    def test_separate_quantity_lines_get_separate_batches(self):
+        rows = self._rows(
+            [
+                self._item(quantity=2, identical_confirmed=True),
+                self._item(quantity=3, identical_confirmed=True, description="Bags"),
+            ]
+        )
+
+        first = {r["batch_ref"] for r in rows if r["description"] == "Shoes"}
+        second = {r["batch_ref"] for r in rows if r["description"] == "Bags"}
+        assert len(first) == 1 and len(second) == 1
+        assert first != second
+
+    def test_tag_sequence_is_unbroken_across_bulk_and_single_lines(self):
+        """A mixed list must look exactly like one keyed entirely by hand."""
+        rows = self._rows(
+            [
+                self._item(quantity=3, identical_confirmed=True),
+                self._item(description="One bag", package_unit="bag"),
+            ]
+        )
+
+        assert [r["carton_tag"] for r in rows] == [
+            "ACM-CONT001-001",
+            "ACM-CONT001-002",
+            "ACM-CONT001-003",
+            "ACM-CONT001-004",
+        ]
+
+
+class TestBulkQuantitySafeguard:
+    """Quantity > 1 is refused unless someone has affirmed the packages match.
+
+    Enforced in the model, not only the form: the risk is an oversight (100
+    cartons recorded at one carton's weight), and an oversight is just as
+    possible from a script or an integration as from the UI.
+    """
+
+    @staticmethod
+    def _make(**kwargs):
+        from services.packing_list.models import PackingListItemInput
+
+        base = {"description": "Shoes", "length_cm": Decimal("60"), "width_cm": Decimal("40"), "height_cm": Decimal("40")}
+        base.update(kwargs)
+        return PackingListItemInput(**base)
+
+    def test_quantity_over_one_without_confirmation_is_rejected(self):
+        with pytest.raises(ValueError, match="identical_confirmed"):
+            self._make(quantity=100)
+
+    def test_quantity_over_one_with_confirmation_is_accepted(self):
+        assert self._make(quantity=100, identical_confirmed=True).quantity == 100
+
+    def test_quantity_of_one_needs_no_confirmation(self):
+        assert self._make().quantity == 1
+
+    def test_zero_and_negative_quantities_are_rejected(self):
+        for bad in (0, -1):
+            with pytest.raises(ValueError):
+                self._make(quantity=bad, identical_confirmed=True)
+
+    def test_quantity_above_the_cap_is_rejected(self):
+        from services.packing_list.models import MAX_ITEM_QUANTITY
+
+        with pytest.raises(ValueError):
+            self._make(quantity=MAX_ITEM_QUANTITY + 1, identical_confirmed=True)
+
+    def test_the_cap_itself_is_accepted(self):
+        from services.packing_list.models import MAX_ITEM_QUANTITY
+
+        assert self._make(quantity=MAX_ITEM_QUANTITY, identical_confirmed=True).quantity == MAX_ITEM_QUANTITY
+
+    def test_confirmation_alone_changes_nothing(self):
+        """Ticking the box without a quantity must not alter the single item."""
+        assert self._make(identical_confirmed=True).quantity == 1

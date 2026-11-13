@@ -455,3 +455,22 @@ lookup is PLATFORM-scoped, like `customer_invite`. See the activation note in `0
 - [x] `tenant_user.locale VARCHAR(10) DEFAULT 'en'` added (migration 026) — EN/ZH notification language
 - [x] `tenant_user_role` join table added (migration 039) — multi-role staff support; `tenant_user.role` kept as primary role, mirrored transactionally by `set_user_roles()`; partial unique index enforces one primary per user; RLS-enabled
 - [x] `container.departure_date` and `packing_list_item` manifest-import fields added (migration 040) — nullable/defaulted, zero regressions; powers `POST /v1/manifests/import`
+
+## `packing_list_item.batch_ref` (migration 061, 2026-11-12)
+
+`UUID NULL` — groups the rows produced by one bulk-quantity entry. NULL for rows
+keyed or imported individually, which is every row that existed before.
+
+Partial index `ix_packing_list_item_batch_ref (packing_list_id, batch_ref)
+WHERE batch_ref IS NOT NULL`: only batched rows are looked up this way and they
+are the minority, so the index stays small.
+
+It is a **safeguard, not decoration**. A quantity typed wrongly creates a
+hundred rows, and undoing that one row at a time is tedious enough that someone
+would reasonably leave it — which is how wrong cargo data survives. The grouping
+makes the mistake one action to reverse.
+
+Note this is *not* the same as `packing_list_item.quantity`, which predates it
+(migration 040) and means "this row is N packages" for the Excel manifest
+import. Manually expanded rows leave `quantity` alone so package counts stay
+correct.

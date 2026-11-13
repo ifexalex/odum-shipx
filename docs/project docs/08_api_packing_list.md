@@ -350,3 +350,59 @@ Create/edit wizard (`CreatePackingList.tsx`) and the `POST`/`PUT /v1/packing-lis
 - **Input hardening (frontend)** — the quantity fields (weights, L×W×H, declared value) block negatives and non-numeric keystrokes (`min=0` + keydown guard + `sanitizeNumber`); the backend already rejected them (`ge=0`/`gt=0` on the Pydantic model), so this is purely entry UX.
 
 Verified live: a 0.06-CBM bale floored to 0.100 shows `0.100 · min · SM BALE`; a 0.4-CBM bale shows `BIG BALE`; a draft opens prefilled with customer/container fixed; negative/alpha input rejected.
+
+## Bulk quantity on a line item (2026-11-12)
+
+Staff receiving 100 cartons of one size had to key 100 separate lines. A line
+can now carry a `quantity`, and the **server expands it into that many rows** —
+each with its own `carton_tag`, its own CBM, and a shared `batch_ref`.
+
+### Request
+
+`POST /v1/packing-lists` and `PUT /v1/packing-lists/{id}` — each entry of
+`items[]` accepts:
+
+| field | type | notes |
+|---|---|---|
+| `quantity` | int, 1..500 | packages this line stands for. Default 1. |
+| `identical_confirmed` | bool | **required `true` whenever `quantity > 1`** |
+| `batch_ref` | uuid \| null | echo back on edit to keep an existing batch grouped |
+
+`422` if `quantity > 1` without `identical_confirmed`, or if quantity is outside
+1..500. The confirmation is enforced in the model, not only the form: the hazard
+is an oversight — 100 cartons recorded at one carton's weight — and that is as
+reachable from a script as from the UI.
+
+### Response
+
+Each item gains `batch_ref` (`null` for rows keyed or imported individually).
+A `quantity: 100` line comes back as **100 items**, not one.
+
+### Why it expands instead of storing `quantity = 100`
+
+`packing_list_item.quantity` already existed for the Excel manifest import,
+where one row means N packages and CBM is read off the forwarder's "Meas."
+column as a line total.
+
+**Nothing in the codebase multiplies CBM by quantity.** Billing, manifest
+totals, tracking, payment_release and packing_list all do a plain
+`SUM(pli.cbm)`. Manual entry computes CBM from the dimensions typed in, so it is
+*per package* — one row carrying `quantity = 100` would have been billed as a
+single carton.
+
+Expanding also keeps two other behaviours right:
+
+- **the minimum-CBM floor applies per package**, as it does for hand entry; a
+  single bulk row would have floored the line once
+- **package counts stay correct** — expanded rows leave `quantity` at its
+  default, so `SUM(COALESCE(quantity, 1))` over 100 rows is 100, not 10,000
+
+Expanded rows are indistinguishable from hand-keyed ones, which is why no
+downstream consumer needed changing.
+
+### Performance
+
+`insert_packing_list_items` was a loop doing one round trip per item. One line
+can now produce hundreds of rows, so it is a single `INSERT ... SELECT * FROM
+UNNEST(...)` with one array per column — still fully parameterised. Measured:
+**500 rows in 229 ms**, end to end through the API.

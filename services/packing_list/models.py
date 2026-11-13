@@ -23,6 +23,14 @@ class PackingListStatus(StrEnum):
 # ---------------------------------------------------------------------------
 
 
+# Upper bound on one bulk line. Chosen to be comfortably above a real
+# consignment (the case that prompted this was ~100 cartons) while still being
+# a number a person could not reach by leaning on a key. It is a guard against
+# a slip, not a business rule — raise it if a tenant genuinely ships more in one
+# identical batch.
+MAX_ITEM_QUANTITY = 500
+
+
 class PackingListItemInput(BaseModel):
     description: str = Field(min_length=1)
     weight_dispatch_kg: Decimal | None = Field(default=None, ge=Decimal("0"))
@@ -38,10 +46,51 @@ class PackingListItemInput(BaseModel):
     # and CBM-rate bucketing.
     package_unit: str | None = Field(default=None, max_length=30)
 
+    # ── Bulk entry ──────────────────────────────────────────────────────────
+    # How many identical packages this line stands for. The server expands it
+    # into that many rows (see _build_item_rows), each with its own carton_tag
+    # and its own CBM — it is NOT stored as `quantity = N` on one row.
+    #
+    # That distinction is load-bearing. `packing_list_item.quantity` exists and
+    # means "N packages" for the Excel manifest import, but **CBM is never
+    # multiplied by quantity anywhere**: billing, manifest totals, tracking and
+    # payment_release all do a plain SUM(pli.cbm). The import gets away with it
+    # because its CBM is read off the forwarder's "Meas." column as a line
+    # total. Here CBM is computed from the dimensions keyed in, so it is per
+    # package — one row carrying quantity=100 would bill as a single carton.
+    quantity: int = Field(default=1, ge=1, le=MAX_ITEM_QUANTITY)
+
+    # The safeguard, enforced here rather than only in the UI: a client calling
+    # the API directly must assert it too. Quantity is a shortcut for packages
+    # that are genuinely identical, and the failure mode is an oversight — 100
+    # cartons recorded at one carton's weight and dimensions — not a typo that
+    # looks wrong on screen.
+    identical_confirmed: bool = False
+
+    # Set when editing a packing list that already contains an expanded batch,
+    # so the grouping survives the round trip. Generated server-side for a new
+    # batch; never trusted as a way to merge unrelated rows, since it only ever
+    # groups rows within one packing list.
+    batch_ref: str | None = None
+
     @model_validator(mode="after")
     def compute_cbm(self) -> "PackingListItemInput":
         if self.length_cm is not None and self.width_cm is not None and self.height_cm is not None:
             self.cbm = (self.length_cm * self.width_cm * self.height_cm) / Decimal("1000000")
+        return self
+
+    @model_validator(mode="after")
+    def require_identical_confirmation(self) -> "PackingListItemInput":
+        """Refuse a bulk quantity that nobody has affirmed is actually bulk.
+
+        Deliberately a hard error rather than a silent clamp to 1: quietly
+        dropping 99 cartons would be far worse than refusing the request.
+        """
+        if self.quantity > 1 and not self.identical_confirmed:
+            raise ValueError(
+                f"quantity {self.quantity} requires identical_confirmed=true — confirm that all "
+                f"{self.quantity} packages share these exact dimensions and weight"
+            )
         return self
 
 

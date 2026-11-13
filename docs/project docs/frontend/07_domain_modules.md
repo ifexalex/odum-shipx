@@ -1452,3 +1452,172 @@ been filling a free-text "container id or number" field that this page **stopped
 having on 2026-09-06**, when step 1 became a dropdown of the customer's *arrived*
 shipments (mirroring `_PRE_ARRIVAL_STATUSES` server-side). The spec was never
 updated and had been timing out on a field that no longer existed.
+
+## Packing list — bulk quantity entry (2026-11-12)
+
+`CreatePackingList.tsx` gains a **Qty** column with a three-part safeguard. The
+risk being designed against is not a typo — a typo looks wrong — but an
+*oversight*: 100 cartons recorded at one carton's weight because they were
+nearly identical.
+
+1. **The quantity input is disabled** until an "identical" checkbox on the same
+   cell is ticked, so the number cannot be reached without passing the
+   assertion. Unticking resets the quantity to 1, so a stale 100 cannot be saved
+   by clearing the box and missing the input.
+2. **The line states what it will create** on a row beneath it — count, total
+   CBM, total weight. "500" in a narrow input looks much like "50"; the CBM it
+   implies does not.
+3. **Saving asks** when any line is ≥ `BULK_CONFIRM_THRESHOLD` (25), restating
+   the package count, CBM and weight. Only above the threshold: prompting on
+   every "2" would train people to dismiss it, which is worse than not asking.
+
+The server enforces the same rule, so the form is a prompt rather than the
+protection.
+
+**The totals multiply by quantity** — package count, weights, CBM, declared
+value, and therefore the live shipping price. They are the real safeguard, and
+had they been left per-row they would have quietly understated every bulk line.
+
+**Editing.** The API returns a bulk line already expanded — one row per package
+— so the form shows them individually with `quantity` at 1; re-expanding would
+duplicate the cargo. `batch_ref` is carried through the load so the grouping
+survives a save, and the row's remove button removes **the whole batch** when
+the row belongs to one, with the count in its label and tooltip.
+
+### A bug the tests caught
+
+`clampQuantity` first coerced an emptied field to 1, so clearing the box left a
+"1" behind and typing "40" produced **140**. It now allows a transiently empty
+value (`undefined`, which reads as one package everywhere). Worth recording
+because it would have been a daily irritation for the people this feature is
+meant to help.
+
+### Alignment and the draft round trip (2026-11-12, follow-up)
+
+Three defects found by **screenshotting the table** rather than reasoning about
+the CSS. Two were pre-existing.
+
+**1. Every right/centre header was left-aligned** (pre-existing). `.itemsTable
+th` is specificity (0,1,1) and `.right` / `.center` are (0,1,0), so the header
+alignment classes lost to the `text-align: left` in the element rule — Wt disp.,
+Wt act., L × W × H, CBM and Decl. all had a left-aligned heading over
+right-aligned numbers. Restated as `.itemsTable th.right` / `th.center`.
+
+**2. The totals footer was one cell short** (mine). Adding the Qty column to the
+header and body without adding a `<td />` to `<tfoot>` pushed every figure after
+CBM one column left, so the declared-value total rendered under **Qty**. Only
+visible in a screenshot; no test asserts footer cell positions.
+
+**3. A saved draft did not give back what was typed** — reported from the
+warehouse as *"the quantity is not being retained"*. The API stores a bulk line
+expanded, so reopening returned 100 rows and the number entered appeared
+nowhere. `collapseBatches()` folds a group sharing one `batch_ref` back into a
+single line carrying `quantity`, which is lossless because the server re-expands
+from the same ref on save. A group is only folded when every row still matches —
+if one package was edited directly, the rows stay expanded, since folding would
+silently discard that edit.
+
+**Also fixed in the same pass:** the edit load dropped `received_date`
+(pre-existing). The server falls back to `received_date or date.today()`, so
+editing any draft silently re-dated every item to today — and the tracking code
+is derived from customer + received date, so the grouping moved with it. Worst
+on imported lists, where that date is real rather than the day of entry.
+
+The Qty cell itself is a centred flex stack with a fixed `min-height`, so a
+bulk row is exactly as tall as a plain one; without it the table jolted taller
+the moment a checkbox appeared, which is what made the column look misaligned.
+The quantity input is narrower than the measurement inputs and centre-aligned —
+it is a count, not a dimension.
+
+### Review step and printed document now carry the full item detail (2026-11-12)
+
+Reported as *"a lot of information is missing when I preview the packing list …
+quantity, the package type, carton or bag … I want the preview to contain every
+single information"*. Both views were showing a subset.
+
+**Review step (document preview)** gained **Type**, **Qty**, **Wt disp.** and
+**Wt act.** (it showed only one weight), and the money/CBM figures are now line
+totals — `value × quantity` — matching what will actually be created and billed.
+
+**Printed document** (`PrintPackingList.tsx`) gained **Type**, **Qty**,
+**Wt act.** and **Received**, alongside the dispatch weight it already had.
+
+**A counting bug fixed with them.** The printed total was `pl.items.length` —
+a *row* count. A row has meant "N packages" since migration 040, so an imported
+manifest line of 50 cartons printed as **"Total cartons: 1"**. It is now
+`totalPackages()` (summing `quantity`), labelled "Total packages", with a
+**Package mix** line beside it: *"3 cartons · 1 sack"*.
+
+**"carton(s)" was hardcoded** in the review banner and both totals lines, so a
+list of bales or sacks described itself as cartons on the very screen meant for
+checking it. All three now use `formatPackageMix(buildPackageMix(items))`.
+
+New shared helpers in `api/packingListRules.ts` — `packagesInRow`,
+`totalPackages`, `buildPackageMix` — so the form, the review preview and the
+printed document cannot drift apart. `buildPackageMix` deliberately mirrors the
+server's `_PACKAGE_MIX_LATERAL`, which groups by `package_unit` and sums
+`COALESCE(quantity, 1)`.
+
+Layout: the preview document's header and row are **separate CSS grids**, so
+adding columns to one and not the other would shear every value away from its
+heading; both now declare the same nine tracks, and a comment says so. Mono
+cells in the printed table are `nowrap` — carton tags and ISO dates were
+breaking mid-token into two ragged lines per row.
+
+### Loading date, delivery date and arrival warehouse on both documents (2026-11-12)
+
+All three are captured on step 1 of the wizard and appeared on **neither** the
+review preview nor the printed document — so the screen used to verify a list
+before submitting, and the document handed to a customer, could not answer when
+the cargo loads, when it lands, or where it is going. Added to both, rendering
+`—` when unset.
+
+They sit in the existing two-column meta grids, which wrap, so no layout change
+was needed; verified by screenshot rather than assumed.
+
+### Saving a draft twice created two packing lists (2026-11-12)
+
+Reported as *"when I save item to draft, it keeps saving a new copy of that
+same item to the draft … I was expecting it to be a unique item saved as draft,
+that can be edited or removed, and not resaving them as more drafts."*
+
+`CreatePackingList` decided create-vs-update from the **route param alone**:
+
+```ts
+const { id: editId } = useParams()
+const isEdit = Boolean(editId)
+```
+
+On `/packing-lists/new` there is no param, so *every* save took the create
+branch. The first produced a list; the second produced **another list holding
+the same cargo**, and so on.
+
+It normally navigates away after saving, which hides this — but not always:
+
+- a save that **errors after the create succeeded** (e.g. `submit` fails on the
+  review step) leaves the user on the page with a created list and a visible
+  error, and pressing save again duplicates it
+- any return to the form without a route param does the same
+
+The page now remembers what it created:
+
+```ts
+const [createdId, setCreatedId] = useState<string | null>(null)
+const targetListId = editId ?? createdId
+```
+
+so the second save **updates** the list the first one made. The update path
+already deletes and re-inserts items, so repeated saves converge rather than
+accumulate.
+
+`regenerate()` is no longer called after a successful create. It was discarding
+the idempotency key that guarded that create, immediately after it had been
+used — leaving nothing to protect a double submit. The page creates at most one
+list and then edits it, so the key never needs replacing.
+
+**Harmonised:** step 2's button said "Save draft" and step 3's "Save as draft"
+for the identical action. Both are now **"Save draft"** — the imperative form
+matching the surrounding buttons ("Submit for approval", "Create packing
+list"), and still unambiguous on step 3 where it sits beside Submit. The test
+matcher was tightened back to the exact string once there was only one.
+

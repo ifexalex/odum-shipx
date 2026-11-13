@@ -1,8 +1,10 @@
-import { useEffect, useState, type JSX, type KeyboardEvent as ReactKeyboardEvent } from 'react'
+import { Fragment, useEffect, useState, type JSX, type KeyboardEvent as ReactKeyboardEvent } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { ApiError } from '../../api/client'
-import { applyMinCbm, baleSizeAbbr, computeCbm } from '../../api/packingListRules'
+import { applyMinCbm, baleSizeAbbr, buildPackageMix, computeCbm, formatPackageMix } from '../../api/packingListRules'
 import {
+  BULK_CONFIRM_THRESHOLD,
+  MAX_ITEM_QUANTITY,
   PACKAGE_UNITS,
   packingListApi,
   type PackageUnit,
@@ -12,10 +14,79 @@ import { containersApi, type Container } from '../../api/tracking'
 import { configApi, customersApi, type CbmRateCurrency, type Customer } from '../../api/tenantManagement'
 import { warehousesApi, type Warehouse } from '../../api/warehouses'
 import { useIdempotencyKey } from '../../api/useIdempotencyKey'
-import { Avatar, Badge, Banner, Button, Card, Combobox, Field, Icon, Kvp, Mono } from '../../design/components'
+import { Avatar, Badge, Banner, Button, Card, Combobox, Field, Icon, Kvp, Modal, Mono } from '../../design/components'
 import { PageHeader } from '../../shell/PageHeader'
 import { SectionHead } from '../../shell/SectionHead'
 import styles from './CreatePackingList.module.css'
+
+/** Turn an expanded batch back into the one line that produced it.
+ *
+ *  The API returns a bulk line already expanded — 100 rows for `quantity: 100`
+ *  — because that is what it stores. Rendering those 100 rows is what "the
+ *  quantity is not being retained" looked like from the warehouse: you type one
+ *  line, save, reopen, and get a hundred rows back with the number you entered
+ *  nowhere on screen.
+ *
+ *  Collapsing is lossless: the server re-expands on save from the same
+ *  `batch_ref`, so the round trip reproduces the identical rows rather than
+ *  duplicating cargo.
+ *
+ *  Only collapsed when every row in the group still matches. If one package of
+ *  a batch was edited directly, the rows stay expanded — folding them would
+ *  silently discard that edit, which is worse than showing more rows than
+ *  expected.
+ */
+function collapseBatches(items: PackingListItemInput[]): PackingListItemInput[] {
+  const out: PackingListItemInput[] = []
+  const seen = new Set<string>()
+
+  for (const item of items) {
+    const ref = item.batch_ref
+    if (!ref) {
+      out.push(item)
+      continue
+    }
+    if (seen.has(ref)) continue
+    seen.add(ref)
+
+    const group = items.filter((other) => other.batch_ref === ref)
+    const matchesFirst = (other: PackingListItemInput): boolean =>
+      other.description === item.description &&
+      other.package_unit === item.package_unit &&
+      other.length_cm === item.length_cm &&
+      other.width_cm === item.width_cm &&
+      other.height_cm === item.height_cm &&
+      other.weight_dispatch_kg === item.weight_dispatch_kg &&
+      other.weight_actual_kg === item.weight_actual_kg &&
+      other.declared_value_usd === item.declared_value_usd &&
+      other.received_date === item.received_date
+
+    if (group.length > 1 && group.every(matchesFirst)) {
+      out.push({ ...item, quantity: group.length, identical_confirmed: true })
+    } else {
+      out.push(...group)
+    }
+  }
+  return out
+}
+
+/** Keep a typed quantity inside 1..MAX, tolerating an emptied field.
+ *
+ *  Clamping rather than rejecting: someone mid-edit who has cleared the box
+ *  should not see a validation error, and someone who holds a key down should
+ *  land on the cap rather than on a number the API will refuse. The cap is
+ *  re-checked server-side regardless.
+ */
+function clampQuantity(raw: string): number | undefined {
+  // An emptied field stays empty rather than snapping to 1. Coercing it meant
+  // clearing the box left a "1" behind, so typing "40" produced 140 — caught
+  // by a test, and it would have been a daily irritation in the warehouse.
+  // `undefined` reads as one package everywhere (see qtyOf).
+  if (raw.trim() === '') return undefined
+  const n = Number.parseInt(raw, 10)
+  if (!Number.isFinite(n)) return undefined
+  return Math.min(Math.max(n, 1), MAX_ITEM_QUANTITY)
+}
 
 function emptyItem(): PackingListItemInput {
   return { description: '', package_unit: 'carton' }
@@ -78,8 +149,25 @@ function WizardSteps({ current }: WizardStepsProps): JSX.Element {
 export function CreatePackingList(): JSX.Element {
   const navigate = useNavigate()
   const { id: editId } = useParams<{ id: string }>()
-  const isEdit = Boolean(editId)
-  const { key, regenerate } = useIdempotencyKey()
+
+  // The list THIS page created, if it already saved once.
+  //
+  // Without it, every save took the create branch: a second "Save draft" made
+  // a second packing list holding the same cargo, which is what "it keeps
+  // saving a new copy" meant. The page normally navigates away after saving,
+  // so it needs a returning user, a failed navigation, or a save that errors
+  // after the create succeeded — but all three happen, and duplicated cargo is
+  // expensive to notice later.
+  //
+  // Once a list exists, this page edits it. That is also what makes the save
+  // button safe to press twice.
+  const [createdId, setCreatedId] = useState<string | null>(null)
+  const targetListId = editId ?? createdId
+  const isEdit = Boolean(targetListId)
+  // `regenerate` is intentionally unused: this page creates at most one
+  // packing list, then edits it. Regenerating after a successful create
+  // would discard the only thing protecting a double-submit.
+  const { key } = useIdempotencyKey()
   const [step, setStep] = useState<1 | 2 | 3>(1)
   const [customers, setCustomers] = useState<Customer[]>([])
   const [containers, setContainers] = useState<Container[]>([])
@@ -93,6 +181,8 @@ export function CreatePackingList(): JSX.Element {
   // to this value, mirroring the backend, so the wizard shows the real value.
   const [minCbm, setMinCbm] = useState(0.1)
   const [items, setItems] = useState<PackingListItemInput[]>([emptyItem()])
+  // Set when a save is held back pending confirmation of a bulk line.
+  const [pendingSave, setPendingSave] = useState<{ submitForApproval: boolean } | null>(null)
   // When editing a draft, the customer/container are fixed (the update API
   // keeps them) — show them read-only once loaded.
   const [editReady, setEditReady] = useState(!isEdit)
@@ -178,7 +268,11 @@ export function CreatePackingList(): JSX.Element {
         setLoadingDate(pl.loading_date ?? '')
         setDeliveryDate(pl.delivery_date ?? '')
         setItems(
-          pl.items.length > 0
+          // collapseBatches folds an expanded bulk line back into the single
+          // row that produced it, so the quantity the user typed is what they
+          // see when they reopen the draft.
+          collapseBatches(
+            pl.items.length > 0
             ? pl.items.map((it) => ({
                 description: it.description,
                 weight_dispatch_kg: it.weight_dispatch_kg != null ? Number(it.weight_dispatch_kg) : undefined,
@@ -188,8 +282,20 @@ export function CreatePackingList(): JSX.Element {
                 height_cm: it.height_cm != null ? Number(it.height_cm) : undefined,
                 declared_value_usd: it.declared_value_usd != null ? Number(it.declared_value_usd) : undefined,
                 package_unit: (it.package_unit as PackageUnit) ?? 'carton',
+                // Carried through because the server falls back to
+                // `received_date or date.today()`. Dropping it meant editing a
+                // draft silently re-dated every item to today — and the
+                // tracking code is derived from customer + received date, so
+                // the grouping moved with it. Worst on an imported list, where
+                // that date is real rather than the day of entry.
+                received_date: it.received_date ?? undefined,
+                // Carried through so an edit round trip keeps the grouping. The
+                // rows arrive already expanded — one per package — so quantity
+                // stays 1 here; re-expanding them would duplicate the cargo.
+                batch_ref: it.batch_ref ?? null,
               }))
             : [emptyItem()],
+          ),
         )
         // Ensure the fixed customer/container show even though the pickers only
         // list open containers — inject the current one if missing.
@@ -224,16 +330,36 @@ export function CreatePackingList(): JSX.Element {
       : 0
   }
 
+  /** Packages this line stands for. The server expands a quantity line into
+   *  this many rows, so every total below must scale by it. */
+  function qtyOf(item: PackingListItemInput): number {
+    const q = item.quantity ?? 1
+    return Number.isFinite(q) && q > 0 ? Math.floor(q) : 1
+  }
+
+  // Multiplied by quantity throughout. These totals are the real safeguard: a
+  // quantity typed as 1000 instead of 100 is hard to see in the input and
+  // impossible to miss in the CBM and the live shipping price beneath it.
   const totals = items.reduce(
-    (acc, item) => ({
-      cartons: acc.cartons + 1,
-      weightDispatch: acc.weightDispatch + (item.weight_dispatch_kg ?? 0),
-      weight: acc.weight + (item.weight_actual_kg ?? 0),
-      cbm: acc.cbm + applyMinCbm(rawCbm(item), minCbm),
-      declaredUsd: acc.declaredUsd + (item.declared_value_usd ?? 0),
-    }),
+    (acc, item) => {
+      const q = qtyOf(item)
+      return {
+        cartons: acc.cartons + q,
+        weightDispatch: acc.weightDispatch + (item.weight_dispatch_kg ?? 0) * q,
+        weight: acc.weight + (item.weight_actual_kg ?? 0) * q,
+        // Floored per package, matching the server: it applies the minimum to
+        // each expanded row, not once to the line.
+        cbm: acc.cbm + applyMinCbm(rawCbm(item), minCbm) * q,
+        declaredUsd: acc.declaredUsd + (item.declared_value_usd ?? 0) * q,
+      }
+    },
     { cartons: 0, weightDispatch: 0, weight: 0, cbm: 0, declaredUsd: 0 },
   )
+
+  /** Lines whose quantity is large enough to warrant a second look on save. */
+  const bulkLines = items
+    .map((item, index) => ({ item, index, qty: qtyOf(item) }))
+    .filter(({ qty }) => qty >= BULK_CONFIRM_THRESHOLD)
 
   // Live pricing: CBM × rate, in whichever currency the tenant configured —
   // then derive the other currency's tile via the FX rate. Null rates
@@ -252,13 +378,50 @@ export function CreatePackingList(): JSX.Element {
     setItems((prev) => prev.filter((_, i) => i !== index))
   }
 
+  /** Drop every row that came from one quantity entry.
+   *
+   *  The reason batch_ref exists. A quantity typed wrongly creates a hundred
+   *  rows, and undoing that one row at a time is bad enough that someone would
+   *  reasonably just leave it — which is how wrong cargo data survives. One
+   *  action to remove the batch keeps the mistake cheap.
+   */
+  function removeBatch(batchRef: string): void {
+    setItems((prev) => {
+      const kept = prev.filter((item) => item.batch_ref !== batchRef)
+      return kept.length > 0 ? kept : [emptyItem()]
+    })
+  }
+
+  /** How many rows share this batch — shown so "remove" states its own cost. */
+  function batchSize(batchRef: string | null | undefined): number {
+    if (!batchRef) return 0
+    return items.filter((item) => item.batch_ref === batchRef).length
+  }
+
+  /** Ask before creating a lot of packages from one keystroke.
+   *
+   *  Only above BULK_CONFIRM_THRESHOLD: prompting on every "2" would train
+   *  people to dismiss it, which is worse than not asking. The dialog restates
+   *  the figures that actually matter — package count, CBM, weight — because
+   *  "500" in a narrow input looks much like "50", while the CBM it implies
+   *  does not.
+   */
+  async function requestSave(submitForApproval: boolean): Promise<void> {
+    if (bulkLines.length > 0) {
+      setPendingSave({ submitForApproval })
+      return
+    }
+    await handleSave(submitForApproval)
+  }
+
   async function handleSave(submitForApproval: boolean): Promise<void> {
+    setPendingSave(null)
     setSubmitting(true)
     setError(null)
     try {
       let targetId: string
-      if (isEdit) {
-        const updated = await packingListApi.update(editId!, {
+      if (targetListId) {
+        const updated = await packingListApi.update(targetListId, {
           loading_date: loadingDate || undefined,
           delivery_date: deliveryDate || undefined,
           arrival_warehouse_id: arrivalWarehouseId || undefined,
@@ -277,7 +440,10 @@ export function CreatePackingList(): JSX.Element {
           },
           key,
         )
-        regenerate()
+        // Remember it, so a second save edits this list instead of making
+        // another one. The idempotency key is deliberately NOT regenerated
+        // here: it guarded this create, and the next save is an update.
+        setCreatedId(created.id)
         targetId = created.id
       }
       if (submitForApproval) {
@@ -545,6 +711,7 @@ export function CreatePackingList(): JSX.Element {
                     <th className={styles.right}>Wt act. (kg)</th>
                     <th className={styles.center}>L × W × H (cm)</th>
                     <th className={[styles.right, styles.cbmHead].join(' ')}>CBM</th>
+                    <th className={styles.center}>Qty</th>
                     <th className={styles.right}>Decl. (USD)</th>
                     <th />
                   </tr>
@@ -557,6 +724,9 @@ export function CreatePackingList(): JSX.Element {
                     const floored = raw > 0 && raw < minCbm
                     const isBale = item.package_unit === 'bale'
                     return (
+                      // Fragment: a bulk line renders its own preview row
+                      // beneath the inputs, so the map yields two <tr>s.
+                      <Fragment key={index}>
                       <tr key={index}>
                         <td>
                           <span className={styles.assignedOnSave}>On save</span>
@@ -655,6 +825,71 @@ export function CreatePackingList(): JSX.Element {
                             )}
                           </div>
                         </td>
+                        <td className={styles.center}>
+                          {/* The affirmation sits directly above the input it
+                              unlocks, so the relationship reads without
+                              explanation. Kept there rather than moved beside
+                              the row or into the preview: the hazard is not a
+                              typo — a typo looks wrong — it is an oversight,
+                              100 cartons recorded at one carton's weight
+                              because they were nearly identical. Putting the
+                              assertion in the path to the number is the whole
+                              point, and anywhere else loosens that. The server
+                              enforces the same rule, so this is a prompt, not
+                              the protection. */}
+                          <div className={styles.qtyCell}>
+                            <label
+                              className={[
+                                styles.qtyConfirm,
+                                item.identical_confirmed ? styles.qtyConfirmOn : '',
+                              ]
+                                .filter(Boolean)
+                                .join(' ')}
+                              title={
+                                'Tick only when every package on this line has the same dimensions ' +
+                                'and weight. One wrong measurement is repeated across all of them, ' +
+                                'and CBM drives billing.'
+                              }
+                            >
+                              <input
+                                type="checkbox"
+                                checked={item.identical_confirmed ?? false}
+                                aria-label={`Item ${index + 1}: all packages identical`}
+                                onChange={(event) =>
+                                  updateItem(index, {
+                                    identical_confirmed: event.target.checked,
+                                    // Unticking returns the line to a single
+                                    // package, so a stale 100 cannot be saved
+                                    // by clearing the box and missing the
+                                    // input.
+                                    ...(event.target.checked ? {} : { quantity: 1 }),
+                                  })
+                                }
+                              />
+                              <span>identical</span>
+                            </label>
+                            <input
+                              className={styles.qtyInput}
+                              type="number"
+                              min={1}
+                              max={MAX_ITEM_QUANTITY}
+                              step={1}
+                              inputMode="numeric"
+                              aria-label={`Item ${index + 1}: quantity`}
+                              disabled={!(item.identical_confirmed ?? false)}
+                              title={
+                                item.identical_confirmed
+                                  ? `How many identical packages (up to ${MAX_ITEM_QUANTITY})`
+                                  : 'Tick "identical" first — each package is created separately'
+                              }
+                              value={item.quantity ?? ''}
+                              onKeyDown={blockInvalidNumberKeys}
+                              onChange={(event) =>
+                                updateItem(index, { quantity: clampQuantity(event.target.value) })
+                              }
+                            />
+                          </div>
+                        </td>
                         <td className={styles.right}>
                           <input
                             className={styles.cellInputNumber}
@@ -672,21 +907,61 @@ export function CreatePackingList(): JSX.Element {
                           <button
                             type="button"
                             className={styles.removeRow}
-                            aria-label={`Remove item ${index + 1}`}
+                            aria-label={
+                              batchSize(item.batch_ref) > 1
+                                ? `Remove all ${batchSize(item.batch_ref)} packages in this batch`
+                                : `Remove item ${index + 1}`
+                            }
+                            title={
+                              batchSize(item.batch_ref) > 1
+                                ? `Removes all ${batchSize(item.batch_ref)} identical packages entered together`
+                                : undefined
+                            }
                             disabled={items.length === 1}
-                            onClick={() => removeItem(index)}
+                            onClick={() =>
+                              batchSize(item.batch_ref) > 1 && item.batch_ref
+                                ? removeBatch(item.batch_ref)
+                                : removeItem(index)
+                            }
                           >
                             <Icon name="x" size={14} />
                           </button>
                         </td>
                       </tr>
+                      {qtyOf(item) > 1 && (
+                        /* Spell out what this line will become. The count is
+                           what was typed; the CBM and weight are what it costs.
+                           A wrong quantity is far easier to notice as "60.00
+                           CBM" than as a digit in a small box. */
+                        <tr className={styles.qtyPreviewRow}>
+                          <td />
+                          <td colSpan={9}>
+                            <span className={styles.qtyPreview}>
+                              <Icon name="plus" size={12} />
+                              {[
+                                `Creates ${qtyOf(item)} ${item.package_unit ?? 'carton'}${
+                                  qtyOf(item) === 1 ? '' : 's'
+                                }`,
+                                hasData ? `${(effectiveCbm * qtyOf(item)).toFixed(2)} CBM` : null,
+                                item.weight_actual_kg != null
+                                  ? `${(item.weight_actual_kg * qtyOf(item)).toFixed(1)} kg`
+                                  : null,
+                                'separate tags, one per package',
+                              ]
+                                .filter(Boolean)
+                                .join(' · ')}
+                            </span>
+                          </td>
+                        </tr>
+                      )}
+                      </Fragment>
                     )
                   })}
                 </tbody>
                 <tfoot>
                   <tr>
                     <td colSpan={3} className={styles.totalsLabel}>
-                      Totals — {totals.cartons} item(s)
+                      Totals — {formatPackageMix(buildPackageMix(items))}
                     </td>
                     <td className={styles.right}>
                       <Mono>{totals.weightDispatch.toFixed(1)} kg</Mono>
@@ -698,6 +973,11 @@ export function CreatePackingList(): JSX.Element {
                     <td className={styles.right}>
                       <Mono color="var(--color-success)">{totals.cbm.toFixed(3)}</Mono>
                     </td>
+                    {/* Qty has no meaningful total of its own — the package
+                        count is already stated as "N item(s)" on the left — but
+                        the cell must exist, or every figure after CBM shifts a
+                        column left and the declared total lands under Qty. */}
+                    <td />
                     <td className={styles.right}>
                       <Mono>${totals.declaredUsd.toFixed(0)}</Mono>
                     </td>
@@ -761,7 +1041,7 @@ export function CreatePackingList(): JSX.Element {
               Back: Details
             </Button>
             <div className={styles.actionsGroup}>
-              <Button variant="secondary" loading={submitting} onClick={() => void handleSave(false)}>
+              <Button variant="secondary" loading={submitting} onClick={() => void requestSave(false)}>
                 Save draft
               </Button>
               <Button variant="primary" trailingIcon="arrowright" disabled={!canProceedFrom2} onClick={() => setStep(3)}>
@@ -779,7 +1059,11 @@ export function CreatePackingList(): JSX.Element {
               <SectionHead title="Ready to submit" sub="Review the summary, then submit for approval." />
               <div className={styles.spacerSm} />
               <Banner variant="success" title="All items look valid">
-                {totals.cartons} carton(s) captured · all dimensions present · CBM totals computed.
+                {/* "carton(s)" was hardcoded, so a list of bales or sacks
+                    described itself as cartons on the very screen meant for
+                    checking it. */}
+                {formatPackageMix(buildPackageMix(items))} captured · all dimensions present · CBM totals
+                computed.
               </Banner>
             </Card>
             <div className={styles.spacerSm} />
@@ -818,12 +1102,35 @@ export function CreatePackingList(): JSX.Element {
                         <div className={styles.previewMetaValue}>{selectedContainer.vessel_name}{selectedContainer.voyage_number ? ` · Voy ${selectedContainer.voyage_number}` : ''}</div>
                       )}
                     </div>
+                    {/* Both dates are entered on step 1 and appeared on no
+                        preview, so the screen used to verify a list before
+                        submitting could not show when it loads or lands. */}
+                    <div>
+                      <div className={styles.previewMetaLabel}>Loading date</div>
+                      <div className={styles.previewMetaValue}>{loadingDate || '—'}</div>
+                    </div>
+                    <div>
+                      <div className={styles.previewMetaLabel}>Delivery date</div>
+                      <div className={styles.previewMetaValue}>{deliveryDate || '—'}</div>
+                    </div>
+                    <div>
+                      <div className={styles.previewMetaLabel}>Arrival warehouse</div>
+                      <div className={styles.previewMetaValue}>
+                        {warehouses.find((w) => w.id === arrivalWarehouseId)?.name ?? '—'}
+                      </div>
+                    </div>
                   </div>
                   {/* Items table */}
                   <div className={styles.previewTableHead}>
                     <span className={styles.previewCol}>Tag</span>
                     <span className={[styles.previewCol, styles.previewColDesc].join(' ')}>Description</span>
-                    <span className={[styles.previewCol, styles.previewColRight].join(' ')}>Wt (kg)</span>
+                    {/* Type and Qty were missing here, so the review step could
+                        not answer "cartons or bales, and how many?" — the two
+                        things a checker most needs before submitting. */}
+                    <span className={styles.previewCol}>Type</span>
+                    <span className={[styles.previewCol, styles.previewColRight].join(' ')}>Qty</span>
+                    <span className={[styles.previewCol, styles.previewColRight].join(' ')}>Wt disp.</span>
+                    <span className={[styles.previewCol, styles.previewColRight].join(' ')}>Wt act.</span>
                     <span className={[styles.previewCol, styles.previewColRight].join(' ')}>L×W×H</span>
                     <span className={[styles.previewCol, styles.previewColRight].join(' ')}>CBM</span>
                     <span className={[styles.previewCol, styles.previewColRight].join(' ')}>USD</span>
@@ -832,30 +1139,47 @@ export function CreatePackingList(): JSX.Element {
                     const cbm = item.length_cm != null && item.width_cm != null && item.height_cm != null
                       ? computeCbm(item.length_cm, item.width_cm, item.height_cm)
                       : null
+                    const qty = qtyOf(item)
                     return (
                       <div key={i} className={styles.previewRow}>
-                        <span className={[styles.previewCol, styles.previewMono].join(' ')}>—</span>
+                        <span className={[styles.previewCol, styles.previewMono].join(' ')}>
+                          {qty > 1 ? `×${qty}` : '—'}
+                        </span>
                         <span className={[styles.previewCol, styles.previewColDesc].join(' ')}>{item.description || '—'}</span>
-                        <span className={[styles.previewCol, styles.previewColRight, styles.previewMono].join(' ')}>{item.weight_actual_kg ?? '—'}</span>
+                        <span className={styles.previewCol}>{item.package_unit ?? 'carton'}</span>
+                        <span className={[styles.previewCol, styles.previewColRight, styles.previewMono].join(' ')}>{qty}</span>
+                        <span className={[styles.previewCol, styles.previewColRight, styles.previewMono].join(' ')}>
+                          {item.weight_dispatch_kg != null ? (item.weight_dispatch_kg * qty).toFixed(1) : '—'}
+                        </span>
+                        <span className={[styles.previewCol, styles.previewColRight, styles.previewMono].join(' ')}>
+                          {item.weight_actual_kg != null ? (item.weight_actual_kg * qty).toFixed(1) : '—'}
+                        </span>
                         <span className={[styles.previewCol, styles.previewColRight, styles.previewMono].join(' ')}>
                           {item.length_cm != null ? `${item.length_cm}×${item.width_cm}×${item.height_cm}` : '—'}
                         </span>
                         <span className={[styles.previewCol, styles.previewColRight, styles.previewMono, styles.previewCbm].join(' ')}>
-                          {cbm != null ? cbm.toFixed(3) : '—'}
+                          {/* Line total, not per package: the row stands for
+                              `qty` packages and this is the figure that is
+                              billed. */}
+                          {cbm != null ? (applyMinCbm(cbm, minCbm) * qty).toFixed(3) : '—'}
                         </span>
                         <span className={[styles.previewCol, styles.previewColRight, styles.previewMono].join(' ')}>
-                          {item.declared_value_usd != null ? `$${item.declared_value_usd}` : '—'}
+                          {item.declared_value_usd != null ? `$${(item.declared_value_usd * qty).toFixed(0)}` : '—'}
                         </span>
                       </div>
                     )
                   })}
                   {/* Totals */}
                   <div className={styles.previewTotals}>
-                    <span>{totals.cartons} carton(s)</span>
+                    <span>{formatPackageMix(buildPackageMix(items))}</span>
                     <span>·</span>
-                    <span>{totals.weight.toFixed(1)} kg</span>
+                    <span>{totals.weightDispatch.toFixed(1)} kg disp.</span>
+                    <span>·</span>
+                    <span>{totals.weight.toFixed(1)} kg act.</span>
                     <span>·</span>
                     <span className={styles.previewCbm}>{totals.cbm.toFixed(3)} CBM</span>
+                    <span>·</span>
+                    <span>${totals.declaredUsd.toFixed(0)}</span>
                   </div>
                 </div>
               </div>
@@ -878,10 +1202,10 @@ export function CreatePackingList(): JSX.Element {
               Back: Items
             </Button>
             <div className={styles.actionsGroup}>
-              <Button variant="secondary" loading={submitting} onClick={() => void handleSave(false)}>
-                Save as draft
+              <Button variant="secondary" loading={submitting} onClick={() => void requestSave(false)}>
+                Save draft
               </Button>
-              <Button variant="accent" icon="check" loading={submitting} onClick={() => void handleSave(true)}>
+              <Button variant="accent" icon="check" loading={submitting} onClick={() => void requestSave(true)}>
                 Submit for approval
               </Button>
             </div>
@@ -890,6 +1214,56 @@ export function CreatePackingList(): JSX.Element {
       )}
       </>
       )}
+
+      <Modal
+        open={pendingSave !== null}
+        onClose={() => setPendingSave(null)}
+        title={`Create ${totals.cartons} packages?`}
+        width={520}
+        footer={
+          <>
+            <Button variant="ghost" onClick={() => setPendingSave(null)}>
+              Go back
+            </Button>
+            <Button
+              variant="primary"
+              icon="check"
+              loading={submitting}
+              onClick={() => void handleSave(pendingSave?.submitForApproval ?? false)}
+            >
+              Yes, create them
+            </Button>
+          </>
+        }
+      >
+        <p>
+          {bulkLines.length === 1 ? 'One line sets' : `${bulkLines.length} lines set`} a quantity of{' '}
+          {BULK_CONFIRM_THRESHOLD} or more. Each package becomes its own line with its own tag, and is billed
+          separately.
+        </p>
+        <ul>
+          {bulkLines.map(({ item, index, qty }) => (
+            <li key={index}>
+              <strong>{qty}</strong> × {item.description || 'item'} ({item.package_unit ?? 'carton'})
+              {item.length_cm != null && item.width_cm != null && item.height_cm != null && (
+                <>
+                  {' — '}
+                  {item.length_cm}×{item.width_cm}×{item.height_cm} cm
+                  {item.weight_actual_kg != null && `, ${item.weight_actual_kg} kg each`}
+                </>
+              )}
+            </li>
+          ))}
+        </ul>
+        <p>
+          Totals for this packing list: <strong>{totals.cartons}</strong> packages,{' '}
+          <strong>{totals.cbm.toFixed(2)} CBM</strong>, <strong>{totals.weight.toFixed(1)} kg</strong>.
+        </p>
+        <Banner variant="warning">
+          Only use a quantity when the packages are genuinely identical. CBM drives billing, so one wrong
+          dimension is repeated across every package in the batch.
+        </Banner>
+      </Modal>
     </div>
   )
 }
