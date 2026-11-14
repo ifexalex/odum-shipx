@@ -2820,7 +2820,12 @@
             ],
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"customer_id\": \"{{customer_id}}\",\n  \"container_id\": \"{{container_id}}\"\n}"
+              "raw": "{\n  \"container_id\": \"{{container_id}}\",\n  \"customer_id\": \"{{customer_id}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
             },
             "url": {
               "raw": "{{base_url}}/v1/billing",
@@ -2831,7 +2836,8 @@
                 "v1",
                 "billing"
               ]
-            }
+            },
+            "description": "Generate invoices for a cleared container. With customer_id: invoices that customer (201), or 422 with a rule (CONTAINER_NOT_CLEARED, CUSTOMER_NOT_ON_CONTAINER, ALREADY_BILLED, NO_CBM, RATE_CONFIG_MISSING). Omit customer_id to invoice every customer on the container who has none yet (200, per-customer results). Idempotent per customer + container."
           }
         },
         {
@@ -3541,6 +3547,38 @@
             },
             "description": "PATCH /v1/billing/disputes/{id}/reject \u2014 reject a CBM dispute with a reason (tenant_admin or nigeria_office_staff)"
           }
+        },
+        {
+          "name": "Billing \u2014 customers not invoiced (unbilled queue)",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "X-Tenant-ID",
+                "value": "{{tenant_id}}"
+              },
+              {
+                "key": "X-Role",
+                "value": "{{role}}"
+              },
+              {
+                "key": "X-User-ID",
+                "value": "{{user_id}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/v1/billing/unbilled",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "v1",
+                "billing",
+                "unbilled"
+              ]
+            },
+            "description": "Customers on a cleared container who have CBM to bill and no live invoice (tenant_admin, nigeria_office_staff). Feeds the dashboard queue; complete with POST /v1/billing { container_id }."
+          }
         }
       ]
     },
@@ -3947,6 +3985,47 @@
                 "{{missing_item_id}}"
               ]
             }
+          }
+        },
+        {
+          "name": "Missing Items \u2014 Confirm lost (with compensation)",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "X-Tenant-ID",
+                "value": "{{tenant_id}}"
+              },
+              {
+                "key": "X-Role",
+                "value": "{{role}}"
+              },
+              {
+                "key": "X-User-ID",
+                "value": "{{user_id}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"status\": \"confirmed_lost\",\n  \"refund_amount_ngn\": \"25000\",\n  \"notes\": \"Carton not found after CCTV review. Compensating the customer.\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/v1/claims/missing-items/{{missing_item_id}}",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "v1",
+                "claims",
+                "missing-items",
+                "{{missing_item_id}}"
+              ]
+            },
+            "description": "Confirms the item lost. With refund_amount_ngn (> 0) it opens one refund_request (refund_type missing_item, pending_review) linked to the item; leave it out to confirm the loss without compensation. status must be reported, investigating, found_and_shipping, confirmed_lost or resolved; a bad status or amount is 422."
           }
         },
         {

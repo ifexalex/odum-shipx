@@ -83,6 +83,7 @@ locals {
 
     # --- Billing extension (7 routes) ---------------------------------------
     "GET /v1/billing/stats"                        = "billing"
+    "GET /v1/billing/unbilled"                     = "billing"
     "GET /v1/billing/report"                       = "billing"
     "GET /v1/billing/payments"                     = "billing"
     "GET /v1/billing/carryovers"                   = "billing"

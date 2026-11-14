@@ -145,6 +145,10 @@ filed → under_inspection → inspection_complete → pending_resolution → re
 - Create `missing_item` record linked to manifest
 - `carton_tags TEXT[]` — array of carton tag identifiers (added migration 007)
 - Status: `reported → investigating → found_and_shipping / confirmed_lost → resolved`
+- `PATCH /v1/claims/missing-items/{id}` `{ status, notes?, refund_amount_ngn? }` — `status` must be one of the five values above
+  (anything else is `422`). **Compensation is owed when the item is `confirmed_lost`:** with `refund_amount_ngn` it opens a
+  `refund_request` (`refund_type = missing_item`, `pending_review`) and links it via `missing_item.refund_request_id`; without an
+  amount the loss is confirmed with no compensation. The amount is ignored for every other status.
 
 ### Seized Items (POST /claims/seized-items)
 - Create `seized_item` record linked to container
@@ -172,6 +176,8 @@ filed → under_inspection → inspection_complete → pending_resolution → re
 - [x] S3 presigned URLs scoped to tenant prefix (isolation)
 - [x] Refund request auto-created on refund resolution (linked via `damage_claim_id`)
 - [x] Missing item and seized item CRUD with `carton_tags` support
+- [x] Confirming a missing item lost with `refund_amount_ngn` opens one compensation refund, atomically and at most once per item
+- [x] `refund_amount_ngn` that is non-numeric, non-finite or not greater than 0 is `422`, never a `500` from the refund CHECK
 - [x] Events published: DamageClaimFiled, DamageClaimResolved
 - [x] Customer can only file and view own claims
 - [x] `GET /v1/claims?sort=&direction=` — `reference` or `created_at` (default), wired to ClaimList's 'Claim ID'/'Filed' `sortable: true` columns (previously dead UI — see `frontend/07_domain_modules.md`)
@@ -189,3 +195,32 @@ filed → under_inspection → inspection_complete → pending_resolution → re
 **Staff bell (2026-09-12):** a customer filing a claim (`file_claim`) now also writes a `staff_notification` row for `nigeria_office_staff`/`tenant_admin` — only when the filer is the customer, not when staff file on a customer's behalf. Full account in `15_api_notifications.md`.
 
 **Customer bell (2026-09-12):** `start_inspection`/`resolve_claim`'s customer notification now also writes an in-app row when the customer has a portal account, reusing the same `staff_notification` table as the staff bell above. Full account in `15_api_notifications.md`.
+
+## Atomic resolution and compensation (2026-11-14)
+
+`resolve` (both request styles) moves the claim to `resolved` with a guarded update (only from `under_inspection`,
+`inspection_complete`, `pending_resolution`), opens the refund request and records the resolution **in one transaction**.
+Two staff resolving the same claim at once open one refund; the loser gets `409`. A failure part-way (for example the
+resolution insert) rolls the refund back with it, where before a refund was left behind with no resolution.
+
+`PATCH /v1/claims/seized-items/{id}` with `recovery_status` `recovered`/`forfeited` and `refund_amount_ngn` records the status
+change, the refund request and the link in one transaction, and opens **no second refund** if the item already carries one.
+This used to fail outright: it created `refund_type = 'seized_item'`, which the database rejected (migration 063 now allows
+it), after the item's new status had already been saved.
+
+**Missing-item compensation (decided 2026-11-14): it triggers on `confirmed_lost`.** The branch used to test
+`status == 'compensated'`, a value `missing_item.status` (CHECK, model and UI) has never allowed, so it was unreachable through
+the API. It now fires on `confirmed_lost` with `refund_amount_ngn`, in one transaction with the status change and the link, and
+opens no second refund if the item already carries one. `PATCH` validates its input at the handler: an unknown `status` and a
+`refund_amount_ngn` that is non-numeric, non-finite or `<= 0` are `422 VALIDATION_ERROR` (the same amount check applies to
+`PATCH /v1/claims/seized-items/{id}`). The Update dialog on the Missing Items page shows an optional **Compensation (₦)** field
+only when the new status is *Confirmed lost*. Tests: `TestMissingItemCompensation` and `TestItemUpdateValidation`
+(`tests/unit/test_claims.py`), `TestClaims` (3 cases, `tests/db/test_atomic_writes.py`).
+
+**Still open, needs a product decision (seized items):** the seized-item compensation branch triggers on
+`recovery_status in ('recovered', 'forfeited')`. `forfeited` is not a value the CHECK allows (`seized`, `recovery_in_progress`,
+`recovered`, `permanently_lost`), so half of that condition is dead, and compensating when goods are *recovered* reads
+backwards. By the same reasoning as missing items it should probably trigger on `permanently_lost`.
+
+**Storage-fee waiver (decided 2026-11-14):** a waiver covers the fees accrued so far; days that accrue afterwards are charged
+again. This is the intended behaviour, not a gap.

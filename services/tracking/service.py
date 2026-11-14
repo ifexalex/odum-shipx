@@ -7,7 +7,7 @@ tracking updates, billing event triggers, and customer-facing tracking lookup.
 import logging
 from typing import Any
 
-from services.billing.service import handle_payment_due
+from services.billing.service import generate_container_invoices
 from services.metering.service import check_container_limit
 from shared.audit import log_audit
 from shared.events import publish_event
@@ -453,19 +453,20 @@ def update_container_status(
     # container clears, regardless of whether the event infra is ever fixed.
     # The event publish stays: it's what the SMS/WhatsApp routing rules key
     # off of for the "payment due" customer notification.
+    billing_summary: list[dict[str, Any]] | None = None
     if new_status == "cleared":
         customers = repo.get_customers_for_container(tenant_id, container_id)
+        billing_summary = generate_container_invoices(
+            tenant_id=tenant_id,
+            container_id=container_id,
+            container_number=container.get("container_number"),
+            customers=customers,
+            request_id=request_id,
+        )
+        invoiced = {row["customer_id"] for row in billing_summary if row["status"] == "created"}
         for customer in customers:
-            try:
-                handle_payment_due(
-                    tenant_id=tenant_id,
-                    container_id=container_id,
-                    customer_id=str(customer["id"]),
-                    container_number=container.get("container_number"),
-                    request_id=request_id,
-                )
-            except Exception:
-                logger.exception("Failed to generate billing for customer %s", customer["id"])
+            if str(customer["id"]) not in invoiced:
+                continue
             try:
                 publish_event(
                     source="logistics.tracking",
@@ -521,7 +522,13 @@ def update_container_status(
         ip_address=ip_address,
     )
 
-    return dict(updated)
+    result = dict(updated)
+    if billing_summary is not None:
+        # Per-customer invoice outcome, so staff see who was billed, who already
+        # had an invoice, and who was skipped or failed (and why) at the moment
+        # of clearing rather than discovering it later.
+        result["billing_summary"] = billing_summary
+    return result
 
 
 def get_container_events(tenant_id: str, container_id: str) -> list[dict[str, Any]]:

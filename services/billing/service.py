@@ -6,6 +6,7 @@ carryover/credit application, and billing recalculation on dispute resolution.
 
 import json
 import logging
+from dataclasses import dataclass
 from datetime import UTC, date, datetime
 from decimal import ROUND_HALF_UP, Decimal
 from typing import Any
@@ -60,18 +61,44 @@ _DISPUTE_RESOLVE_DAYS = 7
 # ---------------------------------------------------------------------------
 
 
+@dataclass(frozen=True)
+class InvoiceOutcome:
+    """What happened when we tried to bill one customer for one container.
+
+    ``created``  - a new invoice was issued.
+    ``existing`` - a live invoice was already there; nothing was changed.
+    ``skipped``  - no invoice could be issued; ``reason`` is a rule id such as
+                   ``RATE_CONFIG_MISSING`` or ``NO_CBM``, ``detail`` says why.
+    """
+
+    status: str
+    billing_id: str | None = None
+    invoice_number: str | None = None
+    reason: str | None = None
+    detail: str | None = None
+
+
 def handle_payment_due(
     tenant_id: str,
     container_id: str,
     customer_id: str,
     container_number: str | None,
     request_id: str = "",
-) -> None:
+) -> InvoiceOutcome:
     """Create a billing record for a customer when their container is cleared.
 
-    Called from the EventBridge handler — fire and return; errors are logged
-    but should not crash the event processor.
+    Idempotent per (customer, container): a second call returns the existing
+    invoice and does not notify, publish or audit again. Callers that run in a
+    loop (container clearance) should catch exceptions per customer and report
+    them; this function raises on a real failure rather than hiding it.
     """
+    # 0. Already invoiced? Answer before pricing anything: a repeat run (the
+    # "generate missing invoices" retry) should not cost a market-rate lookup per
+    # customer who is already done. `create_invoice` below still guards the race.
+    already = repo.get_live_invoice(tenant_id, customer_id, container_id)
+    if already is not None:
+        return InvoiceOutcome(status="existing", billing_id=str(already["id"]), invoice_number=already.get("invoice_number"))
+
     # 1. Fetch pricing config. Dollar rate is Bybit's live P2P base rate plus
     # this tenant's markup (shared/fx_rate.py). CBM rate is the tenant's
     # currency + carton/bag/bale rate config (shared/cbm_rate.py) — "flat"
@@ -89,7 +116,11 @@ def handle_payment_due(
             cbm_config["bale_rate"],
             dollar_rate,
         )
-        return
+        return InvoiceOutcome(
+            status="skipped",
+            reason="RATE_CONFIG_MISSING",
+            detail="Set the CBM rate and dollar rate in Settings before billing this container.",
+        )
 
     # 2. Sum CBM + carton count from approved packing lists
     totals = repo.get_cbm_and_carton_totals(tenant_id, customer_id, container_id)
@@ -102,7 +133,11 @@ def handle_payment_due(
             customer_id,
             container_id,
         )
-        return
+        return InvoiceOutcome(
+            status="skipped",
+            reason="NO_CBM",
+            detail="The customer's packing lists on this container have no CBM to bill.",
+        )
 
     # 3. Calculate subtotals — group CBM by package type (carton/bag/bale,
     # anything unrecognized folds into carton) and price each bucket at its
@@ -145,21 +180,17 @@ def handle_payment_due(
     # 6. Final total (misc_charges_ngn starts at 0; storage/misc added later)
     total_ngn = (subtotal_ngn + carryover_ngn - credits_ngn).quantize(Decimal("0.01"), ROUND_HALF_UP)
 
-    # 7. Generate invoice number
-    tenant_short = repo.get_tenant_short(tenant_id)
-    today_str = date.today().strftime("%Y%m%d")
-    seq = repo.get_next_invoice_seq(tenant_id)
-    invoice_number = f"{tenant_short}-INV-{today_str}-{seq:04d}"
-
-    # 8. Persist billing record
+    # 7-10. One transaction: allocate the invoice number, insert the invoice, and
+    # mark the carryovers and credits it absorbed. A live invoice for this
+    # customer and container short-circuits the lot.
     now = datetime.now(UTC)
-    billing = repo.create_billing(
+    tenant_short = repo.get_tenant_short(tenant_id)
+    billing, created = repo.create_invoice(
         tenant_id,
         {
             "tenant_id": tenant_id,
             "customer_id": customer_id,
             "container_id": container_id,
-            "invoice_number": invoice_number,
             "total_cartons": total_cartons,
             "total_cbm": total_cbm,
             "cbm_rate_usd": cbm_rate_usd,
@@ -176,18 +207,15 @@ def handle_payment_due(
             "billed_at": now,
             "created_by": None,
         },
+        number_prefix=f"{tenant_short}-INV-{date.today():%Y%m%d}",
+        carryover_ids=[str(c["id"]) for c in carryovers],
+        credit_refund_ids=[str(r["id"]) for r in credits],
     )
-    if billing is None:
-        raise RuntimeError("create_billing returned None unexpectedly")
     billing_id = str(billing["id"])
-
-    # 9. Mark carryovers as applied
-    if carryovers:
-        repo.mark_carryovers_applied(tenant_id, [str(c["id"]) for c in carryovers], billing_id)
-
-    # 10. Mark credit refunds as applied
-    if credits:
-        repo.mark_credit_refunds_applied(tenant_id, [str(r["id"]) for r in credits])
+    invoice_number = billing.get("invoice_number")
+    if not created:
+        logger.info("Invoice already exists for customer %s / container %s — nothing to do", customer_id, container_id)
+        return InvoiceOutcome(status="existing", billing_id=billing_id, invoice_number=invoice_number)
 
     # 11. Publish PaymentDue event
     publish_event(
@@ -237,6 +265,7 @@ def handle_payment_due(
         container_id,
     )
     _notify_customer_payment_due(tenant_id, customer_id, container_number, total_ngn, request_id)
+    return InvoiceOutcome(status="created", billing_id=billing_id, invoice_number=invoice_number)
 
 
 def _notify_customer_payment_due(
@@ -387,7 +416,10 @@ def _enrich_billing(tenant_id: str, row: dict[str, Any]) -> dict[str, Any]:
     active_disputes = repo.get_active_disputes(tenant_id, billing_id)
 
     misc_fees_ngn = sum(Decimal(str(m["amount_ngn"])) for m in misc_charges if m.get("charge_type") != "storage_fee")
-    storage_fees_ngn = sum(Decimal(str(m["amount_ngn"])) for m in misc_charges if m.get("charge_type") == "storage_fee")
+    # The fee log is the record of what storage has been charged: the daily job writes
+    # it (and adds the fee to the total) but never creates misc_charge rows, so summing
+    # those always gave 0 and hid the storage banner and the waive action.
+    storage_fees_ngn = repo.get_storage_fee_total(tenant_id, billing_id)
     carryover_ngn = sum(Decimal(str(c["carryover_amount_ngn"])) for c in applied_cos)
 
     return {
@@ -532,7 +564,8 @@ def add_misc_charge(
     amount_ngn = Decimal(str(data.get("amount_ngn", 0)))
     amount_usd = data.get("amount_usd")
 
-    charge = repo.add_misc_charge(
+    # Charge row, invoice total and recomputed status commit together.
+    charge, _ = repo.add_misc_charge_to_billing(
         tenant_id,
         {
             "billing_id": billing_id,
@@ -544,9 +577,6 @@ def add_misc_charge(
             "created_by": actor_id,
         },
     )
-    if charge is None:
-        raise RuntimeError("add_misc_charge returned None unexpectedly")
-    repo.increment_billing_misc_fees(tenant_id, billing_id, amount_ngn)
 
     log_audit(
         tenant_id=tenant_id,
@@ -601,8 +631,17 @@ def delete_misc_charge(
         raise ResourceNotFoundError("misc_charge", charge_id)
 
     amount_ngn = Decimal(str(charge["amount_ngn"]))
-    repo.delete_misc_charge(charge_id, billing_id)
-    repo.decrement_billing_misc_fees(tenant_id, billing_id, amount_ngn)
+    try:
+        # Re-checks the invoice is still unpaid under its row lock, deletes the
+        # charge and takes exactly that amount off the total, in one transaction.
+        repo.delete_misc_charge_from_billing(tenant_id, charge_id, billing_id, required_status="unpaid")
+    except repo.BillingStatusConflict as exc:
+        raise BusinessRuleViolationError(
+            "Misc charges can only be removed from unpaid billing records",
+            rule_id="BILLING_NOT_UNPAID",
+        ) from exc
+    except repo.RecordNotFound as exc:
+        raise ResourceNotFoundError("misc_charge", charge_id) from exc
 
     log_audit(
         tenant_id=tenant_id,
@@ -646,11 +685,12 @@ def waive_storage_fees(
     actor_id: str,
     ip_address: str = "",
 ) -> dict[str, Any]:
-    """Waive all storage fees on a billing record.
+    """Waive all storage fees currently charged on a billing record.
 
-    Removes the misc_charge rows created by the daily storage-fee job and
-    resets the log entries so the scheduler will not re-accrue them. Returns
-    the refreshed billing record so the UI can update totals immediately.
+    Marks the accrued fee rows waived and takes their total off the invoice, in
+    one transaction. If the customer has already paid more than the reduced total,
+    a refund request is opened. Fees that accrue after this call are charged as
+    normal. Returns the refreshed billing record so the UI can update immediately.
 
     Roles allowed: tenant_admin, nigeria_office_staff (checked in handler).
     """
@@ -665,9 +705,14 @@ def waive_storage_fees(
             rule_id="BILLING_NOT_WAIVEABLE",
         )
 
-    updated = repo.waive_storage_fees_for_billing(tenant_id, billing_id, actor_id, reason)
+    updated, waived = repo.waive_storage_fees_for_billing(tenant_id, billing_id, reason)
     if not updated:
         raise ResourceNotFoundError("billing", billing_id)
+    if waived <= 0:
+        raise BusinessRuleViolationError(
+            "There are no storage fees on this billing record to waive.",
+            rule_id="NO_STORAGE_FEES",
+        )
 
     log_audit(
         tenant_id=tenant_id,
@@ -676,12 +721,12 @@ def waive_storage_fees(
         action="WAIVE_STORAGE_FEES",
         actor_id=actor_id,
         actor_role="staff",
-        before_state={"storage_fees_ngn": str(billing.get("storage_fees_ngn", 0))},
-        after_state={"storage_fees_ngn": "0", "reason": reason},
+        before_state={"storage_fees_ngn": str(waived), "total_ngn": str(billing["total_ngn"])},
+        after_state={"storage_fees_ngn": "0", "total_ngn": str(updated["total_ngn"]), "reason": reason},
         ip_address=ip_address,
     )
 
-    return _enrich_billing(tenant_id, dict(updated))
+    return _enrich_billing(tenant_id, {**billing, **dict(updated)})
 
 
 # ---------------------------------------------------------------------------
@@ -738,24 +783,146 @@ def list_recent_payments(tenant_id: str, limit: int = 8) -> list[dict[str, Any]]
     ]
 
 
+_BILLABLE_CONTAINER_STATUSES = frozenset({"cleared", "at_warehouse", "fully_released"})
+
+_SKIP_MESSAGES = {
+    "RATE_CONFIG_MISSING": "Set the CBM rate and dollar rate in Settings, then generate the invoice again.",
+    "NO_CBM": "The customer's approved packing lists on this container have no CBM to bill.",
+}
+
+
+def _outcome_row(customer: dict[str, Any], outcome: InvoiceOutcome) -> dict[str, Any]:
+    return {
+        "customer_id": str(customer["id"]),
+        "customer_name": customer.get("name"),
+        "status": outcome.status,
+        "billing_id": outcome.billing_id,
+        "invoice_number": outcome.invoice_number,
+        "reason": outcome.reason,
+        "detail": outcome.detail,
+    }
+
+
+def generate_container_invoices(
+    tenant_id: str,
+    container_id: str,
+    container_number: str | None,
+    customers: list[dict[str, Any]],
+    request_id: str = "",
+) -> list[dict[str, Any]]:
+    """Bill each customer on a container and report what happened per customer.
+
+    One customer's failure never stops the others. Every outcome, including a
+    failure, is returned so the caller can show it; a failure is also logged and
+    counted for alerting. Safe to run again: customers who already have an
+    invoice come back as ``existing``.
+
+    When any customer could not be billed, tenant admins and Nigeria staff are
+    told in-app, with the reason, so an unbilled customer is never silent.
+    """
+    rows: list[dict[str, Any]] = []
+    for customer in customers:
+        try:
+            outcome = handle_payment_due(
+                tenant_id=tenant_id,
+                container_id=container_id,
+                customer_id=str(customer["id"]),
+                container_number=container_number,
+                request_id=request_id,
+            )
+        except Exception:
+            logger.exception("Failed to generate invoice for customer %s on container %s", customer["id"], container_id)
+            outcome = InvoiceOutcome(
+                status="failed",
+                reason="GENERATION_ERROR",
+                detail="The invoice could not be created. Generate it again from the container page.",
+            )
+        rows.append(_outcome_row(customer, outcome))
+
+    unbilled = [r for r in rows if r["status"] in {"skipped", "failed"}]
+    if unbilled:
+        _notify_unbilled(tenant_id, container_id, container_number, unbilled)
+    return rows
+
+
+def _notify_unbilled(tenant_id: str, container_id: str, container_number: str | None, unbilled: list[dict[str, Any]]) -> None:
+    """Tell the people who can fix it that customers on a cleared container have no invoice."""
+    reasons = sorted({r["reason"] for r in unbilled if r["reason"]})
+    body = (
+        f"{len(unbilled)} customer(s) on container {container_number or container_id} have no invoice "
+        f"({', '.join(reasons)}). Open the container to generate them."
+    )
+    for role in (UserRole.TENANT_ADMIN, UserRole.NIGERIA_OFFICE_STAFF):
+        try:
+            notify_staff(
+                tenant_id=tenant_id,
+                event_type="invoice_not_generated",
+                entity_type="container",
+                entity_id=container_id,
+                title="Some customers were not invoiced",
+                body=body,
+                target_role=str(role),
+            )
+        except Exception:
+            logger.exception("Failed to notify %s about unbilled customers on container %s", role, container_id)
+
+
+def list_unbilled_customers(tenant_id: str) -> list[dict[str, Any]]:
+    """Customers on cleared containers who should have an invoice and do not.
+
+    Feeds the dashboard queue; the fix is `generate_billing` on the container.
+    """
+    return repo.list_unbilled_customers(tenant_id)
+
+
 def generate_billing(
     tenant_id: str,
-    body: dict[str, Any],
+    req: Any,
     actor_id: str,
     ctx: Any,
 ) -> dict[str, Any]:
-    """Manually generate a billing record for a container+customer pair."""
-    container_id = body.get("container_id", "")
-    customer_id = body.get("customer_id", "")
-    container_number = body.get("container_number")
-    handle_payment_due(
-        tenant_id=tenant_id,
-        container_id=container_id,
-        customer_id=customer_id,
-        container_number=container_number,
-    )
-    # Return minimal confirmation
-    return {"container_id": container_id, "customer_id": customer_id, "status": "generated"}
+    """Manually generate invoices for a cleared container.
+
+    With ``req.customer_id`` it bills that customer and fails with a specific
+    rule if it cannot (``CONTAINER_NOT_CLEARED``, ``CUSTOMER_NOT_ON_CONTAINER``,
+    ``ALREADY_BILLED``, ``NO_CBM``, ``RATE_CONFIG_MISSING``). Without it, it
+    bills every customer on the container who has no invoice yet and returns the
+    per-customer results.
+    """
+    container_id = str(req.container_id)
+    container = repo.get_container_for_billing(tenant_id, container_id)
+    if not container:
+        raise ResourceNotFoundError("container", container_id)
+    if container["status"] not in _BILLABLE_CONTAINER_STATUSES:
+        raise BusinessRuleViolationError(
+            "Invoices can only be generated once the container has cleared customs.",
+            rule_id="CONTAINER_NOT_CLEARED",
+        )
+
+    customers = repo.get_billable_customers_for_container(tenant_id, container_id)
+    if req.customer_id is not None:
+        customers = [c for c in customers if c["id"] == str(req.customer_id)]
+        if not customers:
+            raise BusinessRuleViolationError(
+                "That customer has no approved packing list on this container.",
+                rule_id="CUSTOMER_NOT_ON_CONTAINER",
+            )
+
+    results = generate_container_invoices(tenant_id, container_id, container.get("container_number"), customers)
+
+    if req.customer_id is not None:
+        only = results[0]
+        if only["status"] == "existing":
+            raise BusinessRuleViolationError(
+                f"This customer already has invoice {only['invoice_number']} for this container.",
+                rule_id="ALREADY_BILLED",
+            )
+        if only["status"] in {"skipped", "failed"}:
+            raise BusinessRuleViolationError(
+                _SKIP_MESSAGES.get(only["reason"] or "", only["detail"] or "The invoice could not be generated."),
+                rule_id=only["reason"] or "GENERATION_ERROR",
+            )
+    return {"container_id": container_id, "results": results}
 
 
 def apply_carryover(
@@ -798,34 +965,24 @@ def apply_carryover(
             rule_id="BR-CARRYOVER-003",
         )
 
-    carryover_amount = Decimal(str(carryover["carryover_amount_ngn"]))
-
-    # Apply: mark carryover as applied, add amount to billing total
-    repo.mark_carryovers_applied(tenant_id, [carryover_id], billing_id)
-    updated = repo.increment_billing_misc_fees(tenant_id, billing_id, carryover_amount)
-    if updated is None:
-        raise RuntimeError("increment_billing_misc_fees returned None unexpectedly")
-
-    # Adding carried-forward debt raises the total, so the balance (a generated
-    # column) grows — recompute the money status from it so a previously 'paid'
-    # record doesn't stay 'paid' while now owing more. Only the four money
-    # statuses are recomputed; 'released_with_outstanding' is a release state
-    # left untouched ('cancelled'/'waived' are already blocked above).
-    if billing["status"] in {"unpaid", "partially_paid", "paid", "overpaid"}:
-        new_balance = Decimal(str(updated["balance_ngn"]))
-        paid = Decimal(str(updated["amount_paid_ngn"]))
-        if abs(new_balance) <= _CARRYOVER_TOLERANCE:
-            new_status = "paid"
-        elif new_balance < -_CARRYOVER_TOLERANCE:
-            new_status = "overpaid"
-        elif paid > 0:
-            new_status = "partially_paid"
-        else:
-            new_status = "unpaid"
-        if new_status != billing["status"]:
-            restatused = repo.set_billing_status(tenant_id, billing_id, new_status)
-            if restatused is not None:
-                updated = restatused
+    # Mark the carryover applied (only if it is still outstanding and this
+    # customer's), add its amount and recompute the status, in one transaction under
+    # the invoice lock. A 'paid' invoice that takes on carried-forward debt becomes
+    # 'partially_paid'; 'released_with_outstanding' is a release state and is left alone.
+    try:
+        updated, carryover_amount = repo.apply_carryover_to_billing(
+            tenant_id, billing_id, carryover_id, str(billing["customer_id"])
+        )
+    except repo.BillingStatusConflict as exc:
+        raise BusinessRuleViolationError(
+            f"Cannot apply carryover to a '{exc.status}' billing.",
+            rule_id="BR-CARRYOVER-001",
+        ) from exc
+    except repo.RecordNotFound as exc:
+        raise BusinessRuleViolationError(
+            "That carryover is no longer outstanding — it was applied by another request.",
+            rule_id="BR-CARRYOVER-002",
+        ) from exc
 
     log_audit(
         tenant_id=tenant_id,
@@ -1150,41 +1307,42 @@ def resolve_dispute(
         if not billing:
             raise ResourceNotFoundError("billing", str(dispute["billing_id"]))
 
+        # cbm_rate_usd and exchange_rate_ngn are snapshotted when the invoice is
+        # created and never change, so the new subtotals can be priced from this read.
+        # The total is NOT: it moves by the difference measured against the live row,
+        # under its lock, so a payment or charge arriving meanwhile is kept.
         cbm_rate_usd = Decimal(str(billing["cbm_rate_usd"]))
         exchange_rate = Decimal(str(billing["exchange_rate_ngn"]))
-
         new_cbm = Decimal(str(req.corrected_cbm))
         new_subtotal_usd = (new_cbm * cbm_rate_usd).quantize(Decimal("0.01"), ROUND_HALF_UP)
         new_subtotal_ngn = (new_subtotal_usd * exchange_rate).quantize(Decimal("0.01"), ROUND_HALF_UP)
-        delta_ngn = new_subtotal_ngn - Decimal(str(billing["subtotal_ngn"]))
-        new_total_ngn = (Decimal(str(billing["total_ngn"])) + delta_ngn).quantize(Decimal("0.01"), ROUND_HALF_UP)
 
-        repo.update_billing_cbm(
-            tenant_id,
-            str(billing["id"]),
-            new_cbm,
-            new_subtotal_usd,
-            new_subtotal_ngn,
-            new_total_ngn,
-        )
-
-        # Create overpayment refund if customer already paid more than new total
-        amount_paid = Decimal(str(billing.get("amount_paid_ngn", 0)))
-        if amount_paid > new_total_ngn:
-            overpayment = amount_paid - new_total_ngn
-            try:
-                repo.create_overpayment_refund_request(
-                    tenant_id,
-                    {
-                        "tenant_id": tenant_id,
-                        "customer_id": str(billing["customer_id"]),
-                        "billing_id": str(billing["id"]),
-                        "amount_ngn": overpayment,
-                        "reason": f"CBM dispute overpayment — dispute {dispute_id}",
-                    },
-                )
-            except Exception:
-                logger.exception("Failed to create overpayment refund for dispute %s", dispute_id)
+        try:
+            # Re-price the invoice, refund any new overpayment, and move the dispute
+            # to resolved_adjusted in one transaction; a dispute already resolved by
+            # someone else re-prices nothing.
+            updated, _, _ = repo.resolve_dispute_with_adjustment(
+                tenant_id,
+                dispute_id,
+                str(billing["id"]),
+                sorted(_DISPUTE_ALLOWED_SOURCE_STATES),
+                new_cbm,
+                new_subtotal_usd,
+                new_subtotal_ngn,
+                {
+                    "agreed_cbm": new_cbm,
+                    "resolution_notes": req.resolution_notes,
+                    "resolved_by": actor_id,
+                    "resolved_at": datetime.now(UTC),
+                },
+            )
+        except repo.RecordNotFound as exc:
+            raise IllegalTransitionError(
+                entity="cbm_dispute",
+                current_state="already resolved",
+                requested_state=target,
+                allowed=sorted(_DISPUTE_ALLOWED_SOURCE_STATES),
+            ) from exc
 
         publish_event(
             source="logistics.billing",
@@ -1198,17 +1356,20 @@ def resolve_dispute(
             },
             request_id=request_id,
         )
-
-        extra["agreed_cbm"] = new_cbm
-
-    if is_terminal:
-        extra["resolution_notes"] = req.resolution_notes
-        extra["resolved_by"] = actor_id
-        extra["resolved_at"] = datetime.now(UTC)
-
-    updated = repo.set_dispute_status(tenant_id, dispute_id, target, extra)
-    if updated is None:
-        raise RuntimeError("set_dispute_status returned None unexpectedly")
+    else:
+        if is_terminal:
+            extra["resolution_notes"] = req.resolution_notes
+            extra["resolved_by"] = actor_id
+            extra["resolved_at"] = datetime.now(UTC)
+        moved = repo.set_dispute_status(tenant_id, dispute_id, target, extra, allowed_from=sorted(_DISPUTE_ALLOWED_SOURCE_STATES))
+        if moved is None:
+            raise IllegalTransitionError(
+                entity="cbm_dispute",
+                current_state="changed by another request",
+                requested_state=target,
+                allowed=sorted(_DISPUTE_ALLOWED_SOURCE_STATES),
+            )
+        updated = moved
 
     log_audit(
         tenant_id=tenant_id,

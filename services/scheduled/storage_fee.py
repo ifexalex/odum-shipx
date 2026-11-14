@@ -14,7 +14,8 @@ from datetime import date
 from decimal import Decimal
 from typing import Any
 
-from shared.db import execute_with_tenant, execute_write_with_tenant
+from shared.billing_money import adjust_billing
+from shared.db import execute_with_tenant, execute_write_with_tenant, tenant_transaction
 from shared.events import publish_event
 from shared.logging_config import bind_log_context, clear_log_context, setup_logging
 from shared.observability import init_tracing
@@ -124,51 +125,44 @@ def _accrue_for_note(
     fee = unreleased * daily_rate
     day_number = days_since - grace_period
 
-    inserted = execute_write_with_tenant(
-        tenant_id,
-        """
-        INSERT INTO storage_fee_log (
-            tenant_id, billing_id, customer_id, container_id,
-            accrual_date, cartons_in_storage, daily_rate_ngn, amount_ngn,
-            grace_period_days, days_in_storage
-        ) VALUES (
-            %(tenant_id)s, %(billing_id)s, %(customer_id)s, %(container_id)s,
-            %(accrual_date)s, %(cartons_in_storage)s, %(daily_rate_ngn)s, %(amount_ngn)s,
-            %(grace_period_days)s, %(days_in_storage)s
+    # The fee-log row and the invoice total move together: if the invoice update
+    # fails the log row rolls back with it, so the unique (billing, date) key never
+    # blocks a retry and a fee is never logged without being charged. The status is
+    # recomputed, so a 'paid' invoice that takes a fee becomes 'partially_paid'.
+    with tenant_transaction(tenant_id):
+        inserted = execute_write_with_tenant(
+            tenant_id,
+            """
+            INSERT INTO storage_fee_log (
+                tenant_id, billing_id, customer_id, container_id,
+                accrual_date, cartons_in_storage, daily_rate_ngn, amount_ngn,
+                grace_period_days, days_in_storage
+            ) VALUES (
+                %(tenant_id)s, %(billing_id)s, %(customer_id)s, %(container_id)s,
+                %(accrual_date)s, %(cartons_in_storage)s, %(daily_rate_ngn)s, %(amount_ngn)s,
+                %(grace_period_days)s, %(days_in_storage)s
+            )
+            ON CONFLICT (billing_id, accrual_date) DO NOTHING
+            RETURNING id
+            """,
+            {
+                "tenant_id": tenant_id,
+                "billing_id": billing_id,
+                "customer_id": str(note["customer_id"]),
+                "container_id": str(note["container_id"]),
+                "accrual_date": today,
+                "cartons_in_storage": unreleased,
+                "daily_rate_ngn": daily_rate,
+                "amount_ngn": fee,
+                "grace_period_days": grace_period,
+                "days_in_storage": day_number,
+            },
         )
-        ON CONFLICT (billing_id, accrual_date) DO NOTHING
-        RETURNING id
-        """,
-        {
-            "tenant_id": tenant_id,
-            "billing_id": billing_id,
-            "customer_id": str(note["customer_id"]),
-            "container_id": str(note["container_id"]),
-            "accrual_date": today,
-            "cartons_in_storage": unreleased,
-            "daily_rate_ngn": daily_rate,
-            "amount_ngn": fee,
-            "grace_period_days": grace_period,
-            "days_in_storage": day_number,
-        },
-    )
-
-    if not inserted:
-        # Conflict — fee already accrued today for this billing
-        return False
-
-    # Add fee to billing total
-    execute_write_with_tenant(
-        tenant_id,
-        """
-        UPDATE billing
-        SET total_ngn  = total_ngn + %(fee)s,
-            updated_at = NOW()
-        WHERE tenant_id = %(tenant_id)s AND id = %(billing_id)s
-        RETURNING id
-        """,
-        {"fee": fee, "tenant_id": tenant_id, "billing_id": billing_id},
-    )
+        if not inserted:
+            # Conflict — fee already accrued today for this billing
+            return False
+        if adjust_billing(tenant_id, billing_id, fee) is None:
+            raise RuntimeError(f"billing {billing_id} not found in tenant while accruing a storage fee")
 
     publish_event(
         source="logistics.scheduled",

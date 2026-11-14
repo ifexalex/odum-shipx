@@ -26,9 +26,37 @@ Implement the Billing Lambda service: auto-billing on customs clearance, CBM-bas
 | PATCH | `/v1/billing/{id}/cancel` | tenant_admin, nigeria_office_staff |
 | PATCH | `/v1/billing/{id}/apply-carryover` | tenant_admin, nigeria_office_staff |
 | GET | `/v1/billing/payments` | tenant_admin, nigeria_office_staff — recent payments across all billings (`?limit=`, default 8, max 50); feeds the §6.1 dashboard "Recent payments" table (P2-5) |
+| POST | `/v1/billing` | tenant_admin, nigeria_office_staff — generate invoices for a cleared container (see below) |
 | POST | `/v1/billing/{id}/charges` | tenant_admin, nigeria_office_staff |
 | GET | `/v1/billing/{id}/charges` | tenant_admin, nigeria_office_staff, customer (own) |
 | DELETE | `/v1/billing/{id}/charges/{charge-id}` | tenant_admin, nigeria_office_staff |
+
+**Generate invoices** — `POST /v1/billing` body `{ "container_id": "<uuid>", "customer_id": "<uuid, optional>" }` (2026-11-14):
+
+- `container_id` must be a UUID of a container in this tenant that has reached `cleared` (or later), else `422 CONTAINER_NOT_CLEARED`.
+- **With `customer_id`** it invoices that one customer → `201` with `{ container_id, results: [<row>] }`. Otherwise `422` with the rule id:
+  `CUSTOMER_NOT_ON_CONTAINER`, `ALREADY_BILLED` (message carries the invoice number), `NO_CBM`, `RATE_CONFIG_MISSING`, `GENERATION_ERROR`.
+- **Without `customer_id`** it invoices every customer on the container who has no invoice yet → `200` with `{ container_id, results: [<row>, …] }`. Safe to run again: customers already invoiced come back as `existing`.
+- Each result row: `{ customer_id, customer_name, status: created | existing | skipped | failed, billing_id, invoice_number, reason, detail }`.
+- Idempotent per (customer, container): a partial unique index (migration 062) allows one live invoice; an existing one is returned untouched and nothing is notified, published or audited again.
+- Invoice number, the invoice row and the carryovers/credits it absorbed are written in one transaction; a carryover applied by a concurrent request raises and rolls the whole invoice back (that customer comes back `failed` and is picked up on the next run).
+- When any customer comes back `skipped` or `failed`, tenant admins and Nigeria staff get an in-app `invoice_not_generated` notification with the reasons.
+
+**Unbilled customers** — `GET /v1/billing/unbilled` (tenant_admin, nigeria_office_staff, 2026-11-14): customers on a cleared
+container who have CBM to bill and no live invoice, `[ { container_id, container_number, container_status, customer_id,
+customer_name, total_cbm } ]`, newest container first, max 200. Customers whose approved packing lists carry no CBM are
+omitted (nothing to bill). Feeds the dashboard queue; complete it with `POST /v1/billing { container_id }`.
+
+**Every change to what an invoice owes is one transaction, and keeps the status honest (2026-11-14).** Adding or removing a
+misc charge, applying a carryover, re-pricing after a CBM dispute, accruing or waiving a storage fee, and approving an
+immediate refund each commit as a unit (`shared/billing_money.py`, `shared.db.tenant_transaction`), change the total
+*relatively* (`total_ngn + delta`, so a payment that lands meanwhile is kept), recompute `status` for the four money
+statuses (`unpaid`/`partially_paid`/`paid`/`overpaid`; `waived`, `cancelled`, `released_with_outstanding` are left alone), and
+open a `pending_review` refund request for any *new* overpayment (an invoice already overpaid is not refunded twice).
+Consequences you can rely on: a `paid` invoice that gains a charge or carryover becomes `partially_paid`; deleting a charge
+re-checks the invoice is still `unpaid` under its row lock (`BILLING_NOT_UNPAID`), so a payment between the check and the
+delete cannot slip past; deleting the same charge twice reduces the total once; applying one carryover twice applies it once
+(`BR-CARRYOVER-002`); resolving a dispute twice re-prices once (`409` illegal transition on the second).
 
 **Add misc charge** — `POST /v1/billing/{id}/charges` body:
 ```json

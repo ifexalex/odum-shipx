@@ -38,11 +38,37 @@ tests/
 │   ├── test_dispute_flow.py       # CBM dispute → resolution → billing adjustment
 │   ├── test_claim_flow.py         # Damage claim → inspection → resolution → refund
 │   └── test_tenant_lifecycle.py   # Create tenant → config → users → suspend → activate
-└── tenant_isolation/
-    ├── test_db_isolation.py       # RLS blocks cross-tenant queries
-    ├── test_api_isolation.py      # API returns empty for wrong tenant
-    └── test_s3_isolation.py       # S3 prefix isolation
+├── tenant_isolation/
+│   ├── test_db_isolation.py       # RLS blocks cross-tenant queries
+│   ├── test_api_isolation.py      # API returns empty for wrong tenant
+│   └── test_s3_isolation.py       # S3 prefix isolation
+└── db/
+    └── test_money_integrity.py    # Real Postgres, as logistics_app, parallel processes: invoice numbering, one invoice per customer+container, payment status under concurrency, atomic rollback, gateway dedupe
 ```
+
+**`tests/db/` (added 2026-11-14).** The mocked unit tests cannot see a race or a half-committed write. These run the real
+repository functions against a migrated database as the application role (RLS applies) and use separate processes for the
+concurrent cases, because `shared.db` keeps one connection per process. Run with `make test-db`; they skip when no database
+is reachable. Verified against the previous code: 12 customers invoiced at once produced **3 invoices and 9 silently
+dropped** (`UniqueViolation`, swallowed); the same scenario now issues 12 contiguous numbers. `tests/integration/` is
+mock-based and, as of the same date, also runs in CI.
+
+`tests/db/` grew to 43 tests the same day: `test_atomic_writes.py` covers misc charges, carryovers, CBM-dispute re-pricing,
+storage-fee accrual and waiver, refund approval, claim resolution, seized-item compensation and the unbilled queue — each
+asserting (a) a failure part-way leaves nothing behind, (b) a second simultaneous request changes nothing, (c) the invoice
+status is still honest. Fixtures live in `tests/db/conftest.py`, helpers in `tests/db/support.py`. **Mock-based suites get a
+fake `shared.db` connection** (`tests/conftest.py::_fake_db_connection`) because services now open a real
+`tenant_transaction`; real-database suites (`tests/db/`, `test_rls_enforcement`, `test_db_connection_healing`) opt out.
+Writing these found three bugs mocks could not: waiving storage fees returned 500, seized-item compensation hit a CHECK
+violation, and the invoice page never showed storage fees.
+
+`tests/db/` is now 46 tests: `TestClaims` gained three for missing-item compensation (confirming an item lost opens one
+`missing_item` refund that the database accepts and links it; a status other than `confirmed_lost` opens none; two simultaneous
+confirmations open one). The same change added `TestItemUpdateValidation` (9 cases, `tests/unit/test_claims.py`) for the
+handler's 422s, and, in the frontend, `GenerateBillingModal.test.tsx` (7), the compensation cases in `MissingItemList.test.tsx`
+(5), three "Generate billing" cases in `BillingList.test.tsx`, and `canGenerateInvoices` / `groupUnbilledByContainer` in
+`billingRules.test.ts`. **jsdom cannot see clipping:** a Combobox inside the modal rendered and passed its tests while its
+dropdown was cut off by the modal body in the browser, found only by a screenshot, so a modal change needs one browser look.
 
 ## Key Test Fixtures (`conftest.py`)
 

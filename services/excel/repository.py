@@ -171,6 +171,7 @@ def get_billing_for_export(tenant_id: str, billing_id: str) -> dict[str, Any] | 
                    FROM storage_fee_log sfl
                    WHERE sfl.tenant_id  = b.tenant_id
                      AND sfl.billing_id = b.id
+                     AND sfl.waived_at IS NULL
                ), 0) AS storage_fees_ngn
         FROM billing b
         LEFT JOIN customer  cu ON cu.id = b.customer_id  AND cu.tenant_id = b.tenant_id
@@ -207,6 +208,7 @@ def get_billing_for_container_export(tenant_id: str, container_id: str) -> list[
                    FROM storage_fee_log sfl
                    WHERE sfl.tenant_id  = b.tenant_id
                      AND sfl.billing_id = b.id
+                     AND sfl.waived_at IS NULL
                ), 0) AS storage_fees_ngn
         FROM billing b
         LEFT JOIN customer  cu ON cu.id = b.customer_id  AND cu.tenant_id = b.tenant_id

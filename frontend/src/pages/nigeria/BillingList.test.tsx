@@ -6,10 +6,11 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { SessionContext, type SessionContextValue } from '../../auth/SessionContext'
 import type { Session } from '../../auth/types'
 import { billingApi } from '../../api/billing'
+import { TopBarTestWrapper } from '../../test/TopBarTestWrapper'
 import { BillingList } from './BillingList'
 
 vi.mock('../../api/billing', () => ({
-  billingApi: { list: vi.fn(), stats: vi.fn(), listForCustomer: vi.fn(), recordPayment: vi.fn(), cancel: vi.fn(), applyCarryover: vi.fn() },
+  billingApi: { list: vi.fn(), stats: vi.fn(), listForCustomer: vi.fn(), recordPayment: vi.fn(), cancel: vi.fn(), applyCarryover: vi.fn(), unbilled: vi.fn(), generateForContainer: vi.fn() },
   disputeApi: { list: vi.fn(), acknowledge: vi.fn(), resolve: vi.fn(), reject: vi.fn() },
   carryoverApi: { list: vi.fn(), exempt: vi.fn() },
 }))
@@ -256,5 +257,58 @@ describe('BillingList', () => {
     await waitFor(() =>
       expect(billingApi.list).toHaveBeenLastCalledWith({ cursor: undefined }),
     )
+  })
+})
+
+describe('BillingList — Generate billing', () => {
+  function renderWithTopBar(role: string) {
+    const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+    render(
+      <QueryClientProvider client={queryClient}>
+        <MemoryRouter>
+          <SessionContext.Provider value={makeCtx(role)}>
+            <TopBarTestWrapper>
+              <BillingList />
+            </TopBarTestWrapper>
+          </SessionContext.Provider>
+        </MemoryRouter>
+      </QueryClientProvider>,
+    )
+  }
+
+  beforeEach(() => {
+    vi.mocked(billingApi.list).mockResolvedValue({
+      data: [],
+      meta: { pagination: { has_more: false, next_cursor: null, total_count: 0 } },
+    })
+    vi.mocked(billingApi.unbilled).mockReset()
+    vi.mocked(billingApi.unbilled).mockResolvedValue([
+      { container_id: 'k1', container_number: 'ACME001', container_status: 'cleared', customer_id: 'c1', customer_name: 'Alice', total_cbm: '2.000' },
+    ])
+  })
+
+  it('opens the container picker for Nigeria staff', async () => {
+    renderWithTopBar('nigeria_office_staff')
+
+    await userEvent.click(await screen.findByRole('button', { name: 'Generate billing' }))
+
+    const dialog = await screen.findByRole('dialog', { name: 'Generate billing' })
+    expect(await within(dialog).findByText('Alice')).toBeInTheDocument()
+  })
+
+  it('closes the picker with Cancel', async () => {
+    renderWithTopBar('tenant_admin')
+
+    await userEvent.click(await screen.findByRole('button', { name: 'Generate billing' }))
+    await userEvent.click(await screen.findByRole('button', { name: 'Cancel' }))
+
+    expect(screen.queryByRole('dialog', { name: 'Generate billing' })).not.toBeInTheDocument()
+  })
+
+  it('is not offered to a role that cannot generate invoices', async () => {
+    renderWithTopBar('china_office_staff')
+
+    await waitFor(() => expect(billingApi.list).toHaveBeenCalled())
+    expect(screen.queryByRole('button', { name: 'Generate billing' })).not.toBeInTheDocument()
   })
 })

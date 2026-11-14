@@ -93,6 +93,16 @@ def execute_write_with_tenant_many(tenant_id: str, query: str, params: dict | No
         conn.rollback()
         raise
 
+def tenant_transaction(tenant_id: str):  # reusable: execute_* calls for the same tenant join it (see 02_shared_utilities.md)
+    """Context manager yielding a cursor inside one tenant-scoped transaction.
+
+    Commit on normal exit, full rollback on any exception. Use when later statements depend on the
+    rows returned by earlier ones (`execute_transaction` takes its statement list up front).
+    `next_tenant_counter(cursor, tenant_id, name)` takes the next per-tenant number from `tenant_counter`
+    with a row-locking upsert, so concurrent callers get distinct values. Added with migration 062.
+    """
+
+
 def execute_transaction(tenant_id: str, operations: list[tuple[str, dict]]) -> list:
     """Execute multiple queries in a single transaction."""
     conn = get_connection()

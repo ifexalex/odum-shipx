@@ -164,3 +164,14 @@ the full account. Fixed at the source (the INSERT now sets
 - [x] Billing adjustments recalculate correctly
 - [x] Credit-next-shipment tracked (`applied_as_credit` status)
 - [x] Events: RefundApproved
+
+## Atomic, race-safe approval (2026-11-14)
+
+`approve` moves the refund out of `pending_approval` with a **guarded** update (`WHERE status = 'pending_approval'`) and, for
+an immediate refund, reduces the invoice total, recomputes its status and opens any new overpayment refund **in the same
+transaction** (`repo.approve_refund_and_adjust_billing`). Two simultaneous approvals therefore reduce the invoice once; the
+loser gets `409` (`changed by another request`). `accounts-review` and `reject` carry the same guard (`expected_status`).
+Before, the reduction was committed first and the status update second, so a double click or two approvers reduced the
+invoice twice. **New `refund_type` values `missing_item` and `seized_item`** are now allowed by the database (migration 063);
+they are what compensation for a seized or missing item creates, and the UI labels them "Missing item compensation" /
+"Seized item compensation".

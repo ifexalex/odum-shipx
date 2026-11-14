@@ -1,6 +1,8 @@
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { useMemo, useState, type JSX } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
+import { type InvoiceResult } from '../../api/billing'
+import { canGenerateInvoices } from '../../api/billingRules'
 import { ApiError } from '../../api/client'
 import {
   CONTAINER_STATUS_LABELS,
@@ -25,6 +27,7 @@ import {
   type ContainerDocumentType,
   type ContainerEvent,
   type ContainerStatus,
+  type ContainerStatusUpdate,
 } from '../../api/tracking'
 import { formatPackageMix } from '../../api/packingListRules'
 import { useSession } from '../../auth/useSession'
@@ -49,6 +52,7 @@ import {
 import { SectionHead } from '../../shell/SectionHead'
 import { Tabs } from '../../shell/Tabs'
 import styles from './ContainerDetail.module.css'
+import { InvoiceOutcomeBanner } from './InvoiceOutcomeBanner'
 
 // Maps a status transition to a human-readable event label for the event log.
 function eventLabel(from: string, to: string): string {
@@ -213,7 +217,7 @@ interface AdvanceModalProps {
   /** Distinct customers with cargo on this container (from its packing lists). */
   customerCount: number
   onClose: () => void
-  onAdvanced: (updated: Container) => void
+  onAdvanced: (updated: ContainerStatusUpdate) => void
 }
 
 /**
@@ -574,6 +578,10 @@ export function ContainerDetail(): JSX.Element {
   const navigate = useNavigate()
   const { session } = useSession()
   const [tab, setTab] = useState<'overview' | 'packing-lists' | 'tracking' | 'documents'>('overview')
+  // Per-customer invoice outcome from clearing (or the last "Generate missing invoices").
+  // Session-local on purpose: it answers "what just happened", and a reload shows the
+  // container as it now stands.
+  const [invoiceResults, setInvoiceResults] = useState<InvoiceResult[]>([])
   // 'Ref #' sort on the packing-lists sub-table — this list is already fully
   // loaded in memory for one container (not a paginated endpoint), so sorting
   // is pure client-side: no query param, no backend change.
@@ -805,6 +813,18 @@ export function ContainerDetail(): JSX.Element {
           )}
         </div>
       </div>
+
+      {invoiceResults.length > 0 && (
+        <>
+          <InvoiceOutcomeBanner
+            containerId={container.id}
+            results={invoiceResults}
+            canGenerate={session ? canGenerateInvoices(session.role) : false}
+            onResults={setInvoiceResults}
+          />
+          <div className={styles.gridSpacer} />
+        </>
+      )}
 
       <Tabs
         items={[
@@ -1074,7 +1094,9 @@ export function ContainerDetail(): JSX.Element {
           customerCount={new Set(packingLists.map((pl) => pl.customer_id)).size}
           onClose={() => setShowAdvanceModal(false)}
           onAdvanced={(updated) => {
-            qc.setQueryData(containerKeys.detail(id ?? ''), updated)
+            const { billing_summary: summary, ...containerOnly } = updated
+            qc.setQueryData(containerKeys.detail(id ?? ''), containerOnly)
+            if (summary) setInvoiceResults(summary)
             setShowAdvanceModal(false)
           }}
         />

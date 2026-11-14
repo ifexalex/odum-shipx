@@ -163,5 +163,6 @@ markers = [
     "unit: Unit tests (no external dependencies)",
     "integration: Integration tests (requires database)",
     "isolation: Tenant isolation tests (requires database)",
+    "db: Real-database integrity tests (requires a migrated database)",
     "load: Load/performance tests",
 ]

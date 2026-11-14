@@ -153,7 +153,42 @@ def execute_write_with_tenant(tenant_id: str, query: str, params: dict) -> dict 
 def execute_transaction(tenant_id: str, queries: list[tuple[str, dict]]) -> list:
     """Execute multiple queries in a single transaction."""
     ...
+
+@contextmanager
+def tenant_transaction(tenant_id: str) -> Iterator[cursor]:
+    """Atomic multi-statement unit of work where later statements depend on earlier results.
+
+    Sets the RLS variable once; commits on normal exit, rolls everything back if the block raises.
+    Use instead of `execute_transaction` when a statement needs a value returned by a previous one.
+    """
+    ...
+
+def next_tenant_counter(cursor: cursor, tenant_id: str, name: str) -> int:
+    """Atomically take the next value of a per-tenant named counter (`invoice`, `receipt`, `release_note`).
+
+    Replaces `SELECT COUNT(*) + 1`, which gave two simultaneous requests the same number. Backed by the
+    `tenant_counter` table (migration 062); call it inside `tenant_transaction` so a failed insert rolls the
+    increment back and leaves no gap.
+    """
+    ...
 ```
+
+**Composable (2026-11-14).** Inside a `tenant_transaction` block every `execute_with_tenant` / `execute_write_with_tenant` /
+`execute_transaction` call *for the same tenant* runs on the block's cursor and leaves committing to the block, so existing
+repository functions can just be called inside it and commit or roll back together. A query for a *different* scope
+(PLATFORM lookups, `log_audit`) inside the block raises, because `SET LOCAL` would otherwise silently widen the scope for
+every later statement; do those reads first and `log_audit` / `publish_event` / notifications after the block. A nested block
+for the same tenant joins the outer one. `take_tenant_counter(tenant_id, name)` takes a counter value in its own transaction
+(unique, may skip a number) for callers that need the number before the row exists.
+
+`shared/billing_money.py` is where an invoice's total changes: `adjust_billing` (relative total/misc delta, status recomputed
+for the four money statuses), `lock_billing` (`SELECT … FOR UPDATE`), `new_overpayment` and
+`adjust_billing_and_refund_overpayment` (opens a refund for any *new* excess only). Use these instead of writing
+`UPDATE billing SET total_ngn = …` by hand.
+
+**Rule:** any multi-step write that must succeed or fail as a whole (invoice + number + carryovers; payment + invoice
+total + overpayment refund) goes through `tenant_transaction`. Separate `execute_write_with_tenant` calls each commit on
+their own, so a failure between them leaves the books half-written.
 
 **Environment variables:**
 - `DATABASE_HOST` — RDS Proxy endpoint

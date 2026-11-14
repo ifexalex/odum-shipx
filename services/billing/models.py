@@ -3,6 +3,7 @@
 from datetime import datetime
 from decimal import Decimal
 from enum import StrEnum
+from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -34,6 +35,18 @@ class CBMDisputeStatus(StrEnum):
 # ---------------------------------------------------------------------------
 # Request models
 # ---------------------------------------------------------------------------
+
+
+class GenerateBillingRequest(BaseModel):
+    """Body of ``POST /v1/billing``.
+
+    With ``customer_id`` it bills that one customer for the container. Without
+    it, it bills every customer on the container who does not yet have an
+    invoice, which is how a partly failed clearance is completed.
+    """
+
+    container_id: UUID
+    customer_id: UUID | None = None
 
 
 class CancelBillingRequest(BaseModel):

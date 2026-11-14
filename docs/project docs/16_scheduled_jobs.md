@@ -38,10 +38,28 @@ For each tenant where storage_fee.enabled = TRUE:
         if no storage_fee_log for today + this release_note:
           daily_rate = tenant_config.storage_fee.daily_fee_per_carton_ngn
           fee = unreleased_count × daily_rate
-          INSERT storage_fee_log
-          UPDATE billing: storage_fees_ngn += fee, total_due_ngn += fee, outstanding_ngn += fee
-          Publish StorageFeeAccrued event
+          IN ONE TRANSACTION (shared.db.tenant_transaction):
+            INSERT storage_fee_log            -- ON CONFLICT (billing_id, accrual_date) DO NOTHING
+            UPDATE billing: total_ngn += fee, status recomputed   -- shared.billing_money.adjust_billing
+          Publish StorageFeeAccrued event     -- after commit
 ```
+
+**Updated 2026-11-14.** The log row and the invoice update used to be two separate commits: if the second failed, the
+unique `(billing_id, accrual_date)` key blocked every retry and the fee was logged but never charged. They now commit
+together or not at all. The status is recomputed in the same statement, so a `paid` invoice that takes a fee becomes
+`partially_paid` instead of staying `paid` while owing.
+
+**Storage fees on an invoice = the un-waived rows of `storage_fee_log`.** The job writes only the log and the total; it
+never creates `misc_charge` rows. `billing.storage_fees_ngn` in the API is therefore `SUM(storage_fee_log.amount_ngn)
+WHERE waived_at IS NULL`. (It used to be summed from `misc_charge` rows of type `storage_fee`, which never exist, so it was
+always 0: the storage banner never showed accrued fees and the waive action was never offered.)
+
+**Waiving** (`POST /v1/billing/{id}/storage-fees/waive`): one transaction marks the un-waived rows `waived_at = NOW()`,
+takes their sum off `total_ngn`, recomputes the status, and opens a `pending_review` refund request if the customer has
+already paid more than the new total. Waived rows stay in the log as history. Fees that accrue after a waiver are charged
+as normal (the waiver covers what has accrued so far). With nothing to waive the call returns `422 NO_STORAGE_FEES`.
+Before 2026-11-14 the waive query deleted `misc_charge` rows by a `tenant_id` column that table does not have, so every
+call returned 500.
 
 ## File: `services/scheduled/dispute_escalation.py`
 

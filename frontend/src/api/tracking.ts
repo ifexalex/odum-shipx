@@ -1,3 +1,4 @@
+import type { InvoiceResult } from './billing'
 import { apiRequest, apiRequestList } from './client'
 
 // Ground truth: services/tracking/{models,service,repository}.py +
@@ -75,6 +76,9 @@ export interface CreateContainerInput {
   recommended_cbm?: number
 }
 
+/** `PATCH /v1/containers/{id}/status` response: the container, plus `billing_summary` when the new status is `cleared`. */
+export type ContainerStatusUpdate = Container & { billing_summary?: InvoiceResult[] }
+
 export interface UpdateContainerStatusInput {
   new_status: ContainerStatus
   ship_date?: string
@@ -132,7 +136,7 @@ export const containersApi = {
     apiRequest<Container>({ method: 'POST', path: '/v1/containers', body, idempotencyKey }),
 
   updateStatus: (id: string, body: UpdateContainerStatusInput) =>
-    apiRequest<Container>({ method: 'PATCH', path: `/v1/containers/${id}/status`, body }),
+    apiRequest<ContainerStatusUpdate>({ method: 'PATCH', path: `/v1/containers/${id}/status`, body }),
 
   events: (id: string) => apiRequest<ContainerEvent[]>({ method: 'GET', path: `/v1/containers/${id}/events` }),
   delete: (id: string) => apiRequest<{ deleted: boolean }>({ method: 'DELETE', path: `/v1/containers/${id}` }),

@@ -98,7 +98,9 @@ const RULES: Rule[] = [
   // ── Containers ──────────────────────────────────────────────────────────
   // A container's packing lists move with it: deleting or cancelling one frees
   // them, and a status change is what the tracking view reads.
-  { test: /^\/v1\/containers(\/|$)/, roots: [containerKeys.all, packingListKeys.all] },
+  // Moving a container to `cleared` invoices its customers, so billing views (and the
+  // unbilled queue under billingKeys) must refresh with it.
+  { test: /^\/v1\/containers(\/|$)/, roots: [containerKeys.all, packingListKeys.all, billingKeys.all] },
 
   // ── Packing lists ───────────────────────────────────────────────────────
   // Approving consumes container capacity/CBM and can generate billing, so both

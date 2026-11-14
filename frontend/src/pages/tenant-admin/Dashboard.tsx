@@ -23,6 +23,7 @@ import { ContainerPipeline } from './DashboardPipeline'
 import { ActivityFeed } from '../../shell/ActivityFeed'
 import { PlanUsagePanel } from '../../shell/PlanUsagePanel'
 import { SectionHead } from '../../shell/SectionHead'
+import { UnbilledQueue } from '../../shell/UnbilledQueue'
 import styles from './admin.module.css'
 
 function greeting(): string {
@@ -167,6 +168,8 @@ export function Dashboard(): JSX.Element {
         {isAdmin && <StatCard label="Active customers" value={customerStats?.active ?? '—'} icon="users" />}
         {isAdmin && <StatCard label="Open claims" value={claimStats?.open ?? '—'} icon="warn" sublabel={claimStats?.open ? 'needs attention' : 'no active disputes'} />}
       </div>
+
+      <UnbilledQueue />
 
       {isNigeria && (
         <div style={{ marginTop: 8, marginBottom: 20 }}>

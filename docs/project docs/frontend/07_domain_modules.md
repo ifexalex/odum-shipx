@@ -1621,3 +1621,53 @@ matching the surrounding buttons ("Submit for approval", "Create packing
 list"), and still unambiguous on step 3 where it sits beside Submit. The test
 matcher was tightened back to the exact string once there was only one.
 
+
+## Implementation notes — invoice outcome on clearing (audit Phase 1, 2026-11-14)
+
+**Wire change.** `PATCH /v1/containers/{id}/status` now returns a `billing_summary` array when the new status is `cleared`
+(absent for every other transition): one row per customer on the container,
+`{ customer_id, customer_name, status: created | existing | skipped | failed, billing_id, invoice_number, reason, detail }`.
+`containersApi.updateStatus` is typed `ContainerStatusUpdate = Container & { billing_summary?: InvoiceResult[] }`, and
+`ContainerDetail` strips the extra key before writing the container into the query cache so it never leaks into other readers.
+
+**Why.** Clearing used to invoice every customer inside the request, swallow any per-customer error and still report
+success, so a customer who could not be invoiced (rates not set, no CBM, a transient failure) was simply never billed and
+nobody knew. `InvoiceOutcomeBanner` (on the container page, above the tabs) now says who was invoiced and, for anyone who
+was not, names them with a plain-language reason. Nigeria staff and tenant admins get **Generate missing invoices**, which
+calls `POST /v1/billing { container_id }` (idempotent, so repeating it is safe); other roles see "ask your Nigeria office
+or admin". The banner is session-local by design: it answers "what just happened"; after a reload the container shows as it
+now stands. The dashboard queue of customers on cleared containers with no invoice (BE-06's second half) is built; see the next section.
+
+~~**Found while doing this:** the **Generate billing** button on `nigeria/BillingList.tsx` has no `onClick` — it renders but
+does nothing.~~ **Fixed 2026-11-14** — see "Generate billing picker and missing-item compensation" below.
+
+## Implementation notes — unbilled queue, refund types, billing cache (audit Phase 1 / BE-04, 2026-11-14)
+
+- **`shell/UnbilledQueue.tsx`** (dashboard, tenant admin and Nigeria staff): "Customers not invoiced" — customers on cleared
+  containers with CBM to bill and no invoice, grouped by container, from `GET /v1/billing/unbilled`
+  (`billingApi.unbilled`, `billingKeys.unbilled`). Renders nothing when empty. **Generate invoices** calls
+  `POST /v1/billing { container_id }` (idempotent); **Open container** links to the container page.
+- **Cache:** `PATCH /v1/containers/{id}/status` now invalidates `billingKeys.all` too — moving a container to `cleared` creates
+  invoices, so billing lists and the unbilled queue must refresh with it (`api/cacheInvalidation.ts`).
+- **Refund types:** `RefundType` gained `missing_item` and `seized_item`; `refundTypeLabel` shows "Missing item compensation" /
+  "Seized item compensation".
+- **Behaviour changes worth knowing when testing the UI:** an invoice that was `paid` becomes `partially_paid` the moment a
+  misc charge, carryover or storage fee is added; storage fees now actually appear on the invoice (`storage_fees_ngn` is read
+  from the fee log — it was always 0 before, so the storage banner and the Waive action never showed); waiving works and a
+  second waive returns `422 NO_STORAGE_FEES`.
+
+## Implementation notes — Generate billing picker and missing-item compensation (2026-11-14)
+
+- **Generate billing (`nigeria/BillingList.tsx` + `GenerateBillingModal.tsx`).** The top-bar button was dead; it now opens a
+  dialog for **tenant admins and Nigeria staff** (`canGenerateInvoices` in `api/billingRules.ts`, the same check
+  `ContainerDetail` now uses; **Export** stays admin-only and is still unwired). The dialog lists only containers that still have
+  a customer to invoice, from the same `GET /v1/billing/unbilled` query as the dashboard queue (`billingKeys.unbilled`), grouped
+  by `groupUnbilledByContainer`, which `UnbilledQueue` now shares. One candidate is pre-selected; with several, **Generate
+  invoices** stays disabled until one is chosen. The chosen container's customers and CBM are listed. The result is the
+  existing `InvoiceOutcomeBanner` (who was invoiced; who was skipped and why, with **Generate missing invoices**), then
+  **Done**. When nothing is unbilled it says so instead of showing an empty picker. The picker is a native `<select>`, **not**
+  `Combobox`: the shared `Modal` body is `overflow-y: auto`, which clips the Combobox dropdown, so the options were unreachable
+  (seen in a browser screenshot, not in the jsdom tests).
+- **Missing Items → Update dialog.** Choosing *Confirmed lost* reveals an optional **Compensation (₦)** field and sends it as
+  `refund_amount_ngn`; blank confirms the loss with no compensation, an amount that is not greater than 0 blocks Save, and an
+  amount typed before switching to another status is not sent. Backend rule and validation: `12_api_claims.md`.

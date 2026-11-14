@@ -277,3 +277,38 @@ def sample_release_note_row():
         "created_at": datetime(2026, 2, 1, tzinfo=UTC),
         "updated_at": datetime(2026, 2, 1, tzinfo=UTC),
     }
+
+
+# ---------------------------------------------------------------------------
+# No real database for the mock-based suites
+# ---------------------------------------------------------------------------
+
+# Suites that exercise real SQL: they open their own connections or need the
+# module's real `get_connection`, so they must not get the fake one.
+_REAL_DB_SUITES = ("tests/db/", "test_rls_enforcement", "test_db_connection_healing")
+
+
+@pytest.fixture(autouse=True)
+def _fake_db_connection(request, monkeypatch):
+    """Give `shared.db` a fake connection so `tenant_transaction` works without a database.
+
+    Services now wrap multi-step writes in `tenant_transaction`. In a unit test the
+    repository functions are mocked, so the transaction has nothing to run, but
+    opening one still asks for a connection. This hands it a mock that reports an
+    idle, healthy connection; nothing is sent anywhere. What the transactions
+    actually guarantee is tested against a real database in tests/db/.
+    """
+    path = str(request.node.fspath).replace("\\", "/")
+    if any(marker in path for marker in _REAL_DB_SUITES):
+        yield
+        return
+
+    import psycopg2.extensions
+
+    import shared.db as db_module
+
+    fake = MagicMock()
+    fake.closed = False
+    fake.get_transaction_status.return_value = psycopg2.extensions.TRANSACTION_STATUS_IDLE
+    monkeypatch.setattr(db_module, "_connection", fake)
+    yield

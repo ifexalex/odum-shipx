@@ -39,7 +39,13 @@ from shared.tenant_context import UserRole
 from shared.validation import parse_validated
 
 from . import service
-from .models import CancelBillingRequest, ExemptCarryoverRequest, FileCBMDisputeRequest, ResolveCBMDisputeRequest
+from .models import (
+    CancelBillingRequest,
+    ExemptCarryoverRequest,
+    FileCBMDisputeRequest,
+    GenerateBillingRequest,
+    ResolveCBMDisputeRequest,
+)
 
 # Module-level init (runs once on cold start)
 setup_logging()
@@ -229,8 +235,10 @@ def _dispatch(event: dict[str, Any], method: str, path: str, ctx: Any, request_i
             return paginated(page, next_cursor, has_more, request_id=request_id)
         if method == "POST":
             ctx.assert_role(*_CHARGE_WRITE_ROLES)
-            body = _parse_body(event)
-            result = service.generate_billing(ctx.tenant_id, body, actor_id=ctx.user_id, ctx=ctx)
+            req = parse_validated(GenerateBillingRequest, _parse_body(event))
+            result = service.generate_billing(ctx.tenant_id, req, actor_id=ctx.user_id, ctx=ctx)
+            if req.customer_id is None:
+                return success(result, request_id=request_id)
             return created(result, location="/v1/billing", request_id=request_id)
         raise ResourceNotFoundError("route", path)
 
@@ -241,6 +249,14 @@ def _dispatch(event: dict[str, Any], method: str, path: str, ctx: Any, request_i
         if method == "GET":
             ctx.assert_role(UserRole.TENANT_ADMIN, UserRole.NIGERIA_OFFICE_STAFF)
             return success(service.get_billing_stats(ctx.tenant_id), request_id=request_id)
+        raise ResourceNotFoundError("route", path)
+
+    # GET /v1/billing/unbilled — customers on cleared containers with CBM to bill and no
+    # invoice (dashboard queue). Staff only; completed by POST /v1/billing {container_id}.
+    if segment == "unbilled":
+        if method == "GET":
+            ctx.assert_role(UserRole.TENANT_ADMIN, UserRole.NIGERIA_OFFICE_STAFF)
+            return success(service.list_unbilled_customers(ctx.tenant_id), request_id=request_id)
         raise ResourceNotFoundError("route", path)
 
     # GET /v1/billing/report?created_after=&created_before= — period report

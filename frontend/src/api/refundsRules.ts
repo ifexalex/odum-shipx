@@ -44,6 +44,8 @@ export function refundTypeLabel(type: Refund['refund_type']): string {
     case 'overpayment': return 'Overpayment refund'
     case 'cbm_correction': return 'CBM correction'
     case 'damage_or_loss': return 'Damage / loss'
+    case 'missing_item': return 'Missing item compensation'
+    case 'seized_item': return 'Seized item compensation'
     // No default meant a missing/unmapped value returned undefined, which
     // React renders as nothing — RefundDetail.tsx's page <h1> silently went
     // blank for every claim-triggered refund, since

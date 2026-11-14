@@ -3,12 +3,14 @@ import {
   canAcknowledgeDispute,
   canApplyCarryover,
   canCancelBilling,
+  canGenerateInvoices,
   canRecordPayment,
   canRejectDispute,
   canResolveDispute,
+  groupUnbilledByContainer,
   isTerminalDisputeStatus,
 } from './billingRules'
-import type { Billing, CBMDispute } from './billing'
+import type { Billing, CBMDispute, UnbilledCustomer } from './billing'
 
 function makeBilling(overrides: Partial<Billing> = {}): Billing {
   return {
@@ -104,5 +106,62 @@ describe('isTerminalDisputeStatus', () => {
     expect(isTerminalDisputeStatus('closed')).toBe(true)
     expect(isTerminalDisputeStatus('submitted')).toBe(false)
     expect(isTerminalDisputeStatus('investigating')).toBe(false)
+  })
+})
+
+describe('canGenerateInvoices', () => {
+  it.each(['nigeria_office_staff', 'tenant_admin'] as const)('allows %s', (role) => {
+    expect(canGenerateInvoices(role)).toBe(true)
+  })
+
+  it.each(['china_office_staff', 'warehouse_attendant', 'customer'] as const)('refuses %s', (role) => {
+    expect(canGenerateInvoices(role)).toBe(false)
+  })
+})
+
+describe('groupUnbilledByContainer', () => {
+  function row(overrides: Partial<UnbilledCustomer>): UnbilledCustomer {
+    return {
+      container_id: 'k1',
+      container_number: 'ACME001',
+      container_status: 'cleared',
+      customer_id: 'c1',
+      customer_name: 'Alice',
+      total_cbm: '2.000',
+      ...overrides,
+    }
+  }
+
+  it('returns nothing for no rows', () => {
+    expect(groupUnbilledByContainer([])).toEqual([])
+  })
+
+  it('groups customers under their container and totals the CBM', () => {
+    const groups = groupUnbilledByContainer([
+      row({}),
+      row({ container_id: 'k2', container_number: 'ACME002', customer_id: 'c3', customer_name: 'Chi', total_cbm: 4 }),
+      row({ customer_id: 'c2', customer_name: 'Bob', total_cbm: '1.500' }),
+    ])
+
+    expect(groups).toEqual([
+      {
+        containerId: 'k1',
+        containerNumber: 'ACME001',
+        customers: [
+          { id: 'c1', name: 'Alice', cbm: 2 },
+          { id: 'c2', name: 'Bob', cbm: 1.5 },
+        ],
+        totalCbm: 3.5,
+      },
+      { containerId: 'k2', containerNumber: 'ACME002', customers: [{ id: 'c3', name: 'Chi', cbm: 4 }], totalCbm: 4 },
+    ])
+  })
+
+  it('names a customer with no name, and counts unparseable CBM as zero', () => {
+    const groups = groupUnbilledByContainer([row({ customer_name: null, total_cbm: 'n/a' })])
+
+    expect(groups).toEqual([
+      { containerId: 'k1', containerNumber: 'ACME001', customers: [{ id: 'c1', name: 'Customer', cbm: 0 }], totalCbm: 0 },
+    ])
   })
 })

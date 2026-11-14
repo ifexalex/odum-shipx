@@ -1,5 +1,6 @@
 """Unit tests for services.claims.service — lifecycle, approval thresholds."""
 
+import json
 from decimal import Decimal
 from unittest.mock import MagicMock, patch
 
@@ -682,13 +683,13 @@ TENANT_ID_C = "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa"
 
 
 class TestMissingItemCompensation:
-    def test_compensated_with_amount_creates_refund_and_links(self):
+    def test_confirmed_lost_with_amount_creates_refund_and_links(self):
         from decimal import Decimal
 
         from services.claims import service
 
         item = _missing_item()
-        updated = {**item, "status": "compensated"}
+        updated = {**item, "status": "confirmed_lost"}
         refund_row = {"id": "refund-new-001"}
         linked = {**updated, "refund_request_id": "refund-new-001"}
 
@@ -701,7 +702,7 @@ class TestMissingItemCompensation:
             result = service.update_missing_item(
                 TENANT_ID_C,
                 "missing-001",
-                "compensated",
+                "confirmed_lost",
                 notes=None,
                 actor_id="u",
                 ctx=_ctx(UserRole.NIGERIA_OFFICE_STAFF),
@@ -709,11 +710,11 @@ class TestMissingItemCompensation:
             )
             assert result["refund_request_id"] == "refund-new-001"
 
-    def test_compensated_without_amount_skips_refund(self):
+    def test_confirmed_lost_without_amount_skips_refund(self):
         from services.claims import service
 
         item = _missing_item()
-        updated = {**item, "status": "compensated"}
+        updated = {**item, "status": "confirmed_lost"}
 
         with (
             patch.object(service.repo, "get_missing_item_by_id", return_value=item),
@@ -723,15 +724,15 @@ class TestMissingItemCompensation:
             service.update_missing_item(
                 TENANT_ID_C,
                 "missing-001",
-                "compensated",
+                "confirmed_lost",
                 notes=None,
                 actor_id="u",
                 ctx=_ctx(UserRole.NIGERIA_OFFICE_STAFF),
             )
             mock_create.assert_not_called()
 
-    def test_non_compensated_status_with_amount_skips_refund(self):
-        """refund_amount_ngn is ignored for statuses other than 'compensated'."""
+    def test_other_status_with_amount_skips_refund(self):
+        """refund_amount_ngn is ignored for statuses other than 'confirmed_lost'."""
         from decimal import Decimal
 
         from services.claims import service
@@ -762,7 +763,12 @@ class TestMissingItemCompensation:
         with patch.object(service.repo, "get_missing_item_by_id", return_value=None):
             with pytest.raises(ResourceNotFoundError):
                 service.update_missing_item(
-                    TENANT_ID_C, "nonexistent", "compensated", notes=None, actor_id="u", ctx=_ctx(UserRole.NIGERIA_OFFICE_STAFF)
+                    TENANT_ID_C,
+                    "nonexistent",
+                    "confirmed_lost",
+                    notes=None,
+                    actor_id="u",
+                    ctx=_ctx(UserRole.NIGERIA_OFFICE_STAFF),
                 )
 
 
@@ -910,7 +916,7 @@ class TestMissingSeizedItemAuditLogging:
         from services.claims import service
 
         item = _missing_item()
-        updated = {**item, "status": "compensated"}
+        updated = {**item, "status": "confirmed_lost"}
         with (
             patch.object(service.repo, "get_missing_item_by_id", return_value=item),
             patch.object(service.repo, "update_missing_item_status", return_value=updated),
@@ -921,7 +927,7 @@ class TestMissingSeizedItemAuditLogging:
             service.update_missing_item(
                 TENANT_ID_C,
                 "missing-001",
-                "compensated",
+                "confirmed_lost",
                 notes=None,
                 actor_id="u",
                 ctx=_ctx(UserRole.NIGERIA_OFFICE_STAFF),
@@ -1363,3 +1369,146 @@ class TestClaimStats:
             result = service.get_claim_stats(TENANT_ID)
         assert m.call_args[0][0] == TENANT_ID
         assert result["total"] == 5
+
+
+class TestClaimsWritesAreGuarded:
+    """The guards that stop a second request opening a second refund.
+
+    That they hold under real concurrency is proved in tests/db/test_atomic_writes.py;
+    these pin the service-level contract with the repository mocked.
+    """
+
+    def test_an_item_that_already_carries_a_refund_does_not_get_another(self):
+        from decimal import Decimal
+
+        from services.claims import service
+
+        item = _seized_item()
+        already = {**item, "recovery_status": "recovered", "refund_request_id": "refund-existing"}
+
+        with (
+            patch.object(service.repo, "get_seized_item_by_id", return_value=item),
+            patch.object(service.repo, "update_seized_item_status", return_value=already),
+            patch.object(service.refund_repo, "create_refund_request") as mock_create,
+            patch.object(service.repo, "link_refund_to_seized_item") as mock_link,
+        ):
+            result = service.update_seized_item(
+                TENANT_ID_C,
+                "seized-001",
+                "recovered",
+                notes=None,
+                actor_id="u",
+                ctx=_ctx(UserRole.NIGERIA_OFFICE_STAFF),
+                refund_amount_ngn=Decimal("20000"),
+            )
+
+        mock_create.assert_not_called()
+        mock_link.assert_not_called()
+        assert "refund_request_id" not in result or result["refund_request_id"] == "refund-existing"
+
+    def test_resolving_a_claim_that_was_resolved_by_someone_else_is_refused_with_no_side_effects(self):
+        from decimal import Decimal
+        from types import SimpleNamespace
+
+        from services.claims import service
+        from shared.exceptions import IllegalTransitionError
+
+        claim = {"id": "claim-001", "status": "pending_resolution", "customer_id": "cust-1", "tenant_id": TENANT_ID_C}
+        req = SimpleNamespace(
+            resolution_type=SimpleNamespace(value="refund"),
+            settlement_amount_usd=None,
+            amount_ngn=Decimal("1000"),
+            reason="wet",
+            discount_percentage=None,
+        )
+
+        with (
+            patch.object(service.repo, "get_damage_claim_by_id", return_value=claim),
+            patch.object(service.repo, "get_tenant_config_value", return_value={}),
+            patch.object(service, "get_effective_dollar_rate", return_value={"rate": Decimal("1500")}),
+            patch.object(service.repo, "update_claim_status", return_value=None) as mock_status,
+            patch.object(service.repo, "create_refund_request_for_claim") as mock_refund,
+            patch.object(service.repo, "create_claim_resolution") as mock_resolution,
+            patch.object(service, "publish_event") as mock_publish,
+        ):
+            with pytest.raises(IllegalTransitionError):
+                service.resolve_claim(TENANT_ID_C, "claim-001", req, actor_id="u", ctx=_ctx(UserRole.NIGERIA_OFFICE_STAFF))
+
+        assert mock_status.call_args.kwargs["allowed_from"]  # the guard is passed to the repo
+        mock_refund.assert_not_called()
+        mock_resolution.assert_not_called()
+        mock_publish.assert_not_called()
+
+
+# ---------------------------------------------------------------------------
+# PATCH /v1/claims/missing-items/{id} and /seized-items/{id} — input validation
+#
+# The compensation amount and the status are the two inputs that turn into a refund, so a
+# bad value must be a 422 here, not a 500 from a CHECK constraint after the status saved.
+# ---------------------------------------------------------------------------
+
+
+class TestItemUpdateValidation:
+    @staticmethod
+    def _event(kind: str, body: dict) -> dict:
+        return {
+            "requestContext": {
+                "requestId": "req-item-001",
+                "http": {"method": "PATCH", "path": f"/v1/claims/{kind}/item-001"},
+                "authorizer": {"claims": {"sub": "user-1", "custom:tenant_id": TENANT_ID}},
+                "identity": {"sourceIp": "127.0.0.1"},
+            },
+            "headers": {},
+            "body": json.dumps(body),
+            "queryStringParameters": {},
+            "pathParameters": {},
+        }
+
+    def _patch_missing(self, body: dict, update_result: dict | None = None) -> tuple[dict, MagicMock]:
+        from services.claims import handler, service
+
+        with (
+            patch("services.claims.handler.get_tenant_context", return_value=_ctx(UserRole.NIGERIA_OFFICE_STAFF)),
+            patch.object(service, "update_missing_item", return_value=update_result or {"id": "item-001"}) as mock_update,
+        ):
+            resp = handler.lambda_handler(self._event("missing-items", body), None)
+        return resp, mock_update
+
+    def test_confirmed_lost_with_amount_reaches_the_service_as_a_decimal(self):
+        resp, mock_update = self._patch_missing({"status": "confirmed_lost", "refund_amount_ngn": "7500.50"})
+
+        assert resp["statusCode"] == 200
+        assert mock_update.call_args.kwargs["refund_amount_ngn"] == Decimal("7500.50")
+
+    def test_no_amount_is_passed_as_none(self):
+        resp, mock_update = self._patch_missing({"status": "confirmed_lost"})
+
+        assert resp["statusCode"] == 200
+        assert mock_update.call_args.kwargs["refund_amount_ngn"] is None
+
+    @pytest.mark.parametrize("bad_amount", ["abc", "0", "-5", "NaN", "Infinity"])
+    def test_an_unusable_amount_is_a_422_and_nothing_is_updated(self, bad_amount):
+        resp, mock_update = self._patch_missing({"status": "confirmed_lost", "refund_amount_ngn": bad_amount})
+
+        assert resp["statusCode"] == 422
+        mock_update.assert_not_called()
+
+    def test_a_status_the_database_does_not_allow_is_a_422(self):
+        resp, mock_update = self._patch_missing({"status": "compensated"})
+
+        assert resp["statusCode"] == 422
+        mock_update.assert_not_called()
+
+    def test_seized_item_amount_is_validated_the_same_way(self):
+        from services.claims import handler, service
+
+        with (
+            patch("services.claims.handler.get_tenant_context", return_value=_ctx(UserRole.NIGERIA_OFFICE_STAFF)),
+            patch.object(service, "update_seized_item") as mock_update,
+        ):
+            resp = handler.lambda_handler(
+                self._event("seized-items", {"recovery_status": "recovered", "refund_amount_ngn": "-1"}), None
+            )
+
+        assert resp["statusCode"] == 422
+        mock_update.assert_not_called()

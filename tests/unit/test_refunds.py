@@ -308,7 +308,7 @@ class TestApproveRefund:
         updated = _refund(status="processed")
         with (
             patch.object(service.repo, "get_refund_request_by_id", return_value=refund),
-            patch.object(service.repo, "update_refund_status", return_value=updated),
+            patch.object(service.repo, "approve_refund_and_adjust_billing", return_value=updated),
             patch("services.refunds.service.publish_event"),
         ):
             # nigeria_office_staff (manager) can approve overpayment
@@ -342,7 +342,7 @@ class TestApproveRefund:
         updated = _refund(status="applied_as_credit")
         with (
             patch.object(service.repo, "get_refund_request_by_id", return_value=refund),
-            patch.object(service.repo, "update_refund_status", return_value=updated),
+            patch.object(service.repo, "approve_refund_and_adjust_billing", return_value=updated),
             patch("services.refunds.service.publish_event"),
         ):
             ctx = _ctx(UserRole.TENANT_ADMIN)
@@ -377,7 +377,7 @@ class TestApproveRefund:
         updated = _refund(status="processed")
         with (
             patch.object(service.repo, "get_refund_request_by_id", return_value=refund),
-            patch.object(service.repo, "update_refund_status", return_value=updated),
+            patch.object(service.repo, "approve_refund_and_adjust_billing", return_value=updated),
             patch("services.refunds.service.publish_event"),
         ):
             ctx = _ctx(UserRole.NIGERIA_OFFICE_STAFF)
@@ -397,7 +397,7 @@ class TestApproveRefund:
         updated = _refund(status="applied_as_credit")
         with (
             patch.object(service.repo, "get_refund_request_by_id", return_value=refund),
-            patch.object(service.repo, "update_refund_status", return_value=updated),
+            patch.object(service.repo, "approve_refund_and_adjust_billing", return_value=updated),
             patch("services.refunds.service.publish_event"),
         ):
             result = service.approve_refund(
@@ -435,7 +435,7 @@ class TestApproveRefund:
             patch.object(service.repo, "get_refund_request_by_id", return_value=refund),
             patch.object(service.repo, "get_refund_threshold_config", return_value={"staff_limit": 50}),
             patch.object(service, "get_effective_dollar_rate", return_value={"rate": Decimal("1600.00")}),
-            patch.object(service.repo, "update_refund_status", return_value=updated),
+            patch.object(service.repo, "approve_refund_and_adjust_billing", return_value=updated),
             patch("services.refunds.service.publish_event"),
         ):
             result = service.approve_refund(
@@ -456,7 +456,7 @@ class TestApproveRefund:
         updated = _refund(status="processed")
         with (
             patch.object(service.repo, "get_refund_request_by_id", return_value=refund),
-            patch.object(service.repo, "update_refund_status", return_value=updated),
+            patch.object(service.repo, "approve_refund_and_adjust_billing", return_value=updated),
             patch("services.refunds.service.publish_event"),
         ):
             # tenant_admin never hits the staff-limit branch at all.
@@ -515,3 +515,89 @@ class TestRejectRefund:
         with patch.object(service.repo, "get_refund_request_by_id", return_value=refund):
             with pytest.raises(IllegalTransitionError):
                 service.reject_refund(TENANT_ID, "refund-001", "reason", actor_id="u", ctx=_ctx(UserRole.TENANT_ADMIN))
+
+
+class TestRefundApprovalIsAtomic:
+    """The invoice reduction and the approval commit together, and only once."""
+
+    def _refund(self):
+        return _refund(
+            status="pending_approval",
+            refund_type="damage_or_loss",
+            amount_ngn=Decimal("20000.00"),
+            customer_choice="immediate_refund",
+            billing_id="billing-001",
+        )
+
+    def _req(self):
+        req = MagicMock()
+        req.amount_approved_ngn = Decimal("20000")
+        return req
+
+    def test_an_immediate_refund_hands_the_invoice_reduction_to_the_atomic_repo_call(self):
+        from services.refunds import service
+
+        with (
+            patch.object(service.repo, "get_refund_request_by_id", return_value=self._refund()),
+            patch.object(
+                service.repo, "approve_refund_and_adjust_billing", return_value=_refund(status="processed")
+            ) as mock_approve,
+            patch("services.refunds.service.publish_event"),
+        ):
+            service.approve_refund(TENANT_ID, "refund-001", self._req(), actor_id="u", ctx=_ctx(UserRole.NIGERIA_OFFICE_STAFF))
+
+        kwargs = mock_approve.call_args.kwargs
+        assert kwargs["billing_id"] == "billing-001"
+        assert kwargs["reduction_ngn"] == Decimal("20000")
+        assert mock_approve.call_args.args[2] == "processed"
+
+    def test_a_credit_for_the_next_shipment_does_not_reduce_any_invoice(self):
+        from services.refunds import service
+
+        refund = self._refund()
+        refund["customer_choice"] = "credit_next_shipment"
+        with (
+            patch.object(service.repo, "get_refund_request_by_id", return_value=refund),
+            patch.object(
+                service.repo, "approve_refund_and_adjust_billing", return_value=_refund(status="applied_as_credit")
+            ) as mock_approve,
+            patch("services.refunds.service.publish_event"),
+        ):
+            service.approve_refund(TENANT_ID, "refund-001", self._req(), actor_id="u", ctx=_ctx(UserRole.NIGERIA_OFFICE_STAFF))
+
+        assert mock_approve.call_args.kwargs["billing_id"] is None
+        assert mock_approve.call_args.kwargs["reduction_ngn"] is None
+
+    def test_an_approval_that_lost_the_race_is_refused_and_publishes_nothing(self):
+        from services.refunds import service
+
+        with (
+            patch.object(service.repo, "get_refund_request_by_id", return_value=self._refund()),
+            patch.object(service.repo, "approve_refund_and_adjust_billing", return_value={}),
+            patch("services.refunds.service.publish_event") as mock_publish,
+            patch("services.refunds.service.log_audit") as mock_audit,
+        ):
+            with pytest.raises(IllegalTransitionError):
+                service.approve_refund(
+                    TENANT_ID, "refund-001", self._req(), actor_id="u", ctx=_ctx(UserRole.NIGERIA_OFFICE_STAFF)
+                )
+
+        mock_publish.assert_not_called()
+        mock_audit.assert_not_called()
+
+    def test_a_review_that_lost_the_race_is_refused(self):
+        from services.refunds import service
+
+        req = MagicMock()
+        req.debt_check_passed = True
+        req.debt_check_notes = "ok"
+        with (
+            patch.object(service.repo, "get_refund_request_by_id", return_value=_refund(status="pending_review")),
+            patch.object(service.repo, "get_outstanding_carryovers_for_customer", return_value=[]),
+            patch.object(service.repo, "get_unpaid_billing_totals_for_customer", return_value=Decimal("0")),
+            patch.object(service.repo, "update_refund_status", return_value={}) as mock_update,
+        ):
+            with pytest.raises(IllegalTransitionError):
+                service.accounts_review(TENANT_ID, "refund-001", req, actor_id="u", ctx=_ctx(UserRole.NIGERIA_OFFICE_STAFF))
+
+        assert mock_update.call_args.kwargs["expected_status"] == "pending_review"

@@ -28,7 +28,7 @@ export type RefundStatus =
   | 'processed'
   | 'applied_as_credit'
 
-export type RefundType = 'overpayment' | 'cbm_correction' | 'damage_or_loss'
+export type RefundType = 'overpayment' | 'cbm_correction' | 'damage_or_loss' | 'missing_item' | 'seized_item'
 
 export type CustomerChoice = 'immediate_refund' | 'credit_next_shipment'
 

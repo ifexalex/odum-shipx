@@ -97,6 +97,29 @@ jobs:
           DATABASE_ADMIN_PASSWORD: test_pass
           APP_DB_PASSWORD: ci_app_pass_not_a_secret
         run: uv run pytest tests/tenant_isolation/ -v
+      # tests/integration/ walks the packing-list -> release flow through the
+      # service layer. It was never part of CI, so a change that broke the flow
+      # only surfaced when someone remembered to run it. It needs no database.
+      - name: Run integration tests
+        env:
+          PYTHONPATH: ".:services"
+        run: uv run pytest tests/integration/ -v
+      # Invoice and payment integrity under real concurrency, against the migrated
+      # database and as the application role (so RLS applies). These are the tests
+      # that fail on the old COUNT(*)+1 invoice numbering and on payment status
+      # computed from a stale read; mocks cannot see either.
+      - name: Run database integrity tests
+        env:
+          PYTHONPATH: ".:services"
+          DATABASE_HOST: localhost
+          DATABASE_PORT: 5432
+          DATABASE_NAME: logistics_test
+          DATABASE_USER: logistics_app
+          DATABASE_PASSWORD: ci_app_pass_not_a_secret
+          DATABASE_ADMIN_USER: test_user
+          DATABASE_ADMIN_PASSWORD: test_pass
+          APP_DB_PASSWORD: ci_app_pass_not_a_secret
+        run: uv run pytest tests/db/ -v
       # This upload has never worked, and said nothing about it. On a PRIVATE
       # repo Codecov requires an upload token; none was configured, so every run
       # logged

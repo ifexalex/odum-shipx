@@ -231,6 +231,7 @@ All local dev commands are in the `Makefile`:
 | `make dev` | Start the local Flask API server on `:3000` | Single-threaded (`threaded=False`) — see note below.
 | `make test-unit` | Run unit tests (no containers needed) |
 | `make test-integration` | Run integration tests (containers must be running) |
+| `make test-db` | Real-database invoice/payment integrity tests (parallel processes, as `logistics_app`); needs `make stack`, skips if no DB |
 
 ---
 

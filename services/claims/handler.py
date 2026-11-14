@@ -19,11 +19,11 @@ import json
 import logging
 import time
 import uuid
-from decimal import Decimal
+from decimal import Decimal, InvalidOperation
 from typing import Any
 
 from shared.auth import get_tenant_context
-from shared.exceptions import LogisticsBaseError, ResourceNotFoundError
+from shared.exceptions import LogisticsBaseError, ResourceNotFoundError, ValidationError
 from shared.idempotency import check_idempotency, store_idempotency
 from shared.logging_config import bind_log_context, clear_log_context, setup_logging
 from shared.metering import record_usage
@@ -38,6 +38,7 @@ from .models import (
     FileDamageClaimRequest,
     LogMissingItemRequest,
     LogSeizedItemRequest,
+    MissingItemStatus,
     ResolveClaimRequest,
     StartInspectionRequest,
 )
@@ -319,6 +320,26 @@ def _upload_routes(
 _ITEM_READ_ROLES = (UserRole.NIGERIA_OFFICE_STAFF, UserRole.TENANT_ADMIN)
 
 
+def _compensation_amount(body: dict[str, Any]) -> Decimal | None:
+    """Parse the optional ``refund_amount_ngn`` of a missing/seized item update.
+
+    A non-numeric, non-finite or non-positive amount is a 422 here rather than a 500 from
+    the refund_request CHECK constraint later.
+    """
+    raw_amount = body.get("refund_amount_ngn")
+    if raw_amount is None or raw_amount == "":
+        return None
+    try:
+        amount = Decimal(str(raw_amount))
+    except InvalidOperation:
+        amount = None
+    if amount is None or not amount.is_finite() or amount <= 0:
+        raise ValidationError(
+            "refund_amount_ngn must be a positive number", field_errors={"refund_amount_ngn": "must be greater than 0"}
+        )
+    return amount
+
+
 def _missing_item_routes(
     event: dict[str, Any], parts: list[str], method: str, ctx: Any, request_id: str, ip_address: str | None
 ) -> dict[str, Any]:
@@ -369,10 +390,12 @@ def _missing_item_routes(
                 from shared.exceptions import BusinessRuleViolationError
 
                 raise BusinessRuleViolationError("status is required", rule_id="MISSING_STATUS")
-            raw_amount = body.get("refund_amount_ngn")
-            refund_amount_ngn = Decimal(str(raw_amount)) if raw_amount is not None else None
+            if status not in MissingItemStatus:
+                raise ValidationError(
+                    f"status must be one of: {', '.join(MissingItemStatus)}", field_errors={"status": "invalid status"}
+                )
             result = service.update_missing_item(
-                tenant_id, item_id, status, notes, actor_id=ctx.user_id, ctx=ctx, refund_amount_ngn=refund_amount_ngn
+                tenant_id, item_id, status, notes, actor_id=ctx.user_id, ctx=ctx, refund_amount_ngn=_compensation_amount(body)
             )
             return success(result, request_id=request_id)
 
@@ -434,10 +457,14 @@ def _seized_item_routes(
                 from shared.exceptions import BusinessRuleViolationError
 
                 raise BusinessRuleViolationError("recovery_status is required", rule_id="MISSING_STATUS")
-            raw_amount = body.get("refund_amount_ngn")
-            refund_amount_ngn = Decimal(str(raw_amount)) if raw_amount is not None else None
             result = service.update_seized_item(
-                tenant_id, item_id, recovery_status, notes, actor_id=ctx.user_id, ctx=ctx, refund_amount_ngn=refund_amount_ngn
+                tenant_id,
+                item_id,
+                recovery_status,
+                notes,
+                actor_id=ctx.user_id,
+                ctx=ctx,
+                refund_amount_ngn=_compensation_amount(body),
             )
             return success(result, request_id=request_id)
 

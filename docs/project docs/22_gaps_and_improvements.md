@@ -33,7 +33,7 @@ Work through these iteratively — check off each item when implemented and upda
   - _Touches_: new migration (019), `services/tracking/repository.py`, `services/tracking/service.py`, `05a_database_schema_core.md`, `10_api_tracking.md`
 
 - [x] **Missing item → refund / billing adjustment link**
-  - `missing_item` has `compensated` terminal status but no money movement record.
+  - `missing_item` had no money movement record for a lost item (it was written as a `compensated` status, which the schema never allowed; compensation now triggers on `confirmed_lost`, 2026-11-14).
   - Add optional `refund_request_id` FK on `missing_item`; allow staff to create a refund directly from a missing item resolution.
   - _Touches_: migration (020), `services/claims/`, `services/refunds/`, `12_api_claims.md`, `14_api_refunds.md`
 
@@ -192,7 +192,7 @@ Work through these iteratively — check off each item when implemented and upda
 - **Billing void / cancel endpoint** — 2026-05-03. `PATCH /v1/billing/{id}/cancel` added with guards: `unpaid` status only, no confirmed payments, no active release notes. Migration 017 adds `cancelled` status + `cancel_reason/cancelled_by/cancelled_at` columns.
 - **Payment gateway webhook** — 2026-05-03. `POST /v1/webhooks/payment` added to payment_release handler. Supports Paystack (HMAC-SHA512) and Flutterwave (verif-hash). Duplicate-safe via `payment_record.gateway_transaction_id` partial UNIQUE index (migration 018). New `services/payment_release/webhook.py` module.
 - **Container status audit trail** — 2026-05-04. `container_event` table (migration 019, append-only, no RLS). Every `PATCH /v1/containers/{id}/status` writes a row. `GET /v1/containers/{id}/events` returns ordered history.
-- **Missing item → refund link** — 2026-05-04. `refund_request_id` nullable FK added to `missing_item` (migration 020). Setting status `compensated` with `refund_amount_ngn` auto-creates a `refund_request` and links it.
+- **Missing item → refund link** — 2026-05-04. `refund_request_id` nullable FK added to `missing_item` (migration 020). ~~Setting status `compensated` with `refund_amount_ngn` auto-creates a `refund_request` and links it.~~ **Corrected 2026-11-14:** `compensated` is not an allowed status, so this never fired; it now triggers on `confirmed_lost` with `refund_amount_ngn`.
 - **Seized item → compensation link** — 2026-05-04. Same `refund_request_id` FK on `seized_item` (migration 020). Triggers on `recovered`/`forfeited` status with `refund_amount_ngn`.
 - **Carryover apply endpoint** — 2026-05-04. `PATCH /v1/billing/{id}/apply-carryover` manually applies an outstanding carryover to a billing record. Guards: billing not cancelled/waived; carryover must be outstanding and same customer.
 - **`GET /v1/release-notes`** — 2026-05-05. Paginated list with `customer_id`, `container_id`, `status` filters. Customers see only their own. Roles: `tenant_admin`, `nigeria_office_staff`, `warehouse_attendant`, `customer`.

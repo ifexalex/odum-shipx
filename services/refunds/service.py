@@ -213,7 +213,14 @@ def accounts_review(
             "rejection_reason": req.debt_check_notes,
         }
 
-    updated = repo.update_refund_status(tenant_id, refund_id, new_status, extra=extra)
+    updated = repo.update_refund_status(tenant_id, refund_id, new_status, extra=extra, expected_status="pending_review")
+    if not updated:
+        raise IllegalTransitionError(
+            entity="refund_request",
+            current_state="changed by another request",
+            requested_state=new_status,
+            allowed=["pending_review"],
+        )
 
     log_audit(
         tenant_id=tenant_id,
@@ -303,29 +310,12 @@ def approve_refund(
     customer_choice = refund.get("customer_choice") or ""
     final_status = "applied_as_credit" if customer_choice == "credit_next_shipment" else "processed"
 
-    # On immediate refund: adjust billing total if billing_id exists
-    if final_status == "processed" and refund.get("billing_id"):
-        billing_id = str(refund["billing_id"])
-        updated_billing = repo.reduce_billing_total(tenant_id, billing_id, amount_approved)
-        if updated_billing is None:
-            raise RuntimeError("reduce_billing_total returned None unexpectedly")
-        # Create new overpayment refund if reduction caused new negative balance
-        new_balance = Decimal(str(updated_billing.get("balance_ngn", "0")))
-        if new_balance < Decimal("-0.01"):
-            overpayment = abs(new_balance)
-            repo.create_overpayment_refund_request(
-                tenant_id,
-                {
-                    "tenant_id": tenant_id,
-                    "customer_id": str(refund["customer_id"]),
-                    "billing_id": billing_id,
-                    "amount_ngn": overpayment,
-                    "reason": f"Overpayment after refund adjustment on refund {refund_id}",
-                },
-            )
-
+    # The approval and, for an immediate refund, the reduction of what the invoice
+    # owes (plus its status and any new overpayment refund) commit together, and only
+    # if the refund is still pending_approval — two approvals cannot both reduce it.
+    billing_id = str(refund["billing_id"]) if final_status == "processed" and refund.get("billing_id") else None
     now = datetime.now(UTC)
-    updated = repo.update_refund_status(
+    updated = repo.approve_refund_and_adjust_billing(
         tenant_id,
         refund_id,
         final_status,
@@ -335,7 +325,16 @@ def approve_refund(
             "approved_by": actor_id,
             "approved_at": now,
         },
+        billing_id=billing_id,
+        reduction_ngn=amount_approved if billing_id else None,
     )
+    if not updated:
+        raise IllegalTransitionError(
+            entity="refund_request",
+            current_state="changed by another request",
+            requested_state="approved",
+            allowed=["pending_approval"],
+        )
 
     log_audit(
         tenant_id=tenant_id,
@@ -398,7 +397,15 @@ def reject_refund(
             "rejected_by": actor_id,
             "rejection_reason": rejection_reason,
         },
+        expected_status=prev_status,
     )
+    if not updated:
+        raise IllegalTransitionError(
+            entity="refund_request",
+            current_state="changed by another request",
+            requested_state="rejected",
+            allowed=list(_REJECTABLE_STATES),
+        )
 
     log_audit(
         tenant_id=tenant_id,

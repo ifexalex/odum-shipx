@@ -2,6 +2,7 @@ import { useQuery } from '@tanstack/react-query'
 import { useState, type JSX } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { billingApi, type Billing, type PaymentStatus } from '../../api/billing'
+import { canGenerateInvoices } from '../../api/billingRules'
 import { billingKeys } from '../../api/keys'
 import { formatNgnCompact } from '../../lib/format'
 import { STALE_5_MIN } from '../../lib/queryClient'
@@ -11,6 +12,7 @@ import { useBillingList } from '../../hooks/useBilling'
 import { useDateRangeFilter } from '../../hooks/useDateRangeFilter'
 import { type SortableColumn, useTableSort } from '../../hooks/useTableSort'
 import { useTopBarSlot } from '../../shell/TopBarContext'
+import { GenerateBillingModal } from './GenerateBillingModal'
 import styles from './BillingList.module.css'
 
 // 'Reference' (invoice_number, text) defaults asc; 'Billed' (billed_at,
@@ -113,14 +115,19 @@ export function BillingList(): JSX.Element {
   const [filtersOpen, setFiltersOpen] = useState(false)
 
   const isAdmin = session?.role === 'tenant_admin'
+  const canGenerate = session ? canGenerateInvoices(session.role) : false
+  const [generateOpen, setGenerateOpen] = useState(false)
 
   useTopBarSlot({
-    actions: isAdmin ? (
-      <>
-        <Button variant="secondary" icon="download">Export</Button>
-        <Button variant="primary" icon="plus">Generate billing</Button>
-      </>
-    ) : null,
+    actions:
+      isAdmin || canGenerate ? (
+        <>
+          {isAdmin && <Button variant="secondary" icon="download">Export</Button>}
+          {canGenerate && (
+            <Button variant="primary" icon="plus" onClick={() => setGenerateOpen(true)}>Generate billing</Button>
+          )}
+        </>
+      ) : null,
   })
 
   // Tenant-wide aggregates for the stats row + status chips — SQL-computed
@@ -332,6 +339,8 @@ export function BillingList(): JSX.Element {
         onLoadMore={loadMore}
         noun="billing records"
       />
+
+      {generateOpen && <GenerateBillingModal onClose={() => setGenerateOpen(false)} />}
     </div>
   )
 }

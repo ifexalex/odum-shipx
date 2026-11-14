@@ -111,16 +111,22 @@ matching the prose message. `shared/responses.error_response` now emits it and
 **Idempotency:** Supply `Idempotency-Key: <uuid>` header to make retries safe. Duplicate keys within 24 hours return the original cached response without double-counting payments. Key max length: 100 characters.
 
 1. Validate billing exists in tenant scope
-2. Create `payment_record` (`payment_method` is nullable — migration 008)
-3. Update billing:
-   - `total_paid_ngn += amount_ngn`
-   - `outstanding_ngn = total_due_ngn - total_paid_ngn`
-   - Update `billing.status` (values from migration 006):
+2. In **one transaction** (`repo.record_payment`, 2026-11-14):
+   - allocate the receipt number from the `tenant_counter` (`receipt`) — manual payments only
+   - create `payment_record` (`payment_method` is nullable — migration 008)
+   - update billing in a single `UPDATE`, which locks the row and computes the status from the stored total (not from a value read earlier):
+     - `amount_paid_ngn += amount_ngn`
      - If outstanding == 0 (±0.01 tolerance) → `paid`
-     - If outstanding < 0 → `overpaid` (auto-create refund_request for overpayment)
+     - If outstanding < 0 → `overpaid`
      - If outstanding > 0 → `partially_paid`
-4. Publish `PaymentConfirmed` event
-5. Return: payment_id, new status, outstanding, release_note_available flag
+   - if overpaid, create a `refund_request` for **this payment's** excess only (an invoice that was already overpaid is not refunded twice)
+3. Publish `PaymentConfirmed` event
+4. Return: payment_id, new status, outstanding, release_note_available flag
+
+Any failure in step 2 rolls the whole thing back — there is never a payment record without the matching invoice update.
+Two payments that arrive together are applied one after the other, so two halves of an invoice end `paid`, not `partially_paid`.
+The gateway webhook (`process_webhook_payment`) uses the same function; a repeat of the same `gateway_transaction_id` returns
+`None` and changes nothing. Real-database tests: `tests/db/test_money_integrity.py`.
 
 ## Payment Claims — customer "I've made this payment" (2026-09-06)
 
@@ -470,3 +476,9 @@ Response: `{"gateway_status": "success" | <paystack's own status string>, "new_p
 ## Payment-claim evidence upload — file name sanitisation (2026-09-23)
 
 **Upload file names are sanitised (2026-09-23).** The client's `filename` is passed through `shared.validation.safe_filename()` before it is used in the S3 key or stored: directory components dropped, anything outside Unicode word characters / `. ( ) space -` replaced with `_`, no leading/trailing dots, ≤100 chars with the extension kept (Chinese names like `装箱单.xlsx` survive). A name that reduces to nothing is a `422`. The download `Content-Disposition` is sanitised again on read, since rows written earlier may hold an unsafe name. See `00_CROSS_CUTTING_STANDARDS.md` §2.2.
+
+**Manual payments refuse closed invoices (2026-11-14).** `POST /v1/payments/{billing-id}/confirm` returns
+`422 BILLING_NOT_PAYABLE` when the invoice is `cancelled` or `waived`, like the gateway webhook already did (`BR-WEBHOOK-001`).
+Before, the status recompute would have flipped a cancelled invoice to `paid`. **Release-note numbers** now come from the
+`tenant_counter` (`release_note`) instead of `COUNT(*)+1`, so two notes created together can no longer share a reference;
+a number is skipped if the note insert then fails (uniqueness, not gap-free).

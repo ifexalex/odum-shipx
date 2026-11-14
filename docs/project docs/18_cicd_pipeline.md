@@ -199,6 +199,12 @@ jobs:
           DATABASE_USER: test_user
           DATABASE_PASSWORD: test_pass
         run: pytest tests/tenant_isolation/ -v
+      # Added 2026-11-14: tests/integration/ (service-level flow, no DB) and tests/db/ (real Postgres as
+      # logistics_app: invoice/payment concurrency and atomicity). Same env block as the isolation step.
+      - name: Run integration tests
+        run: pytest tests/integration/ -v
+      - name: Run database integrity tests
+        run: pytest tests/db/ -v
       - name: Upload coverage
         uses: codecov/codecov-action@v3
         with:

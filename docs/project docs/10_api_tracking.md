@@ -50,6 +50,12 @@ loading → sealed → in_transit → arrived → customs_clearance → cleared 
 
 **ILLEGAL:** Any backward or skip transition → return 409
 
+**Invoice outcome on `cleared` (2026-11-14).** When the new status is `cleared`, the `PATCH` response carries an extra
+`billing_summary` array — one row per customer on the container — `{ customer_id, customer_name, status: created | existing | skipped | failed, billing_id, invoice_number, reason, detail }`.
+Clearing no longer hides a customer who could not be invoiced: they appear here with the reason, staff are notified in-app, and
+`POST /v1/billing { container_id }` (see `11_api_billing.md`) completes the rest. The per-customer `PaymentDue` event is now
+published only for customers whose invoice was actually created. The key is absent for every other transition.
+
 **Request body key is `new_status`, not `status`.** `PATCH /v1/containers/{id}/status` reads `body.get("new_status", "")`. Sending `{ "status": "sealed" }` results in an empty string and the error "Cannot transition container from 'loading' to ''". The Postman collection uses `new_status` correctly — the frontend `UpdateContainerStatusInput` was fixed to match (`new_status: ContainerStatus`).
 
 ### POST /v1/containers — request body

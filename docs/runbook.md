@@ -678,6 +678,18 @@ query that forgets its `tenant_id` predicate from returning other tenants' rows.
 It does not validate JWT claims, check roles, or scope S3 keys — a request
 authenticated as the wrong tenant is still scoped to *that* tenant's data.
 
+## Migration 062 refuses to run: duplicate live invoices (2026-11-14)
+
+Migration 062 adds a unique index allowing one non-cancelled invoice per customer per container. If duplicates already
+exist it stops with `Cannot enforce one live invoice per customer per container; duplicates exist:` and lists
+`tenant / customer / container (N invoices)`. It never merges or cancels money records on its own.
+
+1. For each listed group, open the invoices (the tenant's billing list, filtered by container) and decide which to keep. Keep the one with payments or a release note.
+2. Cancel the others with `PATCH /v1/billing/{id}/cancel` (only possible with no confirmed payments and no active release note). If one has payments, move them first — do not delete rows.
+3. Re-run `make migrate` / the migrate Lambda. The index excludes cancelled invoices, so it builds once only one live invoice remains per group.
+
+The same migration seeds `tenant_counter` from existing numbers, so invoice numbering continues from the highest number already issued.
+
 ## Notification channels — one-time setup before go-live (2026-11-13)
 
 Email, SMS and WhatsApp are wired end to end in code and Terraform, but three
@@ -974,3 +986,12 @@ the failure mode here is silence, not an error.
 | LOW | Next sprint |
 
 See Architecture Decision Records in `docs/adr/` for system design context.
+
+## Migration 063 downgrade refuses: refunds use the new types (2026-11-14)
+
+Migration 063 widens `refund_request.refund_type` to include `missing_item` and `seized_item` and adds
+`storage_fee_log.waived_at`. Downgrading re-creates the old three-value CHECK, which fails if any refund already uses the new
+types. Do not delete those rows to get past it: they are real compensation requests. Either stay on 063, or re-point them
+(`UPDATE refund_request SET refund_type = 'damage_or_loss' WHERE refund_type IN ('missing_item','seized_item')`) after
+agreeing that with finance, then downgrade. Dropping `waived_at` loses which storage fees were waived (the totals already
+reflect the waiver; the history does not survive).

@@ -58,39 +58,35 @@ def confirm_payment(
     if not billing:
         raise ResourceNotFoundError("billing", billing_id)
 
+    # Same rule as the gateway path (webhook.validate_billing_for_webhook): money
+    # cannot be recorded against an invoice that was cancelled or waived. Without it
+    # the status recompute below would flip a cancelled invoice to 'paid'.
+    if billing["status"] in {"cancelled", "waived"}:
+        raise BusinessRuleViolationError(
+            f"Billing {billing_id} is '{billing['status']}' and cannot accept payments.",
+            rule_id="BILLING_NOT_PAYABLE",
+        )
+
     amount_ngn = Decimal(str(req.amount_ngn))
-    current_paid = Decimal(str(billing["amount_paid_ngn"]))
-    total_due = Decimal(str(billing["total_ngn"]))
-
-    new_paid = current_paid + amount_ngn
-    new_balance = total_due - new_paid
-
-    if abs(new_balance) <= _TOLERANCE:
-        new_status = "paid"
-    elif new_balance < -_TOLERANCE:
-        new_status = "overpaid"
-    else:
-        new_status = "partially_paid"
 
     # Receipt number — generated for every payment, mirroring the physical
     # cash receipt booklet (e.g. "ACM-RCT-20260822-0001"). Feeds the receipt
-    # PDF generator (services/excel/export_receipt_pdf.py).
+    # PDF generator (services/excel/export_receipt_pdf.py). The number itself is
+    # allocated inside record_payment's transaction so two payments recorded at
+    # the same moment cannot share one.
     tenant_short = repo.get_tenant_short(tenant_id)
-    receipt_seq = repo.get_next_receipt_number(tenant_id)
-    receipt_number = f"{tenant_short}-RCT-{date.today():%Y%m%d}-{receipt_seq:04d}"
 
-    # payment and updated_billing are returned from write operations; guard for None
-    payment = repo.create_payment_record(
+    # Payment record, invoice total + status, and any overpayment refund are
+    # written in one transaction; the status is computed from the stored total.
+    recorded = repo.record_payment(
         tenant_id,
+        billing_id,
+        amount_ngn,
         {
-            "tenant_id": tenant_id,
-            "billing_id": billing_id,
-            "amount_ngn": amount_ngn,
             "payment_method": req.payment_method,
             "reference_number": req.payment_reference,
             "payment_date": date.today(),
             "recorded_by": actor_id,
-            "receipt_number": receipt_number,
             "payer_name": getattr(req, "payer_name", None),
             "payer_address": getattr(req, "payer_address", None),
             "bank_name": getattr(req, "bank_name", None),
@@ -98,24 +94,14 @@ def confirm_payment(
             "warehouse_id": getattr(req, "warehouse_id", None),
             "physical_receipt_number": getattr(req, "physical_receipt_number", None),
         },
+        tolerance=_TOLERANCE,
+        receipt_prefix=f"{tenant_short}-RCT-{date.today():%Y%m%d}",
     )
-
-    updated_billing = repo.update_billing_payment(tenant_id, billing_id, amount_ngn, new_status)
-    if payment is None or updated_billing is None:
-        raise RuntimeError("payment or billing update returned None unexpectedly")
-
-    if new_status == "overpaid":
-        overpayment = abs(new_balance)
-        repo.create_overpayment_refund_request(
-            tenant_id,
-            {
-                "tenant_id": tenant_id,
-                "customer_id": str(billing["customer_id"]),
-                "billing_id": billing_id,
-                "amount_ngn": overpayment,
-                "reason": f"Overpayment on invoice {billing.get('invoice_number', billing_id)}",
-            },
-        )
+    if recorded is None:
+        raise RuntimeError("record_payment returned None for a manual payment")
+    payment = recorded.payment
+    updated_billing = recorded.billing
+    new_status = str(updated_billing["status"])
 
     publish_event(
         source="logistics.payment_release",
@@ -524,34 +510,22 @@ def process_webhook_payment(
     wh.validate_billing_for_webhook(billing, billing_id)
 
     amount_ngn = Decimal(str(amount_ngn))
-    current_paid = Decimal(str(billing["amount_paid_ngn"]))
-    total_due = Decimal(str(billing["total_ngn"]))
 
-    new_paid = current_paid + amount_ngn
-    new_balance = total_due - new_paid
-
-    if abs(new_balance) <= _TOLERANCE:
-        new_status = "paid"
-    elif new_balance < -_TOLERANCE:
-        new_status = "overpaid"
-    else:
-        new_status = "partially_paid"
-
-    payment = repo.create_webhook_payment_record(
+    recorded = repo.record_payment(
         tenant_id,
+        billing_id,
+        amount_ngn,
         {
-            "tenant_id": tenant_id,
-            "billing_id": billing_id,
-            "amount_ngn": amount_ngn,
             "payment_method": payment_method,
             "reference_number": payment_reference,
             "payment_date": datetime.now(UTC).date(),
             "recorded_by": None,
-            "gateway_transaction_id": gateway_transaction_id,
         },
+        tolerance=_TOLERANCE,
+        gateway_transaction_id=gateway_transaction_id,
     )
 
-    if payment is None:
+    if recorded is None:
         logger.info(
             "Duplicate webhook payment skipped: billing=%s gateway_tx=%s",
             billing_id,
@@ -559,22 +533,9 @@ def process_webhook_payment(
         )
         return None
 
-    updated_billing = repo.update_billing_payment(tenant_id, billing_id, amount_ngn, new_status)
-    if updated_billing is None:
-        raise RuntimeError("Billing update returned None unexpectedly for webhook payment")
-
-    if new_status == "overpaid":
-        overpayment = abs(new_balance)
-        repo.create_overpayment_refund_request(
-            tenant_id,
-            {
-                "tenant_id": tenant_id,
-                "customer_id": str(billing["customer_id"]),
-                "billing_id": billing_id,
-                "amount_ngn": overpayment,
-                "reason": f"Overpayment on invoice {billing.get('invoice_number', billing_id)}",
-            },
-        )
+    payment = recorded.payment
+    updated_billing = recorded.billing
+    new_status = str(updated_billing["status"])
 
     publish_event(
         source="logistics.payment_release",

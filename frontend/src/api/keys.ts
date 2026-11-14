@@ -48,6 +48,7 @@ export const billingKeys = {
   all: ['billing'] as const,
   list: (params?: Record<string, unknown>) => [...billingKeys.all, 'list', params ?? {}] as const,
   stats: () => [...billingKeys.all, 'stats'] as const,
+  unbilled: () => [...billingKeys.all, 'unbilled'] as const,
   report: (params?: Record<string, unknown>) => [...billingKeys.all, 'report', params ?? {}] as const,
   detail: (id: string) => [...billingKeys.all, 'detail', id] as const,
   forCustomer: (customerId: string) => [...billingKeys.all, 'customer', customerId] as const,

@@ -405,6 +405,44 @@ Records are inserted by `services/tenant_management/service.update_dollar_rate()
 
 **`rate_type='dollar_rate'` entries changed shape (2026-09-19):** since the base rate now comes from Bybit (not something an admin types in), what gets recorded is a **markup change**, not a raw rate — `rate_value`/`previous_value` are `{ "rate": <effective rate at the moment of the change>, "base_rate", "markup_type", "markup_value" }` (all plain `float`, never `Decimal` — `append_rate_history`'s `json.dumps()` has no `default=str` and raises on one, a real bug caught live the first time this feature's `PUT` was exercised end-to-end). `rate_value.rate` is still a single comparable number across every entry regardless of provenance, so `RateHistoryTable`/`RateTrendChart` on the frontend needed **no changes** — they've always just read `rate_value.rate` as a plain number.
 
+### Migration 062 — `tenant_counter` and one live invoice per customer per container
+
+```sql
+CREATE TABLE tenant_counter (
+    tenant_id  UUID NOT NULL REFERENCES tenant(id) ON DELETE CASCADE,
+    name       VARCHAR(50) NOT NULL,          -- 'invoice' | 'receipt' | 'release_note'
+    last_value BIGINT NOT NULL DEFAULT 0 CHECK (last_value >= 0),
+    PRIMARY KEY (tenant_id, name)
+);
+CREATE UNIQUE INDEX idx_billing_one_live_per_customer_container
+    ON billing (tenant_id, customer_id, container_id) WHERE status <> 'cancelled';
+```
+
+`tenant_counter` is RLS-enabled with the canonical predicate (migration 059) and `FORCE ROW LEVEL SECURITY`. It replaces
+`SELECT COUNT(*) + 1` numbering, which handed the same number to two requests running at once. Seeded from the larger of
+the row count and the highest trailing number already issued, so numbering continues unchanged.
+
+The partial unique index makes a second live invoice for the same customer and container impossible, so invoice
+generation is idempotent. Cancelled invoices are excluded: cancel-and-reissue stays possible. If duplicate live invoices
+already exist the migration stops and lists them (see `docs/runbook.md`) — it never merges or cancels money records.
+
+Invoice and receipt numbers now use the counter (receipts inside the atomic payment write). Release-note numbers still use
+`COUNT(*) + 1`; the `release_note` counter is seeded for that follow-up (their unique index makes a collision loud, not silent).
+
+### Migration 063 — storage-fee waivers and compensation refund types
+
+```sql
+ALTER TABLE storage_fee_log ADD COLUMN waived_at TIMESTAMPTZ, ADD COLUMN waive_reason TEXT;
+CREATE INDEX idx_storage_fee_log_billing_unwaived ON storage_fee_log (billing_id) WHERE waived_at IS NULL;
+ALTER TABLE refund_request DROP CONSTRAINT refund_request_refund_type_check;
+ALTER TABLE refund_request ADD CONSTRAINT refund_request_refund_type_check
+  CHECK (refund_type IN ('overpayment','cbm_correction','damage_or_loss','missing_item','seized_item'));
+```
+
+`waived_at` marks a fee as waived (the log row is kept as history); an invoice's storage fees are the un-waived rows.
+`is_billed` stays as it was (default false, set by nothing). The widened CHECK is what lets seized/missing-item
+compensation create its refund request. Downgrade fails if rows already use the two new types.
+
 ### Migration 016 — `cbm_dispute.status` — add `'rejected'`
 
 The `reject_dispute()` service function sets `status = 'rejected'`, but migration 006's CHECK constraint omitted this value. Migration 016 drops and recreates the constraint with the full set of valid statuses.

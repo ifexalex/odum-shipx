@@ -280,7 +280,43 @@ export interface ResolveCBMDisputeInput {
 // API bindings
 // ---------------------------------------------------------------------------
 
+/** Outcome of invoicing one customer on a cleared container (`POST /v1/billing`, and `billing_summary` on clearing). */
+export interface InvoiceResult {
+  customer_id: string
+  customer_name: string | null
+  status: 'created' | 'existing' | 'skipped' | 'failed'
+  billing_id: string | null
+  invoice_number: string | null
+  /** Rule id when `status` is `skipped` or `failed`, e.g. `NO_CBM`, `RATE_CONFIG_MISSING`, `GENERATION_ERROR`. */
+  reason: string | null
+  detail: string | null
+}
+
+/** A customer on a cleared container who has cargo to bill and no invoice (`GET /v1/billing/unbilled`). */
+export interface UnbilledCustomer {
+  container_id: string
+  container_number: string
+  container_status: string
+  customer_id: string
+  customer_name: string | null
+  total_cbm: string | number
+}
+
 export const billingApi = {
+  /** Staff only. Feeds the dashboard queue; the fix is `generateForContainer`. */
+  unbilled: () => apiRequest<UnbilledCustomer[]>({ method: 'GET', path: '/v1/billing/unbilled' }),
+
+  /**
+   * Invoice every customer on a cleared container who has no invoice yet. Safe to repeat:
+   * customers already invoiced come back as `existing` and nothing is created or sent twice.
+   */
+  generateForContainer: (containerId: string) =>
+    apiRequest<{ container_id: string; results: InvoiceResult[] }>({
+      method: 'POST',
+      path: '/v1/billing',
+      body: { container_id: containerId },
+    }),
+
   list: (params: BillingListParams = {}) =>
     apiRequestList<Billing>({
       method: 'GET',

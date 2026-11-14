@@ -267,9 +267,19 @@ def update_claim_status(
     claim_id: str,
     status: str,
     extra: dict[str, Any] | None = None,
+    allowed_from: list[str] | None = None,
 ) -> dict[str, Any] | None:
-    """Update damage_claim status + optional extra fields (allowlisted)."""
+    """Update damage_claim status + optional extra fields (allowlisted).
+
+    With ``allowed_from`` the update only applies if the claim is currently in one
+    of those statuses, so two requests cannot both resolve it; ``None`` is returned
+    when it is not (or the claim does not exist).
+    """
     params: dict[str, Any] = {"status": status, "tenant_id": tenant_id, "id": claim_id}
+    guard = ""
+    if allowed_from is not None:
+        guard = " AND status = ANY(%(allowed_from)s)"
+        params["allowed_from"] = allowed_from
     extra_clause = ""
     if extra:
         safe = {k: v for k, v in extra.items() if k in _CLAIM_STATUS_EXTRA_FIELDS and v is not None}
@@ -282,7 +292,7 @@ def update_claim_status(
         f"""
         UPDATE damage_claim
         SET status = %(status)s, updated_at = NOW(){extra_clause}
-        WHERE tenant_id = %(tenant_id)s AND id = %(id)s
+        WHERE tenant_id = %(tenant_id)s AND id = %(id)s{guard}
         RETURNING *
         """,
         params,
