@@ -678,6 +678,99 @@ query that forgets its `tenant_id` predicate from returning other tenants' rows.
 It does not validate JWT claims, check roles, or scope S3 keys — a request
 authenticated as the wrong tenant is still scoped to *that* tenant's data.
 
+## Notification channels — one-time setup before go-live (2026-11-13)
+
+Email, SMS and WhatsApp are wired end to end in code and Terraform, but three
+things can only be done by a human with accounts at the providers. Until they
+are, each channel **fails silently**: the send path logs "not configured" and
+returns, the deploy is healthy, the API returns 200, and customers are never
+told anything. `terraform_data.notification_config_guard` (both clouds) fails
+the **plan** for prod if the values below are empty, so a prod deploy cannot
+reach that state unnoticed — but it cannot check that the accounts behind them
+actually work.
+
+### 1. Email
+
+**AWS (SES)** — verify the sending domain (or at least the from-address), then
+request removal from the SES sandbox; a sandboxed account can only send to
+verified recipients, so customer mail silently fails. Set `ses_from_address`.
+
+**Azure (ACS)** — `module.acs` provisions a managed domain and yields
+`DoNotReply@<guid>.azurecomm.net`, which works out of the box. It is
+**unreplyable and has poor deliverability**, so before launch add a custom
+verified domain and point `acs_sender_address` at it.
+
+Check: `SES_FROM_ADDRESS` must not be empty. The application default
+`notifications@logistics.example.com` is a placeholder that both providers
+reject; `send_email` refuses to use it in production rather than letting it
+surface as a provider error buried in `notification_log`.
+
+### 2. SMS — Africa's Talking
+
+1. Live account + API key → `africastalking_api_key`.
+2. **`africastalking_username` must be the live username, not `sandbox`.** The
+   application default is `sandbox`, which accepts messages, returns a
+   success-shaped response, and delivers nothing. `send_sms` refuses to send as
+   `sandbox` in production for exactly this reason.
+3. Register a sender ID if you want an alphanumeric sender —
+   `africastalking_sender_id`. Nigerian networks commonly require
+   pre-registration.
+
+### 3. WhatsApp — Meta Cloud API (the primary customer channel)
+
+SMS is only WhatsApp's fallback, so an unconfigured WhatsApp token means the
+main way customers are contacted is dead.
+
+1. Verified Meta Business + WhatsApp Business phone number →
+   `meta_whatsapp_access_token`, `meta_whatsapp_phone_id`.
+2. **Every template must be approved by Meta under the exact name and language**
+   listed in `WA_TEMPLATE_MAP` / `WA_TEMPLATE_MAP_ZH`
+   (`services/notification/service.py`). An unapproved name 404s. Set
+   `meta_whatsapp_template_lang` to the language they were approved under — `en`
+   and `en_US` are different to Meta and a mismatch 404s every send.
+3. Subscribe the webhook to `POST /v1/webhooks/whatsapp` on the deployed API,
+   using `whatsapp_verify_token` as the verify token. Without it, delivery and
+   failure callbacks never arrive, so `notification_log` never progresses past
+   `sent` and the SMS fallback on a *late* failure never fires.
+
+### 4. Link base URL — required in every environment
+
+`app_base_url` must be the absolute URL of the deployed app (the Front Door host
+on Azure, CloudFront on AWS). Account activation and customer invite links are
+built from it, and `shared/app_urls.py` refuses to emit a relative URL — so with
+it empty those notifications are **not sent at all** and log an ERROR. Set
+`customer_portal_base_url` only if the customer portal is hosted separately.
+
+### 5. Before testing in dev or staging
+
+`NOTIFICATION_ALLOWLIST` fails **closed**: outside production nothing is
+messaged unless the contact is listed. This is deliberate — dev and staging
+databases hold real imported customer contacts, because a manifest import
+creates customers straight from the forwarder's file, phone numbers included.
+Add only your own test contacts, comma-separated.
+
+### Diagnosing "the customer says they got nothing"
+
+```sql
+SELECT channel, status, error_detail, provider_message_id, created_at
+FROM notification_log
+WHERE customer_id = '<uuid>'
+ORDER BY created_at DESC LIMIT 10;
+```
+
+- `status = 'failed'`, `error_detail` mentioning *provider unconfigured* → a
+  missing env var, not a provider outage. Check the table in
+  `15_api_notifications.md`.
+- A `whatsapp` row followed by an `sms` row whose `retry_of` points at it → the
+  fallback working as designed.
+- **No row at all** for a channel → the message was never enqueued. Either the
+  tenant muted that channel (`tenant.notification_preferences`), the recipient
+  had no address for it, or the allowlist suppressed it. The producer logs which.
+- `status = 'sent'` with an empty `provider_message_id` on a WhatsApp row and a
+  `created_at` before 2026-11-13 → the false-`sent` bug: an unconfigured send
+  was recorded as delivered and metered. Fixed; such rows are not evidence of
+  delivery.
+
 ## Rollback Procedure
 
 ### Lambda rollback — re-deploy a previous tag

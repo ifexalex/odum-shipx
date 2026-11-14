@@ -784,3 +784,46 @@ Verified by simulating the managed-server privilege model locally — a
 | non-superuser, role **has** BYPASSRLS | raises `InsufficientPrivilege` — correct |
 | superuser, role **has** BYPASSRLS | `set-and-stripped-bypassrls` |
 
+
+## `shared/app_urls.py` — absolute links for outbound notifications (2026-11-13)
+
+One module resolving the base URL of every link sent to someone outside the
+system. It exists because the resolution was previously duplicated per call
+site, each reading its own environment variable, and one of those variables was
+set in no environment at all:
+
+- activation links read `APP_BASE_URL`, falling back to the origin of
+  `ENTRA_REDIRECT_URI` — so Azure worked and AWS, which sets neither, would have
+  emailed an empty link;
+- customer invite links read `CUSTOMER_PORTAL_BASE_URL`, which **nothing** set —
+  not AWS Terraform, not Azure Terraform, not `.env.local`, only `.env.example`.
+  Every invite therefore went out as the bare path `/invite/<token>`.
+
+### API
+
+| Function | Returns |
+|---|---|
+| `app_base_url(*, override_env=None)` | `scheme://host`, no trailing slash |
+| `activation_url(token)` | `{base}/activate/{token}` |
+| `invite_url(token)` | `{base}/invite/{token}`, preferring `CUSTOMER_PORTAL_BASE_URL` |
+
+Resolution order: `override_env` → `APP_BASE_URL` → the origin of
+`ENTRA_REDIRECT_URI`. Staff and customers share one SPA
+(`frontend/src/shell/routes.tsx` serves both routes), so one base URL serves
+both; `CUSTOMER_PORTAL_BASE_URL` is an override for the day the customer portal
+moves hosts, not a second thing to configure.
+
+### Two deliberate refusals
+
+**It raises `MissingBaseUrlError` rather than returning a relative URL.** A link
+is the whole point of these messages: built from an empty base it produces a
+notification that looks delivered, is recorded as delivered, consumes the
+single-use token, and is useless to whoever receives it — with nothing anywhere
+failing. Callers catch it, log at ERROR, and send nothing.
+
+**A value that is set but relative is an error naming that variable**, not a
+fall-through to the next candidate. Falling through would quietly send links to
+whichever host happened to be configured elsewhere — a working link to the wrong
+environment, which is worse than an error because nothing reports it.
+
+Covered by `tests/unit/test_app_urls.py`.

@@ -84,10 +84,212 @@ Each SQS message body contains:
 ## Email Handler (Amazon SES)
 
 - Sends via the cloud-neutral `EmailProvider` port (`shared/providers/`, AWS adapter = SES `send_email`; 2026-10-05 — was a direct `boto3` SES client). Queue enqueuing likewise goes through `QueueProvider` (AWS = SQS). See `02_shared_utilities.md` → "shared/providers/".
-- HTML email templates with tenant branding (company name, color)
+- HTML email templates with tenant branding: company name (`display_name`, else the tenant row's `company_name`), `primary_color`, `tagline`, `support_email`, `support_whatsapp`, `document_footer` — all from the canonical `branding_config` shape, read through `services/notification/tenant_branding.py`
+- A **lead paragraph per event** (`_EMAIL_BODIES` / `_EMAIL_BODIES_ZH`), then the CTA button, then the detail rows. See the 2026-11-13 notes below for what this replaced
 - Events that trigger email: packing_list_approved, release_note_generated, damage_claim_filed, tenant_onboarded
-- From address: `notifications@logistics.example.com` (or tenant-specific in future)
+- Subject is prefixed with the company name (`"{company} — {subject}"`), matching the `{company_name}:` convention of the SMS templates; a tenant subject override is used verbatim
+- From address: `SES_FROM_ADDRESS`. The code default `notifications@logistics.example.com` is a placeholder that SES and ACS both reject as unverified — `send_email` **refuses to send** from it in production rather than letting it fail as a provider error
 - Cost tracking: publish `UsageRecorded` event (metric_type = 'emails_sent')
+
+## Implementation notes / ground-truth gaps found (2026-11-13 — invite links were broken and no notification was tenant-branded)
+
+Reported as: *"when i send an invite it should be sent via email, i realized that
+the link is broken and also the email template does not look well customized to
+tenant"*. Investigating found five separate faults, three of which made the
+product silently lie about what had been delivered.
+
+### 1. Every invite link was a relative path
+
+`issue_customer_invite` built `f"{os.environ.get('CUSTOMER_PORTAL_BASE_URL', '')}/invite/{token}"`,
+and that variable was set in **no** environment — not AWS Terraform, not Azure
+Terraform, not `.env.local`; only `.env.example` mentioned it. So every invite
+went out as `/invite/<token>`, which no mail or messaging client can open.
+`APP_BASE_URL` (activation links) had the mirror-image gap: wired on Azure,
+absent on AWS, where its `ENTRA_REDIRECT_URI` fallback is also unset.
+
+Resolution lives in one place now, `shared/app_urls.py`: `CUSTOMER_PORTAL_BASE_URL`
+→ `APP_BASE_URL` → the origin of `ENTRA_REDIRECT_URI`. It **raises
+`MissingBaseUrlError` rather than returning a relative URL**, and a value that
+is set but relative is an error naming the offending variable rather than a
+silent fall-through to another host. Callers catch it, log at ERROR, and send
+nothing — a dead link is worse than no message, because it consumes the
+single-use token and tells staff the customer was contacted. The invite row is
+still written (a resend works once the base URL is set) but with
+`sent_channel = NULL`.
+
+Staff and customers share one SPA, so one base URL serves both;
+`CUSTOMER_PORTAL_BASE_URL` is kept only as an override for the day the customer
+portal moves hosts.
+
+### 2. Every notification on every channel was branded "Logistics"
+
+`tenant_branding.get_company_name` read `branding.get("company_name")`. The
+canonical `branding_config` shape has **`display_name`** — `company_name` is a
+column on the `tenant` row, which `shared/notifications.py` never selected. And
+`branding_config` is routinely `{}` (it is for every seeded tenant). So the
+hardcoded fallback was reached every time: the literal word "Logistics" in every
+email header, every `{company_name}:` SMS prefix and every WhatsApp parameter.
+
+Fixed on both sides: `_tenant_branding` now selects `company_name` alongside
+`branding_config` and sets it as a floor beneath the optional `display_name`
+(the consumers run outside the VPC with no DB access, so it has to travel in the
+message); `get_company_name` reads `display_name` → `company_name` → fallback.
+
+### 3. The email body was a dump of field names
+
+The body was a greeting, a CTA button, and every `template_data` key rendered as
+a `Label: value` row — so a customer being invited received a header, a button,
+and the single row "Name: Ngozi", with nothing saying what the message was or
+why they had it. Each event now has a lead paragraph in EN and ZH, `name` and
+`company_name` are no longer shown as rows (they are the greeting and the
+header), support contacts and `document_footer` render when the tenant has
+published them, and the plain-text part carries the same prose and the same
+link instead of a bare field list.
+
+A rendered body whose placeholders did not all resolve falls back to the generic
+lead: a half-substituted sentence reads as a bug to the recipient, whereas the
+generic lead plus the detail rows is always accurate.
+
+### 4. Values were interpolated into HTML unescaped
+
+`template_data` values come from customer records, staff input and imported
+manifests, and went into the email body raw. A name or reference containing `<`
+or `"` could break the layout or inject markup into a message sent under the
+tenant's name. All values are now `html.escape(..., quote=True)` before
+substitution; the templates are plain text so this is lossless.
+
+### 5. A tenant's custom email body was never substituted
+
+`html_body = body_override or render_email_html(...)` used the tenant's template
+**verbatim**, so a custom body's `{name}` and `{invite_link}` were emailed
+literally — the link arrived as the twelve characters `{invite_link}`. SMS had
+always done `format_map`; email never did. Now `render_email_override` substitutes
+(keeping the tenant's markup, escaping the values), the text part is derived from
+the same override so the two MIME parts cannot disagree, and a malformed template
+falls back to the default shell instead of emailing an empty body.
+
+### Also found: an unconfigured WhatsApp send was reported as delivered
+
+`send_whatsapp` returns `""` without raising when the Meta credentials are
+missing. The handler fell through to `log_sent` + `record_usage`, so the log said
+`sent` when nothing was sent, the tenant was **metered** for it, and — because no
+exception was raised — the SMS fallback never fired. The customer got nothing on
+either channel while the staff invite screen reported success. It now logs
+`failed` and triggers the SMS fallback. (SMS and email already handled their
+`False` returns; WhatsApp was the odd one out.)
+
+### Verified live (local stack, Acme Shipping Ltd, `branding_config = {}`)
+
+Invite issued through `POST /v1/customers/{id}/invite`; `notification_log` shows
+`email: sent`, and the stored body reads:
+
+```
+Acme Shipping Ltd
+
+Hello Invite Link Check,
+
+Acme Shipping Ltd has created an account for you so you can track your
+shipments, see what you owe and download your release notes. Use the button
+below to choose a password and finish setting it up. The link expires in 48
+hours — if it does, ask us to send a new one.
+
+Invite link: http://localhost:5173/invite/wU2ieJgk...
+
+This is an automated message from Acme Shipping Ltd.
+```
+
+`GET /v1/invites/{token}` resolves that token, so the link is functional and not
+merely well-formed. WhatsApp and SMS correctly logged
+`failed — provider unconfigured` (no credentials locally) instead of the former
+false `sent`.
+
+## Production readiness: what each channel needs (2026-11-13)
+
+An audit comparing the env vars the notification code **reads** against the ones
+Terraform **sets** — the same technique that found the `APP_BASE_URL` gap in task
+7.128 — found that **neither cloud wired SMS or WhatsApp at all**. (An earlier
+pass appeared to show AWS as wired; those matches came from
+`infrastructure/aws/modules/lambda/.builds/package/`, an untracked local build
+artifact that is a copy of the source, not Terraform.)
+
+Every one of these failures is silent by construction: the send path logs
+"not configured" and returns, so the deploy is healthy, the API returns 200, and
+customers are simply never told anything.
+
+| Variable | Channel | Purpose |
+|---|---|---|
+| `APP_BASE_URL` | all | Absolute base for `/activate/{token}` and `/invite/{token}` links |
+| `CUSTOMER_PORTAL_BASE_URL` | all | Optional override, if the customer portal moves to its own host |
+| `SES_FROM_ADDRESS` | email | Verified sender (SES identity, or the ACS managed-domain sender on Azure) |
+| `AFRICASTALKING_API_KEY` | SMS | Africa's Talking API key |
+| `AFRICASTALKING_USERNAME` | SMS | **Must be the live username.** The code default is `sandbox`, which accepts messages and delivers none, with a success-shaped response |
+| `AFRICASTALKING_SENDER_ID` | SMS | Registered sender ID / short code, if any |
+| `META_WHATSAPP_ACCESS_TOKEN` | WhatsApp | Meta Cloud API token |
+| `META_WHATSAPP_PHONE_ID` | WhatsApp | Meta Cloud API phone number ID |
+| `META_WHATSAPP_TEMPLATE_LANG` | WhatsApp | Language the templates were approved under — must match Meta exactly or every send 404s |
+| `WHATSAPP_VERIFY_TOKEN` | WhatsApp | Shared secret Meta echoes when verifying the webhook |
+| `NOTIFICATION_ALLOWLIST` | all | Contacts messageable **outside** production. Fails closed: empty means nothing is sent |
+
+Now wired on **both** clouds — AWS through `modules/lambda` `common_env_vars`
+(all Lambdas), Azure through `modules/container_app`, where the three credentials
+are Container App **secrets** gated on their non-sensitive companion value
+(`africastalking_username`, `meta_whatsapp_phone_id`) rather than on the secret
+itself, since a predicate over a sensitive value marks the whole map sensitive
+and breaks `for_each`.
+
+### Plan-time guards
+
+`terraform_data.notification_config_guard` (in both `infrastructure/aws/main.tf`
+and `infrastructure/azure/main.tf`, modelled on the existing
+`auth_config_guard`) fails the **plan** rather than letting a production deploy
+succeed with channels that cannot send:
+
+- a base URL is required in **every** environment, because a relative link is
+  worse than no message;
+- in **prod** only: the SES sender, the Africa's Talking key + username, and all
+  three WhatsApp values. Non-prod is left free to run with channels off.
+
+### Fail-loud behaviour in the send paths
+
+- `SES_FROM_ADDRESS` unset in production → refuse to send from the placeholder,
+  which SES/ACS would reject anyway, but as a provider error buried in
+  `notification_log` that reads as a transient fault.
+- `AFRICASTALKING_USERNAME == "sandbox"` in production → refuse. Sandbox traffic
+  is accepted and silently undelivered, which is indistinguishable from working.
+- Missing SMS key or WhatsApp credentials → logged at **ERROR**, not WARNING
+  (WhatsApp is the primary customer channel, SMS only its fallback).
+- Empty-string env vars count as unconfigured. Terraform sets `""` for an
+  unconfigured variable, and `""` is "set" as far as `os.environ.get` is
+  concerned, so a `get()` default would have been bypassed.
+- Africa's Talking error payloads **echo the recipient MSISDN**, so the body is
+  redacted (`_redact_provider_error`) and truncated before logging — a phone
+  number must never reach CloudWatch.
+
+### Still required from the operator — these cannot be done from code
+
+1. **Verify the sending domain.** SES: verify the domain/address and move the
+   account out of the sandbox. Azure: `module.acs` yields
+   `DoNotReply@<azure-managed-domain>`, which works but is unreplyable and has
+   low deliverability — a custom verified domain is advisable before launch.
+2. **Africa's Talking live account**, plus a registered sender ID (Nigerian
+   networks commonly require pre-registration for alphanumeric senders).
+3. **Meta WhatsApp Business**: a verified business, a phone number, and **each
+   template in `WA_TEMPLATE_MAP` / `WA_TEMPLATE_MAP_ZH` approved by Meta under
+   that exact name and language**. An unapproved name 404s, which the handler
+   now reports and falls back from, but no message goes out.
+4. Subscribe the WhatsApp webhook to the deployed
+   `POST /v1/webhooks/whatsapp`, using `WHATSAPP_VERIFY_TOKEN`.
+5. Populate `NOTIFICATION_ALLOWLIST` in dev/staging before testing — it fails
+   closed, so nothing is sent until it is set.
+
+### Local development
+
+`make bootstrap` now verifies an SES identity in Moto, because Moto enforces
+SES's verified-identity rule exactly as AWS does: local email was being sent
+from the placeholder address and rejected with
+`MessageRejected: Email address not verified`, so local email delivery failed
+outright while SMS and WhatsApp appeared to work. `.env.local` sets
+`APP_BASE_URL=http://localhost:5173` and `SES_FROM_ADDRESS=notifications@shipx.local`.
 
 ## Tenant Notification Preferences
 

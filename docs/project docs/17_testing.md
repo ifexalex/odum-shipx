@@ -2262,3 +2262,48 @@ unit tests: `quantity: 100` produced 100 rows with 100 unique tags
 (`ACM-ACME002001-001 … -100`), one shared `batch_ref`, `quantity` left at 1, in
 168 ms; `quantity: 500` in 229 ms; 501 and unconfirmed quantities both rejected
 with 422; and a mixed list kept one unbroken tag sequence.
+
+## Notification links, branding and channel config (2026-11-13)
+
+`tests/unit/test_app_urls.py` (12) — absolute-URL resolution. The ones that
+earn their keep are the refusals: nothing configured raises rather than
+returning a relative URL, and a variable that is *set but relative* raises
+naming that variable rather than falling through to another host. Plus the
+override precedence (`invite_url` follows `CUSTOMER_PORTAL_BASE_URL`,
+`activation_url` never does) and a check that both paths still match the
+frontend routes in `shell/routes.tsx`, since a path mismatch renders the SPA's
+not-found page and looks identical to a broken link.
+
+`tests/unit/test_notification_email.py` (37) —
+
+- **Branding**: `display_name` wins; falls back to the tenant row's
+  `company_name`; blank strings are not "set"; the `"Logistics"` fallback is
+  only reached with nothing at all. Producer side: the query selects
+  `company_name`, does not overwrite `display_name`, and degrades to defaults
+  rather than raising when the DB is unreachable.
+- **Rendering**: the lead paragraph explains why the message arrived; links
+  become a button *and* a pasteable URL; support contacts and footer appear only
+  when published; plumbing keys (`name`, `company_name`) are not shown as rows;
+  ZH renders Chinese copy.
+- **Escaping**: a recipient name of `<script>x</script>` and a value of
+  `"><b>hi</b>` come out escaped — these values come from imported manifests and
+  went into the HTML raw.
+- **Fallbacks**: an unresolved placeholder falls back to the generic lead rather
+  than emailing a half-substituted sentence; a malformed override returns empty
+  so the caller falls back to the default shell.
+- **Config guards**: the placeholder sender is refused in production but allowed
+  locally; `AFRICASTALKING_USERNAME == "sandbox"` is refused in production
+  without touching the network; provider error bodies are stripped of
+  phone-number-shaped digits and truncated.
+
+`tests/unit/test_whatsapp_first.py::TestUnconfiguredWhatsAppIsNotReportedAsSent`
+(3) — `send_whatsapp` returning `""` must log `failed` and trigger the SMS
+fallback, not `log_sent` + `record_usage`; a real message id still records a
+send; and a failing fallback does not raise, because an SQS retry would re-send
+a message already known to be unsendable.
+
+The existing invite tests in `test_tenant_management.py` were updated: they set
+no base URL, so under the new behaviour nothing is sent — which is itself now
+pinned by `test_no_base_url_sends_nothing_and_does_not_claim_it_did`, asserting
+`sent_channel IS NULL` on the row so staff are not told a customer was
+contacted.

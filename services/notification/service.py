@@ -9,9 +9,11 @@ All send functions raise on hard failures so that the SQS handler can
 return the message ID in batchItemFailures and let SQS retry / DLQ.
 """
 
+import html
 import json
 import logging
 import os
+import re
 import urllib.error
 import urllib.parse
 import urllib.request
@@ -19,7 +21,14 @@ from typing import Any
 
 from shared.providers import get_email_provider, get_queue_provider
 
-from .tenant_branding import get_company_name, get_primary_color
+from .tenant_branding import (
+    get_company_name,
+    get_document_footer,
+    get_primary_color,
+    get_support_email,
+    get_support_whatsapp,
+    get_tagline,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -152,6 +161,34 @@ def _assert_deliverable(phone_or_email: str, channel: str, tenant_id: str) -> bo
     return False
 
 
+_AT_SANDBOX_USERNAME = "sandbox"
+_PLACEHOLDER_FROM_ADDRESS = "notifications@logistics.example.com"
+
+# Matches the AWS/Azure guards and shared/notifications.py: every tfvars file
+# sets environment = "prod", and that value also feeds resource name prefixes,
+# so it cannot be renamed. Both spellings are accepted deliberately.
+_PRODUCTION_ENVIRONMENTS = frozenset({"production", "prod"})
+
+# Digit runs long enough to be a phone number. Provider error payloads echo the
+# recipient, and a phone number in CloudWatch is a GDPR problem regardless of
+# which vendor put it there.
+_LONG_DIGIT_RUN = re.compile(r"\+?\d[\d\s-]{6,}\d")
+
+
+def _is_production() -> bool:
+    """True when this is a production deployment (see _PRODUCTION_ENVIRONMENTS)."""
+    return os.environ.get("ENVIRONMENT", "").strip().lower() in _PRODUCTION_ENVIRONMENTS
+
+
+def _redact_provider_error(body: str) -> str:
+    """Strip anything phone-number-shaped from a provider error body.
+
+    Truncated as well as redacted: these payloads can be an entire HTML error
+    page, and a log line is not the place for one.
+    """
+    return _LONG_DIGIT_RUN.sub("[redacted]", body)[:400]
+
+
 def send_sms(phone: str, message: str, tenant_id: str) -> bool:
     """Send an SMS via Africa's Talking. Raises on API errors.
 
@@ -160,12 +197,23 @@ def send_sms(phone: str, message: str, tenant_id: str) -> bool:
     if not _assert_deliverable(phone, "sms", tenant_id):
         return False
     api_key = os.environ.get("AFRICASTALKING_API_KEY", "")
-    username = os.environ.get("AFRICASTALKING_USERNAME", "sandbox")
+    username = os.environ.get("AFRICASTALKING_USERNAME", "").strip() or _AT_SANDBOX_USERNAME
     sender_id = os.environ.get("AFRICASTALKING_SENDER_ID", "")
 
     if not api_key:
-        logger.warning(
-            "AFRICASTALKING_API_KEY not configured — SMS not sent",
+        logger.error(
+            "AFRICASTALKING_API_KEY not configured — no SMS can be sent in this environment",
+            extra={"tenant_id": tenant_id},
+        )
+        return False
+
+    if username == _AT_SANDBOX_USERNAME and _is_production():
+        # Africa's Talking accepts sandbox traffic and delivers none of it, with
+        # a success-shaped response. In production that is indistinguishable
+        # from working until a customer says they got nothing, so refuse.
+        logger.error(
+            "AFRICASTALKING_USERNAME is '%s' in production — refusing to send, nothing would be delivered",
+            _AT_SANDBOX_USERNAME,
             extra={"tenant_id": tenant_id},
         )
         return False
@@ -204,11 +252,15 @@ def send_sms(phone: str, message: str, tenant_id: str) -> bool:
             )
             return False
     except urllib.error.HTTPError as exc:
+        # Africa's Talking echoes the recipient MSISDN in its error payloads, so
+        # the body is not loggable: phone numbers are PII and must never reach
+        # CloudWatch. The status code plus the provider's own error name is what
+        # an operator needs anyway.
         body = exc.read().decode("utf-8", errors="replace")
         logger.error(
             "Africa's Talking HTTP error %s: %s",
             exc.code,
-            body,
+            _redact_provider_error(body),
             extra={"tenant_id": tenant_id},
         )
         raise
@@ -349,8 +401,10 @@ def send_whatsapp(
     access_token = os.environ.get("META_WHATSAPP_ACCESS_TOKEN", "")
 
     if not phone_id or not access_token:
-        logger.warning(
-            "WhatsApp credentials not configured — message not sent",
+        # ERROR, not WARNING: WhatsApp is the primary customer channel here, so
+        # "not configured" means the main way customers are contacted is dead.
+        logger.error(
+            "WhatsApp credentials not configured — no WhatsApp message can be sent in this environment",
             extra={"tenant_id": tenant_id},
         )
         return ""
@@ -454,61 +508,308 @@ EMAIL_SUBJECTS_ZH: dict[str, str] = {
 _DEFAULT_EMAIL_SUBJECT_ZH = "来自您的物流服务商的通知"
 
 
+# Lead paragraph per event. Email was previously a greeting, a CTA button and a
+# raw dump of every template_data key as "Label: value" rows — so a customer
+# being invited to create an account received a header, a button and the single
+# row "Name: Ngozi", with nothing saying what the message was about or why they
+# had received it. These say it, in the recipient's own terms.
+#
+# Plain text, never HTML: values are HTML-escaped before substitution, so a
+# template that carried its own markup would have no safe way to be rendered.
+_EMAIL_BODIES: dict[str, str] = {
+    "customer_invite": (
+        "{company_name} has created an account for you so you can track your shipments, "
+        "see what you owe and download your release notes. "
+        "Use the button below to choose a password and finish setting it up. "
+        "The link expires in 48 hours — if it does, ask us to send a new one."
+    ),
+    "account_activation": (
+        "An account has been created for you on {company_name}'s logistics portal. "
+        "Use the button below to set your password and sign in. "
+        "The link expires in 48 hours."
+    ),
+    "customer_registered": (
+        "Welcome to {company_name}. Your account is ready — check your email for the link to set your password."
+    ),
+    "shipment_update": "There is an update on your shipment with {company_name}. The details are below.",
+    "container_arrived": (
+        "Your goods have arrived at {company_name}'s warehouse. "
+        "We are preparing your invoice and will be in touch about collection."
+    ),
+    "payment_due": (
+        "Your shipment with {company_name} has arrived and payment is now due. The amount and collection address are below."
+    ),
+    "release_note_generated": (
+        "Your release note is ready. Bring it with you — or quote the reference below — "
+        "when you collect your goods from {company_name}."
+    ),
+    "packing_list_approved": "{company_name} has approved your packing list. The details are below.",
+    "damage_claim_update": "There is an update on the damage claim you raised with {company_name}.",
+    "cbm_dispute_update": "There is an update on the CBM measurement you queried with {company_name}.",
+    "payment_claim_confirmed": ("{company_name} has confirmed your payment. Thank you — nothing further is needed."),
+    "payment_claim_rejected": (
+        "{company_name} could not confirm the payment you reported. The reason is below. "
+        "Please get in touch, or resubmit with the correct proof of payment."
+    ),
+    "tenant_onboarded": "Your company's {company_name} account is set up and ready to use.",
+    "tenant_suspended": "Your company's {company_name} account has been suspended. Please contact support.",
+}
+_DEFAULT_EMAIL_BODY = "You have a new notification from {company_name}. The details are below."
+
+_EMAIL_BODIES_ZH: dict[str, str] = {
+    "customer_invite": (
+        "{company_name} 已为您创建账户，您可以查询货物状态、应付金额并下载提货单。"
+        "请点击下方按钮设置密码以完成开通。链接将在48小时后失效——如已失效，请联系我们重新发送。"
+    ),
+    "account_activation": ("{company_name} 物流平台已为您创建账户。请点击下方按钮设置密码并登录。链接将在48小时后失效。"),
+    "customer_registered": "欢迎使用 {company_name}。您的账户已就绪——请查收邮件以设置密码。",
+    "shipment_update": "您在 {company_name} 的货物有新状态更新，详情如下。",
+    "container_arrived": "您的货物已抵达 {company_name} 仓库。我们正在准备账单，并将与您联系提货事宜。",
+    "payment_due": "您在 {company_name} 的货物已抵达，现需付款。金额与提货地址如下。",
+    "release_note_generated": "您的提货单已生成。提货时请携带提货单或提供下方单号。",
+    "packing_list_approved": "{company_name} 已批准您的装箱单，详情如下。",
+    "damage_claim_update": "您向 {company_name} 提交的损坏索赔有新进展。",
+    "cbm_dispute_update": "您向 {company_name} 提出的CBM测量异议有新进展。",
+    "payment_claim_confirmed": "{company_name} 已确认您的付款。谢谢——无需其他操作。",
+    "payment_claim_rejected": "{company_name} 未能确认您申报的付款，原因如下。请联系我们或重新提交正确的付款凭证。",
+    "tenant_onboarded": "您公司的 {company_name} 账户已开通并可以使用。",
+    "tenant_suspended": "您公司的 {company_name} 账户已被暂停，请联系客服。",
+}
+_DEFAULT_EMAIL_BODY_ZH = "您有一条来自 {company_name} 的新通知，详情如下。"
+
+# Keys that are plumbing, not information: already shown elsewhere in the
+# message, or meaningless to the person reading it.
+_HIDDEN_EMAIL_FIELDS = frozenset({"name", "company_name"})
+
+_LINK_LABELS: dict[str, str] = {
+    "activation_link": "Set your password",
+    "invite_link": "Create your account",
+}
+_LINK_LABELS_ZH: dict[str, str] = {
+    "activation_link": "设置密码",
+    "invite_link": "创建账户",
+}
+
+
+def _field_label(key: str) -> str:
+    """Human label for a template_data key, e.g. container_number → Container number."""
+    words = key.replace("_", " ").strip()
+    return words[:1].upper() + words[1:] if words else key
+
+
+def _escaped(template_data: dict[str, Any], company_name: str) -> dict[str, str]:
+    """Template data with every value HTML-escaped, for embedding in HTML.
+
+    Values come from customer records, staff input and imported manifests. They
+    were previously interpolated into the email body raw, so a name or reference
+    containing `<` or `"` could break the layout or inject markup into a message
+    sent under the tenant's name.
+    """
+    escaped = {k: html.escape(str(v), quote=True) for k, v in template_data.items() if v is not None}
+    escaped.setdefault("company_name", html.escape(company_name, quote=True))
+    return escaped
+
+
+def _render_body_copy(
+    event_type: str,
+    locale: str,
+    data: dict[str, str],
+) -> str:
+    """The lead paragraph for this event, with placeholders filled.
+
+    Falls back to the generic lead if the event has no copy, or if the rendered
+    result still contains an unresolved `{placeholder}` — a half-substituted
+    sentence reads as a bug to the recipient, whereas the generic lead plus the
+    details table below it is always accurate.
+    """
+    if locale == "zh":
+        template = _EMAIL_BODIES_ZH.get(event_type, _DEFAULT_EMAIL_BODY_ZH)
+        default = _DEFAULT_EMAIL_BODY_ZH
+    else:
+        template = _EMAIL_BODIES.get(event_type, _DEFAULT_EMAIL_BODY)
+        default = _DEFAULT_EMAIL_BODY
+    try:
+        rendered = template.format_map(_SafeFormatMap(data))
+    except Exception:
+        logger.warning("Email body render failed for event %s; using generic copy", event_type)
+        rendered = ""
+    if not rendered or "{" in rendered:
+        logger.warning("Email body for event %s had unresolved placeholders; using generic copy", event_type)
+        rendered = default.format_map(_SafeFormatMap(data))
+    return rendered
+
+
+def _html_to_text(markup: str) -> str:
+    """Crude tag strip for deriving a text part from tenant-authored HTML.
+
+    Deliberately not a parser: this runs in a Lambda whose dependencies are
+    pinned and minimal, and the result only has to be readable. Block-level
+    tags become newlines so the text does not collapse into one paragraph.
+    """
+    text = re.sub(r"(?i)<br\s*/?>|</(p|div|tr|h[1-6]|li)>", "\n", markup)
+    text = re.sub(r"(?i)<(script|style)[^>]*>.*?</\1>", "", text, flags=re.DOTALL)
+    text = re.sub(r"<[^>]+>", "", text)
+    text = html.unescape(text)
+    # Collapse the runs of blank lines the tag strip leaves behind.
+    return re.sub(r"\n{3,}", "\n\n", text).strip()
+
+
+def email_subject(
+    event_type: str,
+    branding: dict[str, Any],
+    template_data: dict[str, Any],
+    override: str | None = None,
+    locale: str = "en",
+) -> str:
+    """Subject line, prefixed with the company name.
+
+    The prefix is the point: subjects were bare phrases like "Create your
+    account to track your shipment", which in an inbox gives the recipient no
+    idea which company is writing or whether it is legitimate. This matches the
+    `{company_name}:` convention the SMS templates already use.
+
+    A tenant override is honoured as-is and is *not* prefixed — a tenant that
+    wrote its own subject has already said what it wants — but placeholders in
+    it are substituted, which they previously were not.
+    """
+    company_name = get_company_name(branding)
+    data = _SafeFormatMap({"company_name": company_name, **{k: v for k, v in template_data.items() if v is not None}})
+    if override:
+        try:
+            return str(override).format_map(data)
+        except Exception:
+            logger.warning("Email subject override render failed for event %s; using it verbatim", event_type)
+            return str(override)
+    if locale == "zh":
+        base = EMAIL_SUBJECTS_ZH.get(event_type, _DEFAULT_EMAIL_SUBJECT_ZH)
+    else:
+        base = EMAIL_SUBJECTS.get(event_type, _DEFAULT_EMAIL_SUBJECT)
+    try:
+        base = base.format_map(data)
+    except Exception:
+        logger.warning("Email subject render failed for event %s", event_type)
+    return f"{company_name} — {base}"
+
+
+def render_email_override(
+    body_template: str,
+    branding: dict[str, Any],
+    template_data: dict[str, Any],
+) -> str:
+    """Substitute placeholders into a tenant's own HTML email body.
+
+    The HTML is the tenant's, so it is kept; the *values* are escaped, because
+    they come from customer records and imported manifests rather than from the
+    tenant admin who wrote the template.
+    """
+    data = _SafeFormatMap(_escaped(template_data, get_company_name(branding)))
+    try:
+        return body_template.format_map(data)
+    except Exception:
+        # A malformed custom template must not block the notification. Returning
+        # it unsubstituted would email literal "{invite_link}" text, so fall
+        # back to the default renderer's shell instead.
+        logger.warning("Custom email body render failed; falling back to the default template")
+        return ""
+
+
 def render_email_html(
     branding: dict[str, Any],
     event_type: str,
     recipient_name: str | None,
     template_data: dict[str, Any],
+    locale: str = "en",
 ) -> str:
-    """Render a tenant-branded HTML email body."""
+    """Render a tenant-branded HTML email body.
+
+    Everything tenant-specific comes from the canonical `branding_config` shape
+    (see `tenant_branding.py`): the company name and colour in the header, the
+    tagline beneath it, and the support contacts and boilerplate in the footer.
+    """
     company_name = get_company_name(branding)
     color = get_primary_color(branding)
-    greeting = f"Hello {recipient_name}," if recipient_name else "Hello,"
+    tagline = get_tagline(branding)
+    safe_company = html.escape(company_name, quote=True)
+    data = _escaped(template_data, company_name)
+    greeting = f"Hello {html.escape(recipient_name, quote=True)}," if recipient_name else "Hello,"
+    if locale == "zh":
+        greeting = f"{html.escape(recipient_name, quote=True)}，您好：" if recipient_name else "您好："
 
-    # Action links (keys ending in _link, e.g. activation_link / invite_link) are
-    # rendered as a prominent CTA button rather than a raw URL in a table row.
-    links = {k: v for k, v in template_data.items() if k.endswith("_link") and v}
-    rows = "".join(
-        f"<tr>"
-        f"<td style='padding:4px 8px;color:#555;font-size:13px;white-space:nowrap;'>"
-        f"{k.replace('_', ' ').title()}"
-        f"</td>"
-        f"<td style='padding:4px 8px;font-size:13px;'>{v}</td>"
-        f"</tr>"
-        for k, v in template_data.items()
-        if v is not None and not k.endswith("_link")
-    )
-    table = f"<table style='border-collapse:collapse;width:100%;margin-top:12px;'>{rows}</table>" if rows else ""
-    _link_labels = {"activation_link": "Activate account", "invite_link": "Create your account"}
+    lead = _render_body_copy(event_type, locale, data)
+
+    # Action links (keys ending in _link) are a CTA button, not a table row.
+    link_labels = _LINK_LABELS_ZH if locale == "zh" else _LINK_LABELS
+    links = {k: v for k, v in data.items() if k.endswith("_link") and v}
     buttons = "".join(
-        f"<p style='margin:20px 0;'>"
-        f"<a href='{v}' style='display:inline-block;background:{color};color:#ffffff;"
-        f"text-decoration:none;padding:12px 22px;border-radius:6px;font-size:15px;font-weight:bold;'>"
-        f"{_link_labels.get(k, k.replace('_link', '').replace('_', ' ').title() or 'Continue')}</a></p>"
-        f"<p style='margin:0 0 8px 0;font-size:12px;color:#888;word-break:break-all;'>"
-        f"Or paste this link into your browser: {v}</p>"
+        f"<p style='margin:24px 0 8px 0;'>"
+        f'<a href="{v}" style=\'display:inline-block;background:{color};color:#ffffff;'
+        f"text-decoration:none;padding:13px 24px;border-radius:6px;font-size:15px;font-weight:bold;'>"
+        f"{link_labels.get(k, _field_label(k.replace('_link', '')) or 'Continue')}</a></p>"
+        f"<p style='margin:0 0 4px 0;font-size:12px;color:#888;word-break:break-all;'>"
+        f"{'或将此链接粘贴到浏览器中：' if locale == 'zh' else 'Or paste this link into your browser:'} {v}</p>"
         for k, v in links.items()
     )
 
+    rows = "".join(
+        f"<tr>"
+        f"<td style='padding:7px 10px;color:#666;font-size:13px;white-space:nowrap;"
+        f"border-bottom:1px solid #eee;vertical-align:top;'>{_field_label(k)}</td>"
+        f"<td style='padding:7px 10px;font-size:13px;color:#222;border-bottom:1px solid #eee;'>{v}</td>"
+        f"</tr>"
+        for k, v in data.items()
+        if not k.endswith("_link") and k not in _HIDDEN_EMAIL_FIELDS and v != ""
+    )
+    table = (
+        f"<table role='presentation' style='border-collapse:collapse;width:100%;margin-top:20px;'>{rows}</table>" if rows else ""
+    )
+
+    # Support contacts turn an automated message into one the recipient can
+    # reply to. Omitted entirely when the tenant has published none, rather than
+    # printing an empty "Contact:" line.
+    support_bits = [
+        f"<a href='mailto:{html.escape(e, quote=True)}' style='color:{color};'>{html.escape(e, quote=True)}</a>"
+        for e in [get_support_email(branding)]
+        if e
+    ] + [f"WhatsApp {html.escape(w, quote=True)}" for w in [get_support_whatsapp(branding)] if w]
+    support = (
+        f"<p style='margin:16px 0 0 0;font-size:12px;color:#777;'>"
+        f"{'需要帮助？请联系 ' if locale == 'zh' else 'Need help? Contact '}{' · '.join(support_bits)}</p>"
+        if support_bits
+        else ""
+    )
+    footer_text = get_document_footer(branding)
+    footer = (
+        f"<p style='margin:8px 0 0 0;font-size:11px;color:#999;white-space:pre-line;'>{html.escape(footer_text, quote=True)}</p>"
+        if footer_text
+        else ""
+    )
+    automated = f"此邮件由 {safe_company} 自动发送。" if locale == "zh" else f"This is an automated message from {safe_company}."
+
     return (
         "<!DOCTYPE html>"
-        "<html><head><meta charset='UTF-8'></head>"
-        "<body style='margin:0;padding:0;background:#f4f4f4;"
-        "font-family:Arial,sans-serif;'>"
-        "<table width='100%' cellpadding='0' cellspacing='0'"
-        " style='background:#f4f4f4;'>"
-        "<tr><td align='center' style='padding:20px;'>"
-        "<table width='600' cellpadding='0' cellspacing='0'"
-        " style='background:#ffffff;border-radius:8px;overflow:hidden;'>"
+        "<html><head><meta charset='UTF-8'>"
+        "<meta name='viewport' content='width=device-width,initial-scale=1'></head>"
+        "<body style='margin:0;padding:0;background:#f4f4f4;font-family:Arial,Helvetica,sans-serif;'>"
+        "<table role='presentation' width='100%' cellpadding='0' cellspacing='0' style='background:#f4f4f4;'>"
+        "<tr><td align='center' style='padding:20px 12px;'>"
+        "<table role='presentation' width='600' cellpadding='0' cellspacing='0'"
+        " style='max-width:600px;width:100%;background:#ffffff;border-radius:8px;overflow:hidden;'>"
         f"<tr><td style='background:{color};padding:20px 24px;'>"
-        f"<span style='color:#ffffff;font-size:20px;font-weight:bold;'>"
-        f"{company_name}</span></td></tr>"
+        f"<div style='color:#ffffff;font-size:20px;font-weight:bold;'>{safe_company}</div>"
+        + (
+            f"<div style='color:#ffffff;opacity:0.85;font-size:12px;margin-top:3px;'>{html.escape(tagline, quote=True)}</div>"
+            if tagline
+            else ""
+        )
+        + "</td></tr>"
         "<tr><td style='padding:24px;'>"
-        f"<p style='margin:0 0 16px 0;font-size:15px;color:#222;'>{greeting}</p>"
+        f"<p style='margin:0 0 14px 0;font-size:15px;color:#222;'>{greeting}</p>"
+        f"<p style='margin:0;font-size:15px;color:#333;line-height:1.5;'>{lead}</p>"
         f"{buttons}"
         f"{table}"
-        f"<p style='margin:16px 0 0 0;font-size:12px;color:#888;'>"
-        f"This is an automated notification from {company_name}.</p>"
+        f"{support}"
+        f"<p style='margin:16px 0 0 0;font-size:11px;color:#999;'>{automated}</p>"
+        f"{footer}"
         "</td></tr>"
         "</table>"
         "</td></tr></table>"
@@ -521,15 +822,48 @@ def render_email_text(
     event_type: str,
     recipient_name: str | None,
     template_data: dict[str, Any],
+    locale: str = "en",
+    body_override: str | None = None,
 ) -> str:
-    """Render a plain-text fallback email body."""
+    """Render the plain-text alternative part.
+
+    Carries the same prose and the same links as the HTML part — a text-only
+    client previously received an unexplained list of field names. When the
+    tenant supplied its own HTML body, that body is stripped to text so the
+    two MIME parts say the same thing.
+    """
+    if body_override:
+        rendered = render_email_override(body_override, branding, template_data)
+        if rendered:
+            return _html_to_text(rendered)
     company_name = get_company_name(branding)
-    greeting = f"Hello {recipient_name}," if recipient_name else "Hello,"
-    lines = [company_name, "", greeting, ""]
-    for k, v in template_data.items():
-        if v is not None:
-            lines.append(f"  {k.replace('_', ' ').title()}: {v}")
-    lines += ["", f"This is an automated notification from {company_name}."]
+    data = {k: str(v) for k, v in template_data.items() if v is not None}
+    data.setdefault("company_name", company_name)
+    if locale == "zh":
+        greeting = f"{recipient_name}，您好：" if recipient_name else "您好："
+    else:
+        greeting = f"Hello {recipient_name}," if recipient_name else "Hello,"
+
+    lines = [company_name, "", greeting, "", _render_body_copy(event_type, locale, data), ""]
+    for key, value in data.items():
+        if key.endswith("_link"):
+            lines.append(f"{_field_label(key)}: {value}")
+    for key, value in data.items():
+        if not key.endswith("_link") and key not in _HIDDEN_EMAIL_FIELDS and value:
+            lines.append(f"  {_field_label(key)}: {value}")
+
+    support_email = get_support_email(branding)
+    support_whatsapp = get_support_whatsapp(branding)
+    if support_email or support_whatsapp:
+        contacts = " / ".join(filter(None, [support_email, f"WhatsApp {support_whatsapp}" if support_whatsapp else ""]))
+        lines += ["", ("需要帮助？请联系 " if locale == "zh" else "Need help? Contact ") + contacts]
+    lines += [
+        "",
+        (f"此邮件由 {company_name} 自动发送。" if locale == "zh" else f"This is an automated message from {company_name}."),
+    ]
+    footer_text = get_document_footer(branding)
+    if footer_text:
+        lines += ["", footer_text]
     return "\n".join(lines)
 
 
@@ -547,7 +881,22 @@ def send_email(
     """
     if not _assert_deliverable(to_email, "email", tenant_id):
         return False
-    from_address = os.environ.get("SES_FROM_ADDRESS", "notifications@logistics.example.com")
+    # `.strip() or` rather than a get() default: Terraform sets this to the
+    # empty string when the variable is unconfigured, and an empty string is
+    # "set" as far as os.environ.get is concerned — so a default would have
+    # been bypassed and SES handed a blank sender.
+    from_address = os.environ.get("SES_FROM_ADDRESS", "").strip() or _PLACEHOLDER_FROM_ADDRESS
+
+    if from_address == _PLACEHOLDER_FROM_ADDRESS and _is_production():
+        # The default is a documentation address. SES and ACS both reject an
+        # unverified sender, so this would fail on every send — but it would
+        # fail as a provider error buried in notification_log, which reads as a
+        # transient fault rather than a missing environment variable.
+        logger.error(
+            "SES_FROM_ADDRESS is unset in production — refusing to send from the placeholder address",
+            extra={"tenant_id": tenant_id},
+        )
+        return False
 
     try:
         get_email_provider().send(

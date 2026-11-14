@@ -1472,6 +1472,7 @@ class TestIssueCustomerInvite:
             patch("shared.invites.create_invite", return_value=invite_row) as mock_create,
             patch("shared.notifications.enqueue_notifications"),
             patch("shared.notifications.is_recipient_allowed", return_value=True),
+            patch.dict("os.environ", {"APP_BASE_URL": "https://app.shipx.test"}, clear=False),
             patch("shared.notifications.primary_channel", return_value="whatsapp"),
             patch("services.tenant_management.service.log_audit"),
         ):
@@ -1505,6 +1506,7 @@ class TestIssueCustomerInvite:
             patch("shared.notifications.is_recipient_allowed", return_value=True),
             patch("shared.notifications.should_notify", return_value=True),
             patch.dict("os.environ", {"SQS_WHATSAPP_QUEUE_URL": ""}, clear=False),
+            patch.dict("os.environ", {"APP_BASE_URL": "https://app.shipx.test"}, clear=False),
             patch("services.tenant_management.service.log_audit"),
         ):
             result = service.issue_customer_invite(TENANT_ID, "cust-001", actor_id="staff-1")
@@ -1529,6 +1531,7 @@ class TestIssueCustomerInvite:
             patch("shared.invites.delete_unconsumed_invites"),
             patch("shared.invites.create_invite", return_value=invite_row),
             patch("shared.notifications.enqueue_notifications") as mock_enqueue,
+            patch.dict("os.environ", {"APP_BASE_URL": "https://app.shipx.test"}, clear=False),
             patch("shared.notifications.is_recipient_allowed", return_value=False),
             patch("services.tenant_management.service.log_audit"),
         ):
@@ -1538,7 +1541,129 @@ class TestIssueCustomerInvite:
         assert result["delivery_suppressed"] is True
         # The invite itself is still valid — staff can deliver the link by hand.
         assert result["id"] == "inv-002"
+        # Still enqueued: the recipient guard lives inside enqueue_notifications,
+        # which is what suppresses the send. This asserts the invite path does
+        # not second-guess it.
         mock_enqueue.assert_called_once()
+
+    def test_link_is_absolute_so_it_is_clickable_in_an_email(self):
+        """The reported bug: every invite link was the relative path
+        "/invite/<token>".
+
+        `CUSTOMER_PORTAL_BASE_URL` was read with a "" default and set in no
+        environment — not AWS Terraform, not Azure Terraform, not .env.local —
+        so the link in every invite email and WhatsApp message was unopenable.
+        """
+        from services.tenant_management import service
+
+        invite_row = {"id": "inv-003", "expires_at": "2026-08-30T00:00:00+00:00", "sent_to_masked": "x"}
+        with (
+            patch.object(service.repo, "get_customer_by_id", return_value=self._customer()),
+            patch("shared.invites.delete_unconsumed_invites"),
+            patch("shared.invites.create_invite", return_value=invite_row),
+            patch("shared.invites.mint_token", return_value="tok-abc"),
+            patch("shared.notifications.enqueue_notifications") as mock_enqueue,
+            patch("shared.notifications.is_recipient_allowed", return_value=True),
+            patch("shared.notifications.primary_channel", return_value="whatsapp"),
+            patch.dict("os.environ", {"APP_BASE_URL": "https://app.shipx.test"}, clear=False),
+            patch("services.tenant_management.service.log_audit"),
+        ):
+            service.issue_customer_invite(TENANT_ID, "cust-001", actor_id="staff-1")
+
+        link = mock_enqueue.call_args.kwargs["template_data"]["invite_link"]
+        assert link == "https://app.shipx.test/invite/tok-abc"
+
+    def test_customer_portal_base_url_overrides_the_app_base(self):
+        """A separately hosted customer portal can be pointed at without
+        changing where staff activation links go."""
+        from services.tenant_management import service
+
+        invite_row = {"id": "inv-004", "expires_at": "2026-08-30T00:00:00+00:00", "sent_to_masked": "x"}
+        with (
+            patch.object(service.repo, "get_customer_by_id", return_value=self._customer()),
+            patch("shared.invites.delete_unconsumed_invites"),
+            patch("shared.invites.create_invite", return_value=invite_row),
+            patch("shared.invites.mint_token", return_value="tok-xyz"),
+            patch("shared.notifications.enqueue_notifications") as mock_enqueue,
+            patch("shared.notifications.is_recipient_allowed", return_value=True),
+            patch("shared.notifications.primary_channel", return_value="whatsapp"),
+            patch.dict(
+                "os.environ",
+                {
+                    "APP_BASE_URL": "https://staff.shipx.test",
+                    "CUSTOMER_PORTAL_BASE_URL": "https://my.shipx.test/",
+                },
+                clear=False,
+            ),
+            patch("services.tenant_management.service.log_audit"),
+        ):
+            service.issue_customer_invite(TENANT_ID, "cust-001", actor_id="staff-1")
+
+        # Trailing slash stripped — "https://my.shipx.test//invite/t" is a
+        # different path and some routers 404 it.
+        assert mock_enqueue.call_args.kwargs["template_data"]["invite_link"] == "https://my.shipx.test/invite/tok-xyz"
+
+    def test_no_base_url_sends_nothing_and_does_not_claim_it_did(self):
+        """With no base URL there is no usable link, so nothing is sent.
+
+        The alternative — emailing "/invite/<token>" — consumes the single-use
+        token, records the invite as delivered, and leaves the customer with a
+        dead link and staff with no reason to follow up. That is what used to
+        happen in every environment.
+        """
+        from services.tenant_management import service
+
+        invite_row = {"id": "inv-005", "expires_at": "2026-08-30T00:00:00+00:00", "sent_to_masked": None}
+        with (
+            patch.object(service.repo, "get_customer_by_id", return_value=self._customer()),
+            patch("shared.invites.delete_unconsumed_invites"),
+            patch("shared.invites.create_invite", return_value=invite_row) as mock_create,
+            patch("shared.notifications.enqueue_notifications") as mock_enqueue,
+            patch("shared.notifications.is_recipient_allowed", return_value=True),
+            patch("shared.notifications.primary_channel", return_value="whatsapp"),
+            patch.dict(
+                "os.environ",
+                {"APP_BASE_URL": "", "CUSTOMER_PORTAL_BASE_URL": "", "ENTRA_REDIRECT_URI": ""},
+                clear=False,
+            ),
+            patch("services.tenant_management.service.log_audit"),
+        ):
+            result = service.issue_customer_invite(TENANT_ID, "cust-001", actor_id="staff-1")
+
+        mock_enqueue.assert_not_called()
+        assert result["sent_channel"] is None
+        assert result["delivery_suppressed"] is True
+        # The row is still written — it is what a resend works from once the
+        # base URL is configured — but with no channel recorded.
+        assert mock_create.call_args.kwargs["sent_channel"] is None
+
+    def test_relative_base_url_is_rejected_not_silently_skipped(self):
+        """A base URL that is set but relative is a misconfiguration.
+
+        Falling through to the next candidate would quietly send links to
+        whichever host happened to be configured elsewhere.
+        """
+        from services.tenant_management import service
+
+        invite_row = {"id": "inv-006", "expires_at": "2026-08-30T00:00:00+00:00", "sent_to_masked": None}
+        with (
+            patch.object(service.repo, "get_customer_by_id", return_value=self._customer()),
+            patch("shared.invites.delete_unconsumed_invites"),
+            patch("shared.invites.create_invite", return_value=invite_row),
+            patch("shared.notifications.enqueue_notifications") as mock_enqueue,
+            patch("shared.notifications.is_recipient_allowed", return_value=True),
+            patch("shared.notifications.primary_channel", return_value="whatsapp"),
+            patch.dict(
+                "os.environ",
+                {"CUSTOMER_PORTAL_BASE_URL": "/portal", "APP_BASE_URL": "https://app.shipx.test"},
+                clear=False,
+            ),
+            patch("services.tenant_management.service.log_audit"),
+        ):
+            result = service.issue_customer_invite(TENANT_ID, "cust-001", actor_id="staff-1")
+
+        mock_enqueue.assert_not_called()
+        assert result["delivery_suppressed"] is True
 
     def test_customer_already_has_account_raises(self):
         from services.tenant_management import service

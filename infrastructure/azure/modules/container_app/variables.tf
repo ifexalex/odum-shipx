@@ -350,3 +350,63 @@ variable "claims_max_replicas" {
   type    = number
   default = 2
 }
+
+# ---------------------------------------------------------------------------
+# Notification channels — SMS and WhatsApp
+#
+# These were absent from the Azure deployment entirely. Email worked (ACS, via
+# acs_sender_address → SES_FROM_ADDRESS) but SMS and WhatsApp had no
+# credentials at all, so every send logged "not configured" and returned
+# without error. WhatsApp is the primary customer channel here.
+# ---------------------------------------------------------------------------
+
+variable "customer_portal_base_url" {
+  description = "Override base URL for customer invite links if the customer portal is hosted separately. Falls back to app_base_url."
+  type        = string
+  default     = ""
+}
+
+variable "africastalking_api_key" {
+  description = "Africa's Talking API key for SMS. Delivered as a Container App secret; gated on africastalking_username being set."
+  type        = string
+  default     = ""
+  sensitive   = true
+}
+
+variable "africastalking_username" {
+  description = "Africa's Talking username. Must be the live username in production — the application default is 'sandbox', which accepts messages and delivers nothing. Also gates whether the API key secret is created."
+  type        = string
+  default     = ""
+}
+
+variable "africastalking_sender_id" {
+  description = "Africa's Talking sender ID / short code, if one is registered."
+  type        = string
+  default     = ""
+}
+
+variable "meta_whatsapp_access_token" {
+  description = "Meta Cloud API access token for WhatsApp Business. Delivered as a Container App secret; gated on meta_whatsapp_phone_id being set."
+  type        = string
+  default     = ""
+  sensitive   = true
+}
+
+variable "meta_whatsapp_phone_id" {
+  description = "Meta Cloud API phone number ID. Also gates whether the WhatsApp secrets are created."
+  type        = string
+  default     = ""
+}
+
+variable "meta_whatsapp_template_lang" {
+  description = "Language code the WhatsApp templates were approved under (e.g. en, en_US, zh_CN). Must match Meta exactly or every send 404s."
+  type        = string
+  default     = ""
+}
+
+variable "whatsapp_verify_token" {
+  description = "Shared secret Meta echoes when verifying the WhatsApp webhook subscription."
+  type        = string
+  default     = ""
+  sensitive   = true
+}

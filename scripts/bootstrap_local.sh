@@ -332,6 +332,22 @@ add_to_group "zainab@demoshipping.com"    "${DEMO_TENANT_ID}:customer"
 TENANT_ID="PLATFORM" create_cognito_user "platform-admin@shipx.co" "Ada Nwachukwu" "platform_admin"
 add_to_group "platform-admin@shipx.co" "platform_admin"
 
+# ─── SES sender identity ──────────────────────────────────────────────────────
+# Moto enforces SES's verified-identity rule, so an unverified sender is
+# rejected exactly as it would be in AWS:
+#   MessageRejected: Email address not verified notifications@logistics.example.com
+# That is the application's placeholder default, which is what every local
+# notification email was sent from — so local email delivery failed outright
+# while SMS and WhatsApp appeared to work. Verifying the address .env.local
+# actually uses makes local email behave like the real thing.
+echo ""
+echo "==> Verifying SES sender identity"
+SES_SENDER="${SES_FROM_ADDRESS:-notifications@shipx.local}"
+aws --endpoint-url "${ENDPOINT}" ses verify-email-identity \
+  --email-address "${SES_SENDER}" >/dev/null 2>&1 \
+  && echo "    verified ${SES_SENDER}" \
+  || echo "    WARNING: could not verify ${SES_SENDER} — local email sends will be rejected"
+
 # ─── Print queue URLs ─────────────────────────────────────────────────────────
 echo ""
 echo "==> Queue URLs (already set in .env.local):"

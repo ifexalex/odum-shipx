@@ -103,6 +103,29 @@ locals {
     SQS_WHATSAPP_QUEUE_URL = lookup(var.queue_names, "whatsapp", "")
     SQS_EMAIL_QUEUE_URL    = lookup(var.queue_names, "email", "")
     SQS_METERING_QUEUE_URL = lookup(var.queue_names, "metering", "")
+
+    # Override for customer invite links, when the customer portal is hosted
+    # separately from the staff app. Falls back to APP_BASE_URL above —
+    # previously this was read with an empty default and set nowhere, so every
+    # customer invite went out as the relative path "/invite/<token>".
+    CUSTOMER_PORTAL_BASE_URL = var.customer_portal_base_url
+
+    # SMS — Africa's Talking. These were absent from the Azure deployment
+    # entirely, so send_sms logged "AFRICASTALKING_API_KEY not configured" and
+    # returned False for every message: no SMS was ever delivered on Azure and
+    # nothing failed. AFRICASTALKING_USERNAME must be the LIVE username in
+    # production — the application default is "sandbox", which accepts messages
+    # and delivers nothing.
+    AFRICASTALKING_USERNAME  = var.africastalking_username
+    AFRICASTALKING_SENDER_ID = var.africastalking_sender_id
+
+    # WhatsApp — Meta Cloud API. Also absent, and WhatsApp is the PRIMARY
+    # customer channel (SMS is only its fallback), so this was the main way
+    # customers are contacted being silently dead. META_WHATSAPP_TEMPLATE_LANG
+    # must match the language the templates named in WA_TEMPLATE_MAP were
+    # approved under, or Meta 404s every send.
+    META_WHATSAPP_PHONE_ID      = var.meta_whatsapp_phone_id
+    META_WHATSAPP_TEMPLATE_LANG = var.meta_whatsapp_template_lang
   }
 
   # Container App secret name (lowercase alnum + '-') → value. Optional secrets
@@ -125,6 +148,13 @@ locals {
     # empty gate over a sensitive value would mark the whole map sensitive and
     # break for_each; Azure also rejects an empty-valued secret).
     var.entra_graph_client_id != "" ? { entra-graph-client-secret = var.entra_graph_client_secret } : {},
+    # Notification channel credentials, gated the same way: on the channel's
+    # non-sensitive companion value, never on the secret itself.
+    var.africastalking_username != "" ? { africastalking-api-key = var.africastalking_api_key } : {},
+    var.meta_whatsapp_phone_id != "" ? {
+      meta-whatsapp-access-token = var.meta_whatsapp_access_token
+      whatsapp-verify-token      = var.whatsapp_verify_token
+    } : {},
   )
 
   # Env var name → secret name. The redis mapping is included only when Redis is
@@ -143,6 +173,11 @@ locals {
     },
     var.enable_redis ? { REDIS_PASSWORD = "redis-password" } : {},
     var.entra_graph_client_id != "" ? { ENTRA_GRAPH_CLIENT_SECRET = "entra-graph-client-secret" } : {},
+    var.africastalking_username != "" ? { AFRICASTALKING_API_KEY = "africastalking-api-key" } : {},
+    var.meta_whatsapp_phone_id != "" ? {
+      META_WHATSAPP_ACCESS_TOKEN = "meta-whatsapp-access-token"
+      WHATSAPP_VERIFY_TOKEN      = "whatsapp-verify-token"
+    } : {},
   ))
 
   image = var.container_image

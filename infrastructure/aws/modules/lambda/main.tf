@@ -136,6 +136,41 @@ locals {
       SQS_SMS_QUEUE_URL      = lookup(var.sqs_queue_urls, "sms", "")
       SQS_WHATSAPP_QUEUE_URL = lookup(var.sqs_queue_urls, "whatsapp", "")
       SQS_EMAIL_QUEUE_URL    = lookup(var.sqs_queue_urls, "email", "")
+
+      # Absolute base URL for links in notifications — account activation
+      # (/activate/{token}) and customer invites (/invite/{token}).
+      # shared/app_urls.py refuses to build a relative link, so leaving these
+      # empty means those notifications are not sent at all (and say so in the
+      # log) rather than arriving with a dead link, which is what used to
+      # happen: neither variable was set here, so every invite carried the bare
+      # path "/invite/<token>".
+      APP_BASE_URL             = var.app_base_url
+      CUSTOMER_PORTAL_BASE_URL = var.customer_portal_base_url
+
+      # Email — SES. The sender must be a verified identity in this account's
+      # SES region, or every send is rejected.
+      SES_FROM_ADDRESS = var.ses_from_address
+
+      # SMS — Africa's Talking. AFRICASTALKING_USERNAME must be the live
+      # username in production: the code's default is "sandbox", which accepts
+      # messages and delivers nothing.
+      AFRICASTALKING_API_KEY   = var.africastalking_api_key
+      AFRICASTALKING_USERNAME  = var.africastalking_username
+      AFRICASTALKING_SENDER_ID = var.africastalking_sender_id
+
+      # WhatsApp — Meta Cloud API. Templates must be pre-approved by Meta under
+      # the names in WA_TEMPLATE_MAP (services/notification/service.py), and
+      # META_WHATSAPP_TEMPLATE_LANG must match the locale those templates were
+      # approved in, or Meta 404s the send.
+      META_WHATSAPP_ACCESS_TOKEN  = var.meta_whatsapp_access_token
+      META_WHATSAPP_PHONE_ID      = var.meta_whatsapp_phone_id
+      META_WHATSAPP_TEMPLATE_LANG = var.meta_whatsapp_template_lang
+      WHATSAPP_VERIFY_TOKEN       = var.whatsapp_verify_token
+
+      # Outside production nothing is messaged unless the contact is listed
+      # here — dev and staging databases hold real imported customer contacts.
+      # See shared/notifications.py::is_recipient_allowed.
+      NOTIFICATION_ALLOWLIST = var.notification_allowlist
     },
     var.local_env_overrides,
   )

@@ -286,6 +286,18 @@ module "container_app" {
   # same no-cycle reason as entra_redirect_uri above.
   app_base_url = var.app_base_url
 
+  # Notification channels. SMS and WhatsApp were not wired to this deployment at
+  # all — see modules/container_app/variables.tf and the
+  # notification_config_guard below.
+  customer_portal_base_url    = var.customer_portal_base_url
+  africastalking_api_key      = var.africastalking_api_key
+  africastalking_username     = var.africastalking_username
+  africastalking_sender_id    = var.africastalking_sender_id
+  meta_whatsapp_access_token  = var.meta_whatsapp_access_token
+  meta_whatsapp_phone_id      = var.meta_whatsapp_phone_id
+  meta_whatsapp_template_lang = var.meta_whatsapp_template_lang
+  whatsapp_verify_token       = var.whatsapp_verify_token
+
   # The API is served same-origin with the SPA via a Front Door /v1/* route
   # (see module.frontend.api_origin_host), so the auth cookies are first-party;
   # SameSite=Lax survives the Entra redirect return. (Cross-site SameSite=None
@@ -310,4 +322,50 @@ module "container_app" {
   claims_caller_issuer    = var.entra_claims_caller_issuer
   claims_out_tenant_claim = var.entra_out_tenant_claim
   claims_out_role_claim   = var.entra_out_role_claim
+}
+
+# ---------------------------------------------------------------------------
+# Notification channel guard — the Azure twin of the AWS one.
+#
+# Production is the only environment where these must be complete, and the only
+# one where getting it wrong is invisible: every send path logs "not configured"
+# and returns, so the deploy is healthy, the API returns 200, and customers are
+# simply never told anything. This fails the PLAN instead.
+# ---------------------------------------------------------------------------
+resource "terraform_data" "notification_config_guard" {
+  input = var.environment
+
+  lifecycle {
+    precondition {
+      condition = var.environment != "prod" || alltrue([
+        var.africastalking_api_key != "",
+        var.africastalking_username != "",
+      ])
+      error_message = <<-EOT
+        Africa's Talking SMS is not configured for prod
+        (africastalking_api_key / africastalking_username). These were absent
+        from the Azure deployment entirely: send_sms logs
+        "AFRICASTALKING_API_KEY not configured" and returns False, so no SMS is
+        ever delivered and nothing fails. The username must be the LIVE one —
+        the application default is "sandbox", which accepts messages and
+        delivers nothing.
+      EOT
+    }
+
+    precondition {
+      condition = var.environment != "prod" || alltrue([
+        var.meta_whatsapp_access_token != "",
+        var.meta_whatsapp_phone_id != "",
+        var.meta_whatsapp_template_lang != "",
+      ])
+      error_message = <<-EOT
+        WhatsApp is not configured for prod (meta_whatsapp_access_token /
+        meta_whatsapp_phone_id / meta_whatsapp_template_lang). WhatsApp is the
+        PRIMARY customer channel here and SMS is only its fallback, so an
+        unconfigured token means the main way customers are contacted is dead.
+        meta_whatsapp_template_lang must match the language the templates named
+        in WA_TEMPLATE_MAP were approved under, or Meta 404s every send.
+      EOT
+    }
+  }
 }

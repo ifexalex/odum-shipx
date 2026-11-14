@@ -7,12 +7,12 @@ events, and metering utilities. Raises typed exceptions from shared.exceptions
 
 import json
 import logging
-import os
 import re
 import uuid
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Any
 
+from shared.app_urls import MissingBaseUrlError, activation_url, invite_url
 from shared.audit import log_audit
 from shared.cbm_rate import get_cbm_rate_config, get_min_cbm_per_item
 from shared.encryption import decrypt_field, encrypt_field
@@ -1276,22 +1276,6 @@ def create_user(
 # ---------------------------------------------------------------------------
 
 
-def _app_base_url() -> str:
-    """Base URL of the staff/admin portal for activation links. `APP_BASE_URL`,
-    else derived from `ENTRA_REDIRECT_URI`'s origin (the SPA host)."""
-    base = os.environ.get("APP_BASE_URL", "").strip()
-    if base:
-        return base.rstrip("/")
-    redirect = os.environ.get("ENTRA_REDIRECT_URI", "").strip()
-    if redirect:
-        from urllib.parse import urlsplit
-
-        parts = urlsplit(redirect)
-        if parts.scheme and parts.netloc:
-            return f"{parts.scheme}://{parts.netloc}"
-    return ""
-
-
 def _mask_email(email: str) -> str:
     local, _, domain = email.partition("@")
     return f"{local[:1]}***@{domain}" if domain else "***"
@@ -1321,7 +1305,18 @@ def issue_activation(
         sent_to_masked=_mask_email(email),
         created_by=created_by,
     )
-    link = f"{_app_base_url()}/activate/{token}"
+    try:
+        link = activation_url(token)
+    except MissingBaseUrlError as exc:
+        # The token row is already written and is the record, so activation can
+        # still be completed by a resend once the base URL is configured. What
+        # must not happen is emailing a link to nowhere and reporting success.
+        logger.error(
+            "account_activation link could not be built for user %s — no email sent: %s",
+            user_id,
+            exc,
+        )
+        return token
     try:
         enqueue_notifications(
             tenant_id=tenant_id,
@@ -2340,34 +2335,55 @@ def issue_customer_invite(
     }
     delivered = is_recipient_allowed(recipient)
     sent_to = customer.get("phone") or customer.get("email")
+
+    # Built before the row is written, so `sent_channel` can record that nothing
+    # was sent. Was f"{os.environ.get('CUSTOMER_PORTAL_BASE_URL', '')}/invite/{token}"
+    # — and that variable is set in no environment, so every invite went out as
+    # the relative path "/invite/<token>", which no mail or messaging client can
+    # open. See shared/app_urls.py.
+    invite_link = ""
+    try:
+        invite_link = invite_url(token)
+    except MissingBaseUrlError as exc:
+        # Two things must not happen: sending a dead link, and telling staff the
+        # customer was invited when they were not. The row is still written —
+        # it is the record a resend works from once the base URL is configured —
+        # but with no channel, because nothing left the building.
+        logger.error(
+            "customer_invite link could not be built for customer %s — nothing sent: %s",
+            customer_id,
+            exc,
+        )
+        delivered = False
+
     invite = create_invite(
         tenant_id,
         customer_id,
         token_hash,
-        sent_channel=channel,
-        sent_to_masked=mask_phone(sent_to) if channel in ("sms", "whatsapp") else sent_to,
+        sent_channel=channel if delivered else None,
+        sent_to_masked=(mask_phone(sent_to) if channel in ("sms", "whatsapp") else sent_to) if delivered else None,
         created_by=actor_id,
     )
     if invite is None:
         raise RuntimeError("create_invite returned None unexpectedly")
 
-    invite_link = f"{os.environ.get('CUSTOMER_PORTAL_BASE_URL', '')}/invite/{token}"
-    try:
-        enqueue_notifications(
-            tenant_id=tenant_id,
-            event_type="customer_invite",
-            recipient={
-                "phone": customer.get("phone") or "",
-                "email": customer.get("email") or "",
-                "whatsapp": customer.get("whatsapp") or "",
-                "name": customer.get("name") or "",
-            },
-            template_data={"name": customer.get("name") or "", "invite_link": invite_link},
-            request_id=request_id,
-            customer_id=customer_id,
-        )
-    except Exception as exc:
-        logger.warning("Customer invite notification failed for customer_id=%s: %s", customer_id, exc)
+    if invite_link:
+        try:
+            enqueue_notifications(
+                tenant_id=tenant_id,
+                event_type="customer_invite",
+                recipient={
+                    "phone": customer.get("phone") or "",
+                    "email": customer.get("email") or "",
+                    "whatsapp": customer.get("whatsapp") or "",
+                    "name": customer.get("name") or "",
+                },
+                template_data={"name": customer.get("name") or "", "invite_link": invite_link},
+                request_id=request_id,
+                customer_id=customer_id,
+            )
+        except Exception as exc:
+            logger.warning("Customer invite notification failed for customer_id=%s: %s", customer_id, exc)
 
     log_audit(
         tenant_id=tenant_id,

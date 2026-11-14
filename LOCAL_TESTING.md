@@ -521,8 +521,32 @@ FROM notification_log ORDER BY created_at DESC LIMIT 5;
 A WhatsApp row followed by an SMS row whose `retry_of` points at it is the
 fallback working.
 
-`CUSTOMER_PORTAL_BASE_URL` must be set or invite links render as a bare
-`/invite/{token}`.
+### Notification links and the local sender
+
+`.env.local` sets two things the notification path needs:
+
+- **`APP_BASE_URL=http://localhost:5173`** — the absolute base for
+  `/activate/{token}` and `/invite/{token}` links. `shared/app_urls.py` refuses
+  to build a relative link, so with this unset those notifications are **not
+  sent at all** and log an ERROR saying so. Set `CUSTOMER_PORTAL_BASE_URL` only
+  if you want invite links pointed somewhere other than the staff app.
+  (Previously invite links were emitted as the bare path `/invite/{token}`,
+  which no mail client can open — see `15_api_notifications.md`, 2026-11-13.)
+- **`SES_FROM_ADDRESS=notifications@shipx.local`** — Moto enforces SES's
+  verified-identity rule, so an unverified sender is rejected exactly as AWS
+  would: `MessageRejected: Email address not verified`. `make bootstrap` calls
+  `ses verify-email-identity` for whatever this is set to. If you change it,
+  re-run `make bootstrap` or local email sends will fail while SMS and WhatsApp
+  appear to work.
+
+SMS and WhatsApp have no credentials locally, so they log
+`failed — provider unconfigured` in `notification_log`. That is correct and
+nothing leaves the machine. To read a rendered email body without a mail client:
+
+```sql
+select channel, status, message_body from notification_log
+where event_type = 'customer_invite' order by created_at desc limit 1;
+```
 
 ## Test manifest for notification testing
 

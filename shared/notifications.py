@@ -291,6 +291,39 @@ def primary_channel(tenant_id: str, event_type: str, recipient: dict[str, Any]) 
     return "whatsapp" if whatsapp_possible else "sms"
 
 
+def _tenant_branding(tenant_id: str) -> dict[str, Any]:
+    """Branding embedded in the queued message, so consumers need no DB access.
+
+    Selects `company_name` alongside `branding_config` because the notification
+    service needs a company name and `branding_config` is not guaranteed to
+    carry one. It is optional (tenants set `display_name` only if their trading
+    name differs from the legal one) and is frequently `{}` outright, in which
+    case every notification on every channel was branded with the literal word
+    "Logistics" — the hardcoded fallback in
+    `services/notification/tenant_branding.py`. The legal `company_name` on the
+    tenant row always exists, so it is the floor beneath the optional override.
+
+    `company_name` is set here rather than read from the DB in the consumer
+    because the notification Lambdas deliberately run outside the VPC and have
+    no database access at all.
+    """
+    try:
+        rows = execute_with_tenant(
+            tenant_id=PLATFORM_TENANT_ID,  # bypass RLS — reading the tenant row itself
+            query="SELECT company_name, branding_config FROM tenant WHERE id = %s LIMIT 1",
+            params=(tenant_id,),
+        )
+    except Exception:
+        logger.warning("Could not load branding for tenant %s — notifications will use defaults", tenant_id)
+        return {}
+    if not rows:
+        return {}
+    branding: dict[str, Any] = dict(rows[0]["branding_config"] or {})
+    # Only as a floor: a tenant that set `display_name` keeps it.
+    branding.setdefault("company_name", rows[0]["company_name"] or "")
+    return branding
+
+
 def enqueue_notifications(
     tenant_id: str,
     event_type: str,
@@ -317,16 +350,7 @@ def enqueue_notifications(
             queued message so notification_log records it — without it the
             WhatsApp→SMS fallback cannot look up a phone and silently gives up.
     """
-    # Fetch branding for tenant (use same cache path)
-    try:
-        rows = execute_with_tenant(
-            tenant_id=PLATFORM_TENANT_ID,
-            query="SELECT branding_config FROM tenant WHERE id = %s LIMIT 1",
-            params=(tenant_id,),
-        )
-        branding: dict[str, Any] = (rows[0]["branding_config"] if rows else None) or {}
-    except Exception:
-        branding = {}
+    branding = _tenant_branding(tenant_id)
 
     if not is_recipient_allowed(recipient):
         logger.warning(

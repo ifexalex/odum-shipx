@@ -123,6 +123,21 @@ module "lambda" {
   redis_host               = module.elasticache.redis_host
   local_env_overrides      = var.local_env_overrides
   permissions_boundary_arn = module.iam_oidc.permissions_boundary_arn
+
+  # Notification channels — see modules/lambda/variables.tf. Empty values mean
+  # that channel simply does not send; the notification_config_guard below
+  # fails the plan rather than letting production deploy that way.
+  app_base_url                = var.app_base_url
+  customer_portal_base_url    = var.customer_portal_base_url
+  ses_from_address            = var.ses_from_address
+  africastalking_api_key      = var.africastalking_api_key
+  africastalking_username     = var.africastalking_username
+  africastalking_sender_id    = var.africastalking_sender_id
+  meta_whatsapp_access_token  = var.meta_whatsapp_access_token
+  meta_whatsapp_phone_id      = var.meta_whatsapp_phone_id
+  meta_whatsapp_template_lang = var.meta_whatsapp_template_lang
+  whatsapp_verify_token       = var.whatsapp_verify_token
+  notification_allowlist      = var.notification_allowlist
 }
 
 module "monitoring" {
@@ -173,4 +188,74 @@ module "cloudfront" {
   api_gateway_domain = trimprefix(module.api_gateway.api_endpoint, "https://")
   # Cognito domain pattern for CSP
   cognito_domain = "cognito-idp.${var.aws_region}.amazonaws.com"
+}
+
+# ---------------------------------------------------------------------------
+# Notification channel guard
+#
+# Production is the only environment where these must be complete, and the only
+# one where getting it wrong is invisible: every send path logs "not configured"
+# and returns, so a deploy is healthy, the API returns 200, notification_log
+# fills with failures nobody reads, and customers are never told anything. This
+# fails the PLAN instead.
+#
+# Invite and activation links are checked in every environment, because a
+# notification with a relative link is worse than none — it consumes a
+# single-use token and tells staff the customer was contacted.
+# ---------------------------------------------------------------------------
+resource "terraform_data" "notification_config_guard" {
+  input = var.environment
+
+  lifecycle {
+    precondition {
+      condition     = var.app_base_url != "" || var.customer_portal_base_url != ""
+      error_message = <<-EOT
+        app_base_url and customer_portal_base_url are both empty for
+        environment "${var.environment}". Account activation
+        (/activate/{token}) and customer invite (/invite/{token}) links are
+        built from these, and shared/app_urls.py refuses to emit a relative
+        URL — so those notifications will not be sent at all.
+      EOT
+    }
+
+    precondition {
+      condition     = var.environment != "prod" || var.ses_from_address != ""
+      error_message = <<-EOT
+        ses_from_address is empty for prod. The application default is
+        notifications@logistics.example.com, which SES will reject as an
+        unverified identity — every notification email would fail.
+      EOT
+    }
+
+    precondition {
+      condition = var.environment != "prod" || alltrue([
+        var.africastalking_api_key != "",
+        var.africastalking_username != "",
+      ])
+      error_message = <<-EOT
+        Africa's Talking SMS is not configured for prod
+        (africastalking_api_key / africastalking_username). With the key empty,
+        send_sms logs a warning and returns False — no SMS is ever delivered
+        and nothing fails. Note the username must be the LIVE one: the
+        application default is "sandbox", which accepts messages and delivers
+        nothing.
+      EOT
+    }
+
+    precondition {
+      condition = var.environment != "prod" || alltrue([
+        var.meta_whatsapp_access_token != "",
+        var.meta_whatsapp_phone_id != "",
+        var.meta_whatsapp_template_lang != "",
+      ])
+      error_message = <<-EOT
+        WhatsApp is not configured for prod (meta_whatsapp_access_token /
+        meta_whatsapp_phone_id / meta_whatsapp_template_lang). WhatsApp is the
+        PRIMARY customer channel here — SMS is only its fallback — so an
+        unconfigured token means the main way customers are contacted is dead.
+        meta_whatsapp_template_lang must match the language the templates in
+        WA_TEMPLATE_MAP were approved under, or Meta 404s every send.
+      EOT
+    }
+  }
 }

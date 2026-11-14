@@ -190,3 +190,51 @@ because migration 060 is what sets the app role's password.
 `APP_DB_SECRET_ARN` is an ARN, not a value: `services/migrate/handler.py`
 fetches it at runtime via `_inject_app_db_password()`, so the plaintext never
 enters a Lambda environment variable or Terraform state.
+
+## Notification channel env + plan-time guard (2026-11-13)
+
+An audit comparing the env vars the notification code reads against the ones
+Terraform sets found that **neither cloud wired SMS or WhatsApp at all**. An
+earlier pass appeared to show AWS as wired; those matches came from
+`infrastructure/aws/modules/lambda/.builds/package/`, an **untracked local build
+artifact** that is a copy of the source tree — not Terraform. Worth remembering
+when grepping `infrastructure/aws/`: exclude `.builds/`.
+
+Added to `modules/lambda` `common_env_vars` (so every Lambda has them, since
+`shared/notifications.py` enqueues from any service):
+
+- `APP_BASE_URL`, `CUSTOMER_PORTAL_BASE_URL` — link bases. Previously **neither**
+  was set on AWS, so activation links were empty and invite links relative.
+- `SES_FROM_ADDRESS` — verified sender.
+- `AFRICASTALKING_API_KEY` (sensitive), `AFRICASTALKING_USERNAME`,
+  `AFRICASTALKING_SENDER_ID`.
+- `META_WHATSAPP_ACCESS_TOKEN` (sensitive), `META_WHATSAPP_PHONE_ID`,
+  `META_WHATSAPP_TEMPLATE_LANG`, `WHATSAPP_VERIFY_TOKEN` (sensitive).
+- `NOTIFICATION_ALLOWLIST` — fails closed outside production.
+
+All default to `""`, which the code treats as unconfigured (see below).
+
+### `terraform_data.notification_config_guard`
+
+Modelled on the existing `auth_config_guard`, and for the same reason: these
+values cannot be derived from Terraform, which is exactly why they are easy to
+forget, and the failure mode is invisible — every send path logs
+"not configured" and returns, so the deploy is healthy, the API returns 200, and
+customers are simply never told anything. The guard fails the **plan** instead.
+
+- A link base is required in **every** environment (a relative link is worse
+  than no message — it burns the token and reports success).
+- In **prod** only: `ses_from_address`, the Africa's Talking key + username, and
+  all three WhatsApp values. Non-prod may run with channels off.
+
+The Azure twin lives in `infrastructure/azure/main.tf`; it omits the email check
+because `module.acs` always derives a sender from its managed domain, so
+`SES_FROM_ADDRESS` is never the application's placeholder there.
+
+### Note on empty strings
+
+Terraform sets `""` for an unconfigured variable, and `""` is "set" as far as
+`os.environ.get(name, default)` is concerned — so a `get()` default is bypassed
+and the provider receives a blank value. `send_email` and `send_sms` therefore
+use `os.environ.get(...).strip() or DEFAULT`. A unit test caught this after the
+guard was first written against the `get()` default and silently did nothing.
