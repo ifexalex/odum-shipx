@@ -16,13 +16,16 @@ import time
 import uuid
 from typing import Any
 
+from shared import rate_limit
 from shared.auth import get_tenant_context
+from shared.client_ip import client_ip
 from shared.exceptions import LogisticsBaseError, ResourceNotFoundError
 from shared.idempotency import check_idempotency, store_idempotency
 from shared.logging_config import bind_log_context, clear_log_context, setup_logging
 from shared.metering import record_usage
 from shared.observability import init_tracing
 from shared.responses import (
+    accepted,
     created,
     error_response,
     no_content,
@@ -80,7 +83,7 @@ def lambda_handler(event: dict[str, Any], context: Any) -> dict[str, Any]:
     http = event.get("requestContext", {}).get("http", {})
     method = http.get("method", "")
     path = http.get("path", "")
-    ip_address = event.get("requestContext", {}).get("identity", {}).get("sourceIp")
+    ip_address = client_ip(event)
 
     # Public routes — no JWT required; must be checked before get_tenant_context
     public_parts = path.strip("/").split("/")
@@ -330,11 +333,13 @@ def _handle_self_register(
 ) -> dict[str, Any]:
     """POST /v1/register/{slug} (or legacy POST /v1/register) — customer self-registration (no JWT)."""
     try:
+        rate_limit.hit_for_client(rate_limit.REGISTER_IP, event)
         body = _parse_body(event)
         req = parse_validated(CustomerRegistrationRequest, body)
         host = (event.get("headers") or {}).get("host") or (event.get("headers") or {}).get("Host", "")
-        result = service.self_register_customer(req, slug=slug, host=host, request_id=request_id, ip_address=ip_address)
-        return created(result, location=f"/v1/customers/{result['id']}", request_id=request_id)
+        service.self_register_customer(req, slug=slug, host=host, request_id=request_id, ip_address=ip_address)
+        # The same answer whether the email was new or already had an account: see self_register_customer.
+        return accepted({"status": "received"}, request_id=request_id)
     except LogisticsBaseError as exc:
         path = (event.get("requestContext", {}).get("http", {}) or {}).get("path", "/v1/register")
         return error_response(exc, instance=path, request_id=request_id)
@@ -429,6 +434,7 @@ def _handle_create_onboarding_request(event: dict[str, Any], request_id: str, ip
     job, deliberately kept separate). A platform admin provisions it later.
     """
     try:
+        rate_limit.hit_for_client(rate_limit.ONBOARDING_IP, event)
         req = parse_validated(CreateOnboardingRequest, _parse_body(event))
         result = service.create_onboarding_request(req, request_id=request_id, ip_address=ip_address)
         return created(result, location=f"/v1/platform/onboarding-requests/{result['id']}", request_id=request_id)

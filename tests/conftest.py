@@ -283,6 +283,38 @@ def sample_release_note_row():
 # No real database for the mock-based suites
 # ---------------------------------------------------------------------------
 
+
+@pytest.fixture(autouse=True)
+def _trusted_browser_origin(monkeypatch):
+    """Trust the origin `tests/browser.py` sends, so handler tests of the cookie endpoints need no setup."""
+    from tests.browser import BROWSER_ORIGIN
+
+    monkeypatch.setenv("ALLOWED_ORIGINS", BROWSER_ORIGIN)
+    yield
+
+
+@pytest.fixture(autouse=True)
+def _rate_limiter_off(monkeypatch):
+    """Switch the rate limiter off, so no test needs Redis. `tests/unit/test_rate_limit.py` turns it on with a fake."""
+    monkeypatch.setenv("RATE_LIMIT_ENABLED", "false")
+    yield
+
+
+@pytest.fixture(autouse=True)
+def _active_user_check_stubbed(request, monkeypatch):
+    """Treat every caller as an active user, so handler-level tests need no `tenant_user` row.
+
+    `get_tenant_context` now confirms on every request that the token's user still has an
+    active row (audit SEC-02). These suites build tokens from made-up claims and mock the
+    repositories, so there is no row to find. The check itself is covered by
+    `tests/unit/test_auth.py` and, against a real database, `tests/db/test_access_revocation.py`.
+    """
+    path = str(request.node.fspath).replace("\\", "/")
+    if "tests/db/" not in path:
+        monkeypatch.setattr("shared.auth._check_user_active", lambda user_id, tenant_id: None)
+    yield
+
+
 # Suites that exercise real SQL: they open their own connections or need the
 # module's real `get_connection`, so they must not get the fake one.
 _REAL_DB_SUITES = ("tests/db/", "test_rls_enforcement", "test_db_connection_healing")

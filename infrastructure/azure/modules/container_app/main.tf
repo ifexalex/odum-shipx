@@ -91,6 +91,9 @@ locals {
     AUTH_COOKIE_SAMESITE = var.auth_cookie_samesite
     # Browser origins allowed to call the API (the frontend URL).
     CORS_ALLOW_ORIGINS = var.cors_allow_origins
+    # How many proxies in front of the app append to X-Forwarded-For (shared/client_ip.py). Rate limits and
+    # audit logs key on the client address, and behind Front Door and the ingress the socket peer is a proxy.
+    TRUSTED_PROXY_HOPS = tostring(var.trusted_proxy_hops)
     # Stamped on every structured log line, and read by the notification
     # recipient guard ("production" disables it).
     ENVIRONMENT = var.environment_name

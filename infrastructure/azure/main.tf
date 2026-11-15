@@ -286,6 +286,9 @@ module "container_app" {
   # same no-cycle reason as entra_redirect_uri above.
   app_base_url = var.app_base_url
 
+  # Client address for rate limits and audit logs; 0 until the hop count is verified. modules/container_app/variables.tf.
+  trusted_proxy_hops = var.trusted_proxy_hops
+
   # Notification channels. SMS and WhatsApp were not wired to this deployment at
   # all — see modules/container_app/variables.tf and the
   # notification_config_guard below.

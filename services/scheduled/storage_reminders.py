@@ -149,6 +149,7 @@ def _maybe_send_reminder(
                 template_id=template_id,
                 template_vars=template_vars,
                 locale=locale,
+                customer_id=str(note["customer_id"]),
             )
             sent += 1
         except Exception:
@@ -167,6 +168,7 @@ def _maybe_send_reminder(
                 template_id=template_id,
                 template_vars=template_vars,
                 locale=locale,
+                customer_id=str(note["customer_id"]),
             )
             sent += 1
         except Exception:

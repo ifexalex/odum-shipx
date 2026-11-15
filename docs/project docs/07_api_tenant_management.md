@@ -602,8 +602,14 @@ Request body:
 }
 ```
 
-Guards: tenant must be `active`; email must not already exist in that tenant's customer table. Cognito
-sends a temporary password to the customer's email. `tenant.slug` (migration 023) is auto-derived from
+Guards: tenant must be `active`. ~~email must not already exist in that tenant's customer table~~ **Changed 2026-11-15 (audit SEC-04):** the endpoint is
+public, so a distinct error for a taken email let anyone test who is a customer of a given company, so it now answers **`202 Accepted` with `{"data": {"status": "received"}}`, no `Location` and no record,
+whether the email is new or already has an account**. A new email gets the Cognito temporary-password email as before; an email that already has an account
+(in this tenant, or anywhere in the shared identity pool, which Cognito reports as a different duplicate error) creates nothing and its owner is
+emailed `registration_existing_account` ("you already have an account", with a sign-in link; the name in it is the existing account's, never what the
+registrant typed). Matching is case-insensitive. A bad or inactive company link is still reported. Residual: a new registration does more work, so response time
+still differs slightly; the per-address limit (5/hour) bounds probing through it. Per-address rate limiting is described in `00_CROSS_CUTTING_STANDARDS.md` §8.7.
+The response used to be `201` with the new customer row, so a client reading `id` from it must stop. `tenant.slug` (migration 023) is auto-derived from
 `company_name` at tenant creation. `phone`/`whatsapp` are normalised to E.164 (`shared/phone.py`) using
 the tenant's `destination_country` dial code before being stored.
 
@@ -850,3 +856,20 @@ Repository functions (`insert_onboarding_request`, `list_onboarding_requests`, `
 - [x] POST /v1/tenant/config/webhook/rotate-secret — generates cryptographically random 64-char hex secret via `secrets.token_hex(32)`; returns plaintext once; audited
 - [x] POST /v1/tenant/config/webhook/test — sends signed test event to configured URL using same HMAC-SHA256 path as real events; returns `{success, status_code, error}`
 - [x] Locale (EN/ZH): `tenant_user.locale` writable via PATCH /v1/tenant/users/{id} (tenant_admin) and PATCH /v1/tenant/me (any authenticated role); validated against `{"en","zh"}`; locale NOT synced to Cognito (DB-only); tracking service passes `locale` from `get_customers_for_container` to `enqueue_notifications` so ZH customers receive Chinese-language notifications
+
+## Implementation notes — audit Phase 2: access and abuse (2026-11-15)
+
+- **Deactivated staff lose access at once (SEC-02).** `DELETE /v1/tenant/users/{id}` disables the identity-provider account, sets `tenant_user.status = 'deactivated'`, calls
+  `global_sign_out` (best effort; revokes the refresh token) and evicts the cached identity (`shared.auth.evict_identity_cache`). The status is what denies an *already-issued*
+  token: `get_tenant_context` now checks the user's `tenant_user` row on every request (previously only a token with **no** tenant claim ever consulted the database), so the
+  very next request gets `401`, not at token expiry. Role changes evict the cached identity too, because the Entra fallback path reads the role from it. A failed user
+  lookup is `503` (fail closed). Detail and trade-offs: `00_CROSS_CUTTING_STANDARDS.md` §8.7.
+- **Erasing a customer ends their login (SEC-02).** `DELETE /v1/customers/{id}` (GDPR erasure) reads `customer.user_id` *before* the erasure nulls it, deactivates that portal login the same way (`_revoke_login`,
+  audited as `STATUS_CHANGE` with `reason: customer_erasure`) and only then erases the record, so a failure leaves a customer that can be retried. **Open:** the `tenant_user` row's own
+  `email` and `full_name` are not scrubbed.
+- **`get_customer_by_email`** now returns `{id, name}` and matches case-insensitively (it selected only `id`, and compared exactly, so a re-cased email would have slipped past the duplicate check).
+- **Test-suite note:** `tests/unit/test_auth.py::TestIdentityResolutionFallback::test_explicit_tenant_claim_skips_the_db_entirely` asserted the vulnerable behaviour and was rewritten
+  (`..._does_not_use_the_identity_fallback`). A global autouse fixture in `tests/conftest.py` stubs the active-user check for handler-level tests, which build tokens from made-up claims; the check is covered by
+  `tests/unit/test_auth.py` and, against a real database, `tests/db/test_access_revocation.py`.
+- **Acceptance:** [x] a token issued before deactivation gets `401` on the next request; [x] an erased customer's token gets `401`; [x] new and existing registration emails get identical status and body;
+  [x] one tenant's traffic cannot throttle another's.

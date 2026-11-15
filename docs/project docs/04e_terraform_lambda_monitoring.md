@@ -238,3 +238,14 @@ Terraform sets `""` for an unconfigured variable, and `""` is "set" as far as
 and the provider receives a blank value. `send_email` and `send_sms` therefore
 use `os.environ.get(...).strip() or DEFAULT`. A unit test caught this after the
 guard was first written against the `get()` default and silently did nothing.
+
+## Environment added by audit Phase 2 (2026-11-15)
+
+- `ALLOWED_ORIGINS` (every Lambda, from `var.cors_allow_origins`, comma-separated): the origins the auth Lambda accepts on its
+  cookie endpoints (`shared/origin_guard.py`). It also trusts the origins of `APP_BASE_URL` and
+  `CUSTOMER_PORTAL_BASE_URL`. With none of the three set it refuses every request, so do not drop them.
+- `RATE_LIMIT_ENABLED=false` on the **non-VPC** `auth` Lambda only: it cannot reach ElastiCache, and a connection
+  attempt would add a timeout to every request. Its public routes are throttled per route at API Gateway.
+- Azure container app: `TRUSTED_PROXY_HOPS` (variable `trusted_proxy_hops`, default 0). Set it to the verified
+  number of proxies that append to `X-Forwarded-For` (likely 2: Front Door, then the Container Apps ingress);
+  see `modules/container_app/variables.tf` for why too low and too high are both wrong.

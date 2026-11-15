@@ -327,6 +327,31 @@ locals {
     for route_key, svc in local.public_routes : route_key => svc
     if contains(keys(var.lambda_arns), svc)
   }
+
+  # Per-route throttles for the unauthenticated routes (requests/second, burst). These are per ROUTE, not per
+  # client: API Gateway has no per-client limit. What they buy is a ceiling on how much of the stage-wide budget
+  # (default_route_settings: 50/s) a flood of ONE public route can take from everybody else. Per-client and
+  # per-tenant limits are enforced in the Lambdas (shared/rate_limit.py), except where a Lambda cannot reach
+  # Redis: the auth Lambda is outside the VPC, so /v1/auth/* leans on these alone.
+  #
+  # The numbers are generous relative to real use (a silent token refresh is about one request per user per
+  # hour) and exist to bound abuse, not to shape normal traffic; raise them before they are ever noticed.
+  public_route_throttles = {
+    "POST /v1/auth/refresh"        = { rate = 30, burst = 60 }
+    "POST /v1/auth/session"        = { rate = 10, burst = 20 }
+    "POST /v1/auth/callback"       = { rate = 10, burst = 20 }
+    "POST /v1/auth/authorize-url"  = { rate = 10, burst = 20 }
+    "POST /v1/auth/logout"         = { rate = 10, burst = 20 }
+    "POST /v1/auth/login"          = { rate = 5, burst = 10 }
+    "POST /v1/register"            = { rate = 3, burst = 6 }
+    "POST /v1/register/{slug}"     = { rate = 3, burst = 6 }
+    "POST /v1/onboarding-requests" = { rate = 2, burst = 4 }
+  }
+
+  active_public_route_throttles = {
+    for route_key, limits in local.public_route_throttles : route_key => limits
+    if contains(keys(local.active_public_routes), route_key)
+  }
 }
 
 # ---------------------------------------------------------------------------
@@ -378,10 +403,23 @@ resource "aws_apigatewayv2_stage" "default" {
     throttling_rate_limit  = 50
   }
 
+  # A flood of one public route must not be able to use up the stage-wide budget above; see public_route_throttles.
+  dynamic "route_settings" {
+    for_each = local.active_public_route_throttles
+    content {
+      route_key              = route_settings.key
+      throttling_rate_limit  = route_settings.value.rate
+      throttling_burst_limit = route_settings.value.burst
+    }
+  }
+
   access_log_settings {
     destination_arn = aws_cloudwatch_log_group.api_access_logs.arn
     format          = "$context.requestId $context.status $context.error.message"
   }
+
+  # route_settings name routes by key, and API Gateway rejects a key that does not exist yet.
+  depends_on = [aws_apigatewayv2_route.public_routes]
 
   tags = local.common_tags
 }

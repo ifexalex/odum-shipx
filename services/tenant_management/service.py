@@ -12,8 +12,9 @@ import uuid
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Any
 
-from shared.app_urls import MissingBaseUrlError, activation_url, invite_url
+from shared.app_urls import MissingBaseUrlError, activation_url, invite_url, login_url
 from shared.audit import log_audit
+from shared.auth import evict_identity_cache
 from shared.cbm_rate import get_cbm_rate_config, get_min_cbm_per_item
 from shared.encryption import decrypt_field, encrypt_field
 from shared.events import publish_event
@@ -1453,6 +1454,8 @@ def update_user(
                 cognito.global_sign_out(existing["email"])
             except Exception as exc:
                 logger.warning("Session invalidation failed for user %s: %s", user_id, exc)
+        # The identity cache holds the role for tokens that carry none.
+        evict_identity_cache(user_id)
 
     log_audit(
         tenant_id=tenant_id,
@@ -1468,6 +1471,35 @@ def update_user(
     return updated
 
 
+def _revoke_login(tenant_id: str, user: dict[str, Any]) -> dict[str, Any]:
+    """Cut a user's access off now and return their updated `tenant_user` row.
+
+    Disables the identity-provider account, marks the row `deactivated`, ends their sessions
+    and drops the cached identity. The row status is what denies a token that was already
+    issued (`shared.auth._check_user_active` reads it on every request); the sign-out also
+    revokes the refresh token so the session cannot be renewed, and is best effort because
+    the status check does not depend on it.
+    """
+    user_id = str(user["id"])
+    email = user.get("email")
+    cognito = get_identity_provider()
+    if email:
+        cognito.disable_user(email)
+
+    updated = repo.set_user_status(tenant_id, user_id, "deactivated")
+    if updated is None:
+        raise RuntimeError("set_user_status returned None unexpectedly")
+
+    if email:
+        try:
+            cognito.global_sign_out(email)
+        except Exception as exc:
+            logger.warning("Session invalidation failed for user %s: %s", user_id, exc)
+    # After the commit above, so the next request reads the new status instead of the old one.
+    evict_identity_cache(user_id)
+    return updated
+
+
 def deactivate_user(
     tenant_id: str,
     user_id: str,
@@ -1478,13 +1510,7 @@ def deactivate_user(
     if existing["status"] == "deactivated":
         raise BusinessRuleViolationError("User is already deactivated")
 
-    cognito = get_identity_provider()
-    if existing.get("email"):
-        cognito.disable_user(existing["email"])
-
-    updated = repo.set_user_status(tenant_id, user_id, "deactivated")
-    if updated is None:
-        raise RuntimeError("set_user_status returned None unexpectedly")
+    updated = _revoke_login(tenant_id, existing)
     log_audit(
         tenant_id=tenant_id,
         entity_type="tenant_user",
@@ -1623,6 +1649,25 @@ def anonymise_customer(
         )
     _pii_fields = {"name", "email", "phone", "whatsapp", "address", "contract_details"}
     before_masked = {k: ("***" if k in _pii_fields else v) for k, v in customer.items()}
+
+    # The erased person must not keep a working login: the tenant_user row and the identity-provider
+    # account are where their identity still lives. The record's link to it is cleared by the erasure,
+    # so read it first, and cut access before erasing so a failure leaves a customer that can be retried.
+    login = repo.get_user_by_id(tenant_id, str(customer["user_id"])) if customer.get("user_id") else None
+    if login is not None and login["status"] != "deactivated":
+        _revoke_login(tenant_id, login)
+        log_audit(
+            tenant_id=tenant_id,
+            entity_type="tenant_user",
+            entity_id=str(login["id"]),
+            action="STATUS_CHANGE",
+            actor_id=actor_id,
+            actor_role="tenant_admin",
+            before_state={"status": "active"},
+            after_state={"status": "deactivated", "reason": "customer_erasure"},
+            ip_address=ip_address,
+        )
+
     repo.anonymise_customer_record(tenant_id, customer_id)
     log_audit(
         tenant_id=tenant_id,
@@ -1693,6 +1738,11 @@ def update_customer(
     if not updates:
         return existing
     updates = _normalize_customer_phones(tenant_id, updates)
+    # Saving notification preferences is what records a choice (shared/notification_consent.py): a customer
+    # with no choice on record is messaged on every channel, one with a choice is held to it. Stamped here
+    # so it is true however the preferences arrive: the Account page, or staff recording what a customer said.
+    if "notification_consent" in updates and "consent_given_at" not in updates:
+        updates = {**updates, "consent_given_at": datetime.now(UTC).isoformat()}
     updated = repo.update_customer(tenant_id, customer_id, updates)
     if updated is None:
         raise RuntimeError("update_customer returned None unexpectedly")
@@ -2141,15 +2191,44 @@ def upsert_notification_template(
 # ---------------------------------------------------------------------------
 
 
+def _notify_account_exists(tenant_id: str, email: str, name: str | None, request_id: str) -> None:
+    """Tell the owner of an address that someone tried to register with it.
+
+    Best effort: the sign-up answer must not depend on whether this succeeds or how long it takes.
+    `name` is the existing account's, never what the registrant typed, which is attacker-controlled.
+    """
+    from shared.notifications import enqueue_notifications
+
+    try:
+        enqueue_notifications(
+            tenant_id=tenant_id,
+            event_type="registration_existing_account",
+            recipient={"email": email, "phone": "", "whatsapp": "", "name": name or ""},
+            template_data={"name": name or "", "login_link": login_url()},
+            request_id=request_id,
+        )
+    except MissingBaseUrlError as exc:
+        logger.error("registration_existing_account link could not be built — no email sent: %s", exc)
+    except Exception as exc:
+        logger.warning("registration_existing_account notification failed: %s", exc)
+
+
 def self_register_customer(
     req: CustomerRegistrationRequest,
     slug: str | None = None,
     host: str = "",
     request_id: str = "",
     ip_address: str | None = None,
-) -> dict[str, Any]:
+) -> None:
     """Register a customer against a tenant, provisioning both Cognito and the
     tenant_user row that Cognito login requires.
+
+    Returns nothing, and returns the same way whether the email was new or already had an account:
+    the endpoint is public, so any difference in the answer lets anyone test whether a person is a
+    customer of a given shipping company, or has an account anywhere on the platform (the identity
+    provider is shared by every tenant). An existing account's owner is told by email instead
+    (`_notify_account_exists`). Residual: a new registration does more work than an existing one, so
+    response time still differs slightly; rate limiting is what bounds probing through it.
 
     Tenant resolution order (first match wins):
       1. Explicit `slug` — the path param from POST /v1/register/{slug},
@@ -2163,7 +2242,8 @@ def self_register_customer(
 
     Guards:
       - Tenant must be active
-      - Email must not already exist in that tenant's customer table
+      - An email that already has an account (in this tenant's customer table, or in the identity
+        provider) creates nothing and is answered like a new one
 
     Ground-truth fix: this previously wrote the Cognito sub directly into
     `customer.user_id`, a column with FOREIGN KEY REFERENCES tenant_user(id)
@@ -2195,9 +2275,10 @@ def self_register_customer(
 
     tenant_id = str(tenant["id"])
 
-    # Duplicate email check
-    if repo.get_customer_by_email(tenant_id, req.email):
-        raise DuplicateResourceError("customer", req.email)
+    existing = repo.get_customer_by_email(tenant_id, req.email)
+    if existing:
+        _notify_account_exists(tenant_id, req.email, existing.get("name"), request_id)
+        return
 
     dial_code = dial_code_for_country(tenant.get("destination_country"))
     phone = normalize_phone(req.phone, dial_code)
@@ -2205,12 +2286,18 @@ def self_register_customer(
 
     # Provision Cognito user (sends temp-password email via Cognito)
     cognito = get_identity_provider()
-    cognito_sub = cognito.create_user(
-        email=req.email,
-        full_name=req.name,
-        tenant_id=tenant_id,
-        role="customer",
-    )
+    try:
+        cognito_sub = cognito.create_user(
+            email=req.email,
+            full_name=req.name,
+            tenant_id=tenant_id,
+            role="customer",
+        )
+    except DuplicateResourceError:
+        # The address has an account elsewhere on the platform: one identity belongs to exactly one
+        # tenant. Nothing was created, and the caller is told nothing about it.
+        _notify_account_exists(tenant_id, req.email, None, request_id)
+        return
     group_name = f"{tenant_id}:customer"
     cognito.create_group_if_not_exists(group_name)
     cognito.add_user_to_group(req.email, group_name)
@@ -2241,7 +2328,9 @@ def self_register_customer(
             "email": req.email,
             "phone": phone,
             "whatsapp": whatsapp,
-            "notification_consent": req.notification_consent or ["email"],
+            # An empty list is the registrant choosing nothing, not leaving it blank: only an omitted field
+            # gets the default.
+            "notification_consent": ["email"] if req.notification_consent is None else req.notification_consent,
             "consent_given_at": datetime.now(UTC).isoformat(),
             "user_id": str(portal_user["id"]),
         },
@@ -2276,7 +2365,6 @@ def self_register_customer(
         after_state={"id": str(customer["id"])},
         ip_address=ip_address,
     )
-    return customer
 
 
 # ---------------------------------------------------------------------------

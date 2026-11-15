@@ -16,7 +16,9 @@ import time
 import uuid
 from typing import Any
 
+from shared import rate_limit
 from shared.auth import get_tenant_context
+from shared.client_ip import client_ip
 from shared.exceptions import LogisticsBaseError, ResourceNotFoundError
 from shared.idempotency import check_idempotency, store_idempotency
 from shared.logging_config import bind_log_context, clear_log_context, setup_logging
@@ -62,7 +64,7 @@ def lambda_handler(event: dict[str, Any], context: Any) -> dict[str, Any]:
     http = event.get("requestContext", {}).get("http", {})
     method = http.get("method", "")
     path = http.get("path", "")
-    ip_address = event.get("requestContext", {}).get("identity", {}).get("sourceIp")
+    ip_address = client_ip(event)
 
     try:
         parts = path.strip("/").split("/")
@@ -166,8 +168,20 @@ def _handle_health_check(request_id: str) -> dict[str, Any]:
 
 
 def _handle_public_tracking(event: dict[str, Any], tracking_code: str, request_id: str) -> dict[str, Any]:
+    """Public lookup: a tracking code plus the phone number it was booked under.
+
+    Two limits, because the phone is the only secret. Per client address, to cap how fast anyone
+    can try; and per tracking code, counting only wrong guesses, so the code cannot be worked through
+    from many addresses either. A wrong guess and an unknown code are the same 404, and both count.
+    """
+    rate_limit.hit_for_client(rate_limit.TRACKING_IP, event)
+    rate_limit.peek(rate_limit.TRACKING_FAILURES, tracking_code)
     phone = _qp(event, "phone", "")
-    result = service.get_shipment_by_code_and_phone(tracking_code, phone)
+    try:
+        result = service.get_shipment_by_code_and_phone(tracking_code, phone)
+    except ResourceNotFoundError:
+        rate_limit.record_failure(rate_limit.TRACKING_FAILURES, tracking_code)
+        raise
     return success(result, request_id=request_id)
 
 

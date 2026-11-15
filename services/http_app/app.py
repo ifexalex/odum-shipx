@@ -29,6 +29,7 @@ from typing import Any
 from flask import Flask, Response, request
 
 from shared.auth_verify import build_authorizer_claims
+from shared.client_ip import resolve_client_ip, trusted_proxy_hops
 from shared.http_routing import invoke_handler, is_public_route, resolve_service
 from shared.logging_config import bind_log_context, clear_log_context, setup_logging
 
@@ -56,15 +57,20 @@ def _build_event(claims: dict[str, Any] | None) -> dict[str, Any]:
     """
     body_raw = request.get_data(as_text=True) or None
     authorizer: dict[str, Any] = {"claims": claims} if claims is not None else {}
+    http: dict[str, Any] = {"method": request.method, "path": request.path}
+    identity: dict[str, Any] = {}
+    # Behind Front Door and the Container Apps ingress the socket peer is a proxy, not the user. Only the
+    # address those proxies themselves recorded is trusted (TRUSTED_PROXY_HOPS); with none configured and a
+    # proxy header present the address is unknown, and the key is left out rather than set to the proxy's.
+    address = resolve_client_ip(request.remote_addr or "", request.headers.get("X-Forwarded-For", ""), trusted_proxy_hops())
+    if address:
+        http["sourceIp"] = identity["sourceIp"] = address
     return {
         "requestContext": {
             "requestId": str(uuid.uuid4()),
-            "http": {
-                "method": request.method,
-                "path": request.path,
-            },
+            "http": http,
             "authorizer": authorizer,
-            "identity": {"sourceIp": request.remote_addr or "127.0.0.1"},
+            "identity": identity,
         },
         "body": body_raw,
         "queryStringParameters": dict(request.args) or {},

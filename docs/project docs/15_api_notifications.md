@@ -337,6 +337,8 @@ When a container transitions to `at_warehouse`, `services/tracking/service.py` c
 
 When a customer self-registers via `POST /v1/register/{slug}`, a welcome notification is enqueued with `event_type="customer_registered"`.
 
+When someone registers with an email that **already has an account**, nothing is created and `registration_existing_account` is emailed to that address instead (audit SEC-04): the page answers `202` either way, so this email is how the owner finds out. It is **email only** (no SMS or WhatsApp), carries a sign-in link (`login_link`, labelled "Sign in"), is an account event that is always sent (below), and greets the account's own name, never what the registrant typed.
+
 ## Customer Account-Creation Invite Notification
 
 When a customer is issued an account-creation invite (`POST /v1/customers/{id}/invite`, or auto-issued on manifest import for newly created customers — `07_api_tenant_management.md` §"Customer Account-Creation Invites"), a notification is enqueued with `event_type="customer_invite"` and `template_data={"name", "invite_link"}`. SMS is the primary channel since imported customers typically have only a phone. Added to all five template dicts in `services/notification/service.py` (`_SMS_TEMPLATES`/`_SMS_TEMPLATES_ZH`, `EMAIL_SUBJECTS`/`EMAIL_SUBJECTS_ZH`, both `WA_TEMPLATE_MAP`s), following the `customer_registered` entries.
@@ -782,3 +784,26 @@ Two independent guards, both failing closed outside production:
 
 This matters because dev databases hold genuine customer numbers imported from
 client manifests.
+
+## Customer notification preferences — what an opt-out governs (audit SEC-01, 2026-11-15)
+
+`customer.notification_consent` was collected and editable but never read on the send path. The policy (owner decision; ADR-006) lives in `shared/notification_consent.py`:
+
+| Class | Events | Behaviour |
+|---|---|---|
+| **Account** | `account_activation`, `customer_invite`, `registration_existing_account` | Always sent. |
+| **Operational** | `shipment_update`, `container_arrived`, `payment_due`, `payment_claim_confirmed/rejected`, `release_note_generated`, `packing_list_approved`, `damage_claim_update`, `cbm_dispute_update`, `customer_registered`, `storage_first_reminder`, `storage_final_reminder`, `tenant_onboarded`, `tenant_suspended` | Sent **regardless of preferences** (owner decision). |
+| **Consent-bound** | none today; **any event type not listed above** | Held back for a customer whose recorded preferences exclude the channel. |
+
+- **"Recorded" means `consent_given_at` is set.** A customer with none recorded (staff-created, manifest-imported: 23 of 23 in the dev database) is not restricted. A recorded empty list means "none". `update_customer` stamps `consent_given_at` whenever `notification_consent` is saved, whoever saves it; self-registration stamps it, and an explicitly empty choice is no longer overridden with `["email"]`.
+- **Where it applies:** `enqueue_notifications` and `enqueue_notification` (`shared/notifications.py`, via `consent_verdict`) and the WhatsApp-to-SMS fallback (`trigger_sms_fallback`). A customer who agreed to SMS but not WhatsApp is texted instead of going silent.
+- **Fails closed:** a consent-bound message with no `customer_id`, an unknown customer, or a failed lookup is not sent.
+- **Suppressed sends are logged:** `notification_log.status = 'suppressed'` (migration 064), reason in `error_detail` (`customer has not agreed to sms`), contact masked.
+- **Today this holds nothing back.** Announcements are in-app only (`staff_notification` rows, no SMS/WhatsApp/email) and there is no marketing send, so every existing event is operational or account. Moving an event type into `CONSENT_BOUND_EVENTS` is the one-line change that makes an opt-out govern it. `tests/unit/test_notification_consent.py::TestEveryEventTypeIsClassified` fails until a new event type is classified, so an unclassified type cannot slip through unbound.
+- **Customer-facing copy** (Account page, registration form) now says the channel toggles cover *optional* messages, and that shipment, invoice, claim and account messages are always sent. It used to say the SMS toggle controlled "payment due, status changes, claims".
+
+### Bugs fixed on the way
+
+- **Duplicate emails.** `primary_channel` returns `"email"` for a recipient with no phone, so `channels = (primary, "email")` queued the same email **twice** (staff activation links, phone-less customers' invites, every notification to a recipient without a phone). Deduplicated; pinned by `TestEnqueueChannels`.
+- **Missing `customer_id`.** `container_arrived` and the four scheduled customer sends (`storage_reminders`, `release_expiry`) did not pass it, which breaks the WhatsApp-to-SMS fallback (it re-reads the phone from the customer) and the log link. All pass it now.
+- **New event type** `registration_existing_account`: subject, EN/ZH body and a `login_link` button label added to the notification service tables.

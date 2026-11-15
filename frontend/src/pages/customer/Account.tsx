@@ -27,18 +27,18 @@ const CHANNELS = [
   {
     key: 'sms',
     label: 'SMS',
-    sub: 'Important transactional alerts — payment due, status changes, claims',
+    sub: 'Text messages, for optional announcements and offers',
   },
   {
     key: 'whatsapp',
     label: 'WhatsApp',
-    sub: 'Richer formatting with carton details · most reliable',
+    sub: 'Richer formatting · most reliable, for optional announcements and offers',
     recommended: true,
   },
   {
     key: 'email',
     label: 'Email',
-    sub: 'Receipts, invoices, monthly statements',
+    sub: 'For optional announcements and offers',
   },
 ] as const
 
@@ -147,7 +147,13 @@ function NotificationsTab({ customer, onSaved }: { customer: Customer; onSaved: 
     setError(null)
     setSaved(false)
     try {
-      const updated = await customersApi.update(customer.id, { notification_consent: consent, locale })
+      // Send only what changed. Saving notification_consent is what records that the customer made a
+      // choice (shared/notification_consent.py), so a customer who only switches language must not be
+      // recorded as having chosen the channel list they never touched, empty or not.
+      const body: { notification_consent?: string[]; locale?: 'en' | 'zh' } = {}
+      if (consentDirty) body.notification_consent = consent
+      if (locale !== (customer.locale ?? 'en')) body.locale = locale
+      const updated = await customersApi.update(customer.id, body)
       onSaved(updated)
       setSaved(true)
     } catch (err) {
@@ -159,7 +165,10 @@ function NotificationsTab({ customer, onSaved }: { customer: Customer; onSaved: 
 
   return (
     <Card padding={28}>
-      <SectionHead title="How would you like updates?" sub="Choose which channels we use to keep you informed" />
+      <SectionHead
+        title="How would you like updates?"
+        sub="Choose the channels for optional messages such as announcements and offers. Updates about your own shipments, invoices and claims, and emails about your account, are always sent."
+      />
       <div style={{ height: 12 }} />
 
       {error && <div style={{ marginBottom: 16 }}><Banner variant="error" title="Save failed">{error}</Banner></div>}
@@ -204,7 +213,7 @@ function NotificationsTab({ customer, onSaved }: { customer: Customer; onSaved: 
               </div>
               <div style={{ fontSize: 12, color: 'var(--color-ink-3)', marginTop: 3 }}>{sub}</div>
             </div>
-            <ToggleSwitch checked={enabled} onChange={() => toggle(key)} />
+            <ToggleSwitch checked={enabled} onChange={() => toggle(key)} label={label} />
           </div>
         )
       })}

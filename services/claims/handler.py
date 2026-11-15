@@ -23,6 +23,7 @@ from decimal import Decimal, InvalidOperation
 from typing import Any
 
 from shared.auth import get_tenant_context
+from shared.client_ip import client_ip
 from shared.exceptions import LogisticsBaseError, ResourceNotFoundError, ValidationError
 from shared.idempotency import check_idempotency, store_idempotency
 from shared.logging_config import bind_log_context, clear_log_context, setup_logging
@@ -83,7 +84,7 @@ def lambda_handler(event: dict[str, Any], context: Any) -> dict[str, Any]:
     http = event.get("requestContext", {}).get("http", {})
     method = http.get("method", "")
     path = http.get("path", "")
-    ip_address = event.get("requestContext", {}).get("identity", {}).get("sourceIp")
+    ip_address = client_ip(event)
 
     if method == "GET" and path.strip("/") == "v1/health":
         return _health_response(request_id)

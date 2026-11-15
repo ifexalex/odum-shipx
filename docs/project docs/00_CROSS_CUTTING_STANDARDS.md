@@ -40,6 +40,7 @@ Implementation goes in `shared/idempotency.py` (Task 06).
 | GET (single) | 200 | |
 | GET (list) | 200 | With pagination meta |
 | POST (create) | 201 | Include `Location` header with resource URI |
+| POST (public, outcome must not be observable) | 202 | e.g. `POST /v1/register/{slug}`: the same answer whether or not the email already had an account (audit SEC-04) |
 | PUT (full replace) | 200 | |
 | PATCH (partial update) | 200 | |
 | PATCH (state transition) | 200 | |
@@ -49,7 +50,9 @@ Implementation goes in `shared/idempotency.py` (Task 06).
 | Auth insufficient | 403 | |
 | Not found | 404 | Do NOT return 403 for wrong-tenant — always 404 (prevents enumeration) |
 | Illegal state transition | 409 | |
-| Rate limit | 429 | Include `Retry-After` header |
+| Rate limit | 429 | Include `Retry-After` header (`shared/rate_limit.py` sets it; see §8.7) |
+| Wrong request origin (cookie endpoints) | 403 | `ORIGIN_NOT_ALLOWED` (§8.7) |
+| Wrong media type (cookie endpoints that read a body) | 415 | `UNSUPPORTED_MEDIA_TYPE` |
 | Tier limit exceeded | 429 | |
 | Server error | 500 | |
 
@@ -93,7 +96,9 @@ Every error code used across all services:
 | `SELF_APPROVAL_FORBIDDEN` | 422 | packing_list |
 | `APPROVAL_THRESHOLD_EXCEEDED` | 403 | claims, refunds |
 | `USAGE_LIMIT_EXCEEDED` | 429 | metering |
-| `RATE_LIMIT_EXCEEDED` | 429 | API Gateway |
+| `RATE_LIMIT_EXCEEDED` | 429 | `shared/rate_limit.py` (per client address, username, tracking code, tenant), with `Retry-After`; API Gateway for per-route throttles |
+| `ORIGIN_NOT_ALLOWED` | 403 | `shared/origin_guard.py` (cookie-authenticated `/v1/auth/*` routes) |
+| `UNSUPPORTED_MEDIA_TYPE` | 415 | `shared/origin_guard.py` (`/v1/auth/session`, `/callback`, `/authorize-url`) |
 | `INTERNAL_ERROR` | 500 | global handler |
 | `EXTERNAL_SERVICE_ERROR` | 502 | notifications (Africa's Talking, Meta, SES) |
 
@@ -243,6 +248,8 @@ the masking rules applied to audit snapshots.
 - **Why distributed, not in-memory:** Lambda scales horizontally. An in-memory dict is per-instance only — a suspended tenant could still transact on all other warm instances until their individual TTL expires. Redis ensures all instances see the same status within the TTL window.
 - **Explicit invalidation on status change:** `suspend_tenant`, `offboard_tenant`, `activate_tenant`, and `reactivate_tenant` all call `_tenant_status_cache.delete(tenant_id)` immediately after the DB write, eliminating the TTL lag for the critical path.
 - **Fail-soft:** Redis errors are logged as warnings; `get()` returns `None`, which causes a DB fallback. Redis is an optimisation layer, not a hard dependency.
+- **No retries, and a circuit breaker (2026-11-15).** redis-py's default retries a failed command with exponential backoff, which made every operation against an unreachable Redis take about four seconds, and a request makes several. `DistributedCache` now disables client retries and, after one failure, leaves Redis alone for 5 seconds (per process), so an outage costs one fast failure instead of one per call. Found by a test against a real Redis (`tests/db/test_rate_limit_redis.py`) while building the rate limiter.
+- **User identity (2026-11-15):** the same cache holds `identity:{user_id}` -> `{tenant_id}:{role}` (60 s) or `""` for no active row, read by `get_tenant_context` on every request (§8.7). `evict_identity_cache()` runs after a deactivation or role change.
 - **Local dev:** Redis 7 Alpine container on port 6379 (`shipx_redis` in `docker-compose.local.yml`). `REDIS_HOST=localhost` in `.env.local`.
 - **Production:** ElastiCache cluster endpoint injected as `REDIS_HOST` Lambda env var via Terraform.
 
@@ -464,8 +471,45 @@ Use CloudWatch Embedded Metrics Format for zero-cost metric emission from logs.
   (IP reputation, common rule set, known-bad-inputs). Full deployment + tuning steps and the
   attack-protection posture live in `docs/runbook.md` → "Frontend Deployment & Go-Live".
 - **API (API Gateway HTTP v2):** WAFv2 can't attach to HTTP APIs; protected by Shield Standard,
-  stage throttling (50 req/s, burst 100), Lambda concurrency caps, and per-tenant metering. Full
-  L7 WAF on the API needs a CloudFront front — a documented follow-up, not required for launch.
+  stage throttling (50 req/s, burst 100), per-route throttles on the public routes
+  (`public_route_throttles`), the application-level limits in §8.7, Lambda concurrency caps, and per-tenant
+  metering. Full L7 WAF on the API needs a CloudFront front — a documented follow-up, not required for launch.
+  ~~Per-tenant throttling through API Gateway usage plans / API keys~~ was claimed here and in
+  `04c`/`22` but an HTTP API has neither and the Terraform never created them; the per-tenant limit is
+  `shared/rate_limit.py`.
+
+### 8.7 Abuse controls on the public surface (audit Phase 2, 2026-11-15)
+
+Four controls, each at a chokepoint rather than in every handler. ADR-006 and ADR-007 give the reasoning.
+
+- **A token must not outlive its user (SEC-02).** `get_tenant_context` (`shared/auth.py`) confirms on every
+  request that the token's `sub` still has an *active* `tenant_user` row, in the tenant the token claims. A
+  deactivated user, an erased customer or an unknown subject gets `401` on the very next request, whatever the
+  token's expiry. The lookup goes through `identity:{user_id}` in Redis (60 s) and is evicted on
+  deactivation. If the lookup fails the request is refused with `503` (fail closed, as the tenant-status
+  check). Platform admins have no row and are exempt. Deactivation also calls `global_sign_out`, which revokes
+  the refresh token so the session cannot be renewed; erasing a customer (`DELETE /v1/customers/{id}`) now
+  does the same to their portal login. `tenant_user.email` / `full_name` of an erased customer are **not**
+  scrubbed (open: a GDPR follow-up).
+- **Cookie endpoints check the request origin (SEC-05).** `/v1/auth/session`, `/refresh`, `/logout`,
+  `/authorize-url` and `/callback` return `403 ORIGIN_NOT_ALLOWED`, setting no cookie, unless `Origin` is a
+  trusted origin: the origins of `APP_BASE_URL`, `CUSTOMER_PORTAL_BASE_URL` and `ENTRA_REDIRECT_URI`, plus
+  `ALLOWED_ORIGINS` (Terraform fills it from `cors_allow_origins`) and `CORS_ALLOW_ORIGINS`. A missing
+  `Origin` is refused too. With none configured every request is refused (fail closed). The routes that read a
+  body (`/session`, `/callback`, `/authorize-url`) also require `Content-Type: application/json` (`415`).
+  `/login` takes credentials and sets no cookie, so it is rate-limited instead.
+- **Rate limits (SEC-03).** `shared/rate_limit.py`: Redis fixed windows, `429` + `Retry-After`, **fail open** with
+  `rate_limiter_unavailable` logged at ERROR. Policies and defaults: login 10/min per address and 5 failed
+  per 15 min per username; register and onboarding-requests 5/hour per address; tracking lookup 30/min per
+  address and 10 wrong-phone guesses/hour per code; cookie routes 60/min per address; authenticated 600/min
+  per tenant (in `get_tenant_context`, platform admin exempt). Override with `RATE_LIMIT_<POLICY>=limit/window`
+  (or `off`); `RATE_LIMIT_ENABLED=false` switches it all off. Terraform disables it on the non-VPC `auth`
+  Lambda, which cannot reach Redis; those routes get API Gateway per-route throttles.
+- **The client address is trustworthy (SEC-03).** `shared/client_ip.py` reads `requestContext.http.sourceIp`
+  (HTTP API) then `identity.sourceIp`, which fixes audit logs that recorded no address in production. On the
+  container app `TRUSTED_PROXY_HOPS` is the number of proxies that append to `X-Forwarded-For`; the client is
+  that many entries from the end. Unset behind a proxy, the address is *unknown*: audit logs record none and
+  per-address limits are skipped, rather than one bucket for everybody.
 
 ---
 

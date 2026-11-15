@@ -9,6 +9,10 @@
  * forced through the set-new-password flow (NEW_PASSWORD_REQUIRED).
  * So this screen collects profile + consent only — no password fields.
  *
+ * The confirmation never says whether the email was already registered: the
+ * backend answers both the same way (audit SEC-04), so a visitor cannot use this
+ * form to find out who is a customer of a given company.
+ *
  * Ground-truth fix: this used to resolve the tenant from the Host header,
  * which is unreachable in practice (the frontend calls a shared
  * VITE_API_BASE_URL, so the backend only ever sees API Gateway's own host).
@@ -64,11 +68,10 @@ export function RegisterScreen(): JSX.Element {
       })
       setDone(true)
     } catch (err) {
-      if (err instanceof ApiError && err.status === 409) {
-        setError('An account with this email already exists. Try signing in instead.')
-      } else {
-        setError(err instanceof ApiError ? err.message : 'Registration failed. Please try again.')
-      }
+      // There is no "this email already exists" case to report: the backend answers a taken email
+      // exactly like a new one (and emails its owner), so the form cannot be used to find out who
+      // has an account.
+      setError(err instanceof ApiError ? err.message : 'Registration failed. Please try again.')
     } finally {
       setSubmitting(false)
     }
@@ -92,13 +95,14 @@ export function RegisterScreen(): JSX.Element {
           >
             <Icon name="check" size={42} color="var(--color-success)" stroke={2.5} />
           </div>
-          <h2 className={styles.formTitle} style={{ marginBottom: 8 }}>Account created.</h2>
+          <h2 className={styles.formTitle} style={{ marginBottom: 8 }}>Check your email.</h2>
           <p className={styles.formSub} style={{ marginBottom: 24 }}>
-            We sent a <strong>temporary password</strong> to <strong>{email}</strong>. Sign in with it
-            and you&apos;ll be asked to choose your own password.
+            We&apos;ve sent a message to <strong>{email}</strong>. If this is your first time, it has a{' '}
+            <strong>temporary password</strong>: sign in with it and you&apos;ll be asked to choose your own.
+            If you already have an account, it tells you so, with a link to sign in.
           </p>
           <Banner variant="info" title="Didn't receive the email?">
-            Check your spam folder. The temporary password expires in 7 days.
+            Check your spam folder. A temporary password expires in 7 days.
           </Banner>
           <div style={{ marginTop: 24 }}>
             <Button variant="primary" size="lg" full onClick={() => navigate('/login')}>
@@ -180,8 +184,11 @@ export function RegisterScreen(): JSX.Element {
         />
 
         <div style={{ marginBottom: 16 }}>
-          <span style={{ display: 'block', fontWeight: 500, fontSize: 13, color: 'var(--color-ink-2)', marginBottom: 8 }}>
-            Notify me via
+          <span style={{ display: 'block', fontWeight: 500, fontSize: 13, color: 'var(--color-ink-2)', marginBottom: 4 }}>
+            Send me optional messages via
+          </span>
+          <span style={{ display: 'block', fontSize: 12, color: 'var(--color-ink-3)', marginBottom: 8, lineHeight: 1.4 }}>
+            Announcements and offers. Updates about your shipments, invoices and claims, and account emails, are always sent.
           </span>
           <div style={{ display: 'flex', gap: 16 }}>
             {CHANNELS.map(({ key, label }) => (

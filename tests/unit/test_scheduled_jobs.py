@@ -553,7 +553,7 @@ class TestScheduledLocaleForwarding:
                 tenant_id=TENANT_ID,
                 channel="email",
                 recipient="test@example.com",
-                template_id="test_template",
+                template_id="shipment_update",
                 template_vars={},
                 locale="zh",
             )

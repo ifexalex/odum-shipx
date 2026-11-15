@@ -367,6 +367,7 @@ def update_container_status(
                     template_data={"container_number": container.get("container_number", "")},
                     locale=customer.get("locale", "en"),
                     request_id=request_id,
+                    customer_id=str(customer["id"]),
                 )
                 # In-app customer bell — see payment_release/service.py's
                 # matching comment.

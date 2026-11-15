@@ -862,3 +862,17 @@ whichever host happened to be configured elsewhere — a working link to the wro
 environment, which is worse than an error because nothing reports it.
 
 Covered by `tests/unit/test_app_urls.py`.
+
+## `shared/` additions — audit Phase 2 (2026-11-15)
+
+| Module | Purpose |
+|---|---|
+| `shared/auth.py` | `get_tenant_context` now confirms the user still has an active `tenant_user` row (`_check_user_active`, 401 / 503), and counts the tenant against its rate limit. New `evict_identity_cache(user_id)`; `_active_identity` is the strict cached lookup (raises on DB failure) and `resolve_identity_from_db` the tolerant wrapper the identity fallback keeps using. |
+| `shared/origin_guard.py` | `trusted_origins()`, `assert_trusted_origin(event)` (403 `ORIGIN_NOT_ALLOWED`; a missing `Origin` is refused; fail closed when none is configured), `assert_json_content_type(event)` (415). Used by `services/auth/handler.py`. |
+| `shared/rate_limit.py` | Redis fixed-window limiter: `hit`, `peek` + `record_failure` + `clear`, `hit_for_client`; named policies (`LOGIN_IP`, `LOGIN_FAILURES`, `REGISTER_IP`, `ONBOARDING_IP`, `TRACKING_IP`, `TRACKING_FAILURES`, `SESSION_IP`, `TENANT`); `RATE_LIMIT_<NAME>` overrides and `RATE_LIMIT_ENABLED`. Fails open, logging `rate_limiter_unavailable`. Identifiers are hashed in keys. |
+| `shared/client_ip.py` | `client_ip(event)` (reads `requestContext.http.sourceIp` then `identity.sourceIp`), `resolve_client_ip(peer, xff, hops)`, `trusted_proxy_hops()` (`TRUSTED_PROXY_HOPS`). All handlers now use `client_ip` for `ip_address`. |
+| `shared/notification_consent.py` | Pure policy: `ACCOUNT_EVENTS`, `OPERATIONAL_EVENTS`, `CONSENT_BOUND_EVENTS`, `is_consent_bound`, `permits`. |
+| `shared/notifications.py` | `consent_verdict`, `ConsentVerdict`, `record_suppressed`; both enqueue paths apply them; channels are de-duplicated. |
+| `shared/distributed_cache.py` | `incr_window` (atomic INCR + expiry in one Lua script) and `window_state`; **no client retries and a 5 s circuit breaker** (a Redis outage cost ~4 s per call before). |
+| `shared/exceptions.py` / `shared/responses.py` | `UntrustedOriginError` (403), `UnsupportedMediaTypeError` (415), `RateLimitExceededError` (429, `retry_after`); `accepted()` (202); `error_response` sets `Retry-After`. |
+| `shared/app_urls.py` | `origin_of` is now public (shared with the origin guard); new `login_url()`. |

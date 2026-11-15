@@ -715,9 +715,10 @@ def get_customer_full_export_data(tenant_id: str, customer_id: str) -> dict[str,
 
 
 def get_customer_by_email(tenant_id: str, email: str) -> dict[str, Any] | None:
+    """Return `{id, name}` of the live customer with this email, ignoring case, or None."""
     rows = execute_with_tenant(
         tenant_id,
-        "SELECT id FROM customer WHERE tenant_id = %s AND email = %s AND anonymised_at IS NULL LIMIT 1",
+        "SELECT id, name FROM customer WHERE tenant_id = %s AND LOWER(email) = LOWER(%s) AND anonymised_at IS NULL LIMIT 1",
         (tenant_id, email),
     )
     return rows[0] if rows else None

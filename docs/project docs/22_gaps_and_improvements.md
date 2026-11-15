@@ -111,9 +111,9 @@ Work through these iteratively — check off each item when implemented and upda
   - Add `webhook_config` to `tenant_config` (URL + HMAC secret); fire-and-forget HTTP POST on key domain events.
   - _Touches_: new `shared/webhook.py`, `services/tenant_management/`, EventBridge rules, `07_api_tenant_management.md`
 
-- [x] **API rate limiting per tenant**
+- [x] **API rate limiting per tenant** — **corrected 2026-11-15:** ticked in error. An HTTP API has no usage plans, so nothing was configured; done now in `shared/rate_limit.py` (ADR-007).
   - Usage is metered but not enforced. A runaway or compromised tenant can overwhelm the DB.
-  - Configure API Gateway usage plan + throttling per tenant; raise `UsageLimitExceededError` (429) when exceeded.
+  - ~~Configure API Gateway usage plan + throttling per tenant;~~ raise `RateLimitExceededError` (429, `Retry-After`) when exceeded.
   - _Touches_: `infrastructure/aws/modules/api-gateway/`, `04c_terraform_api_gateway.md`
 
 - [x] **Rate history (dollar rate + CBM rate changes)**
@@ -205,7 +205,7 @@ Work through these iteratively — check off each item when implemented and upda
 - **Notification template management API** — 2026-05-05. Migration 024 adds `notification_template` table (RLS). `GET/PUT /v1/tenant/notification-templates/{event_type}/{channel}`. `enqueue_notifications` in `shared/notifications.py` now looks up custom templates and embeds as `template_override` in SQS messages.
 - **Customer self-registration** — 2026-05-05. `POST /v1/register` (public, no JWT). Tenant resolved from `Host` header: custom_domain first, then subdomain slug. Migration 023 adds `slug` (NOT NULL UNIQUE, auto-derived from company_name) and `custom_domain` (nullable, enterprise) to `tenant`. Slug auto-generated at tenant creation. Duplicate email guard. Cognito provisions user with role=customer; welcome notification enqueued.
 - **Outbound webhook** — 2026-05-06. `shared/webhook.py` HMAC-SHA256 fire-and-forget HTTP POST. Config stored in `tenant_config` key `webhook_config` (url, secret, enabled, events list). Fired from `services/tracking/service.py` on every `container.status_updated` event. `webhook_config` added to `DEFAULT_CONFIGS`. Signature sent as `X-ShipX-Signature-256: sha256=<hex>`.
-- **API rate limiting** — 2026-05-06. Implemented at API Gateway level via usage plans and throttling (10 RPS burst, 5 RPS steady per tenant). Documented in `04c_terraform_api_gateway.md`. App-level `UsageLimitExceededError` (429) already raised by metering checks when soft limits are breached.
+- ~~**API rate limiting** — 2026-05-06. Implemented at API Gateway level via usage plans and throttling (10 RPS burst, 5 RPS steady per tenant).~~ **Corrected 2026-11-15:** this never existed; an HTTP API has no usage plans and the only limit was one stage-wide throttle shared by every tenant. Real limits shipped with audit Phase 2: per client/username/tracking-code/tenant in `shared/rate_limit.py`, per-route throttles at API Gateway (`04c`, ADR-007). App-level `UsageLimitExceededError` (429) from metering is separate and unchanged.
 - **Rate history** — 2026-05-06. Migration 025 adds `rate_history` table (RLS-enabled, append-only). `update_dollar_rate` appends a row on every rate change (best-effort). `GET /v1/tenant/rate-history?rate_type=dollar_rate&limit=50` returns paginated history.
 - **Health check on all Lambdas** — 2026-05-06. `GET /v1/health` (no JWT) added to all 7 handlers: billing, claims, manifest, packing_list, payment_release, refunds, tenant_management. Returns `{"status":"healthy","timestamp":"..."}`. Checked before `get_tenant_context`.
 - **Cognito resend-invite / reset-password** — 2026-05-06. `POST /v1/tenant/users/{id}/resend-invite` (calls `admin_create_user` with `MessageAction=RESEND`) and `POST /v1/tenant/users/{id}/reset-password` (calls `admin_reset_user_password`). Both tenant_admin only.

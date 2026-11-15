@@ -44,7 +44,7 @@ class MissingBaseUrlError(RuntimeError):
     """
 
 
-def _origin_of(url: str) -> str:
+def origin_of(url: str) -> str:
     """Return ``scheme://host`` for an absolute URL, or "" if it is not one."""
     parts = urlsplit(url.strip())
     return f"{parts.scheme}://{parts.netloc}" if parts.scheme and parts.netloc else ""
@@ -74,11 +74,11 @@ def app_base_url(*, override_env: str | None = None) -> str:
         # A value that is set but relative is a misconfiguration, not a
         # fallback: say which variable is wrong rather than silently moving on
         # to the next one and emitting a link to the wrong host.
-        if not _origin_of(value):
+        if not origin_of(value):
             raise MissingBaseUrlError(f"{name} is set but is not an absolute URL (expected https://host)")
         return value.rstrip("/")
 
-    derived = _origin_of(os.environ.get("ENTRA_REDIRECT_URI", ""))
+    derived = origin_of(os.environ.get("ENTRA_REDIRECT_URI", ""))
     if derived:
         return derived
 
@@ -99,3 +99,8 @@ def invite_url(token: str) -> str:
     back to the shared app base.
     """
     return f"{app_base_url(override_env='CUSTOMER_PORTAL_BASE_URL')}/invite/{token}"
+
+
+def login_url() -> str:
+    """Absolute ``/login`` link, for messages that point someone at the sign-in page."""
+    return f"{app_base_url()}/login"

@@ -251,6 +251,22 @@ variable "entra_authorize_prompt" {
   default     = "select_account"
 }
 
+variable "trusted_proxy_hops" {
+  description = <<-EOT
+    Number of reverse proxies in front of the app that each append the address they received the
+    connection from to X-Forwarded-For (read as TRUSTED_PROXY_HOPS by shared/client_ip.py). The client is
+    taken that many entries from the END of the header, because a client can put anything at the front.
+
+    0 means none are configured. That is safe but not useful behind Front Door: with a proxy header and an
+    internal peer address the client address is treated as unknown, so per-client rate limits do not apply
+    (per-tenant and per-username ones still do) and audit logs record no address. Set it to the VERIFIED hop
+    count (likely 2: Front Door, then the Container Apps ingress) after checking a real request's header.
+    Too low lumps every user into one client; too high lets a client choose its own address.
+  EOT
+  type        = number
+  default     = 0
+}
+
 variable "app_base_url" {
   description = <<-EOT
     Public base URL of the SPA, used to build activation and password links in

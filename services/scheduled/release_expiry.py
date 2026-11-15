@@ -122,6 +122,7 @@ def _notify_customer(tenant_id: str, note: dict[str, Any]) -> None:
                 template_id="release_note_generated",
                 template_vars=template_vars,
                 locale=locale,
+                customer_id=str(note["customer_id"]),
             )
         except Exception:
             logger.warning(
@@ -139,6 +140,7 @@ def _notify_customer(tenant_id: str, note: dict[str, Any]) -> None:
                 template_id="release_note_generated",
                 template_vars=template_vars,
                 locale=locale,
+                customer_id=str(note["customer_id"]),
             )
         except Exception:
             logger.warning(

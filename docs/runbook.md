@@ -995,3 +995,19 @@ types. Do not delete those rows to get past it: they are real compensation reque
 (`UPDATE refund_request SET refund_type = 'damage_or_loss' WHERE refund_type IN ('missing_item','seized_item')`) after
 agreeing that with finance, then downgrade. Dropping `waived_at` loses which storage fees were waived (the totals already
 reflect the waiver; the history does not survive).
+
+## Rate limiting, origin checks and user revocation (audit Phase 2, 2026-11-15)
+
+**Alarm hook: `rate_limiter_unavailable`.** `shared/rate_limit.py` logs this at ERROR, at most once per 30 s per process, when Redis cannot be reached. The limiter **fails open**, so nothing is down: protection is off for as long as Redis is. Create a CloudWatch log metric filter on that string and alarm on it (this is the OPS-04 hook). Fix Redis (ElastiCache / Azure Cache); counters restart empty and limiting resumes by itself within about 5 seconds (the circuit breaker in `DistributedCache`).
+
+**Users report `429 RATE_LIMIT_EXCEEDED`.** Read `Retry-After`. Which policy? The log line `Rate limit exceeded (policy=..., key=...)` names it. Usual cause is a shared office or mobile-carrier address hitting a per-address limit (`session_ip` 60/min, `tracking_ip` 30/min). Raise it with `RATE_LIMIT_<POLICY>=limit/window` on the affected Lambda or container app, or switch the limiter off with `RATE_LIMIT_ENABLED=false` in an emergency. `RATE_LIMIT_TENANT` (default 600/min) is a guess; tune it from the `api_calls` usage metric. To clear one client's counter: delete the matching `ratelimit:*` key in Redis (keys are hashed, so find it by `redis-cli --scan --pattern 'ratelimit:login_failures:*'` and a known account's behaviour, or flush the policy's keys).
+
+**A tracking code is locked ("429" with a 1 hour `Retry-After`).** Ten wrong phone guesses lock the *code*, for every address, for an hour. That is by design (the phone is the only secret) and can be used to deny one code to its owner. Clear it by deleting the code's `ratelimit:tracking_failures:*` keys.
+
+**Everyone's sign-in or refresh returns `403 ORIGIN_NOT_ALLOWED`.** The auth Lambda found no trusted origin, or not this one. It trusts the origins of `APP_BASE_URL`, `CUSTOMER_PORTAL_BASE_URL`, `ENTRA_REDIRECT_URI`, and `ALLOWED_ORIGINS` / `CORS_ALLOW_ORIGINS`. After a Terraform change confirm `ALLOWED_ORIGINS` and `APP_BASE_URL` are on the function. With none set it refuses everything and logs `No trusted origin is configured` at ERROR. Do not "fix" it by removing the check.
+
+**Azure: all users share one rate-limit bucket, or audit logs show no IP.** `TRUSTED_PROXY_HOPS` is unset or wrong. Behind Front Door and the Container Apps ingress the socket peer is a proxy. Unset, the app treats the client address as *unknown* (no audit IP; per-address limits skipped, which is safe). Set `trusted_proxy_hops` (likely 2) only after checking a real request's `X-Forwarded-For`: too low lumps every user into one client, too high lets a client choose its own address.
+
+**A deactivated user still has access.** They should not: the very next request gets 401. If one does, check Redis for a stale `identity:<user id>` entry (deactivation evicts it; the TTL is 60 s) and that the `tenant_user` row says `deactivated`. A request returning `503 Service Unavailable` with "User status check unavailable" means the lookup failed and the user check failed closed.
+
+**Migration 064** adds the `suppressed` status to `notification_log`. Its downgrade refuses while any suppressed row exists; do not delete those rows, they are the record of why a customer was not messaged.

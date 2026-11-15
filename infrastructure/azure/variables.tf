@@ -160,6 +160,12 @@ variable "entra_authorize_prompt" {
   default     = "select_account"
 }
 
+variable "trusted_proxy_hops" {
+  description = "Reverse proxies in front of the API that append to X-Forwarded-For; see modules/container_app/variables.tf. 0 until verified against a real request."
+  type        = number
+  default     = 0
+}
+
 variable "app_base_url" {
   description = <<-EOT
     Public SPA base URL used to build activation/password links in outbound

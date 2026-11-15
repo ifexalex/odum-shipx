@@ -2,11 +2,13 @@
 
 import pytest
 
+from shared.auth import _check_user_active as _real_check_user_active
 from shared.auth import _parse_primary_role, _parse_roles, get_tenant_context
-from shared.exceptions import AuthenticationRequiredError, TenantSuspendedError
+from shared.exceptions import AuthenticationRequiredError, ServiceUnavailableError, TenantSuspendedError
 from shared.tenant_context import TenantContext, UserRole
 
 TENANT_ID = "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa"
+OTHER_TENANT_ID = "bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb"
 
 
 def _event_with_claims(claims: dict) -> dict:
@@ -472,8 +474,9 @@ class TestIdentityResolutionFallback:
         with pytest.raises(AuthenticationRequiredError):
             get_tenant_context(_event_with_claims({"oid": "unknown-oid"}))
 
-    def test_explicit_tenant_claim_skips_the_db_entirely(self, monkeypatch):
-        """A token that already carries the claim must not incur a DB lookup."""
+    def test_explicit_tenant_claim_does_not_use_the_identity_fallback(self, monkeypatch):
+        """A token that already carries the claim takes its tenant and role from it. The user is
+        still checked for an active row (TestActiveUserCheck), but not by this fallback."""
         _use_entra_mapper(monkeypatch)
         monkeypatch.setattr("shared.auth._check_tenant_active", lambda tid: None)
 
@@ -503,3 +506,186 @@ class TestIdentityResolutionFallback:
             assert ctx.role == UserRole.PLATFORM_ADMIN
         finally:
             monkeypatch.setattr(providers, "_claims_mapper", None)
+
+
+# ---------------------------------------------------------------------------
+# Active-user check (SEC-02): a valid token must not outlive its user
+# ---------------------------------------------------------------------------
+
+
+class _FakeCache:
+    """In-memory stand-in for the Redis-backed DistributedCache."""
+
+    def __init__(self) -> None:
+        self.store: dict[str, str] = {}
+
+    def get(self, key: str) -> str | None:
+        return self.store.get(key)
+
+    def set(self, key: str, value: str, ttl: int | None = None) -> None:
+        self.store[key] = value
+
+    def delete(self, key: str) -> None:
+        self.store.pop(key, None)
+
+
+_TENANT_CLAIMS = {
+    "sub": "user-123",
+    "custom:tenant_id": TENANT_ID,
+    "cognito:groups": f"{TENANT_ID}:nigeria_office_staff",
+}
+
+
+class TestActiveUserCheck:
+    @pytest.fixture(autouse=True)
+    def _real_check(self, monkeypatch):
+        monkeypatch.setattr("shared.auth._check_tenant_active", lambda tid: None)
+        monkeypatch.setattr("shared.auth._check_user_active", _real_check_user_active)
+
+    def test_a_deactivated_user_with_a_valid_token_is_denied(self, monkeypatch):
+        """The token is signed and unexpired, but its user has no active row any more."""
+        monkeypatch.setattr("shared.auth._active_identity", lambda uid: None)
+        with pytest.raises(AuthenticationRequiredError):
+            get_tenant_context(_event_with_claims(_TENANT_CLAIMS))
+
+    def test_a_user_with_an_active_row_is_let_through(self, monkeypatch):
+        monkeypatch.setattr("shared.auth._active_identity", lambda uid: (TENANT_ID, "nigeria_office_staff"))
+        ctx = get_tenant_context(_event_with_claims(_TENANT_CLAIMS))
+        assert ctx.user_id == "user-123"
+        assert ctx.tenant_id == TENANT_ID
+
+    def test_the_lookup_is_by_the_token_subject(self, monkeypatch):
+        seen: list[str] = []
+        monkeypatch.setattr("shared.auth._active_identity", lambda uid: seen.append(uid) or (TENANT_ID, "customer"))
+        get_tenant_context(_event_with_claims(_TENANT_CLAIMS))
+        assert seen == ["user-123"]
+
+    def test_a_token_for_a_tenant_that_is_not_the_users_is_denied(self, monkeypatch):
+        monkeypatch.setattr("shared.auth._active_identity", lambda uid: (OTHER_TENANT_ID, "nigeria_office_staff"))
+        with pytest.raises(AuthenticationRequiredError):
+            get_tenant_context(_event_with_claims(_TENANT_CLAIMS))
+
+    def test_tenant_ids_compare_regardless_of_case(self, monkeypatch):
+        monkeypatch.setattr("shared.auth._active_identity", lambda uid: (TENANT_ID.upper(), "customer"))
+        assert get_tenant_context(_event_with_claims(_TENANT_CLAIMS)).tenant_id == TENANT_ID
+
+    def test_a_failed_lookup_denies_with_503_instead_of_letting_the_user_in(self, monkeypatch):
+        """Fail closed: an outage must not be a way to keep a revoked user in."""
+
+        def _down(uid):
+            raise RuntimeError("database unreachable")
+
+        monkeypatch.setattr("shared.auth._active_identity", _down)
+        with pytest.raises(ServiceUnavailableError):
+            get_tenant_context(_event_with_claims(_TENANT_CLAIMS))
+
+    def test_an_impersonation_token_is_checked_like_any_other(self, monkeypatch):
+        """Its subject is the target tenant's admin; if that admin is deactivated the session ends."""
+        monkeypatch.setattr("shared.auth._active_identity", lambda uid: None)
+        with pytest.raises(AuthenticationRequiredError):
+            get_tenant_context(_event_with_claims(_IMP_CLAIMS))
+
+    def test_a_platform_admin_has_no_row_and_is_not_looked_up(self, monkeypatch):
+        def _boom(uid):  # pragma: no cover - must never be called
+            raise AssertionError("a platform admin must not be looked up in tenant_user")
+
+        monkeypatch.setattr("shared.auth._active_identity", _boom)
+        claims = {"sub": "pa-1", "custom:tenant_id": "PLATFORM", "cognito:groups": "platform_admin"}
+        ctx = get_tenant_context(_event_with_claims(claims))
+        assert ctx.role == UserRole.PLATFORM_ADMIN
+
+    def test_a_token_without_a_tenant_claim_is_looked_up_once(self, monkeypatch):
+        """The identity fallback already proved the user active; the check must not repeat it."""
+        _use_entra_mapper(monkeypatch)
+        calls: list[str] = []
+        monkeypatch.setattr("shared.auth._active_identity", lambda uid: calls.append(uid) or (TENANT_ID, "tenant_admin"))
+        get_tenant_context(_event_with_claims({"oid": "entra-oid-1", "groups": ["some-directory-guid"]}))
+        assert calls == ["entra-oid-1"]
+
+
+class TestActiveIdentityLookup:
+    """The cached lookup behind the check, and the eviction that makes deactivation immediate."""
+
+    @pytest.fixture
+    def cache(self, monkeypatch) -> _FakeCache:
+        fake = _FakeCache()
+        monkeypatch.setattr("shared.auth._identity_cache", fake)
+        return fake
+
+    @staticmethod
+    def _database(monkeypatch, rows):
+        calls: list[tuple] = []
+
+        def _execute(tenant_id, query, params=None):
+            calls.append(params)
+            return rows() if callable(rows) else rows
+
+        monkeypatch.setattr("shared.db.execute_with_tenant", _execute)
+        return calls
+
+    def test_reads_the_database_once_then_the_cache(self, monkeypatch, cache):
+        from shared.auth import _active_identity
+
+        calls = self._database(monkeypatch, [{"tenant_id": TENANT_ID, "role": "customer"}])
+        assert _active_identity("u1") == (TENANT_ID, "customer")
+        assert _active_identity("u1") == (TENANT_ID, "customer")
+        assert len(calls) == 1
+        assert cache.store["u1"] == f"{TENANT_ID}:customer"
+
+    def test_only_an_active_row_counts(self, monkeypatch, cache):
+        from shared.auth import _active_identity
+
+        captured: list[str] = []
+
+        def _execute(tenant_id, query, params=None):
+            captured.append(query)
+            return []
+
+        monkeypatch.setattr("shared.db.execute_with_tenant", _execute)
+        assert _active_identity("u1") is None
+        assert "status = 'active'" in captured[0]
+
+    def test_an_absent_user_is_remembered_as_absent(self, monkeypatch, cache):
+        from shared.auth import _active_identity
+
+        calls = self._database(monkeypatch, [])
+        assert _active_identity("u1") is None
+        assert _active_identity("u1") is None
+        assert len(calls) == 1
+        assert cache.store["u1"] == ""
+
+    def test_deactivation_is_seen_on_the_very_next_request_once_the_entry_is_evicted(self, monkeypatch, cache):
+        """The scenario of the finding: cached as active, then deactivated in the database."""
+        from shared.auth import _active_identity, evict_identity_cache
+
+        state = {"rows": [{"tenant_id": TENANT_ID, "role": "nigeria_office_staff"}]}
+        self._database(monkeypatch, lambda: state["rows"])
+        assert _active_identity("u1") == (TENANT_ID, "nigeria_office_staff")
+
+        state["rows"] = []  # the user is deactivated
+        assert _active_identity("u1") is not None  # still served from the cache: why eviction exists
+
+        evict_identity_cache("u1")
+        assert _active_identity("u1") is None
+
+    def test_a_database_failure_is_raised_and_not_cached(self, monkeypatch, cache):
+        from shared.auth import _active_identity
+
+        def _down(tenant_id, query, params=None):
+            raise RuntimeError("database unreachable")
+
+        monkeypatch.setattr("shared.db.execute_with_tenant", _down)
+        with pytest.raises(RuntimeError):
+            _active_identity("u1")
+        assert "u1" not in cache.store
+
+    def test_the_identity_fallback_still_tolerates_a_failure(self, monkeypatch, cache):
+        """resolve_identity_from_db keeps its contract: a failure is None, so the caller answers 401."""
+        from shared.auth import resolve_identity_from_db
+
+        def _down(tenant_id, query, params=None):
+            raise RuntimeError("database unreachable")
+
+        monkeypatch.setattr("shared.db.execute_with_tenant", _down)
+        assert resolve_identity_from_db("u1") is None
+        assert "u1" not in cache.store

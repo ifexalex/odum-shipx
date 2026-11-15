@@ -2333,3 +2333,16 @@ no base URL, so under the new behaviour nothing is sent — which is itself now
 pinned by `test_no_base_url_sends_nothing_and_does_not_claim_it_did`, asserting
 `sent_channel IS NULL` on the row so staff are not told a customer was
 contacted.
+
+## Audit Phase 2 tests (2026-11-15)
+
+Backend 1850 passed (+264 over Phase 1), `tests/db/` 81 (+35), frontend 1017 (+30). What each group pins:
+
+- **SEC-02** `tests/unit/test_auth.py::TestActiveUserCheck` / `TestActiveIdentityLookup`; `tests/db/test_access_revocation.py` issues a token for an active user, deactivates them through the service, and asks whether the very next request is served; includes an erased customer. A mutation check (switching the check off) fails exactly the three revocation tests.
+- **SEC-05** `tests/unit/test_origin_guard.py`: look-alike origins (`app.shipx.co.evil.example`, userinfo trick, wrong port or scheme), missing and `null` origins, fail closed with nothing configured, no cookie on refusal, `text/plain` refused (415). `tests/browser.py` is what a browser sends; a global fixture trusts it.
+- **SEC-04** `tests/db/test_registration_enumeration.py` runs two registrations through the real handler and SQL; `TestSelfRegisterResponsesAreIdentical` asserts identical status and body.
+- **SEC-03** `tests/unit/test_rate_limit.py` (limiter, fail-open, every protected route, per-tenant isolation), `tests/unit/test_client_ip.py` (forged `X-Forwarded-For`, unconfigured proxies), `tests/unit/test_distributed_cache.py::TestRedisOutageIsFastNotSlow`, and **`tests/db/test_rate_limit_redis.py` against a real Redis** (atomicity under 8 threads, the window not sliding, a counter with no expiry being re-armed, a genuinely unreachable Redis).
+- **SEC-01** `tests/unit/test_notification_consent.py` (including `TestEveryEventTypeIsClassified`, which scans the code and the template tables for event types and fails until each is classified), `tests/db/test_notification_consent.py`.
+- **What mocks hid again.** A real Redis showed that every operation against an unreachable one took ~4 s (redis-py 8 retries); a real database showed `get_customer_by_email` selected only `id`, so the "you already have an account" email had no name; the real HTTP stack showed the local dev server dropped every response header except `Content-Type`.
+- **Global fixtures** in `tests/conftest.py`: `_rate_limiter_off` (no test needs Redis), `_trusted_browser_origin`, `_active_user_check_stubbed` (opts out for `tests/db/`). A test that wants the real behaviour turns it on itself.
+- **Redis in the DB suite:** the rate-limiter tests need `REDIS_HOST`; they skip without one locally, and fail when `CI` is set and none is provided.

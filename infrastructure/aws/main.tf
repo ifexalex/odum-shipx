@@ -129,6 +129,7 @@ module "lambda" {
   # fails the plan rather than letting production deploy that way.
   app_base_url                = var.app_base_url
   customer_portal_base_url    = var.customer_portal_base_url
+  cors_allow_origins          = var.cors_allow_origins
   ses_from_address            = var.ses_from_address
   africastalking_api_key      = var.africastalking_api_key
   africastalking_username     = var.africastalking_username

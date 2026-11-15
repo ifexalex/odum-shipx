@@ -483,6 +483,7 @@ EMAIL_SUBJECTS: dict[str, str] = {
     "customer_registered": "Welcome — your account is ready",
     "customer_invite": "Create your account to track your shipment",
     "account_activation": "Activate your account — set your password",
+    "registration_existing_account": "You already have an account",
     "payment_claim_confirmed": "Your payment has been confirmed",
     "payment_claim_rejected": "Your payment claim needs attention",
 }
@@ -502,6 +503,7 @@ EMAIL_SUBJECTS_ZH: dict[str, str] = {
     "customer_registered": "欢迎 — 您的账户已准备就绪",
     "customer_invite": "创建账户以跟踪您的货物",
     "account_activation": "激活账户 — 设置您的密码",
+    "registration_existing_account": "您已拥有账户",
     "payment_claim_confirmed": "您的付款已确认",
     "payment_claim_rejected": "您的付款申报需要关注",
 }
@@ -530,6 +532,15 @@ _EMAIL_BODIES: dict[str, str] = {
     ),
     "customer_registered": (
         "Welcome to {company_name}. Your account is ready — check your email for the link to set your password."
+    ),
+    # Sent when someone signs up with an address that already has an account. The sign-up form
+    # answers identically either way (so it cannot be used to find out who is a customer), and this is
+    # how the person who owns the address finds out. Deliberately says nothing about who tried.
+    "registration_existing_account": (
+        "Someone, possibly you, tried to create an account on {company_name}'s logistics portal with this "
+        "email address, which already has one. You do not need to do anything. "
+        'To get in, use the button below; if you have forgotten your password, choose "Forgot password" '
+        "on the sign-in page. If this was not you, you can ignore this message."
     ),
     "shipment_update": "There is an update on your shipment with {company_name}. The details are below.",
     "container_arrived": (
@@ -563,6 +574,10 @@ _EMAIL_BODIES_ZH: dict[str, str] = {
     ),
     "account_activation": ("{company_name} 物流平台已为您创建账户。请点击下方按钮设置密码并登录。链接将在48小时后失效。"),
     "customer_registered": "欢迎使用 {company_name}。您的账户已就绪——请查收邮件以设置密码。",
+    "registration_existing_account": (
+        "有人（可能是您本人）尝试使用此邮箱地址在 {company_name} 物流平台创建账户，但该邮箱已有账户。"
+        "您无需任何操作。请点击下方按钮登录；如忘记密码，请在登录页选择“忘记密码”。如果这不是您本人操作，请忽略此邮件。"
+    ),
     "shipment_update": "您在 {company_name} 的货物有新状态更新，详情如下。",
     "container_arrived": "您的货物已抵达 {company_name} 仓库。我们正在准备账单，并将与您联系提货事宜。",
     "payment_due": "您在 {company_name} 的货物已抵达，现需付款。金额与提货地址如下。",
@@ -584,10 +599,12 @@ _HIDDEN_EMAIL_FIELDS = frozenset({"name", "company_name"})
 _LINK_LABELS: dict[str, str] = {
     "activation_link": "Set your password",
     "invite_link": "Create your account",
+    "login_link": "Sign in",
 }
 _LINK_LABELS_ZH: dict[str, str] = {
     "activation_link": "设置密码",
     "invite_link": "创建账户",
+    "login_link": "登录",
 }
 
 
@@ -1062,7 +1079,15 @@ def trigger_sms_fallback(tenant_id: str, whatsapp_log_id: str, reason: str) -> b
         logger.warning("SMS fallback: SQS_SMS_QUEUE_URL not set")
         return False
 
-    from shared.notifications import is_recipient_allowed
+    from shared.notifications import consent_verdict, is_recipient_allowed, record_suppressed
+
+    # The fallback is a new SMS, so it needs the same consent as one sent directly: a customer who agreed to
+    # WhatsApp but not SMS must not be texted just because WhatsApp failed.
+    event_type = str(log_row.get("event_type") or "")
+    verdict = consent_verdict(tenant_id, event_type, str(customer_id))
+    if verdict is not None and not verdict.permits("sms"):
+        record_suppressed(tenant_id, event_type, "sms", str(customer_id), phone, "customer has not agreed to sms")
+        return False
 
     recipient = {"phone": phone, "name": log_row.get("recipient_name")}
     # The non-production recipient guard applies to fallbacks too — a dev

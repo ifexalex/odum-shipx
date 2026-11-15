@@ -147,6 +147,11 @@ locals {
       APP_BASE_URL             = var.app_base_url
       CUSTOMER_PORTAL_BASE_URL = var.customer_portal_base_url
 
+      # Origins allowed to call the cookie-authenticated /v1/auth/* endpoints, comma-separated.
+      # shared/origin_guard.py refuses any other Origin, and also trusts the origins of the two
+      # URLs above. With none of them set it refuses every request, so this must not be dropped.
+      ALLOWED_ORIGINS = join(",", var.cors_allow_origins)
+
       # Email — SES. The sender must be a verified identity in this account's
       # SES region, or every send is rejected.
       SES_FROM_ADDRESS = var.ses_from_address
@@ -612,6 +617,11 @@ resource "aws_lambda_function" "non_vpc_api" {
   environment {
     variables = merge(local.common_env_vars, {
       COGNITO_CLIENT_ID = var.cognito_client_id
+
+      # Outside the VPC this function cannot reach ElastiCache, and trying would only add a connection
+      # timeout to every request. Its public routes (/v1/auth/*) are throttled per route at API Gateway
+      # instead — see public_route_throttles in modules/api-gateway/main.tf. shared/rate_limit.py.
+      RATE_LIMIT_ENABLED = "false"
     })
   }
 

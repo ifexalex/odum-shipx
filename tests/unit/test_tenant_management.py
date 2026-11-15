@@ -9,6 +9,7 @@ import pytest
 from shared.exceptions import (
     BusinessRuleViolationError,
     DuplicateResourceError,
+    ExternalServiceError,
     ResourceNotFoundError,
     UsageLimitExceededError,
     ValidationError,
@@ -1150,6 +1151,133 @@ class TestDeactivateUser:
             with pytest.raises(BusinessRuleViolationError):
                 service.deactivate_user(TENANT_ID, "user-001", actor_id="admin")
 
+    def _deactivate(self, cognito, calls: list[str] | None = None):
+        """Run deactivate_user with every collaborator stubbed; `calls` records the order they run in."""
+        from services.tenant_management import service
+
+        user = _user(status="active")
+        order = calls if calls is not None else []
+
+        def _status(*args, **kwargs):
+            order.append("status")
+            return {**user, "status": "deactivated"}
+
+        with (
+            patch.object(service.repo, "get_user_by_id", return_value=user),
+            patch.object(service.repo, "set_user_status", side_effect=_status),
+            patch("services.tenant_management.service.get_identity_provider", return_value=cognito),
+            patch("services.tenant_management.service.log_audit"),
+            patch(
+                "services.tenant_management.service.evict_identity_cache", side_effect=lambda uid: order.append(f"evict:{uid}")
+            ),
+        ):
+            return service.deactivate_user(TENANT_ID, "user-001", actor_id="admin")
+
+    def test_sessions_are_revoked_so_the_refresh_token_cannot_renew_them(self):
+        cognito = MagicMock()
+        self._deactivate(cognito)
+        cognito.global_sign_out.assert_called_once_with("staff@acme.com")
+
+    def test_the_cached_identity_is_evicted_after_the_status_is_saved(self):
+        """Evicting first would let a concurrent request re-cache the still-active row."""
+        calls: list[str] = []
+        self._deactivate(MagicMock(), calls)
+        assert calls == ["status", "evict:user-001"]
+
+    def test_a_failed_sign_out_does_not_undo_the_deactivation(self):
+        """The per-request status check denies the token whether or not the IdP sign-out worked."""
+        cognito = MagicMock()
+        cognito.global_sign_out.side_effect = RuntimeError("idp down")
+        calls: list[str] = []
+        result = self._deactivate(cognito, calls)
+        assert result["status"] == "deactivated"
+        assert calls == ["status", "evict:user-001"]
+
+    def test_a_failure_to_disable_the_account_changes_nothing(self):
+        from services.tenant_management import service
+
+        cognito = MagicMock()
+        cognito.disable_user.side_effect = ExternalServiceError("Cognito", "unavailable")
+        with (
+            patch.object(service.repo, "get_user_by_id", return_value=_user(status="active")),
+            patch.object(service.repo, "set_user_status") as mock_status,
+            patch("services.tenant_management.service.get_identity_provider", return_value=cognito),
+            patch("services.tenant_management.service.log_audit") as mock_audit,
+            patch("services.tenant_management.service.evict_identity_cache") as mock_evict,
+        ):
+            with pytest.raises(ExternalServiceError):
+                service.deactivate_user(TENANT_ID, "user-001", actor_id="admin")
+
+        mock_status.assert_not_called()
+        mock_evict.assert_not_called()
+        mock_audit.assert_not_called()
+
+
+class TestAnonymiseCustomerLogin:
+    """Erasing a customer must also end their login: the tenant_user row and the IdP account are
+    where their identity still lives, and the erasure clears the record's link to them."""
+
+    @staticmethod
+    def _customer(**kw) -> dict:
+        base = {"id": "cust-001", "user_id": "user-cust", "name": "Ada", "email": "ada@example.com", "anonymised_at": None}
+        base.update(kw)
+        return base
+
+    def _anonymise(self, customer, login, revoke=None, calls: list[str] | None = None):
+        from services.tenant_management import service
+
+        order = calls if calls is not None else []
+        revoke = revoke or MagicMock(side_effect=lambda t, u: order.append("revoke") or {**u, "status": "deactivated"})
+        with (
+            patch.object(service.repo, "get_customer_by_id", return_value=customer),
+            patch.object(service.repo, "get_user_by_id", return_value=login),
+            patch.object(service.repo, "anonymise_customer_record", side_effect=lambda t, c: order.append("erase")),
+            patch.object(service, "_revoke_login", revoke),
+            patch("services.tenant_management.service.log_audit") as mock_audit,
+        ):
+            service.anonymise_customer(TENANT_ID, "cust-001", actor_id="admin")
+        return revoke, mock_audit
+
+    def test_the_login_is_revoked_before_the_record_is_erased(self):
+        calls: list[str] = []
+        revoke, _ = self._anonymise(self._customer(), _user(id="user-cust", role="customer"), calls=calls)
+        assert calls == ["revoke", "erase"]
+        revoke.assert_called_once()
+
+    def test_the_revocation_is_audited_with_its_reason(self):
+        _, mock_audit = self._anonymise(self._customer(), _user(id="user-cust", role="customer"))
+        revoked = [c.kwargs for c in mock_audit.call_args_list if c.kwargs["entity_type"] == "tenant_user"]
+        assert len(revoked) == 1
+        assert revoked[0]["entity_id"] == "user-cust"
+        assert revoked[0]["after_state"] == {"status": "deactivated", "reason": "customer_erasure"}
+
+    def test_a_customer_with_no_login_is_just_erased(self):
+        calls: list[str] = []
+        revoke, _ = self._anonymise(self._customer(user_id=None), None, calls=calls)
+        assert calls == ["erase"]
+        revoke.assert_not_called()
+
+    def test_an_already_deactivated_login_is_not_revoked_again(self):
+        calls: list[str] = []
+        revoke, _ = self._anonymise(self._customer(), _user(id="user-cust", status="deactivated"), calls=calls)
+        assert calls == ["erase"]
+        revoke.assert_not_called()
+
+    def test_a_failed_revocation_leaves_the_customer_unerased_so_it_can_be_retried(self):
+        from services.tenant_management import service
+
+        with (
+            patch.object(service.repo, "get_customer_by_id", return_value=self._customer()),
+            patch.object(service.repo, "get_user_by_id", return_value=_user(id="user-cust", role="customer")),
+            patch.object(service.repo, "anonymise_customer_record") as mock_erase,
+            patch.object(service, "_revoke_login", side_effect=ExternalServiceError("Cognito", "unavailable")),
+            patch("services.tenant_management.service.log_audit"),
+        ):
+            with pytest.raises(ExternalServiceError):
+                service.anonymise_customer(TENANT_ID, "cust-001", actor_id="admin")
+
+        mock_erase.assert_not_called()
+
 
 # ---------------------------------------------------------------------------
 # update_user — roles/primary_role (multi-role staff support, Cognito group sync fix)
@@ -1183,6 +1311,23 @@ class TestUpdateUserRoles:
         )
         cognito.global_sign_out.assert_called_once_with("staff@acme.com")
         assert result["roles"] == ["warehouse_attendant"]
+
+    def test_a_role_change_evicts_the_cached_identity_which_holds_the_old_role(self):
+        from services.tenant_management import service
+
+        existing = _user(id="user-001", role="nigeria_office_staff")
+        updated = {**existing, "role": "warehouse_attendant", "roles": ["warehouse_attendant"]}
+
+        with (
+            patch.object(service, "get_user", return_value=existing),
+            patch.object(service.repo, "set_user_roles", return_value=updated),
+            patch.object(service, "get_identity_provider", return_value=MagicMock()),
+            patch("shared.audit.log_audit"),
+            patch("services.tenant_management.service.evict_identity_cache") as mock_evict,
+        ):
+            service.update_user(TENANT_ID, "user-001", {"roles": ["warehouse_attendant"]}, actor_id="admin-1")
+
+        mock_evict.assert_called_once_with("user-001")
 
     def test_primary_role_defaults_to_first_of_roles_when_omitted(self):
         from services.tenant_management import service
@@ -1401,7 +1546,9 @@ class TestSelfRegisterCustomer:
         # customer.user_id links to the tenant_user row's id, not the raw sub.
         create_customer_data = mock_create_customer.call_args[0][1]
         assert create_customer_data["user_id"] == "tu-001"
-        assert result["user_id"] == "tu-001"
+        assert result is None, (
+            "the caller must not be handed the new record: it would differ from the answer for an existing email"
+        )
 
     def test_resolves_tenant_from_explicit_slug(self):
         from services.tenant_management import service
@@ -1434,17 +1581,150 @@ class TestSelfRegisterCustomer:
             with pytest.raises(ResourceNotFoundError):
                 service.self_register_customer(req, slug="unknown")
 
-    def test_duplicate_email_raises(self):
-        from services.tenant_management import service
+    # ---- an email that already has an account (audit SEC-04) -------------------------------------
+    #
+    # The endpoint is public. A distinct answer for an existing email lets anyone test whether a person is
+    # a customer of a given shipping company, so the answer is the same and the owner is told by email.
+
+    @staticmethod
+    def _request():
         from services.tenant_management.models import CustomerRegistrationRequest
 
-        req = CustomerRegistrationRequest(name="Ngozi", email="ngozi@example.com", phone="08012345678")
+        return CustomerRegistrationRequest(name="Attacker Typed Name", email="ngozi@example.com", phone="08012345678")
+
+    def _register_existing(self, existing_customer=None, cognito_duplicate=False, enqueue=None):
+        """Run a registration for an email that already has an account; return the mocks that matter."""
+        from services.tenant_management import service
+
+        cognito = self._cognito()
+        if cognito_duplicate:
+            cognito.create_user.side_effect = DuplicateResourceError("user", "ngozi@example.com")
+        enqueue = enqueue or MagicMock()
         with (
             patch.object(service.repo, "get_tenant_by_slug", return_value=self._tenant()),
-            patch.object(service.repo, "get_customer_by_email", return_value={"id": "existing"}),
+            patch.object(service.repo, "get_customer_by_email", return_value=existing_customer),
+            patch.object(service.repo, "create_tenant_user") as create_user,
+            patch.object(service.repo, "create_customer") as create_customer,
+            patch("services.tenant_management.service.get_identity_provider", return_value=cognito),
+            patch("services.tenant_management.service.log_audit") as audit,
+            patch("services.tenant_management.service.login_url", return_value="https://app.shipx.test/login"),
+            patch("shared.notifications.enqueue_notifications", enqueue),
         ):
-            with pytest.raises(DuplicateResourceError):
-                service.self_register_customer(req, slug="acme")
+            result = service.self_register_customer(self._request(), slug="acme", request_id="req-1")
+        return result, cognito, create_user, create_customer, audit, enqueue
+
+    def test_an_existing_customer_email_is_answered_like_a_new_one_and_creates_nothing(self):
+        result, cognito, create_user, create_customer, audit, _ = self._register_existing({"id": "c1", "name": "Ngozi"})
+
+        assert result is None
+        cognito.create_user.assert_not_called()
+        create_user.assert_not_called()
+        create_customer.assert_not_called()
+        audit.assert_not_called()
+
+    def test_the_owner_of_an_existing_email_is_told_by_email_only(self):
+        _, _, _, _, _, enqueue = self._register_existing({"id": "c1", "name": "Ngozi"})
+
+        enqueue.assert_called_once()
+        kwargs = enqueue.call_args.kwargs
+        assert kwargs["event_type"] == "registration_existing_account"
+        assert kwargs["tenant_id"] == TENANT_ID
+        assert kwargs["recipient"] == {"email": "ngozi@example.com", "phone": "", "whatsapp": "", "name": "Ngozi"}
+        assert kwargs["template_data"] == {"name": "Ngozi", "login_link": "https://app.shipx.test/login"}
+
+    def test_the_name_in_the_email_is_the_accounts_not_what_the_registrant_typed(self):
+        """What the registrant typed is attacker-controlled and must not be put in front of the account's owner."""
+        _, _, _, _, _, enqueue = self._register_existing({"id": "c1", "name": "Ngozi"})
+        assert "Attacker Typed Name" not in json.dumps(enqueue.call_args.kwargs)
+
+    def test_an_email_that_has_an_account_elsewhere_on_the_platform_is_answered_the_same(self):
+        """The identity provider is shared by every tenant, so its duplicate error leaks the same fact."""
+        result, cognito, create_user, create_customer, audit, enqueue = self._register_existing(cognito_duplicate=True)
+
+        assert result is None
+        cognito.create_user.assert_called_once()
+        cognito.add_user_to_group.assert_not_called()
+        create_user.assert_not_called()
+        create_customer.assert_not_called()
+        audit.assert_not_called()
+        enqueue.assert_called_once()
+        assert enqueue.call_args.kwargs["template_data"]["name"] == "", "nothing is known about the other account"
+
+    def test_a_failed_notification_does_not_change_the_answer(self):
+        enqueue = MagicMock(side_effect=RuntimeError("queue unavailable"))
+        result, *_ = self._register_existing({"id": "c1", "name": "Ngozi"}, enqueue=enqueue)
+        assert result is None
+
+    def test_a_missing_base_url_sends_nothing_and_still_answers_the_same(self):
+        from services.tenant_management import service
+
+        with (
+            patch.object(service.repo, "get_tenant_by_slug", return_value=self._tenant()),
+            patch.object(service.repo, "get_customer_by_email", return_value={"id": "c1", "name": "Ngozi"}),
+            patch("services.tenant_management.service.login_url", side_effect=service.MissingBaseUrlError("no base url")),
+            patch("shared.notifications.enqueue_notifications") as enqueue,
+        ):
+            assert service.self_register_customer(self._request(), slug="acme") is None
+        enqueue.assert_not_called()
+
+    def test_a_tenant_that_does_not_exist_is_still_reported(self):
+        """Only the email's status is hidden. A bad company link is the visitor's own mistake to fix."""
+        from services.tenant_management import service
+
+        with patch.object(service.repo, "get_tenant_by_slug", return_value=None):
+            with pytest.raises(ResourceNotFoundError):
+                service.self_register_customer(self._request(), slug="nope")
+
+
+class TestSelfRegisterResponsesAreIdentical:
+    """The finding's 'done when': responses for new and existing emails are identical in status and body."""
+
+    @staticmethod
+    def _post(body: dict) -> dict:
+        from services.tenant_management import handler
+
+        event = {
+            "requestContext": {"requestId": "r1", "http": {"method": "POST", "path": "/v1/register/acme"}},
+            "headers": {"host": "api.shipx.test"},
+            "body": json.dumps(body),
+            "cookies": [],
+        }
+        return handler.lambda_handler(event, None)
+
+    def _answer(self, existing: bool) -> dict:
+        from services.tenant_management import service
+
+        tenant = {"id": TENANT_ID, "status": "active", "destination_country": "Nigeria"}
+        cognito = MagicMock()
+        cognito.create_user.return_value = "cog-sub-001"
+        with (
+            patch.object(service.repo, "get_tenant_by_slug", return_value=tenant),
+            patch.object(service.repo, "get_customer_by_email", return_value={"id": "c1", "name": "Ngozi"} if existing else None),
+            patch.object(service.repo, "create_tenant_user", return_value={"id": "tu-001"}),
+            patch.object(
+                service.repo, "create_customer", return_value={"id": "c-new", "name": "Ngozi", "email": "ngozi@example.com"}
+            ),
+            patch("services.tenant_management.service.get_identity_provider", return_value=cognito),
+            patch("services.tenant_management.service.log_audit"),
+            patch("services.tenant_management.service.login_url", return_value="https://app.shipx.test/login"),
+            patch("shared.notifications.enqueue_notifications"),
+        ):
+            return self._post({"name": "Ngozi", "email": "ngozi@example.com", "phone": "08012345678"})
+
+    def test_status_and_body_do_not_depend_on_whether_the_email_exists(self):
+        new, existing = self._answer(existing=False), self._answer(existing=True)
+
+        assert new["statusCode"] == existing["statusCode"] == 202
+        assert new["body"] == existing["body"]
+
+    def test_the_answer_carries_no_record_and_no_location(self):
+        resp = self._answer(existing=False)
+
+        assert "Location" not in resp["headers"]
+        assert json.loads(resp["body"]) == {"data": {"status": "received"}}
+
+    def test_the_answer_does_not_echo_the_email(self):
+        assert "ngozi@example.com" not in self._answer(existing=True)["body"]
 
 
 # ---------------------------------------------------------------------------

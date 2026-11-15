@@ -119,6 +119,10 @@
     {
       "key": "onboarding_request_id",
       "value": ""
+    },
+    {
+      "key": "tenant_slug",
+      "value": "acme"
     }
   ],
   "item": [
@@ -192,7 +196,35 @@
                 "login"
               ]
             },
-            "description": "Entra-only ROPC login proxy (Entra's token endpoint is CORS-blocked for the password grant). Returns {id_token, access_token, refresh_token}. 404 on Cognito. Username may be the real email; the backend maps it to the managed-domain UPN."
+            "description": "Entra-only ROPC login proxy (Entra's token endpoint is CORS-blocked for the password grant). Returns {id_token, access_token, refresh_token}. 404 on Cognito. Username may be the real email; the backend maps it to the managed-domain UPN. Rate limited: 10 attempts/min per client address, and 5 failed passwords per 15 minutes per username; past either it returns 429 RATE_LIMIT_EXCEEDED with a Retry-After header."
+          }
+        },
+        {
+          "name": "Customer self-register",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Ngozi Okonkwo\",\n  \"email\": \"ngozi@example.com\",\n  \"phone\": \"08012345678\",\n  \"notification_consent\": [\"email\"]\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/v1/register/{{tenant_slug}}",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "v1",
+                "register",
+                "{{tenant_slug}}"
+              ]
+            },
+            "description": "Public customer self-registration against the company with slug {{tenant_slug}}. Answers 202 with {\"data\": {\"status\": \"received\"}} and no Location header WHETHER OR NOT the email already has an account, so it cannot be used to find out who is a customer (audit SEC-04). A new email gets the Cognito temporary-password email; an email that already has an account creates nothing and its owner is emailed instead. Rate limited to 5 per hour per client address (429 RATE_LIMIT_EXCEEDED with Retry-After). notification_consent lists the channels offered for optional messages; an empty list is a recorded choice of none."
           }
         }
       ]

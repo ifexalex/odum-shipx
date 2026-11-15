@@ -55,6 +55,16 @@ jobs:
           --health-interval 10s
           --health-timeout 5s
           --health-retries 5
+      # The rate limiter's Lua script is only meaningful against a real Redis
+      # (tests/db/test_rate_limit_redis.py); without one those tests skip, and the suite fails on CI.
+      redis:
+        image: redis:7
+        ports: ["6379:6379"]
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
     steps:
       - uses: actions/checkout@v7
       - uses: astral-sh/setup-uv@v7
@@ -119,6 +129,8 @@ jobs:
           DATABASE_ADMIN_USER: test_user
           DATABASE_ADMIN_PASSWORD: test_pass
           APP_DB_PASSWORD: ci_app_pass_not_a_secret
+          REDIS_HOST: localhost
+          REDIS_PORT: 6379
         run: uv run pytest tests/db/ -v
       # This upload has never worked, and said nothing about it. On a PRIVATE
       # repo Codecov requires an upload token; none was configured, so every run

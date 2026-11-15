@@ -1366,3 +1366,6 @@ Workflow-level `concurrency` cannot see `needs` at all, so it keeps
 *production* frontend deploy; it failed only because AWS credentials are absent.
 Now `azure` / `dev`, with `prod` selectable but never the unchosen default.
 
+## Redis service for the database tests (2026-11-15)
+
+The `test` job now starts a `redis:7` service container beside Postgres, and the "Run database integrity tests" step passes `REDIS_HOST`/`REDIS_PORT`. `tests/db/test_rate_limit_redis.py` exercises the limiter's Lua script and a real outage; without a server those tests skip, so CI fails them outright when `CI` is set and `REDIS_HOST` is not.

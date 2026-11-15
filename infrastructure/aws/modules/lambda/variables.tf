@@ -130,6 +130,12 @@ variable "app_base_url" {
   default     = ""
 }
 
+variable "cors_allow_origins" {
+  description = "Origins the web app is served from. Mirrors the API Gateway CORS list; the auth Lambda accepts its cookie endpoints (/v1/auth/session, refresh, logout, ...) only from these origins and from app_base_url's (shared/origin_guard.py)."
+  type        = list(string)
+  default     = []
+}
+
 variable "customer_portal_base_url" {
   description = "Override base URL for customer invite links, if the customer portal is hosted separately. Falls back to app_base_url."
   type        = string

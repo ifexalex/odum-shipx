@@ -62,6 +62,7 @@ def world(admin):
         )
         # Children before parents: items and resolutions reference refunds and claims.
         for table in (
+            "notification_log",
             "storage_fee_log",
             "claim_resolution",
             "missing_item",
