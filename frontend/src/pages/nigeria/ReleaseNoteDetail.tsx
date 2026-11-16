@@ -34,6 +34,7 @@ import {
 } from '../../design/components'
 import { SectionHead } from '../../shell/SectionHead'
 import styles from './ReleaseNoteDetail.module.css'
+import { formatDate, formatNgn } from '../../lib/format'
 
 // ---------------------------------------------------------------------------
 // Status helpers
@@ -271,7 +272,7 @@ function ReissueConfirmModal({ note, onCancel, onSuccess }: ReissueConfirmModalP
   }
 
   const storageFees = Number(note.storage_fees_ngn ?? 0)
-  const expiredDate = note.expired_at ? note.expired_at.slice(0, 10) : '—'
+  const expiredDate = formatDate(note.expired_at)
 
   return (
     <div className={styles.modalOverlay} onClick={onCancel}>
@@ -281,7 +282,7 @@ function ReissueConfirmModal({ note, onCancel, onSuccess }: ReissueConfirmModalP
         {error && <div className={styles.modalBanner}><Banner variant="error" title="Action failed">{error}</Banner></div>}
         <Banner variant="warning" title="Outstanding storage fees">
           {storageFees > 0
-            ? `This release note has ₦${storageFees.toLocaleString()} in outstanding storage fees. The new note will carry this balance forward.`
+            ? `This release note has ${formatNgn(storageFees)} in outstanding storage fees. The new note will carry this balance forward.`
             : 'No outstanding storage fees on this release note.'}
         </Banner>
         <p style={{ fontSize: '0.875rem', color: 'var(--color-text-muted)', margin: 0 }}>
@@ -448,7 +449,7 @@ export function ReleaseNoteDetail(): JSX.Element {
             <div className={styles.heroMeta}>
               {note.customer_name && <span>{note.customer_name}</span>}
               {note.container_number && <span> · {note.container_number}</span>}
-              <span> · Issued {note.authorized_at.slice(0, 10)}</span>
+              <span> · Issued {formatDate(note.authorized_at)}</span>
               {note.valid_until && !isExpired && (
                 <span> · Valid until {note.valid_until}</span>
               )}
@@ -486,14 +487,14 @@ export function ReleaseNoteDetail(): JSX.Element {
       {isExpired && (
         <div className={styles.section}>
           <Banner variant="error" title="Release note expired">
-            This release note expired on {note.expired_at ? note.expired_at.slice(0, 10) : '—'}.
+            This release note expired on {formatDate(note.expired_at)}.
             The customer cannot collect their goods until a new release note is issued.
           </Banner>
         </div>
       )}
       {isExpired && storageFees > 0 && (
         <div className={styles.section}>
-          <Banner variant="warning" title={`Outstanding storage fees: ₦${storageFees.toLocaleString()}`}>
+          <Banner variant="warning" title={`Outstanding storage fees: ${formatNgn(storageFees)}`}>
             Storage fees continue to accrue until the goods are collected. The balance will carry forward to the re-issued note.
           </Banner>
         </div>
@@ -525,7 +526,7 @@ export function ReleaseNoteDetail(): JSX.Element {
         <StatCard label="Type" value={releaseTypeLabel(note)} />
         <StatCard label="Payment status" value={note.payment_status.replace('_', ' ')} />
         {isExpired && storageFees > 0 && (
-          <StatCard label="Storage fees" value={`₦${storageFees.toLocaleString()}`} />
+          <StatCard label="Storage fees" value={formatNgn(storageFees)} />
         )}
       </div>
 
@@ -554,7 +555,7 @@ export function ReleaseNoteDetail(): JSX.Element {
             <Kvp label="Packing list invoice(s)" value={note.packing_list_invoice_numbers.join(', ')} />
           )}
           <Kvp label="Warehouse" value={note.warehouse_name ? `${note.warehouse_name}${note.warehouse_address ? ` — ${note.warehouse_address}` : ''}` : '—'} />
-          <Kvp label="Issued" value={note.authorized_at.slice(0, 10)} divider={!note.is_on_credit && !note.receipt_number} />
+          <Kvp label="Issued" value={formatDate(note.authorized_at)} divider={!note.is_on_credit && !note.receipt_number} />
           {note.is_on_credit && (
             <Kvp
               label="On credit"
@@ -565,7 +566,7 @@ export function ReleaseNoteDetail(): JSX.Element {
           {(Number(note.amount_paid_ngn) > 0 || Number(note.balance_ngn) > 0) && (
             <Kvp
               label="Payment"
-              value={`₦${Number(note.amount_paid_ngn).toLocaleString()} paid of ₦${Number(note.total_ngn).toLocaleString()} — ₦${Number(note.balance_ngn).toLocaleString()} outstanding`}
+              value={`${formatNgn(note.amount_paid_ngn)} paid of ${formatNgn(note.total_ngn)} — ${formatNgn(note.balance_ngn)} outstanding`}
             />
           )}
           {note.debt_due_date && <Kvp label="Debt payment due" value={note.debt_due_date} divider={false} />}

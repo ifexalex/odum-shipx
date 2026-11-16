@@ -24,6 +24,7 @@ import { Action, Badge, Banner, Button, Card, Field, Kvp, Mono, DialogGuard, typ
 import { SectionHead } from '../../shell/SectionHead'
 import { EvidenceUploader } from './EvidenceUploader'
 import styles from './ClaimDetail.module.css'
+import { formatDate, formatNgn } from '../../lib/format'
 
 const STATUS_VARIANT: Record<DamageClaimStatus, BadgeVariant> = {
   filed: 'warning',
@@ -231,7 +232,7 @@ function ResolveClaimModal({ onCancel, onSuccess, claimId, role }: ResolveClaimM
         )}
         {resolutionType === 'refund' && enteredAmount > 0 && (
           <Banner variant="info" title="Refund record generated automatically">
-            Confirming creates a refund of ₦{enteredAmount.toLocaleString()} in <strong>Pending Accounts Review</strong> status.
+            Confirming creates a refund of {formatNgn(enteredAmount)} in <strong>Pending Accounts Review</strong> status.
           </Banner>
         )}
         {needsDiscount && (
@@ -336,7 +337,7 @@ export function ClaimDetail(): JSX.Element {
             <div className={styles.heroMeta}>
               <Mono>{claim.id}</Mono>
               <span className={styles.dot}>·</span>
-              <span>Filed {claim.created_at.slice(0, 10)}</span>
+              <span>Filed {formatDate(claim.created_at)}</span>
             </div>
           </div>
         </div>

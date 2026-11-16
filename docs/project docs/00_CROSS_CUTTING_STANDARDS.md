@@ -636,3 +636,9 @@ Decryption calls `KMS Decrypt` to recover the data key, then Fernet decrypts the
 ### 12.3 Required Environment Variable
 
 `ENCRYPTION_KMS_KEY_ID` — ARN of the KMS key used for field encryption. Must be set in all Lambda environments that read/write the encrypted columns (payment_release and refunds services).
+
+## Display formatting and time zone (audit FE-03, owner decision 2026-11-16)
+
+**Every date and time is shown in Lagos time (Africa/Lagos, WAT) for everyone**, staff in China and Nigeria and customers alike, so one event reads the same wherever it is viewed. Times name the zone ("10 Nov 2026, 11:04 WAT"). A plain calendar date (`YYYY-MM-DD`: an ETA, a ship date) is shown as written and never shifted. Numbers use a fixed locale: commas for grouping, a point for decimals, whatever the browser is set to.
+
+All of it goes through `frontend/src/lib/format.ts`: `formatNgn` (`₦174,375`, or `₦174,375.50` with kobo, never `.5`), `formatUsd` (always cents), `formatAmount` (a column whose header names the currency), `formatCbm`, `formatNumber`, `formatCount`, `formatDate` (`10 Nov 2026`; `short`, `long`), `formatDateTime`, `formatTime`, and `todayIso` / `isoDateOffset` for the Lagos date as `YYYY-MM-DD` (date inputs, query presets; not `toISOString().slice(0, 10)`, which is the UTC date and is still yesterday for the first hour of the Lagos day). Missing or unreadable values render as "—", never "NaN" or "Invalid Date". `lib/format.test.ts` fails if any other source file calls `toLocaleString`, `toLocaleDateString` or `toLocaleTimeString`, or slices an ISO string for a date. The backend's PDFs and exports are separate: timestamps in the new list exports are UTC and say so in the header.

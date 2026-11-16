@@ -32,6 +32,7 @@ import { useWarehouses } from '../../hooks/useWarehouses'
 import { Action, Badge, Banner, Button, Card, ExportButton, Field, Icon, Mono, StatCard, Table, DialogGuard, type BadgeVariant } from '../../design/components'
 import { SectionHead } from '../../shell/SectionHead'
 import styles from './BillingDetail.module.css'
+import { formatDate, formatNgn, formatCbm, formatUsd } from '../../lib/format'
 
 // ---------------------------------------------------------------------------
 // Status helpers (shared across this file)
@@ -87,7 +88,7 @@ const GRACE_PERIOD_DAYS = 14
 const ENDING_SOON_THRESHOLD = 3 // days left before "ending soon" state kicks in
 
 function fmtDate(d: Date): string {
-  return d.toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })
+  return formatDate(d, 'short')
 }
 
 interface StorageFeeBannerProps {
@@ -127,7 +128,7 @@ function StorageFeeBanner({ billing, storageFees, canWaive, onWaive, waiving }: 
     return (
       <Banner variant="info" icon="clock" title={`Free storage until ${fmtDate(graceEnds!)}`}>
         Pickup is free for <strong>{daysLeft} more days</strong>. After the grace period,
-        storage accrues at ₦{dailyRatePerCarton.toLocaleString()}/day per carton
+        storage accrues at {formatNgn(dailyRatePerCarton)}/day per carton
         {cartonCount ? ` (${cartonCount} cartons)` : ''}.
       </Banner>
     )
@@ -141,8 +142,8 @@ function StorageFeeBanner({ billing, storageFees, canWaive, onWaive, waiving }: 
         title={daysLeft === 1 ? 'Storage fees begin tomorrow' : `Storage fees begin in ${daysLeft} days`}
         action={waiveBtn}>
         Grace period ends <strong>{fmtDate(graceEnds!)}</strong>. From day {GRACE_PERIOD_DAYS + 1},
-        ₦{dailyTotal.toLocaleString()}/day will accrue
-        {cartonCount ? ` (${cartonCount} cartons × ₦${dailyRatePerCarton.toLocaleString()})` : ''}.
+        {formatNgn(dailyTotal)}/day will accrue
+        {cartonCount ? ` (${cartonCount} cartons × ${formatNgn(dailyRatePerCarton)})` : ''}.
         A reminder was sent to the customer today.
       </Banner>
     )
@@ -153,8 +154,8 @@ function StorageFeeBanner({ billing, storageFees, canWaive, onWaive, waiving }: 
     const dailyTotal = cartonCount ? dailyRatePerCarton * cartonCount : storageFeesNgn
     return (
       <Banner variant="error" icon="alert" title="Storage fees are accruing" action={waiveBtn}>
-        <strong>₦{(totalAccrued || storageFeesNgn).toLocaleString()}</strong> accrued so far
-        {daysPastGrace > 0 ? ` (${daysPastGrace} days × ₦${dailyTotal.toLocaleString()})` : ''}.
+        <strong>{formatNgn(totalAccrued || storageFeesNgn)}</strong> accrued so far
+        {daysPastGrace > 0 ? ` (${daysPastGrace} days × ${formatNgn(dailyTotal)})` : ''}.
         This is added to the outstanding balance daily until pickup.
       </Banner>
     )
@@ -183,10 +184,10 @@ function StorageFeeLog({ fees }: { fees: StorageFeeEntry[] }): JSX.Element | nul
         rows={fees.map((f) => ({
           cells: [
             <span key="day" style={{ fontSize: 12, color: 'var(--color-ink-3)' }}>Day {f.day_number}</span>,
-            <Mono key="date" color="var(--color-ink-2)">{new Date(f.accrual_date).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })}</Mono>,
+            <Mono key="date" color="var(--color-ink-2)">{formatDate(f.accrual_date, 'short')}</Mono>,
             <Mono key="cartons">{f.carton_count}</Mono>,
-            <Mono key="rate">₦{Number(f.daily_rate_ngn).toLocaleString()}</Mono>,
-            <Mono key="fee" color="var(--color-error)">₦{Number(f.fee_amount_ngn).toLocaleString()}</Mono>,
+            <Mono key="rate">{formatNgn(f.daily_rate_ngn)}</Mono>,
+            <Mono key="fee" color="var(--color-error)">{formatNgn(f.fee_amount_ngn)}</Mono>,
           ],
         }))}
       />
@@ -260,11 +261,11 @@ function DisputeSLA({ dispute }: DisputeSLAProps): JSX.Element | null {
           <div key={stage.label} style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: '0.75rem', color }}>
             <span style={{ fontWeight: 600, minWidth: 80 }}>{stage.label}</span>
             {stage.done ? (
-              <span>{stage.ts ? `✓ ${new Date(stage.ts).toLocaleDateString()}` : '✓ Done'}</span>
+              <span>{stage.ts ? `✓ ${formatDate(stage.ts)}` : '✓ Done'}</span>
             ) : cd ? (
               <span>{cd.overdue ? '⚠ Overdue' : `${cd.label} remaining`}</span>
             ) : stage.deadline ? (
-              <span>Due {new Date(stage.deadline).toLocaleDateString()}</span>
+              <span>Due {formatDate(stage.deadline)}</span>
             ) : (
               <span style={{ color: 'var(--color-text-muted)' }}>—</span>
             )}
@@ -300,8 +301,7 @@ function RecordPaymentModal({ billing, onCancel, onSuccess }: RecordPaymentModal
 
   const enteredAmount = Number(amount)
   const isOverpayment = enteredAmount > 0 && enteredAmount > outstanding
-  const ngn = (v: string | number | null | undefined): string =>
-    v == null ? '—' : `₦${Number(v).toLocaleString('en-NG', { maximumFractionDigits: 0 })}`
+  const ngn = formatNgn
 
   async function handleSubmit(): Promise<void> {
     setSubmitting(true)
@@ -385,7 +385,7 @@ function RecordPaymentModal({ billing, onCancel, onSuccess }: RecordPaymentModal
         {isOverpayment && (
           <div className={styles.modalBanner}>
             <Banner variant="warning">
-              Amount entered exceeds outstanding balance of ₦{outstanding.toLocaleString()} — overpayment will accrue as a carryover credit.
+              Amount entered exceeds outstanding balance of {formatNgn(outstanding)} — overpayment will accrue as a carryover credit.
             </Banner>
           </div>
         )}
@@ -524,7 +524,7 @@ function AddChargeModal({ billing, onCancel, onSuccess }: AddChargeModalProps): 
             <option value="other">Other (free-form)</option>
             {chargeTypes.map((t) => (
               <option key={t.id} value={t.name}>
-                {t.name} — default ₦{Number(t.amount_ngn).toLocaleString()}
+                {t.name} — default {formatNgn(t.amount_ngn)}
               </option>
             ))}
           </select>
@@ -550,7 +550,7 @@ function AddChargeModal({ billing, onCancel, onSuccess }: AddChargeModalProps): 
 
         {amountNum > 0 && (
           <Banner variant="info" title={`This charge will be added to ${billing.invoice_number ?? 'this billing'}`}>
-            Total due increases to ₦{newTotal.toLocaleString()}. Outstanding increases to ₦{newOutstanding.toLocaleString()}.
+            Total due increases to {formatNgn(newTotal)}. Outstanding increases to {formatNgn(newOutstanding)}.
           </Banner>
         )}
 
@@ -674,7 +674,7 @@ function ApplyCarryoverModal({ billing, carryovers, onCancel, onSuccess }: Apply
               <option value="">Select a carryover…</option>
               {outstanding.map((c) => (
                 <option key={c.id} value={c.id}>
-                  ₦{Number(c.amount_ngn).toLocaleString()} — from {c.source_container_number ?? c.source_billing_id}
+                  {formatNgn(c.amount_ngn)} — from {c.source_container_number ?? c.source_billing_id}
                 </option>
               ))}
             </select>
@@ -1354,7 +1354,7 @@ export function BillingDetail(): JSX.Element {
             <div className={styles.heroMeta}>
               {billing.invoice_number && <span><Mono>{billing.invoice_number}</Mono></span>}
               <span>· Container <Mono>{billing.container_number ?? billing.container_id}</Mono></span>
-              {billing.billed_at && <span>· Billed {billing.billed_at.slice(0, 10)}</span>}
+              {billing.billed_at && <span>· Billed {formatDate(billing.billed_at)}</span>}
             </div>
             {(billing.customer_phone || billing.customer_email) && (
               <div className={styles.heroContacts}>
@@ -1426,11 +1426,11 @@ export function BillingDetail(): JSX.Element {
       {/* Stat cards */}
       <div className={styles.stats}>
         <StatCard label="Total CBM" value={Number(billing.total_cbm).toFixed(3)} />
-        <StatCard label="Total due" value={`₦${Number(billing.total_due_ngn).toLocaleString()}`} />
-        <StatCard label="Total paid" value={`₦${Number(billing.total_paid_ngn).toLocaleString()}`} />
+        <StatCard label="Total due" value={formatNgn(billing.total_due_ngn)} />
+        <StatCard label="Total paid" value={formatNgn(billing.total_paid_ngn)} />
         <StatCard
           label="Outstanding"
-          value={`₦${outstanding.toLocaleString()}`}
+          value={formatNgn(outstanding)}
         />
       </div>
 
@@ -1462,7 +1462,7 @@ export function BillingDetail(): JSX.Element {
           <div className={styles.breakdown}>
             <div className={styles.breakdownRow}>
               <span>CBM × rate</span>
-              <span>{Number(billing.total_cbm).toFixed(3)} CBM × ${Number(billing.cbm_rate_usd).toFixed(2)} = <Mono>${Number(billing.subtotal_usd).toLocaleString()}</Mono></span>
+              <span>{formatCbm(billing.total_cbm)} CBM × {formatUsd(billing.cbm_rate_usd)} = <Mono>{formatUsd(billing.subtotal_usd)}</Mono></span>
             </div>
             {/* Per-package-type detail — only worth showing when the tenant
                 actually priced this invoice by package type; a flat-rate
@@ -1472,12 +1472,12 @@ export function BillingDetail(): JSX.Element {
                 {(['carton', 'bag', 'bale'] as const).map((bucket) => {
                   const item = billing.cbm_breakdown![bucket]
                   if (Number(item.cbm) <= 0) return null
-                  const sym = billing.cbm_rate_currency === 'NGN' ? '₦' : '$'
+                  const money = billing.cbm_rate_currency === 'NGN' ? formatNgn : formatUsd
                   return (
                     <div className={styles.breakdownRow} key={bucket}>
                       <span style={{ paddingLeft: 16, textTransform: 'capitalize' }}>{bucket}s</span>
                       <span>
-                        {Number(item.cbm).toFixed(3)} CBM × {sym}{Number(item.rate).toFixed(2)} = <Mono>{sym}{Number(item.subtotal).toLocaleString()}</Mono>
+                        {formatCbm(item.cbm)} CBM × {money(item.rate)} = <Mono>{money(item.subtotal)}</Mono>
                       </span>
                     </div>
                   )
@@ -1486,11 +1486,11 @@ export function BillingDetail(): JSX.Element {
             )}
             <div className={styles.breakdownRow}>
               <span>Exchange rate</span>
-              <Mono>₦{Number(billing.dollar_rate).toLocaleString()} / $</Mono>
+              <Mono>{formatNgn(billing.dollar_rate)} / $</Mono>
             </div>
             <div className={styles.breakdownRow}>
               <span>CBM subtotal</span>
-              <Mono>₦{Number(billing.subtotal_ngn).toLocaleString()}</Mono>
+              <Mono>{formatNgn(billing.subtotal_ngn)}</Mono>
             </div>
             {/* Itemized by real description inline — not a lump "Misc fees"
                 figure a staff member has to scroll down to decode against
@@ -1498,39 +1498,39 @@ export function BillingDetail(): JSX.Element {
             {billing.misc_fees.map((fee, i) => (
               <div className={styles.breakdownRow} key={i}>
                 <span>{fee.description}</span>
-                <Mono>₦{Number(fee.amount_ngn).toLocaleString()}</Mono>
+                <Mono>{formatNgn(fee.amount_ngn)}</Mono>
               </div>
             ))}
             {Number(billing.storage_fees_ngn) > 0 && (
               <div className={styles.breakdownRow}>
                 <span>Storage fees</span>
-                <Mono>₦{Number(billing.storage_fees_ngn).toLocaleString()}</Mono>
+                <Mono>{formatNgn(billing.storage_fees_ngn)}</Mono>
               </div>
             )}
             {Number(billing.carryover_ngn) > 0 && (
               <div className={styles.breakdownRow}>
                 <span>Carryover applied</span>
-                <Mono>+₦{Number(billing.carryover_ngn).toLocaleString()}</Mono>
+                <Mono>+{formatNgn(billing.carryover_ngn)}</Mono>
               </div>
             )}
             {Number(billing.adjustments_ngn) !== 0 && (
               <div className={styles.breakdownRow}>
                 <span style={{ color: 'var(--color-success)', fontWeight: 600 }}>CBM dispute adjustment</span>
-                <Mono color="var(--color-success)">−₦{Math.abs(Number(billing.adjustments_ngn)).toLocaleString()}</Mono>
+                <Mono color="var(--color-success)">−{formatNgn(Math.abs(Number(billing.adjustments_ngn)))}</Mono>
               </div>
             )}
             <div className={`${styles.breakdownRow} ${styles.breakdownTotal}`}>
               <span>Total due</span>
-              <Mono>₦{Number(billing.total_due_ngn).toLocaleString()}</Mono>
+              <Mono>{formatNgn(billing.total_due_ngn)}</Mono>
             </div>
             <div className={styles.breakdownRow}>
               <span style={{ color: 'var(--color-success)' }}>Total paid</span>
-              <Mono color="var(--color-success)">−₦{Number(billing.total_paid_ngn).toLocaleString()}</Mono>
+              <Mono color="var(--color-success)">−{formatNgn(billing.total_paid_ngn)}</Mono>
             </div>
             <div className={`${styles.breakdownRow} ${styles.breakdownTotal}`}>
               <span style={{ color: Number(billing.outstanding_ngn) > 0 ? 'var(--color-error)' : undefined }}>Outstanding</span>
               <Mono color={Number(billing.outstanding_ngn) > 0 ? 'var(--color-error)' : undefined}>
-                ₦{Number(billing.outstanding_ngn).toLocaleString()}
+                {formatNgn(billing.outstanding_ngn)}
               </Mono>
             </div>
           </div>
@@ -1551,10 +1551,10 @@ export function BillingDetail(): JSX.Element {
               ]}
               rows={billing.payments.map((p) => ({
                 cells: [
-                  <Mono key="amount">₦{Number(p.amount_ngn).toLocaleString()}</Mono>,
+                  <Mono key="amount">{formatNgn(p.amount_ngn)}</Mono>,
                   <span key="method">{p.payment_method ?? '—'}</span>,
                   <Mono key="ref">{p.payment_reference ?? '—'}</Mono>,
-                  <span key="date">{p.confirmed_at.slice(0, 10)}</span>,
+                  <span key="date">{formatDate(p.confirmed_at)}</span>,
                 ],
               }))}
             />
@@ -1588,8 +1588,8 @@ export function BillingDetail(): JSX.Element {
               ]}
               rows={paymentClaims.map((claim) => ({
                 cells: [
-                  <Mono key="amount">₦{Number(claim.amount_ngn).toLocaleString()}</Mono>,
-                  <span key="date">{claim.submitted_at.slice(0, 10)}</span>,
+                  <Mono key="amount">{formatNgn(claim.amount_ngn)}</Mono>,
+                  <span key="date">{formatDate(claim.submitted_at)}</span>,
                   <Button
                     key="evidence"
                     variant="ghost"
@@ -1685,7 +1685,7 @@ export function BillingDetail(): JSX.Element {
                     cells: [
                       <span key="desc">{c.description}</span>,
                       <span key="type" style={{ fontSize: 12, color: 'var(--color-ink-3)' }}>{c.charge_type.replace(/_/g, ' ')}</span>,
-                      <Mono key="amt">₦{Number(c.amount_ngn).toLocaleString()}</Mono>,
+                      <Mono key="amt">{formatNgn(c.amount_ngn)}</Mono>,
                       ...(canRemoveCharge
                         ? [
                             <Button
@@ -1705,7 +1705,7 @@ export function BillingDetail(): JSX.Element {
                     cells: [
                       <span key="desc">{f.description}</span>,
                       <span key="type" />,
-                      <Mono key="amt">₦{Number(f.amount_ngn).toLocaleString()}</Mono>,
+                      <Mono key="amt">{formatNgn(f.amount_ngn)}</Mono>,
                       ...(canRemoveCharge ? [<span key="rm" />] : []),
                     ],
                   })))}

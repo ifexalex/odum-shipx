@@ -9,16 +9,13 @@ import { Badge, Banner, Button, Card, Kvp, Mono, type BadgeVariant } from '../..
 import { STALE_30S } from '../../lib/queryClient'
 import { PageHeader } from '../../shell/PageHeader'
 import styles from './customer.module.css'
+import { formatDate, formatNgn } from '../../lib/format'
 
 const STATUS_VARIANT: Record<string, BadgeVariant> = {
   active: 'success',
   picked_up: 'neutral',
   expired: 'error',
   cancelled: 'neutral',
-}
-
-function formatDate(iso: string | null | undefined): string {
-  return iso ? iso.slice(0, 10) : '—'
 }
 
 /**
@@ -96,7 +93,7 @@ export function MyReleaseNote(): JSX.Element {
       {note.is_on_credit && owing && (
         <div className={styles.banner}>
           <Banner variant="warning" title="Released on credit">
-            A balance of <strong>₦{Number(note.balance_ngn).toLocaleString()}</strong> is still due
+            A balance of <strong>{formatNgn(note.balance_ngn)}</strong> is still due
             {note.debt_due_date ? ` by ${formatDate(note.debt_due_date)}` : ''}.
           </Banner>
         </div>

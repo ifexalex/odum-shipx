@@ -15,6 +15,7 @@ import { STALE_5_MIN } from '../../lib/queryClient'
 import { Badge, Banner, Button, Card, Field, Mono, Table, DialogGuard } from '../../design/components'
 import { useTopBarSlot } from '../../shell/TopBarContext'
 import styles from './admin.module.css'
+import { formatNgn } from '../../lib/format'
 
 interface ChargeTypeModalProps {
   existing: ChargeType | null
@@ -220,7 +221,7 @@ export function ChargeTypes(): JSX.Element {
               <span key="name" style={{ fontWeight: 600, fontSize: 13 }}>
                 {t.name}
               </span>,
-              <Mono key="amt">₦{Number(t.amount_ngn).toLocaleString()}</Mono>,
+              <Mono key="amt">{formatNgn(t.amount_ngn)}</Mono>,
               <span
                 key="usage"
                 title="Billing charges added from this type"

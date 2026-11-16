@@ -8,6 +8,7 @@ import { Badge, Banner, Card, Chip, Mono, Table, ViewLink, ListFooter, type Badg
 import { useTopBarSlot } from '../../shell/TopBarContext'
 import { useNow } from '../../hooks/useNow'
 import styles from './DisputeList.module.css'
+import { formatDate } from '../../lib/format'
 
 const _DISPUTE_SLA_DAYS = 7
 
@@ -125,7 +126,7 @@ export function DisputeList(): JSX.Element {
                 <Badge key="status" variant={STATUS_VARIANT[d.status]}>
                   {statusLabel(d.status)}
                 </Badge>,
-                <span key="date">{d.submitted_at.slice(0, 10)}</span>,
+                <span key="date">{formatDate(d.submitted_at)}</span>,
                 <SLACountdown key="sla" submittedAt={d.submitted_at} status={d.status} now={now} />,
                 // Nigeria staff and admins manage a dispute inline on its invoice; China staff cannot open invoices.
                 <ViewLink key="view" onClick={() => navigate(isChina ? `/billing/disputes/${d.id}` : `/billing/${d.billing_id}`)} />,

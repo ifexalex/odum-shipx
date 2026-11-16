@@ -16,6 +16,7 @@ import { useSession } from '../../auth/useSession'
 import { Badge, Banner, Button, Card, Chip, Field, Mono, StatCard, Table, UserCell, DialogGuard, type BadgeVariant } from '../../design/components'
 import { useTopBarSlot } from '../../shell/TopBarContext'
 import styles from './BillingList.module.css'
+import { formatDate, formatNgn } from '../../lib/format'
 
 const STATUS_VARIANT: Record<CarryoverStatus, BadgeVariant> = {
   outstanding: 'warning',
@@ -65,7 +66,7 @@ function ExemptModal({ carryover, onCancel, onSuccess }: { carryover: Carryover;
       >
         <h3 style={{ margin: 0, fontSize: '1rem', fontWeight: 700 }}>Exempt carryover</h3>
         {error && <Banner variant="error" title="Action failed">{error}</Banner>}
-        <Banner variant="warning" title={`₦${Number(carryover.amount_ngn).toLocaleString()} from ${carryover.source_container_number ?? 'source billing'}`}>
+        <Banner variant="warning" title={`${formatNgn(carryover.amount_ngn)} from ${carryover.source_container_number ?? 'source billing'}`}>
           Exempting removes this debt from the next billing. The amount is rolled forward as a new
           outstanding ledger entry for audit — it is not written off.
         </Banner>
@@ -126,7 +127,7 @@ export function CarryoverLedger(): JSX.Element {
       {error && <div style={{ marginBottom: 16 }}><Banner variant="error" title="Couldn't load">{error}</Banner></div>}
 
       <div className={styles.statsRow ?? ''} style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: 12, marginBottom: 20 }}>
-        <StatCard label="Outstanding total" value={`₦${outstandingTotal.toLocaleString()}`} />
+        <StatCard label="Outstanding total" value={formatNgn(outstandingTotal)} />
         <StatCard label="Outstanding entries" value={carryovers.filter((c) => c.status === 'outstanding').length} />
         <StatCard label="All entries" value={carryovers.length} />
       </div>
@@ -159,9 +160,9 @@ export function CarryoverLedger(): JSX.Element {
               >
                 <Mono color="var(--color-primary)">{c.source_container_number ?? c.source_billing_id.slice(0, 8)}</Mono>
               </button>,
-              <Mono key="amt">₦{Number(c.amount_ngn).toLocaleString()}</Mono>,
+              <Mono key="amt">{formatNgn(c.amount_ngn)}</Mono>,
               <Badge key="status" variant={STATUS_VARIANT[c.status]}>{c.status}</Badge>,
-              <span key="created" style={{ fontSize: 12, color: 'var(--color-ink-3)' }}>{c.created_at.slice(0, 10)}</span>,
+              <span key="created" style={{ fontSize: 12, color: 'var(--color-ink-3)' }}>{formatDate(c.created_at)}</span>,
               c.status === 'outstanding' && canExempt ? (
                 <Button key="exempt" variant="ghost" size="sm" onClick={() => setExempting(c)}>Exempt</Button>
               ) : (

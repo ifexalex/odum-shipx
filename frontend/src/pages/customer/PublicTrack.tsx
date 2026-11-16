@@ -12,6 +12,7 @@ import { ApiError } from '../../api/client'
 import { publicTrackingApi, stageLabelFor, type PublicTrackingResult } from '../../api/customer'
 import { Banner, Button, Field, PhoneField } from '../../design/components'
 import styles from './customer.module.css'
+import { formatDate } from '../../lib/format'
 
 function TrackingTimeline({ result }: { result: PublicTrackingResult }): JSX.Element {
   return (
@@ -52,7 +53,7 @@ function TrackingTimeline({ result }: { result: PublicTrackingResult }): JSX.Ele
                 ].join(' ')} />
                 <div className={styles.timelineContent}>
                   <p className={styles.timelineStage}>{stageLabelFor(ev.stage)}</p>
-                  <p className={styles.timelineDate}>{ev.occurred_at.slice(0, 10)}</p>
+                  <p className={styles.timelineDate}>{formatDate(ev.occurred_at)}</p>
                   {ev.notes && <p className={styles.timelineNotes}>{ev.notes}</p>}
                 </div>
               </div>

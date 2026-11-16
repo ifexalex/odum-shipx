@@ -10,7 +10,7 @@ import { billingApi, disputeApi, type Billing, type CBMDispute } from '../../api
 import { claimsApi } from '../../api/claims'
 import { CONTAINER_STATUS_LABELS } from '../../api/containerRules'
 import { billingKeys, claimKeys, containerKeys, customerKeys } from '../../api/keys'
-import { formatNgnCompact } from '../../lib/format'
+import { formatNgnCompact, formatDate, formatNgn } from '../../lib/format'
 import { manifestApi, type Manifest } from '../../api/manifest'
 import { ARRIVED_IN_NG } from '../../api/manifestRules'
 import { packingListApi, type PackingList } from '../../api/packingList'
@@ -247,7 +247,7 @@ export function Dashboard(): JSX.Element {
                   columns={[{ title: 'Submitted' }, { title: 'Original CBM', align: 'right' }, { title: 'Status' }]}
                   rows={openDisputes.slice(0, 5).map((d) => ({
                     cells: [
-                      <span key="when" style={{ fontSize: 12, color: 'var(--color-ink-3)' }}>{d.submitted_at.slice(0, 10)}</span>,
+                      <span key="when" style={{ fontSize: 12, color: 'var(--color-ink-3)' }}>{formatDate(d.submitted_at)}</span>,
                       <Mono key="cbm">{d.original_cbm ?? '—'}</Mono>,
                       <Badge key="status" variant="warning">Submitted</Badge>,
                     ],
@@ -276,7 +276,7 @@ export function Dashboard(): JSX.Element {
                     cells: [
                       <UserCell key="cust" name={b.customer_name ?? '—'} email="" />,
                       <Mono key="ctn">{b.container_number ?? '—'}</Mono>,
-                      <Mono key="out" color="var(--color-error)">₦{Number(b.outstanding_ngn).toLocaleString()}</Mono>,
+                      <Mono key="out" color="var(--color-error)">{formatNgn(b.outstanding_ngn)}</Mono>,
                       <Button key="view" variant="ghost" size="sm" onClick={() => navigate(`/billing/${b.id}`)}>View</Button>,
                     ],
                   }))}
@@ -345,7 +345,7 @@ export function Dashboard(): JSX.Element {
                   <Badge key="status" variant={CONTAINER_BADGE[c.status] ?? 'neutral'}>
                     {CONTAINER_STATUS_LABELS[c.status] ?? c.status}
                   </Badge>,
-                  <span key="eta" style={{ fontSize: 12, color: 'var(--color-ink-3)' }}>{c.estimated_arrival_date?.slice(0, 10) ?? '—'}</span>,
+                  <span key="eta" style={{ fontSize: 12, color: 'var(--color-ink-3)' }}>{formatDate(c.estimated_arrival_date)}</span>,
                   <Button key="view" variant="ghost" size="sm" onClick={() => navigate(`/containers/${c.id}`)}>View</Button>,
                 ],
               }))}

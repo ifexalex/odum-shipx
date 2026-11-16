@@ -12,6 +12,7 @@ import { ActivityFeed } from '../../shell/ActivityFeed'
 import { SectionHead } from '../../shell/SectionHead'
 import { RoleCheckboxList } from './RoleCheckboxList'
 import styles from './admin.module.css'
+import { formatDate } from '../../lib/format'
 
 const ROLE_VARIANT: Record<TenantUserRole, BadgeVariant> = {
   tenant_admin: 'error',
@@ -235,7 +236,7 @@ export function StaffUserDetail(): JSX.Element {
           </div>
         } />
         <Kvp label="Status" value={<Badge variant={user.status === 'active' ? 'success' : 'neutral'}>{user.status}</Badge>} />
-        <Kvp label="Member since" value={user.created_at.slice(0, 10)} divider={false} />
+        <Kvp label="Member since" value={formatDate(user.created_at)} divider={false} />
       </Card>
 
       <SectionHead title="Permissions" sub="What this role can and cannot do — fixed per role, enforced server-side" />

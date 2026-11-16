@@ -8,6 +8,7 @@ import { useCustomerList } from '../../hooks/useCustomers'
 import { Badge, Banner, Button, Card, Check, Chip, Field, Icon, Mono, PhoneField, StatCard, Table, ViewLink, ListFooter, DialogGuard } from '../../design/components'
 import { useTopBarSlot } from '../../shell/TopBarContext'
 import styles from './admin.module.css'
+import { formatDate } from '../../lib/format'
 
 // ---------------------------------------------------------------------------
 // Add customer modal (audit gap B5a — prototype 3.5's "Add customer" action).
@@ -211,8 +212,7 @@ function AccountStatusBadge({ customer }: { customer: Customer }): JSX.Element {
     return <Badge variant="success">Active</Badge>
   }
   if (customer.pending_invite_expires_at) {
-    const expires = new Date(customer.pending_invite_expires_at)
-    return <Badge variant="warning">Invited · expires {expires.toLocaleDateString()}</Badge>
+    return <Badge variant="warning">Invited · expires {formatDate(customer.pending_invite_expires_at)}</Badge>
   }
   return <Badge variant="neutral">No login</Badge>
 }

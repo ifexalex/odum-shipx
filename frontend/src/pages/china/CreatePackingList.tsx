@@ -18,6 +18,7 @@ import { Avatar, Badge, Banner, Button, Card, Combobox, Field, Icon, Kvp, Modal,
 import { PageHeader } from '../../shell/PageHeader'
 import { SectionHead } from '../../shell/SectionHead'
 import styles from './CreatePackingList.module.css'
+import { formatNgn } from '../../lib/format'
 
 /** Turn an expanded batch back into the one line that produced it.
  *
@@ -1025,12 +1026,12 @@ export function CreatePackingList(): JSX.Element {
               <div className={[styles.priceTile, styles.priceTileHighlight].join(' ')}>
                 <div className={styles.priceLabel}>Shipping (NGN)</div>
                 <div className={styles.priceValue}>
-                  {shippingNgn != null ? `₦${Math.round(shippingNgn).toLocaleString()}` : '—'}
+                  {shippingNgn != null ? formatNgn(Math.round(shippingNgn)) : '—'}
                 </div>
                 <div className={styles.priceSub}>
                   {cbmCurrency === 'ngn'
                     ? cbmRate != null ? `${totals.cbm.toFixed(3)} × ₦${cbmRate.toFixed(2)}` : 'rate unavailable'
-                    : fxRate != null ? `× ₦${fxRate.toLocaleString()} FX` : 'FX unavailable'}
+                    : fxRate != null ? `× ${formatNgn(fxRate)} FX` : 'FX unavailable'}
                 </div>
               </div>
             </div>

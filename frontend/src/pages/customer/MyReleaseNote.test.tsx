@@ -52,7 +52,7 @@ describe('MyReleaseNote', () => {
     expect(screen.getByText('MSKU1234567')).toBeInTheDocument()
     expect(screen.getByText('Lagos Island')).toBeInTheDocument()
     expect(screen.getByText('3 Capital Plaza, Lagos')).toBeInTheDocument()
-    expect(screen.getByText('2026-12-01')).toBeInTheDocument()
+    expect(screen.getByText('1 Dec 2026')).toBeInTheDocument()
     expect(screen.getByText(/Partial/)).toBeInTheDocument()
   })
 

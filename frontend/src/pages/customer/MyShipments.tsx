@@ -11,6 +11,7 @@ import { SectionHead } from '../../shell/SectionHead'
 import { useSession } from '../../auth/useSession'
 import { CustomerStepper } from './CustomerStepper'
 import styles from './MyShipments.module.css'
+import { formatDate, formatNgn } from '../../lib/format'
 
 const ACTIVE_STATUSES = new Set([
   'loading', 'sealed', 'in_transit', 'arrived', 'customs_clearance', 'cleared', 'at_warehouse',
@@ -28,9 +29,7 @@ const CONTAINER_STATUS_BADGE: Record<string, { label: string; variant: 'info' | 
 }
 
 function fmtNgn(val: string | number | null | undefined): string {
-  if (val == null) return '—'
-  const n = Number(val)
-  return `₦${n.toLocaleString('en-NG', { maximumFractionDigits: 0 })}`
+  return formatNgn(val)
 }
 
 function CustStat({ label, value, color }: { label: string; value: string; color?: string }): JSX.Element {
@@ -180,9 +179,7 @@ export function MyShipments(): JSX.Element {
                       <div className={styles.activeCardEta}>
                         <div className={styles.etaLabel}>Expected arrival</div>
                         <div className={styles.etaDate}>
-                          {new Date(shipment.container_eta).toLocaleDateString('en-GB', {
-                            day: 'numeric', month: 'short', year: 'numeric',
-                          })}
+                          {formatDate(shipment.container_eta)}
                         </div>
                         <div className={styles.etaSub}>Tin Can Port, Lagos</div>
                       </div>
@@ -254,7 +251,7 @@ export function MyShipments(): JSX.Element {
                     <Badge key="status" variant="success">Delivered</Badge>,
                     <Mono key="cartons">{pl.carton_count}</Mono>,
                     <span key="date" style={{ fontSize: 12, color: 'var(--color-ink-3)' }}>
-                      {new Date(pl.created_at).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })}
+                      {formatDate(pl.created_at)}
                     </span>,
                     <Mono key="paid">{b ? fmtNgn(b.total_paid_ngn) : '—'}</Mono>,
                     <ViewLink key="view" onClick={() => navigate(`/my-shipments/${pl.id}`)} />,

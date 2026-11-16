@@ -16,6 +16,7 @@ import { Tabs } from '../../shell/Tabs'
 import { PageHeader } from '../../shell/PageHeader'
 import { SectionHead } from '../../shell/SectionHead'
 import styles from './admin.module.css'
+import { formatDate, formatDateTime } from '../../lib/format'
 
 const STATUS_VARIANT: Record<TenantStatus, BadgeVariant> = {
   active: 'success',
@@ -278,7 +279,7 @@ function AuditTab({ tenantId }: { tenantId: string }): JSX.Element {
         columns={[{ title: 'Timestamp' }, { title: 'Action' }, { title: 'IP' }]}
         rows={entries.map((e) => ({
           cells: [
-            <Mono key="ts">{new Date(e.created_at).toLocaleString('en-GB', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })}</Mono>,
+            <Mono key="ts">{formatDateTime(e.created_at, { year: false })}</Mono>,
             <Badge key="a" variant="info">{e.action.replace(/_/g, ' ')}</Badge>,
             <Mono key="ip" color="var(--color-ink-4)">{e.ip_address ?? '—'}</Mono>,
           ],
@@ -388,9 +389,9 @@ export function PlatformTenantDetail(): JSX.Element {
         <Kvp label="Subscription" value={<span style={{ textTransform: 'capitalize' }}>{tenant.subscription_tier}</span>} />
         <Kvp label="Contact email" value={tenant.primary_contact_email} />
         {tenant.primary_contact_phone && <Kvp label="Contact phone" value={tenant.primary_contact_phone} />}
-        <Kvp label="Created" value={tenant.created_at.slice(0, 10)} />
-        {tenant.offboarded_at && <Kvp label="Offboarded" value={tenant.offboarded_at.slice(0, 10)} />}
-        {tenant.reactivated_at && <Kvp label="Reactivated" value={tenant.reactivated_at.slice(0, 10)} />}
+        <Kvp label="Created" value={formatDate(tenant.created_at)} />
+        {tenant.offboarded_at && <Kvp label="Offboarded" value={formatDate(tenant.offboarded_at)} />}
+        {tenant.reactivated_at && <Kvp label="Reactivated" value={formatDate(tenant.reactivated_at)} />}
         <Kvp label="Tenant ID" value={<span style={{ fontFamily: 'var(--font-mono)', fontSize: '0.8125rem' }}>{tenant.id}</span>} divider={false} />
       </Card>
       </>

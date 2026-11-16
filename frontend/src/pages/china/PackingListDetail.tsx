@@ -11,6 +11,7 @@ import { useSession } from '../../auth/useSession'
 import { Badge, Banner, Button, Card, ExportButton, Field, Icon, Mono, Table, DialogGuard, type BadgeVariant } from '../../design/components'
 import { SectionHead } from '../../shell/SectionHead'
 import styles from './PackingListDetail.module.css'
+import { formatDate } from '../../lib/format'
 
 const STATUS_VARIANT: Record<PackingList['status'], BadgeVariant> = {
   draft: 'neutral',
@@ -250,7 +251,7 @@ export function PackingListDetail(): JSX.Element {
               <Mono>{pl.container_number ?? pl.container_id}</Mono>
               <span>· {packageSummary} · {formatCbm(pl.total_cbm)} CBM</span>
               {pl.arrival_warehouse_name && <span>· To {pl.arrival_warehouse_name}</span>}
-              <span>· Submitted {pl.created_at.slice(0, 10)}</span>
+              <span>· Submitted {formatDate(pl.created_at)}</span>
             </div>
           </div>
         </div>

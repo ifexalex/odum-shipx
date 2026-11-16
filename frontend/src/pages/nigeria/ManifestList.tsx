@@ -7,6 +7,7 @@ import { useManifestList } from '../../hooks/useManifests'
 import { Badge, Banner, Card, Chip, Mono, StatCard, Table, ViewLink, ListFooter, type BadgeVariant } from '../../design/components'
 import { useTopBarSlot } from '../../shell/TopBarContext'
 import styles from './ManifestList.module.css'
+import { formatNumber } from '../../lib/format'
 
 // Per-status counts come from GET /v1/manifests/stats (P2-4) — a single
 // aggregate query, so no page-tallying. Chips still set the real
@@ -48,7 +49,7 @@ function PackageMix({ manifest }: { manifest: Manifest }): JSX.Element {
 function fmtWeight(kg: string | null | undefined): string {
   const n = Number(kg)
   if (!kg || Number.isNaN(n) || n === 0) return '—'
-  return `${n.toLocaleString(undefined, { maximumFractionDigits: 0 })} kg`
+  return `${formatNumber(n, 0)} kg`
 }
 
 type ManifestStats = Awaited<ReturnType<typeof manifestApi.stats>>

@@ -26,6 +26,7 @@ import {
 } from '../../design/components'
 import { useTopBarSlot } from '../../shell/TopBarContext'
 import styles from './admin.module.css'
+import { formatDate } from '../../lib/format'
 
 const STATUS_VARIANT: Record<TenantStatus, BadgeVariant> = {
   active: 'success',
@@ -218,7 +219,7 @@ export function PlatformTenantList(): JSX.Element {
                     : '—'}
                 </Mono>,
                 <span key="date" style={{ fontSize: 12, color: 'var(--color-ink-3)' }}>
-                  {t.created_at.slice(0, 10)}
+                  {formatDate(t.created_at)}
                 </span>,
                 <ViewLink
                   key="view"

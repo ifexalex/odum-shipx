@@ -54,7 +54,7 @@ describe('StaffUserList (B4)', () => {
     renderPage()
     expect(await screen.findByText('Amara Okafor')).toBeInTheDocument()
     expect(screen.queryByText('A Customer')).toBeNull()
-    expect(screen.getAllByText('2026-01-14').length).toBe(3)
+    expect(screen.getAllByText('14 Jan 2026').length).toBe(3)
     // "All 3" chip (customers excluded from the count)
     const allChip = screen.getAllByText('All').find((el) => el.closest('button'))!
     expect(allChip.closest('button')).toHaveTextContent('3')

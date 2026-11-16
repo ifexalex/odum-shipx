@@ -7,6 +7,7 @@ import { useClaimList } from '../../hooks/useClaims'
 import { Badge, Banner, Button, type BadgeVariant } from '../../design/components'
 import { PageHeader } from '../../shell/PageHeader'
 import styles from './customer.module.css'
+import { formatDate } from '../../lib/format'
 
 const STATUS_VARIANT: Record<DamageClaimStatus, BadgeVariant> = {
   filed: 'warning',
@@ -95,7 +96,7 @@ export function MyClaims(): JSX.Element {
                 <Badge variant={STATUS_VARIANT[c.status]}>{statusLabel(c.status)}</Badge>
               </div>
               <div className={styles.cardMeta}>
-                <span>Filed {c.created_at.slice(0, 10)}</span>
+                <span>Filed {formatDate(c.created_at)}</span>
                 {c.cartons_affected.length > 0 && (
                   <span>· {c.cartons_affected.length} carton(s) affected</span>
                 )}

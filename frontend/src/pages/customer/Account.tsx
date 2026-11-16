@@ -20,6 +20,7 @@ import { PageHeader } from '../../shell/PageHeader'
 import { SectionHead } from '../../shell/SectionHead'
 import { Tabs } from '../../shell/Tabs'
 import styles from './customer.module.css'
+import { todayIso, formatDate } from '../../lib/format'
 
 type TabKey = 'Profile' | 'Notifications' | 'Privacy'
 
@@ -285,7 +286,7 @@ function PrivacyTab({ customer }: { customer: Customer }): JSX.Element {
       const url = URL.createObjectURL(blob)
       const a = document.createElement('a')
       a.href = url
-      a.download = `my-data-export-${new Date().toISOString().slice(0, 10)}.json`
+      a.download = `my-data-export-${todayIso()}.json`
       a.click()
       URL.revokeObjectURL(url)
     } catch (err) {
@@ -320,7 +321,7 @@ function PrivacyTab({ customer }: { customer: Customer }): JSX.Element {
 
       {customer.consent_given_at && (
         <Banner variant="success" title="Consent on file">
-          You consented to data processing on <strong>{customer.consent_given_at.slice(0, 10)}</strong>. Lawful
+          You consented to data processing on <strong>{formatDate(customer.consent_given_at)}</strong>. Lawful
           basis: contract performance (NDPR Art. 2.2). You can withdraw at any time below.
         </Banner>
       )}

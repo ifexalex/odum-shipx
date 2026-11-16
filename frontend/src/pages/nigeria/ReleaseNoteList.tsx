@@ -6,6 +6,7 @@ import { useReleaseNoteList } from '../../hooks/useReleaseNotes'
 import { Badge, Banner, Card, Chip, Mono, StatCard, Table, ViewLink, ListFooter, type BadgeVariant } from '../../design/components'
 import { useTopBarSlot } from '../../shell/TopBarContext'
 import styles from './ReleaseNoteList.module.css'
+import { formatDate } from '../../lib/format'
 
 const STATUS_FILTERS: ReleaseNoteStatus[] = ['active', 'picked_up', 'expired', 'cancelled']
 
@@ -93,7 +94,7 @@ export function ReleaseNoteList(): JSX.Element {
                 <Mono key="cartons">{n.carton_count} / {n.total_cartons_for_customer}</Mono>,
                 <span key="type" className={styles.partial}>{releaseTypeLabel(n)}</span>,
                 <Badge key="status" variant={STATUS_VARIANT[n.status]}>{releaseNoteStatusLabel(n.status)}</Badge>,
-                <span key="date">{n.authorized_at.slice(0, 10)}</span>,
+                <span key="date">{formatDate(n.authorized_at)}</span>,
                 <ViewLink key="view" onClick={() => navigate(`/release-notes/${n.id}`, { state: { note: n } })} />,
               ],
             }))}

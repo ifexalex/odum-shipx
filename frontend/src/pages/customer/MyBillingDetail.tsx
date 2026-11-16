@@ -13,6 +13,7 @@ import { SectionHead } from '../../shell/SectionHead'
 import { EvidenceUploader, type UploadedEvidence } from '../nigeria/EvidenceUploader'
 import { ReleaseNoteCard } from './ReleaseNoteCard'
 import styles from './customer.module.css'
+import { formatDate, formatNgn } from '../../lib/format'
 
 const STATUS_VARIANT: Record<Billing['payment_status'], BadgeVariant> = {
   unpaid: 'error', partially_paid: 'warning', paid: 'success', overpaid: 'warning',
@@ -358,7 +359,7 @@ export function MyBillingDetail(): JSX.Element {
             <Badge variant={STATUS_VARIANT[billing.payment_status]}>{statusLabel(billing.payment_status)}</Badge>
             {billing.billed_at && (
               <span style={{ fontSize: '0.8125rem', color: 'var(--color-text-muted)' }}>
-                Billed {billing.billed_at.slice(0, 10)}
+                Billed {formatDate(billing.billed_at)}
               </span>
             )}
           </div>
@@ -392,9 +393,9 @@ export function MyBillingDetail(): JSX.Element {
       )}
 
       <div className={styles.statsRow}>
-        <StatCard label="Total due" value={`₦${Number(billing.total_due_ngn).toLocaleString()}`} />
-        <StatCard label="Total paid" value={`₦${Number(billing.total_paid_ngn).toLocaleString()}`} />
-        <StatCard label="Outstanding" value={outstanding > 0 ? `₦${outstanding.toLocaleString()}` : '—'} />
+        <StatCard label="Total due" value={formatNgn(billing.total_due_ngn)} />
+        <StatCard label="Total paid" value={formatNgn(billing.total_paid_ngn)} />
+        <StatCard label="Outstanding" value={outstanding > 0 ? formatNgn(outstanding) : '—'} />
       </div>
 
       {/* Breakdown */}
@@ -433,8 +434,8 @@ export function MyBillingDetail(): JSX.Element {
         ) : (
           <Kvp label="Rate" value={<Mono>${Number(billing.cbm_rate_usd).toFixed(2)} / CBM</Mono>} />
         )}
-        <Kvp label="Exchange rate" value={<Mono>₦{Number(billing.dollar_rate).toLocaleString()} / $</Mono>} />
-        <Kvp label="Shipping cost (CBM subtotal)" value={<Mono>₦{Number(billing.subtotal_ngn).toLocaleString()}</Mono>} />
+        <Kvp label="Exchange rate" value={<Mono>{formatNgn(billing.dollar_rate)} / $</Mono>} />
+        <Kvp label="Shipping cost (CBM subtotal)" value={<Mono>{formatNgn(billing.subtotal_ngn)}</Mono>} />
         {/*
           Itemized by real description, never a lump "Misc fees" line — a
           customer looking at money owed should be able to tell exactly what
@@ -445,15 +446,15 @@ export function MyBillingDetail(): JSX.Element {
           ambiguous lump label. See frontend/07_domain_modules.md.
         */}
         {billing.misc_fees.map((fee, i) => (
-          <Kvp key={i} label={fee.description} value={<Mono>₦{Number(fee.amount_ngn).toLocaleString()}</Mono>} />
+          <Kvp key={i} label={fee.description} value={<Mono>{formatNgn(fee.amount_ngn)}</Mono>} />
         ))}
         {Number(billing.storage_fees_ngn) > 0 && (
-          <Kvp label="Storage fees" value={<Mono>₦{Number(billing.storage_fees_ngn).toLocaleString()}</Mono>} />
+          <Kvp label="Storage fees" value={<Mono>{formatNgn(billing.storage_fees_ngn)}</Mono>} />
         )}
         {Number(billing.carryover_ngn) > 0 && (
           <Kvp
             label="Carryover applied from a previous shipment"
-            value={<Mono>+₦{Number(billing.carryover_ngn).toLocaleString()}</Mono>}
+            value={<Mono>+{formatNgn(billing.carryover_ngn)}</Mono>}
           />
         )}
         {Number(billing.adjustments_ngn) !== 0 && (
@@ -461,21 +462,21 @@ export function MyBillingDetail(): JSX.Element {
             label="CBM dispute adjustment"
             value={
               <Mono color="var(--color-success)">
-                −₦{Math.abs(Number(billing.adjustments_ngn)).toLocaleString()}
+                −{formatNgn(Math.abs(Number(billing.adjustments_ngn)))}
               </Mono>
             }
           />
         )}
-        <Kvp label="Total due" value={<Mono>₦{Number(billing.total_due_ngn).toLocaleString()}</Mono>} />
+        <Kvp label="Total due" value={<Mono>{formatNgn(billing.total_due_ngn)}</Mono>} />
         <Kvp
           label="Total paid"
-          value={<Mono color="var(--color-success)">−₦{Number(billing.total_paid_ngn).toLocaleString()}</Mono>}
+          value={<Mono color="var(--color-success)">−{formatNgn(billing.total_paid_ngn)}</Mono>}
         />
         <Kvp
           label="Outstanding"
           value={
             <Mono color={outstanding > 0 ? 'var(--color-error)' : 'var(--color-success)'}>
-              ₦{outstanding.toLocaleString()}
+              {formatNgn(outstanding)}
             </Mono>
           }
           divider={false}
@@ -485,7 +486,7 @@ export function MyBillingDetail(): JSX.Element {
       {/* Payment options */}
       {needsPayment && (
         <>
-          <SectionHead title="Pay now" sub={`₦${outstanding.toLocaleString()} outstanding`} />
+          <SectionHead title="Pay now" sub={`${formatNgn(outstanding)} outstanding`} />
 
           {/* A pending bank-transfer claim means money may already be on its
               way — showing "Pay online" / bank-transfer instructions here too
@@ -496,8 +497,8 @@ export function MyBillingDetail(): JSX.Element {
           {pendingClaim ? (
             <Card padding={20}>
               <Banner variant="warning" title="Payment submitted — awaiting confirmation">
-                You told us you sent ₦{Number(pendingClaim.amount_ngn).toLocaleString()} on{' '}
-                {new Date(pendingClaim.submitted_at).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })}
+                You told us you sent {formatNgn(pendingClaim.amount_ngn)} on{' '}
+                {formatDate(pendingClaim.submitted_at)}
                 {' '}(evidence: {pendingClaim.evidence_file_name}). Staff will confirm it against your evidence
                 shortly — the outstanding balance above will update automatically once they do. To avoid a
                 duplicate payment, "Pay online" is disabled while this claim is pending.
@@ -527,7 +528,7 @@ export function MyBillingDetail(): JSX.Element {
                     </div>
                   )}
                   <Button variant="accent" loading={payLoading} onClick={() => void handlePayOnline()}>
-                    Pay ₦{outstanding.toLocaleString()} online
+                    Pay {formatNgn(outstanding)} online
                   </Button>
                   <p style={{ fontSize: '0.75rem', color: 'var(--color-text-muted)', marginTop: 6 }}>
                     Payments are confirmed automatically — your release note is issued once settled.
@@ -568,7 +569,7 @@ export function MyBillingDetail(): JSX.Element {
       {isPaid && billing.outstanding_ngn !== '0' && Number(billing.outstanding_ngn) < 0 && (
         <div className={styles.banner} style={{ marginTop: 16 }}>
           <Banner variant="info" title="Overpayment">
-            You have overpaid by ₦{Math.abs(outstanding).toLocaleString()}. A refund or credit will be arranged by our team.
+            You have overpaid by {formatNgn(Math.abs(outstanding))}. A refund or credit will be arranged by our team.
           </Banner>
         </div>
       )}
@@ -589,10 +590,10 @@ export function MyBillingDetail(): JSX.Element {
               <tbody>
                 {billing.payments.map((p, i) => (
                   <tr key={p.id} style={{ borderBottom: i < billing.payments.length - 1 ? '1px solid var(--color-border)' : 'none' }}>
-                    <td style={{ padding: '12px 16px' }}><Mono>₦{Number(p.amount_ngn).toLocaleString()}</Mono></td>
+                    <td style={{ padding: '12px 16px' }}><Mono>{formatNgn(p.amount_ngn)}</Mono></td>
                     <td style={{ padding: '12px 16px' }}>{p.payment_method ?? '—'}</td>
                     <td style={{ padding: '12px 16px' }}><Mono>{p.payment_reference ?? '—'}</Mono></td>
-                    <td style={{ padding: '12px 16px' }}>{p.confirmed_at.slice(0, 10)}</td>
+                    <td style={{ padding: '12px 16px' }}>{formatDate(p.confirmed_at)}</td>
                   </tr>
                 ))}
               </tbody>

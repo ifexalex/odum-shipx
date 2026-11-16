@@ -13,9 +13,9 @@ import { useListExport } from '../../hooks/useListExport'
 import { type SortableColumn, useTableSort } from '../../hooks/useTableSort'
 import { useTopBarSlot } from '../../shell/TopBarContext'
 import styles from './ContainerList.module.css'
+import { isoDateOffset, todayIso } from '../../lib/format'
 
 const SEARCH_DEBOUNCE_MS = 300
-const DAY_MS = 24 * 60 * 60 * 1000
 
 // 'Container' (container_number, text) defaults asc; 'ETA' is a forward-looking
 // scheduling date (not a "created at" timestamp) so it defaults asc too —
@@ -82,7 +82,7 @@ function statusBadgeVariant(status: ContainerStatus): 'warning' | 'info' | 'succ
 function etaColor(container: Container): string {
   if (CLEARED.includes(container.status)) return 'var(--color-success)'
   if (!container.estimated_arrival_date) return 'var(--color-ink-4)'
-  if (container.estimated_arrival_date === new Date().toISOString().slice(0, 10)) return 'var(--color-warning)'
+  if (container.estimated_arrival_date === todayIso()) return 'var(--color-warning)'
   return 'var(--color-ink)'
 }
 
@@ -93,12 +93,12 @@ function etaLabel(container: Container): string {
 
 /** ISO date (YYYY-MM-DD) for "N days ago" — used as the `created_after` query param. */
 function daysAgoIso(days: number): string {
-  return new Date(Date.now() - days * DAY_MS).toISOString().slice(0, 10)
+  return isoDateOffset(-days)
 }
 
 /** ISO date (YYYY-MM-DD) for "N days from now" — used as the `eta_before` query param. */
 function daysFromNowIso(days: number): string {
-  return new Date(Date.now() + days * DAY_MS).toISOString().slice(0, 10)
+  return isoDateOffset(days)
 }
 
 /** Maps an "Arriving" preset to the `eta_after`/`eta_before` query params. */

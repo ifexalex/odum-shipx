@@ -54,6 +54,7 @@ import { SectionHead } from '../../shell/SectionHead'
 import { Tabs } from '../../shell/Tabs'
 import styles from './ContainerDetail.module.css'
 import { InvoiceOutcomeBanner } from './InvoiceOutcomeBanner'
+import { formatDate, formatTime } from '../../lib/format'
 
 // Maps a status transition to a human-readable event label for the event log.
 function eventLabel(from: string, to: string): string {
@@ -197,7 +198,7 @@ function EventRow({ event, last }: { event: ContainerEvent; last: boolean }): JS
   const stage = STEPPER_STAGES.find((s) => s.status === event.to_status)
   const toLabel = stage?.label ?? CONTAINER_STATUS_LABELS[event.to_status as ContainerStatus] ?? event.to_status
   const { icon, color } = eventIconForStatus(event.to_status)
-  const when = new Date(event.created_at).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })
+  const when = formatDate(event.created_at, 'short')
   return (
     <div className={[styles.eventRow, last ? styles.eventRowLast : ''].join(' ')}>
       <div className={styles.eventIcon} style={{ background: `${color}18`, color }}>
@@ -477,7 +478,7 @@ function DocumentsTab({ containerId, containerNumber }: { containerId: string; c
             cells: [
               <span key="type" style={{ fontWeight: 600, fontSize: 13 }}>{docTypeLabel(doc.document_type)}</span>,
               <Mono key="name">{doc.filename}</Mono>,
-              <span key="date" style={{ fontSize: 12, color: 'var(--color-ink-3)' }}>{doc.created_at.slice(0, 10)}</span>,
+              <span key="date" style={{ fontSize: 12, color: 'var(--color-ink-3)' }}>{formatDate(doc.created_at)}</span>,
               <Button
                 key="dl"
                 variant="ghost"
@@ -862,8 +863,8 @@ export function ContainerDetail(): JSX.Element {
                 label="Created by"
                 value={
                   container.created_by_name
-                    ? `${container.created_by_name} · ${container.created_at.slice(0, 10)}`
-                    : container.created_at.slice(0, 10)
+                    ? `${container.created_by_name} · ${formatDate(container.created_at)}`
+                    : formatDate(container.created_at)
                 }
                 divider={false}
               />
@@ -1014,7 +1015,7 @@ export function ContainerDetail(): JSX.Element {
                   {pl.status.replace('_', ' ')}
                 </Badge>,
                 <span key="submitted" className={styles.metaText}>
-                  {new Date(pl.created_at).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })}
+                  {formatDate(pl.created_at, 'short')}
                 </span>,
                 <ViewLink key="view" onClick={() => navigate(`/packing-lists/${pl.id}`)} />,
               ],
@@ -1058,9 +1059,9 @@ export function ContainerDetail(): JSX.Element {
               rows={[...events].reverse().map((event) => ({
                 cells: [
                   <Mono key="ts">
-                    {new Date(event.created_at).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })}
+                    {formatDate(event.created_at, 'short')}
                     {' '}
-                    {new Date(event.created_at).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' })}
+                    {formatTime(event.created_at)}
                   </Mono>,
                   <Badge key="event" variant={eventBadgeVariant(event.to_status)}>
                     {eventLabel(event.from_status, event.to_status)}

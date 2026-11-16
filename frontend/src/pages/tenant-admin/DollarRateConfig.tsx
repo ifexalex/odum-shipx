@@ -6,6 +6,7 @@ import { Banner, Button, Card, Kvp, Mono, Table, UserCell } from '../../design/c
 import { PageHeader } from '../../shell/PageHeader'
 import { SectionHead } from '../../shell/SectionHead'
 import styles from './admin.module.css'
+import { formatDate, formatNgn, formatAmount } from '../../lib/format'
 
 // B7 — rate trend line chart (prototype 4.2/4.3). Dependency-free SVG.
 // Takes ascending-by-date points and draws a filled area + line + endpoint dot,
@@ -35,9 +36,9 @@ function RateTrendChart({ points, prefix }: { points: { date: string; value: num
   return (
     <div style={{ padding: '4px 20px 16px' }}>
       <div style={{ display: 'flex', alignItems: 'baseline', gap: 12, marginBottom: 8, flexWrap: 'wrap' }}>
-        <span style={{ fontFamily: 'var(--font-display)', fontWeight: 700, fontSize: 22 }}>{prefix}{last.value.toLocaleString()}</span>
+        <span style={{ fontFamily: 'var(--font-display)', fontWeight: 700, fontSize: 22 }}>{prefix}{formatAmount(last.value)}</span>
         <span style={{ fontSize: 13, fontWeight: 700, color: net >= 0 ? 'var(--color-success)' : 'var(--color-error)' }}>
-          {net >= 0 ? '+' : ''}{prefix}{net.toLocaleString()}
+          {net >= 0 ? '+' : ''}{prefix}{formatAmount(net)}
         </span>
         <span style={{ fontSize: 12, color: 'var(--color-ink-4)' }}>over {points.length} changes</span>
       </div>
@@ -51,14 +52,14 @@ function RateTrendChart({ points, prefix }: { points: { date: string; value: num
         {/* min / max reference lines */}
         <line x1={padX} x2={W - padX} y1={y(max)} y2={y(max)} stroke="var(--color-line-soft)" strokeDasharray="3 4" />
         <line x1={padX} x2={W - padX} y1={y(min)} y2={y(min)} stroke="var(--color-line-soft)" strokeDasharray="3 4" />
-        <text x={padX} y={y(max) - 4} fontSize="10" fill="var(--color-ink-4)" fontFamily="var(--font-mono)">{prefix}{max.toLocaleString()}</text>
-        <text x={padX} y={y(min) + 12} fontSize="10" fill="var(--color-ink-4)" fontFamily="var(--font-mono)">{prefix}{min.toLocaleString()}</text>
+        <text x={padX} y={y(max) - 4} fontSize="10" fill="var(--color-ink-4)" fontFamily="var(--font-mono)">{prefix}{formatAmount(max)}</text>
+        <text x={padX} y={y(min) + 12} fontSize="10" fill="var(--color-ink-4)" fontFamily="var(--font-mono)">{prefix}{formatAmount(min)}</text>
         <path d={areaPath} fill="url(#rateTrendFill)" />
         <path d={linePath} fill="none" stroke="var(--color-primary)" strokeWidth="2.5" strokeLinejoin="round" strokeLinecap="round" />
         <circle cx={x(points.length - 1)} cy={y(last.value)} r="4.5" fill="var(--color-primary)" stroke="#fff" strokeWidth="2" />
         {/* first + last date labels */}
-        <text x={padX} y={H - 8} fontSize="10" fill="var(--color-ink-4)" fontFamily="var(--font-mono)">{first.date.slice(0, 10)}</text>
-        <text x={W - padX} y={H - 8} fontSize="10" fill="var(--color-ink-4)" fontFamily="var(--font-mono)" textAnchor="end">{last.date.slice(0, 10)}</text>
+        <text x={padX} y={H - 8} fontSize="10" fill="var(--color-ink-4)" fontFamily="var(--font-mono)">{formatDate(first.date)}</text>
+        <text x={W - padX} y={H - 8} fontSize="10" fill="var(--color-ink-4)" fontFamily="var(--font-mono)" textAnchor="end">{formatDate(last.date)}</text>
       </svg>
     </div>
   )
@@ -115,14 +116,14 @@ export function RateHistoryTable({ rateType, valueKey, prefix }: { rateType: 'do
           return {
             cells: [
               <span key="rate" style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}>
-                <Mono color={i === 0 ? 'var(--color-primary)' : undefined}>{prefix}{current?.toLocaleString() ?? '—'}</Mono>
+                <Mono color={i === 0 ? 'var(--color-primary)' : undefined}>{prefix}{formatAmount(current)}</Mono>
                 {i === 0 && <span style={{ fontSize: 10, fontWeight: 700, textTransform: 'uppercase', color: 'var(--color-primary-deep)', background: 'var(--color-primary-soft)', borderRadius: 999, padding: '2px 8px' }}>Current</span>}
               </span>,
               delta == null ? (
                 <span key="delta" style={{ fontSize: 12, color: 'var(--color-ink-4)' }}>—</span>
               ) : (
                 <span key="delta" style={{ fontSize: 12, fontWeight: 700, color: delta >= 0 ? 'var(--color-success)' : 'var(--color-error)' }}>
-                  {delta >= 0 ? '+' : ''}{prefix}{delta.toLocaleString()}
+                  {delta >= 0 ? '+' : ''}{prefix}{formatAmount(delta)}
                 </span>
               ),
               <UserCell key="by" name={r.changed_by ?? 'system'} email="" />,
@@ -148,11 +149,11 @@ function relativeTime(iso: string): string {
   if (hrs < 24) return `${hrs}h ago`
   const days = Math.round(hrs / 24)
   if (days < 30) return `${days}d ago`
-  return iso.slice(0, 10)
+  return formatDate(iso)
 }
 
 function formatMarkup(markupType: 'percentage' | 'flat', markupValue: number): string {
-  return markupType === 'flat' ? `₦${markupValue.toLocaleString()} per $1` : `${markupValue}%`
+  return markupType === 'flat' ? `${formatNgn(markupValue)} per $1` : `${markupValue}%`
 }
 
 type MarkupType = 'percentage' | 'flat'
@@ -210,12 +211,12 @@ export function DollarRateConfig(): JSX.Element {
           <Card padding={20}>
             <Kvp
               label="Base rate (Bybit P2P)"
-              value={<Mono>₦{current.base_rate.toLocaleString()} per $1 — updated {relativeTime(current.fetched_at)}</Mono>}
+              value={<Mono>{formatNgn(current.base_rate)} per $1 — updated {relativeTime(current.fetched_at)}</Mono>}
             />
             <Kvp label="Your markup" value={<Mono>{formatMarkup(current.markup_type, current.markup_value)}</Mono>} />
             <Kvp
               label="Effective rate charged to customers"
-              value={<Mono color="var(--color-primary)">₦{current.rate.toLocaleString()} per $1 USD</Mono>}
+              value={<Mono color="var(--color-primary)">{formatNgn(current.rate)} per $1 USD</Mono>}
               divider={false}
             />
           </Card>

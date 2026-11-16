@@ -31,6 +31,7 @@ import {
 } from '../../design/components'
 import { SectionHead } from '../../shell/SectionHead'
 import styles from './RefundDetail.module.css'
+import { formatDate, formatNgn } from '../../lib/format'
 
 // ---------------------------------------------------------------------------
 // Status helpers
@@ -240,7 +241,7 @@ function ApproveModal({ refund, role, onCancel, onSuccess }: ApproveModalProps):
       onSuccess(updated)
     } catch (err) {
       if (err instanceof ApiError && err.status === 403) {
-        setError(`Approval limit exceeded. Escalate to tenant admin — staff limit is ₦${staffLimitNgn.toLocaleString()} ($${staffLimitUsd} USD).`)
+        setError(`Approval limit exceeded. Escalate to tenant admin — staff limit is ${formatNgn(staffLimitNgn)} ($${staffLimitUsd} USD).`)
       } else {
         setError(err instanceof ApiError ? err.message : 'Could not approve refund.')
       }
@@ -271,7 +272,7 @@ function ApproveModal({ refund, role, onCancel, onSuccess }: ApproveModalProps):
         {isPartial && (
           <div className={styles.modalBanner}>
             <Banner variant="info">
-              Partial approval: ₦{enteredAmount.toLocaleString()} of ₦{requestedAmount.toLocaleString()} requested.
+              Partial approval: {formatNgn(enteredAmount)} of {formatNgn(requestedAmount)} requested.
             </Banner>
           </div>
         )}
@@ -302,11 +303,11 @@ function ApproveModal({ refund, role, onCancel, onSuccess }: ApproveModalProps):
             <div className={styles.thresholdMeterLabel}>
               {exceedsThreshold ? (
                 <span style={{ color: 'var(--color-error)', fontWeight: 600 }}>
-                  ₦{enteredAmount.toLocaleString()} exceeds staff limit of ₦{staffLimitNgn.toLocaleString()} (${staffLimitUsd} USD)
+                  {formatNgn(enteredAmount)} exceeds staff limit of {formatNgn(staffLimitNgn)} (${staffLimitUsd} USD)
                 </span>
               ) : (
                 <span style={{ color: 'var(--color-text-muted)' }}>
-                  ₦{enteredAmount.toLocaleString()} of ₦{staffLimitNgn.toLocaleString()} staff limit (${staffLimitUsd} USD)
+                  {formatNgn(enteredAmount)} of {formatNgn(staffLimitNgn)} staff limit (${staffLimitUsd} USD)
                 </span>
               )}
             </div>
@@ -452,7 +453,7 @@ export function RefundDetail(): JSX.Element {
               <Badge variant={STATUS_VARIANT[refund.status]}>{statusLabel(refund.status)}</Badge>
             </div>
             <div className={styles.heroMeta}>
-              <span>Requested {refund.created_at.slice(0, 10)}</span>
+              <span>Requested {formatDate(refund.created_at)}</span>
               {refund.approval_level && (
                 <span> · {approvalLevelLabel(refund.approval_level)}</span>
               )}
@@ -509,10 +510,10 @@ export function RefundDetail(): JSX.Element {
 
       {/* Stats */}
       <div className={styles.statsRow}>
-        <StatCard label="Requested" value={`₦${Number(refund.amount_requested_ngn).toLocaleString()}`} />
+        <StatCard label="Requested" value={formatNgn(refund.amount_requested_ngn)} />
         <StatCard
           label="Approved"
-          value={refund.amount_approved_ngn ? `₦${Number(refund.amount_approved_ngn).toLocaleString()}` : '—'}
+          value={refund.amount_approved_ngn ? formatNgn(refund.amount_approved_ngn) : '—'}
         />
         <StatCard label="Payout method" value={customerChoiceLabel(refund.customer_choice)} />
       </div>

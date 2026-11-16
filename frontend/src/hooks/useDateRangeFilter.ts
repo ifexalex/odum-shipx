@@ -1,6 +1,5 @@
 import { useState } from 'react'
-
-const DAY_MS = 24 * 60 * 60 * 1000
+import { isoDateOffset } from '../lib/format'
 
 export interface DateRangeFilterState {
   /** Preset "last N days", or null for "All time" — drives <DateRangeFilter>. */
@@ -44,7 +43,7 @@ export function useDateRangeFilter(): DateRangeFilterState {
 
   function handlePreset(days: number | null): void {
     setDaysBack(days)
-    setPresetFrom(days ? new Date(Date.now() - days * DAY_MS).toISOString().slice(0, 10) : undefined)
+    setPresetFrom(days ? isoDateOffset(-days) : undefined)
     setDateFrom('')
     setDateTo('')
   }

@@ -45,6 +45,7 @@ import {
 import { SectionHead } from '../../shell/SectionHead'
 import { Tabs } from '../../shell/Tabs'
 import styles from './admin.module.css'
+import { formatDate, formatDateTime, formatNgn } from '../../lib/format'
 
 // ---------------------------------------------------------------------------
 // GDPR Anonymise Modal — MUST use exact "ANONYMISE" text confirmation
@@ -153,7 +154,7 @@ const CLAIM_VARIANT: Record<DamageClaimStatus, BadgeVariant> = {
 }
 
 function fmtNgn(value: number): string {
-  return `₦${value.toLocaleString()}`
+  return formatNgn(value)
 }
 
 interface ProfileTabProps {
@@ -208,7 +209,7 @@ function ProfileTab({ customer, shipments, billing, claims, onSaved }: ProfileTa
           <div style={{ height: 8 }} />
           <Kvp
             label="Consent given"
-            value={customer.consent_given_at ? customer.consent_given_at.slice(0, 10) : '—'}
+            value={formatDate(customer.consent_given_at)}
           />
           <div style={{ padding: '10px 0', borderBottom: '1px dashed var(--color-line-soft)' }}>
             <div style={{ fontSize: 12, color: 'var(--color-ink-4)', fontWeight: 500, textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 6 }}>
@@ -238,7 +239,7 @@ function ProfileTab({ customer, shipments, billing, claims, onSaved }: ProfileTa
           </div>
           <Kvp
             label="Anonymised at"
-            value={customer.anonymised_at ? customer.anonymised_at.slice(0, 10) : '—'}
+            value={formatDate(customer.anonymised_at)}
             divider={false}
           />
         </Card>
@@ -282,7 +283,7 @@ function ShipmentsTab({ customer, shipments, onOpen }: { customer: Customer; shi
             </Badge>,
             <Mono key="cartons">{pl.carton_count}</Mono>,
             <Mono key="cbm">{Number(pl.total_cbm).toFixed(3)}</Mono>,
-            <span key="created" style={{ fontSize: 12, color: 'var(--color-ink-3)' }}>{pl.created_at.slice(0, 10)}</span>,
+            <span key="created" style={{ fontSize: 12, color: 'var(--color-ink-3)' }}>{formatDate(pl.created_at)}</span>,
             <ViewLink key="view" onClick={() => onOpen(pl.id)} />,
           ],
         }))}
@@ -364,7 +365,7 @@ function ClaimsTab({ claims, onOpen }: { claims: Claim[] | null; onOpen: (c: Cla
             <Mono key="cont">{c.container_number ?? '—'}</Mono>,
             <Badge key="status" variant={CLAIM_VARIANT[c.status] ?? 'neutral'}>{c.status.replace(/_/g, ' ')}</Badge>,
             <Mono key="cartons">{c.cartons_affected?.length ?? 0}</Mono>,
-            <span key="filed" style={{ fontSize: 12, color: 'var(--color-ink-3)' }}>{c.created_at?.slice(0, 10) ?? '—'}</span>,
+            <span key="filed" style={{ fontSize: 12, color: 'var(--color-ink-3)' }}>{formatDate(c.created_at)}</span>,
             <ViewLink key="view" onClick={() => onOpen(c)} />,
           ],
         }))}
@@ -402,7 +403,7 @@ function PrivacyTab({ customer, exporting, readOnly, onExport, onAnonymise }: Pr
         <SectionHead title="Right to erasure" sub="GDPR Art. 17 / NDPR — anonymisation" />
         {isAnonymised ? (
           <p style={{ fontSize: 13, color: 'var(--color-ink-3)', lineHeight: 1.55, margin: '8px 0 0' }}>
-            This record was anonymised on <strong>{customer.anonymised_at!.slice(0, 10)}</strong>. Personal
+            This record was anonymised on <strong>{formatDate(customer.anonymised_at)}</strong>. Personal
             data has been erased; the UUID and financial records are retained for legal compliance.
           </p>
         ) : (
@@ -527,7 +528,7 @@ export function AdminCustomerDetail(): JSX.Element {
       const invite = await customersApi.invite(customer.id)
       setInviteMessage(
         `Invite sent via ${invite.sent_channel.toUpperCase()} to ${invite.sent_to_masked ?? 'the customer'}. ` +
-          `Expires ${new Date(invite.expires_at).toLocaleString()}.`
+          `Expires ${formatDateTime(invite.expires_at)}.`
       )
     } catch (err) {
       setInviteMessage(err instanceof ApiError ? err.message : 'Could not send the account invite.')
@@ -546,7 +547,7 @@ export function AdminCustomerDetail(): JSX.Element {
   const heroMeta: ReactNode[] = []
   if (customer.phone) heroMeta.push(<Mono key="phone">{customer.phone}</Mono>)
   if (customer.email) heroMeta.push(<span key="email">{customer.email}</span>)
-  if (customer.created_at) heroMeta.push(<span key="since">Customer since {customer.created_at.slice(0, 10)}</span>)
+  if (customer.created_at) heroMeta.push(<span key="since">Customer since {formatDate(customer.created_at)}</span>)
 
   return (
     <div>
@@ -569,7 +570,7 @@ export function AdminCustomerDetail(): JSX.Element {
               {!isAnonymised && hasLogin && <Badge variant="info">Has portal login</Badge>}
               {!isAnonymised && !hasLogin && customer.pending_invite_expires_at && (
                 <Badge variant="warning">
-                  Invited · expires {new Date(customer.pending_invite_expires_at).toLocaleDateString()}
+                  Invited · expires {formatDate(customer.pending_invite_expires_at)}
                 </Badge>
               )}
               {!isAnonymised && !hasLogin && !customer.pending_invite_expires_at && (
@@ -620,7 +621,7 @@ export function AdminCustomerDetail(): JSX.Element {
         <div className={styles.gdprBanner}>
           <p className={styles.gdprBannerTitle}>This record has been anonymised (GDPR Art. 17)</p>
           <p className={styles.gdprBannerBody}>
-            All personal data was erased on {customer.anonymised_at!.slice(0, 10)}. The customer
+            All personal data was erased on {formatDate(customer.anonymised_at)}. The customer
             UUID and financial records are retained for legal compliance.
           </p>
         </div>

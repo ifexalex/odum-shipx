@@ -18,6 +18,7 @@ import { releaseNoteKeys } from '../../api/keys'
 import { STALE_30S } from '../../lib/queryClient'
 import { Banner, Button, Field, Icon, Mono, PhoneField, StatCard, ToggleSwitch, DialogGuard } from '../../design/components'
 import styles from './WarehouseDashboard.module.css'
+import { todayIso } from '../../lib/format'
 
 // ---------------------------------------------------------------------------
 // Urgency helpers (P2-2) — prototype §9.3 sorts the queue by age and flags
@@ -48,7 +49,7 @@ function ageLabel(note: ReleaseNote): string {
 }
 
 function isToday(iso: string | null | undefined): boolean {
-  return !!iso && iso.slice(0, 10) === new Date().toISOString().slice(0, 10)
+  return !!iso && todayIso(new Date(iso)) === todayIso()
 }
 
 // ---------------------------------------------------------------------------

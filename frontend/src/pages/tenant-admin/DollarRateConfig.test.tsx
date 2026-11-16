@@ -58,9 +58,9 @@ describe('DollarRateConfig', () => {
     vi.mocked(configApi.getDollarRate).mockResolvedValue(rate())
     renderPage()
 
-    expect(await screen.findByText(/₦1,573.2 per \$1/)).toBeInTheDocument()
+    expect(await screen.findByText(/₦1,573.20 per \$1/)).toBeInTheDocument()
     expect(screen.getByText('₦15 per $1')).toBeInTheDocument()
-    expect(screen.getByText('₦1,588.2 per $1 USD')).toBeInTheDocument()
+    expect(screen.getByText('₦1,588.20 per $1 USD')).toBeInTheDocument()
   })
 
   it('formats a percentage markup distinctly from a flat one', async () => {

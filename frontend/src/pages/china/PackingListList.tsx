@@ -9,6 +9,7 @@ import { usePackingListList } from '../../hooks/usePackingLists'
 import { useTopBarSlot } from '../../shell/TopBarContext'
 import { Badge, Banner, Button, Card, Chip, Field, Icon, Mono, Table, ViewLink, ListFooter, DialogGuard, type BadgeVariant } from '../../design/components'
 import styles from './PackingListList.module.css'
+import { formatDate } from '../../lib/format'
 
 const STATUS_FILTERS: PackingListStatus[] = ['draft', 'pending_approval', 'approved', 'rejected']
 
@@ -376,7 +377,7 @@ export function PackingListList(): JSX.Element {
                   {statusLabel(pl.status)}
                 </Badge>,
                 <span key="submitted" className={styles.submittedDate}>
-                  {new Date(pl.created_at).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })},{' '}
+                  {formatDate(pl.created_at, 'short')},{' '}
                   {pl.created_at.slice(11, 16)}
                 </span>,
                 <ViewLink key="view" onClick={() => navigate(`/packing-lists/${pl.id}`)} />,

@@ -7,6 +7,7 @@ import { useSession } from '../../auth/useSession'
 import { Badge, Banner, Button, Card, Chip, Field, Mono, Table, ListFooter, DialogGuard, type BadgeVariant } from '../../design/components'
 import { useTopBarSlot } from '../../shell/TopBarContext'
 import styles from './ItemList.module.css'
+import { formatDate } from '../../lib/format'
 
 const STATUS_FILTERS: MissingItemStatus[] = [
   'reported', 'investigating', 'found_and_shipping', 'confirmed_lost', 'resolved',
@@ -154,7 +155,7 @@ export function MissingItemList(): JSX.Element {
                 <span key="desc">{item.description}</span>,
                 <Mono key="tags">{item.carton_tags.join(', ') || '—'}</Mono>,
                 <Badge key="status" variant={STATUS_VARIANT[item.status]}>{statusLabel(item.status)}</Badge>,
-                <span key="date">{item.created_at.slice(0, 10)}</span>,
+                <span key="date">{formatDate(item.created_at)}</span>,
                 canUpdateItem(r) && item.status !== 'resolved' ? (
                   <Button key="edit" variant="ghost" size="sm" onClick={() => setEditing(item)}>Update</Button>
                 ) : <span key="noop" />,

@@ -4,7 +4,7 @@ import { useNavigate } from 'react-router-dom'
 import { billingApi, type Billing, type PaymentStatus } from '../../api/billing'
 import { canGenerateInvoices } from '../../api/billingRules'
 import { billingKeys } from '../../api/keys'
-import { formatNgnCompact } from '../../lib/format'
+import { formatNgnCompact, formatDate, formatNgn } from '../../lib/format'
 import { STALE_5_MIN } from '../../lib/queryClient'
 import { Badge, Banner, Button, Card, Chip, DateRangeFilter, ExportButton, Icon, ListFooter, Mono, StatCard, Table, UserCell, type BadgeVariant } from '../../design/components'
 import { useSession } from '../../auth/useSession'
@@ -57,7 +57,7 @@ function fmtNgn(val: string | number | null | undefined): string {
   if (val == null) return '—'
   const n = Number(val)
   if (n === 0) return '—'
-  return `₦${n.toLocaleString('en-NG', { maximumFractionDigits: 0 })}`
+  return formatNgn(n)
 }
 
 // `openBilling` must carry the record in router state. BillingDetail reads
@@ -329,7 +329,7 @@ export function BillingList(): JSX.Element {
               </Badge>,
               <span key="billed" className={styles.metaText}>
                 {b.billed_at
-                  ? new Date(b.billed_at).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })
+                  ? formatDate(b.billed_at, 'short')
                   : '—'}
               </span>,
               <div key="action" className={styles.rowActions}>

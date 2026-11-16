@@ -28,6 +28,7 @@ import { SectionHead } from '../../shell/SectionHead'
 import { CustomerStepper } from './CustomerStepper'
 import { ReleaseNoteCard } from './ReleaseNoteCard'
 import styles from './customer.module.css'
+import { formatNgn } from '../../lib/format'
 
 // Ground truth: api/tracking.ts's ContainerStatus (services/tracking + the
 // `container` table) — the 9 real values. This map previously used fictional
@@ -73,7 +74,7 @@ const STATUS_HINT: Record<string, string> = {
 }
 
 function fmtNgn(value: number): string {
-  return `₦${value.toLocaleString()}`
+  return formatNgn(value)
 }
 
 export function MyShipmentDetail(): JSX.Element {
@@ -270,7 +271,7 @@ export function MyShipmentDetail(): JSX.Element {
               {outstanding > 0 && pendingClaim && (
                 <div className={styles.payCtaWrap}>
                   <Banner variant="warning" title="Payment submitted — awaiting confirmation">
-                    You told us you sent ₦{Number(pendingClaim.amount_ngn).toLocaleString()}. Staff will confirm
+                    You told us you sent {formatNgn(pendingClaim.amount_ngn)}. Staff will confirm
                     it shortly.
                   </Banner>
                 </div>

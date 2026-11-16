@@ -13,6 +13,7 @@ import { usePlatformTenantList } from '../../hooks/usePlatformTenants'
 import { STALE_30S } from '../../lib/queryClient'
 import { Badge, Banner, Button, Card, ListFooter, Mono, Table, type BadgeVariant } from '../../design/components'
 import { useTopBarSlot } from '../../shell/TopBarContext'
+import { formatDateTime } from '../../lib/format'
 
 function actionVariant(action: string): BadgeVariant {
   if (action.includes('SUSPEND') || action.includes('OFFBOARD')) return 'error'
@@ -97,7 +98,7 @@ export function PlatformAuditLog(): JSX.Element {
           ]}
           rows={entries.map((e) => ({
             cells: [
-              <Mono key="ts">{new Date(e.created_at).toLocaleString('en-GB', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })}</Mono>,
+              <Mono key="ts">{formatDateTime(e.created_at, { year: false })}</Mono>,
               <Badge key="action" variant={actionVariant(e.action)}>{e.action.replace(/_/g, ' ')}</Badge>,
               <span key="tenant" style={{ fontSize: 13 }}>{tenantName(e.target_tenant_id)}</span>,
               <Mono key="ip" color="var(--color-ink-4)">{e.ip_address ?? '—'}</Mono>,
