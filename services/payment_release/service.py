@@ -1124,7 +1124,8 @@ def get_release_note(tenant_id: str, note_id: str, ctx: Any) -> dict[str, Any]:
     if ctx.role == UserRole.CUSTOMER:
         customer = repo.get_customer_by_user_id(tenant_id, ctx.user_id)
         if not customer or str(customer["id"]) != str(note["customer_id"]):
-            raise InsufficientPermissionsError("Customers may only view their own release notes")
+            # 404, not 403: a 403 would confirm to a customer that another customer's note id exists.
+            raise ResourceNotFoundError("release_note", note_id)
 
     total_cartons_for_customer = int(note.get("billing_total_cartons") or 0)
     return _fmt_release_note(note, note, total_cartons_for_customer)

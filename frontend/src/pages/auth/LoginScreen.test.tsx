@@ -19,15 +19,16 @@ function makeContextValue(overrides: Partial<SessionContextValue>): SessionConte
   }
 }
 
-function renderLoginScreen(value: SessionContextValue) {
+function renderLoginScreen(value: SessionContextValue, entry = '/login') {
   return render(
     <SessionContext.Provider value={value}>
-      <MemoryRouter initialEntries={['/login']}>
+      <MemoryRouter initialEntries={[entry]}>
         <Routes>
           <Route path="/login" element={<LoginScreen />} />
           <Route path="/dashboard" element={<div>Dashboard</div>} />
           <Route path="/platform/dashboard" element={<div>Platform dashboard</div>} />
           <Route path="/my-shipments" element={<div>My shipments</div>} />
+          <Route path="/my-billing/:id" element={<div>The invoice</div>} />
         </Routes>
       </MemoryRouter>
     </SessionContext.Provider>,
@@ -117,5 +118,30 @@ describe('LoginScreen', () => {
   it('disables the submit button while status is loading', () => {
     renderLoginScreen(makeContextValue({ status: 'loading' }))
     expect(screen.getByRole('button', { name: 'Sign In' })).toBeDisabled()
+  })
+})
+
+describe('LoginScreen return path (UX-04)', () => {
+  async function signIn(entry: string, role: Session['role'] = 'customer') {
+    const login = vi.fn().mockResolvedValue(fakeSession(role))
+    renderLoginScreen(makeContextValue({ login }), entry)
+    await userEvent.type(screen.getByLabelText(/email/i), 'a@example.test')
+    await userEvent.type(screen.getByLabelText(/^password/i), 'pw')
+    await userEvent.click(screen.getByRole('button', { name: /sign in/i }))
+  }
+
+  it('lands on the page the visitor was heading to', async () => {
+    await signIn('/login?next=%2Fmy-billing%2Fabc')
+    expect(await screen.findByText('The invoice')).toBeInTheDocument()
+  })
+
+  it('lands on the role home when there was no next', async () => {
+    await signIn('/login')
+    expect(await screen.findByText('My shipments')).toBeInTheDocument()
+  })
+
+  it.each(['https://example.com', '//example.com', '/%5C%5Cexample.com'])('ignores next=%s', async (next) => {
+    await signIn(`/login?next=${encodeURIComponent(next)}`)
+    expect(await screen.findByText('My shipments')).toBeInTheDocument()
   })
 })

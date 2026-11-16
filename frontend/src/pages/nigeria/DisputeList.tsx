@@ -2,6 +2,7 @@ import { useState, type JSX } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { isTerminalDisputeStatus } from '../../api/billingRules'
 import { type CBMDisputeStatus } from '../../api/billing'
+import { useSession } from '../../auth/useSession'
 import { useDisputeList } from '../../hooks/useBilling'
 import { Badge, Banner, Card, Chip, Mono, Table, ViewLink, ListFooter, type BadgeVariant } from '../../design/components'
 import { useTopBarSlot } from '../../shell/TopBarContext'
@@ -71,6 +72,9 @@ function statusLabel(status: CBMDisputeStatus): string {
 
 export function DisputeList(): JSX.Element {
   const navigate = useNavigate()
+  const { session } = useSession()
+  // China staff may not open invoices, so they get the measurement-only dispute screen (UX-01).
+  const isChina = session?.role === 'china_office_staff'
   // One clock for the whole table — see useNow. Also makes the countdown tick
   // instead of only refreshing when something unrelated re-renders the list.
   const now = useNow()
@@ -123,8 +127,8 @@ export function DisputeList(): JSX.Element {
                 </Badge>,
                 <span key="date">{d.submitted_at.slice(0, 10)}</span>,
                 <SLACountdown key="sla" submittedAt={d.submitted_at} status={d.status} now={now} />,
-                // Disputes are managed inline on BillingDetail — navigate there.
-                <ViewLink key="view" onClick={() => navigate(`/billing/${d.billing_id}`)} />,
+                // Nigeria staff and admins manage a dispute inline on its invoice; China staff cannot open invoices.
+                <ViewLink key="view" onClick={() => navigate(isChina ? `/billing/disputes/${d.id}` : `/billing/${d.billing_id}`)} />,
               ],
             }))}
             loading={loading}

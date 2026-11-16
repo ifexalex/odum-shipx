@@ -150,8 +150,14 @@ export const routeTable: RouteDef[] = [
     title: 'CBM Disputes',
     layout: 'staff',
   },
-  // No /billing/disputes/:id — disputes are managed inline on BillingDetail
-  // (DisputeCard components in BillingDetail.tsx, sourced from _active_disputes[]).
+  // Nigeria staff and admins manage a dispute inline on BillingDetail (DisputeCard). China staff are asked
+  // to resolve disputes but may not open invoices, so they get this measurement-only screen instead (UX-01).
+  {
+    path: '/billing/disputes/:id',
+    allow: ['china_office_staff', 'nigeria_office_staff', 'tenant_admin'],
+    title: 'CBM Dispute',
+    layout: 'staff',
+  },
   { path: '/billing/:id', allow: ['nigeria_office_staff', 'tenant_admin'], title: 'Billing Detail', layout: 'staff' },
   {
     path: '/billing/carryovers',
@@ -204,6 +210,7 @@ export const routeTable: RouteDef[] = [
   { path: '/my-shipments/:code', allow: ['customer'], title: 'Shipment Detail', layout: 'customer' },
   { path: '/my-billing', allow: ['customer'], title: 'My Billing', layout: 'customer' },
   { path: '/my-billing/:id', allow: ['customer'], title: 'Billing Detail', layout: 'customer' },
+  { path: '/my-release-notes/:id', allow: ['customer'], title: 'Release Note', layout: 'customer' },
   { path: '/my-billing/:id/payment-success', allow: ['customer'], title: 'Payment Successful', layout: 'customer' },
   { path: '/payment-failed', allow: ['customer'], title: 'Payment Failed', layout: 'customer' },
   { path: '/my-billing/:id/refund-request', allow: ['customer'], title: 'Refund Request', layout: 'customer' },

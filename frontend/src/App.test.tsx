@@ -1,7 +1,9 @@
 import { render, screen } from '@testing-library/react'
-import { describe, expect, it, vi } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 
 describe('App', () => {
+  afterEach(() => vi.unstubAllGlobals())
+
   it('renders the public landing page at the apex path when signed out, without crashing', async () => {
     // App.tsx reads VITE_ENVIRONMENT === 'local' into a module-level
     // constant at import time, to decide whether to swap in
@@ -11,6 +13,9 @@ describe('App', () => {
     // dynamic import are required here since stubbing after a static
     // top-level import would be too late.
     vi.stubEnv('VITE_ENVIRONMENT', 'production')
+    // The silent session restore makes a real POST /v1/auth/refresh. Without a stub this test talked to whatever
+    // answered on the developer's API port, and failed whenever that server was slow or down. Signed out is a 401.
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response('{}', { status: 401 })))
     vi.resetModules()
     const { default: App } = await import('./App')
 

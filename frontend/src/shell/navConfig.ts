@@ -130,10 +130,13 @@ export const navConfig: Record<UserRole, NavLinkGroup[]> = {
     {
       items: [
         { icon: 'grid', label: 'Dashboard', path: '/dashboard' },
-        { icon: 'file', label: 'Manifests', path: '/manifests' },
         { icon: 'bell', label: 'Announcements', path: '/announcements' },
       ],
     },
+    // Nigeria staff own the arrived -> at_warehouse transitions and are allowed on both pages
+    // (routeTable.ts), but the menu used to offer neither; they reached containers only through
+    // dashboard cards. Manifests comes from this group, so it is no longer listed twice.
+    OPERATIONS_GROUP,
     BILLING_CLAIMS_GROUP,
   ],
   warehouse_attendant: [

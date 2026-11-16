@@ -71,8 +71,10 @@ import { Account } from '../pages/customer/Account'
 import { MyClaims } from '../pages/customer/MyClaims'
 import { MyClaimsNew } from '../pages/customer/MyClaimsNew'
 import { MyBilling } from '../pages/customer/MyBilling'
+import { DisputeDetail } from '../pages/china/DisputeDetail'
 import { MyBillingDetail } from '../pages/customer/MyBillingDetail'
 import { MyShipments } from '../pages/customer/MyShipments'
+import { MyReleaseNote } from '../pages/customer/MyReleaseNote'
 import { MyShipmentDetail } from '../pages/customer/MyShipmentDetail'
 import { PaymentFailed } from '../pages/customer/PaymentFailed'
 import { PaymentSuccess } from '../pages/customer/PaymentSuccess'
@@ -137,6 +139,7 @@ const STAFF_SCREENS: Record<string, JSX.Element> = {
   '/manifests': <ManifestList />,
   '/manifests/:id': <ManifestDetail />,
   '/billing': <BillingList />,
+  '/billing/disputes/:id': <DisputeDetail />,
   '/billing/disputes': <DisputeList />,
   '/billing/carryovers': <CarryoverLedger />,
   '/billing/:id': <BillingDetail />,
@@ -190,6 +193,7 @@ const STAFF_SCREENS: Record<string, JSX.Element> = {
   '/my-shipments/:code': <MyShipmentDetail />,
   '/my-billing': <MyBilling />,
   '/my-billing/:id': <MyBillingDetail />,
+  '/my-release-notes/:id': <MyReleaseNote />,
   '/my-billing/:id/payment-success': <PaymentSuccess />,
   '/payment-failed': <PaymentFailed />,
   '/my-billing/:id/refund-request': <RefundRequest />,

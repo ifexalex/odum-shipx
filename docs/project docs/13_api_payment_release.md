@@ -26,7 +26,7 @@ Implement the Payment & Release Lambda service: payment confirmation, release no
 | GET | `/v1/release-notes` | tenant_admin, nigeria_office_staff, warehouse_attendant, customer (own only) |
 | GET | `/v1/release-notes/stats` | tenant_admin, nigeria_office_staff, warehouse_attendant |
 | POST | `/v1/release-notes` | tenant_admin, nigeria_office_staff |
-| GET | `/v1/release-notes/{id}` | tenant_admin, nigeria_office_staff, warehouse_attendant, customer (own) |
+| GET | `/v1/release-notes/{id}` | tenant_admin, nigeria_office_staff, warehouse_attendant, customer (own; **404, not 403, for another customer's note** since 2026-11-16, so it cannot confirm the id exists) |
 | PATCH | `/v1/release-notes/{id}/release` | warehouse_attendant |
 | POST | `/v1/release-notes/{id}/split` | tenant_admin, nigeria_office_staff |
 | POST | `/v1/release-notes/{id}/reissue` | tenant_admin, nigeria_office_staff |

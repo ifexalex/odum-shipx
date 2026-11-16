@@ -8,6 +8,7 @@ Routes:
   DELETE /v1/billing/{billing-id}/charges/{id}       — tenant_admin
   GET   /v1/billing/{billing-id}/storage-fees        — tenant_admin, nigeria_office_staff, customer (own)
   GET   /v1/billing/disputes                         — nigeria_office_staff, tenant_admin, china_office_staff
+  GET   /v1/billing/disputes/{dispute-id}            — same roles; measurement data only, no payment data
   GET   /v1/billing/{customer-id}                    — tenant_admin, nigeria_office_staff, customer (own)
   GET   /v1/billing/{billing-id}/detail              — tenant_admin, nigeria_office_staff, customer (own)
   POST  /v1/billing/{billing-id}/dispute             — customer
@@ -509,6 +510,11 @@ def _dispute_action_routes(
             result = service.create_dispute(tenant_id, body, actor_id=ctx.user_id, ctx=ctx, request_id=request_id)
             return created(result, location=f"/v1/billing/disputes/{result.get('id', '')}", request_id=request_id)
         raise ResourceNotFoundError("route", "/".join(parts))
+
+    # GET /v1/billing/disputes/{dispute-id} — measurement data only (UX-01)
+    if action is None and method == "GET":
+        ctx.assert_role(*_DISPUTE_LIST_ALL_ROLES)
+        return success(service.get_dispute_detail(tenant_id, dispute_id), request_id=request_id)
 
     if action == "acknowledge" and method == "PATCH":
         ctx.assert_role(*_ACKNOWLEDGE_ROLES)

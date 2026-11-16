@@ -3327,6 +3327,39 @@
           }
         },
         {
+          "name": "Get Dispute (measurements only)",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "X-Tenant-ID",
+                "value": "{{tenant_id}}"
+              },
+              {
+                "key": "X-Role",
+                "value": "{{role}}"
+              },
+              {
+                "key": "X-User-ID",
+                "value": "{{user_id}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/v1/billing/disputes/{{dispute_id}}",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "v1",
+                "billing",
+                "disputes",
+                "{{dispute_id}}"
+              ]
+            },
+            "description": "One dispute with its measurement data: customer, container, billed CBM, the customer's measured CBM and reason, and the approved packing-list lines the CBM was summed from. No amount, rate or payment, so china_office_staff (who may resolve disputes but not read invoices) can use it as well as nigeria_office_staff and tenant_admin. 404 for an unknown id."
+          }
+        },
+        {
           "name": "Acknowledge Dispute",
           "request": {
             "method": "PATCH",

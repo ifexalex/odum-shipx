@@ -267,6 +267,7 @@ export function ContainerList(): JSX.Element {
       </>
     ) : null,
     onSearch: setSearch,
+    searchPlaceholder: 'Search containers…',
   })
 
   function selectGroup(statuses: ContainerStatus[]): void {

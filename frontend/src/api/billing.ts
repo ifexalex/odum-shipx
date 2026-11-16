@@ -83,6 +83,34 @@ export interface CBMDispute {
   auto_escalated_at?: string | null
 }
 
+/** One measurement line a customer's CBM was summed from (`GET /v1/billing/disputes/{id}`). */
+export interface DisputeMeasurementLine {
+  reference: string | null
+  carton_tag: string
+  description: string
+  quantity: number
+  package_unit: string | null
+  cbm: string
+  length_cm: string | null
+  width_cm: string | null
+  height_cm: string | null
+  weight_kg: string | null
+}
+
+/**
+ * A dispute with the measurement data around it. Deliberately has no amount, rate or payment: China staff
+ * resolve disputes but may not read invoices, so this is what they get instead.
+ */
+export interface DisputeDetail extends CBMDispute {
+  customer_name: string | null
+  container_number: string | null
+  reason: string | null
+  customer_measured_cbm: string | null
+  billed_cbm: string | null
+  resolution_notes: string | null
+  lines: DisputeMeasurementLine[]
+}
+
 export interface Billing {
   id: string
   invoice_number?: string | null
@@ -515,6 +543,10 @@ export const disputeApi = {
       path: '/v1/billing/disputes',
       query: params as Record<string, string | number | undefined>,
     }),
+
+  /** Measurement data only; open to China staff as well as Nigeria staff and admins. */
+  get: (disputeId: string) =>
+    apiRequest<DisputeDetail>({ method: 'GET', path: `/v1/billing/disputes/${disputeId}` }),
 
   file: (billingId: string, body: FileDisputeInput) =>
     apiRequest<CBMDispute>({

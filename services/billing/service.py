@@ -1079,6 +1079,42 @@ def list_disputes(
 list_all_disputes = list_disputes
 
 
+def get_dispute_detail(tenant_id: str, dispute_id: str) -> dict[str, Any]:
+    """One dispute with its measurement data, for the screen a China user resolves it on (audit UX-01).
+
+    Measurement only: no amount, rate or payment appears, because the readers include roles that may not
+    read invoices. The invoice page keeps its inline view for the roles that can.
+    """
+    row = repo.get_dispute_measurements(tenant_id, dispute_id)
+    if row is None:
+        raise ResourceNotFoundError("cbm_dispute", dispute_id)
+    lines = repo.list_measurement_lines(tenant_id, str(row["container_id"]), str(row["customer_id"]))
+    return {
+        **_fmt_dispute(row),
+        "customer_name": row.get("customer_name"),
+        "container_number": row.get("container_number"),
+        "reason": row.get("dispute_reason"),
+        "customer_measured_cbm": row.get("customer_measured_cbm"),
+        "billed_cbm": row.get("billed_cbm"),
+        "resolution_notes": row.get("resolution_notes"),
+        "lines": [
+            {
+                "reference": ln.get("reference"),
+                "carton_tag": ln["carton_tag"],
+                "description": ln["description"],
+                "quantity": ln["quantity"],
+                "package_unit": ln.get("package_unit"),
+                "cbm": ln["cbm"],
+                "length_cm": ln.get("length_cm"),
+                "width_cm": ln.get("width_cm"),
+                "height_cm": ln.get("height_cm"),
+                "weight_kg": ln.get("weight_actual_kg"),
+            }
+            for ln in lines
+        ],
+    }
+
+
 def create_dispute(
     tenant_id: str,
     body: dict[str, Any],

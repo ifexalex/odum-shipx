@@ -19,6 +19,7 @@ Implement the Billing Lambda service: auto-billing on customs clearance, CBM-bas
 | GET | `/v1/billing/{billing-id}/detail` | tenant_admin, nigeria_office_staff, customer (own only) — one record by its **own** id; response is byte-identical to the matching `GET /v1/billing` row. The `/detail` suffix is required because the bare `/v1/billing/{id}` shape above takes a *customer* id and both ids are UUIDs |
 | POST | `/v1/billing/{id}/dispute` | customer |
 | GET | `/v1/billing/{id}/disputes` | nigeria_office_staff, tenant_admin, customer (own) |
+| GET | `/v1/billing/disputes/{id}` | nigeria_office_staff, tenant_admin, china_office_staff — **measurement data only** (audit UX-01) |
 | PATCH | `/v1/billing/disputes/{id}/acknowledge` | nigeria_office_staff |
 | PATCH | `/v1/billing/disputes/{id}/resolve` | nigeria_office_staff, china_office_staff, tenant_admin |
 | POST | `/v1/billing/disputes` | nigeria_office_staff, tenant_admin (staff-created disputes) |
@@ -274,3 +275,13 @@ Billing status values (migration 017 adds `cancelled` to existing CHECK constrai
 **Correction (2026-09-09) to the "it's what the SMS/WhatsApp routing rules key off for" claim above:** that was wrong — the routed EventBridge envelope never actually reaches `shared/notifications.py`'s SQS pipeline at all (confirmed while investigating a separate reported bug: a rejected payment claim sent no notification to anyone). `handle_payment_due` never called `enqueue_notifications`, so a fresh invoice generated **zero customer notification**, same silent gap as everywhere else the EventBridge-only pattern was used. Fixed by calling `enqueue_notifications(event_type="payment_due", ...)` directly at the end of `handle_payment_due` — best-effort, wrapped in try/except so a notification failure can never fail billing generation. Full account, including the other 5 events found in the same state, in `15_api_notifications.md`. Tests: `TestHandlePaymentDueNotification` in `tests/unit/test_billing.py`.
 
 **Customer bell (2026-09-12):** `handle_payment_due` now also writes an in-app customer notification when the invoiced customer has a portal account, reusing the same `staff_notification` table as the staff bell (see this doc's earlier "Correction" entry). Full account in `15_api_notifications.md`.
+
+## Implementation notes — dispute detail for China staff (audit UX-01, 2026-11-16)
+
+`GET /v1/billing/disputes/{id}` returns one dispute with the measurement facts around it: the dispute fields of the list endpoint plus `customer_name`, `container_number`, `reason`,
+`customer_measured_cbm`, `billed_cbm`, `resolution_notes` and `lines[]` (the approved packing-list lines the customer's CBM on that container is summed from: `reference`, `carton_tag`,
+`description`, `quantity`, `package_unit`, `cbm`, `length_cm`, `width_cm`, `height_cm`, `weight_kg`). **It carries no amount, rate or payment**, which is the point: `china_office_staff` may resolve
+disputes (`_RESOLVE_ROLES`) but is denied the invoice routes, so until this existed they were handed disputes they had no screen to open. `404` for an unknown dispute or another tenant's. Two queries,
+`repo.get_dispute_measurements` and `repo.list_measurement_lines`, both tenant-scoped; the second uses the same set as invoice generation (`pl.status = 'approved'`, same customer and container).
+Nigeria staff and admins keep the inline view on the invoice page (a deliberate choice recorded in `AUDIT_GAPS.md`). Tests: `TestDisputeDetailForChinaStaff` (`tests/unit/test_billing.py`),
+`tests/db/test_dispute_detail.py`. API Gateway route added (`GET /v1/billing/disputes/{id}`); Postman has "Get Dispute (measurements only)".

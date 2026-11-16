@@ -11,6 +11,7 @@ import { Field } from '../../design/components'
 import { Badge, Banner, Button, Card, Kvp, Mono, StatCard, type BadgeVariant } from '../../design/components'
 import { SectionHead } from '../../shell/SectionHead'
 import { EvidenceUploader, type UploadedEvidence } from '../nigeria/EvidenceUploader'
+import { ReleaseNoteCard } from './ReleaseNoteCard'
 import styles from './customer.module.css'
 
 const STATUS_VARIANT: Record<Billing['payment_status'], BadgeVariant> = {
@@ -377,6 +378,8 @@ export function MyBillingDetail(): JSX.Element {
           )}
         </div>
       </div>
+
+      <ReleaseNoteCard containerId={billing.container_id} />
 
       {(disputeFiled || billing._active_disputes.length > 0) && (
         <div style={{ marginBottom: 16 }}>

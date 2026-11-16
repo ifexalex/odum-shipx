@@ -13,6 +13,9 @@ export interface TopBarCtxValue {
   /** Handler for the shared TopBar search box, opted into by the active page. */
   onSearch: ((query: string) => void) | null
   setOnSearch: (fn: ((query: string) => void) | null) => void
+  /** What the registered search box searches, e.g. "Search containers…". */
+  searchPlaceholder: string | null
+  setSearchPlaceholder: (text: string | null) => void
 }
 
 export const TopBarContext = createContext<TopBarCtxValue>({
@@ -24,6 +27,8 @@ export const TopBarContext = createContext<TopBarCtxValue>({
   setActions: () => {},
   onSearch: null,
   setOnSearch: () => {},
+  searchPlaceholder: null,
+  setSearchPlaceholder: () => {},
 })
 
 /**
@@ -44,11 +49,14 @@ export function useTopBarSlot({
   subtitle,
   actions,
   onSearch,
+  searchPlaceholder,
 }: {
   suffix?: string | null
   subtitle?: string | null
   actions?: ReactNode | null
   onSearch?: ((query: string) => void) | null
+  /** Names what `onSearch` searches. The header shows no search box unless a page registers a handler. */
+  searchPlaceholder?: string
 }): void {
   const ctx = useContext(TopBarContext)
 
@@ -75,4 +83,10 @@ export function useTopBarSlot({
     return () => ctx.setOnSearch(null)
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [onSearch])
+
+  useEffect(() => {
+    if (searchPlaceholder !== undefined) ctx.setSearchPlaceholder(searchPlaceholder)
+    return () => ctx.setSearchPlaceholder(null)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [searchPlaceholder])
 }

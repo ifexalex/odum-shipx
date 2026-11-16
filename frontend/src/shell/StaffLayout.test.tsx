@@ -1,12 +1,13 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { fireEvent, render, screen } from '@testing-library/react'
-import type { ReactNode } from 'react'
+import type { JSX, ReactNode } from 'react'
 import { MemoryRouter } from 'react-router-dom'
 import { describe, expect, it, vi } from 'vitest'
 import { SessionContext, type SessionContextValue } from '../auth/SessionContext'
 import type { Session } from '../auth/types'
 import { staffNotificationsApi } from '../api/staffNotifications'
 import { StaffLayout } from './StaffLayout'
+import { useTopBarSlot } from './TopBarContext'
 
 vi.mock('../api/staffNotifications', () => ({
   staffNotificationsApi: {
@@ -252,5 +253,28 @@ describe('StaffLayout', () => {
       <div>Dashboard content</div>,
     )
     expect(staffNotificationsApi.getBanner).not.toHaveBeenCalled()
+  })
+})
+
+describe('StaffLayout header search (UX-05)', () => {
+  const admin = () => makeContextValue({ session: makeSession('tenant_admin'), status: 'authenticated' })
+
+  // A stable handler, as a real page passes (a state setter). A new function each render would re-register
+  // it each render and loop.
+  const onSearch = (): void => undefined
+
+  function Searchable(): JSX.Element {
+    useTopBarSlot({ onSearch, searchPlaceholder: 'Search containers…' })
+    return <div>list page</div>
+  }
+
+  it('shows no search box on a page that cannot search', () => {
+    renderLayout(admin(), '/dashboard', <div>Dashboard content</div>)
+    expect(screen.queryByRole('textbox')).toBeNull()
+  })
+
+  it('shows one, naming what it searches, where the page registers a handler', () => {
+    renderLayout(admin(), '/containers', <Searchable />)
+    expect(screen.getByRole('textbox', { name: 'Search containers…' })).toBeInTheDocument()
   })
 })

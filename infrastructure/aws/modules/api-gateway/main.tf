@@ -93,6 +93,7 @@ locals {
     "DELETE /v1/billing/{billing-id}/charges/{id}" = "billing"
     "GET /v1/billing/{billing-id}/storage-fees"    = "billing"
     "GET /v1/billing/disputes"                     = "billing"
+    "GET /v1/billing/disputes/{id}"                = "billing"
 
     # --- CBM dispute lifecycle (5 routes) -----------------------------------
     "GET /v1/billing/{id}/disputes"               = "billing"

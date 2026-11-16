@@ -1,3 +1,4 @@
+import { ContentErrorBoundary, QuietBoundary } from './ErrorBoundary'
 import { useState, type JSX, type ReactNode } from 'react'
 import { useSession } from '../auth/useSession'
 import { useCustomerBanner, useCustomerNotifUnreadCount } from '../hooks/useCustomerNotifications'
@@ -35,7 +36,9 @@ export function CustomerLayout({ children }: CustomerLayoutProps): JSX.Element |
     <TenantBlockedGate>
       <div style={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
         <ImpersonationBanner />
-        <AnnouncementBanner banner={banner} />
+        <QuietBoundary>
+          <AnnouncementBanner banner={banner} />
+        </QuietBoundary>
         <CustShell
           topnav={
             <CustomerTopNav
@@ -49,7 +52,7 @@ export function CustomerLayout({ children }: CustomerLayoutProps): JSX.Element |
             />
           }
         >
-          {children}
+          <ContentErrorBoundary>{children}</ContentErrorBoundary>
         </CustShell>
       </div>
     </TenantBlockedGate>

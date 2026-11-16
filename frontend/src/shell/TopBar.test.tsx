@@ -49,3 +49,20 @@ describe('TopBar', () => {
     expect(onUserMenuClick).toHaveBeenCalledOnce()
   })
 })
+
+describe('TopBar search box', () => {
+  it('is hidden when the page cannot search', () => {
+    render(<TopBar role="nigeria" search={false} />)
+    expect(screen.queryByRole('textbox')).toBeNull()
+  })
+
+  it('names what it searches', () => {
+    render(<TopBar role="nigeria" search searchPlaceholder="Search containers…" onSearch={vi.fn()} />)
+    expect(screen.getByRole('textbox', { name: 'Search containers…' })).toBeInTheDocument()
+  })
+
+  it('no longer claims to search tenants and users', () => {
+    render(<TopBar role="nigeria" search onSearch={vi.fn()} />)
+    expect(screen.queryByPlaceholderText(/tenants, users/i)).toBeNull()
+  })
+})

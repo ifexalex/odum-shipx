@@ -2487,3 +2487,34 @@ class TestManualPaymentOnClosedInvoices:
 
         assert exc.value.rule_id == "BILLING_NOT_PAYABLE"
         mock_record.assert_not_called()
+
+
+class TestCustomerReadsOnlyTheirOwnReleaseNote:
+    """UX-02: the customer portal now shows release notes, so the scoping is load-bearing."""
+
+    def _read(self, owner_customer_id: str):
+        from services.payment_release import service
+
+        with (
+            patch.object(service.repo, "get_release_note_by_id", return_value=_release_note(customer_id="customer-001")),
+            patch.object(service.repo, "get_customer_by_user_id", return_value={"id": owner_customer_id}),
+        ):
+            return service.get_release_note(TENANT_ID, "note-001", _ctx(UserRole.CUSTOMER))
+
+    def test_the_owner_reads_it(self):
+        assert self._read("customer-001")["reference_number"] == "ACME-RN-20260913-0001"
+
+    def test_another_customer_gets_404_not_403(self):
+        """A 403 would confirm that the other customer's note exists."""
+        with pytest.raises(ResourceNotFoundError):
+            self._read("customer-999")
+
+    def test_a_user_with_no_customer_record_gets_404(self):
+        from services.payment_release import service
+
+        with (
+            patch.object(service.repo, "get_release_note_by_id", return_value=_release_note()),
+            patch.object(service.repo, "get_customer_by_user_id", return_value=None),
+        ):
+            with pytest.raises(ResourceNotFoundError):
+                service.get_release_note(TENANT_ID, "note-001", _ctx(UserRole.CUSTOMER))

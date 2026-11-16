@@ -866,6 +866,46 @@ def get_cbm_dispute_by_id(tenant_id: str, dispute_id: str) -> dict[str, Any] | N
     return rows[0] if rows else None
 
 
+def get_dispute_measurements(tenant_id: str, dispute_id: str) -> dict[str, Any] | None:
+    """A dispute with the measurement facts around it, and no payment data.
+
+    China staff resolve disputes but are not allowed to read invoices, so this selects only what they need to
+    judge a measurement: the dispute itself, the customer's and container's names, the CBM that was billed, and
+    the packing-list lines that CBM was summed from. `b.total_cbm` is read; no amount, rate or payment column is.
+    """
+    rows = execute_with_tenant(
+        tenant_id,
+        """
+        SELECT d.*, b.total_cbm AS billed_cbm, b.container_id,
+               cu.name AS customer_name, co.container_number
+        FROM cbm_dispute d
+        JOIN billing b ON b.id = d.billing_id AND b.tenant_id = d.tenant_id
+        LEFT JOIN customer cu ON cu.id = d.customer_id AND cu.tenant_id = d.tenant_id
+        LEFT JOIN container co ON co.id = b.container_id AND co.tenant_id = d.tenant_id
+        WHERE d.tenant_id = %s AND d.id = %s
+        LIMIT 1
+        """,
+        (tenant_id, dispute_id),
+    )
+    return rows[0] if rows else None
+
+
+def list_measurement_lines(tenant_id: str, container_id: str, customer_id: str) -> list[dict[str, Any]]:
+    """The approved packing-list lines a customer's CBM on one container is summed from (same set as the invoice)."""
+    return execute_with_tenant(
+        tenant_id,
+        """
+        SELECT pli.carton_tag, pli.description, pli.quantity, pli.package_unit, pli.cbm,
+               pli.length_cm, pli.width_cm, pli.height_cm, pli.weight_actual_kg, pl.reference
+        FROM packing_list_item pli
+        JOIN packing_list pl ON pl.id = pli.packing_list_id AND pl.tenant_id = %s
+        WHERE pl.container_id = %s AND pl.customer_id = %s AND pl.status = 'approved'
+        ORDER BY pl.reference, pli.carton_tag
+        """,
+        (tenant_id, container_id, customer_id),
+    )
+
+
 def list_disputes_for_billing(tenant_id: str, billing_id: str) -> list[dict[str, Any]]:
     return execute_with_tenant(
         tenant_id,

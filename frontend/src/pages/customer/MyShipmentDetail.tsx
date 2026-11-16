@@ -26,6 +26,7 @@ import { STALE_30S } from '../../lib/queryClient'
 import { Badge, Banner, Button, Card, Icon, Kvp, Mono, Table, type BadgeVariant } from '../../design/components'
 import { SectionHead } from '../../shell/SectionHead'
 import { CustomerStepper } from './CustomerStepper'
+import { ReleaseNoteCard } from './ReleaseNoteCard'
 import styles from './customer.module.css'
 
 // Ground truth: api/tracking.ts's ContainerStatus (services/tracking + the
@@ -169,6 +170,8 @@ export function MyShipmentDetail(): JSX.Element {
           </div>
         </div>
       </div>
+
+      <ReleaseNoteCard containerId={pl.container_id} />
 
       {/* Tracking */}
       <Card padding={28}>

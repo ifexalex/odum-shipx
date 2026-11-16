@@ -1487,3 +1487,119 @@ class TestHandlePaymentDueOutcomes:
     def test_a_customer_with_no_cbm_is_reported_not_hidden(self):
         outcome, *_ = self._run(cbm="0")
         assert (outcome.status, outcome.reason) == ("skipped", "NO_CBM")
+
+
+# ---------------------------------------------------------------------------
+# GET /v1/billing/disputes/{id} — what a China user resolves a dispute on (audit UX-01)
+# ---------------------------------------------------------------------------
+
+
+class TestDisputeDetailForChinaStaff:
+    _ROW = {
+        "id": "d-1",
+        "billing_id": "b-1",
+        "customer_id": "c-1",
+        "container_id": "k-1",
+        "status": "escalated_china",
+        "disputed_cbm": Decimal("2.000"),
+        "agreed_cbm": None,
+        "customer_measured_cbm": Decimal("1.800"),
+        "dispute_reason": "Cartons are smaller than invoiced",
+        "resolution_notes": None,
+        "created_at": None,
+        "acknowledged_at": None,
+        "updated_at": None,
+        "billed_cbm": Decimal("2.000"),
+        "customer_name": "Ngozi",
+        "container_number": "MSKU1",
+    }
+    _LINE = {
+        "carton_tag": "T1",
+        "description": "Shoes",
+        "quantity": 4,
+        "package_unit": "ctn",
+        "cbm": Decimal("0.5"),
+        "length_cm": Decimal("50"),
+        "width_cm": Decimal("40"),
+        "height_cm": Decimal("25"),
+        "weight_actual_kg": Decimal("12"),
+        "reference": "PL-1",
+    }
+
+    @staticmethod
+    def _event(dispute_id: str = "d-1") -> dict:
+        return {
+            "requestContext": {
+                "requestId": "r1",
+                "http": {"method": "GET", "path": f"/v1/billing/disputes/{dispute_id}"},
+                "identity": {"sourceIp": "127.0.0.1"},
+            },
+            "headers": {},
+            "body": "{}",
+            "queryStringParameters": {},
+            "pathParameters": {},
+        }
+
+    def _detail(self):
+        from services.billing import service
+
+        with (
+            patch.object(service.repo, "get_dispute_measurements", return_value=dict(self._ROW)),
+            patch.object(service.repo, "list_measurement_lines", return_value=[dict(self._LINE)]) as lines,
+        ):
+            return service.get_dispute_detail(TENANT_ID, "d-1"), lines
+
+    def test_it_carries_the_measurements_a_resolver_needs(self):
+        detail, lines = self._detail()
+        assert detail["customer_name"] == "Ngozi"
+        assert detail["container_number"] == "MSKU1"
+        assert detail["billed_cbm"] == Decimal("2.000")
+        assert detail["customer_measured_cbm"] == Decimal("1.800")
+        assert detail["reason"] == "Cartons are smaller than invoiced"
+        assert detail["lines"][0]["cbm"] == Decimal("0.5")
+        assert detail["lines"][0]["carton_tag"] == "T1"
+        lines.assert_called_once_with(TENANT_ID, "k-1", "c-1")
+
+    def test_it_carries_no_payment_data(self):
+        """China staff may not read invoices, so the response must not smuggle one out."""
+        detail, _ = self._detail()
+        forbidden = {
+            "total_ngn",
+            "subtotal_ngn",
+            "subtotal_usd",
+            "amount_paid_ngn",
+            "balance_ngn",
+            "cbm_rate_usd",
+            "exchange_rate_ngn",
+            "payments",
+        }
+        assert not forbidden & set(detail)
+        assert not any(forbidden & set(line) for line in detail["lines"])
+
+    def test_an_unknown_dispute_is_a_404(self):
+        from services.billing import service
+
+        with patch.object(service.repo, "get_dispute_measurements", return_value=None):
+            with pytest.raises(ResourceNotFoundError):
+                service.get_dispute_detail(TENANT_ID, "nope")
+
+    @pytest.mark.parametrize("role", [UserRole.CHINA_OFFICE_STAFF, UserRole.NIGERIA_OFFICE_STAFF, UserRole.TENANT_ADMIN])
+    def test_the_dispute_staff_may_open_it(self, role):
+        from services.billing import handler, service
+
+        with (
+            patch("services.billing.handler.get_tenant_context", return_value=_ctx(role)),
+            patch.object(service, "get_dispute_detail", return_value={"id": "d-1"}),
+        ):
+            assert handler.lambda_handler(self._event(), None)["statusCode"] == 200
+
+    @pytest.mark.parametrize("role", [UserRole.CUSTOMER, UserRole.WAREHOUSE_ATTENDANT])
+    def test_other_roles_may_not(self, role):
+        from services.billing import handler, service
+
+        with (
+            patch("services.billing.handler.get_tenant_context", return_value=_ctx(role)),
+            patch.object(service, "get_dispute_detail") as detail,
+        ):
+            assert handler.lambda_handler(self._event(), None)["statusCode"] == 403
+        detail.assert_not_called()

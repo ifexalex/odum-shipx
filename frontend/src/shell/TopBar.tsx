@@ -21,7 +21,10 @@ export interface TopBarProps {
   subtitle?: string
   breadcrumb?: string[]
   user?: TopBarUser
+  /** Show the search box. Off unless the page can actually search; a box that accepts typing and does nothing is worse than none. */
   search?: boolean
+  /** Names what the box searches. */
+  searchPlaceholder?: string
   actions?: ReactNode
   /** Unread count for the notification bell — wired to GET /v1/notifications/staff/unread-count. */
   notifications?: number
@@ -52,6 +55,7 @@ export function TopBar({
   breadcrumb,
   user,
   search = true,
+  searchPlaceholder = 'Search…',
   actions,
   notifications = 0,
   notificationsPanel,
@@ -103,7 +107,8 @@ export function TopBar({
             </span>
             <input
               className={styles.searchInput}
-              placeholder="Search tenants, users, containers…"
+              placeholder={searchPlaceholder}
+              aria-label={searchPlaceholder}
               onChange={(event) => onSearch?.(event.target.value)}
             />
           </div>

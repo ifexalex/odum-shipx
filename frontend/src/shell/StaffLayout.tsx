@@ -1,3 +1,4 @@
+import { ContentErrorBoundary, QuietBoundary } from './ErrorBoundary'
 import { useEffect, useState, type JSX, type ReactNode } from 'react'
 import { useLocation, useNavigate } from 'react-router-dom'
 import { useSession } from '../auth/useSession'
@@ -76,6 +77,7 @@ export function StaffLayout({ children }: StaffLayoutProps): JSX.Element | null 
   const [topBarSubtitle, setTopBarSubtitle] = useState<string | null>(null)
   const [topBarActions, setTopBarActions] = useState<ReactNode | null>(null)
   const [topBarOnSearch, setTopBarOnSearch] = useState<((query: string) => void) | null>(null)
+  const [topBarSearchPlaceholder, setTopBarSearchPlaceholder] = useState<string | null>(null)
   const [notifPanelOpen, setNotifPanelOpen] = useState(false)
 
   // Tenant theme (4.1 branding_config.primary_color). Platform admins keep the
@@ -147,14 +149,20 @@ export function StaffLayout({ children }: StaffLayoutProps): JSX.Element | null 
         setActions: setTopBarActions,
         onSearch: topBarOnSearch,
         setOnSearch: setTopBarOnSearch,
+        searchPlaceholder: topBarSearchPlaceholder,
+        setSearchPlaceholder: setTopBarSearchPlaceholder,
       }}
     >
       <ThemeProvider primaryColor={isPlatformShell ? null : (branding?.primary_color ?? null)} style={{ height: '100%' }}>
         <TenantBlockedGate>
         <div style={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
           <ImpersonationBanner />
-          <AnnouncementBanner banner={banner} />
-          <QuotaWarningBanner />
+          <QuietBoundary>
+            <AnnouncementBanner banner={banner} />
+          </QuietBoundary>
+          <QuietBoundary>
+            <QuotaWarningBanner />
+          </QuietBoundary>
           <PageShell
             sidebar={<AppSidebar user={shellUser} />}
             topbar={
@@ -186,11 +194,13 @@ export function StaffLayout({ children }: StaffLayoutProps): JSX.Element | null 
                   // manually clicks a nav link. Land them somewhere sane instead.
                   navigate(homePathForRole(nextRole))
                 }}
-                search
+                // Only where the page registered a handler: on every other page the box accepted typing and did nothing.
+                search={topBarOnSearch !== null}
+                searchPlaceholder={topBarSearchPlaceholder ?? undefined}
               />
             }
           >
-            {children}
+            <ContentErrorBoundary>{children}</ContentErrorBoundary>
           </PageShell>
         </div>
         </TenantBlockedGate>
