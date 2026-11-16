@@ -216,5 +216,6 @@ export const routeTable: RouteDef[] = [
   { path: '/my-billing/:id/refund-request', allow: ['customer'], title: 'Refund Request', layout: 'customer' },
   { path: '/my-claims', allow: ['customer'], title: 'My Claims', layout: 'customer' },
   { path: '/my-claims/new', allow: ['customer'], title: 'File a Claim', layout: 'customer' },
+  { path: '/my-claims/:id', allow: ['customer'], title: 'Claim', layout: 'customer' },
   { path: '/account', allow: ['customer'], title: 'Account', layout: 'customer' },
 ]

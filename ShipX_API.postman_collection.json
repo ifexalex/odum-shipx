@@ -3767,7 +3767,8 @@
                 "claims",
                 "{{claim_id}}"
               ]
-            }
+            },
+            "description": "One claim. Staff read any claim; a customer reads only their own and gets 404 for anyone else's (not 403, which would confirm the id exists). Response adds `evidence` (each file with a 5-minute `download_url`), `resolution` (decision and amount; never staff's notes, approver or approval level) and `refund` ({id, status, amount_ngn}) alongside the claim fields."
           }
         },
         {

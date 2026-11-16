@@ -167,9 +167,46 @@ def create_damage_claim(tenant_id: str, data: dict[str, Any]) -> dict[str, Any] 
 
 
 def get_damage_claim_by_id(tenant_id: str, claim_id: str) -> dict[str, Any] | None:
+    """One claim with its customer's name and its container's number (for the claim page and the list-style fields)."""
     rows = execute_with_tenant(
         tenant_id,
-        "SELECT * FROM damage_claim WHERE tenant_id = %s AND id = %s LIMIT 1",
+        """
+        SELECT dc.*,
+               cu.name             AS customer_name,
+               c.container_number  AS container_number
+        FROM damage_claim dc
+        LEFT JOIN customer  cu ON cu.id = dc.customer_id  AND cu.tenant_id = dc.tenant_id
+        LEFT JOIN container c  ON c.id  = dc.container_id AND c.tenant_id  = dc.tenant_id
+        WHERE dc.tenant_id = %s AND dc.id = %s
+        LIMIT 1
+        """,
+        (tenant_id, claim_id),
+    )
+    return rows[0] if rows else None
+
+
+def get_claim_outcome(tenant_id: str, claim_id: str) -> dict[str, Any] | None:
+    """The claim's latest resolution with the status of the refund it created, if any.
+
+    Deliberately leaves out `notes`, `approval_level` and `approved_by`: this feeds the customer's view of their own
+    claim, and those are staff's internal record of the decision.
+    """
+    rows = execute_with_tenant(
+        tenant_id,
+        """
+        SELECT cr.resolution_type,
+               cr.resolution_amount_ngn,
+               cr.discount_percentage,
+               cr.created_at         AS resolved_at,
+               rr.id                 AS refund_id,
+               rr.status             AS refund_status,
+               COALESCE(rr.amount_approved_ngn, rr.amount_ngn) AS refund_amount_ngn
+        FROM claim_resolution cr
+        LEFT JOIN refund_request rr ON rr.id = cr.refund_request_id AND rr.tenant_id = cr.tenant_id
+        WHERE cr.tenant_id = %s AND cr.damage_claim_id = %s
+        ORDER BY cr.created_at DESC
+        LIMIT 1
+        """,
         (tenant_id, claim_id),
     )
     return rows[0] if rows else None
@@ -369,6 +406,24 @@ def create_claim_evidence(data: dict[str, Any]) -> dict[str, Any] | None:
         ) RETURNING *
         """,
         data,
+    )
+
+
+def list_claim_evidence(claim_id: str) -> list[dict[str, Any]]:
+    """The evidence files recorded against a claim, oldest first.
+
+    claim_evidence has no RLS: the caller must already have established that the claim belongs to its tenant (it
+    loads the claim through `get_damage_claim_by_id`, which is tenant-scoped) before asking for its evidence.
+    """
+    return execute_with_tenant(
+        PLATFORM_TENANT_ID,
+        """
+        SELECT id, file_key, file_name, file_type, file_size_bytes, created_at
+        FROM claim_evidence
+        WHERE damage_claim_id = %s
+        ORDER BY created_at ASC
+        """,
+        (claim_id,),
     )
 
 

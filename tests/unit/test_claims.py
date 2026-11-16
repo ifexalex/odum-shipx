@@ -631,8 +631,208 @@ class TestClaimStateMachine:
             patch.object(service.repo, "get_customer_by_user_id", return_value=customer),
         ):
             ctx = _ctx(UserRole.CUSTOMER, user_id="user-cust-001")
-            with pytest.raises((ResourceNotFoundError, InsufficientPermissionsError)):
+            # A 404, not a 403: another customer's claim must look the same as one that does not exist.
+            with pytest.raises(ResourceNotFoundError):
                 service.get_claim(TENANT_ID, "claim-001", ctx)
+
+
+class TestGetClaimForTheCustomer:
+    """GET /v1/claims/{id}: what a customer sees of their own claim (audit UX-07)."""
+
+    CLAIM_ID = "claim-001"
+    PREFIX = f"{TENANT_ID}/claims/{CLAIM_ID}/"
+
+    @staticmethod
+    def _patches(*, claim=None, customer=None, evidence=(), outcome=None, url="https://files.example/get"):
+        from services.claims import service
+
+        storage = MagicMock()
+        storage.presigned_get_url.return_value = url
+        return (
+            patch.object(service.repo, "get_damage_claim_by_id", return_value=claim if claim is not None else _claim()),
+            patch.object(service.repo, "get_customer_by_user_id", return_value=customer or {"id": "customer-001"}),
+            patch.object(service.repo, "list_claim_evidence", return_value=list(evidence)),
+            patch.object(service.repo, "get_claim_outcome", return_value=outcome),
+            patch.object(service, "get_storage_provider", return_value=storage),
+        ), storage
+
+    def _get(self, role=UserRole.CUSTOMER, **kw):
+        from services.claims import service
+
+        patches, storage = self._patches(**kw)
+        with patches[0], patches[1], patches[2], patches[3], patches[4]:
+            return service.get_claim(TENANT_ID, self.CLAIM_ID, _ctx(role, user_id="user-cust-001")), storage
+
+    @staticmethod
+    def _file(name="photo.jpg", key=None, **kw):
+        return {
+            "id": "e1",
+            "file_key": key or f"{TENANT_ID}/claims/claim-001/{name}",
+            "file_name": name,
+            "file_type": "image/jpeg",
+            "file_size_bytes": 1024,
+            "created_at": "2026-11-10T10:00:00Z",
+            **kw,
+        }
+
+    def test_a_customer_reads_their_own_claim(self):
+        result, _ = self._get()
+        assert result["id"] == "claim-001"
+        assert result["evidence"] == [] and result["resolution"] is None and result["refund"] is None
+
+    def test_a_customer_with_no_customer_record_gets_a_404(self):
+        from services.claims import service
+
+        patches, _ = self._patches()
+        with (
+            patches[0],
+            patch.object(service.repo, "get_customer_by_user_id", return_value=None),
+            patches[2],
+            patches[3],
+            patches[4],
+        ):
+            with pytest.raises(ResourceNotFoundError):
+                service.get_claim(TENANT_ID, self.CLAIM_ID, _ctx(UserRole.CUSTOMER))
+
+    def test_another_customers_claim_is_a_404_and_reads_nothing_about_it(self):
+        from services.claims import service
+
+        patches, storage = self._patches(claim=_claim(customer_id="customer-999"))
+        with (
+            patches[0],
+            patches[1],
+            patch.object(service.repo, "list_claim_evidence") as evidence,
+            patch.object(service.repo, "get_claim_outcome") as outcome,
+            patches[4],
+        ):
+            with pytest.raises(ResourceNotFoundError):
+                service.get_claim(TENANT_ID, self.CLAIM_ID, _ctx(UserRole.CUSTOMER))
+        assert not evidence.called and not outcome.called and not storage.presigned_get_url.called
+
+    @pytest.mark.parametrize("role", [UserRole.NIGERIA_OFFICE_STAFF, UserRole.TENANT_ADMIN])
+    def test_staff_read_any_claim(self, role):
+        result, _ = self._get(role=role, claim=_claim(customer_id="customer-999"))
+        assert result["id"] == "claim-001"
+
+    def test_each_evidence_file_has_a_short_lived_download_link(self):
+        result, storage = self._get(evidence=[self._file("photo.jpg"), self._file("video.mp4", id="e2")])
+        assert [f["file_name"] for f in result["evidence"]] == ["photo.jpg", "video.mp4"]
+        assert all(f["download_url"] == "https://files.example/get" for f in result["evidence"])
+        keys = [call.args[0] for call in storage.presigned_get_url.call_args_list]
+        assert keys == [f"{self.PREFIX}photo.jpg", f"{self.PREFIX}video.mp4"]
+        assert all(call.kwargs["expires_in"] == 300 for call in storage.presigned_get_url.call_args_list)
+
+    @pytest.mark.parametrize(
+        "key",
+        [
+            "bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb/claims/claim-001/photo.jpg",  # another tenant
+            f"{TENANT_ID}/claims/claim-002/photo.jpg",  # another claim of this tenant
+            f"{TENANT_ID}/exports/2026-11-10/secret.xlsx",  # not claim evidence at all
+            f"{TENANT_ID}/claims/claim-001/../../other/x",  # starts with the prefix, then climbs out of it
+            f"{TENANT_ID}/claims/claim-001/sub/photo.jpg",  # an upload is one flat filename
+            f"{TENANT_ID}/claims/claim-001/",  # no filename
+        ],
+    )
+    def test_a_key_outside_the_claims_own_prefix_never_becomes_a_link(self, key):
+        result, storage = self._get(evidence=[self._file(key=key)])
+        assert result["evidence"] == []
+        assert not storage.presigned_get_url.called
+
+    def test_a_file_whose_link_cannot_be_made_is_still_listed(self):
+        from services.claims import service
+
+        patches, storage = self._patches(evidence=[self._file()])
+        storage.presigned_get_url.side_effect = RuntimeError("no storage configured")
+        with patches[0], patches[1], patches[2], patches[3], patches[4]:
+            result = service.get_claim(TENANT_ID, self.CLAIM_ID, _ctx(UserRole.CUSTOMER))
+        assert result["evidence"][0]["file_name"] == "photo.jpg" and result["evidence"][0]["download_url"] is None
+
+    def test_the_outcome_is_the_decision_and_the_refund_status(self):
+        outcome = {
+            "resolution_type": "refund",
+            "resolution_amount_ngn": Decimal("25000.00"),
+            "discount_percentage": None,
+            "resolved_at": "2026-11-12T09:00:00Z",
+            "refund_id": "r1",
+            "refund_status": "pending_review",
+            "refund_amount_ngn": Decimal("25000.00"),
+        }
+        result, _ = self._get(outcome=outcome)
+        assert result["resolution"] == {
+            "resolution_type": "refund",
+            "amount_ngn": Decimal("25000.00"),
+            "discount_percentage": None,
+            "resolved_at": "2026-11-12T09:00:00Z",
+        }
+        assert result["refund"] == {"id": "r1", "status": "pending_review", "amount_ngn": Decimal("25000.00")}
+
+    def test_a_resolution_with_no_refund_has_none(self):
+        outcome = {
+            "resolution_type": "no_action",
+            "resolution_amount_ngn": None,
+            "discount_percentage": None,
+            "resolved_at": "x",
+            "refund_id": None,
+        }
+        result, _ = self._get(outcome=outcome)
+        assert result["resolution"]["resolution_type"] == "no_action" and result["refund"] is None
+
+    def test_staffs_internal_record_of_the_decision_is_never_in_the_response(self):
+        outcome = {
+            "resolution_type": "refund",
+            "resolution_amount_ngn": Decimal("1"),
+            "discount_percentage": None,
+            "resolved_at": "x",
+            "refund_id": None,
+            # what a careless query could hand through:
+            "notes": "customer is a repeat claimant, be careful",
+            "approval_level": "admin",
+            "approved_by": "staff-uuid",
+        }
+        result, _ = self._get(outcome=outcome)
+        flat = str(result)
+        assert (
+            "repeat claimant" not in flat
+            and "approved_by" not in flat
+            and "approval_level" not in flat
+            and "staff-uuid" not in flat
+        )
+
+    def test_the_response_carries_no_uploader_or_storage_key(self):
+        result, _ = self._get(evidence=[self._file(uploaded_by="staff-uuid")])
+        assert "uploaded_by" not in result["evidence"][0] and "file_key" not in result["evidence"][0]
+
+
+class TestClaimReadSql:
+    @staticmethod
+    def _sql(fn, *args):
+        from services.claims import repository
+
+        with patch.object(repository, "execute_with_tenant", return_value=[]) as mock_exec:
+            getattr(repository, fn)(*args)
+        scope, query, params = mock_exec.call_args[0]
+        return scope, " ".join(query.split()), params
+
+    def test_the_claim_read_is_tenant_scoped_through_every_join(self):
+        scope, query, params = self._sql("get_damage_claim_by_id", TENANT_ID, "claim-001")
+        assert scope == TENANT_ID and params == (TENANT_ID, "claim-001")
+        assert "dc.tenant_id = %s" in query
+        assert "cu.tenant_id = dc.tenant_id" in query and "c.tenant_id = dc.tenant_id" in query
+
+    def test_the_outcome_query_is_tenant_scoped_and_selects_no_internal_columns(self):
+        scope, query, params = self._sql("get_claim_outcome", TENANT_ID, "claim-001")
+        assert scope == TENANT_ID and params == (TENANT_ID, "claim-001")
+        assert "cr.tenant_id = %s" in query and "rr.tenant_id = cr.tenant_id" in query
+        select_list = query.split("FROM")[0]
+        assert "notes" not in select_list and "approved_by" not in select_list and "approval_level" not in select_list
+
+    def test_the_evidence_query_selects_the_claim_by_bound_id_and_no_uploader(self):
+        from shared.tenant_context import PLATFORM_TENANT_ID
+
+        scope, query, params = self._sql("list_claim_evidence", "claim-001")
+        assert scope == PLATFORM_TENANT_ID  # claim_evidence has no RLS; the service checks the claim's tenant first
+        assert params == ("claim-001",) and "damage_claim_id = %s" in query
+        assert "uploaded_by" not in query.split("FROM")[0]
 
 
 # ---------------------------------------------------------------------------

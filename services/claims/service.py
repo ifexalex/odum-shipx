@@ -18,7 +18,6 @@ from shared.exceptions import (
     ApprovalThresholdExceededError,
     BusinessRuleViolationError,
     IllegalTransitionError,
-    InsufficientPermissionsError,
     ResourceNotFoundError,
 )
 from shared.fx_rate import get_effective_dollar_rate
@@ -194,7 +193,15 @@ def list_claims(
     return [_fmt_claim(r) for r in rows], next_cursor, has_more
 
 
+_EVIDENCE_LINK_EXPIRY = 300  # seconds
+
+
 def get_claim(tenant_id: str, claim_id: str, ctx: Any) -> dict[str, Any]:
+    """One claim, with its evidence, the outcome and the refund it produced (audit UX-07).
+
+    A customer reads only their own. Another customer's claim is a 404, the same as one that does not exist: a 403
+    would confirm that the id is real.
+    """
     claim = repo.get_damage_claim_by_id(tenant_id, claim_id)
     if not claim:
         raise ResourceNotFoundError("damage_claim", claim_id)
@@ -202,9 +209,66 @@ def get_claim(tenant_id: str, claim_id: str, ctx: Any) -> dict[str, Any]:
     if ctx.role == UserRole.CUSTOMER:
         customer = repo.get_customer_by_user_id(tenant_id, ctx.user_id)
         if not customer or str(customer["id"]) != str(claim["customer_id"]):
-            raise InsufficientPermissionsError("Customers may only view their own claims")
+            raise ResourceNotFoundError("damage_claim", claim_id)
 
-    return _fmt_claim(claim)
+    return {
+        **_fmt_claim(claim),
+        "evidence": _evidence_links(tenant_id, claim_id),
+        **_fmt_outcome(repo.get_claim_outcome(tenant_id, claim_id)),
+    }
+
+
+def _evidence_links(tenant_id: str, claim_id: str) -> list[dict[str, Any]]:
+    """The claim's evidence files, each with a short-lived download link.
+
+    A link is made only for a key that is exactly this claim's prefix plus one filename (that is what an upload
+    produces), so a bad row, even one that starts with the right prefix and then climbs out of it with `..`, can never
+    turn into a link to another tenant's or another claim's file. A file whose link cannot be made is still listed,
+    without one.
+    """
+    prefix = f"{tenant_id}/claims/{claim_id}/"
+    storage = get_storage_provider()
+    files: list[dict[str, Any]] = []
+    for row in repo.list_claim_evidence(claim_id):
+        key = str(row["file_key"])
+        name = key[len(prefix) :]
+        if not key.startswith(prefix) or not name or "/" in name or name in {".", ".."}:
+            logger.warning("Claim evidence key outside the claim's prefix, skipped (claim_id=%s)", claim_id)
+            continue
+        url: str | None = None
+        try:
+            url = storage.presigned_get_url(key, expires_in=_EVIDENCE_LINK_EXPIRY)
+        except Exception:
+            logger.warning("Could not presign a claim evidence download (claim_id=%s)", claim_id, exc_info=True)
+        files.append(
+            {
+                "id": str(row["id"]),
+                "file_name": row["file_name"],
+                "file_type": row["file_type"],
+                "file_size_bytes": row.get("file_size_bytes"),
+                "uploaded_at": row.get("created_at"),
+                "download_url": url,
+            }
+        )
+    return files
+
+
+def _fmt_outcome(row: dict[str, Any] | None) -> dict[str, Any]:
+    """The customer-safe outcome: what was decided and the refund's status. No notes, approver or approval level."""
+    if row is None:
+        return {"resolution": None, "refund": None}
+    resolution = {
+        "resolution_type": row["resolution_type"],
+        "amount_ngn": row.get("resolution_amount_ngn"),
+        "discount_percentage": row.get("discount_percentage"),
+        "resolved_at": row.get("resolved_at"),
+    }
+    refund = (
+        {"id": str(row["refund_id"]), "status": row["refund_status"], "amount_ngn": row.get("refund_amount_ngn")}
+        if row.get("refund_id")
+        else None
+    )
+    return {"resolution": resolution, "refund": refund}
 
 
 def start_inspection(

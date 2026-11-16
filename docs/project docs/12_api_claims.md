@@ -227,3 +227,13 @@ field for *Permanently lost*. Tests: `TestSeizedItemCompensation`, `TestItemUpda
 
 **Storage-fee waiver (decided 2026-11-14):** a waiver covers the fees accrued so far; days that accrue afterwards are charged
 again. This is the intended behaviour, not a gap.
+
+## Implementation notes — customers can open their own claim (2026-11-16, audit UX-07)
+
+`GET /v1/claims/{id}` now returns, besides the claim fields: **`evidence`** (each file: `id`, `file_name`, `file_type`, `file_size_bytes`, `uploaded_at`, and a 5-minute presigned `download_url`, or null if one could not be made), **`resolution`** (`resolution_type`, `amount_ngn`, `discount_percentage`, `resolved_at`, or null) and **`refund`** (`id`, `status`, `amount_ngn`: the approved amount if there is one, else the requested; or null). `customer_name` and `container_number` are now filled on this read (the query joins `customer` and `container`; before, they were null here).
+
+- **A customer reads only their own claim, and another customer's is a 404**, as is one that does not exist. It was a 403 ("Customers may only view their own claims"), which confirmed the id was real. The customer's own record is found by their user id; a login with no customer record also gets 404.
+- **The outcome is deliberately the customer-safe part of the decision.** `claim_resolution.notes`, `approval_level` and `approved_by` are staff's internal record and are not selected (the query's select list is tested, and so is the response against a row that carries them). **Open product question for the owner:** the staff "reason" typed when resolving is not shown to the customer, because it may contain internal remarks; if it is meant to be customer-facing it needs its own field.
+- **Evidence links are made only for a key that is exactly `{tenant_id}/claims/{claim_id}/{one filename}`** (what an upload produces); a key that starts with that prefix and then climbs out with `..`, or has a subfolder, or no name, is skipped and logged. A failure to presign lists the file without a link rather than failing the read. `claim_evidence` has no RLS, so the claim is loaded first through the tenant-scoped query and only then its evidence.
+- **Known gap:** an evidence row is created when an upload is *started* (`POST /v1/uploads/presigned-url`), and nothing confirms the upload finished, so an abandoned upload shows as a file whose link does not open. The storage providers have no existence check yet.
+- Tests: `tests/unit/test_claims.py` (`TestGetClaimForTheCustomer`, `TestClaimReadSql`, mutation-checked), `tests/db/test_claim_read.py` (9, **unrun**: no Docker).

@@ -2,7 +2,7 @@ import { type JSX } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { ApiError } from '../../api/client'
 import { type DamageClaimStatus } from '../../api/claims'
-import { CLAIM_STATUS_ORDER } from '../../api/claimsRules'
+import { CLAIM_STATUS_ORDER, CUSTOMER_CLAIM_STATUS_LABELS } from '../../api/claimsRules'
 import { useClaimList } from '../../hooks/useClaims'
 import { Badge, Banner, Button, type BadgeVariant } from '../../design/components'
 import { PageHeader } from '../../shell/PageHeader'
@@ -16,17 +16,6 @@ const STATUS_VARIANT: Record<DamageClaimStatus, BadgeVariant> = {
   pending_resolution: 'warning',
   resolved: 'success',
   closed: 'neutral',
-}
-
-function statusLabel(s: DamageClaimStatus): string {
-  switch (s) {
-    case 'filed': return 'Filed'
-    case 'under_inspection': return 'Under inspection'
-    case 'inspection_complete': return 'Inspection complete'
-    case 'pending_resolution': return 'Pending resolution'
-    case 'resolved': return 'Resolved'
-    case 'closed': return 'Closed'
-  }
 }
 
 function ClaimProgressBar({ status }: { status: DamageClaimStatus }): JSX.Element {
@@ -84,7 +73,21 @@ export function MyClaims(): JSX.Element {
 
       <div className={styles.cardList}>
         {claims.map((c) => (
-          <div key={c.id} className={[styles.card, styles.cardStatic].join(' ')}>
+          // The whole card opens the claim. A link role and Enter/Space keep it usable from the keyboard.
+          <div
+            key={c.id}
+            className={styles.card}
+            role="link"
+            tabIndex={0}
+            aria-label={`Open claim ${c.reference ?? ''}`.trim()}
+            onClick={() => navigate(`/my-claims/${c.id}`)}
+            onKeyDown={(event) => {
+              if (event.key === 'Enter' || event.key === ' ') {
+                event.preventDefault()
+                navigate(`/my-claims/${c.id}`)
+              }
+            }}
+          >
             <div className={styles.cardLeft} style={{ width: '100%' }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
                 <div>
@@ -93,7 +96,7 @@ export function MyClaims(): JSX.Element {
                   </p>
                   {c.description && <p className={styles.cardSub}>{c.description}</p>}
                 </div>
-                <Badge variant={STATUS_VARIANT[c.status]}>{statusLabel(c.status)}</Badge>
+                <Badge variant={STATUS_VARIANT[c.status]}>{CUSTOMER_CLAIM_STATUS_LABELS[c.status]}</Badge>
               </div>
               <div className={styles.cardMeta}>
                 <span>Filed {formatDate(c.created_at)}</span>

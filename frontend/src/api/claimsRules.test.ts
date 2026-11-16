@@ -1,5 +1,16 @@
 import { describe, expect, it } from 'vitest'
-import { canFileClaim, canResolveClaim, canStartInspection, canUpdateItem, isTerminalClaimStatus } from './claimsRules'
+import {
+  CLAIM_STATUS_ORDER,
+  CUSTOMER_CLAIM_STATUS_LABELS,
+  canFileClaim,
+  canResolveClaim,
+  canStartInspection,
+  canUpdateItem,
+  customerInspectionLabel,
+  customerRefundLabel,
+  customerResolutionLabel,
+  isTerminalClaimStatus,
+} from './claimsRules'
 import type { Claim } from './claims'
 
 function makeClaim(status: Claim['status']): Claim {
@@ -50,5 +61,47 @@ describe('isTerminalClaimStatus', () => {
     expect(isTerminalClaimStatus('closed')).toBe(true)
     expect(isTerminalClaimStatus('filed')).toBe(false)
     expect(isTerminalClaimStatus('pending_resolution')).toBe(false)
+  })
+})
+
+describe('customer-facing claim wording (UX-07)', () => {
+  it('has a label for every claim status, in progress order', () => {
+    expect(CLAIM_STATUS_ORDER.map((s) => CUSTOMER_CLAIM_STATUS_LABELS[s])).toEqual([
+      'Filed',
+      'Under inspection',
+      'Inspection complete',
+      'Pending resolution',
+      'Resolved',
+      'Closed',
+    ])
+  })
+
+  it('says how a claim was checked, and that it has not been yet', () => {
+    expect(customerInspectionLabel('customer_evidence')).toBe('From the photos and videos you provided')
+    expect(customerInspectionLabel('delegate_visit')).toBe('An agent inspected the goods in person')
+    expect(customerInspectionLabel(null)).toBe('Not started yet')
+  })
+
+  it('says what was decided', () => {
+    const base = { amount_ngn: null, discount_percentage: null, resolved_at: 'x' }
+    expect(customerResolutionLabel({ ...base, resolution_type: 'refund' })).toBe('Refund')
+    expect(customerResolutionLabel({ ...base, resolution_type: 'compensation' })).toBe('Compensation')
+    expect(customerResolutionLabel({ ...base, resolution_type: 'no_action' })).toBe('Closed without a payout')
+    expect(customerResolutionLabel({ ...base, resolution_type: 'discount', discount_percentage: '15.00' })).toBe('15% discount')
+    expect(customerResolutionLabel({ ...base, resolution_type: 'discount' })).toBe('Discount')
+  })
+
+  it('collapses the refund pipeline into what a customer needs to know', () => {
+    for (const review of ['pending_review', 'accounts_reviewed', 'pending_approval']) {
+      expect(customerRefundLabel(review)).toBe('Being reviewed')
+    }
+    expect(customerRefundLabel('approved')).toBe('Approved: the payout is being arranged')
+    expect(customerRefundLabel('processed')).toBe('Paid')
+    expect(customerRefundLabel('applied_as_credit')).toBe('Applied as credit to your account')
+    expect(customerRefundLabel('rejected')).toBe('Not approved')
+  })
+
+  it('does not break on a status it has not heard of', () => {
+    expect(customerRefundLabel('some_future_status')).toBe('Being reviewed')
   })
 })

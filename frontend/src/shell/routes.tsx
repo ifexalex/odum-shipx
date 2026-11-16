@@ -42,6 +42,7 @@ const PackingListDetail = lazyNamed(chinaArea, 'PackingListDetail')
 const PackingListList = lazyNamed(chinaArea, 'PackingListList')
 const DisputeDetail = lazyNamed(chinaArea, 'DisputeDetail')
 const Account = lazyNamed(customerArea, 'Account')
+const MyClaimDetail = lazyNamed(customerArea, 'MyClaimDetail')
 const MyClaims = lazyNamed(customerArea, 'MyClaims')
 const MyClaimsNew = lazyNamed(customerArea, 'MyClaimsNew')
 const MyBilling = lazyNamed(customerArea, 'MyBilling')
@@ -213,6 +214,7 @@ const STAFF_SCREENS: Record<string, JSX.Element> = {
   '/my-billing/:id/refund-request': <RefundRequest />,
   '/my-claims': <MyClaims />,
   '/my-claims/new': <MyClaimsNew />,
+  '/my-claims/:id': <MyClaimDetail />,
   '/account': <Account />,
 }
 
