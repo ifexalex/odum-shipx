@@ -13,7 +13,7 @@ import { ApiError } from '../../api/client'
 import { containerCapacitiesApi, type ContainerCapacity } from '../../api/tenantManagement'
 import { containerCapacityKeys } from '../../api/keys'
 import { STALE_5_MIN } from '../../lib/queryClient'
-import { Badge, Banner, Button, Card, Field, Mono, Table } from '../../design/components'
+import { Badge, Banner, Button, Card, Field, Mono, Table, DialogGuard } from '../../design/components'
 import { useTopBarSlot } from '../../shell/TopBarContext'
 import styles from './admin.module.css'
 
@@ -76,6 +76,7 @@ function CapacityModal({ existing, onCancel, onSuccess }: CapacityModalProps): J
 
   return (
     <div className={styles.modalOverlay} onClick={onCancel}>
+      <DialogGuard onClose={onCancel} />
       <div
         className={styles.modalPanel}
         onClick={(e) => e.stopPropagation()}

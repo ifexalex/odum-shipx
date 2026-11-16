@@ -26,6 +26,7 @@ import {
   Kvp,
   Mono,
   StatCard,
+  DialogGuard,
   type BadgeVariant,
 } from '../../design/components'
 import { SectionHead } from '../../shell/SectionHead'
@@ -157,6 +158,7 @@ function AccountsReviewModal({ refund, onCancel, onSuccess }: AccountsReviewModa
 
   return (
     <div className={styles.modalOverlay} onClick={onCancel}>
+      <DialogGuard onClose={onCancel} />
       <div className={styles.modalPanel} onClick={(e) => e.stopPropagation()} role="dialog" aria-modal="true">
         <h3 className={styles.modalTitle}>Accounts review</h3>
         {error && <div className={styles.modalBanner}><Banner variant="error" title="Action failed">{error}</Banner></div>}
@@ -253,6 +255,7 @@ function ApproveModal({ refund, role, onCancel, onSuccess }: ApproveModalProps):
 
   return (
     <div className={styles.modalOverlay} onClick={onCancel}>
+      <DialogGuard onClose={onCancel} />
       <div className={styles.modalPanel} onClick={(e) => e.stopPropagation()} role="dialog" aria-modal="true">
         <h3 className={styles.modalTitle}>Approve refund</h3>
         {error && <div className={styles.modalBanner}><Banner variant="error" title="Action failed">{error}</Banner></div>}
@@ -361,6 +364,7 @@ function RejectModal({ onCancel, onSuccess, refundId }: RejectModalProps): JSX.E
 
   return (
     <div className={styles.modalOverlay} onClick={onCancel}>
+      <DialogGuard onClose={onCancel} />
       <div className={styles.modalPanel} onClick={(e) => e.stopPropagation()} role="dialog" aria-modal="true">
         <h3 className={styles.modalTitle}>Reject refund request</h3>
         {error && <div className={styles.modalBanner}><Banner variant="error" title="Action failed">{error}</Banner></div>}

@@ -5,7 +5,7 @@ import { ApiError } from '../../api/client'
 import { customerKeys } from '../../api/keys'
 import { customersApi, type Customer } from '../../api/tenantManagement'
 import { useCustomerList } from '../../hooks/useCustomers'
-import { Badge, Banner, Button, Card, Check, Chip, Field, Icon, Mono, PhoneField, StatCard, Table, ViewLink, ListFooter } from '../../design/components'
+import { Badge, Banner, Button, Card, Check, Chip, Field, Icon, Mono, PhoneField, StatCard, Table, ViewLink, ListFooter, DialogGuard } from '../../design/components'
 import { useTopBarSlot } from '../../shell/TopBarContext'
 import styles from './admin.module.css'
 
@@ -61,6 +61,7 @@ function AddCustomerModal({ onCancel, onSuccess }: AddCustomerModalProps): JSX.E
 
   return (
     <div className={styles.modalOverlay} onClick={onCancel}>
+      <DialogGuard onClose={onCancel} />
       <div
         className={styles.modalPanel}
         onClick={(e) => e.stopPropagation()}

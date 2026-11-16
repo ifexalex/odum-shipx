@@ -4,7 +4,7 @@ import { missingItemsApi, type MissingItem, type MissingItemStatus, type UpdateM
 import { canUpdateItem } from '../../api/claimsRules'
 import { useMissingItemList } from '../../hooks/useItems'
 import { useSession } from '../../auth/useSession'
-import { Badge, Banner, Button, Card, Chip, Field, Mono, Table, ListFooter, type BadgeVariant } from '../../design/components'
+import { Badge, Banner, Button, Card, Chip, Field, Mono, Table, ListFooter, DialogGuard, type BadgeVariant } from '../../design/components'
 import { useTopBarSlot } from '../../shell/TopBarContext'
 import styles from './ItemList.module.css'
 
@@ -71,6 +71,7 @@ function UpdateModal({ item, onCancel, onSuccess }: UpdateModalProps): JSX.Eleme
 
   return (
     <div className={styles.overlay} onClick={onCancel}>
+      <DialogGuard onClose={onCancel} />
       <div className={styles.panel} onClick={(e) => e.stopPropagation()} role="dialog" aria-modal="true">
         <h3 className={styles.panelTitle}>Update missing item</h3>
         {error && <div className={styles.panelBanner}><Banner variant="error" title="Action failed">{error}</Banner></div>}

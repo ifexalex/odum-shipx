@@ -6,7 +6,7 @@ import { platformApi, type Tenant, type TenantStatus } from '../../api/tenantMan
 import { platformTenantKeys } from '../../api/keys'
 import { STALE_30S } from '../../lib/queryClient'
 import { useSession } from '../../auth/useSession'
-import { Badge, Banner, Button, Card, Field, Kvp, Mono, Table, UserCell, type BadgeVariant } from '../../design/components'
+import { Badge, Banner, Button, Card, Field, Kvp, Mono, Table, UserCell, DialogGuard, type BadgeVariant } from '../../design/components'
 import {
   platformApi as platformExtras,
   type PlanLimits,
@@ -63,6 +63,7 @@ function ActionModal({ action, tenant, onCancel, onSuccess }: ActionModalProps):
 
   return (
     <div className={styles.modalOverlay} onClick={onCancel}>
+      <DialogGuard onClose={onCancel} />
       <div className={styles.modalPanel} onClick={(e) => e.stopPropagation()} role="dialog" aria-modal="true">
         <h3 className={styles.modalTitle}>{label.title} — {tenant.company_name}</h3>
         {error && <div className={styles.modalBanner}><Banner variant="error">{error}</Banner></div>}

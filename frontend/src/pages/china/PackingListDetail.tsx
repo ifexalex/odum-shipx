@@ -8,7 +8,7 @@ import { packingListKeys } from '../../api/keys'
 import { STALE_30S } from '../../lib/queryClient'
 import { canApproveOrReject, canEditPackingList, computeCbm, formatPackageMix, formatPackageUnit } from '../../api/packingListRules'
 import { useSession } from '../../auth/useSession'
-import { Badge, Banner, Button, Card, ExportButton, Field, Icon, Mono, Table, type BadgeVariant } from '../../design/components'
+import { Badge, Banner, Button, Card, ExportButton, Field, Icon, Mono, Table, DialogGuard, type BadgeVariant } from '../../design/components'
 import { SectionHead } from '../../shell/SectionHead'
 import styles from './PackingListDetail.module.css'
 
@@ -34,6 +34,7 @@ function RejectModal({ onCancel, onConfirm, submitting, error }: RejectModalProp
   const [comments, setComments] = useState('')
   return (
     <div className={styles.modalOverlay} onClick={onCancel}>
+      <DialogGuard onClose={onCancel} />
       <div className={styles.modalPanel} onClick={(event) => event.stopPropagation()} role="dialog" aria-modal="true">
         <h3 className={styles.modalTitle}>Reject packing list</h3>
         {error && (

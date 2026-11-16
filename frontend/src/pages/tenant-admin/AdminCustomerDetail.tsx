@@ -39,6 +39,7 @@ import {
   StatCard,
   Table,
   ViewLink,
+  DialogGuard,
   type BadgeVariant,
 } from '../../design/components'
 import { SectionHead } from '../../shell/SectionHead'
@@ -79,6 +80,7 @@ function AnonymiseModal({ customer, onCancel, onSuccess }: AnonymiseModalProps):
 
   return (
     <div className={styles.modalOverlay} onClick={onCancel}>
+      <DialogGuard onClose={onCancel} />
       <div className={styles.modalPanel} onClick={(e) => e.stopPropagation()} role="dialog" aria-modal="true">
         <h3 className={styles.modalTitle}>Erase customer data (GDPR Art. 17)</h3>
         {error && <div className={styles.modalBanner}><Banner variant="error">{error}</Banner></div>}

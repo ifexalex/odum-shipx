@@ -30,6 +30,7 @@ import {
   StatCard,
   Table,
   ViewLink,
+  DialogGuard,
   type BadgeVariant,
 } from '../../design/components'
 import { SectionHead } from '../../shell/SectionHead'
@@ -148,6 +149,7 @@ function VerifyManifestModal({ manifest, onCancel, onVerified }: VerifyManifestM
 
   return (
     <div className={styles.modalOverlay} onClick={onCancel}>
+      <DialogGuard onClose={onCancel} />
       <div className={styles.modalPanel} onClick={(event) => event.stopPropagation()} role="dialog" aria-modal="true">
         <h3 className={styles.modalTitle}>Verify manifest</h3>
         {error && (
@@ -310,6 +312,7 @@ function ResolveDiscrepancyModal({ manifest, onCancel, onResolved }: ResolveDisc
 
   return (
     <div className={styles.modalOverlay} onClick={onCancel}>
+      <DialogGuard onClose={onCancel} />
       <div className={styles.modalPanel} onClick={(event) => event.stopPropagation()} role="dialog" aria-modal="true">
         <h3 className={styles.modalTitle}>Resolve discrepancy</h3>
         {error && (
@@ -679,6 +682,7 @@ export function ManifestDetail(): JSX.Element {
 
       {showRevokeConfirm && (
         <div className={styles.modalOverlay} onClick={() => setShowRevokeConfirm(false)}>
+          <DialogGuard onClose={() => setShowRevokeConfirm(false)} />
           <div className={styles.modalPanel} onClick={(e) => e.stopPropagation()} role="dialog" aria-modal="true">
             <h3 className={styles.modalTitle}>Revoke verification?</h3>
             <p className={styles.modalBody}>

@@ -23,6 +23,7 @@ import {
   PhoneField,
   StateSelect,
   Table,
+  DialogGuard,
 } from '../../design/components'
 import { useTopBarSlot } from '../../shell/TopBarContext'
 import styles from './admin.module.css'
@@ -80,6 +81,7 @@ function WarehouseModal({ existing, onCancel, onSuccess }: WarehouseModalProps):
 
   return (
     <div className={styles.modalOverlay} onClick={onCancel}>
+      <DialogGuard onClose={onCancel} />
       <div
         className={styles.modalPanel}
         onClick={(e) => e.stopPropagation()}

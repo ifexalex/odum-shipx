@@ -2,7 +2,7 @@ import { render, screen } from '@testing-library/react'
 import { useState } from 'react'
 import userEvent from '@testing-library/user-event'
 import { describe, expect, it, vi } from 'vitest'
-import { Modal } from './Modal'
+import { DialogGuard, Modal } from './Modal'
 
 describe('Modal', () => {
   it('renders nothing when closed', () => {
@@ -123,7 +123,6 @@ describe('Modal accessibility (FE-04)', () => {
       render(
         <Modal open title="Edit" footer={<button>Save</button>}>
           <input aria-label="First" />
-          {/* eslint-disable-next-line jsx-a11y/no-autofocus */}
           <input aria-label="Second" autoFocus />
         </Modal>,
       )
@@ -311,6 +310,114 @@ describe('Modal accessibility (FE-04)', () => {
       render(<Modal open>Body</Modal>)
       expect(screen.getByRole('dialog')).not.toHaveAttribute('aria-labelledby')
     })
+  })
+})
+
+// A dialog built by hand, as most of the app's are (the payment and pickup flows among them): its own overlay and
+// panel, with a DialogGuard as the overlay's first child.
+function HandRolled({ onCancel }: { onCancel: () => void }) {
+  return (
+    <div data-testid="overlay" onClick={onCancel}>
+      <DialogGuard onClose={onCancel} />
+      <div role="dialog" aria-modal="true" onClick={(e) => e.stopPropagation()}>
+        <h3>Record pickup</h3>
+        <input aria-label="Collected by" />
+        <button onClick={onCancel}>Cancel</button>
+        <button>Record</button>
+      </div>
+    </div>
+  )
+}
+
+function HandRolledHarness() {
+  const [open, setOpen] = useState(false)
+  return (
+    <>
+      <button onClick={() => setOpen(true)}>Open pickup</button>
+      {open && <HandRolled onCancel={() => setOpen(false)} />}
+    </>
+  )
+}
+
+describe('DialogGuard: a hand-rolled dialog gets the same behaviour (FE-04)', () => {
+  it('moves focus in to the first field', async () => {
+    render(<HandRolledHarness />)
+    await userEvent.click(screen.getByRole('button', { name: 'Open pickup' }))
+    expect(screen.getByLabelText('Collected by')).toHaveFocus()
+  })
+
+  it('keeps Tab and Shift+Tab inside, wrapping at both ends', async () => {
+    render(<HandRolledHarness />)
+    await userEvent.click(screen.getByRole('button', { name: 'Open pickup' }))
+    const dialog = screen.getByRole('dialog')
+    for (let i = 0; i < 7; i++) {
+      await userEvent.tab()
+      expect(dialog).toContainElement(document.activeElement as HTMLElement)
+    }
+    for (let i = 0; i < 7; i++) {
+      await userEvent.tab({ shift: true })
+      expect(dialog).toContainElement(document.activeElement as HTMLElement)
+    }
+  })
+
+  it('closes on Escape (these dialogs had no keyboard way out) and returns focus to the opener', async () => {
+    render(<HandRolledHarness />)
+    const opener = screen.getByRole('button', { name: 'Open pickup' })
+    await userEvent.click(opener)
+    await userEvent.keyboard('{Escape}')
+    expect(screen.queryByRole('dialog')).toBeNull()
+    expect(opener).toHaveFocus()
+  })
+
+  it('locks background scroll while open and restores it', async () => {
+    render(<HandRolledHarness />)
+    await userEvent.click(screen.getByRole('button', { name: 'Open pickup' }))
+    expect(document.body.style.overflow).toBe('hidden')
+    await userEvent.keyboard('{Escape}')
+    expect(document.body.style.overflow).toBe('')
+  })
+
+  it('names the dialog from its heading, so it is not announced bare', async () => {
+    render(<HandRolledHarness />)
+    await userEvent.click(screen.getByRole('button', { name: 'Open pickup' }))
+    expect(screen.getByRole('dialog', { name: 'Record pickup' })).toBeInTheDocument()
+  })
+
+  it('leaves a dialog that already has a name alone', async () => {
+    render(
+      <div>
+        <DialogGuard />
+        <div role="dialog" aria-modal="true" aria-label="Already named">
+          <h3>Something else</h3>
+          <button>OK</button>
+        </div>
+      </div>,
+    )
+    expect(screen.getByRole('dialog', { name: 'Already named' })).toBeInTheDocument()
+  })
+
+  it('does not add anything to the page that a user or a screen reader can reach', async () => {
+    render(<HandRolledHarness />)
+    await userEvent.click(screen.getByRole('button', { name: 'Open pickup' }))
+    const placeholder = screen.getByTestId('overlay').querySelector('span[hidden]')
+    expect(placeholder).not.toBeNull()
+    expect(placeholder).not.toBeVisible()
+  })
+
+  it('shares the stack with Modal: only the innermost handles Escape', async () => {
+    const outer = vi.fn()
+    const inner = vi.fn()
+    render(
+      <>
+        <Modal open title="Outer" onClose={outer}>
+          body
+        </Modal>
+        <HandRolled onCancel={inner} />
+      </>,
+    )
+    await userEvent.keyboard('{Escape}')
+    expect(inner).toHaveBeenCalledOnce()
+    expect(outer).not.toHaveBeenCalled()
   })
 })
 

@@ -20,7 +20,7 @@ import {
 import { claimKeys } from '../../api/keys'
 import { STALE_30S } from '../../lib/queryClient'
 import { useSession } from '../../auth/useSession'
-import { Action, Badge, Banner, Button, Card, Field, Kvp, Mono, type BadgeVariant } from '../../design/components'
+import { Action, Badge, Banner, Button, Card, Field, Kvp, Mono, DialogGuard, type BadgeVariant } from '../../design/components'
 import { SectionHead } from '../../shell/SectionHead'
 import { EvidenceUploader } from './EvidenceUploader'
 import styles from './ClaimDetail.module.css'
@@ -83,6 +83,7 @@ function StartInspectionModal({ onCancel, onSuccess, claimId }: StartInspectionM
 
   return (
     <div className={styles.overlay} onClick={onCancel}>
+      <DialogGuard onClose={onCancel} />
       <div className={styles.panel} onClick={(e) => e.stopPropagation()} role="dialog" aria-modal="true">
         <h3 className={styles.panelTitle}>Start inspection</h3>
         {error && <div className={styles.panelBanner}><Banner variant="error" title="Action failed">{error}</Banner></div>}
@@ -198,6 +199,7 @@ function ResolveClaimModal({ onCancel, onSuccess, claimId, role }: ResolveClaimM
 
   return (
     <div className={styles.overlay} onClick={onCancel}>
+      <DialogGuard onClose={onCancel} />
       <div className={styles.panel} onClick={(e) => e.stopPropagation()} role="dialog" aria-modal="true">
         <h3 className={styles.panelTitle}>Resolve claim</h3>
         {error && <div className={styles.panelBanner}><Banner variant="error" title="Action failed">{error}</Banner></div>}

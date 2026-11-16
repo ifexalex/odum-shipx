@@ -7,7 +7,7 @@ import { canApproveOrReject, explainBulkFailure, formatPackageMix, groupBulkFail
 import { useSession } from '../../auth/useSession'
 import { usePackingListList } from '../../hooks/usePackingLists'
 import { useTopBarSlot } from '../../shell/TopBarContext'
-import { Badge, Banner, Button, Card, Chip, Field, Icon, Mono, Table, ViewLink, ListFooter, type BadgeVariant } from '../../design/components'
+import { Badge, Banner, Button, Card, Chip, Field, Icon, Mono, Table, ViewLink, ListFooter, DialogGuard, type BadgeVariant } from '../../design/components'
 import styles from './PackingListList.module.css'
 
 const STATUS_FILTERS: PackingListStatus[] = ['draft', 'pending_approval', 'approved', 'rejected']
@@ -35,6 +35,7 @@ function BulkRejectModal({ count, onCancel, onConfirm, submitting, error }: Bulk
   const [comments, setComments] = useState('')
   return (
     <div className={styles.modalOverlay} onClick={onCancel}>
+      <DialogGuard onClose={onCancel} />
       <div className={styles.modalPanel} onClick={(event) => event.stopPropagation()} role="dialog" aria-modal="true">
         <h3 className={styles.modalTitle}>Reject {count} packing list(s)</h3>
         {error && (

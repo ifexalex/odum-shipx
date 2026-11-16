@@ -20,6 +20,7 @@ import {
   Icon,
   Table,
   ViewLink,
+  DialogGuard,
   type BadgeVariant,
 } from '../../design/components'
 import { useTopBarSlot } from '../../shell/TopBarContext'
@@ -87,6 +88,7 @@ function InviteModal({ onCancel, onSuccess }: InviteModalProps): JSX.Element {
 
   return (
     <div className={styles.modalOverlay} onClick={onCancel}>
+      <DialogGuard onClose={onCancel} />
       <div
         className={styles.modalPanel}
         onClick={(e) => e.stopPropagation()}

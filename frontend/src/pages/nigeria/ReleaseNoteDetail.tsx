@@ -29,6 +29,7 @@ import {
   PhoneField,
   StatCard,
   ToggleSwitch,
+  DialogGuard,
   type BadgeVariant,
 } from '../../design/components'
 import { SectionHead } from '../../shell/SectionHead'
@@ -122,6 +123,7 @@ function RecordPickupModal({ note, onCancel, onSuccess }: RecordPickupModalProps
 
   return (
     <div className={styles.modalOverlay} onClick={onCancel}>
+      <DialogGuard onClose={onCancel} />
       <div className={styles.modalPanel} onClick={(e) => e.stopPropagation()} role="dialog" aria-modal="true">
         <h3 className={styles.modalTitle}>Record pickup — {note.reference_number}</h3>
         {error && <div className={styles.modalBanner}><Banner variant="error" title="Action failed">{error}</Banner></div>}
@@ -273,6 +275,7 @@ function ReissueConfirmModal({ note, onCancel, onSuccess }: ReissueConfirmModalP
 
   return (
     <div className={styles.modalOverlay} onClick={onCancel}>
+      <DialogGuard onClose={onCancel} />
       <div className={styles.modalPanel} onClick={(e) => e.stopPropagation()} role="dialog" aria-modal="true">
         <h3 className={styles.modalTitle}>Re-issue release note</h3>
         {error && <div className={styles.modalBanner}><Banner variant="error" title="Action failed">{error}</Banner></div>}
@@ -339,6 +342,7 @@ function SplitModal({ note, onCancel, onSuccess }: SplitModalProps): JSX.Element
 
   return (
     <div className={styles.modalOverlay} onClick={onCancel}>
+      <DialogGuard onClose={onCancel} />
       <div className={styles.modalPanel} onClick={(e) => e.stopPropagation()} role="dialog" aria-modal="true">
         <h3 className={styles.modalTitle}>Split release note</h3>
         {error && <div className={styles.modalBanner}><Banner variant="error" title="Action failed">{error}</Banner></div>}

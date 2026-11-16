@@ -29,7 +29,7 @@ import { billingKeys, releaseNoteKeys } from '../../api/keys'
 import { STALE_30S } from '../../lib/queryClient'
 import { configApi, type ChargeType } from '../../api/tenantManagement'
 import { useWarehouses } from '../../hooks/useWarehouses'
-import { Action, Badge, Banner, Button, Card, ExportButton, Field, Icon, Mono, StatCard, Table, type BadgeVariant } from '../../design/components'
+import { Action, Badge, Banner, Button, Card, ExportButton, Field, Icon, Mono, StatCard, Table, DialogGuard, type BadgeVariant } from '../../design/components'
 import { SectionHead } from '../../shell/SectionHead'
 import styles from './BillingDetail.module.css'
 
@@ -323,6 +323,7 @@ function RecordPaymentModal({ billing, onCancel, onSuccess }: RecordPaymentModal
 
   return (
     <div className={styles.modalOverlay} onClick={onCancel}>
+      <DialogGuard onClose={onCancel} />
       <div className={styles.modalPanel} onClick={(e) => e.stopPropagation()} role="dialog" aria-modal="true">
         <h3 className={styles.modalTitle}>Record payment</h3>
         <p className={styles.modalSub}>
@@ -506,6 +507,7 @@ function AddChargeModal({ billing, onCancel, onSuccess }: AddChargeModalProps): 
 
   return (
     <div className={styles.modalOverlay} onClick={onCancel}>
+      <DialogGuard onClose={onCancel} />
       <div className={styles.modalPanel} onClick={(e) => e.stopPropagation()} role="dialog" aria-modal="true">
         <h3 className={styles.modalTitle}>Add miscellaneous charge</h3>
         {error && <div className={styles.modalBanner}><Banner variant="error" title="Action failed">{error}</Banner></div>}
@@ -585,6 +587,7 @@ function CancelBillingModal({ onCancel, onSuccess, billingId, error }: CancelBil
 
   return (
     <div className={styles.modalOverlay} onClick={onCancel}>
+      <DialogGuard onClose={onCancel} />
       <div className={styles.modalPanel} onClick={(e) => e.stopPropagation()} role="dialog" aria-modal="true">
         <h3 className={styles.modalTitle}>Cancel billing record</h3>
         {displayError && (
@@ -650,6 +653,7 @@ function ApplyCarryoverModal({ billing, carryovers, onCancel, onSuccess }: Apply
 
   return (
     <div className={styles.modalOverlay} onClick={onCancel}>
+      <DialogGuard onClose={onCancel} />
       <div className={styles.modalPanel} onClick={(e) => e.stopPropagation()} role="dialog" aria-modal="true">
         <h3 className={styles.modalTitle}>Apply carryover credit</h3>
         {error && (
@@ -762,6 +766,7 @@ function GenerateReleaseNoteModal({ billing, onCancel, onSuccess }: GenerateRele
 
   return (
     <div className={styles.modalOverlay} onClick={onCancel}>
+      <DialogGuard onClose={onCancel} />
       <div className={styles.modalPanel} onClick={(e) => e.stopPropagation()} role="dialog" aria-modal="true">
         <h3 className={styles.modalTitle}>Generate release note</h3>
         {error && <div className={styles.modalBanner}><Banner variant="error" title="Action failed">{error}</Banner></div>}
@@ -944,6 +949,7 @@ function ResolveDisputeModal({ dispute, onCancel, onSuccess }: ResolveDisputeMod
 
   return (
     <div className={styles.modalOverlay} onClick={onCancel}>
+      <DialogGuard onClose={onCancel} />
       <div className={styles.modalPanel} onClick={(e) => e.stopPropagation()} role="dialog" aria-modal="true">
         <h3 className={styles.modalTitle}>Resolve CBM dispute</h3>
         {error && (

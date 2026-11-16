@@ -45,6 +45,7 @@ import {
   Table,
   UserCell,
   ViewLink,
+  DialogGuard,
   type BadgeVariant,
   type IconName,
   type TableSort,
@@ -273,6 +274,7 @@ function AdvanceStatusModal({ container, target, customerCount, onClose, onAdvan
 
   return (
     <div className={styles.modalOverlay} onClick={onClose}>
+      <DialogGuard onClose={onClose} />
       <div className={styles.modalPanel} onClick={(event) => event.stopPropagation()} role="dialog" aria-modal="true">
         <h3 className={styles.modalTitle}>
           {step === 'form'
@@ -498,6 +500,7 @@ function DocumentsTab({ containerId, containerNumber }: { containerId: string; c
 
       {showUpload && (
         <div className={styles.modalOverlay} onClick={() => !uploading && setShowUpload(false)}>
+          <DialogGuard onClose={() => !uploading && setShowUpload(false)} />
           <div className={styles.modalPanel} onClick={(e) => e.stopPropagation()} role="dialog" aria-modal="true">
             <h3 className={styles.modalTitle}>Upload document</h3>
             <p className={styles.modalBody}>Container {containerNumber ?? containerId}</p>

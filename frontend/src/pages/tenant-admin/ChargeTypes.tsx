@@ -12,7 +12,7 @@ import { ApiError } from '../../api/client'
 import { configApi, type ChargeType } from '../../api/tenantManagement'
 import { configKeys } from '../../api/keys'
 import { STALE_5_MIN } from '../../lib/queryClient'
-import { Badge, Banner, Button, Card, Field, Mono, Table } from '../../design/components'
+import { Badge, Banner, Button, Card, Field, Mono, Table, DialogGuard } from '../../design/components'
 import { useTopBarSlot } from '../../shell/TopBarContext'
 import styles from './admin.module.css'
 
@@ -70,6 +70,7 @@ function ChargeTypeModal({ existing, onCancel, onSuccess }: ChargeTypeModalProps
       }}
       onClick={onCancel}
     >
+      <DialogGuard onClose={onCancel} />
       <div
         style={{
           background: 'var(--color-surface)',

@@ -7,7 +7,7 @@ import { billingKeys } from '../../api/keys'
 import { type BankTransferConfig } from '../../api/tenantManagement'
 import { useBankTransferConfig } from '../../hooks/useConfig'
 import { STALE_30S } from '../../lib/queryClient'
-import { Field } from '../../design/components'
+import { Field, DialogGuard } from '../../design/components'
 import { Badge, Banner, Button, Card, Kvp, Mono, StatCard, type BadgeVariant } from '../../design/components'
 import { SectionHead } from '../../shell/SectionHead'
 import { EvidenceUploader, type UploadedEvidence } from '../nigeria/EvidenceUploader'
@@ -208,6 +208,7 @@ function CbmDisputeModal({ billing, onCancel, onSuccess }: { billing: Billing; o
       style={{ position: 'fixed', inset: 0, background: 'rgba(11,47,13,0.55)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 200, padding: 16 }}
       onClick={onCancel}
     >
+      <DialogGuard onClose={onCancel} />
       <div
         style={{
           background: 'var(--color-surface)', borderRadius: 14, padding: 24, width: '100%', maxWidth: 480,

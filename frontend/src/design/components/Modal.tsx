@@ -1,4 +1,4 @@
-import { useEffect, useId, useRef, useState, type JSX, type MouseEvent, type ReactNode } from 'react'
+import { useEffect, useId, useLayoutEffect, useRef, useState, type JSX, type MouseEvent, type ReactNode, type RefObject } from 'react'
 import { createPortal } from 'react-dom'
 import styles from './Modal.module.css'
 import { Icon } from './Icon'
@@ -54,18 +54,12 @@ function unlockScroll(): void {
   restoreScroll = null
 }
 
-export interface ModalOverlayProps {
-  onClose?: () => void
-  children: ReactNode
-}
-
 /**
- * The scrim and centring container, with no header/body/footer chrome, for callers that need the backdrop behaviour
- * without Modal's structure. It also owns the dialog behaviour every modal needs: focus moves in when it opens, Tab and
- * Shift+Tab stay inside it, Escape closes it, background scroll is locked, and focus goes back to whatever opened it.
+ * Gives a dialog the behaviour every dialog needs, on the overlay element `overlayRef` points at: focus moves in when
+ * it opens, Tab and Shift+Tab stay inside it, Escape calls `onClose`, background scroll is locked, and focus goes back
+ * to whatever opened it. A dialog with no accessible name is named from its first heading.
  */
-export function ModalOverlay({ onClose, children }: ModalOverlayProps): JSX.Element {
-  const overlayRef = useRef<HTMLDivElement>(null)
+function useDialogBehavior(overlayRef: RefObject<HTMLElement | null>, onClose: (() => void) | undefined): void {
   // Read while rendering, before anything inside the dialog can take focus (an `autoFocus` field does so at commit).
   const [opener] = useState<Element | null>(() => document.activeElement)
   const onCloseRef = useRef(onClose)
@@ -79,6 +73,7 @@ export function ModalOverlay({ onClose, children }: ModalOverlayProps): JSX.Elem
     const token = {}
     overlayStack.push(token)
     lockScroll()
+    nameFromHeading(overlay)
 
     // A field that asked for focus itself (`autoFocus`) keeps it.
     if (!overlay.contains(document.activeElement)) initialFocusTarget(overlay).focus()
@@ -121,7 +116,33 @@ export function ModalOverlay({ onClose, children }: ModalOverlayProps): JSX.Elem
       // Back to the control that opened the dialog, unless it has since left the page.
       if (opener instanceof HTMLElement && opener.isConnected) opener.focus()
     }
-  }, [opener])
+  }, [overlayRef, opener])
+}
+
+let headingCount = 0
+
+/** A dialog with no `aria-label` or `aria-labelledby` is named by its first heading, so it is never announced bare. */
+function nameFromHeading(overlay: HTMLElement): void {
+  const dialog = overlay.querySelector<HTMLElement>('[role="dialog"]')
+  if (!dialog || dialog.hasAttribute('aria-label') || dialog.hasAttribute('aria-labelledby')) return
+  const heading = dialog.querySelector<HTMLElement>('h1, h2, h3, h4')
+  if (!heading) return
+  if (!heading.id) heading.id = `dialog-heading-${++headingCount}`
+  dialog.setAttribute('aria-labelledby', heading.id)
+}
+
+export interface ModalOverlayProps {
+  onClose?: () => void
+  children: ReactNode
+}
+
+/**
+ * The scrim and centring container, with no header/body/footer chrome, for callers that need the backdrop behaviour
+ * without Modal's structure. It also gives its dialog the behaviour in `useDialogBehavior`.
+ */
+export function ModalOverlay({ onClose, children }: ModalOverlayProps): JSX.Element {
+  const overlayRef = useRef<HTMLDivElement>(null)
+  useDialogBehavior(overlayRef, onClose)
 
   return createPortal(
     <div ref={overlayRef} className={styles.overlay} tabIndex={-1} onClick={() => onClose?.()}>
@@ -129,6 +150,36 @@ export function ModalOverlay({ onClose, children }: ModalOverlayProps): JSX.Elem
     </div>,
     document.body,
   )
+}
+
+/**
+ * The same dialog behaviour for a dialog that is not built on `Modal`: render it as the first child of the dialog's
+ * own overlay element (the one that dims the page and closes on click).
+ *
+ *     <div className={styles.modalOverlay} onClick={onCancel}>
+ *       <DialogGuard onClose={onCancel} />
+ *       <div role="dialog" aria-modal="true">…</div>
+ *     </div>
+ *
+ * It renders a hidden placeholder and applies the behaviour to that placeholder's parent. Most of the app's dialogs are
+ * hand-rolled, including the payment and pickup flows, so this is what gives them focus handling without rewriting
+ * their markup. New dialogs should use `Modal`; a test fails for any dialog that uses neither.
+ */
+export function DialogGuard({ onClose }: { onClose?: () => void }): JSX.Element {
+  const anchorRef = useRef<HTMLSpanElement>(null)
+  const overlayRef = useRef<HTMLElement | null>(null)
+  // Before `useDialogBehavior`'s effect runs (layout effects come first), point it at the parent.
+  useLayoutEffect(() => {
+    const overlay = anchorRef.current?.parentElement ?? null
+    overlayRef.current = overlay
+    if (overlay && !overlay.hasAttribute('tabindex')) {
+      // Last-resort focus target for a dialog with nothing focusable in it.
+      overlay.tabIndex = -1
+      overlay.style.outline = 'none'
+    }
+  }, [])
+  useDialogBehavior(overlayRef, onClose)
+  return <span ref={anchorRef} hidden />
 }
 
 export interface ModalProps {
