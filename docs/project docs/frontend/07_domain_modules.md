@@ -1680,6 +1680,10 @@ does nothing.~~ **Fixed 2026-11-14** — see "Generate billing picker and missin
 
 - **Seized Items → Update dialog (2026-11-16):** *Permanently lost* reveals the same optional **Compensation (₦)** field as Missing Items (blank records the loss with no compensation; an amount not above 0 blocks Save). It used to be impossible to compensate from the UI at all.
 
+## Implementation notes — code splitting (2026-11-16, master plan 7.190)
+
+- `shell/routes.tsx` loads pages through `lazyNamed` and the area modules in `shell/areas/`; the route tests are async (`findBy*`), because a page now renders after its chunk loads. Details and measurements: `06_routing_rbac_and_navigation.md`. `SessionLoading` gained an `inline` mode for the page-sized wait inside an on-screen layout.
+
 ## Implementation notes — global search (2026-11-16, master plan 7.188)
 
 - **`shell/GlobalSearch.tsx`** (+ `GlobalSearch.module.css`), `hooks/useGlobalSearch.ts` (250 ms debounce, nothing sent under 2 characters, previous results kept while the next term loads), `api/search.ts`, `searchKeys` in `api/keys.ts`, `shell/searchRoutes.ts` (result → route, placeholder per role). Behaviour and routes are in `06_routing_rbac_and_navigation.md` (UX-05).

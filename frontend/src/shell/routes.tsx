@@ -1,90 +1,104 @@
-import type { JSX } from 'react'
+import { Suspense, type JSX } from 'react'
 import { Navigate, Route, Routes } from 'react-router-dom'
 import { homePathForRole } from '../auth/roleHome'
 import { RoleGuard } from '../auth/RoleGuard'
 import { SessionLoading } from '../auth/SessionLoading'
 import { useSession } from '../auth/useSession'
-import { ForgotPasswordScreen } from '../pages/auth/ForgotPasswordScreen'
-import { ActivateScreen } from '../pages/auth/ActivateScreen'
-import { InviteClaimScreen } from '../pages/auth/InviteClaimScreen'
-import { LoginScreen } from '../pages/auth/LoginScreen'
-import { RegisterScreen } from '../pages/auth/RegisterScreen'
-import { RequestOnboardingScreen } from '../pages/auth/RequestOnboardingScreen'
+import { lazyNamed } from '../lib/lazyPage'
 import { AuthCallback } from '../pages/auth/AuthCallback'
-import { ResetPasswordScreen } from '../pages/auth/ResetPasswordScreen'
+import { LoginScreen } from '../pages/auth/LoginScreen'
 import { LandingPage } from '../pages/marketing/LandingPage'
-import { ContainerDetail } from '../pages/china/ContainerDetail'
-import { ContainerList } from '../pages/china/ContainerList'
-import { CreateContainer } from '../pages/china/CreateContainer'
-import { CreatePackingList } from '../pages/china/CreatePackingList'
-import { ImportPackingLists } from '../pages/china/ImportPackingLists'
-import { PackingListDetail } from '../pages/china/PackingListDetail'
-import { PackingListList } from '../pages/china/PackingListList'
-import { BillingDetail } from '../pages/nigeria/BillingDetail'
-import { BillingList } from '../pages/nigeria/BillingList'
-import { ClaimDetail } from '../pages/nigeria/ClaimDetail'
-import { ClaimList } from '../pages/nigeria/ClaimList'
-import { DisputeList } from '../pages/nigeria/DisputeList'
-import { ManifestDetail } from '../pages/nigeria/ManifestDetail'
-import { ManifestList } from '../pages/nigeria/ManifestList'
-import { MissingItemList } from '../pages/nigeria/MissingItemList'
-import { RefundDetail } from '../pages/nigeria/RefundDetail'
-import { RefundList } from '../pages/nigeria/RefundList'
-import { PrintPackingList } from '../pages/print/PrintPackingList'
-import { PrintReleaseNote } from '../pages/print/PrintReleaseNote'
-import { CarryoverLedger } from '../pages/nigeria/CarryoverLedger'
-import { ReleaseNoteDetail } from '../pages/nigeria/ReleaseNoteDetail'
-import { ReleaseNoteList } from '../pages/nigeria/ReleaseNoteList'
-import { SeizedItemList } from '../pages/nigeria/SeizedItemList'
-import { WarehouseDashboard } from '../pages/warehouse/WarehouseDashboard'
-// Tenant-admin pages
-import { Dashboard } from '../pages/tenant-admin/Dashboard'
-import { StaffUserList } from '../pages/tenant-admin/StaffUserList'
-import { StaffUserDetail } from '../pages/tenant-admin/StaffUserDetail'
-import { AdminCustomerList } from '../pages/tenant-admin/AdminCustomerList'
-import { AdminCustomerDetail } from '../pages/tenant-admin/AdminCustomerDetail'
-import { CompanySettings } from '../pages/tenant-admin/CompanySettings'
-import { ConfigLayout } from '../pages/tenant-admin/ConfigLayout'
-import { ActivityLog } from '../pages/tenant-admin/ActivityLog'
-import { DollarRateConfig } from '../pages/tenant-admin/DollarRateConfig'
-import { CbmRateConfig } from '../pages/tenant-admin/CbmRateConfig'
-import { ChargeTypes } from '../pages/tenant-admin/ChargeTypes'
-import { ContainerCapacities } from '../pages/tenant-admin/ContainerCapacities'
-import { Warehouses } from '../pages/tenant-admin/Warehouses'
-import { NotificationLog } from '../pages/tenant-admin/NotificationLog'
-import { NotificationTemplates } from '../pages/tenant-admin/NotificationTemplates'
-import { PaymentGatewayConfig } from '../pages/tenant-admin/PaymentGatewayConfig'
-import { TenantReports } from '../pages/tenant-admin/TenantReports'
-import { WebhookConfig } from '../pages/tenant-admin/WebhookConfig'
-import { AnnouncementsPage } from '../pages/staff/AnnouncementsPage'
-import { StaffProfile } from '../pages/staff/StaffProfile'
-// Platform-admin pages
-import { PlatformAuditLog } from '../pages/platform/PlatformAuditLog'
-import { CreateTenantPage } from '../pages/platform/CreateTenantPage'
-import { OnboardingRequests } from '../pages/platform/OnboardingRequests'
-import { PlatformSettings } from '../pages/platform/PlatformSettings'
-import { PlatformDashboard } from '../pages/platform/PlatformDashboard'
-import { PlatformTenantList } from '../pages/platform/PlatformTenantList'
-import { PlatformTenantDetail } from '../pages/platform/PlatformTenantDetail'
-// Customer pages
-import { Account } from '../pages/customer/Account'
-import { MyClaims } from '../pages/customer/MyClaims'
-import { MyClaimsNew } from '../pages/customer/MyClaimsNew'
-import { MyBilling } from '../pages/customer/MyBilling'
-import { DisputeDetail } from '../pages/china/DisputeDetail'
-import { MyBillingDetail } from '../pages/customer/MyBillingDetail'
-import { MyShipments } from '../pages/customer/MyShipments'
-import { MyReleaseNote } from '../pages/customer/MyReleaseNote'
-import { MyShipmentDetail } from '../pages/customer/MyShipmentDetail'
-import { PaymentFailed } from '../pages/customer/PaymentFailed'
-import { PaymentSuccess } from '../pages/customer/PaymentSuccess'
 import { PublicTrack } from '../pages/customer/PublicTrack'
-import { RefundRequest } from '../pages/customer/RefundRequest'
-import { CustomerLayout } from './CustomerLayout'
 import { NotFoundPage } from './NotFoundPage'
 import { RouteStub } from './RouteStub'
 import { routeTable, type RouteDef } from './routeTable'
-import { StaffLayout } from './StaffLayout'
+
+// Pages load on demand, one chunk per area (shell/areas/*): a customer on a phone never downloads the platform,
+// admin or staff screens. Sign-in, the landing page, public tracking and the sign-in callback stay in the entry chunk.
+
+const accountScreensArea = () => import('./areas/accountScreens')
+const chinaArea = () => import('./areas/china')
+const customerArea = () => import('./areas/customer')
+const nigeriaArea = () => import('./areas/nigeria')
+const platformArea = () => import('./areas/platform')
+const printArea = () => import('./areas/print')
+const tenantAdminArea = () => import('./areas/tenantAdmin')
+const warehouseArea = () => import('./areas/warehouse')
+const staffLayout = () => import('./StaffLayout')
+const customerLayout = () => import('./CustomerLayout')
+
+const RegisterScreen = lazyNamed(accountScreensArea, 'RegisterScreen')
+const RequestOnboardingScreen = lazyNamed(accountScreensArea, 'RequestOnboardingScreen')
+const InviteClaimScreen = lazyNamed(accountScreensArea, 'InviteClaimScreen')
+const ActivateScreen = lazyNamed(accountScreensArea, 'ActivateScreen')
+const ForgotPasswordScreen = lazyNamed(accountScreensArea, 'ForgotPasswordScreen')
+const ResetPasswordScreen = lazyNamed(accountScreensArea, 'ResetPasswordScreen')
+const ContainerDetail = lazyNamed(chinaArea, 'ContainerDetail')
+const ContainerList = lazyNamed(chinaArea, 'ContainerList')
+const CreateContainer = lazyNamed(chinaArea, 'CreateContainer')
+const CreatePackingList = lazyNamed(chinaArea, 'CreatePackingList')
+const ImportPackingLists = lazyNamed(chinaArea, 'ImportPackingLists')
+const PackingListDetail = lazyNamed(chinaArea, 'PackingListDetail')
+const PackingListList = lazyNamed(chinaArea, 'PackingListList')
+const DisputeDetail = lazyNamed(chinaArea, 'DisputeDetail')
+const Account = lazyNamed(customerArea, 'Account')
+const MyClaims = lazyNamed(customerArea, 'MyClaims')
+const MyClaimsNew = lazyNamed(customerArea, 'MyClaimsNew')
+const MyBilling = lazyNamed(customerArea, 'MyBilling')
+const MyBillingDetail = lazyNamed(customerArea, 'MyBillingDetail')
+const MyShipments = lazyNamed(customerArea, 'MyShipments')
+const MyReleaseNote = lazyNamed(customerArea, 'MyReleaseNote')
+const MyShipmentDetail = lazyNamed(customerArea, 'MyShipmentDetail')
+const PaymentFailed = lazyNamed(customerArea, 'PaymentFailed')
+const PaymentSuccess = lazyNamed(customerArea, 'PaymentSuccess')
+const RefundRequest = lazyNamed(customerArea, 'RefundRequest')
+const BillingDetail = lazyNamed(nigeriaArea, 'BillingDetail')
+const BillingList = lazyNamed(nigeriaArea, 'BillingList')
+const ClaimDetail = lazyNamed(nigeriaArea, 'ClaimDetail')
+const ClaimList = lazyNamed(nigeriaArea, 'ClaimList')
+const DisputeList = lazyNamed(nigeriaArea, 'DisputeList')
+const ManifestDetail = lazyNamed(nigeriaArea, 'ManifestDetail')
+const ManifestList = lazyNamed(nigeriaArea, 'ManifestList')
+const MissingItemList = lazyNamed(nigeriaArea, 'MissingItemList')
+const RefundDetail = lazyNamed(nigeriaArea, 'RefundDetail')
+const RefundList = lazyNamed(nigeriaArea, 'RefundList')
+const CarryoverLedger = lazyNamed(nigeriaArea, 'CarryoverLedger')
+const ReleaseNoteDetail = lazyNamed(nigeriaArea, 'ReleaseNoteDetail')
+const ReleaseNoteList = lazyNamed(nigeriaArea, 'ReleaseNoteList')
+const SeizedItemList = lazyNamed(nigeriaArea, 'SeizedItemList')
+const PlatformAuditLog = lazyNamed(platformArea, 'PlatformAuditLog')
+const CreateTenantPage = lazyNamed(platformArea, 'CreateTenantPage')
+const OnboardingRequests = lazyNamed(platformArea, 'OnboardingRequests')
+const PlatformSettings = lazyNamed(platformArea, 'PlatformSettings')
+const PlatformDashboard = lazyNamed(platformArea, 'PlatformDashboard')
+const PlatformTenantList = lazyNamed(platformArea, 'PlatformTenantList')
+const PlatformTenantDetail = lazyNamed(platformArea, 'PlatformTenantDetail')
+const PrintPackingList = lazyNamed(printArea, 'PrintPackingList')
+const PrintReleaseNote = lazyNamed(printArea, 'PrintReleaseNote')
+const Dashboard = lazyNamed(tenantAdminArea, 'Dashboard')
+const StaffUserList = lazyNamed(tenantAdminArea, 'StaffUserList')
+const StaffUserDetail = lazyNamed(tenantAdminArea, 'StaffUserDetail')
+const AdminCustomerList = lazyNamed(tenantAdminArea, 'AdminCustomerList')
+const AdminCustomerDetail = lazyNamed(tenantAdminArea, 'AdminCustomerDetail')
+const CompanySettings = lazyNamed(tenantAdminArea, 'CompanySettings')
+const ConfigLayout = lazyNamed(tenantAdminArea, 'ConfigLayout')
+const ActivityLog = lazyNamed(tenantAdminArea, 'ActivityLog')
+const DollarRateConfig = lazyNamed(tenantAdminArea, 'DollarRateConfig')
+const CbmRateConfig = lazyNamed(tenantAdminArea, 'CbmRateConfig')
+const ChargeTypes = lazyNamed(tenantAdminArea, 'ChargeTypes')
+const ContainerCapacities = lazyNamed(tenantAdminArea, 'ContainerCapacities')
+const Warehouses = lazyNamed(tenantAdminArea, 'Warehouses')
+const NotificationLog = lazyNamed(tenantAdminArea, 'NotificationLog')
+const NotificationTemplates = lazyNamed(tenantAdminArea, 'NotificationTemplates')
+const PaymentGatewayConfig = lazyNamed(tenantAdminArea, 'PaymentGatewayConfig')
+const TenantReports = lazyNamed(tenantAdminArea, 'TenantReports')
+const WebhookConfig = lazyNamed(tenantAdminArea, 'WebhookConfig')
+const AnnouncementsPage = lazyNamed(tenantAdminArea, 'AnnouncementsPage')
+const StaffProfile = lazyNamed(tenantAdminArea, 'StaffProfile')
+const WarehouseDashboard = lazyNamed(warehouseArea, 'WarehouseDashboard')
+const StaffLayout = lazyNamed(staffLayout, 'StaffLayout')
+const CustomerLayout = lazyNamed(customerLayout, 'CustomerLayout')
+
 
 // The apex path redirects signed-in visitors to their role's home; signed-out
 // visitors get the public marketing landing page (not a further redirect to
@@ -206,19 +220,25 @@ function elementForRoute(route: RouteDef): JSX.Element {
   const page = STAFF_SCREENS[route.path] ?? <RouteStub title={route.title} />
 
   if (route.allow === 'public') {
-    return PUBLIC_SCREENS[route.path] ?? page
+    // A public screen that is not in the entry chunk loads on demand, on the same spinner the session restore uses.
+    return <Suspense fallback={<SessionLoading />}>{PUBLIC_SCREENS[route.path] ?? page}</Suspense>
   }
 
+  // Two boundaries. The outer one covers the layout's own chunk (the first guarded page of a session); the inner one
+  // covers the page's chunk, so moving between areas keeps the sidebar or top bar on screen while the page loads.
+  const content = <Suspense fallback={<SessionLoading inline />}>{page}</Suspense>
   const guarded = (
     <RoleGuard allow={route.allow}>
-      {route.layout === 'customer' ? (
-        <CustomerLayout>{page}</CustomerLayout>
-      ) : route.layout === 'none' ? (
-        // Guarded but shell-less — print/document views (14.12).
-        page
-      ) : (
-        <StaffLayout>{page}</StaffLayout>
-      )}
+      <Suspense fallback={<SessionLoading />}>
+        {route.layout === 'customer' ? (
+          <CustomerLayout>{content}</CustomerLayout>
+        ) : route.layout === 'none' ? (
+          // Guarded but shell-less — print/document views (14.12).
+          content
+        ) : (
+          <StaffLayout>{content}</StaffLayout>
+        )}
+      </Suspense>
     </RoleGuard>
   )
   return guarded

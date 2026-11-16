@@ -1,0 +1,16 @@
+// Nigeria office: billing, claims, refunds, manifests, release notes, missing and seized items.
+// One chunk: the first page of this area loads all of it, so moving between its pages never waits.
+export { BillingDetail } from '../../pages/nigeria/BillingDetail'
+export { BillingList } from '../../pages/nigeria/BillingList'
+export { ClaimDetail } from '../../pages/nigeria/ClaimDetail'
+export { ClaimList } from '../../pages/nigeria/ClaimList'
+export { DisputeList } from '../../pages/nigeria/DisputeList'
+export { ManifestDetail } from '../../pages/nigeria/ManifestDetail'
+export { ManifestList } from '../../pages/nigeria/ManifestList'
+export { MissingItemList } from '../../pages/nigeria/MissingItemList'
+export { RefundDetail } from '../../pages/nigeria/RefundDetail'
+export { RefundList } from '../../pages/nigeria/RefundList'
+export { CarryoverLedger } from '../../pages/nigeria/CarryoverLedger'
+export { ReleaseNoteDetail } from '../../pages/nigeria/ReleaseNoteDetail'
+export { ReleaseNoteList } from '../../pages/nigeria/ReleaseNoteList'
+export { SeizedItemList } from '../../pages/nigeria/SeizedItemList'

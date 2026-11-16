@@ -106,3 +106,7 @@ No blue/green infrastructure needed — S3 sync is atomic enough at this traffic
 - [x] CI: every PR runs typecheck + lint + test + build + audit + security greps; merge to main triggers the deploy job.
 - [x] Hashed assets: `max-age=31536000,immutable` via separate cache policy. `index.html`: `no-cache` via ordered behavior + cache policy. Only `/index.html` is invalidated per deploy.
 - [x] Rollback procedure documented above; re-deploys from CI artifacts (30-day retention).
+
+## Build output (2026-11-16, audit FE-02)
+
+`vite build` now emits one chunk per area (see `06_routing_rbac_and_navigation.md`, "Code splitting") instead of a single bundle, so a deploy replaces many hashed files and a tab left open across a deploy can fail to fetch an old chunk: `lazyNamed` retries once and the error boundary offers a reload. Keep old assets on the CDN for a short while after a deploy if that proves noisy.
