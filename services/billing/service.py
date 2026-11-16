@@ -1072,7 +1072,17 @@ def list_disputes(
 ) -> tuple[list[dict[str, Any]], str | None, bool]:
     """Top-level paginated list of all disputes for a tenant."""
     rows, next_cursor, has_more = repo.list_all_disputes(tenant_id, filters, limit, cursor)
-    return [_fmt_dispute(r) for r in rows], next_cursor, has_more
+    return [_dispute_list_item(r) for r in rows], next_cursor, has_more
+
+
+def _dispute_list_item(row: dict[str, Any]) -> dict[str, Any]:
+    """A dispute as the list shows it: the usual fields plus which customer, invoice and container it is about."""
+    return {
+        **_fmt_dispute(row),
+        "customer_name": row.get("customer_name"),
+        "invoice_number": row.get("invoice_number"),
+        "container_number": row.get("container_number"),
+    }
 
 
 # Keep old name as alias for backwards compatibility

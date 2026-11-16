@@ -110,7 +110,9 @@ export function DisputeList(): JSX.Element {
         <Card padding={0}>
           <Table
             columns={[
-              { title: 'Billing ID' },
+              { title: 'Customer' },
+              { title: 'Invoice' },
+              { title: 'Container' },
               { title: 'Original CBM', align: 'right' },
               { title: 'Corrected CBM', align: 'right' },
               { title: 'Status' },
@@ -120,7 +122,9 @@ export function DisputeList(): JSX.Element {
             ]}
             rows={disputes.map((d) => ({
               cells: [
-                <Mono key="billing">{d.billing_id.slice(0, 8)}…</Mono>,
+                <span key="customer" className={styles.customer}>{d.customer_name ?? '—'}</span>,
+                <Mono key="invoice">{d.invoice_number ?? '—'}</Mono>,
+                <Mono key="container">{d.container_number ?? '—'}</Mono>,
                 <Mono key="orig">{d.original_cbm ?? '—'}</Mono>,
                 <Mono key="corrected">{d.corrected_cbm ?? '—'}</Mono>,
                 <Badge key="status" variant={STATUS_VARIANT[d.status]}>

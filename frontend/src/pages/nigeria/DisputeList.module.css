@@ -11,3 +11,8 @@
 .tableWrap {
   margin-top: 16px;
 }
+
+.customer {
+  font-weight: 600;
+  color: var(--color-ink);
+}

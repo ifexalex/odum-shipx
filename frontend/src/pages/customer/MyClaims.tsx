@@ -89,7 +89,7 @@ export function MyClaims(): JSX.Element {
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
                 <div>
                   <p className={styles.cardTitle} style={{ fontFamily: 'var(--font-mono)', fontSize: '0.875rem' }}>
-                    {c.id.slice(0, 8)}…
+                    {c.reference ?? `${c.id.slice(0, 8)}…`}
                   </p>
                   {c.description && <p className={styles.cardSub}>{c.description}</p>}
                 </div>

@@ -441,7 +441,7 @@ def list_billing_all(
     query, params = build_paginated_query(base, cursor, limit, sort_field=f"b.{sort_field}", sort_direction=sort_direction)
     params.update(extra)
     rows = execute_with_tenant(tenant_id, query, params)
-    return extract_page(rows, limit)
+    return extract_page(rows, limit, sort_field)
 
 
 def get_tenant_report(
@@ -1293,18 +1293,30 @@ def list_all_disputes(
 ) -> tuple[list[dict[str, Any]], str | None, bool]:
     from shared.pagination import build_paginated_query, extract_page
 
-    conditions = ["tenant_id = %(tenant_id)s"]
+    conditions = ["d.tenant_id = %(tenant_id)s"]
     extra: dict[str, Any] = {"tenant_id": tenant_id}
 
     if filters.get("status"):
-        conditions.append("status = %(status)s")
+        conditions.append("d.status = %(status)s")
         extra["status"] = filters["status"]
     if filters.get("customer_id"):
-        conditions.append("customer_id = %(customer_id)s")
+        conditions.append("d.customer_id = %(customer_id)s")
         extra["customer_id"] = filters["customer_id"]
 
-    base = f"SELECT * FROM cbm_dispute WHERE {' AND '.join(conditions)}"
-    query, params = build_paginated_query(base, cursor, limit, sort_field="created_at")
+    # Customer, invoice and container come back with each dispute so the list can say which one it is (audit UX-06).
+    # Names and references only, no amounts: China staff read this list too and may not read invoice money.
+    base = f"""
+        SELECT d.*,
+               cu.name             AS customer_name,
+               b.invoice_number    AS invoice_number,
+               c.container_number  AS container_number
+        FROM cbm_dispute d
+        LEFT JOIN billing   b  ON b.id  = d.billing_id   AND b.tenant_id  = d.tenant_id
+        LEFT JOIN customer  cu ON cu.id = d.customer_id  AND cu.tenant_id = d.tenant_id
+        LEFT JOIN container c  ON c.id  = b.container_id AND c.tenant_id  = b.tenant_id
+        WHERE {" AND ".join(conditions)}
+    """  # noqa: S608 - only fixed fragments are interpolated; every value is a bound parameter
+    query, params = build_paginated_query(base, cursor, limit, sort_field="d.created_at")
     params.update(extra)
     rows = execute_with_tenant(tenant_id, query, params)
     return extract_page(rows, limit)

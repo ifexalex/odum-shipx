@@ -956,6 +956,84 @@ class TestListBillingAllRepositoryFilters:
         assert "billed_at" not in query
 
 
+class TestDisputeList:
+    """GET /v1/billing/disputes names the customer, invoice and container of each dispute (audit UX-06)."""
+
+    @staticmethod
+    def _row(**kw) -> dict:
+        from datetime import UTC, datetime
+
+        return {
+            "id": "d1",
+            "billing_id": "b1",
+            "status": "submitted",
+            "disputed_cbm": Decimal("2.000"),
+            "agreed_cbm": None,
+            "created_at": datetime(2026, 11, 10, 10, 0, tzinfo=UTC),
+            "acknowledged_at": None,
+            "updated_at": datetime(2026, 11, 10, 10, 0, tzinfo=UTC),
+            "customer_name": "Ngozi Adeyemi",
+            "invoice_number": "ACME-INV-20261110-0007",
+            "container_number": "MSCU1234567",
+            **kw,
+        }
+
+    def test_each_dispute_says_which_customer_invoice_and_container_it_is_about(self):
+        from services.billing import service
+
+        with patch.object(service.repo, "list_all_disputes", return_value=([self._row()], None, False)):
+            items, _, _ = service.list_disputes(TENANT_ID, {}, 50, None)
+        assert items[0]["customer_name"] == "Ngozi Adeyemi"
+        assert items[0]["invoice_number"] == "ACME-INV-20261110-0007"
+        assert items[0]["container_number"] == "MSCU1234567"
+        assert items[0]["billing_id"] == "b1"  # still there: the invoice page is reached by it
+
+    def test_a_dispute_whose_invoice_or_customer_is_gone_still_lists(self):
+        from services.billing import service
+
+        row = self._row(customer_name=None, invoice_number=None, container_number=None)
+        with patch.object(service.repo, "list_all_disputes", return_value=([row], None, False)):
+            items, _, _ = service.list_disputes(TENANT_ID, {}, 50, None)
+        assert items[0]["customer_name"] is None and items[0]["invoice_number"] is None
+
+    def test_the_list_carries_names_and_references_only_never_money(self):
+        """China staff read this list and may not read invoice money."""
+        from services.billing import service
+
+        with patch.object(service.repo, "list_all_disputes", return_value=([self._row(total_ngn=Decimal("999"))], None, False)):
+            items, _, _ = service.list_disputes(TENANT_ID, {}, 50, None)
+        assert not any("ngn" in key or "amount" in key or "total" in key for key in items[0])
+
+    @staticmethod
+    def _sql(filters=None, cursor=None):
+        from services.billing import repository
+
+        with patch.object(repository, "execute_with_tenant", return_value=[]) as mock_exec:
+            repository.list_all_disputes(TENANT_ID, filters or {}, limit=25, cursor=cursor)
+        _, query, params = mock_exec.call_args[0]
+        return " ".join(query.split()), params
+
+    def test_every_join_is_tenant_scoped(self):
+        query, params = self._sql()
+        assert "d.tenant_id = %(tenant_id)s" in query and params["tenant_id"] == TENANT_ID
+        assert "b.tenant_id = d.tenant_id" in query
+        assert "cu.tenant_id = d.tenant_id" in query
+        assert "c.tenant_id = b.tenant_id" in query
+
+    def test_filters_are_bound_parameters(self):
+        hostile = "x'; DROP TABLE cbm_dispute; --"
+        query, params = self._sql({"status": hostile, "customer_id": hostile})
+        assert hostile not in query
+        assert params["status"] == hostile and params["customer_id"] == hostile
+        assert "d.status = %(status)s" in query and "d.customer_id = %(customer_id)s" in query
+
+    def test_page_two_does_not_use_a_bare_id(self):
+        """The cursor condition sits in WHERE, where `id` would be ambiguous across the joined tables."""
+        query, _ = self._sql(cursor={"sort_value": "2026-11-10", "id": "d0"})
+        assert "d.id <" in query and "ORDER BY d.created_at DESC, d.id DESC" in query
+        assert " AND id <" not in query and ", id DESC" not in query
+
+
 class TestBillingListHandlerQueryParams:
     """GET /v1/billing — handler-level parsing of the Filters panel's
     comma-separated multi-status param and the date-range params, mirroring

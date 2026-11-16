@@ -107,7 +107,7 @@ def list_containers(
     query, params = build_paginated_query(base, cursor, limit, sort_field=sort_field, sort_direction=sort_direction)
     params.update(extra)
     rows = execute_with_tenant(tenant_id, query, params)
-    return extract_page(rows, limit)
+    return extract_page(rows, limit, sort_field)
 
 
 def get_container_stats(tenant_id: str) -> dict[str, int]:

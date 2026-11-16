@@ -72,6 +72,10 @@ export interface CBMDispute {
   corrected_cbm: string | null
   status: CBMDisputeStatus
   submitted_at: string
+  /** Which customer, invoice and container the dispute is about: on the list (`GET /v1/billing/disputes`) only. */
+  customer_name?: string | null
+  invoice_number?: string | null
+  container_number?: string | null
   acknowledged_at?: string | null
   /** 24h after submitted_at — SLA for first acknowledgement. */
   acknowledge_due_by?: string | null
