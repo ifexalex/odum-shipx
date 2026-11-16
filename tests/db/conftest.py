@@ -62,6 +62,7 @@ def world(admin):
         )
         # Children before parents: items and resolutions reference refunds and claims.
         for table in (
+            "audit_log",  # a service that audits (the list exports do) leaves rows that reference the tenant
             "notification_log",
             "release_note",
             "storage_fee_log",

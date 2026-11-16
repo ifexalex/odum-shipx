@@ -1660,7 +1660,7 @@ does nothing.~~ **Fixed 2026-11-14** — see "Generate billing picker and missin
 
 - **Generate billing (`nigeria/BillingList.tsx` + `GenerateBillingModal.tsx`).** The top-bar button was dead; it now opens a
   dialog for **tenant admins and Nigeria staff** (`canGenerateInvoices` in `api/billingRules.ts`, the same check
-  `ContainerDetail` now uses; **Export** stays admin-only and is still unwired). The dialog lists only containers that still have
+  `ContainerDetail` now uses; **Export** stays admin-only ~~and is still unwired~~ (wired 2026-11-16, see the list-export notes below)). The dialog lists only containers that still have
   a customer to invoice, from the same `GET /v1/billing/unbilled` query as the dashboard queue (`billingKeys.unbilled`), grouped
   by `groupUnbilledByContainer`, which `UnbilledQueue` now shares. One candidate is pre-selected; with several, **Generate
   invoices** stays disabled until one is chosen. The chosen container's customers and CBM are listed. The result is the
@@ -1692,4 +1692,10 @@ does nothing.~~ **Fixed 2026-11-14** — see "Generate billing picker and missin
 - **CBM dispute screen for China staff (UX-01)** `pages/china/DisputeDetail.tsx`: status, customer and container, billed CBM against what the customer measured, their reason, the packing-list lines the CBM was summed from (with dimensions) and the resolve action (no change, or adjust with a corrected CBM; notes required). Read-only once resolved. Shows no money anywhere. Backend: `11_api_billing.md`.
 - **Customer release note (UX-02)** `pages/customer/MyReleaseNote.tsx`: reference, status, cartons ("4 of 10"), container, validity, warehouse name, address and phone, carton tags, a credit warning when released on credit, an expired notice, and **Download PDF**. Another customer's id is a 404 ("Release note not found."). `ReleaseNoteCard` lists the notes for an invoice's or shipment's container and renders nothing until one exists, or if the lookup fails. It uses `releaseNoteKeys.lookup`, because `releaseNoteKeys.list` belongs to the infinite-query hook (a repo test enforces that).
 - **Search box, menu, return path, error boundaries (UX-05, UX-03, UX-04, FE-01)** are described in `06_routing_rbac_and_navigation.md`.
-- **Found on the way:** the ContainerList "Export" button, like the invoice list's, has no handler (still open). `App.test.tsx` made a real network call to the developer's API port (the silent session refresh) and failed whenever that server was slow or down; it now stubs `fetch`.
+- **Found on the way:** the ContainerList "Export" button, like the invoice list's, has no handler (~~still open~~ wired 2026-11-16). `App.test.tsx` made a real network call to the developer's API port (the silent session refresh) and failed whenever that server was slow or down; it now stubs `fetch`.
+
+## Implementation notes — list exports (2026-11-16, master plan 7.189)
+
+- **Invoice list Export (`BillingList`)** is wired for the tenant admin, who was the only role the dead button was shown to. The API also allows Nigeria office staff, who see the same list; offering them the button is an owner call, not made here. **Container list Export (`ContainerList`)** is shown to every role that can open the list (China, Nigeria, admin); *Create container* stays China-only.
+- Both pages hand one `listParams` object to the list query and to `exportList`. `useListExport` keeps the TopBar-captured button pointed at the current filters and turns a refusal into a banner (`Couldn't export invoices` / `Couldn't export containers`). See `10_file_uploads_and_exports.md`.
+- Looked at in a real browser: with the *In transit* chip and the search text `MSC` applied after the page opened, the CSV request was `/v1/containers/export?status=in_transit&q=MSC&format=csv`.

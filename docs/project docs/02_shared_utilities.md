@@ -876,3 +876,4 @@ Covered by `tests/unit/test_app_urls.py`.
 | `shared/distributed_cache.py` | `incr_window` (atomic INCR + expiry in one Lua script) and `window_state`; **no client retries and a 5 s circuit breaker** (a Redis outage cost ~4 s per call before). |
 | `shared/exceptions.py` / `shared/responses.py` | `UntrustedOriginError` (403), `UnsupportedMediaTypeError` (415), `RateLimitExceededError` (429, `retry_after`); `accepted()` (202); `error_response` sets `Retry-After`. |
 | `shared/app_urls.py` | `origin_of` is now public (shared with the origin guard); new `login_url()`. |
+| `shared/list_filters.py` | `billing_filter(tenant_id, filters)` and `container_filter(tenant_id, filters)`: the WHERE clause and bound parameters of the invoice and container lists, shared by the list queries and their exports so the two cannot disagree (2026-11-16). |

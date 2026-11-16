@@ -39,6 +39,8 @@ services/excel/
 | GET | `/v1/manifests/{id}/export` | china_office_staff, tenant_admin, nigeria_office_staff | Export manifest (`?format=xlsx\|csv\|pdf`) |
 | GET | `/v1/billing/{id}/export` | tenant_admin, nigeria_office_staff, customer (own only) | Export billing (`?format=xlsx\|csv\|pdf`) — the `pdf` format doubles as the customer's downloadable invoice |
 | GET | `/v1/containers/{id}/billing/export` | tenant_admin, nigeria_office_staff | Export all billing for a container (`?format=xlsx\|csv\|pdf`) |
+| GET | `/v1/billing/export` | tenant_admin, nigeria_office_staff | **List export** (2026-11-16): every invoice matching the invoice list's filters and sort (`?format=xlsx\|csv`) |
+| GET | `/v1/containers/export` | tenant_admin, nigeria_office_staff, china_office_staff | **List export** (2026-11-16): every container matching the container list's filters and sort (`?format=xlsx\|csv`) |
 | POST | `/v1/packing-lists/import/presigned-url` | china_office_staff | Get a cloud-neutral **PUT** presigned URL for an import .xlsx (`content_type` must be the xlsx MIME type); returns `{ upload_url, upload_method, upload_headers, file_key }`. Reused unchanged by the manifest import flow below — there is no second presigned-url endpoint. |
 | POST | `/v1/packing-lists/import` | china_office_staff | Import packing list from .xlsx (exact header, pre-existing container + customers required) |
 | POST | `/v1/manifests/import` | china_office_staff | Import a China-side freight-forwarder manifest .xlsx (flexible header matching; auto-creates container/customers/packing lists) — see "Manifest Import" below |
@@ -208,6 +210,30 @@ def generate_packing_list_xlsx(
 | F | Carton Tags | String (comma-separated) |
 
 **Sheet 2: "All Items"** — flat list of all packing_list_items across all customers for this container, with columns matching the packing list export Sheet 1.
+
+## List exports: the invoice list and the container list (2026-11-16, master plan 7.189)
+
+The **Export** button on the invoice list and the container list downloads *what the screen shows*: every row matching the list's filters and sort, across all pages, not just the rows loaded.
+
+**Query string** (`ListExportQuery` / `ContainerListExportQuery` in `services/excel/models.py`): the list's own names. `format` (`xlsx` default, or `csv`; `pdf` is 422, a list can run to thousands of rows), `status` (comma-separated), `q`, `created_after`, `created_before` (`YYYY-MM-DD`), `sort`, `direction`; the container export also takes `eta_after`, `eta_before`. Anything else is ignored. A malformed value is `422`.
+
+**One filter for the list and its export.** The WHERE clause comes from `shared/list_filters.py` (`billing_filter`, `container_filter`), which `list_billing_all`, `list_containers` and the two export queries all call, so an export cannot disagree with the screen about which rows match. The extraction was verified byte-for-byte: the list SQL and parameters were captured for 14 filter combinations before and after, and are identical. `tests/unit/test_list_exports.py::TestExportsUseTheListsFilter` pins that each export query contains the shared clause; `tests/db/test_list_exports.py` compares the row ids and order of list and export on a real database.
+
+| | Invoice list | Container list |
+|---|---|---|
+| Roles | `tenant_admin`, `nigeria_office_staff` (and `platform_admin`, who has no tenant data) | `tenant_admin`, `nigeria_office_staff`, `china_office_staff` |
+| Columns | `export_lists.BILLING_LIST_COLUMNS`: invoice number, customer, container, billed at (UTC), status, CBM, rates, subtotals, misc fees, carryover, storage fees, total due, paid, outstanding (`balance_ngn`, the database's generated column) | `CONTAINER_LIST_COLUMNS`: container, status, vessel, voyage, shipping line, origin, destination, ship date, ETA, arrived, packing lists, approved packing lists, CBM packed, capacity, seal number, created at (UTC) |
+| Carryover / storage fees | The same aggregates the single-invoice export uses; a waived storage fee is not counted | |
+
+**Limit.** More than `EXPORT_ROW_LIMIT` (10,000) matching rows is refused with `422 EXPORT_TOO_LARGE` ("Narrow the filters (status, dates or search) and export again"), not cut short: a partial file that looks complete is worse than none. The query asks for one row more than the limit to know.
+
+**Spreadsheet formula safety (CWE-1236).** Customers can type their own name (self-registration), and a cell starting with `=`, `+`, `-` or `@` runs as a formula when the file is opened in Excel. `services/excel/_tables.py` writes text columns as text (xlsx cell type forced to string; csv gets a leading `'`), and writes numbers and money as real numbers, so a negative amount is not mistaken for a formula. The older single-record exports do not do this yet (**open**: `export_billing.py`, `export_manifest.py`, `export_packing_list.py` and `_rows_to_csv` still write raw text).
+
+**Other behaviour.** Timestamps are written in UTC and the header says so (a spreadsheet has no time zones; Lagos time is a separate owner decision, FE-03). csv is UTF-8 with a byte-order mark and CRLF line ends. Money in csv is the exact decimal text; in xlsx it is a number with a `#,##0.00` format. Each export is audited (`EXPORT`, entity `billing` or `container`, a fresh id for the export itself): format, row count, filename and the filters, but **not** the search text, which can be a customer's name or phone number (only `text_search: true`). The response is the usual `{filename, download_url, expires_at, file_size_bytes, format}` plus `row_count`. No N+1: misc fees are a total column, not itemised.
+
+**Routes.** `GET /v1/billing/export` and `GET /v1/containers/export` are routed to the excel service by `resolve_service` (path ends in `/export`) and by two literal API Gateway routes, which win over the `{id}` routes on the same path.
+
+**Not run against a real database.** `tests/db/test_list_exports.py` (42 tests) was written without Docker available and has not been run: run `make test-db` first.
 
 ## Billing Excel Export (Backend Spec §7.4)
 

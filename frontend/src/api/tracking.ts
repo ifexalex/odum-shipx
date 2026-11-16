@@ -1,5 +1,5 @@
 import type { InvoiceResult } from './billing'
-import { apiRequest, apiRequestList } from './client'
+import { apiDownloadFile, apiRequest, apiRequestList, type ExportFormat } from './client'
 
 // Ground truth: services/tracking/{models,service,repository}.py +
 // 05a_database_schema_core.md's `container` table. Vessel/voyage/shipping-line/
@@ -104,6 +104,9 @@ export interface ContainerListParams {
   direction?: 'asc' | 'desc'
 }
 
+/** The container list's filters and sort, as the list sends them: what an export of that list is filtered by. */
+export type ContainerExportParams = Omit<ContainerListParams, 'cursor' | 'limit'>
+
 export interface ContainerStats {
   total: number
   loading: number
@@ -125,6 +128,13 @@ export const containersApi = {
       path: '/v1/containers',
       query: params as Record<string, string | number | undefined>,
     }),
+
+  /**
+   * xlsx or csv export of the container list: every container matching the same filters and sort the list is
+   * showing (not just the loaded page). Refused with 422 EXPORT_TOO_LARGE past 10,000 rows.
+   */
+  exportList: (params: ContainerExportParams, format: Exclude<ExportFormat, 'pdf'>) =>
+    apiDownloadFile('/v1/containers/export', format, `containers.${format}`, params as Record<string, string | undefined>),
 
   /** Tenant-wide per-status counts for the list stats row + chips — staff only,
    *  SQL-computed so it stays correct as containers grow past a single page. */

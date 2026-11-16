@@ -15,7 +15,9 @@ from shared.phone import dial_code_for_country, normalize_phone
 from shared.providers import get_storage_provider
 
 from . import repository as repo
+from ._tables import Column, build_csv, build_xlsx
 from .export_billing import generate_billing_xlsx
+from .export_lists import BILLING_LIST_COLUMNS, CONTAINER_LIST_COLUMNS
 from .export_manifest import generate_manifest_xlsx
 from .export_packing_list import generate_packing_list_xlsx
 from .export_packing_list_pdf import generate_packing_list_pdf
@@ -340,6 +342,115 @@ def export_container_billing(tenant_id: str, container_id: str, fmt: str = "xlsx
         buf = generate_billing_xlsx(billing_rows)
 
     return _upload_and_presign(tenant_id, f"{stem}.{fmt}", buf, fmt=fmt)
+
+
+# ---------------------------------------------------------------------------
+# List exports (the invoice list and the container list)
+# ---------------------------------------------------------------------------
+
+# More than this and the export is refused rather than silently cut short: a partial file that looks complete is
+# worse than none. Comfortably inside the Lambda's memory and time at the columns exported.
+EXPORT_ROW_LIMIT = 10_000
+
+
+def _list_export(
+    tenant_id: str,
+    *,
+    entity_type: str,
+    noun: str,
+    sheet_title: str,
+    columns: list[Column],
+    rows: list[dict[str, Any]],
+    truncated: bool,
+    fmt: str,
+    filters: dict[str, Any],
+    actor_id: str | None,
+    actor_role: str,
+) -> dict[str, Any]:
+    """Build, store and presign a list export, and record who exported it."""
+    if truncated:
+        raise BusinessRuleViolationError(
+            f"More than {EXPORT_ROW_LIMIT:,} {noun} match. Narrow the filters (status, dates or search) and export again.",
+            rule_id="EXPORT_TOO_LARGE",
+        )
+
+    buf = build_csv(columns, rows) if fmt == "csv" else build_xlsx(sheet_title, columns, rows)
+    stem = f"{_safe_name(repo.get_tenant_display_name(tenant_id))}_{noun}_{date.today().strftime('%Y%m%d')}"
+    result = _upload_and_presign(tenant_id, f"{stem}.{fmt}", buf, fmt=fmt)
+    result["row_count"] = len(rows)
+
+    log_audit(
+        tenant_id=tenant_id,
+        entity_type=entity_type,
+        entity_id=str(uuid.uuid4()),  # a list export has no single entity; this identifies the export itself
+        action="EXPORT",
+        actor_id=actor_id,
+        actor_role=actor_role,
+        after_state={
+            "scope": "list",
+            "format": fmt,
+            "row_count": len(rows),
+            "filename": result["filename"],
+            # The search text can be a customer's name or phone number: record that one was used, not what it said.
+            "filters": {key: value for key, value in filters.items() if key != "q"},
+            "text_search": "q" in filters,
+        },
+    )
+    return result
+
+
+def export_billing_list(
+    tenant_id: str,
+    filters: dict[str, Any],
+    *,
+    fmt: str,
+    sort_field: str,
+    sort_direction: str,
+    actor_id: str | None,
+    actor_role: str,
+) -> dict[str, Any]:
+    """Every invoice that matches the invoice list's filters, as xlsx or csv, in the list's sort order."""
+    rows, truncated = repo.list_billing_for_export(tenant_id, filters, EXPORT_ROW_LIMIT, sort_field, sort_direction)
+    return _list_export(
+        tenant_id,
+        entity_type="billing",
+        noun="invoices",
+        sheet_title="Invoices",
+        columns=BILLING_LIST_COLUMNS,
+        rows=rows,
+        truncated=truncated,
+        fmt=fmt,
+        filters=filters,
+        actor_id=actor_id,
+        actor_role=actor_role,
+    )
+
+
+def export_container_list(
+    tenant_id: str,
+    filters: dict[str, Any],
+    *,
+    fmt: str,
+    sort_field: str,
+    sort_direction: str,
+    actor_id: str | None,
+    actor_role: str,
+) -> dict[str, Any]:
+    """Every container that matches the container list's filters, as xlsx or csv, in the list's sort order."""
+    rows, truncated = repo.list_containers_for_export(tenant_id, filters, EXPORT_ROW_LIMIT, sort_field, sort_direction)
+    return _list_export(
+        tenant_id,
+        entity_type="container",
+        noun="containers",
+        sheet_title="Containers",
+        columns=CONTAINER_LIST_COLUMNS,
+        rows=rows,
+        truncated=truncated,
+        fmt=fmt,
+        filters=filters,
+        actor_id=actor_id,
+        actor_role=actor_role,
+    )
 
 
 # ---------------------------------------------------------------------------

@@ -363,3 +363,7 @@ Verified by simulating the managed-server privilege model locally — a
 | `shared/distributed_cache.py` | `incr_window` (atomic INCR + expiry in one Lua script) and `window_state`; **no client retries and a 5 s circuit breaker** (a Redis outage cost ~4 s per call before). |
 | `shared/exceptions.py` / `shared/responses.py` | `UntrustedOriginError` (403), `UnsupportedMediaTypeError` (415), `RateLimitExceededError` (429, `retry_after`); `accepted()` (202); `error_response` sets `Retry-After`. |
 | `shared/app_urls.py` | `origin_of` is now public (shared with the origin guard); new `login_url()`. |
+
+## `shared/list_filters.py` (2026-11-16)
+
+The invoice-list and container-list filters (`status`, dates, `q`, ...) as pure functions returning a WHERE clause and bound parameters. `services/billing/repository.py::list_billing_all`, `services/tracking/repository.py::list_containers` and `services/excel/repository.py::list_billing_for_export` / `list_containers_for_export` all build from them. Lives in `shared/` because each Lambda ships only its own `services/<name>/` plus the layer, so the excel service cannot import the billing or tracking repositories.

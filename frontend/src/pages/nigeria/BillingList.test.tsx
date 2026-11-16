@@ -6,11 +6,12 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { SessionContext, type SessionContextValue } from '../../auth/SessionContext'
 import type { Session } from '../../auth/types'
 import { billingApi } from '../../api/billing'
+import { ApiError } from '../../api/client'
 import { TopBarTestWrapper } from '../../test/TopBarTestWrapper'
 import { BillingList } from './BillingList'
 
 vi.mock('../../api/billing', () => ({
-  billingApi: { list: vi.fn(), stats: vi.fn(), listForCustomer: vi.fn(), recordPayment: vi.fn(), cancel: vi.fn(), applyCarryover: vi.fn(), unbilled: vi.fn(), generateForContainer: vi.fn() },
+  billingApi: { list: vi.fn(), exportList: vi.fn(), stats: vi.fn(), listForCustomer: vi.fn(), recordPayment: vi.fn(), cancel: vi.fn(), applyCarryover: vi.fn(), unbilled: vi.fn(), generateForContainer: vi.fn() },
   disputeApi: { list: vi.fn(), acknowledge: vi.fn(), resolve: vi.fn(), reject: vi.fn() },
   carryoverApi: { list: vi.fn(), exempt: vi.fn() },
 }))
@@ -312,3 +313,112 @@ describe('BillingList — Generate billing', () => {
     expect(screen.queryByRole('button', { name: 'Generate billing' })).not.toBeInTheDocument()
   })
 })
+
+describe('BillingList — Export', () => {
+  function renderWithTopBar(role: string) {
+    const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+    render(
+      <QueryClientProvider client={queryClient}>
+        <MemoryRouter>
+          <SessionContext.Provider value={makeCtx(role)}>
+            <TopBarTestWrapper>
+              <BillingList />
+            </TopBarTestWrapper>
+          </SessionContext.Provider>
+        </MemoryRouter>
+      </QueryClientProvider>,
+    )
+  }
+
+  const tooLarge = new ApiError(
+    {
+      type: 'about:blank',
+      title: 'Unprocessable Entity',
+      status: 422,
+      detail: 'More than 10,000 invoices match. Narrow the filters (status, dates or search) and export again.',
+      error_code: 'BUSINESS_RULE_VIOLATION',
+      rule_id: 'EXPORT_TOO_LARGE',
+    },
+    null,
+  )
+
+  beforeEach(() => {
+    vi.mocked(billingApi.list).mockResolvedValue({
+      data: [makeBillingRecord()],
+      meta: { pagination: { has_more: false, next_cursor: null, total_count: 1 } },
+    })
+    vi.mocked(billingApi.exportList).mockReset()
+    vi.mocked(billingApi.exportList).mockResolvedValue(undefined)
+  })
+
+  it('exports the whole list as Excel from the primary button', async () => {
+    renderWithTopBar('tenant_admin')
+    await userEvent.click(await screen.findByRole('button', { name: 'Export' }))
+    await waitFor(() => expect(billingApi.exportList).toHaveBeenCalledWith({}, 'xlsx'))
+  })
+
+  it('offers CSV from the format picker', async () => {
+    renderWithTopBar('tenant_admin')
+    await userEvent.click(await screen.findByRole('button', { name: 'Choose export format' }))
+    await userEvent.click(screen.getByRole('button', { name: /CSV/ }))
+    await waitFor(() => expect(billingApi.exportList).toHaveBeenCalledWith({}, 'csv'))
+  })
+
+  it('exports the filters on screen at the moment of the click, not the ones it opened with', async () => {
+    renderWithTopBar('tenant_admin')
+    await screen.findByText('ACME001')
+    // The button is placed in the top bar once, on mount; it must still see filters chosen afterwards.
+    await userEvent.click(screen.getByRole('button', { name: /Unpaid/ }))
+    await userEvent.type(screen.getByPlaceholderText(/Reference, customer, container/), 'acme')
+    await waitFor(() => expect(billingApi.list).toHaveBeenLastCalledWith(expect.objectContaining({ status: 'unpaid', q: 'acme' })))
+
+    await userEvent.click(screen.getByRole('button', { name: 'Export' }))
+
+    await waitFor(() => expect(billingApi.exportList).toHaveBeenCalledWith({ status: 'unpaid', q: 'acme' }, 'xlsx'))
+  })
+
+  it('exports the same sort and date range the list is using', async () => {
+    renderWithTopBar('tenant_admin')
+    await screen.findByText('ACME001')
+    await userEvent.click(screen.getByRole('button', { name: /Reference/ }))
+    await waitFor(() => expect(billingApi.list).toHaveBeenLastCalledWith(expect.objectContaining({ sort: 'invoice_number' })))
+    const listParams = vi.mocked(billingApi.list).mock.calls.at(-1)?.[0] ?? {}
+
+    await userEvent.click(screen.getByRole('button', { name: 'Export' }))
+
+    await waitFor(() => expect(billingApi.exportList).toHaveBeenCalled())
+    const [exported] = vi.mocked(billingApi.exportList).mock.calls[0]!
+    expect(exported).toEqual({ sort: listParams.sort, direction: listParams.direction })
+  })
+
+  it('says why a refused export was refused, and lets the message be dismissed', async () => {
+    vi.mocked(billingApi.exportList).mockRejectedValue(tooLarge)
+    renderWithTopBar('tenant_admin')
+    await userEvent.click(await screen.findByRole('button', { name: 'Export' }))
+
+    const banner = await screen.findByText(/Couldn't export invoices/)
+    expect(banner).toBeInTheDocument()
+    expect(screen.getByText(/More than 10,000 invoices match/)).toBeInTheDocument()
+
+    await userEvent.click(screen.getByRole('button', { name: /dismiss/i }))
+    expect(screen.queryByText(/Couldn't export invoices/)).not.toBeInTheDocument()
+  })
+
+  it('clears an old failure when the next export is started', async () => {
+    vi.mocked(billingApi.exportList).mockRejectedValueOnce(tooLarge).mockResolvedValueOnce(undefined)
+    renderWithTopBar('tenant_admin')
+    await userEvent.click(await screen.findByRole('button', { name: 'Export' }))
+    await screen.findByText(/Couldn't export invoices/)
+
+    await userEvent.click(screen.getByRole('button', { name: 'Export' }))
+
+    await waitFor(() => expect(screen.queryByText(/Couldn't export invoices/)).not.toBeInTheDocument())
+  })
+
+  it('is not offered to Nigeria office staff, who see the same list but not this button', async () => {
+    renderWithTopBar('nigeria_office_staff')
+    await waitFor(() => expect(billingApi.list).toHaveBeenCalled())
+    expect(screen.queryByRole('button', { name: 'Export' })).not.toBeInTheDocument()
+  })
+})
+

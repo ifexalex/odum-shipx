@@ -199,6 +199,9 @@ export interface PaymentClaim {
 // Query params
 // ---------------------------------------------------------------------------
 
+/** The invoice list's filters and sort, as the list sends them: what an export of that list is filtered by. */
+export type BillingExportParams = Pick<BillingListParams, 'status' | 'q' | 'created_after' | 'created_before' | 'sort' | 'direction'>
+
 export interface BillingListParams {
   /** Comma-separated for multi-select (Filters panel) — a single value is fine too. */
   status?: PaymentStatus | string
@@ -446,6 +449,13 @@ export const billingApi = {
    */
   export: (id: string, format: ExportFormat) =>
     apiDownloadFile(`/v1/billing/${id}/export`, format, `billing-${id}.${format}`),
+
+  /**
+   * xlsx or csv export of the invoice list: every invoice matching the same filters and sort the list is showing
+   * (not just the loaded page). Staff only. Refused with 422 EXPORT_TOO_LARGE past 10,000 rows.
+   */
+  exportList: (params: BillingExportParams, format: Exclude<ExportFormat, 'pdf'>) =>
+    apiDownloadFile('/v1/billing/export', format, `invoices.${format}`, params as Record<string, string | undefined>),
 
   /** xlsx or csv export for all billing records in a container. */
   exportByContainer: (containerId: string, format: Exclude<ExportFormat, 'pdf'>) =>

@@ -6,6 +6,7 @@ import { useState, type ReactNode } from 'react'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { SessionContext, type SessionContextValue } from '../../auth/SessionContext'
 import type { Session, UserRole } from '../../auth/types'
+import { ApiError } from '../../api/client'
 import { containersApi, type Container } from '../../api/tracking'
 import { TopBarContext } from '../../shell/TopBarContext'
 import { ContainerList } from './ContainerList'
@@ -25,7 +26,7 @@ function TopBarWrapper({ children }: { children: ReactNode }) {
 }
 
 vi.mock('../../api/tracking', () => ({
-  containersApi: { list: vi.fn(), stats: vi.fn() },
+  containersApi: { list: vi.fn(), stats: vi.fn(), exportList: vi.fn() },
 }))
 
 function makeSession(role: UserRole): Session {
@@ -418,5 +419,74 @@ describe('ContainerList', () => {
     // The standalone date button's own filter survives the panel's "Clear all filters".
     expect(clearedCall.created_after).toBeDefined()
     expect(screen.getByRole('button', { name: /last 30 days/i })).toBeInTheDocument()
+  })
+
+  describe('Export', () => {
+    const emptyPage = { data: [], meta: { pagination: { has_more: false, next_cursor: null, total_count: 0 } } }
+
+    beforeEach(() => {
+      vi.mocked(containersApi.list).mockResolvedValue(emptyPage)
+      vi.mocked(containersApi.exportList).mockReset()
+      vi.mocked(containersApi.exportList).mockResolvedValue(undefined)
+    })
+
+    it.each(['china_office_staff', 'nigeria_office_staff', 'tenant_admin'] as const)(
+      '%s, who can see the list, can export it',
+      async (role) => {
+        renderPage(role)
+        await userEvent.click(await screen.findByRole('button', { name: 'Export' }))
+        await waitFor(() => expect(containersApi.exportList).toHaveBeenCalledTimes(1))
+        expect(vi.mocked(containersApi.exportList).mock.calls[0]![1]).toBe('xlsx')
+      },
+    )
+
+    it('only China staff are offered Create container', async () => {
+      renderPage('nigeria_office_staff')
+      await screen.findByRole('button', { name: 'Export' })
+      expect(screen.queryByRole('button', { name: 'Create container' })).not.toBeInTheDocument()
+    })
+
+    it('exports the filters on screen at the moment of the click, not the ones it opened with', async () => {
+      renderPage('china_office_staff')
+      await waitFor(() => expect(containersApi.list).toHaveBeenCalledTimes(1))
+      // The button is placed in the top bar once, on mount; it must still see filters chosen afterwards.
+      await userEvent.click(screen.getByRole('button', { name: /in transit/i }))
+      await userEvent.type(screen.getByPlaceholderText(/container number, vessel name, voyage/i), 'MSCU')
+      await waitFor(() => expect(containersApi.list).toHaveBeenLastCalledWith(expect.objectContaining({ status: 'in_transit', q: 'MSCU' })))
+
+      await userEvent.click(screen.getByRole('button', { name: 'Export' }))
+
+      await waitFor(() => expect(containersApi.exportList).toHaveBeenCalled())
+      expect(vi.mocked(containersApi.exportList).mock.calls[0]![0]).toMatchObject({ status: 'in_transit', q: 'MSCU' })
+    })
+
+    it('does not send paging parameters: the export is the whole list', async () => {
+      renderPage('china_office_staff')
+      await userEvent.click(await screen.findByRole('button', { name: 'Export' }))
+      await waitFor(() => expect(containersApi.exportList).toHaveBeenCalled())
+      const params = vi.mocked(containersApi.exportList).mock.calls[0]![0] as Record<string, unknown>
+      expect(params).not.toHaveProperty('cursor')
+      expect(params).not.toHaveProperty('limit')
+    })
+
+    it('says why a refused export was refused', async () => {
+      vi.mocked(containersApi.exportList).mockRejectedValue(
+        new ApiError(
+          {
+            type: 'about:blank',
+            title: 'Unprocessable Entity',
+            status: 422,
+            detail: 'More than 10,000 containers match. Narrow the filters (status, dates or search) and export again.',
+            error_code: 'BUSINESS_RULE_VIOLATION',
+            rule_id: 'EXPORT_TOO_LARGE',
+          },
+          null,
+        ),
+      )
+      renderPage('china_office_staff')
+      await userEvent.click(await screen.findByRole('button', { name: 'Export' }))
+      expect(await screen.findByText(/Couldn't export containers/)).toBeInTheDocument()
+      expect(screen.getByText(/More than 10,000 containers match/)).toBeInTheDocument()
+    })
   })
 })

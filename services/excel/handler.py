@@ -9,6 +9,10 @@ Routes:
   GET  /v1/billing/{id}/export                — nigeria_office_staff, tenant_admin, customer (own only)
   GET  /v1/containers/{id}/billing/export     — nigeria_office_staff, tenant_admin (all customers on the
                                                  container — never customer-facing)
+  GET  /v1/billing/export                     — nigeria_office_staff, tenant_admin (the invoice list's
+                                                 filters and sort; xlsx or csv)
+  GET  /v1/containers/export                  — china_office_staff, nigeria_office_staff, tenant_admin
+                                                 (the container list's filters and sort; xlsx or csv)
   POST /v1/packing-lists/import               — china_office_staff
   POST /v1/packing-lists/import/presigned-url — china_office_staff
   POST /v1/manifests/import                   — china_office_staff (flexible, auto-creating —
@@ -33,7 +37,13 @@ from shared.tenant_context import UserRole
 from shared.validation import parse_validated
 
 from . import service
-from .models import ImportPresignedUrlRequest, ImportRequest, ManifestImportRequest
+from .models import (
+    ContainerListExportQuery,
+    ImportPresignedUrlRequest,
+    ImportRequest,
+    ListExportQuery,
+    ManifestImportRequest,
+)
 
 setup_logging()
 init_tracing()
@@ -253,6 +263,36 @@ def _dispatch(
         )
         return success(result, request_id=request_id)
 
+    # GET /v1/billing/export — the invoice list, filtered and sorted as on screen
+    if resource == "billing" and len(parts) == 3 and parts[2] == "export" and method == "GET":
+        ctx.assert_role(*_BILLING_EXPORT_ROLES)
+        query = parse_validated(ListExportQuery, _query_params(event))
+        result = service.export_billing_list(
+            tenant_id,
+            query.filters(),
+            fmt=query.format,
+            sort_field=query.sort,
+            sort_direction=query.direction,
+            actor_id=ctx.user_id,
+            actor_role=str(ctx.role),
+        )
+        return success(result, request_id=request_id)
+
+    # GET /v1/containers/export — the container list, filtered and sorted as on screen
+    if resource == "containers" and len(parts) == 3 and parts[2] == "export" and method == "GET":
+        ctx.assert_role(*_EXPORT_ROLES)
+        container_query = parse_validated(ContainerListExportQuery, _query_params(event))
+        result = service.export_container_list(
+            tenant_id,
+            container_query.filters(),
+            fmt=container_query.format,
+            sort_field=container_query.sort,
+            sort_direction=container_query.direction,
+            actor_id=ctx.user_id,
+            actor_role=str(ctx.role),
+        )
+        return success(result, request_id=request_id)
+
     fmt = _resolve_format(event)
 
     # GET /v1/packing-lists/{id}/export
@@ -281,6 +321,10 @@ def _dispatch(
         return success(result, request_id=request_id)
 
     raise ResourceNotFoundError("route", path)
+
+
+def _query_params(event: dict[str, Any]) -> dict[str, Any]:
+    return dict(event.get("queryStringParameters") or {})
 
 
 def _resolve_format(event: dict[str, Any]) -> str:

@@ -6,10 +6,11 @@ import { canGenerateInvoices } from '../../api/billingRules'
 import { billingKeys } from '../../api/keys'
 import { formatNgnCompact } from '../../lib/format'
 import { STALE_5_MIN } from '../../lib/queryClient'
-import { Badge, Banner, Button, Card, Chip, DateRangeFilter, Icon, ListFooter, Mono, StatCard, Table, UserCell, type BadgeVariant } from '../../design/components'
+import { Badge, Banner, Button, Card, Chip, DateRangeFilter, ExportButton, Icon, ListFooter, Mono, StatCard, Table, UserCell, type BadgeVariant } from '../../design/components'
 import { useSession } from '../../auth/useSession'
 import { useBillingList } from '../../hooks/useBilling'
 import { useDateRangeFilter } from '../../hooks/useDateRangeFilter'
+import { useListExport } from '../../hooks/useListExport'
 import { type SortableColumn, useTableSort } from '../../hooks/useTableSort'
 import { useTopBarSlot } from '../../shell/TopBarContext'
 import { GenerateBillingModal } from './GenerateBillingModal'
@@ -118,11 +119,24 @@ export function BillingList(): JSX.Element {
   const canGenerate = session ? canGenerateInvoices(session.role) : false
   const [generateOpen, setGenerateOpen] = useState(false)
 
+  const { sort, onSort, sortField, sortDirection } = useTableSort(SORT_COLUMNS)
+
+  // What the list is showing: the same object drives the query below and the Export button, so an export is the
+  // rows on screen (every page of them), not a second reading of the filters.
+  const listParams = {
+    ...(activeStatuses?.length ? { status: activeStatuses.join(',') } : {}),
+    ...(search ? { q: search } : {}),
+    ...(billedRange.createdAfter ? { created_after: billedRange.createdAfter } : {}),
+    ...(billedRange.createdBefore ? { created_before: billedRange.createdBefore } : {}),
+    ...(sortField ? { sort: sortField, direction: sortDirection } : {}),
+  }
+  const exportList = useListExport((format: 'xlsx' | 'csv') => billingApi.exportList(listParams, format))
+
   useTopBarSlot({
     actions:
       isAdmin || canGenerate ? (
         <>
-          {isAdmin && <Button variant="secondary" icon="download">Export</Button>}
+          {isAdmin && <ExportButton formats={['xlsx', 'csv']} onExport={exportList.onExport} />}
           {canGenerate && (
             <Button variant="primary" icon="plus" onClick={() => setGenerateOpen(true)}>Generate billing</Button>
           )}
@@ -139,15 +153,7 @@ export function BillingList(): JSX.Element {
     staleTime: STALE_5_MIN,
   })
 
-  const { sort, onSort, sortField, sortDirection } = useTableSort(SORT_COLUMNS)
-
-  const { items: records, isLoading, error, hasMore, loadMore, isFetchingMore, totalCount } = useBillingList({
-    ...(activeStatuses?.length ? { status: activeStatuses.join(',') } : {}),
-    ...(search ? { q: search } : {}),
-    ...(billedRange.createdAfter ? { created_after: billedRange.createdAfter } : {}),
-    ...(billedRange.createdBefore ? { created_before: billedRange.createdBefore } : {}),
-    ...(sortField ? { sort: sortField, direction: sortDirection } : {}),
-  })
+  const { items: records, isLoading, error, hasMore, loadMore, isFetchingMore, totalCount } = useBillingList(listParams)
 
   // Toggling a single status here overwrites `activeStatuses` — matches the
   // top chips' single-select semantics rather than adding a second,
@@ -173,6 +179,13 @@ export function BillingList(): JSX.Element {
       {error && (
         <div className={styles.banner}>
           <Banner variant="error" title="Couldn't load billing">{error.message}</Banner>
+        </div>
+      )}
+      {exportList.error && (
+        <div className={styles.banner}>
+          <Banner variant="error" title="Couldn't export invoices" dismissible onDismiss={exportList.dismissError}>
+            {exportList.error}
+          </Banner>
         </div>
       )}
 

@@ -5424,6 +5424,122 @@
             },
             "description": "POST /v1/packing-lists/import \u2014 import packing list items from a pre-uploaded S3 XLSX file (china_office_staff)"
           }
+        },
+        {
+          "name": "Export invoice list (filtered, xlsx/csv)",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "X-Tenant-ID",
+                "value": "{{tenant_id}}"
+              },
+              {
+                "key": "X-Role",
+                "value": "tenant_admin"
+              },
+              {
+                "key": "X-User-ID",
+                "value": "{{user_id}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/v1/billing/export?status=unpaid,partially_paid&q=acme&created_after=2026-01-01&sort=billed_at&direction=desc&format=csv",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "v1",
+                "billing",
+                "export"
+              ],
+              "query": [
+                {
+                  "key": "status",
+                  "value": "unpaid,partially_paid"
+                },
+                {
+                  "key": "q",
+                  "value": "acme"
+                },
+                {
+                  "key": "created_after",
+                  "value": "2026-01-01"
+                },
+                {
+                  "key": "sort",
+                  "value": "billed_at"
+                },
+                {
+                  "key": "direction",
+                  "value": "desc"
+                },
+                {
+                  "key": "format",
+                  "value": "csv"
+                }
+              ]
+            },
+            "description": "Every invoice matching the invoice list's filters and sort, not just the loaded page. tenant_admin and nigeria_office_staff. `format` is xlsx (default) or csv; pdf is 422. More than 10,000 matches is 422 EXPORT_TOO_LARGE. Response: `{filename, download_url, expires_at, file_size_bytes, format, row_count}`."
+          }
+        },
+        {
+          "name": "Export container list (filtered, xlsx/csv)",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "X-Tenant-ID",
+                "value": "{{tenant_id}}"
+              },
+              {
+                "key": "X-Role",
+                "value": "china_office_staff"
+              },
+              {
+                "key": "X-User-ID",
+                "value": "{{user_id}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/v1/containers/export?status=in_transit,arrived&q=msc&eta_before=2026-12-31&sort=estimated_arrival_date&direction=asc&format=xlsx",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "v1",
+                "containers",
+                "export"
+              ],
+              "query": [
+                {
+                  "key": "status",
+                  "value": "in_transit,arrived"
+                },
+                {
+                  "key": "q",
+                  "value": "msc"
+                },
+                {
+                  "key": "eta_before",
+                  "value": "2026-12-31"
+                },
+                {
+                  "key": "sort",
+                  "value": "estimated_arrival_date"
+                },
+                {
+                  "key": "direction",
+                  "value": "asc"
+                },
+                {
+                  "key": "format",
+                  "value": "xlsx"
+                }
+              ]
+            },
+            "description": "Every container matching the container list's filters and sort. china_office_staff, nigeria_office_staff and tenant_admin. Same format and size rules as the invoice-list export."
+          }
         }
       ]
     },

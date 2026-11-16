@@ -285,3 +285,7 @@ disputes (`_RESOLVE_ROLES`) but is denied the invoice routes, so until this exis
 `repo.get_dispute_measurements` and `repo.list_measurement_lines`, both tenant-scoped; the second uses the same set as invoice generation (`pl.status = 'approved'`, same customer and container).
 Nigeria staff and admins keep the inline view on the invoice page (a deliberate choice recorded in `AUDIT_GAPS.md`). Tests: `TestDisputeDetailForChinaStaff` (`tests/unit/test_billing.py`),
 `tests/db/test_dispute_detail.py`. API Gateway route added (`GET /v1/billing/disputes/{id}`); Postman has "Get Dispute (measurements only)".
+
+## Implementation notes — invoice list export (2026-11-16)
+
+`GET /v1/billing/export` (excel service) exports the invoice list's filters and sort as xlsx or csv; see `19_excel_import_export.md`. The invoice list's WHERE clause moved to `shared/list_filters.py::billing_filter`, shared by the list and the export; the generated SQL is unchanged (checked for 7 filter combinations). Not changed: the list's `q` search treats `%` and `_` as LIKE wildcards (bound, so not an injection, but `50%` matches more than it says); global search (`21_missing_endpoints.md` Part 12) escapes them.

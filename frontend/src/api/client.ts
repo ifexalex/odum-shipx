@@ -268,9 +268,17 @@ interface ExportResultShape {
  * xlsx/csv trigger a <a download> click against the same URL, forcing the
  * filename from the JSON response (S3's response has no Content-Disposition
  * override configured).
+ *
+ * `query` carries anything else the endpoint takes — a list export forwards the
+ * list's own filters and sort. `format` always wins over a stray `query.format`.
  */
-export async function apiDownloadFile(path: string, format: ExportFormat, defaultFilename: string): Promise<void> {
-  const response = await fetchWithAuth({ method: 'GET', path, query: { format } })
+export async function apiDownloadFile(
+  path: string,
+  format: ExportFormat,
+  defaultFilename: string,
+  query: Record<string, string | number | undefined> = {},
+): Promise<void> {
+  const response = await fetchWithAuth({ method: 'GET', path, query: { ...query, format } })
 
   if (!response.ok) {
     throw await parseError(response)

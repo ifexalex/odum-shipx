@@ -5,10 +5,11 @@ import { containerKeys } from '../../api/keys'
 import { STALE_5_MIN } from '../../lib/queryClient'
 import { CONTAINER_STATUS_LABELS, containerCapacityCbm, utilizationLevel } from '../../api/containerRules'
 import { containersApi, type Container, type ContainerStatus } from '../../api/tracking'
-import { Badge, Banner, Button, Card, Chip, DateRangeFilter, Icon, KebabBtn, Mono, StatCard, Table, ListFooter, type TableRow } from '../../design/components'
+import { Badge, Banner, Button, Card, Chip, DateRangeFilter, ExportButton, Icon, KebabBtn, Mono, StatCard, Table, ListFooter, type TableRow } from '../../design/components'
 import { useSession } from '../../auth/useSession'
 import { useContainerList } from '../../hooks/useContainers'
 import { useDateRangeFilter } from '../../hooks/useDateRangeFilter'
+import { useListExport } from '../../hooks/useListExport'
 import { type SortableColumn, useTableSort } from '../../hooks/useTableSort'
 import { useTopBarSlot } from '../../shell/TopBarContext'
 import styles from './ContainerList.module.css'
@@ -239,30 +240,36 @@ export function ContainerList(): JSX.Element {
   const status = activeStatuses?.length ? activeStatuses.join(',') : undefined
   const { etaAfter, etaBefore } = etaRangeFor(etaPreset)
   const { sort, onSort, sortField, sortDirection } = useTableSort(SORT_COLUMNS)
-  const { items: containers, isLoading, error, hasMore, loadMore, isFetchingMore, totalCount } =
-    useContainerList({
-      status,
-      q: debouncedSearch || undefined,
-      created_after: createdRange.createdAfter,
-      created_before: createdRange.createdBefore,
-      eta_after: etaAfter,
-      eta_before: etaBefore,
-      ...(sortField ? { sort: sortField, direction: sortDirection } : {}),
-    })
+  // What the list is showing: the same object drives the query and the Export button, so an export is the rows
+  // on screen (every page of them), not a second reading of the filters.
+  const listParams = {
+    status,
+    q: debouncedSearch || undefined,
+    created_after: createdRange.createdAfter,
+    created_before: createdRange.createdBefore,
+    eta_after: etaAfter,
+    eta_before: etaBefore,
+    ...(sortField ? { sort: sortField, direction: sortDirection } : {}),
+  }
+  const { items: containers, isLoading, error, hasMore, loadMore, isFetchingMore, totalCount } = useContainerList(listParams)
+  const exportList = useListExport((format: 'xlsx' | 'csv') => containersApi.exportList(listParams, format))
 
   const canCreate = session?.role === 'china_office_staff'
 
   // Inject action buttons into the shared TopBar (prototype: actions sit between the
-  // search box and the bell, not in the page body).
+  // search box and the bell, not in the page body). Everyone who can open the list can
+  // export it; only China staff create containers.
   useTopBarSlot({
-    actions: canCreate ? (
+    actions: (
       <>
-        <Button variant="secondary" icon="download">Export</Button>
-        <Button variant="primary" icon="plus" onClick={() => navigate('/containers/new')}>
-          Create container
-        </Button>
+        <ExportButton formats={['xlsx', 'csv']} onExport={exportList.onExport} />
+        {canCreate && (
+          <Button variant="primary" icon="plus" onClick={() => navigate('/containers/new')}>
+            Create container
+          </Button>
+        )}
       </>
-    ) : null,
+    ),
   })
 
   function selectGroup(statuses: ContainerStatus[]): void {
@@ -297,6 +304,13 @@ export function ContainerList(): JSX.Element {
       {error && (
         <div className={styles.banner}>
           <Banner variant="error" title="Couldn't load containers">{error.message}</Banner>
+        </div>
+      )}
+      {exportList.error && (
+        <div className={styles.banner}>
+          <Banner variant="error" title="Couldn't export containers" dismissible onDismiss={exportList.dismissError}>
+            {exportList.error}
+          </Banner>
         </div>
       )}
 

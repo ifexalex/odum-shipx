@@ -30,6 +30,7 @@ from shared.db import (
     next_tenant_counter,
     tenant_transaction,
 )
+from shared.list_filters import billing_filter
 from shared.tenant_context import PLATFORM_TENANT_ID
 
 logger = logging.getLogger(__name__)
@@ -427,31 +428,7 @@ def list_billing_all(
     """
     from shared.pagination import build_paginated_query, extract_page
 
-    conditions = ["b.tenant_id = %(tenant_id)s"]
-    extra: dict[str, Any] = {"tenant_id": tenant_id}
-
-    if filters.get("status"):
-        # Accepts either a single status string or a list (Filters panel's
-        # multi-select sends several) — same ANY() idiom as
-        # tracking/repository.py::list_containers.
-        statuses = filters["status"]
-        if isinstance(statuses, str):
-            statuses = [statuses]
-        conditions.append("b.status = ANY(%(statuses)s)")
-        extra["statuses"] = list(statuses)
-    if filters.get("customer_id"):
-        conditions.append("b.customer_id = %(customer_id)s")
-        extra["customer_id"] = filters["customer_id"]
-    if filters.get("created_after"):
-        conditions.append("b.billed_at >= %(created_after)s")
-        extra["created_after"] = filters["created_after"]
-    if filters.get("created_before"):
-        conditions.append("b.billed_at <= %(created_before)s")
-        extra["created_before"] = filters["created_before"]
-
-    if filters.get("q"):
-        conditions.append("(b.invoice_number ILIKE %(q)s OR cu.name ILIKE %(q)s OR c.container_number ILIKE %(q)s)")
-        extra["q"] = f"%{filters['q']}%"
+    where_clause, extra = billing_filter(tenant_id, filters)
 
     base = f"""
         SELECT b.*, c.container_number,
@@ -459,7 +436,7 @@ def list_billing_all(
         FROM billing b
         LEFT JOIN container c  ON c.id  = b.container_id  AND c.tenant_id  = b.tenant_id
         LEFT JOIN customer  cu ON cu.id = b.customer_id   AND cu.tenant_id = b.tenant_id
-        WHERE {" AND ".join(conditions)}
+        WHERE {where_clause}
     """
     query, params = build_paginated_query(base, cursor, limit, sort_field=f"b.{sort_field}", sort_direction=sort_direction)
     params.update(extra)

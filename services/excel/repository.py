@@ -9,6 +9,8 @@ import logging
 from typing import Any
 
 from shared.db import execute_with_tenant, execute_write_with_tenant
+from shared.list_filters import billing_filter, container_filter
+from shared.pagination import build_paginated_query, extract_page
 from shared.tenant_context import PLATFORM_TENANT_ID
 
 logger = logging.getLogger(__name__)
@@ -225,6 +227,78 @@ def get_billing_for_container_export(tenant_id: str, container_id: str) -> list[
         r["adjustments_ngn"] = 0
         result.append(r)
     return result
+
+
+def list_billing_for_export(
+    tenant_id: str,
+    filters: dict[str, Any],
+    limit: int,
+    sort_field: str = "created_at",
+    sort_direction: str = "DESC",
+) -> tuple[list[dict[str, Any]], bool]:
+    """Invoices matching the invoice list's filters, in its sort order, and whether more than `limit` matched.
+
+    The filter is the list screen's own (`shared.list_filters.billing_filter`), so an export is exactly what the
+    screen shows. Carryover and storage fees are the same aggregates the single-invoice export uses.
+    """
+    where_clause, params = billing_filter(tenant_id, filters)
+    base = f"""
+        SELECT b.*,
+               cu.name              AS customer_name,
+               c.container_number   AS container_number,
+               COALESCE((
+                   SELECT SUM(cl.carryover_amount_ngn)
+                   FROM carryover_ledger cl
+                   WHERE cl.tenant_id         = b.tenant_id
+                     AND cl.target_billing_id = b.id
+                     AND cl.status            = 'applied'
+               ), 0) AS carryover_ngn,
+               COALESCE((
+                   SELECT SUM(sfl.amount_ngn)
+                   FROM storage_fee_log sfl
+                   WHERE sfl.tenant_id  = b.tenant_id
+                     AND sfl.billing_id = b.id
+                     AND sfl.waived_at IS NULL
+               ), 0) AS storage_fees_ngn
+        FROM billing b
+        LEFT JOIN customer  cu ON cu.id = b.customer_id  AND cu.tenant_id = b.tenant_id
+        LEFT JOIN container c  ON c.id  = b.container_id AND c.tenant_id  = b.tenant_id
+        WHERE {where_clause}
+    """  # noqa: S608 - only a fixed filter clause is interpolated; every value is a bound parameter
+    query, page_params = build_paginated_query(base, None, limit, sort_field=f"b.{sort_field}", sort_direction=sort_direction)
+    rows = execute_with_tenant(tenant_id, query, {**params, **page_params})
+    page, _, has_more = extract_page(rows, limit)
+    return page, has_more
+
+
+def list_containers_for_export(
+    tenant_id: str,
+    filters: dict[str, Any],
+    limit: int,
+    sort_field: str = "created_at",
+    sort_direction: str = "DESC",
+) -> tuple[list[dict[str, Any]], bool]:
+    """Containers matching the container list's filters, in its sort order, and whether more than `limit` matched."""
+    where_clause, params = container_filter(tenant_id, filters)
+    inner = f"""
+        SELECT c.*,
+               (SELECT COUNT(*) FROM packing_list pl
+                WHERE pl.container_id = c.id AND pl.tenant_id = c.tenant_id) AS packing_list_count,
+               (SELECT COUNT(*) FROM packing_list pl
+                WHERE pl.container_id = c.id AND pl.tenant_id = c.tenant_id
+                  AND pl.status = 'approved') AS approved_packing_list_count,
+               (SELECT COALESCE(SUM(pli.cbm), 0)
+                FROM packing_list_item pli
+                JOIN packing_list pl2 ON pl2.id = pli.packing_list_id
+                WHERE pl2.container_id = c.id AND pl2.tenant_id = c.tenant_id) AS total_cbm_packed
+        FROM container c
+        WHERE {where_clause}
+    """  # noqa: S608 - only a fixed filter clause is interpolated; every value is a bound parameter
+    base = f"SELECT * FROM ({inner}) AS t WHERE 1=1"
+    query, page_params = build_paginated_query(base, None, limit, sort_field=sort_field, sort_direction=sort_direction)
+    rows = execute_with_tenant(tenant_id, query, {**params, **page_params})
+    page, _, has_more = extract_page(rows, limit)
+    return page, has_more
 
 
 def get_container_by_id(tenant_id: str, container_id: str) -> dict[str, Any] | None:
