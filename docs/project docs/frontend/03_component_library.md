@@ -227,3 +227,9 @@ rush"). Breakpoint convention (860px) is now written down in
   not: `BillingList`'s stats grid and `TopBar`'s action-button row both
   overflowed at 375px even after the `Table` card-view landed, traced via a
   DOM `scrollWidth` scan in `e2e/flows/responsive_smoke.spec.ts`.
+
+## Modal focus management (audit FE-04, 2026-11-16)
+
+`design/components/Modal.tsx`: `ModalOverlay` (which `Modal` renders, and which any custom dialog can use) now owns the dialog behaviour. **Focus in:** when it opens, focus goes to the first control the user is likely to want (a form field, then an action button), not the Close button that comes first in the markup; Close is the fallback, then the overlay itself so Tab cannot start behind it. A field with `autoFocus` keeps focus. Controls that are disabled, `hidden` or `inert` are skipped. **Trap:** Tab and Shift+Tab wrap inside the dialog; if focus has wandered behind it, Tab pulls it back in. **Restore:** closing returns focus to the control that opened it (read at first render, before an `autoFocus` field can take focus), unless that control has left the page. **Scroll lock:** the body's `overflow` is hidden while any dialog is open, with padding for the scrollbar's width so the page does not shift, and restored by the last dialog to close. **Label:** `Modal` is named by its own heading (`aria-labelledby`), not a separate `aria-label` that can drift. **Stacked dialogs** keep a stack: only the innermost traps Tab, and one Escape closes one dialog (before, a confirmation over a form closed both).
+
+Known limit: focus is placed once, when the dialog mounts. A dialog whose first control appears after data loads (the Generate billing container picker) opens with focus on its first button (Cancel) and the field is one Tab away. Tests: `Modal.test.tsx` (25), mutation-checked; also checked in a real browser (25 Tab and 25 Shift+Tab presses never left the dialog; Escape returned focus to the trigger).
