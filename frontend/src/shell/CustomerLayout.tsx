@@ -6,8 +6,10 @@ import { AnnouncementBanner } from './AnnouncementBanner'
 import { CustomerNotificationPanel } from './CustomerNotificationPanel'
 import { CustShell } from './CustShell'
 import { CustomerTopNav } from './CustomerTopNav'
+import { GlobalSearch } from './GlobalSearch'
 import { ImpersonationBanner } from './ImpersonationBanner'
 import { navConfig } from './navConfig'
+import { searchPlaceholderFor } from './searchRoutes'
 import { TenantBlockedGate } from './TenantBlockedScreen'
 
 export interface CustomerLayoutProps {
@@ -44,6 +46,7 @@ export function CustomerLayout({ children }: CustomerLayoutProps): JSX.Element |
             <CustomerTopNav
               links={links}
               onLogout={logout}
+              search={<GlobalSearch audience="customer" placeholder={searchPlaceholderFor('customer') ?? 'Search…'} />}
               notifications={unreadData?.unread_count ?? 0}
               onNotificationsClick={() => setNotifPanelOpen((o) => !o)}
               notificationsPanel={

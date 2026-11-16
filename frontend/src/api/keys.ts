@@ -228,3 +228,9 @@ export const onboardingRequestKeys = {
   list: (status?: string) => [...onboardingRequestKeys.all, 'list', status ?? 'all'] as const,
   detail: (id: string) => [...onboardingRequestKeys.all, 'detail', id] as const,
 }
+
+// ─── Global search (read-only, short-lived; no mutation affects it) ──────────
+export const searchKeys = {
+  all: ['search'] as const,
+  query: (q: string) => [...searchKeys.all, 'query', q] as const,
+}

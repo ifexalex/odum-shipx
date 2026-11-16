@@ -121,4 +121,9 @@ describe('CustomerLayout', () => {
     await screen.findByText('Shipments content')
     expect(screen.queryByRole('alert')).toBeNull()
   })
+
+  it('offers the customer a search box scoped to their own records', () => {
+    renderLayout(makeContextValue({ session: makeSession(), status: 'authenticated' }))
+    expect(screen.getByRole('combobox', { name: 'Search my shipments, invoices…' })).toBeInTheDocument()
+  })
 })

@@ -23,6 +23,7 @@ Create Terraform modules for all Lambda functions, their IAM roles/policies, Lam
 | `logistics-payment-release-{env}` | python3.12 | 256MB | 30s | API Gateway | Yes |
 | `logistics-refunds-{env}` | python3.12 | 256MB | 30s | API Gateway | Yes |
 | `logistics-excel-{env}` | python3.12 | 256MB | 60s | API Gateway | Yes |
+| `logistics-search-{env}` | python3.12 | 256MB | 15s | API Gateway (`GET /v1/search`, added 2026-11-16) | Yes |
 | `logistics-notif-api-{env}` | python3.12 | 256MB | 30s | API Gateway (`/v1/notifications/*`) — `notification.handler.http_handler` (added 2026-09-23) | Yes |
 | `logistics-notif-webhook-{env}` | python3.12 | 256MB | 15s | API Gateway (public `/v1/webhooks/whatsapp`) — `notification.handler.webhook_handler` (added 2026-09-23) | Yes |
 | `logistics-metering-{env}` | python3.12 | 256MB | 60s | SQS (metering queue) **and** API Gateway (`GET /v1/platform/tenants/{id}/usage`) — dual-mode handler | Yes |

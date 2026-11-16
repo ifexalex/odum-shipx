@@ -5522,6 +5522,126 @@
           }
         }
       ]
+    },
+    {
+      "name": "13. Global Search",
+      "description": "One box that finds a container, shipment, invoice, release note or customer (audit UX-05). Results are role-scoped by the server; platform admins get 403.",
+      "item": [
+        {
+          "name": "Search (staff)",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "X-Tenant-ID",
+                "value": "{{tenant_id}}"
+              },
+              {
+                "key": "X-Role",
+                "value": "{{role}}"
+              },
+              {
+                "key": "X-User-ID",
+                "value": "{{user_id}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/v1/search?q=MSCU",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "v1",
+                "search"
+              ],
+              "query": [
+                {
+                  "key": "q",
+                  "value": "MSCU",
+                  "description": "2-64 characters; anything shorter returns an empty list"
+                }
+              ]
+            },
+            "description": "Finds records by reference, container number, a carton's tracking code or tag, or customer name. Staff results span the tenant, limited to the kinds the role works with. Response: `{query, results: [{kind, id, title, subtitle, status}]}`, at most 20, exact matches first."
+          }
+        },
+        {
+          "name": "Search by phone (tenant_admin / nigeria_office_staff)",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "X-Tenant-ID",
+                "value": "{{tenant_id}}"
+              },
+              {
+                "key": "X-Role",
+                "value": "tenant_admin"
+              },
+              {
+                "key": "X-User-ID",
+                "value": "{{user_id}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/v1/search?q=08012345678",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "v1",
+                "search"
+              ],
+              "query": [
+                {
+                  "key": "q",
+                  "value": "08012345678",
+                  "description": "2-64 characters; anything shorter returns an empty list"
+                }
+              ]
+            },
+            "description": "Phone numbers match however they are typed (`0801\u2026`, `+234 801\u2026`, `234801\u2026`) and only for tenant_admin and nigeria_office_staff; other roles match on name only. Needs at least 6 digits."
+          }
+        },
+        {
+          "name": "Search (customer: own records only)",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "X-Tenant-ID",
+                "value": "{{tenant_id}}"
+              },
+              {
+                "key": "X-Role",
+                "value": "customer"
+              },
+              {
+                "key": "X-User-ID",
+                "value": "{{user_id}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/v1/search?q=MSCU",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "v1",
+                "search"
+              ],
+              "query": [
+                {
+                  "key": "q",
+                  "value": "MSCU",
+                  "description": "2-64 characters; anything shorter returns an empty list"
+                }
+              ]
+            },
+            "description": "A customer finds only their own shipments, invoices and release notes. Every query is pinned to their customer record; staff-only kinds (container, customer) are never returned."
+          }
+        }
+      ]
     }
   ]
 }

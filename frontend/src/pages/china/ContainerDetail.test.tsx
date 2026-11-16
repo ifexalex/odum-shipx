@@ -15,10 +15,8 @@ function TopBarWrapper({ children }: { children: ReactNode }) {
   const [suffix, setSuffix] = useState<string | null>(null)
   const [subtitle, setSubtitle] = useState<string | null>(null)
   const [actions, setActions] = useState<ReactNode | null>(null)
-  const [onSearch, setOnSearch] = useState<((query: string) => void) | null>(null)
-  const [searchPlaceholder, setSearchPlaceholder] = useState<string | null>(null)
   return (
-    <TopBarContext.Provider value={{ suffix, setSuffix, subtitle, setSubtitle, actions, setActions, onSearch, setOnSearch, searchPlaceholder, setSearchPlaceholder }}>
+    <TopBarContext.Provider value={{ suffix, setSuffix, subtitle, setSubtitle, actions, setActions }}>
       {children}
     </TopBarContext.Provider>
   )

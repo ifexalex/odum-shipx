@@ -409,6 +409,28 @@ def enqueue_notifications(tenant_id: str, event_type: str, recipient: dict, temp
 
 ---
 
+## Part 12: Global Search (audit UX-05, 2026-11-16)
+
+**`GET /v1/search?q=<text>`** — one box that finds a container, shipment (packing list), invoice, release note or customer. New read-only `search` service (`services/search/`); routed by `shared/http_routing.py`, API Gateway `GET /v1/search`, Lambda `logistics-search-{env}` (256 MB, 15 s).
+
+**Response** (`200`): `{"data": {"query": "<normalised text>", "results": [{"kind", "id", "title", "subtitle", "status"}]}}`. `kind` is `container | shipment | invoice | release_note | customer`; `id` is the record id (for `shipment`, the packing-list id, which is what both the staff `/packing-lists/:id` and the customer `/my-shipments/:id` routes take). At most 5 per kind and 20 in total; exact matches first, then kind order (container, shipment, invoice, release note, customer), each kind keeping its own ranking.
+
+| Rule | Behaviour |
+|---|---|
+| Length | Whitespace is collapsed. Under 2 characters returns `[]` without touching the database; over 64 is `422`. |
+| Who finds what | `tenant_admin`: all five kinds. `nigeria_office_staff`: container, shipment, invoice, release note. `china_office_staff`: container, shipment. `warehouse_attendant`: release note. `customer`: shipment, invoice, release note, **their own only**. `platform_admin`: `403` (tenant-scoped lookup; they span tenants). |
+| What it matches | Container number; packing-list reference, container number, a carton's `tracking_code` or `carton_tag`; invoice number; release-note reference; customer name (staff only: a customer is never matched on a name, only pinned to their own record). |
+| Phone lookup | Only `tenant_admin` and `nigeria_office_staff`, and only when the text is a phone number of at least 6 digits (`0801…`, `+234 801…`, `234801…` are one number). Phone is personal data, so China staff and warehouse attendants never match on it, and a customer result shows the phone only when it was searched by. |
+| Erased customers | Never matched (`anonymised_at IS NULL`). |
+
+**Security.** The text only ever reaches SQL as a bound, escaped `LIKE` pattern (`%`, `_` and `\` are literal), every query is `tenant_id`-scoped, a customer's queries are additionally `customer_id`-pinned in SQL, and the text is never logged. Rate limited by the existing per-tenant limiter in `get_tenant_context`.
+
+**Ground-truth gap found while building it.** `ILIKE '%text%'` cannot use a b-tree index, so each query scans the tenant's rows (bounded by `tenant_id` and `LIMIT 5`). Fine at today's volumes; if a tenant grows to hundreds of thousands of invoices or cartons, add `pg_trgm` GIN indexes on the matched columns rather than changing the query.
+
+**Not run against a real database.** `tests/db/test_search.py` runs the SQL on real Postgres, but Docker was unavailable when this was written, so it has not been run; `tests/unit/test_search.py` pins the behaviour and inspects the SQL. Run `make test-db` before relying on the SQL.
+
+---
+
 ## Migration Files
 
 ### File: `migrations/versions/007_platform_settings_table.py`
@@ -442,3 +464,4 @@ INSERT INTO platform_settings (key, value) VALUES
 - [x] WhatsApp webhook verification responds correctly to Meta
 - [x] Notification preference checking before SQS enqueue
 - [x] `enqueue_notifications()` helper respects per-tenant, per-event channel config
+- [x] Global search finds records by role-scoped kinds, a customer only their own, platform admins refused (`GET /v1/search`)

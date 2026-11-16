@@ -264,7 +264,7 @@ jobs:
       - name: Build service zips
         run: |
           for service in tenant_management packing_list manifest tracking billing claims \
-                         payment_release refunds notification metering excel; do
+                         payment_release refunds notification metering excel search; do
             cd services/$service
             zip -r ../../build/${service}.zip .
             cd ../..
@@ -588,7 +588,7 @@ jobs:
           ENV: ${{ inputs.environment }}
         run: |
           for service in tenant_management packing_list manifest tracking billing claims \
-                         payment_release refunds notification metering excel; do
+                         payment_release refunds notification metering excel search; do
             fn="logistics-${service}-${ENV}"
             aws lambda update-function-code \
               --function-name "$fn" --zip-file fileb://build/${service}.zip \

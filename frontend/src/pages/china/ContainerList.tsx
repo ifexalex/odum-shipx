@@ -196,8 +196,7 @@ export function ContainerList(): JSX.Element {
   const [etaPreset, setEtaPreset] = useState<EtaPresetKey | null>(null)
   const [filtersOpen, setFiltersOpen] = useState(false)
 
-  // Debounce the search term (table search box and header search box both
-  // write to `search`); the query hook only refetches once typing settles.
+  // Debounce the search term; the query hook only refetches once typing settles.
   useEffect(() => {
     const timer = setTimeout(() => setDebouncedSearch(search), SEARCH_DEBOUNCE_MS)
     return () => clearTimeout(timer)
@@ -253,10 +252,8 @@ export function ContainerList(): JSX.Element {
 
   const canCreate = session?.role === 'china_office_staff'
 
-  // Inject action buttons + a search handler into the shared TopBar (prototype:
-  // actions sit between the search box and the bell, not in the page body).
-  // The header search box shares `search` state with the table's own search
-  // input below, rather than running an independent search implementation.
+  // Inject action buttons into the shared TopBar (prototype: actions sit between the
+  // search box and the bell, not in the page body).
   useTopBarSlot({
     actions: canCreate ? (
       <>
@@ -266,8 +263,6 @@ export function ContainerList(): JSX.Element {
         </Button>
       </>
     ) : null,
-    onSearch: setSearch,
-    searchPlaceholder: 'Search containers…',
   })
 
   function selectGroup(statuses: ContainerStatus[]): void {

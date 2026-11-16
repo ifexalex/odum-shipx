@@ -17,6 +17,8 @@ export interface CustomerTopNavProps {
   notificationsPanel?: ReactNode
   onNotificationsClick?: () => void
   onLogout?: () => void
+  /** The global search box (<GlobalSearch>), rendered ahead of the icon buttons. */
+  search?: ReactNode
 }
 
 function CustNavLink({ icon, label, path, count, onNavigate }: NavLinkDef & { onNavigate?: () => void }): JSX.Element {
@@ -55,6 +57,7 @@ export function CustomerTopNav({
   notificationsPanel,
   onNotificationsClick,
   onLogout,
+  search,
 }: CustomerTopNavProps): JSX.Element {
   const drawer = useShellDrawer()
 
@@ -75,6 +78,7 @@ export function CustomerTopNav({
         ))}
       </nav>
       <div className={styles.right}>
+        {search}
         <ThemeToggle className={styles.iconButton} />
         <div className={styles.bellWrap}>
           <button type="button" aria-label="Notifications" className={styles.iconButton} onClick={onNotificationsClick}>

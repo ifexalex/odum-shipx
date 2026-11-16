@@ -228,7 +228,7 @@ jobs:
           # "tracking.handler.lambda_handler" resolve because tracking/handler.py sits
           # at the zip root (services/ is the zip root, not a subdirectory).
           for service in tenant_management packing_list manifest tracking billing claims \
-                         payment_release refunds notification metering excel; do
+                         payment_release refunds notification metering excel search; do
             cd services
             zip -r ../build/${service}.zip . --exclude "*/__pycache__/*" --exclude "*.pyc"
             cd ..

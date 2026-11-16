@@ -16,19 +16,10 @@ function TopBarWrapper({ children }: { children: ReactNode }) {
   const [suffix, setSuffix] = useState<string | null>(null)
   const [subtitle, setSubtitle] = useState<string | null>(null)
   const [actions, setActions] = useState<ReactNode | null>(null)
-  const [onSearch, setOnSearch] = useState<((query: string) => void) | null>(null)
-  const [searchPlaceholder, setSearchPlaceholder] = useState<string | null>(null)
   return (
-    <TopBarContext.Provider value={{ suffix, setSuffix, subtitle, setSubtitle, actions, setActions, onSearch, setOnSearch, searchPlaceholder, setSearchPlaceholder }}>
+    <TopBarContext.Provider value={{ suffix, setSuffix, subtitle, setSubtitle, actions, setActions }}>
       {children}
       {actions && <div data-testid="topbar-actions">{actions}</div>}
-      {onSearch && (
-        <input
-          aria-label="Header search"
-          data-testid="topbar-search"
-          onChange={(event) => onSearch(event.target.value)}
-        />
-      )}
     </TopBarContext.Provider>
   )
 }
@@ -223,22 +214,6 @@ describe('ContainerList', () => {
     // After the debounce window, exactly one extra call fires with the full query.
     await waitFor(() => expect(containersApi.list).toHaveBeenCalledTimes(2))
     expect(vi.mocked(containersApi.list).mock.calls[1]?.[0]).toMatchObject({ q: 'MSCU' })
-  })
-
-  it('syncs the shared TopBar header search box with the table search state', async () => {
-    vi.mocked(containersApi.list).mockResolvedValue({
-      data: [],
-      meta: { pagination: { has_more: false, next_cursor: null, total_count: 0 } },
-    })
-    renderPage('china_office_staff')
-    await waitFor(() => expect(containersApi.list).toHaveBeenCalledTimes(1))
-
-    await userEvent.type(screen.getByTestId('topbar-search'), 'MSCU7654321')
-
-    await waitFor(() => expect(containersApi.list).toHaveBeenCalledTimes(2))
-    expect(vi.mocked(containersApi.list).mock.calls[1]?.[0]).toMatchObject({ q: 'MSCU7654321' })
-    // The table's own search input reflects the same state (single source of truth).
-    expect(screen.getByPlaceholderText(/container number, vessel name, voyage/i)).toHaveValue('MSCU7654321')
   })
 
   it('filters by created date when a "Last 30 days" preset is selected, and clears when set back to All time', async () => {

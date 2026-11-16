@@ -113,6 +113,7 @@ jobs:
             "payment-release:payment_release" \
             "refunds:refunds" \
             "excel:excel" \
+            "search:search" \
             "metering:metering"; do
             fn_suffix="${entry%%:*}"
             zip_name="${entry##*:}"

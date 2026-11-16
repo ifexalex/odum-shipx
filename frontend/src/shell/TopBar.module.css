@@ -104,37 +104,6 @@
   gap: 12px;
 }
 
-.searchBox {
-  position: relative;
-  width: 320px;
-}
-.searchIcon {
-  position: absolute;
-  left: 12px;
-  top: 50%;
-  transform: translateY(-50%);
-  color: var(--color-ink-4);
-  display: flex;
-  pointer-events: none;
-}
-.searchInput {
-  width: 100%;
-  height: 38px;
-  padding-left: 36px;
-  padding-right: 16px;
-  background: var(--color-page);
-  border: 1px solid transparent;
-  border-radius: var(--radius-sm);
-  font-family: var(--font-body);
-  font-size: 13px;
-  color: var(--color-ink);
-  outline: none;
-  box-sizing: border-box;
-}
-.searchInput:focus-visible {
-  box-shadow: var(--shadow-focus-ring);
-}
-
 .roleSwitch {
   height: 34px;
   padding: 0 10px;
@@ -243,14 +212,8 @@
   white-space: nowrap;
 }
 
-/* Responsive — breakpoints match the prototype (components.jsx): search shrinks
-   at 1080px, then hamburger appears and search/user-meta hide at 860px. */
-@container sxapp (max-width: 1080px) {
-  .searchBox {
-    width: 200px;
-  }
-}
-
+/* Responsive — breakpoints match the prototype (components.jsx): the hamburger appears and the
+   user-meta hides at 860px. The search box has its own responsive rules (GlobalSearch.module.css). */
 @container sxapp (max-width: 860px) {
   .topbar {
     padding: 0 16px;
@@ -269,9 +232,6 @@
   }
   .hamburger {
     display: inline-flex;
-  }
-  .searchBox {
-    display: none;
   }
   .userMenuText {
     display: none;

@@ -16,6 +16,8 @@ import { QuotaWarningBanner } from './QuotaWarningBanner'
 import { routeTable } from './routeTable'
 import { StaffNotificationPanel } from './StaffNotificationPanel'
 import { TenantBlockedGate } from './TenantBlockedScreen'
+import { GlobalSearch } from './GlobalSearch'
+import { searchPlaceholderFor } from './searchRoutes'
 import { TopBar } from './TopBar'
 import { TopBarContext } from './TopBarContext'
 
@@ -76,8 +78,6 @@ export function StaffLayout({ children }: StaffLayoutProps): JSX.Element | null 
   const [topBarSuffix, setTopBarSuffix] = useState<string | null>(null)
   const [topBarSubtitle, setTopBarSubtitle] = useState<string | null>(null)
   const [topBarActions, setTopBarActions] = useState<ReactNode | null>(null)
-  const [topBarOnSearch, setTopBarOnSearch] = useState<((query: string) => void) | null>(null)
-  const [topBarSearchPlaceholder, setTopBarSearchPlaceholder] = useState<string | null>(null)
   const [notifPanelOpen, setNotifPanelOpen] = useState(false)
 
   // Tenant theme (4.1 branding_config.primary_color). Platform admins keep the
@@ -117,6 +117,8 @@ export function StaffLayout({ children }: StaffLayoutProps): JSX.Element | null 
 
   if (!session) return null
 
+  // Null for a platform admin: the server refuses them (a tenant-scoped lookup, and they span tenants).
+  const searchPlaceholder = searchPlaceholderFor(session.role)
   const baseBreadcrumb = buildBreadcrumb(session.role, location.pathname)
   // Append the page-specific suffix (e.g. container number) as the 3rd crumb.
   const breadcrumb = topBarSuffix ? [...baseBreadcrumb, topBarSuffix] : baseBreadcrumb
@@ -147,10 +149,6 @@ export function StaffLayout({ children }: StaffLayoutProps): JSX.Element | null 
         setSubtitle: setTopBarSubtitle,
         actions: topBarActions,
         setActions: setTopBarActions,
-        onSearch: topBarOnSearch,
-        setOnSearch: setTopBarOnSearch,
-        searchPlaceholder: topBarSearchPlaceholder,
-        setSearchPlaceholder: setTopBarSearchPlaceholder,
       }}
     >
       <ThemeProvider primaryColor={isPlatformShell ? null : (branding?.primary_color ?? null)} style={{ height: '100%' }}>
@@ -173,7 +171,7 @@ export function StaffLayout({ children }: StaffLayoutProps): JSX.Element | null 
                 subtitle={subtitle}
                 user={shellUser}
                 actions={session.readOnly ? undefined : (topBarActions ?? undefined)}
-                onSearch={topBarOnSearch ?? undefined}
+                search={searchPlaceholder === null ? undefined : <GlobalSearch audience="staff" placeholder={searchPlaceholder} />}
                 notifications={isPlatformShell ? undefined : unreadCount}
                 onNotificationsClick={isPlatformShell ? undefined : () => setNotifPanelOpen((o) => !o)}
                 notificationsPanel={
@@ -194,9 +192,6 @@ export function StaffLayout({ children }: StaffLayoutProps): JSX.Element | null 
                   // manually clicks a nav link. Land them somewhere sane instead.
                   navigate(homePathForRole(nextRole))
                 }}
-                // Only where the page registered a handler: on every other page the box accepted typing and did nothing.
-                search={topBarOnSearch !== null}
-                searchPlaceholder={topBarSearchPlaceholder ?? undefined}
               />
             }
           >

@@ -21,10 +21,8 @@ export interface TopBarProps {
   subtitle?: string
   breadcrumb?: string[]
   user?: TopBarUser
-  /** Show the search box. Off unless the page can actually search; a box that accepts typing and does nothing is worse than none. */
-  search?: boolean
-  /** Names what the box searches. */
-  searchPlaceholder?: string
+  /** The global search box (<GlobalSearch>). A slot rather than markup so this bar stays presentational. */
+  search?: ReactNode
   actions?: ReactNode
   /** Unread count for the notification bell — wired to GET /v1/notifications/staff/unread-count. */
   notifications?: number
@@ -35,7 +33,6 @@ export interface TopBarProps {
    * see StaffLayout.tsx's StaffNotificationPanel for the real usage.
    */
   notificationsPanel?: ReactNode
-  onSearch?: (query: string) => void
   onNotificationsClick?: () => void
   onUserMenuClick?: () => void
   /**
@@ -54,12 +51,10 @@ export function TopBar({
   subtitle,
   breadcrumb,
   user,
-  search = true,
-  searchPlaceholder = 'Search…',
+  search,
   actions,
   notifications = 0,
   notificationsPanel,
-  onSearch,
   onNotificationsClick,
   onUserMenuClick,
   roleOptions,
@@ -100,19 +95,7 @@ export function TopBar({
         </div>
       </div>
       <div className={styles.right}>
-        {search && (
-          <div className={styles.searchBox}>
-            <span className={styles.searchIcon}>
-              <Icon name="search" size={15} />
-            </span>
-            <input
-              className={styles.searchInput}
-              placeholder={searchPlaceholder}
-              aria-label={searchPlaceholder}
-              onChange={(event) => onSearch?.(event.target.value)}
-            />
-          </div>
-        )}
+        {search}
         {actions}
         {roleOptions && roleOptions.length > 1 && (
           <select

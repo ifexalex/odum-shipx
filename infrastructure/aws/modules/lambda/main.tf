@@ -27,6 +27,7 @@ locals {
     payment_release   = { name = "payment-release", memory = 256, timeout = 30, handler = "payment_release.handler.lambda_handler" }
     refunds           = { name = "refunds", memory = 256, timeout = 30, handler = "refunds.handler.lambda_handler" }
     excel             = { name = "excel", memory = 256, timeout = 60, handler = "excel.handler.lambda_handler" }
+    search            = { name = "search", memory = 256, timeout = 15, handler = "search.handler.lambda_handler" }
 
     # Notification HTTP surface (2026-09-23). The delivery log, staff/customer
     # in-app bells and announcements all read/write Aurora, and announcing

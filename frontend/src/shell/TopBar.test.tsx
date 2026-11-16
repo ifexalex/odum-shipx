@@ -10,13 +10,6 @@ describe('TopBar', () => {
     expect(screen.getByText('Nigeria Office')).toBeInTheDocument()
   })
 
-  it('calls onSearch as the user types', async () => {
-    const onSearch = vi.fn()
-    render(<TopBar role="nigeria" onSearch={onSearch} />)
-    await userEvent.type(screen.getByPlaceholderText(/Search/), 'SHPX')
-    expect(onSearch).toHaveBeenLastCalledWith('SHPX')
-  })
-
   it('shows the unread notification count', () => {
     render(<TopBar role="nigeria" notifications={5} />)
     expect(screen.getByText('5')).toBeInTheDocument()
@@ -50,19 +43,17 @@ describe('TopBar', () => {
   })
 })
 
-describe('TopBar search box', () => {
-  it('is hidden when the page cannot search', () => {
-    render(<TopBar role="nigeria" search={false} />)
+describe('TopBar search slot', () => {
+  it('renders no search box unless one is passed', () => {
+    render(<TopBar role="nigeria" />)
+    expect(screen.queryByRole('combobox')).toBeNull()
     expect(screen.queryByRole('textbox')).toBeNull()
   })
 
-  it('names what it searches', () => {
-    render(<TopBar role="nigeria" search searchPlaceholder="Search containers…" onSearch={vi.fn()} />)
-    expect(screen.getByRole('textbox', { name: 'Search containers…' })).toBeInTheDocument()
-  })
-
-  it('no longer claims to search tenants and users', () => {
-    render(<TopBar role="nigeria" search onSearch={vi.fn()} />)
-    expect(screen.queryByPlaceholderText(/tenants, users/i)).toBeNull()
+  it('renders whatever search control it is given, ahead of the actions', () => {
+    render(<TopBar role="nigeria" search={<input aria-label="Find" />} actions={<button type="button">Create</button>} />)
+    const find = screen.getByLabelText('Find')
+    const create = screen.getByRole('button', { name: 'Create' })
+    expect(find.compareDocumentPosition(create) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
   })
 })
