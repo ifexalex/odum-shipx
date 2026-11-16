@@ -217,10 +217,13 @@ opens no second refund if the item already carries one. `PATCH` validates its in
 only when the new status is *Confirmed lost*. Tests: `TestMissingItemCompensation` and `TestItemUpdateValidation`
 (`tests/unit/test_claims.py`), `TestClaims` (3 cases, `tests/db/test_atomic_writes.py`).
 
-**Still open, needs a product decision (seized items):** the seized-item compensation branch triggers on
-`recovery_status in ('recovered', 'forfeited')`. `forfeited` is not a value the CHECK allows (`seized`, `recovery_in_progress`,
-`recovered`, `permanently_lost`), so half of that condition is dead, and compensating when goods are *recovered* reads
-backwards. By the same reasoning as missing items it should probably trigger on `permanently_lost`.
+**Seized-item compensation (decided 2026-11-16): it triggers on `permanently_lost`.** It used to fire on
+`recovery_status in ('recovered', 'forfeited')`: `forfeited` is not a value the CHECK allows (`seized`, `recovery_in_progress`,
+`recovered`, `permanently_lost`), and paying compensation for *recovered* goods was backwards. `PATCH /v1/claims/seized-items/{id}`
+now rejects an unknown `recovery_status` with `422` (as missing items do), and only `permanently_lost` with `refund_amount_ngn` opens
+the refund (`refund_type = seized_item`, once per item, in one transaction). The Update dialog shows an optional **Compensation (₦)**
+field for *Permanently lost*. Tests: `TestSeizedItemCompensation`, `TestItemUpdateValidation` (`tests/unit/test_claims.py`), `TestClaims`
+(`tests/db/test_atomic_writes.py`).
 
 **Storage-fee waiver (decided 2026-11-14):** a waiver covers the fees accrued so far; days that accrue afterwards are charged
 again. This is the intended behaviour, not a gap.

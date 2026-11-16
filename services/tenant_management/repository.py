@@ -631,6 +631,25 @@ def update_customer(tenant_id: str, customer_id: str, updates: dict[str, Any]) -
     )
 
 
+def anonymise_tenant_user(tenant_id: str, user_id: str) -> dict[str, Any] | None:
+    """Erase the personal data on a portal login (GDPR Art. 17), keeping the row for FK integrity.
+
+    `email` is NOT NULL and unique per tenant, so it becomes a per-user placeholder on a reserved
+    domain; the row is left `deactivated`. Cognito/Entra hold their own copy, which the caller deletes.
+    """
+    return execute_write_with_tenant(
+        tenant_id,
+        """
+        UPDATE tenant_user
+        SET email = %(placeholder)s, full_name = 'Anonymised', cognito_sub = NULL,
+            status = 'deactivated', updated_at = NOW()
+        WHERE tenant_id = %(tenant_id)s AND id = %(id)s
+        RETURNING id
+        """,
+        {"tenant_id": tenant_id, "id": user_id, "placeholder": f"erased-{user_id}@erased.invalid"},
+    )
+
+
 def anonymise_customer_record(tenant_id: str, customer_id: str) -> None:
     """Erase personal data from a customer record (GDPR Art. 17).
 

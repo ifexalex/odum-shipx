@@ -172,6 +172,11 @@ class TestErasedCustomerLosesTheirLogin:
             cur.execute("SELECT name, email, user_id, anonymised_at IS NOT NULL FROM customer WHERE id = %s", (customer_id,))
             assert cur.fetchone() == ("Anonymised", None, None, True)
         cognito.global_sign_out.assert_called_once()
+        cognito.delete_user.assert_called_once()
+        with admin.cursor() as cur:
+            cur.execute("SELECT email, full_name, status FROM tenant_user WHERE id = %s", (login_id,))
+            email, full_name, status = cur.fetchone()
+        assert (email, full_name, status) == (f"erased-{login_id}@erased.invalid", "Anonymised", "deactivated")
         reasons = [
             c.kwargs["after_state"].get("reason") for c in audit.call_args_list if c.kwargs["entity_type"] == "tenant_user"
         ]

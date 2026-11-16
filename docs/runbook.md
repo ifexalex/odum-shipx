@@ -1011,3 +1011,5 @@ reflect the waiver; the history does not survive).
 **A deactivated user still has access.** They should not: the very next request gets 401. If one does, check Redis for a stale `identity:<user id>` entry (deactivation evicts it; the TTL is 60 s) and that the `tenant_user` row says `deactivated`. A request returning `503 Service Unavailable` with "User status check unavailable" means the lookup failed and the user check failed closed.
 
 **Migration 064** adds the `suppressed` status to `notification_log`. Its downgrade refuses while any suppressed row exists; do not delete those rows, they are the record of why a customer was not messaged.
+
+**Erasing a customer is irreversible at the identity provider (2026-11-16).** `DELETE /v1/customers/{id}` deletes the customer's Cognito/Entra account and replaces their `tenant_user` email and name with placeholders. There is no undo; the row stays, deactivated, for FK integrity. If it returns `502` the provider call failed and nothing was erased; retry.

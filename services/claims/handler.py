@@ -41,6 +41,7 @@ from .models import (
     LogSeizedItemRequest,
     MissingItemStatus,
     ResolveClaimRequest,
+    SeizedItemStatus,
     StartInspectionRequest,
 )
 
@@ -458,6 +459,11 @@ def _seized_item_routes(
                 from shared.exceptions import BusinessRuleViolationError
 
                 raise BusinessRuleViolationError("recovery_status is required", rule_id="MISSING_STATUS")
+            if recovery_status not in SeizedItemStatus:
+                raise ValidationError(
+                    f"recovery_status must be one of: {', '.join(SeizedItemStatus)}",
+                    field_errors={"recovery_status": "invalid status"},
+                )
             result = service.update_seized_item(
                 tenant_id,
                 item_id,

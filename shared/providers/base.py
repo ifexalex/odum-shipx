@@ -205,6 +205,10 @@ class IdentityProvider(Protocol):
         """Invalidate all of a user's active sessions. Missing user is a no-op."""
         ...
 
+    def delete_user(self, username: str) -> None:
+        """Permanently delete a user, for GDPR erasure: the account's email and name live here too. Missing user is a no-op."""
+        ...
+
     def resend_invite(self, username: str) -> None:
         """Re-send the password-setup invite to an existing user."""
         ...

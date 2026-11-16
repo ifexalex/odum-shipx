@@ -1628,6 +1628,22 @@ def get_customer(
     return customer
 
 
+_ERASED_EMAIL_DOMAIN = "@erased.invalid"
+
+
+def _erase_login_identity(tenant_id: str, login: dict[str, Any]) -> None:
+    """Erase the personal data a portal login still holds: the identity provider's account, then our row.
+
+    The provider's copy goes first, and strictly: it is keyed by the email the row is about to lose, and a
+    failure here must leave the customer unerased so the whole erasure can be retried.
+    """
+    if login.get("email"):
+        get_identity_provider().delete_user(login["email"])
+    if repo.anonymise_tenant_user(tenant_id, str(login["id"])) is None:
+        raise RuntimeError("anonymise_tenant_user returned None unexpectedly")
+    evict_identity_cache(str(login["id"]))
+
+
 def anonymise_customer(
     tenant_id: str,
     customer_id: str,
@@ -1667,6 +1683,8 @@ def anonymise_customer(
             after_state={"status": "deactivated", "reason": "customer_erasure"},
             ip_address=ip_address,
         )
+    if login is not None and not str(login["email"]).endswith(_ERASED_EMAIL_DOMAIN):
+        _erase_login_identity(tenant_id, login)
 
     repo.anonymise_customer_record(tenant_id, customer_id)
     log_audit(

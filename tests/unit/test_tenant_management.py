@@ -1233,6 +1233,7 @@ class TestAnonymiseCustomerLogin:
             patch.object(service.repo, "get_user_by_id", return_value=login),
             patch.object(service.repo, "anonymise_customer_record", side_effect=lambda t, c: order.append("erase")),
             patch.object(service, "_revoke_login", revoke),
+            patch.object(service, "_erase_login_identity", side_effect=lambda t, u: order.append("scrub")),
             patch("services.tenant_management.service.log_audit") as mock_audit,
         ):
             service.anonymise_customer(TENANT_ID, "cust-001", actor_id="admin")
@@ -1241,7 +1242,7 @@ class TestAnonymiseCustomerLogin:
     def test_the_login_is_revoked_before_the_record_is_erased(self):
         calls: list[str] = []
         revoke, _ = self._anonymise(self._customer(), _user(id="user-cust", role="customer"), calls=calls)
-        assert calls == ["revoke", "erase"]
+        assert calls == ["revoke", "scrub", "erase"]
         revoke.assert_called_once()
 
     def test_the_revocation_is_audited_with_its_reason(self):
@@ -1260,8 +1261,42 @@ class TestAnonymiseCustomerLogin:
     def test_an_already_deactivated_login_is_not_revoked_again(self):
         calls: list[str] = []
         revoke, _ = self._anonymise(self._customer(), _user(id="user-cust", status="deactivated"), calls=calls)
-        assert calls == ["erase"]
+        assert calls == ["scrub", "erase"], "already deactivated: not revoked again, but its personal data is still erased"
         revoke.assert_not_called()
+
+    def test_a_login_already_erased_is_not_erased_again(self):
+        calls: list[str] = []
+        self._anonymise(
+            self._customer(), _user(id="user-cust", status="deactivated", email="erased-x@erased.invalid"), calls=calls
+        )
+        assert calls == ["erase"]
+
+    def test_the_providers_copy_is_deleted_before_the_row_loses_the_email_that_finds_it(self):
+        from services.tenant_management import service
+
+        order: list[str] = []
+        idp = MagicMock()
+        idp.delete_user.side_effect = lambda email: order.append(f"idp:{email}")
+        with (
+            patch.object(service, "get_identity_provider", return_value=idp),
+            patch.object(service.repo, "anonymise_tenant_user", side_effect=lambda t, u: order.append("row") or {"id": u}),
+            patch.object(service, "evict_identity_cache"),
+        ):
+            service._erase_login_identity(TENANT_ID, _user(id="user-cust", email="ada@example.com"))
+        assert order == ["idp:ada@example.com", "row"]
+
+    def test_a_failed_provider_delete_leaves_the_row_and_the_customer_for_a_retry(self):
+        from services.tenant_management import service
+
+        idp = MagicMock()
+        idp.delete_user.side_effect = ExternalServiceError("Cognito", "unavailable")
+        with (
+            patch.object(service, "get_identity_provider", return_value=idp),
+            patch.object(service.repo, "anonymise_tenant_user") as scrub,
+        ):
+            with pytest.raises(ExternalServiceError):
+                service._erase_login_identity(TENANT_ID, _user(id="user-cust"))
+        scrub.assert_not_called()
 
     def test_a_failed_revocation_leaves_the_customer_unerased_so_it_can_be_retried(self):
         from services.tenant_management import service

@@ -1,5 +1,6 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { render, screen, waitFor, within } from '@testing-library/react'
+import userEvent from '@testing-library/user-event'
 import { MemoryRouter } from 'react-router-dom'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { SessionContext, type SessionContextValue } from '../../auth/SessionContext'
@@ -65,5 +66,41 @@ describe('SeizedItemList', () => {
     vi.mocked(seizedItemsApi.list).mockResolvedValue({ data: [], meta: { pagination: { has_more: false, next_cursor: null, total_count: 0 } } })
     render(<QueryClientProvider client={__qc()}><MemoryRouter><SessionContext.Provider value={makeCtx()}><SeizedItemList /></SessionContext.Provider></MemoryRouter></QueryClientProvider>)
     await waitFor(() => expect(screen.getByText(/No seized items/)).toBeInTheDocument())
+  })
+
+  describe('compensation when goods are permanently lost', () => {
+    async function openModal() {
+      vi.mocked(seizedItemsApi.list).mockResolvedValue({ data: [ITEM_STUB], meta: { pagination: { has_more: false, next_cursor: null, total_count: 1 } } })
+      vi.mocked(seizedItemsApi.update).mockReset()
+      vi.mocked(seizedItemsApi.update).mockResolvedValue({ ...ITEM_STUB, status: 'permanently_lost' } as never)
+      render(<QueryClientProvider client={__qc()}><MemoryRouter><SessionContext.Provider value={makeCtx()}><SeizedItemList /></SessionContext.Provider></MemoryRouter></QueryClientProvider>)
+      await userEvent.click(await screen.findByRole('button', { name: 'Update' }))
+    }
+
+    it('offers an amount only for permanently lost, not for recovered', async () => {
+      await openModal()
+      expect(screen.queryByLabelText(/Compensation/)).not.toBeInTheDocument()
+      await userEvent.selectOptions(screen.getByRole('combobox'), 'recovered')
+      expect(screen.queryByLabelText(/Compensation/)).not.toBeInTheDocument()
+      await userEvent.selectOptions(screen.getByRole('combobox'), 'permanently_lost')
+      expect(screen.getByLabelText(/Compensation/)).toBeInTheDocument()
+    })
+
+    it('sends the amount with the status', async () => {
+      await openModal()
+      await userEvent.selectOptions(screen.getByRole('combobox'), 'permanently_lost')
+      await userEvent.type(screen.getByLabelText(/Compensation/), '40000')
+      await userEvent.click(screen.getByRole('button', { name: 'Save update' }))
+      await waitFor(() =>
+        expect(seizedItemsApi.update).toHaveBeenCalledWith('s1', { recovery_status: 'permanently_lost', refund_amount_ngn: '40000' }),
+      )
+    })
+
+    it('blocks an amount that is not greater than zero', async () => {
+      await openModal()
+      await userEvent.selectOptions(screen.getByRole('combobox'), 'permanently_lost')
+      await userEvent.type(screen.getByLabelText(/Compensation/), '0')
+      expect(screen.getByRole('button', { name: 'Save update' })).toBeDisabled()
+    })
   })
 })

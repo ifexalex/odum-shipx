@@ -489,8 +489,8 @@ Four controls, each at a chokepoint rather than in every handler. ADR-006 and AD
   deactivation. If the lookup fails the request is refused with `503` (fail closed, as the tenant-status
   check). Platform admins have no row and are exempt. Deactivation also calls `global_sign_out`, which revokes
   the refresh token so the session cannot be renewed; erasing a customer (`DELETE /v1/customers/{id}`) now
-  does the same to their portal login. `tenant_user.email` / `full_name` of an erased customer are **not**
-  scrubbed (open: a GDPR follow-up).
+  does the same to their portal login, and then erases it: the identity-provider account is deleted and the
+  `tenant_user` row's `email` / `full_name` are replaced by placeholders (2026-11-16).
 - **Cookie endpoints check the request origin (SEC-05).** `/v1/auth/session`, `/refresh`, `/logout`,
   `/authorize-url` and `/callback` return `403 ORIGIN_NOT_ALLOWED`, setting no cookie, unless `Origin` is a
   trusted origin: the origins of `APP_BASE_URL`, `CUSTOMER_PORTAL_BASE_URL` and `ENTRA_REDIRECT_URI`, plus

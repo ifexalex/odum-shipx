@@ -29,7 +29,7 @@ from shared.tenant_context import UserRole
 from shared.validation import safe_filename
 
 from . import repository as repo
-from .models import MissingItemStatus
+from .models import MissingItemStatus, SeizedItemStatus
 
 logger = logging.getLogger(__name__)
 
@@ -755,7 +755,7 @@ def update_seized_item(
         if updated is None:
             raise RuntimeError("update_seized_item_status returned None unexpectedly")
         if (
-            recovery_status in ("recovered", "forfeited")
+            recovery_status == SeizedItemStatus.permanently_lost
             and refund_amount_ngn is not None
             and not updated.get("refund_request_id")
         ):

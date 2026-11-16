@@ -865,8 +865,10 @@ Repository functions (`insert_onboarding_request`, `list_onboarding_requests`, `
   very next request gets `401`, not at token expiry. Role changes evict the cached identity too, because the Entra fallback path reads the role from it. A failed user
   lookup is `503` (fail closed). Detail and trade-offs: `00_CROSS_CUTTING_STANDARDS.md` §8.7.
 - **Erasing a customer ends their login (SEC-02).** `DELETE /v1/customers/{id}` (GDPR erasure) reads `customer.user_id` *before* the erasure nulls it, deactivates that portal login the same way (`_revoke_login`,
-  audited as `STATUS_CHANGE` with `reason: customer_erasure`) and only then erases the record, so a failure leaves a customer that can be retried. **Open:** the `tenant_user` row's own
-  `email` and `full_name` are not scrubbed.
+  audited as `STATUS_CHANGE` with `reason: customer_erasure`) and only then erases the record, so a failure leaves a customer that can be retried. **Updated 2026-11-16:** the erasure also
+  deletes the identity-provider account (`IdentityProvider.delete_user`; Cognito `AdminDeleteUser`, Entra Graph `DELETE /users/{id}`; a missing user is a no-op), strictly and *before* the row
+  loses the email that finds it, then scrubs the `tenant_user` row (`email` -> `erased-{id}@erased.invalid`, `full_name` -> `Anonymised`, `cognito_sub` cleared, `deactivated`). A failure at the
+  provider leaves the customer unerased so the whole erasure can be retried; an already-erased login is skipped.
 - **`get_customer_by_email`** now returns `{id, name}` and matches case-insensitively (it selected only `id`, and compared exactly, so a re-cased email would have slipped past the duplicate check).
 - **Test-suite note:** `tests/unit/test_auth.py::TestIdentityResolutionFallback::test_explicit_tenant_claim_skips_the_db_entirely` asserted the vulnerable behaviour and was rewritten
   (`..._does_not_use_the_identity_fallback`). A global autouse fixture in `tests/conftest.py` stubs the active-user check for handler-level tests, which build tokens from made-up claims; the check is covered by

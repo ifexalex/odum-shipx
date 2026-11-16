@@ -623,7 +623,7 @@ def _worker_compensate_seized(args: tuple) -> str:
             stack.enter_context(p)
         _wait_for(start_at)
         service.update_seized_item(
-            tenant_id, item_id, "recovered", "found", actor_id=user_id, ctx=ctx, refund_amount_ngn=Decimal("5000")
+            tenant_id, item_id, "permanently_lost", "gone", actor_id=user_id, ctx=ctx, refund_amount_ngn=Decimal("5000")
         )
     return "done"
 
@@ -728,7 +728,7 @@ class TestClaims:
             result = service.update_seized_item(
                 world["tenant"],
                 item_id,
-                "recovered",
+                "permanently_lost",
                 "found",
                 actor_id=world["user"],
                 ctx=_staff(world),
@@ -737,7 +737,7 @@ class TestClaims:
 
         refunds = _rows(admin, "SELECT amount_ngn, status FROM refund_request WHERE tenant_id = %s", (world["tenant"],))
         assert refunds == [(Decimal("5000.00"), "pending_review")]
-        assert _rows(admin, "SELECT recovery_status FROM seized_item WHERE id = %s", (item_id,))[0][0] == "recovered"
+        assert _rows(admin, "SELECT recovery_status FROM seized_item WHERE id = %s", (item_id,))[0][0] == "permanently_lost"
         assert result["refund_request_id"]
 
     def test_confirming_a_missing_item_lost_opens_a_compensation_refund(self, admin, world):

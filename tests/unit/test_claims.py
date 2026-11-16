@@ -773,13 +773,13 @@ class TestMissingItemCompensation:
 
 
 class TestSeizedItemCompensation:
-    def test_recovered_with_amount_creates_refund_and_links(self):
+    def test_permanently_lost_with_amount_creates_refund_and_links(self):
         from decimal import Decimal
 
         from services.claims import service
 
         item = _seized_item()
-        updated = {**item, "recovery_status": "recovered"}
+        updated = {**item, "recovery_status": "permanently_lost"}
         refund_row = {"id": "refund-sz-001"}
         linked = {**updated, "refund_request_id": "refund-sz-001"}
 
@@ -792,7 +792,7 @@ class TestSeizedItemCompensation:
             result = service.update_seized_item(
                 TENANT_ID_C,
                 "seized-001",
-                "recovered",
+                "permanently_lost",
                 notes=None,
                 actor_id="u",
                 ctx=_ctx(UserRole.NIGERIA_OFFICE_STAFF),
@@ -800,32 +800,29 @@ class TestSeizedItemCompensation:
             )
             assert result["refund_request_id"] == "refund-sz-001"
 
-    def test_forfeited_with_amount_creates_refund(self):
+    @pytest.mark.parametrize("status", ["recovered", "recovery_in_progress"])
+    def test_other_statuses_with_an_amount_open_no_refund(self, status):
+        """Compensation is owed when goods are permanently lost, not when they are recovered."""
         from decimal import Decimal
 
         from services.claims import service
 
         item = _seized_item()
-        updated = {**item, "recovery_status": "forfeited"}
-        refund_row = {"id": "refund-sz-002"}
-        linked = {**updated, "refund_request_id": "refund-sz-002"}
-
         with (
             patch.object(service.repo, "get_seized_item_by_id", return_value=item),
-            patch.object(service.repo, "update_seized_item_status", return_value=updated),
-            patch.object(service.refund_repo, "create_refund_request", return_value=refund_row),
-            patch.object(service.repo, "link_refund_to_seized_item", return_value=linked),
+            patch.object(service.repo, "update_seized_item_status", return_value={**item, "recovery_status": status}),
+            patch.object(service.refund_repo, "create_refund_request") as mock_create,
         ):
-            result = service.update_seized_item(
+            service.update_seized_item(
                 TENANT_ID_C,
                 "seized-001",
-                "forfeited",
+                status,
                 notes=None,
                 actor_id="u",
                 ctx=_ctx(UserRole.NIGERIA_OFFICE_STAFF),
                 refund_amount_ngn=Decimal("20000"),
             )
-            assert result["refund_request_id"] == "refund-sz-002"
+        mock_create.assert_not_called()
 
     def test_seized_status_with_amount_skips_refund(self):
         """Status 'seized' (no resolution yet) must not trigger a refund."""
@@ -962,7 +959,7 @@ class TestMissingSeizedItemAuditLogging:
         from services.claims import service
 
         item = _seized_item()
-        updated = {**item, "recovery_status": "recovered"}
+        updated = {**item, "recovery_status": "permanently_lost"}
         with (
             patch.object(service.repo, "get_seized_item_by_id", return_value=item),
             patch.object(service.repo, "update_seized_item_status", return_value=updated),
@@ -973,7 +970,7 @@ class TestMissingSeizedItemAuditLogging:
             service.update_seized_item(
                 TENANT_ID_C,
                 "seized-001",
-                "recovered",
+                "permanently_lost",
                 notes=None,
                 actor_id="u",
                 ctx=_ctx(UserRole.NIGERIA_OFFICE_STAFF),
@@ -1384,7 +1381,7 @@ class TestClaimsWritesAreGuarded:
         from services.claims import service
 
         item = _seized_item()
-        already = {**item, "recovery_status": "recovered", "refund_request_id": "refund-existing"}
+        already = {**item, "recovery_status": "permanently_lost", "refund_request_id": "refund-existing"}
 
         with (
             patch.object(service.repo, "get_seized_item_by_id", return_value=item),
@@ -1395,7 +1392,7 @@ class TestClaimsWritesAreGuarded:
             result = service.update_seized_item(
                 TENANT_ID_C,
                 "seized-001",
-                "recovered",
+                "permanently_lost",
                 notes=None,
                 actor_id="u",
                 ctx=_ctx(UserRole.NIGERIA_OFFICE_STAFF),
@@ -1496,6 +1493,17 @@ class TestItemUpdateValidation:
     def test_a_status_the_database_does_not_allow_is_a_422(self):
         resp, mock_update = self._patch_missing({"status": "compensated"})
 
+        assert resp["statusCode"] == 422
+        mock_update.assert_not_called()
+
+    def test_a_seized_status_the_database_does_not_allow_is_a_422(self):
+        from services.claims import handler, service
+
+        with (
+            patch("services.claims.handler.get_tenant_context", return_value=_ctx(UserRole.NIGERIA_OFFICE_STAFF)),
+            patch.object(service, "update_seized_item") as mock_update,
+        ):
+            resp = handler.lambda_handler(self._event("seized-items", {"recovery_status": "forfeited"}), None)
         assert resp["statusCode"] == 422
         mock_update.assert_not_called()
 
