@@ -972,6 +972,196 @@ class TestMissingItemCompensation:
                 )
 
 
+class TestChinaOfficeAndMissingItems:
+    """The China office records the supply and loading check on a missing item, and nothing financial (audit UX-08)."""
+
+    @staticmethod
+    def _update(role, status, *, amount=None, current="reported"):
+        from services.claims import service
+
+        item = _missing_item(status=current)
+        with (
+            patch.object(service.repo, "get_missing_item_by_id", return_value=item),
+            patch.object(service.repo, "update_missing_item_status", return_value={**item, "status": status}) as update,
+            patch.object(service.refund_repo, "create_refund_request") as refund,
+            patch("services.claims.service.log_audit"),
+        ):
+            result = service.update_missing_item(
+                TENANT_ID_C,
+                "missing-001",
+                status,
+                notes="Loaded 12 cartons; 3 not on the dock",
+                actor_id="u",
+                ctx=_ctx(role),
+                refund_amount_ngn=amount,
+            )
+        return result, update, refund
+
+    @pytest.mark.parametrize("status", ["investigating", "found_and_shipping"])
+    def test_china_can_record_an_investigation_result_with_notes(self, status):
+        result, update, refund = self._update(UserRole.CHINA_OFFICE_STAFF, status)
+        assert result["status"] == status
+        assert update.call_args.kwargs["notes"] == "Loaded 12 cartons; 3 not on the dock"
+        assert not refund.called
+
+    def test_china_cannot_set_a_refund_amount(self):
+        from decimal import Decimal
+
+        from services.claims import service
+
+        with pytest.raises(InsufficientPermissionsError):
+            self._update(UserRole.CHINA_OFFICE_STAFF, "investigating", amount=Decimal("5000"))
+        with pytest.raises(InsufficientPermissionsError):
+            self._update(UserRole.CHINA_OFFICE_STAFF, "confirmed_lost", amount=Decimal("5000"))
+        assert service  # imported for the patch targets above
+
+    @pytest.mark.parametrize("status", ["confirmed_lost", "resolved", "reported"])
+    def test_china_cannot_decide_a_missing_item(self, status):
+        with pytest.raises(InsufficientPermissionsError):
+            self._update(UserRole.CHINA_OFFICE_STAFF, status)
+
+    @pytest.mark.parametrize("current", ["confirmed_lost", "resolved"])
+    def test_china_cannot_reopen_an_item_that_has_been_decided(self, current):
+        from shared.exceptions import BusinessRuleViolationError
+
+        with pytest.raises(BusinessRuleViolationError) as caught:
+            self._update(UserRole.CHINA_OFFICE_STAFF, "investigating", current=current)
+        assert caught.value.rule_id == "MISSING_ITEM_ALREADY_DECIDED"
+
+    def test_a_refused_china_update_changes_nothing(self):
+        from services.claims import service
+
+        with (
+            patch.object(service.repo, "get_missing_item_by_id", return_value=_missing_item()),
+            patch.object(service.repo, "update_missing_item_status") as update,
+            patch.object(service.refund_repo, "create_refund_request") as refund,
+            patch("services.claims.service.log_audit") as audit,
+        ):
+            with pytest.raises(InsufficientPermissionsError):
+                service.update_missing_item(
+                    TENANT_ID_C, "missing-001", "confirmed_lost", None, actor_id="u", ctx=_ctx(UserRole.CHINA_OFFICE_STAFF)
+                )
+        assert not update.called and not refund.called and not audit.called
+
+    def test_nigeria_staff_keep_every_status_and_compensation(self):
+        from decimal import Decimal
+
+        from services.claims import service
+
+        item = _missing_item()
+        with (
+            patch.object(service.repo, "get_missing_item_by_id", return_value=item),
+            patch.object(service.repo, "update_missing_item_status", return_value={**item, "status": "confirmed_lost"}),
+            patch.object(service.refund_repo, "create_refund_request", return_value={"id": "r1"}),
+            patch.object(
+                service.repo,
+                "link_refund_to_missing_item",
+                return_value={**item, "status": "confirmed_lost", "refund_request_id": "r1"},
+            ),
+            patch("services.claims.service.log_audit"),
+        ):
+            result = service.update_missing_item(
+                TENANT_ID_C,
+                "missing-001",
+                "confirmed_lost",
+                None,
+                actor_id="u",
+                ctx=_ctx(UserRole.NIGERIA_OFFICE_STAFF),
+                refund_amount_ngn=Decimal("10000"),
+            )
+        assert result["refund_request_id"] == "r1"
+
+    def test_logging_a_missing_item_tells_the_china_office_in_app(self):
+        from services.claims import service
+
+        req = MagicMock(
+            manifest_id="manifest-1", customer_id="customer-001", carton_tags=["T1", "T2"], description="Never arrived"
+        )
+        with (
+            patch.object(service.repo, "create_missing_item", return_value=_missing_item()),
+            patch("services.claims.service.log_audit"),
+            patch("services.claims.service.notify_staff") as notify,
+        ):
+            service.log_missing_item(TENANT_ID_C, req, actor_id="u", ctx=_ctx(UserRole.NIGERIA_OFFICE_STAFF))
+        notify.assert_called_once()
+        kwargs = notify.call_args.kwargs
+        assert kwargs["target_role"] == "china_office_staff"
+        assert (kwargs["event_type"], kwargs["entity_type"]) == ("missing_item_logged", "missing_item")
+        assert "2 carton(s)" in kwargs["body"]
+        assert "Never arrived" not in str(kwargs) and "customer-001" not in str(kwargs)  # no customer detail in the bell
+
+
+class TestChinaOfficeMissingItemRoutes:
+    """Who may call which missing-item route."""
+
+    @staticmethod
+    def _call(role, method, path, body=None):
+        from services.claims import handler, service
+
+        event = {
+            "requestContext": {
+                "requestId": "r1",
+                "http": {"method": method, "path": path},
+                "authorizer": {"claims": {"sub": "user-1", "custom:tenant_id": TENANT_ID}},
+                "identity": {"sourceIp": "127.0.0.1"},
+            },
+            "headers": {},
+            "body": json.dumps(body) if body is not None else None,
+            "queryStringParameters": {},
+            "pathParameters": {},
+        }
+        with (
+            patch("services.claims.handler.get_tenant_context", return_value=_ctx(role)),
+            patch.object(service, "list_missing_items", return_value=([], None, False)),
+            patch.object(service, "get_missing_item", return_value={"id": "i1"}),
+            patch.object(service, "update_missing_item", return_value={"id": "i1"}) as update,
+            patch.object(service, "log_missing_item", return_value={"id": "i1"}) as log,
+            patch.object(service, "list_seized_items", return_value=([], None, False)),
+        ):
+            return handler.lambda_handler(event, None), update, log
+
+    def test_china_can_list_and_open_missing_items(self):
+        assert self._call(UserRole.CHINA_OFFICE_STAFF, "GET", "/v1/claims/missing-items")[0]["statusCode"] == 200
+        assert self._call(UserRole.CHINA_OFFICE_STAFF, "GET", "/v1/claims/missing-items/i1")[0]["statusCode"] == 200
+
+    def test_china_can_update_one(self):
+        response, update, _ = self._call(
+            UserRole.CHINA_OFFICE_STAFF, "PATCH", "/v1/claims/missing-items/i1", {"status": "investigating"}
+        )
+        assert response["statusCode"] == 200 and update.called
+
+    def test_a_refund_amount_from_china_reaches_the_service_to_be_refused(self):
+        _, update, _ = self._call(
+            UserRole.CHINA_OFFICE_STAFF,
+            "PATCH",
+            "/v1/claims/missing-items/i1",
+            {"status": "investigating", "refund_amount_ngn": "100"},
+        )
+        assert update.call_args.kwargs["refund_amount_ngn"] is not None  # the service, not the route, enforces the limit
+
+    def test_china_cannot_log_a_missing_item(self):
+        response, _, log = self._call(
+            UserRole.CHINA_OFFICE_STAFF,
+            "POST",
+            "/v1/claims/missing-items",
+            {
+                "manifest_id": "11111111-1111-1111-1111-111111111111",
+                "customer_id": "22222222-2222-2222-2222-222222222222",
+                "carton_tags": ["T1"],
+                "description": "x",
+            },
+        )
+        assert response["statusCode"] == 403 and not log.called
+
+    def test_china_still_cannot_read_seized_items(self):
+        assert self._call(UserRole.CHINA_OFFICE_STAFF, "GET", "/v1/claims/seized-items")[0]["statusCode"] == 403
+
+    @pytest.mark.parametrize("role", [UserRole.WAREHOUSE_ATTENDANT, UserRole.CUSTOMER])
+    def test_others_are_still_refused(self, role):
+        assert self._call(role, "GET", "/v1/claims/missing-items")[0]["statusCode"] == 403
+        assert self._call(role, "PATCH", "/v1/claims/missing-items/i1", {"status": "investigating"})[0]["statusCode"] == 403
+
+
 class TestSeizedItemCompensation:
     def test_permanently_lost_with_amount_creates_refund_and_links(self):
         from decimal import Decimal
@@ -1079,6 +1269,7 @@ class TestMissingSeizedItemAuditLogging:
         with (
             patch.object(service.repo, "create_missing_item", return_value=_missing_item()),
             patch("services.claims.service.log_audit") as mock_audit,
+            patch("services.claims.service.notify_staff"),
         ):
             service.log_missing_item(TENANT_ID_C, req, actor_id="u", ctx=_ctx(UserRole.NIGERIA_OFFICE_STAFF))
 

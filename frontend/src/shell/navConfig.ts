@@ -123,6 +123,8 @@ export const navConfig: Record<UserRole, NavLinkGroup[]> = {
         { icon: 'file', label: 'Manifests', path: '/manifests' },
         // china_office_staff can see & resolve CBM disputes (_DISPUTE_LIST_ALL_ROLES)
         { icon: 'warn', label: 'CBM disputes', path: '/billing/disputes' },
+        // ...and record the supply and loading check on a missing item (UX-08)
+        { icon: 'package', label: 'Missing items', path: '/claims/missing-items' },
       ],
     },
   ],

@@ -83,3 +83,11 @@ describe('Nigeria office menu', () => {
     }
   })
 })
+
+describe('China office menu (UX-08)', () => {
+  it('lists Missing items under Coordination, beside Manifests and CBM disputes', () => {
+    const coordination = navConfig.china_office_staff.find((group) => group.group === 'Coordination')
+    expect(coordination?.items.map((item) => item.label)).toEqual(['Manifests', 'CBM disputes', 'Missing items'])
+    expect(coordination?.items.at(-1)?.path).toBe('/claims/missing-items')
+  })
+})

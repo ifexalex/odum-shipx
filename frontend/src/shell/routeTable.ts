@@ -171,7 +171,8 @@ export const routeTable: RouteDef[] = [
   { path: '/claims/:id', allow: ['nigeria_office_staff', 'tenant_admin'], title: 'Claim Detail', layout: 'staff' },
   {
     path: '/claims/missing-items',
-    allow: ['nigeria_office_staff', 'tenant_admin'],
+    // China staff record the supply and loading check on a missing item (UX-08); they get no other claims route.
+    allow: ['nigeria_office_staff', 'tenant_admin', 'china_office_staff'],
     title: 'Missing Items',
     layout: 'staff',
   },

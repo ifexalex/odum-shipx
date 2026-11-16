@@ -807,3 +807,7 @@ client manifests.
 - **Duplicate emails.** `primary_channel` returns `"email"` for a recipient with no phone, so `channels = (primary, "email")` queued the same email **twice** (staff activation links, phone-less customers' invites, every notification to a recipient without a phone). Deduplicated; pinned by `TestEnqueueChannels`.
 - **Missing `customer_id`.** `container_arrived` and the four scheduled customer sends (`storage_reminders`, `release_expiry`) did not pass it, which breaks the WhatsApp-to-SMS fallback (it re-reads the phone from the customer) and the log link. All pass it now.
 - **New event type** `registration_existing_account`: subject, EN/ZH body and a `login_link` button label added to the notification service tables.
+
+## Staff in-app event: `missing_item_logged` (2026-11-16)
+
+Written by `services/claims/service.py::log_missing_item` to `staff_notification` with `target_role = china_office_staff`, `entity_type = missing_item`. In-app only (the bell); no customer data in the title or body.

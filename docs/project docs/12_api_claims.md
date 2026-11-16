@@ -237,3 +237,20 @@ again. This is the intended behaviour, not a gap.
 - **Evidence links are made only for a key that is exactly `{tenant_id}/claims/{claim_id}/{one filename}`** (what an upload produces); a key that starts with that prefix and then climbs out with `..`, or has a subfolder, or no name, is skipped and logged. A failure to presign lists the file without a link rather than failing the read. `claim_evidence` has no RLS, so the claim is loaded first through the tenant-scoped query and only then its evidence.
 - **Known gap:** an evidence row is created when an upload is *started* (`POST /v1/uploads/presigned-url`), and nothing confirms the upload finished, so an abandoned upload shows as a file whose link does not open. The storage providers have no existence check yet.
 - Tests: `tests/unit/test_claims.py` (`TestGetClaimForTheCustomer`, `TestClaimReadSql`, mutation-checked), `tests/db/test_claim_read.py` (9, **unrun**: no Docker).
+
+## Implementation notes — the China office and missing items (2026-11-16, audit UX-08)
+
+The PRD (FR-DC-005, FR-DC-006) says a missing item is escalated to China, who record the supply and loading check; only Nigeria staff and tenant admins could read or update one. Now:
+
+| Route | nigeria_office_staff | tenant_admin | china_office_staff |
+|---|---|---|---|
+| `GET /v1/claims/missing-items`, `GET .../{id}` | yes | yes | **yes** |
+| `POST /v1/claims/missing-items` | yes | no | no |
+| `PATCH /v1/claims/missing-items/{id}` | any status; `refund_amount_ngn` on `confirmed_lost` opens the compensation refund | no | **`investigating` or `found_and_shipping`, and `notes`, only** |
+| seized items (any route) | yes | read | no, unchanged |
+
+The limit is enforced in the service (`_assert_china_may_update`), not by the route, so no other caller can bypass it: a refund amount from China is **403** (checked first, whatever the status), any status other than the two investigation ones is **403**, and updating an item already `confirmed_lost` or `resolved` is **422 `MISSING_ITEM_ALREADY_DECIDED`** (so China cannot reopen an item after compensation was opened). A refused update changes nothing and writes no audit entry; an allowed one is audited with the actor's role.
+
+**In-app notification:** logging a missing item now writes a `missing_item_logged` staff notification to `china_office_staff` ("N carton(s) reported missing. Please record the supply and loading check."), through `notify_staff`, which never raises. It names no customer and carries no description. Not an SMS, WhatsApp or email, so `notification_consent` does not apply.
+
+Tests: `tests/unit/test_claims.py` (`TestChinaOfficeAndMissingItems`, `TestChinaOfficeMissingItemRoutes`), each limit mutation-checked.

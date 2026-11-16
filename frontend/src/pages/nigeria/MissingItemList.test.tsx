@@ -1,5 +1,5 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
-import { render, screen, waitFor } from '@testing-library/react'
+import { render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { MemoryRouter } from 'react-router-dom'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
@@ -127,3 +127,73 @@ describe('MissingItemList', () => {
     })
   })
 })
+
+describe('China office view of missing items (UX-08)', () => {
+  const page = { data: [ITEM_STUB], meta: { pagination: { has_more: false, next_cursor: null, total_count: 1 } } }
+
+  function renderAs(role: string) {
+    vi.mocked(missingItemsApi.list).mockResolvedValue(page)
+    vi.mocked(missingItemsApi.update).mockReset()
+    vi.mocked(missingItemsApi.update).mockResolvedValue({ ...ITEM_STUB, status: 'investigating' })
+    return render(<QueryClientProvider client={__qc()}><MemoryRouter><SessionContext.Provider value={makeCtx(role)}><MissingItemList /></SessionContext.Provider></MemoryRouter></QueryClientProvider>)
+  }
+
+  async function openUpdate(role = 'china_office_staff') {
+    renderAs(role)
+    await userEvent.click(await screen.findByRole('button', { name: 'Update' }))
+    return screen.findByRole('dialog', { name: 'Update missing item' })
+  }
+
+  it('lists the items and offers an Update on one that is still open', async () => {
+    renderAs('china_office_staff')
+    expect(await screen.findByText('Electronic components')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Update' })).toBeInTheDocument()
+  })
+
+  it('says what this screen is for them', async () => {
+    renderAs('china_office_staff')
+    await screen.findByText('Electronic components')
+    // the subtitle is placed in the top bar by the layout; the dialog carries the same guidance
+    const dialog = await openUpdate()
+    expect(within(dialog).getByText(/supply and loading check/i)).toBeInTheDocument()
+  })
+
+  it('offers only the investigation statuses, never a decision', async () => {
+    const dialog = await openUpdate()
+    const options = within(dialog).getAllByRole('option').map((o) => o.textContent)
+    expect(options).toEqual(['Investigating', 'Found & shipping'])
+  })
+
+  it('has no compensation field, even if the status is changed', async () => {
+    const dialog = await openUpdate()
+    await userEvent.selectOptions(within(dialog).getByRole('combobox'), 'found_and_shipping')
+    expect(within(dialog).queryByLabelText(/Compensation/)).toBeNull()
+    expect(within(dialog).queryByText(/Compensation \(₦\)/)).toBeNull()
+  })
+
+  it('records the investigation result and notes, and sends no amount', async () => {
+    const dialog = await openUpdate()
+    await userEvent.type(within(dialog).getByPlaceholderText(/Add any notes/), 'Loaded 12 cartons, 3 not on the dock')
+    await userEvent.click(within(dialog).getByRole('button', { name: 'Save update' }))
+    await waitFor(() => expect(missingItemsApi.update).toHaveBeenCalledTimes(1))
+    const [id, body] = vi.mocked(missingItemsApi.update).mock.calls[0]!
+    expect(id).toBe('m1')
+    expect(body).toEqual({ status: 'investigating', notes: 'Loaded 12 cartons, 3 not on the dock' })
+    expect(body).not.toHaveProperty('refund_amount_ngn')
+  })
+
+  it('offers no Update on an item that has already been decided', async () => {
+    vi.mocked(missingItemsApi.list).mockResolvedValue({ ...page, data: [{ ...ITEM_STUB, status: 'confirmed_lost' as const }] })
+    render(<QueryClientProvider client={__qc()}><MemoryRouter><SessionContext.Provider value={makeCtx('china_office_staff')}><MissingItemList /></SessionContext.Provider></MemoryRouter></QueryClientProvider>)
+    await screen.findByText('Electronic components')
+    expect(screen.queryByRole('button', { name: 'Update' })).toBeNull()
+  })
+
+  it('leaves the Nigeria office every status and the compensation field', async () => {
+    const dialog = await openUpdate('nigeria_office_staff')
+    expect(within(dialog).getAllByRole('option')).toHaveLength(5)
+    await userEvent.selectOptions(within(dialog).getByRole('combobox'), 'confirmed_lost')
+    expect(within(dialog).getByText(/Compensation \(₦\)/)).toBeInTheDocument()
+  })
+})
+

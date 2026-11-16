@@ -6,7 +6,11 @@ import {
   canResolveClaim,
   canStartInspection,
   canUpdateItem,
+  CHINA_MISSING_ITEM_STATUSES,
+  canCompensateMissingItem,
+  canUpdateMissingItem,
   customerInspectionLabel,
+  missingItemStatusesFor,
   customerRefundLabel,
   customerResolutionLabel,
   isTerminalClaimStatus,
@@ -103,5 +107,35 @@ describe('customer-facing claim wording (UX-07)', () => {
 
   it('does not break on a status it has not heard of', () => {
     expect(customerRefundLabel('some_future_status')).toBe('Being reviewed')
+  })
+})
+
+describe('missing items by office (UX-08)', () => {
+  it('lets China record an investigation but not a decision', () => {
+    expect(CHINA_MISSING_ITEM_STATUSES).toEqual(['investigating', 'found_and_shipping'])
+    expect(missingItemStatusesFor('china_office_staff')).toEqual(['investigating', 'found_and_shipping'])
+    expect(missingItemStatusesFor('nigeria_office_staff')).toHaveLength(5)
+  })
+
+  it('lets only the Nigeria office compensate', () => {
+    expect(canCompensateMissingItem('nigeria_office_staff')).toBe(true)
+    for (const role of ['china_office_staff', 'tenant_admin', 'warehouse_attendant', 'customer'] as const) {
+      expect(canCompensateMissingItem(role)).toBe(false)
+    }
+  })
+
+  it('stops China at a decision, and Nigeria at resolved', () => {
+    expect(canUpdateMissingItem('china_office_staff', 'reported')).toBe(true)
+    expect(canUpdateMissingItem('china_office_staff', 'investigating')).toBe(true)
+    expect(canUpdateMissingItem('china_office_staff', 'confirmed_lost')).toBe(false)
+    expect(canUpdateMissingItem('china_office_staff', 'resolved')).toBe(false)
+    expect(canUpdateMissingItem('nigeria_office_staff', 'confirmed_lost')).toBe(true)
+    expect(canUpdateMissingItem('nigeria_office_staff', 'resolved')).toBe(false)
+  })
+
+  it('offers nobody else an update', () => {
+    for (const role of ['tenant_admin', 'warehouse_attendant', 'customer', 'platform_admin'] as const) {
+      expect(canUpdateMissingItem(role, 'reported')).toBe(false)
+    }
   })
 })

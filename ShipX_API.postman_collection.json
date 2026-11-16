@@ -3939,7 +3939,8 @@
                   "value": "20"
                 }
               ]
-            }
+            },
+            "description": "nigeria_office_staff, tenant_admin and (2026-11-16) china_office_staff, who record the supply and loading check."
           }
         },
         {
@@ -4010,7 +4011,8 @@
                 "missing-items",
                 "{{missing_item_id}}"
               ]
-            }
+            },
+            "description": "nigeria_office_staff, tenant_admin and (2026-11-16) china_office_staff, who record the supply and loading check."
           }
         },
         {
@@ -4050,7 +4052,8 @@
                 "missing-items",
                 "{{missing_item_id}}"
               ]
-            }
+            },
+            "description": "nigeria_office_staff: any status, and `refund_amount_ngn` on confirmed_lost opens a compensation refund. china_office_staff (2026-11-16): status `investigating` or `found_and_shipping` and `notes` only. A refund amount or any other status from China is 403; changing an item already confirmed_lost or resolved is 422 MISSING_ITEM_ALREADY_DECIDED."
           }
         },
         {

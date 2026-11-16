@@ -1,9 +1,10 @@
 import { useState, type JSX } from 'react'
 import { ApiError } from '../../api/client'
 import { missingItemsApi, type MissingItem, type MissingItemStatus, type UpdateMissingItemInput } from '../../api/claims'
-import { canUpdateItem } from '../../api/claimsRules'
+import { canCompensateMissingItem, canUpdateMissingItem, missingItemStatusesFor } from '../../api/claimsRules'
 import { useMissingItemList } from '../../hooks/useItems'
 import { useSession } from '../../auth/useSession'
+import type { UserRole } from '../../auth/types'
 import { Badge, Banner, Button, Card, Chip, Field, Mono, Table, ListFooter, DialogGuard, type BadgeVariant } from '../../design/components'
 import { useTopBarSlot } from '../../shell/TopBarContext'
 import styles from './ItemList.module.css'
@@ -37,19 +38,22 @@ function statusLabel(s: MissingItemStatus): string {
 
 interface UpdateModalProps {
   item: MissingItem
+  role: UserRole
   onCancel: () => void
   onSuccess: (updated: MissingItem) => void
 }
 
-function UpdateModal({ item, onCancel, onSuccess }: UpdateModalProps): JSX.Element {
-  const [status, setStatus] = useState<MissingItemStatus>(item.status)
+function UpdateModal({ item, role, onCancel, onSuccess }: UpdateModalProps): JSX.Element {
+  // The China office records the investigation; deciding a loss, and any compensation, stay with the Nigeria office.
+  const statuses = missingItemStatusesFor(role)
+  const [status, setStatus] = useState<MissingItemStatus>(statuses.includes(item.status) ? item.status : statuses[0]!)
   const [notes, setNotes] = useState('')
   const [compensation, setCompensation] = useState('')
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
   // Compensation is owed when the item is confirmed lost; the other statuses carry none.
-  const offersCompensation = status === 'confirmed_lost'
+  const offersCompensation = status === 'confirmed_lost' && canCompensateMissingItem(role)
   const compensationAmount = compensation.trim() === '' ? null : Number(compensation)
   const compensationInvalid =
     offersCompensation && compensationAmount !== null && !(Number.isFinite(compensationAmount) && compensationAmount > 0)
@@ -79,9 +83,14 @@ function UpdateModal({ item, onCancel, onSuccess }: UpdateModalProps): JSX.Eleme
         <div className={styles.selectField}>
           <label className={styles.selectLabel}>New status <span className={styles.required}>*</span></label>
           <select className={styles.select} value={status} onChange={(e) => setStatus(e.target.value as MissingItemStatus)}>
-            {STATUS_FILTERS.map((s) => <option key={s} value={s}>{statusLabel(s)}</option>)}
+            {statuses.map((s) => <option key={s} value={s}>{statusLabel(s)}</option>)}
           </select>
         </div>
+        {!canCompensateMissingItem(role) && (
+          <p className={styles.panelNote}>
+            Record what the supply and loading check found. Deciding an item is lost, and any compensation, is done by the Nigeria office.
+          </p>
+        )}
         {offersCompensation && (
           <Field label="Compensation (₦)" name="refund_amount_ngn" type="number" optional placeholder="e.g. 25000"
             value={compensation} onChange={(e) => setCompensation(e.target.value)}
@@ -105,7 +114,7 @@ function UpdateModal({ item, onCancel, onSuccess }: UpdateModalProps): JSX.Eleme
 
 export function MissingItemList(): JSX.Element {
   const { session } = useSession()
-  const role = session?.role ?? 'nigeria_office_staff'
+  const role: UserRole = session?.role ?? 'nigeria_office_staff'
 
   const [statusFilter, setStatusFilter] = useState<MissingItemStatus | null>(null)
   const [editing, setEditing] = useState<MissingItem | null>(null)
@@ -118,9 +127,12 @@ export function MissingItemList(): JSX.Element {
     refetch()
   }
 
-  const r = role as Parameters<typeof canUpdateItem>[0]
-
-  useTopBarSlot({ subtitle: 'Cargo reported missing during manifest inspection.' })
+  useTopBarSlot({
+    subtitle:
+      role === 'china_office_staff'
+        ? 'Cargo reported missing in Nigeria. Record the supply and loading check.'
+        : 'Cargo reported missing during manifest inspection.',
+  })
 
   return (
     <div>
@@ -156,7 +168,7 @@ export function MissingItemList(): JSX.Element {
                 <Mono key="tags">{item.carton_tags.join(', ') || '—'}</Mono>,
                 <Badge key="status" variant={STATUS_VARIANT[item.status]}>{statusLabel(item.status)}</Badge>,
                 <span key="date">{formatDate(item.created_at)}</span>,
-                canUpdateItem(r) && item.status !== 'resolved' ? (
+                canUpdateMissingItem(role, item.status) ? (
                   <Button key="edit" variant="ghost" size="sm" onClick={() => setEditing(item)}>Update</Button>
                 ) : <span key="noop" />,
               ],
@@ -176,7 +188,7 @@ export function MissingItemList(): JSX.Element {
       </div>
 
       {editing && (
-        <UpdateModal item={editing} onCancel={() => setEditing(null)} onSuccess={handleUpdated} />
+        <UpdateModal item={editing} role={role} onCancel={() => setEditing(null)} onSuccess={handleUpdated} />
       )}
     </div>
   )

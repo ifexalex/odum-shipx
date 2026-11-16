@@ -18,6 +18,7 @@ from shared.exceptions import (
     ApprovalThresholdExceededError,
     BusinessRuleViolationError,
     IllegalTransitionError,
+    InsufficientPermissionsError,
     ResourceNotFoundError,
 )
 from shared.fx_rate import get_effective_dollar_rate
@@ -678,7 +679,36 @@ def log_missing_item(
         actor_role=str(ctx.role),
         after_state={"customer_id": req.customer_id, "carton_tags": req.carton_tags, "status": "reported"},
     )
+    # The China office is asked to record the supply and loading check, so it is told when one is logged.
+    notify_staff(
+        tenant_id=tenant_id,
+        event_type="missing_item_logged",
+        entity_type="missing_item",
+        entity_id=str(item["id"]),
+        title="Missing item reported",
+        body=f"{len(req.carton_tags)} carton(s) reported missing. Please record the supply and loading check.",
+        target_role=str(UserRole.CHINA_OFFICE_STAFF),
+    )
     return _fmt_missing(item)
+
+
+# What the China office may record on a missing item: that it is being looked into, or that it has been found. Deciding
+# it lost (which is what owes the customer compensation) stays with the Nigeria office.
+_CHINA_ITEM_STATUSES = frozenset({MissingItemStatus.investigating, MissingItemStatus.found_and_shipping})
+_DECIDED_ITEM_STATUSES = frozenset({MissingItemStatus.confirmed_lost, MissingItemStatus.resolved})
+
+
+def _assert_china_may_update(item: dict[str, Any], status: str, refund_amount_ngn: Decimal | None) -> None:
+    """The limits on a China office update of a missing item (audit UX-08)."""
+    if refund_amount_ngn is not None:
+        raise InsufficientPermissionsError("China office staff cannot set compensation on a missing item")
+    if status not in _CHINA_ITEM_STATUSES:
+        raise InsufficientPermissionsError("China office staff can only mark a missing item as investigating or found")
+    if item["status"] in _DECIDED_ITEM_STATUSES:
+        raise BusinessRuleViolationError(
+            "This missing item has already been decided and can no longer be changed by the China office",
+            rule_id="MISSING_ITEM_ALREADY_DECIDED",
+        )
 
 
 def update_missing_item(
@@ -693,6 +723,9 @@ def update_missing_item(
     item = repo.get_missing_item_by_id(tenant_id, item_id)
     if not item:
         raise ResourceNotFoundError("missing_item", item_id)
+
+    if ctx.role == UserRole.CHINA_OFFICE_STAFF:
+        _assert_china_may_update(item, status, refund_amount_ngn)
 
     # The status change and, for a compensation, the refund request and its link
     # commit together. Compensation is owed when the item is confirmed lost, and the

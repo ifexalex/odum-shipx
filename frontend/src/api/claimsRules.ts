@@ -1,5 +1,5 @@
 import type { UserRole } from '../auth/types'
-import type { Claim } from './claims'
+import type { Claim, MissingItemStatus } from './claims'
 
 const _INSPECT_ROLES: UserRole[] = ['nigeria_office_staff']
 const _RESOLVE_ROLES: UserRole[] = ['nigeria_office_staff', 'tenant_admin']
@@ -21,6 +21,35 @@ export function canFileClaim(role: UserRole): boolean {
 
 export function canUpdateItem(role: UserRole): boolean {
   return _ITEM_WRITE_ROLES.includes(role)
+}
+
+// ---------------------------------------------------------------------------
+// Missing items: what each office may do (audit UX-08). Mirrors services/claims/service.py's
+// `_assert_china_may_update`; the server is the authority, this only decides what the screen offers.
+// ---------------------------------------------------------------------------
+
+/** Statuses the China office may record: that it is being looked into, or that it has been found. */
+export const CHINA_MISSING_ITEM_STATUSES: MissingItemStatus[] = ['investigating', 'found_and_shipping']
+
+const _MISSING_ITEM_DECIDED: MissingItemStatus[] = ['confirmed_lost', 'resolved']
+
+/** May this role update this missing item at all? Nigeria until it is resolved; China until it has been decided. */
+export function canUpdateMissingItem(role: UserRole, status: MissingItemStatus): boolean {
+  if (role === 'nigeria_office_staff') return status !== 'resolved'
+  if (role === 'china_office_staff') return !_MISSING_ITEM_DECIDED.includes(status)
+  return false
+}
+
+/** The statuses this role may set on a missing item. */
+export function missingItemStatusesFor(role: UserRole): MissingItemStatus[] {
+  return role === 'china_office_staff'
+    ? CHINA_MISSING_ITEM_STATUSES
+    : ['reported', 'investigating', 'found_and_shipping', 'confirmed_lost', 'resolved']
+}
+
+/** Only the Nigeria office decides a loss and so owes the customer compensation. */
+export function canCompensateMissingItem(role: UserRole): boolean {
+  return role === 'nigeria_office_staff'
 }
 
 export function isTerminalClaimStatus(status: Claim['status']): boolean {

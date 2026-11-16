@@ -10,7 +10,8 @@ Routes:
   POST  /v1/uploads/presigned-url           — customer, nigeria_office_staff
 
   POST  /v1/claims/missing-items            — nigeria_office_staff
-  PATCH /v1/claims/missing-items/{id}       — nigeria_office_staff
+  PATCH /v1/claims/missing-items/{id}       — nigeria_office_staff (any status, compensation); china_office_staff
+                                              (investigating / found_and_shipping and notes only)
   POST  /v1/claims/seized-items             — nigeria_office_staff
   PATCH /v1/claims/seized-items/{id}        — nigeria_office_staff
 """
@@ -320,6 +321,11 @@ def _upload_routes(
 
 
 _ITEM_READ_ROLES = (UserRole.NIGERIA_OFFICE_STAFF, UserRole.TENANT_ADMIN)
+# The China office records the supply and loading check on a missing item (PRD FR-DC-005/006, audit UX-08), so it
+# reads missing items and may update their investigation. It does not read seized items, and the service refuses it
+# any compensation or any decision.
+_MISSING_ITEM_READ_ROLES = (*_ITEM_READ_ROLES, UserRole.CHINA_OFFICE_STAFF)
+_MISSING_ITEM_UPDATE_ROLES = (UserRole.NIGERIA_OFFICE_STAFF, UserRole.CHINA_OFFICE_STAFF)
 
 
 def _compensation_amount(body: dict[str, Any]) -> Decimal | None:
@@ -351,7 +357,7 @@ def _missing_item_routes(
     if item_id is None:
         # GET /v1/claims/missing-items
         if method == "GET":
-            ctx.assert_role(*_ITEM_READ_ROLES)
+            ctx.assert_role(*_MISSING_ITEM_READ_ROLES)
             filters = {}
             if _qp(event, "container_id"):
                 filters["container_id"] = _qp(event, "container_id")
@@ -378,13 +384,13 @@ def _missing_item_routes(
     else:
         # GET /v1/claims/missing-items/{id}
         if method == "GET":
-            ctx.assert_role(*_ITEM_READ_ROLES)
+            ctx.assert_role(*_MISSING_ITEM_READ_ROLES)
             result = service.get_missing_item(tenant_id, item_id)
             return success(result, request_id=request_id)
 
         # PATCH /v1/claims/missing-items/{id}
         if method == "PATCH":
-            ctx.assert_role(*_STAFF_ROLES)
+            ctx.assert_role(*_MISSING_ITEM_UPDATE_ROLES)
             body = _parse_body(event)
             status = body.get("status", "")
             notes = body.get("notes")
