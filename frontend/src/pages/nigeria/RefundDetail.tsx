@@ -1,6 +1,6 @@
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { useState, type JSX } from 'react'
-import { useLocation, useNavigate, useParams } from 'react-router-dom'
+import { useLocation, useParams } from 'react-router-dom'
 import { ApiError } from '../../api/client'
 import { refundsApi, type AccountsReviewInput, type ApproveRefundInput, type Refund, type RefundStatus } from '../../api/refunds'
 import { refundKeys } from '../../api/keys'
@@ -397,7 +397,6 @@ function RejectModal({ onCancel, onSuccess, refundId }: RejectModalProps): JSX.E
 export function RefundDetail(): JSX.Element {
   const { id } = useParams<{ id: string }>()
   const location = useLocation()
-  const navigate = useNavigate()
   const { session } = useSession()
   const role = session?.role ?? 'nigeria_office_staff'
 
@@ -541,12 +540,6 @@ export function RefundDetail(): JSX.Element {
           )}
           <Kvp label="Customer preference" value={customerChoiceLabel(refund.customer_choice)} divider={false} />
         </Card>
-      </div>
-
-      <div className={styles.backLink}>
-        <Button variant="ghost" icon="arrowleft" onClick={() => navigate('/refunds')}>
-          Back to refunds
-        </Button>
       </div>
 
       {/* Modals */}

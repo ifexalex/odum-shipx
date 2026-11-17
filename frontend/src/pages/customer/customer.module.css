@@ -87,7 +87,6 @@
 .trackResultHeader { display: flex; align-items: center; gap: 12px; margin-bottom: 20px; }
 .trackCode { font-size: 1.25rem; font-weight: 700; font-family: var(--font-mono); }
 .trackCompany { font-size: 0.875rem; color: var(--color-text-muted); }
-.backLink { margin-top: 12px; }
 
 /* Forms */
 .formCard { background: var(--color-surface); border: 1px solid var(--color-border); border-radius: 12px; padding: 24px; display: flex; flex-direction: column; gap: 16px; }

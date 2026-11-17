@@ -1,6 +1,6 @@
 import { useQuery } from '@tanstack/react-query'
 import { useState, type JSX } from 'react'
-import { useNavigate, useParams } from 'react-router-dom'
+import { useParams } from 'react-router-dom'
 import { ApiError } from '../../api/client'
 import { releaseNoteKeys } from '../../api/keys'
 import { releaseNotesApi } from '../../api/releaseNotes'
@@ -28,7 +28,6 @@ const STATUS_VARIANT: Record<string, BadgeVariant> = {
  */
 export function MyReleaseNote(): JSX.Element {
   const { id } = useParams<{ id: string }>()
-  const navigate = useNavigate()
   const [downloading, setDownloading] = useState(false)
   const [downloadError, setDownloadError] = useState<string | null>(null)
 
@@ -63,11 +62,6 @@ export function MyReleaseNote(): JSX.Element {
         <Banner variant="error">
           {missing || !error ? 'Release note not found.' : 'Could not load this release note. Please try again.'}
         </Banner>
-        <div className={styles.backLink}>
-          <Button variant="ghost" icon="arrowleft" onClick={() => navigate('/my-billing')}>
-            Back to billing
-          </Button>
-        </div>
       </div>
     )
   }
@@ -135,9 +129,6 @@ export function MyReleaseNote(): JSX.Element {
       <div style={{ display: 'flex', gap: 8, marginTop: 20, flexWrap: 'wrap' }}>
         <Button variant="primary" icon="download" loading={downloading} onClick={() => void downloadPdf()}>
           Download PDF
-        </Button>
-        <Button variant="ghost" icon="arrowleft" onClick={() => navigate('/my-billing')}>
-          Back to billing
         </Button>
       </div>
     </div>

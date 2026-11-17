@@ -1,5 +1,5 @@
 import { type JSX } from 'react'
-import { useNavigate, useParams } from 'react-router-dom'
+import { useParams } from 'react-router-dom'
 import { ApiError } from '../../api/client'
 import type { Claim, ClaimEvidenceFile, DamageClaimStatus } from '../../api/claims'
 import {
@@ -9,7 +9,7 @@ import {
   customerRefundLabel,
   customerResolutionLabel,
 } from '../../api/claimsRules'
-import { Badge, Banner, Button, Card, Kvp, Mono, type BadgeVariant } from '../../design/components'
+import { Badge, Banner, Card, Kvp, Mono, type BadgeVariant } from '../../design/components'
 import { useClaim } from '../../hooks/useClaims'
 import { formatCount, formatDate, formatNgn } from '../../lib/format'
 import { PageHeader } from '../../shell/PageHeader'
@@ -141,7 +141,6 @@ function Outcome({ claim }: { claim: Claim }): JSX.Element | null {
  */
 export function MyClaimDetail(): JSX.Element {
   const { id } = useParams<{ id: string }>()
-  const navigate = useNavigate()
   const { data: claim, isLoading, error } = useClaim(id ?? '')
   // Names this record in the breadcrumb once loaded (FD-46).
   useBreadcrumbLabel(claim?.reference)
@@ -155,11 +154,6 @@ export function MyClaimDetail(): JSX.Element {
         <Banner variant="error">
           {missing || !error ? 'Claim not found.' : 'Could not load this claim. Please try again.'}
         </Banner>
-        <div className={styles.backLink}>
-          <Button variant="ghost" icon="arrowleft" onClick={() => navigate('/my-claims')}>
-            Back to my claims
-          </Button>
-        </div>
       </div>
     )
   }
@@ -191,11 +185,6 @@ export function MyClaimDetail(): JSX.Element {
         <EvidenceList files={claim.evidence ?? []} />
       </Card>
 
-      <div style={{ marginTop: 20 }}>
-        <Button variant="ghost" icon="arrowleft" onClick={() => navigate('/my-claims')}>
-          Back to my claims
-        </Button>
-      </div>
     </div>
   )
 }

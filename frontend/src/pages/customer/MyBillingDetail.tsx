@@ -602,10 +602,6 @@ export function MyBillingDetail(): JSX.Element {
         </>
       )}
 
-      <div className={styles.backLink}>
-        <Button variant="ghost" icon="arrowleft" onClick={() => navigate('/my-billing')}>Back to billing</Button>
-      </div>
-
       {showDispute && (
         <CbmDisputeModal
           billing={billing}

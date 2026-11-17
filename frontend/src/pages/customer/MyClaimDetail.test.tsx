@@ -1,6 +1,5 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { render, screen, within } from '@testing-library/react'
-import userEvent from '@testing-library/user-event'
 import { MemoryRouter, Route, Routes } from 'react-router-dom'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { claimsApi, type Claim } from '../../api/claims'
@@ -170,8 +169,6 @@ describe('MyClaimDetail (UX-07)', () => {
     )
     renderPage('someone-elses')
     expect(await screen.findByText('Claim not found.')).toBeInTheDocument()
-    await userEvent.click(screen.getByRole('button', { name: /Back to my claims/ }))
-    expect(screen.getByText('Claims list')).toBeInTheDocument()
   })
 
   it('says it could not load, rather than "not found", for any other failure', async () => {
@@ -182,10 +179,10 @@ describe('MyClaimDetail (UX-07)', () => {
     expect(await screen.findByText('Could not load this claim. Please try again.')).toBeInTheDocument()
   })
 
-  it('goes back to the list', async () => {
+  it('has no hand-written back link: the breadcrumb is the way back (FD-47)', async () => {
     vi.mocked(claimsApi.get).mockResolvedValue(CLAIM)
     renderPage()
-    await userEvent.click(await screen.findByRole('button', { name: /Back to my claims/ }))
-    expect(screen.getByText('Claims list')).toBeInTheDocument()
+    await screen.findByText('Two cartons arrived soaked.')
+    expect(screen.queryByRole('button', { name: /Back to/ })).toBeNull()
   })
 })

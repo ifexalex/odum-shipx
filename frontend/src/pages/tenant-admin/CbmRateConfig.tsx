@@ -1,6 +1,5 @@
 import { useQueryClient } from '@tanstack/react-query'
 import { useState, type JSX } from 'react'
-import { useNavigate } from 'react-router-dom'
 import { ApiError } from '../../api/client'
 import { configKeys } from '../../api/keys'
 import { configApi, type CbmRateConfig, type CbmRateCurrency, type CbmRateMode } from '../../api/tenantManagement'
@@ -25,7 +24,6 @@ function formatRateLine(config: CbmRateConfig): string {
 }
 
 export function CbmRateConfig(): JSX.Element {
-  const navigate = useNavigate()
   const qc = useQueryClient()
   const rate = useCbmRate({ freshOnOpen: true })
   const current: CbmRateConfig | null = rate.isFetchedAfterMount ? (rate.data ?? null) : null
@@ -193,7 +191,6 @@ export function CbmRateConfig(): JSX.Element {
             </div>
 
             <div className={styles.formActions}>
-              <Button variant="ghost" onClick={() => navigate('/admin/config')}>Back</Button>
               <Button variant="primary" loading={saving} disabled={!canSubmit} onClick={() => void handleSave()}>
                 Update rate
               </Button>

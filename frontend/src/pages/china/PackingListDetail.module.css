@@ -94,10 +94,6 @@
   color: var(--color-ink-4);
 }
 
-.backLink {
-  margin-top: 16px;
-}
-
 .newItemTag {
   font-style: normal;
   font-size: 11px;

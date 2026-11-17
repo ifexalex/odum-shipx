@@ -657,12 +657,6 @@ export function ManifestDetail(): JSX.Element {
         </div>
       )}
 
-      <div className={styles.backLink}>
-        <Button variant="ghost" icon="arrowleft" onClick={() => navigate('/manifests')}>
-          Back to manifests
-        </Button>
-      </div>
-
       {showVerifyModal && (
         <VerifyManifestModal
           manifest={manifest}

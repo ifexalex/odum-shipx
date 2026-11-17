@@ -8,7 +8,6 @@
  * pickup letterhead. tenant_admin only (route-guarded).
  */
 import { useCallback, useRef, useState, type JSX } from 'react'
-import { useNavigate } from 'react-router-dom'
 import { ApiError } from '../../api/client'
 import { type CreateWarehouseInput, type Warehouse } from '../../api/warehouses'
 import {
@@ -200,7 +199,6 @@ function WarehouseModal({ existing, onCancel, onSuccess }: WarehouseModalProps):
 type PendingRemoval = { warehouse: Warehouse; stage: 'delete' } | { warehouse: Warehouse; stage: 'retire'; reason: string }
 
 export function Warehouses(): JSX.Element {
-  const navigate = useNavigate()
   const [actionError, setActionError] = useState<string | null>(null)
   const [modal, setModal] = useState<{ open: boolean; existing: Warehouse | null }>({
     open: false,
@@ -395,12 +393,6 @@ export function Warehouses(): JSX.Element {
           }
         />
       </Card>
-
-      <div style={{ marginTop: 24 }}>
-        <Button variant="ghost" icon="arrowleft" onClick={() => navigate('/admin/config')}>
-          Back to configuration
-        </Button>
-      </div>
 
       <Modal
         open={pendingRemoval !== null}

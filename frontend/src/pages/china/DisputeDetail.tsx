@@ -1,6 +1,6 @@
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { useState, type JSX } from 'react'
-import { useNavigate, useParams } from 'react-router-dom'
+import { useParams } from 'react-router-dom'
 import { disputeApi, type DisputeDetail as DisputeDetailData, type ResolveCBMDisputeInput } from '../../api/billing'
 import { isTerminalDisputeStatus } from '../../api/billingRules'
 import { ApiError } from '../../api/client'
@@ -103,7 +103,6 @@ function ResolvePanel({ dispute, onResolved }: { dispute: DisputeDetailData; onR
  */
 export function DisputeDetail(): JSX.Element {
   const { id } = useParams<{ id: string }>()
-  const navigate = useNavigate()
   const qc = useQueryClient()
   useTopBarSlot({ subtitle: 'Judge the measurement, then resolve.' })
 
@@ -124,9 +123,6 @@ export function DisputeDetail(): JSX.Element {
         <Banner variant="error" title="Couldn't open this dispute">
           {error instanceof ApiError && error.status === 404 ? 'Dispute not found.' : 'Please try again.'}
         </Banner>
-        <div>
-          <Button variant="ghost" icon="arrowleft" onClick={() => navigate('/billing/disputes')}>Back to disputes</Button>
-        </div>
       </div>
     )
   }
@@ -137,7 +133,6 @@ export function DisputeDetail(): JSX.Element {
   return (
     <div className={styles.page}>
       <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
-        <Button variant="ghost" icon="arrowleft" onClick={() => navigate('/billing/disputes')}>Back to disputes</Button>
         <Badge variant={terminal ? 'success' : dispute.status === 'escalated_china' ? 'error' : 'warning'}>
           {STATUS_LABEL[dispute.status] ?? dispute.status}
         </Badge>

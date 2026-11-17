@@ -7,7 +7,6 @@
  */
 import { useQuery } from '@tanstack/react-query'
 import { useState, type JSX } from 'react'
-import { useNavigate } from 'react-router-dom'
 import { ApiError } from '../../api/client'
 import { configApi, type ChargeType } from '../../api/tenantManagement'
 import { configKeys } from '../../api/keys'
@@ -145,7 +144,6 @@ function ChargeTypeModal({ existing, onCancel, onSuccess }: ChargeTypeModalProps
 }
 
 export function ChargeTypes(): JSX.Element {
-  const navigate = useNavigate()
   const [modal, setModal] = useState<{ open: boolean; existing: ChargeType | null }>({
     open: false,
     existing: null,
@@ -266,12 +264,6 @@ export function ChargeTypes(): JSX.Element {
           }
         />
       </Card>
-
-      <div style={{ marginTop: 24 }}>
-        <Button variant="ghost" icon="arrowleft" onClick={() => navigate('/admin/config')}>
-          Back to configuration
-        </Button>
-      </div>
 
       {modal.open && (
         <ChargeTypeModal

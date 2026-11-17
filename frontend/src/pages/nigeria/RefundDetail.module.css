@@ -50,7 +50,6 @@
 .statsRow { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 12px; margin-top: 20px; }
 .loadingState { padding: 48px; text-align: center; color: var(--color-text-muted); }
 .banner { margin-bottom: 16px; }
-.backLink { margin-top: 24px; }
 
 /* modal — mobile-first bottom sheet, see ReleaseNoteDetail.module.css's
    matching comment for the pattern reference. */

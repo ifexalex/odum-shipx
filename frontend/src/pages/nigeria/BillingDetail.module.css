@@ -181,9 +181,6 @@
 }
 
 /* Back link */
-.backLink {
-  margin-top: 32px;
-}
 
 /* Modals — mobile-first bottom sheet, matching the proven pattern in
    warehouse/WarehouseDashboard.module.css; upgrades to a centered dialog

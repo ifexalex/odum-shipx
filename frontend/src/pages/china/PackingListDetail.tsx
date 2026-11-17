@@ -487,12 +487,6 @@ export function PackingListDetail(): JSX.Element {
         )}
       </Card>
 
-      <div className={styles.backLink}>
-        <Button variant="ghost" icon="arrowleft" onClick={() => navigate('/packing-lists')}>
-          Back to packing lists
-        </Button>
-      </div>
-
       {showRejectModal && (
         <RejectModal
           submitting={actionSubmitting}

@@ -114,10 +114,6 @@
   font-weight: 600;
 }
 
-.backLink {
-  margin-top: 16px;
-}
-
 .modalOverlay {
   position: fixed;
   inset: 0;

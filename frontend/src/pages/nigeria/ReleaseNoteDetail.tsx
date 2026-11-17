@@ -696,12 +696,6 @@ export function ReleaseNoteDetail(): JSX.Element {
         </Card>
       </div>
 
-      <div className={styles.backLink}>
-        <Button variant="ghost" icon="arrowleft" onClick={() => navigate('/release-notes')}>
-          Back to release notes
-        </Button>
-      </div>
-
       {/* Modals */}
       {showPickup && (
         <RecordPickupModal

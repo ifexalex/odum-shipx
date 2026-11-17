@@ -1802,3 +1802,7 @@ See `06_routing_rbac_and_navigation.md` "Breadcrumbs". Pages changed: every reco
 
 `lib/uploadLimits.ts` (`MAX_UPLOAD_BYTES`, `uploadSizeProblem`) is the one limit: `useFileUpload` (claim evidence, manifest evidence, payment-claim evidence through `EvidenceUploader`), `DocumentsTab` (container documents) and `uploadImportFile` (both spreadsheet imports, `FileTooLargeError`) refuse an empty or over-5 MB file with "This file is 6.0 MB. The limit is 5 MB." before any request, and every presign call sends `size_bytes` (`presignedUploadApi.getUrl`, `manifestApi.getEvidenceUploadUrl`, `paymentClaimApi.getUploadUrl`, `containerDocumentsApi.presignUpload`, `excelApi.getImportPresignedUrl` gained a size argument). Hints now say "max 5 MB" (were 10 MB, which nothing enforced).
 
+## Redundant back links removed (FD-47, 2026-11-17)
+
+Removed: AdminCustomerDetail, StaffUserDetail, PlatformTenantDetail, ManifestDetail, RefundDetail, ReleaseNoteDetail, ClaimDetail, BillingDetail, PackingListDetail, DisputeDetail (top and error state), MyClaimDetail, MyShipmentDetail, MyReleaseNote, MyBillingDetail, and on settings Warehouses, ContainerCapacities, ChargeTypes, DollarRateConfig and CbmRateConfig. Their now-dead `.backLink` CSS went too. Guard: `pages/noBackLinks.test.ts`. `MyClaimDetail.test.tsx`'s "goes back to the list" became "has no hand-written back link".
+

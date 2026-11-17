@@ -130,11 +130,6 @@ export function MyShipmentDetail(): JSX.Element {
     return (
       <div className={styles.page}>
         <Banner variant="error">{error ?? 'Shipment not found.'}</Banner>
-        <div className={styles.backLink}>
-          <Button variant="ghost" icon="arrowleft" onClick={() => navigate('/my-shipments')}>
-            Back to shipments
-          </Button>
-        </div>
       </div>
     )
   }

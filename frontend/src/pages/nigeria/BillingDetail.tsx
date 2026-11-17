@@ -7,7 +7,7 @@ import { useSession } from '../../auth/useSession'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { billingKeys, releaseNoteKeys } from '../../api/keys'
 import { STALE_30S } from '../../lib/queryClient'
-import { Action, Badge, Banner, Button, ExportButton, Icon, Mono, StatCard } from '../../design/components'
+import { Action, Badge, Banner, ExportButton, Icon, Mono, StatCard } from '../../design/components'
 import { SectionHead } from '../../shell/SectionHead'
 import styles from './BillingDetail.module.css'
 import { formatDate, formatNgn } from '../../lib/format'
@@ -314,11 +314,6 @@ export function BillingDetail(): JSX.Element {
       )}
 
       {/* Back link */}
-      <div className={styles.backLink}>
-        <Button variant="ghost" icon="arrowleft" onClick={() => navigate('/billing')}>
-          Back to billing
-        </Button>
-      </div>
 
       {/* Modals */}
       {showAddChargeModal && (

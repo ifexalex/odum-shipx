@@ -1,6 +1,6 @@
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { useState, type JSX } from 'react'
-import { useLocation, useNavigate, useParams } from 'react-router-dom'
+import { useLocation, useParams } from 'react-router-dom'
 import { ApiError } from '../../api/client'
 import { usersApi, type TenantUser, type TenantUserRole } from '../../api/tenantManagement'
 import { staffKeys } from '../../api/keys'
@@ -68,7 +68,6 @@ export function StaffUserDetail(): JSX.Element {
   const { id } = useParams<{ id: string }>()
   const { session } = useSession()
   const location = useLocation()
-  const navigate = useNavigate()
   const stateUser = (location.state as { user?: TenantUser } | null)?.user ?? null
 
   const qc = useQueryClient()
@@ -293,9 +292,6 @@ export function StaffUserDetail(): JSX.Element {
         </div>
       </Card>
 
-      <div style={{ marginTop: 24 }}>
-        <Button variant="ghost" icon="arrowleft" onClick={() => navigate('/admin/users')}>Back to users</Button>
-      </div>
     </div>
   )
 }

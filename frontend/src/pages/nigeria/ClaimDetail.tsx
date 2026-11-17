@@ -1,6 +1,6 @@
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { useState, type JSX } from 'react'
-import { useLocation, useNavigate, useParams } from 'react-router-dom'
+import { useLocation, useParams } from 'react-router-dom'
 import { ApiError } from '../../api/client'
 import {
   claimsApi,
@@ -287,7 +287,6 @@ function StatusStepper({ current }: { current: DamageClaimStatus }): JSX.Element
 export function ClaimDetail(): JSX.Element {
   const { id } = useParams<{ id: string }>()
   const location = useLocation()
-  const navigate = useNavigate()
   const { session } = useSession()
   const role = session?.role ?? 'nigeria_office_staff'
 
@@ -409,10 +408,6 @@ export function ClaimDetail(): JSX.Element {
           </Card>
         </div>
       )}
-
-      <div className={styles.backLink}>
-        <Button variant="ghost" icon="arrowleft" onClick={() => navigate('/claims')}>Back to claims</Button>
-      </div>
 
       {showInspect && (
         <StartInspectionModal

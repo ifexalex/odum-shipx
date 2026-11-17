@@ -603,9 +603,6 @@ export function AdminCustomerDetail(): JSX.Element {
               {hasLogin ? 'Resend account invite' : 'Send account invite'}
             </Action>
           )}
-          <Button variant="ghost" icon="arrowleft" onClick={() => navigate('/admin/customers')}>
-            All customers
-          </Button>
         </div>
       </div>
 

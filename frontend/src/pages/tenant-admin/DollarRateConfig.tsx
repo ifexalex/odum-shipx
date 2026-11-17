@@ -1,6 +1,5 @@
 import { useQueryClient } from '@tanstack/react-query'
 import { useState, type JSX } from 'react'
-import { useNavigate } from 'react-router-dom'
 import { ApiError } from '../../api/client'
 import { configKeys } from '../../api/keys'
 import { configApi, type DollarRateConfig } from '../../api/tenantManagement'
@@ -159,7 +158,6 @@ function baseRateFreshness(rate: DollarRateConfig): string {
 }
 
 export function DollarRateConfig(): JSX.Element {
-  const navigate = useNavigate()
   const qc = useQueryClient()
   const rate = useDollarRate({ freshOnOpen: true })
   const current: DollarRateConfig | null = rate.isFetchedAfterMount ? (rate.data ?? null) : null
@@ -267,7 +265,6 @@ export function DollarRateConfig(): JSX.Element {
               />
             </div>
             <div className={styles.formActions}>
-              <Button variant="ghost" onClick={() => navigate('/admin/config')}>Back</Button>
               <Button
                 variant="primary"
                 loading={saving}

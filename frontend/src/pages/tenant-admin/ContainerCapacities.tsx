@@ -8,7 +8,6 @@
  */
 import { useQuery } from '@tanstack/react-query'
 import { useState, type JSX } from 'react'
-import { useNavigate } from 'react-router-dom'
 import { ApiError } from '../../api/client'
 import { containerCapacitiesApi, type ContainerCapacity } from '../../api/tenantManagement'
 import { containerCapacityKeys } from '../../api/keys'
@@ -149,7 +148,6 @@ function CapacityModal({ existing, onCancel, onSuccess }: CapacityModalProps): J
 }
 
 export function ContainerCapacities(): JSX.Element {
-  const navigate = useNavigate()
   const [modal, setModal] = useState<{ open: boolean; existing: ContainerCapacity | null }>({
     open: false,
     existing: null,
@@ -255,12 +253,6 @@ export function ContainerCapacities(): JSX.Element {
           }
         />
       </Card>
-
-      <div style={{ marginTop: 24 }}>
-        <Button variant="ghost" icon="arrowleft" onClick={() => navigate('/admin/config')}>
-          Back to configuration
-        </Button>
-      </div>
 
       {modal.open && (
         <CapacityModal

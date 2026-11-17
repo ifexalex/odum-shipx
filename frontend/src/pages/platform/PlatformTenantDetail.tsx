@@ -489,10 +489,6 @@ export function PlatformTenantDetail(): JSX.Element {
       </>
       )}
 
-      <div style={{ marginTop: 24 }}>
-        <Button variant="ghost" icon="arrowleft" onClick={() => navigate('/platform/tenants')}>Back to tenants</Button>
-      </div>
-
       {activeModal && (
         <ActionModal
           action={activeModal}
