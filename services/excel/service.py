@@ -15,7 +15,7 @@ from shared.phone import dial_code_for_country, normalize_phone
 from shared.providers import get_storage_provider
 
 from . import repository as repo
-from ._tables import Column, build_csv, build_xlsx
+from ._tables import Column, build_csv, build_xlsx, csv_safe
 from .export_billing import generate_billing_xlsx
 from .export_lists import BILLING_LIST_COLUMNS, CONTAINER_LIST_COLUMNS
 from .export_manifest import generate_manifest_xlsx
@@ -74,7 +74,8 @@ def _rows_to_csv(rows: list[dict[str, Any]], columns: list[str]) -> BytesIO:
     buf = io.StringIO()
     writer = csv.DictWriter(buf, fieldnames=columns, extrasaction="ignore", lineterminator="\r\n")
     writer.writeheader()
-    writer.writerows(rows)
+    # Typed-in text (names, descriptions) must not run as a formula when the file is opened in a spreadsheet.
+    writer.writerows({column: csv_safe(row.get(column)) for column in columns} for row in rows)
     return BytesIO(buf.getvalue().encode("utf-8-sig"))  # utf-8-sig for Excel compatibility
 
 

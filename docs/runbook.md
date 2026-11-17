@@ -1020,7 +1020,7 @@ reflect the waiver; the history does not survive).
 
 **Fixed (2026-11-16):** the two new list exports (`GET /v1/billing/export`, `GET /v1/containers/export`) write text as text (`services/excel/_tables.py`; tests in `tests/unit/test_list_exports.py`, mutation-checked).
 
-**Still open:** the older exports `export_billing.py`, `export_manifest.py`, `export_packing_list.py` and `service._rows_to_csv` (used by the customer's "Download invoice"), about fifteen text cells. The fix is to route their text cells through `_tables.py` (xlsx: force the cell type to string; csv: a leading `'`), leaving numbers and money untouched so a negative balance is not mistaken for a formula. A careless fix that quotes every leading `-` would corrupt negative amounts in the csv.
+**Closed (2026-11-16, same day):** the older exports are fixed too. `export_billing.py`, `export_manifest.py` and `export_packing_list.py` call `_tables.neutralise_formulas(workbook)` before saving (none of them writes a formula on purpose, so any formula cell is typed-in text), and `service._rows_to_csv` (the customer's "Download invoice" among others) passes each value through `_tables.csv_safe`, which prefixes text that starts with `=`, `+`, `-`, `@`, tab or carriage return with an apostrophe and leaves numbers alone, so a negative balance held as a number is not touched. Tests: `tests/unit/test_export_formula_safety.py` (mutation-checked). The PDF exports are not spreadsheets and are unaffected. A new exporter must use `_tables.build_xlsx` / `build_csv`, or call these two helpers.
 
 ## Pickup codes (audit UX-09, 2026-11-16, ADR-008)
 

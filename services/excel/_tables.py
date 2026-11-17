@@ -77,6 +77,31 @@ def _csv_value(kind: ColumnKind, raw: Any) -> str:
     return f"'{text}" if text.startswith(_FORMULA_PREFIXES) else text
 
 
+def neutralise_formulas(workbook: openpyxl.Workbook) -> None:
+    """Turn every formula cell in `workbook` back into the text it was written as.
+
+    openpyxl stores any string that starts with `=` as a formula. None of this service's exports writes a formula on
+    purpose, so a formula cell is always typed-in text (a customer's name, a goods description) that would otherwise run
+    when the file is opened. Call this just before saving a workbook built cell by cell.
+    """
+    for sheet in workbook.worksheets:
+        for row in sheet.iter_rows():
+            for cell in row:
+                if cell.data_type == "f":
+                    cell.data_type = "s"
+
+
+def csv_safe(value: Any) -> Any:
+    """`value` as it may be written to a csv cell.
+
+    Text that a spreadsheet would read as a formula gets a leading apostrophe. Numbers, dates and None are returned as
+    they are, so a negative amount held as a number is not mistaken for a formula.
+    """
+    if isinstance(value, str) and value.startswith(_FORMULA_PREFIXES):
+        return f"'{value}"
+    return value
+
+
 def build_xlsx(sheet_title: str, columns: list[Column], rows: Iterable[dict[str, Any]]) -> BytesIO:
     """A single-sheet workbook: bold frozen header, a filter on every column, widths fitted to the content."""
     workbook = openpyxl.Workbook()

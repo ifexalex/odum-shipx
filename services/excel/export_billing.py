@@ -9,6 +9,8 @@ from openpyxl.styles import Font
 from openpyxl.utils import get_column_letter
 from openpyxl.worksheet.worksheet import Worksheet
 
+from ._tables import neutralise_formulas
+
 
 def _autosize_columns(ws: Worksheet) -> None:
     for col in ws.columns:
@@ -84,6 +86,7 @@ def generate_billing_xlsx(billing_rows: list[dict[str, Any]]) -> BytesIO:
     _autosize_columns(ws)
 
     buf = BytesIO()
+    neutralise_formulas(wb)
     wb.save(buf)
     buf.seek(0)
     return buf
