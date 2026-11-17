@@ -378,3 +378,15 @@
   font-size: 14px;
   margin: 0;
 }
+
+/* Under the exchange-rate line when the invoice used the last known rate (audit BE-11). */
+.rateNotice {
+  margin: -2px 0 6px;
+  padding: 6px 10px;
+  border-radius: var(--radius-sm);
+  background: var(--color-warning-soft);
+  color: var(--color-warning-strong);
+  font-size: 12px;
+  line-height: 1.4;
+}
+

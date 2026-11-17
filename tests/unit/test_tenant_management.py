@@ -550,6 +550,7 @@ class TestGetDollarRate:
             "markup_type": "flat",
             "markup_value": Decimal("15"),
             "source": "bybit_p2p",
+            "rate_source": "live",
             "fetched_at": "2026-09-19T10:00:00+00:00",
             "markup_updated_at": "2026-09-18T09:00:00+00:00",
         }
@@ -561,6 +562,7 @@ class TestGetDollarRate:
         assert result["markup_type"] == "flat"
         assert result["markup_value"] == Decimal("15")
         assert result["source"] == "bybit_p2p"
+        assert result["rate_source"] == "live"
         assert result["currency_pair"] == "USD_NGN"
         assert result["effective_from"] == "2026-09-18T09:00:00+00:00"
 
@@ -573,6 +575,7 @@ class TestGetDollarRate:
             "markup_type": "percentage",
             "markup_value": Decimal("0"),
             "source": "bybit_p2p",
+            "rate_source": "live",
             "fetched_at": "t0",
             "markup_updated_at": None,
         }
@@ -594,6 +597,7 @@ class TestUpdateDollarRate:
             "markup_type": "percentage",
             "markup_value": Decimal("0"),
             "source": "bybit_p2p",
+            "rate_source": "live",
             "fetched_at": "t0",
             "markup_updated_at": "",
         }
@@ -603,6 +607,7 @@ class TestUpdateDollarRate:
             "markup_type": "flat",
             "markup_value": Decimal("15"),
             "source": "bybit_p2p",
+            "rate_source": "live",
             "fetched_at": "t0",
             "markup_updated_at": "2026-09-19T00:00:00+00:00",
         }
@@ -638,6 +643,7 @@ class TestUpdateDollarRate:
             "markup_type": "percentage",
             "markup_value": Decimal("0"),
             "source": "bybit_p2p",
+            "rate_source": "live",
             "fetched_at": "t0",
             "markup_updated_at": "",
         }
@@ -647,6 +653,7 @@ class TestUpdateDollarRate:
             "markup_type": "percentage",
             "markup_value": Decimal("5"),
             "source": "bybit_p2p",
+            "rate_source": "live",
             "fetched_at": "t0",
             "markup_updated_at": "2026-09-19T00:00:00+00:00",
         }
@@ -677,6 +684,7 @@ class TestUpdateDollarRate:
             "markup_type": "percentage",
             "markup_value": Decimal("0"),
             "source": "bybit_p2p",
+            "rate_source": "live",
             "fetched_at": "t0",
             "markup_updated_at": "",
         }
@@ -686,6 +694,7 @@ class TestUpdateDollarRate:
             "markup_type": "flat",
             "markup_value": Decimal("15"),
             "source": "bybit_p2p",
+            "rate_source": "live",
             "fetched_at": "t0",
             "markup_updated_at": "2026-09-19T00:00:00+00:00",
         }

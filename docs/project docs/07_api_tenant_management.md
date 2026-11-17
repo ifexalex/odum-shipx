@@ -257,6 +257,9 @@ Re-onboards an offboarded tenant under a **new agreement**. Distinct from `/acti
 The create customer endpoint accepts `full_name` as an alias for the `name` field (normalised in the service layer). Both `{"name": "..."}` and `{"full_name": "..."}` are accepted.
 
 ### GET /v1/tenant/dollar-rate + /v1/tenant/cbm-rate — staff read access
+
+**2026-11-17 (audit BE-11):** the dollar-rate response adds `rate_source` (`live` | `last_known` | `hardcoded`), and `fetched_at` is `null` for `hardcoded` (it used to be the request time). `DollarRateConfig` shows "last known rate, fetched …" or "built-in default, never fetched" and a warning banner whenever the rate is not live.
+
 Writes (`PUT`) to these two rate endpoints remain **tenant_admin only**, but the **`GET`** was widened to also allow `china_office_staff` and `nigeria_office_staff` (handler `_dispatch`, special-cased ahead of the blanket `assert_role(TENANT_ADMIN)` on the `/v1/tenant/*` section). Reason: the China packing-list wizard shows a live shipping-price estimate computed from the CBM rate × FX rate, and Nigeria staff preview the same when billing. Least-privilege read-only widening — a shipping rate is neither PII nor a secret. Every other `/v1/tenant/*` path/method is unchanged.
 
 ### GET /v1/customers — derived `shipment_count`

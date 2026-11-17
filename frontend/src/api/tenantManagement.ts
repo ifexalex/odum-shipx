@@ -273,10 +273,15 @@ export interface DollarRateConfig {
   base_rate: number
   markup_type: 'percentage' | 'flat'
   markup_value: number
-  /** Always "bybit_p2p" today — surfaced for transparency, not yet used to branch UI. */
+  /** The market feed: always "bybit_p2p" today. */
   source: string
-  /** When the underlying Bybit rate was last fetched (may be older than "now" if served from cache/fallback). */
-  fetched_at: string
+  /**
+   * Where this base rate came from (audit BE-11): `live` (fetched within the 10-minute cache), `last_known` (the feed
+   * is down; the last fetched rate), or `hardcoded` (no rate has ever been fetched; invoicing refuses it).
+   */
+  rate_source: 'live' | 'last_known' | 'hardcoded'
+  /** When the underlying Bybit rate was fetched; null for the hard-coded value, which never was. */
+  fetched_at: string | null
   currency_pair: string
   /** When the markup was last changed by an admin — "" if never changed. */
   effective_from: string

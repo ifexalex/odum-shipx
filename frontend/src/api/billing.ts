@@ -141,6 +141,14 @@ export interface Billing {
    *  adjusts total_cbm (disputes are whole-invoice, never per-type). */
   cbm_breakdown?: Record<'carton' | 'bag' | 'bale', { cbm: string; rate: string; subtotal: string }> | null
   dollar_rate: string
+  /**
+   * Where `dollar_rate` came from (audit BE-11, migration 068): `live` from the market feed, or `last_known` when the
+   * feed was down and the last fetched rate was used. Staff detail read only; null for invoices issued before
+   * 2026-11-17 and absent on customer reads.
+   */
+  exchange_rate_source?: 'live' | 'last_known' | 'hardcoded' | null
+  /** When that market rate was fetched (ISO). */
+  exchange_rate_fetched_at?: string | null
   subtotal_usd: string
   subtotal_ngn: string
   misc_fees: MiscFee[]
@@ -322,7 +330,7 @@ export interface InvoiceResult {
   status: 'created' | 'existing' | 'skipped' | 'failed'
   billing_id: string | null
   invoice_number: string | null
-  /** Rule id when `status` is `skipped` or `failed`, e.g. `NO_CBM`, `RATE_CONFIG_MISSING`, `GENERATION_ERROR`. */
+  /** Rule id when `status` is `skipped` or `failed`, e.g. `NO_CBM`, `RATE_CONFIG_MISSING`, `RATE_UNAVAILABLE`, `GENERATION_ERROR`. */
   reason: string | null
   detail: string | null
 }

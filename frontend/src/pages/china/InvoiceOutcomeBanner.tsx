@@ -8,6 +8,7 @@ import styles from './InvoiceOutcomeBanner.module.css'
 const REASON_TEXT: Record<string, string> = {
   RATE_CONFIG_MISSING: 'CBM rate or dollar rate is not set',
   NO_CBM: 'no CBM on their approved packing lists',
+  RATE_UNAVAILABLE: 'no market dollar rate could be fetched',
   GENERATION_ERROR: 'the invoice could not be created',
 }
 

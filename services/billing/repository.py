@@ -362,13 +362,15 @@ def create_invoice(
                     tenant_id, customer_id, container_id, invoice_number,
                     total_cartons, total_cbm, cbm_rate_usd, cbm_rate_currency,
                     cbm_rate_mode, cbm_breakdown, subtotal_usd,
-                    exchange_rate_ngn, subtotal_ngn, misc_charges_ngn, credits_applied_ngn,
+                    exchange_rate_ngn, exchange_rate_source, exchange_rate_fetched_at,
+                    subtotal_ngn, misc_charges_ngn, credits_applied_ngn,
                     total_ngn, amount_paid_ngn, status, billed_at, created_by
                 ) VALUES (
                     %(tenant_id)s, %(customer_id)s, %(container_id)s, %(invoice_number)s,
                     %(total_cartons)s, %(total_cbm)s, %(cbm_rate_usd)s, %(cbm_rate_currency)s,
                     %(cbm_rate_mode)s, %(cbm_breakdown)s::jsonb, %(subtotal_usd)s,
-                    %(exchange_rate_ngn)s, %(subtotal_ngn)s, %(misc_charges_ngn)s, %(credits_applied_ngn)s,
+                    %(exchange_rate_ngn)s, %(exchange_rate_source)s, %(exchange_rate_fetched_at)s,
+                    %(subtotal_ngn)s, %(misc_charges_ngn)s, %(credits_applied_ngn)s,
                     %(total_ngn)s, %(amount_paid_ngn)s, %(status)s, %(billed_at)s, %(created_by)s
                 )
                 ON CONFLICT (tenant_id, customer_id, container_id) WHERE status <> 'cancelled'
@@ -376,6 +378,9 @@ def create_invoice(
                 RETURNING *
                 """,
                 {
+                    # Unknown unless the caller says (migration 068): an invoice built without a market rate lookup.
+                    "exchange_rate_source": None,
+                    "exchange_rate_fetched_at": None,
                     **data,
                     "invoice_number": f"{number_prefix}-{seq:04d}",
                     "credits_applied_ngn": sum((c.amount_ngn for c in credit_applications), Decimal("0")),

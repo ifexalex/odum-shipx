@@ -589,3 +589,9 @@ CREATE INDEX idx_onboarding_request_email ON tenant_onboarding_request(lower(con
 ## Migration 067 — `tenant_offboarding_export` (2026-11-17, audit BE-10)
 
 One row per tenant data export. Columns: `id`, `tenant_id` (FK `tenant` ON DELETE CASCADE), `status` (`pending|running|completed|failed|cancelled`), `requested_by` (platform admin's id; VARCHAR, no FK: platform admins are not `tenant_user` rows), `requested_at`, `started_at`, `completed_at`, `attempts` (≥ 0), `object_key`, `size_bytes` (≥ 0), `sha256`, `row_counts` JSONB, `last_error` (exception type name only), `updated_at`. CHECK: a completed row has `object_key` and `completed_at`. Indexes: open work by `requested_at` (partial), `(tenant_id, requested_at DESC)`, and a partial UNIQUE on `tenant_id` WHERE status is pending or running (one export in flight per tenant; `queue_export` relies on it with `ON CONFLICT … DO NOTHING`). RLS: canonical predicate, ENABLE + FORCE (`05c`). Applied to the local dev database on 2026-11-17.
+
+## Migration 068 — where an invoice's exchange rate came from (2026-11-17, audit BE-11)
+
+- `billing.exchange_rate_source VARCHAR(20)`, `CHECK (IN ('live', 'last_known', 'hardcoded'))`: where `exchange_rate_ngn` came from (`shared.fx_rate.RATE_SOURCE_*`). Invoicing refuses `hardcoded`, so new rows carry `live` or `last_known`.
+- `billing.exchange_rate_fetched_at TIMESTAMPTZ`: when that market rate was fetched.
+- Both NULL for invoices issued before the migration (nothing recorded it). No backfill, no RLS change. Applied to the local dev database on 2026-11-17 (4 existing invoices, all NULL).

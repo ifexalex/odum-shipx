@@ -6,6 +6,7 @@ carryover/credit application, and billing recalculation on dispute resolution.
 
 import json
 import logging
+import os
 from dataclasses import dataclass
 from datetime import UTC, date, datetime
 from decimal import ROUND_HALF_UP, Decimal
@@ -20,7 +21,7 @@ from shared.exceptions import (
     InsufficientPermissionsError,
     ResourceNotFoundError,
 )
-from shared.fx_rate import get_effective_dollar_rate
+from shared.fx_rate import RATE_SOURCE_HARDCODED, RATE_SOURCE_LAST_KNOWN, get_effective_dollar_rate, rate_age_minutes
 from shared.notifications import enqueue_notifications
 from shared.observability import record_failure
 from shared.staff_notifications import notify_staff
@@ -69,7 +70,7 @@ class InvoiceOutcome:
     ``created``  - a new invoice was issued.
     ``existing`` - a live invoice was already there; nothing was changed.
     ``skipped``  - no invoice could be issued; ``reason`` is a rule id such as
-                   ``RATE_CONFIG_MISSING`` or ``NO_CBM``, ``detail`` says why.
+                   ``RATE_CONFIG_MISSING``, ``RATE_UNAVAILABLE`` or ``NO_CBM``, ``detail`` says why.
     """
 
     status: str
@@ -106,7 +107,20 @@ def handle_payment_due(
     # is just the case where all three rates happen to be equal, so the
     # math below never branches on rate_mode itself.
     cbm_config = get_cbm_rate_config(tenant_id)
-    dollar_rate = get_effective_dollar_rate(tenant_id)["rate"]
+    effective_rate = get_effective_dollar_rate(tenant_id)
+    dollar_rate = effective_rate["rate"]
+    rate_source = effective_rate.get("rate_source")
+
+    # No market rate has ever been fetched: the only number available is a constant in the code. Billing a customer
+    # real money at a made-up rate is worse than billing them a little later (audit BE-11). Staff are told in-app
+    # (`_notify_unbilled`) and can generate the invoice once a rate has been fetched.
+    if rate_source == RATE_SOURCE_HARDCODED:
+        logger.error("Not invoicing customer %s on container %s: no market dollar rate is available", customer_id, container_id)
+        return InvoiceOutcome(
+            status="skipped",
+            reason="RATE_UNAVAILABLE",
+            detail="No market dollar rate could be fetched. Generate the invoice again once the rate is available.",
+        )
 
     if (cbm_config["carton_rate"] <= 0 and cbm_config["bag_rate"] <= 0 and cbm_config["bale_rate"] <= 0) or dollar_rate <= 0:
         logger.warning(
@@ -203,6 +217,8 @@ def handle_payment_due(
             "cbm_breakdown": json.dumps(charge["breakdown"], default=str),
             "subtotal_usd": subtotal_usd,
             "exchange_rate_ngn": dollar_rate,
+            "exchange_rate_source": rate_source,
+            "exchange_rate_fetched_at": effective_rate.get("fetched_at"),
             "subtotal_ngn": subtotal_ngn,
             "misc_charges_ngn": Decimal("0"),
             "total_ngn": total_ngn,
@@ -271,7 +287,48 @@ def handle_payment_due(
         container_id,
     )
     _notify_customer_payment_due(tenant_id, customer_id, container_number, total_ngn, request_id)
+    _warn_if_rate_was_old(tenant_id, billing_id, invoice_number, rate_source, effective_rate.get("fetched_at"))
     return InvoiceOutcome(status="created", billing_id=billing_id, invoice_number=invoice_number)
+
+
+def _rate_max_age_minutes() -> int:
+    """How old the exchange rate behind a new invoice may be before tenant admins are told (``FX_RATE_MAX_AGE_MINUTES``).
+
+    The live rate is refreshed every ten minutes, so a rate older than this means the market feed has been down for a
+    while. Default two hours.
+    """
+    try:
+        return max(1, int(os.environ.get("FX_RATE_MAX_AGE_MINUTES", "120")))
+    except ValueError:
+        logger.warning("FX_RATE_MAX_AGE_MINUTES is not a whole number; using 120")
+        return 120
+
+
+def _warn_if_rate_was_old(
+    tenant_id: str, billing_id: str, invoice_number: str | None, rate_source: str | None, fetched_at: str | None
+) -> None:
+    """Tell tenant admins an invoice was priced at a rate fetched long ago (audit BE-11). Never raises."""
+    if rate_source != RATE_SOURCE_LAST_KNOWN:
+        return
+    age = rate_age_minutes(fetched_at)
+    if age is not None and age <= _rate_max_age_minutes():
+        return
+    when = f"{age / 60:.0f} hours ago" if age is not None else "at an unknown time"
+    try:
+        notify_staff(
+            tenant_id=tenant_id,
+            event_type="invoice_old_exchange_rate",
+            entity_type="billing",
+            entity_id=billing_id,
+            title="Invoice priced at an old exchange rate",
+            body=(
+                f"Invoice {invoice_number or billing_id} used the last known dollar rate, fetched {when}, because the "
+                "live rate could not be fetched. Check it before the customer pays."
+            ),
+            target_role=str(UserRole.TENANT_ADMIN),
+        )
+    except Exception:
+        logger.exception("Failed to tell tenant admins invoice %s used an old exchange rate", billing_id)
 
 
 def _credits_to_apply(credits: list[dict[str, Any]], due_ngn: Decimal) -> list[repo.CreditApplication]:
@@ -422,8 +479,16 @@ def get_billing(tenant_id: str, billing_id: str, ctx: Any) -> dict[str, Any]:
         customer = repo.get_customer_by_user_id(tenant_id, ctx.user_id)
         if not customer or str(customer["id"]) != str(row.get("customer_id")):
             raise InsufficientPermissionsError("Customers may only view their own billing records")
+        return _enrich_billing(tenant_id, dict(row))
 
-    return _enrich_billing(tenant_id, dict(row))
+    # Staff only (audit BE-11): where the exchange rate came from, so an invoice priced at the last known rate during
+    # a market-feed outage is visible on the invoice. NULL for invoices issued before migration 068.
+    fetched_at = row.get("exchange_rate_fetched_at")
+    return {
+        **_enrich_billing(tenant_id, dict(row)),
+        "exchange_rate_source": row.get("exchange_rate_source"),
+        "exchange_rate_fetched_at": fetched_at.isoformat() if isinstance(fetched_at, datetime) else fetched_at,
+    }
 
 
 def get_billing_for_customer(
@@ -828,6 +893,7 @@ _BILLABLE_CONTAINER_STATUSES = frozenset({"cleared", "at_warehouse", "fully_rele
 _SKIP_MESSAGES = {
     "RATE_CONFIG_MISSING": "Set the CBM rate and dollar rate in Settings, then generate the invoice again.",
     "NO_CBM": "The customer's approved packing lists on this container have no CBM to bill.",
+    "RATE_UNAVAILABLE": "No market dollar rate could be fetched. Generate the invoice again once the rate is available.",
 }
 
 
@@ -926,7 +992,7 @@ def generate_billing(
 
     With ``req.customer_id`` it bills that customer and fails with a specific
     rule if it cannot (``CONTAINER_NOT_CLEARED``, ``CUSTOMER_NOT_ON_CONTAINER``,
-    ``ALREADY_BILLED``, ``NO_CBM``, ``RATE_CONFIG_MISSING``). Without it, it
+    ``ALREADY_BILLED``, ``NO_CBM``, ``RATE_CONFIG_MISSING``, ``RATE_UNAVAILABLE``). Without it, it
     bills every customer on the container who has no invoice yet and returns the
     per-customer results.
     """

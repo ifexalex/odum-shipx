@@ -404,6 +404,7 @@ Note this is deliberately a **broader** role set than `GET /v1/notifications/log
 | `cbm_dispute_filed` | `billing/service.py::file_cbm_dispute` | nigeria_office_staff, tenant_admin |
 | `cbm_dispute_sla_breach` | `scheduled/sla_check.py::_notify_nigeria_staff` — alongside the pre-existing email | nigeria_office_staff |
 | `cbm_dispute_escalated` | `scheduled/dispute_escalation.py::_notify_escalation` — alongside the pre-existing email | china_office_staff, tenant_admin |
+| `invoice_old_exchange_rate` (2026-11-17, audit BE-11) | `billing/service.py::_warn_if_rate_was_old` — an invoice priced at a last-known rate older than `FX_RATE_MAX_AGE_MINUTES` | tenant_admin |
 
 **Bulk actions and `entity_id`:** `entity_id` is a single-row UUID column. `bulk_submit_packing_lists` passes `entity_id=None` rather than a comma-joined id list — the same silent-failure shape `log_audit`'s own `BULK_APPROVE` call already has for its `entity_id` (a UUID column fed a comma-joined string fails the cast; both `log_audit` and `notify_staff` swallow the exception, so it would otherwise fail with no visible error at all).
 

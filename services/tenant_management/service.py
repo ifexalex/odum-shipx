@@ -1150,6 +1150,7 @@ def get_dollar_rate(tenant_id: str) -> dict[str, Any]:
         "markup_type": effective["markup_type"],
         "markup_value": effective["markup_value"],
         "source": effective["source"],
+        "rate_source": effective["rate_source"],
         "fetched_at": effective["fetched_at"],
         "currency_pair": "USD_NGN",
         "effective_from": effective["markup_updated_at"] or "",

@@ -1144,3 +1144,13 @@ Fix (not done; needs a decision on the request shape): the client sends `size_by
 
 Related: the declared `Content-Type` binds the upload on AWS only; on Azure (and the local Moto) a PUT with a different type is accepted.
 
+## Invoices priced at an old exchange rate (audit BE-11, 2026-11-17)
+
+Signal: tenant admins get "Invoice priced at an old exchange rate" (`invoice_old_exchange_rate`), or containers report customers not invoiced with `RATE_UNAVAILABLE`. Cause: the Bybit P2P feed (`shared/fx_rate.py`) has been unreachable; `last_known` is the last rate fetched, `RATE_UNAVAILABLE` means none ever was (a new platform with no network to Bybit).
+
+1. Check reachability from the Lambda/container (`fetch_bybit_ngn_rate`); the circuit breaker `bybit_p2p` opens after 5 failures for 60 s.
+2. Find affected invoices: `SELECT id, invoice_number, exchange_rate_ngn, exchange_rate_fetched_at FROM billing WHERE exchange_rate_source = 'last_known' AND billed_at > now() - interval '2 days'`.
+3. An invoice at a stale rate is a money decision for the tenant (adjust with a misc charge or credit, or leave it); nothing reprices automatically.
+4. For `RATE_UNAVAILABLE`, once a rate is fetched, staff use "Generate invoices" on the container.
+
+Tune the notice with `FX_RATE_MAX_AGE_MINUTES` (default 120).

@@ -32,7 +32,7 @@ import { useWarehouses } from '../../hooks/useWarehouses'
 import { Action, Badge, Banner, Button, Card, ExportButton, Field, Icon, Mono, StatCard, Table, DialogGuard, type BadgeVariant } from '../../design/components'
 import { SectionHead } from '../../shell/SectionHead'
 import styles from './BillingDetail.module.css'
-import { formatDate, formatNgn, formatCbm, formatUsd } from '../../lib/format'
+import { formatCbm, formatDate, formatDateTime, formatNgn, formatUsd } from '../../lib/format'
 
 // ---------------------------------------------------------------------------
 // Status helpers (shared across this file)
@@ -1479,6 +1479,14 @@ export function BillingDetail(): JSX.Element {
               <span>Exchange rate</span>
               <Mono>{formatNgn(billing.dollar_rate)} / $</Mono>
             </div>
+            {billing.exchange_rate_source === 'last_known' && (
+              // The market feed was down when this invoice was issued (audit BE-11).
+              <div className={styles.rateNotice} role="note">
+                Last known market rate
+                {billing.exchange_rate_fetched_at ? `, fetched ${formatDateTime(billing.exchange_rate_fetched_at)}` : ''}. The
+                live rate could not be fetched when this invoice was issued.
+              </div>
+            )}
             <div className={styles.breakdownRow}>
               <span>CBM subtotal</span>
               <Mono>{formatNgn(billing.subtotal_ngn)}</Mono>

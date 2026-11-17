@@ -131,7 +131,7 @@ class TestGetBaseMarketRate:
             result = get_base_market_rate()
 
         mock_fetch.assert_not_called()
-        assert result == {"rate": Decimal("1373.35"), "fetched_at": "2026-09-19T00:00:00+00:00"}
+        assert result == {"rate": Decimal("1373.35"), "fetched_at": "2026-09-19T00:00:00+00:00", "rate_source": "live"}
 
     def test_cache_miss_fetches_and_populates_both_caches(self):
         with (
@@ -156,7 +156,7 @@ class TestGetBaseMarketRate:
         ):
             result = get_base_market_rate()
 
-        assert result == {"rate": Decimal("1400.00"), "fetched_at": "yesterday"}
+        assert result == {"rate": Decimal("1400.00"), "fetched_at": "yesterday", "rate_source": "last_known"}
 
     def test_fetch_failure_with_no_persisted_fallback_uses_hardcoded_constant(self):
         with (
@@ -170,6 +170,9 @@ class TestGetBaseMarketRate:
         # Never raises, never returns a non-positive/missing rate — billing/
         # claims/refunds must always get *something* usable back.
         assert result["rate"] > 0
+        # Labelled as what it is, and not stamped "now" (audit BE-11): it was never fetched.
+        assert result["rate_source"] == "hardcoded"
+        assert result["fetched_at"] is None
 
     def test_unparseable_cache_entry_is_discarded_and_falls_through_to_fetch(self):
         with (
@@ -200,7 +203,10 @@ class TestGetTenantMarkup:
 class TestGetEffectiveDollarRate:
     def test_combines_base_rate_and_tenant_markup(self):
         with (
-            patch("shared.fx_rate.get_base_market_rate", return_value={"rate": Decimal("1373.20"), "fetched_at": "t0"}),
+            patch(
+                "shared.fx_rate.get_base_market_rate",
+                return_value={"rate": Decimal("1373.20"), "fetched_at": "t0", "rate_source": "live"},
+            ),
             patch(
                 "shared.fx_rate.get_tenant_markup", return_value={"markup_type": "flat", "markup_value": 15, "updated_at": "t1"}
             ),
@@ -217,7 +223,10 @@ class TestGetEffectiveDollarRate:
 
     def test_zero_markup_tenant_gets_the_raw_base_rate(self):
         with (
-            patch("shared.fx_rate.get_base_market_rate", return_value={"rate": Decimal("1373.20"), "fetched_at": "t0"}),
+            patch(
+                "shared.fx_rate.get_base_market_rate",
+                return_value={"rate": Decimal("1373.20"), "fetched_at": "t0", "rate_source": "live"},
+            ),
             patch("shared.fx_rate.get_tenant_markup", return_value={"markup_type": "percentage", "markup_value": 0}),
         ):
             result = get_effective_dollar_rate(TENANT_ID)

@@ -151,6 +151,13 @@ function formatMarkup(markupType: 'percentage' | 'flat', markupValue: number): s
 
 type MarkupType = 'percentage' | 'flat'
 
+/** " — updated 5 min ago", or what the base rate is when it was not fetched live (audit BE-11). */
+function baseRateFreshness(rate: DollarRateConfig): string {
+  if (rate.rate_source === 'hardcoded' || !rate.fetched_at) return ' — built-in default, never fetched'
+  const when = relativeTime(rate.fetched_at)
+  return rate.rate_source === 'last_known' ? ` — last known rate, fetched ${when}` : ` — updated ${when}`
+}
+
 export function DollarRateConfig(): JSX.Element {
   const navigate = useNavigate()
   const qc = useQueryClient()
@@ -200,8 +207,17 @@ export function DollarRateConfig(): JSX.Element {
           <Card padding={20}>
             <Kvp
               label="Base rate (Bybit P2P)"
-              value={<Mono>{formatNgn(current.base_rate)} per $1 — updated {relativeTime(current.fetched_at)}</Mono>}
+              value={<Mono>{formatNgn(current.base_rate)} per $1{baseRateFreshness(current)}</Mono>}
             />
+            {current.rate_source !== 'live' && (
+              <div className={styles.banner}>
+                <Banner variant="warning">
+                  {current.rate_source === 'hardcoded'
+                    ? 'No market rate has been fetched yet, so this is a built-in default. Invoices are not issued until a market rate is available.'
+                    : 'The live market rate cannot be fetched right now, so invoices use the last known rate shown here.'}
+                </Banner>
+              </div>
+            )}
             <Kvp label="Your markup" value={<Mono>{formatMarkup(current.markup_type, current.markup_value)}</Mono>} />
             <Kvp
               label="Effective rate charged to customers"

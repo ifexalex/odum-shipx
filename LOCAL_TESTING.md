@@ -1273,3 +1273,12 @@ Once configured, that tenant's customer portal "Pay online" button (`/my-billing
 ## Pickup codes (audit UX-09)
 
 Release notes carry a pickup code only when `PICKUP_CODE_PEPPER` is set (16 characters or more). It is unset by default locally, so pickups work as before with no code. To try the flow, add `PICKUP_CODE_PEPPER=local-dev-pepper-0123456789` to `.env.local`, put your own test number or address in `NOTIFICATION_ALLOWLIST` (never an imported customer's), restart `make dev`, and run `make migrate` for migration 065. The code arrives by SMS or email; it is not shown anywhere in the app, by design.
+
+## Exchange-rate age notice (audit BE-11, 2026-11-17)
+
+| Variable | Default | Effect |
+|---|---|---|
+| `FX_RATE_MAX_AGE_MINUTES` | `120` | An invoice priced at the last known dollar rate older than this tells tenant admins in-app (`invoice_old_exchange_rate`). Optional everywhere. |
+
+To see it locally without cutting the network: stop Bybit reaching the app (or patch `shared.fx_rate.fetch_bybit_ngn_rate` to raise), clear the Redis key `fx_rate:ngn_usdt`, and backdate `platform_settings` `fx_bybit_ngn_rate.fetched_at`. With no `fx_bybit_ngn_rate` row at all, invoicing is refused with `RATE_UNAVAILABLE`. `tests/db/test_invoice_rate_source.py` does exactly this.
+
