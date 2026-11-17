@@ -791,13 +791,24 @@ def _tenant_admin_routes(
         else:
             action = parts[4] if len(parts) > 4 else None
             if action == "resend-invite" and method == "POST":
-                service.resend_user_invite(tenant_id, user_id)
+                service.resend_user_invite(
+                    tenant_id, user_id, actor_id=ctx.user_id, actor_role=ctx.role.value, ip_address=ip_address
+                )
                 return success({"message": "Invite resent"}, request_id=request_id)
             if action == "reset-password" and method == "POST":
-                service.reset_user_password(tenant_id, user_id)
+                service.reset_user_password(
+                    tenant_id, user_id, actor_id=ctx.user_id, actor_role=ctx.role.value, ip_address=ip_address
+                )
                 return success({"message": "Password reset email sent"}, request_id=request_id)
             if action == "resend-activation" and method == "POST":
-                result = service.resend_activation(tenant_id, user_id, actor_id=ctx.user_id, request_id=request_id)
+                result = service.resend_activation(
+                    tenant_id,
+                    user_id,
+                    actor_id=ctx.user_id,
+                    request_id=request_id,
+                    actor_role=ctx.role.value,
+                    ip_address=ip_address,
+                )
                 return success(result, request_id=request_id)
             if method == "GET":
                 return success(service.get_user(tenant_id, user_id), request_id=request_id)

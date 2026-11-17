@@ -575,6 +575,7 @@ See `13_api_payment_release.md`'s "Payment Claims" section for the customer's "I
 ### Cognito Resend-Invite / Reset-Password
 - **POST /v1/tenant/users/{id}/resend-invite** — Calls `admin_create_user` with `MessageAction=RESEND`; re-delivers the temporary-password email without creating a new account.
 - **POST /v1/tenant/users/{id}/reset-password** — Calls `admin_reset_user_password`; Cognito sends a verification-code reset email.
+- **Audited (2026-11-17, audit SEC-07):** resend-invite, reset-password and resend-activation each write an `audit_log` row on the target `tenant_user` — actions `INVITE_RESENT`, `PASSWORD_RESET_SENT`, `ACTIVATION_RESENT` — with the actor, their role and the client IP; the snapshot is `{"user_id"}` only (the email is PII and already on the row). No row is written when the identity provider call fails. They show in the tenant activity log (entity type `tenant_user`, filter "All actions"). Ground-truth gap closed: before this, all three changed a user's way into their account and left no trace; `resend-activation` was not in the audit finding but had the same gap.
 
 Both are tenant_admin only.
 

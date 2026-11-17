@@ -3459,3 +3459,74 @@ class TestUpdateContainerCapacity:
         with patch.object(service.repo, "get_container_capacity_by_id", return_value=None):
             with pytest.raises(ResourceNotFoundError):
                 service.update_container_capacity(TENANT_ID, "cap-x", {"recommended_cbm": 10}, actor_id="u1")
+
+
+# ---------------------------------------------------------------------------
+# SEC-07 — the actions that send a user a way into their account are audited
+# ---------------------------------------------------------------------------
+
+
+class TestAccessEmailsAreAudited:
+    ACTOR = "bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb"
+    TARGET = "cccccccc-cccc-cccc-cccc-cccccccccccc"
+
+    def _event(self, action: str) -> dict:
+        return {
+            "requestContext": {
+                "requestId": "req-sec07",
+                "http": {"method": "POST", "path": f"/v1/tenant/users/{self.TARGET}/{action}", "sourceIp": "203.0.113.9"},
+                "authorizer": {"claims": {"sub": self.ACTOR, "custom:tenant_id": TENANT_ID}},
+            },
+            "headers": {},
+            "body": "{}",
+            "queryStringParameters": {},
+        }
+
+    @pytest.mark.parametrize(
+        ("route", "audited_action"),
+        [
+            ("resend-invite", "INVITE_RESENT"),
+            ("reset-password", "PASSWORD_RESET_SENT"),
+            ("resend-activation", "ACTIVATION_RESENT"),
+        ],
+    )
+    def test_each_is_recorded_with_ids_only(self, route, audited_action):
+        from services.tenant_management import handler, service
+        from shared.tenant_context import TenantContext, UserRole
+
+        ctx = TenantContext(tenant_id=TENANT_ID, user_id=self.ACTOR, role=UserRole.TENANT_ADMIN)
+        user = _user(id=self.TARGET)
+        with (
+            patch("services.tenant_management.handler.get_tenant_context", return_value=ctx),
+            patch.object(service, "get_user", return_value=user),
+            patch.object(service.repo, "get_user_by_id", return_value=user),
+            patch.object(service, "get_identity_provider", return_value=MagicMock()),
+            patch.object(service, "issue_activation"),
+            patch.object(service, "log_audit") as audit,
+        ):
+            resp = handler.lambda_handler(self._event(route), None)
+
+        assert resp["statusCode"] == 200
+        audit.assert_called_once()
+        kwargs = audit.call_args.kwargs
+        assert kwargs["action"] == audited_action
+        assert kwargs["entity_type"] == "tenant_user" and kwargs["entity_id"] == self.TARGET
+        assert kwargs["actor_id"] == self.ACTOR and kwargs["actor_role"] == "tenant_admin"
+        assert kwargs["ip_address"] == "203.0.113.9"
+        # The email and name are PII; the audit row names the user by ID only.
+        recorded = json.dumps([kwargs.get("before_state"), kwargs.get("after_state")])
+        assert "staff@acme.com" not in recorded and "Jane Staff" not in recorded
+
+    def test_nothing_is_recorded_when_the_email_could_not_be_sent(self):
+        from services.tenant_management import service
+
+        idp = MagicMock()
+        idp.reset_password.side_effect = RuntimeError("idp down")
+        with (
+            patch.object(service, "get_user", return_value=_user(id=self.TARGET)),
+            patch.object(service, "get_identity_provider", return_value=idp),
+            patch.object(service, "log_audit") as audit,
+            pytest.raises(RuntimeError),
+        ):
+            service.reset_user_password(TENANT_ID, self.TARGET, actor_id=self.ACTOR)
+        audit.assert_not_called()

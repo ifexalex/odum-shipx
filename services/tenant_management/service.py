@@ -1475,7 +1475,14 @@ def issue_activation(
     return token
 
 
-def resend_activation(tenant_id: str, user_id: str, actor_id: str | None = None, request_id: str = "") -> dict[str, Any]:
+def resend_activation(
+    tenant_id: str,
+    user_id: str,
+    actor_id: str | None = None,
+    request_id: str = "",
+    actor_role: str = "tenant_admin",
+    ip_address: str | None = None,
+) -> dict[str, Any]:
     """Re-issue a user's activation link (staff action). Mints a fresh token —
     invalidating any prior unconsumed one — and re-sends the welcome email. Used
     for users provisioned before activation existed, or whose link expired."""
@@ -1483,6 +1490,7 @@ def resend_activation(tenant_id: str, user_id: str, actor_id: str | None = None,
     if not user:
         raise ResourceNotFoundError("user", user_id)
     issue_activation(tenant_id, user_id, user["email"], user.get("full_name") or "", created_by=actor_id, request_id=request_id)
+    _audit_access_email(tenant_id, user_id, "ACTIVATION_RESENT", actor_id, actor_role, ip_address)
     return {"message": "Activation link sent", "email": _mask_email(user["email"])}
 
 
@@ -1669,18 +1677,49 @@ def deactivate_user(
     return updated
 
 
-def resend_user_invite(tenant_id: str, user_id: str) -> None:
-    """Resend the Cognito temporary-password email for an existing staff user."""
-    user = get_user(tenant_id, user_id)
-    cognito = get_identity_provider()
-    cognito.resend_invite(user["email"])
+def _audit_access_email(
+    tenant_id: str, user_id: str, action: str, actor_id: str | None, actor_role: str, ip_address: str | None
+) -> None:
+    """Record that a staff member sent another user a way into their account (audit SEC-07).
+
+    Only IDs are recorded: the email itself is PII and is already on the user's row.
+    """
+    log_audit(
+        tenant_id=tenant_id,
+        entity_type="tenant_user",
+        entity_id=user_id,
+        action=action,
+        actor_id=actor_id,
+        actor_role=actor_role,
+        after_state={"user_id": user_id},
+        ip_address=ip_address,
+    )
 
 
-def reset_user_password(tenant_id: str, user_id: str) -> None:
-    """Trigger a Cognito-managed password-reset email for a staff user."""
+def resend_user_invite(
+    tenant_id: str,
+    user_id: str,
+    actor_id: str | None = None,
+    actor_role: str = "tenant_admin",
+    ip_address: str | None = None,
+) -> None:
+    """Resend the identity provider's temporary-password email for an existing staff user, and audit it."""
     user = get_user(tenant_id, user_id)
-    cognito = get_identity_provider()
-    cognito.reset_password(user["email"])
+    get_identity_provider().resend_invite(user["email"])
+    _audit_access_email(tenant_id, user_id, "INVITE_RESENT", actor_id, actor_role, ip_address)
+
+
+def reset_user_password(
+    tenant_id: str,
+    user_id: str,
+    actor_id: str | None = None,
+    actor_role: str = "tenant_admin",
+    ip_address: str | None = None,
+) -> None:
+    """Trigger the identity provider's password-reset email for a staff user, and audit it."""
+    user = get_user(tenant_id, user_id)
+    get_identity_provider().reset_password(user["email"])
+    _audit_access_email(tenant_id, user_id, "PASSWORD_RESET_SENT", actor_id, actor_role, ip_address)
 
 
 # ---------------------------------------------------------------------------

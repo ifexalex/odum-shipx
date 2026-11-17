@@ -320,6 +320,10 @@ user pool, not `MagicMock`, so these exercise the actual boto3 call shapes):
   that tenant.
 
 Backend — `tests/unit/test_tenant_management.py`:
+- `TestAccessEmailsAreAudited` (audit SEC-07, 2026-11-17) — through the handler, resend-invite,
+  reset-password and resend-activation each write one `audit_log` row (`INVITE_RESENT`,
+  `PASSWORD_RESET_SENT`, `ACTIVATION_RESENT`) with actor, role and client IP and no email or
+  name in the snapshot; a failed identity-provider call writes none.
 - `TestCreateUser` extended — `create_user` now takes real `CreateTenantUserRequest`
   instances (not `MagicMock`) with `roles`/`primary_role`; asserts
   `cognito.sync_user_groups(...)` replaces the old `create_group_if_not_exists` +

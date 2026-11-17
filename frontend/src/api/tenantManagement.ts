@@ -246,7 +246,12 @@ export interface RateHistoryEntry {
 
 export interface TenantActivityEntry {
   id: string
-  action: 'CREATE' | 'UPDATE' | 'DELETE' | 'STATUS_CHANGE'
+  /**
+   * The four generic actions, or a named one written by a specific operation
+   * (e.g. `EXPORT`, `BULK_APPROVE`, `PASSWORD_RESET_SENT`): `audit_log.action`
+   * has had no CHECK since migration 045.
+   */
+  action: 'CREATE' | 'UPDATE' | 'DELETE' | 'STATUS_CHANGE' | (string & {})
   entity_type: string
   entity_id: string
   actor_id: string | null
