@@ -56,6 +56,9 @@ import {
   notifLogKeys,
   onboardingRequestKeys,
   packingListKeys,
+  platformAuditKeys,
+  platformDashboardKeys,
+  platformSettingsKeys,
   platformTenantKeys,
   refundKeys,
   releaseNoteKeys,
@@ -166,12 +169,16 @@ const RULES: Rule[] = [
 
   // ── Platform ────────────────────────────────────────────────────────────
   { test: /^\/v1\/platform\/onboarding-requests(\/|$)/, roots: [onboardingRequestKeys.all] },
-  // Provisioning a tenant closes the lead it came from.
+  // Provisioning a tenant closes the lead it came from, and changes the dashboard's totals and its activity feed.
   {
     test: /^\/v1\/platform\/tenants(\/|$)/,
-    roots: [platformTenantKeys.all, onboardingRequestKeys.all],
+    roots: [platformTenantKeys.all, onboardingRequestKeys.all, platformDashboardKeys.all, platformAuditKeys.all],
   },
-  { test: /^\/v1\/platform\/(settings|plans)(\/|$)/, roots: [platformTenantKeys.all] },
+  // Plan limits change every tenant's effective limits (the tenant list shows users x/limit).
+  {
+    test: /^\/v1\/platform\/(settings|plans)(\/|$)/,
+    roots: [platformSettingsKeys.all, platformTenantKeys.all, platformAuditKeys.all],
+  },
 ]
 
 /** The rule for a path, or undefined when nothing matches. */

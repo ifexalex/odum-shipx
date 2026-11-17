@@ -1,4 +1,4 @@
-import { useEffect, useState, type JSX } from 'react'
+import { useState, type JSX } from 'react'
 import { ApiError } from '../../api/client'
 import {
   configApi,
@@ -7,6 +7,8 @@ import {
   type WebhookTestResult,
 } from '../../api/tenantManagement'
 import { Banner, Button, Card, Field, Icon, Mono, ToggleSwitch } from '../../design/components'
+import { useTenantConfig } from '../../hooks/useConfig'
+import { useSeedOnce } from '../../hooks/useSeedOnce'
 import { SectionHead } from '../../shell/SectionHead'
 import styles from './WebhookConfig.module.css'
 
@@ -120,7 +122,9 @@ function maskSecret(raw: string): string {
 
 export function WebhookConfig(): JSX.Element {
   const [config, setConfig] = useState<WebhookConfigType>(EMPTY_CONFIG)
-  const [loading, setLoading] = useState(true)
+  const tenantConfig = useTenantConfig({ freshOnOpen: true })
+  // A failed read shows the empty form, as before, not an endless "Loading…".
+  const loading = !tenantConfig.isFetchedAfterMount && !tenantConfig.isError
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [saveSuccess, setSaveSuccess] = useState(false)
@@ -132,14 +136,9 @@ export function WebhookConfig(): JSX.Element {
   const [testing, setTesting] = useState(false)
   const [testResult, setTestResult] = useState<WebhookTestResult | null>(null)
 
-  useEffect(() => {
-    void configApi.getConfig()
-      .then((res) => {
-        if (res.webhook_config) setConfig(res.webhook_config)
-      })
-      .catch(() => {})
-      .finally(() => setLoading(false))
-  }, [])
+  useSeedOnce(tenantConfig, (res) => {
+    if (res.webhook_config) setConfig(res.webhook_config)
+  })
 
   function toggleEvent(type: WebhookEventType, on: boolean): void {
     setConfig((prev) => ({

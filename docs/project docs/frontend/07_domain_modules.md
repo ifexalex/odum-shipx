@@ -1730,3 +1730,7 @@ does nothing.~~ **Fixed 2026-11-14** — see "Generate billing picker and missin
 - **Fixed on the way:** the dashboard sheet now has a **Collected by** field (defaulted to the customer) and sends `collected_by_name`; without it every in-person pickup recorded from the dashboard was refused by the backend.
 - **Office staff** (`ReleaseNoteDetail`): **Send new pickup code** (tenant admin, Nigeria staff; active notes) opens a confirmation that says the current code will stop working; afterwards a banner says which channels it went out on. A locked note shows a banner. Rules: `canSendPickupCode`, `sentViaLabel` in `api/releaseNotesRules.ts`; API: `releaseNotesApi.sendPickupCode`.
 - **Customer** (`MyReleaseNote`): a notice that a pickup code was sent and must be given by whoever collects, or that the note is locked. The code is never shown in the app.
+
+## Implementation notes — React Query migration finished (2026-11-16, master plan 7.197, audit FE-05)
+
+See `09_state_management_and_data_fetching.md`, "No page loads server data in a `useEffect`". Behaviour changes worth knowing: the tenant dashboard's queues and the rate history table now refresh after a relevant write; the payment-gateway settings page makes one config request instead of two; the packing-list form's pricing estimate shows the CBM rate even if the dollar rate cannot be read (the two were loaded together and failed together).

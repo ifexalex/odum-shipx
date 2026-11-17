@@ -3,21 +3,26 @@
  * Shows summary stats from billing and containers via existing APIs.
  */
 
-import { useEffect, useState, type JSX } from 'react'
+import { useMemo, type JSX } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
-import { billingApi, disputeApi, type Billing, type CBMDispute } from '../../api/billing'
+import { billingApi } from '../../api/billing'
 import { claimsApi } from '../../api/claims'
 import { CONTAINER_STATUS_LABELS } from '../../api/containerRules'
 import { billingKeys, claimKeys, containerKeys, customerKeys } from '../../api/keys'
 import { formatNgnCompact, formatDate, formatNgn } from '../../lib/format'
-import { manifestApi, type Manifest } from '../../api/manifest'
 import { ARRIVED_IN_NG } from '../../api/manifestRules'
-import { packingListApi, type PackingList } from '../../api/packingList'
-import { releaseNotesApi, type ReleaseNote } from '../../api/releaseNotes'
 import { customersApi } from '../../api/tenantManagement'
-import { containersApi, type Container, type ContainerStatus } from '../../api/tracking'
+import { containersApi, type ContainerStatus } from '../../api/tracking'
 import { useSession } from '../../auth/useSession'
+import {
+  useActiveReleaseNotes,
+  useOpenDisputes,
+  useOutstandingBilling,
+  usePendingManifests,
+  usePendingPackingLists,
+  useRecentContainers,
+} from '../../hooks/useDashboard'
 import { Badge, Button, Card, Mono, QuickActionCard, StatCard, Table, UserCell, type BadgeVariant } from '../../design/components'
 import { ContainerPipeline } from './DashboardPipeline'
 import { ActivityFeed } from '../../shell/ActivityFeed'
@@ -48,15 +53,6 @@ const CONTAINER_BADGE: Record<string, BadgeVariant> = {
 export function Dashboard(): JSX.Element {
   const navigate = useNavigate()
   const { session } = useSession()
-  const [containers, setContainers] = useState<Container[]>([])
-  const [pendingPls, setPendingPls] = useState<PackingList[]>([])
-  // Nigeria ops action queues (6.1, P2-5)
-  const [pendingManifests, setPendingManifests] = useState<Manifest[]>([])
-  const [openDisputes, setOpenDisputes] = useState<CBMDispute[]>([])
-  // Bottom two-column: money to collect (oldest outstanding) + goods to release.
-  const [outstanding, setOutstanding] = useState<Billing[]>([])
-  const [awaitingPickup, setAwaitingPickup] = useState<ReleaseNote[]>([])
-  const [readyForPickup, setReadyForPickup] = useState<number | null>(null)
 
   const isAdmin = session?.role === 'tenant_admin'
   const isNigeria = session?.role === 'nigeria_office_staff'
@@ -84,47 +80,23 @@ export function Dashboard(): JSX.Element {
 
   // Admin "Recent containers" table — a bounded visual sample. (Nigeria's
   // pipeline section fetches its own complete, stage-filtered list.)
-  useEffect(() => {
-    if (!isAdmin) return
-    void containersApi.list({})
-      .then((r) => setContainers(r.data))
-      .catch(() => undefined)
-  }, [isAdmin])
-
-  // Nigeria ops: packing-list approval queue (6.1)
-  useEffect(() => {
-    if (!isNigeria) return
-    void (async () => {
-      try {
-        const result = await packingListApi.list({ status: 'submitted', limit: 10 })
-        setPendingPls(result.data)
-      } catch {
-        // non-fatal
-      }
-    })()
-  }, [isNigeria])
+  const containers = useRecentContainers(isAdmin).data?.data ?? []
 
   // Nigeria ops action queues (6.1, P2-5) — all non-fatal, degrade to hidden/—.
-  useEffect(() => {
-    if (!isNigeria) return
-    void manifestApi.list({ verification_status: 'pending', limit: 20 })
-      // "Awaiting verification" only bites once the container has reached Nigeria (B11 predicate).
-      .then((r) => setPendingManifests(r.data.filter((m) => m.container_status && ARRIVED_IN_NG.has(m.container_status))))
-      .catch(() => setPendingManifests([]))
-    void disputeApi.list({ status: 'submitted', limit: 10 })
-      .then((r) => setOpenDisputes(r.data))
-      .catch(() => setOpenDisputes([]))
-    // Money to collect — unpaid/partial billing, oldest billed first so the
-    // most overdue (and highest storage-fee risk) surfaces at the top.
-    void billingApi.list({ status: 'unpaid,partially_paid', sort: 'billed_at', direction: 'asc', limit: 6 })
-      .then((r) => setOutstanding(r.data))
-      .catch(() => setOutstanding([]))
-    // Goods to release — active release notes (released, not yet collected).
-    // One call drives both the "Ready for pickup" stat count and the list.
-    void releaseNotesApi.list({ status: 'active', limit: 50 })
-      .then((r) => { setReadyForPickup(r.data.length); setAwaitingPickup(r.data) })
-      .catch(() => { setReadyForPickup(null); setAwaitingPickup([]) })
-  }, [isNigeria])
+  const pendingPls = usePendingPackingLists(isNigeria).data?.data ?? []
+  const manifests = usePendingManifests(isNigeria).data?.data
+  // "Awaiting verification" only bites once the container has reached Nigeria (B11 predicate).
+  const pendingManifests = useMemo(
+    () => (manifests ?? []).filter((m) => m.container_status && ARRIVED_IN_NG.has(m.container_status)),
+    [manifests],
+  )
+  const openDisputes = useOpenDisputes(isNigeria).data?.data ?? []
+  // Bottom two-column: money to collect (oldest outstanding) + goods to release.
+  const outstanding = useOutstandingBilling(isNigeria).data?.data ?? []
+  // One read drives both the "Ready for pickup" stat count and the list.
+  const activeNotes = useActiveReleaseNotes(isNigeria).data?.data
+  const awaitingPickup = activeNotes ?? []
+  const readyForPickup = activeNotes ? activeNotes.length : null
 
   const firstName = session?.name?.split(' ')[0] ?? 'team'
   const customsAwaiting = (containerStats?.customs_clearance ?? 0) + (containerStats?.arrived ?? 0)

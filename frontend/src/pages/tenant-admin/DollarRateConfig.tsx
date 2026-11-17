@@ -1,7 +1,11 @@
-import { useEffect, useState, type JSX } from 'react'
+import { useQueryClient } from '@tanstack/react-query'
+import { useState, type JSX } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { ApiError } from '../../api/client'
-import { configApi, type DollarRateConfig, type RateHistoryEntry } from '../../api/tenantManagement'
+import { configKeys } from '../../api/keys'
+import { configApi, type DollarRateConfig } from '../../api/tenantManagement'
+import { useDollarRate, useRateHistory } from '../../hooks/useConfig'
+import { useSeedOnce } from '../../hooks/useSeedOnce'
 import { Banner, Button, Card, Kvp, Mono, Table, UserCell } from '../../design/components'
 import { PageHeader } from '../../shell/PageHeader'
 import { SectionHead } from '../../shell/SectionHead'
@@ -69,21 +73,10 @@ function RateTrendChart({ points, prefix }: { points: { date: string; value: num
 // Shared by the Dollar and CBM rate pages. Also renders the B7 trend chart from
 // the same fetched history (no extra request).
 export function RateHistoryTable({ rateType, valueKey, prefix }: { rateType: 'dollar_rate' | 'cbm_rate'; valueKey: string; prefix: string }): JSX.Element {
-  const [rows, setRows] = useState<RateHistoryEntry[]>([])
-  const [loading, setLoading] = useState(true)
-
-  useEffect(() => {
-    void (async () => {
-      try {
-        const result = await configApi.rateHistory(rateType)
-        setRows(result.data)
-      } catch {
-        // non-fatal — history table degrades to empty
-      } finally {
-        setLoading(false)
-      }
-    })()
-  }, [rateType])
+  // Non-fatal: on failure the history table degrades to empty.
+  const history = useRateHistory(rateType)
+  const rows = history.data?.data ?? []
+  const loading = history.isLoading
 
   const val = (v: Record<string, unknown> | null): number | null => {
     const n = v ? Number(v[valueKey]) : NaN
@@ -160,39 +153,35 @@ type MarkupType = 'percentage' | 'flat'
 
 export function DollarRateConfig(): JSX.Element {
   const navigate = useNavigate()
-  const [current, setCurrent] = useState<DollarRateConfig | null>(null)
+  const qc = useQueryClient()
+  const rate = useDollarRate({ freshOnOpen: true })
+  const current: DollarRateConfig | null = rate.isFetchedAfterMount ? (rate.data ?? null) : null
+  const loading = !rate.isFetchedAfterMount
   const [markupType, setMarkupType] = useState<MarkupType>('percentage')
   const [markupValue, setMarkupValue] = useState('')
-  const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
-  const [error, setError] = useState<string | null>(null)
+  const [saveError, setSaveError] = useState<string | null>(null)
   const [success, setSuccess] = useState(false)
 
-  useEffect(() => {
-    void (async () => {
-      try {
-        const data = await configApi.getDollarRate()
-        setCurrent(data)
-        setMarkupType(data.markup_type)
-        setMarkupValue(String(data.markup_value))
-      } catch (err) {
-        setError(err instanceof ApiError ? err.message : 'Could not load rate.')
-      } finally {
-        setLoading(false)
-      }
-    })()
-  }, [])
+  useSeedOnce(rate, (data) => {
+    setMarkupType(data.markup_type)
+    setMarkupValue(String(data.markup_value))
+  })
+
+  const loadError = rate.error ? (rate.error instanceof ApiError ? rate.error.message : 'Could not load rate.') : null
+  const error = saveError ?? loadError
 
   async function handleSave(): Promise<void> {
     setSaving(true)
-    setError(null)
+    setSaveError(null)
     setSuccess(false)
     try {
       const updated = await configApi.updateDollarRate({ markup_type: markupType, markup_value: Number(markupValue) })
-      setCurrent(updated)
+      // Show the saved value at once; the write also invalidates every config query (api/cacheInvalidation.ts).
+      qc.setQueryData(configKeys.dollar(), updated)
       setSuccess(true)
     } catch (err) {
-      setError(err instanceof ApiError ? err.message : 'Could not update markup.')
+      setSaveError(err instanceof ApiError ? err.message : 'Could not update markup.')
     } finally {
       setSaving(false)
     }

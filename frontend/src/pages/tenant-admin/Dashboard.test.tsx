@@ -130,7 +130,8 @@ describe('Dashboard (B3)', () => {
   it('greets the admin by first name with a container summary line', async () => {
     renderDashboard()
     expect(await screen.findByText(/Lead every shipment, Amara\./)).toBeInTheDocument()
-    expect(screen.getByText(/1 in transit · 0 awaiting customs · 0 ready for pickup/)).toBeInTheDocument()
+    // The summary line arrives with the container stats, a tick after the greeting.
+    expect(await screen.findByText(/1 in transit · 0 awaiting customs · 0 ready for pickup/)).toBeInTheDocument()
   })
 
   it('shows admin-only active-customers and open-claims stats', async () => {
@@ -163,7 +164,7 @@ describe('Dashboard (B3)', () => {
     renderDashboard()
     await screen.findByText(/Lead every shipment/)
     expect(screen.getByText('Recent containers')).toBeInTheDocument()
-    expect(screen.getByText('MSCU1234567')).toBeInTheDocument()
+    expect(await screen.findByText('MSCU1234567')).toBeInTheDocument()
   })
 
   it('does not show the admin-only extras for nigeria staff', async () => {

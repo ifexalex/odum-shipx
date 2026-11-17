@@ -14,6 +14,7 @@ import { customersApi, type Customer } from '../../api/tenantManagement'
 import { SessionContext, type SessionContextValue } from '../../auth/SessionContext'
 import type { Session } from '../../auth/types'
 import { Account } from './Account'
+import { withQuery } from '../../test/queryWrapper'
 
 vi.mock('../../api/tenantManagement', async (importOriginal) => {
   const original = await importOriginal<typeof import('../../api/tenantManagement')>()
@@ -44,13 +45,13 @@ function renderPage() {
     login: vi.fn(), logout: vi.fn(), startImpersonation: vi.fn(),
     exitImpersonation: vi.fn(), refreshNow: vi.fn(), setActiveRole: vi.fn(),
   }
-  return render(
+  return render(withQuery(
     <SessionContext.Provider value={ctx}>
       <MemoryRouter>
         <Account />
       </MemoryRouter>
     </SessionContext.Provider>,
-  )
+  ))
 }
 
 function listOk(customer: Customer) {

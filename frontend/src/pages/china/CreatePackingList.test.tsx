@@ -19,6 +19,7 @@ vi.mock('../../api/tracking', () => ({
   containersApi: { list: vi.fn() },
 }))
 import { ApiError } from '../../api/client'
+import { withQuery } from '../../test/queryWrapper'
 
 vi.mock('../../api/warehouses', () => ({
   warehousesApi: {
@@ -78,11 +79,11 @@ const containerStub: Container = {
 }
 
 function renderPage() {
-  return render(
+  return render(withQuery(
     <MemoryRouter>
       <CreatePackingList />
     </MemoryRouter>,
-  )
+  ))
 }
 
 // The customer + container pickers are searchable Comboboxes (a button that
@@ -269,13 +270,13 @@ describe('CreatePackingList', () => {
     }
     vi.mocked(packingListApi.get).mockResolvedValue(draft)
     vi.mocked(packingListApi.update).mockResolvedValue(draft)
-    render(
+    render(withQuery(
       <MemoryRouter initialEntries={['/packing-lists/pl-draft/edit']}>
         <Routes>
           <Route path="/packing-lists/:id/edit" element={<CreatePackingList />} />
         </Routes>
       </MemoryRouter>,
-    )
+    ))
     expect(await screen.findByText('Edit draft packing list')).toBeInTheDocument()
     // Customer/container pickers are present but fixed.
     await waitFor(() => expect(screen.getByRole('button', { name: 'Customer' })).toBeDisabled())
@@ -601,13 +602,13 @@ describe('CreatePackingList — reopening a saved draft', () => {
       customer_id: customerStub.id,
       items,
     } as never)
-    render(
+    render(withQuery(
       <MemoryRouter initialEntries={['/packing-lists/pl1/edit']}>
         <Routes>
           <Route path="/packing-lists/:id/edit" element={<CreatePackingList />} />
         </Routes>
       </MemoryRouter>,
-    )
+    ))
     // The wizard opens on step 1 even when editing; the items table lives on
     // step 2.
     const next = await screen.findByText('Next: Add items')

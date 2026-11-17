@@ -6,6 +6,7 @@ import { render, screen, waitFor } from '@testing-library/react'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { configApi, type RateHistoryEntry } from '../../api/tenantManagement'
 import { RateHistoryTable } from './DollarRateConfig'
+import { withQuery } from '../../test/queryWrapper'
 
 vi.mock('../../api/tenantManagement', async (importOriginal) => {
   const original = await importOriginal<typeof import('../../api/tenantManagement')>()
@@ -40,7 +41,7 @@ describe('RateHistoryTable + trend chart (B7)', () => {
       meta: { pagination: { has_more: false, next_cursor: null, total_count: 3 } },
     } as never)
 
-    render(<RateHistoryTable rateType="dollar_rate" valueKey="rate" prefix="₦" />)
+    render(withQuery(<RateHistoryTable rateType="dollar_rate" valueKey="rate" prefix="₦" />))
 
     await waitFor(() => expect(screen.getByRole('img', { name: /rate trend/i })).toBeInTheDocument())
     // Net change 1550 → 1650 = +₦100, over 3 changes
@@ -56,7 +57,7 @@ describe('RateHistoryTable + trend chart (B7)', () => {
       meta: { pagination: { has_more: false, next_cursor: null, total_count: 1 } },
     } as never)
 
-    render(<RateHistoryTable rateType="dollar_rate" valueKey="rate" prefix="₦" />)
+    render(withQuery(<RateHistoryTable rateType="dollar_rate" valueKey="rate" prefix="₦" />))
 
     await waitFor(() => expect(screen.getByText('Current')).toBeInTheDocument())
     expect(screen.queryByRole('img', { name: /rate trend/i })).toBeNull()

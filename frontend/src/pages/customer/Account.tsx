@@ -11,10 +11,12 @@
  * The customer's own record is resolved via GET /v1/customers, which the
  * backend scopes to [own record] for the customer role.
  */
-import { useEffect, useState, type JSX } from 'react'
+import { useQueryClient } from '@tanstack/react-query'
+import { useState, type JSX } from 'react'
 import { ApiError } from '../../api/client'
 import { customersApi, type Customer } from '../../api/tenantManagement'
 import { useSession } from '../../auth/useSession'
+import { OWN_CUSTOMER_KEY, useOwnCustomer } from '../../hooks/useCustomers'
 import { Avatar, Banner, Button, Card, Field, Icon, PhoneField, ToggleSwitch } from '../../design/components'
 import { PageHeader } from '../../shell/PageHeader'
 import { SectionHead } from '../../shell/SectionHead'
@@ -400,23 +402,15 @@ function PrivacyTab({ customer }: { customer: Customer }): JSX.Element {
 export function Account(): JSX.Element {
   const { session } = useSession()
   const [tab, setTab] = useState<TabKey>('Profile')
-  const [customer, setCustomer] = useState<Customer | null>(null)
-  const [loading, setLoading] = useState(true)
-  const [error, setError] = useState<string | null>(null)
-
-  useEffect(() => {
-    void (async () => {
-      try {
-        // Customer role gets exactly [own record] from the list endpoint.
-        const result = await customersApi.list()
-        setCustomer(result.data[0] ?? null)
-      } catch (err) {
-        setError(err instanceof ApiError ? err.message : 'Could not load your account.')
-      } finally {
-        setLoading(false)
-      }
-    })()
-  }, [])
+  const qc = useQueryClient()
+  const own = useOwnCustomer()
+  const customer = own.data ?? null
+  const loading = own.isLoading
+  const error = own.error ? (own.error instanceof ApiError ? own.error.message : 'Could not load your account.') : null
+  // A tab that saves hands back the updated record: show it at once (the write also invalidates the query).
+  const setCustomer = (updated: Customer): void => {
+    qc.setQueryData(OWN_CUSTOMER_KEY, updated)
+  }
 
   if (!session) return <></>
 

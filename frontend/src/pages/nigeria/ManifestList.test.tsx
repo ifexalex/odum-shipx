@@ -86,7 +86,8 @@ describe('ManifestList', () => {
       meta: { pagination: { has_more: false, next_cursor: null, total_count: 1 } },
     })
     renderPage()
-    const row = within(await screen.findByRole('table')).getByText('HLBU9384712').closest('tr')!
+    // Wait for the row, not just the table: the table is on screen while the list is still loading.
+    const row = (await screen.findByText('HLBU9384712')).closest('tr')!
     expect(within(row).getByText('64')).toBeInTheDocument()
   })
 

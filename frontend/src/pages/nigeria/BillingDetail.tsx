@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState, type JSX } from 'react'
+import { useCallback, useMemo, useRef, useState, type JSX } from 'react'
 import { useLocation, useNavigate, useParams } from 'react-router-dom'
 import { ApiError } from '../../api/client'
 import {
@@ -27,7 +27,7 @@ import { useSession } from '../../auth/useSession'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { billingKeys, releaseNoteKeys } from '../../api/keys'
 import { STALE_30S } from '../../lib/queryClient'
-import { configApi, type ChargeType } from '../../api/tenantManagement'
+import { useChargeTypes } from '../../hooks/useConfig'
 import { useWarehouses } from '../../hooks/useWarehouses'
 import { Action, Badge, Banner, Button, Card, ExportButton, Field, Icon, Mono, StatCard, Table, DialogGuard, type BadgeVariant } from '../../design/components'
 import { SectionHead } from '../../shell/SectionHead'
@@ -453,23 +453,14 @@ interface AddChargeModalProps {
 }
 
 function AddChargeModal({ billing, onCancel, onSuccess }: AddChargeModalProps): JSX.Element {
-  const [chargeTypes, setChargeTypes] = useState<ChargeType[]>([])
+  // Non-fatal: if the types cannot be read, the free-form "other" path still works.
+  const { data: allChargeTypes } = useChargeTypes()
+  const chargeTypes = useMemo(() => (allChargeTypes ?? []).filter((t) => t.is_active), [allChargeTypes])
   const [selectedType, setSelectedType] = useState<string>('other')
   const [description, setDescription] = useState('')
   const [amount, setAmount] = useState('')
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState<string | null>(null)
-
-  useEffect(() => {
-    void (async () => {
-      try {
-        const types = await configApi.listChargeTypes()
-        setChargeTypes(types.filter((t) => t.is_active))
-      } catch {
-        // non-fatal — the free-form "other" path still works
-      }
-    })()
-  }, [])
 
   function handleTypeChange(name: string): void {
     setSelectedType(name)

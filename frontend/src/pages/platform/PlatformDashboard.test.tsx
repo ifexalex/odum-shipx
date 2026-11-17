@@ -8,6 +8,7 @@ import { MemoryRouter, Route, Routes } from 'react-router-dom'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { platformApi } from '../../api/tenantManagement'
 import { PlatformDashboard } from './PlatformDashboard'
+import { withQuery } from '../../test/queryWrapper'
 
 vi.mock('../../api/tenantManagement', async (importOriginal) => {
   const original = await importOriginal<typeof import('../../api/tenantManagement')>()
@@ -28,7 +29,7 @@ const TENANTS = [
 ]
 
 function renderPage() {
-  return render(
+  return render(withQuery(
     <MemoryRouter initialEntries={['/platform/dashboard']}>
       <Routes>
         <Route path="/platform/dashboard" element={<PlatformDashboard />} />
@@ -36,7 +37,7 @@ function renderPage() {
         <Route path="/platform/tenants/new" element={<div>Onboard tenant page</div>} />
       </Routes>
     </MemoryRouter>,
-  )
+  ))
 }
 
 describe('PlatformDashboard (B1)', () => {

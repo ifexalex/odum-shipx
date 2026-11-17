@@ -1,10 +1,10 @@
-import { useEffect, useRef, useState, type ChangeEvent, type DragEvent, type JSX } from 'react'
+import { useRef, useState, type ChangeEvent, type DragEvent, type JSX } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { ApiError } from '../../api/client'
 import { excelApi, type ImportResult, type ManifestImportResult } from '../../api/excel'
-import { containersApi, type Container } from '../../api/tracking'
 import { UploadFailedError, uploadImportFile } from '../../api/uploads'
 import { Banner, Button, Card, Icon, Mono } from '../../design/components'
+import { useContainerLookup } from '../../hooks/useContainers'
 import { PageHeader } from '../../shell/PageHeader'
 import { SectionHead } from '../../shell/SectionHead'
 import styles from './ImportPackingLists.module.css'
@@ -61,21 +61,21 @@ export function ImportPackingLists(): JSX.Element {
   const fileInputRef = useRef<HTMLInputElement>(null)
   const [step, setStep] = useState<1 | 2 | 3>(1)
   const [mode, setMode] = useState<ImportMode>('manifest')
-  const [containers, setContainers] = useState<Container[]>([])
+  const containerLookup = useContainerLookup()
+  const containers = containerLookup.data?.data ?? []
   const [containerId, setContainerId] = useState('')
   const [file, setFile] = useState<File | null>(null)
   const [dragging, setDragging] = useState(false)
   const [importing, setImporting] = useState(false)
-  const [error, setError] = useState<string | null>(null)
+  const [actionError, setError] = useState<string | null>(null)
+  const loadError = containerLookup.error
+    ? containerLookup.error instanceof ApiError
+      ? containerLookup.error.message
+      : 'Could not load containers.'
+    : null
+  const error = actionError ?? loadError
   const [result, setResult] = useState<ImportResult | null>(null)
   const [manifestResult, setManifestResult] = useState<ManifestImportResult | null>(null)
-
-  useEffect(() => {
-    void containersApi.list().then(
-      (containerResult) => setContainers(containerResult.data),
-      (err) => setError(err instanceof ApiError ? err.message : 'Could not load containers.'),
-    )
-  }, [])
 
   const selectedContainer = containers.find((c) => c.id === containerId)
 

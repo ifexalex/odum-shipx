@@ -1,4 +1,4 @@
-import { Fragment, useEffect, useState, type JSX, type KeyboardEvent as ReactKeyboardEvent } from 'react'
+import { Fragment, useMemo, useState, type JSX, type KeyboardEvent as ReactKeyboardEvent } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { ApiError } from '../../api/client'
 import { applyMinCbm, baleSizeAbbr, buildPackageMix, computeCbm, formatPackageMix } from '../../api/packingListRules'
@@ -8,12 +8,18 @@ import {
   PACKAGE_UNITS,
   packingListApi,
   type PackageUnit,
+  type PackingList,
   type PackingListItemInput,
 } from '../../api/packingList'
-import { containersApi, type Container } from '../../api/tracking'
-import { configApi, customersApi, type CbmRateCurrency, type Customer } from '../../api/tenantManagement'
-import { warehousesApi, type Warehouse } from '../../api/warehouses'
+import type { Container } from '../../api/tracking'
+import type { CbmRateCurrency, Customer } from '../../api/tenantManagement'
 import { useIdempotencyKey } from '../../api/useIdempotencyKey'
+import { useCbmRate, useDollarRate } from '../../hooks/useConfig'
+import { useContainerLookup } from '../../hooks/useContainers'
+import { useCustomerLookup } from '../../hooks/useCustomers'
+import { usePackingListForEdit } from '../../hooks/usePackingLists'
+import { useSeedOnce } from '../../hooks/useSeedOnce'
+import { useWarehouses } from '../../hooks/useWarehouses'
 import { Avatar, Badge, Banner, Button, Card, Combobox, Field, Icon, Kvp, Modal, Mono } from '../../design/components'
 import { PageHeader } from '../../shell/PageHeader'
 import { SectionHead } from '../../shell/SectionHead'
@@ -170,156 +176,138 @@ export function CreatePackingList(): JSX.Element {
   // would discard the only thing protecting a double-submit.
   const { key } = useIdempotencyKey()
   const [step, setStep] = useState<1 | 2 | 3>(1)
-  const [customers, setCustomers] = useState<Customer[]>([])
-  const [containers, setContainers] = useState<Container[]>([])
   const [customerId, setCustomerId] = useState('')
   const [containerId, setContainerId] = useState('')
-  const [warehouses, setWarehouses] = useState<Warehouse[]>([])
   const [arrivalWarehouseId, setArrivalWarehouseId] = useState('')
   const [loadingDate, setLoadingDate] = useState('')
   const [deliveryDate, setDeliveryDate] = useState('')
-  // Minimum billable CBM per item (tenant setting) — tiny parcels are floored
-  // to this value, mirroring the backend, so the wizard shows the real value.
-  const [minCbm, setMinCbm] = useState(0.1)
   const [items, setItems] = useState<PackingListItemInput[]>([emptyItem()])
   // Set when a save is held back pending confirmation of a bulk line.
   const [pendingSave, setPendingSave] = useState<{ submitForApproval: boolean } | null>(null)
   // When editing a draft, the customer/container are fixed (the update API
   // keeps them) — show them read-only once loaded.
-  const [editReady, setEditReady] = useState(!isEdit)
-  // Tenant rates for the live pricing estimate (Step 2). Null until fetched or
-  // if the current role can't read them — the pricing card degrades to "—".
-  // This wizard doesn't collect a per-item package type, so it can only ever
-  // estimate with one representative rate — carton_rate, the same rate any
-  // unrecognized package type bills at (shared/cbm_rate.py).
-  const [cbmRate, setCbmRate] = useState<number | null>(null)
-  const [cbmCurrency, setCbmCurrency] = useState<CbmRateCurrency>('usd')
-  const [fxRate, setFxRate] = useState<number | null>(null)
+  const [draftSeeded, setDraftSeeded] = useState(false)
   const [submitting, setSubmitting] = useState(false)
-  const [error, setError] = useState<string | null>(null)
-  // Tracked separately from `error`: failing to load warehouses must not read as
-  // "this tenant has none", but it also must not block the rest of the form.
-  const [warehouseError, setWarehouseError] = useState<string | null>(null)
+  const [actionError, setError] = useState<string | null>(null)
 
-  useEffect(() => {
-    async function loadPickerData(): Promise<void> {
-      try {
-        // Only 'loading' containers can receive new packing lists — sealed/in-transit
-        // containers are closed to additions (enforced by the backend too).
-        // The warehouse list is still tolerated failing — it is one optional
-        // field on a long form, and a tenant that has configured none is a
-        // legitimate state. But the failure must NOT be swallowed into an
-        // empty array: doing so rendered "No warehouses configured" for what
-        // was actually a 403 (china_office_staff were missing from the read
-        // roles), so a permission bug looked like a configuration choice for
-        // weeks. Record that it failed and say so in the UI instead.
-        const [customerResult, containerResult, warehouseResult] = await Promise.all([
-          customersApi.list(),
-          containersApi.list({ status: 'loading' }),
-          warehousesApi.list().then(
-            (rows) => ({ ok: true as const, rows }),
-            (err: unknown) => ({ ok: false as const, err }),
-          ),
-        ])
-        setCustomers(customerResult.data)
-        setContainers(containerResult.data)
-        if (!warehouseResult.ok) {
-          const { err } = warehouseResult
-          setWarehouseError(
-            err instanceof ApiError ? err.message : 'Could not load warehouses.',
-          )
-          return
-        }
-        const warehouseRows = warehouseResult.rows
-        setWarehouses(warehouseRows)
-        // Pre-select the tenant's default warehouse on a fresh create. On edit,
-        // loadDraftForEdit sets the saved value instead (don't clobber it).
-        if (!isEdit) {
-          const def = warehouseRows.find((w) => w.is_default)
-          if (def) setArrivalWarehouseId((prev) => prev || def.id)
-        }
-      } catch (err) {
-        setError(err instanceof ApiError ? err.message : 'Could not load customers or containers.')
+  // ---- Server data (React Query; audit FE-05). Nothing here is fetched in an effect. ----
+
+  // Pickers. Only 'loading' containers can receive new packing lists — sealed/in-transit containers are closed to
+  // additions (enforced by the backend too).
+  const customerLookup = useCustomerLookup()
+  const containerLookup = useContainerLookup({ status: 'loading' })
+  // The warehouse list is tolerated failing — it is one optional field on a long form, and a tenant that has
+  // configured none is a legitimate state. But the failure must NOT read as an empty list: that rendered
+  // "No warehouses configured" for what was actually a 403, so a permission bug looked like a configuration choice
+  // for weeks. `warehouseError` says so in the UI instead.
+  const warehouseQuery = useWarehouses()
+  const warehouses = warehouseQuery.data ?? []
+  const warehouseError = warehouseQuery.error
+    ? warehouseQuery.error instanceof ApiError
+      ? warehouseQuery.error.message
+      : 'Could not load warehouses.'
+    : null
+
+  // Tenant rates for the live pricing estimate (Step 2), re-read when the form opens. Null until fetched or if the
+  // current role can't read them — the pricing card degrades to "—"; pricing is a non-blocking nicety. This wizard
+  // doesn't collect a per-item package type, so it can only ever estimate with one representative rate — carton_rate,
+  // the same rate any unrecognized package type bills at (shared/cbm_rate.py).
+  const cbmRateQuery = useCbmRate({ freshOnOpen: true })
+  const dollarRateQuery = useDollarRate({ freshOnOpen: true })
+  const cbmRate: number | null = cbmRateQuery.data?.carton_rate ?? null
+  const cbmCurrency: CbmRateCurrency = cbmRateQuery.data?.currency ?? 'usd'
+  const fxRate: number | null = dollarRateQuery.data?.rate ?? null
+  // Minimum billable CBM per item (tenant setting) — tiny parcels are floored to this value, mirroring the backend,
+  // so the wizard shows the real value.
+  const tenantMinCbm = cbmRateQuery.data?.min_cbm_per_item ?? 0
+  const minCbm = tenantMinCbm > 0 ? tenantMinCbm : 0.1
+
+  // The draft being edited, if any. Always read fresh, then copied into the form once.
+  const draftQuery = usePackingListForEdit(editId)
+  const draft = draftQuery.isFetchedAfterMount ? draftQuery.data : undefined
+  const draftEditable = draft !== undefined && (draft.status === 'draft' || draft.status === 'rejected')
+  // When editing a draft, the customer/container are fixed (the update API keeps them) — the form shows once the
+  // draft has been copied in, or its read has failed.
+  const editReady = !editId || draftSeeded || draftQuery.isError
+
+  function fillFromDraft(pl: PackingList): void {
+    try {
+      if (pl.status !== 'draft' && pl.status !== 'rejected') {
+        setError('This packing list can no longer be edited (it has been submitted or approved).')
+        return
       }
+      setCustomerId(pl.customer_id)
+      setContainerId(pl.container_id)
+      setArrivalWarehouseId(pl.arrival_warehouse_id ?? '')
+      setLoadingDate(pl.loading_date ?? '')
+      setDeliveryDate(pl.delivery_date ?? '')
+      setItems(
+        // collapseBatches folds an expanded bulk line back into the single
+        // row that produced it, so the quantity the user typed is what they
+        // see when they reopen the draft.
+        collapseBatches(
+          pl.items.length > 0
+          ? pl.items.map((it) => ({
+              description: it.description,
+              weight_dispatch_kg: it.weight_dispatch_kg != null ? Number(it.weight_dispatch_kg) : undefined,
+              weight_actual_kg: it.weight_actual_kg != null ? Number(it.weight_actual_kg) : undefined,
+              length_cm: it.length_cm != null ? Number(it.length_cm) : undefined,
+              width_cm: it.width_cm != null ? Number(it.width_cm) : undefined,
+              height_cm: it.height_cm != null ? Number(it.height_cm) : undefined,
+              declared_value_usd: it.declared_value_usd != null ? Number(it.declared_value_usd) : undefined,
+              package_unit: (it.package_unit as PackageUnit) ?? 'carton',
+              // Carried through because the server falls back to
+              // `received_date or date.today()`. Dropping it meant editing a
+              // draft silently re-dated every item to today — and the
+              // tracking code is derived from customer + received date, so
+              // the grouping moved with it. Worst on an imported list, where
+              // that date is real rather than the day of entry.
+              received_date: it.received_date ?? undefined,
+              // Carried through so an edit round trip keeps the grouping. The
+              // rows arrive already expanded — one per package — so quantity
+              // stays 1 here; re-expanding them would duplicate the cargo.
+              batch_ref: it.batch_ref ?? null,
+            }))
+          : [emptyItem()],
+        ),
+      )
+    } finally {
+      setDraftSeeded(true)
     }
-    async function loadRates(): Promise<void> {
-      // Pricing is a non-blocking nicety — swallow failures so a rate the role
-      // can't read (or a transient error) never breaks the create flow.
-      try {
-        const [cbm, dollar] = await Promise.all([configApi.getCbmRate(), configApi.getDollarRate()])
-        setCbmRate(cbm.carton_rate)
-        setCbmCurrency(cbm.currency)
-        setFxRate(dollar.rate)
-        if (cbm.min_cbm_per_item > 0) setMinCbm(cbm.min_cbm_per_item)
-      } catch {
-        /* leave rates null → pricing tiles show "—" */
-      }
-    }
-    async function loadDraftForEdit(): Promise<void> {
-      if (!editId) return
-      try {
-        const pl = await packingListApi.get(editId)
-        if (pl.status !== 'draft' && pl.status !== 'rejected') {
-          setError('This packing list can no longer be edited (it has been submitted or approved).')
-          return
-        }
-        setCustomerId(pl.customer_id)
-        setContainerId(pl.container_id)
-        setArrivalWarehouseId(pl.arrival_warehouse_id ?? '')
-        setLoadingDate(pl.loading_date ?? '')
-        setDeliveryDate(pl.delivery_date ?? '')
-        setItems(
-          // collapseBatches folds an expanded bulk line back into the single
-          // row that produced it, so the quantity the user typed is what they
-          // see when they reopen the draft.
-          collapseBatches(
-            pl.items.length > 0
-            ? pl.items.map((it) => ({
-                description: it.description,
-                weight_dispatch_kg: it.weight_dispatch_kg != null ? Number(it.weight_dispatch_kg) : undefined,
-                weight_actual_kg: it.weight_actual_kg != null ? Number(it.weight_actual_kg) : undefined,
-                length_cm: it.length_cm != null ? Number(it.length_cm) : undefined,
-                width_cm: it.width_cm != null ? Number(it.width_cm) : undefined,
-                height_cm: it.height_cm != null ? Number(it.height_cm) : undefined,
-                declared_value_usd: it.declared_value_usd != null ? Number(it.declared_value_usd) : undefined,
-                package_unit: (it.package_unit as PackageUnit) ?? 'carton',
-                // Carried through because the server falls back to
-                // `received_date or date.today()`. Dropping it meant editing a
-                // draft silently re-dated every item to today — and the
-                // tracking code is derived from customer + received date, so
-                // the grouping moved with it. Worst on an imported list, where
-                // that date is real rather than the day of entry.
-                received_date: it.received_date ?? undefined,
-                // Carried through so an edit round trip keeps the grouping. The
-                // rows arrive already expanded — one per package — so quantity
-                // stays 1 here; re-expanding them would duplicate the cargo.
-                batch_ref: it.batch_ref ?? null,
-              }))
-            : [emptyItem()],
-          ),
-        )
-        // Ensure the fixed customer/container show even though the pickers only
-        // list open containers — inject the current one if missing.
-        setContainers((prev) =>
-          prev.some((c) => c.id === pl.container_id)
-            ? prev
-            : [{ id: pl.container_id, container_number: pl.container_number ?? '—' } as Container, ...prev],
-        )
-        setCustomers((prev) =>
-          prev.some((c) => c.id === pl.customer_id)
-            ? prev
-            : [{ id: pl.customer_id, name: pl.customer_name ?? '—' } as Customer, ...prev],
-        )
-      } catch (err) {
-        setError(err instanceof ApiError ? err.message : 'Could not load the packing list.')
-      } finally {
-        setEditReady(true)
-      }
-    }
-    void loadPickerData()
-    void loadRates()
-    void loadDraftForEdit()
-  }, [editId])
+  }
+  useSeedOnce(draftQuery, fillFromDraft)
+
+  // Pre-select the tenant's default warehouse on a fresh create (on edit, the draft's saved value is used instead).
+  // A cached warehouse list is fine to pick the default from, so this does not wait for a re-read.
+  useSeedOnce({ data: editId ? undefined : warehouseQuery.data, isFetchedAfterMount: true }, (rows) => {
+    const def = rows.find((w) => w.is_default)
+    if (def) setArrivalWarehouseId((prev) => prev || def.id)
+  })
+
+  // The pickers only list open containers; when editing, make sure the draft's own (fixed) customer and container
+  // are in them even if the container has since moved on.
+  const customers = useMemo<Customer[]>(() => {
+    const rows = customerLookup.data?.data ?? []
+    if (!draftEditable || !draft || rows.some((c) => c.id === draft.customer_id)) return rows
+    return [{ id: draft.customer_id, name: draft.customer_name ?? '—' } as Customer, ...rows]
+  }, [customerLookup.data, draft, draftEditable])
+  const containers = useMemo<Container[]>(() => {
+    const rows = containerLookup.data?.data ?? []
+    if (!draftEditable || !draft || rows.some((c) => c.id === draft.container_id)) return rows
+    return [{ id: draft.container_id, container_number: draft.container_number ?? '—' } as Container, ...rows]
+  }, [containerLookup.data, draft, draftEditable])
+
+  const pickerFailure = customerLookup.error ?? containerLookup.error
+  const loadError = draftQuery.error
+    ? draftQuery.error instanceof ApiError
+      ? draftQuery.error.message
+      : 'Could not load the packing list.'
+    : pickerFailure
+      ? pickerFailure instanceof ApiError
+        ? pickerFailure.message
+        : 'Could not load customers or containers.'
+      : null
+  const error = actionError ?? loadError
 
   const selectedCustomer = customers.find((c) => c.id === customerId)
   const selectedContainer = containers.find((c) => c.id === containerId)

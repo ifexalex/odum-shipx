@@ -3,13 +3,13 @@
  * Rendered outside the app shell (layout: 'none'); the toolbar disappears in
  * print. Reached from PackingListDetail's Print button.
  */
-import { useEffect, useState, type JSX } from 'react'
+import { type JSX } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { ApiError } from '../../api/client'
-import { packingListApi, type PackingList } from '../../api/packingList'
 import { buildPackageMix, formatPackageMix, packagesInRow, totalPackages } from '../../api/packingListRules'
 import { Button } from '../../design/components'
 import { useBranding } from '../../hooks/useConfig'
+import { usePackingList } from '../../hooks/usePackingLists'
 import { PrintBrandFoot, PrintBrandHead } from './PrintBrand'
 import styles from './print.module.css'
 import { formatDate } from '../../lib/format'
@@ -17,22 +17,16 @@ import { formatDate } from '../../lib/format'
 export function PrintPackingList(): JSX.Element {
   const { id } = useParams<{ id: string }>()
   const navigate = useNavigate()
-  const [pl, setPl] = useState<PackingList | null>(null)
-  const [error, setError] = useState<string | null>(null)
+  const { data: pl, error: loadError } = usePackingList(id ?? '')
   const { branding } = useBranding()
 
-  useEffect(() => {
-    if (!id) return
-    void (async () => {
-      try {
-        setPl(await packingListApi.get(id))
-      } catch (err) {
-        setError(err instanceof ApiError ? err.message : 'Could not load this packing list.')
-      }
-    })()
-  }, [id])
-
-  if (error) return <div className={styles.loading}>{error}</div>
+  if (loadError) {
+    return (
+      <div className={styles.loading}>
+        {loadError instanceof ApiError ? loadError.message : 'Could not load this packing list.'}
+      </div>
+    )
+  }
   if (!pl) return <div className={styles.loading}>Preparing document…</div>
 
   const totalCbm = pl.items.reduce((s, i) => s + Number(i.cbm ?? 0), 0)

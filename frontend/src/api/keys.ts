@@ -16,6 +16,8 @@ export const containerKeys = {
   detail: (id: string) => [...containerKeys.all, 'detail', id] as const,
   events: (id: string) => [...containerKeys.all, 'detail', id, 'events'] as const,
   documents: (id: string) => [...containerKeys.all, 'detail', id, 'documents'] as const,
+  // A flat one-shot read (a dashboard queue, a picker). Not `list()`: see releaseNoteKeys.lookup.
+  lookup: (params?: Record<string, unknown>) => [...containerKeys.all, 'lookup', params ?? {}] as const,
 }
 
 // ─── Packing lists ────────────────────────────────────────────────────────────
@@ -41,6 +43,9 @@ export const manifestKeys = {
   all: ['manifests'] as const,
   list: (params?: Record<string, unknown>) => [...manifestKeys.all, 'list', params ?? {}] as const,
   detail: (id: string) => [...manifestKeys.all, 'detail', id] as const,
+  stats: () => [...manifestKeys.all, 'stats'] as const,
+  // A flat one-shot read (a dashboard queue, a picker). Not `list()`: see releaseNoteKeys.lookup.
+  lookup: (params?: Record<string, unknown>) => [...manifestKeys.all, 'lookup', params ?? {}] as const,
 }
 
 // ─── Billing ──────────────────────────────────────────────────────────────────
@@ -73,6 +78,8 @@ export const disputeKeys = {
   all: ['disputes'] as const,
   list: (params?: Record<string, unknown>) => ['disputes', 'list', params ?? {}] as const,
   detail: (id: string) => ['disputes', 'detail', id] as const,
+  // A flat one-shot read (a dashboard queue, a picker). Not `list()`: see releaseNoteKeys.lookup.
+  lookup: (params?: Record<string, unknown>) => ['disputes', 'lookup', params ?? {}] as const,
 }
 
 export const seizedItemKeys = {
@@ -117,6 +124,7 @@ export const releaseNoteKeys = {
   all: ['release-notes'] as const,
   list: (params?: Record<string, unknown>) => [...releaseNoteKeys.all, 'list', params ?? {}] as const,
   detail: (id: string) => [...releaseNoteKeys.all, 'detail', id] as const,
+  stats: () => [...releaseNoteKeys.all, 'stats'] as const,
   /**
    * A FLAT one-shot read, for a page that needs the whole set as a lookup
    * table rather than a paginated screen.
@@ -141,6 +149,8 @@ export const customerKeys = {
   list: (params?: Record<string, unknown>) => [...customerKeys.all, 'list', params ?? {}] as const,
   detail: (id: string) => [...customerKeys.all, 'detail', id] as const,
   stats: () => [...customerKeys.all, 'stats'] as const,
+  // A flat one-shot read (a dashboard queue, a picker). Not `list()`: see releaseNoteKeys.lookup.
+  lookup: (params?: Record<string, unknown>) => [...customerKeys.all, 'lookup', params ?? {}] as const,
 }
 
 // ─── Container capacity presets ─────────────────────────────────────────────────
@@ -164,6 +174,8 @@ export const configKeys = {
   webhook: () => [...configKeys.all, 'webhook'] as const,
   notifications: () => [...configKeys.all, 'notification-templates'] as const,
   chargeTypes: () => [...configKeys.all, 'charge-types'] as const,
+  // GET /v1/tenant/rate-history — a child of `all`, so saving either rate refreshes its history table.
+  rateHistory: (rateType: string) => [...configKeys.all, 'rate-history', rateType] as const,
   // GET /v1/tenant/config (webhook + branding live in the same response —
   // webhook() above predates this and is kept for WebhookConfig's cache slot).
   tenantConfig: () => [...configKeys.all, 'tenant-config'] as const,
@@ -216,10 +228,27 @@ export const platformTenantKeys = {
   usage: (id: string) => [...platformTenantKeys.all, 'usage', id] as const,
 }
 
+// ─── Platform settings (general, notification providers, plan limits) ────────
+export const platformSettingsKeys = {
+  all: ['platform-settings'] as const,
+  general: () => [...platformSettingsKeys.all, 'general'] as const,
+  gateways: () => [...platformSettingsKeys.all, 'gateways'] as const,
+  plans: () => [...platformSettingsKeys.all, 'plans'] as const,
+}
+
+// ─── Platform dashboard (cross-tenant totals) ────────────────────────────────
+export const platformDashboardKeys = {
+  all: ['platform-dashboard'] as const,
+  summary: () => [...platformDashboardKeys.all, 'summary'] as const,
+}
+
 // ─── Platform audit log (cross-tenant) ────────────────────────────────────────
 export const platformAuditKeys = {
   all: ['platform-audit'] as const,
   list: (params?: Record<string, unknown>) => [...platformAuditKeys.all, 'list', params ?? {}] as const,
+  // The dashboard's short activity feed: a flat read, so not `list()`, which the audit-log page pages through as an
+  // infinite query (two shapes under one key corrupt each other).
+  recent: (limit: number) => [...platformAuditKeys.all, 'recent', limit] as const,
 }
 
 // ─── Platform onboarding requests (shipping-company leads) ────────────────────

@@ -2,12 +2,12 @@
  * 14.12 / F-B2 — Printable A4 release note (prototype reports-screens.jsx:870).
  * Pickup authorisation the customer presents at the warehouse.
  */
-import { useEffect, useState, type JSX } from 'react'
+import { type JSX } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { ApiError } from '../../api/client'
-import { releaseNotesApi, type ReleaseNote } from '../../api/releaseNotes'
 import { Button } from '../../design/components'
 import { useBranding } from '../../hooks/useConfig'
+import { useReleaseNote } from '../../hooks/useReleaseNotes'
 import { PrintBrandFoot, PrintBrandHead } from './PrintBrand'
 import styles from './print.module.css'
 import { formatDate, formatAmount } from '../../lib/format'
@@ -15,22 +15,16 @@ import { formatDate, formatAmount } from '../../lib/format'
 export function PrintReleaseNote(): JSX.Element {
   const { id } = useParams<{ id: string }>()
   const navigate = useNavigate()
-  const [note, setNote] = useState<ReleaseNote | null>(null)
-  const [error, setError] = useState<string | null>(null)
+  const { data: note, error: loadError } = useReleaseNote(id ?? '')
   const { branding } = useBranding()
 
-  useEffect(() => {
-    if (!id) return
-    void (async () => {
-      try {
-        setNote(await releaseNotesApi.get(id))
-      } catch (err) {
-        setError(err instanceof ApiError ? err.message : 'Could not load this release note.')
-      }
-    })()
-  }, [id])
-
-  if (error) return <div className={styles.loading}>{error}</div>
+  if (loadError) {
+    return (
+      <div className={styles.loading}>
+        {loadError instanceof ApiError ? loadError.message : 'Could not load this release note.'}
+      </div>
+    )
+  }
   if (!note) return <div className={styles.loading}>Preparing document…</div>
 
   return (

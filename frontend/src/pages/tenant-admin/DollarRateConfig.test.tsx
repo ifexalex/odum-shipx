@@ -12,13 +12,14 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { ApiError } from '../../api/client'
 import { configApi, type DollarRateConfig as DollarRateConfigShape } from '../../api/tenantManagement'
 import { DollarRateConfig } from './DollarRateConfig'
+import { withQuery } from '../../test/queryWrapper'
 
 function renderPage(): ReturnType<typeof render> {
-  return render(
+  return render(withQuery(
     <MemoryRouter>
       <DollarRateConfig />
     </MemoryRouter>,
-  )
+  ))
 }
 
 vi.mock('../../api/tenantManagement', async (importOriginal) => {
