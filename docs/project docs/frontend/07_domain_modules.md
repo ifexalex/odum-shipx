@@ -1786,3 +1786,11 @@ Declarations moved byte for byte (a TypeScript-compiler-based mover); new files 
 
 **Tooling note:** `npx tsc --noEmit -p .` in `frontend/` checks nothing — `tsconfig.json` has `"files": []` and only references the app and node configs. Use `npm run typecheck` (`tsc -b --noEmit`).
 
+## Styling rule: no static inline styles (audit FE-06, 2026-11-17)
+
+**Rule.** A `style={{...}}` prop is for values computed at runtime only (a width from a percentage, a colour from a status, a border on all but the last row). Anything fixed belongs in the page's CSS module, written with the design tokens in `src/design/tokens.css` (`var(--color-*)`, `var(--font-*)`, `var(--radius-*)`, `var(--scrim-modal)`). Inline values bypass theming (dark mode cannot reach them) and drift from the tokens.
+
+Applied to the five largest pages: `ReleaseNoteDetail` (12 → 0), `ManifestDetail` (2 → 0), `AdminCustomerDetail` (21 → 0), `MyBillingDetail` (24 → 1, a runtime border), `LandingPage` (already 0). Classes were added to each page's module (`ReleaseNoteDetail.module.css`, `ManifestDetail.module.css`, the shared `admin.module.css` and `customer.module.css`), one per distinct style, with names for what the element is (`fieldLabel`, `prefRow`, `dialogOverlay`, `paymentsTh`). Pixel-compared before and after in Chromium against the dev data: two pages identical, two differing only in anti-aliasing (≤ 39 scattered pixels on card corners).
+
+**Found and fixed:** `AdminCustomerDetail`'s locale select used `var(--color-ink-1)`, a token that does not exist (the scale is `--color-ink`, `--color-ink-2`, …), so its colour fell back to inherited — now `var(--color-ink)`; `MyBillingDetail`'s hand-rolled dialog overlay hard-coded the light-mode scrim `rgba(11,47,13,0.55)` — now `var(--scrim-modal)`, which darkens correctly in dark mode. About 650 inline styles remain elsewhere in `src/`; convert them page by page under this rule.
+

@@ -291,3 +291,12 @@
   text-overflow: ellipsis;
   white-space: nowrap;
 }
+
+/* ManifestDetail: static styles moved out of inline style props (audit FE-06). */
+.dimText {
+  color: var(--color-ink-4);
+}
+
+.discrepancyRow {
+  background: var(--color-error-muted);
+}

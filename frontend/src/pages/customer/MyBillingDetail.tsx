@@ -135,7 +135,7 @@ function PaymentClaimPanel({
             <label className={styles.selectLabel}>
               Evidence of payment <span className={styles.required}>*</span>
             </label>
-            <p style={{ fontSize: 12, color: 'var(--color-text-muted)', margin: '2px 0 8px' }}>
+            <p className={styles.cardHint}>
               A screenshot or photo of your transfer receipt — required before you can submit.
             </p>
             {evidence ? (
@@ -206,20 +206,17 @@ function CbmDisputeModal({ billing, onCancel, onSuccess }: { billing: Billing; o
 
   return (
     <div
-      style={{ position: 'fixed', inset: 0, background: 'rgba(11,47,13,0.55)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 200, padding: 16 }}
+      className={styles.dialogOverlay}
       onClick={onCancel}
     >
       <DialogGuard onClose={onCancel} />
       <div
-        style={{
-          background: 'var(--color-surface)', borderRadius: 14, padding: 24, width: '100%', maxWidth: 480,
-          display: 'flex', flexDirection: 'column', gap: 16, maxHeight: '90vh', overflowY: 'auto',
-        }}
+        className={styles.dialogPanel}
         onClick={(e) => e.stopPropagation()}
         role="dialog"
         aria-modal="true"
       >
-        <h3 style={{ margin: 0, fontSize: '1rem', fontWeight: 700 }}>Dispute the CBM measurement</h3>
+        <h3 className={styles.dialogTitle}>Dispute the CBM measurement</h3>
         {error && <Banner variant="error" title="Could not file dispute">{error}</Banner>}
         <Banner variant="info" title={`We measured ${Number(billing.total_cbm).toFixed(3)} CBM`}>
           If your own measurement differs, file a dispute — our team acknowledges within 24 hours and
@@ -243,7 +240,7 @@ function CbmDisputeModal({ billing, onCancel, onSuccess }: { billing: Billing; o
           value={reason}
           onChange={(e) => setReason(e.target.value)}
         />
-        <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
+        <div className={styles.dialogActions}>
           <Button variant="ghost" size="lg" onClick={onCancel} disabled={submitting}>Cancel</Button>
           <Button variant="primary" size="lg" loading={submitting} disabled={!canSubmit} onClick={() => void handleSubmit()}>
             File dispute
@@ -336,7 +333,7 @@ export function MyBillingDetail(): JSX.Element {
   const [showDispute, setShowDispute] = useState(false)
   const [disputeFiled, setDisputeFiled] = useState(false)
 
-  if (isLoading && !billing) return <div style={{ padding: 32, color: 'var(--color-text-muted)' }}>Loading…</div>
+  if (isLoading && !billing) return <div className={styles.loadingState}>Loading…</div>
   if (error && !billing) return (
     <div className={styles.page}>
       <Banner variant="error">{error ?? 'Not found.'}</Banner>
@@ -355,16 +352,16 @@ export function MyBillingDetail(): JSX.Element {
       <div className={styles.heroRow}>
         <div>
           <h1 className={styles.detailTitle}>{billing.container_number ?? billing.container_id}</h1>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 4 }}>
+          <div className={styles.claimStatusRow}>
             <Badge variant={STATUS_VARIANT[billing.payment_status]}>{statusLabel(billing.payment_status)}</Badge>
             {billing.billed_at && (
-              <span style={{ fontSize: '0.8125rem', color: 'var(--color-text-muted)' }}>
+              <span className={styles.claimStatusText}>
                 Billed {formatDate(billing.billed_at)}
               </span>
             )}
           </div>
         </div>
-        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+        <div className={styles.actionsWrap}>
           {billing._active_disputes.length === 0 && !disputeFiled && billing.payment_status !== 'cancelled' && (
             <Button variant="secondary" onClick={() => setShowDispute(true)}>
               Dispute CBM
@@ -384,7 +381,7 @@ export function MyBillingDetail(): JSX.Element {
       <ReleaseNoteCard containerId={billing.container_id} />
 
       {(disputeFiled || billing._active_disputes.length > 0) && (
-        <div style={{ marginBottom: 16 }}>
+        <div className={styles.sectionGap}>
           <Banner variant="info" title="CBM dispute open">
             Your dispute is with our team — we acknowledge within 24 hours and re-measure. You&apos;ll be
             notified of the outcome.
@@ -408,7 +405,7 @@ export function MyBillingDetail(): JSX.Element {
         }
       />
       {invoiceError && (
-        <div style={{ marginBottom: 12 }}>
+        <div className={styles.bannerGap}>
           <Banner variant="error">{invoiceError}</Banner>
         </div>
       )}
@@ -507,7 +504,7 @@ export function MyBillingDetail(): JSX.Element {
           ) : (
             <>
               {latestClaim?.status === 'rejected' && (
-                <div style={{ marginBottom: 16 }}>
+                <div className={styles.sectionGap}>
                   <Banner variant="error" title="Your last payment claim was rejected">
                     {latestClaim.rejection_reason ?? 'Contact your shipping company for details.'} You can pay
                     online or submit a new bank-transfer claim below.
@@ -523,14 +520,14 @@ export function MyBillingDetail(): JSX.Element {
                     secure checkout page.
                   </p>
                   {payError && (
-                    <div style={{ marginBottom: 10 }}>
+                    <div className={styles.noteGap}>
                       <Banner variant="error">{payError}</Banner>
                     </div>
                   )}
                   <Button variant="accent" loading={payLoading} onClick={() => void handlePayOnline()}>
                     Pay {formatNgn(outstanding)} online
                   </Button>
-                  <p style={{ fontSize: '0.75rem', color: 'var(--color-text-muted)', marginTop: 6 }}>
+                  <p className={styles.fieldHint}>
                     Payments are confirmed automatically — your release note is issued once settled.
                   </p>
                 </div>
@@ -544,7 +541,7 @@ export function MyBillingDetail(): JSX.Element {
                   {showTransfer ? (
                     <>
                       <BankTransferDetails config={bankConfig} />
-                      <div style={{ marginTop: 12 }}>
+                      <div className={styles.topGap12}>
                         <PaymentClaimPanel
                           billingId={billing.id}
                           outstandingNgn={outstanding}
@@ -567,7 +564,7 @@ export function MyBillingDetail(): JSX.Element {
       )}
 
       {isPaid && billing.outstanding_ngn !== '0' && Number(billing.outstanding_ngn) < 0 && (
-        <div className={styles.banner} style={{ marginTop: 16 }}>
+        <div className={`${styles.banner} ${styles.topGap16}`}>
           <Banner variant="info" title="Overpayment">
             You have overpaid by {formatNgn(Math.abs(outstanding))}. A refund or credit will be arranged by our team.
           </Banner>
@@ -579,21 +576,21 @@ export function MyBillingDetail(): JSX.Element {
         <>
           <SectionHead title="Payment history" />
           <Card padding={0}>
-            <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+            <table className={styles.paymentsTable}>
               <thead>
-                <tr style={{ borderBottom: '1px solid var(--color-border)' }}>
+                <tr className={styles.paymentsHeadRow}>
                   {['Amount', 'Method', 'Reference', 'Date'].map((h) => (
-                    <th key={h} style={{ padding: '10px 16px', textAlign: 'left', fontSize: '0.8125rem', color: 'var(--color-text-muted)', fontWeight: 600 }}>{h}</th>
+                    <th key={h} className={styles.paymentsTh}>{h}</th>
                   ))}
                 </tr>
               </thead>
               <tbody>
                 {billing.payments.map((p, i) => (
                   <tr key={p.id} style={{ borderBottom: i < billing.payments.length - 1 ? '1px solid var(--color-border)' : 'none' }}>
-                    <td style={{ padding: '12px 16px' }}><Mono>{formatNgn(p.amount_ngn)}</Mono></td>
-                    <td style={{ padding: '12px 16px' }}>{p.payment_method ?? '—'}</td>
-                    <td style={{ padding: '12px 16px' }}><Mono>{p.payment_reference ?? '—'}</Mono></td>
-                    <td style={{ padding: '12px 16px' }}>{formatDate(p.confirmed_at)}</td>
+                    <td className={styles.paymentsTd}><Mono>{formatNgn(p.amount_ngn)}</Mono></td>
+                    <td className={styles.paymentsTd}>{p.payment_method ?? '—'}</td>
+                    <td className={styles.paymentsTd}><Mono>{p.payment_reference ?? '—'}</Mono></td>
+                    <td className={styles.paymentsTd}>{formatDate(p.confirmed_at)}</td>
                   </tr>
                 ))}
               </tbody>

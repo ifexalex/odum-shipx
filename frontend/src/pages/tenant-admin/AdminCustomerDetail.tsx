@@ -191,7 +191,7 @@ function ProfileTab({ customer, shipments, billing, claims, onSaved }: ProfileTa
       <div className={styles.profileGrid}>
         <Card padding={20}>
           <SectionHead title="Contact" />
-          <div style={{ height: 8 }} />
+          <div className={styles.spacer8} />
           <Kvp label="Full name" value={customer.name ?? <em>Erased</em>} />
           <Kvp label="Email" value={customer.email ? <Mono>{customer.email}</Mono> : <em>Erased</em>} />
           <Kvp label="Phone" value={customer.phone ? <Mono>{customer.phone}</Mono> : <em>Erased</em>} />
@@ -199,31 +199,31 @@ function ProfileTab({ customer, shipments, billing, claims, onSaved }: ProfileTa
           <Kvp label="Address" value={customer.address ?? <em>Erased</em>} />
           <Kvp
             label="Customer ID"
-            value={<span style={{ fontFamily: 'var(--font-mono)', fontSize: '0.8125rem' }}>{customer.id}</span>}
+            value={<span className={styles.monoValue}>{customer.id}</span>}
             divider={false}
           />
         </Card>
 
         <Card padding={20}>
           <SectionHead title="Consent & GDPR" sub="Lawful-processing record (NDPR / GDPR Art. 6)" />
-          <div style={{ height: 8 }} />
+          <div className={styles.spacer8} />
           <Kvp
             label="Consent given"
             value={formatDate(customer.consent_given_at)}
           />
-          <div style={{ padding: '10px 0', borderBottom: '1px dashed var(--color-line-soft)' }}>
-            <div style={{ fontSize: 12, color: 'var(--color-ink-4)', fontWeight: 500, textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 6 }}>
+          <div className={styles.prefRow}>
+            <div className={styles.prefLabel}>
               Notification channels
             </div>
-            <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+            <div className={styles.chipRow}>
               {consent.length === 0 && <Badge variant="neutral">None granted</Badge>}
               {consent.map((c) => (
                 <Badge key={c} variant="success">{CONSENT_LABEL[c] ?? c}</Badge>
               ))}
             </div>
           </div>
-          <div style={{ padding: '10px 0', borderBottom: '1px dashed var(--color-line-soft)', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}>
-            <div style={{ fontSize: 12, color: 'var(--color-ink-4)', fontWeight: 500, textTransform: 'uppercase', letterSpacing: '0.06em' }}>
+          <div className={styles.prefRowInline}>
+            <div className={styles.prefLabelInline}>
               Message language
             </div>
             <select
@@ -231,7 +231,7 @@ function ProfileTab({ customer, shipments, billing, claims, onSaved }: ProfileTa
               value={customer.locale ?? 'en'}
               disabled={savingLocale || customer.anonymised_at !== null}
               onChange={(e) => void handleLocaleChange(e.target.value as 'en' | 'zh')}
-              style={{ fontSize: 13, padding: '4px 8px', borderRadius: 6, border: '1px solid var(--color-line)', background: 'transparent', color: 'var(--color-ink-1)' }}
+              className={styles.compactSelect}
             >
               <option value="en">English</option>
               <option value="zh">中文 (简体)</option>
@@ -258,7 +258,7 @@ function ProfileTab({ customer, shipments, billing, claims, onSaved }: ProfileTa
 function ShipmentsTab({ customer, shipments, onOpen }: { customer: Customer; shipments: PackingList[] | null; onOpen: (id: string) => void }): JSX.Element {
   return (
     <Card padding={0}>
-      <div style={{ padding: '18px 20px' }}>
+      <div className={styles.cardPad}>
         <SectionHead
           title={`Shipments${customer.name ? ` · ${customer.name}` : ''}`}
           sub={shipments ? `${shipments.length} total` : 'Loading…'}
@@ -283,7 +283,7 @@ function ShipmentsTab({ customer, shipments, onOpen }: { customer: Customer; shi
             </Badge>,
             <Mono key="cartons">{pl.carton_count}</Mono>,
             <Mono key="cbm">{Number(pl.total_cbm).toFixed(3)}</Mono>,
-            <span key="created" style={{ fontSize: 12, color: 'var(--color-ink-3)' }}>{formatDate(pl.created_at)}</span>,
+            <span key="created" className={styles.smallMuted}>{formatDate(pl.created_at)}</span>,
             <ViewLink key="view" onClick={() => onOpen(pl.id)} />,
           ],
         }))}
@@ -308,7 +308,7 @@ function BillingTab({ billing, onOpen }: { billing: Billing[] | null; onOpen: (b
       </div>
 
       <Card padding={0}>
-        <div style={{ padding: '18px 20px' }}>
+        <div className={styles.cardPad}>
           <SectionHead title="Billing records" />
         </div>
         <Table
@@ -347,7 +347,7 @@ function BillingTab({ billing, onOpen }: { billing: Billing[] | null; onOpen: (b
 function ClaimsTab({ claims, onOpen }: { claims: Claim[] | null; onOpen: (c: Claim) => void }): JSX.Element {
   return (
     <Card padding={0}>
-      <div style={{ padding: '18px 20px' }}>
+      <div className={styles.cardPad}>
         <SectionHead title="Damage claims" sub={claims ? `${claims.length} total` : 'Loading…'} />
       </div>
       <Table
@@ -365,7 +365,7 @@ function ClaimsTab({ claims, onOpen }: { claims: Claim[] | null; onOpen: (c: Cla
             <Mono key="cont">{c.container_number ?? '—'}</Mono>,
             <Badge key="status" variant={CLAIM_VARIANT[c.status] ?? 'neutral'}>{c.status.replace(/_/g, ' ')}</Badge>,
             <Mono key="cartons">{c.cartons_affected?.length ?? 0}</Mono>,
-            <span key="filed" style={{ fontSize: 12, color: 'var(--color-ink-3)' }}>{formatDate(c.created_at)}</span>,
+            <span key="filed" className={styles.smallMuted}>{formatDate(c.created_at)}</span>,
             <ViewLink key="view" onClick={() => onOpen(c)} />,
           ],
         }))}
@@ -390,7 +390,7 @@ function PrivacyTab({ customer, exporting, readOnly, onExport, onAnonymise }: Pr
     <div className={styles.profileGrid}>
       <Card padding={20}>
         <SectionHead title="Data export" sub="GDPR Art. 20 / NDPR — data portability" />
-        <p style={{ fontSize: 13, color: 'var(--color-ink-3)', lineHeight: 1.55, margin: '8px 0 16px' }}>
+        <p className={styles.bodyText}>
           Downloads everything held about this customer — profile, shipments, billing, and claims —
           as a JSON bundle. Available even after anonymisation (financial records are retained).
         </p>
@@ -402,13 +402,13 @@ function PrivacyTab({ customer, exporting, readOnly, onExport, onAnonymise }: Pr
       <Card padding={20}>
         <SectionHead title="Right to erasure" sub="GDPR Art. 17 / NDPR — anonymisation" />
         {isAnonymised ? (
-          <p style={{ fontSize: 13, color: 'var(--color-ink-3)', lineHeight: 1.55, margin: '8px 0 0' }}>
+          <p className={styles.bodyTextLast}>
             This record was anonymised on <strong>{formatDate(customer.anonymised_at)}</strong>. Personal
             data has been erased; the UUID and financial records are retained for legal compliance.
           </p>
         ) : (
           <>
-            <p style={{ fontSize: 13, color: 'var(--color-ink-3)', lineHeight: 1.55, margin: '8px 0 16px' }}>
+            <p className={styles.bodyText}>
               Permanently erases the customer's personal data (name, email, phone, address, contract
               details). Irreversible — requires typed confirmation.
             </p>
@@ -537,7 +537,7 @@ export function AdminCustomerDetail(): JSX.Element {
     }
   }
 
-  if (loading && !customer) return <div style={{ padding: 48, color: 'var(--color-text-muted)' }}>Loading…</div>
+  if (loading && !customer) return <div className={styles.emptyState}>Loading…</div>
   if (error && !customer) return <div className={styles.banner}><Banner variant="error">{error}</Banner></div>
   if (!customer) return <></>
 
@@ -552,7 +552,7 @@ export function AdminCustomerDetail(): JSX.Element {
   return (
     <div>
       {session?.readOnly && (
-        <div style={{ marginBottom: 16 }}>
+        <div className={styles.bannerGap}>
           <Banner variant="warning" icon="eye" title="Read-only session">
             You're viewing this tenant as their Tenant Admin for support. Data is fully visible, but every create, edit, approve, and delete action is disabled. The session ends automatically after 30 minutes or when you exit.
           </Banner>
@@ -589,7 +589,7 @@ export function AdminCustomerDetail(): JSX.Element {
             )}
           </div>
         </div>
-        <div style={{ display: 'flex', gap: 8 }}>
+        <div className={styles.actionsRow}>
           {!isAnonymised && (
             <Action
               variant="secondary"
@@ -628,7 +628,7 @@ export function AdminCustomerDetail(): JSX.Element {
       )}
 
       <Tabs items={TABS} active={tab} onChange={setTab} />
-      <div style={{ height: 16 }} />
+      <div className={styles.spacer16} />
 
       {tab === 'profile' && <ProfileTab customer={customer} shipments={shipments} billing={billing} claims={claims} onSaved={(updated) => qc.setQueryData(customerKeys.detail(id ?? ''), updated)} />}
       {tab === 'shipments' && (

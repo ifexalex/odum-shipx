@@ -80,3 +80,41 @@
 /* split tag picker */
 .splitInstruction { font-size: 0.8125rem; color: var(--color-text-muted); margin: 0; }
 .splitCount { font-size: 0.8125rem; font-weight: 600; color: var(--color-primary); }
+
+/* ReleaseNoteDetail: static styles moved out of inline style props (audit FE-06). */
+.fieldLabel {
+  font-size: 0.875rem;
+  font-weight: 600;
+  display: block;
+  margin-bottom: 6px;
+}
+
+.requiredMark {
+  color: var(--color-error);
+}
+
+.optionalHint {
+  color: var(--color-text-muted);
+  font-weight: 400;
+}
+
+.mutedNote {
+  font-size: 0.875rem;
+  color: var(--color-text-muted);
+  margin: 0;
+}
+
+.flushParagraph {
+  margin: 0;
+}
+
+.pickupHint {
+  margin: 12px 0 0;
+  color: var(--color-ink-3);
+  font-size: 0.875rem;
+}
+
+.mutedText {
+  color: var(--color-text-muted);
+  font-size: 0.875rem;
+}

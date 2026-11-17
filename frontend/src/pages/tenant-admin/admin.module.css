@@ -25,7 +25,7 @@
 /* Modal — mobile-first bottom sheet, see
    nigeria/ReleaseNoteDetail.module.css's matching comment for the
    pattern reference. Shared by AdminCustomerList/StaffUserList's modals. */
-.modalOverlay { position: fixed; inset: 0; background: rgba(11,47,13,0.55); display: flex; align-items: flex-end; justify-content: center; z-index: 200; }
+.modalOverlay { position: fixed; inset: 0; background: var(--scrim-modal); display: flex; align-items: flex-end; justify-content: center; z-index: 200; }
 .modalPanel { background: var(--color-surface); border-radius: var(--radius-lg) var(--radius-lg) 0 0; padding: 24px 20px; width: 100%; display: flex; flex-direction: column; gap: 16px; box-shadow: var(--shadow-modal); max-height: 90vh; overflow-y: auto; }
 .modalTitle { font-size: 1rem; font-weight: 700; margin: 0; }
 .modalBanner { margin: 0; }
@@ -206,4 +206,101 @@
   font-family: var(--font-body);
   font-size: 13px;
   color: var(--color-ink);
+}
+
+/* AdminCustomerDetail: static styles moved out of inline style props (audit FE-06). */
+.spacer8 {
+  height: 8px;
+}
+
+.monoValue {
+  font-family: var(--font-mono);
+  font-size: 0.8125rem;
+}
+
+.prefRow {
+  padding: 10px 0;
+  border-bottom: 1px dashed var(--color-line-soft);
+}
+
+.prefLabel {
+  font-size: 12px;
+  color: var(--color-ink-4);
+  font-weight: 500;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  margin-bottom: 6px;
+}
+
+.chipRow {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.prefRowInline {
+  padding: 10px 0;
+  border-bottom: 1px dashed var(--color-line-soft);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.prefLabelInline {
+  font-size: 12px;
+  color: var(--color-ink-4);
+  font-weight: 500;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+
+.compactSelect {
+  font-size: 13px;
+  padding: 4px 8px;
+  border-radius: 6px;
+  border: 1px solid var(--color-line);
+  background: transparent;
+  color: var(--color-ink);
+}
+
+.cardPad {
+  padding: 18px 20px;
+}
+
+.smallMuted {
+  font-size: 12px;
+  color: var(--color-ink-3);
+}
+
+.bodyText {
+  font-size: 13px;
+  color: var(--color-ink-3);
+  line-height: 1.55;
+  margin: 8px 0 16px;
+}
+
+.bodyTextLast {
+  font-size: 13px;
+  color: var(--color-ink-3);
+  line-height: 1.55;
+  margin: 8px 0 0;
+}
+
+.emptyState {
+  padding: 48px;
+  color: var(--color-text-muted);
+}
+
+.bannerGap {
+  margin-bottom: 16px;
+}
+
+.actionsRow {
+  display: flex;
+  gap: 8px;
+}
+
+.spacer16 {
+  height: 16px;
 }

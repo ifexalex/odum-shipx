@@ -525,7 +525,7 @@ export function ManifestDetail(): JSX.Element {
               // customer when cargo lands, so keep them adjacent here too.
               c.customer_phone
                 ? <Mono key="phone">{c.customer_phone}</Mono>
-                : <span key="phone" style={{ color: 'var(--color-ink-4)' }}>—</span>,
+                : <span key="phone" className={styles.dimText}>—</span>,
               <Mono key="cartons">{c.carton_count}</Mono>,
               <Mono key="cbm">{formatCbm(c.total_cbm)}</Mono>,
               <Mono key="weight">{c.total_weight_kg != null ? `${c.total_weight_kg} kg` : '—'}</Mono>,
@@ -576,7 +576,7 @@ export function ManifestDetail(): JSX.Element {
                     <Mono key="accounted">{d.expected - d.missingTags.length}</Mono>,
                     <div key="tags" className={styles.tagChips}>
                       {d.missingTags.slice(0, 4).map((tag) => (
-                        <span key={tag} className={styles.tagChip} style={{ background: 'var(--color-error-muted)' }}>
+                        <span key={tag} className={`${styles.tagChip} ${styles.discrepancyRow}`}>
                           {tag}
                         </span>
                       ))}

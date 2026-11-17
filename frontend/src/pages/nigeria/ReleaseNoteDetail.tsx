@@ -188,8 +188,8 @@ function RecordPickupModal({ note, onCancel, onSuccess }: RecordPickupModalProps
             <Field label="Delegate name" name="delegate_name" required value={delegateName} onChange={(e) => setDelegateName(e.target.value)} />
             <PhoneField label="Delegate phone" name="delegate_phone" required value={delegatePhone} onChange={setDelegatePhone} />
             <div>
-              <label style={{ fontSize: '0.875rem', fontWeight: 600, display: 'block', marginBottom: 6 }}>
-                ID type <span style={{ color: 'var(--color-error)' }}>*</span>
+              <label className={styles.fieldLabel}>
+                ID type <span className={styles.requiredMark}>*</span>
               </label>
               <select
                 aria-label="ID type"
@@ -211,8 +211,8 @@ function RecordPickupModal({ note, onCancel, onSuccess }: RecordPickupModalProps
             warehouse doesn't necessarily split these duties out. */}
         {warehouses.length > 0 && (
           <div>
-            <label style={{ fontSize: '0.875rem', fontWeight: 600, display: 'block', marginBottom: 6 }}>
-              Warehouse / branch <span style={{ color: 'var(--color-text-muted)', fontWeight: 400 }}>Optional</span>
+            <label className={styles.fieldLabel}>
+              Warehouse / branch <span className={styles.optionalHint}>Optional</span>
             </label>
             <select
               aria-label="Warehouse / branch"
@@ -230,8 +230,8 @@ function RecordPickupModal({ note, onCancel, onSuccess }: RecordPickupModalProps
         {staff.length > 0 && (
           <>
             <div>
-              <label style={{ fontSize: '0.875rem', fontWeight: 600, display: 'block', marginBottom: 6 }}>
-                Customer Service Officer <span style={{ color: 'var(--color-text-muted)', fontWeight: 400 }}>Optional</span>
+              <label className={styles.fieldLabel}>
+                Customer Service Officer <span className={styles.optionalHint}>Optional</span>
               </label>
               <select
                 aria-label="Customer Service Officer"
@@ -244,8 +244,8 @@ function RecordPickupModal({ note, onCancel, onSuccess }: RecordPickupModalProps
               </select>
             </div>
             <div>
-              <label style={{ fontSize: '0.875rem', fontWeight: 600, display: 'block', marginBottom: 6 }}>
-                Accounting Officer <span style={{ color: 'var(--color-text-muted)', fontWeight: 400 }}>Optional</span>
+              <label className={styles.fieldLabel}>
+                Accounting Officer <span className={styles.optionalHint}>Optional</span>
               </label>
               <select
                 aria-label="Accounting Officer"
@@ -314,7 +314,7 @@ function ReissueConfirmModal({ note, onCancel, onSuccess }: ReissueConfirmModalP
             ? `This release note has ${formatNgn(storageFees)} in outstanding storage fees. The new note will carry this balance forward.`
             : 'No outstanding storage fees on this release note.'}
         </Banner>
-        <p style={{ fontSize: '0.875rem', color: 'var(--color-text-muted)', margin: 0 }}>
+        <p className={styles.mutedNote}>
           A new release note will be created with the same carton tags and a fresh 14-day window.
           The expired note ({note.reference_number}, expired {expiredDate}) will be preserved for audit purposes.
         </p>
@@ -370,12 +370,12 @@ function SendPickupCodeModal({ note, onCancel, onSent }: SendPickupCodeModalProp
       }
     >
       {error && <div className={styles.modalBanner}><Banner variant="error" title="Not sent">{error}</Banner></div>}
-      <p style={{ margin: 0 }}>
+      <p className={styles.flushParagraph}>
         {note.customer_name ?? 'The customer'} will be sent a new code for <Mono>{note.reference_number}</Mono> by SMS and email.
         {note.pickup_code_required ? ' The code they have now will stop working.' : ''}
         {note.pickup_code_locked ? ' This also unlocks the release note.' : ''}
       </p>
-      <p style={{ margin: '12px 0 0', color: 'var(--color-ink-3)', fontSize: '0.875rem' }}>
+      <p className={styles.pickupHint}>
         Nobody at the company sees the code: it goes only to the customer, who gives it to whoever collects.
       </p>
     </Modal>
@@ -688,7 +688,7 @@ export function ReleaseNoteDetail(): JSX.Element {
               ))}
             </div>
           ) : (
-            <span style={{ color: 'var(--color-text-muted)', fontSize: '0.875rem' }}>No carton tags recorded.</span>
+            <span className={styles.mutedText}>No carton tags recorded.</span>
           )}
         </Card>
       </div>
