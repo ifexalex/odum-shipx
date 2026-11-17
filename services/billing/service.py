@@ -1176,10 +1176,11 @@ def list_disputes(
     filters: dict[str, Any],
     limit: int,
     cursor: dict[str, Any] | None,
-) -> tuple[list[dict[str, Any]], str | None, bool]:
-    """Top-level paginated list of all disputes for a tenant."""
+) -> tuple[list[dict[str, Any]], str | None, bool, int]:
+    """A page of the tenant's disputes, and how many match in all."""
     rows, next_cursor, has_more = repo.list_all_disputes(tenant_id, filters, limit, cursor)
-    return [_dispute_list_item(r) for r in rows], next_cursor, has_more
+    total = repo.count_all_disputes(tenant_id, filters)
+    return [_dispute_list_item(r) for r in rows], next_cursor, has_more, total
 
 
 def _dispute_list_item(row: dict[str, Any]) -> dict[str, Any]:

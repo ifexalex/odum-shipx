@@ -502,8 +502,8 @@ def _dispute_action_routes(
                 filters["customer_id"] = _qp(event, "customer_id")
             limit = int(_qp(event, "limit", 50))
             cursor = decode_cursor(_qp(event, "cursor"))
-            page, next_cursor, has_more = service.list_disputes(tenant_id, filters, limit, cursor)
-            return paginated(page, next_cursor, has_more, request_id=request_id)
+            page, next_cursor, has_more, total = service.list_disputes(tenant_id, filters, limit, cursor)
+            return paginated(page, next_cursor, has_more, total_count=total, request_id=request_id)
         # POST /v1/billing/disputes — create a dispute (billing_id in body)
         if method == "POST":
             ctx.assert_role(*_DISPUTE_LIST_ALL_ROLES)

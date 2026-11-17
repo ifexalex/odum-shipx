@@ -1335,6 +1335,30 @@ def waive_storage_fees_for_billing(
 # ---------------------------------------------------------------------------
 
 
+def _dispute_predicates(tenant_id: str, filters: dict[str, Any]) -> tuple[str, dict[str, Any]]:
+    """The WHERE clause (on alias ``d``) and its parameters, shared by the dispute list and its count."""
+    conditions = ["d.tenant_id = %(tenant_id)s"]
+    params: dict[str, Any] = {"tenant_id": tenant_id}
+    if filters.get("status"):
+        conditions.append("d.status = %(status)s")
+        params["status"] = filters["status"]
+    if filters.get("customer_id"):
+        conditions.append("d.customer_id = %(customer_id)s")
+        params["customer_id"] = filters["customer_id"]
+    return " AND ".join(conditions), params
+
+
+def count_all_disputes(tenant_id: str, filters: dict[str, Any]) -> int:
+    """How many disputes match the same filters as ``list_all_disputes``."""
+    where_clause, params = _dispute_predicates(tenant_id, filters)
+    rows = execute_with_tenant(
+        tenant_id,
+        f"SELECT COUNT(*)::int AS total FROM cbm_dispute d WHERE {where_clause}",  # noqa: S608 - fixed fragments only
+        params,
+    )
+    return int(rows[0]["total"]) if rows else 0
+
+
 def list_all_disputes(
     tenant_id: str,
     filters: dict[str, Any],
@@ -1343,15 +1367,7 @@ def list_all_disputes(
 ) -> tuple[list[dict[str, Any]], str | None, bool]:
     from shared.pagination import build_paginated_query, extract_page
 
-    conditions = ["d.tenant_id = %(tenant_id)s"]
-    extra: dict[str, Any] = {"tenant_id": tenant_id}
-
-    if filters.get("status"):
-        conditions.append("d.status = %(status)s")
-        extra["status"] = filters["status"]
-    if filters.get("customer_id"):
-        conditions.append("d.customer_id = %(customer_id)s")
-        extra["customer_id"] = filters["customer_id"]
+    where_clause, extra = _dispute_predicates(tenant_id, filters)
 
     # Customer, invoice and container come back with each dispute so the list can say which one it is (audit UX-06).
     # Names and references only, no amounts: China staff read this list too and may not read invoice money.
@@ -1364,7 +1380,7 @@ def list_all_disputes(
         LEFT JOIN billing   b  ON b.id  = d.billing_id   AND b.tenant_id  = d.tenant_id
         LEFT JOIN customer  cu ON cu.id = d.customer_id  AND cu.tenant_id = d.tenant_id
         LEFT JOIN container c  ON c.id  = b.container_id AND c.tenant_id  = b.tenant_id
-        WHERE {" AND ".join(conditions)}
+        WHERE {where_clause}
     """  # noqa: S608 - only fixed fragments are interpolated; every value is a bound parameter
     query, params = build_paginated_query(base, cursor, limit, sort_field="d.created_at")
     params.update(extra)

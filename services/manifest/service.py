@@ -101,9 +101,10 @@ def list_manifests(
     filters: dict[str, Any],
     limit: int,
     cursor: dict[str, Any] | None,
-) -> tuple[list[dict[str, Any]], str | None, bool]:
-    """Return a paginated list of manifests for the tenant."""
-    return repo.list_manifests(tenant_id, filters, limit, cursor)
+) -> tuple[list[dict[str, Any]], str | None, bool, int]:
+    """Return a page of the tenant's manifests, and how many match in all."""
+    page, next_cursor, has_more = repo.list_manifests(tenant_id, filters, limit, cursor)
+    return page, next_cursor, has_more, repo.count_manifests(tenant_id, filters)
 
 
 def get_manifest_stats(tenant_id: str) -> dict[str, int]:

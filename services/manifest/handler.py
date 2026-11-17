@@ -166,8 +166,8 @@ def _manifest_routes(
                 filters["container_id"] = _qp(event, "container_id")
             limit = int(_qp(event, "limit", 50))
             cursor = decode_cursor(_qp(event, "cursor"))
-            page, next_cursor, has_more = service.list_manifests(tenant_id, filters, limit, cursor)
-            return paginated(page, next_cursor, has_more, request_id=request_id)
+            page, next_cursor, has_more, total = service.list_manifests(tenant_id, filters, limit, cursor)
+            return paginated(page, next_cursor, has_more, total_count=total, request_id=request_id)
 
     elif manifest_id == "stats":
         # GET /v1/manifests/stats — per-status counts + overdue for the list

@@ -250,11 +250,16 @@ class TestListManifests:
         from services.manifest import service
 
         rows = [_manifest()]
-        with patch.object(service.repo, "list_manifests", return_value=(rows, None, False)) as mock_list:
-            result, cursor, has_more = service.list_manifests(TENANT_ID, {}, 20, None)
+        with (
+            patch.object(service.repo, "list_manifests", return_value=(rows, None, False)) as mock_list,
+            patch.object(service.repo, "count_manifests", return_value=68) as mock_count,
+        ):
+            result, cursor, has_more, total = service.list_manifests(TENANT_ID, {"verification_status": "pending"}, 20, None)
 
-        mock_list.assert_called_once_with(TENANT_ID, {}, 20, None)
-        assert len(result) == 1
+        mock_list.assert_called_once_with(TENANT_ID, {"verification_status": "pending"}, 20, None)
+        # The total is counted with the same filters as the page (the list shows "1 of 68").
+        mock_count.assert_called_once_with(TENANT_ID, {"verification_status": "pending"})
+        assert len(result) == 1 and total == 68
         assert not has_more
 
 

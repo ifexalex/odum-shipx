@@ -39,9 +39,10 @@ class TestDisputeHandlerFlow:
             patch("services.billing.handler.service") as mock_svc,
             patch("shared.metering.record_usage"),
         ):
-            mock_svc.list_disputes.return_value = ([], None, False)
+            mock_svc.list_disputes.return_value = ([], None, False, 7)
             resp = handler.lambda_handler(_event("GET", "/v1/billing/disputes"), {})
         assert resp["statusCode"] == 200
+        assert json.loads(resp["body"])["meta"]["pagination"]["total_count"] == 7
 
     def test_create_dispute_returns_201(self, monkeypatch):
         from services.billing import handler

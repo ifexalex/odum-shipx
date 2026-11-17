@@ -981,8 +981,11 @@ class TestDisputeList:
     def test_each_dispute_says_which_customer_invoice_and_container_it_is_about(self):
         from services.billing import service
 
-        with patch.object(service.repo, "list_all_disputes", return_value=([self._row()], None, False)):
-            items, _, _ = service.list_disputes(TENANT_ID, {}, 50, None)
+        with (
+            patch.object(service.repo, "list_all_disputes", return_value=([self._row()], None, False)),
+            patch.object(service.repo, "count_all_disputes", return_value=1),
+        ):
+            items, _, _, _ = service.list_disputes(TENANT_ID, {}, 50, None)
         assert items[0]["customer_name"] == "Ngozi Adeyemi"
         assert items[0]["invoice_number"] == "ACME-INV-20261110-0007"
         assert items[0]["container_number"] == "MSCU1234567"
@@ -992,16 +995,22 @@ class TestDisputeList:
         from services.billing import service
 
         row = self._row(customer_name=None, invoice_number=None, container_number=None)
-        with patch.object(service.repo, "list_all_disputes", return_value=([row], None, False)):
-            items, _, _ = service.list_disputes(TENANT_ID, {}, 50, None)
+        with (
+            patch.object(service.repo, "list_all_disputes", return_value=([row], None, False)),
+            patch.object(service.repo, "count_all_disputes", return_value=1),
+        ):
+            items, _, _, _ = service.list_disputes(TENANT_ID, {}, 50, None)
         assert items[0]["customer_name"] is None and items[0]["invoice_number"] is None
 
     def test_the_list_carries_names_and_references_only_never_money(self):
         """China staff read this list and may not read invoice money."""
         from services.billing import service
 
-        with patch.object(service.repo, "list_all_disputes", return_value=([self._row(total_ngn=Decimal("999"))], None, False)):
-            items, _, _ = service.list_disputes(TENANT_ID, {}, 50, None)
+        with (
+            patch.object(service.repo, "list_all_disputes", return_value=([self._row(total_ngn=Decimal("999"))], None, False)),
+            patch.object(service.repo, "count_all_disputes", return_value=1),
+        ):
+            items, _, _, _ = service.list_disputes(TENANT_ID, {}, 50, None)
         assert not any("ngn" in key or "amount" in key or "total" in key for key in items[0])
 
     @staticmethod

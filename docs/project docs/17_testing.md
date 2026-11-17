@@ -319,6 +319,8 @@ user pool, not `MagicMock`, so these exercise the actual boto3 call shapes):
   tenant's or `platform_admin`'s groups, empty desired-roles removes everything for
   that tenant.
 
+`tests/db/test_paginated_lists.py` (2026-11-17): the dispute and manifest counts match their filters, not the page.
+
 Frontend — `shell/breadcrumbs.test.tsx` (FD-45/46, 2026-11-17): walks every route in `routeTable.ts` against the expected trail, so a new route needs an expectation; plus link, role, label and component checks.
 
 Frontend type check: `npm run typecheck` (`tsc -b --noEmit`). `npx tsc --noEmit -p .` checks no files (the root `tsconfig.json` only references others). `pages/untestedPages.test.ts` treats a part in a page's folder (`nigeria/billingDetail/*.tsx`) as covered by the page's test (FE-07, 2026-11-17).

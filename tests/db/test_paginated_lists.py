@@ -70,6 +70,32 @@ class TestDisputeList:
         rows, _, _ = billing_repo.list_all_disputes(world["tenant"], {"status": "closed"}, 50)
         assert rows == []
 
+    def test_the_count_matches_the_filters_not_the_page(self, world, disputes):
+        # total_count says how many there are in all, so a first page of 2 reads "2 of 3".
+        rows, _, has_more = billing_repo.list_all_disputes(world["tenant"], {}, 2)
+        assert len(rows) == 2 and has_more
+        assert billing_repo.count_all_disputes(world["tenant"], {}) == 3
+        assert billing_repo.count_all_disputes(world["tenant"], {"status": "closed"}) == 0
+        assert billing_repo.count_all_disputes(world["tenant"], {"customer_id": world["customers"][0]}) == 1
+
+
+class TestManifestCount:
+    def test_the_count_matches_the_filters(self, admin, world):
+        from services.manifest import repository as manifest_repo
+
+        with admin.cursor() as cur:
+            for i, status in enumerate(("pending", "pending", "verified")):
+                cur.execute(
+                    "INSERT INTO manifest (tenant_id, container_id, verification_status) VALUES (%s, %s, %s)",
+                    (world["tenant"], world["containers"][i], status),
+                )
+        tenant = world["tenant"]
+        assert manifest_repo.count_manifests(tenant, {}) == 3
+        assert manifest_repo.count_manifests(tenant, {"verification_status": "pending"}) == 2
+        assert manifest_repo.count_manifests(tenant, {"container_id": world["containers"][2]}) == 1
+        rows, _, _ = manifest_repo.list_manifests(tenant, {"verification_status": "pending"}, 50)
+        assert len(rows) == 2
+
 
 class TestInvoiceListSortedByAColumn:
     @pytest.mark.parametrize("direction", ["ASC", "DESC"])
