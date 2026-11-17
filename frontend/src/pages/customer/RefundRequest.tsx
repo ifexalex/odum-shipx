@@ -108,7 +108,8 @@ export function RefundRequest(): JSX.Element {
               <div>
                 <strong>Credit on next shipment</strong>
                 <p style={{ margin: 0, color: 'var(--color-text-muted)' }}>
-                  Applied automatically to your next container billing.
+                  Applied automatically to your next container billing; anything left over stays as credit for the one
+                  after.
                 </p>
               </div>
             </label>

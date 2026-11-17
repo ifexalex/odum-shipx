@@ -205,6 +205,10 @@ jobs:
         run: pytest tests/integration/ -v
       - name: Run database integrity tests
         run: pytest tests/db/ -v
+      # Added 2026-11-17 (audit OPS-03): fails the build when unit-test line coverage of services/billing,
+      # services/payment_release or services/refunds falls below its floor in pyproject.toml.
+      - name: Enforce coverage floors
+        run: uv run python scripts/check_coverage.py coverage.xml
       - name: Upload coverage
         uses: codecov/codecov-action@v3
         with:
@@ -1369,3 +1373,13 @@ Now `azure` / `dev`, with `prod` selectable but never the unchosen default.
 ## Redis service for the database tests (2026-11-15)
 
 The `test` job now starts a `redis:7` service container beside Postgres, and the "Run database integrity tests" step passes `REDIS_HOST`/`REDIS_PORT`. `tests/db/test_rate_limit_redis.py` exercises the limiter's Lua script and a real outage; without a server those tests skip, so CI fails them outright when `CI` is set and `REDIS_HOST` is not.
+
+## Coverage is enforced, not only reported (audit OPS-03, 2026-11-17)
+
+Before: coverage went to Codecov (and only when a token was set, which it is not), with `fail_ci_if_error: false` and no threshold, so a change could delete the tests of the code that moves money and stay green.
+
+Now `ci.yml` runs `scripts/check_coverage.py coverage.xml` right after the unit tests. It reads the floors in `pyproject.toml` under `[tool.shipx.coverage-floors]` (line coverage, per directory) and fails when one is not met, or when a floored directory has no measured lines (a rename must not switch its floor off). Floors were set at each directory's level on 2026-11-17: `services/billing` 53.8 %, `services/payment_release` 71.6 %, `services/refunds` 40.7 %. The script prints a hint when coverage is a point or more above a floor; raise the floor in the same change. No external service, so no cost and no token.
+
+Shown locally: running the unit tests without `test_billing.py` and `test_invoice_credits.py` drops `services/billing` to 29.6 % and the check exits 1. Not yet seen failing in GitHub Actions itself.
+
+Frontend: there is no coverage number to hold (vitest runs without coverage). Instead `src/pages/untestedPages.test.ts` lists the 18 pages that still have no sibling test and fails when a new untested page appears, or when a listed page gains a test and is not removed from the list. The money-moving pages that had none (`MyBilling`, `RefundRequest`, `CarryoverLedger`) and the platform tenant page now have tests.

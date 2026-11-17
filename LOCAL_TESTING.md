@@ -737,6 +737,14 @@ PYTHONPATH=. python3 -m pytest tests/unit/ \
 open coverage_html/index.html
 ```
 
+**Coverage floors (CI enforces them, audit OPS-03).** `services/billing`, `services/payment_release` and `services/refunds`
+may not fall below the floors in `pyproject.toml` (`[tool.shipx.coverage-floors]`). Check before pushing:
+
+```bash
+PYTHONPATH=.:services uv run pytest tests/unit/ --cov=services --cov=shared --cov-report=xml -q
+uv run python scripts/check_coverage.py coverage.xml   # exit 1 below a floor; says when a floor can be raised
+```
+
 ---
 
 ## 11. View the database (Adminer)

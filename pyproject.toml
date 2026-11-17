@@ -154,6 +154,13 @@ skips = [
     "B310",  # URL open — all urlopen calls target known external APIs (Africa's Talking, Meta)
 ]
 
+[tool.shipx.coverage-floors]
+# Unit-test line coverage (%) per directory; CI fails below a floor (scripts/check_coverage.py, audit OPS-03).
+# Set at each directory's level on 2026-11-17. Raise a floor when coverage rises; never lower one to pass a change.
+"services/billing" = 53.8
+"services/payment_release" = 71.6
+"services/refunds" = 40.7
+
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 python_files = ["test_*.py"]
