@@ -73,6 +73,8 @@ Tenant Admin also sees the full Operations + Billing + Claims/Refunds + Release 
 
 Shared between China Office Staff and Nigeria Office Staff (different actions enabled per role — see the Roles column).
 
+**China office home (2026-11-17, audit UX-10):** `/work-queue` (`pages/china/ChinaWorkQueue.tsx`, china_office_staff only) is China staff's home (`roleHome.ts`; was `/containers`) and the first menu item. Its queues link to `/packing-lists?status=rejected`, `?status=draft`, `/manifests?status=pending` and `/billing/disputes?status=escalated_china`: those three lists read `?status=` through `lib/useStatusParam.ts` (an unknown value means no filter; changing the filter replaces the history entry).
+
 | Path | Screen source | Roles (write access) | API |
 |---|---|---|---|
 | `/containers`, `/containers/new` | `china/china-screens.jsx` → `ContainerList`, `CreateContainer` | china_office_staff (create) | `GET/POST /v1/containers` |

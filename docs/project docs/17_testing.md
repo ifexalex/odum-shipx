@@ -319,6 +319,8 @@ user pool, not `MagicMock`, so these exercise the actual boto3 call shapes):
   tenant's or `platform_admin`'s groups, empty desired-roles removes everything for
   that tenant.
 
+Frontend — `pages/china/ChinaWorkQueue.test.tsx` (audit UX-10, 2026-11-17): each queue reads its list with the right filter, shows the total (or counted rows with "+"), its first rows and an empty message, links to its filtered list, opens a row, and survives one queue failing. `DisputeList.test.tsx` covers `?status=` from a link and an unknown value.
+
 Backend — `tests/unit/test_invoice_rate_source.py` (audit BE-11, 2026-11-17): live and recent last-known rates are recorded without a notice; an old last-known rate notifies tenant admins (age limit from `FX_RATE_MAX_AGE_MINUTES`, nonsense values ignored); the hard-coded rate writes no invoice (`RATE_UNAVAILABLE`) and the container run tells staff; the source shows on the staff invoice and not the customer's. `tests/db/test_invoice_rate_source.py` runs the whole invoicing path against Postgres with the feed cut. Both mutation-checked.
 
 Backend — `tests/unit/test_uploads.py` (audit BE-12, 2026-11-17): every policy refuses `application/octet-stream` and a policy cannot declare it; keys stay under a UUID tenant prefix with server-chosen segments; a refused type never reaches storage; each of the five upload endpoints refuses the unknown type before any repository call. Upload tests now patch `shared.uploads.get_storage_provider`. Frontend `ContainerDetail.test.tsx` (+3): an untyped file is refused in the dialog without a request, the real type is sent, a server refusal shows inside the dialog.

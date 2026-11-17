@@ -63,6 +63,8 @@ export const routeTable: RouteDef[] = [
 
   // Tenant admin
   { path: '/dashboard', allow: ['tenant_admin', 'nigeria_office_staff'], title: 'Dashboard', layout: 'staff' },
+  // The China office's home: rejected and draft packing lists, unverified manifests, escalated disputes (UX-10).
+  { path: '/work-queue', allow: ['china_office_staff'], title: 'Work queue', layout: 'staff' },
   { path: '/admin/users', allow: ['tenant_admin'], title: 'Staff Users', layout: 'staff' },
   { path: '/admin/users/:id', allow: ['tenant_admin'], title: 'Staff User Profile', layout: 'staff' },
   { path: '/admin/customers', allow: ['tenant_admin'], title: 'Customers', layout: 'staff' },

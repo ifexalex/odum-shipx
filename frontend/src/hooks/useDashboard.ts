@@ -11,7 +11,9 @@ import { useContainerLookup } from './useContainers'
 // invalidation rules, where the old `useEffect` fetches showed whatever was true when the dashboard first opened.
 // All are non-fatal: a queue that fails to load is simply not shown.
 
-const PENDING_PACKING_LISTS = { status: 'submitted', limit: 10 } as const
+// `pending_approval`, the status a submitted list has. This read `submitted`, which no packing list ever has, so the
+// queue was always empty (found 2026-11-17).
+const PENDING_PACKING_LISTS = { status: 'pending_approval', limit: 10 } as const
 const PENDING_MANIFESTS = { verification_status: 'pending', limit: 20 } as const
 const OPEN_DISPUTES = { status: 'submitted', limit: 10 } as const
 // Oldest billed first, so the most overdue (and highest storage-fee risk) is at the top.
@@ -63,3 +65,31 @@ export function useActiveReleaseNotes(enabled: boolean) {
     enabled,
   })
 }
+
+// The China office's work queue (audit UX-10). Small first pages: the page shows a count (`total_count`) and the
+// first few rows of each, and links to the filtered list for the rest.
+const CHINA_QUEUE_SIZE = 5
+export const CHINA_QUEUES = {
+  rejectedPackingLists: { status: 'rejected', limit: CHINA_QUEUE_SIZE },
+  draftPackingLists: { status: 'draft', limit: CHINA_QUEUE_SIZE },
+  pendingManifests: { verification_status: 'pending', limit: CHINA_QUEUE_SIZE },
+  escalatedDisputes: { status: 'escalated_china', limit: CHINA_QUEUE_SIZE },
+} as const
+
+/** Packing lists in one status, for a China work queue. */
+export function usePackingListQueue(params: typeof CHINA_QUEUES.rejectedPackingLists | typeof CHINA_QUEUES.draftPackingLists) {
+  return useQuery({ queryKey: packingListKeys.lookup(params), queryFn: () => packingListApi.list(params) })
+}
+
+/** Manifests Nigeria has not verified yet. */
+export function useChinaManifestQueue() {
+  const params = CHINA_QUEUES.pendingManifests
+  return useQuery({ queryKey: manifestKeys.lookup(params), queryFn: () => manifestApi.list(params) })
+}
+
+/** CBM disputes escalated to the China office. */
+export function useEscalatedDisputes() {
+  const params = CHINA_QUEUES.escalatedDisputes
+  return useQuery({ queryKey: disputeKeys.lookup(params), queryFn: () => disputeApi.list(params) })
+}
+

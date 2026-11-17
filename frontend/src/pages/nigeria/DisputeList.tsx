@@ -1,4 +1,4 @@
-import { useState, type JSX } from 'react'
+import type { JSX } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { isTerminalDisputeStatus } from '../../api/billingRules'
 import { type CBMDisputeStatus } from '../../api/billing'
@@ -9,6 +9,7 @@ import { useTopBarSlot } from '../../shell/TopBarContext'
 import { useNow } from '../../hooks/useNow'
 import styles from './DisputeList.module.css'
 import { formatDate } from '../../lib/format'
+import { useStatusParam } from '../../lib/useStatusParam'
 
 const _DISPUTE_SLA_DAYS = 7
 
@@ -71,6 +72,17 @@ function statusLabel(status: CBMDisputeStatus): string {
   }
 }
 
+// The values `?status=` may hold (useStatusParam); anything else reads as no filter.
+const DISPUTE_STATUSES: readonly CBMDisputeStatus[] = [
+  'submitted',
+  'acknowledged',
+  'investigating',
+  'escalated_china',
+  'resolved_adjusted',
+  'resolved_no_change',
+  'closed',
+]
+
 export function DisputeList(): JSX.Element {
   const navigate = useNavigate()
   const { session } = useSession()
@@ -79,7 +91,7 @@ export function DisputeList(): JSX.Element {
   // One clock for the whole table — see useNow. Also makes the countdown tick
   // instead of only refreshing when something unrelated re-renders the list.
   const now = useNow()
-  const [statusFilter, setStatusFilter] = useState<CBMDisputeStatus | null>(null)
+  const [statusFilter, setStatusFilter] = useStatusParam<CBMDisputeStatus>(DISPUTE_STATUSES)
   const { items: disputes, isLoading: loading, error, hasMore, loadMore, isFetchingMore, totalCount } = useDisputeList(
     statusFilter ? { status: statusFilter } : {},
   )

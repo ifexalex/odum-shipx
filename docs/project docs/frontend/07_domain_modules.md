@@ -1761,3 +1761,14 @@ Guard: `routes.test.tsx` "every route has a real screen" — one case per route,
 ## Exchange-rate source on invoices and the Dollar rate page (audit BE-11, 2026-11-17)
 
 `Billing` gains optional `exchange_rate_source` / `exchange_rate_fetched_at` (staff detail read only). `BillingDetail` shows a warning-tinted note (`.rateNotice`, `role="note"`) under the exchange-rate line when the invoice used the last known rate, with the fetch time in Lagos time. `DollarRateConfig` (the type) gains `rate_source` and `fetched_at: string | null`; the page says "last known rate, fetched …" or "built-in default, never fetched" instead of "updated just now", with a warning banner when the rate is not live. `InvoiceOutcomeBanner` explains `RATE_UNAVAILABLE`. Tests: `BillingDetail.test.tsx` (+4), `DollarRateConfig.test.tsx` (+3).
+
+## China office work queue (audit UX-10, 2026-11-17)
+
+`/work-queue` → `ChinaWorkQueue`: four queues from existing list endpoints (no new API) — rejected packing lists (`status=rejected`), drafts not submitted (`status=draft`), manifests awaiting verification (`verification_status=pending`), CBM disputes escalated to China (`status=escalated_china`). Each shows its count, its first five rows (each opens the record) and a "View all →" to the filtered list; a queue that fails says so and the others still show. Hooks: `usePackingListQueue`, `useChinaManifestQueue`, `useEscalatedDisputes` in `hooks/useDashboard.ts` (lookup keys, so writes refresh them). China staff now land here (`roleHome.ts`), and it is their first menu item.
+
+`lib/useStatusParam.ts` keeps a list's status filter in `?status=`; `PackingListList`, `ManifestList` and `DisputeList` use it, so links can open them filtered and the filter survives reload. The tenant dashboard's "Review all", "Verify" and "Respond" now open their lists filtered too.
+
+**Ground-truth gaps found:** (1) the tenant dashboard's "Packing lists awaiting approval" queue (Nigeria staff) asked for `status=submitted`, a status no packing list has (`draft | pending_approval | approved | rejected`), so it was always empty — now `pending_approval`; checked against the API (0 vs 3 rows on the dev data). (2) `GET /v1/manifests` and `GET /v1/billing/disputes` return `has_more` but no `total_count`, although `PaginationMeta.total_count` is typed as always present; the work queue counts the rows it has (with "+" when there are more) where the total is missing.
+
+Tests: `ChinaWorkQueue.test.tsx` (9), `DisputeList.test.tsx` (+2, opened from a link), `roleHome.test.ts` / `RoleGuard.test.tsx` (China home). Checked in Chromium against the dev API as China staff (desktop and 375 px).
+

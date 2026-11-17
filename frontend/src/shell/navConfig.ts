@@ -102,6 +102,7 @@ export const navConfig: Record<UserRole, NavLinkGroup[]> = {
     BILLING_CLAIMS_GROUP,
   ],
   china_office_staff: [
+    { items: [{ icon: 'grid', label: 'Work queue', path: '/work-queue' }] },
     {
       group: 'Operations',
       items: [

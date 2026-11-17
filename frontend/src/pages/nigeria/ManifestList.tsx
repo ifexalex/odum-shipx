@@ -1,4 +1,4 @@
-import { useMemo, useState, type JSX } from 'react'
+import { useMemo, type JSX } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { formatCbm } from '../../api/decimal'
 import { orderedPackageMix, type Manifest, type VerificationStatus } from '../../api/manifest'
@@ -8,6 +8,7 @@ import { Badge, Banner, Card, Chip, Mono, StatCard, Table, ViewLink, ListFooter,
 import { useTopBarSlot } from '../../shell/TopBarContext'
 import styles from './ManifestList.module.css'
 import { formatNumber } from '../../lib/format'
+import { useStatusParam } from '../../lib/useStatusParam'
 
 // Per-status counts come from GET /v1/manifests/stats (P2-4) — a single
 // aggregate query, so no page-tallying. Chips still set the real
@@ -53,9 +54,12 @@ function fmtWeight(kg: string | null | undefined): string {
 }
 
 
+// The values `?status=` may hold (useStatusParam); anything else reads as no filter.
+const VERIFICATION_STATUSES: readonly VerificationStatus[] = ['pending', 'verified', 'discrepancies_found', 'resolved']
+
 export function ManifestList(): JSX.Element {
   const navigate = useNavigate()
-  const [statusFilter, setStatusFilter] = useState<VerificationStatus | null>(null)
+  const [statusFilter, setStatusFilter] = useStatusParam<VerificationStatus>(VERIFICATION_STATUSES)
   const { items: manifests, isLoading: loading, error, hasMore, loadMore, isFetchingMore, totalCount } = useManifestList(
     statusFilter ? { verification_status: statusFilter } : {},
   )

@@ -10,6 +10,7 @@ import { useTopBarSlot } from '../../shell/TopBarContext'
 import { Badge, Banner, Button, Card, Chip, Field, Icon, Mono, Table, ViewLink, ListFooter, DialogGuard, type BadgeVariant } from '../../design/components'
 import styles from './PackingListList.module.css'
 import { formatDate } from '../../lib/format'
+import { useStatusParam } from '../../lib/useStatusParam'
 
 const STATUS_FILTERS: PackingListStatus[] = ['draft', 'pending_approval', 'approved', 'rejected']
 
@@ -118,10 +119,13 @@ function BulkResultPanel({
   )
 }
 
+// The values `?status=` may hold (useStatusParam); anything else reads as no filter.
+const PACKING_LIST_STATUSES: readonly PackingListStatus[] = ['draft', 'pending_approval', 'approved', 'rejected']
+
 export function PackingListList(): JSX.Element {
   const { session } = useSession()
   const navigate = useNavigate()
-  const [statusFilter, setStatusFilter] = useState<PackingListStatus | null>(null)
+  const [statusFilter, setStatusFilter] = useStatusParam<PackingListStatus>(PACKING_LIST_STATUSES)
   const [search, setSearch] = useState('')
   const [actionError, setActionError] = useState<string | null>(null)
   const [selected, setSelected] = useState<Set<string>>(new Set())

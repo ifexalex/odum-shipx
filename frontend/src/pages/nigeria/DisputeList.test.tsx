@@ -137,3 +137,32 @@ describe('DisputeList', () => {
     await waitFor(() => expect(screen.getByText(/No disputes match/)).toBeInTheDocument())
   })
 })
+
+describe('DisputeList opened from a link (audit UX-10)', () => {
+  function renderAt(url: string) {
+    vi.mocked(disputeApi.list).mockResolvedValue({
+      data: [],
+      meta: { pagination: { has_more: false, next_cursor: null, total_count: 0 } },
+    })
+    render(
+      <QueryClientProvider client={__qc()}>
+        <MemoryRouter initialEntries={[url]}>
+          <SessionContext.Provider value={makeCtx('china_office_staff')}>
+            <DisputeList />
+          </SessionContext.Provider>
+        </MemoryRouter>
+      </QueryClientProvider>,
+    )
+  }
+
+  it('starts filtered by ?status=', async () => {
+    renderAt('/billing/disputes?status=escalated_china')
+    await waitFor(() => expect(disputeApi.list).toHaveBeenCalledWith(expect.objectContaining({ status: 'escalated_china' })))
+  })
+
+  it('ignores a status it does not know rather than showing nothing', async () => {
+    renderAt('/billing/disputes?status=bogus')
+    await waitFor(() => expect(disputeApi.list).toHaveBeenCalled())
+    expect(vi.mocked(disputeApi.list).mock.calls.every(([params]) => !params || !('status' in params))).toBe(true)
+  })
+})

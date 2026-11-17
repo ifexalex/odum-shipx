@@ -23,6 +23,7 @@ const InviteClaimScreen = lazyNamed(accountScreensArea, 'InviteClaimScreen')
 const ActivateScreen = lazyNamed(accountScreensArea, 'ActivateScreen')
 const ForgotPasswordScreen = lazyNamed(accountScreensArea, 'ForgotPasswordScreen')
 const ResetPasswordScreen = lazyNamed(accountScreensArea, 'ResetPasswordScreen')
+const ChinaWorkQueue = lazyNamed(chinaArea, 'ChinaWorkQueue')
 const ContainerDetail = lazyNamed(chinaArea, 'ContainerDetail')
 const ContainerList = lazyNamed(chinaArea, 'ContainerList')
 const CreateContainer = lazyNamed(chinaArea, 'CreateContainer')
@@ -132,6 +133,7 @@ export const GUARDED_SCREENS: Record<string, JSX.Element> = {
   '/refunds/:id': <RefundDetail />,
   // Dashboard
   '/dashboard': <Dashboard />,
+  '/work-queue': <ChinaWorkQueue />,
   // Tenant-admin
   '/admin/users': <StaffUserList />,
   '/admin/users/:id': <StaffUserDetail />,

@@ -153,7 +153,7 @@ export function Dashboard(): JSX.Element {
                   <SectionHead
                     title="Packing lists awaiting approval"
                     sub={`${pendingPls.length} submitted`}
-                    action={<Button variant="secondary" size="sm" onClick={() => navigate('/packing-lists')}>Review all →</Button>}
+                    action={<Button variant="secondary" size="sm" onClick={() => navigate('/packing-lists?status=pending_approval')}>Review all →</Button>}
                   />
                 </div>
                 <Table
@@ -181,7 +181,7 @@ export function Dashboard(): JSX.Element {
                   <SectionHead
                     title="Containers awaiting manifest verification"
                     sub={`${pendingManifests.length} arrived in Nigeria, manifest still pending — blocks billing + release`}
-                    action={<Button variant="secondary" size="sm" onClick={() => navigate('/manifests')}>Verify →</Button>}
+                    action={<Button variant="secondary" size="sm" onClick={() => navigate('/manifests?status=pending')}>Verify →</Button>}
                   />
                 </div>
                 <Table
@@ -210,7 +210,7 @@ export function Dashboard(): JSX.Element {
                   <SectionHead
                     title="CBM disputes need response"
                     sub={`${openDisputes.length} submitted — 24h acknowledge SLA`}
-                    action={<Button variant="secondary" size="sm" onClick={() => navigate('/billing/disputes')}>Respond →</Button>}
+                    action={<Button variant="secondary" size="sm" onClick={() => navigate('/billing/disputes?status=submitted')}>Respond →</Button>}
                   />
                 </div>
                 <Table

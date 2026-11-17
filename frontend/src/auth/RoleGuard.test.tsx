@@ -51,7 +51,7 @@ function renderGuarded(value: SessionContextValue, allow: UserRole[]) {
           />
           <Route path="/login" element={<div>Login page</div>} />
           <Route path="/dashboard" element={<div>Tenant admin home</div>} />
-          <Route path="/containers" element={<div>China staff home</div>} />
+          <Route path="/work-queue" element={<div>China staff home</div>} />
           <Route path="/my-shipments" element={<div>Customer home</div>} />
         </Routes>
       </MemoryRouter>
@@ -87,7 +87,7 @@ describe('RoleGuard', () => {
     expect(screen.queryByText('Login page')).toBeNull()
   })
 
-  it('sends china_office_staff to /containers when blocked, not the tenant_admin home', () => {
+  it("sends china_office_staff to /work-queue when blocked, not the tenant_admin home", () => {
     renderGuarded(makeContextValue({ session: makeSession('china_office_staff'), status: 'authenticated' }), [
       'tenant_admin',
     ])
