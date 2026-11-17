@@ -1154,3 +1154,7 @@ Signal: tenant admins get "Invoice priced at an old exchange rate" (`invoice_old
 4. For `RATE_UNAVAILABLE`, once a rate is fetched, staff use "Generate invoices" on the container.
 
 Tune the notice with `FX_RATE_MAX_AGE_MINUTES` (default 120).
+
+## Encrypted fields that would not decrypt (found and fixed 2026-11-17)
+
+`shared/encryption.py` stores `wrapped data key || Fernet ciphertext`. `decrypt_field` split at the **first** `||`, but the wrapped key is binary (KMS `CiphertextBlob` / Key Vault wrap output) and contains `||` in roughly 1 of every 300 keys, so those values (`pickup_record.id_number`, `refund_request.account_number` / `account_name`) raised on every read. It now splits at the **last** `||` (the Fernet part is base64url and never contains `|`), which also reads every value written before the fix: no data was lost, nothing needs re-encrypting. Found through `test_azure_keyvault_provider.py::test_integrates_with_the_real_fernet_envelope` failing intermittently; `TestAWrappedKeyContainingTheSeparator` pins it. If staff reported an ID number or bank detail that "could not be shown", it was this.
