@@ -42,6 +42,27 @@ function renderPage(path = '/my-release-notes/n1') {
 describe('MyReleaseNote', () => {
   beforeEach(() => vi.clearAllMocks())
 
+  it('tells the customer a pickup code is needed, and to share it only with the collector (UX-09)', async () => {
+    vi.mocked(releaseNotesApi.get).mockResolvedValue({ ...NOTE, pickup_code_required: true })
+    renderPage()
+    expect(await screen.findByText('A pickup code is needed')).toBeInTheDocument()
+    expect(screen.getByText(/share it only with them/)).toBeInTheDocument()
+  })
+
+  it('tells the customer when wrong codes have locked the note', async () => {
+    vi.mocked(releaseNotesApi.get).mockResolvedValue({ ...NOTE, pickup_code_required: true, pickup_code_locked: true })
+    renderPage()
+    expect(await screen.findByText('Pickup code locked')).toBeInTheDocument()
+    expect(screen.queryByText('A pickup code is needed')).toBeNull()
+  })
+
+  it('says nothing about a code on a note that has none', async () => {
+    vi.mocked(releaseNotesApi.get).mockResolvedValue(NOTE)
+    renderPage()
+    await screen.findByText('ACME-RN-0001')
+    expect(screen.queryByText(/pickup code/i)).toBeNull()
+  })
+
   it('shows what a customer needs at the warehouse', async () => {
     vi.mocked(releaseNotesApi.get).mockResolvedValue(NOTE)
     renderPage()

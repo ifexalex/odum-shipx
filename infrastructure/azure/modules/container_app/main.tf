@@ -18,6 +18,13 @@
 # are ignored by Terraform so CI owns the running tag.
 # ---------------------------------------------------------------------------
 
+# The secret that keys the pickup-code hash. Generated once and kept in state. Changing it makes every code already issued
+# unverifiable, so those release notes would need a new code (POST /v1/release-notes/{id}/pickup-code).
+resource "random_password" "pickup_code_pepper" {
+  length  = 48
+  special = false
+}
+
 locals {
   # Non-secret env — plain values. CLOUD_PROVIDER=azure drives adapter selection.
   plain_env = {
@@ -145,6 +152,8 @@ locals {
       acs-connection         = var.acs_connection_string
       storage-connection     = var.storage_connection_string
       appinsights-connection = var.app_insights_connection_string
+      # Keys the HMAC that hashes release-note pickup codes (shared/pickup_code.py).
+      pickup-code-pepper = random_password.pickup_code_pepper.result
     },
     var.enable_redis ? { redis-password = var.redis_password } : {},
     # Graph provisioning app secret — gated on the NON-SENSITIVE client id (an
@@ -173,6 +182,7 @@ locals {
       AZURE_COMMUNICATION_CONNECTION_STRING = "acs-connection"
       AZURE_STORAGE_CONNECTION_STRING       = "storage-connection"
       APPLICATIONINSIGHTS_CONNECTION_STRING = "appinsights-connection"
+      PICKUP_CODE_PEPPER                    = "pickup-code-pepper"
     },
     var.enable_redis ? { REDIS_PASSWORD = "redis-password" } : {},
     var.entra_graph_client_id != "" ? { ENTRA_GRAPH_CLIENT_SECRET = "entra-graph-client-secret" } : {},

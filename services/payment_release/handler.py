@@ -20,6 +20,8 @@ Routes:
   PATCH /v1/release-notes/{id}/release          — warehouse_attendant
   POST  /v1/release-notes/{id}/split            — tenant_admin, nigeria_office_staff
   POST  /v1/release-notes/{id}/reissue          — tenant_admin, nigeria_office_staff
+  POST  /v1/release-notes/{id}/pickup-code      — tenant_admin, nigeria_office_staff (a fresh code, sent to the
+                                                  customer; the response says where, never what)
   GET   /v1/warehouses                          — tenant_admin, nigeria_office_staff, warehouse_attendant
   POST  /v1/warehouses                          — tenant_admin
   PATCH /v1/warehouses/{id}/set-default         — tenant_admin
@@ -451,6 +453,18 @@ def _release_note_routes(
                     request_id=request_id,
                 )
                 return created(result, location=f"/v1/release-notes/{result['id']}", request_id=request_id)
+
+            # POST /v1/release-notes/{id}/pickup-code — a fresh pickup code, sent to the customer (audit UX-09)
+            if action == "pickup-code" and method == "POST":
+                ctx.assert_role(*_REISSUE_ROLES)
+                result = service.reissue_pickup_code(
+                    ctx.tenant_id,
+                    note_id,
+                    actor_id=ctx.user_id,
+                    ctx=ctx,
+                    request_id=request_id,
+                )
+                return success(result, request_id=request_id)
 
             # POST /v1/release-notes/{id}/reissue
             if action == "reissue" and method == "POST":

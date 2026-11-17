@@ -135,6 +135,7 @@ locals {
     "PATCH /v1/release-notes/{id}/release"      = "payment_release"
     "POST /v1/release-notes/{id}/split"         = "payment_release"
     "POST /v1/release-notes/{id}/reissue"       = "payment_release"
+    "POST /v1/release-notes/{id}/pickup-code"   = "payment_release"
 
     # --- Refunds (6 routes) -------------------------------------------------
     "POST /v1/refunds"               = "refunds"

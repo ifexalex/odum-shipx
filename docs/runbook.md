@@ -1022,3 +1022,16 @@ reflect the waiver; the history does not survive).
 
 **Still open:** the older exports `export_billing.py`, `export_manifest.py`, `export_packing_list.py` and `service._rows_to_csv` (used by the customer's "Download invoice"), about fifteen text cells. The fix is to route their text cells through `_tables.py` (xlsx: force the cell type to string; csv: a leading `'`), leaving numbers and money untouched so a negative balance is not mistaken for a formula. A careless fix that quotes every leading `-` would corrupt negative amounts in the csv.
 
+## Pickup codes (audit UX-09, 2026-11-16, ADR-008)
+
+**"The warehouse says the pickup code is wrong."** The collector must give the six digit code sent to the customer by SMS and email when the release note was issued. Each wrong try is counted; the error says how many are left.
+
+**"The release note is locked."** Five wrong codes. Office staff (Nigeria staff or tenant admin) open the release note and use **Send new pickup code**; the customer gets a new code, the old one stops working and the note unlocks. Staff are notified in app when a note locks. Nobody at the company can read a code.
+
+**"The customer never got a code."** Check the notification log for `pickup_code_issued` (the code shows as ••••••). A failed one cannot be retried; send a new code from the release note. If the customer has no phone or email on file the note has no code and needs none.
+
+**Dev and staging:** outside production the notification guard only messages contacts on `NOTIFICATION_ALLOWLIST`. With `PICKUP_CODE_PEPPER` set, a test customer must be on the allowlist to receive a code, otherwise a pickup for a note with a code cannot be completed. Local dev has no pepper unless you set one, so no codes are issued.
+
+**Do not rotate `PICKUP_CODE_PEPPER`** without planning: every outstanding code stops verifying and each active note needs a new code. If a note carries a code and the pepper is missing, pickups for it return 503 by design.
+
+**Migration 065** adds three columns to `release_note`. It has not been run anywhere yet.

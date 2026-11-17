@@ -35,6 +35,8 @@ ACCOUNT_EVENTS: frozenset[str] = frozenset(
         "account_activation",
         "customer_invite",
         "registration_existing_account",
+        # The code that lets the customer's own collector take their goods; without it the pickup cannot happen.
+        "pickup_code_issued",
     }
 )
 

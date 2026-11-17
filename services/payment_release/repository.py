@@ -885,6 +885,55 @@ def get_active_release_note_packages_released(tenant_id: str, billing_id: str) -
     return int(rows[0]["total"]) if rows else 0
 
 
+def set_pickup_code(tenant_id: str, note_id: str, code_hash: str | None) -> dict[str, Any] | None:
+    """Store (or, with None, clear) a release note's pickup code hash and reset its failed-attempt count.
+
+    Only the keyed hash is ever stored (`shared/pickup_code.py`). Clearing is for a note whose code could not be sent to
+    the customer: requiring a code nobody received would only block the collection.
+    """
+    return execute_write_with_tenant(
+        tenant_id,
+        """
+        UPDATE release_note
+        SET pickup_code_hash = %s,
+            pickup_code_issued_at = CASE WHEN %s::text IS NULL THEN NULL ELSE NOW() END,
+            pickup_code_failed_attempts = 0,
+            updated_at = NOW()
+        WHERE tenant_id = %s AND id = %s
+        RETURNING id
+        """,
+        (code_hash, code_hash, tenant_id, note_id),
+    )
+
+
+def record_failed_pickup_code(tenant_id: str, note_id: str) -> int | None:
+    """Count one wrong code against a release note and return the new total (atomic, so concurrent guesses all count)."""
+    row = execute_write_with_tenant(
+        tenant_id,
+        """
+        UPDATE release_note
+        SET pickup_code_failed_attempts = pickup_code_failed_attempts + 1
+        WHERE tenant_id = %s AND id = %s
+        RETURNING pickup_code_failed_attempts
+        """,
+        (tenant_id, note_id),
+    )
+    return int(row["pickup_code_failed_attempts"]) if row else None
+
+
+def reset_pickup_code_attempts(tenant_id: str, note_id: str) -> None:
+    """Forget earlier wrong codes once the right one has been given."""
+    execute_write_with_tenant(
+        tenant_id,
+        """
+        UPDATE release_note SET pickup_code_failed_attempts = 0
+        WHERE tenant_id = %s AND id = %s AND pickup_code_failed_attempts > 0
+        RETURNING id
+        """,
+        (tenant_id, note_id),
+    )
+
+
 def update_release_note_status(tenant_id: str, note_id: str, status: str) -> dict[str, Any] | None:
     return execute_write_with_tenant(
         tenant_id,

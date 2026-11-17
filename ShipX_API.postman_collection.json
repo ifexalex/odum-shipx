@@ -4835,6 +4835,39 @@
             },
             "description": "Retire a warehouse without deleting it (is_active = false). tenant_admin only.\n\nThe path for a warehouse that handover documents reference, so DELETE refuses it. It stops appearing in pickers, those records keep their history, and its name becomes reusable (uniqueness is scoped to active rows).\n\nSame default-warehouse and last-active guards as DELETE."
           }
+        },
+        {
+          "name": "Send new pickup code",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "X-Tenant-ID",
+                "value": "{{tenant_id}}"
+              },
+              {
+                "key": "X-Role",
+                "value": "nigeria_office_staff"
+              },
+              {
+                "key": "X-User-ID",
+                "value": "{{user_id}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/v1/release-notes/{{release_note_id}}/pickup-code",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "v1",
+                "release-notes",
+                "{{release_note_id}}",
+                "pickup-code"
+              ]
+            },
+            "description": "tenant_admin, nigeria_office_staff. Sends the customer a fresh six digit pickup code for an active release note by SMS and email, retires the old one and unlocks the note. Response: `{release_note_id, sent_via}`; the code is never returned. Needs PICKUP_CODE_PEPPER. To record a pickup for a note with a code, add `\"pickup_code\": \"123456\"` to the PATCH .../release body."
+          }
         }
       ]
     },

@@ -7,10 +7,12 @@ import { STALE_30S } from '../../lib/queryClient'
 import { releaseNotesApi, type DelegateIdType, type PickupResult, type ReleaseNote, type RecordPickupInput } from '../../api/releaseNotes'
 import {
   canRecordPickup,
+  canSendPickupCode,
   canSplitNote,
   isTerminalReleaseStatus,
   releaseNoteStatusLabel,
   releaseTypeLabel,
+  sentViaLabel,
 } from '../../api/releaseNotesRules'
 import { useSession } from '../../auth/useSession'
 import { useStaffList } from '../../hooks/useStaff'
@@ -25,6 +27,7 @@ import {
   Field,
   Icon,
   Kvp,
+  Modal,
   Mono,
   PhoneField,
   StatCard,
@@ -72,6 +75,7 @@ function RecordPickupModal({ note, onCancel, onSuccess }: RecordPickupModalProps
   // common case; staff can overtype it (an employee, a family member, etc.
   // showing up without going through the delegate ID-verification flow).
   const [collectedByName, setCollectedByName] = useState(note.customer_name ?? '')
+  const [pickupCode, setPickupCode] = useState('')
   const [delegateName, setDelegateName] = useState('')
   const [delegatePhone, setDelegatePhone] = useState('')
   const [delegateIdType, setDelegateIdType] = useState<DelegateIdType>('national_id')
@@ -93,7 +97,10 @@ function RecordPickupModal({ note, onCancel, onSuccess }: RecordPickupModalProps
     delegateIdNumber.trim().length > 0
   )
   const collectorNamed = isDelegate || collectedByName.trim().length > 0
-  const canSubmit = Number(cartons) > 0 && delegateFilled && collectorNamed && !submitting
+  const codeRequired = note.pickup_code_required === true
+  const codeLocked = note.pickup_code_locked === true
+  const codeGiven = !codeRequired || pickupCode.trim().length > 0
+  const canSubmit = Number(cartons) > 0 && delegateFilled && collectorNamed && codeGiven && !codeLocked && !submitting
 
   async function handleSubmit(): Promise<void> {
     setSubmitting(true)
@@ -109,6 +116,7 @@ function RecordPickupModal({ note, onCancel, onSuccess }: RecordPickupModalProps
       } else {
         body.collected_by_name = collectedByName.trim()
       }
+      if (codeRequired) body.pickup_code = pickupCode.trim()
       if (warehouseId) body.warehouse_id = warehouseId
       if (csoId) body.customer_service_officer_id = csoId
       if (accountingOfficerId) body.accounting_officer_id = accountingOfficerId
@@ -137,6 +145,27 @@ function RecordPickupModal({ note, onCancel, onSuccess }: RecordPickupModalProps
           value={cartons}
           onChange={(e) => setCartons(e.target.value)}
         />
+
+        {codeLocked && (
+          <div className={styles.modalBanner}>
+            <Banner variant="error" title="Pickup code locked">
+              Too many wrong codes were entered. Send the customer a new code before these goods can be released.
+            </Banner>
+          </div>
+        )}
+        {codeRequired && !codeLocked && (
+          <Field
+            label="Pickup code"
+            name="pickup_code"
+            required
+            inputMode="numeric"
+            autoComplete="off"
+            value={pickupCode}
+            onChange={(e) => setPickupCode(e.target.value)}
+            placeholder="6-digit code"
+            helper="Ask the collector for the code that was sent to the customer."
+          />
+        )}
 
         <label className={styles.delegateToggle}>
           <ToggleSwitch checked={isDelegate} onChange={setIsDelegate} />
@@ -301,6 +330,59 @@ function ReissueConfirmModal({ note, onCancel, onSuccess }: ReissueConfirmModalP
 }
 
 // ---------------------------------------------------------------------------
+// SendPickupCodeModal — a fresh pickup code for the customer (audit UX-09)
+// ---------------------------------------------------------------------------
+
+interface SendPickupCodeModalProps {
+  note: ReleaseNote
+  onCancel: () => void
+  onSent: (sentVia: string[]) => void
+}
+
+function SendPickupCodeModal({ note, onCancel, onSent }: SendPickupCodeModalProps): JSX.Element {
+  const [submitting, setSubmitting] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+
+  async function handleSend(): Promise<void> {
+    setSubmitting(true)
+    setError(null)
+    try {
+      const result = await releaseNotesApi.sendPickupCode(note.id)
+      onSent(result.sent_via)
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : 'Could not send a new pickup code.')
+    } finally {
+      setSubmitting(false)
+    }
+  }
+
+  return (
+    <Modal
+      open
+      title="Send a new pickup code"
+      width={480}
+      onClose={onCancel}
+      footer={
+        <>
+          <Button variant="ghost" onClick={onCancel} disabled={submitting}>Cancel</Button>
+          <Button variant="primary" loading={submitting} onClick={() => void handleSend()}>Send new code</Button>
+        </>
+      }
+    >
+      {error && <div className={styles.modalBanner}><Banner variant="error" title="Not sent">{error}</Banner></div>}
+      <p style={{ margin: 0 }}>
+        {note.customer_name ?? 'The customer'} will be sent a new code for <Mono>{note.reference_number}</Mono> by SMS and email.
+        {note.pickup_code_required ? ' The code they have now will stop working.' : ''}
+        {note.pickup_code_locked ? ' This also unlocks the release note.' : ''}
+      </p>
+      <p style={{ margin: '12px 0 0', color: 'var(--color-ink-3)', fontSize: '0.875rem' }}>
+        Nobody at the company sees the code: it goes only to the customer, who gives it to whoever collects.
+      </p>
+    </Modal>
+  )
+}
+
+// ---------------------------------------------------------------------------
 // SplitNoteModal
 // ---------------------------------------------------------------------------
 
@@ -410,6 +492,8 @@ export function ReleaseNoteDetail(): JSX.Element {
   const [showPickup, setShowPickup] = useState(false)
   const [showSplit, setShowSplit] = useState(false)
   const [showReissue, setShowReissue] = useState(false)
+  const [showSendCode, setShowSendCode] = useState(false)
+  const [codeSentVia, setCodeSentVia] = useState<string[] | null>(null)
   const [pickupResult, setPickupResult] = useState<PickupResult | null>(null)
 
 
@@ -475,6 +559,11 @@ export function ReleaseNoteDetail(): JSX.Element {
               Record pickup
             </Action>
           )}
+          {canSendPickupCode(note, r) && (
+            <Action variant="secondary" icon="refresh" onClick={() => setShowSendCode(true)}>
+              {note.pickup_code_required ? 'Send new pickup code' : 'Send pickup code'}
+            </Action>
+          )}
           {!isTerminal && !isExpired && showSplitBtn && note.carton_tags.length > 1 && (
             <Action variant="secondary" onClick={() => setShowSplit(true)}>
               Split note
@@ -509,6 +598,21 @@ export function ReleaseNoteDetail(): JSX.Element {
       )}
 
       {/* Pickup success feedback */}
+      {note.pickup_code_locked && note.status === 'active' && (
+        <div className={styles.section}>
+          <Banner variant="error" title="Pickup code locked">
+            Too many wrong pickup codes were entered at the warehouse, so these goods cannot be released. Check with the
+            customer, then send them a new code.
+          </Banner>
+        </div>
+      )}
+      {codeSentVia && (
+        <div className={styles.successBanner}>
+          <Banner variant="success" title="New pickup code sent" dismissible onDismiss={() => setCodeSentVia(null)}>
+            Sent to the customer by {sentViaLabel(codeSentVia)}. Any earlier code no longer works.
+          </Banner>
+        </div>
+      )}
       {pickupResult && (
         <div className={styles.successBanner}>
           <Banner variant="success" title="Pickup recorded">
@@ -625,6 +729,17 @@ export function ReleaseNoteDetail(): JSX.Element {
             // releaseNoteKeys.detail(id) is a child of releaseNoteKeys.all, so
             // this one invalidation now refreshes this page as well as the list
             // — the explicit reload it replaced is redundant.
+            void qc.invalidateQueries({ queryKey: releaseNoteKeys.all })
+          }}
+        />
+      )}
+      {showSendCode && (
+        <SendPickupCodeModal
+          note={note}
+          onCancel={() => setShowSendCode(false)}
+          onSent={(sentVia) => {
+            setShowSendCode(false)
+            setCodeSentVia(sentVia)
             void qc.invalidateQueries({ queryKey: releaseNoteKeys.all })
           }}
         />

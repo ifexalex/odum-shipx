@@ -811,3 +811,9 @@ client manifests.
 ## Staff in-app event: `missing_item_logged` (2026-11-16)
 
 Written by `services/claims/service.py::log_missing_item` to `staff_notification` with `target_role = china_office_staff`, `entity_type = missing_item`. In-app only (the bell); no customer data in the title or body.
+
+## `pickup_code_issued` (2026-11-16, audit UX-09)
+
+Sent by `services/payment_release/service.py::_issue_pickup_code` through `enqueue_notification` on **SMS and email** (no WhatsApp template exists for it). Template data: `reference_number`, `pickup_code`. Classified in `ACCOUNT_EVENTS` (always sent: without it the customer's goods cannot be collected). English and Chinese copy for SMS, email subject and email lead paragraph.
+
+**Secrets never reach `notification_log`.** `log_queued` passes template data and the rendered body through `redact_secrets`, which masks any `_SECRET_TEMPLATE_KEYS` value (`pickup_code`) in both, so a tenant admin reading the log sees "••••••". A failed `pickup_code_issued` row **cannot be retried** (`422 NOTIFICATION_NOT_RETRYABLE`): the code is not kept, so a retry would send a mask. The remedy is to send a new code from the release note. Also new: the staff in-app event `pickup_code_locked` (to `nigeria_office_staff` and `tenant_admin`).

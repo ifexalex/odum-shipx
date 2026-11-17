@@ -10,6 +10,7 @@ from datetime import UTC, date, datetime, timedelta
 from decimal import Decimal
 from typing import Any
 
+from shared import pickup_code
 from shared.audit import log_audit
 from shared.events import publish_event
 from shared.exceptions import (
@@ -17,8 +18,9 @@ from shared.exceptions import (
     IllegalTransitionError,
     InsufficientPermissionsError,
     ResourceNotFoundError,
+    ServiceUnavailableError,
 )
-from shared.notifications import enqueue_notifications
+from shared.notifications import enqueue_notification, enqueue_notifications
 from shared.providers import get_storage_provider
 from shared.staff_notifications import notify_staff
 from shared.tenant_context import UserRole
@@ -787,6 +789,8 @@ def generate_release_note(
             # already shows the due date the caller just supplied.
             note["debt_due_date"] = getattr(req, "due_date", None)
 
+    _issue_pickup_code(tenant_id, note, request_id)
+
     publish_event(
         source="logistics.payment_release",
         detail_type="ReleaseNoteGenerated",
@@ -812,6 +816,166 @@ def generate_release_note(
     )
 
     return _fmt_release_note(note, billing, total_cartons_for_customer)
+
+
+# ---------------------------------------------------------------------------
+# Pickup code (audit UX-09)
+# ---------------------------------------------------------------------------
+
+
+def _issue_pickup_code(tenant_id: str, note: dict[str, Any], request_id: str = "") -> list[str]:
+    """Give a release note a pickup code and send it to its customer; return the channels it went out on.
+
+    Best effort: the release note exists and is valid whatever happens here, so this never raises. If it cannot issue a
+    code (not configured, nobody to send it to, nothing could be enqueued) the note is left, or put back, without
+    one, and a note without a code needs none to collect. Requiring a code the customer never received would only
+    stop the collection, and staff can issue one later with `reissue_pickup_code`.
+
+    The plaintext exists only in the message to the customer: it is not stored, logged, audited or returned.
+    """
+    note_id = str(note["id"])
+    if not pickup_code.is_configured():
+        return []
+    try:
+        contact = repo.get_customer_contact(tenant_id, str(note["customer_id"]))
+        addresses = (("sms", (contact or {}).get("phone")), ("email", (contact or {}).get("email")))
+        if not contact or not any(address for _, address in addresses):
+            logger.warning("No phone or email to send a pickup code to for release note %s: it has no code", note_id)
+            return []
+
+        code = pickup_code.new_code()
+        code_hash = pickup_code.hash_code(note_id, code)
+        if repo.set_pickup_code(tenant_id, note_id, code_hash) is None:
+            return []
+
+        sent: list[str] = []
+        for channel, address in addresses:
+            if not address:
+                continue
+            try:
+                if enqueue_notification(
+                    tenant_id=tenant_id,
+                    channel=channel,
+                    recipient=str(address),
+                    template_id="pickup_code_issued",
+                    template_vars={"reference_number": note.get("reference_number", ""), "pickup_code": code},
+                    locale=str(contact.get("locale") or "en"),
+                    request_id=request_id,
+                    customer_id=str(note["customer_id"]),
+                ):
+                    sent.append(channel)
+            except Exception:
+                logger.warning("Could not enqueue a pickup code %s for release note %s", channel, note_id, exc_info=True)
+
+        if not sent:
+            repo.set_pickup_code(tenant_id, note_id, None)
+            logger.warning("A pickup code for release note %s could not be sent on any channel: it has no code", note_id)
+            return []
+        note["pickup_code_hash"] = code_hash
+        note["pickup_code_failed_attempts"] = 0
+        return sent
+    except Exception:
+        logger.warning("Could not issue a pickup code for release note %s", note_id, exc_info=True)
+        return []
+
+
+def reissue_pickup_code(tenant_id: str, note_id: str, actor_id: str, ctx: Any, request_id: str = "") -> dict[str, Any]:
+    """Issue a fresh pickup code for an active release note and send it to the customer (staff action).
+
+    Used when the customer never got the code or lost it, or when wrong guesses locked the note. The old code stops
+    working at once and the failed-attempt count starts again. The response says where the new code was sent, never
+    what it is.
+    """
+    if not pickup_code.is_configured():
+        raise BusinessRuleViolationError("Pickup codes are not set up for this system", rule_id="PICKUP_CODES_NOT_CONFIGURED")
+    note = repo.get_release_note_by_id(tenant_id, note_id)
+    if not note:
+        raise ResourceNotFoundError("release_note", note_id)
+    if note["status"] != "active":
+        raise BusinessRuleViolationError(
+            f"A pickup code can only be issued for an active release note: this one is '{note['status']}'",
+            rule_id="RELEASE_NOTE_NOT_ACTIVE",
+        )
+
+    channels = _issue_pickup_code(tenant_id, note, request_id)
+    if not channels:
+        raise BusinessRuleViolationError(
+            "The new pickup code could not be sent: the customer has no phone or email on file, "
+            "or those channels are switched off",
+            rule_id="PICKUP_CODE_NOT_DELIVERABLE",
+        )
+
+    log_audit(
+        tenant_id=tenant_id,
+        entity_type="release_note",
+        entity_id=note_id,
+        action="UPDATE",
+        actor_id=actor_id,
+        actor_role=str(ctx.role),
+        after_state={"pickup_code_reissued": True, "sent_via": channels},
+    )
+    return {"release_note_id": note_id, "sent_via": channels}
+
+
+def _verify_pickup_code(tenant_id: str, note: dict[str, Any], entered: str | None, actor_id: str, ctx: Any) -> None:
+    """Check the code the collector gave, or refuse the pickup. Called only for a note that carries a code.
+
+    A wrong code is counted; after `MAX_FAILED_ATTEMPTS` the note takes no more codes until staff reissue one, so a
+    six digit code cannot be guessed at the counter. Nothing here ever includes the code, right or wrong.
+    """
+    note_id = str(note["id"])
+    if not pickup_code.is_configured():
+        # The note has a code but this system cannot check it. Letting the pickup through would defeat the point.
+        raise ServiceUnavailableError("Pickup codes cannot be checked right now. Try again shortly.")
+
+    failed = int(note.get("pickup_code_failed_attempts") or 0)
+    if failed >= pickup_code.MAX_FAILED_ATTEMPTS:
+        raise BusinessRuleViolationError(
+            "This release note is locked after too many wrong pickup codes. Ask the shipping company to issue a new code.",
+            rule_id="PICKUP_CODE_LOCKED",
+        )
+    if not pickup_code.normalise(entered):
+        raise BusinessRuleViolationError(
+            "Ask the collector for the pickup code that was sent to the customer.", rule_id="PICKUP_CODE_REQUIRED"
+        )
+
+    if pickup_code.matches(note_id, entered, str(note["pickup_code_hash"])):
+        if failed:
+            repo.reset_pickup_code_attempts(tenant_id, note_id)
+        return
+
+    total = repo.record_failed_pickup_code(tenant_id, note_id) or failed + 1
+    log_audit(
+        tenant_id=tenant_id,
+        entity_type="release_note",
+        entity_id=note_id,
+        action="UPDATE",
+        actor_id=actor_id,
+        actor_role=str(ctx.role),
+        after_state={"pickup_code_failed_attempts": total},
+    )
+    if total >= pickup_code.MAX_FAILED_ATTEMPTS:
+        logger.warning("Release note %s locked after %d wrong pickup codes", note_id, total)
+        for role in ("nigeria_office_staff", "tenant_admin"):
+            notify_staff(
+                tenant_id=tenant_id,
+                event_type="pickup_code_locked",
+                entity_type="release_note",
+                entity_id=note_id,
+                title="Pickup code locked",
+                body=f"Release note {note.get('reference_number', '')} is locked after wrong pickup codes. Issue a new code.",
+                target_role=role,
+            )
+        raise BusinessRuleViolationError(
+            "That pickup code is not right, and this release note is now locked. Ask the shipping company to issue a new code.",
+            rule_id="PICKUP_CODE_LOCKED",
+        )
+    remaining = pickup_code.MAX_FAILED_ATTEMPTS - total
+    tries = "try" if remaining == 1 else "tries"
+    raise BusinessRuleViolationError(
+        f"That pickup code is not right. {remaining} {tries} left before this release note is locked.",
+        rule_id="PICKUP_CODE_INVALID",
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -1216,6 +1380,8 @@ def split_release_note(
     if child_note is None:
         raise RuntimeError("create_split_release_note returned None unexpectedly")
 
+    _issue_pickup_code(tenant_id, child_note, request_id)
+
     publish_event(
         source="logistics.payment_release",
         detail_type="ReleaseNoteSplit",
@@ -1310,6 +1476,8 @@ def reissue_release_note(
 
     billing = repo.get_billing_by_id(tenant_id, str(note.get("billing_id", "")))
 
+    _issue_pickup_code(tenant_id, new_note, request_id)
+
     publish_event(
         source="logistics.payment_release",
         detail_type="ReleaseNoteReissued",
@@ -1382,6 +1550,13 @@ def record_pickup(
                 f"Delegate details required: {', '.join(missing)}",
                 rule_id="DELEGATE_DETAILS_REQUIRED",
             )
+
+    # A note issued with a pickup code needs it from whoever collects, the customer or their delegate. A note without
+    # one (issued before codes, or when none could be sent) is unchanged.
+    code_checked = False
+    if note.get("pickup_code_hash"):
+        _verify_pickup_code(tenant_id, note, getattr(req, "pickup_code", None), actor_id, ctx)
+        code_checked = True
 
     delegate_id_type_val = None
     if req.delegate_id_type:
@@ -1475,7 +1650,12 @@ def record_pickup(
         action="CREATE",
         actor_id=actor_id,
         actor_role=str(ctx.role),
-        after_state={"release_note_id": note_id, "release_note_status": note_status, "cartons_count": req.cartons_released},
+        after_state={
+            "release_note_id": note_id,
+            "release_note_status": note_status,
+            "cartons_count": req.cartons_released,
+            "pickup_code_verified": code_checked,
+        },
     )
 
     return {
@@ -1571,6 +1751,11 @@ def _fmt_release_note(note: dict[str, Any], billing: dict[str, Any], total_carto
         "storage_fees_ngn": str(billing.get("storage_fees_ngn", "0")),
         # parent_release_note_id — set on re-issued notes to link back to the original.
         "parent_release_note_id": str(note["parent_release_note_id"]) if note.get("parent_release_note_id") else None,
+        # Pickup code (audit UX-09). Whether the warehouse must ask for one, and whether wrong guesses have locked the
+        # note. The code is never in a response: it exists only in the message sent to the customer.
+        "pickup_code_required": bool(note.get("pickup_code_hash")) and status == "active",
+        "pickup_code_locked": bool(note.get("pickup_code_hash"))
+        and int(note.get("pickup_code_failed_attempts") or 0) >= pickup_code.MAX_FAILED_ATTEMPTS,
     }
 
 

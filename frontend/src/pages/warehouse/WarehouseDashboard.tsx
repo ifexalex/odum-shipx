@@ -71,6 +71,10 @@ const ID_TYPES: { value: DelegateIdType; label: string }[] = [
 function PickupSheet({ note, onCancel, onSuccess }: PickupSheetProps): JSX.Element {
   const [cartons, setCartons] = useState(String(note.carton_count))
   const [isDelegate, setIsDelegate] = useState(false)
+  // The backend requires a collector's name when it is not a delegate; this sheet never sent one, so every
+  // in-person pickup recorded here was refused with a validation error. Defaults to the customer, who usually collects.
+  const [collectedByName, setCollectedByName] = useState(note.customer_name ?? '')
+  const [pickupCode, setPickupCode] = useState('')
   const [delegateName, setDelegateName] = useState('')
   const [delegatePhone, setDelegatePhone] = useState('')
   const [delegateIdType, setDelegateIdType] = useState<DelegateIdType>('national_id')
@@ -81,7 +85,11 @@ function PickupSheet({ note, onCancel, onSuccess }: PickupSheetProps): JSX.Eleme
   const delegateFilled = !isDelegate || (
     delegateName.trim() && delegatePhone.trim() && delegateIdNumber.trim()
   )
-  const canSubmit = Number(cartons) > 0 && delegateFilled && !submitting
+  const collectorNamed = isDelegate || collectedByName.trim().length > 0
+  const codeRequired = note.pickup_code_required === true
+  const codeLocked = note.pickup_code_locked === true
+  const codeGiven = !codeRequired || pickupCode.trim().length > 0
+  const canSubmit = Number(cartons) > 0 && delegateFilled && collectorNamed && codeGiven && !codeLocked && !submitting
 
   async function handleSubmit(): Promise<void> {
     setSubmitting(true)
@@ -94,7 +102,10 @@ function PickupSheet({ note, onCancel, onSuccess }: PickupSheetProps): JSX.Eleme
         body.delegate_phone = delegatePhone
         body.delegate_id_type = delegateIdType
         body.delegate_id_number = delegateIdNumber
+      } else {
+        body.collected_by_name = collectedByName.trim()
       }
+      if (codeRequired) body.pickup_code = pickupCode.trim()
       const result = await releaseNotesApi.recordPickup(note.id, body)
       onSuccess(result)
     } catch (err) {
@@ -114,6 +125,27 @@ function PickupSheet({ note, onCancel, onSuccess }: PickupSheetProps): JSX.Eleme
         </div>
 
         {error && <div className={styles.modalBanner}><Banner variant="error">{error}</Banner></div>}
+        {codeLocked && (
+          <div className={styles.modalBanner}>
+            <Banner variant="error" title="Pickup code locked">
+              Too many wrong codes were entered. The office must send the customer a new code before these goods can be released.
+            </Banner>
+          </div>
+        )}
+
+        {codeRequired && !codeLocked && (
+          <Field
+            label="Pickup code"
+            name="pickup_code"
+            required
+            inputMode="numeric"
+            autoComplete="off"
+            value={pickupCode}
+            onChange={(e) => setPickupCode(e.target.value)}
+            placeholder="6-digit code"
+            helper="Ask the collector for the code that was sent to the customer."
+          />
+        )}
 
         <Field
           label="Cartons collected"
@@ -128,6 +160,17 @@ function PickupSheet({ note, onCancel, onSuccess }: PickupSheetProps): JSX.Eleme
           <ToggleSwitch checked={isDelegate} onChange={setIsDelegate} />
           <span>Delegate pickup</span>
         </label>
+
+        {!isDelegate && (
+          <Field
+            label="Collected by"
+            name="collected_by_name"
+            required
+            value={collectedByName}
+            onChange={(e) => setCollectedByName(e.target.value)}
+            placeholder="Name of the person collecting"
+          />
+        )}
 
         {isDelegate && (
           <>

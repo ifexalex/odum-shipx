@@ -482,3 +482,20 @@ Response: `{"gateway_status": "success" | <paystack's own status string>, "new_p
 Before, the status recompute would have flipped a cancelled invoice to `paid`. **Release-note numbers** now come from the
 `tenant_counter` (`release_note`) instead of `COUNT(*)+1`, so two notes created together can no longer share a reference;
 a number is skipped if the note insert then fails (uniqueness, not gap-free).
+
+## Pickup code (2026-11-16, audit UX-09, ADR-008, migration 065)
+
+**Problem:** an in-person pickup needed only a typed collector name, so anyone who knew a release-note reference could collect the goods.
+
+| Change | Detail |
+|---|---|
+| `POST /v1/release-notes`, `.../split`, `.../reissue` | Each new note is given a six digit pickup code, sent to the customer by SMS and email (`pickup_code_issued`). Best effort: a note is never refused because a code could not be issued. |
+| `GET /v1/release-notes[/{id}]` | Two new fields: **`pickup_code_required`** (the note is active and carries a code) and **`pickup_code_locked`** (five wrong codes). The code and its hash are never returned. |
+| `PATCH /v1/release-notes/{id}/release` | New optional body field **`pickup_code`** (spaces and dashes ignored). For a note that carries a code: missing is `422 PICKUP_CODE_REQUIRED` (not counted), wrong is `422 PICKUP_CODE_INVALID` with the tries left, the fifth wrong one and everything after is `422 PICKUP_CODE_LOCKED`, and a missing pepper is `503`. No pickup record is written on a refusal. The pickup audit entry records `pickup_code_verified`. A note without a code is unchanged. |
+| **`POST /v1/release-notes/{id}/pickup-code`** (new) | tenant_admin, nigeria_office_staff. Sends the customer a fresh code for an active note, retires the old one and unlocks the note. `200 {release_note_id, sent_via: ["sms","email"]}`. `422 RELEASE_NOTE_NOT_ACTIVE`, `422 PICKUP_CODE_NOT_DELIVERABLE` (no phone or email, or channels off), `422 PICKUP_CODES_NOT_CONFIGURED`. Audited (`pickup_code_reissued`, `sent_via`). |
+
+Design, storage (keyed hash only), the lock and the consequences are in `docs/adr/008-release-note-pickup-code.md`. Env: `PICKUP_CODE_PEPPER` (at least 16 characters; unset means no codes are issued and none are required).
+
+**Ground-truth gap found on the way:** the warehouse dashboard's quick pickup sheet sent only the carton count, and `RecordPickupRequest` requires `collected_by_name` for a non-delegate pickup, so every in-person pickup recorded from the dashboard was refused with a 422 (the release-note page's form was fixed for this earlier; the dashboard sheet was not). It now has a "Collected by" field, defaulted to the customer.
+
+Tests: `tests/unit/test_pickup_code.py` (30), `test_pickup_code_release.py` (46), `test_pickup_code_notification.py` (13), nine security properties mutation-checked. `tests/db/test_pickup_code.py` (11) and **migration 065 itself have not been run** (no Docker): run `make migrate` and `make test-db`.

@@ -83,6 +83,15 @@ export function MyReleaseNote(): JSX.Element {
           </Banner>
         </div>
       )}
+      {note.status === 'active' && note.pickup_code_required && (
+        <div className={styles.banner}>
+          <Banner variant={note.pickup_code_locked ? 'error' : 'warning'} title={note.pickup_code_locked ? 'Pickup code locked' : 'A pickup code is needed'}>
+            {note.pickup_code_locked
+              ? 'Too many wrong codes were entered at the warehouse. Contact your shipping company for a new code.'
+              : 'We sent you a pickup code by SMS or email. Whoever collects your goods must give it at the warehouse, so share it only with them. If you cannot find it, ask your shipping company to send a new one.'}
+          </Banner>
+        </div>
+      )}
       {note.status === 'expired' && (
         <div className={styles.banner}>
           <Banner variant="warning" title="This release note has expired">

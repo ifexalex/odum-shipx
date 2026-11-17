@@ -3,6 +3,7 @@ import { render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { MemoryRouter, Route, Routes } from 'react-router-dom'
 import { describe, expect, it, vi } from 'vitest'
+import { ApiError } from '../../api/client'
 import * as rnModule from '../../api/releaseNotes'
 import { warehousesApi } from '../../api/warehouses'
 import { usersApi } from '../../api/tenantManagement'
@@ -131,3 +132,74 @@ describe('ReleaseNoteDetail', () => {
     expect(screen.getByRole('button', { name: /confirm pickup/i })).toBeDisabled()
   })
 })
+
+describe('ReleaseNoteDetail pickup code (UX-09)', () => {
+  const RESULT = {
+  release_note_id: 'rn-001', release_note_status: 'picked_up' as const, pickup_record_id: 'pr-1',
+  pickup_date: '2026-11-16', pickup_time: '10:00', attendant_name: 'Tunde',
+  customer_service_officer_name: null, accounting_officer_name: null,
+  remaining_cartons: 0, shipment_status: null,
+}
+
+  it('asks the warehouse for the code on a note that needs one and sends it', async () => {
+    const recordPickup = vi.spyOn(rnModule.releaseNotesApi, 'recordPickup').mockResolvedValue(RESULT)
+    renderPage(WAREHOUSE_SESSION, { ...NOTE, pickup_code_required: true })
+    await userEvent.click(await screen.findByRole('button', { name: /record pickup/i }))
+    const confirm = await screen.findByRole('button', { name: /confirm pickup/i })
+    expect(confirm).toBeDisabled()
+    await userEvent.type(screen.getByLabelText(/Pickup code/), '048213')
+    await userEvent.click(confirm)
+    await waitFor(() => expect(recordPickup).toHaveBeenCalledWith('rn-001', expect.objectContaining({ pickup_code: '048213' })))
+  })
+
+  it('asks for no code on a note without one', async () => {
+    renderPage(WAREHOUSE_SESSION)
+    await userEvent.click(await screen.findByRole('button', { name: /record pickup/i }))
+    await screen.findByRole('button', { name: /confirm pickup/i })
+    expect(screen.queryByLabelText(/Pickup code/)).toBeNull()
+  })
+
+  it('lets office staff send the customer a new code, and says where it went, never what it is', async () => {
+    const send = vi.spyOn(rnModule.releaseNotesApi, 'sendPickupCode').mockResolvedValue({ release_note_id: 'rn-001', sent_via: ['sms', 'email'] })
+    renderPage(STAFF_SESSION, { ...NOTE, pickup_code_required: true })
+    await userEvent.click(await screen.findByRole('button', { name: 'Send new pickup code' }))
+    const dialog = await screen.findByRole('dialog', { name: 'Send a new pickup code' })
+    expect(dialog).toHaveTextContent('The code they have now will stop working.')
+    await userEvent.click(screen.getByRole('button', { name: 'Send new code' }))
+    await waitFor(() => expect(send).toHaveBeenCalledWith('rn-001'))
+    expect(await screen.findByText('New pickup code sent')).toBeInTheDocument()
+    expect(screen.getByText(/by SMS and email/)).toBeInTheDocument()
+  })
+
+  it('shows why a new code could not be sent', async () => {
+    vi.spyOn(rnModule.releaseNotesApi, 'sendPickupCode').mockRejectedValue(
+      new ApiError(
+        { type: 'about:blank', title: 'Unprocessable Entity', status: 422, detail: 'The new pickup code could not be sent: the customer has no phone or email on file, or those channels are switched off', error_code: 'BUSINESS_RULE_VIOLATION', rule_id: 'PICKUP_CODE_NOT_DELIVERABLE' },
+        null,
+      ),
+    )
+    renderPage(STAFF_SESSION, { ...NOTE, pickup_code_required: true })
+    await userEvent.click(await screen.findByRole('button', { name: 'Send new pickup code' }))
+    await userEvent.click(await screen.findByRole('button', { name: 'Send new code' }))
+    expect(await screen.findByText(/no phone or email on file/)).toBeInTheDocument()
+    expect(screen.queryByText('New pickup code sent')).toBeNull()
+  })
+
+  it('tells office staff when wrong codes have locked the note', async () => {
+    renderPage(STAFF_SESSION, { ...NOTE, pickup_code_required: true, pickup_code_locked: true })
+    expect(await screen.findByText('Pickup code locked')).toBeInTheDocument()
+  })
+
+  it('does not offer the warehouse a way to send codes', async () => {
+    renderPage(WAREHOUSE_SESSION, { ...NOTE, pickup_code_required: true })
+    await screen.findByRole('button', { name: /record pickup/i })
+    expect(screen.queryByRole('button', { name: /Send (new )?pickup code/ })).toBeNull()
+  })
+
+  it('does not offer it on a note that is no longer active', async () => {
+    renderPage(STAFF_SESSION, { ...NOTE, status: 'picked_up' })
+    await screen.findByRole('heading', { name: 'ACME-RN-20260704-0001' })
+    expect(screen.queryByRole('button', { name: /Send (new )?pickup code/ })).toBeNull()
+  })
+})
+

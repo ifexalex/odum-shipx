@@ -43,6 +43,10 @@ _SMS_TEMPLATES: dict[str, str] = {
         "{company_name}: Container {container_number} arrived. Amount: {currency} {amount}. Pickup: {warehouse_address}"
     ),
     "release_note_generated": ("{company_name}: Release note ready. Ref: {reference_number}. Collect {carton_count} cartons."),
+    "pickup_code_issued": (
+        "{company_name}: Pickup code for release note {reference_number}: {pickup_code}. "
+        "Give it to the person collecting your goods. Do not share it with anyone else."
+    ),
     "container_arrived": (
         "{company_name}: Your goods have arrived at our warehouse! Container {container_number}. Your invoice is being prepared."
     ),
@@ -70,6 +74,9 @@ _SMS_TEMPLATES_ZH: dict[str, str] = {
         "{company_name}: 集装箱 {container_number} 已抵达。应付金额：{currency} {amount}。提货地址：{warehouse_address}"
     ),
     "release_note_generated": "{company_name}: 提货单已生成。单号：{reference_number}，共 {carton_count} 件。",
+    "pickup_code_issued": (
+        "{company_name}: 提货单 {reference_number} 的取货码：{pickup_code}。请仅告知前来提货的人，切勿告知他人。"
+    ),
     "container_arrived": "{company_name}: 您的货物已到达仓库！集装箱 {container_number}，正在准备账单。",
     "customer_registered": "{company_name}: 欢迎！您的账户已创建。请查收邮件以设置密码。",
     "customer_invite": "{company_name}: 您好 {name}，创建账户以跟踪您的货物：{invite_link}（链接48小时后失效）",
@@ -474,6 +481,7 @@ EMAIL_SUBJECTS: dict[str, str] = {
     "shipment_update": "Shipment status update",
     "payment_due": "Payment due for your shipment",
     "release_note_generated": "Release note ready for collection",
+    "pickup_code_issued": "Your pickup code",
     "damage_claim_update": "Update on your damage claim",
     "cbm_dispute_update": "CBM dispute update",
     "packing_list_approved": "Your packing list has been approved",
@@ -494,6 +502,7 @@ EMAIL_SUBJECTS_ZH: dict[str, str] = {
     "shipment_update": "货运状态更新",
     "payment_due": "您的货物付款通知",
     "release_note_generated": "提货单已生成",
+    "pickup_code_issued": "您的取货码",
     "damage_claim_update": "损坏索赔更新",
     "cbm_dispute_update": "CBM争议更新",
     "packing_list_approved": "装箱单已审批",
@@ -524,6 +533,13 @@ _EMAIL_BODIES: dict[str, str] = {
         "see what you owe and download your release notes. "
         "Use the button below to choose a password and finish setting it up. "
         "The link expires in 48 hours — if it does, ask us to send a new one."
+    ),
+    # The code itself is in the details table below this paragraph. The wording is about what it is for, because
+    # the person reading it may be handing it to someone else.
+    "pickup_code_issued": (
+        "{company_name} has issued a pickup code for your release note. Whoever collects your goods must give the "
+        "warehouse this code, so give it only to the person you send to collect them. Keep it private: we will "
+        "never ask you for it."
     ),
     "account_activation": (
         "An account has been created for you on {company_name}'s logistics portal. "
@@ -573,6 +589,10 @@ _EMAIL_BODIES_ZH: dict[str, str] = {
         "请点击下方按钮设置密码以完成开通。链接将在48小时后失效——如已失效，请联系我们重新发送。"
     ),
     "account_activation": ("{company_name} 物流平台已为您创建账户。请点击下方按钮设置密码并登录。链接将在48小时后失效。"),
+    "pickup_code_issued": (
+        "{company_name} 已为您的提货单生成取货码。提货人须向仓库出示此码，"
+        "请仅告知您派去提货的人，并妥善保管：我们绝不会向您索要。"
+    ),
     "customer_registered": "欢迎使用 {company_name}。您的账户已就绪——请查收邮件以设置密码。",
     "registration_existing_account": (
         "有人（可能是您本人）尝试使用此邮箱地址在 {company_name} 物流平台创建账户，但该邮箱已有账户。"
@@ -941,6 +961,24 @@ def send_email(
 # ---------------------------------------------------------------------------
 
 
+# Template variables that are secrets: delivered to the recipient, never kept. The notification log is readable by tenant
+# admins and is the source of "retry", so a code that reached it would let staff read every customer's pickup code.
+_SECRET_TEMPLATE_KEYS = frozenset({"pickup_code"})
+REDACTED = "••••••"
+
+
+def redact_secrets(template_data: dict[str, Any], message_body: str | None) -> tuple[dict[str, Any], str | None]:
+    """`template_data` and `message_body` as they may be stored: each secret value replaced by a mask."""
+    secret_values = {str(v) for k, v in template_data.items() if k in _SECRET_TEMPLATE_KEYS and v}
+    if not secret_values:
+        return template_data, message_body
+    redacted = {k: (REDACTED if k in _SECRET_TEMPLATE_KEYS and v else v) for k, v in template_data.items()}
+    for value in secret_values:
+        if message_body:
+            message_body = message_body.replace(value, REDACTED)
+    return redacted, message_body
+
+
 def log_queued(
     tenant_id: str,
     channel: str,
@@ -960,6 +998,7 @@ def log_queued(
     try:
         from . import repository as repo
 
+        template_data, message_body = redact_secrets(template_data, message_body)
         masked = repo.mask_email(recipient_raw) if "@" in recipient_raw else repo.mask_phone(recipient_raw)
         row = repo.insert_log(
             tenant_id,
@@ -1117,6 +1156,9 @@ def trigger_sms_fallback(tenant_id: str, whatsapp_log_id: str, reason: str) -> b
     return True
 
 
+_NOT_RETRYABLE_EVENTS = frozenset({"pickup_code_issued"})
+
+
 def retry_notification(
     tenant_id: str,
     log_id: str,
@@ -1140,6 +1182,14 @@ def retry_notification(
         raise BusinessRuleViolationError(
             f"Only 'failed' notifications can be retried; current status is '{original['status']}'",
             rule_id="NOTIFICATION_NOT_FAILED",
+        )
+
+    # A pickup code is never stored, so a retry would send a mask, not a code. The way to resend one is to reissue it.
+    if original["event_type"] in _NOT_RETRYABLE_EVENTS:
+        raise BusinessRuleViolationError(
+            "This message carried a one-time code that is not kept, so it cannot be re-sent. "
+            "Reissue the code from the release note instead.",
+            rule_id="NOTIFICATION_NOT_RETRYABLE",
         )
 
     channel = original["channel"]

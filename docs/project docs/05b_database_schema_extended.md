@@ -573,3 +573,7 @@ CREATE INDEX idx_onboarding_request_email ON tenant_onboarding_request(lower(con
 - [x] customer.locale added (migration 029, `VARCHAR(10) NOT NULL DEFAULT 'en'`) — BCP-47 locale forwarded by scheduled jobs (storage_reminders, release_expiry) to `enqueue_notification` so notification Lambdas select the correct template language
 
 - [x] Migration 064 (2026-11-15): `notification_log_status_check` now also allows `suppressed`, recording a message held back by the customer's notification preferences (`shared/notification_consent.py`), with the reason in `error_detail`. The downgrade refuses while any `suppressed` row exists rather than rewrite history. No other schema change in audit Phase 2: `customer.consent_given_at` already existed and now also means "preferences recorded".
+
+## Migration 065 — release note pickup code (2026-11-16)
+
+`release_note` gains `pickup_code_hash VARCHAR(64)` (HMAC-SHA256 hex of the code, keyed by `PICKUP_CODE_PEPPER` and bound to the note id; NULL means the note needs no code), `pickup_code_issued_at TIMESTAMPTZ`, and `pickup_code_failed_attempts INTEGER NOT NULL DEFAULT 0 CHECK (>= 0)`. The plaintext code is never stored. No RLS change (the table's policy covers the new columns). Downgrade drops the three columns. See ADR-008.

@@ -250,3 +250,7 @@ guard was first written against the `get()` default and silently did nothing.
 - Azure container app: `TRUSTED_PROXY_HOPS` (variable `trusted_proxy_hops`, default 0). Set it to the verified
   number of proxies that append to `X-Forwarded-For` (likely 2: Front Door, then the Container Apps ingress);
   see `modules/container_app/variables.tf` for why too low and too high are both wrong.
+
+## `PICKUP_CODE_PEPPER` (2026-11-16)
+
+`random_password.pickup_code_pepper` (48 characters, in the lambda module; the same in `infrastructure/azure/modules/container_app`, as a Container App secret) is injected into every function as `PICKUP_CODE_PEPPER`. It keys the hash of release-note pickup codes (ADR-008). It lives in Terraform state like the other generated secrets. Do not rotate it casually: every outstanding code stops verifying.

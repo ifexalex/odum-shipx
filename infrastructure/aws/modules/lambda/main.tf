@@ -1,3 +1,10 @@
+# The secret that keys the pickup-code hash. Generated once and kept in state. Changing it makes every code already issued
+# unverifiable, so those release notes would need a new code (POST /v1/release-notes/{id}/pickup-code).
+resource "random_password" "pickup_code_pepper" {
+  length  = 48
+  special = false
+}
+
 data "aws_caller_identity" "current" {}
 data "aws_region" "current" {}
 
@@ -131,6 +138,10 @@ locals {
       ENVIRONMENT           = var.environment
       ENCRYPTION_KMS_KEY_ID = var.encryption_kms_key_arn
       REDIS_HOST            = var.redis_host
+
+      # Key for the HMAC that hashes release-note pickup codes (shared/pickup_code.py). Without it no codes are issued
+      # and none are required; with it, every new release note carries one.
+      PICKUP_CODE_PEPPER = random_password.pickup_code_pepper.result
 
       # shared/notifications.py reads these to enqueue; unset, it logs
       # "Queue URL env var not set — notification dropped" and returns False.

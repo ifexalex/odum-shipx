@@ -21,6 +21,17 @@ export function canSplitNote(note: ReleaseNote, role: UserRole): boolean {
   return _SPLIT_ROLES.includes(role) && note.status === 'active'
 }
 
+/** Staff who issue release notes can send the customer a new pickup code for an active one. */
+export function canSendPickupCode(note: ReleaseNote, role: UserRole): boolean {
+  return _CREATE_ROLES.includes(role) && note.status === 'active'
+}
+
+/** "SMS and email" from the channel names the API reports a code was sent on. */
+export function sentViaLabel(channels: string[]): string {
+  const names = channels.map((c) => (c === 'sms' ? 'SMS' : c === 'whatsapp' ? 'WhatsApp' : c))
+  return names.length > 1 ? `${names.slice(0, -1).join(', ')} and ${names[names.length - 1]}` : (names[0] ?? '')
+}
+
 export function releaseNoteStatusLabel(status: ReleaseNoteStatus): string {
   switch (status) {
     case 'active': return 'Active'

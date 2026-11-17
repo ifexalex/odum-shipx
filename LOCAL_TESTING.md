@@ -1260,3 +1260,7 @@ Once configured, that tenant's customer portal "Pay online" button (`/my-billing
 - **The dev server forwards every response header now** (it used to forward only `Content-Type`), so `Retry-After`, `Location` and `X-Request-Id` show up as they do behind API Gateway.
 - **Every dev identity must exist in `tenant_user`.** A token's user is now checked against an active row, so an `X-User-ID` that is not a seeded user gets `401`. The role switcher's identities are seeded, and the dev server resolves a placeholder user id to a real one per role.
 - **Migration 064** (`make migrate`) lets `notification_log` record suppressed messages.
+
+## Pickup codes (audit UX-09)
+
+Release notes carry a pickup code only when `PICKUP_CODE_PEPPER` is set (16 characters or more). It is unset by default locally, so pickups work as before with no code. To try the flow, add `PICKUP_CODE_PEPPER=local-dev-pepper-0123456789` to `.env.local`, put your own test number or address in `NOTIFICATION_ALLOWLIST` (never an imported customer's), restart `make dev`, and run `make migrate` for migration 065. The code arrives by SMS or email; it is not shown anywhere in the app, by design.
