@@ -319,6 +319,8 @@ user pool, not `MagicMock`, so these exercise the actual boto3 call shapes):
   tenant's or `platform_admin`'s groups, empty desired-roles removes everything for
   that tenant.
 
+`tests/unit/test_uploads.py::TestSizeLimit` (2026-11-17): 5 MB on every policy, exactly-the-limit accepted, one byte over refused, nonsense sizes refused, the size signed as `content_length`, the stored-size check, and payment claims and imports refusing an over-size stored file. Frontend `lib/uploadLimits.test.ts`, `uploads.test.ts`, `ContainerDetail.test.tsx`.
+
 `tests/db/test_paginated_lists.py` (2026-11-17): the dispute and manifest counts match their filters, not the page.
 
 Frontend — `shell/breadcrumbs.test.tsx` (FD-45/46, 2026-11-17): walks every route in `routeTable.ts` against the expected trail, so a new route needs an expectation; plus link, role, label and component checks.

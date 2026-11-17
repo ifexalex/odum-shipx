@@ -501,3 +501,10 @@ Design, storage (keyed hash only), the lock and the consequences are in `docs/ad
 **Ground-truth gap found on the way:** the warehouse dashboard's quick pickup sheet sent only the carton count, and `RecordPickupRequest` requires `collected_by_name` for a non-delegate pickup, so every in-person pickup recorded from the dashboard was refused with a 422 (the release-note page's form was fixed for this earlier; the dashboard sheet was not). It now has a "Collected by" field, defaulted to the customer.
 
 Tests: `tests/unit/test_pickup_code.py` (30), `test_pickup_code_release.py` (46), `test_pickup_code_notification.py` (13), nine security properties mutation-checked. `tests/db/test_pickup_code.py` (11) and **migration 065 itself have not been run** (no Docker): run `make migrate` and `make test-db`.
+
+## Upload size limit (2026-11-17)
+
+**2026-11-17 — 5 MB upload limit:** the presign request must carry `size_bytes` (the file's size in bytes). Missing or not a positive whole number → 422 `VALIDATION_ERROR`; over 5 MB (5,242,880 bytes) → 422 `rule_id: FILE_TOO_LARGE`. On AWS the size is signed into the URL (SigV4 `content-length`), so S3 refuses a different-sized body. Rules in `shared/uploads.py`.
+
+`POST /v1/payments/claims` also checks the stored evidence file: missing → 422 `UPLOAD_NOT_FOUND`; over 5 MB → 422 `FILE_TOO_LARGE` (an Azure upload is not bound to its declared size).
+

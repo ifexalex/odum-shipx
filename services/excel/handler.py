@@ -197,7 +197,7 @@ def _dispatch(
         ctx.assert_role(*_IMPORT_ROLES)
         body = _parse_body(event)
         req = parse_validated(ImportPresignedUrlRequest, body)
-        result = service.generate_import_presigned_url(tenant_id, content_type=req.content_type)
+        result = service.generate_import_presigned_url(tenant_id, content_type=req.content_type, size_bytes=req.size_bytes)
         return success(result, request_id=request_id)
 
     # POST /v1/packing-lists/import

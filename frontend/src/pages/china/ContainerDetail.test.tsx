@@ -402,6 +402,7 @@ describe('ContainerDetail document upload (audit BE-12)', () => {
         filename: 'bl.pdf',
         content_type: 'application/pdf',
         document_type: 'bill_of_lading',
+        size_bytes: 4,
       }),
     )
   })
@@ -425,6 +426,16 @@ describe('ContainerDetail document upload (audit BE-12)', () => {
     await userEvent.click(screen.getByRole('button', { name: 'Upload' }))
     const message = await screen.findByText("content_type 'image/png' is not allowed.")
     expect(dialog).toContainElement(message)
+  })
+
+  it('refuses a file over 5 MB in the dialog, without asking the server', async () => {
+    const dialog = await openUpload()
+    const big = new File(['x'], 'scan.pdf', { type: 'application/pdf' })
+    Object.defineProperty(big, 'size', { value: 6 * 1024 * 1024 })
+    await pick(dialog, big)
+    await userEvent.click(screen.getByRole('button', { name: 'Upload' }))
+    expect(await screen.findByText('This file is 6.0 MB. The limit is 5 MB.')).toBeInTheDocument()
+    expect(containerDocumentsApi.presignUpload).not.toHaveBeenCalled()
   })
 })
 

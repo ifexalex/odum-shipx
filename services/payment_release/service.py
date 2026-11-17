@@ -167,14 +167,17 @@ def generate_payment_claim_upload_url(
     filename: str,
     content_type: str,
     ctx: Any,
+    size_bytes: object = None,
 ) -> dict[str, Any]:
-    uploads.EVIDENCE.check_content_type(content_type)
+    uploads.EVIDENCE.check(content_type, size_bytes)
 
     billing = repo.get_billing_by_id(tenant_id, billing_id)
     if not billing or not _customer_owns_billing(tenant_id, ctx, billing):
         raise ResourceNotFoundError("billing", billing_id)
 
-    upload = uploads.presign_upload(uploads.EVIDENCE, tenant_id, ("payment-claims", billing_id), filename, content_type)
+    upload = uploads.presign_upload(
+        uploads.EVIDENCE, tenant_id, ("payment-claims", billing_id), filename, content_type, size_bytes
+    )
     return {"file_key": upload.key, **upload.as_response()}
 
 
@@ -199,6 +202,9 @@ def submit_payment_claim(
             "This invoice has no outstanding balance to submit a payment against.",
             rule_id="BILLING_NOT_PAYABLE",
         )
+
+    # The evidence must exist and be within the limit; an Azure upload is not bound to its declared size.
+    uploads.check_stored_size(uploads.EVIDENCE, req.evidence_file_key)
 
     customer = repo.get_customer_by_user_id(tenant_id, actor_id)
     customer_id = str(customer["id"]) if customer else str(billing["customer_id"])

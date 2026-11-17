@@ -109,3 +109,8 @@ being selected.
 The source manifest pairs **NAME** with **CONTACT** on every row for a reason: when cargo lands,
 staff ring the customer. Requiring a click through to the customer record to get the number made the
 operational tables less useful than the paper document they replace.
+
+## Upload size limit (2026-11-17)
+
+**2026-11-17 — 5 MB upload limit:** the presign request must carry `size_bytes` (the file's size in bytes). Missing or not a positive whole number → 422 `VALIDATION_ERROR`; over 5 MB (5,242,880 bytes) → 422 `rule_id: FILE_TOO_LARGE`. On AWS the size is signed into the URL (SigV4 `content-length`), so S3 refuses a different-sized body. Rules in `shared/uploads.py`.
+

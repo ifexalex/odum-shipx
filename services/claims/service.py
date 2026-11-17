@@ -580,14 +580,15 @@ def generate_presigned_url(
     filename: str,
     content_type: str,
     actor_id: str,
+    size_bytes: object = None,
 ) -> dict[str, Any]:
-    uploads.EVIDENCE.check_content_type(content_type)
+    uploads.EVIDENCE.check(content_type, size_bytes)
 
     claim = repo.get_damage_claim_by_id(tenant_id, claim_id)
     if not claim:
         raise ResourceNotFoundError("damage_claim", claim_id)
 
-    upload = uploads.presign_upload(uploads.EVIDENCE, tenant_id, ("claims", claim_id), filename, content_type)
+    upload = uploads.presign_upload(uploads.EVIDENCE, tenant_id, ("claims", claim_id), filename, content_type, size_bytes)
     file_key = upload.key
     filename = file_key.rsplit("/", 1)[-1]
 

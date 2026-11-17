@@ -67,9 +67,14 @@ class TestPresign:
     def test_signs_the_declared_type_for_the_policy_lifetime(self):
         storage = _storage()
         with patch("shared.uploads.get_storage_provider", return_value=storage):
-            upload = uploads.presign_upload(uploads.CONTAINER_DOCUMENT, TENANT, ("containers", "k1"), "bl.pdf", "application/pdf")
+            upload = uploads.presign_upload(
+                uploads.CONTAINER_DOCUMENT, TENANT, ("containers", "k1"), "bl.pdf", "application/pdf", 2048
+            )
         storage.presigned_upload.assert_called_once_with(
-            f"{TENANT}/containers/k1/bl.pdf", content_type="application/pdf", expires_in=uploads.CONTAINER_DOCUMENT.expires_in
+            f"{TENANT}/containers/k1/bl.pdf",
+            content_type="application/pdf",
+            expires_in=uploads.CONTAINER_DOCUMENT.expires_in,
+            content_length=2048,
         )
         assert upload.key == f"{TENANT}/containers/k1/bl.pdf"
         assert upload.as_response()["upload_url"] == "https://storage.test/put"
@@ -77,7 +82,7 @@ class TestPresign:
     def test_a_refused_type_never_reaches_storage(self):
         storage = _storage()
         with patch("shared.uploads.get_storage_provider", return_value=storage), pytest.raises(BusinessRuleViolationError):
-            uploads.presign_upload(uploads.EVIDENCE, TENANT, ("claims", "c1"), "a.exe", "application/x-msdownload")
+            uploads.presign_upload(uploads.EVIDENCE, TENANT, ("claims", "c1"), "a.exe", "application/x-msdownload", 10)
         storage.presigned_upload.assert_not_called()
 
 
@@ -114,3 +119,82 @@ class TestTheServicesUseIt:
             call(service)
         storage.assert_not_called()
         assert not repo.method_calls
+
+
+class TestSizeLimit:
+    """Every upload is limited to 5 MB, declared at presign and checked again where the stored file is used."""
+
+    def test_the_limit_is_5_mb_on_every_policy(self):
+        assert uploads.MAX_UPLOAD_BYTES == 5 * 1024 * 1024
+        assert {p.max_bytes for p in POLICIES} == {uploads.MAX_UPLOAD_BYTES}
+
+    def test_exactly_the_limit_is_accepted(self):
+        assert uploads.EVIDENCE.check_size(uploads.MAX_UPLOAD_BYTES) == uploads.MAX_UPLOAD_BYTES
+
+    def test_one_byte_over_is_refused(self):
+        with pytest.raises(BusinessRuleViolationError) as caught:
+            uploads.EVIDENCE.check_size(uploads.MAX_UPLOAD_BYTES + 1)
+        assert caught.value.rule_id == "FILE_TOO_LARGE" and "5 MB" in str(caught.value)
+
+    @pytest.mark.parametrize("size", [None, 0, -1, "100", 1.5, True])
+    def test_a_missing_or_nonsense_size_is_refused(self, size):
+        from shared.exceptions import ValidationError
+
+        with pytest.raises(ValidationError):
+            uploads.EVIDENCE.check_size(size)
+
+    def test_the_declared_size_is_signed_into_the_url(self):
+        storage = _storage()
+        with patch("shared.uploads.get_storage_provider", return_value=storage):
+            uploads.presign_upload(uploads.EVIDENCE, TENANT, ("claims", "c1"), "a.png", "image/png", 4096)
+        assert storage.presigned_upload.call_args.kwargs["content_length"] == 4096
+
+    def test_an_oversize_request_never_reaches_storage(self):
+        storage = _storage()
+        with patch("shared.uploads.get_storage_provider", return_value=storage), pytest.raises(BusinessRuleViolationError):
+            uploads.presign_upload(uploads.EVIDENCE, TENANT, ("claims", "c1"), "a.png", "image/png", 6 * 1024 * 1024)
+        storage.presigned_upload.assert_not_called()
+
+    @pytest.mark.parametrize(("stored", "rule"), [(None, "UPLOAD_NOT_FOUND"), (5 * 1024 * 1024 + 1, "FILE_TOO_LARGE")])
+    def test_the_stored_file_is_checked_where_it_is_used(self, stored, rule):
+        storage = MagicMock()
+        storage.object_size.return_value = stored
+        with (
+            patch("shared.uploads.get_storage_provider", return_value=storage),
+            pytest.raises(BusinessRuleViolationError) as caught,
+        ):
+            uploads.check_stored_size(uploads.EVIDENCE, f"{TENANT}/payment-claims/b1/a.png")
+        assert caught.value.rule_id == rule
+
+    def test_a_stored_file_within_the_limit_passes(self):
+        storage = MagicMock()
+        storage.object_size.return_value = 1234
+        with patch("shared.uploads.get_storage_provider", return_value=storage):
+            assert uploads.check_stored_size(uploads.EVIDENCE, "k") == 1234
+
+    def test_a_payment_claim_with_an_oversize_stored_file_is_refused(self):
+        # An Azure upload is not bound to its declared size; the claim checks the stored file.
+        from services.payment_release import service
+
+        req = MagicMock(evidence_file_key=f"{TENANT}/payment-claims/b1/a.png", amount_ngn=1000)
+        with (
+            patch.object(service.repo, "get_billing_by_id", return_value={"id": "b1", "status": "unpaid", "customer_id": "cu1"}),
+            patch.object(service, "_customer_owns_billing", return_value=True),
+            patch("shared.uploads.check_stored_size", side_effect=BusinessRuleViolationError("big", rule_id="FILE_TOO_LARGE")),
+            patch.object(service.repo, "create_payment_claim") as create,
+            pytest.raises(BusinessRuleViolationError),
+        ):
+            service.submit_payment_claim(TENANT, "b1", req, actor_id="u1", ctx=MagicMock())
+        create.assert_not_called()
+
+    def test_an_import_with_an_oversize_stored_file_is_refused_before_reading(self):
+        from services.excel import service
+
+        storage = MagicMock()
+        with (
+            patch("shared.uploads.check_stored_size", side_effect=BusinessRuleViolationError("big", rule_id="FILE_TOO_LARGE")),
+            patch.object(service, "get_storage_provider", return_value=storage),
+            pytest.raises(BusinessRuleViolationError),
+        ):
+            service.process_manifest_import(TENANT, f"{TENANT}/imports/x.xlsx", actor_id="u1", ctx=MagicMock())
+        storage.get_object.assert_not_called()

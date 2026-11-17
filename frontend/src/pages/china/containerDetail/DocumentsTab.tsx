@@ -13,6 +13,7 @@ import { Banner, Button, Card, Mono, Table, DialogGuard } from '../../../design/
 import { SectionHead } from '../../../shell/SectionHead'
 import styles from '../ContainerDetail.module.css'
 import { formatDate } from '../../../lib/format'
+import { uploadSizeProblem } from '../../../lib/uploadLimits'
 
 // ---------------------------------------------------------------------------
 // Documents tab — prototype 5.3/14.4 (ContainerDocs + UploadDocumentModal).
@@ -77,6 +78,11 @@ export function DocumentsTab({
       setUploadError('Choose a PDF, JPEG, PNG or WebP file.')
       return
     }
+    const sizeProblem = uploadSizeProblem(file)
+    if (sizeProblem) {
+      setUploadError(sizeProblem)
+      return
+    }
     setUploading(true)
     setUploadError(null)
     try {
@@ -84,6 +90,7 @@ export function DocumentsTab({
         filename: file.name,
         content_type: file.type,
         document_type: docType,
+        size_bytes: file.size,
       })
       await uploadToPresignedUrl(presigned, file)
       setShowUpload(false)
@@ -251,7 +258,7 @@ export function DocumentsTab({
                 style={{ fontSize: '0.8125rem' }}
               />
               <div style={{ fontSize: 11, color: 'var(--color-ink-4)', marginTop: 6 }}>
-                Accepted: PDF, JPG, PNG, WebP
+                Accepted: PDF, JPG, PNG, WebP · max 5 MB
               </div>
             </div>
 

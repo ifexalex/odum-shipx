@@ -190,7 +190,10 @@ export const containerDocumentsApi = {
   list: (containerId: string) =>
     apiRequest<ContainerDocument[]>({ method: 'GET', path: `/v1/containers/${containerId}/documents` }),
 
-  presignUpload: (containerId: string, body: { filename: string; content_type: string; document_type: ContainerDocumentType }) =>
+  presignUpload: (
+    containerId: string,
+    body: { filename: string; content_type: string; document_type: ContainerDocumentType; size_bytes: number },
+  ) =>
     apiRequest<DocumentPresignedUpload>({
       method: 'POST',
       path: `/v1/containers/${containerId}/documents/presigned-url`,

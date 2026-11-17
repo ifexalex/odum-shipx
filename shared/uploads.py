@@ -16,19 +16,24 @@ refuses a PUT whose ``Content-Type`` differs. An Azure SAS does not bind the typ
 enforce it either (checked 2026-11-17): there the declared type is a check on the request, not on the upload.
 ``application/octet-stream`` ("unknown") is never accepted: allowing it let any file through the type check.
 
-The upload size is not limited yet. A presigned PUT carries no size condition on either cloud unless the client
-declares the length up front and it is signed in; see the runbook's open items.
+Every upload is limited to ``MAX_UPLOAD_BYTES`` (5 MB). The client declares the file's size with the presign request
+and a larger or missing size is refused there. On AWS the declared size is signed into the URL (``ContentLength``), so
+S3 refuses a body of any other length. An Azure SAS cannot bind a length, so where a stored file is used later (a
+payment claim, a spreadsheet import) ``check_stored_size`` reads its real size and refuses it if it is over.
 """
 
 from dataclasses import dataclass
 from typing import Any
 from uuid import UUID
 
-from shared.exceptions import BusinessRuleViolationError
+from shared.exceptions import BusinessRuleViolationError, ValidationError
 from shared.providers import get_storage_provider
 from shared.validation import safe_filename
 
 _IMAGES_AND_PDF = frozenset({"image/jpeg", "image/png", "application/pdf"})
+
+#: The largest file any upload accepts.
+MAX_UPLOAD_BYTES = 5 * 1024 * 1024
 
 
 @dataclass(frozen=True)
@@ -39,11 +44,13 @@ class UploadPolicy:
         name: Short label for the kind of upload, used in error messages.
         content_types: MIME types the client may declare.
         expires_in: Lifetime of the presigned URL, in seconds.
+        max_bytes: The largest file this kind of upload accepts.
     """
 
     name: str
     content_types: frozenset[str]
     expires_in: int
+    max_bytes: int = MAX_UPLOAD_BYTES
 
     def __post_init__(self) -> None:
         if "application/octet-stream" in self.content_types:
@@ -60,6 +67,29 @@ class UploadPolicy:
                 f"content_type '{content_type}' is not allowed. Allowed: {', '.join(sorted(self.content_types))}",
                 rule_id="INVALID_CONTENT_TYPE",
             )
+
+    def check_size(self, size_bytes: object) -> int:
+        """The declared file size, if it is a whole number of bytes from 1 to ``max_bytes``.
+
+        Raises:
+            ValidationError: The size is missing or not a positive whole number.
+            BusinessRuleViolationError: ``FILE_TOO_LARGE``, over ``max_bytes``.
+        """
+        if isinstance(size_bytes, bool) or not isinstance(size_bytes, int) or size_bytes <= 0:
+            raise ValidationError(
+                "size_bytes is required: the file's size in bytes",
+                field_errors={"size_bytes": "Send the file's size in bytes."},
+            )
+        if size_bytes > self.max_bytes:
+            raise BusinessRuleViolationError(
+                f"The file is larger than {self.max_bytes // (1024 * 1024)} MB.", rule_id="FILE_TOO_LARGE"
+            )
+        return size_bytes
+
+    def check(self, content_type: str, size_bytes: object) -> int:
+        """Both checks, before any database work. Returns the size."""
+        self.check_content_type(content_type)
+        return self.check_size(size_bytes)
 
 
 #: Photos and documents attached as evidence: damage claims, manifest verification, payment claims.
@@ -115,7 +145,12 @@ def upload_key(tenant_id: str, segments: tuple[str, ...], filename: str) -> str:
 
 
 def presign_upload(
-    policy: UploadPolicy, tenant_id: str, segments: tuple[str, ...], filename: str, content_type: str
+    policy: UploadPolicy,
+    tenant_id: str,
+    segments: tuple[str, ...],
+    filename: str,
+    content_type: str,
+    size_bytes: object,
 ) -> PresignedUpload:
     """Check the type, build the tenant-prefixed key and presign the upload.
 
@@ -125,12 +160,35 @@ def presign_upload(
         segments: Server-chosen path parts under the tenant prefix.
         filename: The client's file name.
         content_type: The type the client declared; signed into the URL.
+        size_bytes: The size the client declared; signed into the URL where the provider can bind it (AWS).
 
     Raises:
-        BusinessRuleViolationError: ``INVALID_CONTENT_TYPE``.
+        BusinessRuleViolationError: ``INVALID_CONTENT_TYPE`` or ``FILE_TOO_LARGE``.
+        ValidationError: No usable ``size_bytes``.
         ValueError: An unsafe tenant ID or segment (a server bug, not a client error).
     """
-    policy.check_content_type(content_type)
+    size = policy.check(content_type, size_bytes)
     key = upload_key(tenant_id, segments, filename)
-    ticket = get_storage_provider().presigned_upload(key, content_type=content_type, expires_in=policy.expires_in)
+    ticket = get_storage_provider().presigned_upload(
+        key, content_type=content_type, expires_in=policy.expires_in, content_length=size
+    )
     return PresignedUpload(key=key, expires_in=policy.expires_in, ticket=ticket)
+
+
+def check_stored_size(policy: UploadPolicy, key: str) -> int:
+    """The stored file's real size, refusing a missing file or one over the policy's limit.
+
+    For where a stored upload is used (a payment claim, a spreadsheet import): an Azure SAS cannot bind the size, and
+    this is the check that holds there.
+
+    Raises:
+        BusinessRuleViolationError: ``UPLOAD_NOT_FOUND`` (nothing at ``key``) or ``FILE_TOO_LARGE``.
+    """
+    size = get_storage_provider().object_size(key)
+    if size is None:
+        raise BusinessRuleViolationError("The uploaded file was not found. Upload it again.", rule_id="UPLOAD_NOT_FOUND")
+    if size > policy.max_bytes:
+        raise BusinessRuleViolationError(
+            f"The file is larger than {policy.max_bytes // (1024 * 1024)} MB.", rule_id="FILE_TOO_LARGE"
+        )
+    return size

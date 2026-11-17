@@ -617,7 +617,7 @@ def export_receipt_pdf(
 # ---------------------------------------------------------------------------
 
 
-def generate_import_presigned_url(tenant_id: str, content_type: str) -> dict[str, Any]:
+def generate_import_presigned_url(tenant_id: str, content_type: str, size_bytes: object = None) -> dict[str, Any]:
     """Generate an S3 presigned POST URL for uploading a packing-list import .xlsx.
 
     Scoped to {tenant_id}/imports/{uuid}.xlsx so the resulting file_key always
@@ -626,7 +626,9 @@ def generate_import_presigned_url(tenant_id: str, content_type: str) -> dict[str
     POST /v1/packing-lists/import and never listed or referenced again, so
     there's nothing to persist (unlike claim evidence or container documents).
     """
-    upload = uploads.presign_upload(uploads.SPREADSHEET_IMPORT, tenant_id, ("imports",), f"{uuid.uuid4()}.xlsx", content_type)
+    upload = uploads.presign_upload(
+        uploads.SPREADSHEET_IMPORT, tenant_id, ("imports",), f"{uuid.uuid4()}.xlsx", content_type, size_bytes
+    )
     return {**upload.as_response(), "file_key": upload.key}
 
 
@@ -650,6 +652,7 @@ def import_packing_list(
         raise ValidationError(f"file_key must be under the tenant prefix '{expected_prefix}'")
 
     # 2. Download file from object storage
+    uploads.check_stored_size(uploads.SPREADSHEET_IMPORT, file_key)  # an Azure upload is not bound to its declared size
     file_buffer = BytesIO(get_storage_provider().get_object(file_key))
 
     # 2. Pre-fetch customers (name → id mapping)
@@ -827,6 +830,7 @@ def process_manifest_import(
 
         raise ValidationError(f"file_key must be under the tenant prefix '{expected_prefix}'")
 
+    uploads.check_stored_size(uploads.SPREADSHEET_IMPORT, file_key)  # an Azure upload is not bound to its declared size
     file_buffer = BytesIO(get_storage_provider().get_object(file_key))
 
     container_metadata, rows, errors, total_rows = parse_manifest_xlsx(file_buffer)

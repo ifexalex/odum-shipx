@@ -330,7 +330,9 @@ def _payment_claim_routes(event: dict[str, Any], parts: list[str], method: str, 
                 "billing_id, filename, and content_type are required",
                 field_errors={"body": "billing_id, filename, and content_type are required"},
             )
-        result = service.generate_payment_claim_upload_url(ctx.tenant_id, billing_id, filename, content_type, ctx)
+        result = service.generate_payment_claim_upload_url(
+            ctx.tenant_id, billing_id, filename, content_type, ctx, size_bytes=body.get("size_bytes")
+        )
         return success(result, request_id=request_id)
 
     claim_id = sub

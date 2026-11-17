@@ -93,8 +93,14 @@ class StorageProvider(Protocol):
         """
         ...
 
-    def presigned_upload(self, key: str, *, content_type: str, expires_in: int) -> UploadTicket:
-        """Return an `UploadTicket` for a direct browser PUT to `key`."""
+    def presigned_upload(
+        self, key: str, *, content_type: str, expires_in: int, content_length: int | None = None
+    ) -> UploadTicket:
+        """Return an `UploadTicket` for a direct browser PUT to `key`.
+
+        `content_length`, when given, binds the upload to exactly that many bytes where the provider can (AWS signs it;
+        an Azure SAS cannot, so callers check the stored size where the file is used).
+        """
         ...
 
     def put_object(self, key: str, body: bytes, *, content_type: str) -> None:

@@ -209,7 +209,7 @@ export function MyClaimsNew(): JSX.Element {
             Attach photos or videos of the damage to support your claim. You can attach up to 10 files.
           </Banner>
           <EvidenceUploader
-            getPresignedUrl={(f) => presignedUploadApi.getUrl(claimId, f.name, f.type)}
+            getPresignedUrl={(f) => presignedUploadApi.getUrl(claimId, f.name, f.type, f.size)}
             onUploaded={(ev) => setUploadedEvidence((prev) => [...prev, ev])}
           />
           <div className={styles.formActions}>

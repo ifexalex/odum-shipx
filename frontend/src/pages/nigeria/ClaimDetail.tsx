@@ -101,7 +101,7 @@ function StartInspectionModal({ onCancel, onSuccess, claimId }: StartInspectionM
           <div className={styles.evidenceSection}>
             <label className={styles.selectLabel}>Evidence files <span className={styles.required}>*</span></label>
             <EvidenceUploader
-              getPresignedUrl={(f) => presignedUploadApi.getUrl(claimId, f.name, f.type)}
+              getPresignedUrl={(f) => presignedUploadApi.getUrl(claimId, f.name, f.type, f.size)}
               onUploaded={() => setEvidenceUploaded(true)}
               disabled={submitting}
             />
@@ -403,9 +403,9 @@ export function ClaimDetail(): JSX.Element {
       {/* Evidence upload — available while claim is not terminal */}
       {!isTerminalClaimStatus(claim.status) && (
         <div className={styles.section}>
-          <SectionHead title="Attach evidence" sub="Upload photos, videos, or PDF documents (JPEG · PNG · PDF, max 10 MB each)" />
+          <SectionHead title="Attach evidence" sub="Upload photos or PDF documents (JPEG · PNG · PDF, max 5 MB each)" />
           <Card padding={20}>
-            <EvidenceUploader getPresignedUrl={(f) => presignedUploadApi.getUrl(claim.id, f.name, f.type)} onUploaded={() => { /* evidence logged server-side */ }} />
+            <EvidenceUploader getPresignedUrl={(f) => presignedUploadApi.getUrl(claim.id, f.name, f.type, f.size)} onUploaded={() => { /* evidence logged server-side */ }} />
           </Card>
         </div>
       )}

@@ -628,6 +628,7 @@ def generate_document_presigned_url(
     content_type: str,
     document_type: str,
     actor_id: str,
+    size_bytes: object = None,
 ) -> dict[str, Any]:
     """Generate an S3 presigned POST URL for uploading a container document.
 
@@ -635,7 +636,7 @@ def generate_document_presigned_url(
     S3 key is scoped to {tenant_id}/containers/{container_id}/ to enforce
     tenant isolation.
     """
-    uploads.CONTAINER_DOCUMENT.check_content_type(content_type)
+    uploads.CONTAINER_DOCUMENT.check(content_type, size_bytes)
     if document_type not in _ALLOWED_DOCUMENT_TYPES:
         from shared.exceptions import BusinessRuleViolationError
 
@@ -648,7 +649,9 @@ def generate_document_presigned_url(
     if not container:
         raise ResourceNotFoundError("container", container_id)
 
-    upload = uploads.presign_upload(uploads.CONTAINER_DOCUMENT, tenant_id, ("containers", container_id), filename, content_type)
+    upload = uploads.presign_upload(
+        uploads.CONTAINER_DOCUMENT, tenant_id, ("containers", container_id), filename, content_type, size_bytes
+    )
     s3_key = upload.key
     filename = s3_key.rsplit("/", 1)[-1]
 

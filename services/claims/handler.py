@@ -309,6 +309,7 @@ def _upload_routes(
             filename,
             content_type,
             actor_id=ctx.user_id,
+            size_bytes=body.get("size_bytes"),
         )
         return success(result, request_id=request_id)
 

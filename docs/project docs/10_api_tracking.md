@@ -174,3 +174,8 @@ Each event: `{ id, from_status, to_status, actor_id, notes, created_at }`
 ## Implementation notes — container list export (2026-11-16)
 
 `GET /v1/containers/export` (excel service) exports the container list's filters and sort as xlsx or csv; see `19_excel_import_export.md`. The container list's WHERE clause moved to `shared/list_filters.py::container_filter` so the list and the export share it; the generated SQL is unchanged (checked for 7 filter combinations).
+
+## Upload size limit (2026-11-17)
+
+**2026-11-17 — 5 MB upload limit:** the presign request must carry `size_bytes` (the file's size in bytes). Missing or not a positive whole number → 422 `VALIDATION_ERROR`; over 5 MB (5,242,880 bytes) → 422 `rule_id: FILE_TOO_LARGE`. On AWS the size is signed into the URL (SigV4 `content-length`), so S3 refuses a different-sized body. Rules in `shared/uploads.py`.
+

@@ -2,7 +2,7 @@ import { useRef, useState, type ChangeEvent, type DragEvent, type JSX } from 're
 import { useNavigate } from 'react-router-dom'
 import { ApiError } from '../../api/client'
 import { excelApi, type ImportResult, type ManifestImportResult } from '../../api/excel'
-import { UploadFailedError, uploadImportFile } from '../../api/uploads'
+import { FileTooLargeError, UploadFailedError, uploadImportFile } from '../../api/uploads'
 import { Banner, Button, Card, Icon, Mono } from '../../design/components'
 import { useContainerLookup } from '../../hooks/useContainers'
 import { PageHeader } from '../../shell/PageHeader'
@@ -106,7 +106,7 @@ export function ImportPackingLists(): JSX.Element {
       }
       setStep(3)
     } catch (err) {
-      if (err instanceof UploadFailedError) {
+      if (err instanceof UploadFailedError || err instanceof FileTooLargeError) {
         setError(err.message)
       } else {
         setError(err instanceof ApiError ? err.message : 'Import failed.')
@@ -215,7 +215,7 @@ export function ImportPackingLists(): JSX.Element {
               <Icon name="upload" size={24} stroke={2.5} color="#fff" />
             </div>
             <div className={styles.dropzoneTitle}>Drag &amp; drop your .xlsx file here</div>
-            <div className={styles.dropzoneSub}>or click to browse · .xlsx only</div>
+            <div className={styles.dropzoneSub}>or click to browse · .xlsx only, up to 5 MB</div>
             <input
               ref={fileInputRef}
               type="file"

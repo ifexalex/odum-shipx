@@ -23,6 +23,8 @@ class ExportResponse(BaseModel):
 
 class ImportPresignedUrlRequest(BaseModel):
     content_type: str
+    #: The file's size in bytes; at most 5 MB (shared.uploads.MAX_UPLOAD_BYTES), checked by the upload policy.
+    size_bytes: int | None = None
 
 
 class ImportPresignedUrlResponse(BaseModel):

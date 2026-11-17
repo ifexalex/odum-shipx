@@ -1136,11 +1136,13 @@ aws lambda invoke --function-name <project>-billing-<env> --cli-binary-format ra
 
 Within about five minutes `<project>-<env>-invoice-generation-failures` goes to ALARM and the alerts topic emails. Nothing is written: the lookup fails before any insert. On Azure, run the same event through the container: `az containerapp exec … -- python -c "from services.billing.handler import _handle_event; _handle_event({...})"`; the rule evaluates every 15 minutes.
 
-## Upload size is not limited (found 2026-11-17, audit BE-12) — OPEN, MEDIUM
+## Upload size is not limited (found 2026-11-17, audit BE-12) — FIXED 2026-11-17 (5 MB)
 
 Every upload (claim, manifest and payment-claim evidence, container documents, packing-list import) is a presigned PUT straight to storage. None carries a size condition: the services' `_MAX_FILE_SIZE` constants (10 MB, 20 MB) were never read, and the browser checks no size either. Anyone allowed to upload (including a customer submitting payment evidence) can store a file of any size in the tenant's prefix, at our storage cost.
 
 Fix (not done; needs a decision on the request shape): the client sends `size_bytes`, the API refuses it above the policy limit, and the URL is signed for exactly that length — on S3 by adding `ContentLength` to the presign `Params` (the browser's `Content-Length` must then match); Azure SAS cannot bind a length, so on Azure check `object_size(key)` when the upload is recorded and delete an oversized object. Five endpoints and their screens change. Until then, a storage lifecycle rule or bucket metric alarm is the only backstop.
+
+**Fixed (owner decision: 5 MB):** every presign request declares `size_bytes`; over 5 MB or missing is refused; on AWS the URL is SigV4 and signs the length and type. Where a file is used (payment claim, imports) its stored size is checked, which is what holds on Azure. Remaining gap on Azure only: claim evidence, manifest evidence and container documents are stored at presign and never re-checked, so an Azure client that ignores its declared size could store a larger file there. Verified locally: no size 422, 6 MB 422 `FILE_TOO_LARGE`, 1 KB accepted, an oversize stored file refused at payment-claim submit.
 
 Related: the declared `Content-Type` binds the upload on AWS only; on Azure (and the local Moto) a PUT with a different type is accepted.
 

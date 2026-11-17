@@ -392,6 +392,7 @@ def _container_routes(
                     content_type=body.get("content_type", ""),
                     document_type=body.get("document_type", "other"),
                     actor_id=ctx.user_id,
+                    size_bytes=body.get("size_bytes"),
                 )
                 return created(result, location=f"/v1/containers/{container_id}/documents", request_id=request_id)
 

@@ -288,6 +288,7 @@ class TestEvidenceUpload:
                 filename="damage.jpg",
                 content_type="image/jpeg",
                 actor_id="user-1",
+                size_bytes=1024,
                 label="Carton ABC-123",
             )
 
@@ -311,6 +312,7 @@ class TestEvidenceUpload:
                 filename="malware.exe",
                 content_type="application/x-msdownload",
                 actor_id="user-1",
+                size_bytes=1024,
             )
 
     def test_missing_manifest_raises_not_found(self):
@@ -326,6 +328,7 @@ class TestEvidenceUpload:
                 filename="x.png",
                 content_type="image/png",
                 actor_id="user-1",
+                size_bytes=1024,
             )
 
     def test_get_manifest_serializes_evidence_with_download_url(self):

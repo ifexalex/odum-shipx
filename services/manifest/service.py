@@ -200,6 +200,7 @@ def generate_evidence_upload(
     content_type: str,
     actor_id: str,
     label: str | None = None,
+    size_bytes: object = None,
 ) -> dict[str, Any]:
     """Presign an S3 POST for a manifest-verification photo/doc (§6.3).
 
@@ -209,13 +210,13 @@ def generate_evidence_upload(
     directly to S3; tenant isolation comes from the `{tenant_id}/manifests/...`
     key prefix and the tenant-scoped manifest lookup.
     """
-    uploads.EVIDENCE.check_content_type(content_type)
+    uploads.EVIDENCE.check(content_type, size_bytes)
 
     manifest = repo.get_manifest_by_id(tenant_id, manifest_id)
     if not manifest:
         raise ResourceNotFoundError("manifest", manifest_id)
 
-    upload = uploads.presign_upload(uploads.EVIDENCE, tenant_id, ("manifests", manifest_id), filename, content_type)
+    upload = uploads.presign_upload(uploads.EVIDENCE, tenant_id, ("manifests", manifest_id), filename, content_type, size_bytes)
     file_key = upload.key
     filename = file_key.rsplit("/", 1)[-1]
 

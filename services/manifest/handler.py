@@ -224,6 +224,7 @@ def _manifest_routes(
                     content_type=req.content_type,
                     actor_id=ctx.user_id,
                     label=req.label,
+                    size_bytes=req.size_bytes,
                 )
                 return success(result, request_id=request_id, status_code=201)
 

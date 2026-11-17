@@ -253,6 +253,7 @@ function VerifyManifestModal({ manifest, onCancel, onVerified }: VerifyManifestM
                           manifest.id,
                           f.name,
                           f.type,
+                          f.size,
                           discrepancyLabel(customer?.customer_name ?? draft.customerId, draft),
                         )
                       }

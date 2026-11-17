@@ -264,3 +264,8 @@ The limit is enforced in the service (`_assert_china_may_update`), not by the ro
 **In-app notification:** logging a missing item now writes a `missing_item_logged` staff notification to `china_office_staff` ("N carton(s) reported missing. Please record the supply and loading check."), through `notify_staff`, which never raises. It names no customer and carries no description. Not an SMS, WhatsApp or email, so `notification_consent` does not apply.
 
 Tests: `tests/unit/test_claims.py` (`TestChinaOfficeAndMissingItems`, `TestChinaOfficeMissingItemRoutes`), each limit mutation-checked.
+
+## Upload size limit (2026-11-17)
+
+**2026-11-17 — 5 MB upload limit:** the presign request must carry `size_bytes` (the file's size in bytes). Missing or not a positive whole number → 422 `VALIDATION_ERROR`; over 5 MB (5,242,880 bytes) → 422 `rule_id: FILE_TOO_LARGE`. On AWS the size is signed into the URL (SigV4 `content-length`), so S3 refuses a different-sized body. Rules in `shared/uploads.py`.
+

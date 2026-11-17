@@ -498,11 +498,11 @@ export const billingApi = {
  */
 export const paymentClaimApi = {
   /** Presigned S3 POST for the evidence file — upload directly, then submit() with the returned file_key. */
-  getUploadUrl: (billingId: string, filename: string, contentType: string) =>
+  getUploadUrl: (billingId: string, filename: string, contentType: string, sizeBytes: number) =>
     apiRequest<PresignedResponse>({
       method: 'POST',
       path: '/v1/payments/claims/presigned-url',
-      body: { billing_id: billingId, filename, content_type: contentType },
+      body: { billing_id: billingId, filename, content_type: contentType, size_bytes: sizeBytes },
     }),
 
   submit: (

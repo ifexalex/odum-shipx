@@ -148,7 +148,7 @@ function PaymentClaimPanel({
               </div>
             ) : (
               <EvidenceUploader
-                getPresignedUrl={(f) => paymentClaimApi.getUploadUrl(billingId, f.name, f.type)}
+                getPresignedUrl={(f) => paymentClaimApi.getUploadUrl(billingId, f.name, f.type, f.size)}
                 onUploaded={setEvidence}
               />
             )}

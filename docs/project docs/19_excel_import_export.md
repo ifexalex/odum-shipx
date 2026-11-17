@@ -703,3 +703,10 @@ importer post-fix (`ShipX_API.postman_collection.json` unaffected — no wire-fo
 already a documented response field via `packing_list.*`).
 
 **Ground-truth gap found while auditing log coverage (2026-09-07):** `import_packing_list` and `process_manifest_import` — both bulk-create containers/customers/packing lists/cartons in a single call — had no `log_audit()` call at all, so goods entering the system through either import path left zero trail in the tenant's audit log. Both now write **one summary entry per import** (not one per row — a single import can create dozens of records), `entity_type="packing_list"`/`"manifest"`, recording counts (containers/customers/packing lists/items created, errors, source file key). Full account in `07_api_tenant_management.md`'s "Tenant Activity Log" section.
+
+## Upload size limit (2026-11-17)
+
+**2026-11-17 — 5 MB upload limit:** the presign request must carry `size_bytes` (the file's size in bytes). Missing or not a positive whole number → 422 `VALIDATION_ERROR`; over 5 MB (5,242,880 bytes) → 422 `rule_id: FILE_TOO_LARGE`. On AWS the size is signed into the URL (SigV4 `content-length`), so S3 refuses a different-sized body. Rules in `shared/uploads.py`.
+
+Both imports (`POST /v1/packing-lists/import`, the manifest import) check the stored file's size before reading it (`check_stored_size`), refusing over 5 MB.
+

@@ -256,10 +256,10 @@ export interface PresignedUploadResponse {
 }
 
 export const presignedUploadApi = {
-  getUrl: (claimId: string, filename: string, contentType: string) =>
+  getUrl: (claimId: string, filename: string, contentType: string, sizeBytes: number) =>
     apiRequest<PresignedUploadResponse>({
       method: 'POST',
       path: '/v1/uploads/presigned-url',
-      body: { claim_id: claimId, filename, content_type: contentType },
+      body: { claim_id: claimId, filename, content_type: contentType, size_bytes: sizeBytes },
     }),
 }

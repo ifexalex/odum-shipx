@@ -1282,3 +1282,7 @@ Release notes carry a pickup code only when `PICKUP_CODE_PEPPER` is set (16 char
 
 To see it locally without cutting the network: stop Bybit reaching the app (or patch `shared.fx_rate.fetch_bybit_ngn_rate` to raise), clear the Redis key `fx_rate:ngn_usdt`, and backdate `platform_settings` `fx_bybit_ngn_rate.fetched_at`. With no `fx_bybit_ngn_rate` row at all, invoicing is refused with `RATE_UNAVAILABLE`. `tests/db/test_invoice_rate_source.py` does exactly this.
 
+## Upload size limit locally (2026-11-17)
+
+Uploads are limited to 5 MB. Locally the presign request is refused over 5 MB, but the Moto URL is SigV2 (the dev upload proxy rewrites the host, which SigV4 would sign), so Moto itself accepts any body length; payment claims and imports still refuse an over-size stored file. Production AWS URLs are SigV4 and S3 refuses a different length.
+
