@@ -182,7 +182,8 @@ for the same tenant joins the outer one. `take_tenant_counter(tenant_id, name)` 
 (unique, may skip a number) for callers that need the number before the row exists.
 
 `shared/billing_money.py` is where an invoice's total changes: `adjust_billing` (relative total/misc delta, status recomputed
-for the four money statuses), `lock_billing` (`SELECT … FOR UPDATE`), `new_overpayment` and
+for the four money statuses; since 2026-11-17 the total is floored at zero and the row returned carries
+`total_before_ngn`, so `new_overpayment` can count a reduction past zero as money owed to the customer), `lock_billing` (`SELECT … FOR UPDATE`), `new_overpayment` and
 `adjust_billing_and_refund_overpayment` (opens a refund for any *new* excess only). Use these instead of writing
 `UPDATE billing SET total_ngn = …` by hand.
 

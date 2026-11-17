@@ -301,7 +301,7 @@ class TestHandlePaymentDueCbmPricing:
 
         captured: dict = {}
 
-        def _create_invoice(tid, data, number_prefix, carryover_ids, credit_refund_ids):
+        def _create_invoice(tid, data, number_prefix, carryover_ids, credit_applications):
             captured.update(data)
             return {**data, "id": "billing-001", "invoice_number": f"{number_prefix}-0001"}, True
 
@@ -1134,7 +1134,7 @@ class TestHandlePaymentDueNotification:
             get_pending_credit_refunds=lambda *a: [],
             get_tenant_short=lambda tid: "ACM",
             get_live_invoice=lambda *a: None,
-            create_invoice=lambda tid, data, number_prefix, carryover_ids, credit_refund_ids: (
+            create_invoice=lambda tid, data, number_prefix, carryover_ids, credit_applications: (
                 {**data, "id": "billing-001", "invoice_number": f"{number_prefix}-0001"},
                 True,
             ),

@@ -15,6 +15,7 @@ Notes:
 """
 
 import logging
+from dataclasses import dataclass
 from decimal import Decimal
 from typing import Any
 
@@ -175,7 +176,11 @@ def get_outstanding_carryovers(tenant_id: str, customer_id: str) -> list[dict[st
 
 
 def get_pending_credit_refunds(tenant_id: str, customer_id: str) -> list[dict[str, Any]]:
-    """Approved refund_requests with customer_choice='credit_note' not yet applied."""
+    """Credits the customer still holds, oldest first.
+
+    A credit is a refund approved as credit for the next shipment. Its value is the approved amount, and
+    ``credit_applied_ngn`` is how much of it earlier invoices have already used.
+    """
     return execute_with_tenant(
         tenant_id,
         """
@@ -273,6 +278,22 @@ class LedgerConflictError(RuntimeError):
     """
 
 
+@dataclass(frozen=True)
+class CreditApplication:
+    """Part or all of one customer credit, put against one invoice.
+
+    Attributes:
+        refund_id: The credit (a ``refund_request`` approved as credit for the next shipment).
+        applied_before_ngn: How much of that credit earlier invoices had used when this was worked out. The write
+            only goes through if that is still true, so two invoices cannot spend the same credit.
+        amount_ngn: How much of it this invoice uses.
+    """
+
+    refund_id: str
+    applied_before_ngn: Decimal
+    amount_ngn: Decimal
+
+
 class _AlreadyBilled(Exception):
     """Internal: the insert found a live invoice already in place (lost a race)."""
 
@@ -295,13 +316,19 @@ def create_invoice(
     data: dict[str, Any],
     number_prefix: str,
     carryover_ids: list[str],
-    credit_refund_ids: list[str],
+    credit_applications: list[CreditApplication],
 ) -> tuple[dict[str, Any], bool]:
     """Create one invoice atomically, or return the one that already exists.
 
     In a single transaction this allocates the next invoice number from the
-    tenant counter, inserts the invoice, and marks the carryovers and credits it
-    absorbed as applied. Either all of that happens or none of it does.
+    tenant counter, inserts the invoice, marks the carryovers it absorbed as
+    applied and takes what it used from each credit. Either all of that happens
+    or none of it does.
+
+    A credit is spent only as far as the invoice needed it: what is left stays
+    ``applied_as_credit`` for the next invoice, and the credit becomes
+    ``completed`` once it is used up. The invoice records the sum it took in
+    ``credits_applied_ngn``.
 
     Idempotent per (customer, container): if a live invoice is already there it
     is returned untouched with ``created=False`` and no number is consumed.
@@ -311,7 +338,7 @@ def create_invoice(
         data: Invoice columns except ``invoice_number``.
         number_prefix: Everything before the sequence, e.g. ``ACM-INV-20261114``.
         carryover_ids: Outstanding carryover ledger rows folded into the total.
-        credit_refund_ids: Credit refunds folded into the total.
+        credit_applications: What this invoice takes from each credit.
 
     Returns:
         ``(invoice_row, created)``.
@@ -333,20 +360,24 @@ def create_invoice(
                     tenant_id, customer_id, container_id, invoice_number,
                     total_cartons, total_cbm, cbm_rate_usd, cbm_rate_currency,
                     cbm_rate_mode, cbm_breakdown, subtotal_usd,
-                    exchange_rate_ngn, subtotal_ngn, misc_charges_ngn,
+                    exchange_rate_ngn, subtotal_ngn, misc_charges_ngn, credits_applied_ngn,
                     total_ngn, amount_paid_ngn, status, billed_at, created_by
                 ) VALUES (
                     %(tenant_id)s, %(customer_id)s, %(container_id)s, %(invoice_number)s,
                     %(total_cartons)s, %(total_cbm)s, %(cbm_rate_usd)s, %(cbm_rate_currency)s,
                     %(cbm_rate_mode)s, %(cbm_breakdown)s::jsonb, %(subtotal_usd)s,
-                    %(exchange_rate_ngn)s, %(subtotal_ngn)s, %(misc_charges_ngn)s,
+                    %(exchange_rate_ngn)s, %(subtotal_ngn)s, %(misc_charges_ngn)s, %(credits_applied_ngn)s,
                     %(total_ngn)s, %(amount_paid_ngn)s, %(status)s, %(billed_at)s, %(created_by)s
                 )
                 ON CONFLICT (tenant_id, customer_id, container_id) WHERE status <> 'cancelled'
                 DO NOTHING
                 RETURNING *
                 """,
-                {**data, "invoice_number": f"{number_prefix}-{seq:04d}"},
+                {
+                    **data,
+                    "invoice_number": f"{number_prefix}-{seq:04d}",
+                    "credits_applied_ngn": sum((c.amount_ngn for c in credit_applications), Decimal("0")),
+                },
             )
             row = cur.fetchone()
             if row is None:
@@ -366,17 +397,29 @@ def create_invoice(
                 )
                 if len(cur.fetchall()) != len(carryover_ids):
                     raise LedgerConflictError("a carryover was applied by another request")
-            if credit_refund_ids:
+            for credit in credit_applications:
                 cur.execute(
                     """
                     UPDATE refund_request
-                       SET status = 'completed', updated_at = NOW()
-                     WHERE tenant_id = %(tenant_id)s AND id = ANY(%(ids)s::uuid[]) AND status = 'applied_as_credit'
+                       SET credit_applied_ngn = credit_applied_ngn + %(amount)s,
+                           status = CASE
+                               WHEN credit_applied_ngn + %(amount)s >= COALESCE(amount_approved_ngn, amount_ngn)
+                               THEN 'completed' ELSE status
+                           END,
+                           updated_at = NOW()
+                     WHERE tenant_id = %(tenant_id)s AND id = %(id)s AND status = 'applied_as_credit'
+                       AND credit_applied_ngn = %(applied_before)s
+                       AND credit_applied_ngn + %(amount)s <= COALESCE(amount_approved_ngn, amount_ngn)
                     RETURNING id
                     """,
-                    {"tenant_id": tenant_id, "ids": credit_refund_ids},
+                    {
+                        "tenant_id": tenant_id,
+                        "id": credit.refund_id,
+                        "amount": credit.amount_ngn,
+                        "applied_before": credit.applied_before_ngn,
+                    },
                 )
-                if len(cur.fetchall()) != len(credit_refund_ids):
+                if cur.fetchone() is None:
                     raise LedgerConflictError("a credit was applied by another request")
             return invoice, True
     except _AlreadyBilled:

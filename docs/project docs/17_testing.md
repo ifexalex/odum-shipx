@@ -2370,3 +2370,9 @@ Frontend 165 files / 1,296 tests. New guards that fail on regression: `routes.te
 - `tests/unit/test_list_exports.py`: `GET /v1/billing/export` is the tenant admin's; Nigeria and China staff, warehouse, customer and platform admin are 403.
 - `tests/db/test_claim_read.py`: one more case (the outcome query returns the reason). **Unrun**: no Docker.
 - Frontend: `MyClaimDetail.test.tsx` (the Why row appears only with a reason), `ClaimDetail.test.tsx` (the reason field says whether the customer will read it).
+
+## BE-07 — invoice totals and credits (2026-11-17)
+
+- `tests/unit/test_invoice_credits.py` (31): `_credits_to_apply` (capped at what is due, oldest first, approved amount, earlier use counted), generation with credits (the brief's case: ₦50,000 credit on a ₦20,000 charge gives a zero `paid` invoice and leaves ₦30,000), the credit write's SQL (adds instead of completing, optimistic guard, tenant scoped, `RETURNING`), `adjust_billing`'s zero floor, `new_overpayment` past zero, and the invoice showing the credit. Mutation-checked: nine protections removed one at a time, each caught.
+- `tests/db/test_invoice_credits.py` (10): the same against a real database, including the CHECK refusing a negative total. **Unrun**: no Docker.
+- Frontend: `RefundDetail.test.tsx` ("Credit used ₦X of ₦Y").

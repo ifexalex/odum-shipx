@@ -242,10 +242,9 @@ def export_manifest(tenant_id: str, manifest_id: str, fmt: str = "xlsx") -> dict
 # either figure. Widened to full parity with generate_billing_xlsx()'s
 # _HEADERS (the admin xlsx export already had the complete breakdown; only
 # the csv/pdf path — the one the customer's "Download invoice" button
-# actually uses — was stripped down). `adjustments_ngn` is deliberately
-# excluded: it is never populated anywhere in this codebase (CBM dispute
-# resolution rewrites subtotal_ngn/total_ngn directly instead), so including
-# it would only ever show a misleading, permanently-zero column.
+# actually uses — was stripped down). `credits_applied_ngn` (migration 066)
+# is the credit the customer held that this invoice absorbed: without it the
+# parts above the total do not add up to the total.
 _BILLING_COLUMNS = [
     "customer_name",
     "container_number",
@@ -256,6 +255,7 @@ _BILLING_COLUMNS = [
     "misc_fees_itemized",
     "storage_fees_ngn",
     "carryover_ngn",
+    "credits_applied_ngn",
     "total_ngn",
     "amount_paid_ngn",
     "balance_ngn",

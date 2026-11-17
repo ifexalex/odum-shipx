@@ -179,3 +179,7 @@ Before, the reduction was committed first and the status update second, so a dou
 invoice twice. **New `refund_type` values `missing_item` and `seized_item`** are now allowed by the database (migration 063);
 they are what compensation for a seized or missing item creates, and the UI labels them "Missing item compensation" /
 "Seized item compensation".
+
+## A credit is spent only as far as it is needed (2026-11-17, audit BE-07)
+
+A refund approved as `credit_next_shipment` (`applied_as_credit`) used to be subtracted whole from the customer's next invoice and marked `completed`, even when it was larger than the invoice (which then went negative). It is now taken oldest first and only up to what the invoice comes to: `credit_applied_ngn` (new response field, migration 066) is how much has been used, the refund stays `applied_as_credit` while any is left, and becomes `completed` when it is used up. The credit is worth `amount_approved_ngn`, not the requested amount. Staff see "Credit used: ₦X of ₦Y" on the refund page. Detail and tests: `11_api_billing.md`.

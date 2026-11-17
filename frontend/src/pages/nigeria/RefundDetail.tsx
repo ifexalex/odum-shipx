@@ -516,6 +516,13 @@ export function RefundDetail(): JSX.Element {
           value={refund.amount_approved_ngn ? formatNgn(refund.amount_approved_ngn) : '—'}
         />
         <StatCard label="Payout method" value={customerChoiceLabel(refund.customer_choice)} />
+        {/* A credit is spent only as far as each invoice needs it, so part of one can still be unused. */}
+        {refund.customer_choice === 'credit_next_shipment' && refund.amount_approved_ngn && (
+          <StatCard
+            label="Credit used"
+            value={`${formatNgn(refund.credit_applied_ngn ?? '0')} of ${formatNgn(refund.amount_approved_ngn)}`}
+          />
+        )}
       </div>
 
       {/* Details card */}

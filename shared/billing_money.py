@@ -53,6 +53,13 @@ def adjust_billing(
     landed after the caller read the row is not overwritten. Status is
     recomputed from the stored amounts for the four money statuses only.
 
+    An invoice never goes below zero (the table has ``CHECK (total_ngn >= 0)``):
+    a reduction larger than the total stops at zero. That can happen when a
+    credit paid for part of the invoice and the charge is then reduced. What the
+    reduction could not take is not lost: the returned row carries
+    ``total_before_ngn``, and `new_overpayment` counts the part below zero as
+    money the customer is owed.
+
     Args:
         tenant_id: Tenant scope.
         billing_id: Invoice to change.
@@ -61,28 +68,33 @@ def adjust_billing(
         tolerance: Balance within this of zero counts as settled.
 
     Returns:
-        The updated row (including the generated ``balance_ngn``), or ``None`` if
-        the invoice is not in this tenant.
+        The updated row (including the generated ``balance_ngn``) plus
+        ``total_before_ngn``, the total before this change; or ``None`` if the
+        invoice is not in this tenant.
     """
     return execute_write_with_tenant(
         tenant_id,
         """
-        UPDATE billing
-           SET total_ngn        = total_ngn + %(total_delta)s,
-               misc_charges_ngn = misc_charges_ngn + %(misc_delta)s,
+        WITH before AS (
+            SELECT id, total_ngn FROM billing WHERE tenant_id = %(tenant_id)s AND id = %(id)s FOR UPDATE
+        )
+        UPDATE billing b
+           SET total_ngn        = GREATEST(b.total_ngn + %(total_delta)s, 0),
+               misc_charges_ngn = b.misc_charges_ngn + %(misc_delta)s,
                status = CASE
-                   WHEN status IN ('unpaid', 'partially_paid', 'paid', 'overpaid') THEN
+                   WHEN b.status IN ('unpaid', 'partially_paid', 'paid', 'overpaid') THEN
                        CASE
-                           WHEN ABS(total_ngn + %(total_delta)s - amount_paid_ngn) <= %(tol)s THEN 'paid'
-                           WHEN total_ngn + %(total_delta)s - amount_paid_ngn < -%(tol)s THEN 'overpaid'
-                           WHEN amount_paid_ngn > 0 THEN 'partially_paid'
+                           WHEN ABS(GREATEST(b.total_ngn + %(total_delta)s, 0) - b.amount_paid_ngn) <= %(tol)s THEN 'paid'
+                           WHEN GREATEST(b.total_ngn + %(total_delta)s, 0) - b.amount_paid_ngn < -%(tol)s THEN 'overpaid'
+                           WHEN b.amount_paid_ngn > 0 THEN 'partially_paid'
                            ELSE 'unpaid'
                        END
-                   ELSE status
+                   ELSE b.status
                END,
                updated_at = NOW()
-         WHERE tenant_id = %(tenant_id)s AND id = %(id)s
-        RETURNING *
+          FROM before
+         WHERE b.tenant_id = %(tenant_id)s AND b.id = before.id
+        RETURNING b.*, before.total_ngn AS total_before_ngn
         """,
         {
             "tenant_id": tenant_id,
@@ -100,6 +112,11 @@ def new_overpayment(billing_after: dict[str, Any], total_delta: Decimal, toleran
     Only the increase counts. An invoice that was already overpaid has its earlier
     excess refunded separately and must not be refunded twice.
 
+    The total is floored at zero, so the row alone does not show a reduction that
+    went past it. The sum is done on where the total *would* have landed
+    (``total_before + delta``): the part below zero was paid for by a credit and
+    is owed back just as cash paid above the total is.
+
     Args:
         billing_after: The row returned by `adjust_billing`.
         total_delta: The delta that produced it.
@@ -109,9 +126,12 @@ def new_overpayment(billing_after: dict[str, Any], total_delta: Decimal, toleran
         The new excess, or ``0`` when there is none worth a refund.
     """
     paid = Decimal(str(billing_after["amount_paid_ngn"]))
-    total_after = Decimal(str(billing_after["total_ngn"]))
-    total_before = total_after - total_delta
-    increase = max(paid - total_after, Decimal("0")) - max(paid - total_before, Decimal("0"))
+    if billing_after.get("total_before_ngn") is not None:
+        total_before = Decimal(str(billing_after["total_before_ngn"]))
+    else:
+        total_before = Decimal(str(billing_after["total_ngn"])) - total_delta
+    unfloored_after = total_before + total_delta
+    increase = max(paid - unfloored_after, Decimal("0")) - max(paid - total_before, Decimal("0"))
     return increase if increase > tolerance else Decimal("0")
 
 

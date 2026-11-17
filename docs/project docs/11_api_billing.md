@@ -186,16 +186,18 @@ Triggered when container status → `cleared`. For **each customer** in the cont
    `billing.cbm_rate_usd` (the pre-existing single-scalar column, still read by CBM dispute resolution, exports, and staff/customer UI) is set **exactly** to the tenant's one effective rate (in USD terms) whenever `carton_rate == bag_rate == bale_rate` — no rounding drift introduced for the common case — and only falls back to the blended average (`subtotal_usd / total_cbm`) when the three rates genuinely differ, since no single "the rate" exists to report exactly in that case.
    `billing` gains three new columns (migration 050) recording *how* the invoice was actually priced: `cbm_rate_currency` ('USD'/'NGN'), `cbm_rate_mode` ('flat'/'per_package_type', purely descriptive), and `cbm_breakdown` (JSONB, always populated — `{"carton": {"cbm", "rate", "subtotal"}, "bag": {...}, "bale": {...}}`, in the tenant's configured currency). `cbm_breakdown` becomes historical record only, not reconciled, if a later CBM dispute adjusts `total_cbm` — disputes are whole-invoice corrections with no notion of *which* package type's count was wrong (see CBM Dispute section below).
 5. Check `carryover_ledger` for outstanding entries for this customer → sum as `carryover_ngn`
-6. Check `refund_request` with status='approved', customer_choice='credit_next_shipment' → sum as credit
-7. Calculate totals:
+6. Read the customer's unspent credits: `refund_request` with status `applied_as_credit` and customer_choice `credit_next_shipment`, oldest first. A credit is worth its **approved** amount minus `credit_applied_ngn` (what earlier invoices used).
+7. Calculate totals (changed 2026-11-17, audit BE-07; see "Implementation notes — an invoice never goes below zero" below):
    ```
-   total_due_usd = subtotal_usd + misc_fees_usd + carryover_usd - credits_usd
-   total_due_ngn = subtotal_ngn + misc_fees_ngn + carryover_ngn - credits_ngn + storage_fees_ngn
-   outstanding_ngn = total_due_ngn
+   due_ngn       = subtotal_ngn + carryover_ngn
+   credits_ngn   = credits taken oldest first, never more than due_ngn
+   total_ngn     = due_ngn - credits_ngn            (never negative)
+   status        = 'paid' if total_ngn == 0 else 'unpaid'
    ```
-8. Insert `billing` record (payment_status = 'unpaid')
+   Misc charges and storage fees are added to the total later, through `shared.billing_money.adjust_billing`.
+8. Insert `billing` record with `credits_applied_ngn = credits_ngn`
 9. Mark applied carryovers as 'applied' with `target_billing_id`
-10. Mark applied credits as 'applied_as_credit' with `applied_to_billing_id`
+10. Add what was taken to each credit's `credit_applied_ngn`; a credit becomes `completed` only when it is used up, otherwise it stays `applied_as_credit` with the rest
 11. Publish `PaymentDue` event per customer
 
 ## CBM Dispute State Machine
@@ -299,3 +301,28 @@ Nigeria staff and admins keep the inline view on the invoice page (a deliberate 
 **Second defect, same helper: the cursor was always built from `created_at`.** `extract_page` defaults to it, so a list sorted by another column (invoices by invoice number or billed date, claims, containers) built its page-2 cursor from `created_at` and compared that against the sort column. `extract_page` now takes the sort column, and the three lists a user can sort (`list_billing_all`, the claims list, `list_containers`) pass it. **Still open:** a sort column that can be NULL (`billed_at` on an unbilled invoice) gives a cursor with no sort value, which the helper treats as "first page".
 
 Verified by running the generated SQL page by page in SQLite (`tests/unit/test_pagination_walk.py`, 17 tests; both defects reproduced by mutation), and by `tests/db/test_paginated_lists.py` (7 tests) for Postgres, **which has not been run** (no Docker): run `make test-db`.
+
+## Implementation notes — an invoice never goes below zero (audit BE-07, 2026-11-17)
+
+**What was wrong.** Invoice generation subtracted every credit the customer held, whole: `total = subtotal + carryover − credits`. A customer holding ₦50,000 of credit on a ₦20,000 charge got an invoice of **−₦30,000**, and all ₦50,000 was marked used, so the ₦30,000 was owed to nobody and kept for nobody. Confirming the sign conventions first (the brief asked for that) found a second defect: the credit was valued at the **requested** amount (`refund_request.amount_ngn`), not the approved one, so a credit approved for less than was asked reduced the invoice by too much.
+
+**Sign conventions (confirmed in code).** Carryovers are always positive (debt carried from a release with outstanding balance) and add to what is due. Credits are positive amounts that reduce it. `total_ngn`, `amount_paid_ngn` and the generated `balance_ngn = total_ngn − amount_paid_ngn` are what the customer owes, paid, and still owes.
+
+**What it does now.**
+- Credits are taken oldest first and only up to what is due (`services/billing/service.py::_credits_to_apply`). The rest of a credit stays the customer's: `refund_request.credit_applied_ngn` records how much invoices have used, the row stays `applied_as_credit` until that reaches the approved amount, then becomes `completed`.
+- A credit is worth its approved amount.
+- An invoice with nothing left to pay is issued as `paid` (it was `unpaid` with a zero or negative total).
+- The invoice records the credit it absorbed in `billing.credits_applied_ngn`, returned as **`adjustments_ngn`** (negative) on the invoice responses. Both invoice pages already had an "Adjustments" row that this field was never filled for, so the parts of an invoice now add up to its total on screen and in the exports (single invoice csv/pdf: `credits_applied_ngn`; xlsx: "Adjustments (NGN)"; invoice list export: "Credits Applied (NGN)").
+- The write is guarded: a credit is updated only if `credit_applied_ngn` is still what the sum was based on and the new value does not exceed the approved amount; otherwise `LedgerConflictError` rolls the invoice back and the generate-missing-invoices action retries it with fresh numbers. Two invoices cannot spend the same credit.
+- `shared.billing_money.adjust_billing` floors the total at zero (`GREATEST(total + delta, 0)`) and returns `total_before_ngn`. A reduction that would go past zero can now happen legitimately (a credit paid for part of an invoice and a CBM dispute or waiver then reduces the charge); `new_overpayment` counts the part below zero as owed to the customer, so `adjust_billing_and_refund_overpayment` opens a `pending_review` refund for it, the same way it does for cash paid above the total.
+- Migration 066 adds `CHECK (total_ngn >= 0)` on `billing` (see `05b_database_schema_extended.md`).
+- Audit: the invoice `CREATE` entry now carries `status`, and `credits_applied` (each refund id and the amount taken).
+
+**Wire format.** `adjustments_ngn` on invoice responses is now the negative of the credit applied (was always `0`). `GET /v1/refunds/{id}` and the refund list gain `credit_applied_ngn`.
+
+**Known gaps (not changed).**
+- **Cancelling an invoice does not give back the carryovers or credit it absorbed.** `PATCH /billing/{id}/cancel` only flips the status; an `unpaid` invoice that took ₦5,000 of credit and is then cancelled leaves that ₦5,000 spent, and its carryovers `applied` to a cancelled invoice. This predates this change. A fully credit-covered invoice is `paid` and cannot be cancelled, which limits it to part-covered ones. Fixing it properly needs a per-invoice record of which credit gave what (today only the audit entry has it).
+- **A zero-total invoice still sends the fixed "payment due" message** with amount 0.00, because that is the only approved template that tells the customer the shipment has arrived. The in-app notification says "nothing to pay. Your credit covered this invoice." A separate "covered by credit" template is an owner call.
+- Invoices issued before migration 066 have `credits_applied_ngn = 0`: the old rule did not record it.
+
+**Tests.** `tests/unit/test_invoice_credits.py` (31; nine protections mutation-checked, each caught). `tests/db/test_invoice_credits.py` (10) runs the statements against a real database: **unrun**, no Docker.

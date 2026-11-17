@@ -20,6 +20,7 @@ BILLING_LIST_COLUMNS: list[Column] = [
     Column("misc_charges_ngn", "Misc Fees (NGN)", "money"),
     Column("carryover_ngn", "Carryover (NGN)", "money"),
     Column("storage_fees_ngn", "Storage Fees (NGN)", "money"),
+    Column("credits_applied_ngn", "Credits Applied (NGN)", "money"),
     Column("total_ngn", "Total Due (NGN)", "money"),
     Column("amount_paid_ngn", "Total Paid (NGN)", "money"),
     Column("balance_ngn", "Outstanding (NGN)", "money"),

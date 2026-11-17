@@ -5032,7 +5032,7 @@
                 "{{refund_id}}"
               ]
             },
-            "description": "One refund request. A customer reads only their own, and gets a customer view: `reason` only when they raised the request themselves (a refund raised from a claim decision carries staff's internal reason, which is not theirs to read), `rejection_reason` always, and null for `approval_level`, `debt_check_passed`, `debt_check_notes` and `threshold`."
+            "description": "One refund request. A customer reads only their own, and gets a customer view: `reason` only when they raised the request themselves (a refund raised from a claim decision carries staff's internal reason, which is not theirs to read), `rejection_reason` always, and null for `approval_level`, `debt_check_passed`, `debt_check_notes` and `threshold`. `credit_applied_ngn` (2026-11-17): for a refund taken as credit, how much of it invoices have used so far; the rest is still the customer's."
           }
         },
         {

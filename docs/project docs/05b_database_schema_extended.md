@@ -577,3 +577,11 @@ CREATE INDEX idx_onboarding_request_email ON tenant_onboarding_request(lower(con
 ## Migration 065 — release note pickup code (2026-11-16)
 
 `release_note` gains `pickup_code_hash VARCHAR(64)` (HMAC-SHA256 hex of the code, keyed by `PICKUP_CODE_PEPPER` and bound to the note id; NULL means the note needs no code), `pickup_code_issued_at TIMESTAMPTZ`, and `pickup_code_failed_attempts INTEGER NOT NULL DEFAULT 0 CHECK (>= 0)`. The plaintext code is never stored. No RLS change (the table's policy covers the new columns). Downgrade drops the three columns. See ADR-008.
+
+## Migration 066 — invoice total floor and partial credits (2026-11-17, audit BE-07)
+
+- `refund_request.credit_applied_ngn DECIMAL(15,2) NOT NULL DEFAULT 0`, `CHECK (>= 0)`: how much of a credit (a refund approved as `credit_next_shipment`) invoices have used. The credit stays `applied_as_credit` until this reaches `COALESCE(amount_approved_ngn, amount_ngn)`, then `completed`. Backfill: credits already `completed` were spent whole under the old rule and are set to their full value.
+- `billing.credits_applied_ngn DECIMAL(15,2) NOT NULL DEFAULT 0`, `CHECK (>= 0)`: the credit the invoice absorbed when issued. 0 for invoices issued before this migration (not recorded then).
+- `billing` gets `ck_billing_total_not_negative CHECK (total_ngn >= 0)`. It is added `NOT VALID` (enforced at once for new and changed rows) and validated in the same migration **only if no existing invoice has a negative total**. If some do, the migration succeeds, logs how many, and leaves the constraint unvalidated: see `docs/runbook.md`, "Invoices with a negative total".
+- The migration reads and backfills as `PLATFORM` (`app.current_tenant_id`), because both tables force row-level security, and restores the setting afterwards.
+- No RLS change: no new table. **Not run anywhere yet** (no database available when it was written).

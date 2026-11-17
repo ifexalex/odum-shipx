@@ -461,6 +461,8 @@ def _fmt_refund(row: dict[str, Any]) -> dict[str, Any]:
         "refund_type": row.get("refund_type") or "",
         "amount_requested_ngn": Decimal(str(row["amount_ngn"])),
         "amount_approved_ngn": amount_approved,
+        # For a refund taken as credit: how much of it invoices have used so far (the rest is still the customer's).
+        "credit_applied_ngn": Decimal(str(row.get("credit_applied_ngn") or 0)),
         "customer_choice": row.get("customer_choice"),
         "customer_id": str(row["customer_id"]) if row.get("customer_id") else None,
         "billing_id": str(row["billing_id"]) if row.get("billing_id") else None,

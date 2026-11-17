@@ -173,12 +173,15 @@ def handle_payment_due(
     carryovers = repo.get_outstanding_carryovers(tenant_id, customer_id)
     carryover_ngn = sum(Decimal(str(c["carryover_amount_ngn"])) for c in carryovers)
 
-    # 5. Credits from approved credit-note refunds (subtract from total)
-    credits = repo.get_pending_credit_refunds(tenant_id, customer_id)
-    credits_ngn = sum(Decimal(str(r["amount_ngn"])) for r in credits)
+    # 5. Credits the customer holds reduce what is due, but only down to zero: an invoice never goes negative.
+    # What a credit has left stays with the customer for their next invoice.
+    due_ngn = (subtotal_ngn + carryover_ngn).quantize(Decimal("0.01"), ROUND_HALF_UP)
+    credit_applications = _credits_to_apply(repo.get_pending_credit_refunds(tenant_id, customer_id), due_ngn)
+    credits_ngn = sum((c.amount_ngn for c in credit_applications), Decimal("0"))
 
-    # 6. Final total (misc_charges_ngn starts at 0; storage/misc added later)
-    total_ngn = (subtotal_ngn + carryover_ngn - credits_ngn).quantize(Decimal("0.01"), ROUND_HALF_UP)
+    # 6. Final total (misc_charges_ngn starts at 0; storage/misc added later). Nothing left to pay is `paid`.
+    total_ngn = due_ngn - credits_ngn
+    status = "paid" if total_ngn <= Decimal("0") else "unpaid"
 
     # 7-10. One transaction: allocate the invoice number, insert the invoice, and
     # mark the carryovers and credits it absorbed. A live invoice for this
@@ -203,13 +206,13 @@ def handle_payment_due(
             "misc_charges_ngn": Decimal("0"),
             "total_ngn": total_ngn,
             "amount_paid_ngn": Decimal("0"),
-            "status": "unpaid",
+            "status": status,
             "billed_at": now,
             "created_by": None,
         },
         number_prefix=f"{tenant_short}-INV-{date.today():%Y%m%d}",
         carryover_ids=[str(c["id"]) for c in carryovers],
-        credit_refund_ids=[str(r["id"]) for r in credits],
+        credit_applications=credit_applications,
     )
     billing_id = str(billing["id"])
     invoice_number = billing.get("invoice_number")
@@ -254,8 +257,10 @@ def handle_payment_due(
             "container_id": container_id,
             "invoice_number": invoice_number,
             "total_ngn": str(total_ngn),
+            "status": status,
             "carryover_applied_ngn": str(carryover_ngn),
             "credits_applied_ngn": str(credits_ngn),
+            "credits_applied": [{"refund_id": c.refund_id, "amount_ngn": str(c.amount_ngn)} for c in credit_applications],
         },
     )
     logger.info(
@@ -266,6 +271,35 @@ def handle_payment_due(
     )
     _notify_customer_payment_due(tenant_id, customer_id, container_number, total_ngn, request_id)
     return InvoiceOutcome(status="created", billing_id=billing_id, invoice_number=invoice_number)
+
+
+def _credits_to_apply(credits: list[dict[str, Any]], due_ngn: Decimal) -> list[repo.CreditApplication]:
+    """Works out how much of each credit an invoice uses: oldest first, and never more than is due.
+
+    Args:
+        credits: The customer's unspent credits, oldest first (`repo.get_pending_credit_refunds`).
+        due_ngn: What the invoice comes to before credits.
+
+    Returns:
+        One entry per credit that is used, in the order given. Credits that are not needed are left out and stay
+        whole; the last one used may be used only in part.
+    """
+    applications: list[repo.CreditApplication] = []
+    still_due = max(due_ngn, Decimal("0"))
+    for credit in credits:
+        if still_due <= 0:
+            break
+        # The credit is worth what was approved, which can be less than what was asked for.
+        value = Decimal(
+            str(credit["amount_approved_ngn"] if credit.get("amount_approved_ngn") is not None else credit["amount_ngn"])
+        )
+        applied_before = Decimal(str(credit.get("credit_applied_ngn") or 0))
+        amount = min(value - applied_before, still_due)
+        if amount <= 0:
+            continue
+        applications.append(repo.CreditApplication(str(credit["id"]), applied_before, amount))
+        still_due -= amount
+    return applications
 
 
 def _notify_customer_payment_due(
@@ -317,7 +351,11 @@ def _notify_customer_payment_due(
                 event_type="payment_due",
                 entity_type="billing",
                 title="New invoice ready",
-                body=f"Container {container_number or ''}: NGN {total_ngn} due.",
+                body=(
+                    f"Container {container_number or ''}: NGN {total_ngn} due."
+                    if total_ngn > 0
+                    else f"Container {container_number or ''}: nothing to pay. Your credit covered this invoice."
+                ),
                 target_user_id=str(customer["user_id"]),
             )
     except Exception:
@@ -441,7 +479,8 @@ def _enrich_billing(tenant_id: str, row: dict[str, Any]) -> dict[str, Any]:
         "subtotal_ngn": row["subtotal_ngn"],
         "misc_fees": [{"description": m["description"], "amount_ngn": m["amount_ngn"]} for m in misc_charges],
         "misc_fees_ngn": misc_fees_ngn,
-        "adjustments_ngn": Decimal("0"),
+        # Credit the customer held, taken off this invoice when it was issued (negative: it reduces the total).
+        "adjustments_ngn": -Decimal(str(row.get("credits_applied_ngn") or 0)),
         "carryover_ngn": carryover_ngn,
         "storage_fees_ngn": storage_fees_ngn,
         "total_due_ngn": row["total_ngn"],

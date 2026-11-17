@@ -6,6 +6,7 @@ user-supplied values.
 """
 
 import logging
+from decimal import Decimal
 from typing import Any
 
 from shared.db import execute_with_tenant, execute_write_with_tenant
@@ -153,6 +154,11 @@ def get_misc_charges_for_export(tenant_id: str, billing_id: str) -> list[dict[st
     )
 
 
+def _credit_adjustment(billing: dict[str, Any]) -> Decimal:
+    """Credit the customer held that the invoice absorbed when it was issued, as the negative it is on the invoice."""
+    return -Decimal(str(billing.get("credits_applied_ngn") or 0))
+
+
 def get_billing_for_export(tenant_id: str, billing_id: str) -> dict[str, Any] | None:
     """Return billing row with customer_name, container_number, and aggregated extras."""
     rows = execute_with_tenant(
@@ -185,7 +191,7 @@ def get_billing_for_export(tenant_id: str, billing_id: str) -> dict[str, Any] | 
     )
     if rows:
         row = dict(rows[0])
-        row["adjustments_ngn"] = 0
+        row["adjustments_ngn"] = _credit_adjustment(row)
         return row
     return None
 
@@ -224,7 +230,7 @@ def get_billing_for_container_export(tenant_id: str, container_id: str) -> list[
     result = []
     for row in rows:
         r = dict(row)
-        r["adjustments_ngn"] = 0
+        r["adjustments_ngn"] = _credit_adjustment(r)
         result.append(r)
     return result
 

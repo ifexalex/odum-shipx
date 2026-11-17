@@ -1037,3 +1037,41 @@ reflect the waiver; the history does not survive).
 **Do not rotate `PICKUP_CODE_PEPPER`** without planning: every outstanding code stops verifying and each active note needs a new code. If a note carries a code and the pepper is missing, pickups for it return 503 by design.
 
 **Migration 065** adds three columns to `release_note`. It has not been run anywhere yet.
+
+## Invoices with a negative total (audit BE-07, 2026-11-17, migration 066)
+
+**Background.** Until 2026-11-17 invoice generation subtracted all of a customer's credit from their next invoice, so a customer with more credit than the charge got a negative invoice and lost the difference. New invoices cannot go below zero: the code stops at zero and the table has `ck_billing_total_not_negative`.
+
+**After running migration 066**, check its log. If it says `N invoice(s) have a negative total`, the constraint is active for new and changed rows but not validated, and **those N invoices cannot be updated** until repaired (any update fails the check).
+
+Find them:
+
+```sql
+SELECT b.tenant_id, b.id, b.invoice_number, b.customer_id, b.total_ngn, b.amount_paid_ngn, b.status, b.billed_at
+  FROM billing b WHERE b.total_ngn < 0 ORDER BY b.billed_at;
+```
+
+Each one is a decision about a customer's money, so it is made by the tenant's finance owner, not by a script. The usual repair, per invoice, in one transaction: give the amount below zero back to the customer as credit, then bring the invoice to zero.
+
+```sql
+BEGIN;
+-- 1. A credit for the amount the invoice is below zero (here 30000.00), already approved.
+INSERT INTO refund_request (tenant_id, customer_id, billing_id, amount_ngn, amount_approved_ngn, reason, status,
+                            refund_type, customer_choice)
+VALUES (:tenant_id, :customer_id, :billing_id, 30000.00, 30000.00,
+        'Credit left over from invoice :invoice_number (BE-07 repair)', 'applied_as_credit', 'overpayment',
+        'credit_next_shipment');
+-- 2. The invoice itself owes nothing.
+UPDATE billing SET total_ngn = 0, status = 'paid', updated_at = NOW()
+ WHERE tenant_id = :tenant_id AND id = :billing_id AND total_ngn < 0
+RETURNING id;
+COMMIT;
+```
+
+Record each repair in the tenant's audit trail (who decided, the invoice, the amount). When no negative rows remain:
+
+```sql
+ALTER TABLE billing VALIDATE CONSTRAINT ck_billing_total_not_negative;
+```
+
+**If an update to an invoice fails with `ck_billing_total_not_negative`** in normal running, it is one of those unrepaired rows. No code path can create a new one: `shared.billing_money.adjust_billing` stops at zero.
