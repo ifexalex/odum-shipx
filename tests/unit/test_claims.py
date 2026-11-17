@@ -753,6 +753,7 @@ class TestGetClaimForTheCustomer:
             "resolution_amount_ngn": Decimal("25000.00"),
             "discount_percentage": None,
             "resolved_at": "2026-11-12T09:00:00Z",
+            "reason": "Evidence is clear",
             "refund_id": "r1",
             "refund_status": "pending_review",
             "refund_amount_ngn": Decimal("25000.00"),
@@ -763,6 +764,7 @@ class TestGetClaimForTheCustomer:
             "amount_ngn": Decimal("25000.00"),
             "discount_percentage": None,
             "resolved_at": "2026-11-12T09:00:00Z",
+            "reason": None,
         }
         assert result["refund"] == {"id": "r1", "status": "pending_review", "amount_ngn": Decimal("25000.00")}
 
@@ -777,30 +779,93 @@ class TestGetClaimForTheCustomer:
         result, _ = self._get(outcome=outcome)
         assert result["resolution"]["resolution_type"] == "no_action" and result["refund"] is None
 
-    def test_staffs_internal_record_of_the_decision_is_never_in_the_response(self):
-        outcome = {
-            "resolution_type": "refund",
-            "resolution_amount_ngn": Decimal("1"),
+    @staticmethod
+    def _decided(resolution_type, reason="The packaging was intact on delivery"):
+        return {
+            "resolution_type": resolution_type,
+            "resolution_amount_ngn": None,
             "discount_percentage": None,
             "resolved_at": "x",
             "refund_id": None,
-            # what a careless query could hand through:
-            "notes": "customer is a repeat claimant, be careful",
-            "approval_level": "admin",
-            "approved_by": "staff-uuid",
+            "reason": reason,
         }
-        result, _ = self._get(outcome=outcome)
-        flat = str(result)
-        assert (
-            "repeat claimant" not in flat
-            and "approved_by" not in flat
-            and "approval_level" not in flat
-            and "staff-uuid" not in flat
-        )
+
+    def test_a_customer_is_told_why_when_the_decision_went_against_them(self):
+        """Owner decision (2026-11-17): if it is not in the customer's favour, they are told why."""
+        result, _ = self._get(outcome=self._decided("no_action"))
+        assert result["resolution"]["reason"] == "The packaging was intact on delivery"
+
+    @pytest.mark.parametrize("in_their_favour", ["refund", "compensation", "discount"])
+    def test_a_customer_is_not_shown_the_reason_when_the_decision_is_in_their_favour(self, in_their_favour):
+        result, _ = self._get(outcome=self._decided(in_their_favour, reason="goodwill, repeat claimant, watch this account"))
+        assert result["resolution"]["reason"] is None
+        assert "repeat claimant" not in str(result)
+
+    @pytest.mark.parametrize("resolution_type", ["refund", "compensation", "discount", "no_action"])
+    def test_staff_always_see_the_reason_they_recorded(self, resolution_type):
+        result, _ = self._get(role=UserRole.NIGERIA_OFFICE_STAFF, outcome=self._decided(resolution_type, reason="internal note"))
+        assert result["resolution"]["reason"] == "internal note"
+
+    def test_a_blank_reason_is_none_not_an_empty_string(self):
+        result, _ = self._get(outcome=self._decided("no_action", reason=""))
+        assert result["resolution"]["reason"] is None
+
+    def test_who_approved_it_is_never_in_the_response_for_anyone(self):
+        outcome = {**self._decided("no_action"), "approval_level": "admin", "approved_by": "staff-uuid"}
+        for role in (UserRole.CUSTOMER, UserRole.TENANT_ADMIN):
+            flat = str(self._get(role=role, outcome=outcome)[0])
+            assert "approved_by" not in flat and "approval_level" not in flat and "staff-uuid" not in flat
 
     def test_the_response_carries_no_uploader_or_storage_key(self):
         result, _ = self._get(evidence=[self._file(uploaded_by="staff-uuid")])
         assert "uploaded_by" not in result["evidence"][0] and "file_key" not in result["evidence"][0]
+
+
+class TestResolvingAgainstTheCustomerNeedsAReason:
+    """Closing a claim without a payout shows the customer the reason, so it cannot be blank."""
+
+    def test_no_action_without_a_reason_is_refused(self):
+        from pydantic import ValidationError as PydanticValidationError
+
+        from services.claims.models import ResolveClaimRequest
+
+        for blank in ("", "   "):
+            with pytest.raises(PydanticValidationError) as caught:
+                ResolveClaimRequest(resolution_type="no_action", reason=blank)
+            assert "the customer is shown it" in str(caught.value)
+
+    def test_no_action_with_a_reason_is_accepted(self):
+        from services.claims.models import ResolveClaimRequest
+
+        assert ResolveClaimRequest(resolution_type="no_action", reason="Packaging was intact").reason == "Packaging was intact"
+
+    @pytest.mark.parametrize("in_their_favour", ["refund", "compensation", "discount"])
+    def test_a_decision_in_the_customers_favour_needs_none(self, in_their_favour):
+        from services.claims.models import ResolveClaimRequest
+
+        assert ResolveClaimRequest(resolution_type=in_their_favour).reason == ""
+
+    def test_the_handler_answers_422_not_500(self):
+        from services.claims import handler
+
+        event = {
+            "requestContext": {
+                "requestId": "r1",
+                "http": {"method": "PATCH", "path": "/v1/claims/claim-001/resolve"},
+                "authorizer": {"claims": {"sub": "user-1", "custom:tenant_id": TENANT_ID}},
+                "identity": {"sourceIp": "127.0.0.1"},
+            },
+            "headers": {},
+            "body": json.dumps({"resolution_type": "no_action", "reason": ""}),
+            "queryStringParameters": {},
+            "pathParameters": {},
+        }
+        with (
+            patch("services.claims.handler.get_tenant_context", return_value=_ctx(UserRole.NIGERIA_OFFICE_STAFF)),
+            patch("services.claims.service.resolve_claim") as resolve,
+        ):
+            response = handler.lambda_handler(event, None)
+        assert response["statusCode"] == 422 and not resolve.called
 
 
 class TestClaimReadSql:
@@ -824,7 +889,8 @@ class TestClaimReadSql:
         assert scope == TENANT_ID and params == (TENANT_ID, "claim-001")
         assert "cr.tenant_id = %s" in query and "rr.tenant_id = cr.tenant_id" in query
         select_list = query.split("FROM")[0]
-        assert "notes" not in select_list and "approved_by" not in select_list and "approval_level" not in select_list
+        assert "cr.notes AS reason" in select_list  # the reason; the service decides who is shown it
+        assert "approved_by" not in select_list and "approval_level" not in select_list
 
     def test_the_evidence_query_selects_the_claim_by_bound_id_and_no_uploader(self):
         from shared.tenant_context import PLATFORM_TENANT_ID

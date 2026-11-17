@@ -69,6 +69,10 @@ class TestRepository:
         outcome = repo.get_claim_outcome(world["tenant"], claim)
         assert not {"notes", "approved_by", "approval_level"} & set(outcome)
 
+    def test_the_outcome_carries_what_staff_typed_as_the_reason(self, world, claim):
+        # The service decides who is shown it; the query only fetches it.
+        assert repo.get_claim_outcome(world["tenant"], claim)["reason"] == "internal: repeat claimant"
+
     def test_a_claim_with_no_resolution_has_no_outcome(self, world, admin):
         other = str(uuid.uuid4())
         with admin.cursor() as cur:

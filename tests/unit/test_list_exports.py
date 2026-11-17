@@ -469,12 +469,20 @@ def _call(role, path, **query):
 
 
 class TestHandler:
-    @pytest.mark.parametrize("role", [UserRole.TENANT_ADMIN, UserRole.NIGERIA_OFFICE_STAFF])
-    def test_invoice_list_export_roles_that_may_see_billing(self, role):
-        response, invoices, _ = _call(role, "/v1/billing/export")
+    def test_the_tenant_admin_can_export_the_invoice_list(self):
+        response, invoices, _ = _call(UserRole.TENANT_ADMIN, "/v1/billing/export")
         assert response["statusCode"] == 200 and invoices.called
 
-    @pytest.mark.parametrize("role", [UserRole.CHINA_OFFICE_STAFF, UserRole.WAREHOUSE_ATTENDANT, UserRole.CUSTOMER])
+    @pytest.mark.parametrize(
+        "role",
+        [
+            UserRole.NIGERIA_OFFICE_STAFF,  # sees the list, but the bulk export is the admin's (owner decision)
+            UserRole.CHINA_OFFICE_STAFF,
+            UserRole.WAREHOUSE_ATTENDANT,
+            UserRole.CUSTOMER,
+            UserRole.PLATFORM_ADMIN,
+        ],
+    )
     def test_invoice_list_export_is_refused_to_everyone_else(self, role):
         response, invoices, _ = _call(role, "/v1/billing/export")
         assert response["statusCode"] == 403 and not invoices.called
@@ -491,7 +499,7 @@ class TestHandler:
 
     def test_the_lists_filters_sort_and_format_are_forwarded(self):
         _, invoices, _ = _call(
-            UserRole.NIGERIA_OFFICE_STAFF,
+            UserRole.TENANT_ADMIN,
             "/v1/billing/export",
             status="unpaid,paid",
             q="ab",
@@ -504,7 +512,7 @@ class TestHandler:
         args, kwargs = invoices.call_args
         assert args == (TENANT, {"status": ["unpaid", "paid"], "q": "ab", "created_after": "2026-01-01"})
         assert (kwargs["fmt"], kwargs["sort_field"], kwargs["sort_direction"]) == ("csv", "invoice_number", "asc")
-        assert kwargs["actor_id"] == "user-1" and kwargs["actor_role"] == "nigeria_office_staff"
+        assert kwargs["actor_id"] == "user-1" and kwargs["actor_role"] == "tenant_admin"
 
     def test_the_container_eta_window_is_forwarded(self):
         _, _, containers = _call(UserRole.CHINA_OFFICE_STAFF, "/v1/containers/export", eta_before="2026-04-01", status="arrived")
@@ -515,7 +523,7 @@ class TestHandler:
         [{"format": "pdf"}, {"created_after": "2026-99-99"}, {"sort": "id; DROP TABLE x"}, {"status": "a;b"}, {"q": "x" * 200}],
     )
     def test_bad_input_is_a_422_and_nothing_is_exported(self, query):
-        response, invoices, _ = _call(UserRole.NIGERIA_OFFICE_STAFF, "/v1/billing/export", **query)
+        response, invoices, _ = _call(UserRole.TENANT_ADMIN, "/v1/billing/export", **query)
         assert response["statusCode"] == 422 and not invoices.called
 
     def test_the_single_invoice_export_is_not_shadowed(self):
@@ -530,7 +538,7 @@ class TestHandler:
         assert response["statusCode"] == 200 and single.call_args.args[1] == "b-123" and not whole_list.called
 
     def test_a_service_refusal_reaches_the_client_as_a_422(self):
-        ctx = TenantContext(tenant_id=TENANT, user_id="user-1", role=UserRole.NIGERIA_OFFICE_STAFF)
+        ctx = TenantContext(tenant_id=TENANT, user_id="user-1", role=UserRole.TENANT_ADMIN)
         too_big = BusinessRuleViolationError("More than 10,000 invoices match.", rule_id="EXPORT_TOO_LARGE")
         with (
             patch.object(handler, "get_tenant_context", return_value=ctx),

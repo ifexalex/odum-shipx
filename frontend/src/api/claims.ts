@@ -56,12 +56,17 @@ export interface ClaimEvidenceFile {
   download_url: string | null
 }
 
-/** What was decided. Staff's notes and the approval level are not part of this (the customer reads it too). */
+/** What was decided. Who approved it, and at what level, are never part of this (the customer reads it too). */
 export interface ClaimResolution {
   resolution_type: ResolutionType
   amount_ngn: string | null
   discount_percentage: string | null
   resolved_at: string
+  /**
+   * The explanation staff gave. Staff always get it. A customer gets it only when the decision went against them
+   * (`no_action`): then they are told why. For a decision in their favour it is null.
+   */
+  reason?: string | null
 }
 
 /** The refund a resolution created. */

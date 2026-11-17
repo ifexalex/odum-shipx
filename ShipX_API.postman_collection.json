@@ -3768,7 +3768,7 @@
                 "{{claim_id}}"
               ]
             },
-            "description": "One claim. Staff read any claim; a customer reads only their own and gets 404 for anyone else's (not 403, which would confirm the id exists). Response adds `evidence` (each file with a 5-minute `download_url`), `resolution` (decision and amount; never staff's notes, approver or approval level) and `refund` ({id, status, amount_ngn}) alongside the claim fields."
+            "description": "One claim. Staff read any claim; a customer reads only their own and gets 404 for anyone else's (not 403, which would confirm the id exists). Response adds `evidence` (each file with a 5-minute `download_url`), `resolution` (decision, amount and `reason`; never the approver or approval level) and `refund` ({id, status, amount_ngn}) alongside the claim fields. `resolution.reason` is what staff typed when deciding: staff always get it; a customer gets it only when the decision went against them (`no_action`), and null for a refund, compensation or discount."
           }
         },
         {
@@ -3848,7 +3848,8 @@
                 "{{claim_id}}",
                 "resolve"
               ]
-            }
+            },
+            "description": "Decide a claim. `reason` is required (422) when `resolution_type` is `no_action`: the customer is shown it on their claim page, word for word. For `refund`, `compensation` and `discount` the reason is staff's internal record and is never returned to the customer."
           }
         },
         {
@@ -5030,7 +5031,8 @@
                 "refunds",
                 "{{refund_id}}"
               ]
-            }
+            },
+            "description": "One refund request. A customer reads only their own, and gets a customer view: `reason` only when they raised the request themselves (a refund raised from a claim decision carries staff's internal reason, which is not theirs to read), `rejection_reason` always, and null for `approval_level`, `debt_check_passed`, `debt_check_notes` and `threshold`."
           }
         },
         {
@@ -5517,7 +5519,7 @@
                 }
               ]
             },
-            "description": "Every invoice matching the invoice list's filters and sort, not just the loaded page. tenant_admin and nigeria_office_staff. `format` is xlsx (default) or csv; pdf is 422. More than 10,000 matches is 422 EXPORT_TOO_LARGE. Response: `{filename, download_url, expires_at, file_size_bytes, format, row_count}`."
+            "description": "Every invoice matching the invoice list's filters and sort, not just the loaded page. tenant_admin only (owner decision 2026-11-17; every other role is 403). `format` is xlsx (default) or csv; pdf is 422. More than 10,000 matches is 422 EXPORT_TOO_LARGE. Response: `{filename, download_url, expires_at, file_size_bytes, format, row_count}`."
           }
         },
         {

@@ -239,8 +239,12 @@ function ResolveClaimModal({ onCancel, onSuccess, claimId, role }: ResolveClaimM
           <Field label="Discount (%)" name="discount_pct" type="number" placeholder="e.g. 10"
             value={discountPct} onChange={(e) => setDiscountPct(e.target.value)} />
         )}
-        <Field label="Resolution reason" name="reason" required multiline
-          placeholder="Explain the resolution decision…"
+        {/* A decision against the customer is explained to them; otherwise the reason stays internal. */}
+        <Field
+          label={resolutionType === 'no_action' ? 'Reason (the customer will see this)' : 'Reason (internal, not shown to the customer)'}
+          name="reason" required multiline
+          placeholder={resolutionType === 'no_action' ? 'Tell the customer why the claim is closed without a payout…' : 'Explain the resolution decision…'}
+          helper={resolutionType === 'no_action' ? 'Shown to the customer on their claim page, word for word.' : undefined}
           value={reason} onChange={(e) => setReason(e.target.value)} />
         <div className={styles.actions}>
           <Button variant="ghost" onClick={onCancel} disabled={submitting}>Cancel</Button>

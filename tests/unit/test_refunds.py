@@ -177,6 +177,50 @@ class TestGetRefund:
             result = service.get_refund(TENANT_ID, "refund-001", ctx)
             assert result["id"] == "refund-001"
 
+    def _customer_reads(self, refund: dict) -> dict:
+        from services.refunds import service
+
+        with (
+            patch.object(service.repo, "get_refund_request_by_id", return_value=refund),
+            patch.object(service.repo, "get_customer_by_user_id", return_value={"id": "customer-001"}),
+        ):
+            return service.get_refund(TENANT_ID, "refund-001", _ctx(UserRole.CUSTOMER))
+
+    def test_a_customer_is_not_shown_why_staff_decided_a_claim_in_their_favour(self):
+        # A refund raised from a claim decision copies what staff typed. The decision was for the customer, so the
+        # reason stays internal: it must not come back through the refund either (owner decision, 2026-11-17).
+        refund = _refund(refund_type="damage_or_loss", requested_by=None, reason="Damage claim resolution — repeat claimant")
+        assert self._customer_reads(refund)["reason"] is None
+
+    def test_a_customer_reads_back_the_reason_they_wrote_themselves(self):
+        refund = _refund(requested_by="user-1", reason="I paid twice")
+        assert self._customer_reads(refund)["reason"] == "I paid twice"
+
+    def test_a_customer_is_told_why_a_refund_was_rejected(self):
+        refund = _refund(status="rejected", requested_by=None, reason="internal", rejection_reason="An invoice is unpaid")
+        result = self._customer_reads(refund)
+        assert result["rejection_reason"] == "An invoice is unpaid" and result["reason"] is None
+
+    def test_a_customer_is_not_shown_staffs_working_record(self):
+        refund = _refund(
+            requested_by="user-1", approval_level="admin", debt_check_passed=False, debt_check_notes="owes 2 invoices"
+        )
+        result = self._customer_reads(refund)
+        assert result["approval_level"] is None and result["debt_check_passed"] is None
+        assert result["debt_check_notes"] is None and result["threshold"] is None
+
+    def test_staff_still_read_the_reason_and_the_working_record(self):
+        from services.refunds import service
+
+        refund = _refund(requested_by=None, reason="Damage claim resolution — repeat claimant", approval_level="admin")
+        with (
+            patch.object(service.repo, "get_refund_request_by_id", return_value=refund),
+            patch.object(service.repo, "get_refund_threshold_config", return_value={"staff_limit": 50}),
+            patch.object(service, "get_effective_dollar_rate", return_value={"rate": Decimal("1600.00")}),
+        ):
+            result = service.get_refund(TENANT_ID, "refund-001", _ctx(UserRole.NIGERIA_OFFICE_STAFF))
+        assert result["reason"] == "Damage claim resolution — repeat claimant" and result["approval_level"] == "admin"
+
     def test_customer_cannot_get_other_refund(self):
         from services.refunds import service
 

@@ -9,7 +9,7 @@ Routes:
   GET  /v1/billing/{id}/export                — nigeria_office_staff, tenant_admin, customer (own only)
   GET  /v1/containers/{id}/billing/export     — nigeria_office_staff, tenant_admin (all customers on the
                                                  container — never customer-facing)
-  GET  /v1/billing/export                     — nigeria_office_staff, tenant_admin (the invoice list's
+  GET  /v1/billing/export                     — tenant_admin only (the invoice list's
                                                  filters and sort; xlsx or csv)
   GET  /v1/containers/export                  — china_office_staff, nigeria_office_staff, tenant_admin
                                                  (the container list's filters and sort; xlsx or csv)
@@ -66,6 +66,9 @@ _BILLING_EXPORT_ROLES = (
 # container-level export above stays staff-only, it would otherwise leak
 # every other customer's billing sharing that container.
 _BILLING_SINGLE_EXPORT_ROLES = (*_BILLING_EXPORT_ROLES, UserRole.CUSTOMER)
+# The whole invoice list, every customer's invoices in one file, is the tenant admin's to export (owner decision,
+# 2026-11-17). Nigeria staff export one invoice or one container's billing.
+_BILLING_LIST_EXPORT_ROLES = (UserRole.TENANT_ADMIN,)
 _IMPORT_ROLES = (UserRole.CHINA_OFFICE_STAFF,)
 _PL_PDF_ROLES = (
     UserRole.CHINA_OFFICE_STAFF,
@@ -265,7 +268,7 @@ def _dispatch(
 
     # GET /v1/billing/export — the invoice list, filtered and sorted as on screen
     if resource == "billing" and len(parts) == 3 and parts[2] == "export" and method == "GET":
-        ctx.assert_role(*_BILLING_EXPORT_ROLES)
+        ctx.assert_role(*_BILLING_LIST_EXPORT_ROLES)
         query = parse_validated(ListExportQuery, _query_params(event))
         result = service.export_billing_list(
             tenant_id,

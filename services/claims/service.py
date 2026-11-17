@@ -215,7 +215,7 @@ def get_claim(tenant_id: str, claim_id: str, ctx: Any) -> dict[str, Any]:
     return {
         **_fmt_claim(claim),
         "evidence": _evidence_links(tenant_id, claim_id),
-        **_fmt_outcome(repo.get_claim_outcome(tenant_id, claim_id)),
+        **_fmt_outcome(repo.get_claim_outcome(tenant_id, claim_id), for_customer=ctx.role == UserRole.CUSTOMER),
     }
 
 
@@ -254,15 +254,26 @@ def _evidence_links(tenant_id: str, claim_id: str) -> list[dict[str, Any]]:
     return files
 
 
-def _fmt_outcome(row: dict[str, Any] | None) -> dict[str, Any]:
-    """The customer-safe outcome: what was decided and the refund's status. No notes, approver or approval level."""
+# Decisions that go against the customer. They are told why (owner decision, 2026-11-17); when the decision is in
+# their favour the reason staff typed stays internal.
+_UNFAVOURABLE_RESOLUTIONS = frozenset({"no_action"})
+
+
+def _fmt_outcome(row: dict[str, Any] | None, *, for_customer: bool) -> dict[str, Any]:
+    """What was decided and the refund's status. Never the approver or the approval level.
+
+    `reason` is the explanation staff typed. Staff always see it. A customer sees it only when the decision went
+    against them (the claim was closed without a payout); otherwise it is None.
+    """
     if row is None:
         return {"resolution": None, "refund": None}
+    show_reason = not for_customer or row["resolution_type"] in _UNFAVOURABLE_RESOLUTIONS
     resolution = {
         "resolution_type": row["resolution_type"],
         "amount_ngn": row.get("resolution_amount_ngn"),
         "discount_percentage": row.get("discount_percentage"),
         "resolved_at": row.get("resolved_at"),
+        "reason": (row.get("reason") or None) if show_reason else None,
     }
     refund = (
         {"id": str(row["refund_id"]), "status": row["refund_status"], "amount_ngn": row.get("refund_amount_ngn")}

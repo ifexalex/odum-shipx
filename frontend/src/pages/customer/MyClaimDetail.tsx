@@ -120,6 +120,7 @@ function Outcome({ claim }: { claim: Claim }): JSX.Element | null {
         <Kvp label="Amount" value={<Mono>{formatNgn(resolution.amount_ngn)}</Mono>} />
       )}
       <Kvp label="Decided on" value={formatDate(resolution.resolved_at)} />
+      {resolution.reason && <Kvp label="Why" value={resolution.reason} />}
       {refund && (
         <>
           <Kvp label="Refund status" value={customerRefundLabel(refund.status)} />

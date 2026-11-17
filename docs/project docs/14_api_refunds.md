@@ -154,6 +154,10 @@ inspecting this file directly — see `12_api_claims.md`'s matching entry for
 the full account. Fixed at the source (the INSERT now sets
 `'damage_or_loss'`) and defensively in the frontend label function.
 
+## Customer view of a refund (2026-11-17)
+
+`GET /v1/refunds/{id}` read by the customer it belongs to returns `reason` only when they raised the request themselves, `rejection_reason` always, and `null` for `approval_level`, `debt_check_passed`, `debt_check_notes` and `threshold`. Reason: a refund raised from a claim decision carries what staff typed when deciding, and the owner decided that a decision in the customer's favour does not show its reason (see `12_api_claims.md`). Staff reads are unchanged. Tests: `TestGetRefund` in `tests/unit/test_refunds.py`.
+
 ## Acceptance Criteria
 
 - [x] All 3 refund types handled (`overpayment`, `cbm_correction`, `damage_or_loss`)

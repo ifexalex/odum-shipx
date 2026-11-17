@@ -2362,3 +2362,11 @@ Backend: `tests/unit/test_search.py` (89 with the infrastructure-contract tests)
 ## Phase 4 frontend tests (2026-11-16)
 
 Frontend 165 files / 1,296 tests. New guards that fail on regression: `routes.test.tsx` (a page or layout imported statically, FE-02), `shell/dialogs.test.ts` (an `aria-modal` dialog without focus handling, FE-04), `lib/format.test.ts` (a page calling `toLocale*String` or slicing an ISO date, FE-03), `shell/noFetchInEffect.test.ts` (an effect that calls an API module, FE-05). Each was mutation-checked. Backend 2,162 unit/integration tests. **Unrun, written for a real database (no Docker in this session):** `tests/db/test_search.py`, `test_list_exports.py`, `test_paginated_lists.py`, `test_claim_read.py`, `test_pickup_code.py`, and migration 065.
+
+## Owner decisions 2026-11-17: claim reason and the invoice-list export
+
+- `tests/unit/test_claims.py`: `TestGetClaimForTheCustomer` (a customer gets `resolution.reason` only for `no_action`; staff always; the approver never), `TestResolvingAgainstTheCustomerNeedsAReason` (422 on a blank reason for `no_action`; other outcomes unchanged).
+- `tests/unit/test_refunds.py::TestGetRefund`: the customer view of a refund (their own reason only, the rejection reason always, no approval level, debt-check notes or threshold). Mutation-checked: returning the reason unconditionally fails two tests.
+- `tests/unit/test_list_exports.py`: `GET /v1/billing/export` is the tenant admin's; Nigeria and China staff, warehouse, customer and platform admin are 403.
+- `tests/db/test_claim_read.py`: one more case (the outcome query returns the reason). **Unrun**: no Docker.
+- Frontend: `MyClaimDetail.test.tsx` (the Why row appears only with a reason), `ClaimDetail.test.tsx` (the reason field says whether the customer will read it).

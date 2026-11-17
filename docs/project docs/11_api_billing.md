@@ -288,7 +288,7 @@ Nigeria staff and admins keep the inline view on the invoice page (a deliberate 
 
 ## Implementation notes — invoice list export (2026-11-16)
 
-`GET /v1/billing/export` (excel service) exports the invoice list's filters and sort as xlsx or csv; see `19_excel_import_export.md`. The invoice list's WHERE clause moved to `shared/list_filters.py::billing_filter`, shared by the list and the export; the generated SQL is unchanged (checked for 7 filter combinations). Not changed: the list's `q` search treats `%` and `_` as LIKE wildcards (bound, so not an injection, but `50%` matches more than it says); global search (`21_missing_endpoints.md` Part 12) escapes them.
+`GET /v1/billing/export` (excel service; **tenant admin only** since 2026-11-17) exports the invoice list's filters and sort as xlsx or csv; see `19_excel_import_export.md`. The invoice list's WHERE clause moved to `shared/list_filters.py::billing_filter`, shared by the list and the export; the generated SQL is unchanged (checked for 7 filter combinations). Not changed: the list's `q` search treats `%` and `_` as LIKE wildcards (bound, so not an injection, but `50%` matches more than it says); global search (`21_missing_endpoints.md` Part 12) escapes them.
 
 ## Implementation notes — dispute list names its customer, invoice and container (2026-11-16, audit UX-06)
 

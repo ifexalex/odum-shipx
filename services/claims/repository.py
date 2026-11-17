@@ -188,8 +188,9 @@ def get_damage_claim_by_id(tenant_id: str, claim_id: str) -> dict[str, Any] | No
 def get_claim_outcome(tenant_id: str, claim_id: str) -> dict[str, Any] | None:
     """The claim's latest resolution with the status of the refund it created, if any.
 
-    Deliberately leaves out `notes`, `approval_level` and `approved_by`: this feeds the customer's view of their own
-    claim, and those are staff's internal record of the decision.
+    `reason` is what staff typed when deciding (`claim_resolution.notes`). The service decides who is shown it: a
+    customer sees it only when the decision went against them. `approval_level` and `approved_by` are staff's
+    internal record and are never selected.
     """
     rows = execute_with_tenant(
         tenant_id,
@@ -197,6 +198,7 @@ def get_claim_outcome(tenant_id: str, claim_id: str) -> dict[str, Any] | None:
         SELECT cr.resolution_type,
                cr.resolution_amount_ngn,
                cr.discount_percentage,
+               cr.notes              AS reason,
                cr.created_at         AS resolved_at,
                rr.id                 AS refund_id,
                rr.status             AS refund_status,

@@ -141,6 +141,7 @@ def get_refund(tenant_id: str, refund_id: str, ctx: Any) -> dict[str, Any]:
         customer = repo.get_customer_by_user_id(tenant_id, ctx.user_id)
         if not customer or str(customer["id"]) != str(refund["customer_id"]):
             raise InsufficientPermissionsError("Customers may only view their own refund requests")
+        return _customer_view(_fmt_refund(refund), wrote_the_reason=str(refund.get("requested_by") or "") == ctx.user_id)
 
     result = _fmt_refund(refund)
     try:
@@ -424,6 +425,29 @@ def reject_refund(
 # ---------------------------------------------------------------------------
 # Internal formatter
 # ---------------------------------------------------------------------------
+
+# Staff's working record of a refund: who signed it off and what the debt check found. Not the customer's to read.
+_STAFF_ONLY_FIELDS = ("approval_level", "debt_check_passed", "debt_check_notes")
+
+
+def _customer_view(refund: dict[str, Any], *, wrote_the_reason: bool) -> dict[str, Any]:
+    """Returns a refund as its customer may read it.
+
+    A refund raised from a claim decision carries what staff typed when deciding. That decision was in the
+    customer's favour, so its reason stays internal (owner decision, 2026-11-17): the customer gets a reason back only
+    when it is the one they wrote. A rejection is against them, so `rejection_reason` is always theirs to read.
+
+    Args:
+        refund: The formatted refund.
+        wrote_the_reason: Whether this customer raised the request themselves.
+
+    Returns:
+        The refund without staff's working record, and with no approval threshold.
+    """
+    view = {**refund, **dict.fromkeys(_STAFF_ONLY_FIELDS), "threshold": None}
+    if not wrote_the_reason:
+        view["reason"] = None
+    return view
 
 
 def _fmt_refund(row: dict[str, Any]) -> dict[str, Any]:

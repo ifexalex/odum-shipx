@@ -136,7 +136,7 @@ class PaginationMeta(BaseModel):
 **Request Models:**
 - `FileDamageClaimRequest`: container_id, cartons_affected: list[str], description
 - `StartInspectionRequest`: inspection_method (InspectionMethod)
-- `ResolveClaimRequest`: resolution_type, amount_usd?, amount_ngn?, discount_percentage?, reason (required)
+- `ResolveClaimRequest`: resolution_type, amount_usd?, amount_ngn?, discount_percentage?, reason (max 2,000 characters; **required, non-blank, when `resolution_type` is `no_action`**, validated by a model validator, because the customer is shown it)
 - `LogMissingItemRequest`: manifest_id, customer_id, carton_tags: list[str], description
 - `LogSeizedItemRequest`: container_id, customer_id, carton_tags: list[str], reason
 

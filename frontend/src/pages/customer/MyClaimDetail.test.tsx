@@ -138,6 +138,32 @@ describe('MyClaimDetail (UX-07)', () => {
     expect(screen.queryByText('Amount')).toBeNull()
   })
 
+  it('tells the customer why when the decision went against them', async () => {
+    vi.mocked(claimsApi.get).mockResolvedValue({
+      ...CLAIM,
+      status: 'closed',
+      resolution: {
+        resolution_type: 'no_action', amount_ngn: '0.00', discount_percentage: null, resolved_at: '2026-11-12T09:00:00Z',
+        reason: 'The carton was already dented when it was handed to us.',
+      },
+    })
+    renderPage()
+    const outcome = within((await screen.findByRole('heading', { name: 'Outcome' })).closest('div')!)
+    expect(outcome.getByText('Why')).toBeInTheDocument()
+    expect(outcome.getByText('The carton was already dented when it was handed to us.')).toBeInTheDocument()
+  })
+
+  it('shows no "Why" row for a decision in their favour, where the server sends no reason', async () => {
+    vi.mocked(claimsApi.get).mockResolvedValue({
+      ...CLAIM,
+      status: 'resolved',
+      resolution: { resolution_type: 'refund', amount_ngn: '30000.00', discount_percentage: null, resolved_at: '2026-11-12T09:00:00Z', reason: null },
+    })
+    renderPage()
+    await screen.findByRole('heading', { name: 'Outcome' })
+    expect(screen.queryByText('Why')).toBeNull()
+  })
+
   it('answers a claim that is not theirs, or does not exist, with "Claim not found."', async () => {
     vi.mocked(claimsApi.get).mockRejectedValue(
       new ApiError({ type: 'about:blank', title: 'Not Found', status: 404, detail: 'x', error_code: 'RESOURCE_NOT_FOUND' }, null),

@@ -118,7 +118,7 @@ filed → under_inspection → inspection_complete → pending_resolution → re
 
 ### Resolve Claim (PATCH /resolve)
 1. Validate approval authority (approval_level values from migration 007):
-   - `resolution_type = 'no_action'`: any `nigeria_office_staff` (approval_level = `nigeria_staff`)
+   - `resolution_type = 'no_action'`: any `nigeria_office_staff` (approval_level = `nigeria_staff`); `reason` is required (422 if blank) because the customer is shown it
    - `refund ≤ $50`: `nigeria_office_staff` (approval_level = `nigeria_staff`)
    - `refund > $50`: `tenant_admin` (approval_level = `tenant_admin`)
    - `refund` linked to CBM/damage > $50 dispute: `head_of_finance` (approval_level = `head_of_finance`)
@@ -233,10 +233,20 @@ again. This is the intended behaviour, not a gap.
 `GET /v1/claims/{id}` now returns, besides the claim fields: **`evidence`** (each file: `id`, `file_name`, `file_type`, `file_size_bytes`, `uploaded_at`, and a 5-minute presigned `download_url`, or null if one could not be made), **`resolution`** (`resolution_type`, `amount_ngn`, `discount_percentage`, `resolved_at`, or null) and **`refund`** (`id`, `status`, `amount_ngn`: the approved amount if there is one, else the requested; or null). `customer_name` and `container_number` are now filled on this read (the query joins `customer` and `container`; before, they were null here).
 
 - **A customer reads only their own claim, and another customer's is a 404**, as is one that does not exist. It was a 403 ("Customers may only view their own claims"), which confirmed the id was real. The customer's own record is found by their user id; a login with no customer record also gets 404.
-- **The outcome is deliberately the customer-safe part of the decision.** `claim_resolution.notes`, `approval_level` and `approved_by` are staff's internal record and are not selected (the query's select list is tested, and so is the response against a row that carries them). **Open product question for the owner:** the staff "reason" typed when resolving is not shown to the customer, because it may contain internal remarks; if it is meant to be customer-facing it needs its own field.
+- **The outcome is deliberately the customer-safe part of the decision.** `claim_resolution.notes`, `approval_level` and `approved_by` are staff's internal record and are not selected (the query's select list is tested, and so is the response against a row that carries them). ~~Open product question for the owner: the staff "reason" typed when resolving is not shown to the customer.~~ **Decided 2026-11-17, see the next section.**
 - **Evidence links are made only for a key that is exactly `{tenant_id}/claims/{claim_id}/{one filename}`** (what an upload produces); a key that starts with that prefix and then climbs out with `..`, or has a subfolder, or no name, is skipped and logged. A failure to presign lists the file without a link rather than failing the read. `claim_evidence` has no RLS, so the claim is loaded first through the tenant-scoped query and only then its evidence.
 - **Known gap:** an evidence row is created when an upload is *started* (`POST /v1/uploads/presigned-url`), and nothing confirms the upload finished, so an abandoned upload shows as a file whose link does not open. The storage providers have no existence check yet.
 - Tests: `tests/unit/test_claims.py` (`TestGetClaimForTheCustomer`, `TestClaimReadSql`, mutation-checked), `tests/db/test_claim_read.py` (9, **unrun**: no Docker).
+
+## Implementation notes — who is shown the reason for a decision (owner decision, 2026-11-17)
+
+**Rule:** a decision in the customer's favour (refund, compensation, discount) does not show them the reason; a decision against them (`no_action`: closed without a payout) does, because they are owed an explanation.
+
+- **Wire format.** `GET /v1/claims/{id}` → `resolution.reason` (new key). Staff always get what was typed when deciding (`claim_resolution.notes`). A customer gets it only when `resolution_type` is in `_UNFAVOURABLE_RESOLUTIONS` (`no_action`), otherwise `null`. The gate is in the service (`_fmt_outcome(row, for_customer=...)`), so it does not depend on the page. `approval_level` and `approved_by` are still never selected.
+- **Staff must say why.** `PATCH /v1/claims/{id}/resolve` with `resolution_type: "no_action"` and a blank `reason` is **422** (`ResolveClaimRequest` validator); `reason` is capped at 2,000 characters. The staff dialog says, for that outcome, that the customer will read the text.
+- **The same reason no longer leaks through the refund.** A refund raised from a claim decision stores `"Damage claim resolution — {reason}"` in `refund_request.reason`, and a customer may `GET /v1/refunds/{id}` for their own refund (the id is on their claim read). That returned the internal reason, plus `approval_level`, `debt_check_passed`, `debt_check_notes` and the staff `threshold`. A customer now gets a customer view (`services/refunds/service.py::_customer_view`): `reason` only when they raised the request themselves (`requested_by` is their user id), `rejection_reason` always (a rejection is against them), and null for staff's working record. No customer page read those fields.
+- **Not covered:** the older "new style" resolve body (`settlement_amount_usd` + `notes`) writes no `claim_resolution` row, so a claim closed that way has no outcome or reason to show. The frontend does not send it.
+- Tests: `TestGetClaimForTheCustomer`, `TestResolvingAgainstTheCustomerNeedsAReason` (`tests/unit/test_claims.py`), `TestGetRefund` (`tests/unit/test_refunds.py`, mutation-checked), frontend `MyClaimDetail.test.tsx` and `ClaimDetail.test.tsx`.
 
 ## Implementation notes — the China office and missing items (2026-11-16, audit UX-08)
 
