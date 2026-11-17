@@ -156,3 +156,42 @@ class TestLambdaHandlers:
             f"{key}: Terraform sets handler '{handler}' but {source.relative_to(ROOT)} defines no "
             f"'{function}' — every invocation would fail with Runtime.HandlerNotFound"
         )
+
+
+EVENTBRIDGE_TF = ROOT / "infrastructure/aws/modules/eventbridge/main.tf"
+BOOTSTRAP_LOCAL = ROOT / "scripts/bootstrap_local.sh"
+_NOTIFICATION_QUEUES = ("sms", "whatsapp", "email")
+
+
+class TestNoEventGoesToANotificationQueue:
+    """Audit BE-09: the notification consumers read only what `shared/notifications.py` enqueues.
+
+    A raw EventBridge event routed to their queues has no recipient and was skipped with a warning every time.
+    Services enqueue notifications directly; the bus feeds the metering queue only.
+    """
+
+    def test_eventbridge_sends_to_the_metering_queue_only(self):
+        text = EVENTBRIDGE_TF.read_text()
+        targets = re.findall(r"sqs_queue_arns\[\s*\"(\w+)\"\s*\]", text)
+        assert targets and set(targets) == {"metering"}
+        assert 'eventbridge_queue_keys = ["metering"]' in text
+
+    def test_no_rule_or_target_is_built_from_a_list_of_notification_routes(self):
+        text = EVENTBRIDGE_TF.read_text()
+        assert "routing_rules" not in text and "routing_sqs" not in text
+        for queue in _NOTIFICATION_QUEUES:
+            assert f'"{queue}"' not in text and f"sqs-{queue}" not in text
+
+    def test_eventbridge_is_not_allowed_to_send_to_every_queue(self):
+        # Least privilege: the delivery role and the queue policies cover the targeted queue, not all of them.
+        text = EVENTBRIDGE_TF.read_text()
+        assert "values(var.sqs_queue_arns)" not in text
+        assert "for_each  = var.sqs_queue_urls" not in text
+
+    def test_local_bootstrap_routes_no_events_to_notification_queues(self):
+        text = BOOTSTRAP_LOCAL.read_text()
+        assert "put-rule" in text  # the metering rule is still created
+        for queue in _NOTIFICATION_QUEUES:
+            assert f'logistics-{queue}"' not in text.split("EventBridge Rules", 1)[1].split("S3 Bucket", 1)[0]
+        put_rules = re.findall(r'put-rule \\\s+--name "([\w-]+)"', text)
+        assert put_rules == ["route-metering"]

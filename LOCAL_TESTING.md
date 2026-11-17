@@ -961,7 +961,7 @@ Daily dev
 ### What Moto emulates
 
 - **SQS** — logistics-sms, logistics-whatsapp, logistics-email, logistics-metering + DLQs
-- **EventBridge** — `logistics-events` bus + routing rules
+- **EventBridge** — `logistics-events` bus + the metering rule (`route-metering`). Since 2026-11-17 (audit BE-09) no rule targets the sms, whatsapp or email queues; `make bootstrap` deletes the old `route-sms` / `route-whatsapp` / `route-email` rules from a stack that still has them
 - **S3** — `logistics-assets` bucket (claim evidence uploads)
 - **Secrets Manager** — `logistics/db/password` secret
 

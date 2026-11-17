@@ -443,17 +443,16 @@ def update_container_status(
     #
     # Ground-truth fix: billing/handler.py's EventBridge branch (source=
     # logistics.tracking, detail-type=PaymentDue → auto-create billing) is
-    # never actually invoked — infrastructure/aws/modules/eventbridge/main.tf's
-    # routing rules only fan PaymentDue out to the SMS/WhatsApp notification
-    # queues, there is no rule/target wiring EventBridge to invoke the billing
-    # Lambda itself. So a container could sail all the way through `cleared`
+    # never actually invoked: there is no rule/target wiring EventBridge to
+    # invoke the billing Lambda. So a container could sail all the way through `cleared`
     # → `at_warehouse` with zero billing rows ever created, in both local dev
     # and production. Call the billing generation directly (cross-service
     # import already has precedent — see check_container_limit above and
     # claims/service.py's refunds import) so billing exists the moment the
     # container clears, regardless of whether the event infra is ever fixed.
-    # The event publish stays: it's what the SMS/WhatsApp routing rules key
-    # off of for the "payment due" customer notification.
+    # The event publish stays for metering (the bus's only target). The
+    # "payment due" message is enqueued directly by handle_payment_due; no
+    # EventBridge rule feeds a notification queue (audit BE-09).
     billing_summary: list[dict[str, Any]] | None = None
     if new_status == "cleared":
         customers = repo.get_customers_for_container(tenant_id, container_id)

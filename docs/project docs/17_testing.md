@@ -2380,3 +2380,7 @@ Frontend 165 files / 1,296 tests. New guards that fail on regression: `routes.te
 ## BE-08 — Paystack currency (2026-11-17)
 
 `tests/unit/test_payment_webhook.py`: `TestPaystackChargeAmount` (only a positive naira amount; other currencies, no currency, zero, negative, NaN, Infinity and malformed amounts refused; the log line does not echo the payload), `TestExtractPaystackPaymentCurrency`, and `TestASignedEventInAnotherCurrencyDoesNotChangeTheInvoice` (the brief's acceptance test: a correctly signed USD `charge.success` through `_webhook_routes` records no payment; the same event in NGN does). `tests/unit/test_payment_release.py`: the verify path refuses the same charges (422 `BR-PAY-VERIFY-002`). Mutation-checked: 5 protections, each caught.
+
+## BE-09 — no EventBridge rule feeds a notification queue (2026-11-17)
+
+`tests/unit/test_infrastructure_contracts.py::TestNoEventGoesToANotificationQueue` (4): the EventBridge module targets only the metering queue, has no routing-rule list, does not grant EventBridge send on every queue, and `scripts/bootstrap_local.sh` creates only `route-metering`. Checked against the files from before the change: 4 of 4 fail there. The notification consumer tests (`test_notifications.py` and friends) still pass.

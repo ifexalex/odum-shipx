@@ -11,8 +11,10 @@ Implement the 3 Notification Lambda functions (SMS, WhatsApp, Email) that consum
 ## Architecture
 
 ```
-EventBridge → SQS (sms/whatsapp/email queues) → Lambda consumers
+service code → shared/notifications.py::enqueue_notification(s) → SQS (sms/whatsapp/email queues) → Lambda consumers
 ```
+
+~~EventBridge → SQS (sms/whatsapp/email queues) → Lambda consumers~~ **Corrected 2026-11-17 (audit BE-09):** no EventBridge rule targets a notification queue. The three routing rules that did delivered raw events with no `recipient`, and every one was skipped; they were removed (`04d_terraform_storage_messaging.md`). Services enqueue the message below themselves. EventBridge still carries domain events, for metering only.
 
 These Lambdas run **outside the VPC** (no database access needed — message data comes in the SQS event). If tenant branding is needed, it's included in the event payload by the publishing service.
 
