@@ -12,6 +12,7 @@ import { Badge, Banner, Button, Card, ExportButton, Field, Icon, Mono, Table, Di
 import { SectionHead } from '../../shell/SectionHead'
 import styles from './PackingListDetail.module.css'
 import { formatDate } from '../../lib/format'
+import { useBreadcrumbLabel } from '../../shell/breadcrumbs'
 
 const STATUS_VARIANT: Record<PackingList['status'], BadgeVariant> = {
   draft: 'neutral',
@@ -101,6 +102,8 @@ export function PackingListDetail(): JSX.Element {
     enabled: !!id,
     staleTime: STALE_30S,
   })
+  // Names this record in the breadcrumb once loaded (FD-46).
+  useBreadcrumbLabel(pl?.reference)
 
   const [actionError, setActionError] = useState<string | null>(null)
 

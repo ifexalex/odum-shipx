@@ -17,6 +17,7 @@ import { useSeedOnce } from '../../../hooks/useSeedOnce'
 import { useWarehouses } from '../../../hooks/useWarehouses'
 import { collapseBatches, emptyItem } from './items'
 import { usePackingListPricing } from './usePackingListPricing'
+import { useBreadcrumbLabel } from '../../../shell/breadcrumbs'
 
 /**
  * Everything the create/edit packing-list wizard holds: the chosen customer, container and dates, the item rows, the
@@ -96,6 +97,8 @@ export function useCreatePackingListForm() {
 
   // The draft being edited, if any. Always read fresh, then copied into the form once.
   const draftQuery = usePackingListForEdit(editId)
+  // On the edit page, name the list in the breadcrumb: Packing lists / PL-… / Edit (FD-46).
+  useBreadcrumbLabel(draftQuery.data?.reference, '/packing-lists/:id')
   const draft = draftQuery.isFetchedAfterMount ? draftQuery.data : undefined
   const draftEditable =
     draft !== undefined && (draft.status === 'draft' || draft.status === 'rejected')

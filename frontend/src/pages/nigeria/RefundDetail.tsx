@@ -32,6 +32,7 @@ import {
 import { SectionHead } from '../../shell/SectionHead'
 import styles from './RefundDetail.module.css'
 import { formatDate, formatNgn } from '../../lib/format'
+import { useBreadcrumbLabel } from '../../shell/breadcrumbs'
 
 // ---------------------------------------------------------------------------
 // Status helpers
@@ -409,6 +410,8 @@ export function RefundDetail(): JSX.Element {
     ...(stateRefund ? { initialData: stateRefund } : {}),
     staleTime: STALE_30S,
   })
+  // Names this record in the breadcrumb once loaded (FD-46).
+  useBreadcrumbLabel(refund ? refundTypeLabel(refund.refund_type) : null)
   const applyUpdated = (updated: Refund): void => {
     qc.setQueryData(refundKeys.detail(id ?? ''), updated)
   }

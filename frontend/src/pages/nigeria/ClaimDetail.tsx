@@ -25,6 +25,7 @@ import { SectionHead } from '../../shell/SectionHead'
 import { EvidenceUploader } from './EvidenceUploader'
 import styles from './ClaimDetail.module.css'
 import { formatDate, formatNgn } from '../../lib/format'
+import { useBreadcrumbLabel } from '../../shell/breadcrumbs'
 
 const STATUS_VARIANT: Record<DamageClaimStatus, BadgeVariant> = {
   filed: 'warning',
@@ -304,6 +305,8 @@ export function ClaimDetail(): JSX.Element {
     ...(stateClaim ? { initialData: stateClaim } : {}),
     staleTime: STALE_30S,
   })
+  // Names this record in the breadcrumb once loaded (FD-46).
+  useBreadcrumbLabel(claim?.reference)
 
   const error = loadError
     ? loadError instanceof ApiError

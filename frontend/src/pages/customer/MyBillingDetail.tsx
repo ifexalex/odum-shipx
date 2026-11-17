@@ -14,6 +14,7 @@ import { EvidenceUploader, type UploadedEvidence } from '../nigeria/EvidenceUplo
 import { ReleaseNoteCard } from './ReleaseNoteCard'
 import styles from './customer.module.css'
 import { formatDate, formatNgn } from '../../lib/format'
+import { useBreadcrumbLabel } from '../../shell/breadcrumbs'
 
 const STATUS_VARIANT: Record<Billing['payment_status'], BadgeVariant> = {
   unpaid: 'error', partially_paid: 'warning', paid: 'success', overpaid: 'warning',
@@ -272,6 +273,8 @@ export function MyBillingDetail(): JSX.Element {
     ...(stateBilling ? { initialData: stateBilling } : {}),
     staleTime: STALE_30S,
   })
+  // Names this invoice in the breadcrumb once loaded (FD-46).
+  useBreadcrumbLabel(billing?.invoice_number)
 
   const [payLoading, setPayLoading] = useState(false)
   const [payError, setPayError] = useState<string | null>(null)

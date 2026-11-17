@@ -10,6 +10,7 @@ import { STALE_30S } from '../../lib/queryClient'
 import { PageHeader } from '../../shell/PageHeader'
 import styles from './customer.module.css'
 import { formatDate, formatNgn } from '../../lib/format'
+import { useBreadcrumbLabel } from '../../shell/breadcrumbs'
 
 const STATUS_VARIANT: Record<string, BadgeVariant> = {
   active: 'success',
@@ -37,6 +38,8 @@ export function MyReleaseNote(): JSX.Element {
     enabled: !!id,
     staleTime: STALE_30S,
   })
+  // Names this record in the breadcrumb once loaded (FD-46).
+  useBreadcrumbLabel(note?.reference_number)
 
   async function downloadPdf(): Promise<void> {
     if (!note) return

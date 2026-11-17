@@ -8,7 +8,20 @@ import type { JSX } from 'react'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { ApiError } from '../../api/client'
 import { refundsApi } from '../../api/refunds'
+import { withQuery } from '../../test/queryWrapper'
 import { RefundRequest } from './RefundRequest'
+
+vi.mock('../../api/billing', async (importOriginal) => {
+  const original = await importOriginal<typeof import('../../api/billing')>()
+  // `get` feeds the invoice number into the breadcrumb (useInvoiceCrumb).
+  return {
+    ...original,
+    billingApi: {
+      ...original.billingApi,
+      get: vi.fn(async () => ({ invoice_number: 'ACM-INV-0001' })),
+    },
+  }
+})
 
 vi.mock('../../api/refunds', async (importOriginal) => {
   const original = await importOriginal<typeof import('../../api/refunds')>()
@@ -17,17 +30,24 @@ vi.mock('../../api/refunds', async (importOriginal) => {
 
 function InvoicePage(): JSX.Element {
   const { state } = useLocation()
-  return <div>Invoice page {(state as { refundFiled?: boolean } | null)?.refundFiled ? '(refund filed)' : ''}</div>
+  return (
+    <div>
+      Invoice page{' '}
+      {(state as { refundFiled?: boolean } | null)?.refundFiled ? '(refund filed)' : ''}
+    </div>
+  )
 }
 
 function renderPage() {
   return render(
-    <MemoryRouter initialEntries={['/my-billing/b1/refund-request']}>
-      <Routes>
-        <Route path="/my-billing/:id/refund-request" element={<RefundRequest />} />
-        <Route path="/my-billing/:id" element={<InvoicePage />} />
-      </Routes>
-    </MemoryRouter>,
+    withQuery(
+      <MemoryRouter initialEntries={['/my-billing/b1/refund-request']}>
+        <Routes>
+          <Route path="/my-billing/:id/refund-request" element={<RefundRequest />} />
+          <Route path="/my-billing/:id" element={<InvoicePage />} />
+        </Routes>
+      </MemoryRouter>,
+    ),
   )
 }
 
@@ -43,7 +63,9 @@ describe('RefundRequest', () => {
   })
 
   it('sends the request against this invoice, with the chosen payout, and returns to the invoice', async () => {
-    vi.mocked(refundsApi.create).mockResolvedValue({} as Awaited<ReturnType<typeof refundsApi.create>>)
+    vi.mocked(refundsApi.create).mockResolvedValue(
+      {} as Awaited<ReturnType<typeof refundsApi.create>>,
+    )
     renderPage()
     await userEvent.type(screen.getByLabelText(/Amount requested/), '25000')
     await userEvent.type(screen.getByLabelText(/Reason for refund/), 'Paid twice')
@@ -65,7 +87,18 @@ describe('RefundRequest', () => {
 
   it('uses the same idempotency key when the customer tries again after a failure', async () => {
     vi.mocked(refundsApi.create)
-      .mockRejectedValueOnce(new ApiError({ type: 'about:blank', title: 'x', status: 503, detail: 'Try again shortly.', error_code: 'SERVICE_UNAVAILABLE' }, null))
+      .mockRejectedValueOnce(
+        new ApiError(
+          {
+            type: 'about:blank',
+            title: 'x',
+            status: 503,
+            detail: 'Try again shortly.',
+            error_code: 'SERVICE_UNAVAILABLE',
+          },
+          null,
+        ),
+      )
       .mockResolvedValueOnce({} as Awaited<ReturnType<typeof refundsApi.create>>)
     renderPage()
     await userEvent.type(screen.getByLabelText(/Amount requested/), '5000')

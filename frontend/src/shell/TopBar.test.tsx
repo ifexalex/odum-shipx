@@ -1,13 +1,29 @@
 import { render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
+import { MemoryRouter } from 'react-router-dom'
 import { describe, expect, it, vi } from 'vitest'
 import { TopBar } from './TopBar'
 
 describe('TopBar', () => {
-  it('renders the title and breadcrumb', () => {
-    render(<TopBar role="nigeria" title="Containers" breadcrumb={['Nigeria Office', 'Containers']} />)
-    expect(screen.getByText('Containers', { selector: 'h1' })).toBeInTheDocument()
-    expect(screen.getByText('Nigeria Office')).toBeInTheDocument()
+  it('renders the title and a breadcrumb whose crumbs link back up (FD-45)', () => {
+    render(
+      <MemoryRouter>
+        <TopBar
+          role="nigeria"
+          title="INV-0042"
+          breadcrumb={[{ label: 'Billing', to: '/billing' }, { label: 'INV-0042' }]}
+        />
+      </MemoryRouter>,
+    )
+    expect(screen.getByText('INV-0042', { selector: 'h1' })).toBeInTheDocument()
+    const nav = screen.getByRole('navigation', { name: 'Breadcrumb' })
+    expect(nav.querySelectorAll('ol a[href="/billing"]')).toHaveLength(1)
+    expect(nav.querySelector('[aria-current="page"]')).toHaveTextContent('INV-0042')
+  })
+
+  it('shows no breadcrumb for an empty trail (a top-level page)', () => {
+    render(<TopBar role="nigeria" title="Containers" breadcrumb={[]} />)
+    expect(screen.queryByRole('navigation', { name: 'Breadcrumb' })).toBeNull()
   })
 
   it('shows the unread notification count', () => {

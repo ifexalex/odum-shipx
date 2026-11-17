@@ -319,6 +319,8 @@ user pool, not `MagicMock`, so these exercise the actual boto3 call shapes):
   tenant's or `platform_admin`'s groups, empty desired-roles removes everything for
   that tenant.
 
+Frontend — `shell/breadcrumbs.test.tsx` (FD-45/46, 2026-11-17): walks every route in `routeTable.ts` against the expected trail, so a new route needs an expectation; plus link, role, label and component checks.
+
 Frontend type check: `npm run typecheck` (`tsc -b --noEmit`). `npx tsc --noEmit -p .` checks no files (the root `tsconfig.json` only references others). `pages/untestedPages.test.ts` treats a part in a page's folder (`nigeria/billingDetail/*.tsx`) as covered by the page's test (FE-07, 2026-11-17).
 
 `tests/patching.py::patch_tenant_management(name, ...)` (audit BE-13, 2026-11-17): patches a collaborator in every module `services/tenant_management/service.py` was split into, with one shared mock. Use it where several modules use the name; otherwise patch the one module (`services.tenant_management.<module>.<name>`). Patching `service.<name>` no longer reaches the code.

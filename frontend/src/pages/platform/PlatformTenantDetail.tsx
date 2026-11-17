@@ -23,6 +23,7 @@ import { PageHeader } from '../../shell/PageHeader'
 import { SectionHead } from '../../shell/SectionHead'
 import styles from './admin.module.css'
 import { formatCount, formatDate, formatDateTime } from '../../lib/format'
+import { useBreadcrumbLabel } from '../../shell/breadcrumbs'
 
 const STATUS_VARIANT: Record<TenantStatus, BadgeVariant> = {
   active: 'success',
@@ -390,6 +391,8 @@ export function PlatformTenantDetail(): JSX.Element {
     ...(stateTenant ? { initialData: stateTenant } : {}),
     staleTime: STALE_30S,
   })
+  // Names this record in the breadcrumb once loaded (FD-46).
+  useBreadcrumbLabel(tenant?.company_name)
 
   const [activeModal, setActiveModal] = useState<'suspend' | 'activate' | 'offboard' | null>(null)
   const [tab, setTab] = useState('overview')

@@ -10,6 +10,7 @@ import { STALE_30S } from '../../lib/queryClient'
 import { SectionHead } from '../../shell/SectionHead'
 import { useTopBarSlot } from '../../shell/TopBarContext'
 import styles from './DisputeDetail.module.css'
+import { useBreadcrumbLabel } from '../../shell/breadcrumbs'
 
 const STATUS_LABEL: Record<string, string> = {
   submitted: 'Submitted',
@@ -112,6 +113,8 @@ export function DisputeDetail(): JSX.Element {
     enabled: !!id,
     staleTime: STALE_30S,
   })
+  // Names this record in the breadcrumb once loaded (FD-46).
+  useBreadcrumbLabel(dispute?.container_number)
 
   if (isLoading) return <div style={{ padding: 32, color: 'var(--color-ink-3)' }}>Loading dispute…</div>
 

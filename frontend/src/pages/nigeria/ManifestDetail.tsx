@@ -35,6 +35,7 @@ import {
 } from '../../design/components'
 import { SectionHead } from '../../shell/SectionHead'
 import styles from './ManifestDetail.module.css'
+import { useBreadcrumbLabel } from '../../shell/breadcrumbs'
 
 // ---------------------------------------------------------------------------
 // Carton diff helpers
@@ -361,6 +362,8 @@ export function ManifestDetail(): JSX.Element {
     enabled: !!id,
     staleTime: STALE_30S,
   })
+  // Names this record in the breadcrumb once loaded (FD-46).
+  useBreadcrumbLabel(manifest?.container_number)
 
   const [actionError, setActionError] = useState<string | null>(null)
 

@@ -119,7 +119,8 @@ describe('AppRoutes', () => {
     )
     // Nothing has loaded yet on the first render: the fallback is what is on screen.
     expect(container.querySelector('[aria-busy="true"]')).not.toBeNull()
-    expect((await screen.findAllByText('Users')).length).toBeGreaterThan(0)
+    // A cold page chunk can take over a second to compile when the whole suite runs in parallel.
+    expect((await screen.findAllByText('Users', {}, { timeout: 5000 })).length).toBeGreaterThan(0)
     await waitFor(() => expect(container.querySelector('[aria-busy="true"]')).toBeNull())
   })
 })

@@ -20,6 +20,7 @@ import { GlobalSearch } from './GlobalSearch'
 import { searchPlaceholderFor } from './searchRoutes'
 import { TopBar } from './TopBar'
 import { TopBarContext } from './TopBarContext'
+import { BreadcrumbContext, breadcrumbTrail, useBreadcrumbLabelState } from './breadcrumbs'
 
 export interface StaffLayoutProps {
   children: ReactNode
@@ -33,23 +34,6 @@ const ROLE_DISPLAY: Record<UserRole, string> = {
   nigeria_office_staff: 'Nigeria Office Staff',
   warehouse_attendant: 'Warehouse Attendant',
   customer: 'Customer',
-}
-
-/**
- * Builds a breadcrumb trail for the current pathname by walking the role's
- * navConfig groups. Returns e.g. ['Operations', 'Containers'] for /containers.
- */
-function buildBreadcrumb(role: UserRole, pathname: string): string[] {
-  for (const group of navConfig[role]) {
-    const item = group.items.find(
-      (it) => pathname === it.path || pathname.startsWith(`${it.path}/`),
-    )
-    if (item) {
-      return group.group ? [group.group, item.label] : [item.label]
-    }
-  }
-  const route = routeTable.find((r) => r.path === pathname)
-  return route ? [route.title] : []
 }
 
 // Form/create routes render their own in-body PageHeader, so the TopBar title
@@ -78,6 +62,7 @@ export function StaffLayout({ children }: StaffLayoutProps): JSX.Element | null 
   const [topBarSuffix, setTopBarSuffix] = useState<string | null>(null)
   const [topBarSubtitle, setTopBarSubtitle] = useState<string | null>(null)
   const [topBarActions, setTopBarActions] = useState<ReactNode | null>(null)
+  const breadcrumbLabels = useBreadcrumbLabelState()
   const [notifPanelOpen, setNotifPanelOpen] = useState(false)
 
   // Tenant theme (4.1 branding_config.primary_color). Platform admins keep the
@@ -119,9 +104,9 @@ export function StaffLayout({ children }: StaffLayoutProps): JSX.Element | null 
 
   // Null for a platform admin: the server refuses them (a tenant-scoped lookup, and they span tenants).
   const searchPlaceholder = searchPlaceholderFor(session.role)
-  const baseBreadcrumb = buildBreadcrumb(session.role, location.pathname)
-  // Append the page-specific suffix (e.g. container number) as the 3rd crumb.
-  const breadcrumb = topBarSuffix ? [...baseBreadcrumb, topBarSuffix] : baseBreadcrumb
+  // Where the page lives (FD-45/46): its parent routes, then itself, named by the page's record once loaded. A page
+  // that only sets the top-bar suffix (the container number) is named by that.
+  const breadcrumb = breadcrumbTrail(location.pathname, session.roles, breadcrumbLabels.labels, topBarSuffix)
   // Suppress the static title when a detail-page suffix is set — the suffix IS
   // the identifier; showing both would duplicate it.
   const title = topBarSuffix ? undefined : pageTitle(session.role, location.pathname)
@@ -141,6 +126,7 @@ export function StaffLayout({ children }: StaffLayoutProps): JSX.Element | null 
   const roleOptions = session.roles.map((r) => ({ value: r, label: ROLE_DISPLAY[r] }))
 
   return (
+    <BreadcrumbContext.Provider value={breadcrumbLabels}>
     <TopBarContext.Provider
       value={{
         suffix: topBarSuffix,
@@ -201,5 +187,6 @@ export function StaffLayout({ children }: StaffLayoutProps): JSX.Element | null 
         </TenantBlockedGate>
       </ThemeProvider>
     </TopBarContext.Provider>
+    </BreadcrumbContext.Provider>
   )
 }

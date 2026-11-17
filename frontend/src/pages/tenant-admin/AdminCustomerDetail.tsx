@@ -46,6 +46,7 @@ import { SectionHead } from '../../shell/SectionHead'
 import { Tabs } from '../../shell/Tabs'
 import styles from './admin.module.css'
 import { formatDate, formatDateTime, formatNgn } from '../../lib/format'
+import { useBreadcrumbLabel } from '../../shell/breadcrumbs'
 
 // ---------------------------------------------------------------------------
 // GDPR Anonymise Modal — MUST use exact "ANONYMISE" text confirmation
@@ -450,6 +451,8 @@ export function AdminCustomerDetail(): JSX.Element {
     ...(stateCustomer ? { initialData: stateCustomer } : {}),
     staleTime: STALE_30S,
   })
+  // Names this record in the breadcrumb once loaded (FD-46).
+  useBreadcrumbLabel(customer?.name)
   const [actionError, setActionError] = useState<string | null>(null)
   const [tab, setTab] = useState('profile')
   const [showAnonymise, setShowAnonymise] = useState(false)

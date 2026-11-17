@@ -12,9 +12,11 @@ import { refundsApi, type CreateRefundInput } from '../../api/refunds'
 import { Banner, Button, Field } from '../../design/components'
 import { PageHeader } from '../../shell/PageHeader'
 import styles from './customer.module.css'
+import { useInvoiceCrumb } from './useInvoiceCrumb'
 
 export function RefundRequest(): JSX.Element {
   const { id: billingId } = useParams<{ id: string }>()
+  useInvoiceCrumb(billingId)
   const navigate = useNavigate()
   const idempotencyKey = useRef(crypto.randomUUID())
 

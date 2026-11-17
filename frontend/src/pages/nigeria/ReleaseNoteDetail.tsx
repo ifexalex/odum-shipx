@@ -38,6 +38,7 @@ import {
 import { SectionHead } from '../../shell/SectionHead'
 import styles from './ReleaseNoteDetail.module.css'
 import { formatDate, formatNgn } from '../../lib/format'
+import { useBreadcrumbLabel } from '../../shell/breadcrumbs'
 
 // ---------------------------------------------------------------------------
 // Status helpers
@@ -482,6 +483,8 @@ export function ReleaseNoteDetail(): JSX.Element {
     ...(stateNote ? { initialData: stateNote } : {}),
     staleTime: STALE_30S,
   })
+  // Names this record in the breadcrumb once loaded (FD-46).
+  useBreadcrumbLabel(note?.reference_number)
 
   const error = loadError
     ? loadError instanceof ApiError

@@ -1,6 +1,8 @@
 import type { JSX, ReactNode } from 'react'
 import { Avatar, Icon, ThemeToggle } from '../design/components'
 import type { Role } from '../design/theme'
+import { Breadcrumb } from './Breadcrumb'
+import type { Crumb } from './breadcrumbs'
 import { useShellDrawer } from './ShellDrawer'
 import styles from './TopBar.module.css'
 
@@ -19,7 +21,8 @@ export interface TopBarProps {
   title?: string
   /** One-line descriptive subtitle shown under the title (list pages). */
   subtitle?: string
-  breadcrumb?: string[]
+  /** Where the page lives (`breadcrumbTrail`); every crumb but the last is a link. */
+  breadcrumb?: Crumb[]
   user?: TopBarUser
   /** The global search box (<GlobalSearch>). A slot rather than markup so this bar stays presentational. */
   search?: ReactNode
@@ -76,20 +79,7 @@ export function TopBar({
           </button>
         )}
         <div className={styles.titleBlock}>
-          {breadcrumb && breadcrumb.length > 0 && (
-            <div className={styles.breadcrumb}>
-              {breadcrumb.map((crumb, index) => (
-                <span key={crumb} style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
-                  {index > 0 && <span className={styles.breadcrumbSep}>/</span>}
-                  <span
-                    className={index === breadcrumb.length - 1 ? styles.breadcrumbCurrent : styles.breadcrumbLink}
-                  >
-                    {crumb}
-                  </span>
-                </span>
-              ))}
-            </div>
-          )}
+          {breadcrumb && <Breadcrumb trail={breadcrumb} />}
           {title && <h1 className={styles.title}>{title}</h1>}
           {title && subtitle && <p className={styles.subtitle}>{subtitle}</p>}
         </div>

@@ -13,6 +13,7 @@ import { SectionHead } from '../../shell/SectionHead'
 import { RoleCheckboxList } from './RoleCheckboxList'
 import styles from './admin.module.css'
 import { formatDate } from '../../lib/format'
+import { useBreadcrumbLabel } from '../../shell/breadcrumbs'
 
 const ROLE_VARIANT: Record<TenantUserRole, BadgeVariant> = {
   tenant_admin: 'error',
@@ -79,6 +80,8 @@ export function StaffUserDetail(): JSX.Element {
     ...(stateUser ? { initialData: stateUser } : {}),
     staleTime: STALE_30S,
   })
+  // Names this record in the breadcrumb once loaded (FD-46).
+  useBreadcrumbLabel(user?.full_name)
 
   const [editRoles, setEditRoles] = useState<TenantUserRole[] | null>(null)
   const [editPrimaryRole, setEditPrimaryRole] = useState<TenantUserRole | null>(null)

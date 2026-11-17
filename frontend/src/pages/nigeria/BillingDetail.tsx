@@ -20,6 +20,7 @@ import { GenerateReleaseNoteModal } from './billingDetail/GenerateReleaseNoteMod
 import { BillingBreakdown, PaymentsTable } from './billingDetail/Breakdown'
 import { MiscChargesSection } from './billingDetail/MiscCharges'
 import { PaymentClaimsSection } from './billingDetail/PaymentClaims'
+import { useBreadcrumbLabel } from '../../shell/breadcrumbs'
 
 
 // ---------------------------------------------------------------------------
@@ -61,6 +62,8 @@ export function BillingDetail(): JSX.Element {
     ...(stateBilling ? { initialData: stateBilling } : {}),
     staleTime: STALE_30S,
   })
+  // Names this record in the breadcrumb once loaded (FD-46).
+  useBreadcrumbLabel(billing?.invoice_number)
   const [carryovers, setCarryovers] = useState<Carryover[]>([])
   const [actionError, setActionError] = useState<string | null>(null)
 

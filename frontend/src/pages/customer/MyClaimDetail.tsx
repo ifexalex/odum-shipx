@@ -14,6 +14,7 @@ import { useClaim } from '../../hooks/useClaims'
 import { formatCount, formatDate, formatNgn } from '../../lib/format'
 import { PageHeader } from '../../shell/PageHeader'
 import styles from './customer.module.css'
+import { useBreadcrumbLabel } from '../../shell/breadcrumbs'
 
 const STATUS_VARIANT: Record<DamageClaimStatus, BadgeVariant> = {
   filed: 'warning',
@@ -142,6 +143,8 @@ export function MyClaimDetail(): JSX.Element {
   const { id } = useParams<{ id: string }>()
   const navigate = useNavigate()
   const { data: claim, isLoading, error } = useClaim(id ?? '')
+  // Names this record in the breadcrumb once loaded (FD-46).
+  useBreadcrumbLabel(claim?.reference)
 
   if (isLoading) return <div style={{ padding: 32, color: 'var(--color-text-muted)' }}>Loading your claim…</div>
 

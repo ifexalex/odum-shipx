@@ -29,6 +29,7 @@ import { CustomerStepper } from './CustomerStepper'
 import { ReleaseNoteCard } from './ReleaseNoteCard'
 import styles from './customer.module.css'
 import { formatNgn } from '../../lib/format'
+import { useBreadcrumbLabel } from '../../shell/breadcrumbs'
 
 // Ground truth: api/tracking.ts's ContainerStatus (services/tracking + the
 // `container` table) — the 9 real values. This map previously used fictional
@@ -86,6 +87,8 @@ export function MyShipmentDetail(): JSX.Element {
     enabled: !!code,
     staleTime: STALE_30S,
   })
+  // Names this record in the breadcrumb once loaded (FD-46).
+  useBreadcrumbLabel(pl?.reference ?? code)
 
   const error = loadError
     ? loadError instanceof ApiError
