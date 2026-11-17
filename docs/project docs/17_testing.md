@@ -2365,7 +2365,7 @@ Backend: `tests/unit/test_search.py` (89 with the infrastructure-contract tests)
 
 ## Phase 4 frontend tests (2026-11-16)
 
-Frontend 165 files / 1,296 tests. New guards that fail on regression: `routes.test.tsx` (a page or layout imported statically, FE-02), `shell/dialogs.test.ts` (an `aria-modal` dialog without focus handling, FE-04), `lib/format.test.ts` (a page calling `toLocale*String` or slicing an ISO date, FE-03), `shell/noFetchInEffect.test.ts` (an effect that calls an API module, FE-05). Each was mutation-checked. Backend 2,162 unit/integration tests. **Unrun, written for a real database (no Docker in this session):** `tests/db/test_search.py`, `test_list_exports.py`, `test_paginated_lists.py`, `test_claim_read.py`, `test_pickup_code.py`, and migration 065.
+Frontend 165 files / 1,296 tests. New guards that fail on regression: `routes.test.tsx` (a page or layout imported statically, FE-02), `shell/dialogs.test.ts` (an `aria-modal` dialog without focus handling, FE-04; since 2026-11-17 also any native `window.confirm`/`alert`/`prompt`, UX-11), `lib/format.test.ts` (a page calling `toLocale*String` or slicing an ISO date, FE-03), `shell/noFetchInEffect.test.ts` (an effect that calls an API module, FE-05). Each was mutation-checked. Backend 2,162 unit/integration tests. **Unrun, written for a real database (no Docker in this session):** `tests/db/test_search.py`, `test_list_exports.py`, `test_paginated_lists.py`, `test_claim_read.py`, `test_pickup_code.py`, and migration 065.
 
 ## Owner decisions 2026-11-17: claim reason and the invoice-list export
 

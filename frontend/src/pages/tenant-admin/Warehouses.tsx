@@ -10,8 +10,15 @@
 import { useCallback, useRef, useState, type JSX } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { ApiError } from '../../api/client'
-import { warehousesApi, type CreateWarehouseInput, type Warehouse } from '../../api/warehouses'
-import { useSetDefaultWarehouse, useWarehouses } from '../../hooks/useWarehouses'
+import { type CreateWarehouseInput, type Warehouse } from '../../api/warehouses'
+import {
+  useCreateWarehouse,
+  useDeactivateWarehouse,
+  useRemoveWarehouse,
+  useSetDefaultWarehouse,
+  useUpdateWarehouse,
+  useWarehouses,
+} from '../../hooks/useWarehouses'
 import {
   Badge,
   Banner,
@@ -20,6 +27,7 @@ import {
   Check,
   CountrySelect,
   Field,
+  Modal,
   PhoneField,
   StateSelect,
   Table,
@@ -50,6 +58,8 @@ function WarehouseModal({ existing, onCancel, onSuccess }: WarehouseModalProps):
   const [makeDefault, setMakeDefault] = useState(false)
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const createWarehouse = useCreateWarehouse()
+  const updateWarehouse = useUpdateWarehouse()
 
   const canSubmit = name.trim().length > 0 && !submitting
 
@@ -67,9 +77,9 @@ function WarehouseModal({ existing, onCancel, onSuccess }: WarehouseModalProps):
     }
     try {
       if (isEdit && existing) {
-        await warehousesApi.update(existing.id, body)
+        await updateWarehouse.mutateAsync({ id: existing.id, body })
       } else {
-        await warehousesApi.create(body)
+        await createWarehouse.mutateAsync(body)
       }
       onSuccess()
     } catch (err) {
@@ -183,6 +193,12 @@ function WarehouseModal({ existing, onCancel, onSuccess }: WarehouseModalProps):
   )
 }
 
+/**
+ * A removal waiting on the user's answer: first "delete for real?", then, if the warehouse turned out to be in use,
+ * "retire it instead?" with the server's reason.
+ */
+type PendingRemoval = { warehouse: Warehouse; stage: 'delete' } | { warehouse: Warehouse; stage: 'retire'; reason: string }
+
 export function Warehouses(): JSX.Element {
   const navigate = useNavigate()
   const [actionError, setActionError] = useState<string | null>(null)
@@ -243,43 +259,47 @@ export function Warehouses(): JSX.Element {
     }
   }
 
+  const removeWarehouse = useRemoveWarehouse()
+  const deactivateWarehouse = useDeactivateWarehouse()
+  const [pendingRemoval, setPendingRemoval] = useState<PendingRemoval | null>(null)
+  const confirming = removeWarehouse.isPending || deactivateWarehouse.isPending
+
   /**
-   * Delete a warehouse for real.
+   * Delete a warehouse for real, once the user has confirmed.
    *
    * The backend refuses with rule_id WAREHOUSE_IN_USE when a release note,
    * pickup record, payment record or packing list references it — those records
    * must keep the warehouse they were issued against. Rather than dead-ending,
-   * offer to retire it instead, which hides it from pickers and (since migration
-   * 056) frees its name.
+   * the dialog turns into an offer to retire it instead, which hides it from
+   * pickers and (since migration 056) frees its name.
    */
-  async function handleRemove(warehouse: Warehouse): Promise<void> {
-    if (!window.confirm(`Permanently delete “${warehouse.name}”? This cannot be undone.`)) return
-    setBusyId(warehouse.id)
+  async function confirmDelete(warehouse: Warehouse): Promise<void> {
     setActionError(null)
     setNotice(null)
     try {
-      await warehousesApi.remove(warehouse.id)
+      await removeWarehouse.mutateAsync(warehouse.id)
+      setPendingRemoval(null)
       setNotice(`${warehouse.name} was deleted.`)
     } catch (err) {
       if (err instanceof ApiError && err.ruleId === 'WAREHOUSE_IN_USE') {
-        const retire = window.confirm(
-          `${err.message}\n\nRetire “${warehouse.name}” instead?`,
-        )
-        if (retire) {
-          try {
-            await warehousesApi.deactivate(warehouse.id)
-            setNotice(`${warehouse.name} was retired. Its name is free to reuse.`)
-          } catch (retireErr) {
-            fail(
-              retireErr instanceof ApiError ? retireErr.message : 'Could not retire warehouse.',
-            )
-          }
-        }
-      } else {
-        fail(err instanceof ApiError ? err.message : 'Could not delete warehouse.')
+        setPendingRemoval({ warehouse, stage: 'retire', reason: err.message })
+        return
       }
+      setPendingRemoval(null)
+      fail(err instanceof ApiError ? err.message : 'Could not delete warehouse.')
+    }
+  }
+
+  async function confirmRetire(warehouse: Warehouse): Promise<void> {
+    setActionError(null)
+    setNotice(null)
+    try {
+      await deactivateWarehouse.mutateAsync(warehouse.id)
+      setNotice(`${warehouse.name} was retired. Its name is free to reuse.`)
+    } catch (err) {
+      fail(err instanceof ApiError ? err.message : 'Could not retire warehouse.')
     } finally {
-      setBusyId(null)
+      setPendingRemoval(null)
     }
   }
 
@@ -359,8 +379,8 @@ export function Warehouses(): JSX.Element {
                   <Button
                     variant="ghost"
                     size="sm"
-                    loading={busyId === w.id}
-                    onClick={() => void handleRemove(w)}
+                    disabled={busyId === w.id}
+                    onClick={() => setPendingRemoval({ warehouse: w, stage: 'delete' })}
                   >
                     Delete
                   </Button>
@@ -381,6 +401,46 @@ export function Warehouses(): JSX.Element {
           Back to configuration
         </Button>
       </div>
+
+      <Modal
+        open={pendingRemoval !== null}
+        onClose={confirming ? undefined : () => setPendingRemoval(null)}
+        title={pendingRemoval?.stage === 'retire' ? 'Retire this warehouse instead?' : 'Delete this warehouse?'}
+        width={480}
+        footer={
+          pendingRemoval && (
+            <>
+              <Button variant="ghost" onClick={() => setPendingRemoval(null)} disabled={confirming}>
+                Cancel
+              </Button>
+              {pendingRemoval.stage === 'delete' ? (
+                <Button variant="danger" loading={confirming} onClick={() => void confirmDelete(pendingRemoval.warehouse)}>
+                  Delete warehouse
+                </Button>
+              ) : (
+                <Button variant="danger" loading={confirming} onClick={() => void confirmRetire(pendingRemoval.warehouse)}>
+                  Retire warehouse
+                </Button>
+              )}
+            </>
+          )
+        }
+      >
+        {pendingRemoval?.stage === 'delete' && (
+          <p>
+            <strong>{pendingRemoval.warehouse.name}</strong> will be deleted permanently. This cannot be undone.
+          </p>
+        )}
+        {pendingRemoval?.stage === 'retire' && (
+          <>
+            <p>{pendingRemoval.reason}</p>
+            <p>
+              Retiring <strong>{pendingRemoval.warehouse.name}</strong> hides it from the warehouse pickers and frees
+              its name. The records issued against it keep it.
+            </p>
+          </>
+        )}
+      </Modal>
 
       {modal.open && (
         <WarehouseModal

@@ -940,7 +940,7 @@ User supplied 4 photos of a real "Goods Release Note" / "Cash Receipt" pair from
 
 **New files:**
 - `frontend/src/api/warehouses.ts` — `Warehouse`/`CreateWarehouseInput` types, `warehousesApi` (`list`, `create`, `setDefault`).
-- `frontend/src/hooks/useWarehouses.ts` — `useWarehouses(enabled = true)`, `useCreateWarehouse()`, `useSetDefaultWarehouse()`.
+- `frontend/src/hooks/useWarehouses.ts` — `useWarehouses(enabled = true)`, `useCreateWarehouse()`, `useSetDefaultWarehouse()`; since 2026-11-17 also `useUpdateWarehouse()`, `useRemoveWarehouse()`, `useDeactivateWarehouse()` (every warehouse write refreshes the list — see "Warehouse confirmations (audit UX-11)").
 
 **Changed:**
 - `api/releaseNotes.ts` — `ReleaseNote` gained `packages_released`/`package_unit`/`packages_balance`, `warehouse_name`/`warehouse_phone`, `is_on_credit`/`credit_granted_by_name`, `receipt_number`, `physical_document_number`, `packing_list_invoice_numbers`, `amount_paid_ngn`/`balance_ngn`/`total_ngn`, `debt_due_date` — all non-optional (the backend's `_fmt_release_note` always returns them, null/`[]`/`"0.00"` when absent, never omitted). `PickupResult` gained `customer_service_officer_name`/`accounting_officer_name`/`collected_by_name?`/`delegate_phone?`. `CreateReleaseNoteInput`/`RecordPickupInput` gained the matching optional request fields (`warehouse_id`, `physical_document_number`, `credit_granted_by_name`, `due_date`, `packing_list_invoice_numbers`, `customer_service_officer_id`, `accounting_officer_id`, `warehouse_attendant_id`).
@@ -1739,3 +1739,12 @@ does nothing.~~ **Fixed 2026-11-14** — see "Generate billing picker and missin
 ## Implementation notes — React Query migration finished (2026-11-16, master plan 7.197, audit FE-05)
 
 See `09_state_management_and_data_fetching.md`, "No page loads server data in a `useEffect`". Behaviour changes worth knowing: the tenant dashboard's queues and the rate history table now refresh after a relevant write; the payment-gateway settings page makes one config request instead of two; the packing-list form's pricing estimate shows the CBM rate even if the dollar rate cannot be read (the two were loaded together and failed together).
+
+## Warehouse confirmations in the app's own dialog (audit UX-11, 2026-11-17)
+
+`Warehouses.tsx`'s Delete asked through `window.confirm` twice ("Permanently delete?", then "Retire instead?" when the server answered `WAREHOUSE_IN_USE`) — the only native dialogs in the app. Both are now one design-system `Modal` (480 px, `danger` button) that changes stage in place: **Delete this warehouse?** → on `WAREHOUSE_IN_USE`, **Retire this warehouse instead?** showing the server's reason and what retiring does. Cancel, Escape and the close button leave the warehouse untouched; focus opens on Cancel. On a phone it is the Modal's full-screen sheet.
+
+**Ground-truth gap found and fixed:** add, edit, delete and retire called `warehousesApi` directly and never invalidated `warehouseKeys.all`, which is cached for five minutes, so the list kept showing a deleted warehouse (or lacked a new one) until something else reloaded it. Only Set default refreshed. Every warehouse write now goes through a mutation hook in `useWarehouses.ts` that invalidates the list.
+
+Guard: `shell/dialogs.test.ts` fails on any `window.confirm` / `alert` / `prompt` (or a bare `confirm(`) under `src/`, mutation-checked. Tests: `Warehouses.test.tsx` (16; the `window.confirm` stub is gone — cases drive the dialog, including Escape, cancel at each stage, and the list refreshing after a delete). Checked in Chromium against the local app with the warehouse endpoints stubbed (desktop and 375 px).
+
