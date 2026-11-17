@@ -237,9 +237,9 @@ Notification template editor (`NotificationTemplatesPage`) needs a per-channel S
 
 **GDPR anonymise: exact "ANONYMISE" text match required (case-sensitive).** `AdminCustomerDetail`'s `AnonymiseModal` calls `DELETE /v1/customers/{id}`. The confirm button only enables when `confirmText === 'ANONYMISE'` (strict equality, no `.toLowerCase()`). A persistent GDPR banner appears on any customer with `anonymised_at` set. Export downloads as a JSON file client-side (`customer-export-{id}.json`) with no console logging of PII.
 
-**Platform admin routes not yet wired:** `/platform/dashboard`, `/platform/settings`, `/platform/audit-log` — still fall through to `RouteStub`. These are lower priority; the critical CRUD and suspend/activate flows are complete.
+~~**Platform admin routes not yet wired:** `/platform/dashboard`, `/platform/settings`, `/platform/audit-log` — still fall through to `RouteStub`.~~ *(Superseded: all wired; `RouteStub` was deleted 2026-11-17, audit FE-08.)* These are lower priority; the critical CRUD and suspend/activate flows are complete.
 
-**Tenant-admin config sub-pages not yet wired:** `/admin/config/charge-types`, `/admin/config/webhooks`, `/admin/reports`, `/admin/notifications/log` — still fall through to `RouteStub`. The API bindings (`configApi.listChargeTypes`, etc.) are ready in `tenantManagement.ts`.
+~~**Tenant-admin config sub-pages not yet wired:** `/admin/config/charge-types`, `/admin/config/webhooks`, `/admin/reports`, `/admin/notifications/log` — still fall through to `RouteStub`.~~ *(Superseded: all wired; `RouteStub` was deleted 2026-11-17, audit FE-08.)* The API bindings (`configApi.listChargeTypes`, etc.) are ready in `tenantManagement.ts`.
 
 ## 7.10 Reports & Notification Log ✅
 
@@ -1747,4 +1747,10 @@ See `09_state_management_and_data_fetching.md`, "No page loads server data in a 
 **Ground-truth gap found and fixed:** add, edit, delete and retire called `warehousesApi` directly and never invalidated `warehouseKeys.all`, which is cached for five minutes, so the list kept showing a deleted warehouse (or lacked a new one) until something else reloaded it. Only Set default refreshed. Every warehouse write now goes through a mutation hook in `useWarehouses.ts` that invalidates the list.
 
 Guard: `shell/dialogs.test.ts` fails on any `window.confirm` / `alert` / `prompt` (or a bare `confirm(`) under `src/`, mutation-checked. Tests: `Warehouses.test.tsx` (16; the `window.confirm` stub is gone — cases drive the dialog, including Escape, cancel at each stage, and the list refreshing after a delete). Checked in Chromium against the local app with the warehouse endpoints stubbed (desktop and 375 px).
+
+## Route screens in one checked map (audit FE-08, 2026-11-17)
+
+The screen maps moved out of `shell/routes.tsx` into `shell/screens.tsx`: `PUBLIC_SCREENS` (no guard) and `GUARDED_SCREENS` (renamed from `STAFF_SCREENS`, which also held the customer portal), plus `screenForRoute(route)`. `routes.tsx` keeps the route tree, the layouts and the apex redirect, so neither file mixes components and plain exports (fast refresh). `RouteStub` ("the real page lands in Task 07") is deleted; a missing screen renders `NotFoundPage`. Stale comments removed: the `routeTable.ts` note that `/billing/disputes` must precede `/billing/:id` (React Router v6+ ranks by specificity), the "stays a stub until Task 07" headers, and the same in `CustomerTopNav.tsx`.
+
+Guard: `routes.test.tsx` "every route has a real screen" — one case per route, plus no screen without a route or under the wrong guard (a guarded page in `PUBLIC_SCREENS` would skip `RoleGuard`) and no duplicate path. The FE-02 code-splitting check now reads `routes.tsx` and `screens.tsx` together. Both mutation-checked; the production build still emits the entry chunk at 168 kB.
 

@@ -5,6 +5,8 @@ import { describe, expect, it, vi } from 'vitest'
 import { SessionContext, type SessionContextValue } from '../auth/SessionContext'
 import type { Session } from '../auth/types'
 import { AppRoutes } from './routes'
+import { routeTable } from './routeTable'
+import { GUARDED_SCREENS, PUBLIC_SCREENS, screenForRoute } from './screens'
 
 function makeSession(role: Session['role']): Session {
   return {
@@ -124,9 +126,14 @@ describe('AppRoutes', () => {
 
 // Drift guard for FE-02. Code splitting survives only while nothing in the route table imports a page statically:
 // one such import drags that page, and everything it imports, back into the entry chunk for every visitor.
-const ROUTES_SOURCE = (
-  import.meta.glob('./routes.tsx', { query: '?raw', import: 'default', eager: true }) as Record<string, string>
-)['./routes.tsx']!
+// The route tree (routes.tsx) and the screen maps it renders (screens.tsx), read together: an eager import in either
+// lands in the entry chunk.
+const ROUTES_SOURCE = Object.values(
+  import.meta.glob(['./routes.tsx', './screens.tsx'], { query: '?raw', import: 'default', eager: true }) as Record<
+    string,
+    string
+  >,
+).join('\n')
 
 describe('code splitting (FE-02)', () => {
   // The screens a visitor needs before they are signed in. Everything else loads on demand.
@@ -146,3 +153,24 @@ describe('code splitting (FE-02)', () => {
     expect(ROUTES_SOURCE).toMatch(/import\('\.\/areas\/customer'\)/)
   })
 })
+
+describe('every route has a real screen (FE-08)', () => {
+  // A route added to routeTable.ts without a screen used to render a "lands in Task 07" placeholder, silently.
+  it.each(routeTable.map((route) => [route.path, route] as const))('%s', (_path, route) => {
+    expect(screenForRoute(route), `no screen registered for ${route.path}`).toBeDefined()
+  })
+
+  it('registers no screen for a route that does not exist, or under the wrong guard', () => {
+    const publicPaths = new Set(routeTable.filter((r) => r.allow === 'public').map((r) => r.path))
+    const guardedPaths = new Set(routeTable.filter((r) => r.allow !== 'public').map((r) => r.path))
+    // A guarded page in PUBLIC_SCREENS would render without a RoleGuard.
+    expect(Object.keys(PUBLIC_SCREENS).filter((path) => !publicPaths.has(path))).toEqual([])
+    expect(Object.keys(GUARDED_SCREENS).filter((path) => !guardedPaths.has(path))).toEqual([])
+  })
+
+  it('declares each path once', () => {
+    const paths = routeTable.map((r) => r.path)
+    expect(paths.filter((path, i) => paths.indexOf(path) !== i)).toEqual([])
+  })
+})
+

@@ -43,9 +43,8 @@ function CustNavLink({ icon, label, path, count, onNavigate }: NavLinkDef & { on
 
 // Horizontal nav for the customer portal — deliberately not the staff
 // Sidebar (06_routing_rbac_and_navigation.md AC: customer portal stays on
-// this layout). No user-name chip yet: Session carries no display name
-// (same gap noted in AppSidebar.tsx) — just a notification bell and a plain
-// logout button until a profile fetch lands in Task 07.
+// this layout). It shows a notification bell and a plain logout button, and no
+// user-name chip.
 //
 // Mobile drawer: below 860px `.links` hides and a hamburger (mirroring
 // TopBar's staff-side one, same useShellDrawer() context — CustShell

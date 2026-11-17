@@ -142,8 +142,6 @@ export const routeTable: RouteDef[] = [
 
   // Billing & disputes
   { path: '/billing', allow: ['nigeria_office_staff', 'tenant_admin'], title: 'Billing', layout: 'staff' },
-  // Note: /billing/disputes must be declared before /billing/:id so React Router
-  // matches the literal segment first.
   {
     path: '/billing/disputes',
     allow: ['nigeria_office_staff', 'tenant_admin', 'china_office_staff'],
