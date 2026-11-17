@@ -130,9 +130,11 @@ locals {
       # Phase 1 provisions the credential: the migrate Lambda below receives
       # APP_DB_SECRET_ARN, so 060 sets the role's password on the next deploy.
       # Phase 2 then flips these two lines against a role that already works.
-      DATABASE_USER         = "postgres"
-      DB_SECRET_ARN         = var.db_secret_arn
-      S3_BUCKET             = var.bucket_name
+      DATABASE_USER = "postgres"
+      DB_SECRET_ARN = var.db_secret_arn
+      # The name shared/providers reads (`get_storage_provider`). This was `S3_BUCKET`, which nothing reads, so every
+      # Lambda fell back to the default "logistics-assets": not this deployment's bucket (2026-11-17).
+      S3_BUCKET_NAME        = var.bucket_name
       EVENT_BUS_NAME        = var.event_bus_name
       COGNITO_USER_POOL_ID  = var.cognito_user_pool_id
       ENVIRONMENT           = var.environment

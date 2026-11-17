@@ -4,7 +4,7 @@ For each tenant with status = 'offboarded':
   If (NOW() - offboarded_at) > 90 days:
     1. Delete tables that have no tenant_id column (via subquery).
     2. Delete all tenant data in FK-safe order (tables with tenant_id).
-    3. Delete tenant S3 prefix (TENANT_DATA_BUCKET / tenant_id/).
+    3. Delete the tenant's object-storage prefix ({tenant_id}/) in the assets bucket (or TENANT_DATA_BUCKET if set).
     4. Delete Cognito users for this tenant (COGNITO_USER_POOL_ID).
     5. Anonymise platform_audit_log rows referencing this tenant (GDPR Art. 17).
     6. Delete the tenant record itself.
@@ -198,15 +198,15 @@ def _delete_tenant(tenant_id: str, tenant: dict[str, Any]) -> None:
 
 
 def _delete_s3_prefix(tenant_id: str) -> None:
-    bucket = os.environ.get("TENANT_DATA_BUCKET", "")
-    if not bucket:
-        logger.warning("TENANT_DATA_BUCKET not set — object-storage cleanup skipped for %s", tenant_id)
-        return
+    # Tenant files live in the assets bucket (`get_storage_provider()`'s default). TENANT_DATA_BUCKET was required here
+    # but set by no deployment, so the purge was always skipped and a deleted tenant's files stayed. It is now only an
+    # override for a deployment that keeps tenant data in a separate bucket.
+    bucket = os.environ.get("TENANT_DATA_BUCKET") or None
 
     # delete_prefix purges current objects plus non-current versions and
     # delete-markers (GDPR Art. 17 immediate erasure, not lifecycle-deferred).
     try:
-        total_deleted = get_storage_provider(bucket).delete_prefix(f"{tenant_id}/")
+        total_deleted = get_storage_provider(bucket).delete_prefix(f"{tenant_id}/")  # bucket None = the assets bucket
         if total_deleted:
             logger.info("Deleted %d storage objects/versions for tenant %s", total_deleted, tenant_id)
     except Exception:

@@ -99,6 +99,8 @@ For each tenant where storage_fee.enabled = TRUE:
 
 ## File: `services/scheduled/data_cleanup.py`
 
+**Ground-truth gap closed (2026-11-17):** the object-storage purge read `TENANT_DATA_BUCKET`, which no deployment sets, so it logged "object-storage cleanup skipped" and a deleted tenant's files (claim evidence, documents, exports) stayed in storage. It now purges `{tenant_id}/` in the assets bucket; `TENANT_DATA_BUCKET` is only an override. Tests: `tests/unit/test_data_cleanup.py`.
+
 ```
 For each tenant with status = 'offboarded':
   if (NOW() - offboarded_at) > 90 days:

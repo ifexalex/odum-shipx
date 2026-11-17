@@ -195,3 +195,16 @@ class TestNoEventGoesToANotificationQueue:
             assert f'logistics-{queue}"' not in text.split("EventBridge Rules", 1)[1].split("S3 Bucket", 1)[0]
         put_rules = re.findall(r'put-rule \\\s+--name "([\w-]+)"', text)
         assert put_rules == ["route-metering"]
+
+
+class TestStorageSettingsReachTheCode:
+    """The Lambdas were given `S3_BUCKET`, which nothing reads; `shared/providers` reads `S3_BUCKET_NAME` and fell back
+    to "logistics-assets", which is not this deployment's bucket (2026-11-17)."""
+
+    def test_the_lambda_environment_names_the_bucket_the_way_the_code_reads_it(self):
+        providers = (ROOT / "shared/providers/__init__.py").read_text()
+        assert 'os.environ.get("S3_BUCKET_NAME"' in providers
+        assert re.search(r"^\s+S3_BUCKET_NAME\s+=\s+var\.bucket_name$", LAMBDA_TF.read_text(), re.M)
+
+    def test_no_lambda_is_given_a_bucket_variable_nothing_reads(self):
+        assert not re.search(r"^\s+S3_BUCKET\s+=", LAMBDA_TF.read_text(), re.M)

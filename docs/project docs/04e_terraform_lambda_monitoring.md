@@ -66,7 +66,7 @@ Create Terraform modules for all Lambda functions, their IAM roles/policies, Lam
   - handler = "{service}.handler.lambda_handler"
   - layers = [shared_layer_arn]
   - VPC config (where applicable): subnet_ids, security_group_ids
-  - Environment variables: DATABASE_HOST (RDS Proxy endpoint), DATABASE_NAME, DATABASE_USER, DB_SECRET_ARN, S3_BUCKET, EVENT_BUS_NAME, COGNITO_USER_POOL_ID, ENVIRONMENT
+  - Environment variables: DATABASE_HOST (RDS Proxy endpoint), DATABASE_NAME, DATABASE_USER, DB_SECRET_ARN, S3_BUCKET_NAME (~~S3_BUCKET~~: renamed 2026-11-17, nothing read it, so every Lambda used the default bucket name `logistics-assets`, which is not this deployment's bucket), EVENT_BUS_NAME, COGNITO_USER_POOL_ID, ENVIRONMENT
   - reserved_concurrent_executions = null (no limit for v1)
 
 - `aws_lambda_layer_version` — "logistics-shared-{env}" (the shared/ code as a layer)

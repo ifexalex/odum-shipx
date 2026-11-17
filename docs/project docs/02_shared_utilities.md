@@ -605,8 +605,9 @@ read once in `shared/providers/__init__.py`.
   - `get_key_provider()` → `KeyProvider | None` (None = field encryption not configured; preserves the dev
     plaintext-fallback in `shared/encryption.py`).
   - `get_storage_provider(bucket=None)` → `StorageProvider`, cached per bucket. `None` resolves the default assets
-    bucket (`S3_BUCKET_NAME`); an explicit name is used for the GDPR `TENANT_DATA_BUCKET` purge in
-    `services/scheduled/data_cleanup.py`.
+    bucket (`S3_BUCKET_NAME`, which the AWS Lambdas are given since 2026-11-17: they were given `S3_BUCKET`, which
+    nothing reads); an explicit name is used only when `TENANT_DATA_BUCKET` is set for the purge in
+    `services/scheduled/data_cleanup.py`, which otherwise purges the assets bucket.
   - `get_secrets_provider()` → `SecretsProvider` (cached singleton).
   - `get_event_provider()` → `EventProvider` (cached singleton).
   - `get_queue_provider()` → `QueueProvider` (cached singleton).
