@@ -9,7 +9,14 @@ from unittest.mock import patch
 
 import pytest
 
-from shared.client_ip import client_ip, resolve_client_ip, trusted_proxy_hops
+from shared.client_ip import (
+    came_through_front_door,
+    client_ip,
+    front_door_required,
+    resolve_client_ip,
+    resolve_edge_client_ip,
+    trusted_proxy_hops,
+)
 
 
 class TestClientIpFromTheEvent:
@@ -138,3 +145,81 @@ class TestContainerApp:
             event = self._event("100.100.0.4", {"X-Forwarded-For": "203.0.113.7"})
         assert client_ip(event) is None
         assert "sourceIp" not in event["requestContext"]["http"]
+
+
+FDID = "0f1e2d3c-4b5a-6978-8796-a5b4c3d2e1f0"
+INGRESS_PEER = "100.100.0.12"  # the Container Apps ingress: a private address
+
+
+def _from_front_door(**extra):
+    return {"X-Azure-FDID": FDID, "X-Azure-SocketIP": "41.58.10.20", "X-Forwarded-For": "41.58.10.20, 147.243.5.9", **extra}
+
+
+class TestBehindFrontDoor:
+    """The Azure deployment: Front Door, then the Container Apps ingress, then the app."""
+
+    @pytest.fixture(autouse=True)
+    def _configured(self, monkeypatch):
+        monkeypatch.setenv("AZURE_FRONT_DOOR_ID", FDID)
+        monkeypatch.delenv("TRUSTED_PROXY_HOPS", raising=False)
+        monkeypatch.delenv("REQUIRE_FRONT_DOOR", raising=False)
+
+    def test_a_request_our_front_door_forwarded_gets_the_address_front_door_saw(self):
+        assert resolve_edge_client_ip(INGRESS_PEER, _from_front_door()) == "41.58.10.20"
+
+    def test_what_the_client_wrote_in_the_forwarding_headers_is_ignored(self):
+        headers = _from_front_door(**{"X-Forwarded-For": "6.6.6.6, 41.58.10.20, 147.243.5.9", "X-Azure-ClientIP": "6.6.6.6"})
+        assert resolve_edge_client_ip(INGRESS_PEER, headers) == "41.58.10.20"
+
+    def test_the_id_matches_whatever_its_letter_case(self):
+        assert came_through_front_door({"X-Azure-FDID": FDID.upper()})
+
+    def test_ipv6_from_front_door_works(self):
+        assert resolve_edge_client_ip(INGRESS_PEER, _from_front_door(**{"X-Azure-SocketIP": "2001:db8::7"})) == "2001:db8::7"
+
+    @pytest.mark.parametrize("socket_ip", ["", "not-an-ip", "41.58.10.20:51234", "41.58.10.20, 6.6.6.6"])
+    def test_an_unusable_socket_address_is_unknown_not_a_guess(self, socket_ip):
+        assert resolve_edge_client_ip(INGRESS_PEER, _from_front_door(**{"X-Azure-SocketIP": socket_ip})) is None
+
+    @pytest.mark.parametrize("presented", [None, "", "11111111-2222-3333-4444-555555555555", FDID + "x"])
+    def test_a_request_that_went_around_front_door_cannot_choose_its_address(self, presented):
+        """Someone calling the container app's own hostname, with headers dressed up to look forwarded."""
+        headers = {"X-Azure-SocketIP": "6.6.6.6", "X-Forwarded-For": "6.6.6.6"}
+        if presented is not None:
+            headers["X-Azure-FDID"] = presented
+        assert not came_through_front_door(headers)
+        assert resolve_edge_client_ip(INGRESS_PEER, headers) is None  # unknown: per-address limits are skipped
+
+    def test_with_hops_configured_a_bypassing_request_falls_back_to_counting(self, monkeypatch):
+        monkeypatch.setenv("TRUSTED_PROXY_HOPS", "1")
+        assert resolve_edge_client_ip(INGRESS_PEER, {"X-Forwarded-For": "6.6.6.6, 41.58.10.20"}) == "41.58.10.20"
+
+    def test_the_lock_is_off_unless_asked_for(self):
+        assert not front_door_required()
+
+    @pytest.mark.parametrize("value", ["true", "TRUE", " true "])
+    def test_the_lock_can_be_switched_on(self, monkeypatch, value):
+        monkeypatch.setenv("REQUIRE_FRONT_DOOR", value)
+        assert front_door_required()
+
+
+class TestWithoutFrontDoor:
+    """AWS, local dev, or an Azure deployment with no Front Door: nothing about Front Door applies."""
+
+    @pytest.fixture(autouse=True)
+    def _unconfigured(self, monkeypatch):
+        monkeypatch.delenv("AZURE_FRONT_DOOR_ID", raising=False)
+        monkeypatch.delenv("TRUSTED_PROXY_HOPS", raising=False)
+
+    def test_front_door_headers_prove_nothing_when_no_front_door_is_configured(self):
+        headers = {"X-Azure-FDID": "", "X-Azure-SocketIP": "6.6.6.6"}
+        assert not came_through_front_door(headers)
+        assert not came_through_front_door({"X-Azure-FDID": FDID, "X-Azure-SocketIP": "6.6.6.6"})
+
+    def test_a_direct_client_is_still_the_peer(self):
+        assert resolve_edge_client_ip("41.58.10.20", {}) == "41.58.10.20"
+
+    def test_the_lock_cannot_be_on_without_a_front_door_id(self, monkeypatch):
+        """Otherwise a mis-set flag would refuse every request."""
+        monkeypatch.setenv("REQUIRE_FRONT_DOOR", "true")
+        assert not front_door_required()

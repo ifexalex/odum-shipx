@@ -5,18 +5,68 @@ HTTP API (payload 2.0) this runs behind on AWS puts it at `requestContext.http.s
 the first recorded no address in production at all. And behind a reverse proxy the socket peer is the proxy,
 so keying anything on it (audit logs, rate limits) lumps every user into one.
 
-`resolve_client_ip` is for the container deployment, which has proxies in front of it (Front Door, then the
-Container Apps ingress). It trusts only the entries those proxies themselves appended to `X-Forwarded-For`:
-a client can put anything at the front of that header, never at the end.
+`resolve_edge_client_ip` is for the container deployment, which sits behind Azure Front Door and then the
+Container Apps ingress. It does not count proxies. Front Door stamps every request it forwards with its own id
+(`X-Azure-FDID`) and with the address of the connection it accepted (`X-Azure-SocketIP`), so a request that
+carries *our* Front Door's id is taken at Front Door's word for the address. A request that does not carry it
+reached the ingress some other way, and its headers are not believed: it falls back to `resolve_client_ip`,
+which trusts only the entries known proxies appended to `X-Forwarded-For` (a client can put anything at the
+front of that header, never at the end) and otherwise answers "unknown".
 """
 
+import hmac
 import ipaddress
 import os
-from typing import Any
+from typing import Any, Protocol
 
 # How many proxies in front of the app each append the address they received the connection from.
 # 0 (the default) means there are none we know about, so the socket peer is the client.
 TRUSTED_PROXY_HOPS_ENV = "TRUSTED_PROXY_HOPS"
+
+
+class Headers(Protocol):
+    """Request headers, looked up case-insensitively: a Flask/Werkzeug `Headers`, or any mapping that does the same."""
+
+    def get(self, key: str, /) -> Any: ...
+
+
+# The id of this deployment's Front Door profile, as Front Door sends it in `X-Azure-FDID`. Unset (AWS, local
+# dev, or a deployment with no Front Door) switches the Front Door path off.
+FRONT_DOOR_ID_ENV = "AZURE_FRONT_DOOR_ID"
+# "true" refuses API requests that did not come through that Front Door (services/http_app). Off by default:
+# anything configured to call the container app's own hostname (a payment webhook, a smoke test) would break.
+REQUIRE_FRONT_DOOR_ENV = "REQUIRE_FRONT_DOOR"
+
+
+def front_door_id() -> str:
+    """This deployment's Front Door id, or "" when there is none."""
+    return os.environ.get(FRONT_DOOR_ID_ENV, "").strip()
+
+
+def came_through_front_door(headers: Headers) -> bool:
+    """Did our own Front Door forward this request? False when no Front Door id is configured."""
+    expected = front_door_id()
+    presented = str(headers.get("X-Azure-FDID") or "").strip()
+    return bool(expected) and hmac.compare_digest(presented.lower(), expected.lower())
+
+
+def front_door_required() -> bool:
+    """Should requests that bypass Front Door be refused? Only meaningful when a Front Door id is configured."""
+    return bool(front_door_id()) and os.environ.get(REQUIRE_FRONT_DOOR_ENV, "").strip().lower() == "true"
+
+
+def resolve_edge_client_ip(peer: str, headers: Headers) -> str | None:
+    """The client's address for a request to the container deployment, or None when it cannot be told safely.
+
+    Through our Front Door: the address Front Door accepted the connection from (`X-Azure-SocketIP`), which
+    the client cannot influence, unlike `X-Forwarded-For` and `X-Azure-ClientIP`. Otherwise: whatever
+    `resolve_client_ip` can establish from the socket peer and `TRUSTED_PROXY_HOPS`, which by default is
+    "unknown" for a request that arrives through a proxy nobody vouched for.
+    """
+    if came_through_front_door(headers):
+        socket_ip = str(headers.get("X-Azure-SocketIP") or "").strip()
+        return socket_ip if _valid(socket_ip) else None
+    return resolve_client_ip(peer, str(headers.get("X-Forwarded-For") or ""), trusted_proxy_hops())
 
 
 def client_ip(event: dict[str, Any]) -> str | None:

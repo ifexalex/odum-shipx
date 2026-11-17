@@ -160,8 +160,14 @@ variable "entra_authorize_prompt" {
   default     = "select_account"
 }
 
+variable "require_front_door" {
+  description = "Refuse API requests that did not come through Front Door (403). Free. Off until every webhook URL and smoke test uses the Front Door host; see modules/container_app/variables.tf."
+  type        = bool
+  default     = false
+}
+
 variable "trusted_proxy_hops" {
-  description = "Reverse proxies in front of the API that append to X-Forwarded-For; see modules/container_app/variables.tf. 0 until verified against a real request."
+  description = "Fallback only: reverse proxies that append to X-Forwarded-For for requests that did NOT come through Front Door. Leave 0 (address unknown) unless there is no Front Door; see modules/container_app/variables.tf."
   type        = number
   default     = 0
 }

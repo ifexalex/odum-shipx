@@ -247,9 +247,12 @@ guard was first written against the `get()` default and silently did nothing.
   `CUSTOMER_PORTAL_BASE_URL`. With none of the three set it refuses every request, so do not drop them.
 - `RATE_LIMIT_ENABLED=false` on the **non-VPC** `auth` Lambda only: it cannot reach ElastiCache, and a connection
   attempt would add a timeout to every request. Its public routes are throttled per route at API Gateway.
-- Azure container app: `TRUSTED_PROXY_HOPS` (variable `trusted_proxy_hops`, default 0). Set it to the verified
-  number of proxies that append to `X-Forwarded-For` (likely 2: Front Door, then the Container Apps ingress);
-  see `modules/container_app/variables.tf` for why too low and too high are both wrong.
+- Azure container app (2026-11-17): `AZURE_FRONT_DOOR_ID` is set by Terraform from the Front Door profile's
+  `resource_guid`, and the app takes the client address from Front Door's own stamp on requests carrying it, so
+  there is no hop count to measure. `REQUIRE_FRONT_DOOR` (variable `require_front_door`, default false) refuses
+  requests that go around Front Door. `TRUSTED_PROXY_HOPS` (default 0) is now only a fallback for a deployment
+  with no Front Door. The Front Door profile resource moved from `module.frontend` to the root (with a `moved`
+  block) to break the dependency cycle this would otherwise create. No new Azure resource, no added cost.
 
 ## `PICKUP_CODE_PEPPER` (2026-11-16)
 

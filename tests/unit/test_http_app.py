@@ -96,3 +96,57 @@ class TestCors:
         resp = client.open("/v1/billing", method="OPTIONS")
         assert resp.status_code == 204
         assert "Access-Control-Allow-Methods" in resp.headers
+
+
+class TestFrontDoor:
+    """The Azure edge: the client address comes from our Front Door's stamp, and the optional origin lock."""
+
+    FDID = "0f1e2d3c-4b5a-6978-8796-a5b4c3d2e1f0"
+
+    @staticmethod
+    def _call(client, headers):
+        seen = {}
+
+        def handler(event, _context):
+            seen["event"] = event
+            return _ok_handler_response()
+
+        with (
+            patch.object(http_app, "build_authorizer_claims", return_value={"sub": "u1"}),
+            patch.object(http_app, "invoke_handler", side_effect=lambda name, event: handler(event, None)),
+        ):
+            resp = client.get("/v1/billing/disputes", headers={"Authorization": "Bearer good", **headers})
+        return resp, seen.get("event")
+
+    def test_the_handler_sees_the_address_front_door_recorded(self, client, monkeypatch):
+        monkeypatch.setenv("AZURE_FRONT_DOOR_ID", self.FDID)
+        resp, event = self._call(
+            client, {"X-Azure-FDID": self.FDID, "X-Azure-SocketIP": "41.58.10.20", "X-Forwarded-For": "6.6.6.6"}
+        )
+        assert resp.status_code == 200
+        assert event["requestContext"]["http"]["sourceIp"] == "41.58.10.20"
+        assert event["requestContext"]["identity"]["sourceIp"] == "41.58.10.20"
+
+    def test_a_request_around_front_door_is_served_but_has_no_address(self, client, monkeypatch):
+        monkeypatch.setenv("AZURE_FRONT_DOOR_ID", self.FDID)
+        resp, event = self._call(client, {"X-Azure-SocketIP": "6.6.6.6", "X-Forwarded-For": "6.6.6.6"})
+        assert resp.status_code == 200
+        assert "sourceIp" not in event["requestContext"]["http"]
+
+    def test_with_the_lock_on_a_request_around_front_door_is_refused_before_any_handler(self, client, monkeypatch):
+        monkeypatch.setenv("AZURE_FRONT_DOOR_ID", self.FDID)
+        monkeypatch.setenv("REQUIRE_FRONT_DOOR", "true")
+        resp, event = self._call(client, {"X-Azure-FDID": "someone-elses-front-door"})
+        assert resp.status_code == 403 and event is None
+
+    def test_with_the_lock_on_front_door_traffic_still_passes(self, client, monkeypatch):
+        monkeypatch.setenv("AZURE_FRONT_DOOR_ID", self.FDID)
+        monkeypatch.setenv("REQUIRE_FRONT_DOOR", "true")
+        resp, _ = self._call(client, {"X-Azure-FDID": self.FDID, "X-Azure-SocketIP": "41.58.10.20"})
+        assert resp.status_code == 200
+
+    def test_the_health_probe_is_never_locked_out(self, client, monkeypatch):
+        """The platform probes the container directly, not through Front Door."""
+        monkeypatch.setenv("AZURE_FRONT_DOOR_ID", self.FDID)
+        monkeypatch.setenv("REQUIRE_FRONT_DOOR", "true")
+        assert client.get("/health").status_code == 200

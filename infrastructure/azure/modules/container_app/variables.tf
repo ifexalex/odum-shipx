@@ -426,3 +426,25 @@ variable "whatsapp_verify_token" {
   default     = ""
   sensitive   = true
 }
+
+variable "front_door_id" {
+  description = <<-EOT
+    This deployment's Front Door id (the profile's resource_guid), sent by Front Door as X-Azure-FDID on every
+    request it forwards. The app takes the client's address from Front Door's own stamp (X-Azure-SocketIP) only
+    on requests carrying this id, so rate limits and audit logs get the real address without anyone having to
+    count proxies. Empty when there is no Front Door: the app then falls back to trusted_proxy_hops.
+  EOT
+  type        = string
+  default     = ""
+}
+
+variable "require_front_door" {
+  description = <<-EOT
+    Refuse API requests that did not come through this deployment's Front Door (403), so nothing can go around
+    it by calling the container app's own hostname. Costs nothing. Off by default because anything configured to
+    call that hostname directly (a payment or WhatsApp webhook URL, a smoke test) would start failing: point
+    those at the Front Door host first, then turn this on. /health stays open for the platform's probes.
+  EOT
+  type        = bool
+  default     = false
+}

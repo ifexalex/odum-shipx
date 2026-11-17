@@ -98,9 +98,12 @@ locals {
     AUTH_COOKIE_SAMESITE = var.auth_cookie_samesite
     # Browser origins allowed to call the API (the frontend URL).
     CORS_ALLOW_ORIGINS = var.cors_allow_origins
-    # How many proxies in front of the app append to X-Forwarded-For (shared/client_ip.py). Rate limits and
-    # audit logs key on the client address, and behind Front Door and the ingress the socket peer is a proxy.
-    TRUSTED_PROXY_HOPS = tostring(var.trusted_proxy_hops)
+    # The client's address, for rate limits and audit logs (shared/client_ip.py). Behind Front Door and the ingress
+    # the socket peer is a proxy. A request stamped with this Front Door's id is given the address Front Door
+    # saw; TRUSTED_PROXY_HOPS is only the fallback for requests that did not come through it (0 = unknown).
+    AZURE_FRONT_DOOR_ID = var.front_door_id
+    REQUIRE_FRONT_DOOR  = tostring(var.require_front_door)
+    TRUSTED_PROXY_HOPS  = tostring(var.trusted_proxy_hops)
     # Stamped on every structured log line, and read by the notification
     # recipient guard ("production" disables it).
     ENVIRONMENT = var.environment_name

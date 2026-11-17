@@ -42,9 +42,10 @@ API has neither, and the Terraform never implemented it.
 * Per-client limits need the real client address, which `requestContext.identity.sourceIp` does not provide on
   an HTTP API (it is `requestContext.http.sourceIp`; handlers had been recording no IP at all in production
   audit logs). `shared/client_ip.py` reads both. Behind the container deployment's proxies the socket peer is
-  a proxy, so `TRUSTED_PROXY_HOPS` says how many append to `X-Forwarded-For`; unset and behind a proxy, the
-  address is treated as **unknown** and per-address limits are skipped rather than lumping every user into
-  one bucket.
+  a proxy. Since 2026-11-17 a request stamped with the deployment's own Front Door id is given the address
+  Front Door recorded (`X-Azure-SocketIP`); any other request's address is treated as **unknown** and
+  per-address limits are skipped rather than lumping every user into one bucket (`TRUSTED_PROXY_HOPS` remains
+  as a fallback where there is no Front Door).
 * The wrong-guess limit on a tracking code can be used to lock the code's legitimate owner out for an hour.
   Phone numbers are not guessable at 10 an hour, so the exposure is denial of that one code, not disclosure.
 * 600/min per tenant is a guess at a ceiling; tune it with `RATE_LIMIT_TENANT` once real traffic is known.

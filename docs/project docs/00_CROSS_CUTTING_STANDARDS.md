@@ -507,9 +507,12 @@ Four controls, each at a chokepoint rather than in every handler. ADR-006 and AD
   Lambda, which cannot reach Redis; those routes get API Gateway per-route throttles.
 - **The client address is trustworthy (SEC-03).** `shared/client_ip.py` reads `requestContext.http.sourceIp`
   (HTTP API) then `identity.sourceIp`, which fixes audit logs that recorded no address in production. On the
-  container app `TRUSTED_PROXY_HOPS` is the number of proxies that append to `X-Forwarded-For`; the client is
-  that many entries from the end. Unset behind a proxy, the address is *unknown*: audit logs record none and
-  per-address limits are skipped, rather than one bucket for everybody.
+  Azure container app (2026-11-17) a request stamped with this deployment's Front Door id (`X-Azure-FDID` equal to
+  `AZURE_FRONT_DOOR_ID`) is given the address Front Door itself recorded (`X-Azure-SocketIP`), which a client
+  cannot influence; nobody has to count proxies. A request that did not come through Front Door has an
+  *unknown* address (audit logs record none and per-address limits are skipped, rather than one bucket for
+  everybody) unless `TRUSTED_PROXY_HOPS` says how many known proxies append to `X-Forwarded-For`.
+  `REQUIRE_FRONT_DOOR=true` refuses such requests outright.
 
 ---
 

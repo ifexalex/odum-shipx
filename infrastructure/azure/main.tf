@@ -71,10 +71,32 @@ resource "azurerm_user_assigned_identity" "app" {
   tags                = local.common_tags
 }
 
-module "frontend" {
-  source = "./modules/frontend"
+# The Front Door profile lives here, not inside module.frontend, because two things need it that also need each
+# other: module.frontend routes /v1/* to the API container app, and the container app needs this profile's id to
+# recognise requests Front Door forwarded (shared/client_ip.py). Inside the module that is a dependency cycle.
+resource "azurerm_cdn_frontdoor_profile" "frontend" {
   # Optional: Front Door is forbidden on Free Trial/Student subscriptions.
   count = var.enable_frontend ? 1 : 0
+
+  name                = "${local.name_prefix}-fd"
+  resource_group_name = azurerm_resource_group.main.name
+  sku_name            = "Standard_AzureFrontDoor"
+  tags                = local.common_tags
+}
+
+# The profile was created inside the module before 2026-11-17. This keeps an existing deployment's profile (and
+# with it the public hostname) instead of destroying and recreating it.
+moved {
+  from = module.frontend[0].azurerm_cdn_frontdoor_profile.frontend
+  to   = azurerm_cdn_frontdoor_profile.frontend[0]
+}
+
+module "frontend" {
+  source = "./modules/frontend"
+  count  = var.enable_frontend ? 1 : 0
+
+  frontdoor_profile_id   = azurerm_cdn_frontdoor_profile.frontend[0].id
+  frontdoor_profile_name = azurerm_cdn_frontdoor_profile.frontend[0].name
 
   name_prefix             = local.name_prefix
   resource_group_name     = azurerm_resource_group.main.name
@@ -286,7 +308,11 @@ module "container_app" {
   # same no-cycle reason as entra_redirect_uri above.
   app_base_url = var.app_base_url
 
-  # Client address for rate limits and audit logs; 0 until the hop count is verified. modules/container_app/variables.tf.
+  # Client address for rate limits and audit logs. The app trusts Front Door's own record of it on requests that
+  # carry this Front Door's id, so no proxy count has to be measured. "" when Front Door is not deployed.
+  front_door_id      = try(azurerm_cdn_frontdoor_profile.frontend[0].resource_guid, "")
+  require_front_door = var.require_front_door
+  # Fallback for requests that did not come through Front Door; 0 = their address is treated as unknown.
   trusted_proxy_hops = var.trusted_proxy_hops
 
   # Notification channels. SMS and WhatsApp were not wired to this deployment at
