@@ -11,6 +11,7 @@ from decimal import Decimal
 from typing import Any
 
 from services.refunds import repository as refund_repo
+from shared import uploads
 from shared.audit import log_audit
 from shared.db import tenant_transaction
 from shared.events import publish_event
@@ -26,7 +27,6 @@ from shared.notifications import enqueue_notifications
 from shared.providers import get_storage_provider
 from shared.staff_notifications import notify_staff
 from shared.tenant_context import UserRole
-from shared.validation import safe_filename
 
 from . import repository as repo
 from .models import MissingItemStatus, SeizedItemStatus
@@ -37,8 +37,6 @@ logger = logging.getLogger(__name__)
 # S3 configuration
 # ---------------------------------------------------------------------------
 
-_ALLOWED_CONTENT_TYPES = frozenset({"image/jpeg", "image/png", "application/pdf"})
-_MAX_FILE_SIZE = 10 * 1024 * 1024  # 10 MB
 _URL_EXPIRY = 3600  # 1 hour
 
 # ---------------------------------------------------------------------------
@@ -583,20 +581,15 @@ def generate_presigned_url(
     content_type: str,
     actor_id: str,
 ) -> dict[str, Any]:
-    if content_type not in _ALLOWED_CONTENT_TYPES:
-        raise BusinessRuleViolationError(
-            f"content_type '{content_type}' is not allowed. Allowed: {', '.join(sorted(_ALLOWED_CONTENT_TYPES))}",
-            rule_id="INVALID_CONTENT_TYPE",
-        )
+    uploads.EVIDENCE.check_content_type(content_type)
 
     claim = repo.get_damage_claim_by_id(tenant_id, claim_id)
     if not claim:
         raise ResourceNotFoundError("damage_claim", claim_id)
 
-    filename = safe_filename(filename)
-    file_key = f"{tenant_id}/claims/{claim_id}/{filename}"
-
-    ticket = get_storage_provider().presigned_upload(file_key, content_type=content_type, expires_in=_URL_EXPIRY)
+    upload = uploads.presign_upload(uploads.EVIDENCE, tenant_id, ("claims", claim_id), filename, content_type)
+    file_key = upload.key
+    filename = file_key.rsplit("/", 1)[-1]
 
     evidence = repo.create_claim_evidence(
         {
@@ -610,7 +603,7 @@ def generate_presigned_url(
     )
 
     return {
-        **ticket.as_response(),
+        **upload.as_response(),
         "evidence_id": str(evidence["id"]) if evidence else None,
         "file_key": file_key,
     }

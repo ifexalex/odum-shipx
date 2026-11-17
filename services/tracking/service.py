@@ -9,6 +9,7 @@ from typing import Any
 
 from services.billing.service import generate_container_invoices
 from services.metering.service import check_container_limit
+from shared import uploads
 from shared.audit import log_audit
 from shared.events import publish_event
 from shared.exceptions import (
@@ -27,9 +28,7 @@ from . import repository as repo
 from .models import TrackingStage
 
 _URL_EXPIRY = 900  # 15 minutes
-_MAX_FILE_SIZE = 20 * 1024 * 1024  # 20 MB
 _ALLOWED_DOCUMENT_TYPES = frozenset({"bill_of_lading", "customs_certificate", "insurance", "inspection_report", "other"})
-_ALLOWED_CONTENT_TYPES = frozenset({"application/pdf", "image/jpeg", "image/png", "image/webp", "application/octet-stream"})
 
 logger = logging.getLogger(__name__)
 
@@ -636,13 +635,7 @@ def generate_document_presigned_url(
     S3 key is scoped to {tenant_id}/containers/{container_id}/ to enforce
     tenant isolation.
     """
-    if content_type not in _ALLOWED_CONTENT_TYPES:
-        from shared.exceptions import BusinessRuleViolationError
-
-        raise BusinessRuleViolationError(
-            f"content_type '{content_type}' not allowed. Allowed: {', '.join(sorted(_ALLOWED_CONTENT_TYPES))}",
-            rule_id="INVALID_CONTENT_TYPE",
-        )
+    uploads.CONTAINER_DOCUMENT.check_content_type(content_type)
     if document_type not in _ALLOWED_DOCUMENT_TYPES:
         from shared.exceptions import BusinessRuleViolationError
 
@@ -655,10 +648,9 @@ def generate_document_presigned_url(
     if not container:
         raise ResourceNotFoundError("container", container_id)
 
-    filename = safe_filename(filename)
-    s3_key = f"{tenant_id}/containers/{container_id}/{filename}"
-
-    ticket = get_storage_provider().presigned_upload(s3_key, content_type=content_type, expires_in=_URL_EXPIRY)
+    upload = uploads.presign_upload(uploads.CONTAINER_DOCUMENT, tenant_id, ("containers", container_id), filename, content_type)
+    s3_key = upload.key
+    filename = s3_key.rsplit("/", 1)[-1]
 
     doc = repo.create_container_document(
         tenant_id,
@@ -674,10 +666,10 @@ def generate_document_presigned_url(
     )
 
     return {
-        **ticket.as_response(),
+        **upload.as_response(),
         "document_id": str(doc["id"]) if doc else None,
         "s3_key": s3_key,
-        "expires_in_seconds": _URL_EXPIRY,
+        "expires_in_seconds": upload.expires_in,
     }
 
 

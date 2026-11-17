@@ -1754,3 +1754,7 @@ The screen maps moved out of `shell/routes.tsx` into `shell/screens.tsx`: `PUBLI
 
 Guard: `routes.test.tsx` "every route has a real screen" — one case per route, plus no screen without a route or under the wrong guard (a guarded page in `PUBLIC_SCREENS` would skip `RoleGuard`) and no duplicate path. The FE-02 code-splitting check now reads `routes.tsx` and `screens.tsx` together. Both mutation-checked; the production build still emits the entry chunk at 168 kB.
 
+## Container document upload refuses an untyped file (audit BE-12, 2026-11-17)
+
+`ContainerDetail`'s Documents tab sent `file.type || 'application/octet-stream'`; the server no longer accepts the unknown type, so the dialog now refuses a file whose browser type is not PDF, JPEG, PNG or WebP ("Choose a PDF, JPEG, PNG or WebP file.") without calling the API. **Ground-truth gap fixed:** upload errors were set on the tab's page banner, which sits behind the dialog's overlay, so a failed upload looked like nothing happened; they now render inside the dialog (`uploadError`), cleared when a new file is picked or the dialog reopens. Tests: `ContainerDetail.test.tsx` (+3).
+

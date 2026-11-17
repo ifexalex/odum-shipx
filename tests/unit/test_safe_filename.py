@@ -81,7 +81,7 @@ class TestUploadFlowsSanitiseTheKeyAndTheStoredName:
 
         storage = _storage()
         with (
-            patch.object(service, "get_storage_provider", return_value=storage),
+            patch("shared.uploads.get_storage_provider", return_value=storage),
             patch.object(service.repo, "get_damage_claim_by_id", return_value={"id": "c1"}),
             patch.object(service.repo, "create_claim_evidence", return_value={"id": "e1"}) as create,
         ):
@@ -96,7 +96,7 @@ class TestUploadFlowsSanitiseTheKeyAndTheStoredName:
 
         storage = _storage()
         with (
-            patch.object(service, "get_storage_provider", return_value=storage),
+            patch("shared.uploads.get_storage_provider", return_value=storage),
             patch.object(service.repo, "get_manifest_by_id", return_value={"id": "m1"}),
             patch.object(service.repo, "create_manifest_evidence", return_value={"id": "e1"}) as create,
         ):
@@ -110,7 +110,7 @@ class TestUploadFlowsSanitiseTheKeyAndTheStoredName:
 
         storage = _storage()
         with (
-            patch.object(service, "get_storage_provider", return_value=storage),
+            patch("shared.uploads.get_storage_provider", return_value=storage),
             patch.object(service.repo, "get_container_by_id", return_value={"id": "k1"}),
             patch.object(service.repo, "create_container_document", return_value={"id": "d1"}) as create,
         ):
@@ -128,7 +128,7 @@ class TestUploadFlowsSanitiseTheKeyAndTheStoredName:
         storage = _storage()
         ctx = TenantContext(tenant_id=TENANT, user_id="user-1", role=UserRole.NIGERIA_OFFICE_STAFF)
         with (
-            patch.object(service, "get_storage_provider", return_value=storage),
+            patch("shared.uploads.get_storage_provider", return_value=storage),
             patch.object(service.repo, "get_billing_by_id", return_value={"id": "b1", "customer_id": "cu1"}),
         ):
             result = service.generate_payment_claim_upload_url(TENANT, "b1", HOSTILE, "image/png", ctx)
@@ -140,7 +140,7 @@ class TestUploadFlowsSanitiseTheKeyAndTheStoredName:
 
         storage = _storage()
         with (
-            patch.object(service, "get_storage_provider", return_value=storage),
+            patch("shared.uploads.get_storage_provider", return_value=storage),
             patch.object(service.repo, "get_damage_claim_by_id", return_value={"id": "c1"}),
             pytest.raises(ValidationError),
         ):

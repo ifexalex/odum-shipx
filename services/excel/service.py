@@ -9,6 +9,7 @@ from datetime import date, datetime, timedelta
 from io import BytesIO
 from typing import Any
 
+from shared import uploads
 from shared.audit import log_audit
 from shared.exceptions import BusinessRuleViolationError, ResourceNotFoundError
 from shared.phone import dial_code_for_country, normalize_phone
@@ -615,10 +616,6 @@ def export_receipt_pdf(
 # Packing list import — presigned upload
 # ---------------------------------------------------------------------------
 
-_IMPORT_URL_EXPIRY = 900  # 15 minutes
-_IMPORT_MAX_FILE_SIZE = 10 * 1024 * 1024  # 10 MB
-_IMPORT_ALLOWED_CONTENT_TYPES = frozenset({"application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"})
-
 
 def generate_import_presigned_url(tenant_id: str, content_type: str) -> dict[str, Any]:
     """Generate an S3 presigned POST URL for uploading a packing-list import .xlsx.
@@ -629,20 +626,8 @@ def generate_import_presigned_url(tenant_id: str, content_type: str) -> dict[str
     POST /v1/packing-lists/import and never listed or referenced again, so
     there's nothing to persist (unlike claim evidence or container documents).
     """
-    if content_type not in _IMPORT_ALLOWED_CONTENT_TYPES:
-        raise BusinessRuleViolationError(
-            f"content_type '{content_type}' not allowed. Allowed: {', '.join(sorted(_IMPORT_ALLOWED_CONTENT_TYPES))}",
-            rule_id="INVALID_CONTENT_TYPE",
-        )
-
-    file_key = f"{tenant_id}/imports/{uuid.uuid4()}.xlsx"
-
-    ticket = get_storage_provider().presigned_upload(file_key, content_type=content_type, expires_in=_IMPORT_URL_EXPIRY)
-
-    return {
-        **ticket.as_response(),
-        "file_key": file_key,
-    }
+    upload = uploads.presign_upload(uploads.SPREADSHEET_IMPORT, tenant_id, ("imports",), f"{uuid.uuid4()}.xlsx", content_type)
+    return {**upload.as_response(), "file_key": upload.key}
 
 
 # ---------------------------------------------------------------------------

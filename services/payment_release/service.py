@@ -10,7 +10,7 @@ from datetime import UTC, date, datetime, timedelta
 from decimal import Decimal
 from typing import Any
 
-from shared import pickup_code
+from shared import pickup_code, uploads
 from shared.audit import log_audit
 from shared.events import publish_event
 from shared.exceptions import (
@@ -37,8 +37,6 @@ _TOLERANCE = Decimal("0.01")
 # S3 configuration for payment-claim evidence
 # ---------------------------------------------------------------------------
 
-_ALLOWED_CONTENT_TYPES = frozenset({"image/jpeg", "image/png", "application/pdf"})
-_MAX_FILE_SIZE = 10 * 1024 * 1024  # 10 MB
 _URL_EXPIRY = 3600  # 1 hour
 
 
@@ -170,22 +168,14 @@ def generate_payment_claim_upload_url(
     content_type: str,
     ctx: Any,
 ) -> dict[str, Any]:
-    if content_type not in _ALLOWED_CONTENT_TYPES:
-        raise BusinessRuleViolationError(
-            f"content_type '{content_type}' is not allowed. Allowed: {', '.join(sorted(_ALLOWED_CONTENT_TYPES))}",
-            rule_id="INVALID_CONTENT_TYPE",
-        )
+    uploads.EVIDENCE.check_content_type(content_type)
 
     billing = repo.get_billing_by_id(tenant_id, billing_id)
     if not billing or not _customer_owns_billing(tenant_id, ctx, billing):
         raise ResourceNotFoundError("billing", billing_id)
 
-    filename = safe_filename(filename)
-    file_key = f"{tenant_id}/payment-claims/{billing_id}/{filename}"
-
-    ticket = get_storage_provider().presigned_upload(file_key, content_type=content_type, expires_in=_URL_EXPIRY)
-
-    return {"file_key": file_key, **ticket.as_response()}
+    upload = uploads.presign_upload(uploads.EVIDENCE, tenant_id, ("payment-claims", billing_id), filename, content_type)
+    return {"file_key": upload.key, **upload.as_response()}
 
 
 def submit_payment_claim(

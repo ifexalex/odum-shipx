@@ -405,17 +405,26 @@ function DocumentsTab({ containerId, containerNumber }: { containerId: string; c
   const [docType, setDocType] = useState<ContainerDocumentType>('bill_of_lading')
   const [file, setFile] = useState<File | null>(null)
   const [uploading, setUploading] = useState(false)
+  // Shown inside the upload dialog: the page's own banner sits behind the dialog's overlay, where a refused file or a
+  // failed upload read as "nothing happened".
+  const [uploadError, setUploadError] = useState<string | null>(null)
   const [downloadingId, setDownloadingId] = useState<string | null>(null)
 
 
   async function handleUpload(): Promise<void> {
     if (!file) return
+    // The server accepts only these types and signs the declared one into the upload URL. A file the browser cannot
+    // type (no extension, an unusual one) used to be sent as application/octet-stream, which let anything through.
+    if (!DOC_ACCEPT.split(',').includes(file.type)) {
+      setUploadError('Choose a PDF, JPEG, PNG or WebP file.')
+      return
+    }
     setUploading(true)
-    setActionError(null)
+    setUploadError(null)
     try {
       const presigned = await containerDocumentsApi.presignUpload(containerId, {
         filename: file.name,
-        content_type: file.type || 'application/octet-stream',
+        content_type: file.type,
         document_type: docType,
       })
       await uploadToPresignedUrl(presigned, file)
@@ -428,7 +437,7 @@ function DocumentsTab({ containerId, containerNumber }: { containerId: string; c
       // otherwise tell this list the new document exists.
       await qc.invalidateQueries({ queryKey: containerKeys.documents(containerId) })
     } catch (err) {
-      setActionError(err instanceof ApiError ? err.message : 'Upload failed. Please try again.')
+      setUploadError(err instanceof ApiError ? err.message : 'Upload failed. Please try again.')
     } finally {
       setUploading(false)
     }
@@ -461,7 +470,7 @@ function DocumentsTab({ containerId, containerNumber }: { containerId: string; c
             title="Documents"
             sub="Bill of lading, customs forms, inspection reports"
             action={
-              <Button variant="primary" size="sm" icon="upload" onClick={() => setShowUpload(true)}>
+              <Button variant="primary" size="sm" icon="upload" onClick={() => { setUploadError(null); setFile(null); setShowUpload(true) }}>
                 Upload document
               </Button>
             }
@@ -505,6 +514,11 @@ function DocumentsTab({ containerId, containerNumber }: { containerId: string; c
           <div className={styles.modalPanel} onClick={(e) => e.stopPropagation()} role="dialog" aria-modal="true">
             <h3 className={styles.modalTitle}>Upload document</h3>
             <p className={styles.modalBody}>Container {containerNumber ?? containerId}</p>
+            {uploadError && (
+              <div className={styles.modalBanner}>
+                <Banner variant="error">{uploadError}</Banner>
+              </div>
+            )}
 
             <div>
               <label style={{ fontWeight: 600, fontSize: '0.875rem', display: 'block', marginBottom: 6 }}>
@@ -528,7 +542,10 @@ function DocumentsTab({ containerId, containerNumber }: { containerId: string; c
               <input
                 type="file"
                 accept={DOC_ACCEPT}
-                onChange={(e) => setFile(e.target.files?.[0] ?? null)}
+                onChange={(e) => {
+                  setFile(e.target.files?.[0] ?? null)
+                  setUploadError(null)
+                }}
                 style={{ fontSize: '0.8125rem' }}
               />
               <div style={{ fontSize: 11, color: 'var(--color-ink-4)', marginTop: 6 }}>

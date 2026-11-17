@@ -319,6 +319,8 @@ user pool, not `MagicMock`, so these exercise the actual boto3 call shapes):
   tenant's or `platform_admin`'s groups, empty desired-roles removes everything for
   that tenant.
 
+Backend — `tests/unit/test_uploads.py` (audit BE-12, 2026-11-17): every policy refuses `application/octet-stream` and a policy cannot declare it; keys stay under a UUID tenant prefix with server-chosen segments; a refused type never reaches storage; each of the five upload endpoints refuses the unknown type before any repository call. Upload tests now patch `shared.uploads.get_storage_provider`. Frontend `ContainerDetail.test.tsx` (+3): an untyped file is refused in the dialog without a request, the real type is sent, a server refusal shows inside the dialog.
+
 Backend — `tests/unit/test_tenant_management.py`:
 - `TestAccessEmailsAreAudited` (audit SEC-07, 2026-11-17) — through the handler, resend-invite,
   reset-password and resend-activation each write one `audit_log` row (`INVITE_RESENT`,

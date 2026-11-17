@@ -274,7 +274,7 @@ class TestEvidenceUpload:
         )
         with (
             patch.object(service.repo, "get_manifest_by_id", return_value=_manifest()),
-            patch.object(service, "get_storage_provider", return_value=storage),
+            patch("shared.uploads.get_storage_provider", return_value=storage),
             patch.object(service.repo, "create_manifest_evidence", return_value={"id": "ev-1"}) as mock_create,
         ):
             result = service.generate_evidence_upload(
