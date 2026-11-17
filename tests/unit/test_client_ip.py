@@ -17,6 +17,7 @@ from shared.client_ip import (
     resolve_edge_client_ip,
     trusted_proxy_hops,
 )
+from tests.patching import patch_tenant_management
 
 
 class TestClientIpFromTheEvent:
@@ -102,7 +103,6 @@ class TestTrustedProxyHops:
 class TestHandlersUseIt:
     def test_a_handler_records_the_address_from_the_http_api_event(self):
         """Production events carry it at requestContext.http.sourceIp; the handlers used to read only identity."""
-        from services.tenant_management import service
         from services.tenant_management.handler import lambda_handler
 
         event = {
@@ -113,7 +113,7 @@ class TestHandlersUseIt:
             "headers": {},
             "body": json.dumps({"name": "Ngozi", "email": "ngozi@example.test", "phone": "08012345678"}),
         }
-        with patch.object(service, "self_register_customer", return_value=None) as register:
+        with patch_tenant_management("self_register_customer", return_value=None) as register:
             lambda_handler(event, None)
         assert register.call_args.kwargs["ip_address"] == "203.0.113.7"
 

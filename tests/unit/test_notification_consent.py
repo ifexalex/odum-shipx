@@ -20,6 +20,7 @@ import pytest
 
 import shared.notifications as notifications
 from shared import notification_consent as consent
+from tests.patching import patch_tenant_management
 
 TENANT = "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa"
 CUSTOMER = "cccccccc-cccc-cccc-cccc-cccccccccccc"
@@ -351,10 +352,10 @@ class TestRecordingAChoice:
 
         saved: dict = {}
         with (
-            patch.object(service, "get_customer", return_value={"id": CUSTOMER}),
-            patch.object(service, "_normalize_customer_phones", side_effect=lambda t, u: u),
+            patch_tenant_management("get_customer", return_value={"id": CUSTOMER}),
+            patch("services.tenant_management.customers._normalize_customer_phones", side_effect=lambda t, u: u),
             patch.object(service.repo, "update_customer", side_effect=lambda t, c, u: saved.update(u) or {"id": c, **u}),
-            patch.object(service, "log_audit"),
+            patch_tenant_management("log_audit"),
         ):
             service.update_customer(TENANT, CUSTOMER, updates, actor_id="staff-1")
         return saved
@@ -397,8 +398,8 @@ class TestRecordingAChoice:
             patch.object(service.repo, "get_customer_by_email", return_value=None),
             patch.object(service.repo, "create_tenant_user", return_value={"id": "tu-1"}),
             patch.object(service.repo, "create_customer", side_effect=lambda t, d: created.update(d) or {"id": "c1"}),
-            patch("services.tenant_management.service.get_identity_provider", return_value=cognito),
-            patch("services.tenant_management.service.log_audit"),
+            patch_tenant_management("get_identity_provider", return_value=cognito),
+            patch_tenant_management("log_audit"),
             patch("shared.notifications.enqueue_notifications"),
         ):
             service.self_register_customer(CustomerRegistrationRequest(**fields), slug="acme")

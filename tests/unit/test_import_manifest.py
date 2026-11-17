@@ -9,6 +9,7 @@ from openpyxl.styles import Font
 
 from services.excel.import_manifest import parse_manifest_xlsx
 from shared.tenant_context import TenantContext, UserRole
+from tests.patching import patch_tenant_management
 
 TENANT_ID = "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa"
 
@@ -166,7 +167,7 @@ class TestProcessManifestImport:
             patch.object(service.repo, "get_existing_tracking_code", return_value=None),
             patch.object(service.repo, "get_next_tracking_sequence", return_value=1),
             patch.object(service.repo, "insert_manifest_items") as mock_insert_items,
-            patch("services.tenant_management.service.issue_customer_invite") as mock_issue_invite,
+            patch_tenant_management("issue_customer_invite") as mock_issue_invite,
         ):
             mock_gsp.return_value.get_object.return_value = buf.getvalue()
 
@@ -211,7 +212,7 @@ class TestProcessManifestImport:
             patch.object(service.repo, "get_existing_tracking_code", return_value=None),
             patch.object(service.repo, "get_next_tracking_sequence", return_value=1),
             patch.object(service.repo, "insert_manifest_items"),
-            patch("services.tenant_management.service.issue_customer_invite") as mock_issue_invite,
+            patch_tenant_management("issue_customer_invite") as mock_issue_invite,
         ):
             mock_gsp.return_value.get_object.return_value = buf.getvalue()
 
@@ -251,7 +252,7 @@ class TestProcessManifestImport:
             patch.object(service.repo, "get_existing_tracking_code", return_value=None),
             patch.object(service.repo, "get_next_tracking_sequence", return_value=1),
             patch.object(service.repo, "insert_manifest_items") as mock_insert_items,
-            patch("services.tenant_management.service.issue_customer_invite"),
+            patch_tenant_management("issue_customer_invite"),
         ):
             mock_gsp.return_value.get_object.return_value = buf.getvalue()
 

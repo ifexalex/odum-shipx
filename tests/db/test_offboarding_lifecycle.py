@@ -17,6 +17,7 @@ from unittest.mock import MagicMock, patch
 import pytest
 
 from tests.db.support import _make_invoice, _rows
+from tests.patching import patch_tenant_management
 
 pytestmark = pytest.mark.db
 
@@ -133,7 +134,7 @@ def _offboard(tenant_id: str) -> None:
     from services.tenant_management import service
 
     with (
-        patch.object(service, "get_identity_provider", return_value=MagicMock()),
+        patch_tenant_management("get_identity_provider", return_value=MagicMock()),
         patch("shared.auth._tenant_status_cache", MagicMock()),
     ):
         service.offboard_tenant(tenant_id, actor_id="platform-admin-test")

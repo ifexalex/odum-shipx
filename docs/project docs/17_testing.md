@@ -319,6 +319,8 @@ user pool, not `MagicMock`, so these exercise the actual boto3 call shapes):
   tenant's or `platform_admin`'s groups, empty desired-roles removes everything for
   that tenant.
 
+`tests/patching.py::patch_tenant_management(name, ...)` (audit BE-13, 2026-11-17): patches a collaborator in every module `services/tenant_management/service.py` was split into, with one shared mock. Use it where several modules use the name; otherwise patch the one module (`services.tenant_management.<module>.<name>`). Patching `service.<name>` no longer reaches the code.
+
 Frontend — `pages/china/ChinaWorkQueue.test.tsx` (audit UX-10, 2026-11-17): each queue reads its list with the right filter, shows the total (or counted rows with "+"), its first rows and an empty message, links to its filtered list, opens a row, and survives one queue failing. `DisputeList.test.tsx` covers `?status=` from a link and an unknown value.
 
 Backend — `tests/unit/test_invoice_rate_source.py` (audit BE-11, 2026-11-17): live and recent last-known rates are recorded without a notice; an old last-known rate notifies tenant admins (age limit from `FX_RATE_MAX_AGE_MINUTES`, nonsense values ignored); the hard-coded rate writes no invoice (`RATE_UNAVAILABLE`) and the container run tells staff; the source shows on the staff invoice and not the customer's. `tests/db/test_invoice_rate_source.py` runs the whole invoicing path against Postgres with the feed cut. Both mutation-checked.

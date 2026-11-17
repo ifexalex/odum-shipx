@@ -12,6 +12,7 @@ from unittest.mock import MagicMock, patch
 import pytest
 
 from shared.exceptions import DuplicateResourceError
+from tests.patching import patch_tenant_management
 
 pytestmark = pytest.mark.db
 
@@ -27,9 +28,9 @@ def _register(world, email: str, cognito: MagicMock, enqueue: MagicMock) -> dict
         "cookies": [],
     }
     with (
-        patch("services.tenant_management.service.get_identity_provider", return_value=cognito),
-        patch("services.tenant_management.service.log_audit"),
-        patch("services.tenant_management.service.login_url", return_value="https://app.shipx.test/login"),
+        patch_tenant_management("get_identity_provider", return_value=cognito),
+        patch_tenant_management("log_audit"),
+        patch("services.tenant_management.customers.login_url", return_value="https://app.shipx.test/login"),
         patch("shared.notifications.enqueue_notifications", enqueue),
     ):
         return handler.lambda_handler(event, None)

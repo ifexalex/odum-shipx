@@ -16,6 +16,7 @@ from shared import rate_limit
 from shared.exceptions import AuthenticationRequiredError, RateLimitExceededError, ResourceNotFoundError
 from shared.tenant_context import UserRole
 from tests.browser import BROWSER_HEADERS
+from tests.patching import patch_tenant_management
 
 
 class FakeWindowCache:
@@ -275,32 +276,30 @@ class TestRegistrationRoutes:
         return handler.lambda_handler(event, None)
 
     def test_registration_is_limited_per_address(self, cache):
-        from services.tenant_management import service
 
-        with patch.object(service, "self_register_customer", return_value=None):
+        with patch_tenant_management("self_register_customer", return_value=None):
             for _ in range(rate_limit.REGISTER_IP.limit):
                 assert self._register("203.0.113.5")["statusCode"] == 202
             _assert_limited(self._register("203.0.113.5"))
             assert self._register("203.0.113.6")["statusCode"] == 202, "another address is unaffected"
 
     def test_onboarding_requests_are_limited_per_address(self, cache):
-        from services.tenant_management import handler, service
+        from services.tenant_management import handler
 
         lead = {"company_name": "Acme Freight", "contact_name": "Ada Obi", "contact_email": "ops@acme.com"}
 
         def post(ip: str) -> dict:
             return handler.lambda_handler(_event(ip, path="/v1/onboarding-requests", body=json.dumps(lead)), None)
 
-        with patch.object(service, "create_onboarding_request", return_value={"id": "x", "status": "new"}):
+        with patch_tenant_management("create_onboarding_request", return_value={"id": "x", "status": "new"}):
             for _ in range(rate_limit.ONBOARDING_IP.limit):
                 assert post("203.0.113.5")["statusCode"] == 201
             _assert_limited(post("203.0.113.5"))
             assert post("203.0.113.6")["statusCode"] == 201
 
     def test_a_refused_registration_creates_nothing(self, cache):
-        from services.tenant_management import service
 
-        with patch.object(service, "self_register_customer", return_value=None) as register:
+        with patch_tenant_management("self_register_customer", return_value=None) as register:
             for _ in range(rate_limit.REGISTER_IP.limit + 3):
                 self._register("203.0.113.5")
         assert register.call_count == rate_limit.REGISTER_IP.limit

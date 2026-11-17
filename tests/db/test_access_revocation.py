@@ -10,12 +10,13 @@ audit log are stubbed.
 """
 
 import uuid
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock
 
 import pytest
 
 from shared.exceptions import AuthenticationRequiredError, TenantSuspendedError
 from shared.tenant_context import UserRole
+from tests.patching import patch_tenant_management
 
 pytestmark = pytest.mark.db
 
@@ -58,8 +59,8 @@ def _deactivate(world, user_id: str, cognito=None):
     from services.tenant_management import service
 
     with (
-        patch("services.tenant_management.service.get_identity_provider", return_value=cognito or MagicMock()),
-        patch("services.tenant_management.service.log_audit"),
+        patch_tenant_management("get_identity_provider", return_value=cognito or MagicMock()),
+        patch_tenant_management("log_audit"),
     ):
         return service.deactivate_user(world["tenant"], user_id, actor_id=world["user"])
 
@@ -159,8 +160,8 @@ class TestErasedCustomerLosesTheirLogin:
 
         cognito = MagicMock()
         with (
-            patch("services.tenant_management.service.get_identity_provider", return_value=cognito),
-            patch("services.tenant_management.service.log_audit") as audit,
+            patch_tenant_management("get_identity_provider", return_value=cognito),
+            patch_tenant_management("log_audit") as audit,
         ):
             service.anonymise_customer(world["tenant"], customer_id, actor_id=world["user"])
 
@@ -187,8 +188,8 @@ class TestErasedCustomerLosesTheirLogin:
 
         cognito = MagicMock()
         with (
-            patch("services.tenant_management.service.get_identity_provider", return_value=cognito),
-            patch("services.tenant_management.service.log_audit"),
+            patch_tenant_management("get_identity_provider", return_value=cognito),
+            patch_tenant_management("log_audit"),
         ):
             service.anonymise_customer(world["tenant"], world["customers"][1], actor_id=world["user"])
 
@@ -203,8 +204,8 @@ class TestErasedCustomerLosesTheirLogin:
         cognito = MagicMock()
         cognito.disable_user.side_effect = ExternalServiceError("Cognito", "unavailable")
         with (
-            patch("services.tenant_management.service.get_identity_provider", return_value=cognito),
-            patch("services.tenant_management.service.log_audit"),
+            patch_tenant_management("get_identity_provider", return_value=cognito),
+            patch_tenant_management("log_audit"),
         ):
             with pytest.raises(ExternalServiceError):
                 service.anonymise_customer(world["tenant"], customer_id, actor_id=world["user"])

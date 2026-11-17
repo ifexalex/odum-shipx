@@ -911,3 +911,23 @@ Repository functions (`insert_onboarding_request`, `list_onboarding_requests`, `
 **Verified locally (2026-11-17).** Migration 067 applied to the dev database. `tests/db/test_offboarding_lifecycle.py` offboards a tenant with rows in 20+ tables, writes the archive to local S3 (Moto), reads it back (no secrets or token hashes in the bytes, the ID number decrypted), then runs the cleanup's deletion against real foreign keys and finds nothing left; it fails if the delete order is reversed, a table is dropped from the inventory, or support sessions are left. Not yet run on AWS S3 or Azure Blob.
 
 Tests: `tests/unit/test_tenant_offboarding_export.py` (29), `test_offboarding_export.py` (25), `test_data_cleanup.py` (11), `test_tenant_data.py` (60). Mutation-checked: 12 protections removed one at a time, each caught.
+
+## Implementation notes — the service split by sub-domain (audit BE-13, 2026-11-17)
+
+`services/tenant_management/service.py` was 3,041 lines. The code moved, unchanged (every one of its 103 definitions compares equal before and after), into eight modules, none over 800 lines:
+
+| Module | Holds |
+|---|---|
+| `tenants.py` | tenant creation and lifecycle (suspend, activate, offboard, reactivate), onboarding leads, platform dashboard and activity |
+| `offboarding_export.py` | a leaving tenant's data export (BE-10) |
+| `activation.py` | account activation; the audit record for access emails (SEC-07) |
+| `users.py` | staff users |
+| `customers.py` | customers, GDPR erasure and export, self-registration, invites |
+| `tenant_config.py` | config keys, webhook, Paystack, notification templates, tenant report |
+| `rates.py` | dollar-rate markup, CBM rates, charge types, container capacities |
+| `platform.py` | platform settings, plans, quota overrides, notification gateways |
+
+`service.py` is now the entry point: it re-exports every public function (and `repo`), so `handler.py`, `services/excel` and every caller still use `service.<name>`. Dependencies run one way: `tenants` → `activation`; `users` → `tenants`, `activation`; `customers` → `users`; `offboarding_export` → `tenants`.
+
+Tests: no assertion changed; only patch targets moved. A collaborator held by one module is patched there (`patch("services.tenant_management.rates.get_effective_dollar_rate")`); one several modules use (`log_audit`, `get_identity_provider`, a public function a handler test stubs) goes through `tests/patching.py::patch_tenant_management`, which patches it in every module with one shared mock — what the old single `patch.object(service, ...)` did.
+

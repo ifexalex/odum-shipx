@@ -6,6 +6,8 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
+from services.tenant_management import customers
+from shared.app_urls import MissingBaseUrlError
 from shared.exceptions import (
     BusinessRuleViolationError,
     DuplicateResourceError,
@@ -14,6 +16,7 @@ from shared.exceptions import (
     UsageLimitExceededError,
     ValidationError,
 )
+from tests.patching import patch_tenant_management
 
 TENANT_ID = "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa"
 
@@ -116,12 +119,12 @@ class TestCreateTenantNotifiesOnboarding:
         service, tenant, admin_user, mock_cognito = self._run()
 
         with (
-            patch.object(service, "get_identity_provider", return_value=mock_cognito),
+            patch_tenant_management("get_identity_provider", return_value=mock_cognito),
             patch.object(service.repo, "create_tenant", return_value=tenant),
             patch.object(service.repo, "create_tenant_user", return_value=admin_user),
             patch.object(service.repo, "upsert_config"),
             patch.object(service.repo, "insert_platform_audit"),
-            patch("services.tenant_management.service.publish_event"),
+            patch("services.tenant_management.tenants.publish_event"),
             patch("shared.notifications.enqueue_notifications") as mock_notify,
         ):
             service.create_tenant(self._req(), actor_id="platform-admin")
@@ -135,12 +138,12 @@ class TestCreateTenantNotifiesOnboarding:
         service, tenant, admin_user, mock_cognito = self._run()
 
         with (
-            patch.object(service, "get_identity_provider", return_value=mock_cognito),
+            patch_tenant_management("get_identity_provider", return_value=mock_cognito),
             patch.object(service.repo, "create_tenant", return_value=tenant),
             patch.object(service.repo, "create_tenant_user", return_value=admin_user),
             patch.object(service.repo, "upsert_config"),
             patch.object(service.repo, "insert_platform_audit"),
-            patch("services.tenant_management.service.publish_event"),
+            patch("services.tenant_management.tenants.publish_event"),
             patch("shared.notifications.enqueue_notifications", side_effect=RuntimeError("sqs down")),
         ):
             result = service.create_tenant(self._req(), actor_id="platform-admin")
@@ -168,7 +171,7 @@ class TestCreateTenantIdentityConflict:
         from services.tenant_management import service
 
         with (
-            patch.object(service, "get_identity_provider", return_value=MagicMock()),
+            patch_tenant_management("get_identity_provider", return_value=MagicMock()),
             patch.object(service.repo, "find_user_across_tenants", return_value={"id": "existing-sub"}),
             patch.object(service.repo, "create_tenant") as mock_create,
         ):
@@ -184,7 +187,7 @@ class TestCreateTenantIdentityConflict:
         idp.create_user.return_value = "existing-sub"
         # Email is free, but the IdP resolved to an account already attached elsewhere.
         with (
-            patch.object(service, "get_identity_provider", return_value=idp),
+            patch_tenant_management("get_identity_provider", return_value=idp),
             patch.object(service.repo, "find_user_across_tenants", side_effect=[None, {"id": "existing-sub"}]),
             patch.object(service.repo, "create_tenant", return_value=_tenant(id=TENANT_ID)),
             patch.object(service.repo, "create_tenant_user") as mock_user,
@@ -215,7 +218,7 @@ class TestCreateTenantLeadIdempotency:
         from services.tenant_management import service
 
         with (
-            patch.object(service, "get_identity_provider", return_value=MagicMock()),
+            patch_tenant_management("get_identity_provider", return_value=MagicMock()),
             patch.object(
                 service.repo,
                 "get_onboarding_request",
@@ -261,12 +264,12 @@ class TestCreateTenantDefaultWarehouse:
         service, tenant, admin_user, mock_cognito = self._run()
 
         with (
-            patch.object(service, "get_identity_provider", return_value=mock_cognito),
+            patch_tenant_management("get_identity_provider", return_value=mock_cognito),
             patch.object(service.repo, "create_tenant", return_value=tenant),
             patch.object(service.repo, "create_tenant_user", return_value=admin_user),
             patch.object(service.repo, "upsert_config"),
             patch.object(service.repo, "insert_platform_audit"),
-            patch("services.tenant_management.service.publish_event"),
+            patch("services.tenant_management.tenants.publish_event"),
             patch("shared.notifications.enqueue_notifications"),
             patch("services.payment_release.repository.create_warehouse") as mock_create_wh,
         ):
@@ -281,12 +284,12 @@ class TestCreateTenantDefaultWarehouse:
         service, tenant, admin_user, mock_cognito = self._run()
 
         with (
-            patch.object(service, "get_identity_provider", return_value=mock_cognito),
+            patch_tenant_management("get_identity_provider", return_value=mock_cognito),
             patch.object(service.repo, "create_tenant", return_value=tenant),
             patch.object(service.repo, "create_tenant_user", return_value=admin_user),
             patch.object(service.repo, "upsert_config"),
             patch.object(service.repo, "insert_platform_audit"),
-            patch("services.tenant_management.service.publish_event"),
+            patch("services.tenant_management.tenants.publish_event"),
             patch("shared.notifications.enqueue_notifications"),
             patch("services.payment_release.repository.create_warehouse", side_effect=RuntimeError("db down")),
         ):
@@ -306,7 +309,7 @@ class TestSuspendTenant:
             patch.object(service.repo, "get_tenant_by_id", return_value=tenant),
             patch.object(service.repo, "set_tenant_status", return_value=suspended),
             patch.object(service.repo, "insert_platform_audit"),
-            patch("services.tenant_management.service.publish_event"),
+            patch("services.tenant_management.tenants.publish_event"),
         ):
             result = service.suspend_tenant(TENANT_ID, "Non-payment", actor_id="platform-admin")
 
@@ -326,7 +329,7 @@ class TestSuspendTenant:
             patch.object(service.repo, "get_tenant_by_id", return_value=tenant),
             patch.object(service.repo, "set_tenant_status", return_value=suspended),
             patch.object(service.repo, "insert_platform_audit"),
-            patch("services.tenant_management.service.publish_event"),
+            patch("services.tenant_management.tenants.publish_event"),
             patch("shared.notifications.enqueue_notifications") as mock_notify,
         ):
             service.suspend_tenant(TENANT_ID, "Non-payment", actor_id="platform-admin")
@@ -346,7 +349,7 @@ class TestSuspendTenant:
             patch.object(service.repo, "get_tenant_by_id", return_value=tenant),
             patch.object(service.repo, "set_tenant_status", return_value=suspended),
             patch.object(service.repo, "insert_platform_audit"),
-            patch("services.tenant_management.service.publish_event"),
+            patch("services.tenant_management.tenants.publish_event"),
             patch("shared.notifications.enqueue_notifications", side_effect=RuntimeError("sqs down")),
         ):
             result = service.suspend_tenant(TENANT_ID, "Non-payment", actor_id="platform-admin")
@@ -414,7 +417,7 @@ class TestReactivateTenant:
             patch.object(service.repo, "get_tenant_by_id", return_value=tenant),
             patch.object(service.repo, "reactivate_tenant", return_value=reactivated),
             patch.object(service.repo, "insert_platform_audit"),
-            patch("services.tenant_management.service.publish_event"),
+            patch("services.tenant_management.tenants.publish_event"),
         ):
             result = service.reactivate_tenant(TENANT_ID, actor_id="platform-admin")
 
@@ -448,7 +451,7 @@ class TestReactivateTenant:
             patch.object(service.repo, "get_tenant_by_id", return_value=tenant),
             patch.object(service.repo, "reactivate_tenant", return_value=reactivated),
             patch.object(service.repo, "insert_platform_audit"),
-            patch("services.tenant_management.service.publish_event"),
+            patch("services.tenant_management.tenants.publish_event"),
             patch("shared.auth._tenant_status_cache", cache_mock),
         ):
             service.reactivate_tenant(TENANT_ID, actor_id="platform-admin")
@@ -465,7 +468,7 @@ class TestReactivateTenant:
             patch.object(service.repo, "get_tenant_by_id", return_value=tenant),
             patch.object(service.repo, "reactivate_tenant", return_value=reactivated),
             patch.object(service.repo, "insert_platform_audit"),
-            patch("services.tenant_management.service.publish_event"),
+            patch("services.tenant_management.tenants.publish_event"),
         ):
             result = service.reactivate_tenant(TENANT_ID, actor_id="platform-admin")
 
@@ -483,7 +486,7 @@ class TestReactivateTenant:
             patch.object(service.repo, "get_tenant_by_id", return_value=tenant),
             patch.object(service.repo, "reactivate_tenant", return_value=reactivated),
             patch.object(service.repo, "insert_platform_audit"),
-            patch("services.tenant_management.service.publish_event") as mock_event,
+            patch("services.tenant_management.tenants.publish_event") as mock_event,
         ):
             service.reactivate_tenant(TENANT_ID, actor_id="platform-admin")
 
@@ -554,7 +557,7 @@ class TestGetDollarRate:
             "fetched_at": "2026-09-19T10:00:00+00:00",
             "markup_updated_at": "2026-09-18T09:00:00+00:00",
         }
-        with patch.object(service, "get_effective_dollar_rate", return_value=effective):
+        with patch("services.tenant_management.rates.get_effective_dollar_rate", return_value=effective):
             result = service.get_dollar_rate(TENANT_ID)
 
         assert result["rate"] == Decimal("1588.20")
@@ -579,7 +582,7 @@ class TestGetDollarRate:
             "fetched_at": "t0",
             "markup_updated_at": None,
         }
-        with patch.object(service, "get_effective_dollar_rate", return_value=effective):
+        with patch("services.tenant_management.rates.get_effective_dollar_rate", return_value=effective):
             result = service.get_dollar_rate(TENANT_ID)
 
         assert result["effective_from"] == ""
@@ -613,10 +616,10 @@ class TestUpdateDollarRate:
         }
 
         with (
-            patch.object(service, "get_effective_dollar_rate", side_effect=[before, after]),
+            patch("services.tenant_management.rates.get_effective_dollar_rate", side_effect=[before, after]),
             patch.object(service.repo, "upsert_config") as mock_upsert,
             patch.object(service.repo, "append_rate_history"),
-            patch("services.tenant_management.service.log_audit"),
+            patch_tenant_management("log_audit"),
         ):
             result = service.update_dollar_rate(TENANT_ID, req, actor_id="admin")
 
@@ -659,10 +662,10 @@ class TestUpdateDollarRate:
         }
 
         with (
-            patch.object(service, "get_effective_dollar_rate", side_effect=[before, after]),
+            patch("services.tenant_management.rates.get_effective_dollar_rate", side_effect=[before, after]),
             patch.object(service.repo, "upsert_config"),
             patch.object(service.repo, "append_rate_history"),
-            patch("services.tenant_management.service.log_audit") as mock_audit,
+            patch_tenant_management("log_audit") as mock_audit,
         ):
             service.update_dollar_rate(TENANT_ID, req, actor_id="admin")
 
@@ -700,10 +703,10 @@ class TestUpdateDollarRate:
         }
 
         with (
-            patch.object(service, "get_effective_dollar_rate", side_effect=[before, after]),
+            patch("services.tenant_management.rates.get_effective_dollar_rate", side_effect=[before, after]),
             patch.object(service.repo, "upsert_config"),
             patch.object(service.repo, "append_rate_history") as mock_history,
-            patch("services.tenant_management.service.log_audit"),
+            patch_tenant_management("log_audit"),
         ):
             service.update_dollar_rate(TENANT_ID, req, actor_id="admin")
 
@@ -786,8 +789,8 @@ class TestGetCbmRate:
             "effective_from": "t0",
         }
         with (
-            patch.object(service, "get_cbm_rate_config", return_value=config) as mock_cfg,
-            patch.object(service, "get_min_cbm_per_item", return_value=Decimal("0.1")),
+            patch("services.tenant_management.rates.get_cbm_rate_config", return_value=config) as mock_cfg,
+            patch("services.tenant_management.rates.get_min_cbm_per_item", return_value=Decimal("0.1")),
         ):
             result = service.get_cbm_rate(TENANT_ID)
 
@@ -816,8 +819,8 @@ class TestGetCbmRate:
             "effective_from": "t0",
         }
         with (
-            patch.object(service, "get_cbm_rate_config", return_value=config),
-            patch.object(service, "get_min_cbm_per_item", return_value=Decimal("0.1")),
+            patch("services.tenant_management.rates.get_cbm_rate_config", return_value=config),
+            patch("services.tenant_management.rates.get_min_cbm_per_item", return_value=Decimal("0.1")),
         ):
             result = service.get_cbm_rate(TENANT_ID)
 
@@ -843,11 +846,11 @@ class TestUpdateCbmRate:
         }
 
         with (
-            patch.object(service, "get_cbm_rate", return_value=current),
-            patch.object(service, "get_min_cbm_per_item", return_value=Decimal("0.1")),
+            patch_tenant_management("get_cbm_rate", return_value=current),
+            patch("services.tenant_management.rates.get_min_cbm_per_item", return_value=Decimal("0.1")),
             patch.object(service.repo, "upsert_config") as mock_upsert,
             patch.object(service.repo, "append_rate_history"),
-            patch("services.tenant_management.service.log_audit"),
+            patch_tenant_management("log_audit"),
         ):
             service.update_cbm_rate(TENANT_ID, req, actor_id="admin")
 
@@ -887,11 +890,11 @@ class TestUpdateCbmRate:
         }
 
         with (
-            patch.object(service, "get_cbm_rate", return_value=current),
-            patch.object(service, "get_min_cbm_per_item", return_value=Decimal("0.1")),
+            patch_tenant_management("get_cbm_rate", return_value=current),
+            patch("services.tenant_management.rates.get_min_cbm_per_item", return_value=Decimal("0.1")),
             patch.object(service.repo, "upsert_config"),
             patch.object(service.repo, "append_rate_history"),
-            patch("services.tenant_management.service.log_audit"),
+            patch_tenant_management("log_audit"),
         ):
             result = service.update_cbm_rate(TENANT_ID, req, actor_id="admin")
 
@@ -923,11 +926,11 @@ class TestUpdateCbmRate:
         }
 
         with (
-            patch.object(service, "get_cbm_rate", return_value=current),
-            patch.object(service, "get_min_cbm_per_item", return_value=Decimal("0.1")),
+            patch_tenant_management("get_cbm_rate", return_value=current),
+            patch("services.tenant_management.rates.get_min_cbm_per_item", return_value=Decimal("0.1")),
             patch.object(service.repo, "upsert_config") as mock_upsert,
             patch.object(service.repo, "append_rate_history"),
-            patch("services.tenant_management.service.log_audit"),
+            patch_tenant_management("log_audit"),
         ):
             service.update_cbm_rate(TENANT_ID, req, actor_id="admin")
 
@@ -957,11 +960,11 @@ class TestUpdateCbmRate:
         }
 
         with (
-            patch.object(service, "get_cbm_rate", return_value=current),
-            patch.object(service, "get_min_cbm_per_item", return_value=Decimal("0.1")),
+            patch_tenant_management("get_cbm_rate", return_value=current),
+            patch("services.tenant_management.rates.get_min_cbm_per_item", return_value=Decimal("0.1")),
             patch.object(service.repo, "upsert_config"),
             patch.object(service.repo, "append_rate_history") as mock_history,
-            patch("services.tenant_management.service.log_audit"),
+            patch_tenant_management("log_audit"),
         ):
             service.update_cbm_rate(TENANT_ID, req, actor_id="admin")
 
@@ -1028,9 +1031,9 @@ class TestCreateUser:
             patch.object(service.repo, "create_tenant_user", return_value=user),
             patch.object(service.repo, "set_user_roles", return_value={**user, "roles": ["nigeria_office_staff"]}),
             patch.object(service.repo, "link_customer_user"),
-            patch("services.tenant_management.service.get_identity_provider", return_value=cognito),
-            patch("services.tenant_management.service.log_audit"),
-            patch("services.tenant_management.service.record_usage"),
+            patch_tenant_management("get_identity_provider", return_value=cognito),
+            patch_tenant_management("log_audit"),
+            patch("services.tenant_management.users.record_usage"),
         ):
             result = service.create_user(TENANT_ID, req, actor_id="admin")
 
@@ -1068,9 +1071,9 @@ class TestCreateUser:
             patch.object(service.repo, "get_user_by_email", return_value=None),
             patch.object(service.repo, "create_tenant_user", return_value=user),
             patch.object(service.repo, "set_user_roles") as mock_set_roles,
-            patch("services.tenant_management.service.get_identity_provider", return_value=cognito),
-            patch("services.tenant_management.service.log_audit"),
-            patch("services.tenant_management.service.record_usage"),
+            patch_tenant_management("get_identity_provider", return_value=cognito),
+            patch_tenant_management("log_audit"),
+            patch("services.tenant_management.users.record_usage"),
         ):
             mock_set_roles.return_value = {**user, "roles": ["nigeria_office_staff", "warehouse_attendant"]}
             result = service.create_user(TENANT_ID, req, actor_id="admin")
@@ -1109,9 +1112,9 @@ class TestCreateUser:
             patch.object(service.repo, "create_tenant_user", return_value=user),
             patch.object(service.repo, "set_user_roles", return_value=user),
             patch.object(service.repo, "link_customer_user") as mock_link,
-            patch("services.tenant_management.service.get_identity_provider", return_value=cognito),
-            patch("services.tenant_management.service.log_audit"),
-            patch("services.tenant_management.service.record_usage"),
+            patch_tenant_management("get_identity_provider", return_value=cognito),
+            patch_tenant_management("log_audit"),
+            patch("services.tenant_management.users.record_usage"),
         ):
             service.create_user(TENANT_ID, req, actor_id="admin")
 
@@ -1144,8 +1147,8 @@ class TestDeactivateUser:
         with (
             patch.object(service.repo, "get_user_by_id", return_value=user),
             patch.object(service.repo, "set_user_status", return_value=deactivated),
-            patch("services.tenant_management.service.get_identity_provider", return_value=cognito),
-            patch("services.tenant_management.service.log_audit"),
+            patch_tenant_management("get_identity_provider", return_value=cognito),
+            patch_tenant_management("log_audit"),
         ):
             result = service.deactivate_user(TENANT_ID, "user-001", actor_id="admin")
 
@@ -1174,11 +1177,9 @@ class TestDeactivateUser:
         with (
             patch.object(service.repo, "get_user_by_id", return_value=user),
             patch.object(service.repo, "set_user_status", side_effect=_status),
-            patch("services.tenant_management.service.get_identity_provider", return_value=cognito),
-            patch("services.tenant_management.service.log_audit"),
-            patch(
-                "services.tenant_management.service.evict_identity_cache", side_effect=lambda uid: order.append(f"evict:{uid}")
-            ),
+            patch_tenant_management("get_identity_provider", return_value=cognito),
+            patch_tenant_management("log_audit"),
+            patch_tenant_management("evict_identity_cache", side_effect=lambda uid: order.append(f"evict:{uid}")),
         ):
             return service.deactivate_user(TENANT_ID, "user-001", actor_id="admin")
 
@@ -1210,9 +1211,9 @@ class TestDeactivateUser:
         with (
             patch.object(service.repo, "get_user_by_id", return_value=_user(status="active")),
             patch.object(service.repo, "set_user_status") as mock_status,
-            patch("services.tenant_management.service.get_identity_provider", return_value=cognito),
-            patch("services.tenant_management.service.log_audit") as mock_audit,
-            patch("services.tenant_management.service.evict_identity_cache") as mock_evict,
+            patch_tenant_management("get_identity_provider", return_value=cognito),
+            patch_tenant_management("log_audit") as mock_audit,
+            patch_tenant_management("evict_identity_cache") as mock_evict,
         ):
             with pytest.raises(ExternalServiceError):
                 service.deactivate_user(TENANT_ID, "user-001", actor_id="admin")
@@ -1241,9 +1242,9 @@ class TestAnonymiseCustomerLogin:
             patch.object(service.repo, "get_customer_by_id", return_value=customer),
             patch.object(service.repo, "get_user_by_id", return_value=login),
             patch.object(service.repo, "anonymise_customer_record", side_effect=lambda t, c: order.append("erase")),
-            patch.object(service, "_revoke_login", revoke),
-            patch.object(service, "_erase_login_identity", side_effect=lambda t, u: order.append("scrub")),
-            patch("services.tenant_management.service.log_audit") as mock_audit,
+            patch_tenant_management("_revoke_login", revoke),
+            patch("services.tenant_management.customers._erase_login_identity", side_effect=lambda t, u: order.append("scrub")),
+            patch_tenant_management("log_audit") as mock_audit,
         ):
             service.anonymise_customer(TENANT_ID, "cust-001", actor_id="admin")
         return revoke, mock_audit
@@ -1287,11 +1288,11 @@ class TestAnonymiseCustomerLogin:
         idp = MagicMock()
         idp.delete_user.side_effect = lambda email: order.append(f"idp:{email}")
         with (
-            patch.object(service, "get_identity_provider", return_value=idp),
+            patch_tenant_management("get_identity_provider", return_value=idp),
             patch.object(service.repo, "anonymise_tenant_user", side_effect=lambda t, u: order.append("row") or {"id": u}),
-            patch.object(service, "evict_identity_cache"),
+            patch_tenant_management("evict_identity_cache"),
         ):
-            service._erase_login_identity(TENANT_ID, _user(id="user-cust", email="ada@example.com"))
+            customers._erase_login_identity(TENANT_ID, _user(id="user-cust", email="ada@example.com"))
         assert order == ["idp:ada@example.com", "row"]
 
     def test_a_failed_provider_delete_leaves_the_row_and_the_customer_for_a_retry(self):
@@ -1300,11 +1301,11 @@ class TestAnonymiseCustomerLogin:
         idp = MagicMock()
         idp.delete_user.side_effect = ExternalServiceError("Cognito", "unavailable")
         with (
-            patch.object(service, "get_identity_provider", return_value=idp),
+            patch_tenant_management("get_identity_provider", return_value=idp),
             patch.object(service.repo, "anonymise_tenant_user") as scrub,
         ):
             with pytest.raises(ExternalServiceError):
-                service._erase_login_identity(TENANT_ID, _user(id="user-cust"))
+                customers._erase_login_identity(TENANT_ID, _user(id="user-cust"))
         scrub.assert_not_called()
 
     def test_a_failed_revocation_leaves_the_customer_unerased_so_it_can_be_retried(self):
@@ -1314,8 +1315,8 @@ class TestAnonymiseCustomerLogin:
             patch.object(service.repo, "get_customer_by_id", return_value=self._customer()),
             patch.object(service.repo, "get_user_by_id", return_value=_user(id="user-cust", role="customer")),
             patch.object(service.repo, "anonymise_customer_record") as mock_erase,
-            patch.object(service, "_revoke_login", side_effect=ExternalServiceError("Cognito", "unavailable")),
-            patch("services.tenant_management.service.log_audit"),
+            patch_tenant_management("_revoke_login", side_effect=ExternalServiceError("Cognito", "unavailable")),
+            patch_tenant_management("log_audit"),
         ):
             with pytest.raises(ExternalServiceError):
                 service.anonymise_customer(TENANT_ID, "cust-001", actor_id="admin")
@@ -1339,9 +1340,9 @@ class TestUpdateUserRoles:
         cognito = MagicMock()
 
         with (
-            patch.object(service, "get_user", return_value=existing),
+            patch_tenant_management("get_user", return_value=existing),
             patch.object(service.repo, "set_user_roles", return_value=updated) as mock_set_roles,
-            patch.object(service, "get_identity_provider", return_value=cognito),
+            patch_tenant_management("get_identity_provider", return_value=cognito),
             patch("shared.audit.log_audit"),
         ):
             result = service.update_user(TENANT_ID, "user-001", {"roles": ["warehouse_attendant"]}, actor_id="admin-1")
@@ -1363,11 +1364,11 @@ class TestUpdateUserRoles:
         updated = {**existing, "role": "warehouse_attendant", "roles": ["warehouse_attendant"]}
 
         with (
-            patch.object(service, "get_user", return_value=existing),
+            patch_tenant_management("get_user", return_value=existing),
             patch.object(service.repo, "set_user_roles", return_value=updated),
-            patch.object(service, "get_identity_provider", return_value=MagicMock()),
+            patch_tenant_management("get_identity_provider", return_value=MagicMock()),
             patch("shared.audit.log_audit"),
-            patch("services.tenant_management.service.evict_identity_cache") as mock_evict,
+            patch_tenant_management("evict_identity_cache") as mock_evict,
         ):
             service.update_user(TENANT_ID, "user-001", {"roles": ["warehouse_attendant"]}, actor_id="admin-1")
 
@@ -1381,9 +1382,9 @@ class TestUpdateUserRoles:
         cognito = MagicMock()
 
         with (
-            patch.object(service, "get_user", return_value=existing),
+            patch_tenant_management("get_user", return_value=existing),
             patch.object(service.repo, "set_user_roles", return_value=updated) as mock_set_roles,
-            patch.object(service, "get_identity_provider", return_value=cognito),
+            patch_tenant_management("get_identity_provider", return_value=cognito),
             patch("shared.audit.log_audit"),
         ):
             service.update_user(
@@ -1408,9 +1409,9 @@ class TestUpdateUserRoles:
         cognito = MagicMock()
 
         with (
-            patch.object(service, "get_user", return_value=existing),
+            patch_tenant_management("get_user", return_value=existing),
             patch.object(service.repo, "set_user_roles", return_value=existing) as mock_set_roles,
-            patch.object(service, "get_identity_provider", return_value=cognito),
+            patch_tenant_management("get_identity_provider", return_value=cognito),
             patch("shared.audit.log_audit"),
         ):
             service.update_user(
@@ -1438,10 +1439,10 @@ class TestUpdateUserRoles:
         cognito = MagicMock()
 
         with (
-            patch.object(service, "get_user", return_value=existing),
+            patch_tenant_management("get_user", return_value=existing),
             patch.object(service.repo, "update_user", return_value={**existing, "full_name": "New Name"}),
             patch.object(service.repo, "set_user_roles", return_value=existing),
-            patch.object(service, "get_identity_provider", return_value=cognito),
+            patch_tenant_management("get_identity_provider", return_value=cognito),
             patch("shared.audit.log_audit"),
         ):
             service.update_user(
@@ -1464,9 +1465,9 @@ class TestUpdateUserRoles:
         cognito = MagicMock()
 
         with (
-            patch.object(service, "get_user", return_value=existing),
+            patch_tenant_management("get_user", return_value=existing),
             patch.object(service.repo, "update_user", return_value={**existing, "full_name": "New Name"}),
-            patch.object(service, "get_identity_provider", return_value=cognito),
+            patch_tenant_management("get_identity_provider", return_value=cognito),
             patch("shared.audit.log_audit"),
         ):
             service.update_user(TENANT_ID, "user-001", {"full_name": "New Name"}, actor_id="admin-1")
@@ -1571,8 +1572,8 @@ class TestSelfRegisterCustomer:
             patch.object(service.repo, "get_customer_by_email", return_value=None),
             patch.object(service.repo, "create_tenant_user", return_value=portal_user) as mock_create_user,
             patch.object(service.repo, "create_customer", return_value=created_customer) as mock_create_customer,
-            patch("services.tenant_management.service.get_identity_provider", return_value=cognito),
-            patch("services.tenant_management.service.log_audit"),
+            patch_tenant_management("get_identity_provider", return_value=cognito),
+            patch_tenant_management("log_audit"),
             patch("shared.notifications.enqueue_notifications"),
         ):
             result = service.self_register_customer(req, slug="acme")
@@ -1607,8 +1608,8 @@ class TestSelfRegisterCustomer:
             patch.object(service.repo, "get_customer_by_email", return_value=None),
             patch.object(service.repo, "create_tenant_user", return_value={"id": "tu-001"}),
             patch.object(service.repo, "create_customer", return_value={"id": "cust-001"}),
-            patch("services.tenant_management.service.get_identity_provider", return_value=cognito),
-            patch("services.tenant_management.service.log_audit"),
+            patch_tenant_management("get_identity_provider", return_value=cognito),
+            patch_tenant_management("log_audit"),
             patch("shared.notifications.enqueue_notifications"),
         ):
             service.self_register_customer(req, slug="acme", host="api.shipx.example.com")
@@ -1649,9 +1650,9 @@ class TestSelfRegisterCustomer:
             patch.object(service.repo, "get_customer_by_email", return_value=existing_customer),
             patch.object(service.repo, "create_tenant_user") as create_user,
             patch.object(service.repo, "create_customer") as create_customer,
-            patch("services.tenant_management.service.get_identity_provider", return_value=cognito),
-            patch("services.tenant_management.service.log_audit") as audit,
-            patch("services.tenant_management.service.login_url", return_value="https://app.shipx.test/login"),
+            patch_tenant_management("get_identity_provider", return_value=cognito),
+            patch_tenant_management("log_audit") as audit,
+            patch("services.tenant_management.customers.login_url", return_value="https://app.shipx.test/login"),
             patch("shared.notifications.enqueue_notifications", enqueue),
         ):
             result = service.self_register_customer(self._request(), slug="acme", request_id="req-1")
@@ -1705,7 +1706,7 @@ class TestSelfRegisterCustomer:
         with (
             patch.object(service.repo, "get_tenant_by_slug", return_value=self._tenant()),
             patch.object(service.repo, "get_customer_by_email", return_value={"id": "c1", "name": "Ngozi"}),
-            patch("services.tenant_management.service.login_url", side_effect=service.MissingBaseUrlError("no base url")),
+            patch("services.tenant_management.customers.login_url", side_effect=MissingBaseUrlError("no base url")),
             patch("shared.notifications.enqueue_notifications") as enqueue,
         ):
             assert service.self_register_customer(self._request(), slug="acme") is None
@@ -1748,9 +1749,9 @@ class TestSelfRegisterResponsesAreIdentical:
             patch.object(
                 service.repo, "create_customer", return_value={"id": "c-new", "name": "Ngozi", "email": "ngozi@example.com"}
             ),
-            patch("services.tenant_management.service.get_identity_provider", return_value=cognito),
-            patch("services.tenant_management.service.log_audit"),
-            patch("services.tenant_management.service.login_url", return_value="https://app.shipx.test/login"),
+            patch_tenant_management("get_identity_provider", return_value=cognito),
+            patch_tenant_management("log_audit"),
+            patch("services.tenant_management.customers.login_url", return_value="https://app.shipx.test/login"),
             patch("shared.notifications.enqueue_notifications"),
         ):
             return self._post({"name": "Ngozi", "email": "ngozi@example.com", "phone": "08012345678"})
@@ -1798,7 +1799,7 @@ class TestIssueCustomerInvite:
             patch("shared.notifications.is_recipient_allowed", return_value=True),
             patch.dict("os.environ", {"APP_BASE_URL": "https://app.shipx.test"}, clear=False),
             patch("shared.notifications.primary_channel", return_value="whatsapp"),
-            patch("services.tenant_management.service.log_audit"),
+            patch_tenant_management("log_audit"),
         ):
             result = service.issue_customer_invite(TENANT_ID, "cust-001", actor_id="staff-1")
 
@@ -1831,7 +1832,7 @@ class TestIssueCustomerInvite:
             patch("shared.notifications.should_notify", return_value=True),
             patch.dict("os.environ", {"SQS_WHATSAPP_QUEUE_URL": ""}, clear=False),
             patch.dict("os.environ", {"APP_BASE_URL": "https://app.shipx.test"}, clear=False),
-            patch("services.tenant_management.service.log_audit"),
+            patch_tenant_management("log_audit"),
         ):
             result = service.issue_customer_invite(TENANT_ID, "cust-001", actor_id="staff-1")
 
@@ -1857,7 +1858,7 @@ class TestIssueCustomerInvite:
             patch("shared.notifications.enqueue_notifications") as mock_enqueue,
             patch.dict("os.environ", {"APP_BASE_URL": "https://app.shipx.test"}, clear=False),
             patch("shared.notifications.is_recipient_allowed", return_value=False),
-            patch("services.tenant_management.service.log_audit"),
+            patch_tenant_management("log_audit"),
         ):
             result = service.issue_customer_invite(TENANT_ID, "cust-001", actor_id="staff-1")
 
@@ -1890,7 +1891,7 @@ class TestIssueCustomerInvite:
             patch("shared.notifications.is_recipient_allowed", return_value=True),
             patch("shared.notifications.primary_channel", return_value="whatsapp"),
             patch.dict("os.environ", {"APP_BASE_URL": "https://app.shipx.test"}, clear=False),
-            patch("services.tenant_management.service.log_audit"),
+            patch_tenant_management("log_audit"),
         ):
             service.issue_customer_invite(TENANT_ID, "cust-001", actor_id="staff-1")
 
@@ -1919,7 +1920,7 @@ class TestIssueCustomerInvite:
                 },
                 clear=False,
             ),
-            patch("services.tenant_management.service.log_audit"),
+            patch_tenant_management("log_audit"),
         ):
             service.issue_customer_invite(TENANT_ID, "cust-001", actor_id="staff-1")
 
@@ -1950,7 +1951,7 @@ class TestIssueCustomerInvite:
                 {"APP_BASE_URL": "", "CUSTOMER_PORTAL_BASE_URL": "", "ENTRA_REDIRECT_URI": ""},
                 clear=False,
             ),
-            patch("services.tenant_management.service.log_audit"),
+            patch_tenant_management("log_audit"),
         ):
             result = service.issue_customer_invite(TENANT_ID, "cust-001", actor_id="staff-1")
 
@@ -1982,7 +1983,7 @@ class TestIssueCustomerInvite:
                 {"CUSTOMER_PORTAL_BASE_URL": "/portal", "APP_BASE_URL": "https://app.shipx.test"},
                 clear=False,
             ),
-            patch("services.tenant_management.service.log_audit"),
+            patch_tenant_management("log_audit"),
         ):
             result = service.issue_customer_invite(TENANT_ID, "cust-001", actor_id="staff-1")
 
@@ -2040,7 +2041,7 @@ class TestAcceptCustomerInvite:
             patch("shared.invites.get_invite_by_token", return_value=self._invite()),
             patch.object(service.repo, "get_customer_by_id", return_value=self._customer()),
             patch.object(service.repo, "get_customer_by_email", return_value=None),
-            patch("services.tenant_management.service.get_identity_provider", return_value=cognito),
+            patch_tenant_management("get_identity_provider", return_value=cognito),
             patch.object(service.repo, "create_tenant_user", return_value=portal_user) as mock_create_user,
             patch.object(
                 service.repo,
@@ -2048,7 +2049,7 @@ class TestAcceptCustomerInvite:
                 return_value={"id": "cust-001", "user_id": "tu-002", "email": "ngozi@example.com"},
             ) as mock_update,
             patch("shared.invites.consume_invite", return_value={"id": "inv-001"}) as mock_consume,
-            patch("services.tenant_management.service.log_audit"),
+            patch_tenant_management("log_audit"),
         ):
             result = service.accept_customer_invite("raw-token", req)
 
@@ -2108,7 +2109,7 @@ class TestUpdateCustomerLocale:
         with (
             patch.object(service.repo, "get_customer_by_id", return_value=self._customer()),
             patch.object(service.repo, "update_customer", return_value=updated) as mock_update,
-            patch("services.tenant_management.service.log_audit"),
+            patch_tenant_management("log_audit"),
         ):
             result = service.update_customer(TENANT_ID, "cust-001", {"locale": "zh"}, actor_id="staff-1")
 
@@ -2359,7 +2360,7 @@ class TestWebhookConfig:
 
         with (
             patch(
-                "services.tenant_management.service.test_fire_tenant_webhook",
+                "services.tenant_management.tenant_config.test_fire_tenant_webhook",
                 return_value={"success": True, "status_code": 200, "error": None},
             ),
             patch("shared.audit.log_audit"),
@@ -2374,7 +2375,7 @@ class TestWebhookConfig:
 
         with (
             patch(
-                "services.tenant_management.service.test_fire_tenant_webhook",
+                "services.tenant_management.tenant_config.test_fire_tenant_webhook",
                 return_value={"success": False, "status_code": None, "error": "Connection refused"},
             ),
             patch("shared.audit.log_audit"),
@@ -2439,7 +2440,7 @@ class TestPaystackConfig:
 
         with (
             patch.object(service.repo, "upsert_config", side_effect=capture_upsert),
-            patch("services.tenant_management.service.log_audit") as mock_audit,
+            patch_tenant_management("log_audit") as mock_audit,
         ):
             req = PaystackConfigRequest(secret_key=self.VALID_TEST_KEY)
             result = service.update_paystack_config(TENANT_ID, req, actor_id="user-1")
@@ -2583,9 +2584,9 @@ class TestLocale:
         updated = {**existing, "locale": "zh"}
 
         with (
-            patch.object(service, "get_user", return_value=existing),
+            patch_tenant_management("get_user", return_value=existing),
             patch.object(service.repo, "update_user", return_value=updated),
-            patch.object(service, "get_identity_provider"),
+            patch_tenant_management("get_identity_provider"),
             patch("shared.audit.log_audit"),
         ):
             result = service.update_user(TENANT_ID, "user-001", {"locale": "zh"}, actor_id="admin-1")
@@ -2597,7 +2598,7 @@ class TestLocale:
 
         existing = _user()
         with (
-            patch.object(service, "get_user", return_value=existing),
+            patch_tenant_management("get_user", return_value=existing),
             patch("shared.audit.log_audit"),
         ):
             with pytest.raises(Exception) as exc_info:
@@ -2612,9 +2613,9 @@ class TestLocale:
         mock_cognito = MagicMock()
 
         with (
-            patch.object(service, "get_user", return_value=existing),
+            patch_tenant_management("get_user", return_value=existing),
             patch.object(service.repo, "update_user", return_value=updated),
-            patch.object(service, "get_identity_provider", return_value=mock_cognito),
+            patch_tenant_management("get_identity_provider", return_value=mock_cognito),
             patch("shared.audit.log_audit"),
         ):
             service.update_user(TENANT_ID, "user-001", {"locale": "zh"}, actor_id="admin-1")
@@ -2920,7 +2921,7 @@ class TestChargeTypes:
         }
         with (
             patch.object(service.repo, "create_charge_type", return_value=stored) as mock_create,
-            patch("services.tenant_management.service.log_audit"),
+            patch_tenant_management("log_audit"),
         ):
             result = service.create_charge_type(
                 TENANT_ID,
@@ -2973,7 +2974,7 @@ class TestChargeTypes:
         with (
             patch.object(service.repo, "get_charge_type_by_id", return_value=existing),
             patch.object(service.repo, "update_charge_type", return_value=updated) as mock_update,
-            patch("services.tenant_management.service.log_audit"),
+            patch_tenant_management("log_audit"),
         ):
             result = service.update_charge_type(TENANT_ID, "ct-1", {"amount_ngn": "7500"}, actor_id="admin-1")
 
@@ -2992,7 +2993,7 @@ class TestChargeTypes:
         with (
             patch.object(service.repo, "get_charge_type_by_id", return_value=existing),
             patch.object(service.repo, "update_charge_type", return_value=deactivated),
-            patch("services.tenant_management.service.log_audit") as mock_audit,
+            patch_tenant_management("log_audit") as mock_audit,
         ):
             service.deactivate_charge_type(TENANT_ID, "ct-1", actor_id="admin-1")
 
@@ -3326,7 +3327,7 @@ class TestContainerCapacities:
         created = {"id": "cap-1", "name": "Megabox", "capacity_cbm": 95, "recommended_cbm": 88}
         with (
             patch.object(service.repo, "create_container_capacity", return_value=created) as m,
-            patch.object(service, "log_audit"),
+            patch_tenant_management("log_audit"),
         ):
             result = service.create_container_capacity(
                 TENANT_ID, {"name": " Megabox ", "capacity_cbm": "95", "recommended_cbm": "88"}, actor_id="u1"
@@ -3365,7 +3366,7 @@ class TestContainerCapacities:
 
         with (
             patch.object(service.repo, "delete_container_capacity", return_value={"id": "cap-1"}) as m,
-            patch.object(service, "log_audit"),
+            patch_tenant_management("log_audit"),
         ):
             service.delete_container_capacity(TENANT_ID, "cap-1", actor_id="u1")
         assert m.call_args[0][1] == "cap-1"
@@ -3388,7 +3389,7 @@ class TestUpdateContainerCapacity:
         with (
             patch.object(service.repo, "get_all_configs", return_value=[]),
             patch.object(service.repo, "upsert_config", return_value=None) as m,
-            patch.object(service, "log_audit"),
+            patch_tenant_management("log_audit"),
         ):
             result = service.update_container_capacity(
                 TENANT_ID, "default:40' High Cube (HC)", {"recommended_cbm": 72}, actor_id="u1"
@@ -3419,7 +3420,7 @@ class TestUpdateContainerCapacity:
         with (
             patch.object(service.repo, "get_all_configs", return_value=cfg),
             patch.object(service.repo, "upsert_config", return_value=None) as m,
-            patch.object(service, "log_audit"),
+            patch_tenant_management("log_audit"),
         ):
             service.update_container_capacity(TENANT_ID, "default:40' High Cube (HC)", {"recommended_cbm": None}, actor_id="u1")
         # The override key is removed, reverting to the built-in recommended.
@@ -3445,7 +3446,7 @@ class TestUpdateContainerCapacity:
         with (
             patch.object(service.repo, "get_container_capacity_by_id", return_value=existing),
             patch.object(service.repo, "update_container_capacity", return_value=updated) as m,
-            patch.object(service, "log_audit"),
+            patch_tenant_management("log_audit"),
         ):
             result = service.update_container_capacity(
                 TENANT_ID, "cap-1", {"name": "Box2", "capacity_cbm": "55", "recommended_cbm": "45"}, actor_id="u1"
@@ -3507,11 +3508,11 @@ class TestAccessEmailsAreAudited:
         user = _user(id=self.TARGET)
         with (
             patch("services.tenant_management.handler.get_tenant_context", return_value=ctx),
-            patch.object(service, "get_user", return_value=user),
+            patch_tenant_management("get_user", return_value=user),
             patch.object(service.repo, "get_user_by_id", return_value=user),
-            patch.object(service, "get_identity_provider", return_value=MagicMock()),
-            patch.object(service, "issue_activation"),
-            patch.object(service, "log_audit") as audit,
+            patch_tenant_management("get_identity_provider", return_value=MagicMock()),
+            patch_tenant_management("issue_activation"),
+            patch_tenant_management("log_audit") as audit,
         ):
             resp = handler.lambda_handler(self._event(route), None)
 
@@ -3532,9 +3533,9 @@ class TestAccessEmailsAreAudited:
         idp = MagicMock()
         idp.reset_password.side_effect = RuntimeError("idp down")
         with (
-            patch.object(service, "get_user", return_value=_user(id=self.TARGET)),
-            patch.object(service, "get_identity_provider", return_value=idp),
-            patch.object(service, "log_audit") as audit,
+            patch_tenant_management("get_user", return_value=_user(id=self.TARGET)),
+            patch_tenant_management("get_identity_provider", return_value=idp),
+            patch_tenant_management("log_audit") as audit,
             pytest.raises(RuntimeError),
         ):
             service.reset_user_password(TENANT_ID, self.TARGET, actor_id=self.ACTOR)

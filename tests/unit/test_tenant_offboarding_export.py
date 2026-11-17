@@ -8,8 +8,10 @@ from unittest.mock import MagicMock, patch
 import pytest
 
 from services.tenant_management import handler, service
+from shared import tenant_export
 from shared.exceptions import BusinessRuleViolationError
 from shared.tenant_context import PLATFORM_TENANT_ID, TenantContext, UserRole
+from tests.patching import patch_tenant_management
 
 TENANT = "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa"
 EXPORT = "bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb"
@@ -56,10 +58,10 @@ class TestOffboardingQueuesTheExport:
 
         with (
             patch.object(service.repo, "get_tenant_by_id", return_value=_tenant(status="active")),
-            patch.object(service, "tenant_transaction", transaction),
+            patch("services.tenant_management.tenants.tenant_transaction", transaction),
             patch.object(service.repo, "set_tenant_status", side_effect=lambda *a: order.append("status") or _tenant()),
             patch.object(
-                service.tenant_export, "queue_export", side_effect=lambda *a, **k: order.append("queue") or {"id": EXPORT}
+                tenant_export, "queue_export", side_effect=lambda *a, **k: order.append("queue") or {"id": EXPORT}
             ) as queue,
             patch.object(service.repo, "list_users", return_value=[]),
             patch.object(service.repo, "insert_platform_audit") as audit,
@@ -74,9 +76,9 @@ class TestOffboardingQueuesTheExport:
         with (
             patch.object(service.repo, "get_tenant_by_id", return_value=_tenant()),
             patch.object(service.repo, "reactivate_tenant", return_value=_tenant(status="active")),
-            patch.object(service.tenant_export, "cancel_open_exports") as cancel,
+            patch.object(tenant_export, "cancel_open_exports") as cancel,
             patch.object(service.repo, "insert_platform_audit"),
-            patch("services.tenant_management.service.publish_event"),
+            patch("services.tenant_management.tenants.publish_event"),
         ):
             service.reactivate_tenant(TENANT, actor_id="admin-1")
         cancel.assert_called_once_with(TENANT)
@@ -86,7 +88,7 @@ class TestExportStatus:
     def _status(self, export, tenant=None):
         with (
             patch.object(service.repo, "get_tenant_by_id", return_value=tenant or _tenant()),
-            patch.object(service.tenant_export, "latest_export", return_value=export),
+            patch.object(tenant_export, "latest_export", return_value=export),
         ):
             return service.get_offboarding_export(TENANT)
 
@@ -118,9 +120,12 @@ class TestQueueingAnExport:
     def _queue(self, status: dict, tenant=None, queued=None):
         with (
             patch.object(service.repo, "get_tenant_by_id", return_value=tenant or _tenant()),
-            patch.object(service, "get_offboarding_export", side_effect=[status, {**status, "status": "pending"}]),
-            patch.object(service.tenant_export, "queue_export", return_value=queued) as queue,
-            patch.object(service.tenant_export, "mark_cancelled") as cancelled,
+            patch(
+                "services.tenant_management.offboarding_export.get_offboarding_export",
+                side_effect=[status, {**status, "status": "pending"}],
+            ),
+            patch.object(tenant_export, "queue_export", return_value=queued) as queue,
+            patch.object(tenant_export, "mark_cancelled") as cancelled,
             patch.object(service.repo, "insert_platform_audit") as audit,
         ):
             result = service.queue_offboarding_export(TENANT, actor_id="admin-1")
@@ -158,8 +163,8 @@ class TestDownloadLink:
         audit = patch.object(service.repo, "insert_platform_audit", side_effect=RuntimeError("db down") if audit_fails else None)
         with (
             patch.object(service.repo, "get_tenant_by_id", return_value=_tenant()),
-            patch.object(service.tenant_export, "latest_export", return_value=export),
-            patch.object(service, "get_storage_provider", return_value=storage),
+            patch.object(tenant_export, "latest_export", return_value=export),
+            patch("services.tenant_management.offboarding_export.get_storage_provider", return_value=storage),
             audit as audit_mock,
         ):
             result = service.create_offboarding_export_link(TENANT, actor_id="admin-1", ip_address="203.0.113.9")
@@ -239,7 +244,7 @@ class TestRoutes:
     def test_nobody_else_can_reach_them(self, role):
         with (
             patch.object(handler, "get_tenant_context", return_value=_ctx(role)),
-            patch.object(service, "create_offboarding_export_link") as link,
+            patch_tenant_management("create_offboarding_export_link") as link,
         ):
             response = handler.lambda_handler(_event("POST", f"{self.BASE}/link"), None)
         assert response["statusCode"] == 403
@@ -248,7 +253,7 @@ class TestRoutes:
     def test_a_tenant_id_that_is_not_a_uuid_is_a_404(self):
         with (
             patch.object(handler, "get_tenant_context", return_value=_ctx(UserRole.PLATFORM_ADMIN)),
-            patch.object(service, "get_offboarding_export") as status,
+            patch_tenant_management("get_offboarding_export") as status,
         ):
             response = handler.lambda_handler(_event("GET", "/v1/platform/tenants/not-a-uuid/offboarding-export"), None)
         assert response["statusCode"] == 404

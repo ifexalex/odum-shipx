@@ -11,6 +11,7 @@ import pytest
 
 import shared.notifications as notifications
 from shared import notification_consent as consent
+from tests.patching import patch_tenant_management
 
 pytestmark = pytest.mark.db
 
@@ -107,7 +108,7 @@ class TestSavingPreferencesMakesThemBind:
     def _save(self, world, customer_id: str, preferences: list[str]) -> None:
         from services.tenant_management import service
 
-        with patch.object(service, "log_audit"):
+        with patch_tenant_management("log_audit"):
             service.update_customer(world["tenant"], customer_id, {"notification_consent": preferences}, actor_id=world["user"])
 
     def test_before_saving_nothing_binds_and_after_saving_it_does(self, world, admin, queues):
@@ -132,7 +133,7 @@ class TestSavingPreferencesMakesThemBind:
         from services.tenant_management import service
 
         customer = world["customers"][8]
-        with patch.object(service, "log_audit"):
+        with patch_tenant_management("log_audit"):
             service.update_customer(world["tenant"], customer, {"name": "Renamed"}, actor_id=world["user"])
         with admin.cursor() as cur:
             cur.execute("SELECT consent_given_at FROM customer WHERE id = %s", (customer,))
