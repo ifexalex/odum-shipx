@@ -42,7 +42,7 @@ def claim(world, admin):
         )
         cur.execute(
             "INSERT INTO claim_resolution (tenant_id, damage_claim_id, resolution_type, resolution_amount_ngn, approval_level, "
-            "approved_by, notes, refund_request_id) VALUES (%s, %s, 'refund', 30000, 'admin', %s, 'internal: repeat claimant', %s)",
+            "approved_by, notes, refund_request_id) VALUES (%s, %s, 'refund', 30000, 'tenant_admin', %s, 'internal: repeat claimant', %s)",
             (world["tenant"], claim_id, world["user"], refund_id),
         )
     return claim_id
@@ -77,7 +77,8 @@ class TestRepository:
         other = str(uuid.uuid4())
         with admin.cursor() as cur:
             cur.execute(
-                "INSERT INTO damage_claim (id, tenant_id, customer_id, container_id, description, status) VALUES (%s, %s, %s, %s, 'x', 'filed')",
+                "INSERT INTO damage_claim (id, tenant_id, customer_id, container_id, description, status, reference) "
+                "VALUES (%s, %s, %s, %s, 'x', 'filed', 'DC-20261110-002')",
                 (other, world["tenant"], world["customers"][1], world["containers"][1]),
             )
         assert repo.get_claim_outcome(world["tenant"], other) is None

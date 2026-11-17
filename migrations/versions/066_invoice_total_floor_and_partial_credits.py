@@ -7,8 +7,9 @@ neither owed by them nor kept for them.
 This migration adds what the fix needs:
 
 * ``refund_request.credit_applied_ngn``: how much of a credit invoices have used so far. A credit stays
-  ``applied_as_credit`` until this reaches its approved amount, then becomes ``completed``. Existing ``completed``
-  credits were spent whole under the old rule and are backfilled to their full value.
+  ``applied_as_credit`` until this reaches its approved amount, then becomes ``processed``. The backfill below looks
+  for ``completed`` credits, which the old rule tried to write; the status check never allowed that value, so no row
+  matches and the backfill does nothing (found 2026-11-17 against a real database).
 * ``billing.credits_applied_ngn``: the credit an invoice absorbed when it was issued, so the parts of an invoice add
   up to its total. Unknown for invoices issued before this migration (left at 0): the old rule did not record it.
 * ``ck_billing_total_not_negative``: ``CHECK (total_ngn >= 0)``.

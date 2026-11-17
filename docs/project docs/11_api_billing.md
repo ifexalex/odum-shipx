@@ -197,7 +197,7 @@ Triggered when container status → `cleared`. For **each customer** in the cont
    Misc charges and storage fees are added to the total later, through `shared.billing_money.adjust_billing`.
 8. Insert `billing` record with `credits_applied_ngn = credits_ngn`
 9. Mark applied carryovers as 'applied' with `target_billing_id`
-10. Add what was taken to each credit's `credit_applied_ngn`; a credit becomes `completed` only when it is used up, otherwise it stays `applied_as_credit` with the rest
+10. Add what was taken to each credit's `credit_applied_ngn`; a credit becomes `processed` only when it is used up, otherwise it stays `applied_as_credit` with the rest
 11. Publish `PaymentDue` event per customer
 
 ## CBM Dispute State Machine
@@ -309,7 +309,7 @@ Verified by running the generated SQL page by page in SQLite (`tests/unit/test_p
 **Sign conventions (confirmed in code).** Carryovers are always positive (debt carried from a release with outstanding balance) and add to what is due. Credits are positive amounts that reduce it. `total_ngn`, `amount_paid_ngn` and the generated `balance_ngn = total_ngn − amount_paid_ngn` are what the customer owes, paid, and still owes.
 
 **What it does now.**
-- Credits are taken oldest first and only up to what is due (`services/billing/service.py::_credits_to_apply`). The rest of a credit stays the customer's: `refund_request.credit_applied_ngn` records how much invoices have used, the row stays `applied_as_credit` until that reaches the approved amount, then becomes `completed`.
+- Credits are taken oldest first and only up to what is due (`services/billing/service.py::_credits_to_apply`). The rest of a credit stays the customer's: `refund_request.credit_applied_ngn` records how much invoices have used, the row stays `applied_as_credit` until that reaches the approved amount, then becomes `processed`.
 - A credit is worth its approved amount.
 - An invoice with nothing left to pay is issued as `paid` (it was `unpaid` with a zero or negative total).
 - The invoice records the credit it absorbed in `billing.credits_applied_ngn`, returned as **`adjustments_ngn`** (negative) on the invoice responses. Both invoice pages already had an "Adjustments" row that this field was never filled for, so the parts of an invoice now add up to its total on screen and in the exports (single invoice csv/pdf: `credits_applied_ngn`; xlsx: "Adjustments (NGN)"; invoice list export: "Credits Applied (NGN)").
@@ -325,4 +325,4 @@ Verified by running the generated SQL page by page in SQLite (`tests/unit/test_p
 - **A zero-total invoice still sends the fixed "payment due" message** with amount 0.00, because that is the only approved template that tells the customer the shipment has arrived. The in-app notification says "nothing to pay. Your credit covered this invoice." A separate "covered by credit" template is an owner call.
 - Invoices issued before migration 066 have `credits_applied_ngn = 0`: the old rule did not record it.
 
-**Tests.** `tests/unit/test_invoice_credits.py` (31; nine protections mutation-checked, each caught). `tests/db/test_invoice_credits.py` (10) runs the statements against a real database: **unrun**, no Docker.
+**Tests.** `tests/unit/test_invoice_credits.py` (31; nine protections mutation-checked, each caught). `tests/db/test_invoice_credits.py` (10) runs the statements against a real database: run 2026-11-17, all pass. **It found a bug the unit tests could not:** a used-up credit was set to `completed`, a status `refund_request` does not allow, so any invoice that used a credit failed and rolled back (the customer was not invoiced). That predates BE-07. A used-up credit now becomes `processed`.

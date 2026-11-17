@@ -1036,7 +1036,7 @@ reflect the waiver; the history does not survive).
 
 **Do not rotate `PICKUP_CODE_PEPPER`** without planning: every outstanding code stops verifying and each active note needs a new code. If a note carries a code and the pepper is missing, pickups for it return 503 by design.
 
-**Migration 065** adds three columns to `release_note`. It has not been run anywhere yet.
+**Migration 065** adds three columns to `release_note`. Applied to the local dev database on 2026-11-17 (with 066 and 067); not yet on AWS or Azure.
 
 ## Invoices with a negative total (audit BE-07, 2026-11-17, migration 066)
 

@@ -191,12 +191,12 @@ class TestCreateInvoiceSpendsCredit:
         assert "SET credit_applied_ngn = credit_applied_ngn + %(amount)s" in sql
         assert params == {"tenant_id": TENANT, "id": "r1", "amount": Decimal("20000"), "applied_before": Decimal("30000")}
 
-    def test_the_credit_is_completed_only_once_it_is_used_up(self):
+    def test_the_credit_is_processed_only_once_it_is_used_up(self):
         cursor = _Cursor()
         _create_invoice(cursor, [self.APPLICATION])
         sql, _ = self._credit_statement(cursor)
         assert (
-            "WHEN credit_applied_ngn + %(amount)s >= COALESCE(amount_approved_ngn, amount_ngn) THEN 'completed' ELSE status"
+            "WHEN credit_applied_ngn + %(amount)s >= COALESCE(amount_approved_ngn, amount_ngn) THEN 'processed' ELSE status"
             in sql
         )
 

@@ -427,7 +427,7 @@ def enqueue_notifications(tenant_id: str, event_type: str, recipient: dict, temp
 
 **Ground-truth gap found while building it.** `ILIKE '%text%'` cannot use a b-tree index, so each query scans the tenant's rows (bounded by `tenant_id` and `LIMIT 5`). Fine at today's volumes; if a tenant grows to hundreds of thousands of invoices or cartons, add `pg_trgm` GIN indexes on the matched columns rather than changing the query.
 
-**Not run against a real database.** `tests/db/test_search.py` runs the SQL on real Postgres, but Docker was unavailable when this was written, so it has not been run; `tests/unit/test_search.py` pins the behaviour and inspects the SQL. Run `make test-db` before relying on the SQL.
+`tests/db/test_search.py` runs the SQL on real Postgres; it ran on 2026-11-17 and passes.
 
 ---
 

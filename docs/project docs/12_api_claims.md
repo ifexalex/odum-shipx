@@ -236,7 +236,7 @@ again. This is the intended behaviour, not a gap.
 - **The outcome is deliberately the customer-safe part of the decision.** `claim_resolution.notes`, `approval_level` and `approved_by` are staff's internal record and are not selected (the query's select list is tested, and so is the response against a row that carries them). ~~Open product question for the owner: the staff "reason" typed when resolving is not shown to the customer.~~ **Decided 2026-11-17, see the next section.**
 - **Evidence links are made only for a key that is exactly `{tenant_id}/claims/{claim_id}/{one filename}`** (what an upload produces); a key that starts with that prefix and then climbs out with `..`, or has a subfolder, or no name, is skipped and logged. A failure to presign lists the file without a link rather than failing the read. `claim_evidence` has no RLS, so the claim is loaded first through the tenant-scoped query and only then its evidence.
 - **Known gap:** an evidence row is created when an upload is *started* (`POST /v1/uploads/presigned-url`), and nothing confirms the upload finished, so an abandoned upload shows as a file whose link does not open. The storage providers have no existence check yet.
-- Tests: `tests/unit/test_claims.py` (`TestGetClaimForTheCustomer`, `TestClaimReadSql`, mutation-checked), `tests/db/test_claim_read.py` (9, **unrun**: no Docker).
+- Tests: `tests/unit/test_claims.py` (`TestGetClaimForTheCustomer`, `TestClaimReadSql`, mutation-checked), `tests/db/test_claim_read.py` (10, run 2026-11-17 and passing after two fixture fixes: approval level `tenant_admin`, not `admin`; claims need a `reference`).
 
 ## Implementation notes — who is shown the reason for a decision (owner decision, 2026-11-17)
 

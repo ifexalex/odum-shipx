@@ -327,7 +327,9 @@ def create_invoice(
 
     A credit is spent only as far as the invoice needed it: what is left stays
     ``applied_as_credit`` for the next invoice, and the credit becomes
-    ``completed`` once it is used up. The invoice records the sum it took in
+    ``processed`` once it is used up (``completed`` is not a status the table allows: the old code that set it
+    failed every invoice that used a credit, found by tests/db/test_invoice_credits.py on 2026-11-17).
+    The invoice records the sum it took in
     ``credits_applied_ngn``.
 
     Idempotent per (customer, container): if a live invoice is already there it
@@ -404,7 +406,7 @@ def create_invoice(
                        SET credit_applied_ngn = credit_applied_ngn + %(amount)s,
                            status = CASE
                                WHEN credit_applied_ngn + %(amount)s >= COALESCE(amount_approved_ngn, amount_ngn)
-                               THEN 'completed' ELSE status
+                               THEN 'processed' ELSE status
                            END,
                            updated_at = NOW()
                      WHERE tenant_id = %(tenant_id)s AND id = %(id)s AND status = 'applied_as_credit'

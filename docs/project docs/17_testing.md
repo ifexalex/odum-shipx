@@ -2403,3 +2403,10 @@ Frontend 165 files / 1,296 tests. New guards that fail on regression: `routes.te
 ## OPS-04 — failure counters and alarms (2026-11-17)
 
 `tests/unit/test_failure_metrics.py` (23): the metric line, written through the production `StructuredFormatter`, is valid Embedded Metric Format (namespace, dimensions, metric names as top-level keys, integer timestamp); outcomes carry attempts and failures; counted even with the root log level at ERROR; only the fixed operation names become metrics; counting never raises; and each catch site counts (audit, platform audit, notification enqueue, invoice generation but not a skipped invoice, both send outcomes, a failed tenant step in each of six scheduled jobs). Mutation-checked: 7 protections, each caught. `test_infrastructure_contracts.py::TestFailureAlarmsMatchTheCounters` (3): every operation an AWS or Azure alarm names is one the code counts, and the namespaces agree. **Not verified:** an alarm firing in a deployed environment (the brief's gate).
+
+## Real-database run, 2026-11-17
+
+Docker Desktop had stopped because the disk was full ("no space left on device" in its backend log); after space was freed it started. Migrations 065–067 were applied to the local dev database (`make migrate`, data kept; `make stack` was not used because it drops the database). `make test-db`: **183 passed**. Every database test written while Docker was down now runs: `test_search.py`, `test_list_exports.py`, `test_paginated_lists.py`, `test_claim_read.py`, `test_pickup_code.py`, `test_invoice_credits.py`, and the new `test_offboarding_lifecycle.py` (2: offboard, export to Moto S3, read back, then the cleanup deletes everything against real foreign keys; mutation-checked three ways).
+
+Found by running them: **a real bug** (invoice generation set a used credit to `completed`, which `refund_request` does not allow, so every invoice that used a credit failed; fixed, `processed`), and two fixture mistakes in `test_claim_read.py` (approval level `admin`, a claim without `reference`).
+

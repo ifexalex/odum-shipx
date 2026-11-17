@@ -62,7 +62,7 @@ class TestCreditsOnRealRows:
         _invoice(world, 0, "0", [repo.CreditApplication(credit, Decimal("0"), Decimal("20000"))])
         _invoice(world, 1, "70000", [repo.CreditApplication(credit, Decimal("20000"), Decimal("30000"))])
 
-        assert _credit_state(admin, credit) == ("completed", Decimal("50000"))
+        assert _credit_state(admin, credit) == ("processed", Decimal("50000"))
         assert repo.get_pending_credit_refunds(world["tenant"], world["customers"][0]) == []
 
     def test_two_invoices_cannot_spend_the_same_part_of_a_credit(self, admin, world):

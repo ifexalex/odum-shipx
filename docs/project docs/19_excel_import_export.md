@@ -237,7 +237,7 @@ The **Export** button on the invoice list and the container list downloads *what
 
 **Routes.** `GET /v1/billing/export` and `GET /v1/containers/export` are routed to the excel service by `resolve_service` (path ends in `/export`) and by two literal API Gateway routes, which win over the `{id}` routes on the same path.
 
-**Not run against a real database.** `tests/db/test_list_exports.py` (42 tests) was written without Docker available and has not been run: run `make test-db` first.
+~~Not run against a real database.~~ `tests/db/test_list_exports.py` (42 tests) ran on 2026-11-17 against local Postgres: all pass.
 
 ## Billing Excel Export (Backend Spec §7.4)
 
