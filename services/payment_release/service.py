@@ -1902,7 +1902,13 @@ def confirm_online_payment(
             "outstanding_ngn": Decimal(str(billing["balance_ngn"])),
         }
 
-    amount_ngn = Decimal(str(data.get("amount", 0))) / Decimal("100")
+    amount_ngn = paystack.charge_amount_ngn(data)
+    if amount_ngn is None:
+        # A successful charge that is not a positive naira amount is not applied (the same rule as the webhook).
+        raise BusinessRuleViolationError(
+            "This payment was not made in naira, so it has not been applied to your invoice. Please contact the office.",
+            rule_id="BR-PAY-VERIFY-002",
+        )
     gateway_transaction_id = str(data.get("id", ""))
 
     result = process_webhook_payment(

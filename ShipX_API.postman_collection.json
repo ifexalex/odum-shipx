@@ -4429,7 +4429,8 @@
                 "{{billing_id}}",
                 "verify"
               ]
-            }
+            },
+            "description": "A charge Paystack reports as successful is applied only if it is a positive amount in NGN (audit BE-08); otherwise 422 BR-PAY-VERIFY-002 and nothing is recorded. The payment webhook applies the same rule (and still answers 200)."
           }
         },
         {

@@ -843,7 +843,13 @@ class TestConfirmOnlinePayment:
             patch.object(service.repo, "get_tenant_paystack_secret", return_value="sk_test_x"),
             patch(
                 "services.payment_release.paystack.verify_transaction",
-                return_value={"status": "success", "amount": 10000000, "id": "gw-tx-999", "reference": reference},
+                return_value={
+                    "status": "success",
+                    "amount": 10000000,
+                    "currency": "NGN",
+                    "id": "gw-tx-999",
+                    "reference": reference,
+                },
             ) as mock_verify,
             patch.object(service, "process_webhook_payment", return_value=confirm_result) as mock_confirm,
         ):
@@ -857,6 +863,34 @@ class TestConfirmOnlinePayment:
         assert kwargs["payment_method"] == "paystack"
         assert result["gateway_status"] == "success"
         assert result["new_payment_status"] == "paid"
+
+    @pytest.mark.parametrize(
+        "charge",
+        [
+            {"amount": 10000000, "currency": "USD"},
+            {"amount": 10000000},  # no currency at all
+            {"amount": 0, "currency": "NGN"},
+        ],
+    )
+    def test_a_successful_charge_that_is_not_a_positive_naira_amount_is_not_applied(self, charge):
+        """Audit BE-08: the verify path reads the amount the same way the webhook does."""
+        from services.payment_release import service
+
+        with (
+            patch.object(service.repo, "get_billing_by_id", return_value=self._billing()),
+            patch.object(service.repo, "get_customer_by_user_id", return_value={"id": "customer-001"}),
+            patch.object(service.repo, "get_tenant_paystack_secret", return_value="sk_test_x"),
+            patch(
+                "services.payment_release.paystack.verify_transaction",
+                return_value={"status": "success", "id": "gw-tx-999", **charge},
+            ),
+            patch.object(service, "process_webhook_payment") as mock_confirm,
+        ):
+            with pytest.raises(BusinessRuleViolationError) as raised:
+                service.confirm_online_payment(TENANT_ID, "billing-001", "billing-001.abc123", self._ctx())
+
+        mock_confirm.assert_not_called()
+        assert raised.value.rule_id == "BR-PAY-VERIFY-002"
 
     def test_already_reconciled_by_a_webhook_is_not_an_error(self):
         """process_webhook_payment returns None on a duplicate — the webhook
@@ -873,7 +907,7 @@ class TestConfirmOnlinePayment:
             patch.object(service.repo, "get_tenant_paystack_secret", return_value="sk_test_x"),
             patch(
                 "services.payment_release.paystack.verify_transaction",
-                return_value={"status": "success", "amount": 10000000, "id": "gw-tx-999"},
+                return_value={"status": "success", "amount": 10000000, "currency": "NGN", "id": "gw-tx-999"},
             ),
             patch.object(service, "process_webhook_payment", return_value=None),
         ):

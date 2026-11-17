@@ -2376,3 +2376,7 @@ Frontend 165 files / 1,296 tests. New guards that fail on regression: `routes.te
 - `tests/unit/test_invoice_credits.py` (31): `_credits_to_apply` (capped at what is due, oldest first, approved amount, earlier use counted), generation with credits (the brief's case: ₦50,000 credit on a ₦20,000 charge gives a zero `paid` invoice and leaves ₦30,000), the credit write's SQL (adds instead of completing, optimistic guard, tenant scoped, `RETURNING`), `adjust_billing`'s zero floor, `new_overpayment` past zero, and the invoice showing the credit. Mutation-checked: nine protections removed one at a time, each caught.
 - `tests/db/test_invoice_credits.py` (10): the same against a real database, including the CHECK refusing a negative total. **Unrun**: no Docker.
 - Frontend: `RefundDetail.test.tsx` ("Credit used ₦X of ₦Y").
+
+## BE-08 — Paystack currency (2026-11-17)
+
+`tests/unit/test_payment_webhook.py`: `TestPaystackChargeAmount` (only a positive naira amount; other currencies, no currency, zero, negative, NaN, Infinity and malformed amounts refused; the log line does not echo the payload), `TestExtractPaystackPaymentCurrency`, and `TestASignedEventInAnotherCurrencyDoesNotChangeTheInvoice` (the brief's acceptance test: a correctly signed USD `charge.success` through `_webhook_routes` records no payment; the same event in NGN does). `tests/unit/test_payment_release.py`: the verify path refuses the same charges (422 `BR-PAY-VERIFY-002`). Mutation-checked: 5 protections, each caught.

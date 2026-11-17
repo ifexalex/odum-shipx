@@ -1075,3 +1075,16 @@ ALTER TABLE billing VALIDATE CONSTRAINT ck_billing_total_not_negative;
 ```
 
 **If an update to an invoice fails with `ck_billing_total_not_negative`** in normal running, it is one of those unrepaired rows. No code path can create a new one: `shared.billing_money.adjust_billing` stops at zero.
+
+## A Paystack charge that was not applied (audit BE-08, 2026-11-17)
+
+Since 2026-11-17 a Paystack charge is applied to an invoice only if it is a positive amount in naira. Anything else is acknowledged (200) and logged at WARNING by `services/payment_release/paystack.py`:
+
+```
+Ignoring Paystack charge '<id>': currency 'USD' is not NGN
+Ignoring Paystack charge '<id>': amount is not positive
+```
+
+On the verify path the customer sees "This payment was not made in naira, so it has not been applied to your invoice. Please contact the office." (422 `BR-PAY-VERIFY-002`).
+
+**What to do.** A charge in another currency means the tenant's Paystack account accepts that currency and a checkout was opened in it, or someone sent a crafted event signed with the tenant's key (which means the key has leaked: rotate it in the tenant's Paystack dashboard and `PUT /v1/tenant/config/paystack`). Look the transaction id up in the tenant's Paystack dashboard. If the customer really paid, either refund it in Paystack or record the naira value by hand as a payment (`POST /v1/payments`, method `paystack`, with the Paystack reference) after agreeing the rate with the tenant. Do not change the code to accept it.
