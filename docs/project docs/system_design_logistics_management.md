@@ -4,15 +4,30 @@
 
 | Field | Detail |
 |---|---|
-| **Document Version** | 3.1 |
-| **Date** | 2 March 2026 |
+| **Document Version** | 3.2 |
+| **Date** | 2 March 2026 (v3.1); current-state revision 17 November 2026 (v3.2) |
 | **Status** | In Development |
 | **Design Principle** | Serverless-first, pay-per-use, zero idle cost, multi-tenant SaaS |
 | **Target SLA** | 99.5% availability |
 | **Reference** | PRD_Logistics_Management_System.md v2.1 (Multi-Tenant SaaS + GDPR) |
-| **Changelog** | v3.1: Cognito groups format clarified, GDPR endpoints added to API listing, Python runtime updated, local dev setup added |
+| **Changelog** | v3.2 (17 Nov 2026): §0 "Current state" added; event routing, rate risk and future-enhancement entries corrected (audit OPS-05). v3.1: Cognito groups format clarified, GDPR endpoints added to API listing, Python runtime updated, local dev setup added |
 
 ---
+
+## 0. Current state (17 November 2026)
+
+Read this before the rest: the design below dates from March 2026, and the product has moved on. Where they differ, this list and the code win.
+
+- **Two deployment targets from one codebase.** AWS (Lambda behind API Gateway, Aurora, Cognito, SQS/EventBridge, S3) and Azure (one container image on Container Apps for API, workers and cron jobs; PostgreSQL Flexible Server; Entra ID; Service Bus; Blob Storage; Front Door). Cloud-neutral ports in `shared/providers/` pick the adapters (`CLOUD_PROVIDER`). ADR-004 (identity), ADR-005 (compute), ADR-007 (rate limiting); `18_cicd_pipeline.md` (`DEPLOY_CLOUD`).
+- **Notifications are enqueued by the services, not routed by EventBridge.** Each service calls `shared/notifications.py`, which writes the consumer's message shape to the SMS/WhatsApp/email queue. EventBridge carries domain events for metering only; the rules that sent raw events to the notification queues were removed (audit BE-09). §3.5 is corrected below.
+- **Billing runs when a container is cleared**, called directly by the tracking service per customer (not on an EventBridge `PaymentDue`, which nothing consumed). An invoice never goes below zero; customer credit is spent only as far as an invoice needs it (BE-07).
+- **Dollar rate:** live Bybit P2P USD→NGN base plus a per-tenant markup (`shared/fx_rate.py`), frozen per invoice.
+- **Payments:** Paystack checkout per tenant (own encrypted key; webhook and direct verify; NGN only, BE-08) and bank-transfer payment claims with evidence.
+- **Multiple warehouses per tenant**; release notes carry a one-time pickup code (ADR-008).
+- **Customers** self-register, are invited, imported or created by staff; the customer portal covers shipments, invoices, payments, claims, refunds and release notes.
+- **Metering and plan quotas** are enforced (429); tiers Starter, Business, Enterprise.
+- **Tenant subdomains and white-label custom domains** (migration 023); public lead form for new shipping companies; offboarding produces a data export before deletion (BE-10).
+- **Failure alarms** on swallowed failures (invoice generation, audit writes, scheduled job steps, notification failure rate), audit OPS-04, on both clouds.
 
 ## 1. Architecture Decision Record (ADR)
 
@@ -579,7 +594,8 @@ flowchart LR
     BL -->|CBMDisputeResolved| EB
     PR -->|ReleaseNoteGenerated| EB
 
-    EB --> SQS_SMS & SQS_WA & SQS_EMAIL
+    %% Corrected 2026-11-17 (BE-09): services enqueue notifications directly; EventBridge does not feed these queues.
+    PL & TR & BL & PR -->|enqueue_notification| SQS_SMS & SQS_WA & SQS_EMAIL
     SQS_SMS --> NT_SMS
     SQS_WA --> NT_WA
     SQS_EMAIL --> NT_EMAIL
@@ -596,15 +612,17 @@ All events carry `tenant_id` as a top-level attribute for routing and isolation.
 | `TenantSuspended` | Platform Admin suspends tenant | Notify Tenant Admin, disable API access | Platform-level |
 | `PackingListApproved` | Packing list approved | Email to tenant's global company address, notify Nigeria office | Tenant-scoped |
 | `ShipmentStatusUpdated` | Tracking stage changes | SMS + WhatsApp to customer (using tenant's notification config) | Tenant-scoped |
-| `PaymentDue` | Container arrives, billing calculated | SMS + WhatsApp with amount + warehouse address | Tenant-scoped |
+| `PaymentDue` | ~~Container arrives,~~ Container cleared, invoice created | ~~SMS + WhatsApp with amount + warehouse address~~ The billing service enqueues the "payment due" message itself; the event is for metering | Tenant-scoped |
 | `CBMDisputeResolved` | Dispute resolved | SMS + WhatsApp with updated billing | Tenant-scoped |
 | `ReleaseNoteGenerated` | Payment confirmed | SMS + WhatsApp + Email with release note (tenant-branded) | Tenant-scoped |
 | `DamageClaimFiled` | Customer files claim | Email to tenant's Nigeria office for investigation | Tenant-scoped |
 | `UsageRecorded` | Any billable action | Metering service records per-tenant usage | Tenant-scoped |
 
+**Correction (2026-11-17, audit BE-09):** the "Actions" column describes what each event's producer does, not EventBridge routing. No EventBridge rule targets a notification queue: the consumers read only the message `shared/notifications.py` writes, and a raw event has no recipient. EventBridge feeds the metering queue.
+
 **Why SQS + EventBridge (not SNS):**
 - SQS provides guaranteed delivery with retries and dead-letter queues
-- EventBridge enables content-based routing (e.g., route only Nigeria events to Nigeria staff)
+- EventBridge carries domain events to the metering queue (it was meant to route notifications; see the correction above)
 - Both are serverless and cost $0 at low volume (SQS: first 1M requests/month free)
 
 ---
@@ -1157,7 +1175,7 @@ Each new tenant follows this automated provisioning sequence:
 | WhatsApp API approval delayed | No WhatsApp notifications | SMS-first approach; WhatsApp as enhancement; shared platform WABA for v1 |
 | Lambda cold starts | Slightly slower first request | Use Python (fast cold starts); keep deployment packages small; more tenants = warmer Lambdas |
 | Nigeria connectivity issues | Warehouse staff can't access system | PWA with offline mode; sync when online |
-| Exchange rate volatility | Billing disputes | Tenant Admin sets rate at arrival time; system records rate used per billing record |
+| Exchange rate volatility | Billing disputes | ~~Tenant Admin sets rate at arrival time~~ Live market base plus the tenant's markup, frozen on each invoice when it is created; the system records the rate used per billing record |
 | Vendor lock-in (AWS) | Hard to migrate | Clean hexagonal architecture: domain logic decoupled from AWS SDKs; tenant_id scoping is cloud-agnostic |
 | **Single Cognito pool capacity** | **50K MAU limit on free tier** | **Monitor MAU growth; at scale, move to Cognito paid tier ($0.0055/MAU) or migrate to Auth0/Clerk** |
 
@@ -1167,15 +1185,15 @@ Each new tenant follows this automated provisioning sequence:
 
 1. **ElastiCache replication group** — Upgrade from single-node `cache.t4g.micro` to a Multi-AZ replication group for prod HA; extend Redis usage to tracking lookups if volume grows
 2. **Lambda@Edge** — Tracking API at edge for lower latency across all tenants
-3. **Multi-warehouse support** — Separate warehouse inventories per tenant in Nigeria
-4. **In-app payments** — Integrate Paystack/Flutterwave with per-tenant payment gateway credentials
+3. ~~**Multi-warehouse support**~~ — *Done: several warehouses per tenant (migration 041). Per-warehouse inventory is still future.*
+4. ~~**In-app payments**~~ — *Done for Paystack with per-tenant credentials (Flutterwave code exists, unused).*
 5. **AI-powered CBM estimation** — Use photos to estimate CBM, reducing disputes
 6. **Multi-country expansion** — Add routing for Ghana, Kenya destinations; per-tenant corridor configuration
 7. **Real-time WebSocket** — Live tracking updates instead of polling (tenant-scoped channels)
 8. **Per-tenant WhatsApp Business Accounts** — Each tenant provides their own WABA for branded messaging with verified business name
 9. **Usage-based tenant billing** — Automated metering → invoice generation for platform subscription fees (per-container pricing, tiered plans)
-10. **Tenant self-service onboarding** — Public signup flow with Stripe/Paystack for subscription payment; automated provisioning without Platform Admin intervention
-11. **Per-tenant custom domains** — Vanity URLs (e.g., `tracking.shippingcompany.com`) via CloudFront alternate domain names
+10. **Tenant self-service onboarding** — Public signup flow with Stripe/Paystack for subscription payment; automated provisioning without Platform Admin intervention. *(Part done: a public lead form feeds a platform-admin review queue; provisioning and subscription payment are still manual.)*
+11. ~~**Per-tenant custom domains**~~ — *Done: tenant subdomains and a white-label `custom_domain` per tenant (migration 023); each custom domain still needs its certificate and DNS set up by hand.*
 12. **Schema-per-tenant migration** — If a high-value tenant requires stronger isolation, migrate them to a dedicated schema within the same Aurora instance
 
 ---
