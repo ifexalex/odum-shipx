@@ -7,6 +7,7 @@ import json
 from typing import Any
 
 from shared.db import execute_write_with_tenant
+from shared.observability import record_failure
 from shared.tenant_context import PLATFORM_TENANT_ID
 
 
@@ -17,7 +18,25 @@ def insert_platform_audit(
     details: dict[str, Any] | None = None,
     ip_address: str | None = None,
 ) -> None:
-    """Record one platform action. ``actor_id`` is ``None`` for a platform job."""
+    """Record one platform action. ``actor_id`` is ``None`` for a platform job.
+
+    Raises on failure (a caller such as the export download link must not proceed without the record); the failure is
+    counted here, once, as ``audit_write`` (audit OPS-04), whatever the caller then does with it.
+    """
+    try:
+        _insert(action, actor_id, target_tenant_id, details, ip_address)
+    except Exception:
+        record_failure("audit_write")
+        raise
+
+
+def _insert(
+    action: str,
+    actor_id: str | None,
+    target_tenant_id: str | None,
+    details: dict[str, Any] | None,
+    ip_address: str | None,
+) -> None:
     execute_write_with_tenant(
         PLATFORM_TENANT_ID,
         """

@@ -321,3 +321,9 @@ variable "whatsapp_verify_token" {
   default     = ""
   sensitive   = true
 }
+
+variable "alerts_email" {
+  description = "Email for failure alerts (audit OPS-04). Empty skips the alert rules entirely (no cost)."
+  type        = string
+  default     = ""
+}

@@ -27,7 +27,7 @@ from shared import tenant_export
 from shared.audit import log_audit
 from shared.db import execute_with_tenant, execute_write_with_tenant, tenant_transaction
 from shared.logging_config import bind_log_context, clear_log_context, setup_logging
-from shared.observability import init_tracing
+from shared.observability import init_tracing, record_failure
 from shared.providers import get_storage_provider
 from shared.tenant_context import PLATFORM_TENANT_ID
 from shared.tenant_data import TENANT_TABLES
@@ -75,6 +75,7 @@ def lambda_handler(event: dict[str, Any], context: Any) -> dict[str, Any]:
         try:
             if not tenant_export.has_completed_export(tenant_id, since=tenant["offboarded_at"]):
                 logger.warning("Refusing to delete tenant %s: no offboarding export has completed", tenant_id)
+                record_failure("tenant_deletion_refused")  # counted, not alarmed: it repeats daily until handled
                 refused += 1
                 continue
             _delete_tenant(tenant_id, tenant)
@@ -82,6 +83,7 @@ def lambda_handler(event: dict[str, Any], context: Any) -> dict[str, Any]:
             logger.info("Tenant data deleted: %s", tenant_id)
         except Exception:
             logger.exception("Data cleanup failed for tenant %s", tenant_id)
+            record_failure("scheduled_job_step")
             errors += 1
 
     logger.info("Data cleanup job done: deleted=%d errors=%d refused=%d", deleted, errors, refused)

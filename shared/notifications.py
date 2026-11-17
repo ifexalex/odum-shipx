@@ -32,6 +32,7 @@ from typing import Any, cast
 from shared import notification_consent
 from shared.cache import Cache
 from shared.db import execute_with_tenant, execute_write_with_tenant
+from shared.observability import record_failure
 from shared.providers import get_queue_provider
 from shared.tenant_context import PLATFORM_TENANT_ID
 
@@ -222,7 +223,11 @@ def enqueue_notification(
         }
     )
 
-    get_queue_provider().send(destination=queue_url, body=message_body)
+    try:
+        get_queue_provider().send(destination=queue_url, body=message_body)
+    except Exception:
+        record_failure("notification_enqueue")  # the caller may swallow it; the count does not depend on that
+        raise
     logger.info(
         "Notification enqueued",
         extra={
@@ -523,3 +528,4 @@ def enqueue_notifications(
             )
         except Exception:
             logger.exception("Failed to enqueue %s notification for event %s", channel, event_type)
+            record_failure("notification_enqueue")

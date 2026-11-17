@@ -215,6 +215,7 @@ module "monitoring" {
   resource_group_name = azurerm_resource_group.main.name
   location            = var.location
   common_tags         = local.common_tags
+  alerts_email        = var.alerts_email
 }
 
 # ─── Compute (Phase 3) ──────────────────────────────────────────────────────

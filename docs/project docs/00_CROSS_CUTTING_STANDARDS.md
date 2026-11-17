@@ -653,3 +653,7 @@ A secret that is sent to a person (a pickup code today) is stored only as a keye
 ## Tenant data export at offboarding (audit BE-10, 2026-11-17)
 
 GDPR portability for the tenant as controller (PRD FR-TN-004). The archive holds decrypted personal data, so: platform admins only; five-minute links, each audited with actor and IP; no link without the audit record; IAM limited to the export folders; secrets and token hashes excluded; failures logged by type and location only. The cleanup will not erase a tenant before its export has completed. Residual: at rest the archive relies on bucket encryption, and it lives until the tenant is deleted. Threat model: `07_api_tenant_management.md`.
+
+## Swallowed failures are counted (audit OPS-04, 2026-11-17)
+
+Rule: a `try/except` that logs and carries on (so a request or a job survives) must also call `shared.observability.record_failure(operation)` when the failure means a customer is not billed or not told, or a record is lost. Add a new operation to `OPERATIONS` only with an alarm for it (or a written reason it needs none), and keep the set small: each value is a billed metric. The metric line carries no message, tenant or personal data; the detail stays in the normal log line next to it. Alarms and responses: `docs/runbook.md`, "Failure alarms".

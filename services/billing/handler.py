@@ -34,7 +34,7 @@ from shared.exceptions import LogisticsBaseError, ResourceNotFoundError
 from shared.idempotency import check_idempotency, store_idempotency
 from shared.logging_config import bind_log_context, clear_log_context, setup_logging
 from shared.metering import record_usage
-from shared.observability import init_tracing
+from shared.observability import init_tracing, record_failure
 from shared.pagination import decode_cursor
 from shared.responses import created, error_response, no_content, paginated, success
 from shared.tenant_context import UserRole
@@ -181,6 +181,7 @@ def _handle_event(event: dict[str, Any]) -> dict[str, Any]:
                 payload.get("customer_id"),
                 payload.get("container_id"),
             )
+            record_failure("invoice_generation")
     else:
         logger.info("Ignoring unhandled event type: %s", detail_type)
 

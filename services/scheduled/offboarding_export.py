@@ -32,7 +32,7 @@ from shared import tenant_export
 from shared.db import execute_with_tenant
 from shared.encryption import decrypt_field
 from shared.logging_config import bind_log_context, clear_log_context, setup_logging
-from shared.observability import init_tracing
+from shared.observability import init_tracing, record_failure
 from shared.platform_audit import insert_platform_audit
 from shared.providers import get_storage_provider
 from shared.tenant_context import PLATFORM_TENANT_ID
@@ -106,6 +106,7 @@ def run_export(export: dict[str, Any]) -> str:
         # Type and place only, no message and no traceback text: this job reads every customer's personal data, and a
         # database or decryption error message can quote a row.
         logger.error("Offboarding export %s failed for tenant %s: %s at %s", export_id, tenant_id, *_where(exc))
+        record_failure("scheduled_job_step")
         try:
             tenant_export.mark_failed(export_id, type(exc).__name__)
         except Exception:

@@ -22,6 +22,7 @@ from shared.exceptions import (
 )
 from shared.fx_rate import get_effective_dollar_rate
 from shared.notifications import enqueue_notifications
+from shared.observability import record_failure
 from shared.staff_notifications import notify_staff
 from shared.tenant_context import UserRole
 
@@ -871,6 +872,7 @@ def generate_container_invoices(
             )
         except Exception:
             logger.exception("Failed to generate invoice for customer %s on container %s", customer["id"], container_id)
+            record_failure("invoice_generation")  # a customer left unbilled raises an alarm (audit OPS-04)
             outcome = InvoiceOutcome(
                 status="failed",
                 reason="GENERATION_ERROR",

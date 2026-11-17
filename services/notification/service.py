@@ -19,6 +19,7 @@ import urllib.parse
 import urllib.request
 from typing import Any
 
+from shared.observability import record_outcome
 from shared.providers import get_email_provider, get_queue_provider
 
 from .tenant_branding import (
@@ -1036,6 +1037,7 @@ def log_sent(
     gateway_response: dict[str, Any],
 ) -> None:
     """Mark an existing notification_log row as 'sent'. Silent on failure."""
+    record_outcome("notification_send", failed=False)  # the failure-rate alarm's denominator (audit OPS-04)
     if not log_id:
         return
     try:
@@ -1059,6 +1061,7 @@ def log_failed(
     gateway_response: dict[str, Any] | None = None,
 ) -> None:
     """Mark an existing notification_log row as 'failed'. Silent on failure."""
+    record_outcome("notification_send", failed=True)
     if not log_id:
         return
     try:

@@ -1111,3 +1111,27 @@ After the fix, press **Queue export** on the tenant page (or `POST /v1/platform/
 ## A tenant past 90 days was not deleted
 
 The cleanup logs `Refusing to delete tenant <id>: no offboarding export has completed` and returns it under `refused`. That is the safeguard working: the data has not been handed over. Open the tenant page: queue or fix the export (above), download it, hand it to the tenant; the next 02:00 UTC run deletes the tenant. Tenants offboarded before 2026-11-17 have no export at all and will all be refused until one is queued for each.
+
+## Failure alarms (audit OPS-04, 2026-11-17)
+
+Some failures are caught so a request or a job can carry on. They no longer pass silently: `shared/observability.py` counts each one (`record_failure` / `record_outcome`), and these alarms watch the counts. Every alarm also logs a line with the detail at the catch site: search the logs for the operation name and the time.
+
+| Alarm (AWS: `{project}-{env}-…`; Azure: `{prefix}-…`) | Fires when | What it means | Do this |
+|---|---|---|---|
+| `invoice-generation-failures` | any in 5 min (Azure: 15 min) | A customer on a cleared container got no invoice because generation raised (not "skipped": missing rates and no-CBM are reported to staff in-app and are not counted). | Find `Failed to generate invoice for customer … on container …` in the tracking/billing logs. Fix the cause (database, rate lookup), then open the container and **Generate missing invoices**. The dashboard's unbilled queue lists who is waiting. |
+| `audit-write-failures` | any in 5 min (Azure: 15 min) | An action happened but its audit record (tenant `audit_log` or `platform_audit_log`) was not written. | Find `Failed to write audit record` / platform audit errors. Usually the database: check connections. The actions are not lost, only their record: note the window in the incident log, since the trail has a gap. An offboarding export link is refused outright when its audit record fails. |
+| `scheduled-job-step-failures` | any in 1 hour | A scheduled job failed for one tenant or record and moved on: storage fees, reminders, dispute escalation, SLA check, release-note expiry, usage aggregation, data cleanup, offboarding export. | The log line names the job and tenant. Fix and let the next run pick it up (each job is idempotent per day). Storage fees missed for a day are not back-filled: see "storage fee" in this runbook. Offboarding export: "Offboarding export failed". |
+| `notification-failure-rate` | > 20 % of sends failed in 15 min, with at least 5 sends | A channel's provider is failing (SMS credit, WhatsApp template, SES), not one bad number. | `notification_log` rows with `status = 'failed'` in the window show which channel and the provider's error. See "Seeing a notification actually send" and the provider sections above. |
+
+Also counted, **not** alarmed: `notification_enqueue` (a message that never reached the queue; it shows in the same logs) and `tenant_deletion_refused` (the cleanup's daily refusal to delete a tenant without an export: expected for tenants offboarded before 2026-11-17 until one is queued).
+
+**Where the numbers are.** AWS: CloudWatch metrics, namespace `ShipX`, metric `Failures` (and `Attempts` for `notification_send`), dimensions `Environment`, `Operation`. Azure: Log Analytics, `ContainerAppConsoleLogs_CL | where Log_s has '"Operation"'`. Azure rules exist only when `alerts_email` is set (Terraform variable; default empty, no cost).
+
+**Checking an alarm end to end (the OPS-04 gate; not yet done anywhere).** In a test environment, force one invoice failure through the real code path: send the billing Lambda a PaymentDue event whose ids are not UUIDs, so the lookup raises and the handler counts it.
+
+```bash
+aws lambda invoke --function-name <project>-billing-<env> --cli-binary-format raw-in-base64-out \
+  --payload '{"source":"logistics.tracking","detail-type":"PaymentDue","detail":{"tenant_id":"<a test tenant id>","payload":{"customer_id":"not-a-uuid","container_id":"not-a-uuid"}}}' /dev/stdout
+```
+
+Within about five minutes `<project>-<env>-invoice-generation-failures` goes to ALARM and the alerts topic emails. Nothing is written: the lookup fails before any insert. On Azure, run the same event through the container: `az containerapp exec … -- python -c "from services.billing.handler import _handle_event; _handle_event({...})"`; the rule evaluates every 15 minutes.

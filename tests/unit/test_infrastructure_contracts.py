@@ -208,3 +208,28 @@ class TestStorageSettingsReachTheCode:
 
     def test_no_lambda_is_given_a_bucket_variable_nothing_reads(self):
         assert not re.search(r"^\s+S3_BUCKET\s+=", LAMBDA_TF.read_text(), re.M)
+
+
+class TestFailureAlarmsMatchTheCounters:
+    """Audit OPS-04: an alarm on an operation the code never counts, or under another namespace, never fires."""
+
+    MONITORING = {
+        "aws": ROOT / "infrastructure/aws/modules/monitoring",
+        "azure": ROOT / "infrastructure/azure/modules/monitoring",
+    }
+
+    @pytest.mark.parametrize("cloud", ["aws", "azure"])
+    def test_every_alarmed_operation_is_one_the_code_counts(self, cloud):
+        from shared.observability import OPERATIONS
+
+        text = (self.MONITORING[cloud] / "main.tf").read_text()
+        alarmed = set(re.findall(r'operation\s*=\s*"(\w+)"', text)) | set(re.findall(r'Operation = "(\w+)"', text))
+        alarmed |= {"notification_send"} if "notification_send" in text else set()
+        assert {"invoice_generation", "audit_write", "notification_send"} <= alarmed
+        assert alarmed <= OPERATIONS
+
+    def test_the_aws_alarms_use_the_namespace_the_code_writes(self):
+        from shared.observability import METRIC_NAMESPACE
+
+        variables = (self.MONITORING["aws"] / "variables.tf").read_text()
+        assert re.search(r'variable "metric_namespace" \{[^}]*default\s*=\s*"' + METRIC_NAMESPACE + '"', variables)

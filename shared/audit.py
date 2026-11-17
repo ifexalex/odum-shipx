@@ -10,6 +10,8 @@ import uuid
 from datetime import UTC, datetime
 from typing import Any
 
+from shared.observability import record_failure
+
 logger = logging.getLogger(__name__)
 
 # Fields that must never appear in plaintext in audit JSONB snapshots.
@@ -117,7 +119,8 @@ def log_audit(
         )
 
     except Exception as exc:
-        # Audit must never break primary operations
+        # Audit must never break primary operations, but a lost audit record raises an alarm (audit OPS-04).
+        record_failure("audit_write")
         logger.warning(
             "Failed to write audit record: %s",
             exc,

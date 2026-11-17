@@ -18,7 +18,7 @@ from shared.billing_money import adjust_billing
 from shared.db import execute_with_tenant, execute_write_with_tenant, tenant_transaction
 from shared.events import publish_event
 from shared.logging_config import bind_log_context, clear_log_context, setup_logging
-from shared.observability import init_tracing
+from shared.observability import init_tracing, record_failure
 from shared.tenant_context import PLATFORM_TENANT_ID
 
 setup_logging()
@@ -54,6 +54,7 @@ def lambda_handler(event: dict[str, Any], context: Any) -> dict[str, Any]:
                 )
         except Exception:
             logger.exception("Storage fee accrual failed for tenant %s", tenant_id)
+            record_failure("scheduled_job_step")
             errors += 1
 
     logger.info(
@@ -92,6 +93,7 @@ def _process_tenant(tenant_id: str) -> int:
                 note["id"],
                 extra={"tenant_id": tenant_id},
             )
+            record_failure("scheduled_job_step")
 
     return fees_accrued
 
