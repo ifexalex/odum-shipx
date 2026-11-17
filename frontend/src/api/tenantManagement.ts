@@ -669,6 +669,22 @@ export const platformApi = {
       query: period ? { period } : undefined,
     }),
 
+  /** Where the offboarded tenant's data export stands (audit BE-10). */
+  offboardingExport: (id: string) =>
+    apiRequest<OffboardingExport>({ method: 'GET', path: `/v1/platform/tenants/${id}/offboarding-export` }),
+
+  /** Queue an export for an offboarded tenant with none, or whose export gave up. */
+  queueOffboardingExport: (id: string) =>
+    apiRequest<OffboardingExport>({ method: 'POST', path: `/v1/platform/tenants/${id}/offboarding-export`, body: {} }),
+
+  /** A five-minute download link to the completed archive. Each one is recorded in the platform audit log. */
+  offboardingExportLink: (id: string) =>
+    apiRequest<OffboardingExportLink>({
+      method: 'POST',
+      path: `/v1/platform/tenants/${id}/offboarding-export/link`,
+      body: {},
+    }),
+
   /** Per-tenant quota override; empty body clears the override. */
   setQuotaOverride: (id: string, body: Partial<PlanLimits>) =>
     apiRequest<{ tenant_id: string; override: Partial<PlanLimits>; effective_limits: PlanLimits }>({
@@ -676,6 +692,37 @@ export const platformApi = {
       path: `/v1/platform/tenants/${id}/quota-override`,
       body,
     }),
+}
+
+/** `none`: nothing is queued for the tenant's current offboarding. */
+export type OffboardingExportStatus = 'none' | 'pending' | 'running' | 'completed' | 'failed' | 'cancelled'
+
+/** GET /v1/platform/tenants/{id}/offboarding-export (audit BE-10). */
+export interface OffboardingExport {
+  tenant_status: TenantStatus
+  status: OffboardingExportStatus
+  export_id: string | null
+  requested_at: string | null
+  completed_at: string | null
+  size_bytes: number | null
+  sha256: string | null
+  row_count: number | null
+  attempts: number
+  max_attempts: number
+  /** Failed, with attempts left: the hourly job will try again. */
+  retrying: boolean
+  /** A platform admin may queue a new export now. */
+  can_queue: boolean
+  /** When the 90-day cleanup deletes the tenant, the archive with it. */
+  deletion_scheduled_at: string | null
+}
+
+export interface OffboardingExportLink {
+  download_url: string
+  expires_at: string
+  filename: string
+  size_bytes: number | null
+  sha256: string | null
 }
 
 export interface PlatformDashboardStats {

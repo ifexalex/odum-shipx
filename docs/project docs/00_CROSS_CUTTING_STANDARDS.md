@@ -649,3 +649,7 @@ All of it goes through `frontend/src/lib/format.ts`: `formatNgn` (`₦174,375`, 
 ## One-time codes and other delivered secrets (2026-11-16)
 
 A secret that is sent to a person (a pickup code today) is stored only as a keyed hash, compared in constant time, limited in attempts, and never written to logs, audit snapshots, API responses or `notification_log` (add its template key to `_SECRET_TEMPLATE_KEYS` in `services/notification/service.py`). See ADR-008.
+
+## Tenant data export at offboarding (audit BE-10, 2026-11-17)
+
+GDPR portability for the tenant as controller (PRD FR-TN-004). The archive holds decrypted personal data, so: platform admins only; five-minute links, each audited with actor and IP; no link without the audit record; IAM limited to the export folders; secrets and token hashes excluded; failures logged by type and location only. The cleanup will not erase a tenant before its export has completed. Residual: at rest the archive relies on bucket encryption, and it lives until the tenant is deleted. Threat model: `07_api_tenant_management.md`.

@@ -71,6 +71,7 @@ docker build -t shipx-backend .
 docker run -p 8080:8080 -e CLOUD_PROVIDER=azure shipx-backend api   # gunicorn; GET /health → 200
 docker run shipx-backend worker --queue sms                          # Service Bus consumer
 docker run shipx-backend job --job release_expiry                    # one cron job, then exit
+docker run shipx-backend job --job offboarding_export                # write queued tenant data exports (BE-10)
 ```
 
 ---

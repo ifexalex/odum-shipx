@@ -226,6 +226,11 @@ export const platformTenantKeys = {
   // which the /v1/platform/tenants/ invalidation rule already covers (and
   // quota-override lives under that same path).
   usage: (id: string) => [...platformTenantKeys.all, 'usage', id] as const,
+  users: (id: string) => [...platformTenantKeys.all, 'users', id] as const,
+  config: (id: string) => [...platformTenantKeys.all, 'config', id] as const,
+  // The offboarding data export (audit BE-10). Queuing one and issuing a link both POST under
+  // /v1/platform/tenants/, which refreshes every key here.
+  offboardingExport: (id: string) => [...platformTenantKeys.all, 'offboarding-export', id] as const,
 }
 
 // ─── Platform settings (general, notification providers, plan limits) ────────
@@ -249,6 +254,8 @@ export const platformAuditKeys = {
   // The dashboard's short activity feed: a flat read, so not `list()`, which the audit-log page pages through as an
   // infinite query (two shapes under one key corrupt each other).
   recent: (limit: number) => [...platformAuditKeys.all, 'recent', limit] as const,
+  // One tenant's recent entries (the tenant page's Audit tab): a flat read too.
+  forTenant: (tenantId: string) => [...platformAuditKeys.all, 'tenant', tenantId] as const,
 }
 
 // ─── Platform onboarding requests (shipping-company leads) ────────────────────

@@ -673,6 +673,136 @@
                 "tenants",
                 "{{tenant_id}}"
               ]
+            },
+            "description": "Offboarding also queues the tenant data export (audit BE-10), in the same transaction; see the three \"Offboarding Export\" requests."
+          }
+        },
+        {
+          "name": "Get Offboarding Export",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "X-Tenant-ID",
+                "value": "{{platform_tenant_id}}"
+              },
+              {
+                "key": "X-Role",
+                "value": "platform_admin"
+              },
+              {
+                "key": "X-User-ID",
+                "value": "{{user_id}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/v1/platform/tenants/{{tenant_id}}/offboarding-export",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "v1",
+                "platform",
+                "tenants",
+                "{{tenant_id}}",
+                "offboarding-export"
+              ]
+            },
+            "description": "platform_admin. Where the offboarded tenant's data export stands: {tenant_status, status: none|pending|running|completed|failed|cancelled, export_id, requested_at, completed_at, size_bytes, sha256, row_count, attempts, max_attempts, retrying, can_queue, deletion_scheduled_at}. An export from an earlier offboarding counts as none. Non-UUID tenant id: 404."
+          }
+        },
+        {
+          "name": "Queue Offboarding Export",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "X-Tenant-ID",
+                "value": "{{platform_tenant_id}}"
+              },
+              {
+                "key": "X-Role",
+                "value": "platform_admin"
+              },
+              {
+                "key": "X-User-ID",
+                "value": "{{user_id}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/v1/platform/tenants/{{tenant_id}}/offboarding-export",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "v1",
+                "platform",
+                "tenants",
+                "{{tenant_id}}",
+                "offboarding-export"
+              ]
+            },
+            "description": "platform_admin. Queue an export for an offboarded tenant that has none (offboarded before exports existed) or whose export failed every attempt. 422 OFFBOARDING_EXPORT_NOT_OFFBOARDED / OFFBOARDING_EXPORT_IN_PROGRESS otherwise. Audited (TENANT_EXPORT_QUEUED). Returns the same shape as Get.",
+            "body": {
+              "mode": "raw",
+              "raw": "{}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "Offboarding Export Download Link",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "X-Tenant-ID",
+                "value": "{{platform_tenant_id}}"
+              },
+              {
+                "key": "X-Role",
+                "value": "platform_admin"
+              },
+              {
+                "key": "X-User-ID",
+                "value": "{{user_id}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/v1/platform/tenants/{{tenant_id}}/offboarding-export/link",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "v1",
+                "platform",
+                "tenants",
+                "{{tenant_id}}",
+                "offboarding-export",
+                "link"
+              ]
+            },
+            "description": "platform_admin. A five-minute presigned link to the completed archive (zip of JSON Lines; it holds every customer's personal data, decrypted). Every link is recorded in the platform audit log (TENANT_EXPORT_LINK_ISSUED, with IP); if that record cannot be written, no link is issued. 422 OFFBOARDING_EXPORT_NOT_READY before completion. Response: {download_url, expires_at, filename, size_bytes, sha256}.",
+            "body": {
+              "mode": "raw",
+              "raw": "{}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
             }
           }
         },

@@ -1,5 +1,5 @@
 import { useQuery, useQueryClient } from '@tanstack/react-query'
-import { useEffect, useState, type JSX } from 'react'
+import { useState, type JSX } from 'react'
 import { useLocation, useNavigate, useParams } from 'react-router-dom'
 import { ApiError } from '../../api/client'
 import { platformApi, type Tenant, type TenantStatus } from '../../api/tenantManagement'
@@ -9,14 +9,20 @@ import { useSession } from '../../auth/useSession'
 import { Badge, Banner, Button, Card, Field, Kvp, Mono, Table, UserCell, DialogGuard, type BadgeVariant } from '../../design/components'
 import {
   platformApi as platformExtras,
+  type OffboardingExport,
   type PlanLimits,
-  type TenantUser,
 } from '../../api/tenantManagement'
+import {
+  useOffboardingExport,
+  usePlatformTenantAudit,
+  usePlatformTenantConfig,
+  usePlatformTenantUsers,
+} from '../../hooks/usePlatformTenants'
 import { Tabs } from '../../shell/Tabs'
 import { PageHeader } from '../../shell/PageHeader'
 import { SectionHead } from '../../shell/SectionHead'
 import styles from './admin.module.css'
-import { formatDate, formatDateTime } from '../../lib/format'
+import { formatCount, formatDate, formatDateTime } from '../../lib/format'
 
 const STATUS_VARIANT: Record<TenantStatus, BadgeVariant> = {
   active: 'success',
@@ -71,7 +77,8 @@ function ActionModal({ action, tenant, onCancel, onSuccess }: ActionModalProps):
         {action === 'offboard' && (
           <div className={styles.modalBanner}>
             <Banner variant="error">
-              Offboarding is permanent. The tenant's data will be scheduled for deletion in 90 days.
+              Offboarding is permanent. The tenant's data will be scheduled for deletion in 90 days. A full export of
+              it is prepared within the hour; download it from this page and hand it to the tenant before then.
             </Banner>
           </div>
         )}
@@ -93,22 +100,14 @@ function ActionModal({ action, tenant, onCancel, onSuccess }: ActionModalProps):
 // TenantDetail tabs (prototype 2.4): Users / Usage & quota / Config / Audit
 // ---------------------------------------------------------------------------
 
-function UsersTab({ tenantId }: { tenantId: string }): JSX.Element {
-  const [users, setUsers] = useState<TenantUser[]>([])
-  const [loading, setLoading] = useState(true)
-  const [error, setError] = useState<string | null>(null)
+function loadErrorMessage(err: unknown, fallback: string): string | null {
+  if (!err) return null
+  return err instanceof ApiError ? err.message : fallback
+}
 
-  useEffect(() => {
-    void (async () => {
-      try {
-        setUsers(await platformExtras.tenantUsers(tenantId))
-      } catch (err) {
-        setError(err instanceof ApiError ? err.message : 'Could not load users.')
-      } finally {
-        setLoading(false)
-      }
-    })()
-  }, [tenantId])
+function UsersTab({ tenantId }: { tenantId: string }): JSX.Element {
+  const { data: users = [], isLoading: loading, error: loadError } = usePlatformTenantUsers(tenantId)
+  const error = loadErrorMessage(loadError, 'Could not load users.')
 
   if (error) return <Banner variant="error" title="Error">{error}</Banner>
   return (
@@ -222,18 +221,8 @@ function UsageTab({ tenantId }: { tenantId: string }): JSX.Element {
 }
 
 function ConfigTab({ tenantId }: { tenantId: string }): JSX.Element {
-  const [config, setConfig] = useState<Record<string, unknown> | null>(null)
-  const [error, setError] = useState<string | null>(null)
-
-  useEffect(() => {
-    void (async () => {
-      try {
-        setConfig(await platformExtras.tenantConfig(tenantId))
-      } catch (err) {
-        setError(err instanceof ApiError ? err.message : 'Could not load config.')
-      }
-    })()
-  }, [tenantId])
+  const { data: config = null, error: loadError } = usePlatformTenantConfig(tenantId)
+  const error = loadErrorMessage(loadError, 'Could not load config.')
 
   if (error) return <Banner variant="error" title="Error">{error}</Banner>
   if (!config) return <p style={{ color: 'var(--color-ink-3)' }}>Loading config…</p>
@@ -255,22 +244,9 @@ function ConfigTab({ tenantId }: { tenantId: string }): JSX.Element {
 }
 
 function AuditTab({ tenantId }: { tenantId: string }): JSX.Element {
-  const [entries, setEntries] = useState<{ id: string; action: string; created_at: string; ip_address: string | null }[]>([])
-  const [loading, setLoading] = useState(true)
-  const [error, setError] = useState<string | null>(null)
-
-  useEffect(() => {
-    void (async () => {
-      try {
-        const result = await platformExtras.auditLog({ tenant_id: tenantId, limit: 50 })
-        setEntries(result.data)
-      } catch (err) {
-        setError(err instanceof ApiError ? err.message : 'Could not load audit entries.')
-      } finally {
-        setLoading(false)
-      }
-    })()
-  }, [tenantId])
+  const { data, isLoading: loading, error: loadError } = usePlatformTenantAudit(tenantId)
+  const entries = data?.data ?? []
+  const error = loadErrorMessage(loadError, 'Could not load audit entries.')
 
   if (error) return <Banner variant="error" title="Error">{error}</Banner>
   return (
@@ -286,6 +262,114 @@ function AuditTab({ tenantId }: { tenantId: string }): JSX.Element {
         }))}
         emptyState={<span style={{ color: 'var(--color-ink-3)', fontSize: 13 }}>{loading ? 'Loading…' : 'No platform-level audit entries for this tenant.'}</span>}
       />
+    </Card>
+  )
+}
+
+// ---------------------------------------------------------------------------
+// Offboarding data export (audit BE-10)
+// ---------------------------------------------------------------------------
+
+const EXPORT_STATUS: Record<OffboardingExport['status'], { label: string; variant: BadgeVariant }> = {
+  none: { label: 'Not queued', variant: 'warning' },
+  pending: { label: 'Queued', variant: 'info' },
+  running: { label: 'Being written', variant: 'info' },
+  completed: { label: 'Ready', variant: 'success' },
+  failed: { label: 'Failed', variant: 'error' },
+  cancelled: { label: 'Cancelled', variant: 'neutral' },
+}
+
+function formatBytes(bytes: number): string {
+  if (bytes < 1024) return `${bytes} B`
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`
+  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`
+}
+
+/** Send the browser to a signed download URL. The server marks it as an attachment, so the page stays put. */
+function startDownload(url: string): void {
+  window.location.assign(url)
+}
+
+function OffboardingExportCard({ tenantId }: { tenantId: string }): JSX.Element {
+  const { data: exportInfo, error: loadError } = useOffboardingExport(tenantId, true)
+  const [busy, setBusy] = useState<'download' | 'queue' | null>(null)
+  const [actionError, setActionError] = useState<string | null>(null)
+  const error = actionError ?? loadErrorMessage(loadError, 'Could not load the export.')
+
+  async function run(kind: 'download' | 'queue'): Promise<void> {
+    setBusy(kind)
+    setActionError(null)
+    try {
+      if (kind === 'download') startDownload((await platformExtras.offboardingExportLink(tenantId)).download_url)
+      else await platformExtras.queueOffboardingExport(tenantId)
+    } catch (err) {
+      setActionError(err instanceof ApiError ? err.message : kind === 'download' ? 'Could not start the download.' : 'Could not queue the export.')
+    } finally {
+      setBusy(null)
+    }
+  }
+
+  const status = exportInfo ? EXPORT_STATUS[exportInfo.status] : null
+  return (
+    <Card padding={20}>
+      <SectionHead
+        title="Data export"
+        sub="Everything the tenant kept on ShipX, as one archive (JSON Lines). Hand it over before the data is deleted."
+      />
+      {error && <div style={{ margin: '8px 0' }}><Banner variant="error" title="Error">{error}</Banner></div>}
+      {!exportInfo && !error && <p style={{ color: 'var(--color-ink-3)' }}>Loading export…</p>}
+      {exportInfo && status && (
+        <>
+          <Kvp label="Status" value={<Badge variant={status.variant}>{status.label}</Badge>} />
+          {exportInfo.status === 'completed' && (
+            <>
+              <Kvp label="Prepared" value={formatDateTime(exportInfo.completed_at)} />
+              {exportInfo.size_bytes !== null && <Kvp label="Size" value={formatBytes(exportInfo.size_bytes)} />}
+              {exportInfo.row_count !== null && <Kvp label="Records" value={formatCount(exportInfo.row_count)} />}
+              {exportInfo.sha256 && (
+                <Kvp label="SHA-256" value={<Mono style={{ fontSize: 11, wordBreak: 'break-all' }}>{exportInfo.sha256}</Mono>} />
+              )}
+            </>
+          )}
+          {(exportInfo.status === 'pending' || exportInfo.status === 'running') && (
+            <p style={{ color: 'var(--color-ink-3)', fontSize: 13 }}>The export runs within the hour. This page checks again every minute.</p>
+          )}
+          {exportInfo.retrying && (
+            <p style={{ color: 'var(--color-ink-3)', fontSize: 13 }}>
+              Attempt {exportInfo.attempts} of {exportInfo.max_attempts} failed. It is tried again within the hour.
+            </p>
+          )}
+          {exportInfo.status === 'failed' && !exportInfo.retrying && (
+            <p style={{ color: 'var(--color-error)', fontSize: 13 }}>
+              Every attempt failed. Check the export job's logs (runbook: "Offboarding export failed"), then queue it again.
+            </p>
+          )}
+          {exportInfo.deletion_scheduled_at && (
+            <Kvp
+              label="Data deleted on"
+              value={formatDate(exportInfo.deletion_scheduled_at)}
+              divider={false}
+            />
+          )}
+          <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end', marginTop: 12 }}>
+            {exportInfo.can_queue && (
+              <Button variant="secondary" loading={busy === 'queue'} disabled={busy !== null} onClick={() => void run('queue')}>
+                Queue export
+              </Button>
+            )}
+            {exportInfo.status === 'completed' && (
+              <Button variant="primary" icon="download" loading={busy === 'download'} disabled={busy !== null} onClick={() => void run('download')}>
+                Download archive
+              </Button>
+            )}
+          </div>
+          {exportInfo.status === 'completed' && (
+            <p style={{ color: 'var(--color-ink-4)', fontSize: 12, textAlign: 'right', marginTop: 6 }}>
+              The link works for five minutes and every download is recorded in the audit log.
+            </p>
+          )}
+        </>
+      )}
     </Card>
   )
 }
@@ -394,6 +478,11 @@ export function PlatformTenantDetail(): JSX.Element {
         {tenant.reactivated_at && <Kvp label="Reactivated" value={formatDate(tenant.reactivated_at)} />}
         <Kvp label="Tenant ID" value={<span style={{ fontFamily: 'var(--font-mono)', fontSize: '0.8125rem' }}>{tenant.id}</span>} divider={false} />
       </Card>
+      {tenant.status === 'offboarded' && (
+        <div style={{ marginTop: 16 }}>
+          <OffboardingExportCard tenantId={tenant.id} />
+        </div>
+      )}
       </>
       )}
 

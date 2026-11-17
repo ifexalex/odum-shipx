@@ -214,3 +214,5 @@ targets a service key with no deployed Lambda, or a route key is duplicated.
 - [x] ~~Per-tenant usage plans with tier-based rate limits configured~~ never existed (HTTP API has none); replaced by `shared/rate_limit.py` per-tenant limit (2026-11-15)
 - [x] Per-route throttles on the public routes (`public_route_throttles`)
 - [ ] `terraform plan` succeeds — `terraform validate` passes (2026-09-23); a real plan/apply against AWS is still outstanding
+
+- Routes added 2026-11-17 (audit BE-10): `GET` and `POST /v1/platform/tenants/{id}/offboarding-export`, `POST /v1/platform/tenants/{id}/offboarding-export/link` → tenant_management.

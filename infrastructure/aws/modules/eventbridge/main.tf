@@ -24,6 +24,7 @@ locals {
     tenant-data-cleanup     = "cron(0 2 * * ? *)" # 02:00 UTC daily
     usage-aggregation       = "rate(1 hour)"
     release-note-expiry     = "cron(0 0 * * ? *)" # midnight UTC daily
+    offboarding-export      = "rate(1 hour)"      # writes queued tenant data exports (audit BE-10)
   }
 }
 

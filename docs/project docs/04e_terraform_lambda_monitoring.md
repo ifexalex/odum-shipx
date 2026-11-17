@@ -257,3 +257,5 @@ guard was first written against the `get()` default and silently did nothing.
 ## `PICKUP_CODE_PEPPER` (2026-11-16)
 
 `random_password.pickup_code_pepper` (48 characters, in the lambda module; the same in `infrastructure/azure/modules/container_app`, as a Container App secret) is injected into every function as `PICKUP_CODE_PEPPER`. It keys the hash of release-note pickup codes (ADR-008). It lives in Terraform state like the other generated secrets. Do not rotate it casually: every outstanding code stops verifying.
+
+**Offboarding export (audit BE-10, 2026-11-17).** New scheduled Lambda `offboarding_export` (`scheduled.offboarding_export.lambda_handler`, 1024 MB, 900 s, VPC). IAM: `aws_iam_role_policy.offboarding_export` (`s3:PutObject` on `{bucket}/*/exports/offboarding/*` only; `kms:Decrypt` on the field-encryption key, no `GenerateDataKey`) and `tenant_management_export_download` (`s3:GetObject` on the same path, so tenant_management can sign the download link). Azure: Container App Job `offboarding_export` (`30 * * * *`, the shared job image and identity; `job_timeout_seconds` 600). `terraform validate` passes for both roots; not applied.

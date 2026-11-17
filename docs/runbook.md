@@ -1094,3 +1094,20 @@ On the verify path the customer sees "This payment was not made in naira, so it 
 **Severity: HIGH on AWS, before go-live; not applicable on Azure** (Azure sets `BLOB_CONTAINER_NAME`, which the code reads). The Lambda environment set `S3_BUCKET`; the code reads `S3_BUCKET_NAME` and falls back to `logistics-assets`. S3 bucket names are global, so on AWS every presigned upload, download and export pointed at a bucket this deployment does not own: uploads would fail with AccessDenied, or, if that name is ever registered by someone with a permissive policy, land in their bucket. Separately, the 90-day cleanup read `TENANT_DATA_BUCKET`, which nothing set, so it never purged a deleted tenant's files.
 
 **Fixed:** `S3_BUCKET_NAME = var.bucket_name` in `modules/lambda` (`common_env_vars`); cleanup purges the assets bucket unless `TENANT_DATA_BUCKET` overrides it. Contract tests: `TestStorageSettingsReachTheCode`. **To do on the next AWS apply:** confirm one presigned upload lands in `{project}-assets-{env}-{account}`. If an AWS environment ran before this fix, check whether any tenant was purged by cleanup: its files are still in the bucket and must be deleted by hand (`aws s3 rm s3://<bucket>/<tenant_id>/ --recursive`, plus non-current versions).
+
+## Offboarding export failed (audit BE-10, 2026-11-17)
+
+The platform tenant page shows "Every attempt failed" when an export failed 3 times. The job logs `Offboarding export <id> failed for tenant <tenant_id>: <ExceptionType> at <file>:<line>` (no message, by design: it handles every customer's personal data). `tenant_offboarding_export.last_error` holds the same type name.
+
+| Type | Usual cause | Fix |
+|---|---|---|
+| `InvalidToken`, `ClientError` from KMS | a field cannot be decrypted (key policy, disabled key, or a value written without encryption under a different key) | check the job role has `kms:Decrypt` on `ENCRYPTION_KMS_KEY_ID`; on Azure, the identity's Key Vault access |
+| `ClientError` / `HttpResponseError` from storage | the job cannot write to `{tenant_id}/exports/offboarding/` | IAM `offboarding_export` policy; on Azure, the storage connection |
+| `MemoryError`, or the Lambda times out | a very large tenant | raise the Lambda memory (`modules/lambda`, `scheduled_configs.offboarding_export`); the archive is built in memory |
+| `TypeError: cannot export a …` | a column type the exporter does not know | add it to `_json_value` in `services/scheduled/offboarding_export.py` |
+
+After the fix, press **Queue export** on the tenant page (or `POST /v1/platform/tenants/{id}/offboarding-export`). It runs at the next hour.
+
+## A tenant past 90 days was not deleted
+
+The cleanup logs `Refusing to delete tenant <id>: no offboarding export has completed` and returns it under `refused`. That is the safeguard working: the data has not been handed over. Open the tenant page: queue or fix the export (above), download it, hand it to the tenant; the next 02:00 UTC run deletes the tenant. Tenants offboarded before 2026-11-17 have no export at all and will all be refused until one is queued for each.

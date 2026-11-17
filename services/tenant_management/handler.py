@@ -454,6 +454,14 @@ def _handle_create_onboarding_request(event: dict[str, Any], request_id: str, ip
 # ---------------------------------------------------------------------------
 
 
+def _is_uuid(value: str | None) -> bool:
+    try:
+        uuid.UUID(str(value))
+    except ValueError:
+        return False
+    return True
+
+
 def _platform_routes(
     event: dict[str, Any],
     parts: list[str],
@@ -589,6 +597,20 @@ def _platform_routes(
             if action == "reactivate" and method == "PATCH":
                 result = service.reactivate_tenant(tenant_id, actor_id=ctx.user_id, ip_address=ip_address)
                 return success(result, request_id=request_id)
+
+            # /v1/platform/tenants/{id}/offboarding-export[/link] — the tenant's data export (audit BE-10)
+            if action == "offboarding-export":
+                if not _is_uuid(tenant_id):
+                    raise ResourceNotFoundError("tenant", tenant_id or "")
+                export_action = parts[5] if len(parts) > 5 else None
+                if export_action is None and method == "GET":
+                    return success(service.get_offboarding_export(tenant_id), request_id=request_id)
+                if export_action is None and method == "POST":
+                    result = service.queue_offboarding_export(tenant_id, actor_id=ctx.user_id, ip_address=ip_address)
+                    return success(result, request_id=request_id)
+                if export_action == "link" and method == "POST":
+                    result = service.create_offboarding_export_link(tenant_id, actor_id=ctx.user_id, ip_address=ip_address)
+                    return success(result, request_id=request_id)
 
             # GET /v1/platform/tenants/{id}/users — staff users of that tenant
             if action == "users" and method == "GET":

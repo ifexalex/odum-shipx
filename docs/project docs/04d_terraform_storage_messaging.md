@@ -102,3 +102,5 @@ Create Terraform modules for file storage (S3), message queues (SQS), event bus 
 - [x] Scheduled rules created for all 7 cron jobs
 - [ ] All outputs exported for Lambda module consumption — `queue_urls` is now wired through to the Lambda module (2026-09-23) as the `SQS_SMS_QUEUE_URL` / `SQS_WHATSAPP_QUEUE_URL` / `SQS_EMAIL_QUEUE_URL` env vars; it was exported but never consumed, so every enqueue was silently dropped in AWS (see `04e_terraform_lambda_monitoring.md`)
 - [ ] `terraform plan` succeeds — **`terraform validate` passes (audited 2026-11-11); a real `plan` needs AWS credentials this environment does not have, so the stronger claim is unverified.** Same caveat as `04c_terraform_api_gateway.md`.
+
+**Scheduled rule added 2026-11-17 (audit BE-10):** `offboarding-export = rate(1 hour)` → the `offboarding-export` Lambda (`04e`). Azure: Container App Job `offboarding_export`, cron `30 * * * *`.

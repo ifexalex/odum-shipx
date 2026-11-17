@@ -260,7 +260,11 @@ locals {
     "GET /v1/platform/tenants/{id}/users"           = "tenant_management"
     "POST /v1/platform/tenants/{id}/quota-override" = "tenant_management"
     "POST /v1/platform/tenants/{id}/impersonate"    = "tenant_management"
-    "DELETE /v1/platform/impersonation/{id}"        = "tenant_management"
+    # Offboarding data export (audit BE-10): status, queue, five-minute download link
+    "GET /v1/platform/tenants/{id}/offboarding-export"       = "tenant_management"
+    "POST /v1/platform/tenants/{id}/offboarding-export"      = "tenant_management"
+    "POST /v1/platform/tenants/{id}/offboarding-export/link" = "tenant_management"
+    "DELETE /v1/platform/impersonation/{id}"                 = "tenant_management"
 
     # --- Notifications: delivery log, in-app bells, announcements -----------
     # Served by the VPC-attached notification_api Lambda (http_handler) — these

@@ -37,7 +37,10 @@ Entra adapter + user migration), scoped in `docs/adr/004-cognito-to-entra-portab
 | GET | `/v1/platform/tenants` | List tenants | platform_admin |
 | GET | `/v1/platform/tenants/{id}` | Get tenant detail | platform_admin |
 | PATCH | `/v1/platform/tenants/{id}` | Update tenant | platform_admin |
-| DELETE | `/v1/platform/tenants/{id}` | Offboard tenant | platform_admin |
+| DELETE | `/v1/platform/tenants/{id}` | Offboard tenant (also queues the tenant data export, same transaction, audit BE-10) | platform_admin |
+| GET | `/v1/platform/tenants/{id}/offboarding-export` | The offboarded tenant's data export: status, size, checksum, rows, attempts, deletion date (2026-11-17) | platform_admin |
+| POST | `/v1/platform/tenants/{id}/offboarding-export` | Queue an export when there is none or it gave up (2026-11-17) | platform_admin |
+| POST | `/v1/platform/tenants/{id}/offboarding-export/link` | Five-minute download link to the archive; audited (2026-11-17) | platform_admin |
 | PATCH | `/v1/platform/tenants/{id}/suspend` | Suspend tenant | platform_admin |
 | PATCH | `/v1/platform/tenants/{id}/activate` | Lift suspension (suspended→active) | platform_admin |
 | PATCH | `/v1/platform/tenants/{id}/reactivate` | Re-onboard offboarded tenant (offboarded→active) | platform_admin |
@@ -875,3 +878,32 @@ Repository functions (`insert_onboarding_request`, `list_onboarding_requests`, `
   `tests/unit/test_auth.py` and, against a real database, `tests/db/test_access_revocation.py`.
 - **Acceptance:** [x] a token issued before deactivation gets `401` on the next request; [x] an erased customer's token gets `401`; [x] new and existing registration emails get identical status and body;
   [x] one tenant's traffic cannot throttle another's.
+
+## Implementation notes — tenant data export at offboarding (audit BE-10, 2026-11-17)
+
+**Gap closed.** FR-TN-004 and resolved question 11 of the PRD promise a full data export when a tenant leaves. Only the per-customer GDPR export existed, and the cleanup job deleted everything 90 days after offboarding, so a tenant's records could be destroyed without ever being handed over.
+
+**What happens now.**
+1. `DELETE /v1/platform/tenants/{id}` sets the status and queues an export (`tenant_offboarding_export`, migration 067) in one transaction. The platform audit `TENANT_OFFBOARDED` entry names the export.
+2. The hourly job `services/scheduled/offboarding_export.py` claims queued exports (`FOR UPDATE SKIP LOCKED`), reads every table in `shared/tenant_data.TENANT_TABLES` in the tenant's own RLS scope, and writes `{tenant_id}/exports/offboarding/{export_id}.zip`: `manifest.json` (format, version, per-table file, rows, omitted and decrypted columns), `README.txt`, `tenant.jsonl`, `tables/{table}.jsonl`. JSON Lines, not CSV: exact types (money as decimal strings, times ISO 8601 UTC) and nothing a spreadsheet runs as a formula. It records size, SHA-256 and row counts, and writes `TENANT_DATA_EXPORTED` to the platform audit log. A failure is retried hourly up to 3 attempts; a worker that dies leaves it `running`, reclaimed after 60 minutes.
+3. The platform tenant page shows the export and offers a download: `POST …/offboarding-export/link` signs a 300-second link with `Content-Disposition: attachment` and records `TENANT_EXPORT_LINK_ISSUED` (actor, IP). If that record cannot be written, no link is issued.
+4. The 90-day cleanup refuses to delete a tenant until an export requested at or after its latest offboarding has completed (`16_scheduled_jobs.md`). The archive lives in the tenant's own storage prefix, so it is deleted with the tenant: download it within the 90 days.
+5. Reactivation cancels an export not yet written, so a later offboarding queues its own; an export from an earlier offboarding never counts as this one's.
+
+**Threat model.**
+- *Trust boundaries:* platform admin (JWT, `platform_admin`) → tenant_management API; the export job (platform role, no user) → database → object storage; storage → the admin's browser through a presigned URL.
+- *Data:* every record the tenant kept, including customers' names, phones and addresses, and, decrypted, ID numbers (`pickup_record.id_number`) and bank details (`refund_request.account_number`, `account_name`). An archive the tenant cannot read is no handover, so these are decrypted; a field that fails to decrypt fails the export rather than handing over ciphertext.
+- *A non-platform caller asks for a link:* every `/v1/platform/*` route asserts `platform_admin` first (403; tested for tenant admin, staff and customer).
+- *A leaked link:* it expires after 5 minutes, and each issuance is audited with actor and IP.
+- *A forged or corrupted key:* the key comes from our own row and is still checked to sit under `{tenant_id}/exports/offboarding/` with no `..` before it is signed. IAM limits the job's `s3:PutObject` and tenant_management's `s3:GetObject` to `*/exports/offboarding/*`. Ids are UUID-checked before they become keys.
+- *Secrets in the archive:* left out by the inventory: `tenant_user_activation.token_hash`, `customer_invite.token_hash`, `release_note.pickup_code_hash`; inside `tenant_config`, `webhook_config.secret` and `paystack_config.secret_key_encrypted`. Tested against the archive bytes.
+- *Another tenant's rows:* each table is read with `execute_with_tenant(tenant_id, …)`, so RLS applies on top of the `WHERE tenant_id` (or parent join).
+- *Personal data in logs:* a failure logs the exception type and file:line, never its message or traceback text (a database or decryption error can quote a row); `last_error` stores the type name only. Tested.
+- *Deletion before handover:* the cleanup refuses, logs it, and counts it (`refused`).
+- **Residual risk (owner call):** the archive is protected at rest by the bucket's encryption only, not field-level, for up to 90 days; any platform admin can download it (audited). Delivering it encrypted to a passphrase the tenant supplies would close that; not done.
+
+**Wire format.** New: `GET /v1/platform/tenants/{id}/offboarding-export` → `{tenant_status, status, export_id, requested_at, completed_at, size_bytes, sha256, row_count, attempts, max_attempts, retrying, can_queue, deletion_scheduled_at}`; `status` is `none|pending|running|completed|failed|cancelled`. `POST …/offboarding-export` returns the same. `POST …/offboarding-export/link` → `{download_url, expires_at, filename, size_bytes, sha256}`. Errors: 404 (tenant id not a UUID, or unknown), 422 `OFFBOARDING_EXPORT_NOT_OFFBOARDED`, `OFFBOARDING_EXPORT_IN_PROGRESS`, `OFFBOARDING_EXPORT_NOT_READY`.
+
+**Not verified.** Migration 067 has not been run, the export has not been produced against a real database, and the archive has not been written to real S3 or Blob storage: no Docker or cloud access when this was written. `tests/db/` has no case for it yet.
+
+Tests: `tests/unit/test_tenant_offboarding_export.py` (29), `test_offboarding_export.py` (25), `test_data_cleanup.py` (11), `test_tenant_data.py` (60). Mutation-checked: 12 protections removed one at a time, each caught.

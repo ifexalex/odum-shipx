@@ -13,6 +13,9 @@ import logging
 from typing import Any
 
 from shared.db import execute_transaction, execute_with_tenant, execute_write_with_tenant
+from shared.platform_audit import (
+    insert_platform_audit as insert_platform_audit,  # re-exported: callers use repo.insert_platform_audit
+)
 from shared.tenant_context import PLATFORM_TENANT_ID
 
 logger = logging.getLogger(__name__)
@@ -1033,30 +1036,6 @@ def list_platform_audit_log(
     params.update(extra)
     rows = execute_with_tenant(PLATFORM_TENANT_ID, query, params)
     return extract_page(rows, limit)
-
-
-def insert_platform_audit(
-    action: str,
-    actor_id: str | None,
-    target_tenant_id: str | None,
-    details: dict[str, Any] | None = None,
-    ip_address: str | None = None,
-) -> None:
-    execute_write_with_tenant(
-        PLATFORM_TENANT_ID,
-        """
-        INSERT INTO platform_audit_log (action, actor_id, target_tenant_id, details, ip_address)
-        VALUES (%(action)s, %(actor_id)s, %(target_tenant_id)s, %(details)s::jsonb, %(ip_address)s)
-        RETURNING id
-        """,
-        {
-            "action": action,
-            "actor_id": actor_id,
-            "target_tenant_id": target_tenant_id,
-            "details": json.dumps(details) if details else None,
-            "ip_address": ip_address,
-        },
-    )
 
 
 # ---------------------------------------------------------------------------

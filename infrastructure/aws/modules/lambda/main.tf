@@ -80,6 +80,8 @@ locals {
     data_cleanup       = { name = "data-cleanup", memory = 256, timeout = 300, handler = "scheduled.data_cleanup.lambda_handler", rule_key = "tenant-data-cleanup" }
     usage_aggregation  = { name = "usage-aggregation", memory = 256, timeout = 300, handler = "scheduled.usage_aggregation.lambda_handler", rule_key = "usage-aggregation" }
     release_expiry     = { name = "release-expiry", memory = 256, timeout = 300, handler = "scheduled.release_expiry.lambda_handler", rule_key = "release-note-expiry" }
+    # Builds a tenant's whole data archive in memory, hence the size and the longest timeout.
+    offboarding_export = { name = "offboarding-export", memory = 1024, timeout = 900, handler = "scheduled.offboarding_export.lambda_handler", rule_key = "offboarding-export" }
   }
 
   # VPC SQS Lambda (metering queue consumer, needs DB)
@@ -461,6 +463,43 @@ resource "aws_iam_role_policy" "ses_send" {
       Effect   = "Allow"
       Action   = ["ses:SendEmail", "ses:SendRawEmail"]
       Resource = [var.ses_identity_arn]
+    }]
+  })
+}
+
+# offboarding_export (audit BE-10) — writes the archive into the tenant's export folder, nowhere else, and decrypts the
+# encrypted fields it hands over (decrypt only: it never encrypts).
+resource "aws_iam_role_policy" "offboarding_export" {
+  name = "${local.name_prefix}-offboarding-export"
+  role = aws_iam_role.lambda["offboarding_export"].id
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Effect   = "Allow"
+        Action   = ["s3:PutObject"]
+        Resource = ["arn:aws:s3:::${var.bucket_name}/*/exports/offboarding/*"]
+      },
+      {
+        Effect   = "Allow"
+        Action   = ["kms:Decrypt"]
+        Resource = [var.encryption_kms_key_arn]
+      },
+    ]
+  })
+}
+
+# tenant_management — signs the five-minute download link to an offboarding archive. A presigned URL is authorised
+# as the role that signed it, so the role needs GetObject, limited to the export folders.
+resource "aws_iam_role_policy" "tenant_management_export_download" {
+  name = "${local.name_prefix}-tenant-mgmt-export-download"
+  role = aws_iam_role.lambda["tenant_management"].id
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [{
+      Effect   = "Allow"
+      Action   = ["s3:GetObject"]
+      Resource = ["arn:aws:s3:::${var.bucket_name}/*/exports/offboarding/*"]
     }]
   })
 }

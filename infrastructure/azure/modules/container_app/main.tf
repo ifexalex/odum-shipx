@@ -207,6 +207,7 @@ locals {
     dispute_escalation = "0 */6 * * *" # every 6 hours
     sla_check          = "0 */4 * * *" # every 4 hours
     usage_aggregation  = "0 * * * *"   # hourly
+    offboarding_export = "30 * * * *"  # hourly, half past: queued tenant data exports (audit BE-10)
   }
 
   # Workers → the Service Bus queue each consumes (for the KEDA scaler).
