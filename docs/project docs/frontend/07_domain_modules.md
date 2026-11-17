@@ -1772,3 +1772,17 @@ Guard: `routes.test.tsx` "every route has a real screen" — one case per route,
 
 Tests: `ChinaWorkQueue.test.tsx` (9), `DisputeList.test.tsx` (+2, opened from a link), `roleHome.test.ts` / `RoleGuard.test.tsx` (China home). Checked in Chromium against the dev API as China staff (desktop and 375 px).
 
+## The three largest pages split into folders of parts (audit FE-07, 2026-11-17)
+
+No behaviour change; every page test passes unchanged. Each page keeps its path (routes and tests import it as before) and its parts live in a folder named after it; no file exceeds 400 lines.
+
+| Page (lines before → after) | Parts |
+|---|---|
+| `nigeria/BillingDetail.tsx` (1,800 → 387) | `billingDetail/`: `status.ts` (status labels and variants), `StorageFees.tsx`, `DisputeCard.tsx` (with the SLA countdown and resolve dialog), `RecordPaymentModal.tsx`, `ChargeModals.tsx` (add charge, cancel, apply carryover), `GenerateReleaseNoteModal.tsx`, `Breakdown.tsx` (breakdown card, payments table), `PaymentClaims.tsx` (owns its query, confirm/reject state), `MiscCharges.tsx` (owns its query and remove) |
+| `china/ContainerDetail.tsx` (1,187 → 295) | `containerDetail/`: `labels.ts`, `Timeline.tsx` (stepper, summary tile, event row), `AdvanceStatusModal.tsx`, `DocumentsTab.tsx`, `OverviewTab.tsx` (owns the cargo aggregates), `Tabs.tsx` (packing lists, with its sort; tracking), `packingLists.ts` |
+| `china/CreatePackingList.tsx` (1,258 → 111) | `createPackingList/`: `useCreatePackingListForm.ts` (all wizard state and the save), `usePackingListPricing.ts` (rates, totals, live estimate), `Step1.tsx`, `Step2.tsx` + `ItemsTable.tsx` + `Step2Parts.tsx`, `Step3.tsx`, `WizardSteps.tsx`, `items.ts` |
+
+Declarations moved byte for byte (a TypeScript-compiler-based mover); new files are Prettier-formatted with the frontend's `.prettierrc` (run with `--no-editorconfig`: the repo-root `.editorconfig` says 4-space indent, the frontend is 2-space). The `untestedPages` ratchet counts a part in a page's folder as covered by that page's test. Found along the way: ContainerDetail's packing-list `useMemo` depended on a value rebuilt every render (lint warning) — gone now the memo takes a prop; the tracking tab's "Export" button has no handler (unchanged here, noted in the master plan). Checked in Chromium against the dev API: all three pages and every ContainerDetail tab render with no console errors.
+
+**Tooling note:** `npx tsc --noEmit -p .` in `frontend/` checks nothing — `tsconfig.json` has `"files": []` and only references the app and node configs. Use `npm run typecheck` (`tsc -b --noEmit`).
+

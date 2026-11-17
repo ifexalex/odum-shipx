@@ -33,7 +33,23 @@ const KNOWN_UNTESTED: Record<string, string> = {
 }
 
 const pages = Object.keys(PAGES).filter((path) => !path.endsWith('.test.tsx'))
-const untested = pages.filter((path) => !(path.replace(/\.tsx$/, '.test.tsx') in PAGES))
+
+/**
+ * A large page's parts live in a folder named after it (FE-07): `./nigeria/billingDetail/RecordPaymentModal.tsx`
+ * belongs to `./nigeria/BillingDetail.tsx`, which renders it, so the page's test covers it.
+ */
+function ownerTest(path: string): string | null {
+  const match = /^(\.\/[^/]+)\/([a-z][A-Za-z]*)\/[^/]+\.tsx$/.exec(path)
+  if (!match) return null
+  const [, area = '', folder = ''] = match
+  return `${area}/${folder.charAt(0).toUpperCase()}${folder.slice(1)}.test.tsx`
+}
+
+const untested = pages.filter((path) => {
+  if (path.replace(/\.tsx$/, '.test.tsx') in PAGES) return false
+  const owner = ownerTest(path)
+  return !(owner && owner in PAGES)
+})
 
 describe('pages without tests (OPS-03 ratchet)', () => {
   it('finds the pages', () => {
