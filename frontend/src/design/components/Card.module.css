@@ -1,4 +1,7 @@
 .card {
+  /* In a grid or flex row a card never forces its column wider than its share (grid items default to
+     min-width: auto, the width of their content). */
+  min-width: 0;
   background: var(--color-surface);
   border: 1px solid var(--color-line-soft);
   box-shadow: var(--shadow-rest);

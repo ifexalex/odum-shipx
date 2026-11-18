@@ -1,4 +1,10 @@
 import '@testing-library/jest-dom/vitest'
+import { configure } from '@testing-library/react'
+
+// findBy* / waitFor wait up to 3 s (default 1 s). A page's first render compiles its lazy chunk, which under the full
+// suite's parallel load sometimes took just over a second, failing tests at random (routes, ActivityLog). A passing
+// test is no slower; only a real failure takes longer to report.
+configure({ asyncUtilTimeout: 3000 })
 
 // jsdom has no layout engine and doesn't implement ResizeObserver at all —
 // components that measure their own container (e.g. Table's mobile

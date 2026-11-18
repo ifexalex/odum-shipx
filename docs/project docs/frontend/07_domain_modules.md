@@ -1806,3 +1806,21 @@ See `06_routing_rbac_and_navigation.md` "Breadcrumbs". Pages changed: every reco
 
 Removed: AdminCustomerDetail, StaffUserDetail, PlatformTenantDetail, ManifestDetail, RefundDetail, ReleaseNoteDetail, ClaimDetail, BillingDetail, PackingListDetail, DisputeDetail (top and error state), MyClaimDetail, MyShipmentDetail, MyReleaseNote, MyBillingDetail, and on settings Warehouses, ContainerCapacities, ChargeTypes, DollarRateConfig and CbmRateConfig. Their now-dead `.backLink` CSS went too. Guard: `pages/noBackLinks.test.ts`. `MyClaimDetail.test.tsx`'s "goes back to the list" became "has no hand-written back link".
 
+## Every page fits a phone (2026-11-17)
+
+Owner request: all pages responsive on mobile phones. Measured, not eyeballed: `frontend/scripts/mobile-audit.mjs` opens all 78 routes at 375, 360 and 320 px as an allowed role with real records and fails on any page that scrolls sideways or has an element sticking out (clipped or scrolling the content column). Before: 15 pages failed at 375 px, more at 360 and 320. After: all 78 routes pass at 375, 360 and 320 px.
+
+Fixed at the source, so the fix covers every page using the piece:
+- **Top bar** (`shell/TopBar`): below 600 px, row one is the menu button, title and the bar's icons; the page's own actions (`useTopBarSlot` `actions`, now wrapped in `.pageActions`) get a full-width row below. Before, actions mixed in with the icons over three or four rows. The title steps down to 18 px and the account button drops its arrow so the title fits.
+- **Cards** (`Card`): `min-width: 0`, so no card forces its grid column wider than its share. **Stat cards**: below 600 px the icon gives its room to the label (whole words wrap, no "OUTSTANDI/NG"), and the number scales (`clamp`) and may wrap.
+- **Tabs** (`shell/Tabs`): scroll sideways inside their own strip (no visible scrollbar); tabs never shrink or wrap.
+- **Long pipelines**: new `shell/ScrollStrip` (container stepper, customer shipment stepper; the refund stepper was already one). A strip scrolls inside itself and is marked `data-scroll-strip`.
+- **Wizard steps** (create packing list, Excel import): below 600 px every step keeps its number, only the current one keeps its words.
+- **Action rows** on invoice, container and release-note pages: capped at the page width so buttons wrap (they had `flex-shrink: 0` and ran off the edge, e.g. "Apply carryover" on the invoice). Webhook secret row wraps.
+- **Key-value rows** (`Kvp`) and table phone cards: long values wrap. **Badges** wrap below 600 px instead of overflowing a card.
+- **Key-value rows** also wrap the value under a long label when both do not fit ("Effective rate charged to customers" at 320 px). The platform tenant page's Suspend/Offboard row wraps (`.tenantActions`).
+- **List filters**: the custom From/To date inputs wrap (billing, claims, containers, notification log). **Reports**: two-column grid and the donut legend stack on a phone; the dashboard two-column grid uses `minmax(min(440px, 100%), 1fr)`.
+
+Dialogs: all ~40 already become full-width bottom sheets below 861 px (checked by a static scan for uncapped fixed widths; none found outside desktop-only rules).
+
+Test harness: `src/test/setup.ts` sets Testing Library's `asyncUtilTimeout` to 3 s. A page's first render compiles its lazy chunk and under the full suite's parallel load sometimes took just over the default 1 s, failing `routes.test.tsx` and `ActivityLog.test.tsx` at random.

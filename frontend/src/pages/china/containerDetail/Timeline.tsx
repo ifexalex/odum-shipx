@@ -5,6 +5,7 @@ import { Icon } from '../../../design/components'
 import styles from '../ContainerDetail.module.css'
 import { formatDate } from '../../../lib/format'
 import { eventIconForStatus } from './labels'
+import { ScrollStrip } from '../../../shell/ScrollStrip'
 
 // Stepper stage config — display labels/subs match the prototype exactly.
 // Backend status keys are unchanged; only the visual pipeline uses these.
@@ -27,53 +28,56 @@ const STEPPER_STAGES: Array<{
 export function ContainerStepper({ current }: { current: ContainerStatus }): JSX.Element {
   const currentIndex = STEPPER_STAGES.findIndex((s) => s.status === current)
   return (
-    <div className={styles.stepper}>
-      {STEPPER_STAGES.map(({ status, label, sub, side }, index) => {
-        const done = index < currentIndex
-        const isCurrent = index === currentIndex
-        const color = side === 'china' ? 'var(--color-info)' : 'var(--color-primary)'
-        return (
-          <div key={status} className={styles.step}>
-            {/* Connecting line to previous step */}
-            {index > 0 && (
-              <div
-                className={styles.stepLine}
-                style={{ background: done ? color : 'var(--color-line)' }}
-              />
-            )}
-            <div
-              className={styles.stepDot}
-              style={{
-                background: done ? color : isCurrent ? '#fff' : 'var(--color-surface-muted)',
-                border: `${isCurrent ? 3 : 2}px solid ${done || isCurrent ? color : 'var(--color-line-strong)'}`,
-                boxShadow: isCurrent ? `0 0 0 6px ${color}22` : 'none',
-              }}
-            >
-              {done ? (
-                <Icon name="check" size={14} color="#fff" stroke={3} />
-              ) : isCurrent ? (
-                <span className={styles.stepDotInner} style={{ background: color }} />
-              ) : null}
-            </div>
-            <div className={styles.stepText}>
-              <div
-                className={[styles.stepLabel, done || isCurrent ? styles.stepLabelActive : ''].join(
-                  ' ',
-                )}
-              >
-                {label}
-              </div>
-              <div className={styles.stepSub}>{sub}</div>
-              {isCurrent && (
-                <div className={styles.stepNow} style={{ background: color }}>
-                  Now
-                </div>
+    <ScrollStrip minWidth={STEPPER_STAGES.length * 70}>
+      <div className={styles.stepper}>
+        {STEPPER_STAGES.map(({ status, label, sub, side }, index) => {
+          const done = index < currentIndex
+          const isCurrent = index === currentIndex
+          const color = side === 'china' ? 'var(--color-info)' : 'var(--color-primary)'
+          return (
+            <div key={status} className={styles.step}>
+              {/* Connecting line to previous step */}
+              {index > 0 && (
+                <div
+                  className={styles.stepLine}
+                  style={{ background: done ? color : 'var(--color-line)' }}
+                />
               )}
+              <div
+                className={styles.stepDot}
+                style={{
+                  background: done ? color : isCurrent ? '#fff' : 'var(--color-surface-muted)',
+                  border: `${isCurrent ? 3 : 2}px solid ${done || isCurrent ? color : 'var(--color-line-strong)'}`,
+                  boxShadow: isCurrent ? `0 0 0 6px ${color}22` : 'none',
+                }}
+              >
+                {done ? (
+                  <Icon name="check" size={14} color="#fff" stroke={3} />
+                ) : isCurrent ? (
+                  <span className={styles.stepDotInner} style={{ background: color }} />
+                ) : null}
+              </div>
+              <div className={styles.stepText}>
+                <div
+                  className={[
+                    styles.stepLabel,
+                    done || isCurrent ? styles.stepLabelActive : '',
+                  ].join(' ')}
+                >
+                  {label}
+                </div>
+                <div className={styles.stepSub}>{sub}</div>
+                {isCurrent && (
+                  <div className={styles.stepNow} style={{ background: color }}>
+                    Now
+                  </div>
+                )}
+              </div>
             </div>
-          </div>
-        )
-      })}
-    </div>
+          )
+        })}
+      </div>
+    </ScrollStrip>
   )
 }
 

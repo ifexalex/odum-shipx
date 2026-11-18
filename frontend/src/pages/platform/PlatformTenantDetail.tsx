@@ -430,7 +430,7 @@ export function PlatformTenantDetail(): JSX.Element {
         title={tenant.company_name}
         subtitle={tenant.slug}
         actions={
-          <div style={{ display: 'flex', gap: 8 }}>
+          <div className={styles.tenantActions}>
             {tenant.status === 'active' && (
               <Button variant="secondary" icon="eye" loading={impersonating} onClick={() => void handleImpersonate()}>
                 Impersonate

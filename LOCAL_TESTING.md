@@ -1286,3 +1286,15 @@ To see it locally without cutting the network: stop Bybit reaching the app (or p
 
 Uploads are limited to 5 MB. Locally the presign request is refused over 5 MB, but the Moto URL is SigV2 (the dev upload proxy rewrites the host, which SigV4 would sign), so Moto itself accepts any body length; payment claims and imports still refuse an over-size stored file. Production AWS URLs are SigV4 and S3 refuses a different length.
 
+## Phone-width audit (2026-11-17)
+
+With the API (`make dev`) and Vite (`npm run dev`) running and local dev auth:
+
+```
+cd frontend
+node scripts/mobile-audit.mjs              # every route at 375, 360 and 320 px
+node scripts/mobile-audit.mjs 360 /billing # one width, routes containing /billing
+```
+
+It opens each route as an allowed role with real records from the local API and exits 1 if any page scrolls sideways or has content sticking out. A row meant to scroll sideways inside itself uses `shell/ScrollStrip` (`data-scroll-strip`). Run it after layout changes.
+

@@ -97,7 +97,7 @@ function RefundStepper({ refund }: { refund: Refund }): JSX.Element {
   const isTerminal = isTerminalRefundStatus(refund.status) && !isRejected
 
   return (
-    <div className={styles.stepperWrap}>
+    <div className={styles.stepperWrap} data-scroll-strip="">
       <div className={styles.stepper}>
         {steps.map((step, i) => {
           const done = isTerminal ? i <= activeIndex : i < activeIndex

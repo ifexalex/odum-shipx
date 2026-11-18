@@ -14,7 +14,7 @@ export interface TabsProps {
 
 export function Tabs({ items, active, onChange }: TabsProps): JSX.Element {
   return (
-    <div className={styles.tabs} role="tablist">
+    <div className={styles.tabs} role="tablist" data-scroll-strip="">
       {items.map((item) => (
         <button
           key={item.key}

@@ -24,6 +24,7 @@
 /* Donut chart */
 .donutWrap {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   gap: 24px;
 }
@@ -64,7 +65,11 @@
   margin-top: 2px;
 }
 
-.donutLegend { flex: 1; }
+.donutLegend {
+  /* Beside the chart when there is room, under it on a phone. */
+  flex: 1 1 180px;
+  min-width: 0;
+}
 
 .donutLegendRow {
   display: flex;
@@ -251,4 +256,16 @@
 /* P2-6 — collapse the two-column report grid on narrow app frames */
 @container sxapp (max-width: 860px) {
   .grid2 { grid-template-columns: 1fr; }
+}
+
+/* The two report columns stack when there is no room for both (a phone, a narrow window). */
+@container sxapp (max-width: 720px) {
+  .grid2 {
+    grid-template-columns: 1fr;
+  }
+}
+@media (max-width: 720px) {
+  .grid2 {
+    grid-template-columns: 1fr;
+  }
 }

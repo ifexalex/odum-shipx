@@ -86,7 +86,8 @@ export function TopBar({
       </div>
       <div className={styles.right}>
         {search}
-        {actions}
+        {/* The page's own actions: in line on desktop, their own full-width row on a phone (TopBar.module.css). */}
+        {actions && <div className={styles.pageActions}>{actions}</div>}
         {roleOptions && roleOptions.length > 1 && (
           <select
             aria-label="Active role"
