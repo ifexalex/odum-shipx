@@ -257,7 +257,8 @@ function VerifyManifestModal({ manifest, onCancel, onVerified }: VerifyManifestM
                           discrepancyLabel(customer?.customer_name ?? draft.customerId, draft),
                         )
                       }
-                      onUploaded={() => { /* stored server-side, shown on the manifest after reload */ }}
+                      confirmUpload={(evidenceId) => manifestApi.confirmEvidence(manifest.id, evidenceId)}
+                      onUploaded={() => { /* listed on the manifest once confirmed; the confirmUpload POST refreshes it */ }}
                     />
                   </div>
                 </div>

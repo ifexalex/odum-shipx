@@ -210,6 +210,7 @@ export function MyClaimsNew(): JSX.Element {
           </Banner>
           <EvidenceUploader
             getPresignedUrl={(f) => presignedUploadApi.getUrl(claimId, f.name, f.type, f.size)}
+            confirmUpload={(evidenceId) => presignedUploadApi.confirm(claimId, evidenceId)}
             onUploaded={(ev) => setUploadedEvidence((prev) => [...prev, ev])}
           />
           <div className={styles.formActions}>

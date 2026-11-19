@@ -1824,3 +1824,7 @@ Fixed at the source, so the fix covers every page using the piece:
 Dialogs: all ~40 already become full-width bottom sheets below 861 px (checked by a static scan for uncapped fixed widths; none found outside desktop-only rules).
 
 Test harness: `src/test/setup.ts` sets Testing Library's `asyncUtilTimeout` to 3 s. A page's first render compiles its lazy chunk and under the full suite's parallel load sometimes took just over the default 1 s, failing `routes.test.tsx` and `ActivityLog.test.tsx` at random.
+
+## Uploads are confirmed after they land (2026-11-19)
+
+`useFileUpload` takes an optional `confirmUpload(presigned)` (not `confirm`: `shell/dialogs.test.ts` flags any bare `confirm(` call as a native dialog), called after a successful PUT; the upload is `done` only once it resolves, and its error message (e.g. the API's "The file is larger than 5 MB.") is what the uploader shows. `EvidenceUploader` takes `confirmUpload(evidenceId)`; claim evidence (`ClaimDetail` both uploaders, `MyClaimsNew`) passes `presignedUploadApi.confirm`, manifest evidence (`ManifestDetail`) `manifestApi.confirmEvidence`. Payment-claim evidence has no confirm: its size is checked when the claim is submitted. `DocumentsTab` calls `containerDocumentsApi.confirmUpload` after `uploadToPresignedUrl`; its manual list invalidation is gone, because the confirm POST invalidates the container keys through `api/client.ts`. Before, a file whose upload failed or was abandoned was still listed, with a link that did not open.

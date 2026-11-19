@@ -8,6 +8,7 @@ Routes:
   PATCH /v1/claims/{id}/resolve             — nigeria_office_staff, tenant_admin
 
   POST  /v1/uploads/presigned-url           — customer, nigeria_office_staff
+  POST  /v1/claims/{id}/evidence/{evidence_id}/confirm — customer, nigeria_office_staff
 
   POST  /v1/claims/missing-items            — nigeria_office_staff
   PATCH /v1/claims/missing-items/{id}       — nigeria_office_staff (any status, compensation); china_office_staff
@@ -262,6 +263,12 @@ def _claim_routes(
                 )
                 return success(result, request_id=request_id)
 
+            # POST /v1/claims/{id}/evidence/{evidence_id}/confirm — the browser finished the upload
+            if action == "evidence" and len(parts) == 6 and parts[5] == "confirm" and method == "POST":
+                ctx.assert_role(*_UPLOAD_ROLES)
+                result = service.confirm_evidence(tenant_id, claim_id, parts[4], ctx, ip_address=ip_address)
+                return success(result, request_id=request_id)
+
             # PATCH /v1/claims/{id}/resolve
             if action == "resolve" and method == "PATCH":
                 ctx.assert_role(*_RESOLVE_ROLES)
@@ -308,7 +315,7 @@ def _upload_routes(
             claim_id,
             filename,
             content_type,
-            actor_id=ctx.user_id,
+            ctx=ctx,
             size_bytes=body.get("size_bytes"),
         )
         return success(result, request_id=request_id)

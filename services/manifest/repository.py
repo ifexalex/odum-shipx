@@ -384,15 +384,52 @@ def create_manifest_evidence(tenant_id: str, data: dict[str, Any]) -> dict[str, 
 
 
 def list_manifest_evidence(tenant_id: str, manifest_id: str) -> list[dict[str, Any]]:
-    """Fetch all evidence rows for a manifest, newest first."""
+    """The manifest's confirmed evidence rows, newest first (an unconfirmed upload is not listed)."""
     return execute_with_tenant(
         tenant_id,
         """
         SELECT id, manifest_id, file_key, file_name, file_type, file_size_bytes,
                label, uploaded_by, created_at
         FROM manifest_evidence
-        WHERE manifest_id = %s
+        WHERE manifest_id = %s AND confirmed_at IS NOT NULL
         ORDER BY created_at DESC
         """,
         (manifest_id,),
+    )
+
+
+def get_manifest_evidence(tenant_id: str, manifest_id: str, evidence_id: str) -> dict[str, Any] | None:
+    """One evidence row of a manifest, confirmed or not. The caller has checked the manifest is the tenant's."""
+    rows = execute_with_tenant(
+        tenant_id,
+        "SELECT * FROM manifest_evidence WHERE manifest_id = %s AND id = %s",
+        (manifest_id, evidence_id),
+    )
+    return rows[0] if rows else None
+
+
+def confirm_manifest_evidence(tenant_id: str, manifest_id: str, evidence_id: str, size_bytes: int) -> dict[str, Any] | None:
+    """Record the checked size and list the file. Confirming twice keeps the first time."""
+    return execute_write_with_tenant(
+        tenant_id,
+        """
+        UPDATE manifest_evidence
+        SET file_size_bytes = %s, confirmed_at = COALESCE(confirmed_at, NOW())
+        WHERE manifest_id = %s AND id = %s
+        RETURNING *
+        """,
+        (size_bytes, manifest_id, evidence_id),
+    )
+
+
+def delete_unconfirmed_manifest_evidence(tenant_id: str, manifest_id: str, evidence_id: str) -> dict[str, Any] | None:
+    """Drop the row of an upload that was refused at confirmation. A confirmed row is never deleted here."""
+    return execute_write_with_tenant(
+        tenant_id,
+        """
+        DELETE FROM manifest_evidence
+        WHERE manifest_id = %s AND id = %s AND confirmed_at IS NULL
+        RETURNING id
+        """,
+        (manifest_id, evidence_id),
     )

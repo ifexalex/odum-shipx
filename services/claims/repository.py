@@ -412,7 +412,7 @@ def create_claim_evidence(data: dict[str, Any]) -> dict[str, Any] | None:
 
 
 def list_claim_evidence(claim_id: str) -> list[dict[str, Any]]:
-    """The evidence files recorded against a claim, oldest first.
+    """The confirmed evidence files recorded against a claim, oldest first (an unconfirmed upload is not listed).
 
     claim_evidence has no RLS: the caller must already have established that the claim belongs to its tenant (it
     loads the claim through `get_damage_claim_by_id`, which is tenant-scoped) before asking for its evidence.
@@ -422,10 +422,47 @@ def list_claim_evidence(claim_id: str) -> list[dict[str, Any]]:
         """
         SELECT id, file_key, file_name, file_type, file_size_bytes, created_at
         FROM claim_evidence
-        WHERE damage_claim_id = %s
+        WHERE damage_claim_id = %s AND confirmed_at IS NOT NULL
         ORDER BY created_at ASC
         """,
         (claim_id,),
+    )
+
+
+def get_claim_evidence(claim_id: str, evidence_id: str) -> dict[str, Any] | None:
+    """One evidence row of a claim, confirmed or not. The caller has checked the claim belongs to its tenant."""
+    rows = execute_with_tenant(
+        PLATFORM_TENANT_ID,
+        "SELECT * FROM claim_evidence WHERE damage_claim_id = %s AND id = %s",
+        (claim_id, evidence_id),
+    )
+    return rows[0] if rows else None
+
+
+def confirm_claim_evidence(claim_id: str, evidence_id: str, size_bytes: int) -> dict[str, Any] | None:
+    """Record the checked size and list the file. Confirming twice keeps the first time."""
+    return execute_write_with_tenant(
+        PLATFORM_TENANT_ID,
+        """
+        UPDATE claim_evidence
+        SET file_size_bytes = %s, confirmed_at = COALESCE(confirmed_at, NOW())
+        WHERE damage_claim_id = %s AND id = %s
+        RETURNING *
+        """,
+        (size_bytes, claim_id, evidence_id),
+    )
+
+
+def delete_unconfirmed_claim_evidence(claim_id: str, evidence_id: str) -> dict[str, Any] | None:
+    """Drop the row of an upload that was refused at confirmation. A confirmed row is never deleted here."""
+    return execute_write_with_tenant(
+        PLATFORM_TENANT_ID,
+        """
+        DELETE FROM claim_evidence
+        WHERE damage_claim_id = %s AND id = %s AND confirmed_at IS NULL
+        RETURNING id
+        """,
+        (claim_id, evidence_id),
     )
 
 

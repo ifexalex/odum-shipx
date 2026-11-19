@@ -103,6 +103,7 @@ function StartInspectionModal({ onCancel, onSuccess, claimId }: StartInspectionM
             <label className={styles.selectLabel}>Evidence files <span className={styles.required}>*</span></label>
             <EvidenceUploader
               getPresignedUrl={(f) => presignedUploadApi.getUrl(claimId, f.name, f.type, f.size)}
+              confirmUpload={(evidenceId) => presignedUploadApi.confirm(claimId, evidenceId)}
               onUploaded={() => setEvidenceUploaded(true)}
               disabled={submitting}
             />
@@ -408,7 +409,11 @@ export function ClaimDetail(): JSX.Element {
         <div className={styles.section}>
           <SectionHead title="Attach evidence" sub="Upload photos or PDF documents (JPEG · PNG · PDF, max 5 MB each)" />
           <Card padding="default">
-            <EvidenceUploader getPresignedUrl={(f) => presignedUploadApi.getUrl(claim.id, f.name, f.type, f.size)} onUploaded={() => { /* evidence logged server-side */ }} />
+            <EvidenceUploader
+              getPresignedUrl={(f) => presignedUploadApi.getUrl(claim.id, f.name, f.type, f.size)}
+              confirmUpload={(evidenceId) => presignedUploadApi.confirm(claim.id, evidenceId)}
+              onUploaded={() => { /* listed on the claim once confirmed; the confirmUpload POST refreshes it */ }}
+            />
           </Card>
         </div>
       )}

@@ -2310,6 +2310,156 @@
             },
             "description": "Public endpoint — no auth required. Customer looks up shipment by tracking code + phone number.\n\nThe phone is normalised to E.164 before matching (fixed 2026-11-02). Customer phones are stored E.164 and this previously compared ONE exact string, so a local-format number never matched. Note this very request used phone=08012345678 — it would have returned 404 against a customer stored as +2348012345678. Both the normalised and the raw form are now accepted."
           }
+        },
+        {
+          "name": "List Container Documents",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "X-Tenant-ID",
+                "value": "{{tenant_id}}"
+              },
+              {
+                "key": "X-Role",
+                "value": "china_office_staff"
+              },
+              {
+                "key": "X-User-ID",
+                "value": "{{user_id}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/v1/containers/{{container_id}}/documents",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "v1",
+                "containers",
+                "{{container_id}}",
+                "documents"
+              ]
+            },
+            "description": "GET /v1/containers/{id}/documents — china_office_staff, nigeria_office_staff, tenant_admin. Confirmed documents only."
+          }
+        },
+        {
+          "name": "Get Document Upload URL",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "X-Tenant-ID",
+                "value": "{{tenant_id}}"
+              },
+              {
+                "key": "X-Role",
+                "value": "china_office_staff"
+              },
+              {
+                "key": "X-User-ID",
+                "value": "{{user_id}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"filename\": \"bill_of_lading.pdf\",\n  \"content_type\": \"application/pdf\",\n  \"document_type\": \"bill_of_lading\",\n  \"size_bytes\": 204800\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{base_url}}/v1/containers/{{container_id}}/documents/presigned-url",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "v1",
+                "containers",
+                "{{container_id}}",
+                "documents",
+                "presigned-url"
+              ]
+            },
+            "description": "POST /v1/containers/{id}/documents/presigned-url — china_office_staff, nigeria_office_staff, tenant_admin. Returns document_id and s3_key."
+          }
+        },
+        {
+          "name": "Confirm Document Upload",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "X-Tenant-ID",
+                "value": "{{tenant_id}}"
+              },
+              {
+                "key": "X-Role",
+                "value": "china_office_staff"
+              },
+              {
+                "key": "X-User-ID",
+                "value": "{{user_id}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/v1/containers/{{container_id}}/documents/{{document_id}}/confirm",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "v1",
+                "containers",
+                "{{container_id}}",
+                "documents",
+                "{{document_id}}",
+                "confirm"
+              ]
+            },
+            "description": "POST /v1/containers/{id}/documents/{doc-id}/confirm — china_office_staff, nigeria_office_staff, tenant_admin. Call after the PUT to storage. Reads the stored size: over 5 MB → file and row deleted, 422 FILE_TOO_LARGE; nothing uploaded → 422 UPLOAD_NOT_FOUND. Unconfirmed uploads are never listed (migration 069)."
+          }
+        },
+        {
+          "name": "Get Document Download URL",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "X-Tenant-ID",
+                "value": "{{tenant_id}}"
+              },
+              {
+                "key": "X-Role",
+                "value": "china_office_staff"
+              },
+              {
+                "key": "X-User-ID",
+                "value": "{{user_id}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/v1/containers/{{container_id}}/documents/{{document_id}}/download",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "v1",
+                "containers",
+                "{{container_id}}",
+                "documents",
+                "{{document_id}}",
+                "download"
+              ]
+            },
+            "description": "GET /v1/containers/{id}/documents/{doc-id}/download — 5-minute attachment link. An unconfirmed document is a 404."
+          }
         }
       ]
     },
@@ -2893,6 +3043,87 @@
                 "verify"
               ]
             }
+          }
+        },
+        {
+          "name": "Get Evidence Upload URL",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "X-Tenant-ID",
+                "value": "{{tenant_id}}"
+              },
+              {
+                "key": "X-Role",
+                "value": "nigeria_office_staff"
+              },
+              {
+                "key": "X-User-ID",
+                "value": "{{user_id}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"filename\": \"carton_photo.jpg\",\n  \"content_type\": \"image/jpeg\",\n  \"size_bytes\": 204800,\n  \"label\": \"Carton 12\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{base_url}}/v1/manifests/{{manifest_id}}/evidence",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "v1",
+                "manifests",
+                "{{manifest_id}}",
+                "evidence"
+              ]
+            },
+            "description": "POST /v1/manifests/{id}/evidence — china_office_staff, nigeria_office_staff. Presigned PUT for a verification photo/doc; returns evidence_id and file_key."
+          }
+        },
+        {
+          "name": "Confirm Evidence Upload",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "X-Tenant-ID",
+                "value": "{{tenant_id}}"
+              },
+              {
+                "key": "X-Role",
+                "value": "nigeria_office_staff"
+              },
+              {
+                "key": "X-User-ID",
+                "value": "{{user_id}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/v1/manifests/{{manifest_id}}/evidence/{{evidence_id}}/confirm",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "v1",
+                "manifests",
+                "{{manifest_id}}",
+                "evidence",
+                "{{evidence_id}}",
+                "confirm"
+              ]
+            },
+            "description": "POST /v1/manifests/{id}/evidence/{evidence_id}/confirm — china_office_staff, nigeria_office_staff. Call after the PUT to storage. Reads the stored size: over 5 MB → file and row deleted, 422 FILE_TOO_LARGE; nothing uploaded → 422 UPLOAD_NOT_FOUND. Unconfirmed uploads are never listed (migration 069)."
           }
         }
       ]
@@ -4434,6 +4665,41 @@
               ]
             },
             "description": "POST /v1/uploads/presigned-url — generate an S3 presigned PUT URL for uploading claim evidence photos"
+          }
+        },
+        {
+          "name": "Confirm Evidence Upload",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "X-Tenant-ID",
+                "value": "{{tenant_id}}"
+              },
+              {
+                "key": "X-Role",
+                "value": "nigeria_office_staff"
+              },
+              {
+                "key": "X-User-ID",
+                "value": "{{user_id}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/v1/claims/{{claim_id}}/evidence/{{evidence_id}}/confirm",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "v1",
+                "claims",
+                "{{claim_id}}",
+                "evidence",
+                "{{evidence_id}}",
+                "confirm"
+              ]
+            },
+            "description": "POST /v1/claims/{id}/evidence/{evidence_id}/confirm — customer (own claim), nigeria_office_staff. Call after the PUT to storage. Reads the stored size: over 5 MB → file and row deleted, 422 FILE_TOO_LARGE; nothing uploaded → 422 UPLOAD_NOT_FOUND. Unconfirmed uploads are never listed (migration 069)."
           }
         }
       ]

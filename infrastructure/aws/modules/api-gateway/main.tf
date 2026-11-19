@@ -61,14 +61,15 @@ locals {
     "GET /v1/containers/{id}/packing-lists" = "packing_list"
 
     # --- Manifests (4 routes) -----------------------------------------------
-    "POST /v1/manifests"                           = "manifest"
-    "GET /v1/manifests"                            = "manifest"
-    "GET /v1/manifests/stats"                      = "manifest"
-    "GET /v1/manifests/{id}"                       = "manifest"
-    "PATCH /v1/manifests/{id}/verify"              = "manifest"
-    "PATCH /v1/manifests/{id}/revoke-verification" = "manifest"
-    "PATCH /v1/manifests/{id}/resolve-discrepancy" = "manifest"
-    "POST /v1/manifests/{id}/evidence"             = "manifest"
+    "POST /v1/manifests"                                     = "manifest"
+    "GET /v1/manifests"                                      = "manifest"
+    "GET /v1/manifests/stats"                                = "manifest"
+    "GET /v1/manifests/{id}"                                 = "manifest"
+    "PATCH /v1/manifests/{id}/verify"                        = "manifest"
+    "PATCH /v1/manifests/{id}/revoke-verification"           = "manifest"
+    "PATCH /v1/manifests/{id}/resolve-discrepancy"           = "manifest"
+    "POST /v1/manifests/{id}/evidence"                       = "manifest"
+    "POST /v1/manifests/{id}/evidence/{evidence-id}/confirm" = "manifest"
 
     # --- Shipments (1 route; GET /{tracking-code} is public — see public_routes) ---
     "GET /v1/shipments" = "tracking"
@@ -104,11 +105,12 @@ locals {
     "PATCH /v1/billing/disputes/{id}/reject"      = "billing"
 
     # --- Claims (5 routes) --------------------------------------------------
-    "POST /v1/claims"               = "claims"
-    "GET /v1/claims"                = "claims"
-    "GET /v1/claims/{id}"           = "claims"
-    "PATCH /v1/claims/{id}/inspect" = "claims"
-    "PATCH /v1/claims/{id}/resolve" = "claims"
+    "POST /v1/claims"                                     = "claims"
+    "GET /v1/claims"                                      = "claims"
+    "GET /v1/claims/{id}"                                 = "claims"
+    "PATCH /v1/claims/{id}/inspect"                       = "claims"
+    "PATCH /v1/claims/{id}/resolve"                       = "claims"
+    "POST /v1/claims/{id}/evidence/{evidence-id}/confirm" = "claims"
 
     # --- Claims extension (4 routes) ----------------------------------------
     "GET /v1/claims/stats"              = "claims"
@@ -231,6 +233,7 @@ locals {
     "GET /v1/containers/{id}/documents"                   = "tracking"
     "POST /v1/containers/{id}/documents/presigned-url"    = "tracking"
     "GET /v1/containers/{id}/documents/{doc-id}/download" = "tracking"
+    "POST /v1/containers/{id}/documents/{doc-id}/confirm" = "tracking"
 
     # --- Tenant admin: rates, payment gateway, webhook, templates, users ----
     "GET /v1/tenant/cbm-rate"                                 = "tenant_management"

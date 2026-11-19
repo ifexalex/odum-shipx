@@ -595,3 +595,9 @@ One row per tenant data export. Columns: `id`, `tenant_id` (FK `tenant` ON DELET
 - `billing.exchange_rate_source VARCHAR(20)`, `CHECK (IN ('live', 'last_known', 'hardcoded'))`: where `exchange_rate_ngn` came from (`shared.fx_rate.RATE_SOURCE_*`). Invoicing refuses `hardcoded`, so new rows carry `live` or `last_known`.
 - `billing.exchange_rate_fetched_at TIMESTAMPTZ`: when that market rate was fetched.
 - Both NULL for invoices issued before the migration (nothing recorded it). No backfill, no RLS change. Applied to the local dev database on 2026-11-17 (4 existing invoices, all NULL).
+
+## Migration 069 — upload confirmation (2026-11-19)
+
+- `confirmed_at TIMESTAMPTZ` on `claim_evidence`, `manifest_evidence` and `container_document`: when the client confirmed the upload and its stored size was checked. NULL means presigned but not confirmed; such a row is never listed or downloadable. Existing rows backfilled to `created_at`.
+- `container_document.file_size_bytes INTEGER` (the other two already had it), set at confirmation.
+- No RLS change: `container_document` keeps its tenant policy; the two evidence tables stay without RLS, scoped through their parent. Applied to the local dev database on 2026-11-19.

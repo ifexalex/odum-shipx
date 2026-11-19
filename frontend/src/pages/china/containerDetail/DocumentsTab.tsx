@@ -1,4 +1,4 @@
-import { useQuery, useQueryClient } from '@tanstack/react-query'
+import { useQuery } from '@tanstack/react-query'
 import { useState, type JSX } from 'react'
 import { ApiError } from '../../../api/client'
 import { containerKeys } from '../../../api/keys'
@@ -38,7 +38,6 @@ export function DocumentsTab({
   containerId: string
   containerNumber: string | null
 }): JSX.Element {
-  const qc = useQueryClient()
 
   const {
     data: docs = [],
@@ -93,16 +92,14 @@ export function DocumentsTab({
         size_bytes: file.size,
       })
       await uploadToPresignedUrl(presigned, file)
+      if (!presigned.document_id) throw new Error('The upload could not be recorded. Please try again.')
+      // The document is listed only once confirmed, and the confirm POST refreshes this list (api/client.ts
+      // invalidates the container keys on it). A file over the limit is refused here with the API's message.
+      await containerDocumentsApi.confirmUpload(containerId, presigned.document_id)
       setShowUpload(false)
       setFile(null)
-      // Explicit, unlike the other pages in this migration: the automatic
-      // invalidation in api/client.ts fires on the presign POST, which happens
-      // *before* the bytes land, and the upload itself is a direct PUT to
-      // storage that never passes through the API client. So nothing would
-      // otherwise tell this list the new document exists.
-      await qc.invalidateQueries({ queryKey: containerKeys.documents(containerId) })
     } catch (err) {
-      setUploadError(err instanceof ApiError ? err.message : 'Upload failed. Please try again.')
+      setUploadError(err instanceof Error && err.message ? err.message : 'Upload failed. Please try again.')
     } finally {
       setUploading(false)
     }

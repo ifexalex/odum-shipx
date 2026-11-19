@@ -6,6 +6,7 @@ Routes:
   PATCH /v1/manifests/{id}/verify            — china_office_staff, nigeria_office_staff
   PATCH /v1/manifests/{id}/revoke-verification — china_office_staff, nigeria_office_staff, tenant_admin
   POST  /v1/manifests/{id}/evidence          — china_office_staff, nigeria_office_staff (presigned upload)
+  POST  /v1/manifests/{id}/evidence/{evidence_id}/confirm — same (the upload finished; checks the stored size)
 
 Manifests are auto-created when packing lists are approved (Task 08); the only
 POST is the verification-evidence presigned-upload contract.
@@ -212,8 +213,16 @@ def _manifest_routes(
                 )
                 return success(result, request_id=request_id)
 
+            # POST /v1/manifests/{id}/evidence/{evidence_id}/confirm — the browser finished the upload
+            if action == "evidence" and len(parts) == 6 and parts[5] == "confirm" and method == "POST":
+                ctx.assert_role(*_VERIFY_ROLES)
+                result = service.confirm_evidence(
+                    tenant_id, manifest_id, parts[4], actor_id=ctx.user_id, ctx=ctx, ip_address=ip_address
+                )
+                return success(result, request_id=request_id)
+
             # POST /v1/manifests/{id}/evidence — presigned upload for a verify photo/doc
-            if action == "evidence" and method == "POST":
+            if action == "evidence" and len(parts) == 4 and method == "POST":
                 ctx.assert_role(*_VERIFY_ROLES)
                 body = _parse_body(event)
                 req = parse_validated(EvidenceUploadRequest, body)

@@ -114,3 +114,8 @@ operational tables less useful than the paper document they replace.
 
 **2026-11-17 — 5 MB upload limit:** the presign request must carry `size_bytes` (the file's size in bytes). Missing or not a positive whole number → 422 `VALIDATION_ERROR`; over 5 MB (5,242,880 bytes) → 422 `rule_id: FILE_TOO_LARGE`. On AWS the size is signed into the URL (SigV4 `content-length`), so S3 refuses a different-sized body. Rules in `shared/uploads.py`.
 
+## Upload confirmation (2026-11-19)
+
+**New route:** `POST /v1/manifests/{id}/evidence/{evidence_id}/confirm` — china_office_staff, nigeria_office_staff. Call it after the PUT to storage. Returns the evidence in the shape `GET /v1/manifests/{id}` lists (`id`, `file_name`, `file_type`, `label`, `created_at`, `download_url`). The row written at presign time is not listed until the client confirms the upload. The confirm call reads the stored file's size; a file over 5 MB is deleted, with its row, and refused (422 `FILE_TOO_LARGE`); nothing at the key is 422 `UPLOAD_NOT_FOUND` (the row stays hidden). Confirming twice returns the same result without reading storage again. This is the size check that holds on Azure, where an upload SAS cannot bind the length (AWS already refuses a different length at the PUT). Each upload's key now ends `{32 hex}-{safe name}`, so two uploads of one name never overwrite each other; `file_name` stays the plain name. Rows from before migration 069 were backfilled as confirmed. `GET /v1/manifests/{id}` lists confirmed evidence only.
+
+**Ground-truth gap found and fixed:** the presign route matched any POST under `/evidence`, so it would also have answered `/evidence/{id}/confirm`; it now matches the exact path.

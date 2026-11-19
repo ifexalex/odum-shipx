@@ -131,6 +131,14 @@ class BlobStorageProvider:
             return None
         return int(props.size)
 
+    def delete_object(self, key: str) -> None:
+        from azure.core.exceptions import ResourceNotFoundError
+
+        try:
+            self._container_client().delete_blob(key, delete_snapshots="include")
+        except ResourceNotFoundError:
+            return
+
     def delete_prefix(self, prefix: str) -> int:
         """Delete every blob under `prefix` (plus snapshots) and return the count.
 

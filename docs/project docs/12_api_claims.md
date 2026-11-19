@@ -269,3 +269,8 @@ Tests: `tests/unit/test_claims.py` (`TestChinaOfficeAndMissingItems`, `TestChina
 
 **2026-11-17 — 5 MB upload limit:** the presign request must carry `size_bytes` (the file's size in bytes). Missing or not a positive whole number → 422 `VALIDATION_ERROR`; over 5 MB (5,242,880 bytes) → 422 `rule_id: FILE_TOO_LARGE`. On AWS the size is signed into the URL (SigV4 `content-length`), so S3 refuses a different-sized body. Rules in `shared/uploads.py`.
 
+## Upload confirmation (2026-11-19)
+
+**New route:** `POST /v1/claims/{id}/evidence/{evidence_id}/confirm` — customer (own claim), nigeria_office_staff. Call it after the PUT to storage. Returns the evidence file (`id`, `file_name`, `file_type`, `file_size_bytes`, `uploaded_at`). The row written at presign time is not listed until the client confirms the upload. The confirm call reads the stored file's size; a file over 5 MB is deleted, with its row, and refused (422 `FILE_TOO_LARGE`); nothing at the key is 422 `UPLOAD_NOT_FOUND` (the row stays hidden). Confirming twice returns the same result without reading storage again. This is the size check that holds on Azure, where an upload SAS cannot bind the length (AWS already refuses a different length at the PUT). Each upload's key now ends `{32 hex}-{safe name}`, so two uploads of one name never overwrite each other; `file_name` stays the plain name. Rows from before migration 069 were backfilled as confirmed. `GET /v1/claims/{id}` lists confirmed evidence only.
+
+**Ground-truth gap found and fixed:** `POST /v1/uploads/presigned-url` checked only that the claim was in the caller's tenant, so a customer could attach files to another customer's claim. Presign and confirm now use the same check as `GET /v1/claims/{id}`: another customer's claim is a 404.

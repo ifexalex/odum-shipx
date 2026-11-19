@@ -377,6 +377,23 @@ def _container_routes(
                 )
                 return success(result, request_id=request_id)
 
+            # POST /v1/containers/{id}/documents/{doc-id}/confirm — the browser finished the upload
+            if action == "documents" and sub_action and download_action == "confirm" and method == "POST":
+                ctx.assert_role(
+                    UserRole.CHINA_OFFICE_STAFF,
+                    UserRole.NIGERIA_OFFICE_STAFF,
+                    UserRole.TENANT_ADMIN,
+                )
+                result = service.confirm_document_upload(
+                    tenant_id=tenant_id,
+                    container_id=container_id,
+                    doc_id=sub_action,
+                    actor_id=ctx.user_id,
+                    actor_role=str(ctx.role),
+                    ip_address=ip_address,
+                )
+                return success(result, request_id=request_id)
+
             # POST /v1/containers/{id}/documents/presigned-url
             if action == "documents" and sub_action == "presigned-url" and method == "POST":
                 ctx.assert_role(

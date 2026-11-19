@@ -195,21 +195,31 @@ def list_claims(
 _EVIDENCE_LINK_EXPIRY = 300  # seconds
 
 
+def _claim_for_actor(tenant_id: str, claim_id: str, ctx: Any) -> dict[str, Any]:
+    """The claim, if the caller may see it: staff see the tenant's claims, a customer only their own.
+
+    Another customer's claim is a 404, the same as one that does not exist: a 403 would confirm that the id is real.
+
+    Raises:
+        ResourceNotFoundError: No such claim in the tenant, or a customer's claim that is not theirs.
+    """
+    claim = repo.get_damage_claim_by_id(tenant_id, claim_id)
+    if not claim:
+        raise ResourceNotFoundError("damage_claim", claim_id)
+    if ctx.role == UserRole.CUSTOMER:
+        customer = repo.get_customer_by_user_id(tenant_id, ctx.user_id)
+        if not customer or str(customer["id"]) != str(claim["customer_id"]):
+            raise ResourceNotFoundError("damage_claim", claim_id)
+    return claim
+
+
 def get_claim(tenant_id: str, claim_id: str, ctx: Any) -> dict[str, Any]:
     """One claim, with its evidence, the outcome and the refund it produced (audit UX-07).
 
     A customer reads only their own. Another customer's claim is a 404, the same as one that does not exist: a 403
     would confirm that the id is real.
     """
-    claim = repo.get_damage_claim_by_id(tenant_id, claim_id)
-    if not claim:
-        raise ResourceNotFoundError("damage_claim", claim_id)
-
-    if ctx.role == UserRole.CUSTOMER:
-        customer = repo.get_customer_by_user_id(tenant_id, ctx.user_id)
-        if not customer or str(customer["id"]) != str(claim["customer_id"]):
-            raise ResourceNotFoundError("damage_claim", claim_id)
-
+    claim = _claim_for_actor(tenant_id, claim_id, ctx)
     return {
         **_fmt_claim(claim),
         "evidence": _evidence_links(tenant_id, claim_id),
@@ -579,27 +589,31 @@ def generate_presigned_url(
     claim_id: str,
     filename: str,
     content_type: str,
-    actor_id: str,
+    ctx: Any,
     size_bytes: object = None,
 ) -> dict[str, Any]:
-    uploads.EVIDENCE.check(content_type, size_bytes)
+    """Presign an evidence upload for a claim the caller may see, and record it unconfirmed.
 
-    claim = repo.get_damage_claim_by_id(tenant_id, claim_id)
-    if not claim:
-        raise ResourceNotFoundError("damage_claim", claim_id)
+    The row stays hidden until ``confirm_evidence``: the browser uploads, then confirms.
+
+    Raises:
+        ResourceNotFoundError: The claim is not the tenant's, or not this customer's.
+        BusinessRuleViolationError: ``INVALID_CONTENT_TYPE`` or ``FILE_TOO_LARGE``.
+    """
+    uploads.EVIDENCE.check(content_type, size_bytes)
+    _claim_for_actor(tenant_id, claim_id, ctx)
 
     upload = uploads.presign_upload(uploads.EVIDENCE, tenant_id, ("claims", claim_id), filename, content_type, size_bytes)
     file_key = upload.key
-    filename = file_key.rsplit("/", 1)[-1]
 
     evidence = repo.create_claim_evidence(
         {
             "damage_claim_id": claim_id,
             "file_key": file_key,
-            "file_name": filename,
+            "file_name": upload.filename,
             "file_type": content_type,
             "file_size_bytes": None,
-            "uploaded_by": actor_id,
+            "uploaded_by": ctx.user_id,
         }
     )
 
@@ -607,6 +621,48 @@ def generate_presigned_url(
         **upload.as_response(),
         "evidence_id": str(evidence["id"]) if evidence else None,
         "file_key": file_key,
+    }
+
+
+def confirm_evidence(tenant_id: str, claim_id: str, evidence_id: str, ctx: Any, ip_address: str | None = None) -> dict[str, Any]:
+    """Confirm an evidence upload landed: check its stored size, then list it on the claim.
+
+    A file over the limit (possible on Azure, where the upload URL cannot bind the length) is deleted with its row.
+    Confirming an already confirmed file returns it unchanged.
+
+    Raises:
+        ResourceNotFoundError: The claim or the evidence row is not the caller's to confirm.
+        BusinessRuleViolationError: ``UPLOAD_NOT_FOUND`` or ``FILE_TOO_LARGE``.
+    """
+    _claim_for_actor(tenant_id, claim_id, ctx)
+    evidence = repo.get_claim_evidence(claim_id, evidence_id)
+    if not evidence:
+        raise ResourceNotFoundError("claim_evidence", evidence_id)
+    if evidence.get("confirmed_at") is None:
+        try:
+            size = uploads.confirm_stored_upload(uploads.EVIDENCE, str(evidence["file_key"]))
+        except BusinessRuleViolationError as exc:
+            if exc.rule_id == "FILE_TOO_LARGE":
+                logger.warning("Claim evidence over the size limit deleted at confirmation (claim_id=%s)", claim_id)
+                repo.delete_unconfirmed_claim_evidence(claim_id, evidence_id)
+            raise
+        evidence = repo.confirm_claim_evidence(claim_id, evidence_id, size) or evidence
+        log_audit(
+            tenant_id=tenant_id,
+            entity_type="claim_evidence",
+            entity_id=evidence_id,
+            action="CREATE",
+            actor_id=ctx.user_id,
+            actor_role=str(ctx.role),
+            after_state={"damage_claim_id": claim_id, "file_type": evidence["file_type"], "file_size_bytes": size},
+            ip_address=ip_address,
+        )
+    return {
+        "id": str(evidence["id"]),
+        "file_name": evidence["file_name"],
+        "file_type": evidence["file_type"],
+        "file_size_bytes": evidence.get("file_size_bytes"),
+        "uploaded_at": evidence.get("created_at"),
     }
 
 

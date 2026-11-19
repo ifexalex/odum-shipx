@@ -2434,3 +2434,10 @@ Docker Desktop had stopped because the disk was full ("no space left on device" 
 
 Found by running them: **a real bug** (invoice generation set a used credit to `completed`, which `refund_request` does not allow, so every invoice that used a credit failed; fixed, `processed`), and two fixture mistakes in `test_claim_read.py` (approval level `admin`, a claim without `reference`).
 
+## Upload confirmation (2026-11-19)
+
+- `tests/unit/test_upload_confirmation.py` (15): for each of claim evidence, manifest evidence and container documents, a file over the limit is deleted with its row; a confirmed file records its stored size; a missing upload keeps the row hidden; confirming twice reads storage once; a customer can neither upload to nor confirm on another customer's claim (mutation-checked: dropping the ownership check fails both); each confirm path reaches its confirm function, not the presign route.
+- `tests/unit/test_uploads.py`: `confirm_stored_upload` (size, missing, over and exactly at the limit); two uploads of one name get different keys. `test_storage_provider.py` / `test_azure_blob_provider.py`: `delete_object`. Key assertions in `test_safe_filename.py` and `test_manifest.py` now expect the `{hex}-name` form.
+- `tests/db/test_upload_confirmation.py` (7, real database): unconfirmed rows are not listed or downloadable, confirming keeps the first time, the refusal path never deletes a confirmed row, another tenant cannot confirm or delete a container document (RLS). `test_claim_read.py`'s fixture evidence is now confirmed. Full `make test-db`: 195 passed.
+- Frontend: `src/hooks/useFileUpload.test.ts` (4, fake XHR): confirm runs after the PUT, done only after it; its refusal is the message; a failed PUT is not confirmed. `ContainerDetail.test.tsx`: confirm after upload, and a confirm refusal shown inside the dialog.
+- End to end against a second API server on :3010 with local Moto storage (which, like Azure, does not enforce the signed length): a 6 MB body declared as 4 bytes was stored, then refused and deleted at confirm.

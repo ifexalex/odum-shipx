@@ -293,10 +293,12 @@ class TestEvidenceUpload:
             )
 
         # Tenant-isolated S3 key prefix.
-        assert storage.presigned_upload.call_args.args[0] == f"{TENANT_ID}/manifests/manifest-001/damage.jpg"
+        key = storage.presigned_upload.call_args.args[0]
+        assert key.startswith(f"{TENANT_ID}/manifests/manifest-001/") and key.endswith("-damage.jpg")
         # Evidence row captured the label + key.
         stored = mock_create.call_args[0][1]
-        assert stored["file_key"] == f"{TENANT_ID}/manifests/manifest-001/damage.jpg"
+        assert stored["file_key"] == key
+        assert stored["file_name"] == "damage.jpg"
         assert stored["label"] == "Carton ABC-123"
         assert result["evidence_id"] == "ev-1"
         assert result["upload_url"] == "https://s3.example/bucket"

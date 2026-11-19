@@ -527,7 +527,7 @@ def list_container_documents(tenant_id: str, container_id: str) -> list[dict[str
         tenant_id,
         """
         SELECT * FROM container_document
-        WHERE tenant_id = %s AND container_id = %s
+        WHERE tenant_id = %s AND container_id = %s AND confirmed_at IS NOT NULL
         ORDER BY created_at DESC
         """,
         (tenant_id, container_id),
@@ -538,14 +538,45 @@ def get_container_document_by_id(
     tenant_id: str,
     container_id: str,
     doc_id: str,
+    *,
+    include_unconfirmed: bool = False,
 ) -> dict[str, Any] | None:
+    """One document of a container; an unconfirmed upload only when `include_unconfirmed` (to confirm it)."""
     rows = execute_with_tenant(
         tenant_id,
         """
         SELECT * FROM container_document
         WHERE tenant_id = %s AND container_id = %s AND id = %s
+          AND (confirmed_at IS NOT NULL OR %s)
         LIMIT 1
+        """,
+        (tenant_id, container_id, doc_id, include_unconfirmed),
+    )
+    return rows[0] if rows else None
+
+
+def confirm_container_document(tenant_id: str, container_id: str, doc_id: str, size_bytes: int) -> dict[str, Any] | None:
+    """Record the checked size and list the document. Confirming twice keeps the first time."""
+    return execute_write_with_tenant(
+        tenant_id,
+        """
+        UPDATE container_document
+        SET file_size_bytes = %s, confirmed_at = COALESCE(confirmed_at, NOW())
+        WHERE tenant_id = %s AND container_id = %s AND id = %s
+        RETURNING *
+        """,
+        (size_bytes, tenant_id, container_id, doc_id),
+    )
+
+
+def delete_unconfirmed_container_document(tenant_id: str, container_id: str, doc_id: str) -> dict[str, Any] | None:
+    """Drop the row of an upload that was refused at confirmation. A confirmed row is never deleted here."""
+    return execute_write_with_tenant(
+        tenant_id,
+        """
+        DELETE FROM container_document
+        WHERE tenant_id = %s AND container_id = %s AND id = %s AND confirmed_at IS NULL
+        RETURNING id
         """,
         (tenant_id, container_id, doc_id),
     )
-    return rows[0] if rows else None

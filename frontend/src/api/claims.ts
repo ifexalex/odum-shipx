@@ -262,4 +262,8 @@ export const presignedUploadApi = {
       path: '/v1/uploads/presigned-url',
       body: { claim_id: claimId, filename, content_type: contentType, size_bytes: sizeBytes },
     }),
+
+  /** After the upload: the API checks the stored size and lists the file on the claim. */
+  confirm: (claimId: string, evidenceId: string) =>
+    apiRequest<ClaimEvidenceFile>({ method: 'POST', path: `/v1/claims/${claimId}/evidence/${evidenceId}/confirm` }),
 }

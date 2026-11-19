@@ -43,6 +43,14 @@ class TestS3StorageProvider:
         assert s3_provider.object_size(key) == 5
         assert s3_provider.object_size("tenant-1/imports/missing.xlsx") is None
 
+    def test_delete_object_removes_only_that_key_and_ignores_a_missing_one(self, s3_provider):
+        s3_provider.put_object("tenant-1/claims/c1/a.png", b"a", content_type="image/png")
+        s3_provider.put_object("tenant-1/claims/c1/a.png2", b"b", content_type="image/png")
+        s3_provider.delete_object("tenant-1/claims/c1/a.png")
+        s3_provider.delete_object("tenant-1/claims/c1/missing.png")
+        assert s3_provider.object_size("tenant-1/claims/c1/a.png") is None
+        assert s3_provider.object_size("tenant-1/claims/c1/a.png2") == 1
+
     def test_presigned_upload_is_a_put_ticket_with_content_type_header(self, s3_provider):
         ticket = s3_provider.presigned_upload("tenant-1/claims/c1/evidence.png", content_type="image/png", expires_in=3600)
         assert isinstance(ticket, UploadTicket)

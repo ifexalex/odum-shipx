@@ -634,7 +634,8 @@ def generate_document_presigned_url(
 
     Validates container exists and document_type is allowed.
     S3 key is scoped to {tenant_id}/containers/{container_id}/ to enforce
-    tenant isolation.
+    tenant isolation. The document row is unconfirmed, and not listed, until
+    the browser calls `confirm_document_upload` after the upload.
     """
     uploads.CONTAINER_DOCUMENT.check(content_type, size_bytes)
     if document_type not in _ALLOWED_DOCUMENT_TYPES:
@@ -653,7 +654,7 @@ def generate_document_presigned_url(
         uploads.CONTAINER_DOCUMENT, tenant_id, ("containers", container_id), filename, content_type, size_bytes
     )
     s3_key = upload.key
-    filename = s3_key.rsplit("/", 1)[-1]
+    filename = upload.filename
 
     doc = repo.create_container_document(
         tenant_id,
@@ -674,6 +675,50 @@ def generate_document_presigned_url(
         "s3_key": s3_key,
         "expires_in_seconds": upload.expires_in,
     }
+
+
+def confirm_document_upload(
+    tenant_id: str,
+    container_id: str,
+    doc_id: str,
+    actor_id: str,
+    actor_role: str,
+    ip_address: str | None = None,
+) -> dict[str, Any]:
+    """Confirm a container document landed: check its stored size, then list it.
+
+    A file over the limit (possible on Azure, where the upload URL cannot bind the length) is deleted with its row.
+    Confirming an already confirmed document returns it unchanged.
+
+    Raises:
+        ResourceNotFoundError: The container or the document is not the tenant's.
+        BusinessRuleViolationError: ``UPLOAD_NOT_FOUND`` or ``FILE_TOO_LARGE``.
+    """
+    if not repo.get_container_by_id(tenant_id, container_id):
+        raise ResourceNotFoundError("container", container_id)
+    doc = repo.get_container_document_by_id(tenant_id, container_id, doc_id, include_unconfirmed=True)
+    if not doc:
+        raise ResourceNotFoundError("container_document", doc_id)
+    if doc.get("confirmed_at") is None:
+        try:
+            size = uploads.confirm_stored_upload(uploads.CONTAINER_DOCUMENT, str(doc["s3_key"]))
+        except BusinessRuleViolationError as exc:
+            if exc.rule_id == "FILE_TOO_LARGE":
+                logger.warning("Container document over the size limit deleted at confirmation (container_id=%s)", container_id)
+                repo.delete_unconfirmed_container_document(tenant_id, container_id, doc_id)
+            raise
+        doc = repo.confirm_container_document(tenant_id, container_id, doc_id, size) or doc
+        log_audit(
+            tenant_id=tenant_id,
+            entity_type="container_document",
+            entity_id=doc_id,
+            action="CREATE",
+            actor_id=actor_id,
+            actor_role=actor_role,
+            after_state={"container_id": container_id, "document_type": doc["document_type"], "file_size_bytes": size},
+            ip_address=ip_address,
+        )
+    return doc
 
 
 def list_container_documents(tenant_id: str, container_id: str) -> list[dict[str, Any]]:

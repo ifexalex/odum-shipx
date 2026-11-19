@@ -25,7 +25,7 @@ function TopBarWrapper({ children }: { children: ReactNode }) {
 
 vi.mock('../../api/tracking', () => ({
   containersApi: { get: vi.fn(), updateStatus: vi.fn(), events: vi.fn() },
-  containerDocumentsApi: { list: vi.fn(), presignUpload: vi.fn(), downloadUrl: vi.fn() },
+  containerDocumentsApi: { list: vi.fn(), presignUpload: vi.fn(), confirmUpload: vi.fn(), downloadUrl: vi.fn() },
   uploadToPresignedUrl: vi.fn(),
 }))
 vi.mock('../../api/packingList', () => ({
@@ -363,6 +363,7 @@ describe('ContainerDetail document upload (audit BE-12)', () => {
     vi.mocked(containerDocumentsApi.list).mockResolvedValue([])
     vi.mocked(containerDocumentsApi.presignUpload).mockReset()
     vi.mocked(uploadToPresignedUrl).mockReset()
+    vi.mocked(containerDocumentsApi.confirmUpload).mockReset()
   })
 
   async function openUpload(): Promise<HTMLElement> {
@@ -426,6 +427,49 @@ describe('ContainerDetail document upload (audit BE-12)', () => {
     await userEvent.click(screen.getByRole('button', { name: 'Upload' }))
     const message = await screen.findByText("content_type 'image/png' is not allowed.")
     expect(dialog).toContainElement(message)
+  })
+
+  const presigned = {
+    upload_url: 'https://storage.test/put',
+    document_id: 'd1',
+    s3_key: 't1/containers/c1/x-bl.pdf',
+    expires_in_seconds: 900,
+  } as never
+
+  it('confirms the upload after the file lands, then closes the dialog', async () => {
+    vi.mocked(containerDocumentsApi.presignUpload).mockResolvedValue(presigned)
+    vi.mocked(uploadToPresignedUrl).mockResolvedValue()
+    vi.mocked(containerDocumentsApi.confirmUpload).mockResolvedValue({} as never)
+    const dialog = await openUpload()
+    await pick(dialog, new File(['%PDF'], 'bl.pdf', { type: 'application/pdf' }))
+    await userEvent.click(screen.getByRole('button', { name: 'Upload' }))
+    await waitFor(() => expect(containerDocumentsApi.confirmUpload).toHaveBeenCalledWith('c1', 'd1'))
+    expect(vi.mocked(uploadToPresignedUrl).mock.invocationCallOrder[0]).toBeLessThan(
+      vi.mocked(containerDocumentsApi.confirmUpload).mock.invocationCallOrder[0]!,
+    )
+    await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument())
+  })
+
+  it('shows a file refused at confirmation (over the limit on Azure) inside the dialog', async () => {
+    vi.mocked(containerDocumentsApi.presignUpload).mockResolvedValue(presigned)
+    vi.mocked(uploadToPresignedUrl).mockResolvedValue()
+    vi.mocked(containerDocumentsApi.confirmUpload).mockRejectedValue(
+      new ApiError(
+        {
+          type: 'about:blank',
+          title: 'Business Rule Violation',
+          status: 422,
+          detail: 'The file is larger than 5 MB.',
+          error_code: 'BUSINESS_RULE_VIOLATION',
+          rule_id: 'FILE_TOO_LARGE',
+        },
+        null,
+      ),
+    )
+    const dialog = await openUpload()
+    await pick(dialog, new File(['%PDF'], 'bl.pdf', { type: 'application/pdf' }))
+    await userEvent.click(screen.getByRole('button', { name: 'Upload' }))
+    expect(dialog).toContainElement(await screen.findByText('The file is larger than 5 MB.'))
   })
 
   it('refuses a file over 5 MB in the dialog, without asking the server', async () => {

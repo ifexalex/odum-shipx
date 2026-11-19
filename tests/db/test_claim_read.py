@@ -32,7 +32,8 @@ def claim(world, admin):
         )
         for name in ("a-photo.jpg", "b-video.mp4"):
             cur.execute(
-                "INSERT INTO claim_evidence (damage_claim_id, file_key, file_name, file_type) VALUES (%s, %s, %s, 'image/jpeg')",
+                "INSERT INTO claim_evidence (damage_claim_id, file_key, file_name, file_type, confirmed_at) "
+                "VALUES (%s, %s, %s, 'image/jpeg', NOW())",
                 (claim_id, f"{world['tenant']}/claims/{claim_id}/{name}", name),
             )
         cur.execute(
