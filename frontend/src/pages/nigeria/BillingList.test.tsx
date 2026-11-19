@@ -203,12 +203,14 @@ describe('BillingList', () => {
       expect(billingApi.list).toHaveBeenLastCalledWith(expect.objectContaining({ created_after: expect.any(String) })),
     )
 
+    await userEvent.click(screen.getByRole('button', { name: /^Billed:/ }))
+
     await userEvent.type(screen.getByLabelText('From'), '2026-01-01')
     await waitFor(() =>
       expect(billingApi.list).toHaveBeenLastCalledWith(expect.objectContaining({ created_after: '2026-01-01' })),
     )
-    // The preset reverts to unselected once a custom date wins.
-    expect(screen.getByRole('button', { name: /all time/i })).toBeInTheDocument()
+    // The button says the custom range is what applies.
+    expect(screen.getByRole('button', { name: /since/i })).toBeInTheDocument()
 
     await userEvent.type(screen.getByLabelText('To'), '2026-01-31')
     await waitFor(() =>

@@ -9,7 +9,7 @@ import {
   type ContainerStatus,
   type ContainerStatusUpdate,
 } from '../../../api/tracking'
-import { Banner, Button, Field, Mono, DialogGuard } from '../../../design/components'
+import { Banner, Button, Field, Mono, DialogGuard, DateField } from '../../../design/components'
 import styles from '../ContainerDetail.module.css'
 import { statusLabel } from '../../../design/status'
 
@@ -110,10 +110,9 @@ export function AdvanceStatusModal({
               </div>
             )}
             {requiresShipDate && (
-              <Field
+              <DateField
                 label="Ship date"
                 name="shipDate"
-                type="date"
                 required
                 value={shipDate}
                 onChange={(event) => setShipDate(event.target.value)}

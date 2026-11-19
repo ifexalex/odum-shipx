@@ -7,7 +7,7 @@ import { canApproveOrReject, explainBulkFailure, formatPackageMix, groupBulkFail
 import { useSession } from '../../auth/useSession'
 import { usePackingListList } from '../../hooks/usePackingLists'
 import { useTopBarSlot } from '../../shell/TopBarContext'
-import { Banner, Button, Card, Chip, DialogGuard, Field, Icon, ListFooter, Mono, StatusBadge, Table, ViewLink, Pressable } from '../../design/components'
+import { Banner, Button, Card, Chip, DialogGuard, Field, ListFooter, Mono, StatusBadge, Table, ViewLink, Pressable, SearchField } from '../../design/components'
 import styles from './PackingListList.module.css'
 import { formatDate } from '../../lib/format'
 import { useStatusParam } from '../../lib/useStatusParam'
@@ -314,15 +314,7 @@ export function PackingListList(): JSX.Element {
               </Chip>
             ))}
           </div>
-          <div className={styles.searchWrap}>
-            <Icon name="search" size={14} color="var(--color-ink-4)" />
-            <input
-              className={styles.searchInput}
-              placeholder="Reference, customer name, container…"
-              value={search}
-              onChange={(event) => setSearch(event.target.value)}
-            />
-          </div>
+          <SearchField label="Search packing lists" placeholder="Reference, customer name, container…" value={search} onChange={setSearch} />
         </div>
       </Card>
 

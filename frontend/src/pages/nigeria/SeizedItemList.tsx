@@ -4,7 +4,7 @@ import { seizedItemsApi, type SeizedItem, type SeizedItemStatus, type UpdateSeiz
 import { canUpdateItem } from '../../api/claimsRules'
 import { useSeizedItemList } from '../../hooks/useItems'
 import { useSession } from '../../auth/useSession'
-import { Banner, Button, Card, Chip, DialogGuard, Field, ListFooter, Mono, StatusBadge, Table } from '../../design/components'
+import { Banner, Button, Card, Chip, DialogGuard, Field, ListFooter, Mono, StatusBadge, Table, Select } from '../../design/components'
 import { useTopBarSlot } from '../../shell/TopBarContext'
 import styles from './ItemList.module.css'
 import { formatDate } from '../../lib/format'
@@ -60,10 +60,9 @@ function UpdateModal({ item, onCancel, onSuccess }: UpdateModalProps): JSX.Eleme
         <h3 className={styles.panelTitle}>Update seized item</h3>
         {error && <div className={styles.panelBanner}><Banner variant="error" title="Action failed">{error}</Banner></div>}
         <div className={styles.selectField}>
-          <label className={styles.selectLabel}>Recovery status <span className={styles.required}>*</span></label>
-          <select className={styles.select} value={status} onChange={(e) => setStatus(e.target.value as SeizedItemStatus)}>
+          <Select label="Recovery status" value={status} onChange={(e) => setStatus(e.target.value as SeizedItemStatus)}>
             {STATUS_FILTERS.map((s) => <option key={s} value={s}>{statusLabel('seizedItem', s)}</option>)}
-          </select>
+          </Select>
         </div>
         {offersCompensation && (
           <Field label="Compensation (₦)" name="refund_amount_ngn" type="number" optional placeholder="e.g. 25000"

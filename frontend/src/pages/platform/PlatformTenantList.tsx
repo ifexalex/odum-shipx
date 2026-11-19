@@ -12,7 +12,7 @@ import { useMemo, useState, type JSX } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { type Tenant, type TenantStatus } from '../../api/tenantManagement'
 import { usePlatformTenantList } from '../../hooks/usePlatformTenants'
-import { Banner, Button, Card, Chip, Field, Mono, StatusBadge, Table, ViewLink } from '../../design/components'
+import { Banner, Button, Card, Chip, Mono, StatusBadge, Table, ViewLink, SearchField } from '../../design/components'
 import { useTopBarSlot } from '../../shell/TopBarContext'
 import styles from './admin.module.css'
 import { formatDate } from '../../lib/format'
@@ -143,14 +143,7 @@ export function PlatformTenantList(): JSX.Element {
             ))}
           </div>
           <div style={{ flex: 1, minWidth: 220 }}>
-            <Field
-              label=""
-              name="tenantSearch"
-              icon="search"
-              placeholder="Search by name, email, slug, or ID…"
-              value={query}
-              onChange={(e) => setQuery(e.target.value)}
-            />
+            <SearchField label="Search tenants" placeholder="Search by name, email, slug, or ID…" value={query} onChange={setQuery} />
           </div>
         </div>
       </Card>

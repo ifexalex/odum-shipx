@@ -130,6 +130,8 @@ export function PaymentClaimsSection({
                           }}
                         >
                           <Field
+                            label="Reason for rejecting"
+                            hideLabel
                             name="reject_reason"
                             placeholder="Reason for rejecting"
                             value={rejectReason}

@@ -7,7 +7,15 @@ import {
   Card,
   Check,
   Chip,
+  CellInput,
+  CellSelect,
+  CheckboxField,
+  ColorField,
+  DateField,
   Field,
+  RadioGroup,
+  SearchField,
+  Select,
   IconButton,
   KolaMark,
   Mono,
@@ -186,10 +194,10 @@ export function ComponentCatalog(): JSX.Element {
 
       <Section title="Check">
         <div style={{ display: 'flex', gap: 'var(--space-4)', alignItems: 'center' }}>
-          <Check checked={false} />
-          <Check checked />
-          <Check partial />
-          <Check disabled />
+          <Check label="Unchecked" checked={false} />
+          <Check label="Checked" checked />
+          <Check label="Some selected" partial />
+          <Check label="Disabled" disabled />
         </div>
       </Section>
 
@@ -201,8 +209,14 @@ export function ComponentCatalog(): JSX.Element {
         </div>
       </Section>
 
-      <Section title="Field">
-        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 'var(--space-4)', maxWidth: 640 }}>
+      <Section title="Field family (FD-11, FD-50)">
+        <p style={{ margin: '0 0 var(--space-4)', color: 'var(--color-ink-3)' }}>
+          Pages use these, never a raw <code>&lt;input&gt;</code>, <code>&lt;select&gt;</code> or <code>&lt;textarea&gt;</code>.
+          Every control takes a required <code>label</code> (<code>hideLabel</code> keeps it for screen readers); only
+          optional fields are marked. A select with nothing to choose says why and links to the fix. A list filter bar
+          has one date control, presets and a custom range in one popover.
+        </p>
+        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 'var(--space-4)', maxWidth: 720 }}>
           <div style={{ flex: 1, minWidth: 240 }}>
             <Field label="Email" name="email" placeholder="you@company.com" required />
           </div>
@@ -210,10 +224,38 @@ export function ComponentCatalog(): JSX.Element {
             <Field label="Reference" name="ref" icon="search" optional helper="Container or tracking number" />
           </div>
           <div style={{ flex: 1, minWidth: 240 }}>
-            <Field label="Amount" name="amount" error="Required" />
+            <Field label="Amount" name="amount" error="Enter an amount above zero." />
+          </div>
+          <div style={{ flex: 1, minWidth: 240 }}>
+            <Select label="Payment method" name="method" placeholder="Choose a method" options={[{ value: 'cash', label: 'Cash' }, { value: 'transfer', label: 'Bank transfer' }]} />
+          </div>
+          <div style={{ flex: 1, minWidth: 240 }}>
+            <Select label="Warehouse" name="wh" options={[]} empty={{ message: 'No warehouses yet.', action: { label: 'Add a warehouse', to: '/admin/config/warehouses' } }} />
+          </div>
+          <div style={{ flex: 1, minWidth: 240 }}>
+            <DateField label="Ship date" name="ship" value="2026-11-13" onChange={() => undefined} />
+          </div>
+          <div style={{ flex: 1, minWidth: 240 }}>
+            <ColorField label="Brand colour" name="colour" value="#1c7922" onChange={() => undefined} />
+          </div>
+          <div style={{ flex: 1, minWidth: 240 }}>
+            <SearchField label="Search containers" placeholder="Container number, vessel…" value="" onChange={() => undefined} />
           </div>
           <div style={{ flex: '1 0 100%' }}>
-            <Field label="Notes" name="notes" multiline rows={3} />
+            <RadioGroup label="Refund preference" name="pref" value="bank" onChange={() => undefined} layout="cards" options={[{ value: 'bank', label: 'Bank account', hint: 'Within 5–7 business days' }, { value: 'credit', label: 'Credit', hint: 'On the next shipment' }]} />
+          </div>
+          <div style={{ flex: '1 0 100%' }}>
+            <CheckboxField label="Release with outstanding balance" hint="Needs a manager's approval notes" checked={false} onChange={() => undefined} />
+          </div>
+          <div style={{ display: 'flex', gap: 'var(--space-2)', alignItems: 'center' }}>
+            <CellInput label="Weight (kg), item 1" type="number" defaultValue="12.5" style={{ width: 96 }} />
+            <CellSelect label="Package type, item 1" defaultValue="carton" style={{ width: 120 }}>
+              <option value="carton">Carton</option>
+              <option value="bale">Bale</option>
+            </CellSelect>
+          </div>
+          <div style={{ flex: '1 0 100%' }}>
+            <Field label="Notes" name="notes" multiline rows={3} optional />
           </div>
         </div>
       </Section>

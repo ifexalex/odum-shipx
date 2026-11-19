@@ -1,7 +1,7 @@
 import { useRef, useState, type JSX } from 'react'
 import { ApiError } from '../../../api/client'
 import { billingApi, type Billing, type RecordPaymentInput } from '../../../api/billing'
-import { Action, Banner, Button, DialogGuard, Field, Icon, Mono, StatusBadge } from '../../../design/components'
+import { Action, Banner, Button, DialogGuard, Field, Icon, Mono, StatusBadge, Select } from '../../../design/components'
 import styles from '../BillingDetail.module.css'
 import { formatNgn } from '../../../lib/format'
 
@@ -147,11 +147,7 @@ export function RecordPaymentModal({
           onChange={(e) => setAmount(e.target.value)}
         />
         <div className={styles.selectField}>
-          <label className={styles.selectLabel}>
-            Payment method <span className={styles.optional}>Optional</span>
-          </label>
-          <select
-            className={styles.select}
+          <Select label="Payment method" optional
             value={method}
             onChange={(e) => setMethod(e.target.value)}
           >
@@ -161,7 +157,7 @@ export function RecordPaymentModal({
                 {m.replace('_', ' ')}
               </option>
             ))}
-          </select>
+          </Select>
         </div>
         <Field
           label="Reference"

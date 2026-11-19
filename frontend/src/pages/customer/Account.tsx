@@ -17,7 +17,7 @@ import { ApiError } from '../../api/client'
 import { customersApi, type Customer } from '../../api/tenantManagement'
 import { useSession } from '../../auth/useSession'
 import { OWN_CUSTOMER_KEY, useOwnCustomer } from '../../hooks/useCustomers'
-import { Avatar, Banner, Button, Card, Field, Icon, PhoneField, ToggleSwitch } from '../../design/components'
+import { Avatar, Banner, Button, Card, Field, Icon, PhoneField, ToggleSwitch, RadioGroup } from '../../design/components'
 import { PageHeader } from '../../shell/PageHeader'
 import { SectionHead } from '../../shell/SectionHead'
 import { Tabs } from '../../shell/Tabs'
@@ -224,37 +224,19 @@ function NotificationsTab({ customer, onSaved }: { customer: Customer; onSaved: 
       {/* Notification language (P2-1) — selects the EN/ZH template set for SMS/WhatsApp/email */}
       <div style={{ marginTop: 'var(--space-6)', paddingTop: 'var(--space-5)', borderTop: '1px solid var(--color-line-soft)' }}>
         <SectionHead title="Message language" sub="The language we use for SMS, WhatsApp and email updates" />
-        <div style={{ display: 'flex', gap: 'var(--space-3)', marginTop: 'var(--space-3)' }}>
-          {([
-            { value: 'en', label: 'English', sub: 'EN — default' },
-            { value: 'zh', label: '中文 (简体)', sub: 'ZH — Simplified Chinese' },
-          ] as const).map(({ value, label, sub }) => {
-            const active = locale === value
-            return (
-              <label
-                key={value}
-                style={{
-                  display: 'flex', alignItems: 'center', gap: 'var(--space-3)', padding: 'var(--space-4) var(--space-4)', borderRadius: 'var(--radius-lg)', flex: 1,
-                  border: `1px solid ${active ? 'var(--color-primary)' : 'var(--color-line)'}`,
-                  background: active ? 'var(--color-primary-soft)' : 'transparent',
-                  cursor: 'pointer',
-                }}
-              >
-                <input
-                  type="radio"
-                  name="locale"
-                  value={value}
-                  checked={active}
-                  onChange={() => setLocale(value)}
-                  style={{ accentColor: 'var(--color-primary)' }}
-                />
-                <span style={{ minWidth: 0 }}>
-                  <span style={{ display: 'block', fontWeight: 600, fontSize: 'var(--text-md)' }}>{label}</span>
-                  <span style={{ display: 'block', fontSize: 'var(--text-xs)', color: 'var(--color-ink-4)' }}>{sub}</span>
-                </span>
-              </label>
-            )
-          })}
+        <div style={{ marginTop: 'var(--space-3)' }}>
+          <RadioGroup
+            label="Message language"
+            hideLabel
+            name="locale"
+            layout="cards"
+            value={locale}
+            onChange={setLocale}
+            options={[
+              { value: 'en', label: 'English', hint: 'EN — default' },
+              { value: 'zh', label: '中文 (简体)', hint: 'ZH — Simplified Chinese' },
+            ]}
+          />
         </div>
       </div>
 

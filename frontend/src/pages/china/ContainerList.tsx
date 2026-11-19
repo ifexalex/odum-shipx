@@ -5,7 +5,7 @@ import { containerKeys } from '../../api/keys'
 import { STALE_5_MIN } from '../../lib/queryClient'
 import { containerCapacityCbm, utilizationLevel } from '../../api/containerRules'
 import { containersApi, type Container, type ContainerStatus } from '../../api/tracking'
-import { Banner, Button, Card, Chip, DateRangeFilter, ExportButton, Icon, KebabBtn, ListFooter, Mono, StatCard, StatusBadge, Table, type TableRow, Pressable } from '../../design/components'
+import { Banner, Button, Card, Chip, DateRangeFilter, ExportButton, Icon, KebabBtn, ListFooter, Mono, StatCard, StatusBadge, Table, type TableRow, Pressable, SearchField } from '../../design/components'
 import { useSession } from '../../auth/useSession'
 import { useContainerList } from '../../hooks/useContainers'
 import { useDateRangeFilter } from '../../hooks/useDateRangeFilter'
@@ -334,38 +334,9 @@ export function ContainerList(): JSX.Element {
             ))}
           </div>
 
-          <div className={styles.searchWrap}>
-            <Icon name="search" size={14} color="var(--color-ink-4)" />
-            <input
-              className={styles.searchInput}
-              placeholder="Container number, vessel name, voyage…"
-              value={search}
-              onChange={(event) => setSearch(event.target.value)}
-            />
-          </div>
+          <SearchField label="Search containers" placeholder="Container number, vessel name, voyage…" value={search} onChange={setSearch} />
 
-          <DateRangeFilter value={createdRange.daysBack} onChange={createdRange.handlePreset} />
-
-          <div className={styles.customDateWrap}>
-            <label htmlFor="container_created_from" className={styles.customDateLabel}>From</label>
-            <input
-              id="container_created_from"
-              type="date"
-              className={styles.customDateInput}
-              value={createdRange.dateFrom}
-              max={createdRange.dateTo || undefined}
-              onChange={(e) => createdRange.handleCustomFrom(e.target.value)}
-            />
-            <label htmlFor="container_created_to" className={styles.customDateLabel}>To</label>
-            <input
-              id="container_created_to"
-              type="date"
-              className={styles.customDateInput}
-              value={createdRange.dateTo}
-              min={createdRange.dateFrom || undefined}
-              onChange={(e) => createdRange.handleCustomTo(e.target.value)}
-            />
-          </div>
+          <DateRangeFilter label="Created" range={createdRange} />
 
           <div className={styles.filtersWrap}>
             <Button variant="secondary" icon="filter" onClick={() => setFiltersOpen((o) => !o)}>

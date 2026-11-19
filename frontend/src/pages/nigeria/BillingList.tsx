@@ -6,7 +6,7 @@ import { canGenerateInvoices } from '../../api/billingRules'
 import { billingKeys } from '../../api/keys'
 import { formatNgnCompact, formatDate, formatNgn } from '../../lib/format'
 import { STALE_5_MIN } from '../../lib/queryClient'
-import { Banner, Button, Card, Chip, DateRangeFilter, ExportButton, Icon, ListFooter, Mono, StatCard, StatusBadge, Table, UserCell, Pressable } from '../../design/components'
+import { Banner, Button, Card, Chip, DateRangeFilter, ExportButton, Icon, ListFooter, Mono, StatCard, StatusBadge, Table, UserCell, Pressable, SearchField } from '../../design/components'
 import { useSession } from '../../auth/useSession'
 import { useBillingList } from '../../hooks/useBilling'
 import { useDateRangeFilter } from '../../hooks/useDateRangeFilter'
@@ -197,36 +197,8 @@ export function BillingList(): JSX.Element {
               </Chip>
             ))}
           </div>
-          <div className={styles.searchWrap}>
-            <Icon name="search" size={14} color="var(--color-ink-4)" />
-            <input
-              className={styles.searchInput}
-              placeholder="Reference, customer, container…"
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-            />
-          </div>
-          <DateRangeFilter value={billedRange.daysBack} onChange={billedRange.handlePreset} />
-          <div className={styles.customDateWrap}>
-            <label htmlFor="billing_billed_from" className={styles.customDateLabel}>From</label>
-            <input
-              id="billing_billed_from"
-              type="date"
-              className={styles.customDateInput}
-              value={billedRange.dateFrom}
-              max={billedRange.dateTo || undefined}
-              onChange={(e) => billedRange.handleCustomFrom(e.target.value)}
-            />
-            <label htmlFor="billing_billed_to" className={styles.customDateLabel}>To</label>
-            <input
-              id="billing_billed_to"
-              type="date"
-              className={styles.customDateInput}
-              value={billedRange.dateTo}
-              min={billedRange.dateFrom || undefined}
-              onChange={(e) => billedRange.handleCustomTo(e.target.value)}
-            />
-          </div>
+          <SearchField label="Search invoices" placeholder="Reference, customer, container…" value={search} onChange={setSearch} />
+          <DateRangeFilter label="Billed" range={billedRange} />
           <div className={styles.filtersWrap}>
             <Button variant="secondary" icon="filter" onClick={() => setFiltersOpen((o) => !o)}>
               Filters

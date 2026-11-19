@@ -4,7 +4,7 @@ import { Link, useNavigate } from 'react-router-dom'
 import { claimsApi, type Claim, type DamageClaimStatus } from '../../api/claims'
 import { claimKeys } from '../../api/keys'
 import { STALE_5_MIN } from '../../lib/queryClient'
-import { Badge, Banner, Button, Card, Chip, DateRangeFilter, Icon, ListFooter, Mono, StatCard, StatusBadge, Table, UserCell } from '../../design/components'
+import { Badge, Banner, Button, Card, Chip, DateRangeFilter, Icon, ListFooter, Mono, StatCard, StatusBadge, Table, UserCell, SearchField } from '../../design/components'
 import { useSession } from '../../auth/useSession'
 import { useClaimList } from '../../hooks/useClaims'
 import { useDateRangeFilter } from '../../hooks/useDateRangeFilter'
@@ -111,36 +111,8 @@ export function ClaimList(): JSX.Element {
               </Chip>
             ))}
           </div>
-          <div className={styles.searchWrap}>
-            <Icon name="search" size={14} color="var(--color-ink-4)" />
-            <input
-              className={styles.searchInput}
-              placeholder="Claim ID, customer, container…"
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-            />
-          </div>
-          <DateRangeFilter value={filedRange.daysBack} onChange={filedRange.handlePreset} />
-          <div className={styles.customDateWrap}>
-            <label htmlFor="claim_filed_from" className={styles.customDateLabel}>From</label>
-            <input
-              id="claim_filed_from"
-              type="date"
-              className={styles.customDateInput}
-              value={filedRange.dateFrom}
-              max={filedRange.dateTo || undefined}
-              onChange={(e) => filedRange.handleCustomFrom(e.target.value)}
-            />
-            <label htmlFor="claim_filed_to" className={styles.customDateLabel}>To</label>
-            <input
-              id="claim_filed_to"
-              type="date"
-              className={styles.customDateInput}
-              value={filedRange.dateTo}
-              min={filedRange.dateFrom || undefined}
-              onChange={(e) => filedRange.handleCustomTo(e.target.value)}
-            />
-          </div>
+          <SearchField label="Search claims" placeholder="Claim ID, customer, container…" value={search} onChange={setSearch} />
+          <DateRangeFilter label="Filed" range={filedRange} />
         </div>
       </Card>
 

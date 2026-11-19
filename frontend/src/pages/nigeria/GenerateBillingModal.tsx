@@ -5,7 +5,7 @@ import { groupUnbilledByContainer } from '../../api/billingRules'
 import { ApiError } from '../../api/client'
 import { formatCbm } from '../../api/decimal'
 import { billingKeys } from '../../api/keys'
-import { Banner, Button, Modal, Mono } from '../../design/components'
+import { Banner, Button, Modal, Mono, Select } from '../../design/components'
 import { STALE_30S } from '../../lib/queryClient'
 import { InvoiceOutcomeBanner } from '../china/InvoiceOutcomeBanner'
 import styles from './GenerateBillingModal.module.css'
@@ -126,13 +126,11 @@ export function GenerateBillingModal({ onClose }: GenerateBillingModalProps): JS
             </Banner>
           )}
           <div className={styles.field}>
-            <label className={styles.label} htmlFor="generate_billing_container">Container</label>
             {/* A native select, not the searchable Combobox: the modal body scrolls, which clips
                 the Combobox's dropdown. The list is short by nature — only containers that still
                 have a customer to invoice. */}
-            <select
+            <Select label="Container"
               id="generate_billing_container"
-              className={styles.select}
               value={activeId ?? ''}
               onChange={(e) => setSelectedId(e.target.value || null)}
             >
@@ -142,7 +140,7 @@ export function GenerateBillingModal({ onClose }: GenerateBillingModalProps): JS
                   {c.containerNumber} — {plural(c.customers.length, 'customer')} · {formatCbm(c.totalCbm)} CBM
                 </option>
               ))}
-            </select>
+            </Select>
           </div>
           {active && (
             <ul className={styles.customers} aria-label={`Customers on ${active.containerNumber} without an invoice`}>

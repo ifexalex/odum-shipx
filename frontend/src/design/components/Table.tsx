@@ -135,7 +135,7 @@ export function Table({
         <div className={styles.cardList}>
           {selectable && rows.length > 0 && (
             <label className={styles.cardSelectAll}>
-              <Check checked={allSelected} partial={someSelected} onChange={(checked) => onSelectAll?.(checked)} />
+              <Check label="Select all rows" checked={allSelected} partial={someSelected} onChange={(checked) => onSelectAll?.(checked)} />
               <span>Select all</span>
             </label>
           )}
@@ -160,7 +160,7 @@ export function Table({
               >
                 <div className={styles.cardHeader}>
                   {selectable && row.selectable !== false && (
-                    <Check checked={row.selected ?? false} onChange={(checked) => onSelectRow?.(rowIndex, checked)} />
+                    <Check label={`Select row ${rowIndex + 1}`} checked={row.selected ?? false} onChange={(checked) => onSelectRow?.(rowIndex, checked)} />
                   )}
                   <div className={styles.cardHeaderValue}>{row.cells[0]}</div>
                 </div>
@@ -186,6 +186,7 @@ export function Table({
               {selectable && (
                 <th className={[styles.th, styles.thSelect].join(' ')}>
                   <Check
+                    label="Select all rows"
                     checked={allSelected}
                     partial={someSelected}
                     onChange={(checked) => onSelectAll?.(checked)}
@@ -263,6 +264,7 @@ export function Table({
                     <td className={dense ? styles.tdSelectDense : styles.tdSelect}>
                       {row.selectable !== false && (
                         <Check
+                          label={`Select row ${rowIndex + 1}`}
                           checked={row.selected ?? false}
                           onChange={(checked) => onSelectRow?.(rowIndex, checked)}
                         />

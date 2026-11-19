@@ -1,5 +1,5 @@
 import { useQuery } from '@tanstack/react-query'
-import { useMemo, type CSSProperties, type JSX } from 'react'
+import { useMemo, type JSX } from 'react'
 import { billingApi } from '../../api/billing'
 import { billingKeys } from '../../api/keys'
 import { STALE_5_MIN } from '../../lib/queryClient'
@@ -10,17 +10,6 @@ import { useTopBarSlot } from '../../shell/TopBarContext'
 import styles from './TenantReports.module.css'
 import { formatNgn } from '../../lib/format'
 
-const dateInputStyle: CSSProperties = {
-  height: 36,
-  boxSizing: 'border-box',
-  padding: '0 var(--space-2)',
-  background: 'var(--color-page)',
-  border: '1px solid var(--color-line)',
-  borderRadius: 'var(--radius-sm)',
-  fontFamily: 'var(--font-body)',
-  fontSize: 'var(--text-sm)',
-  color: 'var(--color-ink)',
-}
 
 function fmtNgn(n: number): string {
   if (n >= 1_000_000) return `₦${(n / 1_000_000).toFixed(2)}M`
@@ -184,23 +173,7 @@ export function TenantReports(): JSX.Element {
   useTopBarSlot({
     actions: (
       <>
-        <DateRangeFilter value={reportRange.daysBack} onChange={reportRange.handlePreset} />
-        <input
-          type="date"
-          aria-label="From"
-          style={dateInputStyle}
-          value={reportRange.dateFrom}
-          max={reportRange.dateTo || undefined}
-          onChange={(e) => reportRange.handleCustomFrom(e.target.value)}
-        />
-        <input
-          type="date"
-          aria-label="To"
-          style={dateInputStyle}
-          value={reportRange.dateTo}
-          min={reportRange.dateFrom || undefined}
-          onChange={(e) => reportRange.handleCustomTo(e.target.value)}
-        />
+        <DateRangeFilter label="Period" range={reportRange} />
         <Button variant="secondary" icon="download">Export</Button>
       </>
     ),

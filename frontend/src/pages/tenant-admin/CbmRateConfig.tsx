@@ -5,7 +5,7 @@ import { configKeys } from '../../api/keys'
 import { configApi, type CbmRateConfig, type CbmRateCurrency, type CbmRateMode } from '../../api/tenantManagement'
 import { useCbmRate } from '../../hooks/useConfig'
 import { useSeedOnce } from '../../hooks/useSeedOnce'
-import { Banner, Button, Card, Kvp, Mono } from '../../design/components'
+import { Banner, Button, Card, Kvp, Mono, Field } from '../../design/components'
 import { RateHistoryTable } from './DollarRateConfig'
 import { PageHeader } from '../../shell/PageHeader'
 import { SectionHead } from '../../shell/SectionHead'
@@ -129,20 +129,16 @@ export function CbmRateConfig(): JSX.Element {
             </div>
 
             {rateMode === 'flat' ? (
-              <div>
-                <label style={{ fontWeight: 600, fontSize: 'var(--text-md)', display: 'block', marginBottom: 'var(--space-2)' }}>
-                  {`Rate (${symbol(currency)} per CBM)`} <span style={{ color: 'var(--color-error)' }}>*</span>
-                </label>
-                <input
-                  type="number"
-                  value={cartonRate}
-                  onChange={(e) => setCartonRate(e.target.value)}
-                  style={{ width: '100%', padding: 'var(--space-2) var(--space-3)', borderRadius: 'var(--radius-md)', border: '1px solid var(--color-line-soft)', background: 'var(--color-surface)', fontSize: 'var(--text-lg)' }}
+              <Field
+                label={`Rate (${symbol(currency)} per CBM)`}
+                name="carton_rate"
+                type="number"
+                value={cartonRate}
+                onChange={(e) => setCartonRate(e.target.value)}
                   placeholder="e.g. 45"
                   min="0.01"
                   step="0.01"
                 />
-              </div>
             ) : (
               <>
                 <p style={{ fontSize: 'var(--text-sm)', color: 'var(--color-ink-4)', margin: 0 }}>
@@ -153,42 +149,32 @@ export function CbmRateConfig(): JSX.Element {
                   ['Bags', bagRate, setBagRate],
                   ['Bales', baleRate, setBaleRate],
                 ] as const).map(([label, value, setValue]) => (
-                  <div key={label}>
-                    <label style={{ fontWeight: 600, fontSize: 'var(--text-md)', display: 'block', marginBottom: 'var(--space-2)' }}>
-                      {`${label} (${symbol(currency)} per CBM)`} <span style={{ color: 'var(--color-error)' }}>*</span>
-                    </label>
-                    <input
-                      type="number"
-                      value={value}
-                      onChange={(e) => setValue(e.target.value)}
-                      style={{ width: '100%', padding: 'var(--space-2) var(--space-3)', borderRadius: 'var(--radius-md)', border: '1px solid var(--color-line-soft)', background: 'var(--color-surface)', fontSize: 'var(--text-lg)' }}
+                  <Field
+                    key={label}
+                    label={`${label} (${symbol(currency)} per CBM)`}
+                    name={`${label.toLowerCase()}_rate`}
+                    type="number"
+                    value={value}
+                    onChange={(e) => setValue(e.target.value)}
                       placeholder="e.g. 45"
                       min="0.01"
                       step="0.01"
                     />
-                  </div>
                 ))}
               </>
             )}
 
-            <div>
-              <label style={{ fontWeight: 600, fontSize: 'var(--text-md)', display: 'block', marginBottom: 'var(--space-2)' }}>
-                Minimum CBM per item
-              </label>
-              <input
-                type="number"
-                value={minCbm}
-                onChange={(e) => setMinCbm(e.target.value)}
-                style={{ width: '100%', padding: 'var(--space-2) var(--space-3)', borderRadius: 'var(--radius-md)', border: '1px solid var(--color-line-soft)', background: 'var(--color-surface)', fontSize: 'var(--text-lg)' }}
+            <Field
+              label="Minimum CBM per item"
+              name="min_cbm"
+              type="number"
+              value={minCbm}
+              onChange={(e) => setMinCbm(e.target.value)}
                 placeholder="e.g. 0.1"
                 min="0.01"
                 step="0.01"
-                aria-label="Minimum CBM per item"
-              />
-              <p style={{ fontSize: 'var(--text-sm)', color: 'var(--color-ink-4)', margin: 'var(--space-2) 0 0' }}>
-                A line item measuring below this is billed at this floor (handling minimum). Applied when a packing list is saved.
-              </p>
-            </div>
+              helper="A line item measuring below this is billed at this floor (handling minimum). Applied when a packing list is saved."
+            />
 
             <div className={styles.formActions}>
               <Button variant="primary" loading={saving} disabled={!canSubmit} onClick={() => void handleSave()}>

@@ -5,7 +5,7 @@ import { configKeys } from '../../api/keys'
 import { configApi, type DollarRateConfig } from '../../api/tenantManagement'
 import { useDollarRate, useRateHistory } from '../../hooks/useConfig'
 import { useSeedOnce } from '../../hooks/useSeedOnce'
-import { Banner, Button, Card, Kvp, Mono, Table, UserCell } from '../../design/components'
+import { Banner, Button, Card, Kvp, Mono, Table, UserCell, Field } from '../../design/components'
 import { PageHeader } from '../../shell/PageHeader'
 import { SectionHead } from '../../shell/SectionHead'
 import styles from './admin.module.css'
@@ -250,20 +250,16 @@ export function DollarRateConfig(): JSX.Element {
                 </Button>
               </div>
             </div>
-            <div>
-              <label style={{ fontWeight: 600, fontSize: 'var(--text-md)', display: 'block', marginBottom: 'var(--space-2)' }}>
-                {markupType === 'percentage' ? 'Markup (%)' : 'Markup (₦ per $1)'} <span style={{ color: 'var(--color-error)' }}>*</span>
-              </label>
-              <input
-                type="number"
-                value={markupValue}
-                onChange={(e) => setMarkupValue(e.target.value)}
-                style={{ width: '100%', padding: 'var(--space-2) var(--space-3)', borderRadius: 'var(--radius-md)', border: '1px solid var(--color-line-soft)', background: 'var(--color-surface)', fontSize: 'var(--text-lg)' }}
+            <Field
+              label={markupType === 'percentage' ? 'Markup (%)' : 'Markup (₦ per $1)'}
+              name="markup_value"
+              type="number"
+              value={markupValue}
+              onChange={(e) => setMarkupValue(e.target.value)}
                 placeholder={markupType === 'percentage' ? 'e.g. 2' : 'e.g. 15'}
                 min="0"
                 step={markupType === 'percentage' ? '0.1' : '1'}
               />
-            </div>
             <div className={styles.formActions}>
               <Button
                 variant="primary"

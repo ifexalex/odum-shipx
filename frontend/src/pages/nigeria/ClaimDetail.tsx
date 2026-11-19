@@ -20,7 +20,7 @@ import {
 import { claimKeys } from '../../api/keys'
 import { STALE_30S } from '../../lib/queryClient'
 import { useSession } from '../../auth/useSession'
-import { Action, Banner, Button, Card, DialogGuard, Field, Kvp, Mono, StatusBadge, Pressable } from '../../design/components'
+import { Action, Banner, Button, Card, DialogGuard, Field, Kvp, Mono, StatusBadge, Pressable, Select } from '../../design/components'
 import { SectionHead } from '../../shell/SectionHead'
 import { EvidenceUploader } from './EvidenceUploader'
 import styles from './ClaimDetail.module.css'
@@ -72,16 +72,15 @@ function StartInspectionModal({ onCancel, onSuccess, claimId }: StartInspectionM
         <h3 className={styles.panelTitle}>Start inspection</h3>
         {error && <div className={styles.panelBanner}><Banner variant="error" title="Action failed">{error}</Banner></div>}
         <div className={styles.selectField}>
-          <label className={styles.selectLabel}>Inspection method <span className={styles.required}>*</span></label>
-          <select className={styles.select} value={method} onChange={(e) => setMethod(e.target.value as InspectionMethod)}>
+          <Select label="Inspection method" value={method} onChange={(e) => setMethod(e.target.value as InspectionMethod)}>
             {INSPECTION_METHODS.map((m) => (
               <option key={m.value} value={m.value}>{m.label}</option>
             ))}
-          </select>
+          </Select>
         </div>
         {method === 'customer_evidence' && (
           <div className={styles.evidenceSection}>
-            <label className={styles.selectLabel}>Evidence files <span className={styles.required}>*</span></label>
+            <label className={styles.selectLabel}>Evidence files</label>
             <EvidenceUploader
               getPresignedUrl={(f) => presignedUploadApi.getUrl(claimId, f.name, f.type, f.size)}
               confirmUpload={(evidenceId) => presignedUploadApi.confirm(claimId, evidenceId)}
@@ -196,7 +195,7 @@ function ResolveClaimModal({ onCancel, onSuccess, claimId, role }: ResolveClaimM
           </div>
         )}
         <div>
-          <label className={styles.selectLabel}>Resolution type <span className={styles.required}>*</span></label>
+          <label className={styles.selectLabel}>Resolution type</label>
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 'var(--space-3)', marginTop: 'var(--space-2)', marginBottom: 'var(--space-1)' }}>
             {RESOLUTION_TYPES.map((r) => (
               <ResolutionPick

@@ -16,7 +16,7 @@ import { ApiError, type ListResponse } from '../../api/client'
 import { releaseNotesApi, type DelegateIdType, type PickupResult, type ReleaseNote, type RecordPickupInput } from '../../api/releaseNotes'
 import { releaseNoteKeys } from '../../api/keys'
 import { STALE_30S } from '../../lib/queryClient'
-import { Banner, Button, Field, Icon, Mono, PhoneField, StatCard, ToggleSwitch, DialogGuard, Badge } from '../../design/components'
+import { Banner, Button, Field, Icon, Mono, PhoneField, StatCard, ToggleSwitch, DialogGuard, Badge, Select } from '../../design/components'
 import styles from './WarehouseDashboard.module.css'
 import { todayIso } from '../../lib/format'
 
@@ -157,7 +157,7 @@ function PickupSheet({ note, onCancel, onSuccess }: PickupSheetProps): JSX.Eleme
         />
 
         <label className={styles.delegateToggle}>
-          <ToggleSwitch checked={isDelegate} onChange={setIsDelegate} />
+          <ToggleSwitch label="Delegate pickup" checked={isDelegate} onChange={setIsDelegate} />
           <span>Delegate pickup</span>
         </label>
 
@@ -177,16 +177,12 @@ function PickupSheet({ note, onCancel, onSuccess }: PickupSheetProps): JSX.Eleme
             <Field label="Delegate name" name="delegate_name" required value={delegateName} onChange={(e) => setDelegateName(e.target.value)} />
             <PhoneField label="Delegate phone" name="delegate_phone" required value={delegatePhone} onChange={setDelegatePhone} />
             <div>
-              <label style={{ fontSize: 'var(--text-lg)', fontWeight: 600, display: 'block', marginBottom: 'var(--space-2)' }}>
-                ID type <span style={{ color: 'var(--color-error)' }}>*</span>
-              </label>
-              <select
-                style={{ width: '100%', padding: 'var(--space-3) var(--space-4)', borderRadius: 'var(--radius-md)', border: '1px solid var(--color-line-soft)', background: 'var(--color-surface)', fontSize: 'var(--text-lg)' }}
+              <Select label="ID type"
                 value={delegateIdType}
                 onChange={(e) => setDelegateIdType(e.target.value as DelegateIdType)}
               >
                 {ID_TYPES.map((t) => <option key={t.value} value={t.value}>{t.label}</option>)}
-              </select>
+              </Select>
             </div>
             <Field label="ID number" name="delegate_id_number" required value={delegateIdNumber} onChange={(e) => setDelegateIdNumber(e.target.value)} />
           </>
@@ -402,10 +398,12 @@ export function WarehouseDashboard(): JSX.Element {
             Use the handheld scanner or type the RN-XXXX reference on the customer&apos;s release note.
           </p>
           <div className={styles.scanRow}>
-            <input
-              className={styles.scanInput}
+            <Field
+              label="Release note reference"
+              hideLabel
+              name="release_note_reference"
+              className={styles.scanField}
               placeholder="RN-20260716-ABC123"
-              aria-label="Release note reference"
               value={lookupRef}
               onChange={(e) => { setLookupRef(e.target.value); setLookupError(null) }}
               onKeyDown={(e) => { if (e.key === 'Enter') void handleLookup() }}

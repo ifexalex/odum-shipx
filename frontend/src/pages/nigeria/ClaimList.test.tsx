@@ -132,6 +132,8 @@ describe('ClaimList', () => {
       expect(claimsApi.list).toHaveBeenLastCalledWith(expect.objectContaining({ created_after: expect.any(String) })),
     )
 
+    await userEvent.click(screen.getByRole('button', { name: /^Filed:/ }))
+
     await userEvent.type(screen.getByLabelText('From'), '2026-01-01')
     await userEvent.type(screen.getByLabelText('To'), '2026-01-31')
     await waitFor(() =>

@@ -1,5 +1,6 @@
+import { Link } from 'react-router-dom'
 import { type JSX } from 'react'
-import { Banner, Button, Card, Combobox, Field } from '../../../design/components'
+import { Banner, Button, Card, Combobox, DateField } from '../../../design/components'
 import { SectionHead } from '../../../shell/SectionHead'
 import styles from '../CreatePackingList.module.css'
 import type { PackingListForm } from './useCreatePackingListForm'
@@ -39,7 +40,7 @@ export function Step1({ form }: { form: PackingListForm }): JSX.Element {
       <div className={styles.grid2}>
         <div className={styles.selectField}>
           <label className={styles.selectLabel} htmlFor="customerSelect">
-            Customer<span className={styles.required}>*</span>
+            Customer
           </label>
           <Combobox
             id="customerSelect"
@@ -52,17 +53,21 @@ export function Step1({ form }: { form: PackingListForm }): JSX.Element {
             value={customerId}
             onChange={setCustomerId}
             disabled={customers.length === 0 || isEdit}
-            placeholder={
-              customers.length === 0 ? 'No customers available' : 'Search or select a customer…'
-            }
+            placeholder={customers.length === 0 ? 'No customers yet' : 'Search or select a customer…'}
             searchPlaceholder="Search by name or phone…"
             emptyText="No customer matches"
           />
-          {isEdit && <span className={styles.fieldHelper}>Fixed for this draft</span>}
+          {isEdit ? (
+            <span className={styles.fieldHelper}>Fixed for this draft</span>
+          ) : (
+            customers.length === 0 && (
+              <span className={styles.fieldHelper}>Ask the Nigeria office or your admin to add the customer first.</span>
+            )
+          )}
         </div>
         <div className={styles.selectField}>
           <label className={styles.selectLabel} htmlFor="containerSelect">
-            Container<span className={styles.required}>*</span>
+            Container
           </label>
           <Combobox
             id="containerSelect"
@@ -77,16 +82,20 @@ export function Step1({ form }: { form: PackingListForm }): JSX.Element {
             value={containerId}
             onChange={setContainerId}
             disabled={containers.length === 0 || isEdit}
-            placeholder={
-              containers.length === 0
-                ? 'No open containers available'
-                : 'Search or select a container…'
-            }
+            placeholder={containers.length === 0 ? 'No container is loading' : 'Search or select a container…'}
             searchPlaceholder="Search by container number…"
             emptyText="No container matches"
           />
           <span className={styles.fieldHelper}>
-            {isEdit ? 'Fixed for this draft' : 'Only containers in Loading status are eligible'}
+            {isEdit ? (
+              'Fixed for this draft'
+            ) : containers.length === 0 ? (
+              <>
+                Only a container in Loading status takes packing lists. <Link to="/containers/new">Create a container</Link>
+              </>
+            ) : (
+              'Only containers in Loading status are eligible'
+            )}
           </span>
         </div>
       </div>
@@ -117,7 +126,7 @@ export function Step1({ form }: { form: PackingListForm }): JSX.Element {
               warehouseError
                 ? 'Warehouses unavailable'
                 : warehouses.length === 0
-                  ? 'No warehouses configured'
+                  ? 'No warehouses yet'
                   : 'Search or select a warehouse…'
             }
             searchPlaceholder="Search by name or city…"
@@ -127,7 +136,9 @@ export function Step1({ form }: { form: PackingListForm }): JSX.Element {
             {warehouseError
               ? `${warehouseError} The list could not be loaded, so this is left unset — ` +
                 'your default warehouse is still applied automatically when you save.'
-              : 'Defaults to your default warehouse — change it per shipment if needed.'}
+              : warehouses.length === 0
+                ? 'Ask your admin to add a warehouse (Settings › Warehouses). Until then none is recorded.'
+                : 'Defaults to your default warehouse — change it per shipment if needed.'}
           </span>
         </div>
       </div>
@@ -139,10 +150,9 @@ export function Step1({ form }: { form: PackingListForm }): JSX.Element {
       />
       <div className={styles.spacerSm} />
       <div className={styles.grid2}>
-        <Field
+        <DateField
           label="Delivery date"
           name="deliveryDate"
-          type="date"
           optional
           value={deliveryDate}
           onChange={(e) => setDeliveryDate(e.target.value)}
@@ -154,10 +164,9 @@ export function Step1({ form }: { form: PackingListForm }): JSX.Element {
             deliveryDateError ? undefined : 'Received in the China warehouse. Not a future date.'
           }
         />
-        <Field
+        <DateField
           label="Loading date"
           name="loadingDate"
-          type="date"
           optional
           value={loadingDate}
           onChange={(e) => setLoadingDate(e.target.value)}

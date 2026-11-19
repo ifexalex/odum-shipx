@@ -103,7 +103,7 @@ function GeneralSettings(): JSX.Element {
             Blocks tenant onboarding and shows a maintenance banner. Existing sessions keep working.
           </div>
         </div>
-        <ToggleSwitch checked={maintenance} onChange={setMaintenance} />
+        <ToggleSwitch label="Maintenance mode" checked={maintenance} onChange={setMaintenance} />
       </div>
 
       <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 'var(--space-3)', paddingTop: 'var(--space-4)', borderTop: '1px solid var(--color-line-soft)' }}>

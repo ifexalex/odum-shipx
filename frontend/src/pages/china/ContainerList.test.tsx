@@ -261,6 +261,8 @@ describe('ContainerList', () => {
     await userEvent.click(screen.getByRole('option', { name: /last 30 days/i }))
     await waitFor(() => expect(containersApi.list).toHaveBeenCalledTimes(2))
 
+    await userEvent.click(screen.getByRole('button', { name: /^Created:/ }))
+
     await userEvent.type(screen.getByLabelText('From'), '2026-01-01')
     await waitFor(() => {
       const call = vi.mocked(containersApi.list).mock.calls.at(-1)?.[0] as {
@@ -268,8 +270,8 @@ describe('ContainerList', () => {
       }
       expect(call.created_after).toBe('2026-01-01')
     })
-    // The preset reverts to unselected once a custom date wins.
-    expect(screen.getByRole('button', { name: /all time/i })).toBeInTheDocument()
+    // The button says the custom range is what applies.
+    expect(screen.getByRole('button', { name: /since/i })).toBeInTheDocument()
 
     await userEvent.type(screen.getByLabelText('To'), '2026-01-31')
     await waitFor(() => {

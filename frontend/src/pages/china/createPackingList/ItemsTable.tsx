@@ -6,7 +6,7 @@ import {
   formatPackageMix,
 } from '../../../api/packingListRules'
 import { MAX_ITEM_QUANTITY, PACKAGE_UNITS, type PackageUnit } from '../../../api/packingList'
-import { Badge, Button, Card, Icon, Mono, IconButton } from '../../../design/components'
+import { Badge, Button, Card, Icon, Mono, IconButton, CellSelect, CellInput, CellCheckbox } from '../../../design/components'
 import { SectionHead } from '../../../shell/SectionHead'
 import styles from '../CreatePackingList.module.css'
 import { blockInvalidNumberKeys, clampQuantity, emptyItem, sanitizeNumber } from './items'
@@ -85,7 +85,8 @@ export function ItemsTable({ form }: { form: PackingListForm }): JSX.Element {
                       <span className={styles.assignedOnSave}>On save</span>
                     </td>
                     <td>
-                      <input
+                      <CellInput
+                        label={`Description, item ${index + 1}`}
                         className={styles.cellInput}
                         value={item.description}
                         placeholder="e.g. Electronics (mixed)"
@@ -97,9 +98,8 @@ export function ItemsTable({ form }: { form: PackingListForm }): JSX.Element {
                       />
                     </td>
                     <td>
-                      <select
-                        className={styles.typeSelect}
-                        aria-label={`Package type for item ${index + 1}`}
+                      <CellSelect
+                        label={`Package type for item ${index + 1}`}
                         value={item.package_unit ?? 'carton'}
                         onChange={(event) =>
                           updateItem(index, {
@@ -112,10 +112,11 @@ export function ItemsTable({ form }: { form: PackingListForm }): JSX.Element {
                             {u.label}
                           </option>
                         ))}
-                      </select>
+                      </CellSelect>
                     </td>
                     <td className={styles.right}>
-                      <input
+                      <CellInput
+                        label={`Dispatch weight (kg), item ${index + 1}`}
                         className={styles.cellInputNumber}
                         type="number"
                         min={0}
@@ -130,7 +131,8 @@ export function ItemsTable({ form }: { form: PackingListForm }): JSX.Element {
                       />
                     </td>
                     <td className={styles.right}>
-                      <input
+                      <CellInput
+                        label={`Actual weight (kg), item ${index + 1}`}
                         className={styles.cellInputNumber}
                         type="number"
                         min={0}
@@ -146,7 +148,8 @@ export function ItemsTable({ form }: { form: PackingListForm }): JSX.Element {
                     </td>
                     <td>
                       <div className={styles.dimRow}>
-                        <input
+                        <CellInput
+                        label={`Length (cm), item ${index + 1}`}
                           className={styles.dimInput}
                           type="number"
                           min={0}
@@ -160,7 +163,8 @@ export function ItemsTable({ form }: { form: PackingListForm }): JSX.Element {
                           }
                         />
                         <span>×</span>
-                        <input
+                        <CellInput
+                        label={`Width (cm), item ${index + 1}`}
                           className={styles.dimInput}
                           type="number"
                           min={0}
@@ -174,7 +178,8 @@ export function ItemsTable({ form }: { form: PackingListForm }): JSX.Element {
                           }
                         />
                         <span>×</span>
-                        <input
+                        <CellInput
+                        label={`Height (cm), item ${index + 1}`}
                           className={styles.dimInput}
                           type="number"
                           min={0}
@@ -235,10 +240,9 @@ export function ItemsTable({ form }: { form: PackingListForm }): JSX.Element {
                             'and CBM drives billing.'
                           }
                         >
-                          <input
-                            type="checkbox"
+                          <CellCheckbox
                             checked={item.identical_confirmed ?? false}
-                            aria-label={`Item ${index + 1}: all packages identical`}
+                            label={`Item ${index + 1}: all packages identical`}
                             onChange={(event) =>
                               updateItem(index, {
                                 identical_confirmed: event.target.checked,
@@ -252,14 +256,14 @@ export function ItemsTable({ form }: { form: PackingListForm }): JSX.Element {
                           />
                           <span>identical</span>
                         </label>
-                        <input
+                        <CellInput
                           className={styles.qtyInput}
                           type="number"
                           min={1}
                           max={MAX_ITEM_QUANTITY}
                           step={1}
                           inputMode="numeric"
-                          aria-label={`Item ${index + 1}: quantity`}
+                          label={`Item ${index + 1}: quantity`}
                           disabled={!(item.identical_confirmed ?? false)}
                           title={
                             item.identical_confirmed
@@ -277,7 +281,8 @@ export function ItemsTable({ form }: { form: PackingListForm }): JSX.Element {
                       </div>
                     </td>
                     <td className={styles.right}>
-                      <input
+                      <CellInput
+                        label={`Declared value (USD), item ${index + 1}`}
                         className={styles.cellInputNumber}
                         type="number"
                         min={0}

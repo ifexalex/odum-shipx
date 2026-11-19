@@ -30,7 +30,7 @@ interface EventToggleProps {
 function EventToggleRow({ label, code, checked, onChange }: EventToggleProps): JSX.Element {
   return (
     <div className={styles.eventRow}>
-      <ToggleSwitch checked={checked} onChange={onChange} />
+      <ToggleSwitch label={`Send ${label} events`} checked={checked} onChange={onChange} />
       <div className={styles.eventInfo}>
         <span className={styles.eventLabel}>{label}</span>
         <Mono color="var(--color-ink-4)"><span style={{ fontSize: 'var(--text-xs)' }}>{code}</span></Mono>
@@ -229,6 +229,7 @@ export function WebhookConfig(): JSX.Element {
                 {config.enabled ? 'Enabled' : 'Disabled'}
               </span>
               <ToggleSwitch
+                label="Outbound webhook"
                 checked={config.enabled}
                 onChange={(v) => setConfig((p) => ({ ...p, enabled: v }))}
               />

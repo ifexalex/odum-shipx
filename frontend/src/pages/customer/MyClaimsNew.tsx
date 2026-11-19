@@ -18,7 +18,7 @@ import { ApiError } from '../../api/client'
 import { claimsApi, presignedUploadApi, type FileDamageClaimInput } from '../../api/claims'
 import { packingListApi, type PackingList } from '../../api/packingList'
 import { type UploadedEvidence } from '../nigeria/EvidenceUploader'
-import { Banner, Button, Field } from '../../design/components'
+import { Banner, Button, Field, Select } from '../../design/components'
 import { PageHeader } from '../../shell/PageHeader'
 import { EvidenceUploader } from '../nigeria/EvidenceUploader'
 import styles from './customer.module.css'
@@ -137,12 +137,8 @@ export function MyClaimsNew(): JSX.Element {
             </Banner>
           ) : (
             <div className={styles.selectField}>
-              <label className={styles.selectLabel} htmlFor="claim-shipment">
-                Which shipment? <span className={styles.required}>*</span>
-              </label>
-              <select
+              <Select label="Which shipment?"
                 id="claim-shipment"
-                className={styles.select}
                 value={selectedShipmentId}
                 onChange={(e) => setSelectedShipmentId(e.target.value)}
               >
@@ -153,7 +149,7 @@ export function MyClaimsNew(): JSX.Element {
                     {' '}({statusLabel('container', pl.container_status ?? '', 'customer')})
                   </option>
                 ))}
-              </select>
+              </Select>
             </div>
           )}
 

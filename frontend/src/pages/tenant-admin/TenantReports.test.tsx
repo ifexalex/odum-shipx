@@ -76,6 +76,8 @@ describe('TenantReports', () => {
       expect(billingApi.report).toHaveBeenLastCalledWith(expect.objectContaining({ created_after: expect.any(String) })),
     )
 
+    await userEvent.click(screen.getByRole('button', { name: /^Period:/ }))
+
     await userEvent.type(screen.getByLabelText('From'), '2026-01-01')
     await userEvent.type(screen.getByLabelText('To'), '2026-01-31')
 

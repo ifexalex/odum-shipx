@@ -23,7 +23,6 @@ import {
   Banner,
   Button,
   Card,
-  Check,
   CountrySelect,
   Field,
   Modal,
@@ -31,7 +30,7 @@ import {
   StateSelect,
   Table,
   DialogGuard,
-} from '../../design/components'
+  CheckboxField } from '../../design/components'
 import { useTopBarSlot } from '../../shell/TopBarContext'
 import styles from './admin.module.css'
 
@@ -161,17 +160,13 @@ function WarehouseModal({ existing, onCancel, onSuccess }: WarehouseModalProps):
           onChange={setPhone}
         />
         {!isEdit && (
-          <label
-            style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-2)', marginTop: 'var(--space-1)', cursor: 'pointer' }}
-          >
-            <Check checked={makeDefault} onChange={setMakeDefault} disabled={submitting} />
-            <span style={{ fontSize: 'var(--text-sm)' }}>
-              Make this the default warehouse
-              <span style={{ color: 'var(--color-ink-3)', display: 'block', fontSize: 'var(--text-xs)' }}>
-                Pre-selected on new packing lists and used on release-note letterheads.
-              </span>
-            </span>
-          </label>
+          <CheckboxField
+            label="Make this the default warehouse"
+            hint="Pre-selected on new packing lists and used on release-note letterheads."
+            checked={makeDefault}
+            onChange={setMakeDefault}
+            disabled={submitting}
+          />
         )}
         <div className={styles.modalActions}>
           <Button variant="ghost" onClick={onCancel} disabled={submitting}>

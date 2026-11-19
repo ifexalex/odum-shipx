@@ -5,7 +5,7 @@ import { notifLogKeys } from '../../api/keys'
 import { STALE_5_MIN } from '../../lib/queryClient'
 import { useNotifLogPolling } from '../../hooks/useNotifications'
 import { useDateRangeFilter } from '../../hooks/useDateRangeFilter'
-import { Banner, Button, Card, Chip, DateRangeFilter, Icon, ListFooter, Mono, StatusBadge, Table, UserCell, IconButton, Pressable } from '../../design/components'
+import { Banner, Button, Card, Chip, DateRangeFilter, Icon, ListFooter, Mono, StatusBadge, Table, UserCell, IconButton, Pressable, SearchField } from '../../design/components'
 import { useTopBarSlot } from '../../shell/TopBarContext'
 import styles from './NotificationLog.module.css'
 import { formatDateTime } from '../../lib/format'
@@ -178,36 +178,8 @@ export function NotificationLog(): JSX.Element {
               </div>
             )}
           </div>
-          <div className={styles.searchWrap}>
-            <Icon name="search" size={14} color="var(--color-ink-4)" />
-            <input
-              className={styles.searchInput}
-              placeholder="Customer, event type, message…"
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-            />
-          </div>
-          <DateRangeFilter value={sentRange.daysBack} onChange={sentRange.handlePreset} />
-          <div className={styles.customDateWrap}>
-            <label htmlFor="notiflog_sent_from" className={styles.customDateLabel}>From</label>
-            <input
-              id="notiflog_sent_from"
-              type="date"
-              className={styles.customDateInput}
-              value={sentRange.dateFrom}
-              max={sentRange.dateTo || undefined}
-              onChange={(e) => sentRange.handleCustomFrom(e.target.value)}
-            />
-            <label htmlFor="notiflog_sent_to" className={styles.customDateLabel}>To</label>
-            <input
-              id="notiflog_sent_to"
-              type="date"
-              className={styles.customDateInput}
-              value={sentRange.dateTo}
-              min={sentRange.dateFrom || undefined}
-              onChange={(e) => sentRange.handleCustomTo(e.target.value)}
-            />
-          </div>
+          <SearchField label="Search notifications" placeholder="Customer, event type, message…" value={search} onChange={setSearch} />
+          <DateRangeFilter label="Sent" range={sentRange} />
         </div>
       </Card>
 

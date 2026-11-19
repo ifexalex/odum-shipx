@@ -6,7 +6,7 @@ import { containersApi } from '../../api/tracking'
 import { containerCapacitiesApi } from '../../api/tenantManagement'
 import { containerCapacityKeys } from '../../api/keys'
 import { ApiError } from '../../api/client'
-import { Banner, Button, Card, Combobox, Field, type ComboboxOption } from '../../design/components'
+import { Banner, Button, Card, Combobox, Field, type ComboboxOption, DateField } from '../../design/components'
 import { PageHeader } from '../../shell/PageHeader'
 import { SectionHead } from '../../shell/SectionHead'
 import styles from './CreateContainer.module.css'
@@ -193,10 +193,9 @@ export function CreateContainer(): JSX.Element {
 
           <SectionHead title="Schedule" />
           <div className={styles.spacerSm} />
-          <Field
+          <DateField
             label="Estimated arrival date"
             name="estimatedArrivalDate"
-            type="date"
             optional
             value={estimatedArrivalDate}
             onChange={(event) => setEstimatedArrivalDate(event.target.value)}

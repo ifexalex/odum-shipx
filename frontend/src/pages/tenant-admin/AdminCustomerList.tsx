@@ -5,7 +5,7 @@ import { ApiError } from '../../api/client'
 import { customerKeys } from '../../api/keys'
 import { customersApi, type Customer } from '../../api/tenantManagement'
 import { useCustomerList } from '../../hooks/useCustomers'
-import { Badge, Banner, Button, Card, Check, Chip, Field, Icon, Mono, PhoneField, StatCard, Table, ViewLink, ListFooter, DialogGuard } from '../../design/components'
+import { Badge, Banner, Button, Card, Chip, Field, Mono, PhoneField, StatCard, Table, ViewLink, ListFooter, DialogGuard, SearchField, CheckboxField } from '../../design/components'
 import { useTopBarSlot } from '../../shell/TopBarContext'
 import styles from './admin.module.css'
 import { formatDate } from '../../lib/format'
@@ -120,20 +120,7 @@ function AddCustomerModal({ onCancel, onSuccess }: AddCustomerModalProps): JSX.E
           </label>
           <div style={{ display: 'flex', gap: 'var(--space-4)' }}>
             {CONSENT_CHANNELS.map((c) => (
-              <label
-                key={c.key}
-                style={{
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: 'var(--space-2)',
-                  cursor: 'pointer',
-                  fontSize: 'var(--text-sm)',
-                  fontWeight: 500,
-                }}
-              >
-                <Check checked={consent.includes(c.key)} onChange={() => toggleConsent(c.key)} />
-                {c.label}
-              </label>
+              <CheckboxField key={c.key} label={c.label} checked={consent.includes(c.key)} onChange={() => toggleConsent(c.key)} />
             ))}
           </div>
           <p style={{ fontSize: 'var(--text-xs)', color: 'var(--color-ink-4)', marginTop: 'var(--space-2)' }}>
@@ -317,16 +304,7 @@ export function AdminCustomerList(): JSX.Element {
               Anonymised <span style={{ opacity: 0.6 }}>{stats?.anonymised ?? 0}</span>
             </Chip>
           </div>
-          <div className={styles.searchWrap}>
-            <Icon name="search" size={14} color="var(--color-ink-4)" />
-            <input
-              className={styles.searchInput}
-              aria-label="Search customers"
-              placeholder="Search by name, phone, or email…"
-              value={query}
-              onChange={(e) => setQuery(e.target.value)}
-            />
-          </div>
+          <SearchField label="Search customers" placeholder="Search by name, phone, or email…" value={query} onChange={setQuery} />
         </div>
       </Card>
 

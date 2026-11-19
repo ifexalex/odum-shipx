@@ -16,7 +16,7 @@ import {
 import { useSession } from '../../auth/useSession'
 import { useStaffList } from '../../hooks/useStaff'
 import { useWarehouses } from '../../hooks/useWarehouses'
-import { Action, Badge, Banner, Button, Card, DialogGuard, ExportButton, Field, Icon, Kvp, Modal, Mono, PhoneField, StatCard, StatusBadge, ToggleSwitch } from '../../design/components'
+import { Action, Badge, Banner, Button, Card, DialogGuard, ExportButton, Field, Icon, Kvp, Modal, Mono, PhoneField, StatCard, StatusBadge, ToggleSwitch, Select } from '../../design/components'
 import { SectionHead } from '../../shell/SectionHead'
 import styles from './ReleaseNoteDetail.module.css'
 import { formatDate, formatNgn } from '../../lib/format'
@@ -145,7 +145,7 @@ function RecordPickupModal({ note, onCancel, onSuccess }: RecordPickupModalProps
         )}
 
         <label className={styles.delegateToggle}>
-          <ToggleSwitch checked={isDelegate} onChange={setIsDelegate} />
+          <ToggleSwitch label="Collected by a delegate" checked={isDelegate} onChange={setIsDelegate} />
           <span>Collected by a delegate (not the customer)</span>
         </label>
 
@@ -165,17 +165,12 @@ function RecordPickupModal({ note, onCancel, onSuccess }: RecordPickupModalProps
             <Field label="Delegate name" name="delegate_name" required value={delegateName} onChange={(e) => setDelegateName(e.target.value)} />
             <PhoneField label="Delegate phone" name="delegate_phone" required value={delegatePhone} onChange={setDelegatePhone} />
             <div>
-              <label className={styles.fieldLabel}>
-                ID type <span className={styles.requiredMark}>*</span>
-              </label>
-              <select
-                aria-label="ID type"
-                className={styles.rawSelect}
+              <Select label="ID type"
                 value={delegateIdType}
                 onChange={(e) => setDelegateIdType(e.target.value as DelegateIdType)}
               >
                 {ID_TYPES.map((t) => <option key={t.value} value={t.value}>{t.label}</option>)}
-              </select>
+              </Select>
             </div>
             <Field label="ID number" name="delegate_id_number" required value={delegateIdNumber} onChange={(e) => setDelegateIdNumber(e.target.value)} />
           </>
@@ -188,12 +183,7 @@ function RecordPickupModal({ note, onCancel, onSuccess }: RecordPickupModalProps
             warehouse doesn't necessarily split these duties out. */}
         {warehouses.length > 0 && (
           <div>
-            <label className={styles.fieldLabel}>
-              Warehouse / branch <span className={styles.optionalHint}>Optional</span>
-            </label>
-            <select
-              aria-label="Warehouse / branch"
-              className={styles.rawSelect}
+            <Select label="Warehouse / branch" optional
               value={warehouseId}
               onChange={(e) => setWarehouseId(e.target.value)}
             >
@@ -201,38 +191,28 @@ function RecordPickupModal({ note, onCancel, onSuccess }: RecordPickupModalProps
               {warehouses.map((w) => (
                 <option key={w.id} value={w.id}>{w.name}{w.is_default ? ' (default)' : ''}</option>
               ))}
-            </select>
+            </Select>
           </div>
         )}
         {staff.length > 0 && (
           <>
             <div>
-              <label className={styles.fieldLabel}>
-                Customer Service Officer <span className={styles.optionalHint}>Optional</span>
-              </label>
-              <select
-                aria-label="Customer Service Officer"
-                className={styles.rawSelect}
+              <Select label="Customer Service Officer" optional
                 value={csoId}
                 onChange={(e) => setCsoId(e.target.value)}
               >
                 <option value="">None</option>
                 {staff.map((u) => <option key={u.id} value={u.id}>{u.full_name}</option>)}
-              </select>
+              </Select>
             </div>
             <div>
-              <label className={styles.fieldLabel}>
-                Accounting Officer <span className={styles.optionalHint}>Optional</span>
-              </label>
-              <select
-                aria-label="Accounting Officer"
-                className={styles.rawSelect}
+              <Select label="Accounting Officer" optional
                 value={accountingOfficerId}
                 onChange={(e) => setAccountingOfficerId(e.target.value)}
               >
                 <option value="">None</option>
                 {staff.map((u) => <option key={u.id} value={u.id}>{u.full_name}</option>)}
-              </select>
+              </Select>
             </div>
           </>
         )}

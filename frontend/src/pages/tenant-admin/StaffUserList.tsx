@@ -16,13 +16,12 @@ import {
   Card,
   Chip,
   Field,
-  Icon,
   Table,
   ViewLink,
   DialogGuard,
   RoleBadge,
   StatusBadge,
-} from '../../design/components'
+  SearchField } from '../../design/components'
 import { useTopBarSlot } from '../../shell/TopBarContext'
 import { RoleCheckboxList } from './RoleCheckboxList'
 import styles from './admin.module.css'
@@ -110,7 +109,7 @@ function InviteModal({ onCancel, onSuccess }: InviteModalProps): JSX.Element {
               marginBottom: 'var(--space-2)',
             }}
           >
-            Roles <span style={{ color: 'var(--color-error)' }}>*</span>
+            Roles
           </label>
           <RoleCheckboxList
             options={ROLES}
@@ -204,16 +203,7 @@ export function StaffUserList(): JSX.Element {
               </Chip>
             ))}
           </div>
-          <div className={styles.searchWrap}>
-            <Icon name="search" size={14} color="var(--color-ink-4)" />
-            <input
-              className={styles.searchInput}
-              aria-label="Search staff"
-              placeholder="Search by name or email…"
-              value={query}
-              onChange={(e) => setQuery(e.target.value)}
-            />
-          </div>
+          <SearchField label="Search staff" placeholder="Search by name or email…" value={query} onChange={setQuery} />
         </div>
       </Card>
 

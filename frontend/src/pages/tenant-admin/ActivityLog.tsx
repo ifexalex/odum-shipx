@@ -39,16 +39,18 @@ import {
   Card,
   Chip,
   DateRangeFilter,
-  Icon,
   ListFooter,
   Modal,
   Mono,
   Table,
   type BadgeVariant,
+  SearchField,
+  Select,
 } from '../../design/components'
 import { useTopBarSlot } from '../../shell/TopBarContext'
 import styles from './admin.module.css'
-import { isoDateOffset, formatDateTime } from '../../lib/format'
+import {  formatDateTime } from '../../lib/format'
+import { useDateRangeFilter } from '../../hooks/useDateRangeFilter'
 
 // Every entity_type actually written by shared.audit.log_audit(...) across
 // the backend, grouped into the categories a tenant admin actually thinks
@@ -108,17 +110,8 @@ export function ActivityLog(): JSX.Element {
   const [actionFilter, setActionFilter] = useState('')
   const [searchInput, setSearchInput] = useState('')
   const [search, setSearch] = useState('')
-  const [daysBack, setDaysBack] = useState<number | null>(null)
-  // Exact custom range — reported directly by the user: presets alone
-  // ("last 7/30/90 days") aren't "fully functional" date filtering; an
-  // audit trail needs an exact from/to range too (e.g. "everything on the
-  // day of that disputed charge"). Take precedence over the preset once set.
-  const [dateFrom, setDateFrom] = useState('')
-  const [dateTo, setDateTo] = useState('')
-  // Resolved when the preset is chosen, not during render: Date.now() is impure,
-  // and recomputing it per render let the window slide forward while the page
-  // sat open, so two loads with the same preset could query different ranges.
-  const [presetFrom, setPresetFrom] = useState<string | undefined>(undefined)
+  // Presets and an exact from/to range (an audit trail needs "everything on the day of that disputed charge").
+  const when = useDateRangeFilter()
   const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('desc')
   const [cursor, setCursor] = useState<string | null>(null)
   const [hasMore, setHasMore] = useState(false)
@@ -144,27 +137,7 @@ export function ActivityLog(): JSX.Element {
   // still queried with the stale entity type.
   const effectiveEntityFilter = entityFilter && entityOptions.includes(entityFilter) ? entityFilter : ''
 
-  // An explicit custom date always wins over the "last N days" preset —
-  // picking one clears the other so the two controls never silently fight.
-  const createdAfter = dateFrom || presetFrom
-  const createdBefore = dateTo || undefined
-
-  function handlePreset(days: number | null): void {
-    setDaysBack(days)
-    setPresetFrom(days ? isoDateOffset(-days) : undefined)
-    setDateFrom('')
-    setDateTo('')
-  }
-  function handleCustomFrom(value: string): void {
-    setDateFrom(value)
-    setDaysBack(null)
-    setPresetFrom(undefined)
-  }
-  function handleCustomTo(value: string): void {
-    setDateTo(value)
-    setDaysBack(null)
-    setPresetFrom(undefined)
-  }
+  const { createdAfter, createdBefore } = when
 
   const load = useCallback(
     async (nextCursor?: string) => {
@@ -209,7 +182,7 @@ export function ActivityLog(): JSX.Element {
   }, [effectiveEntityFilter, category, actionFilter, search, createdAfter, createdBefore, sortDirection])
 
   const expandedEntry = entries.find((e) => e.id === expandedId) ?? null
-  const filtersActive = !!(category || actionFilter || search || daysBack || dateFrom || dateTo)
+  const filtersActive = !!(category || actionFilter || search || when.isActive)
 
   function clearFilters(): void {
     setCategory('')
@@ -217,10 +190,7 @@ export function ActivityLog(): JSX.Element {
     setActionFilter('')
     setSearchInput('')
     setSearch('')
-    setDaysBack(null)
-    setPresetFrom(undefined)
-    setDateFrom('')
-    setDateTo('')
+    when.clear()
   }
 
   useTopBarSlot({ subtitle: 'Every recorded change in your account — who did what, and when. Confirmed/rejected payments, refunds, and claims all show exactly what changed, not just that something did.' })
@@ -248,26 +218,14 @@ export function ActivityLog(): JSX.Element {
               </Chip>
             ))}
           </div>
-          <div className={styles.searchWrap}>
-            <Icon name="search" size={14} color="var(--color-ink-4)" />
-            <input
-              className={styles.searchInput}
-              aria-label="Search"
-              placeholder="Person's name, or paste a record id…"
-              value={searchInput}
-              onChange={(e) => setSearchInput(e.target.value)}
-            />
-          </div>
+          <SearchField label="Search the activity log" placeholder="Person's name, or paste a record id…" value={searchInput} onChange={setSearchInput} />
         </div>
 
         {/* Row 2 — secondary controls, all on the same 36px baseline. */}
         <div className={styles.filterControls}>
           <div className={styles.controlGroup}>
-            <label htmlFor="activity_entity_type" className={styles.controlLabel}>Record type</label>
-            <select
+            <Select label="Record type"
               id="activity_entity_type"
-              className={styles.control}
-              style={{ textTransform: 'capitalize' }}
               value={effectiveEntityFilter}
               onChange={(e) => setEntityFilter(e.target.value)}
             >
@@ -275,15 +233,12 @@ export function ActivityLog(): JSX.Element {
               {entityOptions.map((t) => (
                 <option key={t} value={t} style={{ textTransform: 'capitalize' }}>{humanEntity(t)}</option>
               ))}
-            </select>
+            </Select>
           </div>
 
           <div className={styles.controlGroup}>
-            <label htmlFor="activity_action" className={styles.controlLabel}>Action</label>
-            <select
+            <Select label="Action"
               id="activity_action"
-              className={styles.control}
-              style={{ textTransform: 'capitalize' }}
               value={actionFilter}
               onChange={(e) => setActionFilter(e.target.value)}
             >
@@ -291,49 +246,23 @@ export function ActivityLog(): JSX.Element {
               {ACTIONS.map((a) => (
                 <option key={a} value={a} style={{ textTransform: 'capitalize' }}>{a.replace(/_/g, ' ').toLowerCase()}</option>
               ))}
-            </select>
+            </Select>
           </div>
 
           <div className={styles.controlGroup}>
             <span className={styles.controlLabel}>When</span>
-            <DateRangeFilter value={daysBack} onChange={handlePreset} />
+            <DateRangeFilter label="When" range={when} />
           </div>
 
           <div className={styles.controlGroup}>
-            <span className={styles.controlLabel}>From</span>
-            <input
-              type="date"
-              className={styles.control}
-              aria-label="From (custom)"
-              value={dateFrom}
-              max={dateTo || undefined}
-              onChange={(e) => handleCustomFrom(e.target.value)}
-            />
-          </div>
-
-          <div className={styles.controlGroup}>
-            <span className={styles.controlLabel}>To</span>
-            <input
-              type="date"
-              className={styles.control}
-              aria-label="To (custom)"
-              value={dateTo}
-              min={dateFrom || undefined}
-              onChange={(e) => handleCustomTo(e.target.value)}
-            />
-          </div>
-
-          <div className={styles.controlGroup}>
-            <label htmlFor="activity_sort" className={styles.controlLabel}>Sort</label>
-            <select
+            <Select label="Sort"
               id="activity_sort"
-              className={styles.control}
               value={sortDirection}
               onChange={(e) => setSortDirection(e.target.value as 'asc' | 'desc')}
             >
               <option value="desc">Newest first</option>
               <option value="asc">Oldest first</option>
-            </select>
+            </Select>
           </div>
 
           {filtersActive && (

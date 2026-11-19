@@ -15,7 +15,7 @@ import { STALE_30S } from '../../lib/queryClient'
 import { canResolveDiscrepancy, canRevokeVerification, canVerifyManifest } from '../../api/manifestRules'
 import { useSession } from '../../auth/useSession'
 import { EvidenceUploader } from './EvidenceUploader'
-import { Action, Banner, Button, Card, Chip, DialogGuard, ExportButton, Field, Icon, Mono, StatCard, StatusBadge, Table, ViewLink } from '../../design/components'
+import { Action, Banner, Button, Card, Chip, DialogGuard, ExportButton, Field, Icon, Mono, StatCard, StatusBadge, Table, ViewLink, Select } from '../../design/components'
 import { SectionHead } from '../../shell/SectionHead'
 import styles from './ManifestDetail.module.css'
 import { useBreadcrumbLabel } from '../../shell/breadcrumbs'
@@ -154,12 +154,8 @@ function VerifyManifestModal({ manifest, onCancel, onVerified }: VerifyManifestM
                 <div key={index} className={styles.discrepancyCard}>
                   <div className={styles.discrepancyHead}>
                     <div className={styles.selectField}>
-                      <label className={styles.selectLabel} htmlFor={`discrepancyCustomer-${index}`}>
-                        Customer
-                      </label>
-                      <select
+                      <Select label="Customer"
                         id={`discrepancyCustomer-${index}`}
-                        className={styles.select}
                         value={draft.customerId}
                         onChange={(event) => updateDraft(index, { customerId: event.target.value, cartonTags: [] })}
                       >
@@ -169,21 +165,17 @@ function VerifyManifestModal({ manifest, onCancel, onVerified }: VerifyManifestM
                             {c.customer_name ?? c.customer_id}
                           </option>
                         ))}
-                      </select>
+                      </Select>
                     </div>
                     <div className={styles.selectField}>
-                      <label className={styles.selectLabel} htmlFor={`discrepancyType-${index}`}>
-                        Type
-                      </label>
-                      <select
+                      <Select label="Type"
                         id={`discrepancyType-${index}`}
-                        className={styles.select}
                         value={draft.type}
                         onChange={(event) => updateDraft(index, { type: event.target.value as 'missing' | 'damaged' })}
                       >
                         <option value="missing">Missing</option>
                         <option value="damaged">Damaged</option>
-                      </select>
+                      </Select>
                     </div>
                     {drafts.length > 1 && (
                       <Button

@@ -72,18 +72,16 @@
 .scanSub { font-size: var(--text-sm); color: var(--color-on-dark-muted); margin: var(--space-1) 0 0; }
 .scanRow { display: flex; gap: var(--space-2); margin-top: var(--space-3); flex-wrap: wrap; }
 .scanRow > button { min-height: 48px; }
-.scanInput {
+/* The scan box is a Field (FD-11); this keeps it large and monospaced for a handheld scanner. */
+.scanField {
   flex: 1;
   min-width: 180px;
-  height: 48px;
-  border: none;
-  border-radius: var(--radius-md);
-  padding: 0 var(--space-4);
+  margin: 0;
+}
+.scanField input {
+  height: 46px;
   font-family: var(--font-mono);
   font-size: var(--text-lg); /* ≥16px — prevents iOS auto-zoom */
   font-weight: 600;
-  color: var(--color-on-light);
-  background: var(--color-on-dark);
 }
-.scanInput:focus { outline: 3px solid var(--color-on-dark-muted); }
 .scanError { margin-top: var(--space-3); font-size: var(--text-sm); font-weight: 600; color: color-mix(in srgb, var(--color-error) 25%, var(--color-on-dark)); }

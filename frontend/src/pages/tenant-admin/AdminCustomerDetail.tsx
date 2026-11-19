@@ -26,7 +26,7 @@ import { customersApi, type Customer } from '../../api/tenantManagement'
 import { billingKeys, claimKeys, customerKeys, packingListKeys } from '../../api/keys'
 import { STALE_30S } from '../../lib/queryClient'
 import { useSession } from '../../auth/useSession'
-import { Action, Avatar, Badge, Banner, Button, Card, DialogGuard, Field, Kvp, Mono, StatCard, StatusBadge, Table, ViewLink } from '../../design/components'
+import { Action, Avatar, Badge, Banner, Button, Card, DialogGuard, Field, Kvp, Mono, StatCard, StatusBadge, Table, ViewLink, Select } from '../../design/components'
 import { SectionHead } from '../../shell/SectionHead'
 import { Tabs } from '../../shell/Tabs'
 import styles from './admin.module.css'
@@ -186,16 +186,14 @@ function ProfileTab({ customer, shipments, billing, claims, onSaved }: ProfileTa
             <div className={styles.prefLabelInline}>
               Message language
             </div>
-            <select
-              aria-label="Message language"
+            <Select label="Message language" hideLabel className={styles.compactSelectField}
               value={customer.locale ?? 'en'}
               disabled={savingLocale || customer.anonymised_at !== null}
               onChange={(e) => void handleLocaleChange(e.target.value as 'en' | 'zh')}
-              className={styles.compactSelect}
-            >
+              >
               <option value="en">English</option>
               <option value="zh">中文 (简体)</option>
-            </select>
+            </Select>
           </div>
           <Kvp
             label="Anonymised at"

@@ -11,7 +11,7 @@ import { platformAuditKeys } from '../../api/keys'
 import { useCursorPagination } from '../../hooks/useCursorPagination'
 import { usePlatformTenantList } from '../../hooks/usePlatformTenants'
 import { STALE_30S } from '../../lib/queryClient'
-import { Badge, Banner, Button, Card, ListFooter, Mono, Table, type BadgeVariant } from '../../design/components'
+import { Badge, Banner, Button, Card, ListFooter, Mono, Table, type BadgeVariant, Select } from '../../design/components'
 import { useTopBarSlot } from '../../shell/TopBarContext'
 import { formatDateTime } from '../../lib/format'
 
@@ -74,9 +74,7 @@ export function PlatformAuditLog(): JSX.Element {
       {error && <div style={{ marginBottom: 'var(--space-4)' }}><Banner variant="error" title="Couldn't load">{error}</Banner></div>}
 
       <div style={{ display: 'flex', gap: 'var(--space-3)', marginBottom: 'var(--space-4)', alignItems: 'center' }}>
-        <label style={{ fontSize: 'var(--text-sm)', fontWeight: 600, color: 'var(--color-ink-2)' }}>Tenant</label>
-        <select
-          style={{ padding: 'var(--space-2) var(--space-3)', borderRadius: 'var(--radius-md)', border: '1px solid var(--color-line)', background: 'var(--color-surface)', fontSize: 'var(--text-md)', minWidth: 220 }}
+        <Select label="Tenant"
           value={tenantFilter}
           onChange={(e) => setTenantFilter(e.target.value)}
         >
@@ -84,7 +82,7 @@ export function PlatformAuditLog(): JSX.Element {
           {tenants.map((t) => (
             <option key={t.id} value={t.id}>{t.company_name}</option>
           ))}
-        </select>
+        </Select>
       </div>
 
       <Card padding="none">

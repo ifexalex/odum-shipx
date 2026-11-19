@@ -15,7 +15,7 @@ import {
   refundTypeLabel,
 } from '../../api/refundsRules'
 import { useSession } from '../../auth/useSession'
-import { Action, Banner, Button, Card, DialogGuard, Field, Icon, Kvp, Mono, StatCard, StatusBadge } from '../../design/components'
+import { Action, Banner, Button, Card, DialogGuard, Field, Icon, Kvp, Mono, StatCard, StatusBadge, RadioGroup } from '../../design/components'
 import { SectionHead } from '../../shell/SectionHead'
 import styles from './RefundDetail.module.css'
 import { formatDate, formatNgn } from '../../lib/format'
@@ -132,16 +132,16 @@ function AccountsReviewModal({ refund, onCancel, onSuccess }: AccountsReviewModa
         <Banner variant="info">
           Check customer debt records (unpaid billing, outstanding carryovers) before advancing this refund.
         </Banner>
-        <div>
-          <label style={{ display: 'flex', gap: 'var(--space-2)', alignItems: 'center', cursor: 'pointer', marginBottom: 'var(--space-2)' }}>
-            <input type="radio" checked={passed} onChange={() => setPassed(true)} />
-            <span>Debt check passed — advance to manager approval</span>
-          </label>
-          <label style={{ display: 'flex', gap: 'var(--space-2)', alignItems: 'center', cursor: 'pointer' }}>
-            <input type="radio" checked={!passed} onChange={() => setPassed(false)} />
-            <span>Debt check failed — reject (offset debt)</span>
-          </label>
-        </div>
+        <RadioGroup
+          label="Debt check"
+          name="debt_check"
+          value={passed ? 'passed' : 'failed'}
+          onChange={(v) => setPassed(v === 'passed')}
+          options={[
+            { value: 'passed', label: 'Debt check passed', hint: 'Advance to manager approval.' },
+            { value: 'failed', label: 'Debt check failed', hint: 'Reject, to offset the debt.' },
+          ]}
+        />
         <Field
           label="Review notes"
           name="debt_check_notes"

@@ -23,7 +23,7 @@ import { useState, type FormEvent, type JSX } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
 import { ApiError } from '../../api/client'
 import { registerApi } from '../../api/customer'
-import { Banner, Button, Check, Field, Icon, PhoneField } from '../../design/components'
+import { Banner, Button, Check, Field, Icon, PhoneField, CheckboxField } from '../../design/components'
 import { AuthShell, FormHead } from './AuthShell'
 import styles from './LoginScreen.module.css'
 
@@ -190,16 +190,13 @@ export function RegisterScreen(): JSX.Element {
           </span>
           <div style={{ display: 'flex', gap: 'var(--space-4)' }}>
             {CHANNELS.map(({ key, label }) => (
-              <label key={key} className={styles.rememberLabel}>
-                <Check checked={channels.includes(key)} onChange={() => toggleChannel(key)} />
-                {label}
-              </label>
+              <CheckboxField key={key} className={styles.rememberLabel} label={label} checked={channels.includes(key)} onChange={() => toggleChannel(key)} />
             ))}
           </div>
         </div>
 
         <div style={{ display: 'flex', alignItems: 'flex-start', gap: 'var(--space-2)', margin: 'var(--space-2) 0 var(--space-6)' }}>
-          <Check checked={agreed} onChange={setAgreed} />
+          <Check label="I agree to the Terms of Service and Privacy Policy" checked={agreed} onChange={setAgreed} />
           <span style={{ fontSize: 'var(--text-sm)', color: 'var(--color-ink-2)', lineHeight: 'var(--leading-body)' }}>
             I agree to the <a className={styles.link} href="#terms">Terms of Service</a> and{' '}
             <a className={styles.link} href="#privacy">Privacy Policy</a>.

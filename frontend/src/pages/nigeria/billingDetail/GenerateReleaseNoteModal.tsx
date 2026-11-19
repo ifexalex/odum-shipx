@@ -3,7 +3,7 @@ import { ApiError } from '../../../api/client'
 import { type Billing } from '../../../api/billing'
 import { releaseNotesApi } from '../../../api/releaseNotes'
 import { useWarehouses } from '../../../hooks/useWarehouses'
-import { Action, Banner, Button, Field, DialogGuard } from '../../../design/components'
+import { Action, Banner, Button, Field, DialogGuard, Select, CheckboxField, DateField } from '../../../design/components'
 import styles from '../BillingDetail.module.css'
 
 // ---------------------------------------------------------------------------
@@ -174,12 +174,7 @@ export function GenerateReleaseNoteModal({
 
         {warehouses.length > 0 && (
           <div className={styles.selectField}>
-            <label className={styles.selectLabel}>
-              Warehouse / branch <span className={styles.optional}>Optional</span>
-            </label>
-            <select
-              aria-label="Warehouse / branch"
-              className={styles.select}
+            <Select label="Warehouse / branch" optional
               value={warehouseId}
               onChange={(e) => setWarehouseId(e.target.value)}
             >
@@ -190,7 +185,7 @@ export function GenerateReleaseNoteModal({
                   {w.is_default ? ' (default)' : ''}
                 </option>
               ))}
-            </select>
+            </Select>
           </div>
         )}
 
@@ -212,22 +207,11 @@ export function GenerateReleaseNoteModal({
           onChange={(e) => setInvoiceNumbersRaw(e.target.value)}
         />
 
-        <label
-          style={{
-            display: 'flex',
-            gap: 'var(--space-2)',
-            alignItems: 'center',
-            cursor: 'pointer',
-            fontSize: 'var(--text-md)',
-          }}
-        >
-          <input
-            type="checkbox"
-            checked={releaseWithOutstanding}
-            onChange={(e) => setReleaseWithOutstanding(e.target.checked)}
-          />
-          <span>Release with outstanding balance (waive payment requirement)</span>
-        </label>
+        <CheckboxField
+          label="Release with outstanding balance (waive payment requirement)"
+          checked={releaseWithOutstanding}
+          onChange={setReleaseWithOutstanding}
+        />
 
         {releaseWithOutstanding && (
           <>
@@ -248,10 +232,9 @@ export function GenerateReleaseNoteModal({
               value={creditGrantedByName}
               onChange={(e) => setCreditGrantedByName(e.target.value)}
             />
-            <Field
+            <DateField
               label="Debt payment date"
               name="due_date"
-              type="date"
               optional
               value={dueDate}
               onChange={(e) => setDueDate(e.target.value)}

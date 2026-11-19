@@ -19,7 +19,7 @@
 import { useMemo, useState, type JSX } from 'react'
 import { type BrandingConfig } from '../../api/tenantManagement'
 import { isValidHexColor } from '../../design/deriveBrandShades'
-import { Banner, Button, Card, Field, PhoneField, Pressable } from '../../design/components'
+import { Banner, Button, Card, Field, PhoneField, Pressable, ColorField } from '../../design/components'
 import { useBranding, useSaveBranding } from '../../hooks/useConfig'
 import { PageHeader } from '../../shell/PageHeader'
 import { SectionHead } from '../../shell/SectionHead'
@@ -284,13 +284,12 @@ function CompanySettingsForm({
                 </div>
               </div>
               <div className={styles.colorField}>
-                <Field
+                <ColorField
                   label="Brand colour"
                   name="primary_color"
                   optional
-                  placeholder="#1a73e8"
                   value={form.primary_color}
-                  onChange={set('primary_color')}
+                  onChange={(hex) => setForm((f) => ({ ...f, primary_color: hex }))}
                   error={colorInvalid ? 'Use a hex colour like #1a73e8.' : undefined}
                   disabled={isLoading}
                 />

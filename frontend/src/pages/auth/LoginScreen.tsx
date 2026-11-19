@@ -5,7 +5,7 @@ import { safeNextPath } from '../../auth/returnPath'
 import { homePathForRole } from '../../auth/roleHome'
 import { rememberNext } from './returnPath'
 import { useSession } from '../../auth/useSession'
-import { Banner, Button, Check, Field, Icon, KolaMark, ShipxWordmark, IconButton } from '../../design/components'
+import { Banner, Button, Field, Icon, KolaMark, ShipxWordmark, IconButton, CheckboxField } from '../../design/components'
 import { colors } from '../../design/theme'
 import styles from './LoginScreen.module.css'
 
@@ -208,10 +208,7 @@ export function LoginScreen(): JSX.Element {
                 }
               />
               <div className={styles.rowBetween}>
-                <label className={styles.rememberLabel}>
-                  <Check checked={rememberMe} onChange={setRememberMe} />
-                  Remember me for 30 days
-                </label>
+                <CheckboxField className={styles.rememberLabel} label="Remember me for 30 days" checked={rememberMe} onChange={setRememberMe} />
                 <Link to="/forgot-password" className={styles.link}>Forgot password?</Link>
               </div>
               <Button type="submit" variant="accent" size="lg" full loading={loading}>

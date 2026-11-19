@@ -108,7 +108,7 @@ describe('ReleaseNoteDetail', () => {
     renderPage(WAREHOUSE_SESSION)
 
     await userEvent.click(await screen.findByRole('button', { name: /record pickup/i }))
-    const collectedByField = await screen.findByLabelText(/^collected by\*/i)
+    const collectedByField = await screen.findByRole('textbox', { name: /^collected by$/i })
     // Defaults to the note's own customer — the common case — rather than
     // starting blank and forcing staff to retype a name they already see on
     // screen.
@@ -126,7 +126,7 @@ describe('ReleaseNoteDetail', () => {
     renderPage(WAREHOUSE_SESSION)
     await userEvent.click(await screen.findByRole('button', { name: /record pickup/i }))
 
-    const collectedByField = await screen.findByLabelText(/^collected by\*/i)
+    const collectedByField = await screen.findByRole('textbox', { name: /^collected by$/i })
     await userEvent.clear(collectedByField)
 
     expect(screen.getByRole('button', { name: /confirm pickup/i })).toBeDisabled()

@@ -122,7 +122,7 @@ describe('CbmRateConfig', () => {
     await screen.findByText('$45.00 per CBM')
 
     await userEvent.click(screen.getByRole('button', { name: 'By package type' }))
-    const baleInput = screen.getByText('Bales ($ per CBM)').parentElement?.querySelector('input')
+    const baleInput = screen.getByLabelText('Bales ($ per CBM)')
     expect(baleInput).toBeTruthy()
     await userEvent.clear(baleInput!)
     await userEvent.type(baleInput!, '60')
@@ -139,7 +139,7 @@ describe('CbmRateConfig', () => {
     await screen.findByText('$45.00 per CBM')
 
     await userEvent.click(screen.getByRole('button', { name: 'By package type' }))
-    const bagInput = screen.getByText('Bags ($ per CBM)').parentElement?.querySelector('input')
+    const bagInput = screen.getByLabelText('Bags ($ per CBM)')
     await userEvent.clear(bagInput!)
 
     expect(screen.getByRole('button', { name: 'Update rate' })).toBeDisabled()

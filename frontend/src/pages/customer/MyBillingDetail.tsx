@@ -120,7 +120,7 @@ function PaymentClaimPanel({
           />
           <div>
             <label className={styles.selectLabel}>
-              Evidence of payment <span className={styles.required}>*</span>
+              Evidence of payment
             </label>
             <p className={styles.cardHint}>
               A screenshot or photo of your transfer receipt — required before you can submit.

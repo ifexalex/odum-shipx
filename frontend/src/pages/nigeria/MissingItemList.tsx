@@ -5,7 +5,7 @@ import { canCompensateMissingItem, canUpdateMissingItem, missingItemStatusesFor 
 import { useMissingItemList } from '../../hooks/useItems'
 import { useSession } from '../../auth/useSession'
 import type { UserRole } from '../../auth/types'
-import { Banner, Button, Card, Chip, DialogGuard, Field, ListFooter, Mono, StatusBadge, Table } from '../../design/components'
+import { Banner, Button, Card, Chip, DialogGuard, Field, ListFooter, Mono, StatusBadge, Table, Select } from '../../design/components'
 import { useTopBarSlot } from '../../shell/TopBarContext'
 import styles from './ItemList.module.css'
 import { formatDate } from '../../lib/format'
@@ -64,10 +64,9 @@ function UpdateModal({ item, role, onCancel, onSuccess }: UpdateModalProps): JSX
         <h3 className={styles.panelTitle}>Update missing item</h3>
         {error && <div className={styles.panelBanner}><Banner variant="error" title="Action failed">{error}</Banner></div>}
         <div className={styles.selectField}>
-          <label className={styles.selectLabel}>New status <span className={styles.required}>*</span></label>
-          <select className={styles.select} value={status} onChange={(e) => setStatus(e.target.value as MissingItemStatus)}>
+          <Select label="New status" value={status} onChange={(e) => setStatus(e.target.value as MissingItemStatus)}>
             {statuses.map((s) => <option key={s} value={s}>{statusLabel('missingItem', s)}</option>)}
-          </select>
+          </Select>
         </div>
         {!canCompensateMissingItem(role) && (
           <p className={styles.panelNote}>

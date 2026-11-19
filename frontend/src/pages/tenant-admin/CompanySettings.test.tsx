@@ -101,7 +101,7 @@ describe('CompanySettings (4.1)', () => {
     const saveBtn = screen.getByRole('button', { name: /save changes/i })
     expect(saveBtn).toBeDisabled()
 
-    const colorField = screen.getByDisplayValue('#0a6ed1')
+    const colorField = screen.getByRole('textbox', { name: 'Brand colour' })
     await userEvent.clear(colorField)
     await userEvent.type(colorField, 'not-a-colour')
 

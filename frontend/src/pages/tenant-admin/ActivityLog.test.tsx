@@ -142,7 +142,7 @@ describe('ActivityLog — tenant-admin audit trail', () => {
     render(<ActivityLog />)
 
     await screen.findByText('No activity matches these filters.')
-    await userEvent.type(screen.getByLabelText('Search'), 'Emeka')
+    await userEvent.type(screen.getByRole('searchbox', { name: 'Search the activity log' }), 'Emeka')
 
     await waitFor(() => expect(configApi.activity).toHaveBeenLastCalledWith(expect.objectContaining({ q: 'Emeka' })), {
       timeout: 1000,
@@ -167,14 +167,15 @@ describe('ActivityLog — tenant-admin audit trail', () => {
     await screen.findByText('No activity matches these filters.')
     await userEvent.click(screen.getByRole('button', { name: /^Money/ }))
     await userEvent.selectOptions(screen.getByLabelText('Action'), 'CREATE')
-    await userEvent.type(screen.getByLabelText('Search'), 'Emeka')
-    await userEvent.type(screen.getByLabelText('From (custom)'), '2026-09-01')
+    await userEvent.type(screen.getByRole('searchbox', { name: 'Search the activity log' }), 'Emeka')
+    await userEvent.click(screen.getByRole('button', { name: /^When:/ }))
+    await userEvent.type(screen.getByLabelText('From'), '2026-09-01')
 
     await userEvent.click(await screen.findByRole('button', { name: /clear filters/i }))
 
     expect(screen.getByLabelText('Action')).toHaveValue('')
-    expect(screen.getByLabelText('Search')).toHaveValue('')
-    expect(screen.getByLabelText('From (custom)')).toHaveValue('')
+    expect(screen.getByRole('searchbox', { name: 'Search the activity log' })).toHaveValue('')
+    expect(screen.getByLabelText('From')).toHaveValue('')
     // Category cleared → Record type offers all types again, and the query
     // goes back to an unfiltered entityTypes (proves the category reset).
     expect(screen.getByLabelText('Record type')).toContainHTML('All types')
@@ -190,8 +191,9 @@ describe('ActivityLog — tenant-admin audit trail', () => {
     render(<ActivityLog />)
 
     await screen.findByText('No activity matches these filters.')
-    await userEvent.type(screen.getByLabelText('From (custom)'), '2026-09-01')
-    await userEvent.type(screen.getByLabelText('To (custom)'), '2026-09-07')
+    await userEvent.click(screen.getByRole('button', { name: /^When:/ }))
+    await userEvent.type(screen.getByLabelText('From'), '2026-09-01')
+    await userEvent.type(screen.getByLabelText('To'), '2026-09-07')
 
     await waitFor(() =>
       expect(configApi.activity).toHaveBeenLastCalledWith(
@@ -211,13 +213,16 @@ describe('ActivityLog — tenant-admin audit trail', () => {
       expect(configApi.activity).toHaveBeenLastCalledWith(expect.objectContaining({ createdAfter: expect.any(String) })),
     )
 
-    await userEvent.type(screen.getByLabelText('From (custom)'), '2026-01-01')
+    await userEvent.click(screen.getByRole('button', { name: /^When:/ }))
+
+    await userEvent.type(screen.getByLabelText('From'), '2026-01-01')
 
     await waitFor(() =>
       expect(configApi.activity).toHaveBeenLastCalledWith(expect.objectContaining({ createdAfter: '2026-01-01' })),
     )
-    // The preset button reverts to its unselected state once a custom date wins.
-    expect(screen.getByRole('button', { name: /all time/i })).toBeInTheDocument()
+    // The button now names the custom range, not the preset it replaced.
+    expect(screen.getByRole('button', { name: /^When: Since 1 Jan 2026/ })).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /last 7 days/i })).toBeNull()
   })
 
   it('does not offer impersonation as a filterable record type — platform-only, not a tenant business record', async () => {

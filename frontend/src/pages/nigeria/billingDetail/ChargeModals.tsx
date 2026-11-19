@@ -2,7 +2,7 @@ import { useMemo, useState, type JSX } from 'react'
 import { ApiError } from '../../../api/client'
 import { billingApi, type Billing, type Carryover } from '../../../api/billing'
 import { useChargeTypes } from '../../../hooks/useConfig'
-import { Banner, Button, Field, DialogGuard } from '../../../design/components'
+import { Banner, Button, Field, DialogGuard, Select } from '../../../design/components'
 import styles from '../BillingDetail.module.css'
 import { formatNgn } from '../../../lib/format'
 
@@ -100,25 +100,7 @@ export function AddChargeModal({ billing, onCancel, onSuccess }: AddChargeModalP
         )}
 
         <div>
-          <label
-            style={{
-              fontWeight: 600,
-              fontSize: 'var(--text-md)',
-              display: 'block',
-              marginBottom: 'var(--space-2)',
-            }}
-          >
-            Charge type <span style={{ color: 'var(--color-error)' }}>*</span>
-          </label>
-          <select
-            style={{
-              width: '100%',
-              padding: 'var(--space-2) var(--space-3)',
-              borderRadius: 'var(--radius-md)',
-              border: '1px solid var(--color-line)',
-              background: 'var(--color-surface)',
-              fontSize: 'var(--text-md)',
-            }}
+          <Select label="Charge type"
             value={selectedType}
             onChange={(e) => handleTypeChange(e.target.value)}
           >
@@ -128,7 +110,7 @@ export function AddChargeModal({ billing, onCancel, onSuccess }: AddChargeModalP
                 {t.name} — default {formatNgn(t.amount_ngn)}
               </option>
             ))}
-          </select>
+          </Select>
         </div>
 
         <Field
@@ -316,11 +298,7 @@ export function ApplyCarryoverModal({
           <p className={styles.emptyNote}>No outstanding carryover credits for this customer.</p>
         ) : (
           <div className={styles.selectField}>
-            <label className={styles.selectLabel}>
-              Carryover to apply <span className={styles.required}>*</span>
-            </label>
-            <select
-              className={styles.select}
+            <Select label="Carryover to apply"
               value={selectedId}
               onChange={(e) => setSelectedId(e.target.value)}
             >
@@ -331,7 +309,7 @@ export function ApplyCarryoverModal({
                   {c.source_container_number ?? c.source_billing_id}
                 </option>
               ))}
-            </select>
+            </Select>
           </div>
         )}
         <div className={styles.modalActions}>

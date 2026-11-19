@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom'
 import { ApiError } from '../../api/client'
 import { excelApi, type ImportResult, type ManifestImportResult } from '../../api/excel'
 import { FileTooLargeError, UploadFailedError, uploadImportFile } from '../../api/uploads'
-import { Banner, Button, Card, Icon, Mono, Pressable } from '../../design/components'
+import { Banner, Button, Card, Icon, Mono, Pressable, Select, FileInput } from '../../design/components'
 import { useContainerLookup } from '../../hooks/useContainers'
 import { PageHeader } from '../../shell/PageHeader'
 import { SectionHead } from '../../shell/SectionHead'
@@ -182,12 +182,8 @@ export function ImportPackingLists(): JSX.Element {
             </div>
           ) : (
           <div className={styles.selectField}>
-            <label className={styles.selectLabel} htmlFor="importContainerSelect">
-              Container<span className={styles.required}>*</span>
-            </label>
-            <select
+            <Select label="Container"
               id="importContainerSelect"
-              className={styles.select}
               value={containerId}
               onChange={(event) => setContainerId(event.target.value)}
             >
@@ -197,7 +193,7 @@ export function ImportPackingLists(): JSX.Element {
                   {container.container_number}
                 </option>
               ))}
-            </select>
+            </Select>
           </div>
           )}
 
@@ -216,14 +212,7 @@ export function ImportPackingLists(): JSX.Element {
             </div>
             <div className={styles.dropzoneTitle}>Drag &amp; drop your .xlsx file here</div>
             <div className={styles.dropzoneSub}>or click to browse · .xlsx only, up to 5 MB</div>
-            <input
-              ref={fileInputRef}
-              type="file"
-              accept=".xlsx"
-              className={styles.hiddenInput}
-              onChange={handleFileChange}
-              aria-label="Choose .xlsx file"
-            />
+            <FileInput ref={fileInputRef} label="Choose .xlsx file" accept=".xlsx" onChange={handleFileChange} />
           </div>
 
           {file && (

@@ -10,7 +10,7 @@ import { useNavigate, useParams } from 'react-router-dom'
 import { ApiError } from '../../api/client'
 import { refundsApi, type CreateRefundInput } from '../../api/refunds'
 import { bankDetailsProblem } from '../../api/refundsRules'
-import { Banner, Button, Field } from '../../design/components'
+import { Banner, Button, Field, RadioGroup } from '../../design/components'
 import { PageHeader } from '../../shell/PageHeader'
 import styles from './customer.module.css'
 import { useInvoiceCrumb } from './useInvoiceCrumb'
@@ -96,42 +96,20 @@ export function RefundRequest(): JSX.Element {
           onChange={(e) => setReason(e.target.value)}
         />
 
-        <div>
-          <label style={{ display: 'block', fontWeight: 600, fontSize: 'var(--text-md)', marginBottom: 'var(--space-2)' }}>
-            Refund preference
-          </label>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-2)' }}>
-            <label style={{ display: 'flex', gap: 'var(--space-2)', alignItems: 'flex-start', cursor: 'pointer', fontSize: 'var(--text-md)' }}>
-              <input
-                type="radio"
-                checked={choice === 'immediate_refund'}
-                onChange={() => setChoice('immediate_refund')}
-                style={{ marginTop: 'var(--space-0-5)' }}
-              />
-              <div>
-                <strong>Bank account refund</strong>
-                <p style={{ margin: 0, color: 'var(--color-ink-4)' }}>
-                  Refunded to your bank account within 5–7 business days.
-                </p>
-              </div>
-            </label>
-            <label style={{ display: 'flex', gap: 'var(--space-2)', alignItems: 'flex-start', cursor: 'pointer', fontSize: 'var(--text-md)' }}>
-              <input
-                type="radio"
-                checked={choice === 'credit_next_shipment'}
-                onChange={() => setChoice('credit_next_shipment')}
-                style={{ marginTop: 'var(--space-0-5)' }}
-              />
-              <div>
-                <strong>Credit on next shipment</strong>
-                <p style={{ margin: 0, color: 'var(--color-ink-4)' }}>
-                  Applied automatically to your next container billing; anything left over stays as credit for the one
-                  after.
-                </p>
-              </div>
-            </label>
-          </div>
-        </div>
+        <RadioGroup
+          label="Refund preference"
+          name="refund_choice"
+          value={choice}
+          onChange={setChoice}
+          options={[
+            { value: 'immediate_refund', label: 'Bank account refund', hint: 'Refunded to your bank account within 5–7 business days.' },
+            {
+              value: 'credit_next_shipment',
+              label: 'Credit on next shipment',
+              hint: 'Applied automatically to your next container billing; anything left over stays as credit for the one after.',
+            },
+          ]}
+        />
 
         {toBank && (
           <div>

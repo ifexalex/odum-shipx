@@ -115,29 +115,16 @@ function TemplateCard({ template, onSaved }: TemplateCardProps): JSX.Element {
         </div>
       )}
 
-      <div>
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 'var(--space-2)' }}>
-          <label style={{ fontWeight: 600, fontSize: 'var(--text-md)' }}>Message body</label>
-          {isSms && <SmsCounter text={body} />}
-        </div>
-        <textarea
-          value={body}
-          onChange={(e) => setBody(e.target.value)}
-          style={{
-            width: '100%',
-            minHeight: 100,
-            padding: 'var(--space-2) var(--space-3)',
-            borderRadius: 'var(--radius-md)',
-            border: '1px solid var(--color-line-soft)',
-            background: 'var(--color-surface)',
-            fontSize: 'var(--text-md)',
-            fontFamily: 'inherit',
-            resize: 'vertical',
-            boxSizing: 'border-box',
-          }}
-          placeholder="Use {{variable}} for dynamic values e.g. {{customer_name}}, {{container_number}}"
-        />
-      </div>
+      <Field
+        label="Message body"
+        name="template_body"
+        multiline
+        rows={5}
+        value={body}
+        onChange={(e) => setBody(e.target.value)}
+        placeholder="Use {{variable}} for dynamic values e.g. {{customer_name}}, {{container_number}}"
+        helper={isSms ? <SmsCounter text={body} /> : undefined}
+      />
 
       <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
         <Button variant="primary" size="sm" loading={saving} disabled={!body.trim()} onClick={() => void handleSave()}>

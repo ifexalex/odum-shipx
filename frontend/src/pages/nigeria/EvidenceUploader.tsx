@@ -1,5 +1,5 @@
 import { type JSX, useRef, useState } from 'react'
-import { Banner, Button } from '../../design/components'
+import { Banner, Button, FileInput } from '../../design/components'
 import { useFileUpload, UPLOAD_ALLOWED_TYPES, type PresignedResponse } from '../../hooks/useFileUpload'
 import styles from './EvidenceUploader.module.css'
 
@@ -56,11 +56,10 @@ export function EvidenceUploader({ getPresignedUrl, confirmUpload, onUploaded, d
 
   return (
     <div className={styles.uploader}>
-      <input
+      <FileInput
         ref={inputRef}
-        type="file"
+        label="Attach a file"
         accept={UPLOAD_ALLOWED_TYPES.join(',')}
-        className={styles.hiddenInput}
         disabled={disabled || uploading}
         onChange={(e) => {
           const file = e.target.files?.[0]

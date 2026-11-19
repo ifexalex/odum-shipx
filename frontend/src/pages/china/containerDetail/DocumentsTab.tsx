@@ -1,5 +1,5 @@
 import { useQuery } from '@tanstack/react-query'
-import { useState, type JSX } from 'react'
+import { useRef, useState, type JSX } from 'react'
 import { ApiError } from '../../../api/client'
 import { containerKeys } from '../../../api/keys'
 import { STALE_30S } from '../../../lib/queryClient'
@@ -9,7 +9,7 @@ import {
   type ContainerDocument,
   type ContainerDocumentType,
 } from '../../../api/tracking'
-import { Banner, Button, Card, Mono, Table, DialogGuard } from '../../../design/components'
+import { Banner, Button, Card, Mono, Table, DialogGuard, Select, FileInput } from '../../../design/components'
 import { SectionHead } from '../../../shell/SectionHead'
 import styles from '../ContainerDetail.module.css'
 import { formatDate } from '../../../lib/format'
@@ -63,6 +63,7 @@ export function DocumentsTab({
   const [showUpload, setShowUpload] = useState(false)
   const [docType, setDocType] = useState<ContainerDocumentType>('bill_of_lading')
   const [file, setFile] = useState<File | null>(null)
+  const fileRef = useRef<HTMLInputElement>(null)
   const [uploading, setUploading] = useState(false)
   // Shown inside the upload dialog: the page's own banner sits behind the dialog's overlay, where a refused file or a
   // failed upload read as "nothing happened".
@@ -204,25 +205,7 @@ export function DocumentsTab({
             )}
 
             <div>
-              <label
-                style={{
-                  fontWeight: 600,
-                  fontSize: 'var(--text-md)',
-                  display: 'block',
-                  marginBottom: 'var(--space-2)',
-                }}
-              >
-                Document type <span style={{ color: 'var(--color-error)' }}>*</span>
-              </label>
-              <select
-                style={{
-                  width: '100%',
-                  padding: 'var(--space-2) var(--space-3)',
-                  borderRadius: 'var(--radius-md)',
-                  border: '1px solid var(--color-line)',
-                  background: 'var(--color-surface)',
-                  fontSize: 'var(--text-md)',
-                }}
+              <Select label="Document type"
                 value={docType}
                 onChange={(e) => setDocType(e.target.value as ContainerDocumentType)}
               >
@@ -231,28 +214,26 @@ export function DocumentsTab({
                     {t.label}
                   </option>
                 ))}
-              </select>
+              </Select>
             </div>
 
             <div style={{ marginTop: 'var(--space-3)' }}>
-              <label
-                style={{
-                  fontWeight: 600,
-                  fontSize: 'var(--text-md)',
-                  display: 'block',
-                  marginBottom: 'var(--space-2)',
-                }}
-              >
-                File <span style={{ color: 'var(--color-error)' }}>*</span>
-              </label>
-              <input
-                type="file"
+              <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-3)', flexWrap: 'wrap' }}>
+                <Button variant="secondary" icon="upload" onClick={() => fileRef.current?.click()}>
+                  {file ? 'Choose another file' : 'Choose file'}
+                </Button>
+                <span style={{ fontSize: 'var(--text-sm)', color: file ? 'var(--color-ink)' : 'var(--color-ink-4)' }}>
+                  {file ? file.name : 'No file chosen'}
+                </span>
+              </div>
+              <FileInput
+                ref={fileRef}
+                label="Document file"
                 accept={DOC_ACCEPT}
                 onChange={(e) => {
                   setFile(e.target.files?.[0] ?? null)
                   setUploadError(null)
                 }}
-                style={{ fontSize: 'var(--text-sm)' }}
               />
               <div style={{ fontSize: 'var(--text-xs)', color: 'var(--color-ink-4)', marginTop: 'var(--space-2)' }}>
                 Accepted: PDF, JPG, PNG, WebP · max 5 MB

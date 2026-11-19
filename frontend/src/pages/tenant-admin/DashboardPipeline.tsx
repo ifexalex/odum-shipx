@@ -12,7 +12,7 @@ import { useNavigate } from 'react-router-dom'
 import { } from '../../api/containerRules'
 import { type ContainerStats, type ContainerStatus } from '../../api/tracking'
 import { useContainerList } from '../../hooks/useContainers'
-import { Button, Card, Chip, Icon, ListFooter, Mono, StatusBadge, Table, Pressable } from '../../design/components'
+import { Button, Card, Chip, ListFooter, Mono, StatusBadge, Table, Pressable, SearchField } from '../../design/components'
 import { SectionHead } from '../../shell/SectionHead'
 import styles from './DashboardPipeline.module.css'
 import { isoDateOffset, formatDate } from '../../lib/format'
@@ -122,21 +122,7 @@ export function ContainerPipeline({ counts }: { counts: ContainerStats | undefin
       </div>
 
       <div className={styles.toolbar}>
-        <div className={styles.searchWrap}>
-          <Icon name="search" size={14} color="var(--color-ink-4)" />
-          <input
-            className={styles.searchInput}
-            placeholder="Search container number or vessel…"
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            aria-label="Search containers"
-          />
-          {search && (
-            <Pressable className={styles.searchClear} aria-label="Clear search" onClick={() => setSearch('')}>
-              <Icon name="x" size={13} color="var(--color-ink-4)" />
-            </Pressable>
-          )}
-        </div>
+        <SearchField label="Search containers" placeholder="Search container number or vessel…" value={search} onChange={setSearch} />
         <div className={styles.etaChips}>
           <span className={styles.etaLabel}>Arriving</span>
           <Chip active={etaPreset === null} onClick={() => setEtaPreset(null)}>Any</Chip>

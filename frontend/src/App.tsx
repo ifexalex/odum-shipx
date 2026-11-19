@@ -69,7 +69,11 @@ function App(): JSX.Element {
     return <DesignPreview />
   }
   if (import.meta.env.DEV && window.location.pathname === '/component-catalog') {
-    return <ComponentCatalog />
+    return (
+      <BrowserRouter>
+        <ComponentCatalog />
+      </BrowserRouter>
+    )
   }
   if (import.meta.env.DEV && window.location.pathname === '/auth-preview') {
     return (

@@ -97,3 +97,7 @@ If the Storybook/component-catalog route from Task 03 exists, a lightweight scre
 ## Button rules (FD-07, 2026-11-19)
 
 `src/design/buttonRules.test.ts` (4): no raw `<button>` in pages, accent only on paying/sign-in screens, no typed arrow ending a label. `Action.test.tsx` (+2) covers read-only on plain Buttons and IconButtons and no blocking without a session; `Button.test.tsx` (+2), `IconButton.test.tsx` (2). Page tests updated for links (auth footers, work queue rows, audit log) and the disabled-button form of read-only (`readonly-impersonation.test.tsx`). Phone audit after the height change: every page fits at 375/360/320.
+
+## Form rules and named controls (FD-11, FD-50, 2026-11-19)
+
+`src/design/formRules.test.ts` (4) and `src/design/components/FieldFamily.test.tsx` (13). Page tests updated: date-range tests open the filter popover before typing a custom date and expect the button to read "Since …"; selectors by label text instead of DOM structure (rates, brand colour, collected-by); the `Account` language choice is a named radio group. The phone audit doubles as the FD-50 automated pass: it lists every unnamed control per route and fails on any.

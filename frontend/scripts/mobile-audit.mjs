@@ -10,6 +10,9 @@
  *   node scripts/mobile-audit.mjs            # 375, 360 and 320 px
  *   node scripts/mobile-audit.mjs 360 /billing   # one width, routes containing "/billing"
  *
+ * It also fails a page with an unnamed control (FD-50): a button, link, input, select, switch or checkbox whose
+ * accessible name is empty (no label, aria-label, text or title).
+ *
  * Exit code 1 when any page fails.
  */
 import { chromium } from 'playwright'
@@ -88,16 +91,39 @@ for (const WIDTH of WIDTHS) {
     }
     return { docOverflow, offenders: out.slice(0, 8), sideways }
   })
-    const bad = found.docOverflow > 1 || found.offenders.length || found.sideways.some((x) => !x.table)
+    const unnamed = await page.evaluate(() => {
+      const selector =
+        'button, a[href], input:not([type="hidden"]), select, textarea, [role="button"], [role="switch"], [role="checkbox"], [role="radio"], [role="combobox"], [role="tab"]'
+      const textOf = (id) => document.getElementById(id)?.textContent ?? ''
+      const out = []
+      for (const el of document.querySelectorAll(selector)) {
+        if (!el.getClientRects().length && el.getAttribute('type') !== 'file') continue
+        const name = [
+          el.getAttribute('aria-label'),
+          (el.getAttribute('aria-labelledby') || '').split(/\s+/).filter(Boolean).map(textOf).join(' '),
+          el.labels ? [...el.labels].map((l) => l.textContent).join(' ') : '',
+          el.tagName === 'INPUT' ? '' : el.textContent,
+          el.getAttribute('title'),
+          el.querySelector('img[alt]')?.getAttribute('alt'),
+        ]
+          .filter(Boolean)
+          .join(' ')
+          .trim()
+        if (!name) out.push(`${el.tagName.toLowerCase()}${el.getAttribute('role') ? `[role=${el.getAttribute('role')}]` : ''}.${String(el.className).split(' ')[0]}`)
+      }
+      return out.slice(0, 6)
+    })
+    const bad = found.docOverflow > 1 || found.offenders.length || found.sideways.some((x) => !x.table) || unnamed.length
     if (bad) {
       failures++
       console.log(`FAIL ${r.path} (${role ?? 'public'})`)
       for (const o of found.offenders) console.log(`     sticks out: ${o.el} to ${o.right}px "${o.text}"`)
       for (const x of found.sideways.filter((y) => !y.table)) console.log(`     scrolls sideways: ${x.el} +${x.by}px; ${(x.culprits || []).join('; ')}`)
+      for (const u of unnamed) console.log(`     unnamed control: ${u}`)
     }
     await page.close()
   }
 }
 await browser.close()
-console.log(failures ? `${failures} page(s) fail` : 'every page fits')
+console.log(failures ? `${failures} page(s) fail` : 'every page fits, and every control is named')
 process.exit(failures ? 1 : 0)

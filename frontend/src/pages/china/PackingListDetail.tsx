@@ -8,7 +8,7 @@ import { packingListKeys } from '../../api/keys'
 import { STALE_30S } from '../../lib/queryClient'
 import { canApproveOrReject, canEditPackingList, computeCbm, formatPackageMix, formatPackageUnit } from '../../api/packingListRules'
 import { useSession } from '../../auth/useSession'
-import { Badge, Banner, Button, Card, DialogGuard, ExportButton, Field, Icon, Mono, StatusBadge, Table, IconButton } from '../../design/components'
+import { Badge, Banner, Button, Card, DialogGuard, ExportButton, Field, Icon, Mono, StatusBadge, Table, IconButton, CellInput } from '../../design/components'
 import { SectionHead } from '../../shell/SectionHead'
 import styles from './PackingListDetail.module.css'
 import { formatDate } from '../../lib/format'
@@ -366,7 +366,8 @@ export function PackingListDetail(): JSX.Element {
                     <span key="tag" className={styles.tagReadOnly}>
                       {pl.items[index]?.carton_tag ?? <em className={styles.newItemTag}>New</em>}
                     </span>,
-                    <input
+                    <CellInput
+                        label={`Description, item ${index + 1}`}
                       key="desc"
                       className={styles.cellInput}
                       value={item.description}
@@ -374,7 +375,8 @@ export function PackingListDetail(): JSX.Element {
                       onChange={(e) => updateEditItem(index, { description: e.target.value })}
                     />,
                     <PackageCell key="pkg" item={pl.items[index]} />,
-                    <input
+                    <CellInput
+                        label={`Actual weight (kg), item ${index + 1}`}
                       key="weight"
                       className={styles.cellInputNumber}
                       type="number"
@@ -382,21 +384,24 @@ export function PackingListDetail(): JSX.Element {
                       onChange={(e) => updateEditItem(index, { weight_actual_kg: Number(e.target.value) || undefined })}
                     />,
                     <div key="dim" className={styles.dimRow}>
-                      <input
+                      <CellInput
+                        label={`Length (cm), item ${index + 1}`}
                         className={styles.dimInput}
                         type="number"
                         value={item.length_cm ?? ''}
                         onChange={(e) => updateEditItem(index, { length_cm: Number(e.target.value) || undefined })}
                       />
                       <span>×</span>
-                      <input
+                      <CellInput
+                        label={`Width (cm), item ${index + 1}`}
                         className={styles.dimInput}
                         type="number"
                         value={item.width_cm ?? ''}
                         onChange={(e) => updateEditItem(index, { width_cm: Number(e.target.value) || undefined })}
                       />
                       <span>×</span>
-                      <input
+                      <CellInput
+                        label={`Height (cm), item ${index + 1}`}
                         className={styles.dimInput}
                         type="number"
                         value={item.height_cm ?? ''}
@@ -406,7 +411,8 @@ export function PackingListDetail(): JSX.Element {
                     <Mono key="cbm" color="var(--color-success)">
                       {liveCbm != null ? liveCbm.toFixed(3) : '—'}
                     </Mono>,
-                    <input
+                    <CellInput
+                        label={`Declared value (USD), item ${index + 1}`}
                       key="usd"
                       className={styles.cellInputNumber}
                       type="number"
