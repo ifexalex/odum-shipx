@@ -2441,3 +2441,9 @@ Found by running them: **a real bug** (invoice generation set a used credit to `
 - `tests/db/test_upload_confirmation.py` (7, real database): unconfirmed rows are not listed or downloadable, confirming keeps the first time, the refusal path never deletes a confirmed row, another tenant cannot confirm or delete a container document (RLS). `test_claim_read.py`'s fixture evidence is now confirmed. Full `make test-db`: 195 passed.
 - Frontend: `src/hooks/useFileUpload.test.ts` (4, fake XHR): confirm runs after the PUT, done only after it; its refusal is the message; a failed PUT is not confirmed. `ContainerDetail.test.tsx`: confirm after upload, and a confirm refusal shown inside the dialog.
 - End to end against a second API server on :3010 with local Moto storage (which, like Azure, does not enforce the signed length): a 6 MB body declared as 4 bytes was stored, then refused and deleted at confirm.
+
+## Tracking events export and Lambda package layout (2026-11-19)
+
+- `tests/unit/test_list_exports.py` `TestContainerEventExport` (6) and `TestContainerEventExportRoute` (7): csv and xlsx content with readable statuses and roles, a formula in a note neutralised, an event with no actor, audit on the container, 404 before any upload; routing to excel, the four reading roles allowed, a customer refused, PDF refused. Live on :3010: csv/xlsx downloaded, PDF 422.
+- `tests/unit/test_infrastructure_contracts.py` `TestLambdaPackageLayout` (10): see `18_cicd_pipeline.md` "Lambda zips carry the `services` package".
+- Frontend: `ContainerDetail.test.tsx` tracking export (2): the button exports xlsx; a failed export is shown.

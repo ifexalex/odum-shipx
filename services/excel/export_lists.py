@@ -44,3 +44,13 @@ CONTAINER_LIST_COLUMNS: list[Column] = [
     Column("seal_number", "Seal Number"),
     Column("created_at", "Created At (UTC)", "datetime"),
 ]
+
+#: A container's tracking events, oldest first: what the "Export" button on the container's tracking tab downloads.
+CONTAINER_EVENT_COLUMNS: list[Column] = [
+    Column("created_at", "Time (UTC)", "datetime"),
+    Column("from_status_label", "From"),
+    Column("to_status_label", "To"),
+    Column("actor_name", "Updated By"),
+    Column("actor_role_label", "Role"),
+    Column("notes", "Notes"),
+]

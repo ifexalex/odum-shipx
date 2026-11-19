@@ -157,6 +157,7 @@ locals {
     "GET /v1/manifests/{id}/export"               = "excel"
     "GET /v1/billing/{id}/export"                 = "excel"
     "GET /v1/containers/{id}/billing/export"      = "excel"
+    "GET /v1/containers/{id}/events/export"       = "excel"
     # Whole-list exports: a literal segment beats the {id} routes on the same path.
     "GET /v1/billing/export"    = "excel"
     "GET /v1/containers/export" = "excel"

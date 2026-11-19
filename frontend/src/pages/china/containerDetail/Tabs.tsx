@@ -2,12 +2,14 @@ import { useMemo, useState, type JSX } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { CONTAINER_STATUS_LABELS } from '../../../api/containerRules'
 import { formatCbm } from '../../../api/decimal'
-import { type ContainerStatus, type Container, type ContainerEvent } from '../../../api/tracking'
+import { containersApi, type ContainerStatus, type Container, type ContainerEvent } from '../../../api/tracking'
 import { formatPackageMix } from '../../../api/packingListRules'
 import {
   Badge,
+  Banner,
   Button,
   Card,
+  ExportButton,
   Mono,
   Table,
   UserCell,
@@ -20,6 +22,7 @@ import { formatDate, formatTime } from '../../../lib/format'
 import { eventLabel, eventBadgeVariant, humanRole, PL_STATUS_VARIANT } from './labels'
 import { ContainerStepper } from './Timeline'
 import { type PackingList } from '../../../api/packingList'
+import { useListExport } from '../../../hooks/useListExport'
 
 /** Every packing list on the container, sortable by reference. */
 export function PackingListsTab({
@@ -122,6 +125,7 @@ export function TrackingTab({
   container: Container
   events: ContainerEvent[]
 }): JSX.Element {
+  const exportEvents = useListExport((format: 'xlsx' | 'csv') => containersApi.exportEvents(container.id, format))
   return (
     <>
       <Card>
@@ -138,13 +142,14 @@ export function TrackingTab({
           <SectionHead
             title="Event log"
             sub="All tracking events, newest first"
-            action={
-              <Button variant="secondary" size="sm" icon="download">
-                Export
-              </Button>
-            }
+            action={<ExportButton formats={['xlsx', 'csv']} size="sm" onExport={exportEvents.onExport} />}
           />
         </div>
+        {exportEvents.error && (
+          <Banner variant="error" title="Couldn't export the event log" dismissible onDismiss={exportEvents.dismissError}>
+            {exportEvents.error}
+          </Banner>
+        )}
         <Table
           columns={[
             { title: 'Timestamp' },

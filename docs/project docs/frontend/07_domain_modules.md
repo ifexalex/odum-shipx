@@ -1828,3 +1828,7 @@ Test harness: `src/test/setup.ts` sets Testing Library's `asyncUtilTimeout` to 3
 ## Uploads are confirmed after they land (2026-11-19)
 
 `useFileUpload` takes an optional `confirmUpload(presigned)` (not `confirm`: `shell/dialogs.test.ts` flags any bare `confirm(` call as a native dialog), called after a successful PUT; the upload is `done` only once it resolves, and its error message (e.g. the API's "The file is larger than 5 MB.") is what the uploader shows. `EvidenceUploader` takes `confirmUpload(evidenceId)`; claim evidence (`ClaimDetail` both uploaders, `MyClaimsNew`) passes `presignedUploadApi.confirm`, manifest evidence (`ManifestDetail`) `manifestApi.confirmEvidence`. Payment-claim evidence has no confirm: its size is checked when the claim is submitted. `DocumentsTab` calls `containerDocumentsApi.confirmUpload` after `uploadToPresignedUrl`; its manual list invalidation is gone, because the confirm POST invalidates the container keys through `api/client.ts`. Before, a file whose upload failed or was abandoned was still listed, with a link that did not open.
+
+## Container tracking tab export (2026-11-19)
+
+The event log's Export button (`containerDetail/Tabs.tsx` `TrackingTab`) was a plain button with no handler. It is now an `ExportButton` (xlsx, csv) calling `containersApi.exportEvents(id, format)` → `GET /v1/containers/{id}/events/export`, through `useListExport`, so a failure shows as a dismissible error banner above the table. Tests: `ContainerDetail.test.tsx` "ContainerDetail tracking export".

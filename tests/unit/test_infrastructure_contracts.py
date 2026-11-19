@@ -15,6 +15,9 @@ dropped because `metering` was never exposed to the API Gateway module.
 
 import ast
 import re
+import shutil
+import subprocess
+import sys
 from pathlib import Path
 
 import pytest
@@ -156,6 +159,61 @@ class TestLambdaHandlers:
             f"{key}: Terraform sets handler '{handler}' but {source.relative_to(ROOT)} defines no "
             f"'{function}' — every invocation would fail with Runtime.HandlerNotFound"
         )
+
+
+CI_WORKFLOW = ROOT / ".github/workflows/ci.yml"
+DEPLOY_WORKFLOW = ROOT / ".github/workflows/_deploy-env.yml"
+
+
+def _zip_layout(target: Path) -> None:
+    """The tree CI zips for every Lambda: services/ flattened at the root, plus the `services` package."""
+    ignore = shutil.ignore_patterns("__pycache__", "*.pyc")
+    shutil.copytree(ROOT / "services", target, ignore=ignore, dirs_exist_ok=True)
+    shutil.copytree(ROOT / "services", target / "services", ignore=ignore)
+    shutil.copytree(ROOT / "shared", target / "shared", ignore=ignore)  # the shared layer, on the path in Lambda
+
+
+class TestLambdaPackageLayout:
+    """Lambda imports a handler as `tracking.handler`; that module imports `services.billing.service`. Both must
+    resolve from the zip. With services/ only flattened, tracking, claims and excel failed with
+    "No module named 'services'" (found 2026-11-19)."""
+
+    def test_every_configured_handler_imports_in_the_zip_layout(self, tmp_path):
+        _zip_layout(tmp_path)
+        modules = sorted({config["handler"].rsplit(".", 1)[0] for config in _lambda_configs().values()})
+        script = (
+            "import importlib, sys\n"
+            "sys.path.insert(0, sys.argv[1])\n"
+            "bad = []\n"
+            "for name in sys.argv[2:]:\n"
+            "    try:\n"
+            "        importlib.import_module(name)\n"
+            "    except Exception as exc:\n"
+            "        bad.append(f'{name}: {type(exc).__name__}: {exc}')\n"
+            "print('\\n'.join(bad))\n"
+            "sys.exit(1 if bad else 0)\n"
+        )
+        # -I: the repo root (and its `services` package) must not leak onto the path; the zip layout alone counts.
+        result = subprocess.run(  # noqa: S603 - fixed argv: this interpreter, a test script, module names from Terraform
+            [sys.executable, "-I", "-c", script, str(tmp_path), *modules], capture_output=True, text=True, timeout=120
+        )
+        assert result.returncode == 0, "Handlers that would not import in Lambda:\n" + result.stdout + result.stderr[-2000:]
+
+    def test_ci_zips_carry_the_services_package(self):
+        workflow = CI_WORKFLOW.read_text()
+        flattened = re.findall(r"zip -r \.\./build/(\S+?)\.zip \. ", workflow)
+        packaged = re.findall(r"zip -r build/(\S+?)\.zip services ", workflow)
+        assert flattened, "no service zip step parsed from ci.yml — the parser is broken"
+        assert flattened == packaged, f"every zip needs the `services` package too: {flattened} vs {packaged}"
+
+    @pytest.mark.parametrize(
+        "key", sorted(key for key, config in _lambda_configs().items() if config["handler"].startswith("scheduled."))
+    )
+    def test_every_scheduled_lambda_is_built_and_deployed(self, key):
+        build_list = re.search(r"for job in ([^;]+); do", CI_WORKFLOW.read_text())
+        assert build_list, "no scheduled-job build loop parsed from ci.yml — the parser is broken"
+        assert key in build_list.group(1).split(), f"ci.yml builds no scheduled-{key}.zip, so its code is never shipped"
+        assert re.search(rf'"[\w-]+:{key}"', DEPLOY_WORKFLOW.read_text()), f"_deploy-env.yml never deploys {key}"
 
 
 EVENTBRIDGE_TF = ROOT / "infrastructure/aws/modules/eventbridge/main.tf"

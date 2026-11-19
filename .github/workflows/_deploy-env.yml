@@ -155,7 +155,8 @@ jobs:
             "storage-reminders:storage_reminders" \
             "data-cleanup:data_cleanup" \
             "usage-aggregation:usage_aggregation" \
-            "release-expiry:release_expiry"; do
+            "release-expiry:release_expiry" \
+            "offboarding-export:offboarding_export"; do
             fn_suffix="${entry%%:*}"
             job_key="${entry##*:}"
             deploy_fn "logistics-${fn_suffix}-${ENV}" "scheduled-${job_key}"

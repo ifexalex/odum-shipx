@@ -24,7 +24,7 @@ function TopBarWrapper({ children }: { children: ReactNode }) {
 }
 
 vi.mock('../../api/tracking', () => ({
-  containersApi: { get: vi.fn(), updateStatus: vi.fn(), events: vi.fn() },
+  containersApi: { get: vi.fn(), updateStatus: vi.fn(), events: vi.fn(), exportEvents: vi.fn() },
   containerDocumentsApi: { list: vi.fn(), presignUpload: vi.fn(), confirmUpload: vi.fn(), downloadUrl: vi.fn() },
   uploadToPresignedUrl: vi.fn(),
 }))
@@ -483,3 +483,36 @@ describe('ContainerDetail document upload (audit BE-12)', () => {
   })
 })
 
+describe('ContainerDetail tracking export', () => {
+  beforeEach(() => {
+    vi.mocked(containersApi.get).mockResolvedValue(containerStub)
+    vi.mocked(containersApi.events).mockResolvedValue([])
+    vi.mocked(packingListApi.listByContainer).mockResolvedValue({
+      data: [],
+      meta: { pagination: { has_more: false, next_cursor: null, total_count: 0 } },
+    })
+    vi.mocked(containerDocumentsApi.list).mockResolvedValue([])
+    vi.mocked(containersApi.exportEvents).mockReset()
+  })
+
+  it("exports the container's event log (the button used to do nothing)", async () => {
+    vi.mocked(containersApi.exportEvents).mockResolvedValue()
+    renderPage('china_office_staff')
+    await userEvent.click(await screen.findByRole('tab', { name: /Tracking/ }))
+    await userEvent.click(await screen.findByRole('button', { name: 'Export' }))
+    expect(containersApi.exportEvents).toHaveBeenCalledWith('c1', 'xlsx')
+  })
+
+  it('shows a failed export instead of swallowing it', async () => {
+    vi.mocked(containersApi.exportEvents).mockRejectedValue(
+      new ApiError(
+        { type: 'about:blank', title: 'Not Found', status: 404, detail: 'container not found', error_code: 'NOT_FOUND' },
+        null,
+      ),
+    )
+    renderPage('china_office_staff')
+    await userEvent.click(await screen.findByRole('tab', { name: /Tracking/ }))
+    await userEvent.click(await screen.findByRole('button', { name: 'Export' }))
+    expect(await screen.findByText('container not found')).toBeInTheDocument()
+  })
+})

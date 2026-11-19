@@ -136,6 +136,10 @@ export const containersApi = {
   exportList: (params: ContainerExportParams, format: Exclude<ExportFormat, 'pdf'>) =>
     apiDownloadFile('/v1/containers/export', format, `containers.${format}`, params as Record<string, string | undefined>),
 
+  /** The tracking tab's event log, oldest first, as xlsx or csv (GET /v1/containers/{id}/events/export). */
+  exportEvents: (id: string, format: Exclude<ExportFormat, 'pdf'>) =>
+    apiDownloadFile(`/v1/containers/${id}/events/export`, format, `tracking-${id}.${format}`),
+
   /** Tenant-wide per-status counts for the list stats row + chips — staff only,
    *  SQL-computed so it stays correct as containers grow past a single page. */
   stats: () => apiRequest<ContainerStats>({ method: 'GET', path: '/v1/containers/stats' }),

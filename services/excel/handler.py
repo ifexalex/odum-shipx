@@ -7,6 +7,8 @@ Routes:
   GET  /v1/payments/{id}/receipt/pdf          — nigeria_office_staff, tenant_admin, customer (own only)
   GET  /v1/manifests/{id}/export              — china_office_staff, nigeria_office_staff, tenant_admin
   GET  /v1/billing/{id}/export                — nigeria_office_staff, tenant_admin, customer (own only)
+  GET  /v1/containers/{id}/events/export      — tenant_admin, nigeria/china office staff, warehouse_attendant
+                                                 (the tracking tab's event log; xlsx or csv)
   GET  /v1/containers/{id}/billing/export     — nigeria_office_staff, tenant_admin (all customers on the
                                                  container — never customer-facing)
   GET  /v1/billing/export                     — tenant_admin only (the invoice list's
@@ -70,6 +72,13 @@ _BILLING_SINGLE_EXPORT_ROLES = (*_BILLING_EXPORT_ROLES, UserRole.CUSTOMER)
 # 2026-11-17). Nigeria staff export one invoice or one container's billing.
 _BILLING_LIST_EXPORT_ROLES = (UserRole.TENANT_ADMIN,)
 _IMPORT_ROLES = (UserRole.CHINA_OFFICE_STAFF,)
+# Everyone who can read a container's events (GET /v1/containers/{id}/events) can export them.
+_EVENT_EXPORT_ROLES = (
+    UserRole.TENANT_ADMIN,
+    UserRole.NIGERIA_OFFICE_STAFF,
+    UserRole.CHINA_OFFICE_STAFF,
+    UserRole.WAREHOUSE_ATTENDANT,
+)
 _PL_PDF_ROLES = (
     UserRole.CHINA_OFFICE_STAFF,
     UserRole.NIGERIA_OFFICE_STAFF,
@@ -315,6 +324,16 @@ def _dispatch(
         ctx.assert_role(*_BILLING_SINGLE_EXPORT_ROLES)
         customer_user_id = ctx.user_id if ctx.role == UserRole.CUSTOMER else None
         result = service.export_billing(tenant_id, parts[2], fmt=fmt, customer_user_id=customer_user_id)
+        return success(result, request_id=request_id)
+
+    # GET /v1/containers/{id}/events/export — the tracking tab's event log, xlsx or csv
+    if resource == "containers" and len(parts) == 5 and parts[3] == "events" and parts[4] == "export" and method == "GET":
+        ctx.assert_role(*_EVENT_EXPORT_ROLES)
+        if fmt == "pdf":
+            from shared.exceptions import ValidationError
+
+            raise ValidationError("Invalid export format", field_errors={"format": "Must be one of: xlsx, csv."})
+        result = service.export_container_events(tenant_id, parts[2], fmt=fmt, actor_id=ctx.user_id, actor_role=str(ctx.role))
         return success(result, request_id=request_id)
 
     # GET /v1/containers/{id}/billing/export

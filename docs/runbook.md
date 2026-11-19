@@ -1160,3 +1160,8 @@ Tune the notice with `FX_RATE_MAX_AGE_MINUTES` (default 120).
 ## Encrypted fields that would not decrypt (found and fixed 2026-11-17)
 
 `shared/encryption.py` stores `wrapped data key || Fernet ciphertext`. `decrypt_field` split at the **first** `||`, but the wrapped key is binary (KMS `CiphertextBlob` / Key Vault wrap output) and contains `||` in roughly 1 of every 300 keys, so those values (`pickup_record.id_number`, `refund_request.account_number` / `account_name`) raised on every read. It now splits at the **last** `||` (the Fernet part is base64url and never contains `|`), which also reads every value written before the fix: no data was lost, nothing needs re-encrypting. Found through `test_azure_keyvault_provider.py::test_integrates_with_the_real_fernet_envelope` failing intermittently; `TestAWrappedKeyContainingTheSeparator` pins it. If staff reported an ID number or bank detail that "could not be shown", it was this.
+
+## Lambdas that could not import their own service (found and fixed 2026-11-19)
+
+**Severity: HIGH on AWS, before go-live; not applicable on Azure.** CI zipped `services/` flattened, so handler modules loaded but any `from services.<other> import …` raised `No module named 'services'`. Tracking and claims failed at cold start (every request 502); packing-list approval and the import's customer invites would have failed when reached. The offboarding-export Lambda was also never built or deployed by CI. **Fixed:** zips carry the `services` package as well (`ci.yml`, `scripts/build_lambda_zip.sh`); offboarding export added to the build and deploy lists; guarded by `TestLambdaPackageLayout`. **On the next AWS deploy:** call `GET /v1/containers` and `GET /v1/claims` once and check CloudWatch for `Runtime.ImportModuleError`.
+

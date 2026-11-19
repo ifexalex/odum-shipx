@@ -1383,3 +1383,12 @@ Now `ci.yml` runs `scripts/check_coverage.py coverage.xml` right after the unit 
 Shown locally: running the unit tests without `test_billing.py` and `test_invoice_credits.py` drops `services/billing` to 29.6 % and the check exits 1. Not yet seen failing in GitHub Actions itself.
 
 Frontend: there is no coverage number to hold (vitest runs without coverage). Instead `src/pages/untestedPages.test.ts` lists the 18 pages that still have no sibling test and fails when a new untested page appears, or when a listed page gains a test and is not removed from the list. The money-moving pages that had none (`MyBilling`, `RefundRequest`, `CarryoverLedger`) and the platform tenant page now have tests.
+
+## Lambda zips carry the `services` package (2026-11-19)
+
+**Bug found and fixed (HIGH on AWS, before go-live):** each service zip was `services/` flattened at the root, so the handler `tracking.handler` resolved but its `from services.billing.service import …` did not. The tracking and claims Lambdas failed at import (`No module named 'services'`), and lazy cross-service imports (packing-list approval → payment_release, customer invites from the import) would have failed when reached. Azure was not affected (its container image has the whole tree).
+
+- `ci.yml` "Build service zips" and "Build scheduled job zips" now add the `services/` tree a second time, as the package, to each zip; `scripts/build_lambda_zip.sh` does the same for the Terraform-built package. Handler paths are unchanged.
+- The offboarding-export Lambda (`scheduled.offboarding_export`, audit BE-10) existed in Terraform but was never built or deployed by CI; it is in both lists now.
+- Guarded by `tests/unit/test_infrastructure_contracts.py::TestLambdaPackageLayout`: every Terraform-configured handler is imported, isolated (`python -I`), from a copy of the zip layout; every zip step must add the package; every scheduled Lambda must be built and deployed. Both workflow checks fail on the previous workflows.
+- Note: the Terraform fallback (`archive_file` over `services/` when no package was built) is still flattened only; CI's `update-function-code` replaces it on the first deploy.

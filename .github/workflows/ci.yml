@@ -227,25 +227,29 @@ jobs:
 
       - name: Build service zips
         run: |
-          # Each zip contains the full services/ tree so cross-service imports resolve
-          # (e.g. tracking imports from metering). Handler paths like
-          # "tracking.handler.lambda_handler" resolve because tracking/handler.py sits
-          # at the zip root (services/ is the zip root, not a subdirectory).
+          # Each zip holds the services/ tree twice. Flattened at the root, so handler
+          # paths like "tracking.handler.lambda_handler" resolve; and as the `services`
+          # package, so cross-service imports (`from services.billing.service import …`)
+          # resolve too. Flattened alone, tracking, claims and excel failed to import on
+          # AWS (No module named 'services'). Guarded by
+          # tests/unit/test_infrastructure_contracts.py::TestLambdaPackageLayout.
           for service in tenant_management packing_list manifest tracking billing claims \
                          payment_release refunds notification metering excel search; do
             cd services
             zip -r ../build/${service}.zip . --exclude "*/__pycache__/*" --exclude "*.pyc"
             cd ..
+            zip -r build/${service}.zip services --exclude "*/__pycache__/*" --exclude "*.pyc"
           done
 
       - name: Build scheduled job zips
         run: |
-          # Same full-services-tree approach — scheduled jobs also have intra-service imports.
+          # Same layout as the service zips: flattened, plus the `services` package.
           for job in storage_fee dispute_escalation sla_check storage_reminders \
-                     data_cleanup usage_aggregation release_expiry; do
+                     data_cleanup usage_aggregation release_expiry offboarding_export; do
             cd services
             zip -r ../build/scheduled-${job}.zip . --exclude "*/__pycache__/*" --exclude "*.pyc"
             cd ..
+            zip -r build/scheduled-${job}.zip services --exclude "*/__pycache__/*" --exclude "*.pyc"
           done
 
       - name: Build migration zip

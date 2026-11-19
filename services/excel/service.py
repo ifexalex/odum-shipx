@@ -9,6 +9,7 @@ from datetime import date, datetime, timedelta
 from io import BytesIO
 from typing import Any
 
+from services.tracking import repository as tracking_repo
 from shared import uploads
 from shared.audit import log_audit
 from shared.exceptions import BusinessRuleViolationError, ResourceNotFoundError
@@ -18,7 +19,7 @@ from shared.providers import get_storage_provider
 from . import repository as repo
 from ._tables import Column, build_csv, build_xlsx, csv_safe
 from .export_billing import generate_billing_xlsx
-from .export_lists import BILLING_LIST_COLUMNS, CONTAINER_LIST_COLUMNS
+from .export_lists import BILLING_LIST_COLUMNS, CONTAINER_EVENT_COLUMNS, CONTAINER_LIST_COLUMNS
 from .export_manifest import generate_manifest_xlsx
 from .export_packing_list import generate_packing_list_xlsx
 from .export_packing_list_pdf import generate_packing_list_pdf
@@ -344,6 +345,63 @@ def export_container_billing(tenant_id: str, container_id: str, fmt: str = "xlsx
         buf = generate_billing_xlsx(billing_rows)
 
     return _upload_and_presign(tenant_id, f"{stem}.{fmt}", buf, fmt=fmt)
+
+
+# ---------------------------------------------------------------------------
+# Tracking events export (one container)
+# ---------------------------------------------------------------------------
+
+
+def _label(code: object) -> str:
+    """A status or role code as words: ``in_transit`` → ``In transit``."""
+    text = str(code or "").replace("_", " ").strip()
+    return text[:1].upper() + text[1:]
+
+
+def export_container_events(
+    tenant_id: str, container_id: str, *, fmt: str, actor_id: str | None, actor_role: str
+) -> dict[str, Any]:
+    """A container's tracking events, oldest first, as xlsx or csv.
+
+    The rows are the event log on the container's tracking tab. Notes are typed by staff, so the writers neutralise
+    formulas (``_tables``).
+
+    Raises:
+        ResourceNotFoundError: No such container in the tenant.
+    """
+    container = repo.get_container_by_id(tenant_id, container_id)
+    if not container:
+        raise ResourceNotFoundError("container", container_id)
+
+    rows = [
+        {
+            **event,
+            "from_status_label": _label(event.get("from_status")),
+            "to_status_label": _label(event.get("to_status")),
+            "actor_role_label": _label(event.get("actor_role")),
+        }
+        for event in tracking_repo.get_container_events(tenant_id, container_id)
+    ]
+    container_number = str(container.get("container_number") or "")
+    buf = (
+        build_csv(CONTAINER_EVENT_COLUMNS, rows)
+        if fmt == "csv"
+        else build_xlsx(f"Tracking {container_number}"[:31], CONTAINER_EVENT_COLUMNS, rows)
+    )
+    stem = f"{_safe_name(repo.get_tenant_display_name(tenant_id))}_tracking_{_safe_name(container_number)}_{date.today():%Y%m%d}"
+    result = _upload_and_presign(tenant_id, f"{stem}.{fmt}", buf, fmt=fmt)
+    result["row_count"] = len(rows)
+
+    log_audit(
+        tenant_id=tenant_id,
+        entity_type="container",
+        entity_id=container_id,
+        action="EXPORT",
+        actor_id=actor_id,
+        actor_role=actor_role,
+        after_state={"scope": "tracking_events", "format": fmt, "row_count": len(rows), "filename": result["filename"]},
+    )
+    return result
 
 
 # ---------------------------------------------------------------------------

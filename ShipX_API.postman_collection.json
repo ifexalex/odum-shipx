@@ -2460,6 +2460,46 @@
             },
             "description": "GET /v1/containers/{id}/documents/{doc-id}/download — 5-minute attachment link. An unconfirmed document is a 404."
           }
+        },
+        {
+          "name": "Export Tracking Events",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "X-Tenant-ID",
+                "value": "{{tenant_id}}"
+              },
+              {
+                "key": "X-Role",
+                "value": "china_office_staff"
+              },
+              {
+                "key": "X-User-ID",
+                "value": "{{user_id}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/v1/containers/{{container_id}}/events/export?format=xlsx",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "v1",
+                "containers",
+                "{{container_id}}",
+                "events",
+                "export"
+              ],
+              "query": [
+                {
+                  "key": "format",
+                  "value": "xlsx"
+                }
+              ]
+            },
+            "description": "GET /v1/containers/{id}/events/export?format=xlsx|csv — tenant_admin, nigeria/china office staff, warehouse_attendant. The tracking tab's event log; returns {filename, download_url, row_count}. PDF → 422."
+          }
         }
       ]
     },

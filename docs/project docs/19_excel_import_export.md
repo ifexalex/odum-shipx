@@ -710,3 +710,6 @@ already a documented response field via `packing_list.*`).
 
 Both imports (`POST /v1/packing-lists/import`, the manifest import) check the stored file's size before reading it (`check_stored_size`), refusing over 5 MB.
 
+## Container tracking events export (2026-11-19)
+
+**New route:** `GET /v1/containers/{id}/events/export?format=xlsx|csv` (excel service) — tenant_admin, nigeria_office_staff, china_office_staff, warehouse_attendant (everyone who can read `GET /v1/containers/{id}/events`). The container's tracking events, oldest first: Time (UTC), From, To, Updated By, Role, Notes; statuses and roles in words ("In transit", "China office staff"). Notes are staff-typed, so formulas are neutralised (`_tables`). Response: `{filename, download_url, expires_at, file_size_bytes, format, row_count}`; filename `{tenant}_tracking_{container_number}_{yyyymmdd}`. PDF → 422. Audited as `EXPORT` on the container (`scope: tracking_events`). Another tenant's container → 404. Columns: `CONTAINER_EVENT_COLUMNS` in `export_lists.py`; service `export_container_events`, which reads `services.tracking.repository.get_container_events` (one query for both the tab and the file).
