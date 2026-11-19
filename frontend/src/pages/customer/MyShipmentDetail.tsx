@@ -205,7 +205,7 @@ export function MyShipmentDetail(): JSX.Element {
             rows={pl.items.map((item) => ({
               cells: [
                 <Mono key="tag">{item.carton_tag ?? item.tracking_code ?? '—'}</Mono>,
-                <span key="desc" style={{ fontSize: 13 }}>{item.description}</span>,
+                <span key="desc" style={{ fontSize: 'var(--text-sm)' }}>{item.description}</span>,
                 <Mono key="wt">
                   {item.weight_actual_kg ?? item.weight_dispatch_kg
                     ? `${Number(item.weight_actual_kg ?? item.weight_dispatch_kg).toFixed(1)} kg`
@@ -216,7 +216,7 @@ export function MyShipmentDetail(): JSX.Element {
                 </Mono>,
               ],
             }))}
-            emptyState={<span style={{ fontSize: 13, color: 'var(--color-ink-3)' }}>No cartons recorded yet.</span>}
+            emptyState={<span style={{ fontSize: 'var(--text-sm)', color: 'var(--color-ink-3)' }}>No cartons recorded yet.</span>}
           />
         </Card>
 

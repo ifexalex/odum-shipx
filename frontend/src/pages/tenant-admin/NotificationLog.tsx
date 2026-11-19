@@ -237,18 +237,18 @@ export function NotificationLog(): JSX.Element {
               <Mono key="ts" color="var(--color-ink-2)">{fmtTs(entry.created_at)}</Mono>,
               entry.recipient_name
                 ? <UserCell key="cust" name={entry.recipient_name} email="" />
-                : <span key="cust" style={{ color: 'var(--color-ink-4)', fontSize: 13 }}>—</span>,
+                : <span key="cust" style={{ color: 'var(--color-ink-4)', fontSize: 'var(--text-sm)' }}>—</span>,
               <div key="ch" className={styles.channelCell}>
                 <Icon
                   name={entry.channel === 'email' ? 'mail' : 'phone'}
                   size={13}
                   color={CHANNEL_COLOR[entry.channel]}
                 />
-                <span style={{ fontSize: 12, color: 'var(--color-ink-2)' }}>
+                <span style={{ fontSize: 'var(--text-xs)', color: 'var(--color-ink-2)' }}>
                   {entry.channel === 'whatsapp' ? 'WhatsApp' : entry.channel.toUpperCase()}
                 </span>
               </div>,
-              <span key="ev" style={{ fontSize: 12, color: 'var(--color-ink-2)' }}>
+              <span key="ev" style={{ fontSize: 'var(--text-xs)', color: 'var(--color-ink-2)' }}>
                 {EVENT_LABELS[entry.event_type] ?? entry.event_type.replace(/_/g, ' ')}
               </span>,
               <span key="msg" className={styles.msgPreview}>

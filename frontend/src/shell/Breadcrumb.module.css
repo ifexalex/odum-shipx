@@ -1,6 +1,6 @@
 .nav {
-  font-size: 12px;
-  line-height: 1.4;
+  font-size: var(--text-xs);
+  line-height: var(--text-xs-line);
 }
 
 .list {

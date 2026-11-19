@@ -184,10 +184,10 @@ export function RegisterScreen(): JSX.Element {
         />
 
         <div style={{ marginBottom: 16 }}>
-          <span style={{ display: 'block', fontWeight: 500, fontSize: 13, color: 'var(--color-ink-2)', marginBottom: 4 }}>
+          <span style={{ display: 'block', fontWeight: 500, fontSize: 'var(--text-sm)', color: 'var(--color-ink-2)', marginBottom: 4 }}>
             Send me optional messages via
           </span>
-          <span style={{ display: 'block', fontSize: 12, color: 'var(--color-ink-3)', marginBottom: 8, lineHeight: 1.4 }}>
+          <span style={{ display: 'block', fontSize: 'var(--text-xs)', color: 'var(--color-ink-3)', marginBottom: 8, lineHeight: 'var(--leading-body)' }}>
             Announcements and offers. Updates about your shipments, invoices and claims, and account emails, are always sent.
           </span>
           <div style={{ display: 'flex', gap: 16 }}>
@@ -202,7 +202,7 @@ export function RegisterScreen(): JSX.Element {
 
         <div style={{ display: 'flex', alignItems: 'flex-start', gap: 8, margin: '8px 0 24px' }}>
           <Check checked={agreed} onChange={setAgreed} />
-          <span style={{ fontSize: 13, color: 'var(--color-ink-2)', lineHeight: 1.5 }}>
+          <span style={{ fontSize: 'var(--text-sm)', color: 'var(--color-ink-2)', lineHeight: 'var(--leading-body)' }}>
             I agree to the <a className={styles.link} href="#terms">Terms of Service</a> and{' '}
             <a className={styles.link} href="#privacy">Privacy Policy</a>.
           </span>

@@ -30,7 +30,7 @@ function TrackingTimeline({ result }: { result: PublicTrackingResult }): JSX.Ele
           padding: '6px 14px',
           borderRadius: 20,
           fontWeight: 700,
-          fontSize: '0.875rem',
+          fontSize: 'var(--text-md)',
           flexShrink: 0,
         }}>
           {stageLabelFor(result.current_stage)}
@@ -38,7 +38,7 @@ function TrackingTimeline({ result }: { result: PublicTrackingResult }): JSX.Ele
       </div>
 
       {result.stage_history.length === 0 ? (
-        <p style={{ color: 'var(--color-text-muted)', fontSize: '0.875rem' }}>
+        <p style={{ color: 'var(--color-text-muted)', fontSize: 'var(--text-md)' }}>
           No tracking events recorded yet. Check back soon.
         </p>
       ) : (

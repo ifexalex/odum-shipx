@@ -78,8 +78,8 @@ function ProfileTab({ customer, onSaved }: { customer: Customer; onSaved: (c: Cu
       <div style={{ display: 'flex', alignItems: 'center', gap: 16, marginBottom: 24 }}>
         <Avatar size={72} name={customer.name ?? 'Customer'} />
         <div>
-          <div style={{ fontFamily: 'var(--font-display)', fontWeight: 700, fontSize: 18 }}>{customer.name}</div>
-          <div style={{ fontSize: 13, color: 'var(--color-ink-3)' }}>
+          <div style={{ fontFamily: 'var(--font-display)', fontWeight: 700, fontSize: 'var(--text-xl)' }}>{customer.name}</div>
+          <div style={{ fontSize: 'var(--text-sm)', color: 'var(--color-ink-3)' }}>
             {customer.shipment_count != null ? `${customer.shipment_count} shipments` : 'Customer'}
           </div>
         </div>
@@ -207,14 +207,14 @@ function NotificationsTab({ customer, onSaved }: { customer: Customer; onSaved: 
             </div>
             <div style={{ flex: 1, minWidth: 0 }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                <span style={{ fontFamily: 'var(--font-display)', fontWeight: 700, fontSize: 14 }}>{label}</span>
+                <span style={{ fontFamily: 'var(--font-display)', fontWeight: 700, fontSize: 'var(--text-md)' }}>{label}</span>
                 {'recommended' in rest && (
-                  <span style={{ fontSize: 10, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.06em', color: 'var(--color-primary-deep)', background: 'var(--color-primary-soft)', borderRadius: 999, padding: '2px 8px' }}>
+                  <span style={{ fontSize: 'var(--text-xs)', fontWeight: 700, textTransform: 'uppercase', letterSpacing: 'var(--tracking-label)', color: 'var(--color-primary-deep)', background: 'var(--color-primary-soft)', borderRadius: 999, padding: '2px 8px' }}>
                     Recommended
                   </span>
                 )}
               </div>
-              <div style={{ fontSize: 12, color: 'var(--color-ink-3)', marginTop: 3 }}>{sub}</div>
+              <div style={{ fontSize: 'var(--text-xs)', color: 'var(--color-ink-3)', marginTop: 3 }}>{sub}</div>
             </div>
             <ToggleSwitch checked={enabled} onChange={() => toggle(key)} label={label} />
           </div>
@@ -249,8 +249,8 @@ function NotificationsTab({ customer, onSaved }: { customer: Customer; onSaved: 
                   style={{ accentColor: 'var(--color-primary)' }}
                 />
                 <span style={{ minWidth: 0 }}>
-                  <span style={{ display: 'block', fontWeight: 600, fontSize: 14 }}>{label}</span>
-                  <span style={{ display: 'block', fontSize: 12, color: 'var(--color-ink-4)' }}>{sub}</span>
+                  <span style={{ display: 'block', fontWeight: 600, fontSize: 'var(--text-md)' }}>{label}</span>
+                  <span style={{ display: 'block', fontSize: 'var(--text-xs)', color: 'var(--color-ink-4)' }}>{sub}</span>
                 </span>
               </label>
             )
@@ -333,8 +333,8 @@ function PrivacyTab({ customer }: { customer: Customer }): JSX.Element {
           <div style={{ width: 36, height: 36, borderRadius: 10, background: 'var(--color-primary-soft)', color: 'var(--color-primary)', display: 'flex', alignItems: 'center', justifyContent: 'center', marginBottom: 12 }}>
             <Icon name="download" size={16} />
           </div>
-          <div style={{ fontFamily: 'var(--font-display)', fontWeight: 700, fontSize: 14, marginBottom: 4 }}>Download your data</div>
-          <div style={{ fontSize: 12, color: 'var(--color-ink-3)', lineHeight: 1.5, marginBottom: 12 }}>
+          <div style={{ fontFamily: 'var(--font-display)', fontWeight: 700, fontSize: 'var(--text-md)', marginBottom: 4 }}>Download your data</div>
+          <div style={{ fontSize: 'var(--text-xs)', color: 'var(--color-ink-3)', lineHeight: 'var(--leading-body)', marginBottom: 12 }}>
             Get a JSON export of everything we hold — profile, shipments, billing, claims, consents.
           </div>
           <Button variant="ghost" size="sm" icon="download" loading={exporting} onClick={() => void handleExport()}>
@@ -345,8 +345,8 @@ function PrivacyTab({ customer }: { customer: Customer }): JSX.Element {
           <div style={{ width: 36, height: 36, borderRadius: 10, background: 'var(--color-primary-soft)', color: 'var(--color-primary)', display: 'flex', alignItems: 'center', justifyContent: 'center', marginBottom: 12 }}>
             <Icon name="settings" size={16} />
           </div>
-          <div style={{ fontFamily: 'var(--font-display)', fontWeight: 700, fontSize: 14, marginBottom: 4 }}>Update consent preferences</div>
-          <div style={{ fontSize: 12, color: 'var(--color-ink-3)', lineHeight: 1.5, marginBottom: 12 }}>
+          <div style={{ fontFamily: 'var(--font-display)', fontWeight: 700, fontSize: 'var(--text-md)', marginBottom: 4 }}>Update consent preferences</div>
+          <div style={{ fontSize: 'var(--text-xs)', color: 'var(--color-ink-3)', lineHeight: 'var(--leading-body)', marginBottom: 12 }}>
             Change which channels you&apos;ve consented to on the Notifications tab. Transactional messages always go through.
           </div>
         </div>
@@ -359,8 +359,8 @@ function PrivacyTab({ customer }: { customer: Customer }): JSX.Element {
             <Icon name="suspend" size={18} stroke={2.2} />
           </div>
           <div style={{ flex: 1 }}>
-            <div style={{ fontFamily: 'var(--font-display)', fontWeight: 700, fontSize: 15, color: 'var(--color-error)' }}>Delete my account</div>
-            <p style={{ fontSize: 13, color: 'var(--color-ink-2)', margin: '6px 0 12px', lineHeight: 1.55 }}>
+            <div style={{ fontFamily: 'var(--font-display)', fontWeight: 700, fontSize: 'var(--text-lg)', color: 'var(--color-error)' }}>Delete my account</div>
+            <p style={{ fontSize: 'var(--text-sm)', color: 'var(--color-ink-2)', margin: '6px 0 12px', lineHeight: 'var(--leading-body)' }}>
               Permanently erase your personal data — name, phone, email and address. Your{' '}
               <strong>billing and shipment records are kept</strong> as required by law, but they will no longer be
               linked to you. <strong>This cannot be undone.</strong>

@@ -354,9 +354,9 @@ export function ActivityLog(): JSX.Element {
           rows={entries.map((e) => ({
             cells: [
               <Mono key="ts">{formatDateTime(e.created_at, { year: false })}</Mono>,
-              <span key="entity" style={{ fontSize: 13, textTransform: 'capitalize' }}>{humanEntity(e.entity_type)}</span>,
+              <span key="entity" style={{ fontSize: 'var(--text-sm)', textTransform: 'capitalize' }}>{humanEntity(e.entity_type)}</span>,
               <Badge key="action" variant={actionVariant(e.action)}>{e.action.replace(/_/g, ' ')}</Badge>,
-              <span key="actor" style={{ fontSize: 13, color: 'var(--color-ink-3)' }}>{e.actor_name ?? (e.actor_id ? e.actor_id.slice(0, 8) : 'System')}</span>,
+              <span key="actor" style={{ fontSize: 'var(--text-sm)', color: 'var(--color-ink-3)' }}>{e.actor_name ?? (e.actor_id ? e.actor_id.slice(0, 8) : 'System')}</span>,
               (e.before_state || e.after_state) ? (
                 <Button
                   key="details"
@@ -372,7 +372,7 @@ export function ActivityLog(): JSX.Element {
             ],
           }))}
           emptyState={
-            <span style={{ color: 'var(--color-ink-3)', fontSize: 13 }}>
+            <span style={{ color: 'var(--color-ink-3)', fontSize: 'var(--text-sm)' }}>
               {loading ? 'Loading activity…' : 'No activity matches these filters.'}
             </span>
           }
@@ -387,25 +387,25 @@ export function ActivityLog(): JSX.Element {
       >
         {expandedEntry && (
           <>
-            <div style={{ fontSize: 12, color: 'var(--color-ink-3)', marginBottom: 16 }}>
+            <div style={{ fontSize: 'var(--text-xs)', color: 'var(--color-ink-3)', marginBottom: 16 }}>
               {formatDateTime(expandedEntry.created_at)}
               {' · by '}
               {expandedEntry.actor_name ?? (expandedEntry.actor_id ? expandedEntry.actor_id.slice(0, 8) : 'System')}
             </div>
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: 16 }}>
               <div>
-                <div style={{ fontSize: 11, fontWeight: 700, color: 'var(--color-ink-4)', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 6 }}>
+                <div style={{ fontSize: 'var(--text-xs)', fontWeight: 700, color: 'var(--color-ink-4)', textTransform: 'uppercase', letterSpacing: 'var(--tracking-label)', marginBottom: 6 }}>
                   Before
                 </div>
-                <pre style={{ margin: 0, fontSize: 12, fontFamily: 'var(--font-mono)', whiteSpace: 'pre-wrap', overflowX: 'auto', background: 'var(--color-page)', padding: 12, borderRadius: 8 }}>
+                <pre style={{ margin: 0, fontSize: 'var(--text-xs)', fontFamily: 'var(--font-mono)', whiteSpace: 'pre-wrap', overflowX: 'auto', background: 'var(--color-page)', padding: 12, borderRadius: 8 }}>
                   {JSON.stringify(expandedEntry.before_state ?? {}, null, 2)}
                 </pre>
               </div>
               <div>
-                <div style={{ fontSize: 11, fontWeight: 700, color: 'var(--color-ink-4)', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 6 }}>
+                <div style={{ fontSize: 'var(--text-xs)', fontWeight: 700, color: 'var(--color-ink-4)', textTransform: 'uppercase', letterSpacing: 'var(--tracking-label)', marginBottom: 6 }}>
                   After
                 </div>
-                <pre style={{ margin: 0, fontSize: 12, fontFamily: 'var(--font-mono)', whiteSpace: 'pre-wrap', overflowX: 'auto', background: 'var(--color-page)', padding: 12, borderRadius: 8 }}>
+                <pre style={{ margin: 0, fontSize: 'var(--text-xs)', fontFamily: 'var(--font-mono)', whiteSpace: 'pre-wrap', overflowX: 'auto', background: 'var(--color-page)', padding: 12, borderRadius: 8 }}>
                   {JSON.stringify(expandedEntry.after_state ?? {}, null, 2)}
                 </pre>
               </div>

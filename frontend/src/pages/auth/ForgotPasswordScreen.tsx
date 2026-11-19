@@ -66,7 +66,7 @@ export function ForgotPasswordScreen(): JSX.Element {
           </div>
           <h2 className={styles.formTitle} style={{ marginBottom: 8 }}>Check your email</h2>
           <p className={styles.formSub}>We sent a verification code to</p>
-          <p style={{ fontSize: 15, fontWeight: 600, color: 'var(--color-ink)', margin: '0 0 24px' }}>{email}</p>
+          <p style={{ fontSize: 'var(--text-lg)', fontWeight: 600, color: 'var(--color-ink)', margin: '0 0 24px' }}>{email}</p>
           <Banner variant="info" title="Code expires in 60 minutes">
             Enter the code on the next screen together with your new password.
           </Banner>

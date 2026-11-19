@@ -51,7 +51,7 @@
   outline: none;
   background: transparent;
   font-family: var(--font-body);
-  font-size: 13px;
+  font-size: var(--text-sm);
   color: var(--color-ink);
 }
 
@@ -66,7 +66,7 @@
   gap: 8px;
   margin-bottom: 16px;
   flex-wrap: wrap;
-  font-size: 12px;
+  font-size: var(--text-xs);
   color: var(--color-ink-3);
 }
 
@@ -81,7 +81,7 @@
   cursor: pointer;
   background: none;
   border: none;
-  font-size: 12px;
+  font-size: var(--text-xs);
   padding: 0;
 }
 
@@ -102,7 +102,7 @@
 }
 
 .metaText {
-  font-size: 12px;
+  font-size: var(--text-xs);
   color: var(--color-ink-3);
 }
 
@@ -116,7 +116,7 @@
 }
 
 .customDateLabel {
-  font-size: 12px;
+  font-size: var(--text-xs);
   color: var(--color-ink-3);
 }
 
@@ -128,7 +128,7 @@
   border: 1px solid var(--color-line);
   border-radius: var(--radius-sm);
   font-family: var(--font-body);
-  font-size: 13px;
+  font-size: var(--text-sm);
   color: var(--color-ink);
 }
 
@@ -163,17 +163,17 @@
 }
 
 .filtersPanelHeader {
-  font-size: 13px;
+  font-size: var(--text-sm);
   font-weight: 600;
   color: var(--color-ink);
   padding: 2px 6px 8px;
 }
 
 .filtersPanelLabel {
-  font-size: 11px;
+  font-size: var(--text-xs);
   font-weight: 600;
   text-transform: uppercase;
-  letter-spacing: 0.03em;
+  letter-spacing: var(--tracking-label);
   color: var(--color-ink-4);
   padding: 4px 6px;
 }
@@ -188,7 +188,7 @@
   border: none;
   border-radius: var(--radius-sm);
   font-family: var(--font-body);
-  font-size: 13px;
+  font-size: var(--text-sm);
   color: var(--color-ink-2);
   cursor: pointer;
   text-align: left;
@@ -218,7 +218,7 @@
   border-top: 1px solid var(--color-line);
   border-radius: 0;
   font-family: var(--font-body);
-  font-size: 12px;
+  font-size: var(--text-xs);
   font-weight: 500;
   color: var(--color-ink-3);
   cursor: pointer;

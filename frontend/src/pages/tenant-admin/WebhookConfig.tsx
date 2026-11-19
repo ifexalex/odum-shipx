@@ -33,7 +33,7 @@ function EventToggleRow({ label, code, checked, onChange }: EventToggleProps): J
       <ToggleSwitch checked={checked} onChange={onChange} />
       <div className={styles.eventInfo}>
         <span className={styles.eventLabel}>{label}</span>
-        <Mono color="var(--color-ink-4)"><span style={{ fontSize: 11 }}>{code}</span></Mono>
+        <Mono color="var(--color-ink-4)"><span style={{ fontSize: 'var(--text-xs)' }}>{code}</span></Mono>
       </div>
     </div>
   )

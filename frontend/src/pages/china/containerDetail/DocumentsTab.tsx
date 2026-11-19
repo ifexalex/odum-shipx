@@ -162,11 +162,11 @@ export function DocumentsTab({
           ]}
           rows={docs.map((doc) => ({
             cells: [
-              <span key="type" style={{ fontWeight: 600, fontSize: 13 }}>
+              <span key="type" style={{ fontWeight: 600, fontSize: 'var(--text-sm)' }}>
                 {docTypeLabel(doc.document_type)}
               </span>,
               <Mono key="name">{doc.filename}</Mono>,
-              <span key="date" style={{ fontSize: 12, color: 'var(--color-ink-3)' }}>
+              <span key="date" style={{ fontSize: 'var(--text-xs)', color: 'var(--color-ink-3)' }}>
                 {formatDate(doc.created_at)}
               </span>,
               <Button
@@ -182,7 +182,7 @@ export function DocumentsTab({
             ],
           }))}
           emptyState={
-            <span style={{ color: 'var(--color-ink-3)', fontSize: 13 }}>
+            <span style={{ color: 'var(--color-ink-3)', fontSize: 'var(--text-sm)' }}>
               {loading ? 'Loading documents…' : 'No documents uploaded yet.'}
             </span>
           }
@@ -210,7 +210,7 @@ export function DocumentsTab({
               <label
                 style={{
                   fontWeight: 600,
-                  fontSize: '0.875rem',
+                  fontSize: 'var(--text-md)',
                   display: 'block',
                   marginBottom: 6,
                 }}
@@ -224,7 +224,7 @@ export function DocumentsTab({
                   borderRadius: 8,
                   border: '1px solid var(--color-line)',
                   background: 'var(--color-surface)',
-                  fontSize: '0.875rem',
+                  fontSize: 'var(--text-md)',
                 }}
                 value={docType}
                 onChange={(e) => setDocType(e.target.value as ContainerDocumentType)}
@@ -241,7 +241,7 @@ export function DocumentsTab({
               <label
                 style={{
                   fontWeight: 600,
-                  fontSize: '0.875rem',
+                  fontSize: 'var(--text-md)',
                   display: 'block',
                   marginBottom: 6,
                 }}
@@ -255,9 +255,9 @@ export function DocumentsTab({
                   setFile(e.target.files?.[0] ?? null)
                   setUploadError(null)
                 }}
-                style={{ fontSize: '0.8125rem' }}
+                style={{ fontSize: 'var(--text-sm)' }}
               />
-              <div style={{ fontSize: 11, color: 'var(--color-ink-4)', marginTop: 6 }}>
+              <div style={{ fontSize: 'var(--text-xs)', color: 'var(--color-ink-4)', marginTop: 6 }}>
                 Accepted: PDF, JPG, PNG, WebP · max 5 MB
               </div>
             </div>

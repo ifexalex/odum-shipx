@@ -70,6 +70,30 @@
   --font-body: 'ShipX Naira', 'Kumbh Sans Variable', sans-serif;
   --font-mono: 'ShipX Naira', 'JetBrains Mono Variable', monospace;
 
+  /* Type scale (FD-01). Every font size on screen is one of these; each has a paired line height. 12 px is the smallest
+     size allowed on screen. Exempt: print pages, the marketing page, and rules marked `scale-exempt` (miniature
+     document previews, emoji icons). Weights: 400, 500, 600 and 700 only. */
+  --text-xs: 12px; /* table headers, badges, captions */
+  --text-xs-line: 16px;
+  --text-sm: 13px; /* table cells, helper text, meta lines */
+  --text-sm-line: 20px;
+  --text-md: 14px; /* body text, inputs, buttons */
+  --text-md-line: 20px;
+  --text-lg: 16px; /* card titles, lead text */
+  --text-lg-line: 24px;
+  --text-xl: 20px; /* section titles */
+  --text-xl-line: 28px;
+  --text-2xl: 24px; /* page titles, stat values */
+  --text-2xl-line: 32px;
+  --text-3xl: 32px; /* hero figures */
+  --text-3xl-line: 40px;
+  /* Line height for a rule that inherits its size: tight for headings and single lines, body for running text. */
+  --leading-tight: 1.25;
+  --leading-body: 1.5;
+  /* Letter spacing: 0 by default, label on small uppercase labels, tight on text of 20 px and above. */
+  --tracking-label: 0.04em;
+  --tracking-tight: -0.01em;
+
   /* Spacing — strict 4px base */
   --space-xs: 4px;
   --space-sm: 8px;
@@ -203,6 +227,8 @@ body,
 body {
   margin: 0;
   font-family: var(--font-body);
+  font-size: var(--text-md);
+  line-height: var(--text-md-line);
   color: var(--color-ink);
   background: var(--color-page);
 }

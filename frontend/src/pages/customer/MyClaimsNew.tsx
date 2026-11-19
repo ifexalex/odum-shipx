@@ -130,7 +130,7 @@ export function MyClaimsNew(): JSX.Element {
           {shipmentsError && <Banner variant="error" title="Could not load your shipments">{shipmentsError}</Banner>}
 
           {shipments === null ? (
-            <p style={{ color: 'var(--color-ink-3)', fontSize: 14 }}>Loading your shipments…</p>
+            <p style={{ color: 'var(--color-ink-3)', fontSize: 'var(--text-md)' }}>Loading your shipments…</p>
           ) : arrivedShipments.length === 0 ? (
             <Banner variant="info" title="Nothing to claim against yet">
               A claim can only be filed once a shipment has arrived in Nigeria — damage or loss
@@ -230,7 +230,7 @@ export function MyClaimsNew(): JSX.Element {
           <Banner variant="success">
             Your claim has been filed. Review the details below and submit.
           </Banner>
-          <div style={{ fontSize: '0.875rem', lineHeight: 1.6 }}>
+          <div style={{ fontSize: 'var(--text-md)', lineHeight: 'var(--leading-body)' }}>
             <p><strong>Shipment:</strong> {selectedShipment?.reference ?? selectedShipment?.id.slice(0, 8)} — Container {selectedShipment?.container_number ?? '—'}</p>
             <p><strong>Description:</strong> {description}</p>
             {cartonsAffected.length > 0 && (

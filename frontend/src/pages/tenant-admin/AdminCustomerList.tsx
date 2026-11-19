@@ -111,7 +111,7 @@ function AddCustomerModal({ onCancel, onSuccess }: AddCustomerModalProps): JSX.E
           <label
             style={{
               fontWeight: 600,
-              fontSize: '0.875rem',
+              fontSize: 'var(--text-md)',
               display: 'block',
               marginBottom: 6,
             }}
@@ -127,7 +127,7 @@ function AddCustomerModal({ onCancel, onSuccess }: AddCustomerModalProps): JSX.E
                   alignItems: 'center',
                   gap: 8,
                   cursor: 'pointer',
-                  fontSize: '0.8125rem',
+                  fontSize: 'var(--text-sm)',
                   fontWeight: 500,
                 }}
               >
@@ -136,7 +136,7 @@ function AddCustomerModal({ onCancel, onSuccess }: AddCustomerModalProps): JSX.E
               </label>
             ))}
           </div>
-          <p style={{ fontSize: '0.75rem', color: 'var(--color-ink-4)', marginTop: 6 }}>
+          <p style={{ fontSize: 'var(--text-xs)', color: 'var(--color-ink-4)', marginTop: 6 }}>
             Only tick channels the customer has agreed to — this is their NDPR/GDPR consent record.
           </p>
         </div>
@@ -185,9 +185,9 @@ function ConsentChips({ consent }: { consent: string[] | null }): JSX.Element {
               alignItems: 'center',
               padding: '2px 6px',
               borderRadius: 4,
-              fontSize: 10,
+              fontSize: 'var(--text-xs)',
               fontWeight: 700,
-              letterSpacing: '0.04em',
+              letterSpacing: 'var(--tracking-label)',
               background: on ? 'var(--color-primary-soft)' : 'var(--color-line-soft)',
               color: on ? 'var(--color-primary-on-soft)' : 'var(--color-ink-4)',
             }}
@@ -344,17 +344,17 @@ export function AdminCustomerList(): JSX.Element {
             rows={visible.map((c) => ({
               cells: [
                 <div key="name">
-                  <div style={{ fontWeight: 600, fontSize: 13 }}>
+                  <div style={{ fontWeight: 600, fontSize: 'var(--text-sm)' }}>
                     {c.name ?? <em style={{ color: 'var(--color-text-muted)' }}>Anonymised</em>}
                   </div>
-                  <div style={{ fontSize: 11, color: 'var(--color-ink-4)' }}>{c.email ?? '—'}</div>
+                  <div style={{ fontSize: 'var(--text-xs)', color: 'var(--color-ink-4)' }}>{c.email ?? '—'}</div>
                 </div>,
                 <Mono key="phone">{c.phone ?? '—'}</Mono>,
                 c.anonymised_at ? (
                   <span
                     key="consent"
                     style={{
-                      fontSize: 11,
+                      fontSize: 'var(--text-xs)',
                       color: 'var(--color-ink-4)',
                       fontStyle: 'italic',
                     }}

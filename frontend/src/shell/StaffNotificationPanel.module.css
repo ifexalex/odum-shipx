@@ -27,7 +27,7 @@
 }
 
 .headerTitle {
-  font-size: 14px;
+  font-size: var(--text-md);
   font-weight: 600;
   color: var(--color-ink);
 }
@@ -42,7 +42,7 @@
   background: none;
   border: none;
   font-family: var(--font-body);
-  font-size: 12px;
+  font-size: var(--text-xs);
   font-weight: 600;
   color: var(--color-primary);
   cursor: pointer;
@@ -66,7 +66,7 @@
   gap: 8px;
   padding: 32px 16px;
   color: var(--color-ink-4);
-  font-size: 13px;
+  font-size: var(--text-sm);
 }
 
 .row {
@@ -149,13 +149,13 @@
 }
 
 .rowTitle {
-  font-size: 13px;
+  font-size: var(--text-sm);
   font-weight: 600;
   color: var(--color-ink);
 }
 
 .rowText {
-  font-size: 12px;
+  font-size: var(--text-xs);
   color: var(--color-ink-2);
   overflow: hidden;
   text-overflow: ellipsis;
@@ -165,7 +165,7 @@
 }
 
 .rowTime {
-  font-size: 11px;
+  font-size: var(--text-xs);
   color: var(--color-ink-4);
   margin-top: 2px;
 }

@@ -43,19 +43,19 @@
 .sm {
   height: 28px;
   padding: 0 12px;
-  font-size: 13px;
+  font-size: var(--text-sm);
 }
 
 .md {
   height: 36px;
   padding: 0 16px;
-  font-size: 14px;
+  font-size: var(--text-md);
 }
 
 .lg {
   height: 44px;
   padding: 0 20px;
-  font-size: 15px;
+  font-size: var(--text-lg);
 }
 
 .primary {

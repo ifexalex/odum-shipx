@@ -64,7 +64,7 @@ function ExemptModal({ carryover, onCancel, onSuccess }: { carryover: Carryover;
         role="dialog"
         aria-modal="true"
       >
-        <h3 style={{ margin: 0, fontSize: '1rem', fontWeight: 700 }}>Exempt carryover</h3>
+        <h3 style={{ margin: 0, fontSize: 'var(--text-lg)', fontWeight: 700 }}>Exempt carryover</h3>
         {error && <Banner variant="error" title="Action failed">{error}</Banner>}
         <Banner variant="warning" title={`${formatNgn(carryover.amount_ngn)} from ${carryover.source_container_number ?? 'source billing'}`}>
           Exempting removes this debt from the next billing. The amount is rolled forward as a new
@@ -155,14 +155,14 @@ export function CarryoverLedger(): JSX.Element {
               <button
                 key="src"
                 type="button"
-                style={{ background: 'none', border: 0, padding: 0, cursor: 'pointer', color: 'var(--color-primary)', fontWeight: 600, fontSize: 13 }}
+                style={{ background: 'none', border: 0, padding: 0, cursor: 'pointer', color: 'var(--color-primary)', fontWeight: 600, fontSize: 'var(--text-sm)' }}
                 onClick={() => navigate(`/billing/${c.source_billing_id}`)}
               >
                 <Mono color="var(--color-primary)">{c.source_container_number ?? c.source_billing_id.slice(0, 8)}</Mono>
               </button>,
               <Mono key="amt">{formatNgn(c.amount_ngn)}</Mono>,
               <Badge key="status" variant={STATUS_VARIANT[c.status]}>{c.status}</Badge>,
-              <span key="created" style={{ fontSize: 12, color: 'var(--color-ink-3)' }}>{formatDate(c.created_at)}</span>,
+              <span key="created" style={{ fontSize: 'var(--text-xs)', color: 'var(--color-ink-3)' }}>{formatDate(c.created_at)}</span>,
               c.status === 'outstanding' && canExempt ? (
                 <Button key="exempt" variant="ghost" size="sm" onClick={() => setExempting(c)}>Exempt</Button>
               ) : (
@@ -171,7 +171,7 @@ export function CarryoverLedger(): JSX.Element {
             ],
           }))}
           emptyState={
-            <span style={{ color: 'var(--color-ink-3)', fontSize: 13 }}>
+            <span style={{ color: 'var(--color-ink-3)', fontSize: 'var(--text-sm)' }}>
               {loading ? 'Loading carryovers…' : 'No carryover entries match this filter.'}
             </span>
           }

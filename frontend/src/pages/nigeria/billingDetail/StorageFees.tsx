@@ -118,7 +118,7 @@ export function StorageFeeLog({ fees }: { fees: StorageFeeEntry[] }): JSX.Elemen
         ]}
         rows={fees.map((f) => ({
           cells: [
-            <span key="day" style={{ fontSize: 12, color: 'var(--color-ink-3)' }}>
+            <span key="day" style={{ fontSize: 'var(--text-xs)', color: 'var(--color-ink-3)' }}>
               Day {f.day_number}
             </span>,
             <Mono key="date" color="var(--color-ink-2)">

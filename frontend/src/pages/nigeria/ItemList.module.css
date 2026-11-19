@@ -12,21 +12,21 @@
   width: 100%; max-width: 440px; display: flex; flex-direction: column; gap: 16px;
   box-shadow: var(--shadow-modal);
 }
-.panelTitle { font-size: 18px; font-weight: 700; margin: 0; }
+.panelTitle { font-size: var(--text-xl); font-weight: 700; margin: 0; }
 .panelBanner { margin-bottom: 4px; }
 .panelActions { display: flex; gap: 8px; justify-content: flex-end; margin-top: 8px; }
 
 .selectField { display: flex; flex-direction: column; gap: 6px; }
-.selectLabel { font-size: 13px; font-weight: 500; }
+.selectLabel { font-size: var(--text-sm); font-weight: 500; }
 .required { color: var(--color-error); margin-left: 2px; }
 .select {
   border: 1px solid var(--color-border); border-radius: var(--radius-sm);
-  padding: 8px 12px; font-size: 14px;
+  padding: 8px 12px; font-size: var(--text-md);
   background: var(--color-surface); color: var(--color-text); cursor: pointer;
 }
 
 .panelNote {
   margin: 0;
-  font-size: 0.8125rem;
+  font-size: var(--text-sm);
   color: var(--color-ink-3);
 }

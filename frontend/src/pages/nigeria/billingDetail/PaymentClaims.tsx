@@ -190,7 +190,7 @@ export function PaymentClaimsSection({
                         </div>
                       )
                     ) : (
-                      <span key="reviewed" style={{ fontSize: 12, color: 'var(--color-ink-3)' }}>
+                      <span key="reviewed" style={{ fontSize: 'var(--text-xs)', color: 'var(--color-ink-3)' }}>
                         {claim.status === 'rejected' ? claim.rejection_reason : 'Payment recorded'}
                       </span>
                     ),

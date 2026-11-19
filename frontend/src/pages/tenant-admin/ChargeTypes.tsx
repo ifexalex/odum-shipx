@@ -88,7 +88,7 @@ function ChargeTypeModal({ existing, onCancel, onSuccess }: ChargeTypeModalProps
         role="dialog"
         aria-modal="true"
       >
-        <h3 style={{ margin: 0, fontSize: '1rem', fontWeight: 700 }}>
+        <h3 style={{ margin: 0, fontSize: 'var(--text-lg)', fontWeight: 700 }}>
           {existing ? 'Edit charge type' : 'New charge type'}
         </h3>
         {error && (
@@ -216,7 +216,7 @@ export function ChargeTypes(): JSX.Element {
           ]}
           rows={chargeTypes.map((t) => ({
             cells: [
-              <span key="name" style={{ fontWeight: 600, fontSize: 13 }}>
+              <span key="name" style={{ fontWeight: 600, fontSize: 'var(--text-sm)' }}>
                 {t.name}
               </span>,
               <Mono key="amt">{formatNgn(t.amount_ngn)}</Mono>,
@@ -224,13 +224,13 @@ export function ChargeTypes(): JSX.Element {
                 key="usage"
                 title="Billing charges added from this type"
                 style={{
-                  fontSize: 12,
+                  fontSize: 'var(--text-xs)',
                   color: t.usage_count ? 'var(--color-ink-2)' : 'var(--color-ink-3)',
                 }}
               >
                 {t.usage_count ?? 0}×
               </span>,
-              <span key="desc" style={{ fontSize: 12, color: 'var(--color-ink-3)' }}>
+              <span key="desc" style={{ fontSize: 'var(--text-xs)', color: 'var(--color-ink-3)' }}>
                 {t.description ?? '—'}
               </span>,
               <Badge key="status" variant={t.is_active ? 'success' : 'neutral'}>
@@ -258,7 +258,7 @@ export function ChargeTypes(): JSX.Element {
             ],
           }))}
           emptyState={
-            <span style={{ color: 'var(--color-ink-3)', fontSize: 13 }}>
+            <span style={{ color: 'var(--color-ink-3)', fontSize: 'var(--text-sm)' }}>
               {loading ? 'Loading charge types…' : 'No charge types yet — create the first one.'}
             </span>
           }

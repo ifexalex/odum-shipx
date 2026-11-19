@@ -205,7 +205,7 @@ export function ContainerPipeline({ counts }: { counts: ContainerStats | undefin
             <Badge key="status" variant={CONTAINER_BADGE[c.status] ?? 'neutral'}>
               {CONTAINER_STATUS_LABELS[c.status] ?? c.status}
             </Badge>,
-            <span key="eta" style={{ fontSize: 12, color: 'var(--color-ink-3)' }}>
+            <span key="eta" style={{ fontSize: 'var(--text-xs)', color: 'var(--color-ink-3)' }}>
               {c.status === 'arrived' || c.status === 'customs_clearance' || c.status === 'cleared' || c.status === 'at_warehouse' || c.status === 'fully_released'
                 ? etaCell(c.actual_arrival_date ?? c.estimated_arrival_date)
                 : etaCell(c.estimated_arrival_date)}
@@ -217,7 +217,7 @@ export function ContainerPipeline({ counts }: { counts: ContainerStats | undefin
         loading={isLoading}
         emptyState={
           !isLoading ? (
-            <span style={{ color: 'var(--color-ink-3)', fontSize: 13 }}>
+            <span style={{ color: 'var(--color-ink-3)', fontSize: 'var(--text-sm)' }}>
               {debouncedSearch || etaPreset
                 ? 'No containers match your search and filters.'
                 : `No containers in ${selected === 'all' ? 'the pipeline' : CONTAINER_STATUS_LABELS[selected]}.`}

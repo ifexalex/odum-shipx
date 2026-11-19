@@ -1,7 +1,7 @@
 .empty {
   padding: 12px 0;
   color: var(--color-ink-4);
-  font-size: 13px;
+  font-size: var(--text-sm);
 }
 
 .row {
@@ -25,20 +25,20 @@
 }
 
 .rowTitle {
-  font-size: 14px;
+  font-size: var(--text-md);
   font-weight: 600;
   color: var(--color-ink);
 }
 
 .rowBody {
   margin: 0;
-  font-size: 13px;
+  font-size: var(--text-sm);
   color: var(--color-ink-2);
 }
 
 .rejectionReason {
   margin: 0;
-  font-size: 12px;
+  font-size: var(--text-xs);
   color: var(--color-error-strong);
 }
 

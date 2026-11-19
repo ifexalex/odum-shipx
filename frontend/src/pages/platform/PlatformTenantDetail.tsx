@@ -123,7 +123,7 @@ function UsersTab({ tenantId }: { tenantId: string }): JSX.Element {
             <Mono key="l">{u.locale ?? 'en'}</Mono>,
           ],
         }))}
-        emptyState={<span style={{ color: 'var(--color-ink-3)', fontSize: 13 }}>{loading ? 'Loading users…' : 'No staff users.'}</span>}
+        emptyState={<span style={{ color: 'var(--color-ink-3)', fontSize: 'var(--text-sm)' }}>{loading ? 'Loading users…' : 'No staff users.'}</span>}
       />
     </Card>
   )
@@ -134,7 +134,7 @@ function QuotaBar({ label, used, max }: { label: string; used: number; max: numb
   const color = pct >= 100 ? 'var(--color-error)' : pct >= 80 ? 'var(--color-warning)' : 'var(--color-primary)'
   return (
     <div style={{ marginBottom: 14 }}>
-      <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12, marginBottom: 4 }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 'var(--text-xs)', marginBottom: 4 }}>
         <span style={{ fontWeight: 600, color: 'var(--color-ink-2)' }}>{label}</span>
         <Mono>{used} / {max >= 999999 ? '∞' : max}</Mono>
       </div>
@@ -194,7 +194,7 @@ function UsageTab({ tenantId }: { tenantId: string }): JSX.Element {
         <QuotaBar label="Staff users" used={usage.limits.users.used} max={usage.limits.users.max} />
         <QuotaBar label="Containers this month" used={usage.limits.containers_per_month.used} max={usage.limits.containers_per_month.max} />
         <QuotaBar label="Storage (GB)" used={usage.limits.storage_gb.used} max={usage.limits.storage_gb.max} />
-        <div style={{ display: 'flex', gap: 20, fontSize: 12, color: 'var(--color-ink-3)', marginTop: 8 }}>
+        <div style={{ display: 'flex', gap: 20, fontSize: 'var(--text-xs)', color: 'var(--color-ink-3)', marginTop: 8 }}>
           <span>API calls: <Mono>{usage.api_calls}</Mono></span>
           <span>SMS: <Mono>{usage.notifications.sms_sent}</Mono></span>
           <span>WhatsApp: <Mono>{usage.notifications.whatsapp_sent}</Mono></span>
@@ -236,7 +236,7 @@ function ConfigTab({ tenantId }: { tenantId: string }): JSX.Element {
         <Kvp
           key={key}
           label={key.replace(/_/g, ' ')}
-          value={<Mono style={{ fontSize: 12, whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}>{JSON.stringify(value)}</Mono>}
+          value={<Mono style={{ fontSize: 'var(--text-xs)', whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}>{JSON.stringify(value)}</Mono>}
           divider={i < arr.length - 1}
         />
       ))}
@@ -261,7 +261,7 @@ function AuditTab({ tenantId }: { tenantId: string }): JSX.Element {
             <Mono key="ip" color="var(--color-ink-4)">{e.ip_address ?? '—'}</Mono>,
           ],
         }))}
-        emptyState={<span style={{ color: 'var(--color-ink-3)', fontSize: 13 }}>{loading ? 'Loading…' : 'No platform-level audit entries for this tenant.'}</span>}
+        emptyState={<span style={{ color: 'var(--color-ink-3)', fontSize: 'var(--text-sm)' }}>{loading ? 'Loading…' : 'No platform-level audit entries for this tenant.'}</span>}
       />
     </Card>
   )
@@ -328,20 +328,20 @@ function OffboardingExportCard({ tenantId }: { tenantId: string }): JSX.Element 
               {exportInfo.size_bytes !== null && <Kvp label="Size" value={formatBytes(exportInfo.size_bytes)} />}
               {exportInfo.row_count !== null && <Kvp label="Records" value={formatCount(exportInfo.row_count)} />}
               {exportInfo.sha256 && (
-                <Kvp label="SHA-256" value={<Mono style={{ fontSize: 11, wordBreak: 'break-all' }}>{exportInfo.sha256}</Mono>} />
+                <Kvp label="SHA-256" value={<Mono style={{ fontSize: 'var(--text-xs)', wordBreak: 'break-all' }}>{exportInfo.sha256}</Mono>} />
               )}
             </>
           )}
           {(exportInfo.status === 'pending' || exportInfo.status === 'running') && (
-            <p style={{ color: 'var(--color-ink-3)', fontSize: 13 }}>The export runs within the hour. This page checks again every minute.</p>
+            <p style={{ color: 'var(--color-ink-3)', fontSize: 'var(--text-sm)' }}>The export runs within the hour. This page checks again every minute.</p>
           )}
           {exportInfo.retrying && (
-            <p style={{ color: 'var(--color-ink-3)', fontSize: 13 }}>
+            <p style={{ color: 'var(--color-ink-3)', fontSize: 'var(--text-sm)' }}>
               Attempt {exportInfo.attempts} of {exportInfo.max_attempts} failed. It is tried again within the hour.
             </p>
           )}
           {exportInfo.status === 'failed' && !exportInfo.retrying && (
-            <p style={{ color: 'var(--color-error)', fontSize: 13 }}>
+            <p style={{ color: 'var(--color-error)', fontSize: 'var(--text-sm)' }}>
               Every attempt failed. Check the export job's logs (runbook: "Offboarding export failed"), then queue it again.
             </p>
           )}
@@ -365,7 +365,7 @@ function OffboardingExportCard({ tenantId }: { tenantId: string }): JSX.Element 
             )}
           </div>
           {exportInfo.status === 'completed' && (
-            <p style={{ color: 'var(--color-ink-4)', fontSize: 12, textAlign: 'right', marginTop: 6 }}>
+            <p style={{ color: 'var(--color-ink-4)', fontSize: 'var(--text-xs)', textAlign: 'right', marginTop: 6 }}>
               The link works for five minutes and every download is recorded in the audit log.
             </p>
           )}
@@ -479,7 +479,7 @@ export function PlatformTenantDetail(): JSX.Element {
         <Kvp label="Created" value={formatDate(tenant.created_at)} />
         {tenant.offboarded_at && <Kvp label="Offboarded" value={formatDate(tenant.offboarded_at)} />}
         {tenant.reactivated_at && <Kvp label="Reactivated" value={formatDate(tenant.reactivated_at)} />}
-        <Kvp label="Tenant ID" value={<span style={{ fontFamily: 'var(--font-mono)', fontSize: '0.8125rem' }}>{tenant.id}</span>} divider={false} />
+        <Kvp label="Tenant ID" value={<span style={{ fontFamily: 'var(--font-mono)', fontSize: 'var(--text-sm)' }}>{tenant.id}</span>} divider={false} />
       </Card>
       {tenant.status === 'offboarded' && (
         <div style={{ marginTop: 16 }}>

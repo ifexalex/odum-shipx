@@ -39,11 +39,11 @@ function RateTrendChart({ points, prefix }: { points: { date: string; value: num
   return (
     <div style={{ padding: '4px 20px 16px' }}>
       <div style={{ display: 'flex', alignItems: 'baseline', gap: 12, marginBottom: 8, flexWrap: 'wrap' }}>
-        <span style={{ fontFamily: 'var(--font-display)', fontWeight: 700, fontSize: 22 }}>{prefix}{formatAmount(last.value)}</span>
-        <span style={{ fontSize: 13, fontWeight: 700, color: net >= 0 ? 'var(--color-success)' : 'var(--color-error)' }}>
+        <span style={{ fontFamily: 'var(--font-display)', fontWeight: 700, fontSize: 'var(--text-2xl)' }}>{prefix}{formatAmount(last.value)}</span>
+        <span style={{ fontSize: 'var(--text-sm)', fontWeight: 700, color: net >= 0 ? 'var(--color-success)' : 'var(--color-error)' }}>
           {net >= 0 ? '+' : ''}{prefix}{formatAmount(net)}
         </span>
-        <span style={{ fontSize: 12, color: 'var(--color-ink-4)' }}>over {points.length} changes</span>
+        <span style={{ fontSize: 'var(--text-xs)', color: 'var(--color-ink-4)' }}>over {points.length} changes</span>
       </div>
       <svg viewBox={`0 0 ${W} ${H}`} width="100%" height={H} style={{ overflow: 'visible' }} role="img" aria-label="Rate trend">
         <defs>
@@ -109,12 +109,12 @@ export function RateHistoryTable({ rateType, valueKey, prefix }: { rateType: 'do
             cells: [
               <span key="rate" style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}>
                 <Mono color={i === 0 ? 'var(--color-primary)' : undefined}>{prefix}{formatAmount(current)}</Mono>
-                {i === 0 && <span style={{ fontSize: 10, fontWeight: 700, textTransform: 'uppercase', color: 'var(--color-primary-deep)', background: 'var(--color-primary-soft)', borderRadius: 999, padding: '2px 8px' }}>Current</span>}
+                {i === 0 && <span style={{ fontSize: 'var(--text-xs)', fontWeight: 700, textTransform: 'uppercase', color: 'var(--color-primary-deep)', background: 'var(--color-primary-soft)', borderRadius: 999, padding: '2px 8px' }}>Current</span>}
               </span>,
               delta == null ? (
-                <span key="delta" style={{ fontSize: 12, color: 'var(--color-ink-4)' }}>—</span>
+                <span key="delta" style={{ fontSize: 'var(--text-xs)', color: 'var(--color-ink-4)' }}>—</span>
               ) : (
-                <span key="delta" style={{ fontSize: 12, fontWeight: 700, color: delta >= 0 ? 'var(--color-success)' : 'var(--color-error)' }}>
+                <span key="delta" style={{ fontSize: 'var(--text-xs)', fontWeight: 700, color: delta >= 0 ? 'var(--color-success)' : 'var(--color-error)' }}>
                   {delta >= 0 ? '+' : ''}{prefix}{formatAmount(delta)}
                 </span>
               ),
@@ -123,7 +123,7 @@ export function RateHistoryTable({ rateType, valueKey, prefix }: { rateType: 'do
             ],
           }
         })}
-        emptyState={<span style={{ color: 'var(--color-ink-3)', fontSize: 13 }}>{loading ? 'Loading history…' : 'No rate changes recorded yet.'}</span>}
+        emptyState={<span style={{ color: 'var(--color-ink-3)', fontSize: 'var(--text-sm)' }}>{loading ? 'Loading history…' : 'No rate changes recorded yet.'}</span>}
       />
     </Card>
   )
@@ -232,7 +232,7 @@ export function DollarRateConfig(): JSX.Element {
           <SectionHead title="Update markup" />
           <div className={styles.formCard}>
             <div>
-              <label style={{ fontWeight: 600, fontSize: '0.875rem', display: 'block', marginBottom: 6 }}>
+              <label style={{ fontWeight: 600, fontSize: 'var(--text-md)', display: 'block', marginBottom: 6 }}>
                 Markup type
               </label>
               <div style={{ display: 'flex', gap: 8 }}>
@@ -251,14 +251,14 @@ export function DollarRateConfig(): JSX.Element {
               </div>
             </div>
             <div>
-              <label style={{ fontWeight: 600, fontSize: '0.875rem', display: 'block', marginBottom: 6 }}>
+              <label style={{ fontWeight: 600, fontSize: 'var(--text-md)', display: 'block', marginBottom: 6 }}>
                 {markupType === 'percentage' ? 'Markup (%)' : 'Markup (₦ per $1)'} <span style={{ color: 'var(--color-error)' }}>*</span>
               </label>
               <input
                 type="number"
                 value={markupValue}
                 onChange={(e) => setMarkupValue(e.target.value)}
-                style={{ width: '100%', padding: '8px 12px', borderRadius: 8, border: '1px solid var(--color-border)', background: 'var(--color-surface)', fontSize: '1rem' }}
+                style={{ width: '100%', padding: '8px 12px', borderRadius: 8, border: '1px solid var(--color-border)', background: 'var(--color-surface)', fontSize: 'var(--text-lg)' }}
                 placeholder={markupType === 'percentage' ? 'e.g. 2' : 'e.g. 15'}
                 min="0"
                 step={markupType === 'percentage' ? '0.1' : '1'}

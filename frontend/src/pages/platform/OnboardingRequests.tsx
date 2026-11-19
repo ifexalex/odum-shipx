@@ -141,7 +141,7 @@ export function OnboardingRequests(): JSX.Element {
             ))}
           </div>
           {pendingCount > 0 && (
-            <span style={{ marginLeft: 'auto', fontSize: 12, color: 'var(--color-ink-4)' }}>
+            <span style={{ marginLeft: 'auto', fontSize: 'var(--text-xs)', color: 'var(--color-ink-4)' }}>
               {pendingCount} awaiting action
             </span>
           )}
@@ -163,38 +163,38 @@ export function OnboardingRequests(): JSX.Element {
             rows={visible.map((r) => ({
               cells: [
                 <div key="company" style={{ minWidth: 0 }}>
-                  <div style={{ fontWeight: 600, fontSize: 13 }}>{r.company_name}</div>
+                  <div style={{ fontWeight: 600, fontSize: 'var(--text-sm)' }}>{r.company_name}</div>
                   {r.notes && (
                     <div
-                      style={{ fontSize: 11, color: 'var(--color-ink-4)', maxWidth: 260 }}
+                      style={{ fontSize: 'var(--text-xs)', color: 'var(--color-ink-4)', maxWidth: 260 }}
                       title={r.notes}
                     >
                       {r.notes.length > 60 ? `${r.notes.slice(0, 60)}…` : r.notes}
                     </div>
                   )}
                   {r.status === 'rejected' && r.rejection_reason && (
-                    <div style={{ fontSize: 11, color: 'var(--color-error)' }}>
+                    <div style={{ fontSize: 'var(--text-xs)', color: 'var(--color-error)' }}>
                       Rejected: {r.rejection_reason}
                     </div>
                   )}
                 </div>,
-                <div key="contact" style={{ fontSize: 12 }}>
+                <div key="contact" style={{ fontSize: 'var(--text-xs)' }}>
                   <div style={{ color: 'var(--color-ink-2)' }}>{r.contact_name}</div>
                   <div style={{ color: 'var(--color-ink-4)' }}>{r.contact_email}</div>
                   {r.contact_phone && (
                     <div style={{ color: 'var(--color-ink-4)' }}>{r.contact_phone}</div>
                   )}
                 </div>,
-                <span key="route" style={{ fontSize: 12, color: 'var(--color-ink-3)' }}>
+                <span key="route" style={{ fontSize: 'var(--text-xs)', color: 'var(--color-ink-3)' }}>
                   {r.origin_country} → {r.destination_country}
                 </span>,
-                <span key="volume" style={{ fontSize: 12, color: 'var(--color-ink-3)' }}>
+                <span key="volume" style={{ fontSize: 'var(--text-xs)', color: 'var(--color-ink-3)' }}>
                   {r.monthly_volume ?? '—'}
                 </span>,
                 <Badge key="status" variant={STATUS_VARIANT[r.status]}>
                   {STATUS_LABELS[r.status]}
                 </Badge>,
-                <span key="date" style={{ fontSize: 12, color: 'var(--color-ink-3)' }}>
+                <span key="date" style={{ fontSize: 'var(--text-xs)', color: 'var(--color-ink-3)' }}>
                   {formatDate(r.created_at)}
                 </span>,
                 OPEN_STATUSES.includes(r.status) ? (
@@ -259,7 +259,7 @@ export function OnboardingRequests(): JSX.Element {
           </>
         }
       >
-        <p style={{ fontSize: 13, color: 'var(--color-ink-3)', margin: '0 0 14px' }}>
+        <p style={{ fontSize: 'var(--text-sm)', color: 'var(--color-ink-3)', margin: '0 0 14px' }}>
           Rejecting <strong>{rejecting?.company_name}</strong>&apos;s request. The reason is recorded for the
           audit trail; it is not emailed to the company.
         </p>

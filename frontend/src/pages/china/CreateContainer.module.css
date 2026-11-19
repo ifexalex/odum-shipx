@@ -41,18 +41,18 @@
   justify-content: space-between;
   font-family: var(--font-body);
   font-weight: 500;
-  font-size: 13px;
+  font-size: var(--text-sm);
   color: var(--color-ink-2);
   margin-bottom: 6px;
 }
 .optionalTag {
   font-weight: 400;
   color: var(--color-ink-4);
-  font-size: 12px;
+  font-size: var(--text-xs);
 }
 .capacityHelper {
   display: block;
   margin-top: 6px;
-  font-size: 12px;
+  font-size: var(--text-xs);
   color: var(--color-ink-4);
 }

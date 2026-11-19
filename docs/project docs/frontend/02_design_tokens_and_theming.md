@@ -73,6 +73,17 @@ Port these as CSS custom properties on `:root` in `src/design/tokens.css`, and a
   --font-body: "ShipX Naira", "Kumbh Sans Variable", sans-serif;
   --font-mono: "ShipX Naira", "JetBrains Mono Variable", monospace;
 
+  /* Type scale (FD-01): the only sizes on screen. Each has a paired line height (--text-*-line). */
+  --text-xs: 12px;  /* 16 — table headers, badges, captions; the smallest size on screen */
+  --text-sm: 13px;  /* 20 — table cells, helper text, meta lines */
+  --text-md: 14px;  /* 20 — body text (set on <body>), inputs, buttons */
+  --text-lg: 16px;  /* 24 — card titles, lead text */
+  --text-xl: 20px;  /* 28 — section titles */
+  --text-2xl: 24px; /* 32 — page titles, stat values */
+  --text-3xl: 32px; /* 40 — hero figures */
+  --leading-tight: 1.25; --leading-body: 1.5;          /* rules that inherit their size */
+  --tracking-label: 0.04em; --tracking-tight: -0.01em; /* uppercase labels; text of 20 px and above */
+
   /* Spacing — strict 4px base */
   --space-xs: 4px;  --space-sm: 8px;  --space-md: 16px;
   --space-lg: 24px; --space-xl: 32px; --space-2xl: 48px; --space-3xl: 64px;
@@ -183,6 +194,7 @@ the app-wide responsive pass).
 
 ## Implementation notes / ground-truth gaps found
 
+- **Type scale (FD-01, 2026-11-19).** The style sheets used about 40 font sizes (6.5 to 64 px, mixed px and rem), 11 line heights, 17 letter-spacing values and weight 800. A codemod moved them onto the seven `--text-*` steps: 72 style sheets, 56 components. A size maps to the nearest step: up to 12 → xs, below 13.5 → sm, below 15 → md, below 18 → lg, below 22 → xl, up to 28 → 2xl, above → 3xl. A line height becomes its size's paired token, or `--leading-tight`/`--leading-body` where the rule inherits its size. Positive letter spacing becomes `--tracking-label`, negative becomes `--tracking-tight`. Weights 800 become 700. `<body>` had no size, so unsized text was the browser's 16 px; it is now `--text-md`. Text that was 9–11 px is now 12 px, the smallest on screen. Stat values are `--text-2xl`, as the scale says. Exempt, each rule marked `scale-exempt` with its reason: the miniature document previews (Company settings `.doc*`, packing-list wizard `.preview*`, sized like the printed page), two emoji icons and the 404 figure. Print pages and the marketing page are exempt by folder. Guard: `src/design/typeScale.test.ts` fails on any raw `font-size`, `line-height` or `letter-spacing`, or a weight outside 400–700, in a style sheet or an inline style. Values `0` and `1` stay allowed. Reviewed with the visual baseline (FD-38): all 234 screens changed, as expected, and sampled screens were checked for clipping. The phone audit then found two pages a few pixels too wide. The claim page's status stepper now scrolls inside a `ScrollStrip` at 320 px. The claim stats row on Reports wraps.
 - **Fonts are self-hosted; Manrope is the brand face (FD-06, 2026-11-19).** Owner decision: Manrope, not Averta. Averta was first in the display stack but never shipped, so a user who happened to have it installed saw a different product. Google Fonts loaded 13 weight files of three families on every visit and needed `fonts.googleapis.com`/`fonts.gstatic.com` in both CSPs. Now `src/design/fonts.css` imports the `@fontsource-variable` packages for Manrope, Kumbh Sans and JetBrains Mono, pinned exactly. Each family is one variable file per script subset, so a Latin page loads three files, about 95 KB. Both CSPs (`infrastructure/aws/modules/cloudfront/main.tf`, `infrastructure/azure/locals.tf`) now allow `font-src 'self'` only. `vite.config.ts` never inlines a font as a `data:` URL, because the AWS policy does not allow `data:` fonts.
     - **₦.** None of the three faces has U+20A6, so ₦ fell back to a system font and looked heavier than the digits beside it. `ShipX Naira` is that one glyph subset from Plus Jakarta Sans: 960 bytes, variable weight 200–800, SIL OFL licence in `src/design/fonts/`. It is listed first in every stack and, through `unicode-range: U+20A6`, draws nothing else. `size-adjust: 97.5%` matches its cap height to the others. Every ₦ in the app, through `formatNgn` or typed directly, gets it with no component change. The regeneration command is in `fonts.css`.
     - **Monospace is for codes, references and tabular numbers only.** The invoice page title (the customer's name) and the customer page's email are now proportional.

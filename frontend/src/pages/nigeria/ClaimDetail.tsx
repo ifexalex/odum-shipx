@@ -26,6 +26,7 @@ import { EvidenceUploader } from './EvidenceUploader'
 import styles from './ClaimDetail.module.css'
 import { formatDate, formatNgn } from '../../lib/format'
 import { useBreadcrumbLabel } from '../../shell/breadcrumbs'
+import { ScrollStrip } from '../../shell/ScrollStrip'
 
 const STATUS_VARIANT: Record<DamageClaimStatus, BadgeVariant> = {
   filed: 'warning',
@@ -155,8 +156,8 @@ function ResolutionPick({ title, sub, current, onClick }: { title: string; sub: 
         background: 'var(--color-surface)',
       }} />
       <span>
-        <span style={{ display: 'block', fontFamily: 'var(--font-display)', fontWeight: 700, fontSize: 13 }}>{title}</span>
-        <span style={{ display: 'block', fontSize: 11, color: 'var(--color-ink-3)', marginTop: 2 }}>{sub}</span>
+        <span style={{ display: 'block', fontFamily: 'var(--font-display)', fontWeight: 700, fontSize: 'var(--text-sm)' }}>{title}</span>
+        <span style={{ display: 'block', fontSize: 'var(--text-xs)', color: 'var(--color-ink-3)', marginTop: 2 }}>{sub}</span>
       </span>
     </button>
   )
@@ -264,7 +265,9 @@ function ResolveClaimModal({ onCancel, onSuccess, claimId, role }: ResolveClaimM
 
 function StatusStepper({ current }: { current: DamageClaimStatus }): JSX.Element {
   const currentIdx = CLAIM_STATUS_ORDER.indexOf(current)
+  // At 12 px the labels no longer fit a 320 px phone side by side: the row scrolls inside itself there.
   return (
+    <ScrollStrip minWidth={CLAIM_STATUS_ORDER.length * 64}>
     <div className={styles.stepper}>
       {CLAIM_STATUS_ORDER.map((s, i) => (
         <div key={s} className={[
@@ -277,6 +280,7 @@ function StatusStepper({ current }: { current: DamageClaimStatus }): JSX.Element
         </div>
       ))}
     </div>
+    </ScrollStrip>
   )
 }
 

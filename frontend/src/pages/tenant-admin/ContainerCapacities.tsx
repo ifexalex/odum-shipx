@@ -217,7 +217,7 @@ export function ContainerCapacities(): JSX.Element {
           ]}
           rows={capacities.map((c) => ({
             cells: [
-              <span key="name" style={{ fontWeight: 600, fontSize: 13 }}>
+              <span key="name" style={{ fontWeight: 600, fontSize: 'var(--text-sm)' }}>
                 {c.name}
               </span>,
               <Mono key="cap">{c.capacity_cbm}</Mono>,
@@ -247,7 +247,7 @@ export function ContainerCapacities(): JSX.Element {
             ],
           }))}
           emptyState={
-            <span style={{ color: 'var(--color-ink-3)', fontSize: 13 }}>
+            <span style={{ color: 'var(--color-ink-3)', fontSize: 'var(--text-sm)' }}>
               {loading ? 'Loading capacities…' : 'No capacities configured.'}
             </span>
           }

@@ -93,7 +93,7 @@ export function DisputeSLA({ dispute }: DisputeSLAProps): JSX.Element | null {
               display: 'flex',
               alignItems: 'center',
               gap: 6,
-              fontSize: '0.75rem',
+              fontSize: 'var(--text-xs)',
               color,
             }}
           >

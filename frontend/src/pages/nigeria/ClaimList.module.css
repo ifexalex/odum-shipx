@@ -47,7 +47,7 @@
 }
 
 .customDateLabel {
-  font-size: 12px;
+  font-size: var(--text-xs);
   color: var(--color-ink-3);
 }
 
@@ -59,7 +59,7 @@
   border: 1px solid var(--color-line);
   border-radius: var(--radius-sm);
   font-family: var(--font-body);
-  font-size: 13px;
+  font-size: var(--text-sm);
   color: var(--color-ink);
 }
 
@@ -69,7 +69,7 @@
   outline: none;
   background: transparent;
   font-family: var(--font-body);
-  font-size: 13px;
+  font-size: var(--text-sm);
   color: var(--color-ink);
 }
 
@@ -77,7 +77,7 @@
 
 .cartonTag {
   font-family: var(--font-mono);
-  font-size: 10px;
+  font-size: var(--text-xs);
   padding: 2px 6px;
   background: var(--color-error-soft);
   color: var(--color-error-strong);
@@ -92,7 +92,7 @@
 }
 
 .descCell {
-  font-size: 12px;
+  font-size: var(--text-xs);
   color: var(--color-ink-2);
   max-width: 220px;
   overflow: hidden;
@@ -102,7 +102,7 @@
 }
 
 .metaText {
-  font-size: 12px;
+  font-size: var(--text-xs);
   color: var(--color-ink-3);
 }
 
@@ -124,7 +124,7 @@
   border: none;
   color: var(--color-primary);
   cursor: pointer;
-  font-size: 14px;
+  font-size: var(--text-md);
   font-weight: 500;
   padding: 0;
 }

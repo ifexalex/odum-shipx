@@ -104,7 +104,7 @@ export function GenerateReleaseNoteModal({
           <label
             style={{
               fontWeight: 600,
-              fontSize: '0.875rem',
+              fontSize: 'var(--text-md)',
               display: 'block',
               marginBottom: 6,
             }}
@@ -141,7 +141,7 @@ export function GenerateReleaseNoteModal({
             {cartonTags.length > 0 && (
               <p
                 style={{
-                  fontSize: '0.8125rem',
+                  fontSize: 'var(--text-sm)',
                   color: 'var(--color-text-muted)',
                   margin: 0,
                 }}
@@ -218,7 +218,7 @@ export function GenerateReleaseNoteModal({
             gap: 8,
             alignItems: 'center',
             cursor: 'pointer',
-            fontSize: '0.875rem',
+            fontSize: 'var(--text-md)',
           }}
         >
           <input

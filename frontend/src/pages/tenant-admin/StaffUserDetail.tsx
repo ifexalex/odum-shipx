@@ -250,9 +250,9 @@ export function StaffUserDetail(): JSX.Element {
               display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
               background: p.allowed ? 'var(--color-success-soft)' : 'var(--color-error-soft)',
               color: p.allowed ? 'var(--color-success)' : 'var(--color-error)',
-              fontSize: 12, fontWeight: 700,
+              fontSize: 'var(--text-xs)', fontWeight: 700,
             }}>{p.allowed ? '✓' : '✕'}</span>
-            <span style={{ fontSize: 13, color: 'var(--color-ink-2)' }}>{p.label}</span>
+            <span style={{ fontSize: 'var(--text-sm)', color: 'var(--color-ink-2)' }}>{p.label}</span>
           </div>
         ))}
       </Card>

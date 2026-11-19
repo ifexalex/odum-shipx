@@ -47,11 +47,11 @@ export function LimitReachedModal({ resource, quota, onClose }: LimitReachedModa
         aria-modal="true"
       >
         <Card padding={24} radius={14}>
-          <h3 style={{ margin: '0 0 12px', fontSize: '1rem', fontWeight: 700 }}>Plan limit reached</h3>
+          <h3 style={{ margin: '0 0 12px', fontSize: 'var(--text-lg)', fontWeight: 700 }}>Plan limit reached</h3>
           <Banner variant="error" title={`Cannot create ${resource}`}>
             {dimLabel} — your {quota.subscription_tier} plan limit is reached.
           </Banner>
-          <p style={{ fontSize: '0.875rem', color: 'var(--color-ink-3)', margin: '12px 0' }}>
+          <p style={{ fontSize: 'var(--text-md)', color: 'var(--color-ink-3)', margin: '12px 0' }}>
             Upgrade your subscription or contact your platform administrator to increase the limit.
           </p>
           <div style={{ display: 'flex', justifyContent: 'flex-end' }}>

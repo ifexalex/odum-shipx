@@ -86,16 +86,16 @@ function TenantCell({ tenant }: { tenant: Tenant }): JSX.Element {
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'center',
-          fontWeight: 800,
-          fontSize: 12,
+          fontWeight: 700,
+          fontSize: 'var(--text-xs)',
           fontFamily: 'var(--font-display)',
         }}
       >
         {initialsFor(tenant.company_name)}
       </div>
       <div style={{ minWidth: 0 }}>
-        <div style={{ fontWeight: 600, fontSize: 13, lineHeight: 1.2 }}>{tenant.company_name}</div>
-        <div style={{ fontSize: 11, color: 'var(--color-ink-4)', lineHeight: 1.3 }}>
+        <div style={{ fontWeight: 600, fontSize: 'var(--text-sm)', lineHeight: 'var(--leading-tight)' }}>{tenant.company_name}</div>
+        <div style={{ fontSize: 'var(--text-xs)', color: 'var(--color-ink-4)', lineHeight: 'var(--leading-tight)' }}>
           {tenant.slug}
         </div>
       </div>
@@ -202,7 +202,7 @@ export function PlatformTenantList(): JSX.Element {
                 <span
                   key="tier"
                   style={{
-                    fontSize: 12,
+                    fontSize: 'var(--text-xs)',
                     fontWeight: 700,
                     color: TIER_COLOR[t.subscription_tier] ?? 'var(--color-ink-2)',
                     textTransform: 'capitalize',
@@ -210,7 +210,7 @@ export function PlatformTenantList(): JSX.Element {
                 >
                   {t.subscription_tier}
                 </span>,
-                <span key="contact" style={{ fontSize: 12, color: 'var(--color-ink-3)' }}>
+                <span key="contact" style={{ fontSize: 'var(--text-xs)', color: 'var(--color-ink-3)' }}>
                   {t.primary_contact_email}
                 </span>,
                 <Mono key="users">
@@ -218,7 +218,7 @@ export function PlatformTenantList(): JSX.Element {
                     ? `${t.user_count}${t.users_limit != null ? ` / ${t.users_limit}` : ''}`
                     : '—'}
                 </Mono>,
-                <span key="date" style={{ fontSize: 12, color: 'var(--color-ink-3)' }}>
+                <span key="date" style={{ fontSize: 'var(--text-xs)', color: 'var(--color-ink-3)' }}>
                   {formatDate(t.created_at)}
                 </span>,
                 <ViewLink
@@ -244,7 +244,7 @@ export function PlatformTenantList(): JSX.Element {
           />
         </Card>
         {!loading && tenants.length > 0 && (
-          <p style={{ fontSize: 12, color: 'var(--color-ink-4)', marginTop: 10 }}>
+          <p style={{ fontSize: 'var(--text-xs)', color: 'var(--color-ink-4)', marginTop: 10 }}>
             Showing {visible.length} of {tenants.length} tenant(s)
           </p>
         )}

@@ -33,7 +33,7 @@
   border: none;
   border-radius: var(--radius-sm);
   font-family: var(--font-body);
-  font-size: 13px;
+  font-size: var(--text-sm);
   color: var(--color-ink-2);
   cursor: pointer;
   text-align: left;

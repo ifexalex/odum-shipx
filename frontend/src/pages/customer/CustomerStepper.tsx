@@ -51,10 +51,10 @@ export function CustomerStepper({ containerStatus }: { containerStatus: string |
                   : null}
             </div>
             <div style={{ marginTop: 8, textAlign: 'center' }}>
-              <div style={{ fontSize: 11, fontWeight: 700, color: done || isCurrent ? 'var(--color-ink)' : 'var(--color-ink-4)' }}>
+              <div style={{ fontSize: 'var(--text-xs)', fontWeight: 700, color: done || isCurrent ? 'var(--color-ink)' : 'var(--color-ink-4)' }}>
                 {stage.label}
               </div>
-              <div style={{ fontSize: 10, color: 'var(--color-ink-4)', marginTop: 1 }}>{stage.sub}</div>
+              <div style={{ fontSize: 'var(--text-xs)', color: 'var(--color-ink-4)', marginTop: 1 }}>{stage.sub}</div>
             </div>
           </div>
         )

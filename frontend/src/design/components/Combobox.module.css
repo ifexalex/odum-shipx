@@ -15,7 +15,7 @@
   border: 1px solid var(--color-line);
   border-radius: var(--radius-sm);
   font-family: var(--font-body);
-  font-size: 14px;
+  font-size: var(--text-md);
   color: var(--color-ink);
   cursor: pointer;
   text-align: left;
@@ -70,7 +70,7 @@
   outline: none;
   background: transparent;
   font-family: var(--font-body);
-  font-size: 14px; /* ≥16px not needed on desktop; stays legible, no iOS zoom at this control size */
+  font-size: var(--text-md); /* ≥16px not needed on desktop; stays legible, no iOS zoom at this control size */
   color: var(--color-ink);
   min-width: 0;
 }
@@ -105,24 +105,24 @@
   background: var(--color-primary-soft);
 }
 .optLabel {
-  font-size: 14px;
+  font-size: var(--text-md);
   color: var(--color-ink);
   font-weight: 500;
 }
 .optMeta {
-  font-size: 12px;
+  font-size: var(--text-xs);
   color: var(--color-ink-4);
 }
 
 .empty {
   padding: 16px 10px;
   text-align: center;
-  font-size: 13px;
+  font-size: var(--text-sm);
   color: var(--color-ink-4);
 }
 
 @media (max-width: 860px) {
   .search {
-    font-size: 16px; /* prevent iOS auto-zoom on the filter input */
+    font-size: var(--text-lg); /* prevent iOS auto-zoom on the filter input */
   }
 }

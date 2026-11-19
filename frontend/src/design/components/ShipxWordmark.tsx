@@ -23,9 +23,9 @@ export function ShipxWordmark({
       <span
         style={{
           fontFamily: fonts.display,
-          fontWeight: 800,
+          fontWeight: 700,
           fontSize: size,
-          letterSpacing: '-0.022em',
+          letterSpacing: 'var(--tracking-tight)',
           color,
           lineHeight: 1,
         }}
@@ -38,7 +38,7 @@ export function ShipxWordmark({
             fontFamily: fonts.body,
             fontSize: Math.max(9, size * 0.4),
             fontWeight: 600,
-            letterSpacing: '0.06em',
+            letterSpacing: 'var(--tracking-label)',
             textTransform: 'uppercase',
             color,
             opacity: 0.6,

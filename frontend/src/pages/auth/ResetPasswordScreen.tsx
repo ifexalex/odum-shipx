@@ -199,11 +199,11 @@ export function ResetPasswordScreen(): JSX.Element {
             borderRadius: 8,
             padding: '12px 14px',
             margin: '8px 0 24px',
-            fontSize: 12,
-            lineHeight: 1.7,
+            fontSize: 'var(--text-xs)',
+            lineHeight: 'var(--leading-body)',
           }}
         >
-          <div style={{ fontWeight: 600, color: 'var(--color-ink-2)', marginBottom: 6, textTransform: 'uppercase', letterSpacing: '0.08em' }}>
+          <div style={{ fontWeight: 600, color: 'var(--color-ink-2)', marginBottom: 6, textTransform: 'uppercase', letterSpacing: 'var(--tracking-label)' }}>
             Password requirements
           </div>
           {REQUIREMENTS.map((r) => {

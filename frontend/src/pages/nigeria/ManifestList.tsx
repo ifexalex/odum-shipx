@@ -137,7 +137,7 @@ export function ManifestList(): JSX.Element {
                   <Mono key="customers">{mf.total_customers}</Mono>,
                   <PackageMix key="packages" manifest={mf} />,
                   <Mono key="cbm">{formatCbm(mf.total_cbm)}</Mono>,
-                  <span key="weight" style={{ fontSize: 12, color: 'var(--color-ink-3)' }}>{fmtWeight(mf.total_weight_kg)}</span>,
+                  <span key="weight" style={{ fontSize: 'var(--text-xs)', color: 'var(--color-ink-3)' }}>{fmtWeight(mf.total_weight_kg)}</span>,
                   <span key="status" style={{ display: 'inline-flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
                     <Badge variant={STATUS_VARIANT[mf.verification_status]}>
                       {statusLabel(mf.verification_status)}

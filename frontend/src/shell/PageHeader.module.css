@@ -12,8 +12,8 @@
 }
 
 .eyebrow {
-  font-size: 11px;
-  letter-spacing: 0.1em;
+  font-size: var(--text-xs);
+  letter-spacing: var(--tracking-label);
   text-transform: uppercase;
   font-weight: 600;
   color: var(--color-primary);
@@ -23,16 +23,16 @@
 .title {
   font-family: var(--font-display);
   font-weight: 700;
-  font-size: 26px;
+  font-size: var(--text-2xl);
   margin: 0;
   color: var(--color-ink);
-  letter-spacing: -0.015em;
-  line-height: 1.15;
+  letter-spacing: var(--tracking-tight);
+  line-height: var(--text-2xl-line);
 }
 
 .subtitle {
   margin: 6px 0 0;
-  font-size: 14px;
+  font-size: var(--text-md);
   color: var(--color-ink-3);
 }
 

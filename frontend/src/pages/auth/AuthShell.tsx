@@ -45,10 +45,10 @@ function BrandIllustration(): JSX.Element {
           <rect x="-18" y="-2" width="36" height="2" fill={colors.forestDark} opacity="0.35" />
           <rect x="-18" y="5" width="36" height="2" fill={colors.forestDark} opacity="0.35" />
         </g>
-        <text x="80" y="105" textAnchor="middle" style={{ fontFamily: 'var(--font-mono)', fontSize: 10, fill: colors.primaryBright, letterSpacing: '0.1em' }}>
+        <text x="80" y="105" textAnchor="middle" style={{ fontFamily: 'var(--font-mono)', fontSize: 'var(--text-xs)', fill: colors.primaryBright, letterSpacing: 'var(--tracking-label)' }}>
           CN · GZG
         </text>
-        <text x="320" y="312" textAnchor="middle" style={{ fontFamily: 'var(--font-mono)', fontSize: 10, fill: colors.accentHover, letterSpacing: '0.1em' }}>
+        <text x="320" y="312" textAnchor="middle" style={{ fontFamily: 'var(--font-mono)', fontSize: 'var(--text-xs)', fill: colors.accentHover, letterSpacing: 'var(--tracking-label)' }}>
           NG · LOS
         </text>
       </svg>
@@ -132,7 +132,7 @@ export function PasswordStrength({ password }: { password: string }): JSX.Elemen
           />
         ))}
       </div>
-      <div style={{ marginTop: 4, fontSize: 11, fontWeight: 600, color: barColors[level] }}>
+      <div style={{ marginTop: 4, fontSize: 'var(--text-xs)', fontWeight: 600, color: barColors[level] }}>
         Password strength: {labels[level]}
       </div>
     </div>

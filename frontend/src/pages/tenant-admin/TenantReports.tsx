@@ -18,7 +18,7 @@ const dateInputStyle: CSSProperties = {
   border: '1px solid var(--color-line)',
   borderRadius: 'var(--radius-sm)',
   fontFamily: 'var(--font-body)',
-  fontSize: 13,
+  fontSize: 'var(--text-sm)',
   color: 'var(--color-ink)',
 }
 
@@ -285,14 +285,14 @@ export function TenantReports(): JSX.Element {
           <div style={{ height: 16 }} />
           {donutSegments.length > 0
             ? <DonutChart segments={donutSegments} total={totalRevenue} />
-            : <p style={{ color: 'var(--color-ink-4)', fontSize: 13 }}>No billing data yet.</p>}
+            : <p style={{ color: 'var(--color-ink-4)', fontSize: 'var(--text-sm)' }}>No billing data yet.</p>}
         </Card>
         <Card>
           <SectionHead title="Top customers by revenue" />
           <div style={{ height: 16 }} />
           {topCustomers.length > 0
             ? <TopCustomersChart data={topCustomers} />
-            : <p style={{ color: 'var(--color-ink-4)', fontSize: 13 }}>No billing data yet.</p>}
+            : <p style={{ color: 'var(--color-ink-4)', fontSize: 'var(--text-sm)' }}>No billing data yet.</p>}
         </Card>
       </div>
 

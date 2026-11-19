@@ -121,7 +121,7 @@ function InviteModal({ onCancel, onSuccess }: InviteModalProps): JSX.Element {
           <label
             style={{
               fontWeight: 600,
-              fontSize: '0.875rem',
+              fontSize: 'var(--text-md)',
               display: 'block',
               marginBottom: 6,
             }}
@@ -254,7 +254,7 @@ export function StaffUserList(): JSX.Element {
                 <Badge key="status" variant={u.status === 'active' ? 'success' : 'neutral'}>
                   {u.status}
                 </Badge>,
-                <span key="created" style={{ fontSize: 12, color: 'var(--color-ink-3)' }}>
+                <span key="created" style={{ fontSize: 'var(--text-xs)', color: 'var(--color-ink-3)' }}>
                   {formatDate(u.created_at)}
                 </span>,
                 <ViewLink

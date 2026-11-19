@@ -118,8 +118,8 @@ export function PlatformDashboard(): JSX.Element {
                   ] as const
                 ).map(([label, count]) => (
                   <div key={label} style={{ display: 'flex', alignItems: 'baseline', gap: 8 }}>
-                    <span style={{ fontFamily: 'var(--font-display)', fontWeight: 700, fontSize: 24 }}>{count}</span>
-                    <span style={{ fontSize: 13, color: 'var(--color-ink-3)' }}>{label}</span>
+                    <span style={{ fontFamily: 'var(--font-display)', fontWeight: 700, fontSize: 'var(--text-2xl)' }}>{count}</span>
+                    <span style={{ fontSize: 'var(--text-sm)', color: 'var(--color-ink-3)' }}>{label}</span>
                   </div>
                 ))}
               </div>
@@ -161,7 +161,7 @@ export function PlatformDashboard(): JSX.Element {
                 <ViewLink key="view" onClick={() => navigate(`/platform/tenants/${t.id}`)} />,
               ],
             }))}
-            emptyState={<span style={{ color: 'var(--color-ink-3)', fontSize: 13 }}>No tenants yet.</span>}
+            emptyState={<span style={{ color: 'var(--color-ink-3)', fontSize: 'var(--text-sm)' }}>No tenants yet.</span>}
           />
         </Card>
 
@@ -171,7 +171,7 @@ export function PlatformDashboard(): JSX.Element {
           </div>
           <div>
             {activity.length === 0 && (
-              <div style={{ padding: '0 20px 18px', fontSize: 13, color: 'var(--color-ink-4)' }}>No recent activity.</div>
+              <div style={{ padding: '0 20px 18px', fontSize: 'var(--text-sm)', color: 'var(--color-ink-4)' }}>No recent activity.</div>
             )}
             {activity.map((e, i) => (
               <div
@@ -182,8 +182,8 @@ export function PlatformDashboard(): JSX.Element {
                   <Badge variant={actionVariant(e.action)} size="sm">{e.action.replace(/_/g, ' ')}</Badge>
                 </div>
                 <div style={{ flex: 1, minWidth: 0 }}>
-                  <div style={{ fontSize: 13, color: 'var(--color-ink-2)', fontWeight: 500 }}>{tenantName(e.target_tenant_id)}</div>
-                  <div style={{ fontSize: 11, color: 'var(--color-ink-4)', marginTop: 2 }}>{relativeTime(e.created_at)}</div>
+                  <div style={{ fontSize: 'var(--text-sm)', color: 'var(--color-ink-2)', fontWeight: 500 }}>{tenantName(e.target_tenant_id)}</div>
+                  <div style={{ fontSize: 'var(--text-xs)', color: 'var(--color-ink-4)', marginTop: 2 }}>{relativeTime(e.created_at)}</div>
                 </div>
               </div>
             ))}
@@ -191,7 +191,7 @@ export function PlatformDashboard(): JSX.Element {
               <button
                 type="button"
                 onClick={() => navigate('/platform/audit-log')}
-                style={{ color: 'var(--color-primary)', fontWeight: 600, fontSize: 13, background: 'none', border: 0, cursor: 'pointer', fontFamily: 'var(--font-body)' }}
+                style={{ color: 'var(--color-primary)', fontWeight: 600, fontSize: 'var(--text-sm)', background: 'none', border: 0, cursor: 'pointer', fontFamily: 'var(--font-body)' }}
               >
                 View full audit log →
               </button>

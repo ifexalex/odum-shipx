@@ -46,9 +46,9 @@ function PlanRadio({ name, features, selected, onSelect }: { name: string; featu
           border: `${selected ? 5 : 1.5}px solid ${selected ? 'var(--color-primary)' : 'var(--color-line)'}`,
           background: 'var(--color-surface)', flexShrink: 0,
         }} />
-        <span style={{ fontFamily: 'var(--font-display)', fontWeight: 700, fontSize: 15 }}>{name}</span>
+        <span style={{ fontFamily: 'var(--font-display)', fontWeight: 700, fontSize: 'var(--text-lg)' }}>{name}</span>
       </div>
-      <ul style={{ margin: 0, paddingLeft: 18, fontSize: 12, color: 'var(--color-ink-3)', lineHeight: 1.8 }}>
+      <ul style={{ margin: 0, paddingLeft: 18, fontSize: 'var(--text-xs)', color: 'var(--color-ink-3)', lineHeight: 'var(--leading-body)' }}>
         {features.map((f) => <li key={f}>{f}</li>)}
       </ul>
     </button>
@@ -101,10 +101,10 @@ export function CreateTenantPage(): JSX.Element {
         <div style={{ width: 84, height: 84, borderRadius: '50%', background: 'var(--color-success-soft)', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 24px' }}>
           <Icon name="check" size={42} color="var(--color-success)" stroke={2.5} />
         </div>
-        <h2 style={{ fontFamily: 'var(--font-display)', fontWeight: 700, fontSize: 26, margin: '0 0 8px' }}>
+        <h2 style={{ fontFamily: 'var(--font-display)', fontWeight: 700, fontSize: 'var(--text-2xl)', margin: '0 0 8px' }}>
           {created.company_name} is live.
         </h2>
-        <p style={{ fontSize: 14, color: 'var(--color-ink-3)', margin: '0 0 24px' }}>
+        <p style={{ fontSize: 'var(--text-md)', color: 'var(--color-ink-3)', margin: '0 0 24px' }}>
           Tenant <Mono>{created.slug}</Mono> created on the <strong style={{ textTransform: 'capitalize' }}>{created.subscription_tier}</strong> plan.
         </p>
         <Banner variant="info" title="Admin invite sent">

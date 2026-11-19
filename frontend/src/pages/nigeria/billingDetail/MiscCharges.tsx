@@ -66,7 +66,7 @@ export function MiscChargesSection({
               ? miscCharges.map((c) => ({
                   cells: [
                     <span key="desc">{c.description}</span>,
-                    <span key="type" style={{ fontSize: 12, color: 'var(--color-ink-3)' }}>
+                    <span key="type" style={{ fontSize: 'var(--text-xs)', color: 'var(--color-ink-3)' }}>
                       {c.charge_type.replace(/_/g, ' ')}
                     </span>,
                     <Mono key="amt">{formatNgn(c.amount_ngn)}</Mono>,

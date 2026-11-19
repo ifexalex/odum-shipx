@@ -318,7 +318,7 @@ export function BillingList(): JSX.Element {
               <Mono key="ref" color="var(--color-ink)">{b.invoice_number ?? '—'}</Mono>,
               b.customer_name
                 ? <UserCell key="cust" name={b.customer_name} email="" />
-                : <span key="cust" style={{ color: 'var(--color-ink-4)', fontSize: 13 }}>—</span>,
+                : <span key="cust" style={{ color: 'var(--color-ink-4)', fontSize: 'var(--text-sm)' }}>—</span>,
               <Mono key="ctn">{b.container_number ?? '—'}</Mono>,
               <Mono key="total">{fmtNgn(b.total_due_ngn)}</Mono>,
               <Mono key="out" color={Number(b.outstanding_ngn) > 0 ? 'var(--color-error)' : Number(b.outstanding_ngn) < 0 ? 'var(--color-info)' : 'var(--color-success)'}>

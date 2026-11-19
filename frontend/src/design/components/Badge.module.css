@@ -6,8 +6,8 @@
   border-radius: var(--radius-full);
   font-family: var(--font-body);
   font-weight: 600;
-  font-size: 12px;
-  letter-spacing: 0.04em;
+  font-size: var(--text-xs);
+  letter-spacing: var(--tracking-label);
   text-transform: uppercase;
   white-space: nowrap;
   /* In a narrow cell (a table's phone card) a long status wraps instead of running out of it. */
@@ -23,7 +23,7 @@
 .sm {
   gap: 4px;
   padding: 2px 8px;
-  font-size: 11px;
+  font-size: var(--text-xs);
 }
 
 .dot {

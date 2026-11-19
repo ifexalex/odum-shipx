@@ -46,15 +46,15 @@
 .heroTitle {
   font-family: var(--font-mono);
   font-weight: 700;
-  font-size: 26px;
+  font-size: var(--text-2xl);
   color: var(--color-ink);
   margin: 0;
-  letter-spacing: -0.015em;
-  line-height: 1.15;
+  letter-spacing: var(--tracking-tight);
+  line-height: var(--text-2xl-line);
 }
 
 .heroMeta {
-  font-size: 13px;
+  font-size: var(--text-sm);
   color: var(--color-ink-3);
   margin-top: 4px;
   display: flex;
@@ -104,7 +104,7 @@
   padding: 0;
   cursor: pointer;
   font-family: var(--font-body);
-  font-size: 13px;
+  font-size: var(--text-sm);
   font-weight: 600;
   color: var(--color-primary);
 }
@@ -125,9 +125,9 @@
 }
 
 .summaryLabel {
-  font-size: 11px;
+  font-size: var(--text-xs);
   font-weight: 700;
-  letter-spacing: 0.06em;
+  letter-spacing: var(--tracking-label);
   text-transform: uppercase;
   color: var(--color-ink-3);
 }
@@ -135,11 +135,11 @@
 .summaryValue {
   font-family: var(--font-display);
   font-weight: 700;
-  font-size: 22px;
-  letter-spacing: -0.01em;
+  font-size: var(--text-2xl);
+  letter-spacing: var(--tracking-tight);
   color: var(--color-ink);
   margin-top: 4px;
-  line-height: 1.1;
+  line-height: var(--text-2xl-line);
 }
 
 .summaryValueAccent {
@@ -147,7 +147,7 @@
 }
 
 .summarySub {
-  font-size: 11px;
+  font-size: var(--text-xs);
   color: var(--color-ink-4);
   margin-top: 2px;
 }
@@ -169,14 +169,14 @@
 }
 
 .utilLabel {
-  font-size: 12px;
+  font-size: var(--text-xs);
   font-weight: 600;
   color: var(--color-primary-deep);
 }
 
 .utilPct {
   font-family: var(--font-mono, monospace);
-  font-size: 13px;
+  font-size: var(--text-sm);
   font-weight: 700;
   color: var(--color-primary);
 }
@@ -207,7 +207,7 @@
 }
 
 .utilSub {
-  font-size: 11px;
+  font-size: var(--text-xs);
   color: var(--color-ink-3);
   margin-top: 6px;
 }
@@ -246,20 +246,20 @@
 }
 
 .eventTitle {
-  font-size: 13px;
+  font-size: var(--text-sm);
   font-weight: 600;
   color: var(--color-ink);
-  line-height: 1.3;
+  line-height: var(--text-sm-line);
 }
 
 .eventSub {
-  font-size: 12px;
+  font-size: var(--text-xs);
   color: var(--color-ink-3);
   margin-top: 2px;
 }
 
 .eventWhen {
-  font-size: 11px;
+  font-size: var(--text-xs);
   color: var(--color-ink-4);
   font-family: var(--font-mono, monospace);
   flex-shrink: 0;
@@ -268,12 +268,12 @@
 .eventEmpty {
   padding: 24px 0;
   text-align: center;
-  font-size: 13px;
+  font-size: var(--text-sm);
   color: var(--color-ink-4);
 }
 
 .metaText {
-  font-size: 12px;
+  font-size: var(--text-xs);
   color: var(--color-ink-3);
   white-space: nowrap;
 }
@@ -329,11 +329,11 @@
 }
 
 .stepLabel {
-  font-size: 11px;
+  font-size: var(--text-xs);
   font-weight: 700;
   color: var(--color-ink-4);
-  letter-spacing: 0.02em;
-  line-height: 1.2;
+  letter-spacing: var(--tracking-label);
+  line-height: var(--text-xs-line);
 }
 
 .stepLabelActive {
@@ -341,7 +341,7 @@
 }
 
 .stepSub {
-  font-size: 10px;
+  font-size: var(--text-xs);
   color: var(--color-ink-4);
   margin-top: 1px;
 }
@@ -352,22 +352,22 @@
   margin-top: 6px;
   padding: 2px 8px;
   border-radius: 9999px;
-  font-size: 9px;
+  font-size: var(--text-xs);
   font-weight: 700;
-  letter-spacing: 0.06em;
+  letter-spacing: var(--tracking-label);
   text-transform: uppercase;
   color: #fff;
 }
 
 .eventTs {
   font-family: var(--font-mono, monospace);
-  font-size: 12px;
+  font-size: var(--text-xs);
   color: var(--color-ink-3);
   white-space: nowrap;
 }
 
 .eventNote {
-  font-size: 12px;
+  font-size: var(--text-xs);
   color: var(--color-ink-3);
 }
 
@@ -376,7 +376,7 @@
   display: inline-flex;
   align-items: center;
   gap: 6px;
-  font-size: 12px;
+  font-size: var(--text-xs);
 }
 
 .statusFrom {
@@ -385,7 +385,7 @@
 
 .statusArrow {
   color: var(--color-ink-4);
-  font-size: 11px;
+  font-size: var(--text-xs);
 }
 
 .statusTo {
@@ -431,7 +431,7 @@
 .modalTitle {
   font-family: var(--font-display);
   font-weight: 700;
-  font-size: 18px;
+  font-size: var(--text-xl);
   color: var(--color-ink);
   margin: 0 0 16px;
 }
@@ -441,9 +441,9 @@
 }
 
 .modalBody {
-  font-size: 14px;
+  font-size: var(--text-md);
   color: var(--color-ink-2);
-  line-height: 1.6;
+  line-height: var(--text-md-line);
   margin: 0 0 20px;
 }
 
@@ -456,7 +456,7 @@
 
 .modalActions > * {
   min-height: 48px;
-  font-size: 1rem;
+  font-size: var(--text-lg);
 }
 
 @container sxapp (min-width: 861px) {
@@ -477,11 +477,11 @@
   border-radius: var(--radius-md);
 }
 .advanceSummaryArrow {
-  font-size: 14px;
+  font-size: var(--text-md);
   color: var(--color-ink-2);
 }
 .advanceSummaryMeta {
-  font-size: 12px;
+  font-size: var(--text-xs);
   color: var(--color-ink-4);
 }
 
@@ -515,7 +515,7 @@
   gap: 10px;
 }
 .shipperName {
-  font-size: 13px;
+  font-size: var(--text-sm);
   font-weight: 600;
   color: var(--color-ink);
   overflow: hidden;
@@ -523,7 +523,7 @@
   white-space: nowrap;
 }
 .shipperCbm {
-  font-size: 12px;
+  font-size: var(--text-xs);
   color: var(--color-ink-3);
   white-space: nowrap;
   flex-shrink: 0;
@@ -548,7 +548,7 @@
   transition: width 0.2s ease;
 }
 .shipperPct {
-  font-size: 11px;
+  font-size: var(--text-xs);
   font-variant-numeric: tabular-nums;
   color: var(--color-ink-4);
   width: 32px;
@@ -557,6 +557,6 @@
 }
 .shipperEmpty {
   padding: 16px 2px;
-  font-size: 13px;
+  font-size: var(--text-sm);
   color: var(--color-ink-3);
 }

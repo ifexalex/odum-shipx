@@ -35,10 +35,10 @@ function fmtNgn(val: string | number | null | undefined): string {
 function CustStat({ label, value, color }: { label: string; value: string; color?: string }): JSX.Element {
   return (
     <div>
-      <div style={{ fontSize: 11, fontWeight: 700, color: 'var(--color-ink-4)', textTransform: 'uppercase', letterSpacing: '0.06em' }}>
+      <div style={{ fontSize: 'var(--text-xs)', fontWeight: 700, color: 'var(--color-ink-4)', textTransform: 'uppercase', letterSpacing: 'var(--tracking-label)' }}>
         {label}
       </div>
-      <div style={{ fontFamily: 'var(--font-display)', fontWeight: 700, fontSize: 20, color: color ?? 'var(--color-ink)', marginTop: 2, letterSpacing: '-0.01em' }}>
+      <div style={{ fontFamily: 'var(--font-display)', fontWeight: 700, fontSize: 'var(--text-xl)', color: color ?? 'var(--color-ink)', marginTop: 2, letterSpacing: 'var(--tracking-tight)' }}>
         {value}
       </div>
     </div>
@@ -159,7 +159,7 @@ export function MyShipments(): JSX.Element {
                       </div>
                       <div>
                         <div className={styles.activeCardRef}>
-                          <Mono color="var(--color-ink)" style={{ fontSize: 16, fontWeight: 700 }}>
+                          <Mono color="var(--color-ink)" style={{ fontSize: 'var(--text-lg)', fontWeight: 700 }}>
                             {shipment.reference ?? shipment.id.slice(0, 8)}
                           </Mono>
                           {statusInfo && (
@@ -250,7 +250,7 @@ export function MyShipments(): JSX.Element {
                     <Mono key="ctn">{pl.container_number ?? '—'}</Mono>,
                     <Badge key="status" variant="success">Delivered</Badge>,
                     <Mono key="cartons">{pl.carton_count}</Mono>,
-                    <span key="date" style={{ fontSize: 12, color: 'var(--color-ink-3)' }}>
+                    <span key="date" style={{ fontSize: 'var(--text-xs)', color: 'var(--color-ink-3)' }}>
                       {formatDate(pl.created_at)}
                     </span>,
                     <Mono key="paid">{b ? fmtNgn(b.total_paid_ngn) : '—'}</Mono>,
@@ -267,7 +267,7 @@ export function MyShipments(): JSX.Element {
       {shipments.length === 0 && !loading && (
         <div className={styles.empty}>
           <p className={styles.emptyTitle}>No shipments yet</p>
-          <p style={{ color: 'var(--color-ink-3)', fontSize: 14 }}>
+          <p style={{ color: 'var(--color-ink-3)', fontSize: 'var(--text-md)' }}>
             Your cargo will appear here once your packing list has been approved.
           </p>
         </div>

@@ -98,8 +98,8 @@ function GeneralSettings(): JSX.Element {
 
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '14px 0', borderTop: '1px solid var(--color-line-soft)' }}>
         <div>
-          <div style={{ fontWeight: 700, fontSize: 14, color: maintenance ? 'var(--color-error)' : 'var(--color-ink)' }}>Maintenance mode</div>
-          <div style={{ fontSize: 12, color: 'var(--color-ink-3)' }}>
+          <div style={{ fontWeight: 700, fontSize: 'var(--text-md)', color: maintenance ? 'var(--color-error)' : 'var(--color-ink)' }}>Maintenance mode</div>
+          <div style={{ fontSize: 'var(--text-xs)', color: 'var(--color-ink-3)' }}>
             Blocks tenant onboarding and shows a maintenance banner. Existing sessions keep working.
           </div>
         </div>

@@ -57,7 +57,7 @@ function ProgressSteps({ status }: { status: DamageClaimStatus }): JSX.Element {
             key={step}
             aria-current={here ? 'step' : undefined}
             style={{
-              fontSize: '0.8125rem',
+              fontSize: 'var(--text-sm)',
               padding: '4px 10px',
               borderRadius: 999,
               border: '1px solid var(--color-border)',
@@ -115,7 +115,7 @@ function Outcome({ claim }: { claim: Claim }): JSX.Element | null {
 
   return (
     <Card padding={24}>
-      <h2 style={{ margin: '0 0 12px', fontSize: '1rem' }}>Outcome</h2>
+      <h2 style={{ margin: '0 0 12px', fontSize: 'var(--text-lg)' }}>Outcome</h2>
       <Kvp label="Decision" value={customerResolutionLabel(resolution)} />
       {resolution.amount_ngn !== null && resolution.resolution_type !== 'discount' && resolution.resolution_type !== 'no_action' && (
         <Kvp label="Amount" value={<Mono>{formatNgn(resolution.amount_ngn)}</Mono>} />
@@ -172,7 +172,7 @@ export function MyClaimDetail(): JSX.Element {
 
       <div style={{ height: 16 }} />
       <Card padding={24}>
-        <h2 style={{ margin: '0 0 12px', fontSize: '1rem' }}>Your claim</h2>
+        <h2 style={{ margin: '0 0 12px', fontSize: 'var(--text-lg)' }}>Your claim</h2>
         <Kvp label="Container" value={<Mono>{claim.container_number ?? '—'}</Mono>} />
         {claim.cartons_affected.length > 0 && <Kvp label="Cartons affected" value={<Mono>{claim.cartons_affected.join(', ')}</Mono>} />}
         <Kvp label="What you told us" value={claim.description ?? '—'} />
@@ -181,7 +181,7 @@ export function MyClaimDetail(): JSX.Element {
 
       <div style={{ height: 16 }} />
       <Card padding={24}>
-        <h2 style={{ margin: '0 0 12px', fontSize: '1rem' }}>Evidence you provided</h2>
+        <h2 style={{ margin: '0 0 12px', fontSize: 'var(--text-lg)' }}>Evidence you provided</h2>
         <EvidenceList files={claim.evidence ?? []} />
       </Card>
 

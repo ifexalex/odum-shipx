@@ -40,11 +40,11 @@ export function RoleCheckboxList({ options, selected, primary, onChange, roleLab
         return (
           <div key={role} style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
             <Check checked={checked} onChange={(next) => toggleRole(role, next)} />
-            <span style={{ flex: 1, fontSize: '0.875rem', cursor: 'pointer' }} onClick={() => toggleRole(role, !checked)}>
+            <span style={{ flex: 1, fontSize: 'var(--text-md)', cursor: 'pointer' }} onClick={() => toggleRole(role, !checked)}>
               {roleLabel(role)}
             </span>
             {checked && (
-              <label style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: '0.75rem', color: 'var(--color-ink-3)', cursor: 'pointer' }}>
+              <label style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 'var(--text-xs)', color: 'var(--color-ink-3)', cursor: 'pointer' }}>
                 <input type="radio" name="primary-role" checked={primary === role} onChange={() => onChange(selected, role)} />
                 Primary
               </label>

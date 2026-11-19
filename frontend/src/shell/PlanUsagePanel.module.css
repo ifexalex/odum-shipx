@@ -14,7 +14,7 @@
 }
 
 .rowLabel {
-  font-size: 13px;
+  font-size: var(--text-sm);
   font-weight: 600;
   color: var(--color-ink);
 }
@@ -36,7 +36,7 @@
 }
 
 .pctQuiet {
-  font-size: 12px;
+  font-size: var(--text-xs);
   color: var(--color-ink-4);
   font-family: var(--font-mono);
 }
@@ -45,7 +45,7 @@
   margin-top: 12px;
   padding-top: 12px;
   border-top: 1px dashed var(--color-line-soft);
-  font-size: 12px;
+  font-size: var(--text-xs);
   color: var(--color-ink-4);
 }
 

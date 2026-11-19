@@ -38,9 +38,9 @@
 
 .brandByLine {
   font-family: var(--font-body);
-  font-size: 11px;
+  font-size: var(--text-xs);
   color: rgba(255, 255, 255, 0.5);
-  letter-spacing: 0.16em;
+  letter-spacing: var(--tracking-label);
   text-transform: uppercase;
   font-weight: 600;
 }
@@ -65,10 +65,10 @@
 
 .heroHeading {
   font-family: var(--font-display);
-  font-weight: 800;
-  font-size: 36px;
-  line-height: 1.1;
-  letter-spacing: -0.025em;
+  font-weight: 700;
+  font-size: var(--text-3xl);
+  line-height: var(--text-3xl-line);
+  letter-spacing: var(--tracking-tight);
   margin: 28px 0 14px;
   color: var(--color-on-brand);
 }
@@ -79,8 +79,8 @@
 
 .heroSub {
   font-family: var(--font-body);
-  font-size: 15px;
-  line-height: 1.55;
+  font-size: var(--text-lg);
+  line-height: var(--text-lg-line);
   color: rgba(255, 255, 255, 0.72);
   margin: 0;
   max-width: 380px;
@@ -97,9 +97,9 @@
 }
 
 .footerCopy {
-  font-size: 11px;
+  font-size: var(--text-xs);
   color: rgba(255, 255, 255, 0.4);
-  letter-spacing: 0.14em;
+  letter-spacing: var(--tracking-label);
   text-transform: uppercase;
   font-weight: 600;
 }
@@ -119,9 +119,9 @@
 }
 
 .statusText {
-  font-size: 11px;
+  font-size: var(--text-xs);
   color: rgba(255, 255, 255, 0.5);
-  letter-spacing: 0.1em;
+  letter-spacing: var(--tracking-label);
   font-weight: 600;
 }
 
@@ -146,17 +146,17 @@
 .formTitle {
   font-family: var(--font-display);
   font-weight: 700;
-  font-size: 28px;
-  letter-spacing: -0.018em;
+  font-size: var(--text-2xl);
+  letter-spacing: var(--tracking-tight);
   color: var(--color-ink);
   margin: 0 0 6px;
 }
 
 .formSub {
-  font-size: 14px;
+  font-size: var(--text-md);
   color: var(--color-ink-3);
   margin: 0;
-  line-height: 1.5;
+  line-height: var(--text-md-line);
 }
 
 .rowBetween {
@@ -171,7 +171,7 @@
   align-items: center;
   gap: 8px;
   cursor: pointer;
-  font-size: 13px;
+  font-size: var(--text-sm);
   color: var(--color-ink-2);
   font-weight: 500;
 }
@@ -179,7 +179,7 @@
 .link {
   color: var(--color-primary);
   font-weight: 600;
-  font-size: 13px;
+  font-size: var(--text-sm);
   text-decoration: none;
   background: none;
   border: none;
@@ -207,7 +207,7 @@
   gap: 12px;
   margin: 20px 0;
   color: var(--color-ink-4);
-  font-size: 12px;
+  font-size: var(--text-xs);
   font-weight: 500;
 }
 .dividerLine {
@@ -217,12 +217,12 @@
 }
 .dividerText {
   text-transform: uppercase;
-  letter-spacing: 0.1em;
+  letter-spacing: var(--tracking-label);
 }
 
 .footerLine {
   text-align: center;
-  font-size: 13px;
+  font-size: var(--text-sm);
   color: var(--color-ink-3);
   margin: 0;
 }
@@ -235,7 +235,7 @@
   border: none;
   cursor: pointer;
   padding: 0;
-  font-size: 13px;
+  font-size: var(--text-sm);
 }
 
 /* Prototype (auth-screens.jsx @container sxauth): brand panel hides at 920px,

@@ -32,8 +32,8 @@ export function DesignPreview(): JSX.Element {
           {Object.entries(colors).map(([name, hex]) => (
             <div key={name} style={{ width: 140 }}>
               <div style={{ height: 56, borderRadius: radius.sm, background: hex, border: `1px solid ${colors.line}` }} />
-              <div style={{ fontSize: 12, marginTop: 4 }}>{name}</div>
-              <div style={{ fontSize: 11, color: colors.ink4 }}>{hex}</div>
+              <div style={{ fontSize: 'var(--text-xs)', marginTop: 4 }}>{name}</div>
+              <div style={{ fontSize: 'var(--text-xs)', color: colors.ink4 }}>{hex}</div>
             </div>
           ))}
         </div>
@@ -44,7 +44,7 @@ export function DesignPreview(): JSX.Element {
         <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
           {Object.entries(typeScale).map(([name, style]) => (
             <div key={name} style={{ ...style, display: 'flex', gap: 12, alignItems: 'baseline' }}>
-              <span style={{ width: 110, fontSize: 11, fontFamily: fonts.mono, color: colors.ink4 }}>{name}</span>
+              <span style={{ width: 110, fontSize: 'var(--text-xs)', fontFamily: fonts.mono, color: colors.ink4 }}>{name}</span>
               <span>The quick brown fox ships cargo</span>
             </div>
           ))}
@@ -65,7 +65,7 @@ export function DesignPreview(): JSX.Element {
                   border: `1px solid ${colors.primary}`,
                 }}
               />
-              <div style={{ fontSize: 12, marginTop: 4 }}>{name}</div>
+              <div style={{ fontSize: 'var(--text-xs)', marginTop: 4 }}>{name}</div>
             </div>
           ))}
         </div>
@@ -86,7 +86,7 @@ export function DesignPreview(): JSX.Element {
                   ...(name === 'scrimModal' ? { background: value } : {}),
                 }}
               />
-              <div style={{ fontSize: 12, marginTop: 4 }}>{name}</div>
+              <div style={{ fontSize: 'var(--text-xs)', marginTop: 4 }}>{name}</div>
             </div>
           ))}
         </div>

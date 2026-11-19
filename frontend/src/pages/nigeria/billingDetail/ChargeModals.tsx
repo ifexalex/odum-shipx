@@ -99,7 +99,7 @@ export function AddChargeModal({ billing, onCancel, onSuccess }: AddChargeModalP
           <label
             style={{
               fontWeight: 600,
-              fontSize: '0.875rem',
+              fontSize: 'var(--text-md)',
               display: 'block',
               marginBottom: 6,
             }}
@@ -113,7 +113,7 @@ export function AddChargeModal({ billing, onCancel, onSuccess }: AddChargeModalP
               borderRadius: 8,
               border: '1px solid var(--color-line)',
               background: 'var(--color-surface)',
-              fontSize: '0.875rem',
+              fontSize: 'var(--text-md)',
             }}
             value={selectedType}
             onChange={(e) => handleTypeChange(e.target.value)}

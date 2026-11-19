@@ -81,7 +81,7 @@ export function ComposeAnnouncementModal({ open, onClose }: ComposeAnnouncementM
           placeholder="Optional details…"
         />
         <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-          <span style={{ fontSize: 13, fontWeight: 600, color: 'var(--color-ink-2)' }}>Send to</span>
+          <span style={{ fontSize: 'var(--text-sm)', fontWeight: 600, color: 'var(--color-ink-2)' }}>Send to</span>
           <div style={{ display: 'flex', gap: 6 }}>
             {!isStaffRequest && (
               <Chip active={audience === 'all_staff'} onClick={() => setAudience('all_staff')}>
@@ -93,7 +93,7 @@ export function ComposeAnnouncementModal({ open, onClose }: ComposeAnnouncementM
             </Chip>
           </div>
           {isStaffRequest && (
-            <span style={{ fontSize: 12, color: 'var(--color-ink-4)' }}>
+            <span style={{ fontSize: 'var(--text-xs)', color: 'var(--color-ink-4)' }}>
               Customer announcements need tenant admin approval before they're sent.
             </span>
           )}

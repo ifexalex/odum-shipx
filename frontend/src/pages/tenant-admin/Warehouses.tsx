@@ -165,9 +165,9 @@ function WarehouseModal({ existing, onCancel, onSuccess }: WarehouseModalProps):
             style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 4, cursor: 'pointer' }}
           >
             <Check checked={makeDefault} onChange={setMakeDefault} disabled={submitting} />
-            <span style={{ fontSize: 13 }}>
+            <span style={{ fontSize: 'var(--text-sm)' }}>
               Make this the default warehouse
-              <span style={{ color: 'var(--color-ink-3)', display: 'block', fontSize: 12 }}>
+              <span style={{ color: 'var(--color-ink-3)', display: 'block', fontSize: 'var(--text-xs)' }}>
                 Pre-selected on new packing lists and used on release-note letterheads.
               </span>
             </span>
@@ -341,13 +341,13 @@ export function Warehouses(): JSX.Element {
           ]}
           rows={warehouses.map((w) => ({
             cells: [
-              <span key="name" style={{ fontWeight: 600, fontSize: 13 }}>
+              <span key="name" style={{ fontWeight: 600, fontSize: 'var(--text-sm)' }}>
                 {w.name}
               </span>,
-              <span key="loc" style={{ color: 'var(--color-ink-2)', fontSize: 13 }}>
+              <span key="loc" style={{ color: 'var(--color-ink-2)', fontSize: 'var(--text-sm)' }}>
                 {[w.city, w.state].filter(Boolean).join(', ') || '—'}
               </span>,
-              <span key="phone" style={{ color: 'var(--color-ink-2)', fontSize: 13 }}>
+              <span key="phone" style={{ color: 'var(--color-ink-2)', fontSize: 'var(--text-sm)' }}>
                 {w.phone || '—'}
               </span>,
               w.is_default ? (
@@ -387,7 +387,7 @@ export function Warehouses(): JSX.Element {
             ],
           }))}
           emptyState={
-            <span style={{ color: 'var(--color-ink-3)', fontSize: 13 }}>
+            <span style={{ color: 'var(--color-ink-3)', fontSize: 'var(--text-sm)' }}>
               {loading ? 'Loading warehouses…' : 'No warehouses configured.'}
             </span>
           }

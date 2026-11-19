@@ -8,8 +8,8 @@
 .muted {
   margin: 0;
   color: var(--color-ink-3);
-  font-size: 14px;
-  line-height: 1.5;
+  font-size: var(--text-md);
+  line-height: var(--text-md-line);
 }
 
 .field {
@@ -19,7 +19,7 @@
 }
 
 .label {
-  font-size: 13px;
+  font-size: var(--text-sm);
   font-weight: 500;
 }
 
@@ -31,7 +31,7 @@
   border: 1px solid var(--color-line);
   border-radius: var(--radius-sm);
   font-family: var(--font-body);
-  font-size: 14px;
+  font-size: var(--text-md);
   cursor: pointer;
 }
 
@@ -55,7 +55,7 @@
   justify-content: space-between;
   gap: var(--space-md);
   padding: 10px var(--space-md);
-  font-size: 14px;
+  font-size: var(--text-md);
 }
 
 .customer + .customer {

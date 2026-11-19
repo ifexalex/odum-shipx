@@ -18,12 +18,12 @@
 }
 
 .label {
-  font-size: 12px;
-  letter-spacing: 0.04em;
+  font-size: var(--text-xs);
+  letter-spacing: var(--tracking-label);
   text-transform: uppercase;
   font-weight: 600;
   color: var(--color-ink-3);
-  line-height: 1.2;
+  line-height: var(--text-xs-line);
   /* Wrap to at most two lines rather than truncating — "AWAITING CUSTOMS",
      "READY FOR PICKUP" etc. truncate to unreadable on a dense 6-card row.
      Single-word labels that fit still render on one line. */
@@ -40,8 +40,8 @@
 .value {
   font-family: var(--font-display);
   font-weight: 700;
-  font-size: 30px;
-  letter-spacing: -0.02em;
+  font-size: var(--text-2xl); /* stat values are 2xl in the type scale (FD-01) */
+  letter-spacing: var(--tracking-tight);
   color: var(--color-ink);
   margin-bottom: 8px;
   line-height: 1;
@@ -60,15 +60,15 @@
     overflow-wrap: normal;
   }
   .value {
-    font-size: clamp(20px, 6.5vw, 30px);
+    font-size: clamp(var(--text-xl), 6.5vw, var(--text-2xl));
     white-space: normal;
     overflow-wrap: anywhere;
-    line-height: 1.1;
+    line-height: var(--leading-tight);
   }
 }
 
 .suffix {
-  font-size: 15px;
+  font-size: var(--text-lg);
   color: var(--color-ink-3);
   margin-left: 4px;
   font-weight: 600;
@@ -78,7 +78,7 @@
   display: flex;
   align-items: center;
   gap: 8px;
-  font-size: 12px;
+  font-size: var(--text-xs);
   white-space: nowrap;
   overflow: hidden;
 }

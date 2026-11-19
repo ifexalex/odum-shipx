@@ -60,13 +60,13 @@
 }
 
 .optionLabel {
-  font-size: 14px;
+  font-size: var(--text-md);
   font-weight: 600;
   color: var(--color-ink);
 }
 
 .optionSub {
-  font-size: 12px;
+  font-size: var(--text-xs);
   color: var(--color-ink-4);
   margin-top: 1px;
 }

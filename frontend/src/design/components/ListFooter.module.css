@@ -9,7 +9,7 @@
 }
 
 .count {
-  font-size: 13px;
+  font-size: var(--text-sm);
   color: var(--color-ink-3);
 }
 
@@ -19,7 +19,7 @@
 }
 
 .refine {
-  font-size: 13px;
+  font-size: var(--text-sm);
   color: var(--color-ink-4);
   max-width: 46ch;
 }

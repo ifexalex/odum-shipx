@@ -17,13 +17,13 @@
 }
 
 .factLabel {
-  font-size: 12px;
+  font-size: var(--text-xs);
   color: var(--color-ink-3);
 }
 
 .factValue {
   font-family: var(--font-mono);
-  font-size: 20px;
+  font-size: var(--text-xl);
   font-weight: 700;
   color: var(--color-ink);
 }
@@ -31,8 +31,8 @@
 .reason {
   margin: 0;
   color: var(--color-ink-2);
-  font-size: 14px;
-  line-height: 1.5;
+  font-size: var(--text-md);
+  line-height: var(--text-md-line);
 }
 
 .outcome {

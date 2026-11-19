@@ -107,13 +107,13 @@ export function Dashboard(): JSX.Element {
     <div>
       {/* Greeting hero — prototype 3.1 */}
       <div style={{ marginBottom: 24 }}>
-        <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--color-primary)', textTransform: 'uppercase', letterSpacing: '0.1em', marginBottom: 4 }}>
+        <div style={{ fontSize: 'var(--text-xs)', fontWeight: 700, color: 'var(--color-primary)', textTransform: 'uppercase', letterSpacing: 'var(--tracking-label)', marginBottom: 4 }}>
           {greeting()}
         </div>
-        <h1 style={{ fontFamily: 'var(--font-display)', fontWeight: 700, fontSize: 28, color: 'var(--color-ink)', margin: 0, letterSpacing: '-0.02em', lineHeight: 1.15 }}>
+        <h1 style={{ fontFamily: 'var(--font-display)', fontWeight: 700, fontSize: 'var(--text-2xl)', color: 'var(--color-ink)', margin: 0, letterSpacing: 'var(--tracking-tight)', lineHeight: 'var(--leading-tight)' }}>
           Lead every shipment, {firstName}.
         </h1>
-        <p style={{ fontSize: 14, color: 'var(--color-ink-3)', margin: '6px 0 0' }}>{summaryLine}</p>
+        <p style={{ fontSize: 'var(--text-md)', color: 'var(--color-ink-3)', margin: '6px 0 0' }}>{summaryLine}</p>
       </div>
 
       {/* Headline + financial KPIs. The per-stage operational counts
@@ -219,7 +219,7 @@ export function Dashboard(): JSX.Element {
                   columns={[{ title: 'Submitted' }, { title: 'Original CBM', align: 'right' }, { title: 'Status' }]}
                   rows={openDisputes.slice(0, 5).map((d) => ({
                     cells: [
-                      <span key="when" style={{ fontSize: 12, color: 'var(--color-ink-3)' }}>{formatDate(d.submitted_at)}</span>,
+                      <span key="when" style={{ fontSize: 'var(--text-xs)', color: 'var(--color-ink-3)' }}>{formatDate(d.submitted_at)}</span>,
                       <Mono key="cbm">{d.original_cbm ?? '—'}</Mono>,
                       <Badge key="status" variant="warning">Submitted</Badge>,
                     ],
@@ -310,14 +310,14 @@ export function Dashboard(): JSX.Element {
                 cells: [
                   <div key="num">
                     <Mono>{c.container_number}</Mono>
-                    <div style={{ fontSize: 11, color: 'var(--color-ink-4)', marginTop: 2 }}>
+                    <div style={{ fontSize: 'var(--text-xs)', color: 'var(--color-ink-4)', marginTop: 2 }}>
                       {c.vessel_name ?? c.origin}
                     </div>
                   </div>,
                   <Badge key="status" variant={CONTAINER_BADGE[c.status] ?? 'neutral'}>
                     {CONTAINER_STATUS_LABELS[c.status] ?? c.status}
                   </Badge>,
-                  <span key="eta" style={{ fontSize: 12, color: 'var(--color-ink-3)' }}>{formatDate(c.estimated_arrival_date)}</span>,
+                  <span key="eta" style={{ fontSize: 'var(--text-xs)', color: 'var(--color-ink-3)' }}>{formatDate(c.estimated_arrival_date)}</span>,
                   <Button key="view" variant="ghost" size="sm" onClick={() => navigate(`/containers/${c.id}`)}>View</Button>,
                 ],
               }))}

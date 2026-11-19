@@ -177,11 +177,11 @@ function PickupSheet({ note, onCancel, onSuccess }: PickupSheetProps): JSX.Eleme
             <Field label="Delegate name" name="delegate_name" required value={delegateName} onChange={(e) => setDelegateName(e.target.value)} />
             <PhoneField label="Delegate phone" name="delegate_phone" required value={delegatePhone} onChange={setDelegatePhone} />
             <div>
-              <label style={{ fontSize: '1rem', fontWeight: 600, display: 'block', marginBottom: 8 }}>
+              <label style={{ fontSize: 'var(--text-lg)', fontWeight: 600, display: 'block', marginBottom: 8 }}>
                 ID type <span style={{ color: 'var(--color-error)' }}>*</span>
               </label>
               <select
-                style={{ width: '100%', padding: '12px 14px', borderRadius: 8, border: '1px solid var(--color-border)', background: 'var(--color-surface)', fontSize: '1rem' }}
+                style={{ width: '100%', padding: '12px 14px', borderRadius: 8, border: '1px solid var(--color-border)', background: 'var(--color-surface)', fontSize: 'var(--text-lg)' }}
                 value={delegateIdType}
                 onChange={(e) => setDelegateIdType(e.target.value as DelegateIdType)}
               >
@@ -228,7 +228,7 @@ function NoteCard({ note, onPickup, lastPickup }: NoteCardProps): JSX.Element {
         <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
           <span
             style={{
-              fontSize: 10, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.06em',
+              fontSize: 'var(--text-xs)', fontWeight: 700, textTransform: 'uppercase', letterSpacing: 'var(--tracking-label)',
               padding: '2px 8px', borderRadius: 999, background: urgency.bg, color: urgency.fg,
             }}
           >

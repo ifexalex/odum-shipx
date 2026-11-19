@@ -74,9 +74,9 @@ export function PlatformAuditLog(): JSX.Element {
       {error && <div style={{ marginBottom: 16 }}><Banner variant="error" title="Couldn't load">{error}</Banner></div>}
 
       <div style={{ display: 'flex', gap: 12, marginBottom: 16, alignItems: 'center' }}>
-        <label style={{ fontSize: 13, fontWeight: 600, color: 'var(--color-ink-2)' }}>Tenant</label>
+        <label style={{ fontSize: 'var(--text-sm)', fontWeight: 600, color: 'var(--color-ink-2)' }}>Tenant</label>
         <select
-          style={{ padding: '8px 12px', borderRadius: 8, border: '1px solid var(--color-line)', background: 'var(--color-surface)', fontSize: '0.875rem', minWidth: 220 }}
+          style={{ padding: '8px 12px', borderRadius: 8, border: '1px solid var(--color-line)', background: 'var(--color-surface)', fontSize: 'var(--text-md)', minWidth: 220 }}
           value={tenantFilter}
           onChange={(e) => setTenantFilter(e.target.value)}
         >
@@ -100,7 +100,7 @@ export function PlatformAuditLog(): JSX.Element {
             cells: [
               <Mono key="ts">{formatDateTime(e.created_at, { year: false })}</Mono>,
               <Badge key="action" variant={actionVariant(e.action)}>{e.action.replace(/_/g, ' ')}</Badge>,
-              <span key="tenant" style={{ fontSize: 13 }}>{tenantName(e.target_tenant_id)}</span>,
+              <span key="tenant" style={{ fontSize: 'var(--text-sm)' }}>{tenantName(e.target_tenant_id)}</span>,
               <Mono key="ip" color="var(--color-ink-4)">{e.ip_address ?? '—'}</Mono>,
               e.details ? (
                 <Button
@@ -117,7 +117,7 @@ export function PlatformAuditLog(): JSX.Element {
             ],
           }))}
           emptyState={
-            <span style={{ color: 'var(--color-ink-3)', fontSize: 13 }}>
+            <span style={{ color: 'var(--color-ink-3)', fontSize: 'var(--text-sm)' }}>
               {loading ? 'Loading audit entries…' : 'No audit entries match this filter.'}
             </span>
           }
@@ -127,7 +127,7 @@ export function PlatformAuditLog(): JSX.Element {
       {expandedId && (
         <div style={{ marginTop: 12 }}>
           <Card padding={16}>
-            <pre style={{ margin: 0, fontSize: 12, fontFamily: 'var(--font-mono)', whiteSpace: 'pre-wrap', overflowX: 'auto' }}>
+            <pre style={{ margin: 0, fontSize: 'var(--text-xs)', fontFamily: 'var(--font-mono)', whiteSpace: 'pre-wrap', overflowX: 'auto' }}>
               {JSON.stringify(entries.find((e) => e.id === expandedId)?.details ?? {}, null, 2)}
             </pre>
           </Card>

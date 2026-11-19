@@ -14,10 +14,10 @@
 .th {
   text-align: left;
   padding: 12px 12px;
-  font-size: 12px;
+  font-size: var(--text-xs);
   font-weight: 600;
   color: var(--color-ink-3);
-  letter-spacing: 0.04em;
+  letter-spacing: var(--tracking-label);
   text-transform: uppercase;
   background: var(--color-surface-muted);
   border-bottom: 1px solid var(--color-line);
@@ -87,7 +87,7 @@
 .td {
   padding: 14px 12px;
   border-bottom: 1px solid var(--color-line);
-  font-size: 13px;
+  font-size: var(--text-sm);
   color: var(--color-ink-2);
   vertical-align: middle;
 }
@@ -148,7 +148,7 @@
   align-items: center;
   gap: 8px;
   padding: 4px 8px;
-  font-size: 13px;
+  font-size: var(--text-sm);
   color: var(--color-ink-3);
   cursor: pointer;
 }
@@ -174,7 +174,7 @@
   display: flex;
   align-items: center;
   gap: 10px;
-  font-size: 15px;
+  font-size: var(--text-lg);
   font-weight: 600;
   color: var(--color-ink);
 }
@@ -201,15 +201,15 @@
 }
 
 .cardLabel {
-  font-size: 11px;
+  font-size: var(--text-xs);
   font-weight: 600;
   color: var(--color-ink-3);
-  letter-spacing: 0.04em;
+  letter-spacing: var(--tracking-label);
   text-transform: uppercase;
 }
 
 .cardValue {
-  font-size: 13px;
+  font-size: var(--text-sm);
   color: var(--color-ink-2);
   min-width: 0;
   overflow-wrap: anywhere;

@@ -181,16 +181,16 @@ export function ClaimList(): JSX.Element {
               <Mono key="id" color="var(--color-ink)">{c.reference ?? c.id.slice(0, 8)}</Mono>,
               c.customer_name
                 ? <UserCell key="cust" name={c.customer_name} email="" />
-                : <span key="cust" style={{ color: 'var(--color-ink-4)', fontSize: 13 }}>—</span>,
+                : <span key="cust" style={{ color: 'var(--color-ink-4)', fontSize: 'var(--text-sm)' }}>—</span>,
               <Mono key="ctn">{c.container_number ?? '—'}</Mono>,
               <div key="cartons" className={styles.cartonTags}>
                 {c.cartons_affected.length > 0
                   ? c.cartons_affected.slice(0, 2).map((tag) => (
                       <span key={tag} className={styles.cartonTag}>{tag}</span>
                     ))
-                  : <span style={{ color: 'var(--color-ink-4)', fontSize: 12 }}>—</span>}
+                  : <span style={{ color: 'var(--color-ink-4)', fontSize: 'var(--text-xs)' }}>—</span>}
                 {c.cartons_affected.length > 2 && (
-                  <span style={{ fontSize: 11, color: 'var(--color-ink-4)' }}>+{c.cartons_affected.length - 2}</span>
+                  <span style={{ fontSize: 'var(--text-xs)', color: 'var(--color-ink-4)' }}>+{c.cartons_affected.length - 2}</span>
                 )}
               </div>,
               <span key="desc" className={styles.descCell} title={c.description ?? undefined}>
@@ -200,7 +200,7 @@ export function ClaimList(): JSX.Element {
                 ? <Badge key="method" variant={c.inspection_method === 'delegate_visit' ? 'info' : 'neutral'} size="sm">
                     {c.inspection_method === 'delegate_visit' ? 'Delegate visit' : 'Customer evidence'}
                   </Badge>
-                : <span key="method" style={{ color: 'var(--color-ink-4)', fontSize: 12 }}>—</span>,
+                : <span key="method" style={{ color: 'var(--color-ink-4)', fontSize: 'var(--text-xs)' }}>—</span>,
               <Badge key="status" variant={STATUS_VARIANT[c.status]}>{STATUS_LABEL[c.status]}</Badge>,
               <span key="filed" className={styles.metaText}>
                 {formatDate(c.created_at, 'short')}
