@@ -20,6 +20,7 @@ Keep the access/ID token in memory only (a module-level variable inside the auth
 
 - React's JSX escaping covers most injection vectors by default — the one place to audit carefully is anywhere `dangerouslySetInnerHTML` might seem tempting (e.g. rendering a tenant's custom notification template preview, Task 07 §7.9). Don't render tenant-supplied template content as raw HTML; render it as escaped text with placeholder highlighting done via React nodes, not string interpolation into HTML.
 - Set a CSP header at the CloudFront level (Task 13) restricting `script-src` to `'self'` plus the Cognito domain, `connect-src` to the API Gateway domain + Cognito, and disallowing `unsafe-inline` for scripts.
+- Fonts are self-hosted (FD-06, 2026-11-19), so both CSPs allow `font-src 'self'` only and `style-src` no longer lists `fonts.googleapis.com`. Do not add a font service back. A new font goes in `src/design/fonts.css`, and `src/design/fonts.test.ts` enforces this.
 - The `X-Content-Type-Options: nosniff` and `Strict-Transport-Security` headers the backend already sends (Task 05) are API-side; mirror equivalent headers at the CloudFront response-headers-policy level for the frontend's own static assets.
 
 ## Tenant Isolation Is Not a Frontend Concern — But Don't Break It

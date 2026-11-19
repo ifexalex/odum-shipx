@@ -68,9 +68,10 @@ Port these as CSS custom properties on `:root` in `src/design/tokens.css`, and a
   --color-role-platform-soft: #EDE9FE; /* added in FE-03: purple Badge variant background (platform role badge) */
 
   /* Typography */
-  --font-display: "Averta", "Manrope", sans-serif;   /* Averta is commercial-licensed; Manrope is the open fallback used in the mockups */
-  --font-body: "Kumbh Sans", sans-serif;
-  --font-mono: "JetBrains Mono", monospace;
+  /* All shipped by src/design/fonts.css (self-hosted); "ShipX Naira" draws only ₦ (FD-06) */
+  --font-display: "ShipX Naira", "Manrope Variable", sans-serif;
+  --font-body: "ShipX Naira", "Kumbh Sans Variable", sans-serif;
+  --font-mono: "ShipX Naira", "JetBrains Mono Variable", monospace;
 
   /* Spacing — strict 4px base */
   --space-xs: 4px;  --space-sm: 8px;  --space-md: 16px;
@@ -182,6 +183,10 @@ the app-wide responsive pass).
 
 ## Implementation notes / ground-truth gaps found
 
+- **Fonts are self-hosted; Manrope is the brand face (FD-06, 2026-11-19).** Owner decision: Manrope, not Averta. Averta was first in the display stack but never shipped, so a user who happened to have it installed saw a different product. Google Fonts loaded 13 weight files of three families on every visit and needed `fonts.googleapis.com`/`fonts.gstatic.com` in both CSPs. Now `src/design/fonts.css` imports the `@fontsource-variable` packages for Manrope, Kumbh Sans and JetBrains Mono, pinned exactly. Each family is one variable file per script subset, so a Latin page loads three files, about 95 KB. Both CSPs (`infrastructure/aws/modules/cloudfront/main.tf`, `infrastructure/azure/locals.tf`) now allow `font-src 'self'` only. `vite.config.ts` never inlines a font as a `data:` URL, because the AWS policy does not allow `data:` fonts.
+    - **₦.** None of the three faces has U+20A6, so ₦ fell back to a system font and looked heavier than the digits beside it. `ShipX Naira` is that one glyph subset from Plus Jakarta Sans: 960 bytes, variable weight 200–800, SIL OFL licence in `src/design/fonts/`. It is listed first in every stack and, through `unicode-range: U+20A6`, draws nothing else. `size-adjust: 97.5%` matches its cap height to the others. Every ₦ in the app, through `formatNgn` or typed directly, gets it with no component change. The regeneration command is in `fonts.css`.
+    - **Monospace is for codes, references and tabular numbers only.** The invoice page title (the customer's name) and the customer page's email are now proportional.
+    - **To license Averta later:** add its `@font-face` to `fonts.css` and put it after `ShipX Naira` in `--font-display` and `fonts.display` (`theme.ts`). Guard: `src/design/fonts.test.ts` fails if a stack names a font that is not shipped, if ₦ is not first, or if a font loads from another origin.
 - **tokens.css semantic-aliases syntax bug (found & fixed 2026-07-10)**: the semantic-alias declarations (`--color-text`, `--color-text-muted`, `--color-border`, `--color-*-muted`) were appended after `:root`'s closing brace with no selector of their own. Per CSS error-recovery, the parser consumed the orphan declarations *and* the next rule as one invalid qualified rule — and the next rule was the global `* { box-sizing: border-box }` reset. Consequences until the fix: (1) the entire app silently rendered with `content-box` sizing (e.g. `.wrap`-style containers with `max-width` + padding rendered 64px wider than the prototypes intended); (2) the alias tokens never existed, so the 11 page stylesheets referencing them fell back to inherited values; (3) every `npm run build` emitted an esbuild `css-syntax-error` warning that had been ignored. Fix: wrapped the aliases in their own `:root {}` block. Discovered while pixel-diffing the marketing landing page against `Shipx Landing Page v2.html` — the implementation was 64px wider than the prototype despite identical CSS.
 
 ## Light / Dark theme (2026-10-01)

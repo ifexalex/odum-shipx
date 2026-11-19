@@ -10,6 +10,11 @@ export default defineConfig({
   define: {
     global: 'globalThis',
   },
+  build: {
+    // Fonts are always emitted as files, never inlined as data: URLs: the CSP allows font-src 'self' only, and the
+    // ₦ subset (src/design/fonts.css) is under Vite's 4 KB inline limit. Other assets keep the default (undefined).
+    assetsInlineLimit: (filePath) => (/\.woff2?$/.test(filePath) ? false : undefined),
+  },
   server: {
     proxy: {
       // Local-dev-only shim for browser uploads to object storage.

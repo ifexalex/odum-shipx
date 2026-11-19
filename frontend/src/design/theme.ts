@@ -45,9 +45,9 @@ export const colors = {
 } as const satisfies Record<string, string>
 
 export const fonts = {
-  display: '"Averta", "Manrope", sans-serif',
-  body: '"Kumbh Sans", sans-serif',
-  mono: '"JetBrains Mono", monospace',
+  display: '"ShipX Naira", "Manrope Variable", sans-serif',
+  body: '"ShipX Naira", "Kumbh Sans Variable", sans-serif',
+  mono: '"ShipX Naira", "JetBrains Mono Variable", monospace',
 } as const
 
 export interface TypeStyle {

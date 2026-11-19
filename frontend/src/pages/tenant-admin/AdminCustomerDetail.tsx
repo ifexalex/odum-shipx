@@ -194,7 +194,7 @@ function ProfileTab({ customer, shipments, billing, claims, onSaved }: ProfileTa
           <SectionHead title="Contact" />
           <div className={styles.spacer8} />
           <Kvp label="Full name" value={customer.name ?? <em>Erased</em>} />
-          <Kvp label="Email" value={customer.email ? <Mono>{customer.email}</Mono> : <em>Erased</em>} />
+          <Kvp label="Email" value={customer.email ? customer.email : <em>Erased</em>} />
           <Kvp label="Phone" value={customer.phone ? <Mono>{customer.phone}</Mono> : <em>Erased</em>} />
           <Kvp label="WhatsApp" value={customer.whatsapp ? <Mono>{customer.whatsapp}</Mono> : '—'} />
           <Kvp label="Address" value={customer.address ?? <em>Erased</em>} />

@@ -40,7 +40,8 @@
 }
 
 .heroTitle {
-  font-family: var(--font-mono);
+  /* The title is the customer's name: a name is never set in monospace (FD-06). */
+  font-family: var(--font-display);
   font-weight: 700;
   font-size: 26px;
   color: var(--color-ink);

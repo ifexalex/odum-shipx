@@ -65,9 +65,10 @@
   --color-role-platform-text: #7c3aed; /* platform/purple badge text ON role-platform-soft — goes light in dark */
 
   /* Typography */
-  --font-display: 'Averta', 'Manrope', sans-serif; /* Averta is commercial-licensed; Manrope is the open fallback loaded in index.html */
-  --font-body: 'Kumbh Sans', sans-serif;
-  --font-mono: 'JetBrains Mono', monospace;
+  /* Every family here is shipped by fonts.css; 'ShipX Naira' draws only the ₦ sign, which the others lack (FD-06). */
+  --font-display: 'ShipX Naira', 'Manrope Variable', sans-serif;
+  --font-body: 'ShipX Naira', 'Kumbh Sans Variable', sans-serif;
+  --font-mono: 'ShipX Naira', 'JetBrains Mono Variable', monospace;
 
   /* Spacing — strict 4px base */
   --space-xs: 4px;

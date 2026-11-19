@@ -1,6 +1,6 @@
 import { KolaMark } from './components/KolaMark'
 import { ShipxWordmark } from './components/ShipxWordmark'
-import { colors, radius, shadows, typeScale } from './theme'
+import { colors, fonts, radius, shadows, typeScale } from './theme'
 
 const MARK_SIZES = [16, 24, 32, 48, 64]
 
@@ -44,7 +44,7 @@ export function DesignPreview(): JSX.Element {
         <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
           {Object.entries(typeScale).map(([name, style]) => (
             <div key={name} style={{ ...style, display: 'flex', gap: 12, alignItems: 'baseline' }}>
-              <span style={{ width: 110, fontSize: 11, fontFamily: 'monospace', color: colors.ink4 }}>{name}</span>
+              <span style={{ width: 110, fontSize: 11, fontFamily: fonts.mono, color: colors.ink4 }}>{name}</span>
               <span>The quick brown fox ships cargo</span>
             </div>
           ))}
