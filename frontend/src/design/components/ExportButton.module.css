@@ -22,11 +22,11 @@
   width: 28px;
   border: 1px solid var(--color-line);
   border-left: none;
-  border-radius: 0 var(--radius-sm) var(--radius-sm) 0;
+  border-radius: 0 var(--radius-md) var(--radius-md) 0;
   background: var(--color-surface);
   cursor: pointer;
   padding: 0;
-  transition: background 0.1s;
+  transition: background var(--motion-fast) var(--ease-standard);
 }
 
 .chevron:hover:not(:disabled) {
@@ -41,7 +41,7 @@
 .overlay {
   position: fixed;
   inset: 0;
-  z-index: 9;
+  z-index: calc(var(--layer-dropdown) - 1);
 }
 
 .dropdown {
@@ -50,9 +50,9 @@
   right: 0;
   background: var(--color-surface);
   border: 1px solid var(--color-line);
-  border-radius: var(--radius-md);
+  border-radius: var(--radius-lg);
   box-shadow: var(--shadow-popover);
-  z-index: 10;
+  z-index: var(--layer-dropdown);
   min-width: 160px;
   overflow: hidden;
 }

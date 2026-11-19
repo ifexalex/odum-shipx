@@ -48,7 +48,7 @@
   align-items: flex-start;
   gap: var(--space-4);
   border: 1.5px dashed var(--color-line);
-  border-radius: var(--radius-md);
+  border-radius: var(--radius-lg);
   padding: var(--space-4);
   background: var(--color-surface-muted);
   margin-bottom: var(--space-4);
@@ -104,7 +104,7 @@
 .previewToggle {
   display: flex;
   background: var(--color-surface-muted);
-  border-radius: var(--radius-sm);
+  border-radius: var(--radius-md);
   padding: var(--space-1);
   border: 1px solid var(--color-line-soft);
 }
@@ -112,7 +112,7 @@
   flex: 1;
   padding: var(--space-2) var(--space-3);
   background: transparent;
-  border-radius: 6px;
+  border-radius: var(--radius-md);
   border: 0;
   font-size: var(--text-xs);
   font-weight: 600;
@@ -131,7 +131,7 @@
   /* scale-exempt: miniature document preview, sized like the printed page (FD-01) */
   background: var(--color-surface);
   border: 1px solid var(--color-line-soft);
-  border-radius: var(--radius-sm);
+  border-radius: var(--radius-md);
   aspect-ratio: 210 / 297;
   padding: var(--space-5);
   font-size: 9px;
@@ -160,7 +160,7 @@
   /* scale-exempt: miniature document preview, sized like the printed page (FD-01) */
   width: 36px;
   height: 36px;
-  border-radius: 6px;
+  border-radius: var(--radius-md);
   color: var(--color-on-dark);
   display: flex;
   align-items: center;
@@ -241,7 +241,7 @@
   color: var(--color-ink-3);
   text-transform: uppercase;
   letter-spacing: 0.06em;
-  border-radius: 3px;
+  border-radius: var(--radius-sm);
 }
 .docTableRow {
   /* scale-exempt: miniature document preview, sized like the printed page (FD-01) */
@@ -278,7 +278,7 @@
   width: 44px;
   height: 44px;
   flex-shrink: 0;
-  border-radius: 3px;
+  border-radius: var(--radius-sm);
   background:
     repeating-linear-gradient(0deg, var(--color-ink) 0 3px, transparent 3px 6px),
     repeating-linear-gradient(90deg, var(--color-ink) 0 3px, var(--color-surface) 3px 6px);

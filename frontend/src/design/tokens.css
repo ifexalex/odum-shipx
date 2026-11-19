@@ -130,13 +130,12 @@
   --sidebar-width-collapsed: 64px;
   --content-max-width: 1280px;
 
-  /* Radius — mix freely across component families, never within one */
-  --radius-none: 0px;
-  --radius-sm: 8px;
-  --radius-md: 10px;
-  --radius-lg: 14px;
-  --radius-xl: 12px;
-  --radius-full: 9999px;
+  /* Radius (FD-04): four steps in order, plus full. 50% stays allowed for circles. */
+  --radius-sm: 4px; /* tags, small chips */
+  --radius-md: 8px; /* controls: buttons, inputs, menus */
+  --radius-lg: 12px; /* cards */
+  --radius-xl: 16px; /* modals, hero panels */
+  --radius-full: 9999px; /* pills */
 
   /* Shadows — tinted with Forest Dark, never pure black */
   --shadow-rest: 0 1px 3px rgba(11, 47, 13, 0.08), 0 1px 2px rgba(11, 47, 13, 0.05);
@@ -144,7 +143,23 @@
   --shadow-popover: 0 8px 24px rgba(11, 47, 13, 0.14), 0 2px 6px rgba(11, 47, 13, 0.08); /* menus, dropdowns */
   --shadow-modal: 0 10px 25px rgba(11, 47, 13, 0.18);
   --shadow-focus-ring: 0 0 0 3px rgba(45, 196, 56, 0.35);
+  /* A chosen option or the current step: a soft brand halo. A live-status dot: a glow. */
+  --shadow-selected: 0 0 0 3px color-mix(in srgb, var(--color-primary) 16%, transparent);
+  --shadow-glow: 0 0 8px var(--color-primary-bright);
   --scrim-modal: rgba(11, 47, 13, 0.55);
+
+  /* Layers (FD-05), lowest to highest. -1, 0 and 1 stay allowed for order inside one component; a click-catcher
+     behind a menu is calc(var(--layer-dropdown) - 1). */
+  --layer-sticky: 10;
+  --layer-dropdown: 20;
+  --layer-drawer: 30;
+  --layer-modal: 40;
+  --layer-toast: 50;
+
+  /* Motion (FD-05): two durations and one easing. Reduced motion turns both off (below). */
+  --motion-fast: 120ms; /* colour and border changes */
+  --motion-base: 180ms; /* size, position, opacity */
+  --ease-standard: cubic-bezier(0.2, 0, 0, 1);
 
   color-scheme: light;
 }
@@ -240,6 +255,22 @@ html,
 body,
 #root {
   height: 100%;
+}
+
+/* Reduced motion (FD-05): every transition and animation is instant for a user who asks the system for less
+   motion. Spinners still turn (one iteration of a 1 ms animation would freeze them), just without easing. */
+@media (prefers-reduced-motion: reduce) {
+  :root {
+    --motion-fast: 0ms;
+    --motion-base: 0ms;
+  }
+
+  *,
+  *::before,
+  *::after {
+    transition-duration: 0ms !important;
+    scroll-behavior: auto !important;
+  }
 }
 
 body {

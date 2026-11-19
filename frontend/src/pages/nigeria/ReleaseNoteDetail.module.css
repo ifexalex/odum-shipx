@@ -8,7 +8,7 @@
   margin-bottom: var(--space-6);
 }
 .heroLeft { display: flex; gap: var(--space-4); align-items: flex-start; }
-.heroIcon { width: 52px; height: 52px; border-radius: 12px; background: var(--color-surface-muted); display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
+.heroIcon { width: 52px; height: 52px; border-radius: var(--radius-lg); background: var(--color-surface-muted); display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
 .heroTitleRow { display: flex; align-items: center; gap: var(--space-3); flex-wrap: wrap; }
 .heroTitle {
   font-family: var(--font-mono);
@@ -32,7 +32,7 @@
 
 /* carton tags */
 .tagGrid { display: flex; flex-wrap: wrap; gap: var(--space-2); padding: var(--space-1) 0; }
-.tag { padding: var(--space-1) var(--space-3); border-radius: 6px; background: var(--color-surface-muted); font-family: var(--font-mono); font-size: var(--text-sm); border: 1px solid var(--color-line-soft); }
+.tag { padding: var(--space-1) var(--space-3); border-radius: var(--radius-md); background: var(--color-surface-muted); font-family: var(--font-mono); font-size: var(--text-sm); border: 1px solid var(--color-line-soft); }
 .tagSelected { background: var(--color-primary-soft); border-color: var(--color-primary); color: var(--color-primary-text); cursor: pointer; }
 .tagClickable { cursor: pointer; }
 .tagClickable:hover { border-color: var(--color-primary); }
@@ -52,8 +52,8 @@
    RecordPickupModal is a near-duplicate of WarehouseDashboard's PickupSheet
    — same action, same backend call — but had none of its mobile treatment
    (44/48px touch targets, bottom sheet, full-width buttons) until now. */
-.modalOverlay { position: fixed; inset: 0; background: var(--scrim-modal); display: flex; align-items: flex-end; justify-content: center; z-index: 200; }
-.modalPanel { background: var(--color-surface); border-radius: var(--radius-lg) var(--radius-lg) 0 0; padding: var(--space-6) var(--space-5); width: 100%; display: flex; flex-direction: column; gap: var(--space-4); box-shadow: var(--shadow-modal); max-height: 90vh; overflow-y: auto; }
+.modalOverlay { position: fixed; inset: 0; background: var(--scrim-modal); display: flex; align-items: flex-end; justify-content: center; z-index: var(--layer-modal); }
+.modalPanel { background: var(--color-surface); border-radius: var(--radius-xl) var(--radius-xl) 0 0; padding: var(--space-6) var(--space-5); width: 100%; display: flex; flex-direction: column; gap: var(--space-4); box-shadow: var(--shadow-modal); max-height: 90vh; overflow-y: auto; }
 .modalTitle { font-size: var(--text-lg); font-weight: 700; margin: 0; }
 .modalBanner { margin: 0; }
 .modalActions { display: flex; gap: var(--space-2); justify-content: flex-end; }
@@ -61,7 +61,7 @@
 
 @container sxapp (min-width: 861px) {
   .modalOverlay { align-items: center; padding: var(--space-4); }
-  .modalPanel { border-radius: var(--radius-lg); max-width: 480px; padding: var(--space-6); }
+  .modalPanel { border-radius: var(--radius-xl); max-width: 480px; padding: var(--space-6); }
   .modalActions > * { min-height: 36px; font-size: inherit; }
 }
 
@@ -72,7 +72,7 @@
    accounting officer) — these bypass the shared Field component entirely,
    so they need their own iOS-zoom fix (Field.module.css's same rule can't
    reach them). */
-.rawSelect { width: 100%; padding: var(--space-2) var(--space-3); border-radius: 8px; border: 1px solid var(--color-control-border); background: var(--color-surface); font-size: var(--text-md); min-height: 44px; }
+.rawSelect { width: 100%; padding: var(--space-2) var(--space-3); border-radius: var(--radius-md); border: 1px solid var(--color-control-border); background: var(--color-surface); font-size: var(--text-md); min-height: 44px; }
 
 @container sxapp (max-width: 860px) {
   .rawSelect { font-size: var(--text-lg); }

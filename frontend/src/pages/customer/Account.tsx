@@ -194,7 +194,7 @@ function NotificationsTab({ customer, onSaved }: { customer: Customer; onSaved: 
               style={{
                 width: 40,
                 height: 40,
-                borderRadius: 10,
+                borderRadius: 'var(--radius-lg)',
                 background: enabled ? 'var(--color-primary-soft)' : 'var(--color-line-soft)',
                 color: enabled ? 'var(--color-primary)' : 'var(--color-ink-4)',
                 display: 'flex',
@@ -209,7 +209,7 @@ function NotificationsTab({ customer, onSaved }: { customer: Customer; onSaved: 
               <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-2)' }}>
                 <span style={{ fontFamily: 'var(--font-display)', fontWeight: 700, fontSize: 'var(--text-md)' }}>{label}</span>
                 {'recommended' in rest && (
-                  <span style={{ fontSize: 'var(--text-xs)', fontWeight: 700, textTransform: 'uppercase', letterSpacing: 'var(--tracking-label)', color: 'var(--color-primary-deep)', background: 'var(--color-primary-soft)', borderRadius: 999, padding: 'var(--space-0-5) var(--space-2)' }}>
+                  <span style={{ fontSize: 'var(--text-xs)', fontWeight: 700, textTransform: 'uppercase', letterSpacing: 'var(--tracking-label)', color: 'var(--color-primary-deep)', background: 'var(--color-primary-soft)', borderRadius: 'var(--radius-full)', padding: 'var(--space-0-5) var(--space-2)' }}>
                     Recommended
                   </span>
                 )}
@@ -234,7 +234,7 @@ function NotificationsTab({ customer, onSaved }: { customer: Customer; onSaved: 
               <label
                 key={value}
                 style={{
-                  display: 'flex', alignItems: 'center', gap: 'var(--space-3)', padding: 'var(--space-4) var(--space-4)', borderRadius: 10, flex: 1,
+                  display: 'flex', alignItems: 'center', gap: 'var(--space-3)', padding: 'var(--space-4) var(--space-4)', borderRadius: 'var(--radius-lg)', flex: 1,
                   border: `1px solid ${active ? 'var(--color-primary)' : 'var(--color-line)'}`,
                   background: active ? 'var(--color-primary-soft)' : 'transparent',
                   cursor: 'pointer',
@@ -329,8 +329,8 @@ function PrivacyTab({ customer }: { customer: Customer }): JSX.Element {
       )}
 
       <div className={styles.twoCol} style={{ margin: 'var(--space-6) 0' }}>
-        <div style={{ background: 'var(--color-surface-muted)', border: '1px solid var(--color-line-soft)', borderRadius: 10, padding: 'var(--space-5)' }}>
-          <div style={{ width: 36, height: 36, borderRadius: 10, background: 'var(--color-primary-soft)', color: 'var(--color-primary)', display: 'flex', alignItems: 'center', justifyContent: 'center', marginBottom: 'var(--space-3)' }}>
+        <div style={{ background: 'var(--color-surface-muted)', border: '1px solid var(--color-line-soft)', borderRadius: 'var(--radius-lg)', padding: 'var(--space-5)' }}>
+          <div style={{ width: 36, height: 36, borderRadius: 'var(--radius-lg)', background: 'var(--color-primary-soft)', color: 'var(--color-primary)', display: 'flex', alignItems: 'center', justifyContent: 'center', marginBottom: 'var(--space-3)' }}>
             <Icon name="download" size={16} />
           </div>
           <div style={{ fontFamily: 'var(--font-display)', fontWeight: 700, fontSize: 'var(--text-md)', marginBottom: 'var(--space-1)' }}>Download your data</div>
@@ -341,8 +341,8 @@ function PrivacyTab({ customer }: { customer: Customer }): JSX.Element {
             Request my data export
           </Button>
         </div>
-        <div style={{ background: 'var(--color-surface-muted)', border: '1px solid var(--color-line-soft)', borderRadius: 10, padding: 'var(--space-5)' }}>
-          <div style={{ width: 36, height: 36, borderRadius: 10, background: 'var(--color-primary-soft)', color: 'var(--color-primary)', display: 'flex', alignItems: 'center', justifyContent: 'center', marginBottom: 'var(--space-3)' }}>
+        <div style={{ background: 'var(--color-surface-muted)', border: '1px solid var(--color-line-soft)', borderRadius: 'var(--radius-lg)', padding: 'var(--space-5)' }}>
+          <div style={{ width: 36, height: 36, borderRadius: 'var(--radius-lg)', background: 'var(--color-primary-soft)', color: 'var(--color-primary)', display: 'flex', alignItems: 'center', justifyContent: 'center', marginBottom: 'var(--space-3)' }}>
             <Icon name="settings" size={16} />
           </div>
           <div style={{ fontFamily: 'var(--font-display)', fontWeight: 700, fontSize: 'var(--text-md)', marginBottom: 'var(--space-1)' }}>Update consent preferences</div>
@@ -353,9 +353,9 @@ function PrivacyTab({ customer }: { customer: Customer }): JSX.Element {
       </div>
 
       {/* Danger zone */}
-      <div style={{ background: '#fff8f6', border: '1px solid rgba(220,38,38,0.2)', borderLeft: '4px solid var(--color-error)', borderRadius: 10, padding: 'var(--space-5)' }}>
+      <div style={{ background: 'color-mix(in srgb, var(--color-error) 4%, var(--color-surface))', border: '1px solid color-mix(in srgb, var(--color-error) 20%, transparent)', borderLeft: '4px solid var(--color-error)', borderRadius: 'var(--radius-lg)', padding: 'var(--space-5)' }}>
         <div style={{ display: 'flex', alignItems: 'flex-start', gap: 'var(--space-4)' }}>
-          <div style={{ width: 40, height: 40, borderRadius: 10, background: 'var(--color-error-soft)', color: 'var(--color-error)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+          <div style={{ width: 40, height: 40, borderRadius: 'var(--radius-lg)', background: 'var(--color-error-soft)', color: 'var(--color-error)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
             <Icon name="suspend" size={18} stroke={2.2} />
           </div>
           <div style={{ flex: 1 }}>

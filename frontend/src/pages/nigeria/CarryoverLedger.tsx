@@ -51,13 +51,13 @@ function ExemptModal({ carryover, onCancel, onSuccess }: { carryover: Carryover;
 
   return (
     <div
-      style={{ position: 'fixed', inset: 0, background: 'rgba(11,47,13,0.55)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 200, padding: 'var(--space-4)' }}
+      style={{ position: 'fixed', inset: 0, background: 'var(--scrim-modal)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 'var(--layer-modal)', padding: 'var(--space-4)' }}
       onClick={onCancel}
     >
       <DialogGuard onClose={onCancel} />
       <div
         style={{
-          background: 'var(--color-surface)', borderRadius: 14, padding: 'var(--space-6)', width: '100%', maxWidth: 480,
+          background: 'var(--color-surface)', borderRadius: 'var(--radius-lg)', padding: 'var(--space-6)', width: '100%', maxWidth: 480,
           display: 'flex', flexDirection: 'column', gap: 'var(--space-4)', maxHeight: '90vh', overflowY: 'auto',
         }}
         onClick={(e) => e.stopPropagation()}

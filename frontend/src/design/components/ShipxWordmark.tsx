@@ -14,7 +14,7 @@ export interface ShipxWordmarkProps {
 // appears on marketing-adjacent surfaces (login, public tracking, footer).
 export function ShipxWordmark({
   size = 22,
-  color = '#fff',
+  color = 'var(--color-on-dark)',
   xColor = colors.accent,
   showBy = false,
 }: ShipxWordmarkProps): JSX.Element {

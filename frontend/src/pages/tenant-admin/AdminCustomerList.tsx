@@ -184,7 +184,7 @@ function ConsentChips({ consent }: { consent: string[] | null }): JSX.Element {
               display: 'inline-flex',
               alignItems: 'center',
               padding: 'var(--space-0-5) var(--space-2)',
-              borderRadius: 4,
+              borderRadius: 'var(--radius-sm)',
               fontSize: 'var(--text-xs)',
               fontWeight: 700,
               letterSpacing: 'var(--tracking-label)',

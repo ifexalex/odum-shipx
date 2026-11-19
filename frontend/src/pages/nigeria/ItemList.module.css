@@ -5,10 +5,10 @@
 /* Modal */
 .overlay {
   position: fixed; inset: 0; background: var(--scrim-modal);
-  display: flex; align-items: center; justify-content: center; z-index: 200; padding: var(--space-4);
+  display: flex; align-items: center; justify-content: center; z-index: var(--layer-modal); padding: var(--space-4);
 }
 .panel {
-  background: var(--color-surface); border-radius: var(--radius-lg); padding: var(--space-8);
+  background: var(--color-surface); border-radius: var(--radius-xl); padding: var(--space-8);
   width: 100%; max-width: 440px; display: flex; flex-direction: column; gap: var(--space-4);
   box-shadow: var(--shadow-modal);
 }
@@ -20,7 +20,7 @@
 .selectLabel { font-size: var(--text-sm); font-weight: 500; }
 .required { color: var(--color-error); margin-left: var(--space-0-5); }
 .select {
-  border: 1px solid var(--color-control-border); border-radius: var(--radius-sm);
+  border: 1px solid var(--color-control-border); border-radius: var(--radius-md);
   padding: var(--space-2) var(--space-3); font-size: var(--text-md);
   background: var(--color-surface); color: var(--color-ink); cursor: pointer;
 }

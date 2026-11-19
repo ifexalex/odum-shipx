@@ -146,7 +146,7 @@ function ResolutionPick({ title, sub, current, onClick }: { title: string; sub: 
       style={{
         display: 'flex', alignItems: 'flex-start', gap: 'var(--space-3)', textAlign: 'left',
         border: `${current ? 2 : 1}px solid ${current ? 'var(--color-primary)' : 'var(--color-line-soft)'}`,
-        borderRadius: 10, padding: 'var(--space-3)', cursor: 'pointer',
+        borderRadius: 'var(--radius-lg)', padding: 'var(--space-3)', cursor: 'pointer',
         background: current ? 'var(--color-primary-tint)' : 'var(--color-surface)',
       }}
     >

@@ -31,7 +31,7 @@
 }
 .tab:hover {
   color: var(--color-primary-text);
-  transition: color 0.14s;
+  transition: color var(--motion-fast) var(--ease-standard);
 }
 
 .tabActive {

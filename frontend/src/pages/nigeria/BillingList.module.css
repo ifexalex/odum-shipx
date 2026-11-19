@@ -38,7 +38,7 @@
   height: 36px;
   background: var(--color-page);
   border: 1px solid var(--color-control-border);
-  border-radius: var(--radius-sm);
+  border-radius: var(--radius-md);
   display: flex;
   align-items: center;
   padding: 0 var(--space-3);
@@ -126,7 +126,7 @@
   padding: 0 var(--space-2);
   background: var(--color-page);
   border: 1px solid var(--color-control-border);
-  border-radius: var(--radius-sm);
+  border-radius: var(--radius-md);
   font-family: var(--font-body);
   font-size: var(--text-sm);
   color: var(--color-ink);
@@ -141,7 +141,7 @@
 .filtersOverlay {
   position: fixed;
   inset: 0;
-  z-index: 9;
+  z-index: calc(var(--layer-dropdown) - 1);
 }
 
 .filtersPanel {
@@ -150,9 +150,9 @@
   right: 0;
   background: var(--color-surface);
   border: 1px solid var(--color-line);
-  border-radius: var(--radius-md);
+  border-radius: var(--radius-lg);
   box-shadow: var(--shadow-popover);
-  z-index: 10;
+  z-index: var(--layer-dropdown);
   min-width: 240px;
   padding: var(--space-3);
 }
@@ -186,7 +186,7 @@
   padding: var(--space-2) var(--space-2);
   background: none;
   border: none;
-  border-radius: var(--radius-sm);
+  border-radius: var(--radius-md);
   font-family: var(--font-body);
   font-size: var(--text-sm);
   color: var(--color-ink-2);

@@ -29,11 +29,11 @@ export function LimitReachedModal({ resource, quota, onClose }: LimitReachedModa
       style={{
         position: 'fixed',
         inset: 0,
-        background: 'rgba(11,47,13,0.55)',
+        background: 'var(--scrim-modal)',
         display: 'flex',
         alignItems: 'center',
         justifyContent: 'center',
-        zIndex: 300,
+        zIndex: 'var(--layer-modal)',
         padding: 'var(--space-4)',
       }}
       onClick={onClose}
@@ -46,7 +46,7 @@ export function LimitReachedModal({ resource, quota, onClose }: LimitReachedModa
         role="dialog"
         aria-modal="true"
       >
-        <Card padding="large" radius={14}>
+        <Card padding="large" radius="xl">
           <h3 style={{ margin: '0 0 var(--space-3)', fontSize: 'var(--text-lg)', fontWeight: 700 }}>Plan limit reached</h3>
           <Banner variant="error" title={`Cannot create ${resource}`}>
             {dimLabel} — your {quota.subscription_tier} plan limit is reached.

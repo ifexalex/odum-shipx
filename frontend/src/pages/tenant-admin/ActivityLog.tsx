@@ -397,7 +397,7 @@ export function ActivityLog(): JSX.Element {
                 <div style={{ fontSize: 'var(--text-xs)', fontWeight: 700, color: 'var(--color-ink-4)', textTransform: 'uppercase', letterSpacing: 'var(--tracking-label)', marginBottom: 'var(--space-2)' }}>
                   Before
                 </div>
-                <pre style={{ margin: 0, fontSize: 'var(--text-xs)', fontFamily: 'var(--font-mono)', whiteSpace: 'pre-wrap', overflowX: 'auto', background: 'var(--color-page)', padding: 'var(--space-3)', borderRadius: 8 }}>
+                <pre style={{ margin: 0, fontSize: 'var(--text-xs)', fontFamily: 'var(--font-mono)', whiteSpace: 'pre-wrap', overflowX: 'auto', background: 'var(--color-page)', padding: 'var(--space-3)', borderRadius: 'var(--radius-md)' }}>
                   {JSON.stringify(expandedEntry.before_state ?? {}, null, 2)}
                 </pre>
               </div>
@@ -405,7 +405,7 @@ export function ActivityLog(): JSX.Element {
                 <div style={{ fontSize: 'var(--text-xs)', fontWeight: 700, color: 'var(--color-ink-4)', textTransform: 'uppercase', letterSpacing: 'var(--tracking-label)', marginBottom: 'var(--space-2)' }}>
                   After
                 </div>
-                <pre style={{ margin: 0, fontSize: 'var(--text-xs)', fontFamily: 'var(--font-mono)', whiteSpace: 'pre-wrap', overflowX: 'auto', background: 'var(--color-page)', padding: 'var(--space-3)', borderRadius: 8 }}>
+                <pre style={{ margin: 0, fontSize: 'var(--text-xs)', fontFamily: 'var(--font-mono)', whiteSpace: 'pre-wrap', overflowX: 'auto', background: 'var(--color-page)', padding: 'var(--space-3)', borderRadius: 'var(--radius-md)' }}>
                   {JSON.stringify(expandedEntry.after_state ?? {}, null, 2)}
                 </pre>
               </div>

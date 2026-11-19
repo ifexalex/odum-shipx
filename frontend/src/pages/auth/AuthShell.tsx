@@ -126,7 +126,7 @@ export function PasswordStrength({ password }: { password: string }): JSX.Elemen
             style={{
               flex: 1,
               height: 4,
-              borderRadius: 2,
+              borderRadius: 'var(--radius-sm)',
               background: i <= level ? barColors[level] : 'var(--color-line-soft)',
             }}
           />

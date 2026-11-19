@@ -13,14 +13,15 @@ const PADDING_CLASS: Record<CardPadding, string | undefined> = {
 export interface CardProps {
   children: ReactNode
   padding?: CardPadding
-  radius?: number
+  /** `lg` (12 px) for a card; `xl` (16 px) for a card that is a dialog's panel (FD-04). */
+  radius?: 'lg' | 'xl'
   /** Layout-only overrides (margins, overflow) merged over the base card style. */
   style?: CSSProperties
 }
 
-export function Card({ children, padding = 'default', radius = 10, style }: CardProps): JSX.Element {
+export function Card({ children, padding = 'default', radius = 'lg', style }: CardProps): JSX.Element {
   return (
-    <div className={`${styles.card} ${PADDING_CLASS[padding]}`} style={{ borderRadius: radius, ...style }}>
+    <div className={`${styles.card} ${PADDING_CLASS[padding]}`} style={{ borderRadius: `var(--radius-${radius})`, ...style }}>
       {children}
     </div>
   )

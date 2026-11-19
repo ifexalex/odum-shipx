@@ -32,7 +32,7 @@
   min-height: 40px;
   background: var(--color-surface);
   border: 1px solid var(--color-control-border);
-  border-radius: var(--radius-sm);
+  border-radius: var(--radius-md);
   padding: 0 var(--space-4);
 }
 

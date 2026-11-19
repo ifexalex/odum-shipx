@@ -19,6 +19,7 @@ import { Banner, Button, Field } from '../../design/components'
 import { PageHeader } from '../../shell/PageHeader'
 import styles from './admin.module.css'
 import { formatTime } from '../../lib/format'
+import waStyles from './NotificationTemplates.module.css'
 
 // ---------------------------------------------------------------------------
 // SMS counter
@@ -81,7 +82,7 @@ function TemplateCard({ template, onSaved }: TemplateCardProps): JSX.Element {
       <div className={styles.templateHeader}>
         <div>
           <span className={styles.templateEventType}>{template.event_type.replace(/_/g, ' ')}</span>
-          <span style={{ marginLeft: 'var(--space-2)', fontSize: 'var(--text-xs)', fontWeight: 700, padding: 'var(--space-0-5) var(--space-2)', borderRadius: 4, background: 'var(--color-surface-muted)', color: 'var(--color-ink-4)' }}>
+          <span style={{ marginLeft: 'var(--space-2)', fontSize: 'var(--text-xs)', fontWeight: 700, padding: 'var(--space-0-5) var(--space-2)', borderRadius: 'var(--radius-sm)', background: 'var(--color-surface-muted)', color: 'var(--color-ink-4)' }}>
             {template.channel.toUpperCase()}
           </span>
         </div>
@@ -103,14 +104,10 @@ function TemplateCard({ template, onSaved }: TemplateCardProps): JSX.Element {
       {template.channel === 'whatsapp' && body.trim() && (
         <div style={{ marginBottom: 'var(--space-3)' }}>
           <div style={{ fontSize: 'var(--text-xs)', fontWeight: 600, color: 'var(--color-ink-3)', marginBottom: 'var(--space-2)' }}>WhatsApp preview</div>
-          <div style={{ background: '#e5ddd5', borderRadius: 10, padding: 'var(--space-4)' }}>
-            <div style={{
-              background: '#dcf8c6', borderRadius: '8px 8px 8px 0', padding: 'var(--space-2) var(--space-3)',
-              maxWidth: 340, fontSize: 'var(--text-sm)', lineHeight: 'var(--leading-body)', color: '#111',
-              boxShadow: '0 1px 1px rgba(0,0,0,0.12)', whiteSpace: 'pre-wrap', wordBreak: 'break-word',
-            }}>
+          <div className={waStyles.waBackdrop}>
+            <div className={waStyles.waBubble}>
               {body}
-              <div style={{ fontSize: 'var(--text-xs)', color: '#667781', textAlign: 'right', marginTop: 'var(--space-1)' }}>
+              <div className={waStyles.waMeta}>
                 {formatTime(new Date())} ✓✓
               </div>
             </div>
@@ -130,7 +127,7 @@ function TemplateCard({ template, onSaved }: TemplateCardProps): JSX.Element {
             width: '100%',
             minHeight: 100,
             padding: 'var(--space-2) var(--space-3)',
-            borderRadius: 8,
+            borderRadius: 'var(--radius-md)',
             border: '1px solid var(--color-line-soft)',
             background: 'var(--color-surface)',
             fontSize: 'var(--text-md)',

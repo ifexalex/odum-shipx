@@ -6,12 +6,12 @@
   align-items: center;
   justify-content: center;
   padding: var(--space-6);
-  z-index: 1000;
+  z-index: var(--layer-modal);
 }
 
 .panel {
   background: var(--color-surface);
-  border-radius: var(--radius-lg);
+  border-radius: var(--radius-xl);
   box-shadow: var(--shadow-modal);
   width: 100%;
   max-height: calc(100vh - var(--space-16));
@@ -45,7 +45,7 @@
   cursor: pointer;
   color: var(--color-ink-4);
   display: inline-flex;
-  border-radius: var(--radius-sm);
+  border-radius: var(--radius-md);
 }
 .closeButton:focus-visible {
   outline: none;

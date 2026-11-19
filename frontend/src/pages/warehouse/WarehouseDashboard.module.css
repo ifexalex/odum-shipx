@@ -11,13 +11,13 @@
 .queueCount { font-size: var(--text-md); color: var(--color-ink-4); }
 
 /* Release note card — large touch target, card-based not table-based */
-.card { background: var(--color-surface); border: 1px solid var(--color-line-soft); border-radius: 12px; padding: var(--space-4) var(--space-5); margin-bottom: var(--space-3); display: flex; align-items: flex-start; gap: var(--space-4); }
+.card { background: var(--color-surface); border: 1px solid var(--color-line-soft); border-radius: var(--radius-lg); padding: var(--space-4) var(--space-5); margin-bottom: var(--space-3); display: flex; align-items: flex-start; gap: var(--space-4); }
 .cardLeft { flex: 1; min-width: 0; }
 .cardRef { font-family: var(--font-mono); font-size: var(--text-md); font-weight: 700; color: var(--color-ink); }
 .cardCustomer { font-size: var(--text-lg); font-weight: 600; margin: var(--space-0-5) 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .cardMeta { font-size: var(--text-sm); color: var(--color-ink-4); display: flex; gap: var(--space-3); flex-wrap: wrap; margin-top: var(--space-1); }
 .cardTags { display: flex; flex-wrap: wrap; gap: var(--space-2); margin-top: var(--space-3); }
-.tag { padding: var(--space-1) var(--space-2); border-radius: 6px; background: var(--color-surface-muted); font-family: var(--font-mono); font-size: var(--text-xs); border: 1px solid var(--color-line-soft); }
+.tag { padding: var(--space-1) var(--space-2); border-radius: var(--radius-md); background: var(--color-surface-muted); font-family: var(--font-mono); font-size: var(--text-xs); border: 1px solid var(--color-line-soft); }
 .cardRight { display: flex; flex-direction: column; align-items: flex-end; gap: var(--space-2); flex-shrink: 0; }
 
 /* Large pickup button — minimum 44px height */
@@ -30,10 +30,10 @@
 .emptyTitle { font-size: var(--text-xl); font-weight: 700; margin: 0 0 var(--space-2); color: var(--color-ink); }
 
 /* Modal — full-screen on mobile */
-.modalOverlay { position: fixed; inset: 0; background: var(--scrim-modal); display: flex; align-items: flex-end; justify-content: center; z-index: 200; }
+.modalOverlay { position: fixed; inset: 0; background: var(--scrim-modal); display: flex; align-items: flex-end; justify-content: center; z-index: var(--layer-modal); }
 @media (min-width: 600px) { .modalOverlay { align-items: center; padding: var(--space-4); } }
-.modalPanel { background: var(--color-surface); border-radius: var(--radius-lg) var(--radius-lg) 0 0; padding: var(--space-6) var(--space-5); width: 100%; display: flex; flex-direction: column; gap: var(--space-5); }
-@media (min-width: 600px) { .modalPanel { border-radius: var(--radius-lg); max-width: 480px; } }
+.modalPanel { background: var(--color-surface); border-radius: var(--radius-xl) var(--radius-xl) 0 0; padding: var(--space-6) var(--space-5); width: 100%; display: flex; flex-direction: column; gap: var(--space-5); }
+@media (min-width: 600px) { .modalPanel { border-radius: var(--radius-xl); max-width: 480px; } }
 .modalTitle { font-size: var(--text-xl); font-weight: 700; margin: 0; }
 .modalRef { font-family: var(--font-mono); font-size: var(--text-md); color: var(--color-ink-4); }
 .modalBanner { margin: 0; }
@@ -50,7 +50,7 @@
   gap: var(--space-5);
   flex-wrap: wrap;
   padding: var(--space-6);
-  border-radius: 14px;
+  border-radius: var(--radius-lg);
   margin-bottom: var(--space-5);
   background: linear-gradient(135deg, var(--color-primary-deep) 0%, var(--color-primary) 100%);
   color: var(--color-on-dark);
@@ -58,7 +58,7 @@
 .scanIcon {
   width: 76px;
   height: 76px;
-  border-radius: 16px;
+  border-radius: var(--radius-xl);
   background: var(--color-on-dark-fill-strong);
   border: 2px dashed var(--color-on-dark-muted);
   display: flex;
@@ -77,7 +77,7 @@
   min-width: 180px;
   height: 48px;
   border: none;
-  border-radius: 8px;
+  border-radius: var(--radius-md);
   padding: 0 var(--space-4);
   font-family: var(--font-mono);
   font-size: var(--text-lg); /* ≥16px — prevents iOS auto-zoom */

@@ -109,7 +109,7 @@ export function RateHistoryTable({ rateType, valueKey, prefix }: { rateType: 'do
             cells: [
               <span key="rate" style={{ display: 'inline-flex', alignItems: 'center', gap: 'var(--space-2)' }}>
                 <Mono color={i === 0 ? 'var(--color-primary)' : undefined}>{prefix}{formatAmount(current)}</Mono>
-                {i === 0 && <span style={{ fontSize: 'var(--text-xs)', fontWeight: 700, textTransform: 'uppercase', color: 'var(--color-primary-deep)', background: 'var(--color-primary-soft)', borderRadius: 999, padding: 'var(--space-0-5) var(--space-2)' }}>Current</span>}
+                {i === 0 && <span style={{ fontSize: 'var(--text-xs)', fontWeight: 700, textTransform: 'uppercase', color: 'var(--color-primary-deep)', background: 'var(--color-primary-soft)', borderRadius: 'var(--radius-full)', padding: 'var(--space-0-5) var(--space-2)' }}>Current</span>}
               </span>,
               delta == null ? (
                 <span key="delta" style={{ fontSize: 'var(--text-xs)', color: 'var(--color-ink-4)' }}>—</span>
@@ -258,7 +258,7 @@ export function DollarRateConfig(): JSX.Element {
                 type="number"
                 value={markupValue}
                 onChange={(e) => setMarkupValue(e.target.value)}
-                style={{ width: '100%', padding: 'var(--space-2) var(--space-3)', borderRadius: 8, border: '1px solid var(--color-line-soft)', background: 'var(--color-surface)', fontSize: 'var(--text-lg)' }}
+                style={{ width: '100%', padding: 'var(--space-2) var(--space-3)', borderRadius: 'var(--radius-md)', border: '1px solid var(--color-line-soft)', background: 'var(--color-surface)', fontSize: 'var(--text-lg)' }}
                 placeholder={markupType === 'percentage' ? 'e.g. 2' : 'e.g. 15'}
                 min="0"
                 step={markupType === 'percentage' ? '0.1' : '1'}

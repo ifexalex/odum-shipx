@@ -7,7 +7,7 @@
 .mark {
   width: 32px;
   height: 32px;
-  border-radius: var(--radius-sm);
+  border-radius: var(--radius-md);
   background: var(--color-accent-soft);
   color: var(--color-accent-on-soft);
   display: flex;

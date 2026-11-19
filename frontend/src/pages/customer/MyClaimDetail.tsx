@@ -59,7 +59,7 @@ function ProgressSteps({ status }: { status: DamageClaimStatus }): JSX.Element {
             style={{
               fontSize: 'var(--text-sm)',
               padding: 'var(--space-1) var(--space-3)',
-              borderRadius: 999,
+              borderRadius: 'var(--radius-full)',
               border: '1px solid var(--color-line-soft)',
               background: here ? 'var(--color-primary-soft)' : 'transparent',
               color: here ? 'var(--color-primary-deep)' : done ? 'var(--color-ink-2)' : 'var(--color-ink-4)',

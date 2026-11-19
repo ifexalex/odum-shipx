@@ -61,11 +61,11 @@ function ChargeTypeModal({ existing, onCancel, onSuccess }: ChargeTypeModalProps
       style={{
         position: 'fixed',
         inset: 0,
-        background: 'rgba(11,47,13,0.55)',
+        background: 'var(--scrim-modal)',
         display: 'flex',
         alignItems: 'center',
         justifyContent: 'center',
-        zIndex: 200,
+        zIndex: 'var(--layer-modal)',
         padding: 'var(--space-4)',
       }}
       onClick={onCancel}
@@ -74,7 +74,7 @@ function ChargeTypeModal({ existing, onCancel, onSuccess }: ChargeTypeModalProps
       <div
         style={{
           background: 'var(--color-surface)',
-          borderRadius: 14,
+          borderRadius: 'var(--radius-lg)',
           padding: 'var(--space-6)',
           width: '100%',
           maxWidth: 480,

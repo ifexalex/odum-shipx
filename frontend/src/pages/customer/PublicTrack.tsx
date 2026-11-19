@@ -28,7 +28,7 @@ function TrackingTimeline({ result }: { result: PublicTrackingResult }): JSX.Ele
           background: 'var(--color-primary-soft)',
           color: 'var(--color-primary)',
           padding: 'var(--space-2) var(--space-4)',
-          borderRadius: 20,
+          borderRadius: 'var(--radius-xl)',
           fontWeight: 700,
           fontSize: 'var(--text-md)',
           flexShrink: 0,

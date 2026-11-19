@@ -6,7 +6,7 @@
 .overlay {
   position: fixed;
   inset: 0;
-  z-index: 9;
+  z-index: calc(var(--layer-dropdown) - 1);
 }
 
 .dropdown {
@@ -15,9 +15,9 @@
   right: 0;
   background: var(--color-surface);
   border: 1px solid var(--color-line);
-  border-radius: var(--radius-md);
+  border-radius: var(--radius-lg);
   box-shadow: var(--shadow-popover);
-  z-index: 10;
+  z-index: var(--layer-dropdown);
   min-width: 180px;
   overflow: hidden;
   padding: var(--space-1);
@@ -31,7 +31,7 @@
   padding: var(--space-2) var(--space-3);
   background: none;
   border: none;
-  border-radius: var(--radius-sm);
+  border-radius: var(--radius-md);
   font-family: var(--font-body);
   font-size: var(--text-sm);
   color: var(--color-ink-2);

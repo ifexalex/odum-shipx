@@ -181,7 +181,7 @@ function PickupSheet({ note, onCancel, onSuccess }: PickupSheetProps): JSX.Eleme
                 ID type <span style={{ color: 'var(--color-error)' }}>*</span>
               </label>
               <select
-                style={{ width: '100%', padding: 'var(--space-3) var(--space-4)', borderRadius: 8, border: '1px solid var(--color-line-soft)', background: 'var(--color-surface)', fontSize: 'var(--text-lg)' }}
+                style={{ width: '100%', padding: 'var(--space-3) var(--space-4)', borderRadius: 'var(--radius-md)', border: '1px solid var(--color-line-soft)', background: 'var(--color-surface)', fontSize: 'var(--text-lg)' }}
                 value={delegateIdType}
                 onChange={(e) => setDelegateIdType(e.target.value as DelegateIdType)}
               >
@@ -229,7 +229,7 @@ function NoteCard({ note, onPickup, lastPickup }: NoteCardProps): JSX.Element {
           <span
             style={{
               fontSize: 'var(--text-xs)', fontWeight: 700, textTransform: 'uppercase', letterSpacing: 'var(--tracking-label)',
-              padding: 'var(--space-0-5) var(--space-2)', borderRadius: 999, background: urgency.bg, color: urgency.fg,
+              padding: 'var(--space-0-5) var(--space-2)', borderRadius: 'var(--radius-full)', background: urgency.bg, color: urgency.fg,
             }}
           >
             {urgency.label}

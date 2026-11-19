@@ -3,26 +3,27 @@
   align-items: center;
   justify-content: center;
   gap: var(--space-2);
-  border-radius: var(--radius-sm);
+  border-radius: var(--radius-md);
   font-family: var(--font-body);
   font-weight: 600;
   white-space: nowrap;
   transition:
-    background-color 0.15s,
-    border-color 0.15s,
-    opacity 0.15s,
-    transform 0.16s cubic-bezier(0.2, 0.7, 0.3, 1),
-    box-shadow 0.16s;
+    background-color var(--motion-fast) var(--ease-standard),
+    border-color var(--motion-fast) var(--ease-standard),
+    box-shadow var(--motion-fast) var(--ease-standard),
+    opacity var(--motion-fast) var(--ease-standard);
   cursor: pointer;
 }
 
-/* Micro-interaction lift on hover, press on active (prototype .sx-btn). */
-.button:hover:not(:disabled) {
-  transform: translateY(-1px);
-  box-shadow: var(--shadow-hover);
+/* Hover (FD-05): nothing moves. Filled buttons darken and gain the rest shadow; secondary and ghost buttons change
+   background only, so dense tables and toolbars stay calm. */
+.primary:hover:not(:disabled),
+.accent:hover:not(:disabled),
+.danger:hover:not(:disabled),
+.success:hover:not(:disabled) {
+  box-shadow: var(--shadow-rest);
 }
 .button:active:not(:disabled) {
-  transform: translateY(0);
   box-shadow: none;
 }
 
@@ -76,7 +77,7 @@
   border: none;
 }
 .accent:hover:not(:disabled) {
-  background: var(--color-accent-hover);
+  background: var(--color-accent-deep);
 }
 .accent:active:not(:disabled) {
   background: var(--color-accent-deep);
@@ -106,7 +107,7 @@
   border: none;
 }
 .danger:hover:not(:disabled) {
-  background: var(--color-error-strong);
+  background: color-mix(in srgb, var(--color-error-fill) 85%, black);
 }
 
 .dangerOutline {
@@ -124,7 +125,7 @@
   border: none;
 }
 .success:hover:not(:disabled) {
-  background: var(--color-success-strong);
+  background: color-mix(in srgb, var(--color-success-fill) 85%, black);
 }
 
 .spinner {

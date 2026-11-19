@@ -36,7 +36,7 @@ function PlanRadio({ name, features, selected, onSelect }: { name: string; featu
       style={{
         textAlign: 'left', cursor: 'pointer', flex: 1, minWidth: 180,
         border: `${selected ? 2 : 1}px solid ${selected ? 'var(--color-primary)' : 'var(--color-line-soft)'}`,
-        borderRadius: 12, padding: 'var(--space-4)',
+        borderRadius: 'var(--radius-lg)', padding: 'var(--space-4)',
         background: selected ? 'var(--color-primary-tint)' : 'var(--color-surface)',
       }}
     >

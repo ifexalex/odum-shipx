@@ -138,8 +138,8 @@ function QuotaBar({ label, used, max }: { label: string; used: number; max: numb
         <span style={{ fontWeight: 600, color: 'var(--color-ink-2)' }}>{label}</span>
         <Mono>{used} / {max >= 999999 ? '∞' : max}</Mono>
       </div>
-      <div style={{ height: 8, borderRadius: 4, background: 'var(--color-surface-muted)', overflow: 'hidden' }}>
-        <div style={{ height: '100%', width: `${pct}%`, background: color, borderRadius: 4 }} />
+      <div style={{ height: 8, borderRadius: 'var(--radius-sm)', background: 'var(--color-surface-muted)', overflow: 'hidden' }}>
+        <div style={{ height: '100%', width: `${pct}%`, background: color, borderRadius: 'var(--radius-sm)' }} />
       </div>
     </div>
   )

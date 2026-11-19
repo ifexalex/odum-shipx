@@ -246,7 +246,7 @@ export function StaffUserDetail(): JSX.Element {
         {ROLE_PERMISSIONS[user.role]?.map((p, i, arr) => (
           <div key={p.label} style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-3)', padding: 'var(--space-2) 0', borderBottom: i < arr.length - 1 ? '1px dashed var(--color-line-soft)' : 'none' }}>
             <span style={{
-              width: 22, height: 22, borderRadius: 6, flexShrink: 0,
+              width: 22, height: 22, borderRadius: 'var(--radius-md)', flexShrink: 0,
               display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
               background: p.allowed ? 'var(--color-success-soft)' : 'var(--color-error-soft)',
               color: p.allowed ? 'var(--color-success)' : 'var(--color-error)',

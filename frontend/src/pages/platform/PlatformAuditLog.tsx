@@ -76,7 +76,7 @@ export function PlatformAuditLog(): JSX.Element {
       <div style={{ display: 'flex', gap: 'var(--space-3)', marginBottom: 'var(--space-4)', alignItems: 'center' }}>
         <label style={{ fontSize: 'var(--text-sm)', fontWeight: 600, color: 'var(--color-ink-2)' }}>Tenant</label>
         <select
-          style={{ padding: 'var(--space-2) var(--space-3)', borderRadius: 8, border: '1px solid var(--color-line)', background: 'var(--color-surface)', fontSize: 'var(--text-md)', minWidth: 220 }}
+          style={{ padding: 'var(--space-2) var(--space-3)', borderRadius: 'var(--radius-md)', border: '1px solid var(--color-line)', background: 'var(--color-surface)', fontSize: 'var(--text-md)', minWidth: 220 }}
           value={tenantFilter}
           onChange={(e) => setTenantFilter(e.target.value)}
         >

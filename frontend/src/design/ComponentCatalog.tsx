@@ -66,7 +66,7 @@ export function ComponentCatalog(): JSX.Element {
       />
 
       <Section title="Brand marks">
-        <div style={{ display: 'flex', gap: 'var(--space-6)', alignItems: 'center', background: 'var(--color-forest-dark)', padding: 'var(--space-4)', borderRadius: 8 }}>
+        <div style={{ display: 'flex', gap: 'var(--space-6)', alignItems: 'center', background: 'var(--color-forest-dark)', padding: 'var(--space-4)', borderRadius: 'var(--radius-md)' }}>
           <KolaMark size={32} color="var(--color-primary-bright)" />
           <ShipxWordmark />
           <ShipxWordmark showBy />
@@ -244,7 +244,7 @@ export function ComponentCatalog(): JSX.Element {
       </Section>
 
       <Section title="App shell (Sidebar + TopBar + PageShell)">
-        <div style={{ height: 360, border: '1px solid var(--color-line)', borderRadius: 10, overflow: 'hidden' }}>
+        <div style={{ height: 360, border: '1px solid var(--color-line)', borderRadius: 'var(--radius-lg)', overflow: 'hidden' }}>
           <PageShell
             sidebar={
               <Sidebar

@@ -221,7 +221,7 @@ export function DocumentsTab({
                 style={{
                   width: '100%',
                   padding: 'var(--space-2) var(--space-3)',
-                  borderRadius: 8,
+                  borderRadius: 'var(--radius-md)',
                   border: '1px solid var(--color-line)',
                   background: 'var(--color-surface)',
                   fontSize: 'var(--text-md)',

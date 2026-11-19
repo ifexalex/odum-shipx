@@ -32,7 +32,7 @@
   align-items: center;
   gap: var(--space-3);
   padding: var(--space-3) var(--space-3);
-  border-radius: var(--radius-sm);
+  border-radius: var(--radius-md);
   cursor: pointer;
 }
 .subNavItem:hover {
@@ -46,7 +46,7 @@
 .subNavIcon {
   width: 30px;
   height: 30px;
-  border-radius: var(--radius-sm);
+  border-radius: var(--radius-md);
   background: var(--color-surface-muted);
   color: var(--color-ink-3);
   display: flex;

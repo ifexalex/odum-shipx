@@ -31,15 +31,15 @@
   flex: 1;
   height: 6px;
   background: var(--color-line);
-  border-radius: 999px;
+  border-radius: var(--radius-full);
   overflow: hidden;
 }
 
 .progressBar {
   height: 100%;
   background: var(--color-primary);
-  border-radius: 999px;
-  transition: width 0.15s ease;
+  border-radius: var(--radius-full);
+  transition: width var(--motion-fast) var(--ease-standard);
 }
 
 .progressLabel {

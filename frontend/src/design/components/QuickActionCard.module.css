@@ -8,7 +8,7 @@
 .tileAccent {
   width: 40px;
   height: 40px;
-  border-radius: 10px;
+  border-radius: var(--radius-lg);
   flex-shrink: 0;
   display: flex;
   align-items: center;

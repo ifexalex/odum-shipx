@@ -7,18 +7,18 @@ describe('Card', () => {
     render(<Card>content</Card>)
     const card = screen.getByText('content')
     expect(card.className).toContain('padDefault')
-    expect(card).toHaveStyle({ borderRadius: '10px' })
+    expect(card.style.borderRadius).toBe('var(--radius-lg)')
   })
 
   it('takes a named padding (FD-02) and a custom radius', () => {
     render(
-      <Card padding="none" radius={4}>
+      <Card padding="none" radius="xl">
         content
       </Card>,
     )
     const card = screen.getByText('content')
     expect(card.className).toContain('padNone')
-    expect(card).toHaveStyle({ borderRadius: '4px' })
+    expect(card.style.borderRadius).toBe('var(--radius-xl)')
   })
 
   it('offers a large padding', () => {

@@ -38,7 +38,7 @@ export function CustomerStepper({ containerStatus }: { containerStatus: string |
             )}
             <div style={{
               width: 30, height: 30, borderRadius: '50%',
-              background: done ? color : isCurrent ? '#fff' : 'var(--color-page)',
+              background: done ? color : isCurrent ? 'var(--color-surface)' : 'var(--color-page)',
               border: `${isCurrent ? 3 : 2}px solid ${done || isCurrent ? color : 'var(--color-line)'}`,
               display: 'flex', alignItems: 'center', justifyContent: 'center',
               position: 'relative', zIndex: 1,

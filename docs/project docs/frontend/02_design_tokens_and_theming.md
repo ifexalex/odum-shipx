@@ -97,15 +97,27 @@ Port these as CSS custom properties on `:root` in `src/design/tokens.css`, and a
   --sidebar-width-collapsed: 64px;
   --content-max-width: 1280px;
 
-  /* Radius — see mixing rule below */
-  --radius-none: 0px; --radius-sm: 8px; --radius-md: 10px;
-  --radius-lg: 14px;  --radius-xl: 12px; --radius-full: 9999px;
+  /* Radius (FD-04): four steps in order, plus full; 50% stays allowed for circles */
+  --radius-sm: 4px;   /* tags, small chips */
+  --radius-md: 8px;   /* controls: buttons, inputs, menus */
+  --radius-lg: 12px;  /* cards */
+  --radius-xl: 16px;  /* modals, hero panels */
+  --radius-full: 9999px;
 
   /* Shadows — tinted with Forest Dark, never pure black */
   --shadow-rest:  0 1px 3px rgba(11,47,13,0.08), 0 1px 2px rgba(11,47,13,0.05);
   --shadow-hover: 0 4px 12px rgba(11,47,13,0.10), 0 2px 4px rgba(11,47,13,0.06);
   --shadow-modal: 0 10px 25px rgba(11,47,13,0.18);
+  --shadow-popover: 0 8px 24px rgba(11,47,13,0.14), 0 2px 6px rgba(11,47,13,0.08);  /* menus, dropdowns */
   --shadow-focus-ring: 0 0 0 3px rgba(45,196,56,0.35);
+  --shadow-selected: 0 0 0 3px color-mix(in srgb, var(--color-primary) 16%, transparent);  /* chosen option, current step */
+  --shadow-glow: 0 0 8px var(--color-primary-bright);  /* live-status dot */
+
+  /* Layers (FD-05); -1/0/1 allowed for order inside one component */
+  --layer-sticky: 10; --layer-dropdown: 20; --layer-drawer: 30; --layer-modal: 40; --layer-toast: 50;
+
+  /* Motion (FD-05): two durations, one easing; both 0ms under prefers-reduced-motion */
+  --motion-fast: 120ms; --motion-base: 180ms; --ease-standard: cubic-bezier(0.2, 0, 0, 1);
   --scrim-modal: rgba(11,47,13,0.55);
 }
 ```
@@ -129,10 +141,10 @@ Port these as CSS custom properties on `:root` in `src/design/tokens.css`, and a
 
 - Never italicize. Use weight contrast instead.
 - Kola Copper (`--color-accent`) is reserved for **one** highest-stakes action per screen (payment confirmation, release-note generation, irreversible actions). If a screen has two CTAs that both feel critical, demote one to primary green.
-- Mix border radii freely *across* component families (a `full` badge inside an `md` card is fine) but never *within* one family (don't mix `sm` and `md` buttons in the same view).
+- Radius follows the component, not taste (FD-04): `sm` for tags and small chips, `md` for controls, `lg` for cards, `xl` for modals and hero panels, `full` for pills. A `full` badge inside an `lg` card is fine; two sizes of the same control in one view are not.
 - Form inputs keep a visible 1px `--color-control-border` border at rest, never invisible until focus. It is 3:1 against every surface (FD-03); `--color-line` is for dividers only.
 - No zebra-striping on tables. Use `--color-line-soft` row dividers only.
-- Contrast targets are already verified by the brand brief: primary-on-white 4.96:1, accent-on-white 5.76:1 — don't introduce new color pairs without checking WCAG AA.
+- Contrast is measured by `src/design/contrast.test.ts` in both themes (FD-03). A new text or control pair goes into that test.
 
 ## Tenant Branding Override
 
@@ -198,6 +210,9 @@ the app-wide responsive pass).
 
 ## Implementation notes / ground-truth gaps found
 
+- **Radius (FD-04, 2026-11-19).** `--radius-xl` (12 px) was smaller than `--radius-lg` (14 px), and about half of all radius declarations were raw (2 to 28 px). The scale is now sm 4 / md 8 / lg 12 / xl 16 / full. The old token names changed meaning (old `sm` was 8 px), so existing uses were remapped by value. Old md/lg became lg (cards), or xl in a modal-like rule (`modal`, `sheet`, `dialog`, `drawer`, `panel`, `overlay`, `hero` but not `heroIcon`). Raw values went to the nearest step: up to 5 → sm, up to 9 → md, up to 13 → lg, 14 → lg (or xl in a modal), above → xl; 999 → full. 55 style sheets and 26 components changed. **`Card` radius is named**: `radius="lg" | "xl"`, default lg (12 px; it was 10). Guard: only the tokens, `0` or `50%`.
+- **Layers, shadows and motion (FD-05, 2026-11-19).** There were 13 z-index values (1 to 2000), now five layers. Dropdowns, menus and the notification panel go to dropdown, with click-catchers at `dropdown - 1`. Mobile nav drawers go to drawer. Every modal and overlay (100, 130, 200, 300, 1000) goes to modal. The dev role switcher goes to toast. 0/1 inside a component stay. Shadows were already mostly tokens after FD-03; the selection halos and the live-dot glow became `--shadow-selected` / `--shadow-glow`, and keyframe steps (the announcement pulse) are left alone. Ten transition durations and three easings became `--motion-fast` (up to 150 ms before) or `--motion-base` with `--ease-standard`. A global `prefers-reduced-motion` rule makes transitions instant; it was in 3 rules before. **Buttons no longer lift on hover.** Filled buttons darken and gain `--shadow-rest`; secondary and ghost change background only. Two hover bugs were fixed along the way. In dark mode, danger and success hovered to their `-strong` tokens, which are light there, so the white label became unreadable on hover; they now darken their own fill (`color-mix(… 85%, black)`). The accent hover got lighter; it now goes to `--color-accent-deep`. Guard: z-index only as a `--layer-*` token (or −1/0/1), box-shadow only as a `--shadow-*` token, transition timing only as `--motion-*` / `--ease-standard`.
+- **Inline colours (FD-03 follow-up, 2026-11-19).** The FD-03 colour guard read only style sheets, which missed 14 raw colours in inline styles: three scrims, two current-step dots that stayed white in dark mode, the Account danger zone, and the wordmark default. They are now tokens. The WhatsApp preview on Notification templates keeps WhatsApp's own chat colours, on purpose, in `NotificationTemplates.module.css`, marked `scale-exempt` with that reason. The guard now covers inline styles too.
 - **Colour tokens and contrast (FD-03, 2026-11-19).** Four names were used in 15 places and defined nowhere, so they rendered as nothing (popovers had no shadow). `--shadow-lg` is now `--shadow-popover` (new, light and dark), `--color-surface-2` is `--color-surface-muted`, `--color-ink-1` is `--color-ink`, and `--color-line-strong` is `--color-control-border`. The eight aliases (`--color-text`, `--color-text-muted`, `--color-border`, `--color-*-muted`; ~140 uses) are deleted and renamed to the canonical tokens. **About 90 raw colours** in 63 files became tokens: the scrim (16), translucent white on the dark brand surfaces (new `--color-on-dark*` set), `#fff` on brand, and raw-colour `var()` fallbacks; one-off tints use `color-mix()` of a token. **Contrast**, measured by `src/design/contrast.test.ts` in both themes:
     - Light: success 3.3 → `#15803D` 5.0, warning 3.2 → `#B45309` 5.0, error 4.4 on the page → `#C81E1E`, `--color-ink-4` 4.4 on the page → `#5F6672` 5.3, `--color-ink-3` was nearly identical to ink-4 → `#4B5563`. The new control border is 3.4:1; it was 1.6:1 with `--color-line`. Role colours: warehouse 3.2 → `#B45309`, customer 2.3 → `#1A7F26`. The sidebar role badge put white text on the bright flash green; it now uses the brand green.
     - Dark: the test found what the brief missed. Brand green as text was 3.1:1 on dark cards, so there is a new `--color-primary-text` (light green in dark), used by the ~60 `color: var(--color-primary)` rules. White on the success and error buttons was 2.7 and 3.3, so there are new `--color-success-fill` / `--color-error-fill`. Platform, admin, china, warehouse and customer role colours were 2.7–3.4 as text, so the dark theme lightens them. ink-4 is `#8A958A`.

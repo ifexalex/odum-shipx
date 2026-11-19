@@ -79,7 +79,7 @@ function TenantCell({ tenant }: { tenant: Tenant }): JSX.Element {
         style={{
           width: 28,
           height: 28,
-          borderRadius: 6,
+          borderRadius: 'var(--radius-md)',
           flexShrink: 0,
           background: `color-mix(in srgb, ${avatarColor(tenant.id)} 15%, transparent)`,
           color: avatarColor(tenant.id),

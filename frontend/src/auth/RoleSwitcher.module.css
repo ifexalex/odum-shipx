@@ -2,12 +2,12 @@
   position: fixed;
   bottom: var(--space-4);
   right: var(--space-4);
-  z-index: 2000;
+  z-index: var(--layer-toast);
   display: flex;
   align-items: center;
   gap: var(--space-2);
   background: var(--color-forest-dark);
-  border-radius: var(--radius-sm);
+  border-radius: var(--radius-md);
   padding: var(--space-2) var(--space-3);
   box-shadow: var(--shadow-modal);
   font-family: var(--font-body);
@@ -25,7 +25,7 @@
   background: var(--color-on-dark-fill);
   color: var(--color-on-brand);
   border: 1px solid var(--color-on-dark-line);
-  border-radius: var(--radius-sm);
+  border-radius: var(--radius-md);
   padding: var(--space-1) var(--space-2);
   font-family: var(--font-body);
   font-size: var(--text-sm);

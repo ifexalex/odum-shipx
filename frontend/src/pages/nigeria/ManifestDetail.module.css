@@ -27,7 +27,7 @@
 .heroIcon {
   width: 64px;
   height: 64px;
-  border-radius: 14px;
+  border-radius: var(--radius-lg);
   background: var(--color-warning-soft);
   color: var(--color-warning);
   display: flex;
@@ -121,7 +121,7 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  z-index: 100;
+  z-index: var(--layer-modal);
   padding: var(--space-4);
   overflow-y: auto;
 }
@@ -136,7 +136,7 @@
   width: 640px;
   max-width: 100%;
   background: var(--color-surface);
-  border-radius: 14px;
+  border-radius: var(--radius-xl);
   box-shadow: var(--shadow-modal);
   padding: var(--space-5);
 }
@@ -199,7 +199,7 @@
 
 .discrepancyCard {
   border: 1px solid var(--color-line);
-  border-radius: 10px;
+  border-radius: var(--radius-lg);
   padding: var(--space-4);
   background: var(--color-page);
 }
@@ -229,7 +229,7 @@
   height: 40px;
   background: var(--color-surface);
   border: 1px solid var(--color-control-border);
-  border-radius: 8px;
+  border-radius: var(--radius-md);
   padding: 0 var(--space-3);
   font-family: var(--font-body);
   font-size: var(--text-md);
@@ -264,10 +264,10 @@
   gap: var(--space-1);
   padding: var(--space-3);
   border: 1px solid var(--color-line-soft);
-  border-radius: 10px;
+  border-radius: var(--radius-lg);
   text-decoration: none;
   color: var(--color-ink);
-  transition: border-color 0.15s ease, background 0.15s ease;
+  transition: border-color var(--motion-fast) var(--ease-standard), background var(--motion-fast) var(--ease-standard);
 }
 
 .evidenceItem:hover {

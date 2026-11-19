@@ -8,7 +8,7 @@
   display: inline-flex;
   align-items: center;
   cursor: pointer;
-  transition: background-color 0.15s;
+  transition: background-color var(--motion-fast) var(--ease-standard);
 }
 
 .track:focus-visible {

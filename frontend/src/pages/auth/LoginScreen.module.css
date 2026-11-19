@@ -115,7 +115,7 @@
   height: 6px;
   border-radius: 50%;
   background: var(--color-primary-bright);
-  box-shadow: 0 0 8px var(--color-primary-bright);
+  box-shadow: var(--shadow-glow);
 }
 
 .statusText {

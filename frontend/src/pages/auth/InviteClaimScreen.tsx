@@ -233,7 +233,7 @@ export function InviteClaimScreen(): JSX.Element {
           style={{
             background: 'var(--color-surface-muted)',
             border: '1px solid var(--color-line-soft)',
-            borderRadius: 8,
+            borderRadius: 'var(--radius-md)',
             padding: 'var(--space-3) var(--space-4)',
             margin: 'var(--space-2) 0 var(--space-6)',
             fontSize: 'var(--text-xs)',

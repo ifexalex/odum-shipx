@@ -28,7 +28,7 @@
   height: 36px;
   background: var(--color-page);
   border: 1px solid var(--color-control-border);
-  border-radius: var(--radius-sm);
+  border-radius: var(--radius-md);
   display: flex;
   align-items: center;
   padding: 0 var(--space-3);
@@ -61,7 +61,7 @@
 
 .bulkBarWrap {
   background: var(--color-forest-dark);
-  border-radius: var(--radius-md);
+  border-radius: var(--radius-lg);
   padding: var(--space-3) var(--space-4);
   margin-bottom: var(--space-4);
 }
@@ -86,7 +86,7 @@
   background: var(--color-on-dark-fill);
   color: var(--color-on-dark);
   border: 1px solid var(--color-on-dark-line);
-  border-radius: var(--radius-sm);
+  border-radius: var(--radius-md);
   font-family: var(--font-body);
   font-weight: 600;
   font-size: var(--text-sm);
@@ -130,13 +130,13 @@
   display: flex;
   align-items: flex-end;
   justify-content: center;
-  z-index: 100;
+  z-index: var(--layer-modal);
 }
 
 .modalPanel {
   width: 100%;
   background: var(--color-surface);
-  border-radius: 14px 14px 0 0;
+  border-radius: var(--radius-xl) var(--radius-xl) 0 0;
   box-shadow: var(--shadow-modal);
   padding: var(--space-6) var(--space-5);
   max-height: 90vh;
@@ -149,7 +149,7 @@
   }
   .modalPanel {
     width: 480px;
-    border-radius: 14px;
+    border-radius: var(--radius-xl);
     padding: var(--space-6);
   }
 }
@@ -202,7 +202,7 @@
   font-weight: 600;
   color: var(--color-ink-3);
   background: var(--color-surface-muted);
-  border-radius: 999px;
+  border-radius: var(--radius-full);
 }
 
 .failureHelp {
@@ -224,7 +224,7 @@
   font-size: var(--text-xs);
   color: var(--color-ink-2, var(--color-ink));
   background: var(--color-surface-muted);
-  border-radius: 6px;
+  border-radius: var(--radius-md);
 }
 
 .bulkHint {

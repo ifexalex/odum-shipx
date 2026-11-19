@@ -21,7 +21,7 @@ function AuthPreview(): JSX.Element {
       <p>
         status: <strong>{status}</strong>
       </p>
-      <pre style={{ background: 'var(--color-surface-muted)', padding: 'var(--space-4)', borderRadius: 8 }}>
+      <pre style={{ background: 'var(--color-surface-muted)', padding: 'var(--space-4)', borderRadius: 'var(--radius-md)' }}>
         {JSON.stringify(session, null, 2)}
       </pre>
       <RoleSwitcher />

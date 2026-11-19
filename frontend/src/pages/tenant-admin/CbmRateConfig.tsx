@@ -137,7 +137,7 @@ export function CbmRateConfig(): JSX.Element {
                   type="number"
                   value={cartonRate}
                   onChange={(e) => setCartonRate(e.target.value)}
-                  style={{ width: '100%', padding: 'var(--space-2) var(--space-3)', borderRadius: 8, border: '1px solid var(--color-line-soft)', background: 'var(--color-surface)', fontSize: 'var(--text-lg)' }}
+                  style={{ width: '100%', padding: 'var(--space-2) var(--space-3)', borderRadius: 'var(--radius-md)', border: '1px solid var(--color-line-soft)', background: 'var(--color-surface)', fontSize: 'var(--text-lg)' }}
                   placeholder="e.g. 45"
                   min="0.01"
                   step="0.01"
@@ -161,7 +161,7 @@ export function CbmRateConfig(): JSX.Element {
                       type="number"
                       value={value}
                       onChange={(e) => setValue(e.target.value)}
-                      style={{ width: '100%', padding: 'var(--space-2) var(--space-3)', borderRadius: 8, border: '1px solid var(--color-line-soft)', background: 'var(--color-surface)', fontSize: 'var(--text-lg)' }}
+                      style={{ width: '100%', padding: 'var(--space-2) var(--space-3)', borderRadius: 'var(--radius-md)', border: '1px solid var(--color-line-soft)', background: 'var(--color-surface)', fontSize: 'var(--text-lg)' }}
                       placeholder="e.g. 45"
                       min="0.01"
                       step="0.01"
@@ -179,7 +179,7 @@ export function CbmRateConfig(): JSX.Element {
                 type="number"
                 value={minCbm}
                 onChange={(e) => setMinCbm(e.target.value)}
-                style={{ width: '100%', padding: 'var(--space-2) var(--space-3)', borderRadius: 8, border: '1px solid var(--color-line-soft)', background: 'var(--color-surface)', fontSize: 'var(--text-lg)' }}
+                style={{ width: '100%', padding: 'var(--space-2) var(--space-3)', borderRadius: 'var(--radius-md)', border: '1px solid var(--color-line-soft)', background: 'var(--color-surface)', fontSize: 'var(--text-lg)' }}
                 placeholder="e.g. 0.1"
                 min="0.01"
                 step="0.01"

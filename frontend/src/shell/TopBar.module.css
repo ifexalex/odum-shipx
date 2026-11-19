@@ -23,7 +23,7 @@
   display: none;
   width: 38px;
   height: 38px;
-  border-radius: var(--radius-md);
+  border-radius: var(--radius-lg);
   background: var(--color-page);
   border: none;
   align-items: center;
@@ -88,7 +88,7 @@
 .roleSwitch {
   height: 34px;
   padding: 0 var(--space-3);
-  border-radius: var(--radius-sm);
+  border-radius: var(--radius-md);
   background: var(--color-page);
   border: 1px solid transparent;
   font-family: var(--font-body);
@@ -134,7 +134,7 @@
 /* Icon-button hover (prototype .sx-icbtn). */
 .bellButton,
 .hamburger {
-  transition: background 0.14s, transform 0.14s;
+  transition: background var(--motion-fast) var(--ease-standard), transform var(--motion-fast) var(--ease-standard);
 }
 .bellButton:hover,
 .hamburger:hover {
@@ -148,7 +148,7 @@
   right: -2px;
   background: var(--color-error-fill);
   color: var(--color-on-brand);
-  border-radius: 999px;
+  border-radius: var(--radius-full);
   font-size: var(--text-xs);
   font-weight: 700;
   min-width: 18px;
