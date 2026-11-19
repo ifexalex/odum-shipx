@@ -241,7 +241,7 @@ function RecordPickupModal({ note, onCancel, onSuccess }: RecordPickupModalProps
 
         <div className={styles.modalActions}>
           <Button variant="ghost" onClick={onCancel} disabled={submitting}>Cancel</Button>
-          <Button variant="success" loading={submitting} disabled={!canSubmit} onClick={() => void handleSubmit()}>
+          <Button variant="primary" loading={submitting} disabled={!canSubmit} onClick={() => void handleSubmit()}>
             Confirm pickup
           </Button>
         </div>
@@ -534,7 +534,7 @@ export function ReleaseNoteDetail(): JSX.Element {
             </Action>
           )}
           {!isTerminal && !isExpired && showPickupBtn && (
-            <Action variant="success" icon="check" onClick={() => setShowPickup(true)}>
+            <Action variant="primary" icon="check" onClick={() => setShowPickup(true)}>
               Record pickup
             </Action>
           )}

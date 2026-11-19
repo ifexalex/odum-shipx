@@ -47,7 +47,7 @@ function ResolvePanel({ dispute, onResolved }: { dispute: DisputeDetailData; onR
         </div>
       )}
       <div className={styles.outcome}>
-        <Button variant={outcome === 'resolved_no_change' ? 'success' : 'secondary'} onClick={() => setOutcome('resolved_no_change')}>
+        <Button variant={outcome === 'resolved_no_change' ? 'primary' : 'secondary'} onClick={() => setOutcome('resolved_no_change')}>
           No change: CBM stands
         </Button>
         <Button variant={outcome === 'resolved_adjusted' ? 'primary' : 'secondary'} onClick={() => setOutcome('resolved_adjusted')}>

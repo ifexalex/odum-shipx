@@ -368,7 +368,7 @@ function PrivacyTab({ customer, exporting, readOnly, onExport, onAnonymise }: Pr
               Permanently erases the customer's personal data (name, email, phone, address, contract
               details). Irreversible — requires typed confirmation.
             </p>
-            <Action variant="danger-outline" disabled={readOnly} onClick={onAnonymise}>
+            <Action variant="danger-ghost" disabled={readOnly} onClick={onAnonymise}>
               Erase data (GDPR)
             </Action>
           </>

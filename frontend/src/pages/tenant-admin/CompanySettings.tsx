@@ -19,7 +19,7 @@
 import { useMemo, useState, type JSX } from 'react'
 import { type BrandingConfig } from '../../api/tenantManagement'
 import { isValidHexColor } from '../../design/deriveBrandShades'
-import { Banner, Button, Card, Field, PhoneField } from '../../design/components'
+import { Banner, Button, Card, Field, PhoneField, Pressable } from '../../design/components'
 import { useBranding, useSaveBranding } from '../../hooks/useConfig'
 import { PageHeader } from '../../shell/PageHeader'
 import { SectionHead } from '../../shell/SectionHead'
@@ -371,22 +371,22 @@ function CompanySettingsForm({
             <SectionHead title="Live preview" sub="How your branding appears on documents" />
             <div style={{ height: 16 }} />
             <div className={styles.previewToggle} role="tablist">
-              <button
+              <Pressable
                 role="tab"
                 aria-selected={previewDoc === 'pl'}
                 className={[styles.previewTab, previewDoc === 'pl' ? styles.previewTabActive : ''].join(' ')}
                 onClick={() => setPreviewDoc('pl')}
               >
                 Packing list
-              </button>
-              <button
+              </Pressable>
+              <Pressable
                 role="tab"
                 aria-selected={previewDoc === 'rn'}
                 className={[styles.previewTab, previewDoc === 'rn' ? styles.previewTabActive : ''].join(' ')}
                 onClick={() => setPreviewDoc('rn')}
               >
                 Release note
-              </button>
+              </Pressable>
             </div>
             <div style={{ height: 16 }} />
             <DocPreview form={form} doc={previewDoc} />

@@ -245,7 +245,7 @@ export function BillingDetail(): JSX.Element {
           )}
           {isCancellable && (
             <Action
-              variant="danger-outline"
+              variant="danger-ghost"
               onClick={() => {
                 setCancelError(null)
                 setShowCancelModal(true)

@@ -7,7 +7,7 @@
  */
 import { useQuery } from '@tanstack/react-query'
 import { useState, type JSX } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { Link } from 'react-router-dom'
 import { carryoverApi, type Carryover, type CarryoverStatus } from '../../api/billing'
 import { billingKeys } from '../../api/keys'
 import { STALE_30S } from '../../lib/queryClient'
@@ -84,7 +84,6 @@ function ExemptModal({ carryover, onCancel, onSuccess }: { carryover: Carryover;
 }
 
 export function CarryoverLedger(): JSX.Element {
-  const navigate = useNavigate()
   const { session } = useSession()
   const [statusFilter, setStatusFilter] = useState<CarryoverStatus | null>(null)
   const [exempting, setExempting] = useState<Carryover | null>(null)
@@ -145,14 +144,9 @@ export function CarryoverLedger(): JSX.Element {
           rows={carryovers.map((c) => ({
             cells: [
               <UserCell key="cust" name={c.customer_name ?? c.customer_id} email="" />,
-              <button
-                key="src"
-                type="button"
-                style={{ background: 'none', border: 0, padding: 0, cursor: 'pointer', color: 'var(--color-primary)', fontWeight: 600, fontSize: 'var(--text-sm)' }}
-                onClick={() => navigate(`/billing/${c.source_billing_id}`)}
-              >
+              <Link key="src" to={`/billing/${c.source_billing_id}`}>
                 <Mono color="var(--color-primary)">{c.source_container_number ?? c.source_billing_id.slice(0, 8)}</Mono>
-              </button>,
+              </Link>,
               <Mono key="amt">{formatNgn(c.amount_ngn)}</Mono>,
               <StatusBadge key="status" kind="carryover" status={c.status} />,
               <span key="created" style={{ fontSize: 'var(--text-xs)', color: 'var(--color-ink-3)' }}>{formatDate(c.created_at)}</span>,

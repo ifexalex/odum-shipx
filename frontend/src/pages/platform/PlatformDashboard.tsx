@@ -10,10 +10,10 @@
  * chips (no historical-aggregates source — fictional in the prototype).
  */
 import { useMemo, type JSX } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { Link, useNavigate } from 'react-router-dom'
 import { ApiError } from '../../api/client'
 import { usePlatformDashboardStats, usePlatformTenantList, useRecentPlatformActivity } from '../../hooks/usePlatformTenants'
-import { Badge, Banner, Button, Card, Mono, QuickActionCard, StatCard, StatusBadge, Table, type BadgeVariant, type IconName, UserCell, ViewLink } from '../../design/components'
+import { Badge, Banner, Button, Card, Mono, QuickActionCard, StatCard, StatusBadge, Table, type BadgeVariant, type IconName, UserCell, ViewLink, Icon } from '../../design/components'
 import { PageHeader } from '../../shell/PageHeader'
 import { SectionHead } from '../../shell/SectionHead'
 import styles from './admin.module.css'
@@ -128,8 +128,8 @@ export function PlatformDashboard(): JSX.Element {
               title="Tenant health"
               sub={`${tenants.length} tenant(s) on the platform`}
               action={
-                <Button variant="secondary" size="sm" onClick={() => navigate('/platform/tenants')}>
-                  Manage tenants →
+                <Button variant="secondary" size="sm" trailingIcon="arrowright" onClick={() => navigate('/platform/tenants')}>
+                  Manage tenants
                 </Button>
               }
             />
@@ -181,13 +181,9 @@ export function PlatformDashboard(): JSX.Element {
               </div>
             ))}
             <div style={{ padding: 'var(--space-3) var(--space-5)', borderTop: '1px solid var(--color-line-soft)', textAlign: 'center' }}>
-              <button
-                type="button"
-                onClick={() => navigate('/platform/audit-log')}
-                style={{ color: 'var(--color-primary)', fontWeight: 600, fontSize: 'var(--text-sm)', background: 'none', border: 0, cursor: 'pointer', fontFamily: 'var(--font-body)' }}
-              >
-                View full audit log →
-              </button>
+              <Link to="/platform/audit-log" style={{ color: 'var(--color-primary-text)', fontWeight: 600, fontSize: 'var(--text-sm)' }}>
+                View full audit log <Icon name="arrowright" size={12} />
+              </Link>
             </div>
           </div>
         </Card>

@@ -6,7 +6,7 @@ import {
   type WebhookEventType,
   type WebhookTestResult,
 } from '../../api/tenantManagement'
-import { Banner, Button, Card, Field, Icon, Mono, ToggleSwitch } from '../../design/components'
+import { Banner, Button, Card, Field, Icon, Mono, ToggleSwitch, IconButton } from '../../design/components'
 import { useTenantConfig } from '../../hooks/useConfig'
 import { useSeedOnce } from '../../hooks/useSeedOnce'
 import { SectionHead } from '../../shell/SectionHead'
@@ -52,9 +52,7 @@ function RotateModal({ onCancel, onConfirm, rotating }: RotateModalProps): JSX.E
       <div className={styles.modal} onClick={(e) => e.stopPropagation()}>
         <div className={styles.modalHeader}>
           <h3 className={styles.modalTitle}>Rotate signing secret</h3>
-          <button type="button" className={styles.closeBtn} onClick={onCancel}>
-            <Icon name="x" size={18} />
-          </button>
+          <IconButton icon="x" label="Close" size="sm" onClick={onCancel} />
         </div>
         <div className={styles.modalBody}>
           <Banner variant="warning" icon="warn" title="This is irreversible">
@@ -92,9 +90,7 @@ function NewSecretBanner({ secret, onDismiss }: { secret: string; onDismiss: () 
     <div className={styles.newSecretBanner}>
       <div className={styles.newSecretTop}>
         <span className={styles.newSecretTitle}>New signing secret — copy now, it won't be shown again</span>
-        <button type="button" className={styles.closeBtn} onClick={onDismiss}>
-          <Icon name="x" size={16} />
-        </button>
+        <IconButton icon="x" label="Close" size="sm" onClick={onDismiss} />
       </div>
       <div className={styles.newSecretRow}>
         <Mono color="var(--color-ink)">{secret}</Mono>

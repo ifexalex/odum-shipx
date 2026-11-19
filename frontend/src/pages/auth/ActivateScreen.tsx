@@ -12,7 +12,7 @@ import { useEffect, useState, type FormEvent, type JSX } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { ApiError } from '../../api/client'
 import { activationApi, type ActivationDetail } from '../../api/customer'
-import { Banner, Button, Field, Icon } from '../../design/components'
+import { Banner, Button, Field, Icon, IconButton } from '../../design/components'
 import { AuthShell, FormHead, PasswordStrength } from './AuthShell'
 import styles from './LoginScreen.module.css'
 
@@ -148,8 +148,8 @@ export function ActivateScreen(): JSX.Element {
           <p className={styles.formSub} style={{ marginBottom: 'var(--space-6)' }}>
             Sign in with <strong>{detail?.email}</strong> and the password you just chose.
           </p>
-          <Button variant="primary" size="lg" full onClick={() => navigate('/login')}>
-            Sign in →
+          <Button variant="primary" size="lg" full trailingIcon="arrowright" onClick={() => navigate('/login')}>
+            Sign in
           </Button>
         </div>
       </AuthShell>
@@ -183,14 +183,13 @@ export function ActivateScreen(): JSX.Element {
           autoComplete="new-password"
           required
           trailing={
-            <button
-              type="button"
+            <IconButton
               className={styles.trailingButton}
-              aria-label={showPassword ? 'Hide password' : 'Show password'}
+              size="sm"
+              icon={showPassword ? 'eyeoff' : 'eye'}
+              label={showPassword ? 'Hide password' : 'Show password'}
               onClick={() => setShowPassword((v) => !v)}
-            >
-              <Icon name={showPassword ? 'eyeoff' : 'eye'} size={16} />
-            </button>
+            />
           }
         />
         <PasswordStrength password={password} />

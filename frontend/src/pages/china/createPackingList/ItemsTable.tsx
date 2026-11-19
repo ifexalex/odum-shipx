@@ -6,7 +6,7 @@ import {
   formatPackageMix,
 } from '../../../api/packingListRules'
 import { MAX_ITEM_QUANTITY, PACKAGE_UNITS, type PackageUnit } from '../../../api/packingList'
-import { Badge, Button, Card, Icon, Mono } from '../../../design/components'
+import { Badge, Button, Card, Icon, Mono, IconButton } from '../../../design/components'
 import { SectionHead } from '../../../shell/SectionHead'
 import styles from '../CreatePackingList.module.css'
 import { blockInvalidNumberKeys, clampQuantity, emptyItem, sanitizeNumber } from './items'
@@ -292,10 +292,11 @@ export function ItemsTable({ form }: { form: PackingListForm }): JSX.Element {
                       />
                     </td>
                     <td>
-                      <button
-                        type="button"
-                        className={styles.removeRow}
-                        aria-label={
+                      <IconButton
+                        icon="x"
+                        variant="danger-ghost"
+                        size="sm"
+                        label={
                           batchSize(item.batch_ref) > 1
                             ? `Remove all ${batchSize(item.batch_ref)} packages in this batch`
                             : `Remove item ${index + 1}`
@@ -311,9 +312,7 @@ export function ItemsTable({ form }: { form: PackingListForm }): JSX.Element {
                             ? removeBatch(item.batch_ref)
                             : removeItem(index)
                         }
-                      >
-                        <Icon name="x" size={14} />
-                      </button>
+                      />
                     </td>
                   </tr>
                   {qtyOf(item) > 1 && (

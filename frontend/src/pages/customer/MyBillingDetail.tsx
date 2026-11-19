@@ -128,9 +128,9 @@ function PaymentClaimPanel({
             {evidence ? (
               <div className={styles.evidenceAttached}>
                 <Badge variant="success">Attached</Badge> {evidence.filename}
-                <button type="button" className={styles.removeEvidenceBtn} onClick={() => setEvidence(null)}>
+                <Button variant="ghost" size="sm" onClick={() => setEvidence(null)}>
                   Remove
-                </button>
+                </Button>
               </div>
             ) : (
               <EvidenceUploader

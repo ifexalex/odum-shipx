@@ -80,7 +80,7 @@ describe('PlatformDashboard (B1)', () => {
   it('activity feed footer links to the full audit log', async () => {
     renderPage()
     await screen.findByText('24 / 50')
-    await userEvent.click(screen.getByRole('button', { name: /view full audit log/i }))
+    await userEvent.click(screen.getByRole('link', { name: /view full audit log/i }))
     expect(await screen.findByText('Audit log page')).toBeInTheDocument()
   })
 })

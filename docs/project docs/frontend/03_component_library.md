@@ -250,3 +250,19 @@ Known limit: focus is placed once, when the dialog mounts. A dialog whose first 
 - Guard: `src/design/statusRegistry.test.ts` — every API status union (16) equals its registry kind; every label is sentence case without `_`; no page or shell file declares a status map, a `statusLabel`-style function, or picks a badge colour with `status ===`.
 - Catalog: "Statuses (FD-08)" section shows every kind and every role.
 - Kept on purpose: `customerRefundLabel` (a sentence for the claim page's refund line), `MyShipmentDetail`'s per-status hints (prose), `customer.ts` stage labels (public tracking stages, not a record status).
+
+## Buttons: five variants, one exception, and no raw `<button>` (FD-07, 2026-11-19)
+
+**Problem:** pages used `Button` ~330 times and raw `<button>` 42 times; the invoice list showed a text link, a copper accent button and an outlined button in one column, with accent on every unpaid row; the warehouse's main action used `success`, a second green; "Cancel container" was a green ghost; small buttons were 28 px; `Action` (read-only guard) wrapped only 27 mutating buttons.
+
+**Now:**
+- `ButtonVariant` = `primary | secondary | ghost | danger | danger-ghost | accent`. `success` is gone (→ primary), `danger-outline` became **`danger-ghost`** (transparent, red text, soft red hover). Accent is for paying and signing in only — auth screens, the session-timeout prompt, the customer invoice's "Pay online" and the shipment's "Pay outstanding". The dev-only "more than one accent" console warning is replaced by a test.
+- Heights **32 / 40 / 48 px** (sm/md/lg); under `(pointer: coarse)` sm and md are at least 44 px. Default `type="button"`.
+- **Read-only by default:** `Button` reads the session itself; with `session.readOnly` a button with `mutates` (default true for primary, accent, danger, danger-ghost) renders disabled, dashed, with a suspend icon and the title "Disabled during read-only impersonation". `mutates={false}` for a primary that only opens something; `mutates` for a secondary that changes data. `Action` is now `<Button mutates>` (kept for existing call sites); its dashed-pill `<span>` and CSS are gone. No session (login, catalog) → nothing blocked.
+- New **`IconButton`** (`icon`, required `label` → aria-label and title, variants ghost/secondary/danger-ghost, square 32/40/48) and **`Pressable`** (unstyled `type="button"` with the focus ring, for tiles, option rows, pipeline stages, queue rows).
+- Raw buttons in pages: 0 (was 42). Navigation became router `Link`s (auth footers, "Forgot password?", work-queue rows, carryover source, claim sub-links, audit-log link, "View full invoice"); password toggles, modal close and remove-row buttons became `IconButton`s; "Clear all filters", "Remove" and "View all" became ghost `Button`s; selectable tiles and options became `Pressable`. Found on the way: `CompanySettings`'s preview tabs had no `type` (a bare button inside a form submits it). `MyShipmentDetail`'s leftover "← My shipments" back link was removed (FD-47).
+- Row pattern: invoice and claim rows carry one small **secondary** button (was accent / primary / ghost), marked `mutates={false}` because it only opens the record.
+- Side by side: "Offboard" beside "Lift suspension" is now danger-ghost, not a second filled colour. Typed arrows in labels ("View all →", "Sign in →", "Review all →") became `trailingIcon="arrowright"` / a trailing icon in links.
+- Guards: `src/design/buttonRules.test.ts` (no raw `<button>` in pages, accent allowlist, no typed arrow before `</Button|Link|Pressable|a>`); `Action.test.tsx` covers read-only on plain Buttons and IconButtons; `Button.test.tsx` covers `type="button"` and trailing icons; `IconButton.test.tsx` covers label and Pressable.
+- Catalog: "Buttons (FD-07)" lists the rules and shows every variant, size, icon and state.
+- Not in this item: the table row pattern beyond these two lists is FD-13.

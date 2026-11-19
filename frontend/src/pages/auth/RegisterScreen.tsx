@@ -20,7 +20,7 @@
  * sent explicitly; no more hostname guessing.
  */
 import { useState, type FormEvent, type JSX } from 'react'
-import { useNavigate, useParams } from 'react-router-dom'
+import { Link, useNavigate, useParams } from 'react-router-dom'
 import { ApiError } from '../../api/client'
 import { registerApi } from '../../api/customer'
 import { Banner, Button, Check, Field, Icon, PhoneField } from '../../design/components'
@@ -131,9 +131,7 @@ export function RegisterScreen(): JSX.Element {
               </span>
               <span>
                 <strong>A shipping company</strong> wanting to run your operations on ShipX?{' '}
-                <button type="button" className={styles.link} onClick={() => navigate('/get-started')}>
-                  Get started here →
-                </button>
+                <Link to="/get-started" className={styles.link}>Get started here <Icon name="arrowright" size={12} /></Link>
               </span>
             </div>
           </Banner>
@@ -215,9 +213,7 @@ export function RegisterScreen(): JSX.Element {
 
       <p className={styles.footerLine} style={{ marginTop: 'var(--space-5)' }}>
         Already have an account?{' '}
-        <button type="button" className={styles.footerLinkStrong} onClick={() => navigate('/login')}>
-          Sign in →
-        </button>
+        <Link to="/login" className={styles.footerLinkStrong}>Sign in <Icon name="arrowright" size={12} /></Link>
       </p>
     </AuthShell>
   )

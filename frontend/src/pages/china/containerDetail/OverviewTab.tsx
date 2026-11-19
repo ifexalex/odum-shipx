@@ -1,7 +1,7 @@
 import { type JSX } from 'react'
 import { containerCapacityCbm } from '../../../api/containerRules'
 import { formatPackageMix } from '../../../api/packingListRules'
-import { Avatar, Card, Kvp, Mono } from '../../../design/components'
+import { Avatar, Card, Kvp, Mono, Button } from '../../../design/components'
 import { SectionHead } from '../../../shell/SectionHead'
 import styles from '../ContainerDetail.module.css'
 import { formatDate } from '../../../lib/format'
@@ -176,13 +176,9 @@ export function OverviewTab({
           <div className={styles.tableHead}>
             <SectionHead title="Recent events" sub="Last 5 tracking events" />
             {events.length > 5 && (
-              <button
-                type="button"
-                className={styles.viewAllLink}
-                onClick={() => onShowTab('tracking')}
-              >
-                View all →
-              </button>
+              <Button variant="ghost" size="sm" trailingIcon="arrowright" onClick={() => onShowTab('tracking')}>
+                View all
+              </Button>
             )}
           </div>
           <div className={styles.eventList}>
@@ -203,13 +199,9 @@ export function OverviewTab({
               sub={`${distinctCustomers} customer${distinctCustomers === 1 ? '' : 's'} on this container`}
             />
             {hasMoreCustomers && (
-              <button
-                type="button"
-                className={styles.viewAllLink}
-                onClick={() => onShowTab('packing-lists')}
-              >
-                View all →
-              </button>
+              <Button variant="ghost" size="sm" trailingIcon="arrowright" onClick={() => onShowTab('packing-lists')}>
+                View all
+              </Button>
             )}
           </div>
           {topShippers.length === 0 ? (

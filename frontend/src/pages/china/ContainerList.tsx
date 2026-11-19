@@ -5,7 +5,7 @@ import { containerKeys } from '../../api/keys'
 import { STALE_5_MIN } from '../../lib/queryClient'
 import { containerCapacityCbm, utilizationLevel } from '../../api/containerRules'
 import { containersApi, type Container, type ContainerStatus } from '../../api/tracking'
-import { Banner, Button, Card, Chip, DateRangeFilter, ExportButton, Icon, KebabBtn, ListFooter, Mono, StatCard, StatusBadge, Table, type TableRow } from '../../design/components'
+import { Banner, Button, Card, Chip, DateRangeFilter, ExportButton, Icon, KebabBtn, ListFooter, Mono, StatCard, StatusBadge, Table, type TableRow, Pressable } from '../../design/components'
 import { useSession } from '../../auth/useSession'
 import { useContainerList } from '../../hooks/useContainers'
 import { useDateRangeFilter } from '../../hooks/useDateRangeFilter'
@@ -385,7 +385,7 @@ export function ContainerList(): JSX.Element {
                     {ALL_STATUSES.map((s) => {
                       const isChecked = activeStatuses?.includes(s) ?? false
                       return (
-                        <button
+                        <Pressable
                           key={s}
                           type="button"
                           role="checkbox"
@@ -397,7 +397,7 @@ export function ContainerList(): JSX.Element {
                             {isChecked && <Icon name="check" size={13} color="var(--color-primary)" />}
                           </span>
                           {statusLabel('container', s)}
-                        </button>
+                        </Pressable>
                       )
                     })}
                   </div>
@@ -409,7 +409,7 @@ export function ContainerList(): JSX.Element {
                   {ETA_PRESET_KEYS.map((key) => {
                     const isActive = etaPreset === key
                     return (
-                      <button
+                      <Pressable
                         key={key}
                         type="button"
                         role="option"
@@ -421,13 +421,13 @@ export function ContainerList(): JSX.Element {
                           {isActive && <Icon name="check" size={13} color="var(--color-primary)" />}
                         </span>
                         {ETA_PRESET_LABELS[key]}
-                      </button>
+                      </Pressable>
                     )
                   })}
 
-                  <button type="button" className={styles.filtersPanelClear} onClick={clearAllFilters}>
+                  <Button variant="ghost" size="sm" onClick={clearAllFilters}>
                     Clear all filters
-                  </button>
+                  </Button>
                 </div>
               </>
             )}

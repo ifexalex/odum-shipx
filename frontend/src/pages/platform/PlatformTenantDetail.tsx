@@ -41,7 +41,7 @@ function ActionModal({ action, tenant, onCancel, onSuccess }: ActionModalProps):
 
   const LABELS = {
     suspend: { title: 'Suspend tenant', button: 'Suspend', variant: 'danger' as const },
-    activate: { title: 'Lift suspension', button: 'Activate', variant: 'success' as const },
+    activate: { title: 'Lift suspension', button: 'Activate', variant: 'primary' as const },
     offboard: { title: 'Offboard tenant', button: 'Offboard permanently', variant: 'danger' as const },
   }
   const label = LABELS[action]
@@ -420,13 +420,13 @@ export function PlatformTenantDetail(): JSX.Element {
               </Button>
             )}
             {tenant.status === 'active' && (
-              <Button variant="danger-outline" onClick={() => setActiveModal('suspend')}>Suspend</Button>
+              <Button variant="danger-ghost" onClick={() => setActiveModal('suspend')}>Suspend</Button>
             )}
             {tenant.status === 'suspended' && (
-              <Button variant="success" onClick={() => setActiveModal('activate')}>Lift suspension</Button>
+              <Button variant="primary" onClick={() => setActiveModal('activate')}>Lift suspension</Button>
             )}
             {tenant.status !== 'offboarded' && (
-              <Button variant="danger" onClick={() => setActiveModal('offboard')}>Offboard</Button>
+              <Button variant="danger-ghost" onClick={() => setActiveModal('offboard')}>Offboard</Button>
             )}
           </div>
         }

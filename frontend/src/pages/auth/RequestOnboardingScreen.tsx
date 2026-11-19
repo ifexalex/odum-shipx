@@ -9,7 +9,7 @@
  *   - the copy + the "are you a customer?" off-ramp keep the two from being confused.
  */
 import { useState, type FormEvent, type JSX } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { Link, useNavigate } from 'react-router-dom'
 import { ApiError } from '../../api/client'
 import { companyOnboardingApi } from '../../api/customer'
 import { Banner, Button, CountrySelect, Field, Icon, PhoneField } from '../../design/components'
@@ -96,7 +96,7 @@ export function RequestOnboardingScreen(): JSX.Element {
         <Banner variant="info" title="Are you a customer?">
           If you&apos;re a customer trying to track a shipment or access your account, this isn&apos;t the
           page — use the link your shipping company gave you, or{' '}
-          <button type="button" className={styles.link} onClick={() => navigate('/login')}>sign in</button>.
+          <Link to="/login" className={styles.link}>sign in</Link>.
         </Banner>
       </div>
 
@@ -183,9 +183,7 @@ export function RequestOnboardingScreen(): JSX.Element {
 
       <p className={styles.footerLine} style={{ marginTop: 'var(--space-5)' }}>
         Already set up?{' '}
-        <button type="button" className={styles.footerLinkStrong} onClick={() => navigate('/login')}>
-          Sign in →
-        </button>
+        <Link to="/login" className={styles.footerLinkStrong}>Sign in <Icon name="arrowright" size={12} /></Link>
       </p>
     </AuthShell>
   )

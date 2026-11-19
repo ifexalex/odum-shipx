@@ -236,7 +236,7 @@ export function MyClaimsNew(): JSX.Element {
           </div>
           <div className={styles.formActions}>
             <Button variant="ghost" onClick={() => setStep('evidence')}>Back</Button>
-            <Button variant="success" onClick={handleDone}>
+            <Button variant="primary" onClick={handleDone}>
               Done — view my claims
             </Button>
           </div>

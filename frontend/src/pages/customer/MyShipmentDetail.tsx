@@ -17,7 +17,7 @@
  */
 import { useQuery } from '@tanstack/react-query'
 import { useMemo, type JSX } from 'react'
-import { useNavigate, useParams } from 'react-router-dom'
+import { Link, useNavigate, useParams } from 'react-router-dom'
 import { ApiError } from '../../api/client'
 import { billingApi, paymentClaimApi, type Billing } from '../../api/billing'
 import { billingKeys, packingListKeys } from '../../api/keys'
@@ -116,9 +116,6 @@ export function MyShipmentDetail(): JSX.Element {
 
   return (
     <div className={styles.page}>
-      <button type="button" className={styles.detailBackLink} onClick={() => navigate('/my-shipments')}>
-        <Icon name="arrowleft" size={14} stroke={2.5} /> My shipments
-      </button>
 
       {/* Hero — prototype 10.2 */}
       <div className={styles.shipmentHero}>
@@ -200,13 +197,13 @@ export function MyShipmentDetail(): JSX.Element {
             title="Billing"
             action={
               shipmentBilling ? (
-                <button
-                  type="button"
+                <Link
+                  to={`/my-billing/${shipmentBilling.id}`}
+                  state={{ billing: shipmentBilling }}
                   className={styles.viewFullLink}
-                  onClick={() => navigate(`/my-billing/${shipmentBilling.id}`, { state: { billing: shipmentBilling } })}
                 >
-                  View full →
-                </button>
+                  View full invoice <Icon name="arrowright" size={12} />
+                </Link>
               ) : undefined
             }
           />

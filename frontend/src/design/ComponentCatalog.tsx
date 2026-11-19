@@ -8,6 +8,7 @@ import {
   Check,
   Chip,
   Field,
+  IconButton,
   KolaMark,
   Mono,
   Modal,
@@ -35,8 +36,7 @@ const BUTTON_VARIANTS: ButtonVariant[] = [
   'secondary',
   'ghost',
   'danger',
-  'danger-outline',
-  'success',
+  'danger-ghost',
 ]
 const BADGE_VARIANTS: BadgeVariant[] = ['success', 'warning', 'error', 'info', 'accent', 'purple', 'neutral', 'primary']
 const BANNER_VARIANTS: BannerVariant[] = ['info', 'success', 'warning', 'error']
@@ -77,29 +77,36 @@ export function ComponentCatalog(): JSX.Element {
         </div>
       </Section>
 
-      <Section title="Buttons">
+      <Section title="Buttons (FD-07)">
+        <ul style={{ margin: '0 0 var(--space-4)', paddingLeft: 'var(--space-5)', color: 'var(--color-ink-3)', lineHeight: 'var(--leading-body)' }}>
+          <li><strong>primary</strong> — the main action of a screen or dialog, one per area.</li>
+          <li><strong>secondary</strong> — every other action, and the only button a table row may carry (small). The row itself opens the record.</li>
+          <li><strong>ghost</strong> — low-emphasis actions beside others: Cancel, Clear, Remove, View all.</li>
+          <li><strong>danger</strong> — the irreversible commit inside a confirmation (&quot;Delete warehouse&quot;).</li>
+          <li><strong>danger-ghost</strong> — the way into something destructive (&quot;Cancel container&quot;), never a filled button beside a primary.</li>
+          <li><strong>accent</strong> — paying and signing in only; a test keeps it there.</li>
+          <li>Heights 32 / 40 / 48 px, 44 px minimum on touch screens. Direction is a trailing icon, not a typed arrow. A button that changes data is disabled during read-only impersonation without any page code.</li>
+          <li>Pages write no raw <code>&lt;button&gt;</code>: <code>Button</code>, <code>IconButton</code> (label required), a router <code>Link</code> to navigate, or <code>Pressable</code> for a clickable tile or row.</li>
+        </ul>
         <div style={{ display: 'flex', flexWrap: 'wrap', gap: 'var(--space-3)', alignItems: 'center' }}>
           {BUTTON_VARIANTS.map((variant) => (
             <Button key={variant} variant={variant}>
               {variant}
             </Button>
           ))}
-          <Button variant="accent">accent (single per screen)</Button>
-          <Button variant="primary" size="sm">
-            sm
-          </Button>
-          <Button variant="primary" size="lg">
-            lg
-          </Button>
-          <Button variant="primary" icon="download">
-            With icon
-          </Button>
-          <Button variant="primary" loading>
-            Loading
-          </Button>
-          <Button variant="primary" disabled>
-            Disabled
-          </Button>
+          <Button variant="accent">accent (paying and signing in only)</Button>
+        </div>
+        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 'var(--space-3)', alignItems: 'center', marginTop: 'var(--space-4)' }}>
+          <Button variant="secondary" size="sm">sm 32</Button>
+          <Button variant="secondary">md 40</Button>
+          <Button variant="secondary" size="lg">lg 48</Button>
+          <Button variant="primary" icon="download">With icon</Button>
+          <Button variant="ghost" trailingIcon="arrowright">View all</Button>
+          <Button variant="primary" loading>Loading</Button>
+          <Button variant="primary" disabled>Disabled</Button>
+          <IconButton icon="x" label="Close" />
+          <IconButton icon="x" label="Remove item" variant="danger-ghost" size="sm" />
+          <IconButton icon="download" label="Download" variant="secondary" />
         </div>
       </Section>
 
@@ -234,7 +241,7 @@ export function ComponentCatalog(): JSX.Element {
               <Button variant="ghost" onClick={() => setModalOpen(false)}>
                 Cancel
               </Button>
-              <Button variant="accent" onClick={() => setModalOpen(false)}>
+              <Button variant="primary" onClick={() => setModalOpen(false)}>
                 Confirm payment
               </Button>
             </>

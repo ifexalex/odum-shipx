@@ -131,7 +131,7 @@ function VerifyManifestModal({ manifest, onCancel, onVerified }: VerifyManifestM
         )}
         <div className={styles.outcomeRow}>
           <Button
-            variant={outcome === 'verified' ? 'success' : 'secondary'}
+            variant={outcome === 'verified' ? 'primary' : 'secondary'}
             icon="check"
             onClick={() => setOutcome('verified')}
           >
@@ -421,12 +421,12 @@ export function ManifestDetail(): JSX.Element {
             onExport={(fmt) => manifestApi.export(manifest.id, fmt)}
           />
           {canRevoke && (
-            <Action variant="danger-outline" loading={revoking} onClick={() => setShowRevokeConfirm(true)}>
+            <Action variant="danger-ghost" loading={revoking} onClick={() => setShowRevokeConfirm(true)}>
               Revoke verification
             </Action>
           )}
           {canVerify && (
-            <Action variant="accent" icon="check" onClick={() => setShowVerifyModal(true)}>
+            <Action variant="primary" icon="check" onClick={() => setShowVerifyModal(true)}>
               Verify manifest
             </Action>
           )}

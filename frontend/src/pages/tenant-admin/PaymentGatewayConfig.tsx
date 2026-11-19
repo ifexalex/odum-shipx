@@ -13,7 +13,7 @@
 import { useState, type JSX } from 'react'
 import { ApiError } from '../../api/client'
 import { configApi, type BankTransferConfig, type PaystackConfig } from '../../api/tenantManagement'
-import { Banner, Button, Card, Field, Icon, Mono } from '../../design/components'
+import { Banner, Button, Card, Field, Icon, Mono, IconButton } from '../../design/components'
 import { useTenantConfig } from '../../hooks/useConfig'
 import { useSeedOnce } from '../../hooks/useSeedOnce'
 import { SectionHead } from '../../shell/SectionHead'
@@ -291,7 +291,7 @@ export function PaymentGatewayConfig(): JSX.Element {
 
         <div className={styles.footer}>
           {connected && (
-            <Button variant="danger-outline" onClick={() => setShowDisconnectConfirm(true)}>
+            <Button variant="danger-ghost" onClick={() => setShowDisconnectConfirm(true)}>
               Disconnect
             </Button>
           )}
@@ -320,9 +320,7 @@ export function PaymentGatewayConfig(): JSX.Element {
           <div className={styles.modal} onClick={(e) => e.stopPropagation()}>
             <div className={styles.modalHeader}>
               <h3 className={styles.modalTitle}>Disconnect Paystack</h3>
-              <button type="button" className={styles.closeBtn} onClick={() => setShowDisconnectConfirm(false)}>
-                <Icon name="x" size={18} />
-              </button>
+              <IconButton icon="x" label="Close" size="sm" onClick={() => setShowDisconnectConfirm(false)} />
             </div>
             <div className={styles.modalBody}>
               <Banner variant="warning" icon="warn" title="Online payment will stop working immediately">

@@ -262,7 +262,7 @@ export function Step3({ form }: { form: PackingListForm }): JSX.Element {
             Save draft
           </Button>
           <Button
-            variant="accent"
+            variant="primary"
             icon="check"
             loading={submitting}
             onClick={() => void requestSave(true)}

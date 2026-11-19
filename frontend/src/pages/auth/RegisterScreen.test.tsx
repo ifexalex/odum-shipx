@@ -32,7 +32,7 @@ describe('RegisterScreen', () => {
   it('shows the which-are-you chooser on bare /register and routes companies to /get-started', async () => {
     renderAt('/register')
     expect(screen.getByText('Which are you?')).toBeInTheDocument()
-    await userEvent.click(screen.getByRole('button', { name: /get started here/i }))
+    await userEvent.click(screen.getByRole('link', { name: /get started here/i }))
     expect(await screen.findByText('Get started page')).toBeInTheDocument()
   })
 

@@ -141,7 +141,7 @@ export function Dashboard(): JSX.Element {
                   <SectionHead
                     title="Packing lists awaiting approval"
                     sub={`${pendingPls.length} submitted`}
-                    action={<Button variant="secondary" size="sm" onClick={() => navigate('/packing-lists?status=pending_approval')}>Review all →</Button>}
+                    action={<Button variant="secondary" size="sm" trailingIcon="arrowright" onClick={() => navigate('/packing-lists?status=pending_approval')}>Review all</Button>}
                   />
                 </div>
                 <Table
@@ -169,7 +169,7 @@ export function Dashboard(): JSX.Element {
                   <SectionHead
                     title="Containers awaiting manifest verification"
                     sub={`${pendingManifests.length} arrived in Nigeria, manifest still pending — blocks billing + release`}
-                    action={<Button variant="secondary" size="sm" onClick={() => navigate('/manifests?status=pending')}>Verify →</Button>}
+                    action={<Button variant="secondary" size="sm" trailingIcon="arrowright" onClick={() => navigate('/manifests?status=pending')}>Verify</Button>}
                   />
                 </div>
                 <Table
@@ -196,7 +196,7 @@ export function Dashboard(): JSX.Element {
                   <SectionHead
                     title="CBM disputes need response"
                     sub={`${openDisputes.length} submitted — 24h acknowledge SLA`}
-                    action={<Button variant="secondary" size="sm" onClick={() => navigate('/billing/disputes?status=submitted')}>Respond →</Button>}
+                    action={<Button variant="secondary" size="sm" trailingIcon="arrowright" onClick={() => navigate('/billing/disputes?status=submitted')}>Respond</Button>}
                   />
                 </div>
                 <Table
@@ -223,7 +223,7 @@ export function Dashboard(): JSX.Element {
                   <SectionHead
                     title="Outstanding invoices"
                     sub="Oldest unpaid first — chase these before storage fees mount"
-                    action={<Button variant="secondary" size="sm" onClick={() => navigate('/billing')}>View all →</Button>}
+                    action={<Button variant="secondary" size="sm" trailingIcon="arrowright" onClick={() => navigate('/billing')}>View all</Button>}
                   />
                 </div>
                 <Table
@@ -247,7 +247,7 @@ export function Dashboard(): JSX.Element {
                   <SectionHead
                     title="Awaiting pickup"
                     sub="Released — not yet collected by the customer"
-                    action={<Button variant="secondary" size="sm" onClick={() => navigate('/release-notes')}>View all →</Button>}
+                    action={<Button variant="secondary" size="sm" trailingIcon="arrowright" onClick={() => navigate('/release-notes')}>View all</Button>}
                   />
                 </div>
                 <Table
@@ -280,7 +280,7 @@ export function Dashboard(): JSX.Element {
               <SectionHead
                 title="Recent containers"
                 sub="Latest across all stages"
-                action={<Button variant="secondary" size="sm" onClick={() => navigate('/containers')}>View all →</Button>}
+                action={<Button variant="secondary" size="sm" trailingIcon="arrowright" onClick={() => navigate('/containers')}>View all</Button>}
               />
             </div>
             <Table

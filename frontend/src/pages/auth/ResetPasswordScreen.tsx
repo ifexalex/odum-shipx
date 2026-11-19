@@ -15,7 +15,7 @@ import { useNavigate, useSearchParams } from 'react-router-dom'
 import { completeNewPassword, confirmForgotPassword, hasPendingNewPasswordChallenge } from '../../auth/authClient'
 import { homePathForRole } from '../../auth/roleHome'
 import { useSession } from '../../auth/useSession'
-import { Banner, Button, Field, Icon } from '../../design/components'
+import { Banner, Button, Field, Icon, IconButton } from '../../design/components'
 import { AuthShell, FormHead, PasswordStrength } from './AuthShell'
 import styles from './LoginScreen.module.css'
 
@@ -164,14 +164,13 @@ export function ResetPasswordScreen(): JSX.Element {
           autoComplete="new-password"
           required
           trailing={
-            <button
-              type="button"
+            <IconButton
               className={styles.trailingButton}
-              aria-label={showPassword ? 'Hide password' : 'Show password'}
+              size="sm"
+              icon={showPassword ? 'eyeoff' : 'eye'}
+              label={showPassword ? 'Hide password' : 'Show password'}
               onClick={() => setShowPassword((v) => !v)}
-            >
-              <Icon name={showPassword ? 'eyeoff' : 'eye'} size={16} />
-            </button>
+            />
           }
         />
         <PasswordStrength password={password} />

@@ -7,7 +7,7 @@
  * its list already filtered (`?status=`, see `useStatusParam`).
  */
 import type { JSX, ReactNode } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { Link, useNavigate } from 'react-router-dom'
 import type { PaginationMeta } from '../../api/client'
 import { Banner, Button, Card } from '../../design/components'
 import {
@@ -65,10 +65,10 @@ function Queue({ title, countLabel, empty, viewAll, rows, pagination, loading, f
       <ul className={styles.rows}>
         {rows.map((row) => (
           <li key={row.id}>
-            <button type="button" className={styles.row} onClick={() => navigate(row.to)}>
+            <Link to={row.to} className={styles.row}>
               <span className={styles.primary}>{row.primary}</span>
               <span className={styles.secondary}>{row.secondary}</span>
-            </button>
+            </Link>
           </li>
         ))}
       </ul>
@@ -81,8 +81,8 @@ function Queue({ title, countLabel, empty, viewAll, rows, pagination, loading, f
           title={title}
           sub={count === undefined ? undefined : countLabel(count)}
           action={
-            <Button variant="secondary" size="sm" onClick={() => navigate(viewAll)}>
-              View all →
+            <Button variant="secondary" size="sm" trailingIcon="arrowright" onClick={() => navigate(viewAll)}>
+              View all
             </Button>
           }
         />

@@ -288,7 +288,7 @@ function ApproveModal({ refund, role, onCancel, onSuccess }: ApproveModalProps):
         <div className={styles.modalActions}>
           <Button variant="ghost" onClick={onCancel} disabled={submitting}>Cancel</Button>
           <Button
-            variant="success"
+            variant="primary"
             loading={submitting}
             disabled={enteredAmount <= 0 || hof_blocked || exceedsThreshold}
             onClick={() => void handleSubmit()}
@@ -435,12 +435,12 @@ export function RefundDetail(): JSX.Element {
               </Action>
             )}
             {showApproveBtn && (
-              <Action variant="success" icon="check" onClick={() => setShowApprove(true)}>
+              <Action variant="primary" icon="check" onClick={() => setShowApprove(true)}>
                 Approve
               </Action>
             )}
             {showRejectBtn && (
-              <Action variant="danger-outline" icon="x" onClick={() => setShowReject(true)}>
+              <Action variant="danger-ghost" icon="x" onClick={() => setShowReject(true)}>
                 Reject
               </Action>
             )}

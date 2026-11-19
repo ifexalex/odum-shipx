@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom'
 import { ApiError } from '../../api/client'
 import { excelApi, type ImportResult, type ManifestImportResult } from '../../api/excel'
 import { FileTooLargeError, UploadFailedError, uploadImportFile } from '../../api/uploads'
-import { Banner, Button, Card, Icon, Mono } from '../../design/components'
+import { Banner, Button, Card, Icon, Mono, Pressable } from '../../design/components'
 import { useContainerLookup } from '../../hooks/useContainers'
 import { PageHeader } from '../../shell/PageHeader'
 import { SectionHead } from '../../shell/SectionHead'
@@ -154,7 +154,7 @@ export function ImportPackingLists(): JSX.Element {
                 sub: 'A blank template you filled in yourself. You pick the container, and every customer must already exist in ShipX.',
               },
             ]).map((option) => (
-              <button
+              <Pressable
                 key={option.value}
                 type="button"
                 role="radio"
@@ -169,7 +169,7 @@ export function ImportPackingLists(): JSX.Element {
                   <span className={styles.modeTitle}>{option.title}</span>
                   <span className={styles.modeSub}>{option.sub}</span>
                 </span>
-              </button>
+              </Pressable>
             ))}
           </div>
 
@@ -236,9 +236,9 @@ export function ImportPackingLists(): JSX.Element {
                 <div className={styles.selectedFileMeta}>{(file.size / 1024).toFixed(0)} KB</div>
               </div>
               <Icon name="check" size={18} color="var(--color-success)" stroke={2.5} />
-              <button type="button" className={styles.removeFile} onClick={() => setFile(null)}>
+              <Button variant="ghost" size="sm" onClick={() => setFile(null)}>
                 Remove
-              </button>
+              </Button>
             </div>
           )}
 
@@ -298,7 +298,7 @@ export function ImportPackingLists(): JSX.Element {
             <Button variant="ghost" icon="arrowleft" onClick={() => setStep(1)}>
               Back: Upload
             </Button>
-            <Button variant="accent" icon="check" loading={importing} onClick={() => void handleConfirmImport()}>
+            <Button variant="primary" icon="check" loading={importing} onClick={() => void handleConfirmImport()}>
               Confirm &amp; import
             </Button>
           </div>

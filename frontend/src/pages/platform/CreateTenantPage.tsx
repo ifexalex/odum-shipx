@@ -9,7 +9,7 @@ import { useState, type JSX } from 'react'
 import { useLocation, useNavigate } from 'react-router-dom'
 import { ApiError } from '../../api/client'
 import { platformApi, type OnboardingRequest, type SubscriptionTier, type Tenant } from '../../api/tenantManagement'
-import { Banner, Button, Card, Field, Icon, Mono, PhoneField } from '../../design/components'
+import { Banner, Button, Card, Field, Icon, Mono, PhoneField, Pressable } from '../../design/components'
 import { PageHeader } from '../../shell/PageHeader'
 import { SectionHead } from '../../shell/SectionHead'
 
@@ -30,8 +30,7 @@ const PLANS: { tier: SubscriptionTier; name: string; features: string[] }[] = [
 
 function PlanRadio({ name, features, selected, onSelect }: { name: string; features: string[]; selected: boolean; onSelect: () => void }): JSX.Element {
   return (
-    <button
-      type="button"
+    <Pressable
       onClick={onSelect}
       style={{
         textAlign: 'left', cursor: 'pointer', flex: 1, minWidth: 180,
@@ -51,7 +50,7 @@ function PlanRadio({ name, features, selected, onSelect }: { name: string; featu
       <ul style={{ margin: 0, paddingLeft: 'var(--space-5)', fontSize: 'var(--text-xs)', color: 'var(--color-ink-3)', lineHeight: 'var(--leading-body)' }}>
         {features.map((f) => <li key={f}>{f}</li>)}
       </ul>
-    </button>
+    </Pressable>
   )
 }
 
@@ -173,7 +172,7 @@ export function CreateTenantPage(): JSX.Element {
 
       <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 'var(--space-3)', marginTop: 'var(--space-5)' }}>
         <Button variant="ghost" onClick={() => navigate('/platform/tenants')} disabled={submitting}>Cancel</Button>
-        <Button variant="accent" icon="plus" loading={submitting} disabled={!canSubmit} onClick={() => void handleSubmit()}>
+        <Button variant="primary" icon="plus" loading={submitting} disabled={!canSubmit} onClick={() => void handleSubmit()}>
           Create tenant
         </Button>
       </div>

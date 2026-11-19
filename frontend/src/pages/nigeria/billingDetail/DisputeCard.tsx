@@ -175,7 +175,7 @@ export function ResolveDisputeModal({
         )}
         <div className={styles.outcomeToggle}>
           <Button
-            variant={outcome === 'resolved_no_change' ? 'success' : 'secondary'}
+            variant={outcome === 'resolved_no_change' ? 'primary' : 'secondary'}
             onClick={() => setOutcome('resolved_no_change')}
           >
             No change — CBM stands

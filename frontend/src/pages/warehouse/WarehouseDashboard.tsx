@@ -194,7 +194,7 @@ function PickupSheet({ note, onCancel, onSuccess }: PickupSheetProps): JSX.Eleme
 
         <div className={styles.modalActions}>
           <Button variant="ghost" onClick={onCancel} disabled={submitting}>Cancel</Button>
-          <Button variant="success" loading={submitting} disabled={!canSubmit} onClick={() => void handleSubmit()}>
+          <Button variant="primary" loading={submitting} disabled={!canSubmit} onClick={() => void handleSubmit()}>
             Confirm pickup
           </Button>
         </div>
@@ -258,7 +258,7 @@ function NoteCard({ note, onPickup, lastPickup }: NoteCardProps): JSX.Element {
           <span style={{ color: 'var(--color-success)', fontWeight: 700 }}>✓ Done</span>
         ) : (
           <Button
-            variant="success"
+            variant="primary"
             className={styles.pickupBtn}
             onClick={() => onPickup(note)}
           >

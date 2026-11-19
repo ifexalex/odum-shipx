@@ -7,7 +7,7 @@ import { canApproveOrReject, explainBulkFailure, formatPackageMix, groupBulkFail
 import { useSession } from '../../auth/useSession'
 import { usePackingListList } from '../../hooks/usePackingLists'
 import { useTopBarSlot } from '../../shell/TopBarContext'
-import { Banner, Button, Card, Chip, DialogGuard, Field, Icon, ListFooter, Mono, StatusBadge, Table, ViewLink } from '../../design/components'
+import { Banner, Button, Card, Chip, DialogGuard, Field, Icon, ListFooter, Mono, StatusBadge, Table, ViewLink, Pressable } from '../../design/components'
 import styles from './PackingListList.module.css'
 import { formatDate } from '../../lib/format'
 import { useStatusParam } from '../../lib/useStatusParam'
@@ -263,11 +263,11 @@ export function PackingListList(): JSX.Element {
               )}
             </span>
             <div className={styles.bulkActions}>
-              <button type="button" className={styles.bulkClearBtn} onClick={() => setSelected(new Set())}>
+              <Pressable className={styles.bulkClearBtn} onClick={() => setSelected(new Set())}>
                 Clear
-              </button>
+              </Pressable>
               <Button
-                variant="danger-outline"
+                variant="danger-ghost"
                 size="sm"
                 icon="x"
                 onClick={() => {
@@ -288,7 +288,7 @@ export function PackingListList(): JSX.Element {
                 Submit for approval · {submittableCount}
               </Button>
               <Button
-                variant="success"
+                variant="primary"
                 size="sm"
                 icon="check"
                 loading={bulkSubmitting}

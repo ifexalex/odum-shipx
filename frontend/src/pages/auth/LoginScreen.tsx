@@ -1,11 +1,11 @@
 import { useState, type FormEvent, type JSX } from 'react'
-import { useNavigate, useSearchParams } from 'react-router-dom'
+import { Link, useNavigate, useSearchParams } from 'react-router-dom'
 import { authProvider, isInteractiveLogin } from '../../auth/authClient'
 import { safeNextPath } from '../../auth/returnPath'
 import { homePathForRole } from '../../auth/roleHome'
 import { rememberNext } from './returnPath'
 import { useSession } from '../../auth/useSession'
-import { Banner, Button, Check, Field, Icon, KolaMark, ShipxWordmark } from '../../design/components'
+import { Banner, Button, Check, Field, Icon, KolaMark, ShipxWordmark, IconButton } from '../../design/components'
 import { colors } from '../../design/theme'
 import styles from './LoginScreen.module.css'
 
@@ -198,14 +198,13 @@ export function LoginScreen(): JSX.Element {
                 autoComplete="current-password"
                 required
                 trailing={
-                  <button
-                    type="button"
-                    className={styles.trailingButton}
-                    aria-label={showPassword ? 'Hide password' : 'Show password'}
-                    onClick={() => setShowPassword((value) => !value)}
-                  >
-                    <Icon name={showPassword ? 'eyeoff' : 'eye'} size={16} />
-                  </button>
+                  <IconButton
+              className={styles.trailingButton}
+              size="sm"
+              icon={showPassword ? 'eyeoff' : 'eye'}
+              label={showPassword ? 'Hide password' : 'Show password'}
+              onClick={() => setShowPassword((value) => !value)}
+            />
                 }
               />
               <div className={styles.rowBetween}>
@@ -213,9 +212,7 @@ export function LoginScreen(): JSX.Element {
                   <Check checked={rememberMe} onChange={setRememberMe} />
                   Remember me for 30 days
                 </label>
-                <button type="button" className={styles.link} onClick={() => navigate('/forgot-password')}>
-                  Forgot password?
-                </button>
+                <Link to="/forgot-password" className={styles.link}>Forgot password?</Link>
               </div>
               <Button type="submit" variant="accent" size="lg" full loading={loading}>
                 Sign In
@@ -230,15 +227,11 @@ export function LoginScreen(): JSX.Element {
           </div>
           <p className={styles.footerLine}>
             Customer of a shipping company?{' '}
-            <button type="button" className={styles.footerLinkStrong} onClick={() => navigate('/register')}>
-              Create your account →
-            </button>
+            <Link to="/register" className={styles.footerLinkStrong}>Create your account <Icon name="arrowright" size={12} /></Link>
           </p>
           <p className={styles.footerLine} style={{ marginTop: 'var(--space-2)' }}>
             Are you a shipping company?{' '}
-            <button type="button" className={styles.footerLinkStrong} onClick={() => navigate('/get-started')}>
-              Onboard with ShipX →
-            </button>
+            <Link to="/get-started" className={styles.footerLinkStrong}>Onboard with ShipX <Icon name="arrowright" size={12} /></Link>
           </p>
         </div>
       </div>

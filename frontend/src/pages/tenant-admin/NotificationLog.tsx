@@ -5,7 +5,7 @@ import { notifLogKeys } from '../../api/keys'
 import { STALE_5_MIN } from '../../lib/queryClient'
 import { useNotifLogPolling } from '../../hooks/useNotifications'
 import { useDateRangeFilter } from '../../hooks/useDateRangeFilter'
-import { Banner, Button, Card, Chip, DateRangeFilter, Icon, ListFooter, Mono, StatusBadge, Table, UserCell } from '../../design/components'
+import { Banner, Button, Card, Chip, DateRangeFilter, Icon, ListFooter, Mono, StatusBadge, Table, UserCell, IconButton, Pressable } from '../../design/components'
 import { useTopBarSlot } from '../../shell/TopBarContext'
 import styles from './NotificationLog.module.css'
 import { formatDateTime } from '../../lib/format'
@@ -166,14 +166,14 @@ export function NotificationLog(): JSX.Element {
             {statusDropdownOpen && (
               <div className={styles.dropdown}>
                 {STATUS_FILTER_OPTS.map((s) => (
-                  <button
+                  <Pressable
                     key={s}
                     type="button"
                     className={[styles.dropdownItem, statusFilter === s ? styles.dropdownItemActive : ''].filter(Boolean).join(' ')}
                     onClick={() => { setStatusFilter(s); setStatusDropdownOpen(false) }}
                   >
                     {s === 'all' ? 'All' : s.charAt(0).toUpperCase() + s.slice(1)}
-                  </button>
+                  </Pressable>
                 ))}
               </div>
             )}
@@ -290,9 +290,7 @@ export function NotificationLog(): JSX.Element {
                   {fmtTs(selectedLog.created_at)}
                 </p>
               </div>
-              <button className={styles.closeBtn} onClick={() => setSelectedLog(null)}>
-                <Icon name="x" size={18} />
-              </button>
+              <IconButton icon="x" label="Close" size="sm" onClick={() => setSelectedLog(null)} />
             </div>
             <div className={styles.modalBody}>
               <div className={styles.kvp}><span>Recipient</span><span>{selectedLog.recipient_name ?? '—'}</span></div>

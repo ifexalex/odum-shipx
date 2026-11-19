@@ -48,7 +48,7 @@ export function StorageFeeBanner({
   const totalAccrued = storageFees.reduce((s, r) => s + Number(r.fee_amount_ngn), 0)
 
   const waiveBtn = canWaive ? (
-    <Action variant="danger-outline" size="sm" loading={waiving} onClick={onWaive}>
+    <Action variant="danger-ghost" size="sm" loading={waiving} onClick={onWaive}>
       Waive fees
     </Action>
   ) : undefined

@@ -12,7 +12,7 @@ import { useNavigate } from 'react-router-dom'
 import { } from '../../api/containerRules'
 import { type ContainerStats, type ContainerStatus } from '../../api/tracking'
 import { useContainerList } from '../../hooks/useContainers'
-import { Button, Card, Chip, Icon, ListFooter, Mono, StatusBadge, Table } from '../../design/components'
+import { Button, Card, Chip, Icon, ListFooter, Mono, StatusBadge, Table, Pressable } from '../../design/components'
 import { SectionHead } from '../../shell/SectionHead'
 import styles from './DashboardPipeline.module.css'
 import { isoDateOffset, formatDate } from '../../lib/format'
@@ -80,12 +80,11 @@ export function ContainerPipeline({ counts }: { counts: ContainerStats | undefin
       <SectionHead
         title="Container pipeline"
         sub="Every container by stage — select a stage to see all of them"
-        action={<Button variant="secondary" size="sm" onClick={() => navigate('/containers')}>All containers →</Button>}
+        action={<Button variant="secondary" size="sm" trailingIcon="arrowright" onClick={() => navigate('/containers')}>All containers</Button>}
       />
 
       <div className={styles.rail}>
-        <button
-          type="button"
+        <Pressable
           className={[styles.stage, styles.allStage, selected === 'all' ? styles.stageActive : ''].join(' ')}
           onClick={() => setSelected('all')}
           aria-pressed={selected === 'all'}
@@ -96,12 +95,12 @@ export function ContainerPipeline({ counts }: { counts: ContainerStats | undefin
           </span>
           <span className={styles.stageCount}>{activeTotal ?? '—'}</span>
           <span className={styles.meterTrack}><span className={styles.meterFill} style={{ width: '100%' }} /></span>
-        </button>
+        </Pressable>
 
         {STAGES.map((stage) => {
           const n = counts?.[stage] ?? 0
           return (
-            <button
+            <Pressable
               key={stage}
               type="button"
               className={[styles.stage, selected === stage ? styles.stageActive : ''].join(' ')}
@@ -117,7 +116,7 @@ export function ContainerPipeline({ counts }: { counts: ContainerStats | undefin
               <span className={styles.meterTrack}>
                 <span className={styles.meterFill} style={{ width: `${Math.round((n / maxCount) * 100)}%` }} />
               </span>
-            </button>
+            </Pressable>
           )
         })}
       </div>
@@ -133,9 +132,9 @@ export function ContainerPipeline({ counts }: { counts: ContainerStats | undefin
             aria-label="Search containers"
           />
           {search && (
-            <button type="button" className={styles.searchClear} aria-label="Clear search" onClick={() => setSearch('')}>
+            <Pressable className={styles.searchClear} aria-label="Clear search" onClick={() => setSearch('')}>
               <Icon name="x" size={13} color="var(--color-ink-4)" />
-            </button>
+            </Pressable>
           )}
         </div>
         <div className={styles.etaChips}>

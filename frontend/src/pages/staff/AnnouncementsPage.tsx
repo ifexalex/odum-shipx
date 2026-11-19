@@ -101,7 +101,7 @@ function PendingRow({ req }: { req: AnnouncementRequest }): JSX.Element {
           </Button>
           <Button
             size="sm"
-            variant="danger-outline"
+            variant="danger-ghost"
             onClick={() => setRejecting(true)}
             disabled={approve.isPending}
           >
@@ -221,7 +221,7 @@ function HistoryRow({ entry }: { entry: AnnouncementHistoryEntry }): JSX.Element
           {!confirmingDelete ? (
             <Button
               size="sm"
-              variant="danger-outline"
+              variant="danger-ghost"
               onClick={() => setConfirmingDelete(true)}
               disabled={togglePending}
             >
@@ -290,7 +290,7 @@ function MyRequestRow({ req }: { req: AnnouncementRequest }): JSX.Element {
           </Button>
           <Button
             size="sm"
-            variant="danger-outline"
+            variant="danger-ghost"
             loading={remove.isPending}
             onClick={() => remove.mutate(req.id)}
           >

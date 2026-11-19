@@ -347,7 +347,7 @@ describe('ContainerDetail', () => {
     expect(screen.queryByText('Customer 5')).not.toBeInTheDocument()
 
     // View-all switches to the full per-customer breakdown on the packing-lists tab.
-    await userEvent.click(screen.getByRole('button', { name: 'View all →' }))
+    await userEvent.click(screen.getByRole('button', { name: 'View all' }))
     expect(screen.getByText('Packing lists on this container')).toBeInTheDocument()
   })
 })

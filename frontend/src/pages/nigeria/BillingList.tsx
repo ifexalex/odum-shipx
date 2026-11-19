@@ -6,7 +6,7 @@ import { canGenerateInvoices } from '../../api/billingRules'
 import { billingKeys } from '../../api/keys'
 import { formatNgnCompact, formatDate, formatNgn } from '../../lib/format'
 import { STALE_5_MIN } from '../../lib/queryClient'
-import { Banner, Button, Card, Chip, DateRangeFilter, ExportButton, Icon, ListFooter, Mono, StatCard, StatusBadge, Table, UserCell } from '../../design/components'
+import { Banner, Button, Card, Chip, DateRangeFilter, ExportButton, Icon, ListFooter, Mono, StatCard, StatusBadge, Table, UserCell, Pressable } from '../../design/components'
 import { useSession } from '../../auth/useSession'
 import { useBillingList } from '../../hooks/useBilling'
 import { useDateRangeFilter } from '../../hooks/useDateRangeFilter'
@@ -52,7 +52,7 @@ function fmtNgn(val: string | number | null | undefined): string {
 function rowAction(b: Billing, openBilling: (b: Billing) => void): JSX.Element {
   if (b.payment_status === 'unpaid' || b.payment_status === 'partially_paid') {
     return (
-      <Button variant="accent" size="sm" icon="coin"
+      <Button variant="secondary" size="sm" icon="coin" mutates={false}
         onClick={(e) => { e.stopPropagation(); openBilling(b) }}>
         Record payment
       </Button>
@@ -67,7 +67,7 @@ function rowAction(b: Billing, openBilling: (b: Billing) => void): JSX.Element {
     )
   }
   return (
-    <Button variant="ghost" size="sm"
+    <Button variant="secondary" size="sm"
       onClick={(e) => { e.stopPropagation(); openBilling(b) }}>
       View
     </Button>
@@ -245,7 +245,7 @@ export function BillingList(): JSX.Element {
                     {STATUS_FILTERS.map(({ key, label }) => {
                       const isChecked = activeStatuses?.includes(key) ?? false
                       return (
-                        <button
+                        <Pressable
                           key={key}
                           type="button"
                           role="checkbox"
@@ -257,14 +257,14 @@ export function BillingList(): JSX.Element {
                             {isChecked && <Icon name="check" size={13} color="var(--color-primary)" />}
                           </span>
                           {label}
-                        </button>
+                        </Pressable>
                       )
                     })}
                   </div>
 
-                  <button type="button" className={styles.filtersPanelClear} onClick={clearAllFilters}>
+                  <Button variant="ghost" size="sm" onClick={clearAllFilters}>
                     Clear all filters
-                  </button>
+                  </Button>
                 </div>
               </>
             )}

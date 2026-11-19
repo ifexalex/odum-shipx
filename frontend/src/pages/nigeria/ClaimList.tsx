@@ -1,6 +1,6 @@
 import { useQuery } from '@tanstack/react-query'
 import { useState, type JSX } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { Link, useNavigate } from 'react-router-dom'
 import { claimsApi, type Claim, type DamageClaimStatus } from '../../api/claims'
 import { claimKeys } from '../../api/keys'
 import { STALE_5_MIN } from '../../lib/queryClient'
@@ -30,15 +30,15 @@ const STATUS_FILTERS: Array<{ key: DamageClaimStatus; label: string }> = [
 
 function rowAction(c: Claim, navigate: (p: string) => void): JSX.Element {
   if (c.status === 'filed') {
-    return <Button variant="accent" size="sm" onClick={(e) => { e.stopPropagation(); navigate(`/claims/${c.id}`) }}>Start inspection</Button>
+    return <Button variant="secondary" size="sm" mutates={false} onClick={(e) => { e.stopPropagation(); navigate(`/claims/${c.id}`) }}>Start inspection</Button>
   }
   if (c.status === 'under_inspection' || c.status === 'inspection_complete') {
-    return <Button variant="primary" size="sm" onClick={(e) => { e.stopPropagation(); navigate(`/claims/${c.id}`) }}>Complete</Button>
+    return <Button variant="secondary" size="sm" mutates={false} onClick={(e) => { e.stopPropagation(); navigate(`/claims/${c.id}`) }}>Complete</Button>
   }
   if (c.status === 'pending_resolution') {
-    return <Button variant="accent" size="sm" onClick={(e) => { e.stopPropagation(); navigate(`/claims/${c.id}`) }}>Resolve</Button>
+    return <Button variant="secondary" size="sm" mutates={false} onClick={(e) => { e.stopPropagation(); navigate(`/claims/${c.id}`) }}>Resolve</Button>
   }
-  return <Button variant="ghost" size="sm" onClick={(e) => { e.stopPropagation(); navigate(`/claims/${c.id}`) }}>View</Button>
+  return <Button variant="secondary" size="sm" mutates={false} onClick={(e) => { e.stopPropagation(); navigate(`/claims/${c.id}`) }}>View</Button>
 }
 
 export function ClaimList(): JSX.Element {
@@ -207,8 +207,8 @@ export function ClaimList(): JSX.Element {
       />
 
       <div className={styles.subLinks}>
-        <button className={styles.subLink} onClick={() => navigate('/claims/missing-items')}>Missing items →</button>
-        <button className={styles.subLink} onClick={() => navigate('/claims/seized-items')}>Seized items →</button>
+        <Link to="/claims/missing-items" className={styles.subLink}>Missing items <Icon name="arrowright" size={12} /></Link>
+        <Link to="/claims/seized-items" className={styles.subLink}>Seized items <Icon name="arrowright" size={12} /></Link>
       </div>
     </div>
   )

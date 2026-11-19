@@ -280,7 +280,7 @@ export function StaffUserDetail(): JSX.Element {
             Reset password
           </Button>
           {user.status === 'active' && (
-            <Button variant="danger-outline" size="sm" loading={saving} onClick={() => void handleAction('deactivate')}>
+            <Button variant="danger-ghost" size="sm" loading={saving} onClick={() => void handleAction('deactivate')}>
               Deactivate user
             </Button>
           )}

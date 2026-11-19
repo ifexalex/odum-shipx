@@ -8,7 +8,7 @@ import { packingListKeys } from '../../api/keys'
 import { STALE_30S } from '../../lib/queryClient'
 import { canApproveOrReject, canEditPackingList, computeCbm, formatPackageMix, formatPackageUnit } from '../../api/packingListRules'
 import { useSession } from '../../auth/useSession'
-import { Badge, Banner, Button, Card, DialogGuard, ExportButton, Field, Icon, Mono, StatusBadge, Table } from '../../design/components'
+import { Badge, Banner, Button, Card, DialogGuard, ExportButton, Field, Icon, Mono, StatusBadge, Table, IconButton } from '../../design/components'
 import { SectionHead } from '../../shell/SectionHead'
 import styles from './PackingListDetail.module.css'
 import { formatDate } from '../../lib/format'
@@ -275,7 +275,7 @@ export function PackingListDetail(): JSX.Element {
           {canAct && (
             <>
               <Button
-                variant="danger-outline"
+                variant="danger-ghost"
                 icon="x"
                 onClick={() => {
                   setActionError(null)
@@ -284,7 +284,7 @@ export function PackingListDetail(): JSX.Element {
               >
                 Reject
               </Button>
-              <Button variant="success" icon="check" loading={actionSubmitting} onClick={() => void handleApprove()}>
+              <Button variant="primary" icon="check" loading={actionSubmitting} onClick={() => void handleApprove()}>
                 Approve
               </Button>
             </>
@@ -413,16 +413,15 @@ export function PackingListDetail(): JSX.Element {
                       value={item.declared_value_usd ?? ''}
                       onChange={(e) => updateEditItem(index, { declared_value_usd: Number(e.target.value) || undefined })}
                     />,
-                    <button
+                    <IconButton
                       key="remove"
-                      type="button"
-                      className={styles.removeRow}
-                      aria-label={`Remove item ${index + 1}`}
+                      icon="x"
+                      variant="danger-ghost"
+                      size="sm"
+                      label={`Remove item ${index + 1}`}
                       disabled={editItems.length === 1}
                       onClick={() => removeEditItem(index)}
-                    >
-                      <Icon name="x" size={14} />
-                    </button>,
+                    />,
                   ],
                 }
               })

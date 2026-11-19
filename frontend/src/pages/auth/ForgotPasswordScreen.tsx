@@ -6,9 +6,9 @@
  * the reset screen together with the new password. Copy adjusted accordingly.
  */
 import { useState, type FormEvent, type JSX } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { Link, useNavigate } from 'react-router-dom'
 import { forgotPassword } from '../../auth/authClient'
-import { Banner, Button, Field, Icon } from '../../design/components'
+import { Banner, Button, Field, Icon, Pressable } from '../../design/components'
 import { AuthShell, FormHead } from './AuthShell'
 import styles from './LoginScreen.module.css'
 
@@ -46,9 +46,9 @@ export function ForgotPasswordScreen(): JSX.Element {
   if (sent) {
     return (
       <AuthShell>
-        <button type="button" className={styles.link} style={{ marginBottom: 'var(--space-8)', display: 'inline-flex', alignItems: 'center', gap: 'var(--space-2)' }} onClick={() => navigate('/login')}>
+        <Link to="/login" className={styles.link} style={{ marginBottom: 'var(--space-8)', display: 'inline-flex', alignItems: 'center', gap: 'var(--space-2)' }}>
           <Icon name="arrowleft" size={14} /> Back to sign in
-        </button>
+        </Link>
         <div style={{ textAlign: 'center' }}>
           <div
             style={{
@@ -82,9 +82,9 @@ export function ForgotPasswordScreen(): JSX.Element {
           </div>
           <p className={styles.footerLine} style={{ marginTop: 'var(--space-5)' }}>
             Didn&apos;t receive it?{' '}
-            <button type="button" className={styles.footerLinkStrong} onClick={() => setSent(false)}>
+            <Pressable className={styles.footerLinkStrong} onClick={() => setSent(false)}>
               Resend code
-            </button>
+            </Pressable>
           </p>
         </div>
       </AuthShell>
@@ -93,9 +93,9 @@ export function ForgotPasswordScreen(): JSX.Element {
 
   return (
     <AuthShell>
-      <button type="button" className={styles.link} style={{ marginBottom: 'var(--space-8)', display: 'inline-flex', alignItems: 'center', gap: 'var(--space-2)' }} onClick={() => navigate('/login')}>
-        <Icon name="arrowleft" size={14} /> Back to sign in
-      </button>
+      <Link to="/login" className={styles.link} style={{ marginBottom: 'var(--space-8)', display: 'inline-flex', alignItems: 'center', gap: 'var(--space-2)' }}>
+          <Icon name="arrowleft" size={14} /> Back to sign in
+        </Link>
       <FormHead
         title="Reset your password"
         sub="Enter the email associated with your account. We'll send a verification code."
@@ -126,9 +126,7 @@ export function ForgotPasswordScreen(): JSX.Element {
 
       <p className={styles.footerLine} style={{ marginTop: 'var(--space-5)' }}>
         Remember your password?{' '}
-        <button type="button" className={styles.footerLinkStrong} onClick={() => navigate('/login')}>
-          Sign in →
-        </button>
+        <Link to="/login" className={styles.footerLinkStrong}>Sign in <Icon name="arrowright" size={12} /></Link>
       </p>
     </AuthShell>
   )

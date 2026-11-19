@@ -1,0 +1,12 @@
+.pressable {
+  font: inherit;
+  color: inherit;
+  cursor: pointer;
+}
+.pressable:focus-visible {
+  outline: none;
+  box-shadow: var(--shadow-focus-ring);
+}
+.pressable:disabled {
+  cursor: not-allowed;
+}

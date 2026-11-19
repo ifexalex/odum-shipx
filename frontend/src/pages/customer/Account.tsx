@@ -366,7 +366,7 @@ function PrivacyTab({ customer }: { customer: Customer }): JSX.Element {
               linked to you. <strong>This cannot be undone.</strong>
             </p>
             {!showDelete ? (
-              <Button variant="danger-outline" icon="suspend" onClick={() => setShowDelete(true)}>
+              <Button variant="danger-ghost" icon="suspend" onClick={() => setShowDelete(true)}>
                 Delete my account
               </Button>
             ) : (

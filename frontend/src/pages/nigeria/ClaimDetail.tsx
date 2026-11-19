@@ -20,7 +20,7 @@ import {
 import { claimKeys } from '../../api/keys'
 import { STALE_30S } from '../../lib/queryClient'
 import { useSession } from '../../auth/useSession'
-import { Action, Banner, Button, Card, DialogGuard, Field, Kvp, Mono, StatusBadge } from '../../design/components'
+import { Action, Banner, Button, Card, DialogGuard, Field, Kvp, Mono, StatusBadge, Pressable } from '../../design/components'
 import { SectionHead } from '../../shell/SectionHead'
 import { EvidenceUploader } from './EvidenceUploader'
 import styles from './ClaimDetail.module.css'
@@ -122,8 +122,7 @@ const RESOLUTION_TYPES: { value: ResolutionType; title: string; sub: string }[] 
 
 function ResolutionPick({ title, sub, current, onClick }: { title: string; sub: string; current: boolean; onClick: () => void }): JSX.Element {
   return (
-    <button
-      type="button"
+    <Pressable
       onClick={onClick}
       style={{
         display: 'flex', alignItems: 'flex-start', gap: 'var(--space-3)', textAlign: 'left',
@@ -141,7 +140,7 @@ function ResolutionPick({ title, sub, current, onClick }: { title: string; sub: 
         <span style={{ display: 'block', fontFamily: 'var(--font-display)', fontWeight: 700, fontSize: 'var(--text-sm)' }}>{title}</span>
         <span style={{ display: 'block', fontSize: 'var(--text-xs)', color: 'var(--color-ink-3)', marginTop: 'var(--space-0-5)' }}>{sub}</span>
       </span>
-    </button>
+    </Pressable>
   )
 }
 
@@ -341,7 +340,7 @@ export function ClaimDetail(): JSX.Element {
               </Action>
             )}
             {canResolveClaim(claim, r) && (
-              <Action variant="success" onClick={() => setShowResolve(true)}>
+              <Action variant="primary" onClick={() => setShowResolve(true)}>
                 Resolve claim
               </Action>
             )}
