@@ -15,6 +15,7 @@ import { useContainerList } from '../../hooks/useContainers'
 import { Badge, Button, Card, Chip, Icon, ListFooter, Mono, Table, type BadgeVariant } from '../../design/components'
 import { SectionHead } from '../../shell/SectionHead'
 import styles from './DashboardPipeline.module.css'
+import { isoDateOffset, formatDate } from '../../lib/format'
 
 // Pipeline order, loading → fully released (cancelled is not a pipeline stage).
 const STAGES: ContainerStatus[] = [
@@ -61,7 +62,7 @@ const ETA_PRESETS: { key: EtaPreset; label: string }[] = [
 ]
 
 function isoOffsetDays(days: number): string {
-  return new Date(Date.now() + days * 86_400_000).toISOString().slice(0, 10)
+  return isoDateOffset(days)
 }
 
 function etaRange(preset: EtaPreset | null): { eta_after?: string; eta_before?: string } {
@@ -71,7 +72,7 @@ function etaRange(preset: EtaPreset | null): { eta_after?: string; eta_before?: 
 }
 
 function etaCell(iso: string | null): string {
-  return iso ? iso.slice(0, 10) : '—'
+  return formatDate(iso)
 }
 
 export function ContainerPipeline({ counts }: { counts: ContainerStats | undefined }): JSX.Element {

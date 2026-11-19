@@ -55,6 +55,16 @@ jobs:
           --health-interval 10s
           --health-timeout 5s
           --health-retries 5
+      # The rate limiter's Lua script is only meaningful against a real Redis
+      # (tests/db/test_rate_limit_redis.py); without one those tests skip, and the suite fails on CI.
+      redis:
+        image: redis:7
+        ports: ["6379:6379"]
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
     steps:
       - uses: actions/checkout@v7
       - uses: astral-sh/setup-uv@v7
@@ -80,6 +90,10 @@ jobs:
         env:
           PYTHONPATH: ".:services"
         run: uv run pytest tests/unit/ -v --cov=services --cov=shared --cov-report=xml
+      # Audit OPS-03: the money services may not lose unit-test coverage. Floors are in pyproject.toml
+      # ([tool.shipx.coverage-floors]); the script says when one can be raised. Needs no Codecov account.
+      - name: Enforce coverage floors
+        run: uv run python scripts/check_coverage.py coverage.xml
       - name: Run tenant isolation tests
         env:
           PYTHONPATH: ".:services"
@@ -97,6 +111,31 @@ jobs:
           DATABASE_ADMIN_PASSWORD: test_pass
           APP_DB_PASSWORD: ci_app_pass_not_a_secret
         run: uv run pytest tests/tenant_isolation/ -v
+      # tests/integration/ walks the packing-list -> release flow through the
+      # service layer. It was never part of CI, so a change that broke the flow
+      # only surfaced when someone remembered to run it. It needs no database.
+      - name: Run integration tests
+        env:
+          PYTHONPATH: ".:services"
+        run: uv run pytest tests/integration/ -v
+      # Invoice and payment integrity under real concurrency, against the migrated
+      # database and as the application role (so RLS applies). These are the tests
+      # that fail on the old COUNT(*)+1 invoice numbering and on payment status
+      # computed from a stale read; mocks cannot see either.
+      - name: Run database integrity tests
+        env:
+          PYTHONPATH: ".:services"
+          DATABASE_HOST: localhost
+          DATABASE_PORT: 5432
+          DATABASE_NAME: logistics_test
+          DATABASE_USER: logistics_app
+          DATABASE_PASSWORD: ci_app_pass_not_a_secret
+          DATABASE_ADMIN_USER: test_user
+          DATABASE_ADMIN_PASSWORD: test_pass
+          APP_DB_PASSWORD: ci_app_pass_not_a_secret
+          REDIS_HOST: localhost
+          REDIS_PORT: 6379
+        run: uv run pytest tests/db/ -v
       # This upload has never worked, and said nothing about it. On a PRIVATE
       # repo Codecov requires an upload token; none was configured, so every run
       # logged
@@ -193,7 +232,7 @@ jobs:
           # "tracking.handler.lambda_handler" resolve because tracking/handler.py sits
           # at the zip root (services/ is the zip root, not a subdirectory).
           for service in tenant_management packing_list manifest tracking billing claims \
-                         payment_release refunds notification metering excel; do
+                         payment_release refunds notification metering excel search; do
             cd services
             zip -r ../build/${service}.zip . --exclude "*/__pycache__/*" --exclude "*.pyc"
             cd ..

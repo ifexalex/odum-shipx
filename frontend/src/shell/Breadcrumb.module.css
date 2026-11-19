@@ -1,0 +1,71 @@
+.nav {
+  font-size: 12px;
+  line-height: 1.4;
+}
+
+.list {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.item {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+
+.item + .item::before {
+  content: '/';
+  color: var(--color-line);
+}
+
+.link,
+.back {
+  color: var(--color-primary);
+  font-weight: 600;
+  text-decoration: none;
+}
+
+.link:hover,
+.back:hover {
+  text-decoration: underline;
+}
+
+.link:focus-visible,
+.back:focus-visible {
+  outline: 2px solid var(--color-primary);
+  outline-offset: 2px;
+  border-radius: var(--radius-sm);
+}
+
+.current {
+  color: var(--color-ink-2);
+  font-weight: 500;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 40ch;
+}
+
+/* One back link replaces the trail on a narrow screen (FD-45). */
+.back {
+  display: none;
+}
+
+@media (max-width: 600px) {
+  .list {
+    display: none;
+  }
+
+  .back {
+    display: inline-flex;
+    gap: 4px;
+    align-items: center;
+  }
+}

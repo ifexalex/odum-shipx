@@ -102,6 +102,7 @@ export const navConfig: Record<UserRole, NavLinkGroup[]> = {
     BILLING_CLAIMS_GROUP,
   ],
   china_office_staff: [
+    { items: [{ icon: 'grid', label: 'Work queue', path: '/work-queue' }] },
     {
       group: 'Operations',
       items: [
@@ -123,6 +124,8 @@ export const navConfig: Record<UserRole, NavLinkGroup[]> = {
         { icon: 'file', label: 'Manifests', path: '/manifests' },
         // china_office_staff can see & resolve CBM disputes (_DISPUTE_LIST_ALL_ROLES)
         { icon: 'warn', label: 'CBM disputes', path: '/billing/disputes' },
+        // ...and record the supply and loading check on a missing item (UX-08)
+        { icon: 'package', label: 'Missing items', path: '/claims/missing-items' },
       ],
     },
   ],
@@ -130,10 +133,13 @@ export const navConfig: Record<UserRole, NavLinkGroup[]> = {
     {
       items: [
         { icon: 'grid', label: 'Dashboard', path: '/dashboard' },
-        { icon: 'file', label: 'Manifests', path: '/manifests' },
         { icon: 'bell', label: 'Announcements', path: '/announcements' },
       ],
     },
+    // Nigeria staff own the arrived -> at_warehouse transitions and are allowed on both pages
+    // (routeTable.ts), but the menu used to offer neither; they reached containers only through
+    // dashboard cards. Manifests comes from this group, so it is no longer listed twice.
+    OPERATIONS_GROUP,
     BILLING_CLAIMS_GROUP,
   ],
   warehouse_attendant: [

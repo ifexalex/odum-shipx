@@ -107,3 +107,27 @@ class TestFactorySelectsAzureKeyVault:
 
 # Real Key Vault round-trips (RSA wrap/unwrap + secret read against a live vault)
 # are verified by scripts/azure_smoke.py, not pytest — the suite stays mocked.
+
+
+class TestAWrappedKeyContainingTheSeparator:
+    """The wrapped data key is binary and sometimes holds b"||" (about 1 in 300 keys). It was split at the first
+    separator, so those values could never be decrypted; this test failed intermittently because of it."""
+
+    @pytest.mark.parametrize(
+        "wrapped",
+        [b"\x01||\x02" + b"k" * 40, b"key-ending-in-a-bar|", b"||starts-with-it", b"a||b||c"],
+    )
+    def test_it_still_round_trips(self, monkeypatch, wrapped):
+        from shared import encryption
+
+        class _Provider:
+            def generate_data_key(self):
+                return b"\x07" * 32, wrapped
+
+            def decrypt_data_key(self, encrypted_key):
+                assert encrypted_key == wrapped, "the token was split in the wrong place"
+                return b"\x07" * 32
+
+        monkeypatch.setattr(encryption, "get_key_provider", lambda: _Provider())
+        token = encryption.encrypt_field("A1234567")
+        assert encryption.decrypt_field(token) == "A1234567"

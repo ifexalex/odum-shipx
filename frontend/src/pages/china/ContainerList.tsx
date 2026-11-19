@@ -5,16 +5,17 @@ import { containerKeys } from '../../api/keys'
 import { STALE_5_MIN } from '../../lib/queryClient'
 import { CONTAINER_STATUS_LABELS, containerCapacityCbm, utilizationLevel } from '../../api/containerRules'
 import { containersApi, type Container, type ContainerStatus } from '../../api/tracking'
-import { Badge, Banner, Button, Card, Chip, DateRangeFilter, Icon, KebabBtn, Mono, StatCard, Table, ListFooter, type TableRow } from '../../design/components'
+import { Badge, Banner, Button, Card, Chip, DateRangeFilter, ExportButton, Icon, KebabBtn, Mono, StatCard, Table, ListFooter, type TableRow } from '../../design/components'
 import { useSession } from '../../auth/useSession'
 import { useContainerList } from '../../hooks/useContainers'
 import { useDateRangeFilter } from '../../hooks/useDateRangeFilter'
+import { useListExport } from '../../hooks/useListExport'
 import { type SortableColumn, useTableSort } from '../../hooks/useTableSort'
 import { useTopBarSlot } from '../../shell/TopBarContext'
 import styles from './ContainerList.module.css'
+import { isoDateOffset, todayIso } from '../../lib/format'
 
 const SEARCH_DEBOUNCE_MS = 300
-const DAY_MS = 24 * 60 * 60 * 1000
 
 // 'Container' (container_number, text) defaults asc; 'ETA' is a forward-looking
 // scheduling date (not a "created at" timestamp) so it defaults asc too —
@@ -81,7 +82,7 @@ function statusBadgeVariant(status: ContainerStatus): 'warning' | 'info' | 'succ
 function etaColor(container: Container): string {
   if (CLEARED.includes(container.status)) return 'var(--color-success)'
   if (!container.estimated_arrival_date) return 'var(--color-ink-4)'
-  if (container.estimated_arrival_date === new Date().toISOString().slice(0, 10)) return 'var(--color-warning)'
+  if (container.estimated_arrival_date === todayIso()) return 'var(--color-warning)'
   return 'var(--color-ink)'
 }
 
@@ -92,12 +93,12 @@ function etaLabel(container: Container): string {
 
 /** ISO date (YYYY-MM-DD) for "N days ago" — used as the `created_after` query param. */
 function daysAgoIso(days: number): string {
-  return new Date(Date.now() - days * DAY_MS).toISOString().slice(0, 10)
+  return isoDateOffset(-days)
 }
 
 /** ISO date (YYYY-MM-DD) for "N days from now" — used as the `eta_before` query param. */
 function daysFromNowIso(days: number): string {
-  return new Date(Date.now() + days * DAY_MS).toISOString().slice(0, 10)
+  return isoDateOffset(days)
 }
 
 /** Maps an "Arriving" preset to the `eta_after`/`eta_before` query params. */
@@ -196,8 +197,7 @@ export function ContainerList(): JSX.Element {
   const [etaPreset, setEtaPreset] = useState<EtaPresetKey | null>(null)
   const [filtersOpen, setFiltersOpen] = useState(false)
 
-  // Debounce the search term (table search box and header search box both
-  // write to `search`); the query hook only refetches once typing settles.
+  // Debounce the search term; the query hook only refetches once typing settles.
   useEffect(() => {
     const timer = setTimeout(() => setDebouncedSearch(search), SEARCH_DEBOUNCE_MS)
     return () => clearTimeout(timer)
@@ -240,33 +240,36 @@ export function ContainerList(): JSX.Element {
   const status = activeStatuses?.length ? activeStatuses.join(',') : undefined
   const { etaAfter, etaBefore } = etaRangeFor(etaPreset)
   const { sort, onSort, sortField, sortDirection } = useTableSort(SORT_COLUMNS)
-  const { items: containers, isLoading, error, hasMore, loadMore, isFetchingMore, totalCount } =
-    useContainerList({
-      status,
-      q: debouncedSearch || undefined,
-      created_after: createdRange.createdAfter,
-      created_before: createdRange.createdBefore,
-      eta_after: etaAfter,
-      eta_before: etaBefore,
-      ...(sortField ? { sort: sortField, direction: sortDirection } : {}),
-    })
+  // What the list is showing: the same object drives the query and the Export button, so an export is the rows
+  // on screen (every page of them), not a second reading of the filters.
+  const listParams = {
+    status,
+    q: debouncedSearch || undefined,
+    created_after: createdRange.createdAfter,
+    created_before: createdRange.createdBefore,
+    eta_after: etaAfter,
+    eta_before: etaBefore,
+    ...(sortField ? { sort: sortField, direction: sortDirection } : {}),
+  }
+  const { items: containers, isLoading, error, hasMore, loadMore, isFetchingMore, totalCount } = useContainerList(listParams)
+  const exportList = useListExport((format: 'xlsx' | 'csv') => containersApi.exportList(listParams, format))
 
   const canCreate = session?.role === 'china_office_staff'
 
-  // Inject action buttons + a search handler into the shared TopBar (prototype:
-  // actions sit between the search box and the bell, not in the page body).
-  // The header search box shares `search` state with the table's own search
-  // input below, rather than running an independent search implementation.
+  // Inject action buttons into the shared TopBar (prototype: actions sit between the
+  // search box and the bell, not in the page body). Everyone who can open the list can
+  // export it; only China staff create containers.
   useTopBarSlot({
-    actions: canCreate ? (
+    actions: (
       <>
-        <Button variant="secondary" icon="download">Export</Button>
-        <Button variant="primary" icon="plus" onClick={() => navigate('/containers/new')}>
-          Create container
-        </Button>
+        <ExportButton formats={['xlsx', 'csv']} onExport={exportList.onExport} />
+        {canCreate && (
+          <Button variant="primary" icon="plus" onClick={() => navigate('/containers/new')}>
+            Create container
+          </Button>
+        )}
       </>
-    ) : null,
-    onSearch: setSearch,
+    ),
   })
 
   function selectGroup(statuses: ContainerStatus[]): void {
@@ -301,6 +304,13 @@ export function ContainerList(): JSX.Element {
       {error && (
         <div className={styles.banner}>
           <Banner variant="error" title="Couldn't load containers">{error.message}</Banner>
+        </div>
+      )}
+      {exportList.error && (
+        <div className={styles.banner}>
+          <Banner variant="error" title="Couldn't export containers" dismissible onDismiss={exportList.dismissError}>
+            {exportList.error}
+          </Banner>
         </div>
       )}
 

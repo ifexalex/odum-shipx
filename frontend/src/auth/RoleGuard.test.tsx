@@ -1,5 +1,6 @@
 import { render, screen } from '@testing-library/react'
-import { MemoryRouter, Route, Routes } from 'react-router-dom'
+import type { JSX } from 'react'
+import { MemoryRouter, Route, Routes, useLocation } from 'react-router-dom'
 import { describe, expect, it, vi } from 'vitest'
 import { RoleGuard } from './RoleGuard'
 import { SessionContext, type SessionContextValue } from './SessionContext'
@@ -50,7 +51,7 @@ function renderGuarded(value: SessionContextValue, allow: UserRole[]) {
           />
           <Route path="/login" element={<div>Login page</div>} />
           <Route path="/dashboard" element={<div>Tenant admin home</div>} />
-          <Route path="/containers" element={<div>China staff home</div>} />
+          <Route path="/work-queue" element={<div>China staff home</div>} />
           <Route path="/my-shipments" element={<div>Customer home</div>} />
         </Routes>
       </MemoryRouter>
@@ -86,7 +87,7 @@ describe('RoleGuard', () => {
     expect(screen.queryByText('Login page')).toBeNull()
   })
 
-  it('sends china_office_staff to /containers when blocked, not the tenant_admin home', () => {
+  it("sends china_office_staff to /work-queue when blocked, not the tenant_admin home", () => {
     renderGuarded(makeContextValue({ session: makeSession('china_office_staff'), status: 'authenticated' }), [
       'tenant_admin',
     ])
@@ -107,5 +108,30 @@ describe('RoleGuard', () => {
     expect(screen.queryByText('Protected content')).toBeNull()
     // homePathForRole is keyed off the active role ('/dashboard' for nigeria_office_staff), not the full set.
     expect(screen.getByText('Tenant admin home')).toBeInTheDocument()
+  })
+})
+
+describe('RoleGuard remembers where a signed-out visitor was going (UX-04)', () => {
+  function Where(): JSX.Element {
+    const l = useLocation()
+    return <div data-testid="where">{`${l.pathname}${l.search}`}</div>
+  }
+
+  function renderDeepLink(entry: string) {
+    return render(
+      <SessionContext.Provider value={makeContextValue({})}>
+        <MemoryRouter initialEntries={[entry]}>
+          <Routes>
+            <Route path="/my-billing/:id" element={<RoleGuard allow={['customer']}><div>invoice</div></RoleGuard>} />
+            <Route path="/login" element={<Where />} />
+          </Routes>
+        </MemoryRouter>
+      </SessionContext.Provider>,
+    )
+  }
+
+  it('sends a signed-out visitor to /login with the page they asked for', () => {
+    renderDeepLink('/my-billing/abc?tab=payments')
+    expect(screen.getByTestId('where')).toHaveTextContent('/login?next=%2Fmy-billing%2Fabc%3Ftab%3Dpayments')
   })
 })

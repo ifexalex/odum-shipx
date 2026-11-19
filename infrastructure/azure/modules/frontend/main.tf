@@ -53,22 +53,20 @@ resource "azurerm_storage_account_static_website" "frontend" {
 # Front Door Standard
 # ---------------------------------------------------------------------------
 
-resource "azurerm_cdn_frontdoor_profile" "frontend" {
-  name                = "${var.name_prefix}-fd"
-  resource_group_name = var.resource_group_name
-  sku_name            = "Standard_AzureFrontDoor"
-  tags                = var.common_tags
-}
+# The Front Door profile itself is created at the root (azurerm_cdn_frontdoor_profile.frontend in ../../main.tf)
+# and handed in. It cannot live here: this module depends on the API container app (the /v1/* route below), and
+# the container app needs the profile's id to recognise requests this Front Door forwarded. With the profile
+# inside this module, that is a dependency cycle.
 
 resource "azurerm_cdn_frontdoor_endpoint" "frontend" {
   name                     = "${var.name_prefix}-fde"
-  cdn_frontdoor_profile_id = azurerm_cdn_frontdoor_profile.frontend.id
+  cdn_frontdoor_profile_id = var.frontdoor_profile_id
   tags                     = var.common_tags
 }
 
 resource "azurerm_cdn_frontdoor_origin_group" "frontend" {
   name                     = "frontend-origins"
-  cdn_frontdoor_profile_id = azurerm_cdn_frontdoor_profile.frontend.id
+  cdn_frontdoor_profile_id = var.frontdoor_profile_id
   session_affinity_enabled = false
 
   load_balancing {
@@ -110,7 +108,7 @@ resource "azurerm_cdn_frontdoor_origin" "frontend" {
 resource "azurerm_cdn_frontdoor_origin_group" "api" {
   count                    = var.api_origin_host == "" ? 0 : 1
   name                     = "api-origins"
-  cdn_frontdoor_profile_id = azurerm_cdn_frontdoor_profile.frontend.id
+  cdn_frontdoor_profile_id = var.frontdoor_profile_id
   session_affinity_enabled = false
 
   load_balancing {
@@ -145,7 +143,7 @@ resource "azurerm_cdn_frontdoor_origin" "api" {
 # Security response headers — mirrors the AWS response-headers policy.
 resource "azurerm_cdn_frontdoor_rule_set" "headers" {
   name                     = "securityheaders"
-  cdn_frontdoor_profile_id = azurerm_cdn_frontdoor_profile.frontend.id
+  cdn_frontdoor_profile_id = var.frontdoor_profile_id
 }
 
 resource "azurerm_cdn_frontdoor_rule" "security_headers" {

@@ -1,12 +1,14 @@
-import { useEffect, useMemo, useState, type JSX } from 'react'
+import { useMemo, type JSX } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { formatCbm } from '../../api/decimal'
-import { manifestApi, orderedPackageMix, type Manifest, type VerificationStatus } from '../../api/manifest'
+import { orderedPackageMix, type Manifest, type VerificationStatus } from '../../api/manifest'
 import { isManifestOverdue as isOverdue } from '../../api/manifestRules'
-import { useManifestList } from '../../hooks/useManifests'
+import { useManifestList, useManifestStats } from '../../hooks/useManifests'
 import { Badge, Banner, Card, Chip, Mono, StatCard, Table, ViewLink, ListFooter, type BadgeVariant } from '../../design/components'
 import { useTopBarSlot } from '../../shell/TopBarContext'
 import styles from './ManifestList.module.css'
+import { formatNumber } from '../../lib/format'
+import { useStatusParam } from '../../lib/useStatusParam'
 
 // Per-status counts come from GET /v1/manifests/stats (P2-4) — a single
 // aggregate query, so no page-tallying. Chips still set the real
@@ -48,26 +50,24 @@ function PackageMix({ manifest }: { manifest: Manifest }): JSX.Element {
 function fmtWeight(kg: string | null | undefined): string {
   const n = Number(kg)
   if (!kg || Number.isNaN(n) || n === 0) return '—'
-  return `${n.toLocaleString(undefined, { maximumFractionDigits: 0 })} kg`
+  return `${formatNumber(n, 0)} kg`
 }
 
-type ManifestStats = Awaited<ReturnType<typeof manifestApi.stats>>
+
+// The values `?status=` may hold (useStatusParam); anything else reads as no filter.
+const VERIFICATION_STATUSES: readonly VerificationStatus[] = ['pending', 'verified', 'discrepancies_found', 'resolved']
 
 export function ManifestList(): JSX.Element {
   const navigate = useNavigate()
-  const [statusFilter, setStatusFilter] = useState<VerificationStatus | null>(null)
-  const [stats, setStats] = useState<ManifestStats | null>(null)
-
+  const [statusFilter, setStatusFilter] = useStatusParam<VerificationStatus>(VERIFICATION_STATUSES)
   const { items: manifests, isLoading: loading, error, hasMore, loadMore, isFetchingMore, totalCount } = useManifestList(
     statusFilter ? { verification_status: statusFilter } : {},
   )
 
   const overdueCount = useMemo(() => manifests.filter(isOverdue).length, [manifests])
 
-  // §6.2 stats row (P2-4) — real per-status counts; hidden on failure.
-  useEffect(() => {
-    void manifestApi.stats().then(setStats).catch(() => setStats(null))
-  }, [])
+  // §6.2 stats row (P2-4) — real per-status counts; hidden until loaded, and on failure.
+  const { data: stats = null } = useManifestStats()
 
   useTopBarSlot({ subtitle: 'Verify incoming container cargo against the packing list.' })
 

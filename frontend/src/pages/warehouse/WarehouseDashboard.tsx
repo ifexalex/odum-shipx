@@ -16,8 +16,9 @@ import { ApiError, type ListResponse } from '../../api/client'
 import { releaseNotesApi, type DelegateIdType, type PickupResult, type ReleaseNote, type RecordPickupInput } from '../../api/releaseNotes'
 import { releaseNoteKeys } from '../../api/keys'
 import { STALE_30S } from '../../lib/queryClient'
-import { Banner, Button, Field, Icon, Mono, PhoneField, StatCard, ToggleSwitch } from '../../design/components'
+import { Banner, Button, Field, Icon, Mono, PhoneField, StatCard, ToggleSwitch, DialogGuard } from '../../design/components'
 import styles from './WarehouseDashboard.module.css'
+import { todayIso } from '../../lib/format'
 
 // ---------------------------------------------------------------------------
 // Urgency helpers (P2-2) — prototype §9.3 sorts the queue by age and flags
@@ -48,7 +49,7 @@ function ageLabel(note: ReleaseNote): string {
 }
 
 function isToday(iso: string | null | undefined): boolean {
-  return !!iso && iso.slice(0, 10) === new Date().toISOString().slice(0, 10)
+  return !!iso && todayIso(new Date(iso)) === todayIso()
 }
 
 // ---------------------------------------------------------------------------
@@ -70,6 +71,10 @@ const ID_TYPES: { value: DelegateIdType; label: string }[] = [
 function PickupSheet({ note, onCancel, onSuccess }: PickupSheetProps): JSX.Element {
   const [cartons, setCartons] = useState(String(note.carton_count))
   const [isDelegate, setIsDelegate] = useState(false)
+  // The backend requires a collector's name when it is not a delegate; this sheet never sent one, so every
+  // in-person pickup recorded here was refused with a validation error. Defaults to the customer, who usually collects.
+  const [collectedByName, setCollectedByName] = useState(note.customer_name ?? '')
+  const [pickupCode, setPickupCode] = useState('')
   const [delegateName, setDelegateName] = useState('')
   const [delegatePhone, setDelegatePhone] = useState('')
   const [delegateIdType, setDelegateIdType] = useState<DelegateIdType>('national_id')
@@ -80,7 +85,11 @@ function PickupSheet({ note, onCancel, onSuccess }: PickupSheetProps): JSX.Eleme
   const delegateFilled = !isDelegate || (
     delegateName.trim() && delegatePhone.trim() && delegateIdNumber.trim()
   )
-  const canSubmit = Number(cartons) > 0 && delegateFilled && !submitting
+  const collectorNamed = isDelegate || collectedByName.trim().length > 0
+  const codeRequired = note.pickup_code_required === true
+  const codeLocked = note.pickup_code_locked === true
+  const codeGiven = !codeRequired || pickupCode.trim().length > 0
+  const canSubmit = Number(cartons) > 0 && delegateFilled && collectorNamed && codeGiven && !codeLocked && !submitting
 
   async function handleSubmit(): Promise<void> {
     setSubmitting(true)
@@ -93,7 +102,10 @@ function PickupSheet({ note, onCancel, onSuccess }: PickupSheetProps): JSX.Eleme
         body.delegate_phone = delegatePhone
         body.delegate_id_type = delegateIdType
         body.delegate_id_number = delegateIdNumber
+      } else {
+        body.collected_by_name = collectedByName.trim()
       }
+      if (codeRequired) body.pickup_code = pickupCode.trim()
       const result = await releaseNotesApi.recordPickup(note.id, body)
       onSuccess(result)
     } catch (err) {
@@ -105,6 +117,7 @@ function PickupSheet({ note, onCancel, onSuccess }: PickupSheetProps): JSX.Eleme
 
   return (
     <div className={styles.modalOverlay} onClick={onCancel}>
+      <DialogGuard onClose={onCancel} />
       <div className={styles.modalPanel} onClick={(e) => e.stopPropagation()} role="dialog" aria-modal="true">
         <div>
           <h3 className={styles.modalTitle}>{note.customer_name ?? 'Pickup'}</h3>
@@ -112,6 +125,27 @@ function PickupSheet({ note, onCancel, onSuccess }: PickupSheetProps): JSX.Eleme
         </div>
 
         {error && <div className={styles.modalBanner}><Banner variant="error">{error}</Banner></div>}
+        {codeLocked && (
+          <div className={styles.modalBanner}>
+            <Banner variant="error" title="Pickup code locked">
+              Too many wrong codes were entered. The office must send the customer a new code before these goods can be released.
+            </Banner>
+          </div>
+        )}
+
+        {codeRequired && !codeLocked && (
+          <Field
+            label="Pickup code"
+            name="pickup_code"
+            required
+            inputMode="numeric"
+            autoComplete="off"
+            value={pickupCode}
+            onChange={(e) => setPickupCode(e.target.value)}
+            placeholder="6-digit code"
+            helper="Ask the collector for the code that was sent to the customer."
+          />
+        )}
 
         <Field
           label="Cartons collected"
@@ -126,6 +160,17 @@ function PickupSheet({ note, onCancel, onSuccess }: PickupSheetProps): JSX.Eleme
           <ToggleSwitch checked={isDelegate} onChange={setIsDelegate} />
           <span>Delegate pickup</span>
         </label>
+
+        {!isDelegate && (
+          <Field
+            label="Collected by"
+            name="collected_by_name"
+            required
+            value={collectedByName}
+            onChange={(e) => setCollectedByName(e.target.value)}
+            placeholder="Name of the person collecting"
+          />
+        )}
 
         {isDelegate && (
           <>

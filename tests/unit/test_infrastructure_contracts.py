@@ -156,3 +156,80 @@ class TestLambdaHandlers:
             f"{key}: Terraform sets handler '{handler}' but {source.relative_to(ROOT)} defines no "
             f"'{function}' — every invocation would fail with Runtime.HandlerNotFound"
         )
+
+
+EVENTBRIDGE_TF = ROOT / "infrastructure/aws/modules/eventbridge/main.tf"
+BOOTSTRAP_LOCAL = ROOT / "scripts/bootstrap_local.sh"
+_NOTIFICATION_QUEUES = ("sms", "whatsapp", "email")
+
+
+class TestNoEventGoesToANotificationQueue:
+    """Audit BE-09: the notification consumers read only what `shared/notifications.py` enqueues.
+
+    A raw EventBridge event routed to their queues has no recipient and was skipped with a warning every time.
+    Services enqueue notifications directly; the bus feeds the metering queue only.
+    """
+
+    def test_eventbridge_sends_to_the_metering_queue_only(self):
+        text = EVENTBRIDGE_TF.read_text()
+        targets = re.findall(r"sqs_queue_arns\[\s*\"(\w+)\"\s*\]", text)
+        assert targets and set(targets) == {"metering"}
+        assert 'eventbridge_queue_keys = ["metering"]' in text
+
+    def test_no_rule_or_target_is_built_from_a_list_of_notification_routes(self):
+        text = EVENTBRIDGE_TF.read_text()
+        assert "routing_rules" not in text and "routing_sqs" not in text
+        for queue in _NOTIFICATION_QUEUES:
+            assert f'"{queue}"' not in text and f"sqs-{queue}" not in text
+
+    def test_eventbridge_is_not_allowed_to_send_to_every_queue(self):
+        # Least privilege: the delivery role and the queue policies cover the targeted queue, not all of them.
+        text = EVENTBRIDGE_TF.read_text()
+        assert "values(var.sqs_queue_arns)" not in text
+        assert "for_each  = var.sqs_queue_urls" not in text
+
+    def test_local_bootstrap_routes_no_events_to_notification_queues(self):
+        text = BOOTSTRAP_LOCAL.read_text()
+        assert "put-rule" in text  # the metering rule is still created
+        for queue in _NOTIFICATION_QUEUES:
+            assert f'logistics-{queue}"' not in text.split("EventBridge Rules", 1)[1].split("S3 Bucket", 1)[0]
+        put_rules = re.findall(r'put-rule \\\s+--name "([\w-]+)"', text)
+        assert put_rules == ["route-metering"]
+
+
+class TestStorageSettingsReachTheCode:
+    """The Lambdas were given `S3_BUCKET`, which nothing reads; `shared/providers` reads `S3_BUCKET_NAME` and fell back
+    to "logistics-assets", which is not this deployment's bucket (2026-11-17)."""
+
+    def test_the_lambda_environment_names_the_bucket_the_way_the_code_reads_it(self):
+        providers = (ROOT / "shared/providers/__init__.py").read_text()
+        assert 'os.environ.get("S3_BUCKET_NAME"' in providers
+        assert re.search(r"^\s+S3_BUCKET_NAME\s+=\s+var\.bucket_name$", LAMBDA_TF.read_text(), re.M)
+
+    def test_no_lambda_is_given_a_bucket_variable_nothing_reads(self):
+        assert not re.search(r"^\s+S3_BUCKET\s+=", LAMBDA_TF.read_text(), re.M)
+
+
+class TestFailureAlarmsMatchTheCounters:
+    """Audit OPS-04: an alarm on an operation the code never counts, or under another namespace, never fires."""
+
+    MONITORING = {
+        "aws": ROOT / "infrastructure/aws/modules/monitoring",
+        "azure": ROOT / "infrastructure/azure/modules/monitoring",
+    }
+
+    @pytest.mark.parametrize("cloud", ["aws", "azure"])
+    def test_every_alarmed_operation_is_one_the_code_counts(self, cloud):
+        from shared.observability import OPERATIONS
+
+        text = (self.MONITORING[cloud] / "main.tf").read_text()
+        alarmed = set(re.findall(r'operation\s*=\s*"(\w+)"', text)) | set(re.findall(r'Operation = "(\w+)"', text))
+        alarmed |= {"notification_send"} if "notification_send" in text else set()
+        assert {"invoice_generation", "audit_write", "notification_send"} <= alarmed
+        assert alarmed <= OPERATIONS
+
+    def test_the_aws_alarms_use_the_namespace_the_code_writes(self):
+        from shared.observability import METRIC_NAMESPACE
+
+        variables = (self.MONITORING["aws"] / "variables.tf").read_text()
+        assert re.search(r'variable "metric_namespace" \{[^}]*default\s*=\s*"' + METRIC_NAMESPACE + '"', variables)

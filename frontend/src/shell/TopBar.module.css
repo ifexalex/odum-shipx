@@ -45,25 +45,6 @@
   min-width: 0;
 }
 
-.breadcrumb {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  font-size: 12px;
-  color: var(--color-ink-4);
-}
-.breadcrumbSep {
-  color: var(--color-line);
-}
-.breadcrumbCurrent {
-  color: var(--color-ink-2);
-  font-weight: 500;
-}
-.breadcrumbLink {
-  color: var(--color-primary);
-  font-weight: 600;
-  cursor: pointer;
-}
 
 .title {
   font-family: var(--font-display);
@@ -102,37 +83,6 @@
   display: flex;
   align-items: center;
   gap: 12px;
-}
-
-.searchBox {
-  position: relative;
-  width: 320px;
-}
-.searchIcon {
-  position: absolute;
-  left: 12px;
-  top: 50%;
-  transform: translateY(-50%);
-  color: var(--color-ink-4);
-  display: flex;
-  pointer-events: none;
-}
-.searchInput {
-  width: 100%;
-  height: 38px;
-  padding-left: 36px;
-  padding-right: 16px;
-  background: var(--color-page);
-  border: 1px solid transparent;
-  border-radius: var(--radius-sm);
-  font-family: var(--font-body);
-  font-size: 13px;
-  color: var(--color-ink);
-  outline: none;
-  box-sizing: border-box;
-}
-.searchInput:focus-visible {
-  box-shadow: var(--shadow-focus-ring);
 }
 
 .roleSwitch {
@@ -243,14 +193,8 @@
   white-space: nowrap;
 }
 
-/* Responsive — breakpoints match the prototype (components.jsx): search shrinks
-   at 1080px, then hamburger appears and search/user-meta hide at 860px. */
-@container sxapp (max-width: 1080px) {
-  .searchBox {
-    width: 200px;
-  }
-}
-
+/* Responsive — breakpoints match the prototype (components.jsx): the hamburger appears and the
+   user-meta hides at 860px. The search box has its own responsive rules (GlobalSearch.module.css). */
 @container sxapp (max-width: 860px) {
   .topbar {
     padding: 0 16px;
@@ -270,9 +214,6 @@
   .hamburger {
     display: inline-flex;
   }
-  .searchBox {
-    display: none;
-  }
   .userMenuText {
     display: none;
   }
@@ -280,5 +221,46 @@
     flex-wrap: wrap;
     justify-content: flex-end;
     row-gap: 8px;
+  }
+}
+
+/* The page's actions sit in line with the bar's icons on desktop. */
+.pageActions {
+  display: contents;
+}
+
+/* On a phone: row one is the menu button, the title and the bar's own icons; the page's actions get a row of their
+   own below, instead of being mixed in with the icons over three or four rows. */
+@container sxapp (max-width: 600px) {
+  .topbar {
+    column-gap: 6px;
+  }
+  /* Room for the title next to the icons: the account button drops its arrow and padding, the title steps down. */
+  .title {
+    font-size: 18px;
+  }
+  .userMenu {
+    padding: 2px;
+    gap: 0;
+  }
+  .userMenu > :last-child {
+    display: none;
+  }
+  .left {
+    flex: 1 1 0;
+  }
+  .title {
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .right {
+    display: contents;
+  }
+  .pageActions {
+    display: flex;
+    order: 3;
+    flex: 1 0 100%;
+    flex-wrap: wrap;
+    gap: 8px;
   }
 }

@@ -7,8 +7,10 @@ import { canApproveOrReject, explainBulkFailure, formatPackageMix, groupBulkFail
 import { useSession } from '../../auth/useSession'
 import { usePackingListList } from '../../hooks/usePackingLists'
 import { useTopBarSlot } from '../../shell/TopBarContext'
-import { Badge, Banner, Button, Card, Chip, Field, Icon, Mono, Table, ViewLink, ListFooter, type BadgeVariant } from '../../design/components'
+import { Badge, Banner, Button, Card, Chip, Field, Icon, Mono, Table, ViewLink, ListFooter, DialogGuard, type BadgeVariant } from '../../design/components'
 import styles from './PackingListList.module.css'
+import { formatDate } from '../../lib/format'
+import { useStatusParam } from '../../lib/useStatusParam'
 
 const STATUS_FILTERS: PackingListStatus[] = ['draft', 'pending_approval', 'approved', 'rejected']
 
@@ -35,6 +37,7 @@ function BulkRejectModal({ count, onCancel, onConfirm, submitting, error }: Bulk
   const [comments, setComments] = useState('')
   return (
     <div className={styles.modalOverlay} onClick={onCancel}>
+      <DialogGuard onClose={onCancel} />
       <div className={styles.modalPanel} onClick={(event) => event.stopPropagation()} role="dialog" aria-modal="true">
         <h3 className={styles.modalTitle}>Reject {count} packing list(s)</h3>
         {error && (
@@ -116,10 +119,13 @@ function BulkResultPanel({
   )
 }
 
+// The values `?status=` may hold (useStatusParam); anything else reads as no filter.
+const PACKING_LIST_STATUSES: readonly PackingListStatus[] = ['draft', 'pending_approval', 'approved', 'rejected']
+
 export function PackingListList(): JSX.Element {
   const { session } = useSession()
   const navigate = useNavigate()
-  const [statusFilter, setStatusFilter] = useState<PackingListStatus | null>(null)
+  const [statusFilter, setStatusFilter] = useStatusParam<PackingListStatus>(PACKING_LIST_STATUSES)
   const [search, setSearch] = useState('')
   const [actionError, setActionError] = useState<string | null>(null)
   const [selected, setSelected] = useState<Set<string>>(new Set())
@@ -375,7 +381,7 @@ export function PackingListList(): JSX.Element {
                   {statusLabel(pl.status)}
                 </Badge>,
                 <span key="submitted" className={styles.submittedDate}>
-                  {new Date(pl.created_at).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })},{' '}
+                  {formatDate(pl.created_at, 'short')},{' '}
                   {pl.created_at.slice(11, 16)}
                 </span>,
                 <ViewLink key="view" onClick={() => navigate(`/packing-lists/${pl.id}`)} />,

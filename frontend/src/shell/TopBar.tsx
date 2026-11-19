@@ -1,6 +1,8 @@
 import type { JSX, ReactNode } from 'react'
 import { Avatar, Icon, ThemeToggle } from '../design/components'
 import type { Role } from '../design/theme'
+import { Breadcrumb } from './Breadcrumb'
+import type { Crumb } from './breadcrumbs'
 import { useShellDrawer } from './ShellDrawer'
 import styles from './TopBar.module.css'
 
@@ -19,9 +21,11 @@ export interface TopBarProps {
   title?: string
   /** One-line descriptive subtitle shown under the title (list pages). */
   subtitle?: string
-  breadcrumb?: string[]
+  /** Where the page lives (`breadcrumbTrail`); every crumb but the last is a link. */
+  breadcrumb?: Crumb[]
   user?: TopBarUser
-  search?: boolean
+  /** The global search box (<GlobalSearch>). A slot rather than markup so this bar stays presentational. */
+  search?: ReactNode
   actions?: ReactNode
   /** Unread count for the notification bell — wired to GET /v1/notifications/staff/unread-count. */
   notifications?: number
@@ -32,7 +36,6 @@ export interface TopBarProps {
    * see StaffLayout.tsx's StaffNotificationPanel for the real usage.
    */
   notificationsPanel?: ReactNode
-  onSearch?: (query: string) => void
   onNotificationsClick?: () => void
   onUserMenuClick?: () => void
   /**
@@ -51,11 +54,10 @@ export function TopBar({
   subtitle,
   breadcrumb,
   user,
-  search = true,
+  search,
   actions,
   notifications = 0,
   notificationsPanel,
-  onSearch,
   onNotificationsClick,
   onUserMenuClick,
   roleOptions,
@@ -77,38 +79,15 @@ export function TopBar({
           </button>
         )}
         <div className={styles.titleBlock}>
-          {breadcrumb && breadcrumb.length > 0 && (
-            <div className={styles.breadcrumb}>
-              {breadcrumb.map((crumb, index) => (
-                <span key={crumb} style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
-                  {index > 0 && <span className={styles.breadcrumbSep}>/</span>}
-                  <span
-                    className={index === breadcrumb.length - 1 ? styles.breadcrumbCurrent : styles.breadcrumbLink}
-                  >
-                    {crumb}
-                  </span>
-                </span>
-              ))}
-            </div>
-          )}
+          {breadcrumb && <Breadcrumb trail={breadcrumb} />}
           {title && <h1 className={styles.title}>{title}</h1>}
           {title && subtitle && <p className={styles.subtitle}>{subtitle}</p>}
         </div>
       </div>
       <div className={styles.right}>
-        {search && (
-          <div className={styles.searchBox}>
-            <span className={styles.searchIcon}>
-              <Icon name="search" size={15} />
-            </span>
-            <input
-              className={styles.searchInput}
-              placeholder="Search tenants, users, containers…"
-              onChange={(event) => onSearch?.(event.target.value)}
-            />
-          </div>
-        )}
-        {actions}
+        {search}
+        {/* The page's own actions: in line on desktop, their own full-width row on a phone (TopBar.module.css). */}
+        {actions && <div className={styles.pageActions}>{actions}</div>}
         {roleOptions && roleOptions.length > 1 && (
           <select
             aria-label="Active role"

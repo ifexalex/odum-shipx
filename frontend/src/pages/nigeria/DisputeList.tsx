@@ -1,12 +1,15 @@
-import { useState, type JSX } from 'react'
+import type { JSX } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { isTerminalDisputeStatus } from '../../api/billingRules'
 import { type CBMDisputeStatus } from '../../api/billing'
+import { useSession } from '../../auth/useSession'
 import { useDisputeList } from '../../hooks/useBilling'
 import { Badge, Banner, Card, Chip, Mono, Table, ViewLink, ListFooter, type BadgeVariant } from '../../design/components'
 import { useTopBarSlot } from '../../shell/TopBarContext'
 import { useNow } from '../../hooks/useNow'
 import styles from './DisputeList.module.css'
+import { formatDate } from '../../lib/format'
+import { useStatusParam } from '../../lib/useStatusParam'
 
 const _DISPUTE_SLA_DAYS = 7
 
@@ -69,12 +72,26 @@ function statusLabel(status: CBMDisputeStatus): string {
   }
 }
 
+// The values `?status=` may hold (useStatusParam); anything else reads as no filter.
+const DISPUTE_STATUSES: readonly CBMDisputeStatus[] = [
+  'submitted',
+  'acknowledged',
+  'investigating',
+  'escalated_china',
+  'resolved_adjusted',
+  'resolved_no_change',
+  'closed',
+]
+
 export function DisputeList(): JSX.Element {
   const navigate = useNavigate()
+  const { session } = useSession()
+  // China staff may not open invoices, so they get the measurement-only dispute screen (UX-01).
+  const isChina = session?.role === 'china_office_staff'
   // One clock for the whole table — see useNow. Also makes the countdown tick
   // instead of only refreshing when something unrelated re-renders the list.
   const now = useNow()
-  const [statusFilter, setStatusFilter] = useState<CBMDisputeStatus | null>(null)
+  const [statusFilter, setStatusFilter] = useStatusParam<CBMDisputeStatus>(DISPUTE_STATUSES)
   const { items: disputes, isLoading: loading, error, hasMore, loadMore, isFetchingMore, totalCount } = useDisputeList(
     statusFilter ? { status: statusFilter } : {},
   )
@@ -105,7 +122,9 @@ export function DisputeList(): JSX.Element {
         <Card padding={0}>
           <Table
             columns={[
-              { title: 'Billing ID' },
+              { title: 'Customer' },
+              { title: 'Invoice' },
+              { title: 'Container' },
               { title: 'Original CBM', align: 'right' },
               { title: 'Corrected CBM', align: 'right' },
               { title: 'Status' },
@@ -115,16 +134,18 @@ export function DisputeList(): JSX.Element {
             ]}
             rows={disputes.map((d) => ({
               cells: [
-                <Mono key="billing">{d.billing_id.slice(0, 8)}…</Mono>,
+                <span key="customer" className={styles.customer}>{d.customer_name ?? '—'}</span>,
+                <Mono key="invoice">{d.invoice_number ?? '—'}</Mono>,
+                <Mono key="container">{d.container_number ?? '—'}</Mono>,
                 <Mono key="orig">{d.original_cbm ?? '—'}</Mono>,
                 <Mono key="corrected">{d.corrected_cbm ?? '—'}</Mono>,
                 <Badge key="status" variant={STATUS_VARIANT[d.status]}>
                   {statusLabel(d.status)}
                 </Badge>,
-                <span key="date">{d.submitted_at.slice(0, 10)}</span>,
+                <span key="date">{formatDate(d.submitted_at)}</span>,
                 <SLACountdown key="sla" submittedAt={d.submitted_at} status={d.status} now={now} />,
-                // Disputes are managed inline on BillingDetail — navigate there.
-                <ViewLink key="view" onClick={() => navigate(`/billing/${d.billing_id}`)} />,
+                // Nigeria staff and admins manage a dispute inline on its invoice; China staff cannot open invoices.
+                <ViewLink key="view" onClick={() => navigate(isChina ? `/billing/disputes/${d.id}` : `/billing/${d.billing_id}`)} />,
               ],
             }))}
             loading={loading}

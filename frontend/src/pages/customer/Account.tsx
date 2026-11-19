@@ -11,15 +11,18 @@
  * The customer's own record is resolved via GET /v1/customers, which the
  * backend scopes to [own record] for the customer role.
  */
-import { useEffect, useState, type JSX } from 'react'
+import { useQueryClient } from '@tanstack/react-query'
+import { useState, type JSX } from 'react'
 import { ApiError } from '../../api/client'
 import { customersApi, type Customer } from '../../api/tenantManagement'
 import { useSession } from '../../auth/useSession'
+import { OWN_CUSTOMER_KEY, useOwnCustomer } from '../../hooks/useCustomers'
 import { Avatar, Banner, Button, Card, Field, Icon, PhoneField, ToggleSwitch } from '../../design/components'
 import { PageHeader } from '../../shell/PageHeader'
 import { SectionHead } from '../../shell/SectionHead'
 import { Tabs } from '../../shell/Tabs'
 import styles from './customer.module.css'
+import { todayIso, formatDate } from '../../lib/format'
 
 type TabKey = 'Profile' | 'Notifications' | 'Privacy'
 
@@ -27,18 +30,18 @@ const CHANNELS = [
   {
     key: 'sms',
     label: 'SMS',
-    sub: 'Important transactional alerts — payment due, status changes, claims',
+    sub: 'Text messages, for optional announcements and offers',
   },
   {
     key: 'whatsapp',
     label: 'WhatsApp',
-    sub: 'Richer formatting with carton details · most reliable',
+    sub: 'Richer formatting · most reliable, for optional announcements and offers',
     recommended: true,
   },
   {
     key: 'email',
     label: 'Email',
-    sub: 'Receipts, invoices, monthly statements',
+    sub: 'For optional announcements and offers',
   },
 ] as const
 
@@ -147,7 +150,13 @@ function NotificationsTab({ customer, onSaved }: { customer: Customer; onSaved: 
     setError(null)
     setSaved(false)
     try {
-      const updated = await customersApi.update(customer.id, { notification_consent: consent, locale })
+      // Send only what changed. Saving notification_consent is what records that the customer made a
+      // choice (shared/notification_consent.py), so a customer who only switches language must not be
+      // recorded as having chosen the channel list they never touched, empty or not.
+      const body: { notification_consent?: string[]; locale?: 'en' | 'zh' } = {}
+      if (consentDirty) body.notification_consent = consent
+      if (locale !== (customer.locale ?? 'en')) body.locale = locale
+      const updated = await customersApi.update(customer.id, body)
       onSaved(updated)
       setSaved(true)
     } catch (err) {
@@ -159,7 +168,10 @@ function NotificationsTab({ customer, onSaved }: { customer: Customer; onSaved: 
 
   return (
     <Card padding={28}>
-      <SectionHead title="How would you like updates?" sub="Choose which channels we use to keep you informed" />
+      <SectionHead
+        title="How would you like updates?"
+        sub="Choose the channels for optional messages such as announcements and offers. Updates about your own shipments, invoices and claims, and emails about your account, are always sent."
+      />
       <div style={{ height: 12 }} />
 
       {error && <div style={{ marginBottom: 16 }}><Banner variant="error" title="Save failed">{error}</Banner></div>}
@@ -204,7 +216,7 @@ function NotificationsTab({ customer, onSaved }: { customer: Customer; onSaved: 
               </div>
               <div style={{ fontSize: 12, color: 'var(--color-ink-3)', marginTop: 3 }}>{sub}</div>
             </div>
-            <ToggleSwitch checked={enabled} onChange={() => toggle(key)} />
+            <ToggleSwitch checked={enabled} onChange={() => toggle(key)} label={label} />
           </div>
         )
       })}
@@ -276,7 +288,7 @@ function PrivacyTab({ customer }: { customer: Customer }): JSX.Element {
       const url = URL.createObjectURL(blob)
       const a = document.createElement('a')
       a.href = url
-      a.download = `my-data-export-${new Date().toISOString().slice(0, 10)}.json`
+      a.download = `my-data-export-${todayIso()}.json`
       a.click()
       URL.revokeObjectURL(url)
     } catch (err) {
@@ -311,7 +323,7 @@ function PrivacyTab({ customer }: { customer: Customer }): JSX.Element {
 
       {customer.consent_given_at && (
         <Banner variant="success" title="Consent on file">
-          You consented to data processing on <strong>{customer.consent_given_at.slice(0, 10)}</strong>. Lawful
+          You consented to data processing on <strong>{formatDate(customer.consent_given_at)}</strong>. Lawful
           basis: contract performance (NDPR Art. 2.2). You can withdraw at any time below.
         </Banner>
       )}
@@ -390,23 +402,15 @@ function PrivacyTab({ customer }: { customer: Customer }): JSX.Element {
 export function Account(): JSX.Element {
   const { session } = useSession()
   const [tab, setTab] = useState<TabKey>('Profile')
-  const [customer, setCustomer] = useState<Customer | null>(null)
-  const [loading, setLoading] = useState(true)
-  const [error, setError] = useState<string | null>(null)
-
-  useEffect(() => {
-    void (async () => {
-      try {
-        // Customer role gets exactly [own record] from the list endpoint.
-        const result = await customersApi.list()
-        setCustomer(result.data[0] ?? null)
-      } catch (err) {
-        setError(err instanceof ApiError ? err.message : 'Could not load your account.')
-      } finally {
-        setLoading(false)
-      }
-    })()
-  }, [])
+  const qc = useQueryClient()
+  const own = useOwnCustomer()
+  const customer = own.data ?? null
+  const loading = own.isLoading
+  const error = own.error ? (own.error instanceof ApiError ? own.error.message : 'Could not load your account.') : null
+  // A tab that saves hands back the updated record: show it at once (the write also invalidates the query).
+  const setCustomer = (updated: Customer): void => {
+    qc.setQueryData(OWN_CUSTOMER_KEY, updated)
+  }
 
   if (!session) return <></>
 

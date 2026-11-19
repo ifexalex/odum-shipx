@@ -9,17 +9,19 @@
  * Provider "Test" is a config-shape validation on the server (required fields
  * present) — live deliverability is proven by the notification pipeline.
  */
-import { useEffect, useState, type JSX } from 'react'
+import { useQueryClient } from '@tanstack/react-query'
+import { useState, type JSX } from 'react'
 import { useLocation, useNavigate } from 'react-router-dom'
 import { ApiError } from '../../api/client'
+import { platformSettingsKeys } from '../../api/keys'
 import {
   platformSettingsApi,
-  type GatewayConfigs,
   type GatewayKind,
   type PlanLimits,
-  type PlatformSettingsMap,
   type SubscriptionTier,
 } from '../../api/tenantManagement'
+import { usePlatformGateways, usePlatformGeneralSettings, usePlatformPlans } from '../../hooks/usePlatformSettings'
+import { useSeedOnce } from '../../hooks/useSeedOnce'
 import { Banner, Button, Card, Field, Mono, ToggleSwitch } from '../../design/components'
 import { PageHeader } from '../../shell/PageHeader'
 import { SectionHead } from '../../shell/SectionHead'
@@ -30,31 +32,28 @@ import { Tabs } from '../../shell/Tabs'
 // ---------------------------------------------------------------------------
 
 function GeneralSettings(): JSX.Element {
-  const [settings, setSettings] = useState<PlatformSettingsMap | null>(null)
+  const qc = useQueryClient()
+  const query = usePlatformGeneralSettings()
+  const settings = query.isFetchedAfterMount ? (query.data ?? null) : null
   const [emailFrom, setEmailFrom] = useState('')
   const [maxTenants, setMaxTenants] = useState('')
   const [maintenance, setMaintenance] = useState(false)
   const [saving, setSaving] = useState(false)
-  const [error, setError] = useState<string | null>(null)
+  const [saveError, setSaveError] = useState<string | null>(null)
   const [saved, setSaved] = useState(false)
 
-  useEffect(() => {
-    void (async () => {
-      try {
-        const s = await platformSettingsApi.get()
-        setSettings(s)
-        setEmailFrom(String(s.platform_email_from ?? ''))
-        setMaxTenants(String(s.max_tenants ?? ''))
-        setMaintenance(Boolean(s.maintenance_mode))
-      } catch (err) {
-        setError(err instanceof ApiError ? err.message : 'Could not load settings.')
-      }
-    })()
-  }, [])
+  useSeedOnce(query, (s) => {
+    setEmailFrom(String(s.platform_email_from ?? ''))
+    setMaxTenants(String(s.max_tenants ?? ''))
+    setMaintenance(Boolean(s.maintenance_mode))
+  })
+
+  const loadError = query.error ? (query.error instanceof ApiError ? query.error.message : 'Could not load settings.') : null
+  const error = saveError ?? loadError
 
   async function handleSave(): Promise<void> {
     setSaving(true)
-    setError(null)
+    setSaveError(null)
     setSaved(false)
     try {
       const updated = await platformSettingsApi.update({
@@ -62,10 +61,10 @@ function GeneralSettings(): JSX.Element {
         max_tenants: Number(maxTenants) || 0,
         maintenance_mode: maintenance,
       })
-      setSettings(updated)
+      qc.setQueryData(platformSettingsKeys.general(), updated)
       setSaved(true)
     } catch (err) {
-      setError(err instanceof ApiError ? err.message : 'Could not save settings.')
+      setSaveError(err instanceof ApiError ? err.message : 'Could not save settings.')
     } finally {
       setSaving(false)
     }
@@ -229,18 +228,14 @@ function ProviderCard({ spec, initial }: { spec: ProviderSpec; initial: Record<s
 }
 
 function ProviderSettings(): JSX.Element {
-  const [configs, setConfigs] = useState<GatewayConfigs | null>(null)
-  const [error, setError] = useState<string | null>(null)
-
-  useEffect(() => {
-    void (async () => {
-      try {
-        setConfigs(await platformSettingsApi.getGateways())
-      } catch (err) {
-        setError(err instanceof ApiError ? err.message : 'Could not load provider settings.')
-      }
-    })()
-  }, [])
+  const query = usePlatformGateways()
+  // Each card copies its provider's config into its own form when it mounts, so wait for the fresh read.
+  const configs = query.isFetchedAfterMount ? (query.data ?? null) : null
+  const error = query.error
+    ? query.error instanceof ApiError
+      ? query.error.message
+      : 'Could not load provider settings.'
+    : null
 
   if (error) return <Banner variant="error" title="Error">{error}</Banner>
   if (!configs) return <p style={{ color: 'var(--color-ink-3)' }}>Loading providers…</p>
@@ -303,18 +298,14 @@ function PlanEditor({ tier, limits, onSaved }: { tier: SubscriptionTier; limits:
 }
 
 function PlanSettings(): JSX.Element {
-  const [plans, setPlans] = useState<Record<SubscriptionTier, PlanLimits> | null>(null)
-  const [error, setError] = useState<string | null>(null)
-
-  useEffect(() => {
-    void (async () => {
-      try {
-        setPlans((await platformSettingsApi.getPlans()).plans)
-      } catch (err) {
-        setError(err instanceof ApiError ? err.message : 'Could not load plans.')
-      }
-    })()
-  }, [])
+  const qc = useQueryClient()
+  const query = usePlatformPlans()
+  const plans = query.isFetchedAfterMount ? (query.data?.plans ?? null) : null
+  const error = query.error ? (query.error instanceof ApiError ? query.error.message : 'Could not load plans.') : null
+  // A save returns every tier's limits: show them at once (the write also invalidates the query).
+  const setPlans = (updated: Record<SubscriptionTier, PlanLimits>): void => {
+    qc.setQueryData(platformSettingsKeys.plans(), { plans: updated })
+  }
 
   if (error) return <Banner variant="error" title="Error">{error}</Banner>
   if (!plans) return <p style={{ color: 'var(--color-ink-3)' }}>Loading plans…</p>

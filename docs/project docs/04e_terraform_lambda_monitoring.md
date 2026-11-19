@@ -23,6 +23,7 @@ Create Terraform modules for all Lambda functions, their IAM roles/policies, Lam
 | `logistics-payment-release-{env}` | python3.12 | 256MB | 30s | API Gateway | Yes |
 | `logistics-refunds-{env}` | python3.12 | 256MB | 30s | API Gateway | Yes |
 | `logistics-excel-{env}` | python3.12 | 256MB | 60s | API Gateway | Yes |
+| `logistics-search-{env}` | python3.12 | 256MB | 15s | API Gateway (`GET /v1/search`, added 2026-11-16) | Yes |
 | `logistics-notif-api-{env}` | python3.12 | 256MB | 30s | API Gateway (`/v1/notifications/*`) — `notification.handler.http_handler` (added 2026-09-23) | Yes |
 | `logistics-notif-webhook-{env}` | python3.12 | 256MB | 15s | API Gateway (public `/v1/webhooks/whatsapp`) — `notification.handler.webhook_handler` (added 2026-09-23) | Yes |
 | `logistics-metering-{env}` | python3.12 | 256MB | 60s | SQS (metering queue) **and** API Gateway (`GET /v1/platform/tenants/{id}/usage`) — dual-mode handler | Yes |
@@ -65,7 +66,7 @@ Create Terraform modules for all Lambda functions, their IAM roles/policies, Lam
   - handler = "{service}.handler.lambda_handler"
   - layers = [shared_layer_arn]
   - VPC config (where applicable): subnet_ids, security_group_ids
-  - Environment variables: DATABASE_HOST (RDS Proxy endpoint), DATABASE_NAME, DATABASE_USER, DB_SECRET_ARN, S3_BUCKET, EVENT_BUS_NAME, COGNITO_USER_POOL_ID, ENVIRONMENT
+  - Environment variables: DATABASE_HOST (RDS Proxy endpoint), DATABASE_NAME, DATABASE_USER, DB_SECRET_ARN, S3_BUCKET_NAME (~~S3_BUCKET~~: renamed 2026-11-17, nothing read it, so every Lambda used the default bucket name `logistics-assets`, which is not this deployment's bucket), EVENT_BUS_NAME, COGNITO_USER_POOL_ID, ENVIRONMENT
   - reserved_concurrent_executions = null (no limit for v1)
 
 - `aws_lambda_layer_version` — "logistics-shared-{env}" (the shared/ code as a layer)
@@ -190,3 +191,73 @@ because migration 060 is what sets the app role's password.
 `APP_DB_SECRET_ARN` is an ARN, not a value: `services/migrate/handler.py`
 fetches it at runtime via `_inject_app_db_password()`, so the plaintext never
 enters a Lambda environment variable or Terraform state.
+
+## Notification channel env + plan-time guard (2026-11-13)
+
+An audit comparing the env vars the notification code reads against the ones
+Terraform sets found that **neither cloud wired SMS or WhatsApp at all**. An
+earlier pass appeared to show AWS as wired; those matches came from
+`infrastructure/aws/modules/lambda/.builds/package/`, an **untracked local build
+artifact** that is a copy of the source tree — not Terraform. Worth remembering
+when grepping `infrastructure/aws/`: exclude `.builds/`.
+
+Added to `modules/lambda` `common_env_vars` (so every Lambda has them, since
+`shared/notifications.py` enqueues from any service):
+
+- `APP_BASE_URL`, `CUSTOMER_PORTAL_BASE_URL` — link bases. Previously **neither**
+  was set on AWS, so activation links were empty and invite links relative.
+- `SES_FROM_ADDRESS` — verified sender.
+- `AFRICASTALKING_API_KEY` (sensitive), `AFRICASTALKING_USERNAME`,
+  `AFRICASTALKING_SENDER_ID`.
+- `META_WHATSAPP_ACCESS_TOKEN` (sensitive), `META_WHATSAPP_PHONE_ID`,
+  `META_WHATSAPP_TEMPLATE_LANG`, `WHATSAPP_VERIFY_TOKEN` (sensitive).
+- `NOTIFICATION_ALLOWLIST` — fails closed outside production.
+
+All default to `""`, which the code treats as unconfigured (see below).
+
+### `terraform_data.notification_config_guard`
+
+Modelled on the existing `auth_config_guard`, and for the same reason: these
+values cannot be derived from Terraform, which is exactly why they are easy to
+forget, and the failure mode is invisible — every send path logs
+"not configured" and returns, so the deploy is healthy, the API returns 200, and
+customers are simply never told anything. The guard fails the **plan** instead.
+
+- A link base is required in **every** environment (a relative link is worse
+  than no message — it burns the token and reports success).
+- In **prod** only: `ses_from_address`, the Africa's Talking key + username, and
+  all three WhatsApp values. Non-prod may run with channels off.
+
+The Azure twin lives in `infrastructure/azure/main.tf`; it omits the email check
+because `module.acs` always derives a sender from its managed domain, so
+`SES_FROM_ADDRESS` is never the application's placeholder there.
+
+### Note on empty strings
+
+Terraform sets `""` for an unconfigured variable, and `""` is "set" as far as
+`os.environ.get(name, default)` is concerned — so a `get()` default is bypassed
+and the provider receives a blank value. `send_email` and `send_sms` therefore
+use `os.environ.get(...).strip() or DEFAULT`. A unit test caught this after the
+guard was first written against the `get()` default and silently did nothing.
+
+## Environment added by audit Phase 2 (2026-11-15)
+
+- `ALLOWED_ORIGINS` (every Lambda, from `var.cors_allow_origins`, comma-separated): the origins the auth Lambda accepts on its
+  cookie endpoints (`shared/origin_guard.py`). It also trusts the origins of `APP_BASE_URL` and
+  `CUSTOMER_PORTAL_BASE_URL`. With none of the three set it refuses every request, so do not drop them.
+- `RATE_LIMIT_ENABLED=false` on the **non-VPC** `auth` Lambda only: it cannot reach ElastiCache, and a connection
+  attempt would add a timeout to every request. Its public routes are throttled per route at API Gateway.
+- Azure container app (2026-11-17): `AZURE_FRONT_DOOR_ID` is set by Terraform from the Front Door profile's
+  `resource_guid`, and the app takes the client address from Front Door's own stamp on requests carrying it, so
+  there is no hop count to measure. `REQUIRE_FRONT_DOOR` (variable `require_front_door`, default false) refuses
+  requests that go around Front Door. `TRUSTED_PROXY_HOPS` (default 0) is now only a fallback for a deployment
+  with no Front Door. The Front Door profile resource moved from `module.frontend` to the root (with a `moved`
+  block) to break the dependency cycle this would otherwise create. No new Azure resource, no added cost.
+
+## `PICKUP_CODE_PEPPER` (2026-11-16)
+
+`random_password.pickup_code_pepper` (48 characters, in the lambda module; the same in `infrastructure/azure/modules/container_app`, as a Container App secret) is injected into every function as `PICKUP_CODE_PEPPER`. It keys the hash of release-note pickup codes (ADR-008). It lives in Terraform state like the other generated secrets. Do not rotate it casually: every outstanding code stops verifying.
+
+**Offboarding export (audit BE-10, 2026-11-17).** New scheduled Lambda `offboarding_export` (`scheduled.offboarding_export.lambda_handler`, 1024 MB, 900 s, VPC). IAM: `aws_iam_role_policy.offboarding_export` (`s3:PutObject` on `{bucket}/*/exports/offboarding/*` only; `kms:Decrypt` on the field-encryption key, no `GenerateDataKey`) and `tenant_management_export_download` (`s3:GetObject` on the same path, so tenant_management can sign the download link). Azure: Container App Job `offboarding_export` (`30 * * * *`, the shared job image and identity; `job_timeout_seconds` 600). `terraform validate` passes for both roots; not applied.
+
+**Failure alarms (audit OPS-04, 2026-11-17).** `modules/monitoring` adds `aws_cloudwatch_metric_alarm.failures` (for_each: `invoice-generation` and `audit-write`, any failure in 5 min; `scheduled-job-step`, any in 1 hour) and `notification_failure_rate` (metric math `IF(attempts >= 5, 100 * failures / attempts, 0) > 20` over 15 min). They read the `ShipX` namespace that `shared/observability.py` writes as Embedded Metric Format log lines (dimensions `Environment`, `Operation`), so no IAM change and no API call. New variables: `metric_namespace` (default `ShipX`), `notification_failure_rate_percent` (20), `notification_rate_min_attempts` (5). Cost: about USD 0.30 a month per counted operation (six) plus USD 0.10 per alarm (four). Azure: `modules/monitoring` adds an action group and four scheduled-query alert rules over `ContainerAppConsoleLogs_CL`, every 15 minutes, created only when `alerts_email` is set (root variable, default empty). `terraform validate` passes for both roots; not applied, and no alarm has been seen to fire (runbook: "Failure alarms" has the check). The Azure KQL has not been run against real logs.

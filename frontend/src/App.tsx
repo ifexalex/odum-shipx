@@ -9,6 +9,7 @@ import { useSession } from './auth/useSession'
 import { ComponentCatalog } from './design/ComponentCatalog'
 import { DesignPreview } from './design/DesignPreview'
 import { queryClient } from './lib/queryClient'
+import { ErrorBoundary } from './shell/ErrorBoundary'
 import { AppRoutes } from './shell/routes'
 
 function AuthPreview(): JSX.Element {
@@ -78,12 +79,16 @@ function App(): JSX.Element {
     )
   }
 
+  // Outermost, so even a failure in the providers or the router shows a way back instead of a white screen.
+  // Each layout has its own boundary around its routed content, which keeps the menu usable.
   return (
-    <BrowserRouter>
-      <AppProviders>
-        <AppRoutes />
-      </AppProviders>
-    </BrowserRouter>
+    <ErrorBoundary variant="app">
+      <BrowserRouter>
+        <AppProviders>
+          <AppRoutes />
+        </AppProviders>
+      </BrowserRouter>
+    </ErrorBoundary>
   )
 }
 

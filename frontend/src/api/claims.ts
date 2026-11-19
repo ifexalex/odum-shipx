@@ -46,6 +46,36 @@ export type SeizedItemStatus =
 // Response shapes
 // ---------------------------------------------------------------------------
 
+/** One evidence file recorded against a claim. `download_url` is a short-lived link, or null if one could not be made. */
+export interface ClaimEvidenceFile {
+  id: string
+  file_name: string
+  file_type: string
+  file_size_bytes: number | null
+  uploaded_at: string
+  download_url: string | null
+}
+
+/** What was decided. Who approved it, and at what level, are never part of this (the customer reads it too). */
+export interface ClaimResolution {
+  resolution_type: ResolutionType
+  amount_ngn: string | null
+  discount_percentage: string | null
+  resolved_at: string
+  /**
+   * The explanation staff gave. Staff always get it. A customer gets it only when the decision went against them
+   * (`no_action`): then they are told why. For a decision in their favour it is null.
+   */
+  reason?: string | null
+}
+
+/** The refund a resolution created. */
+export interface ClaimRefund {
+  id: string
+  status: string
+  amount_ngn: string | null
+}
+
 export interface Claim {
   id: string
   reference: string | null
@@ -59,6 +89,10 @@ export interface Claim {
   cartons_affected: string[]
   upload_urls: null
   created_at: string
+  /** On `GET /v1/claims/{id}` only (not on the list). */
+  evidence?: ClaimEvidenceFile[]
+  resolution?: ClaimResolution | null
+  refund?: ClaimRefund | null
 }
 
 export interface MissingItem {
@@ -222,10 +256,10 @@ export interface PresignedUploadResponse {
 }
 
 export const presignedUploadApi = {
-  getUrl: (claimId: string, filename: string, contentType: string) =>
+  getUrl: (claimId: string, filename: string, contentType: string, sizeBytes: number) =>
     apiRequest<PresignedUploadResponse>({
       method: 'POST',
       path: '/v1/uploads/presigned-url',
-      body: { claim_id: claimId, filename, content_type: contentType },
+      body: { claim_id: claimId, filename, content_type: contentType, size_bytes: sizeBytes },
     }),
 }

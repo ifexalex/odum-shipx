@@ -28,7 +28,7 @@ export type RefundStatus =
   | 'processed'
   | 'applied_as_credit'
 
-export type RefundType = 'overpayment' | 'cbm_correction' | 'damage_or_loss'
+export type RefundType = 'overpayment' | 'cbm_correction' | 'damage_or_loss' | 'missing_item' | 'seized_item'
 
 export type CustomerChoice = 'immediate_refund' | 'credit_next_shipment'
 
@@ -57,6 +57,8 @@ export interface Refund {
   refund_type: RefundType
   amount_requested_ngn: string
   amount_approved_ngn: string | null
+  /** For a refund taken as credit: how much of it invoices have used so far. The rest is still the customer's. */
+  credit_applied_ngn?: string
   customer_choice: CustomerChoice | null
   customer_id: string | null
   billing_id: string | null

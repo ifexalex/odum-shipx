@@ -105,6 +105,8 @@ class RecordPickupRequest(BaseModel):
     accounting_officer_id: str | None = None
     warehouse_attendant_id: str | None = None
     notes: str | None = None
+    # The code the customer was sent (audit UX-09). Required, and checked, only for a release note that carries one.
+    pickup_code: str | None = Field(default=None, max_length=20)
 
     @model_validator(mode="after")
     def _require_collector_name_for_non_delegate(self) -> "RecordPickupRequest":

@@ -6,6 +6,7 @@ import { excelApi, type ImportResult, type ManifestImportResult } from '../../ap
 import { containersApi, type Container } from '../../api/tracking'
 import { UploadFailedError, uploadImportFile } from '../../api/uploads'
 import { ImportPackingLists } from './ImportPackingLists'
+import { withQuery } from '../../test/queryWrapper'
 
 vi.mock('../../api/tracking', () => ({
   containersApi: { list: vi.fn() },
@@ -44,11 +45,11 @@ const containerStub: Container = {
 }
 
 function renderPage() {
-  return render(
+  return render(withQuery(
     <MemoryRouter>
       <ImportPackingLists />
     </MemoryRouter>,
-  )
+  ))
 }
 
 /** Value of the stat tile carrying `label`, read via its sibling node. */

@@ -1,6 +1,6 @@
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { useState, type JSX } from 'react'
-import { useLocation, useNavigate, useParams } from 'react-router-dom'
+import { useLocation, useParams } from 'react-router-dom'
 import { ApiError } from '../../api/client'
 import { refundsApi, type AccountsReviewInput, type ApproveRefundInput, type Refund, type RefundStatus } from '../../api/refunds'
 import { refundKeys } from '../../api/keys'
@@ -26,10 +26,13 @@ import {
   Kvp,
   Mono,
   StatCard,
+  DialogGuard,
   type BadgeVariant,
 } from '../../design/components'
 import { SectionHead } from '../../shell/SectionHead'
 import styles from './RefundDetail.module.css'
+import { formatDate, formatNgn } from '../../lib/format'
+import { useBreadcrumbLabel } from '../../shell/breadcrumbs'
 
 // ---------------------------------------------------------------------------
 // Status helpers
@@ -94,7 +97,7 @@ function RefundStepper({ refund }: { refund: Refund }): JSX.Element {
   const isTerminal = isTerminalRefundStatus(refund.status) && !isRejected
 
   return (
-    <div className={styles.stepperWrap}>
+    <div className={styles.stepperWrap} data-scroll-strip="">
       <div className={styles.stepper}>
         {steps.map((step, i) => {
           const done = isTerminal ? i <= activeIndex : i < activeIndex
@@ -157,6 +160,7 @@ function AccountsReviewModal({ refund, onCancel, onSuccess }: AccountsReviewModa
 
   return (
     <div className={styles.modalOverlay} onClick={onCancel}>
+      <DialogGuard onClose={onCancel} />
       <div className={styles.modalPanel} onClick={(e) => e.stopPropagation()} role="dialog" aria-modal="true">
         <h3 className={styles.modalTitle}>Accounts review</h3>
         {error && <div className={styles.modalBanner}><Banner variant="error" title="Action failed">{error}</Banner></div>}
@@ -238,7 +242,7 @@ function ApproveModal({ refund, role, onCancel, onSuccess }: ApproveModalProps):
       onSuccess(updated)
     } catch (err) {
       if (err instanceof ApiError && err.status === 403) {
-        setError(`Approval limit exceeded. Escalate to tenant admin — staff limit is ₦${staffLimitNgn.toLocaleString()} ($${staffLimitUsd} USD).`)
+        setError(`Approval limit exceeded. Escalate to tenant admin — staff limit is ${formatNgn(staffLimitNgn)} ($${staffLimitUsd} USD).`)
       } else {
         setError(err instanceof ApiError ? err.message : 'Could not approve refund.')
       }
@@ -253,6 +257,7 @@ function ApproveModal({ refund, role, onCancel, onSuccess }: ApproveModalProps):
 
   return (
     <div className={styles.modalOverlay} onClick={onCancel}>
+      <DialogGuard onClose={onCancel} />
       <div className={styles.modalPanel} onClick={(e) => e.stopPropagation()} role="dialog" aria-modal="true">
         <h3 className={styles.modalTitle}>Approve refund</h3>
         {error && <div className={styles.modalBanner}><Banner variant="error" title="Action failed">{error}</Banner></div>}
@@ -268,7 +273,7 @@ function ApproveModal({ refund, role, onCancel, onSuccess }: ApproveModalProps):
         {isPartial && (
           <div className={styles.modalBanner}>
             <Banner variant="info">
-              Partial approval: ₦{enteredAmount.toLocaleString()} of ₦{requestedAmount.toLocaleString()} requested.
+              Partial approval: {formatNgn(enteredAmount)} of {formatNgn(requestedAmount)} requested.
             </Banner>
           </div>
         )}
@@ -299,11 +304,11 @@ function ApproveModal({ refund, role, onCancel, onSuccess }: ApproveModalProps):
             <div className={styles.thresholdMeterLabel}>
               {exceedsThreshold ? (
                 <span style={{ color: 'var(--color-error)', fontWeight: 600 }}>
-                  ₦{enteredAmount.toLocaleString()} exceeds staff limit of ₦{staffLimitNgn.toLocaleString()} (${staffLimitUsd} USD)
+                  {formatNgn(enteredAmount)} exceeds staff limit of {formatNgn(staffLimitNgn)} (${staffLimitUsd} USD)
                 </span>
               ) : (
                 <span style={{ color: 'var(--color-text-muted)' }}>
-                  ₦{enteredAmount.toLocaleString()} of ₦{staffLimitNgn.toLocaleString()} staff limit (${staffLimitUsd} USD)
+                  {formatNgn(enteredAmount)} of {formatNgn(staffLimitNgn)} staff limit (${staffLimitUsd} USD)
                 </span>
               )}
             </div>
@@ -361,6 +366,7 @@ function RejectModal({ onCancel, onSuccess, refundId }: RejectModalProps): JSX.E
 
   return (
     <div className={styles.modalOverlay} onClick={onCancel}>
+      <DialogGuard onClose={onCancel} />
       <div className={styles.modalPanel} onClick={(e) => e.stopPropagation()} role="dialog" aria-modal="true">
         <h3 className={styles.modalTitle}>Reject refund request</h3>
         {error && <div className={styles.modalBanner}><Banner variant="error" title="Action failed">{error}</Banner></div>}
@@ -391,7 +397,6 @@ function RejectModal({ onCancel, onSuccess, refundId }: RejectModalProps): JSX.E
 export function RefundDetail(): JSX.Element {
   const { id } = useParams<{ id: string }>()
   const location = useLocation()
-  const navigate = useNavigate()
   const { session } = useSession()
   const role = session?.role ?? 'nigeria_office_staff'
 
@@ -404,6 +409,8 @@ export function RefundDetail(): JSX.Element {
     ...(stateRefund ? { initialData: stateRefund } : {}),
     staleTime: STALE_30S,
   })
+  // Names this record in the breadcrumb once loaded (FD-46).
+  useBreadcrumbLabel(refund ? refundTypeLabel(refund.refund_type) : null)
   const applyUpdated = (updated: Refund): void => {
     qc.setQueryData(refundKeys.detail(id ?? ''), updated)
   }
@@ -448,7 +455,7 @@ export function RefundDetail(): JSX.Element {
               <Badge variant={STATUS_VARIANT[refund.status]}>{statusLabel(refund.status)}</Badge>
             </div>
             <div className={styles.heroMeta}>
-              <span>Requested {refund.created_at.slice(0, 10)}</span>
+              <span>Requested {formatDate(refund.created_at)}</span>
               {refund.approval_level && (
                 <span> · {approvalLevelLabel(refund.approval_level)}</span>
               )}
@@ -505,12 +512,19 @@ export function RefundDetail(): JSX.Element {
 
       {/* Stats */}
       <div className={styles.statsRow}>
-        <StatCard label="Requested" value={`₦${Number(refund.amount_requested_ngn).toLocaleString()}`} />
+        <StatCard label="Requested" value={formatNgn(refund.amount_requested_ngn)} />
         <StatCard
           label="Approved"
-          value={refund.amount_approved_ngn ? `₦${Number(refund.amount_approved_ngn).toLocaleString()}` : '—'}
+          value={refund.amount_approved_ngn ? formatNgn(refund.amount_approved_ngn) : '—'}
         />
         <StatCard label="Payout method" value={customerChoiceLabel(refund.customer_choice)} />
+        {/* A credit is spent only as far as each invoice needs it, so part of one can still be unused. */}
+        {refund.customer_choice === 'credit_next_shipment' && refund.amount_approved_ngn && (
+          <StatCard
+            label="Credit used"
+            value={`${formatNgn(refund.credit_applied_ngn ?? '0')} of ${formatNgn(refund.amount_approved_ngn)}`}
+          />
+        )}
       </div>
 
       {/* Details card */}
@@ -526,12 +540,6 @@ export function RefundDetail(): JSX.Element {
           )}
           <Kvp label="Customer preference" value={customerChoiceLabel(refund.customer_choice)} divider={false} />
         </Card>
-      </div>
-
-      <div className={styles.backLink}>
-        <Button variant="ghost" icon="arrowleft" onClick={() => navigate('/refunds')}>
-          Back to refunds
-        </Button>
       </div>
 
       {/* Modals */}

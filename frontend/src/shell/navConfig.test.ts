@@ -63,3 +63,31 @@ describe('roleForPath', () => {
     expect(roleForPath('/warehouse', ['customer'], 'customer')).toBeNull()
   })
 })
+
+describe('Nigeria office menu', () => {
+  const labels = navConfig.nigeria_office_staff.flatMap((g) => g.items.map((i) => i.label))
+
+  it('offers Containers, Packing Lists and Manifests', () => {
+    expect(labels).toEqual(expect.arrayContaining(['Containers', 'Packing Lists', 'Manifests']))
+  })
+
+  it('lists each entry once', () => {
+    expect(new Set(labels).size).toBe(labels.length)
+  })
+
+  it('only links to pages the route table lets Nigeria staff open', () => {
+    for (const group of navConfig.nigeria_office_staff) {
+      for (const item of group.items) {
+        expect(roleForPath(item.path, ['nigeria_office_staff'], 'nigeria_office_staff')).toBe('nigeria_office_staff')
+      }
+    }
+  })
+})
+
+describe('China office menu (UX-08)', () => {
+  it('lists Missing items under Coordination, beside Manifests and CBM disputes', () => {
+    const coordination = navConfig.china_office_staff.find((group) => group.group === 'Coordination')
+    expect(coordination?.items.map((item) => item.label)).toEqual(['Manifests', 'CBM disputes', 'Missing items'])
+    expect(coordination?.items.at(-1)?.path).toBe('/claims/missing-items')
+  })
+})

@@ -141,6 +141,7 @@ def get_refund(tenant_id: str, refund_id: str, ctx: Any) -> dict[str, Any]:
         customer = repo.get_customer_by_user_id(tenant_id, ctx.user_id)
         if not customer or str(customer["id"]) != str(refund["customer_id"]):
             raise InsufficientPermissionsError("Customers may only view their own refund requests")
+        return _customer_view(_fmt_refund(refund), wrote_the_reason=str(refund.get("requested_by") or "") == ctx.user_id)
 
     result = _fmt_refund(refund)
     try:
@@ -213,7 +214,14 @@ def accounts_review(
             "rejection_reason": req.debt_check_notes,
         }
 
-    updated = repo.update_refund_status(tenant_id, refund_id, new_status, extra=extra)
+    updated = repo.update_refund_status(tenant_id, refund_id, new_status, extra=extra, expected_status="pending_review")
+    if not updated:
+        raise IllegalTransitionError(
+            entity="refund_request",
+            current_state="changed by another request",
+            requested_state=new_status,
+            allowed=["pending_review"],
+        )
 
     log_audit(
         tenant_id=tenant_id,
@@ -303,29 +311,12 @@ def approve_refund(
     customer_choice = refund.get("customer_choice") or ""
     final_status = "applied_as_credit" if customer_choice == "credit_next_shipment" else "processed"
 
-    # On immediate refund: adjust billing total if billing_id exists
-    if final_status == "processed" and refund.get("billing_id"):
-        billing_id = str(refund["billing_id"])
-        updated_billing = repo.reduce_billing_total(tenant_id, billing_id, amount_approved)
-        if updated_billing is None:
-            raise RuntimeError("reduce_billing_total returned None unexpectedly")
-        # Create new overpayment refund if reduction caused new negative balance
-        new_balance = Decimal(str(updated_billing.get("balance_ngn", "0")))
-        if new_balance < Decimal("-0.01"):
-            overpayment = abs(new_balance)
-            repo.create_overpayment_refund_request(
-                tenant_id,
-                {
-                    "tenant_id": tenant_id,
-                    "customer_id": str(refund["customer_id"]),
-                    "billing_id": billing_id,
-                    "amount_ngn": overpayment,
-                    "reason": f"Overpayment after refund adjustment on refund {refund_id}",
-                },
-            )
-
+    # The approval and, for an immediate refund, the reduction of what the invoice
+    # owes (plus its status and any new overpayment refund) commit together, and only
+    # if the refund is still pending_approval — two approvals cannot both reduce it.
+    billing_id = str(refund["billing_id"]) if final_status == "processed" and refund.get("billing_id") else None
     now = datetime.now(UTC)
-    updated = repo.update_refund_status(
+    updated = repo.approve_refund_and_adjust_billing(
         tenant_id,
         refund_id,
         final_status,
@@ -335,7 +326,16 @@ def approve_refund(
             "approved_by": actor_id,
             "approved_at": now,
         },
+        billing_id=billing_id,
+        reduction_ngn=amount_approved if billing_id else None,
     )
+    if not updated:
+        raise IllegalTransitionError(
+            entity="refund_request",
+            current_state="changed by another request",
+            requested_state="approved",
+            allowed=["pending_approval"],
+        )
 
     log_audit(
         tenant_id=tenant_id,
@@ -398,7 +398,15 @@ def reject_refund(
             "rejected_by": actor_id,
             "rejection_reason": rejection_reason,
         },
+        expected_status=prev_status,
     )
+    if not updated:
+        raise IllegalTransitionError(
+            entity="refund_request",
+            current_state="changed by another request",
+            requested_state="rejected",
+            allowed=list(_REJECTABLE_STATES),
+        )
 
     log_audit(
         tenant_id=tenant_id,
@@ -418,6 +426,29 @@ def reject_refund(
 # Internal formatter
 # ---------------------------------------------------------------------------
 
+# Staff's working record of a refund: who signed it off and what the debt check found. Not the customer's to read.
+_STAFF_ONLY_FIELDS = ("approval_level", "debt_check_passed", "debt_check_notes")
+
+
+def _customer_view(refund: dict[str, Any], *, wrote_the_reason: bool) -> dict[str, Any]:
+    """Returns a refund as its customer may read it.
+
+    A refund raised from a claim decision carries what staff typed when deciding. That decision was in the
+    customer's favour, so its reason stays internal (owner decision, 2026-11-17): the customer gets a reason back only
+    when it is the one they wrote. A rejection is against them, so `rejection_reason` is always theirs to read.
+
+    Args:
+        refund: The formatted refund.
+        wrote_the_reason: Whether this customer raised the request themselves.
+
+    Returns:
+        The refund without staff's working record, and with no approval threshold.
+    """
+    view = {**refund, **dict.fromkeys(_STAFF_ONLY_FIELDS), "threshold": None}
+    if not wrote_the_reason:
+        view["reason"] = None
+    return view
+
 
 def _fmt_refund(row: dict[str, Any]) -> dict[str, Any]:
     amount_approved = None
@@ -430,6 +461,8 @@ def _fmt_refund(row: dict[str, Any]) -> dict[str, Any]:
         "refund_type": row.get("refund_type") or "",
         "amount_requested_ngn": Decimal(str(row["amount_ngn"])),
         "amount_approved_ngn": amount_approved,
+        # For a refund taken as credit: how much of it invoices have used so far (the rest is still the customer's).
+        "credit_applied_ngn": Decimal(str(row.get("credit_applied_ngn") or 0)),
         "customer_choice": row.get("customer_choice"),
         "customer_id": str(row["customer_id"]) if row.get("customer_id") else None,
         "billing_id": str(row["billing_id"]) if row.get("billing_id") else None,

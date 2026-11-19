@@ -1,6 +1,7 @@
 import type { JSX } from 'react'
 import { Button } from './Button'
 import styles from './ListFooter.module.css'
+import { formatCount } from '../../lib/format'
 
 export interface ListFooterProps {
   /** Rows currently rendered (e.g. items.length). */
@@ -42,18 +43,18 @@ export function ListFooter({
   const count =
     total != null && total > 0 ? (
       <span className={styles.count}>
-        Showing <strong>{shown.toLocaleString()}</strong> of{' '}
-        <strong>{total.toLocaleString()}</strong> {noun}
+        Showing <strong>{formatCount(shown)}</strong> of{' '}
+        <strong>{formatCount(total)}</strong> {noun}
       </span>
     ) : (
       <span className={styles.count}>
-        <strong>{shown.toLocaleString()}</strong> {noun}
+        <strong>{formatCount(shown)}</strong> {noun}
       </span>
     )
 
   const capped = hasMore && shown >= cap
   const remaining = total != null && total > shown ? total - shown : null
-  const loadLabel = remaining != null ? `Load more (${remaining.toLocaleString()} remaining)` : 'Load more'
+  const loadLabel = remaining != null ? `Load more (${formatCount(remaining)} remaining)` : 'Load more'
 
   return (
     <div className={styles.footer}>
@@ -65,7 +66,7 @@ export function ListFooter({
       )}
       {capped && (
         <span className={styles.refine}>
-          Showing the first {shown.toLocaleString()} — refine your search or filters to narrow the rest.
+          Showing the first {formatCount(shown)} — refine your search or filters to narrow the rest.
         </span>
       )}
     </div>

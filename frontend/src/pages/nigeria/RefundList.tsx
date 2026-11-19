@@ -6,6 +6,7 @@ import { useRefundList } from '../../hooks/useRefunds'
 import { Badge, Banner, Card, Chip, Mono, Table, ViewLink, ListFooter, type BadgeVariant } from '../../design/components'
 import { useTopBarSlot } from '../../shell/TopBarContext'
 import styles from './RefundList.module.css'
+import { formatDate, formatNgn } from '../../lib/format'
 
 const STATUS_FILTERS: RefundStatus[] = [
   'pending_review',
@@ -81,16 +82,16 @@ export function RefundList(): JSX.Element {
             rows={refunds.map((r) => ({
               cells: [
                 <span key="type">{refundTypeLabel(r.refund_type)}</span>,
-                <Mono key="req">₦{Number(r.amount_requested_ngn).toLocaleString()}</Mono>,
+                <Mono key="req">{formatNgn(r.amount_requested_ngn)}</Mono>,
                 <Mono key="approved">
-                  {r.amount_approved_ngn ? `₦${Number(r.amount_approved_ngn).toLocaleString()}` : '—'}
+                  {r.amount_approved_ngn ? formatNgn(r.amount_approved_ngn) : '—'}
                 </Mono>,
                 <span key="choice">
                   {r.customer_choice === 'immediate_refund' ? 'Bank refund' :
                    r.customer_choice === 'credit_next_shipment' ? 'Credit' : '—'}
                 </span>,
                 <Badge key="status" variant={STATUS_VARIANT[r.status]}>{statusLabel(r.status)}</Badge>,
-                <span key="date">{r.created_at.slice(0, 10)}</span>,
+                <span key="date">{formatDate(r.created_at)}</span>,
                 <ViewLink key="view" onClick={() => navigate(`/refunds/${r.id}`, { state: { refund: r } })} />,
               ],
             }))}

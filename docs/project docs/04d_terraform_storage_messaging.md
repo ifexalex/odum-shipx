@@ -62,23 +62,14 @@ Create Terraform modules for file storage (S3), message queues (SQS), event bus 
 
 | Rule | Pattern | Target |
 |---|---|---|
-| `route-sms` | source: "logistics.*", detail-type patterns for SMS events | SQS: sms queue |
-| `route-whatsapp` | source: "logistics.*", detail-type patterns for WhatsApp events | SQS: whatsapp queue |
-| `route-email` | source: "logistics.*", detail-type patterns for email events | SQS: email queue |
-| `route-metering` | source: "logistics.*", detail-type: "UsageRecorded" | SQS: metering queue |
+| ~~`route-sms`~~ | removed 2026-11-17 (audit BE-09) | ~~SQS: sms queue~~ |
+| ~~`route-whatsapp`~~ | removed 2026-11-17 (audit BE-09) | ~~SQS: whatsapp queue~~ |
+| ~~`route-email`~~ | removed 2026-11-17 (audit BE-09) | ~~SQS: email queue~~ |
+| `route-metering` | source prefix `{project_name}.` (every event) | SQS: metering queue |
 
-**Event types and their notification routing:**
-```
-PackingListApproved    → email
-ShipmentStatusUpdated  → sms, whatsapp
-PaymentDue             → sms, whatsapp
-CBMDisputeResolved     → whatsapp
-ReleaseNoteGenerated   → sms, whatsapp, email
-DamageClaimFiled       → email
-TenantOnboarded        → email
-TenantSuspended        → email
-All events             → metering queue
-```
+**Notification routing (corrected 2026-11-17).** ~~Event types fanned out to the sms/whatsapp/email queues by detail-type.~~ **No EventBridge rule targets a notification queue.** The sms, whatsapp and email consumers read only the message `shared/notifications.py::enqueue_notification(s)` writes (`tenant_id`, `event_type`, `recipient`, `template_data`, …; see `15_api_notifications.md`). A raw EventBridge envelope has no `recipient`, so every event the three rules delivered was skipped with "missing recipient … skipping": wasted invocations and log noise, and a duplicate message the day a consumer is taught to read them. Each service enqueues its notifications directly. The bus feeds the metering queue only.
+
+**Least privilege.** `local.eventbridge_queue_keys = ["metering"]` drives both the delivery role's `sqs:SendMessage` (was every queue) and the queue resource policies (were on all four queues). Applying this deletes the three rules, their targets and the EventBridge statements on the sms/whatsapp/email queue policies; the Lambdas send to those queues through their own IAM roles, which are unchanged. Contract test: `TestNoEventGoesToANotificationQueue` (`tests/unit/test_infrastructure_contracts.py`). `terraform validate` passes; not planned or applied against AWS (no credentials here).
 
 - **Scheduled Rules** (for cron jobs — Task 16):
   - `storage-fee-accrual`: rate(1 day) at 00:00 UTC
@@ -107,7 +98,9 @@ All events             → metering queue
 - [x] S3 bucket: encrypted, versioned, no public access, CORS for presigned uploads
 - [x] 4 SQS queues + 4 DLQs created with proper redrive policies
 - [x] EventBridge custom bus created
-- [x] Routing rules correctly map events to appropriate SQS queues
+- [x] ~~Routing rules correctly map events to appropriate SQS queues~~ Only the metering queue is an EventBridge target; services enqueue notifications directly (audit BE-09, 2026-11-17)
 - [x] Scheduled rules created for all 7 cron jobs
 - [ ] All outputs exported for Lambda module consumption — `queue_urls` is now wired through to the Lambda module (2026-09-23) as the `SQS_SMS_QUEUE_URL` / `SQS_WHATSAPP_QUEUE_URL` / `SQS_EMAIL_QUEUE_URL` env vars; it was exported but never consumed, so every enqueue was silently dropped in AWS (see `04e_terraform_lambda_monitoring.md`)
 - [ ] `terraform plan` succeeds — **`terraform validate` passes (audited 2026-11-11); a real `plan` needs AWS credentials this environment does not have, so the stronger claim is unverified.** Same caveat as `04c_terraform_api_gateway.md`.
+
+**Scheduled rule added 2026-11-17 (audit BE-10):** `offboarding-export = rate(1 hour)` → the `offboarding-export` Lambda (`04e`). Azure: Container App Job `offboarding_export`, cron `30 * * * *`.

@@ -1,7 +1,10 @@
-import { useEffect, useState, type JSX } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useQueryClient } from '@tanstack/react-query'
+import { useState, type JSX } from 'react'
 import { ApiError } from '../../api/client'
+import { configKeys } from '../../api/keys'
 import { configApi, type CbmRateConfig, type CbmRateCurrency, type CbmRateMode } from '../../api/tenantManagement'
+import { useCbmRate } from '../../hooks/useConfig'
+import { useSeedOnce } from '../../hooks/useSeedOnce'
 import { Banner, Button, Card, Kvp, Mono } from '../../design/components'
 import { RateHistoryTable } from './DollarRateConfig'
 import { PageHeader } from '../../shell/PageHeader'
@@ -21,41 +24,36 @@ function formatRateLine(config: CbmRateConfig): string {
 }
 
 export function CbmRateConfig(): JSX.Element {
-  const navigate = useNavigate()
-  const [current, setCurrent] = useState<CbmRateConfig | null>(null)
+  const qc = useQueryClient()
+  const rate = useCbmRate({ freshOnOpen: true })
+  const current: CbmRateConfig | null = rate.isFetchedAfterMount ? (rate.data ?? null) : null
+  const loading = !rate.isFetchedAfterMount
   const [currency, setCurrency] = useState<CbmRateCurrency>('usd')
   const [rateMode, setRateMode] = useState<CbmRateMode>('flat')
   const [cartonRate, setCartonRate] = useState('')
   const [bagRate, setBagRate] = useState('')
   const [baleRate, setBaleRate] = useState('')
   const [minCbm, setMinCbm] = useState('')
-  const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
-  const [error, setError] = useState<string | null>(null)
+  const [saveError, setSaveError] = useState<string | null>(null)
   const [success, setSuccess] = useState(false)
 
-  useEffect(() => {
-    void (async () => {
-      try {
-        const data = await configApi.getCbmRate()
-        setCurrent(data)
-        setCurrency(data.currency)
-        setRateMode(data.rate_mode)
-        setCartonRate(String(data.carton_rate))
-        setBagRate(String(data.bag_rate))
-        setBaleRate(String(data.bale_rate))
-        setMinCbm(String(data.min_cbm_per_item))
-      } catch (err) {
-        setError(err instanceof ApiError ? err.message : 'Could not load CBM rate.')
-      } finally {
-        setLoading(false)
-      }
-    })()
-  }, [])
+  function fillForm(data: CbmRateConfig): void {
+    setCurrency(data.currency)
+    setRateMode(data.rate_mode)
+    setCartonRate(String(data.carton_rate))
+    setBagRate(String(data.bag_rate))
+    setBaleRate(String(data.bale_rate))
+    setMinCbm(String(data.min_cbm_per_item))
+  }
+  useSeedOnce(rate, fillForm)
+
+  const loadError = rate.error ? (rate.error instanceof ApiError ? rate.error.message : 'Could not load CBM rate.') : null
+  const error = saveError ?? loadError
 
   async function handleSave(): Promise<void> {
     setSaving(true)
-    setError(null)
+    setSaveError(null)
     setSuccess(false)
     try {
       const updated = await configApi.updateCbmRate({
@@ -69,16 +67,12 @@ export function CbmRateConfig(): JSX.Element {
         bale_rate: rateMode === 'flat' ? Number(cartonRate) : Number(baleRate),
         min_cbm_per_item: Number(minCbm) > 0 ? Number(minCbm) : undefined,
       })
-      setCurrent(updated)
-      setCurrency(updated.currency)
-      setRateMode(updated.rate_mode)
-      setCartonRate(String(updated.carton_rate))
-      setBagRate(String(updated.bag_rate))
-      setBaleRate(String(updated.bale_rate))
-      setMinCbm(String(updated.min_cbm_per_item))
+      // Show the saved value at once; the write also invalidates every config query (api/cacheInvalidation.ts).
+      qc.setQueryData(configKeys.cbm(), updated)
+      fillForm(updated)
       setSuccess(true)
     } catch (err) {
-      setError(err instanceof ApiError ? err.message : 'Could not update CBM rate.')
+      setSaveError(err instanceof ApiError ? err.message : 'Could not update CBM rate.')
     } finally {
       setSaving(false)
     }
@@ -197,7 +191,6 @@ export function CbmRateConfig(): JSX.Element {
             </div>
 
             <div className={styles.formActions}>
-              <Button variant="ghost" onClick={() => navigate('/admin/config')}>Back</Button>
               <Button variant="primary" loading={saving} disabled={!canSubmit} onClick={() => void handleSave()}>
                 Update rate
               </Button>

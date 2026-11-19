@@ -9,13 +9,16 @@ from datetime import date, datetime, timedelta
 from io import BytesIO
 from typing import Any
 
+from shared import uploads
 from shared.audit import log_audit
 from shared.exceptions import BusinessRuleViolationError, ResourceNotFoundError
 from shared.phone import dial_code_for_country, normalize_phone
 from shared.providers import get_storage_provider
 
 from . import repository as repo
+from ._tables import Column, build_csv, build_xlsx, csv_safe
 from .export_billing import generate_billing_xlsx
+from .export_lists import BILLING_LIST_COLUMNS, CONTAINER_LIST_COLUMNS
 from .export_manifest import generate_manifest_xlsx
 from .export_packing_list import generate_packing_list_xlsx
 from .export_packing_list_pdf import generate_packing_list_pdf
@@ -72,7 +75,8 @@ def _rows_to_csv(rows: list[dict[str, Any]], columns: list[str]) -> BytesIO:
     buf = io.StringIO()
     writer = csv.DictWriter(buf, fieldnames=columns, extrasaction="ignore", lineterminator="\r\n")
     writer.writeheader()
-    writer.writerows(rows)
+    # Typed-in text (names, descriptions) must not run as a formula when the file is opened in a spreadsheet.
+    writer.writerows({column: csv_safe(row.get(column)) for column in columns} for row in rows)
     return BytesIO(buf.getvalue().encode("utf-8-sig"))  # utf-8-sig for Excel compatibility
 
 
@@ -239,10 +243,9 @@ def export_manifest(tenant_id: str, manifest_id: str, fmt: str = "xlsx") -> dict
 # either figure. Widened to full parity with generate_billing_xlsx()'s
 # _HEADERS (the admin xlsx export already had the complete breakdown; only
 # the csv/pdf path — the one the customer's "Download invoice" button
-# actually uses — was stripped down). `adjustments_ngn` is deliberately
-# excluded: it is never populated anywhere in this codebase (CBM dispute
-# resolution rewrites subtotal_ngn/total_ngn directly instead), so including
-# it would only ever show a misleading, permanently-zero column.
+# actually uses — was stripped down). `credits_applied_ngn` (migration 066)
+# is the credit the customer held that this invoice absorbed: without it the
+# parts above the total do not add up to the total.
 _BILLING_COLUMNS = [
     "customer_name",
     "container_number",
@@ -253,6 +256,7 @@ _BILLING_COLUMNS = [
     "misc_fees_itemized",
     "storage_fees_ngn",
     "carryover_ngn",
+    "credits_applied_ngn",
     "total_ngn",
     "amount_paid_ngn",
     "balance_ngn",
@@ -340,6 +344,115 @@ def export_container_billing(tenant_id: str, container_id: str, fmt: str = "xlsx
         buf = generate_billing_xlsx(billing_rows)
 
     return _upload_and_presign(tenant_id, f"{stem}.{fmt}", buf, fmt=fmt)
+
+
+# ---------------------------------------------------------------------------
+# List exports (the invoice list and the container list)
+# ---------------------------------------------------------------------------
+
+# More than this and the export is refused rather than silently cut short: a partial file that looks complete is
+# worse than none. Comfortably inside the Lambda's memory and time at the columns exported.
+EXPORT_ROW_LIMIT = 10_000
+
+
+def _list_export(
+    tenant_id: str,
+    *,
+    entity_type: str,
+    noun: str,
+    sheet_title: str,
+    columns: list[Column],
+    rows: list[dict[str, Any]],
+    truncated: bool,
+    fmt: str,
+    filters: dict[str, Any],
+    actor_id: str | None,
+    actor_role: str,
+) -> dict[str, Any]:
+    """Build, store and presign a list export, and record who exported it."""
+    if truncated:
+        raise BusinessRuleViolationError(
+            f"More than {EXPORT_ROW_LIMIT:,} {noun} match. Narrow the filters (status, dates or search) and export again.",
+            rule_id="EXPORT_TOO_LARGE",
+        )
+
+    buf = build_csv(columns, rows) if fmt == "csv" else build_xlsx(sheet_title, columns, rows)
+    stem = f"{_safe_name(repo.get_tenant_display_name(tenant_id))}_{noun}_{date.today().strftime('%Y%m%d')}"
+    result = _upload_and_presign(tenant_id, f"{stem}.{fmt}", buf, fmt=fmt)
+    result["row_count"] = len(rows)
+
+    log_audit(
+        tenant_id=tenant_id,
+        entity_type=entity_type,
+        entity_id=str(uuid.uuid4()),  # a list export has no single entity; this identifies the export itself
+        action="EXPORT",
+        actor_id=actor_id,
+        actor_role=actor_role,
+        after_state={
+            "scope": "list",
+            "format": fmt,
+            "row_count": len(rows),
+            "filename": result["filename"],
+            # The search text can be a customer's name or phone number: record that one was used, not what it said.
+            "filters": {key: value for key, value in filters.items() if key != "q"},
+            "text_search": "q" in filters,
+        },
+    )
+    return result
+
+
+def export_billing_list(
+    tenant_id: str,
+    filters: dict[str, Any],
+    *,
+    fmt: str,
+    sort_field: str,
+    sort_direction: str,
+    actor_id: str | None,
+    actor_role: str,
+) -> dict[str, Any]:
+    """Every invoice that matches the invoice list's filters, as xlsx or csv, in the list's sort order."""
+    rows, truncated = repo.list_billing_for_export(tenant_id, filters, EXPORT_ROW_LIMIT, sort_field, sort_direction)
+    return _list_export(
+        tenant_id,
+        entity_type="billing",
+        noun="invoices",
+        sheet_title="Invoices",
+        columns=BILLING_LIST_COLUMNS,
+        rows=rows,
+        truncated=truncated,
+        fmt=fmt,
+        filters=filters,
+        actor_id=actor_id,
+        actor_role=actor_role,
+    )
+
+
+def export_container_list(
+    tenant_id: str,
+    filters: dict[str, Any],
+    *,
+    fmt: str,
+    sort_field: str,
+    sort_direction: str,
+    actor_id: str | None,
+    actor_role: str,
+) -> dict[str, Any]:
+    """Every container that matches the container list's filters, as xlsx or csv, in the list's sort order."""
+    rows, truncated = repo.list_containers_for_export(tenant_id, filters, EXPORT_ROW_LIMIT, sort_field, sort_direction)
+    return _list_export(
+        tenant_id,
+        entity_type="container",
+        noun="containers",
+        sheet_title="Containers",
+        columns=CONTAINER_LIST_COLUMNS,
+        rows=rows,
+        truncated=truncated,
+        fmt=fmt,
+        filters=filters,
+        actor_id=actor_id,
+        actor_role=actor_role,
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -503,12 +616,8 @@ def export_receipt_pdf(
 # Packing list import — presigned upload
 # ---------------------------------------------------------------------------
 
-_IMPORT_URL_EXPIRY = 900  # 15 minutes
-_IMPORT_MAX_FILE_SIZE = 10 * 1024 * 1024  # 10 MB
-_IMPORT_ALLOWED_CONTENT_TYPES = frozenset({"application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"})
 
-
-def generate_import_presigned_url(tenant_id: str, content_type: str) -> dict[str, Any]:
+def generate_import_presigned_url(tenant_id: str, content_type: str, size_bytes: object = None) -> dict[str, Any]:
     """Generate an S3 presigned POST URL for uploading a packing-list import .xlsx.
 
     Scoped to {tenant_id}/imports/{uuid}.xlsx so the resulting file_key always
@@ -517,20 +626,10 @@ def generate_import_presigned_url(tenant_id: str, content_type: str) -> dict[str
     POST /v1/packing-lists/import and never listed or referenced again, so
     there's nothing to persist (unlike claim evidence or container documents).
     """
-    if content_type not in _IMPORT_ALLOWED_CONTENT_TYPES:
-        raise BusinessRuleViolationError(
-            f"content_type '{content_type}' not allowed. Allowed: {', '.join(sorted(_IMPORT_ALLOWED_CONTENT_TYPES))}",
-            rule_id="INVALID_CONTENT_TYPE",
-        )
-
-    file_key = f"{tenant_id}/imports/{uuid.uuid4()}.xlsx"
-
-    ticket = get_storage_provider().presigned_upload(file_key, content_type=content_type, expires_in=_IMPORT_URL_EXPIRY)
-
-    return {
-        **ticket.as_response(),
-        "file_key": file_key,
-    }
+    upload = uploads.presign_upload(
+        uploads.SPREADSHEET_IMPORT, tenant_id, ("imports",), f"{uuid.uuid4()}.xlsx", content_type, size_bytes
+    )
+    return {**upload.as_response(), "file_key": upload.key}
 
 
 # ---------------------------------------------------------------------------
@@ -553,6 +652,7 @@ def import_packing_list(
         raise ValidationError(f"file_key must be under the tenant prefix '{expected_prefix}'")
 
     # 2. Download file from object storage
+    uploads.check_stored_size(uploads.SPREADSHEET_IMPORT, file_key)  # an Azure upload is not bound to its declared size
     file_buffer = BytesIO(get_storage_provider().get_object(file_key))
 
     # 2. Pre-fetch customers (name → id mapping)
@@ -730,6 +830,7 @@ def process_manifest_import(
 
         raise ValidationError(f"file_key must be under the tenant prefix '{expected_prefix}'")
 
+    uploads.check_stored_size(uploads.SPREADSHEET_IMPORT, file_key)  # an Azure upload is not bound to its declared size
     file_buffer = BytesIO(get_storage_provider().get_object(file_key))
 
     container_metadata, rows, errors, total_rows = parse_manifest_xlsx(file_buffer)

@@ -72,7 +72,10 @@ def decrypt_field(token: str | None) -> str | None:
         from cryptography.fernet import Fernet
 
         raw = base64.b64decode(token.encode("ascii"))
-        sep_idx = raw.index(_SEP)
+        # The LAST separator: the wrapped key is binary (KMS / Key Vault output) and can contain b"||" itself, about
+        # once in 300 keys; the Fernet ciphertext is base64url and never contains "|". Splitting at the first one made
+        # those values undecryptable; splitting at the last reads them, including any written before this fix.
+        sep_idx = raw.rindex(_SEP)
         enc_key = raw[:sep_idx]
         ciphertext = raw[sep_idx + len(_SEP) :]
         plain_key = provider.decrypt_data_key(enc_key)

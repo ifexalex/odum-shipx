@@ -11,6 +11,7 @@ import { configKeys } from '../api/keys'
 import { STALE_30S } from '../lib/queryClient'
 import { Badge, type BadgeVariant } from '../design/components'
 import styles from './ActivityFeed.module.css'
+import { formatDate } from '../lib/format'
 
 const ACTION_VARIANT: Record<TenantActivityEntry['action'], BadgeVariant> = {
   CREATE: 'success',
@@ -31,7 +32,7 @@ function relativeTime(iso: string): string {
   if (hrs < 24) return `${hrs}h ago`
   const days = Math.round(hrs / 24)
   if (days < 30) return `${days}d ago`
-  return iso.slice(0, 10)
+  return formatDate(iso)
 }
 
 export function ActivityFeed({

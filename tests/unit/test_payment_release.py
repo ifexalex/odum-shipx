@@ -7,6 +7,7 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
+from services.payment_release.repository import RecordedPayment
 from shared.exceptions import (
     BusinessRuleViolationError,
     ResourceNotFoundError,
@@ -43,6 +44,19 @@ def _billing(**kw) -> dict:
     return base
 
 
+def _recorded(billing: dict, overpayment: str = "0") -> RecordedPayment:
+    """What `repo.record_payment` returns: the stored payment and the updated invoice.
+
+    The status on `billing` is the one the database computed. The SQL that
+    computes it is covered by the real-database tests in tests/db/.
+    """
+    return RecordedPayment(
+        payment={"id": "pay-001", "created_at": None, "receipt_number": "ACME-RCT-20261114-0001"},
+        billing=billing,
+        overpayment_ngn=Decimal(overpayment),
+    )
+
+
 # ---------------------------------------------------------------------------
 # Payment status transitions
 # ---------------------------------------------------------------------------
@@ -66,9 +80,7 @@ class TestConfirmPayment:
         with (
             patch.object(service.repo, "get_billing_by_id", return_value=billing),
             patch.object(service.repo, "get_tenant_short", return_value="ACME"),
-            patch.object(service.repo, "get_next_receipt_number", return_value=1),
-            patch.object(service.repo, "create_payment_record", return_value={"id": "pay-001", "created_at": None}),
-            patch.object(service.repo, "update_billing_payment", return_value=updated),
+            patch.object(service.repo, "record_payment", return_value=_recorded(updated)),
             patch("services.payment_release.service.publish_event"),
         ):
             result = service.confirm_payment(
@@ -85,9 +97,7 @@ class TestConfirmPayment:
         with (
             patch.object(service.repo, "get_billing_by_id", return_value=billing),
             patch.object(service.repo, "get_tenant_short", return_value="ACME"),
-            patch.object(service.repo, "get_next_receipt_number", return_value=1),
-            patch.object(service.repo, "create_payment_record", return_value={"id": "pay-001", "created_at": None}),
-            patch.object(service.repo, "update_billing_payment", return_value=updated),
+            patch.object(service.repo, "record_payment", return_value=_recorded(updated)),
             patch("services.payment_release.service.publish_event"),
         ):
             result = service.confirm_payment(
@@ -109,16 +119,16 @@ class TestConfirmPayment:
         with (
             patch.object(service.repo, "get_billing_by_id", return_value=billing),
             patch.object(service.repo, "get_tenant_short", return_value="ACME"),
-            patch.object(service.repo, "get_next_receipt_number", return_value=1),
-            patch.object(service.repo, "create_payment_record", return_value={"id": "pay-001", "created_at": None}),
-            patch.object(service.repo, "update_billing_payment", return_value=updated),
-            patch.object(service.repo, "create_overpayment_refund_request") as mock_refund,
+            patch.object(service.repo, "record_payment", return_value=_recorded(updated)) as mock_record,
             patch("services.payment_release.service.publish_event"),
         ):
-            service.confirm_payment(
+            result = service.confirm_payment(
                 TENANT_ID, "billing-001", self._req("105000"), actor_id="u", ctx=_ctx(UserRole.NIGERIA_OFFICE_STAFF)
             )
-            mock_refund.assert_called_once()
+            # The refund request is created inside record_payment's transaction
+            # (covered against a real database); the service just reports the status.
+            assert result["new_payment_status"] == "overpaid"
+            assert mock_record.call_args.args[2] == Decimal("105000")
 
     def test_payment_within_tolerance_treated_as_paid(self):
         """Payment of 99999.99 on a 100000 bill is within ±0.01 tolerance → paid."""
@@ -130,9 +140,7 @@ class TestConfirmPayment:
         with (
             patch.object(service.repo, "get_billing_by_id", return_value=billing),
             patch.object(service.repo, "get_tenant_short", return_value="ACME"),
-            patch.object(service.repo, "get_next_receipt_number", return_value=1),
-            patch.object(service.repo, "create_payment_record", return_value={"id": "pay-001", "created_at": None}),
-            patch.object(service.repo, "update_billing_payment", return_value=updated),
+            patch.object(service.repo, "record_payment", return_value=_recorded(updated)),
             patch("services.payment_release.service.publish_event"),
         ):
             result = service.confirm_payment(
@@ -552,14 +560,12 @@ class TestWebhookPayment:
         from services.payment_release import service
 
         billing = self._billing(status="unpaid", balance_ngn=Decimal("100000"))
-        payment_row = {"id": "pay-webhook-001", "created_at": None}
         updated = {**billing, "amount_paid_ngn": Decimal("100000"), "balance_ngn": Decimal("0"), "status": "paid"}
 
         with (
             patch.object(service.repo, "get_billing_by_id", return_value=billing),
             patch("services.payment_release.webhook.validate_billing_for_webhook"),
-            patch.object(service.repo, "create_webhook_payment_record", return_value=payment_row),
-            patch.object(service.repo, "update_billing_payment", return_value=updated),
+            patch.object(service.repo, "record_payment", return_value=_recorded(updated)) as mock_record,
             patch("services.payment_release.service.publish_event") as mock_publish,
         ):
             result = service.process_webhook_payment(
@@ -573,10 +579,11 @@ class TestWebhookPayment:
 
         assert result is not None
         assert result["new_payment_status"] == "paid"
+        assert mock_record.call_args.kwargs["gateway_transaction_id"] == "gw-tx-001"
         mock_publish.assert_called_once()
 
     def test_duplicate_delivery_returns_none(self):
-        """create_webhook_payment_record returning None signals a duplicate — service returns None."""
+        """record_payment returning None signals a duplicate delivery — service returns None."""
         from services.payment_release import service
 
         billing = self._billing(status="unpaid", balance_ngn=Decimal("100000"))
@@ -584,8 +591,7 @@ class TestWebhookPayment:
         with (
             patch.object(service.repo, "get_billing_by_id", return_value=billing),
             patch("services.payment_release.webhook.validate_billing_for_webhook"),
-            patch.object(service.repo, "create_webhook_payment_record", return_value=None),
-            patch.object(service.repo, "update_billing_payment") as mock_update,
+            patch.object(service.repo, "record_payment", return_value=None),
             patch("services.payment_release.service.publish_event") as mock_publish,
         ):
             result = service.process_webhook_payment(
@@ -598,7 +604,6 @@ class TestWebhookPayment:
             )
 
         assert result is None
-        mock_update.assert_not_called()
         mock_publish.assert_not_called()
 
     def test_cancelled_billing_raises(self):
@@ -838,7 +843,13 @@ class TestConfirmOnlinePayment:
             patch.object(service.repo, "get_tenant_paystack_secret", return_value="sk_test_x"),
             patch(
                 "services.payment_release.paystack.verify_transaction",
-                return_value={"status": "success", "amount": 10000000, "id": "gw-tx-999", "reference": reference},
+                return_value={
+                    "status": "success",
+                    "amount": 10000000,
+                    "currency": "NGN",
+                    "id": "gw-tx-999",
+                    "reference": reference,
+                },
             ) as mock_verify,
             patch.object(service, "process_webhook_payment", return_value=confirm_result) as mock_confirm,
         ):
@@ -852,6 +863,34 @@ class TestConfirmOnlinePayment:
         assert kwargs["payment_method"] == "paystack"
         assert result["gateway_status"] == "success"
         assert result["new_payment_status"] == "paid"
+
+    @pytest.mark.parametrize(
+        "charge",
+        [
+            {"amount": 10000000, "currency": "USD"},
+            {"amount": 10000000},  # no currency at all
+            {"amount": 0, "currency": "NGN"},
+        ],
+    )
+    def test_a_successful_charge_that_is_not_a_positive_naira_amount_is_not_applied(self, charge):
+        """Audit BE-08: the verify path reads the amount the same way the webhook does."""
+        from services.payment_release import service
+
+        with (
+            patch.object(service.repo, "get_billing_by_id", return_value=self._billing()),
+            patch.object(service.repo, "get_customer_by_user_id", return_value={"id": "customer-001"}),
+            patch.object(service.repo, "get_tenant_paystack_secret", return_value="sk_test_x"),
+            patch(
+                "services.payment_release.paystack.verify_transaction",
+                return_value={"status": "success", "id": "gw-tx-999", **charge},
+            ),
+            patch.object(service, "process_webhook_payment") as mock_confirm,
+        ):
+            with pytest.raises(BusinessRuleViolationError) as raised:
+                service.confirm_online_payment(TENANT_ID, "billing-001", "billing-001.abc123", self._ctx())
+
+        mock_confirm.assert_not_called()
+        assert raised.value.rule_id == "BR-PAY-VERIFY-002"
 
     def test_already_reconciled_by_a_webhook_is_not_an_error(self):
         """process_webhook_payment returns None on a duplicate — the webhook
@@ -868,7 +907,7 @@ class TestConfirmOnlinePayment:
             patch.object(service.repo, "get_tenant_paystack_secret", return_value="sk_test_x"),
             patch(
                 "services.payment_release.paystack.verify_transaction",
-                return_value={"status": "success", "amount": 10000000, "id": "gw-tx-999"},
+                return_value={"status": "success", "amount": 10000000, "currency": "NGN", "id": "gw-tx-999"},
             ),
             patch.object(service, "process_webhook_payment", return_value=None),
         ):
@@ -1013,6 +1052,12 @@ def _claim(**kw) -> dict:
 
 
 class TestSubmitPaymentClaim:
+    @pytest.fixture(autouse=True)
+    def _stored_upload_within_limit(self):
+        """The stored file's size is checked where it is used (shared.uploads.check_stored_size); stub it here."""
+        with patch("shared.uploads.check_stored_size", return_value=1024):
+            yield
+
     def _req(self) -> MagicMock:
         req = MagicMock()
         req.amount_ngn = Decimal("50000.00")
@@ -1247,9 +1292,7 @@ class TestConfirmPaymentClaim:
             patch.object(service.repo, "get_payment_claim_by_id", return_value=claim),
             patch.object(service.repo, "get_billing_by_id", return_value=billing),
             patch.object(service.repo, "get_tenant_short", return_value="ACME"),
-            patch.object(service.repo, "get_next_receipt_number", return_value=1),
-            patch.object(service.repo, "create_payment_record", return_value={"id": "pay-001", "created_at": None}),
-            patch.object(service.repo, "update_billing_payment", return_value=updated_billing),
+            patch.object(service.repo, "record_payment", return_value=_recorded(updated_billing)),
             patch.object(
                 service.repo, "update_payment_claim_status", return_value={**claim, "status": "confirmed"}
             ) as mock_update,
@@ -1286,9 +1329,7 @@ class TestConfirmPaymentClaim:
             patch.object(service.repo, "get_payment_claim_by_id", return_value=claim),
             patch.object(service.repo, "get_billing_by_id", return_value=billing),
             patch.object(service.repo, "get_tenant_short", return_value="ACME"),
-            patch.object(service.repo, "get_next_receipt_number", return_value=1),
-            patch.object(service.repo, "create_payment_record", return_value={"id": "pay-001", "created_at": None}),
-            patch.object(service.repo, "update_billing_payment", return_value=updated_billing),
+            patch.object(service.repo, "record_payment", return_value=_recorded(updated_billing)),
             patch.object(service.repo, "update_payment_claim_status", return_value={**claim, "status": "confirmed"}),
             patch.object(service.repo, "get_customer_contact", return_value=contact) as mock_contact,
             patch("services.payment_release.service.publish_event"),
@@ -1327,9 +1368,7 @@ class TestConfirmPaymentClaim:
             patch.object(service.repo, "get_payment_claim_by_id", return_value=claim),
             patch.object(service.repo, "get_billing_by_id", return_value=billing),
             patch.object(service.repo, "get_tenant_short", return_value="ACME"),
-            patch.object(service.repo, "get_next_receipt_number", return_value=1),
-            patch.object(service.repo, "create_payment_record", return_value={"id": "pay-001", "created_at": None}),
-            patch.object(service.repo, "update_billing_payment", return_value=updated_billing),
+            patch.object(service.repo, "record_payment", return_value=_recorded(updated_billing)),
             patch.object(service.repo, "update_payment_claim_status", return_value={**claim, "status": "confirmed"}),
             patch.object(service.repo, "get_customer_contact", return_value=contact),
             patch("services.payment_release.service.publish_event"),
@@ -1417,9 +1456,7 @@ class TestConfirmPaymentClaim:
             patch.object(service.repo, "get_payment_claim_by_id", return_value=claim),
             patch.object(service.repo, "get_billing_by_id", return_value=billing),
             patch.object(service.repo, "get_tenant_short", return_value="ACME"),
-            patch.object(service.repo, "get_next_receipt_number", return_value=1),
-            patch.object(service.repo, "create_payment_record", return_value={"id": "pay-001", "created_at": None}),
-            patch.object(service.repo, "update_billing_payment", return_value=updated_billing),
+            patch.object(service.repo, "record_payment", return_value=_recorded(updated_billing)),
             patch.object(service.repo, "update_payment_claim_status", return_value={**claim, "status": "confirmed"}),
             patch.object(service.repo, "get_customer_contact", side_effect=RuntimeError("db down")),
             patch("services.payment_release.service.publish_event"),
@@ -2470,3 +2507,54 @@ class TestWarehouseUpdateAndDeactivate:
 
         assert mock_upd.call_args.args[2] == {"is_active": False}
         assert result["is_active"] is False
+
+
+class TestManualPaymentOnClosedInvoices:
+    """Manual payment refuses cancelled and waived invoices, like the gateway path."""
+
+    @pytest.mark.parametrize("status", ["cancelled", "waived"])
+    def test_a_payment_against_a_closed_invoice_is_refused_before_anything_is_written(self, status):
+        from services.payment_release import service
+
+        req = MagicMock()
+        req.amount_ngn = Decimal("1000")
+        with (
+            patch.object(service.repo, "get_billing_by_id", return_value=_billing(status=status)),
+            patch.object(service.repo, "record_payment") as mock_record,
+        ):
+            with pytest.raises(BusinessRuleViolationError) as exc:
+                service.confirm_payment(TENANT_ID, "billing-001", req, actor_id="u", ctx=_ctx(UserRole.NIGERIA_OFFICE_STAFF))
+
+        assert exc.value.rule_id == "BILLING_NOT_PAYABLE"
+        mock_record.assert_not_called()
+
+
+class TestCustomerReadsOnlyTheirOwnReleaseNote:
+    """UX-02: the customer portal now shows release notes, so the scoping is load-bearing."""
+
+    def _read(self, owner_customer_id: str):
+        from services.payment_release import service
+
+        with (
+            patch.object(service.repo, "get_release_note_by_id", return_value=_release_note(customer_id="customer-001")),
+            patch.object(service.repo, "get_customer_by_user_id", return_value={"id": owner_customer_id}),
+        ):
+            return service.get_release_note(TENANT_ID, "note-001", _ctx(UserRole.CUSTOMER))
+
+    def test_the_owner_reads_it(self):
+        assert self._read("customer-001")["reference_number"] == "ACME-RN-20260913-0001"
+
+    def test_another_customer_gets_404_not_403(self):
+        """A 403 would confirm that the other customer's note exists."""
+        with pytest.raises(ResourceNotFoundError):
+            self._read("customer-999")
+
+    def test_a_user_with_no_customer_record_gets_404(self):
+        from services.payment_release import service
+
+        with (
+            patch.object(service.repo, "get_release_note_by_id", return_value=_release_note()),
+            patch.object(service.repo, "get_customer_by_user_id", return_value=None),
+        ):
+            with pytest.raises(ResourceNotFoundError):
+                service.get_release_note(TENANT_ID, "note-001", _ctx(UserRole.CUSTOMER))

@@ -48,6 +48,7 @@ import {
 } from '../../design/components'
 import { useTopBarSlot } from '../../shell/TopBarContext'
 import styles from './admin.module.css'
+import { isoDateOffset, formatDateTime } from '../../lib/format'
 
 // Every entity_type actually written by shared.audit.log_audit(...) across
 // the backend, grouped into the categories a tenant admin actually thinks
@@ -150,7 +151,7 @@ export function ActivityLog(): JSX.Element {
 
   function handlePreset(days: number | null): void {
     setDaysBack(days)
-    setPresetFrom(days ? new Date(Date.now() - days * 86_400_000).toISOString().slice(0, 10) : undefined)
+    setPresetFrom(days ? isoDateOffset(-days) : undefined)
     setDateFrom('')
     setDateTo('')
   }
@@ -352,7 +353,7 @@ export function ActivityLog(): JSX.Element {
           ]}
           rows={entries.map((e) => ({
             cells: [
-              <Mono key="ts">{new Date(e.created_at).toLocaleString('en-GB', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })}</Mono>,
+              <Mono key="ts">{formatDateTime(e.created_at, { year: false })}</Mono>,
               <span key="entity" style={{ fontSize: 13, textTransform: 'capitalize' }}>{humanEntity(e.entity_type)}</span>,
               <Badge key="action" variant={actionVariant(e.action)}>{e.action.replace(/_/g, ' ')}</Badge>,
               <span key="actor" style={{ fontSize: 13, color: 'var(--color-ink-3)' }}>{e.actor_name ?? (e.actor_id ? e.actor_id.slice(0, 8) : 'System')}</span>,
@@ -387,7 +388,7 @@ export function ActivityLog(): JSX.Element {
         {expandedEntry && (
           <>
             <div style={{ fontSize: 12, color: 'var(--color-ink-3)', marginBottom: 16 }}>
-              {new Date(expandedEntry.created_at).toLocaleString('en-GB', { day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' })}
+              {formatDateTime(expandedEntry.created_at)}
               {' · by '}
               {expandedEntry.actor_name ?? (expandedEntry.actor_id ? expandedEntry.actor_id.slice(0, 8) : 'System')}
             </div>

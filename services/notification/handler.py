@@ -191,6 +191,21 @@ def _process_whatsapp(body: dict[str, Any]) -> None:
         # Meta's message id is what the delivery-status webhook matches on —
         # storing "" here meant every delivered/failed callback matched nothing.
         provider_message_id = service.send_whatsapp(phone, template_name, components, tenant_id, service.wa_language_code(locale))
+        if not provider_message_id:
+            # send_whatsapp returns "" without raising when the Meta credentials
+            # are missing or the recipient is suppressed. This used to fall
+            # straight through to log_sent + record_usage, which meant: the log
+            # said "sent" when nothing was sent, the tenant was metered for a
+            # message that never left, and — because no exception was raised —
+            # the SMS fallback below never fired, so the customer got nothing on
+            # either channel. The staff-facing invite screen said it had gone.
+            service.log_failed(tenant_id, log_id, "WhatsApp not sent (provider unconfigured or recipient suppressed)")
+            if log_id:
+                try:
+                    service.trigger_sms_fallback(tenant_id, log_id, "whatsapp_unconfigured")
+                except Exception:
+                    logger.exception("SMS fallback failed after unconfigured WhatsApp send")
+            return
         service.log_sent(tenant_id, log_id, "meta_whatsapp", provider_message_id, {})
         record_usage(tenant_id, "whatsapp_sent")
     except Exception as exc:
@@ -250,15 +265,23 @@ def _process_email(body: dict[str, Any]) -> None:
     retry_of = body.get("_retry_of_log_id")
     locale = body.get("locale", "en")
     email_overrides = (body.get("template_override") or {}).get("email") or {}
-    if email_overrides.get("subject"):
-        subject = email_overrides["subject"]
-    elif locale == "zh":
-        subject = service.EMAIL_SUBJECTS_ZH.get(event_type, service._DEFAULT_EMAIL_SUBJECT_ZH)
-    else:
-        subject = service.EMAIL_SUBJECTS.get(event_type, service._DEFAULT_EMAIL_SUBJECT)
-    body_override = email_overrides.get("body")
-    html_body = body_override or service.render_email_html(branding, event_type, to_name, template_data)
-    text_body = service.render_email_text(branding, event_type, to_name, template_data)
+    subject = service.email_subject(event_type, branding, template_data, email_overrides.get("subject"), locale)
+    # A tenant's custom body was previously used as-is, so its `{name}` and
+    # `{invite_link}` placeholders were emailed literally — the link arrived as
+    # the eight characters "{invite_link}". It now goes through the same
+    # substitution the SMS path has always used.
+    html_body = ""
+    if email_overrides.get("body"):
+        html_body = service.render_email_override(email_overrides["body"], branding, template_data)
+    if not html_body:
+        # Either no override, or one whose placeholders could not be
+        # substituted — an empty body must never be what goes out.
+        html_body = service.render_email_html(branding, event_type, to_name, template_data, locale)
+    # The text alternative is derived from the same override, so the two parts
+    # of a multipart message cannot disagree about what was sent.
+    text_body = service.render_email_text(
+        branding, event_type, to_name, template_data, locale, body_override=email_overrides.get("body")
+    )
     log_id = service.log_queued(
         tenant_id,
         "email",

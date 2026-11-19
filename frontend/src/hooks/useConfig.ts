@@ -2,11 +2,18 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { configKeys } from '../api/keys'
 import { configApi, type BrandingConfig, type UpdateCbmRateInput, type UpdateDollarRateMarkupInput } from '../api/tenantManagement'
 import { STALE_FOREVER } from '../lib/queryClient'
+import { FRESH_ON_OPEN } from './useSeedOnce'
 
-export function useDollarRate() {
+/** `freshOnOpen` is for the settings form: see FRESH_ON_OPEN. */
+interface ConfigReadOptions {
+  freshOnOpen?: boolean
+}
+
+export function useDollarRate(options: ConfigReadOptions = {}) {
   return useQuery({
     queryKey: configKeys.dollar(),
     queryFn: () => configApi.getDollarRate(),
+    ...(options.freshOnOpen ? FRESH_ON_OPEN : {}),
     // Not STALE_FOREVER like the other rate/config hooks — the effective
     // rate now tracks Bybit's live P2P market (shared/fx_rate.py, ~10 min
     // server-side cache) rather than a value an admin sets once and rarely
@@ -14,19 +21,34 @@ export function useDollarRate() {
   })
 }
 
-export function useCbmRate() {
+export function useCbmRate(options: ConfigReadOptions = {}) {
   return useQuery({
     queryKey: configKeys.cbm(),
     queryFn: () => configApi.getCbmRate(),
     staleTime: STALE_FOREVER,
+    ...(options.freshOnOpen ? FRESH_ON_OPEN : {}),
   })
 }
 
-export function useWebhookConfig() {
+export function useWebhookConfig(options: ConfigReadOptions = {}) {
   return useQuery({
     queryKey: configKeys.webhook(),
     queryFn: () => configApi.getConfig(),
     staleTime: STALE_FOREVER,
+    ...(options.freshOnOpen ? FRESH_ON_OPEN : {}),
+  })
+}
+
+/** The tenant's charge types (active and retired). Any charge-type write invalidates it. */
+export function useChargeTypes() {
+  return useQuery({ queryKey: configKeys.chargeTypes(), queryFn: () => configApi.listChargeTypes() })
+}
+
+/** Every change to a rate, newest first, for the history table and trend chart. Non-fatal: the table degrades to empty. */
+export function useRateHistory(rateType: 'dollar_rate' | 'cbm_rate') {
+  return useQuery({
+    queryKey: configKeys.rateHistory(rateType),
+    queryFn: () => configApi.rateHistory(rateType),
   })
 }
 
@@ -82,6 +104,19 @@ export function useBranding(enabled = true) {
     enabled,
   })
   return { ...query, branding: query.data?.branding_config ?? null }
+}
+
+/**
+ * The whole tenant config (GET /v1/tenant/config), for the settings forms that edit one part of it. Shares
+ * `configKeys.tenantConfig()` with `useBranding` and `useBankTransferConfig`, so two panels on one page make one request.
+ */
+export function useTenantConfig(options: ConfigReadOptions = {}) {
+  return useQuery({
+    queryKey: configKeys.tenantConfig(),
+    queryFn: () => configApi.getConfig(),
+    staleTime: STALE_FOREVER,
+    ...(options.freshOnOpen ? FRESH_ON_OPEN : {}),
+  })
 }
 
 /**

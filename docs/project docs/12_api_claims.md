@@ -118,7 +118,7 @@ filed → under_inspection → inspection_complete → pending_resolution → re
 
 ### Resolve Claim (PATCH /resolve)
 1. Validate approval authority (approval_level values from migration 007):
-   - `resolution_type = 'no_action'`: any `nigeria_office_staff` (approval_level = `nigeria_staff`)
+   - `resolution_type = 'no_action'`: any `nigeria_office_staff` (approval_level = `nigeria_staff`); `reason` is required (422 if blank) because the customer is shown it
    - `refund ≤ $50`: `nigeria_office_staff` (approval_level = `nigeria_staff`)
    - `refund > $50`: `tenant_admin` (approval_level = `tenant_admin`)
    - `refund` linked to CBM/damage > $50 dispute: `head_of_finance` (approval_level = `head_of_finance`)
@@ -145,6 +145,10 @@ filed → under_inspection → inspection_complete → pending_resolution → re
 - Create `missing_item` record linked to manifest
 - `carton_tags TEXT[]` — array of carton tag identifiers (added migration 007)
 - Status: `reported → investigating → found_and_shipping / confirmed_lost → resolved`
+- `PATCH /v1/claims/missing-items/{id}` `{ status, notes?, refund_amount_ngn? }` — `status` must be one of the five values above
+  (anything else is `422`). **Compensation is owed when the item is `confirmed_lost`:** with `refund_amount_ngn` it opens a
+  `refund_request` (`refund_type = missing_item`, `pending_review`) and links it via `missing_item.refund_request_id`; without an
+  amount the loss is confirmed with no compensation. The amount is ignored for every other status.
 
 ### Seized Items (POST /claims/seized-items)
 - Create `seized_item` record linked to container
@@ -172,6 +176,8 @@ filed → under_inspection → inspection_complete → pending_resolution → re
 - [x] S3 presigned URLs scoped to tenant prefix (isolation)
 - [x] Refund request auto-created on refund resolution (linked via `damage_claim_id`)
 - [x] Missing item and seized item CRUD with `carton_tags` support
+- [x] Confirming a missing item lost with `refund_amount_ngn` opens one compensation refund, atomically and at most once per item
+- [x] `refund_amount_ngn` that is non-numeric, non-finite or not greater than 0 is `422`, never a `500` from the refund CHECK
 - [x] Events published: DamageClaimFiled, DamageClaimResolved
 - [x] Customer can only file and view own claims
 - [x] `GET /v1/claims?sort=&direction=` — `reference` or `created_at` (default), wired to ClaimList's 'Claim ID'/'Filed' `sortable: true` columns (previously dead UI — see `frontend/07_domain_modules.md`)
@@ -189,3 +195,77 @@ filed → under_inspection → inspection_complete → pending_resolution → re
 **Staff bell (2026-09-12):** a customer filing a claim (`file_claim`) now also writes a `staff_notification` row for `nigeria_office_staff`/`tenant_admin` — only when the filer is the customer, not when staff file on a customer's behalf. Full account in `15_api_notifications.md`.
 
 **Customer bell (2026-09-12):** `start_inspection`/`resolve_claim`'s customer notification now also writes an in-app row when the customer has a portal account, reusing the same `staff_notification` table as the staff bell above. Full account in `15_api_notifications.md`.
+
+## Atomic resolution and compensation (2026-11-14)
+
+`resolve` (both request styles) moves the claim to `resolved` with a guarded update (only from `under_inspection`,
+`inspection_complete`, `pending_resolution`), opens the refund request and records the resolution **in one transaction**.
+Two staff resolving the same claim at once open one refund; the loser gets `409`. A failure part-way (for example the
+resolution insert) rolls the refund back with it, where before a refund was left behind with no resolution.
+
+`PATCH /v1/claims/seized-items/{id}` with `recovery_status` `recovered`/`forfeited` and `refund_amount_ngn` records the status
+change, the refund request and the link in one transaction, and opens **no second refund** if the item already carries one.
+This used to fail outright: it created `refund_type = 'seized_item'`, which the database rejected (migration 063 now allows
+it), after the item's new status had already been saved.
+
+**Missing-item compensation (decided 2026-11-14): it triggers on `confirmed_lost`.** The branch used to test
+`status == 'compensated'`, a value `missing_item.status` (CHECK, model and UI) has never allowed, so it was unreachable through
+the API. It now fires on `confirmed_lost` with `refund_amount_ngn`, in one transaction with the status change and the link, and
+opens no second refund if the item already carries one. `PATCH` validates its input at the handler: an unknown `status` and a
+`refund_amount_ngn` that is non-numeric, non-finite or `<= 0` are `422 VALIDATION_ERROR` (the same amount check applies to
+`PATCH /v1/claims/seized-items/{id}`). The Update dialog on the Missing Items page shows an optional **Compensation (₦)** field
+only when the new status is *Confirmed lost*. Tests: `TestMissingItemCompensation` and `TestItemUpdateValidation`
+(`tests/unit/test_claims.py`), `TestClaims` (3 cases, `tests/db/test_atomic_writes.py`).
+
+**Seized-item compensation (decided 2026-11-16): it triggers on `permanently_lost`.** It used to fire on
+`recovery_status in ('recovered', 'forfeited')`: `forfeited` is not a value the CHECK allows (`seized`, `recovery_in_progress`,
+`recovered`, `permanently_lost`), and paying compensation for *recovered* goods was backwards. `PATCH /v1/claims/seized-items/{id}`
+now rejects an unknown `recovery_status` with `422` (as missing items do), and only `permanently_lost` with `refund_amount_ngn` opens
+the refund (`refund_type = seized_item`, once per item, in one transaction). The Update dialog shows an optional **Compensation (₦)**
+field for *Permanently lost*. Tests: `TestSeizedItemCompensation`, `TestItemUpdateValidation` (`tests/unit/test_claims.py`), `TestClaims`
+(`tests/db/test_atomic_writes.py`).
+
+**Storage-fee waiver (decided 2026-11-14):** a waiver covers the fees accrued so far; days that accrue afterwards are charged
+again. This is the intended behaviour, not a gap.
+
+## Implementation notes — customers can open their own claim (2026-11-16, audit UX-07)
+
+`GET /v1/claims/{id}` now returns, besides the claim fields: **`evidence`** (each file: `id`, `file_name`, `file_type`, `file_size_bytes`, `uploaded_at`, and a 5-minute presigned `download_url`, or null if one could not be made), **`resolution`** (`resolution_type`, `amount_ngn`, `discount_percentage`, `resolved_at`, or null) and **`refund`** (`id`, `status`, `amount_ngn`: the approved amount if there is one, else the requested; or null). `customer_name` and `container_number` are now filled on this read (the query joins `customer` and `container`; before, they were null here).
+
+- **A customer reads only their own claim, and another customer's is a 404**, as is one that does not exist. It was a 403 ("Customers may only view their own claims"), which confirmed the id was real. The customer's own record is found by their user id; a login with no customer record also gets 404.
+- **The outcome is deliberately the customer-safe part of the decision.** `claim_resolution.notes`, `approval_level` and `approved_by` are staff's internal record and are not selected (the query's select list is tested, and so is the response against a row that carries them). ~~Open product question for the owner: the staff "reason" typed when resolving is not shown to the customer.~~ **Decided 2026-11-17, see the next section.**
+- **Evidence links are made only for a key that is exactly `{tenant_id}/claims/{claim_id}/{one filename}`** (what an upload produces); a key that starts with that prefix and then climbs out with `..`, or has a subfolder, or no name, is skipped and logged. A failure to presign lists the file without a link rather than failing the read. `claim_evidence` has no RLS, so the claim is loaded first through the tenant-scoped query and only then its evidence.
+- **Known gap:** an evidence row is created when an upload is *started* (`POST /v1/uploads/presigned-url`), and nothing confirms the upload finished, so an abandoned upload shows as a file whose link does not open. The storage providers have no existence check yet.
+- Tests: `tests/unit/test_claims.py` (`TestGetClaimForTheCustomer`, `TestClaimReadSql`, mutation-checked), `tests/db/test_claim_read.py` (10, run 2026-11-17 and passing after two fixture fixes: approval level `tenant_admin`, not `admin`; claims need a `reference`).
+
+## Implementation notes — who is shown the reason for a decision (owner decision, 2026-11-17)
+
+**Rule:** a decision in the customer's favour (refund, compensation, discount) does not show them the reason; a decision against them (`no_action`: closed without a payout) does, because they are owed an explanation.
+
+- **Wire format.** `GET /v1/claims/{id}` → `resolution.reason` (new key). Staff always get what was typed when deciding (`claim_resolution.notes`). A customer gets it only when `resolution_type` is in `_UNFAVOURABLE_RESOLUTIONS` (`no_action`), otherwise `null`. The gate is in the service (`_fmt_outcome(row, for_customer=...)`), so it does not depend on the page. `approval_level` and `approved_by` are still never selected.
+- **Staff must say why.** `PATCH /v1/claims/{id}/resolve` with `resolution_type: "no_action"` and a blank `reason` is **422** (`ResolveClaimRequest` validator); `reason` is capped at 2,000 characters. The staff dialog says, for that outcome, that the customer will read the text.
+- **The same reason no longer leaks through the refund.** A refund raised from a claim decision stores `"Damage claim resolution — {reason}"` in `refund_request.reason`, and a customer may `GET /v1/refunds/{id}` for their own refund (the id is on their claim read). That returned the internal reason, plus `approval_level`, `debt_check_passed`, `debt_check_notes` and the staff `threshold`. A customer now gets a customer view (`services/refunds/service.py::_customer_view`): `reason` only when they raised the request themselves (`requested_by` is their user id), `rejection_reason` always (a rejection is against them), and null for staff's working record. No customer page read those fields.
+- **Not covered:** the older "new style" resolve body (`settlement_amount_usd` + `notes`) writes no `claim_resolution` row, so a claim closed that way has no outcome or reason to show. The frontend does not send it.
+- Tests: `TestGetClaimForTheCustomer`, `TestResolvingAgainstTheCustomerNeedsAReason` (`tests/unit/test_claims.py`), `TestGetRefund` (`tests/unit/test_refunds.py`, mutation-checked), frontend `MyClaimDetail.test.tsx` and `ClaimDetail.test.tsx`.
+
+## Implementation notes — the China office and missing items (2026-11-16, audit UX-08)
+
+The PRD (FR-DC-005, FR-DC-006) says a missing item is escalated to China, who record the supply and loading check; only Nigeria staff and tenant admins could read or update one. Now:
+
+| Route | nigeria_office_staff | tenant_admin | china_office_staff |
+|---|---|---|---|
+| `GET /v1/claims/missing-items`, `GET .../{id}` | yes | yes | **yes** |
+| `POST /v1/claims/missing-items` | yes | no | no |
+| `PATCH /v1/claims/missing-items/{id}` | any status; `refund_amount_ngn` on `confirmed_lost` opens the compensation refund | no | **`investigating` or `found_and_shipping`, and `notes`, only** |
+| seized items (any route) | yes | read | no, unchanged |
+
+The limit is enforced in the service (`_assert_china_may_update`), not by the route, so no other caller can bypass it: a refund amount from China is **403** (checked first, whatever the status), any status other than the two investigation ones is **403**, and updating an item already `confirmed_lost` or `resolved` is **422 `MISSING_ITEM_ALREADY_DECIDED`** (so China cannot reopen an item after compensation was opened). A refused update changes nothing and writes no audit entry; an allowed one is audited with the actor's role.
+
+**In-app notification:** logging a missing item now writes a `missing_item_logged` staff notification to `china_office_staff` ("N carton(s) reported missing. Please record the supply and loading check."), through `notify_staff`, which never raises. It names no customer and carries no description. Not an SMS, WhatsApp or email, so `notification_consent` does not apply.
+
+Tests: `tests/unit/test_claims.py` (`TestChinaOfficeAndMissingItems`, `TestChinaOfficeMissingItemRoutes`), each limit mutation-checked.
+
+## Upload size limit (2026-11-17)
+
+**2026-11-17 — 5 MB upload limit:** the presign request must carry `size_bytes` (the file's size in bytes). Missing or not a positive whole number → 422 `VALIDATION_ERROR`; over 5 MB (5,242,880 bytes) → 422 `rule_id: FILE_TOO_LARGE`. On AWS the size is signed into the URL (SigV4 `content-length`), so S3 refuses a different-sized body. Rules in `shared/uploads.py`.
+

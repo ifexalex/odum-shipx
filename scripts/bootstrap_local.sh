@@ -53,54 +53,21 @@ aws --endpoint-url="${ENDPOINT}" --region "${REGION}" \
 
 # ─── EventBridge Rules → SQS Targets ─────────────────────────────────────────
 echo ""
-echo "==> Creating EventBridge routing rules..."
+echo "==> Creating EventBridge metering rule..."
 
-SMS_QUEUE_ARN="arn:aws:sqs:${REGION}:${ACCOUNT}:logistics-sms"
-WA_QUEUE_ARN="arn:aws:sqs:${REGION}:${ACCOUNT}:logistics-whatsapp"
-EMAIL_QUEUE_ARN="arn:aws:sqs:${REGION}:${ACCOUNT}:logistics-email"
+# Only the metering queue is fed from the bus. The sms, whatsapp and email queues are not: services enqueue
+# notifications directly in the shape the consumers read, and a raw event has no recipient (audit BE-09).
 METERING_QUEUE_ARN="arn:aws:sqs:${REGION}:${ACCOUNT}:logistics-metering"
 
-# SMS rule
-aws --endpoint-url="${ENDPOINT}" --region "${REGION}" \
-  events put-rule \
-  --name "route-sms" \
-  --event-bus-name "logistics-events" \
-  --event-pattern '{"source":["logistics.tracking","logistics.billing","logistics.payment_release"]}' \
-  --state ENABLED > /dev/null 2>&1 && echo "    Created rule: route-sms"
-
-aws --endpoint-url="${ENDPOINT}" --region "${REGION}" \
-  events put-targets \
-  --rule "route-sms" \
-  --event-bus-name "logistics-events" \
-  --targets "Id=sms-target,Arn=${SMS_QUEUE_ARN}" > /dev/null 2>&1 || true
-
-# WhatsApp rule
-aws --endpoint-url="${ENDPOINT}" --region "${REGION}" \
-  events put-rule \
-  --name "route-whatsapp" \
-  --event-bus-name "logistics-events" \
-  --event-pattern '{"source":["logistics.tracking","logistics.billing","logistics.claims","logistics.payment_release"]}' \
-  --state ENABLED > /dev/null 2>&1 && echo "    Created rule: route-whatsapp"
-
-aws --endpoint-url="${ENDPOINT}" --region "${REGION}" \
-  events put-targets \
-  --rule "route-whatsapp" \
-  --event-bus-name "logistics-events" \
-  --targets "Id=whatsapp-target,Arn=${WA_QUEUE_ARN}" > /dev/null 2>&1 || true
-
-# Email rule
-aws --endpoint-url="${ENDPOINT}" --region "${REGION}" \
-  events put-rule \
-  --name "route-email" \
-  --event-bus-name "logistics-events" \
-  --event-pattern '{"source":["logistics.packing_list","logistics.payment_release","logistics.claims","logistics.tenant_management"]}' \
-  --state ENABLED > /dev/null 2>&1 && echo "    Created rule: route-email"
-
-aws --endpoint-url="${ENDPOINT}" --region "${REGION}" \
-  events put-targets \
-  --rule "route-email" \
-  --event-bus-name "logistics-events" \
-  --targets "Id=email-target,Arn=${EMAIL_QUEUE_ARN}" > /dev/null 2>&1 || true
+# Rules from before BE-09: delete them if a long-lived local stack still has them.
+for OLD_RULE in route-sms route-whatsapp route-email; do
+  aws --endpoint-url="${ENDPOINT}" --region "${REGION}" \
+    events remove-targets --rule "${OLD_RULE}" --event-bus-name "logistics-events" \
+    --ids sms-target whatsapp-target email-target > /dev/null 2>&1 || true
+  aws --endpoint-url="${ENDPOINT}" --region "${REGION}" \
+    events delete-rule --name "${OLD_RULE}" --event-bus-name "logistics-events" > /dev/null 2>&1 \
+    && echo "    Deleted old rule: ${OLD_RULE}" || true
+done
 
 # Metering rule (catches everything)
 aws --endpoint-url="${ENDPOINT}" --region "${REGION}" \
@@ -331,6 +298,22 @@ add_to_group "zainab@demoshipping.com"    "${DEMO_TENANT_ID}:customer"
 # 'platform_admin' value, so platform admins are Cognito-only identities.
 TENANT_ID="PLATFORM" create_cognito_user "platform-admin@shipx.co" "Ada Nwachukwu" "platform_admin"
 add_to_group "platform-admin@shipx.co" "platform_admin"
+
+# ─── SES sender identity ──────────────────────────────────────────────────────
+# Moto enforces SES's verified-identity rule, so an unverified sender is
+# rejected exactly as it would be in AWS:
+#   MessageRejected: Email address not verified notifications@logistics.example.com
+# That is the application's placeholder default, which is what every local
+# notification email was sent from — so local email delivery failed outright
+# while SMS and WhatsApp appeared to work. Verifying the address .env.local
+# actually uses makes local email behave like the real thing.
+echo ""
+echo "==> Verifying SES sender identity"
+SES_SENDER="${SES_FROM_ADDRESS:-notifications@shipx.local}"
+aws --endpoint-url "${ENDPOINT}" ses verify-email-identity \
+  --email-address "${SES_SENDER}" >/dev/null 2>&1 \
+  && echo "    verified ${SES_SENDER}" \
+  || echo "    WARNING: could not verify ${SES_SENDER} — local email sends will be rejected"
 
 # ─── Print queue URLs ─────────────────────────────────────────────────────────
 echo ""

@@ -18,10 +18,18 @@ Notes:
 """
 
 import logging
+from dataclasses import dataclass
 from decimal import Decimal
 from typing import Any
 
-from shared.db import execute_transaction, execute_with_tenant, execute_write_with_tenant
+from shared.db import (
+    execute_transaction,
+    execute_with_tenant,
+    execute_write_with_tenant,
+    next_tenant_counter,
+    take_tenant_counter,
+    tenant_transaction,
+)
 from shared.encryption import decrypt_field, encrypt_field
 from shared.pagination import build_paginated_query, extract_page
 from shared.tenant_context import PLATFORM_TENANT_ID
@@ -320,30 +328,153 @@ def get_billing_by_id(tenant_id: str, billing_id: str) -> dict[str, Any] | None:
     return rows[0] if rows else None
 
 
-def update_billing_payment(
+@dataclass(frozen=True)
+class RecordedPayment:
+    """Result of `record_payment`: the new payment, the updated invoice, and any overpayment."""
+
+    payment: dict[str, Any]
+    billing: dict[str, Any]
+    overpayment_ngn: Decimal
+
+
+_MANUAL_PAYMENT_COLUMNS = (
+    "payment_method",
+    "reference_number",
+    "payment_date",
+    "recorded_by",
+    "payer_name",
+    "payer_address",
+    "bank_name",
+    "cheque_number",
+    "warehouse_id",
+    "physical_receipt_number",
+)
+
+
+def record_payment(
     tenant_id: str,
     billing_id: str,
-    amount_to_add: Any,
-    new_status: str,
-) -> dict[str, Any] | None:
-    """Increment amount_paid_ngn and update payment status. balance_ngn is GENERATED."""
-    return execute_write_with_tenant(
-        tenant_id,
-        """
-        UPDATE billing
-        SET amount_paid_ngn = amount_paid_ngn + %(amount)s,
-            status          = %(status)s,
-            updated_at      = NOW()
-        WHERE tenant_id = %(tenant_id)s AND id = %(id)s
-        RETURNING *
-        """,
-        {
-            "tenant_id": tenant_id,
-            "id": billing_id,
-            "amount": amount_to_add,
-            "status": new_status,
-        },
-    )
+    amount_ngn: Decimal,
+    payment: dict[str, Any],
+    tolerance: Decimal,
+    receipt_prefix: str | None = None,
+    gateway_transaction_id: str | None = None,
+) -> RecordedPayment | None:
+    """Record one payment against an invoice, atomically.
+
+    In a single transaction: allocate a receipt number (manual payments), insert
+    the payment record, add the amount to the invoice and set its status, and
+    create a refund request for any overpayment. A failure at any step rolls
+    back all of them, so there is never a payment record without a matching
+    invoice update or the reverse.
+
+    The status is computed by the UPDATE itself from the amount actually stored,
+    not from a value read earlier. The UPDATE locks the invoice row, so two
+    payments arriving together are applied one after the other and the second
+    sees the first's total. That is what stops a fully paid invoice being left
+    as ``partially_paid``.
+
+    Args:
+        tenant_id: Tenant scope.
+        billing_id: Invoice being paid.
+        amount_ngn: Amount received, in naira.
+        payment: Extra ``payment_record`` columns; see ``_MANUAL_PAYMENT_COLUMNS``.
+        tolerance: Sub-kobo difference treated as settled.
+        receipt_prefix: ``ACM-RCT-20261114`` for a manual payment, which gets the
+            next receipt number. ``None`` for a gateway payment, which has none.
+        gateway_transaction_id: Set for gateway payments; a repeat delivery of
+            the same id is ignored.
+
+    Returns:
+        The result, or ``None`` when ``gateway_transaction_id`` was already
+        recorded (a duplicate webhook delivery). Nothing is changed in that case.
+
+    Raises:
+        RuntimeError: The invoice does not exist in this tenant.
+    """
+    with tenant_transaction(tenant_id) as cur:
+        receipt_number = None
+        if receipt_prefix is not None:
+            receipt_number = f"{receipt_prefix}-{next_tenant_counter(cur, tenant_id, 'receipt'):04d}"
+
+        cur.execute(
+            """
+            INSERT INTO payment_record (
+                tenant_id, billing_id, amount_ngn,
+                payment_method, reference_number, payment_date, recorded_by,
+                receipt_number, payer_name, payer_address, bank_name,
+                cheque_number, warehouse_id, physical_receipt_number,
+                gateway_transaction_id
+            ) VALUES (
+                %(tenant_id)s, %(billing_id)s, %(amount_ngn)s,
+                %(payment_method)s, %(reference_number)s, %(payment_date)s, %(recorded_by)s,
+                %(receipt_number)s, %(payer_name)s, %(payer_address)s, %(bank_name)s,
+                %(cheque_number)s, %(warehouse_id)s, %(physical_receipt_number)s,
+                %(gateway_transaction_id)s
+            )
+            ON CONFLICT (tenant_id, gateway_transaction_id) WHERE gateway_transaction_id IS NOT NULL
+            DO NOTHING
+            RETURNING *
+            """,
+            {
+                **dict.fromkeys(_MANUAL_PAYMENT_COLUMNS),
+                **payment,
+                "tenant_id": tenant_id,
+                "billing_id": billing_id,
+                "amount_ngn": amount_ngn,
+                "receipt_number": receipt_number,
+                "gateway_transaction_id": gateway_transaction_id,
+            },
+        )
+        payment_row = cur.fetchone()
+        if payment_row is None:
+            return None
+
+        cur.execute(
+            """
+            UPDATE billing
+               SET amount_paid_ngn = amount_paid_ngn + %(amount)s,
+                   status = CASE
+                       WHEN ABS(total_ngn - (amount_paid_ngn + %(amount)s)) <= %(tol)s THEN 'paid'
+                       WHEN total_ngn - (amount_paid_ngn + %(amount)s) < -%(tol)s THEN 'overpaid'
+                       ELSE 'partially_paid'
+                   END,
+                   updated_at = NOW()
+             WHERE tenant_id = %(tenant_id)s AND id = %(id)s
+            RETURNING *
+            """,
+            {"tenant_id": tenant_id, "id": billing_id, "amount": amount_ngn, "tol": tolerance},
+        )
+        billing_row = cur.fetchone()
+        if billing_row is None:
+            raise RuntimeError(f"billing {billing_id} not found in tenant while recording payment")
+
+        # Only the part of THIS payment that lands above the invoice total is an
+        # overpayment. An invoice that was already overpaid has its earlier
+        # excess refunded separately and must not be counted again.
+        total = Decimal(str(billing_row["total_ngn"]))
+        paid_after = Decimal(str(billing_row["amount_paid_ngn"]))
+        excess_after = max(paid_after - total, Decimal("0"))
+        excess_before = max(paid_after - amount_ngn - total, Decimal("0"))
+        overpayment = excess_after - excess_before
+        if billing_row["status"] == "overpaid" and overpayment > tolerance:
+            cur.execute(
+                """
+                INSERT INTO refund_request (tenant_id, customer_id, billing_id, amount_ngn, reason, status)
+                VALUES (%(tenant_id)s, %(customer_id)s, %(billing_id)s, %(amount)s, %(reason)s, 'pending_review')
+                """,
+                {
+                    "tenant_id": tenant_id,
+                    "customer_id": billing_row["customer_id"],
+                    "billing_id": billing_id,
+                    "amount": overpayment,
+                    "reason": f"Overpayment on invoice {billing_row.get('invoice_number') or billing_id}",
+                },
+            )
+        else:
+            overpayment = Decimal("0")
+
+        return RecordedPayment(payment=dict(payment_row), billing=dict(billing_row), overpayment_ngn=overpayment)
 
 
 def mark_billing_released_with_outstanding(tenant_id: str, billing_id: str) -> dict[str, Any] | None:
@@ -364,21 +495,6 @@ def mark_billing_released_with_outstanding(tenant_id: str, billing_id: str) -> d
 # ---------------------------------------------------------------------------
 # Refund request — tenant RLS scope
 # ---------------------------------------------------------------------------
-
-
-def create_overpayment_refund_request(tenant_id: str, data: dict[str, Any]) -> dict[str, Any] | None:
-    return execute_write_with_tenant(
-        tenant_id,
-        """
-        INSERT INTO refund_request (
-            tenant_id, customer_id, billing_id, amount_ngn, reason, status
-        ) VALUES (
-            %(tenant_id)s, %(customer_id)s, %(billing_id)s,
-            %(amount_ngn)s, %(reason)s, 'pending_review'
-        ) RETURNING *
-        """,
-        data,
-    )
 
 
 # ---------------------------------------------------------------------------
@@ -412,75 +528,6 @@ def create_carryover_entry(tenant_id: str, data: dict[str, Any]) -> dict[str, An
 # ---------------------------------------------------------------------------
 # Payment record — tenant RLS scope
 # ---------------------------------------------------------------------------
-
-
-def create_payment_record(tenant_id: str, data: dict[str, Any]) -> dict[str, Any] | None:
-    return execute_write_with_tenant(
-        tenant_id,
-        """
-        INSERT INTO payment_record (
-            tenant_id, billing_id, amount_ngn,
-            payment_method, reference_number, payment_date, recorded_by,
-            receipt_number, payer_name, payer_address, bank_name,
-            cheque_number, warehouse_id, physical_receipt_number
-        ) VALUES (
-            %(tenant_id)s, %(billing_id)s, %(amount_ngn)s,
-            %(payment_method)s, %(reference_number)s, %(payment_date)s, %(recorded_by)s,
-            %(receipt_number)s, %(payer_name)s, %(payer_address)s, %(bank_name)s,
-            %(cheque_number)s, %(warehouse_id)s, %(physical_receipt_number)s
-        ) RETURNING *
-        """,
-        {
-            "receipt_number": None,
-            "payer_name": None,
-            "payer_address": None,
-            "bank_name": None,
-            "cheque_number": None,
-            "warehouse_id": None,
-            "physical_receipt_number": None,
-            **data,
-        },
-    )
-
-
-def get_next_receipt_number(tenant_id: str) -> int:
-    """Return the next sequence value for this tenant's receipt numbers.
-
-    Same race-prone COUNT(*)+1 shape as get_next_release_note_seq — kept
-    consistent with the rest of the codebase rather than introducing a new
-    locking pattern unilaterally; a `SELECT ... FOR UPDATE`-backed sequence
-    would close this whole class of bug across all four generators but is
-    out of scope for this pass (flagged in 13_api_payment_release.md).
-    """
-    rows = execute_with_tenant(
-        tenant_id,
-        "SELECT COUNT(*) + 1 AS seq FROM payment_record WHERE tenant_id = %s AND receipt_number IS NOT NULL",
-        (tenant_id,),
-    )
-    return int(rows[0]["seq"]) if rows else 1
-
-
-def create_webhook_payment_record(tenant_id: str, data: dict[str, Any]) -> dict[str, Any] | None:
-    """Insert a payment_record that includes gateway_transaction_id for deduplication."""
-    return execute_write_with_tenant(
-        tenant_id,
-        """
-        INSERT INTO payment_record (
-            tenant_id, billing_id, amount_ngn,
-            payment_method, reference_number, payment_date, recorded_by,
-            gateway_transaction_id
-        ) VALUES (
-            %(tenant_id)s, %(billing_id)s, %(amount_ngn)s,
-            %(payment_method)s, %(reference_number)s, %(payment_date)s, %(recorded_by)s,
-            %(gateway_transaction_id)s
-        )
-        ON CONFLICT (tenant_id, gateway_transaction_id)
-        WHERE gateway_transaction_id IS NOT NULL
-        DO NOTHING
-        RETURNING *
-        """,
-        data,
-    )
 
 
 # ---------------------------------------------------------------------------
@@ -642,12 +689,12 @@ def get_release_note_stats(tenant_id: str) -> dict[str, int]:
 
 
 def get_next_release_note_seq(tenant_id: str) -> int:
-    rows = execute_with_tenant(
-        tenant_id,
-        "SELECT COUNT(*) + 1 AS seq FROM release_note WHERE tenant_id = %s",
-        (tenant_id,),
-    )
-    return int(rows[0]["seq"]) if rows else 1
+    """Next release-note sequence number for the tenant, from the atomic counter.
+
+    Replaces ``COUNT(*) + 1``, which gave two notes created together the same
+    number. Always distinct; a number is skipped if the note insert then fails.
+    """
+    return take_tenant_counter(tenant_id, "release_note")
 
 
 def create_release_note(tenant_id: str, data: dict[str, Any]) -> dict[str, Any] | None:
@@ -836,6 +883,55 @@ def get_active_release_note_packages_released(tenant_id: str, billing_id: str) -
         (tenant_id, billing_id),
     )
     return int(rows[0]["total"]) if rows else 0
+
+
+def set_pickup_code(tenant_id: str, note_id: str, code_hash: str | None) -> dict[str, Any] | None:
+    """Store (or, with None, clear) a release note's pickup code hash and reset its failed-attempt count.
+
+    Only the keyed hash is ever stored (`shared/pickup_code.py`). Clearing is for a note whose code could not be sent to
+    the customer: requiring a code nobody received would only block the collection.
+    """
+    return execute_write_with_tenant(
+        tenant_id,
+        """
+        UPDATE release_note
+        SET pickup_code_hash = %s,
+            pickup_code_issued_at = CASE WHEN %s::text IS NULL THEN NULL ELSE NOW() END,
+            pickup_code_failed_attempts = 0,
+            updated_at = NOW()
+        WHERE tenant_id = %s AND id = %s
+        RETURNING id
+        """,
+        (code_hash, code_hash, tenant_id, note_id),
+    )
+
+
+def record_failed_pickup_code(tenant_id: str, note_id: str) -> int | None:
+    """Count one wrong code against a release note and return the new total (atomic, so concurrent guesses all count)."""
+    row = execute_write_with_tenant(
+        tenant_id,
+        """
+        UPDATE release_note
+        SET pickup_code_failed_attempts = pickup_code_failed_attempts + 1
+        WHERE tenant_id = %s AND id = %s
+        RETURNING pickup_code_failed_attempts
+        """,
+        (tenant_id, note_id),
+    )
+    return int(row["pickup_code_failed_attempts"]) if row else None
+
+
+def reset_pickup_code_attempts(tenant_id: str, note_id: str) -> None:
+    """Forget earlier wrong codes once the right one has been given."""
+    execute_write_with_tenant(
+        tenant_id,
+        """
+        UPDATE release_note SET pickup_code_failed_attempts = 0
+        WHERE tenant_id = %s AND id = %s AND pickup_code_failed_attempts > 0
+        RETURNING id
+        """,
+        (tenant_id, note_id),
+    )
 
 
 def update_release_note_status(tenant_id: str, note_id: str, status: str) -> dict[str, Any] | None:

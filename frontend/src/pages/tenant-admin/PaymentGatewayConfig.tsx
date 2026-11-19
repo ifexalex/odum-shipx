@@ -10,10 +10,12 @@
  * GET /v1/tenant/config only ever returns last4), Save + Test-connection +
  * Disconnect actions.
  */
-import { useEffect, useState, type JSX } from 'react'
+import { useState, type JSX } from 'react'
 import { ApiError } from '../../api/client'
 import { configApi, type BankTransferConfig, type PaystackConfig } from '../../api/tenantManagement'
 import { Banner, Button, Card, Field, Icon, Mono } from '../../design/components'
+import { useTenantConfig } from '../../hooks/useConfig'
+import { useSeedOnce } from '../../hooks/useSeedOnce'
 import { SectionHead } from '../../shell/SectionHead'
 import styles from './PaymentGatewayConfig.module.css'
 
@@ -25,33 +27,24 @@ const EMPTY_BANK_FORM = { bank_name: '', account_name: '', account_number: '', s
  * — a real money-misdirection risk, not just an ambiguity. This is the
  * tenant-admin side of making it a real per-tenant setting.
  */
-function BankTransferSettings(): JSX.Element {
-  const [config, setConfig] = useState<BankTransferConfig | null>(null)
-  const [loading, setLoading] = useState(true)
-  const [form, setForm] = useState(EMPTY_BANK_FORM)
+// `initial` is the saved value the page has just read (it renders this panel only once that read has finished), so the
+// panel starts from it and needs no request of its own: the two panels used to fetch the same config separately.
+function BankTransferSettings({ initial }: { initial: BankTransferConfig | null }): JSX.Element {
+  const [config, setConfig] = useState<BankTransferConfig | null>(initial)
+  const [form, setForm] = useState(
+    initial
+      ? {
+          bank_name: initial.bank_name,
+          account_name: initial.account_name,
+          account_number: initial.account_number,
+          sort_code: initial.sort_code ?? '',
+          instructions: initial.instructions ?? '',
+        }
+      : EMPTY_BANK_FORM,
+  )
   const [saving, setSaving] = useState(false)
   const [saveError, setSaveError] = useState<string | null>(null)
   const [saveSuccess, setSaveSuccess] = useState(false)
-
-  useEffect(() => {
-    void configApi
-      .getConfig()
-      .then((res) => {
-        const bt = res.bank_transfer_config ?? null
-        setConfig(bt)
-        if (bt) {
-          setForm({
-            bank_name: bt.bank_name,
-            account_name: bt.account_name,
-            account_number: bt.account_number,
-            sort_code: bt.sort_code ?? '',
-            instructions: bt.instructions ?? '',
-          })
-        }
-      })
-      .catch(() => setConfig(null))
-      .finally(() => setLoading(false))
-  }, [])
 
   const canSave = form.bank_name.trim() && form.account_name.trim() && form.account_number.trim()
 
@@ -79,8 +72,6 @@ function BankTransferSettings(): JSX.Element {
       setSaving(false)
     }
   }
-
-  if (loading) return <div style={{ padding: 32, color: 'var(--color-ink-4)' }}>Loading…</div>
 
   return (
     <Card padding={24} style={{ marginBottom: 16 }}>
@@ -165,7 +156,8 @@ const KEY_PATTERN = /^sk_(test|live)_[A-Za-z0-9]{20,}$/
 
 export function PaymentGatewayConfig(): JSX.Element {
   const [config, setConfig] = useState<PaystackConfig | null>(null)
-  const [loading, setLoading] = useState(true)
+  const tenantConfig = useTenantConfig({ freshOnOpen: true })
+  const loading = !tenantConfig.isFetchedAfterMount && !tenantConfig.isError
 
   const [newKey, setNewKey] = useState('')
   const [saving, setSaving] = useState(false)
@@ -178,12 +170,7 @@ export function PaymentGatewayConfig(): JSX.Element {
   const [disconnecting, setDisconnecting] = useState(false)
   const [showDisconnectConfirm, setShowDisconnectConfirm] = useState(false)
 
-  useEffect(() => {
-    void configApi.getConfig()
-      .then((res) => setConfig(res.paystack_config ?? null))
-      .catch(() => setConfig(null))
-      .finally(() => setLoading(false))
-  }, [])
+  useSeedOnce(tenantConfig, (res) => setConfig(res.paystack_config ?? null))
 
   const keyValid = newKey.length === 0 || KEY_PATTERN.test(newKey)
 
@@ -326,7 +313,7 @@ export function PaymentGatewayConfig(): JSX.Element {
         </Banner>
       )}
 
-      <BankTransferSettings />
+      <BankTransferSettings initial={tenantConfig.data?.bank_transfer_config ?? null} />
 
       {showDisconnectConfirm && (
         <div className={styles.modalOverlay} onClick={() => setShowDisconnectConfirm(false)}>

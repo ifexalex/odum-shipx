@@ -17,6 +17,7 @@ from services.tenant_management.models import (
     SubscriptionTier,
 )
 from shared.tenant_context import PLATFORM_TENANT_ID, TenantContext, UserRole
+from tests.patching import patch_tenant_management
 
 _LEAD = {"company_name": "Acme Freight", "contact_name": "Ada Obi", "contact_email": "ops@acme.com"}
 
@@ -48,7 +49,7 @@ class TestCreateOnboardingRequestService:
         row = {"id": "req-1", "status": "new"}
         with (
             patch.object(service.repo, "insert_onboarding_request", return_value=row) as ins,
-            patch("services.tenant_management.service.publish_event") as pub,
+            patch("services.tenant_management.tenants.publish_event") as pub,
         ):
             result = service.create_onboarding_request(CreateOnboardingRequest(**_LEAD))
         assert result == {"id": "req-1", "status": "new"}
@@ -61,7 +62,7 @@ class TestCreateOnboardingRequestService:
         row = {"id": "req-2", "status": "new"}
         with (
             patch.object(service.repo, "insert_onboarding_request", return_value=row),
-            patch("services.tenant_management.service.publish_event", side_effect=RuntimeError("bus down")),
+            patch("services.tenant_management.tenants.publish_event", side_effect=RuntimeError("bus down")),
         ):
             result = service.create_onboarding_request(CreateOnboardingRequest(**_LEAD))
         assert result["id"] == "req-2"
@@ -70,7 +71,7 @@ class TestCreateOnboardingRequestService:
 # ── Public route: POST /v1/onboarding-requests (no JWT) ──────────────────────
 class TestPublicRoute:
     def test_post_needs_no_auth_and_returns_201(self):
-        with patch.object(service, "create_onboarding_request", return_value={"id": "req-1", "status": "new"}) as svc:
+        with patch_tenant_management("create_onboarding_request", return_value={"id": "req-1", "status": "new"}) as svc:
             resp = handler.lambda_handler(_event("POST", "/v1/onboarding-requests", _LEAD), None)
         assert resp["statusCode"] == 201
         svc.assert_called_once()
@@ -82,8 +83,8 @@ class TestPublicRoute:
     def test_no_account_creation_path_invoked(self):
         # The lead route must never touch customer self-registration.
         with (
-            patch.object(service, "create_onboarding_request", return_value={"id": "x", "status": "new"}),
-            patch.object(service, "self_register_customer") as reg,
+            patch_tenant_management("create_onboarding_request", return_value={"id": "x", "status": "new"}),
+            patch_tenant_management("self_register_customer") as reg,
         ):
             handler.lambda_handler(_event("POST", "/v1/onboarding-requests", _LEAD), None)
         reg.assert_not_called()
@@ -99,7 +100,7 @@ class TestPlatformRoutes:
     def test_list_as_platform_admin(self):
         with (
             patch.object(handler, "get_tenant_context", return_value=_ctx(UserRole.PLATFORM_ADMIN)),
-            patch.object(service, "list_onboarding_requests", return_value=[{"id": "req-1"}]) as svc,
+            patch_tenant_management("list_onboarding_requests", return_value=[{"id": "req-1"}]) as svc,
         ):
             resp = handler.lambda_handler(_event("GET", "/v1/platform/onboarding-requests"), None)
         assert resp["statusCode"] == 200
@@ -108,7 +109,10 @@ class TestPlatformRoutes:
     def test_patch_status_as_platform_admin(self):
         with (
             patch.object(handler, "get_tenant_context", return_value=_ctx(UserRole.PLATFORM_ADMIN)),
-            patch.object(service, "update_onboarding_request_status", return_value={"id": "req-1", "status": "contacted"}) as svc,
+            patch_tenant_management(
+                "update_onboarding_request_status",
+                return_value={"id": "req-1", "status": "contacted"},
+            ) as svc,
         ):
             resp = handler.lambda_handler(
                 _event("PATCH", "/v1/platform/onboarding-requests/req-1", {"status": "contacted"}), None
@@ -134,7 +138,7 @@ class TestProvisioningLinksLead:
         mock_idp = MagicMock()
         mock_idp.create_user.return_value = "sub-1"
         with (
-            patch.object(service, "get_identity_provider", return_value=mock_idp),
+            patch_tenant_management("get_identity_provider", return_value=mock_idp),
             # The idempotency guard reads the lead first; an un-provisioned lead
             # lets provisioning proceed.
             patch.object(service.repo, "get_onboarding_request", return_value={"id": "req-1", "status": "new"}),
@@ -142,7 +146,7 @@ class TestProvisioningLinksLead:
             patch.object(service.repo, "create_tenant_user", return_value=admin_user),
             patch.object(service.repo, "upsert_config"),
             patch.object(service.repo, "insert_platform_audit"),
-            patch("services.tenant_management.service.publish_event"),
+            patch("services.tenant_management.tenants.publish_event"),
             patch("shared.notifications.enqueue_notifications"),
             patch.object(service.repo, "update_onboarding_request") as upd,
         ):
@@ -159,12 +163,12 @@ class TestProvisioningLinksLead:
         mock_idp = MagicMock()
         mock_idp.create_user.return_value = "sub-1"
         with (
-            patch.object(service, "get_identity_provider", return_value=mock_idp),
+            patch_tenant_management("get_identity_provider", return_value=mock_idp),
             patch.object(service.repo, "create_tenant", return_value=tenant),
             patch.object(service.repo, "create_tenant_user", return_value=admin_user),
             patch.object(service.repo, "upsert_config"),
             patch.object(service.repo, "insert_platform_audit"),
-            patch("services.tenant_management.service.publish_event"),
+            patch("services.tenant_management.tenants.publish_event"),
             patch("shared.notifications.enqueue_notifications"),
             patch.object(service.repo, "update_onboarding_request") as upd,
         ):

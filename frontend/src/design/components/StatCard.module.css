@@ -48,6 +48,25 @@
   white-space: nowrap;
 }
 
+/* On a phone two cards share a row: the number scales down and may wrap (₦1,234,567 · "1 of 2") rather than run out
+   of its card. */
+@media (max-width: 600px) {
+  /* Two cards share a phone's row: the icon gives its room to the label, which then wraps whole words
+     ("OUTSTANDING", "CONTAINERS SHIPPED") instead of breaking mid-word or being cut off. */
+  .iconSlot {
+    display: none;
+  }
+  .label {
+    overflow-wrap: normal;
+  }
+  .value {
+    font-size: clamp(20px, 6.5vw, 30px);
+    white-space: normal;
+    overflow-wrap: anywhere;
+    line-height: 1.1;
+  }
+}
+
 .suffix {
   font-size: 15px;
   color: var(--color-ink-3);

@@ -94,6 +94,19 @@ describe('ClaimDetail', () => {
     await waitFor(() => expect(claimsApi.startInspection).toHaveBeenCalledWith('c1', { inspection_method: 'delegate_visit' }))
   })
 
+  it('tells staff the customer will read the reason when the claim is closed without a payout, and not otherwise', async () => {
+    renderPage('nigeria_office_staff', { claim: { ...CLAIM_STUB, status: 'pending_resolution' } })
+    await userEvent.click(await screen.findByRole('button', { name: 'Resolve claim' }))
+    const dialog = screen.getByRole('dialog')
+    // "No action" is the default pick: the reason goes to the customer, and nothing can be sent without one.
+    expect(within(dialog).getByText(/Reason \(the customer will see this\)/)).toBeInTheDocument()
+    expect(within(dialog).getByRole('button', { name: 'Resolve claim' })).toBeDisabled()
+
+    await userEvent.click(within(dialog).getByText('Refund'))
+    expect(within(dialog).getByText(/Reason \(internal, not shown to the customer\)/)).toBeInTheDocument()
+    expect(within(dialog).queryByText(/the customer will see this/)).toBeNull()
+  })
+
   it('shows no action buttons on terminal claim', async () => {
     renderPage('nigeria_office_staff', { claim: { ...CLAIM_STUB, status: 'resolved' } })
     // 'Resolved' appears as hero badge + stepper step — use getAllByText

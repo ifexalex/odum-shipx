@@ -167,7 +167,7 @@ describe('AdminCustomerDetail — tabbed profile (A2)', () => {
     renderPage()
     expect(await screen.findByRole('heading', { name: 'Ngozi Okonkwo' })).toBeInTheDocument()
     expect(screen.getByText('Active')).toBeInTheDocument()
-    expect(screen.getByText(/Customer since 2026-02-14/)).toBeInTheDocument()
+    expect(screen.getByText(/Customer since 14 Feb 2026/)).toBeInTheDocument()
 
     // Profile-tab stats derived from the customer-scoped queries
     expect(await screen.findByText('Total shipments')).toBeInTheDocument()

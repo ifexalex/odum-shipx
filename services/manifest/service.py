@@ -7,10 +7,10 @@ This service provides read access and the verification workflow.
 import logging
 from typing import Any
 
+from shared import uploads
 from shared.audit import log_audit
 from shared.exceptions import BusinessRuleViolationError, ResourceNotFoundError
 from shared.providers import get_storage_provider
-from shared.validation import safe_filename
 
 from . import repository as repo
 from .models import ResolveDiscrepancyRequest, VerificationStatus, VerifyManifestRequest
@@ -23,8 +23,6 @@ _WEIGHT_DISCREPANCY_THRESHOLD_PCT = 0.05
 _WEIGHT_DISCREPANCY_MIN_KG = 0.1
 
 # S3-backed verification evidence (mirrors services/claims/service.py limits).
-_ALLOWED_CONTENT_TYPES = frozenset({"image/jpeg", "image/png", "application/pdf"})
-_MAX_FILE_SIZE = 10 * 1024 * 1024  # 10 MB
 _URL_EXPIRY = 3600  # 1 hour
 
 
@@ -103,9 +101,10 @@ def list_manifests(
     filters: dict[str, Any],
     limit: int,
     cursor: dict[str, Any] | None,
-) -> tuple[list[dict[str, Any]], str | None, bool]:
-    """Return a paginated list of manifests for the tenant."""
-    return repo.list_manifests(tenant_id, filters, limit, cursor)
+) -> tuple[list[dict[str, Any]], str | None, bool, int]:
+    """Return a page of the tenant's manifests, and how many match in all."""
+    page, next_cursor, has_more = repo.list_manifests(tenant_id, filters, limit, cursor)
+    return page, next_cursor, has_more, repo.count_manifests(tenant_id, filters)
 
 
 def get_manifest_stats(tenant_id: str) -> dict[str, int]:
@@ -201,6 +200,7 @@ def generate_evidence_upload(
     content_type: str,
     actor_id: str,
     label: str | None = None,
+    size_bytes: object = None,
 ) -> dict[str, Any]:
     """Presign an S3 POST for a manifest-verification photo/doc (§6.3).
 
@@ -210,20 +210,15 @@ def generate_evidence_upload(
     directly to S3; tenant isolation comes from the `{tenant_id}/manifests/...`
     key prefix and the tenant-scoped manifest lookup.
     """
-    if content_type not in _ALLOWED_CONTENT_TYPES:
-        raise BusinessRuleViolationError(
-            f"content_type '{content_type}' is not allowed. Allowed: {', '.join(sorted(_ALLOWED_CONTENT_TYPES))}",
-            rule_id="INVALID_CONTENT_TYPE",
-        )
+    uploads.EVIDENCE.check(content_type, size_bytes)
 
     manifest = repo.get_manifest_by_id(tenant_id, manifest_id)
     if not manifest:
         raise ResourceNotFoundError("manifest", manifest_id)
 
-    filename = safe_filename(filename)
-    file_key = f"{tenant_id}/manifests/{manifest_id}/{filename}"
-
-    ticket = get_storage_provider().presigned_upload(file_key, content_type=content_type, expires_in=_URL_EXPIRY)
+    upload = uploads.presign_upload(uploads.EVIDENCE, tenant_id, ("manifests", manifest_id), filename, content_type, size_bytes)
+    file_key = upload.key
+    filename = file_key.rsplit("/", 1)[-1]
 
     evidence = repo.create_manifest_evidence(
         tenant_id,
@@ -239,7 +234,7 @@ def generate_evidence_upload(
     )
 
     return {
-        **ticket.as_response(),
+        **upload.as_response(),
         "evidence_id": str(evidence["id"]) if evidence else None,
         "file_key": file_key,
     }

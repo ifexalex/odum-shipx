@@ -71,10 +71,32 @@ resource "azurerm_user_assigned_identity" "app" {
   tags                = local.common_tags
 }
 
-module "frontend" {
-  source = "./modules/frontend"
+# The Front Door profile lives here, not inside module.frontend, because two things need it that also need each
+# other: module.frontend routes /v1/* to the API container app, and the container app needs this profile's id to
+# recognise requests Front Door forwarded (shared/client_ip.py). Inside the module that is a dependency cycle.
+resource "azurerm_cdn_frontdoor_profile" "frontend" {
   # Optional: Front Door is forbidden on Free Trial/Student subscriptions.
   count = var.enable_frontend ? 1 : 0
+
+  name                = "${local.name_prefix}-fd"
+  resource_group_name = azurerm_resource_group.main.name
+  sku_name            = "Standard_AzureFrontDoor"
+  tags                = local.common_tags
+}
+
+# The profile was created inside the module before 2026-11-17. This keeps an existing deployment's profile (and
+# with it the public hostname) instead of destroying and recreating it.
+moved {
+  from = module.frontend[0].azurerm_cdn_frontdoor_profile.frontend
+  to   = azurerm_cdn_frontdoor_profile.frontend[0]
+}
+
+module "frontend" {
+  source = "./modules/frontend"
+  count  = var.enable_frontend ? 1 : 0
+
+  frontdoor_profile_id   = azurerm_cdn_frontdoor_profile.frontend[0].id
+  frontdoor_profile_name = azurerm_cdn_frontdoor_profile.frontend[0].name
 
   name_prefix             = local.name_prefix
   resource_group_name     = azurerm_resource_group.main.name
@@ -193,6 +215,7 @@ module "monitoring" {
   resource_group_name = azurerm_resource_group.main.name
   location            = var.location
   common_tags         = local.common_tags
+  alerts_email        = var.alerts_email
 }
 
 # ─── Compute (Phase 3) ──────────────────────────────────────────────────────
@@ -286,6 +309,25 @@ module "container_app" {
   # same no-cycle reason as entra_redirect_uri above.
   app_base_url = var.app_base_url
 
+  # Client address for rate limits and audit logs. The app trusts Front Door's own record of it on requests that
+  # carry this Front Door's id, so no proxy count has to be measured. "" when Front Door is not deployed.
+  front_door_id      = try(azurerm_cdn_frontdoor_profile.frontend[0].resource_guid, "")
+  require_front_door = var.require_front_door
+  # Fallback for requests that did not come through Front Door; 0 = their address is treated as unknown.
+  trusted_proxy_hops = var.trusted_proxy_hops
+
+  # Notification channels. SMS and WhatsApp were not wired to this deployment at
+  # all — see modules/container_app/variables.tf and the
+  # notification_config_guard below.
+  customer_portal_base_url    = var.customer_portal_base_url
+  africastalking_api_key      = var.africastalking_api_key
+  africastalking_username     = var.africastalking_username
+  africastalking_sender_id    = var.africastalking_sender_id
+  meta_whatsapp_access_token  = var.meta_whatsapp_access_token
+  meta_whatsapp_phone_id      = var.meta_whatsapp_phone_id
+  meta_whatsapp_template_lang = var.meta_whatsapp_template_lang
+  whatsapp_verify_token       = var.whatsapp_verify_token
+
   # The API is served same-origin with the SPA via a Front Door /v1/* route
   # (see module.frontend.api_origin_host), so the auth cookies are first-party;
   # SameSite=Lax survives the Entra redirect return. (Cross-site SameSite=None
@@ -310,4 +352,50 @@ module "container_app" {
   claims_caller_issuer    = var.entra_claims_caller_issuer
   claims_out_tenant_claim = var.entra_out_tenant_claim
   claims_out_role_claim   = var.entra_out_role_claim
+}
+
+# ---------------------------------------------------------------------------
+# Notification channel guard — the Azure twin of the AWS one.
+#
+# Production is the only environment where these must be complete, and the only
+# one where getting it wrong is invisible: every send path logs "not configured"
+# and returns, so the deploy is healthy, the API returns 200, and customers are
+# simply never told anything. This fails the PLAN instead.
+# ---------------------------------------------------------------------------
+resource "terraform_data" "notification_config_guard" {
+  input = var.environment
+
+  lifecycle {
+    precondition {
+      condition = var.environment != "prod" || alltrue([
+        var.africastalking_api_key != "",
+        var.africastalking_username != "",
+      ])
+      error_message = <<-EOT
+        Africa's Talking SMS is not configured for prod
+        (africastalking_api_key / africastalking_username). These were absent
+        from the Azure deployment entirely: send_sms logs
+        "AFRICASTALKING_API_KEY not configured" and returns False, so no SMS is
+        ever delivered and nothing fails. The username must be the LIVE one —
+        the application default is "sandbox", which accepts messages and
+        delivers nothing.
+      EOT
+    }
+
+    precondition {
+      condition = var.environment != "prod" || alltrue([
+        var.meta_whatsapp_access_token != "",
+        var.meta_whatsapp_phone_id != "",
+        var.meta_whatsapp_template_lang != "",
+      ])
+      error_message = <<-EOT
+        WhatsApp is not configured for prod (meta_whatsapp_access_token /
+        meta_whatsapp_phone_id / meta_whatsapp_template_lang). WhatsApp is the
+        PRIMARY customer channel here and SMS is only its fallback, so an
+        unconfigured token means the main way customers are contacted is dead.
+        meta_whatsapp_template_lang must match the language the templates named
+        in WA_TEMPLATE_MAP were approved under, or Meta 404s every send.
+      EOT
+    }
+  }
 }

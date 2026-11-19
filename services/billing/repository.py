@@ -15,9 +15,23 @@ Notes:
 """
 
 import logging
+from dataclasses import dataclass
+from decimal import Decimal
 from typing import Any
 
-from shared.db import execute_with_tenant, execute_write_with_tenant
+from shared.billing_money import (
+    adjust_billing,
+    adjust_billing_and_refund_overpayment,
+    lock_billing,
+)
+from shared.db import (
+    execute_with_tenant,
+    execute_write_with_tenant,
+    execute_write_with_tenant_many,
+    next_tenant_counter,
+    tenant_transaction,
+)
+from shared.list_filters import billing_filter
 from shared.tenant_context import PLATFORM_TENANT_ID
 
 logger = logging.getLogger(__name__)
@@ -162,7 +176,11 @@ def get_outstanding_carryovers(tenant_id: str, customer_id: str) -> list[dict[st
 
 
 def get_pending_credit_refunds(tenant_id: str, customer_id: str) -> list[dict[str, Any]]:
-    """Approved refund_requests with customer_choice='credit_note' not yet applied."""
+    """Credits the customer still holds, oldest first.
+
+    A credit is a refund approved as credit for the next shipment. Its value is the approved amount, and
+    ``credit_applied_ngn`` is how much of it earlier invoices have already used.
+    """
     return execute_with_tenant(
         tenant_id,
         """
@@ -177,40 +195,245 @@ def get_pending_credit_refunds(tenant_id: str, customer_id: str) -> list[dict[st
     )
 
 
-def get_next_invoice_seq(tenant_id: str) -> int:
-    rows = execute_with_tenant(
-        tenant_id,
-        "SELECT COUNT(*) + 1 AS seq FROM billing WHERE tenant_id = %s",
-        (tenant_id,),
-    )
-    return int(rows[0]["seq"]) if rows else 1
-
-
 # ---------------------------------------------------------------------------
 # Billing CRUD — tenant RLS scope
 # ---------------------------------------------------------------------------
 
 
-def create_billing(tenant_id: str, data: dict[str, Any]) -> dict[str, Any] | None:
-    return execute_write_with_tenant(
+class BillingStatusConflict(Exception):
+    """The invoice is not in a status the operation allows (checked under the row lock)."""
+
+    def __init__(self, status: str) -> None:
+        super().__init__(status)
+        self.status = status
+
+
+class RecordNotFound(Exception):
+    """The row the operation targets no longer exists (e.g. it was removed by a concurrent request)."""
+
+
+def list_unbilled_customers(tenant_id: str, limit: int = 200) -> list[dict[str, Any]]:
+    """Customers with CBM to bill on a cleared container who have no live invoice.
+
+    Only customers with something to bill appear: a customer whose approved packing
+    lists carry no CBM is legitimately uninvoiced and would be noise here forever.
+    Most recently moved containers first.
+    """
+    return execute_with_tenant(
         tenant_id,
         """
-        INSERT INTO billing (
-            tenant_id, customer_id, container_id, invoice_number,
-            total_cartons, total_cbm, cbm_rate_usd, cbm_rate_currency,
-            cbm_rate_mode, cbm_breakdown, subtotal_usd,
-            exchange_rate_ngn, subtotal_ngn, misc_charges_ngn,
-            total_ngn, amount_paid_ngn, status, billed_at, created_by
-        ) VALUES (
-            %(tenant_id)s, %(customer_id)s, %(container_id)s, %(invoice_number)s,
-            %(total_cartons)s, %(total_cbm)s, %(cbm_rate_usd)s, %(cbm_rate_currency)s,
-            %(cbm_rate_mode)s, %(cbm_breakdown)s::jsonb, %(subtotal_usd)s,
-            %(exchange_rate_ngn)s, %(subtotal_ngn)s, %(misc_charges_ngn)s,
-            %(total_ngn)s, %(amount_paid_ngn)s, %(status)s, %(billed_at)s, %(created_by)s
-        ) RETURNING *
+        SELECT c.id::text AS container_id, c.container_number, c.status AS container_status,
+               cu.id::text AS customer_id, cu.name AS customer_name,
+               SUM(pli.cbm) AS total_cbm
+          FROM container c
+          JOIN packing_list pl ON pl.container_id = c.id AND pl.tenant_id = c.tenant_id AND pl.status = 'approved'
+          JOIN packing_list_item pli ON pli.packing_list_id = pl.id
+          JOIN customer cu ON cu.id = pl.customer_id AND cu.tenant_id = c.tenant_id
+         WHERE c.tenant_id = %s
+           AND c.status IN ('cleared', 'at_warehouse', 'fully_released')
+           AND NOT EXISTS (
+               SELECT 1 FROM billing b
+                WHERE b.tenant_id = c.tenant_id AND b.container_id = c.id AND b.customer_id = cu.id AND b.status <> 'cancelled'
+           )
+         GROUP BY c.id, c.container_number, c.status, c.updated_at, cu.id, cu.name
+        HAVING SUM(pli.cbm) > 0
+         ORDER BY c.updated_at DESC, cu.name
+         LIMIT %s
         """,
-        data,
+        (tenant_id, limit),
     )
+
+
+def get_container_for_billing(tenant_id: str, container_id: str) -> dict[str, Any] | None:
+    """Container id, number and status, for the billing guards."""
+    rows = execute_with_tenant(
+        tenant_id,
+        "SELECT id::text AS id, container_number, status FROM container WHERE tenant_id = %s AND id = %s LIMIT 1",
+        (tenant_id, container_id),
+    )
+    return rows[0] if rows else None
+
+
+def get_billable_customers_for_container(tenant_id: str, container_id: str) -> list[dict[str, Any]]:
+    """Distinct customers with an approved packing list on the container."""
+    return execute_with_tenant(
+        tenant_id,
+        """
+        SELECT DISTINCT c.id::text AS id, c.name
+          FROM customer c
+          JOIN packing_list pl ON pl.customer_id = c.id AND pl.tenant_id = c.tenant_id
+         WHERE pl.container_id = %s AND pl.tenant_id = %s AND pl.status = 'approved'
+         ORDER BY c.name
+        """,
+        (container_id, tenant_id),
+    )
+
+
+class LedgerConflictError(RuntimeError):
+    """A carryover or credit was applied by another request while this invoice was being built.
+
+    Raised inside the invoice transaction so everything rolls back, including the
+    invoice-number increment. The caller reports the customer as failed and the
+    generate-missing-invoices action picks it up again with fresh ledger data.
+    """
+
+
+@dataclass(frozen=True)
+class CreditApplication:
+    """Part or all of one customer credit, put against one invoice.
+
+    Attributes:
+        refund_id: The credit (a ``refund_request`` approved as credit for the next shipment).
+        applied_before_ngn: How much of that credit earlier invoices had used when this was worked out. The write
+            only goes through if that is still true, so two invoices cannot spend the same credit.
+        amount_ngn: How much of it this invoice uses.
+    """
+
+    refund_id: str
+    applied_before_ngn: Decimal
+    amount_ngn: Decimal
+
+
+class _AlreadyBilled(Exception):
+    """Internal: the insert found a live invoice already in place (lost a race)."""
+
+
+_LIVE_INVOICE_SQL = """
+    SELECT * FROM billing
+     WHERE tenant_id = %s AND customer_id = %s AND container_id = %s AND status <> 'cancelled'
+     LIMIT 1
+"""
+
+
+def get_live_invoice(tenant_id: str, customer_id: str, container_id: str) -> dict[str, Any] | None:
+    """The customer's non-cancelled invoice for a container, if one exists."""
+    rows = execute_with_tenant(tenant_id, _LIVE_INVOICE_SQL, (tenant_id, customer_id, container_id))
+    return rows[0] if rows else None
+
+
+def create_invoice(
+    tenant_id: str,
+    data: dict[str, Any],
+    number_prefix: str,
+    carryover_ids: list[str],
+    credit_applications: list[CreditApplication],
+) -> tuple[dict[str, Any], bool]:
+    """Create one invoice atomically, or return the one that already exists.
+
+    In a single transaction this allocates the next invoice number from the
+    tenant counter, inserts the invoice, marks the carryovers it absorbed as
+    applied and takes what it used from each credit. Either all of that happens
+    or none of it does.
+
+    A credit is spent only as far as the invoice needed it: what is left stays
+    ``applied_as_credit`` for the next invoice, and the credit becomes
+    ``processed`` once it is used up (``completed`` is not a status the table allows: the old code that set it
+    failed every invoice that used a credit, found by tests/db/test_invoice_credits.py on 2026-11-17).
+    The invoice records the sum it took in
+    ``credits_applied_ngn``.
+
+    Idempotent per (customer, container): if a live invoice is already there it
+    is returned untouched with ``created=False`` and no number is consumed.
+
+    Args:
+        tenant_id: Tenant the invoice belongs to.
+        data: Invoice columns except ``invoice_number``.
+        number_prefix: Everything before the sequence, e.g. ``ACM-INV-20261114``.
+        carryover_ids: Outstanding carryover ledger rows folded into the total.
+        credit_applications: What this invoice takes from each credit.
+
+    Returns:
+        ``(invoice_row, created)``.
+
+    Raises:
+        LedgerConflictError: A carryover or credit was already applied elsewhere.
+    """
+    try:
+        with tenant_transaction(tenant_id) as cur:
+            cur.execute(_LIVE_INVOICE_SQL, (tenant_id, data["customer_id"], data["container_id"]))
+            existing = cur.fetchone()
+            if existing:
+                return dict(existing), False
+
+            seq = next_tenant_counter(cur, tenant_id, "invoice")
+            cur.execute(
+                """
+                INSERT INTO billing (
+                    tenant_id, customer_id, container_id, invoice_number,
+                    total_cartons, total_cbm, cbm_rate_usd, cbm_rate_currency,
+                    cbm_rate_mode, cbm_breakdown, subtotal_usd,
+                    exchange_rate_ngn, exchange_rate_source, exchange_rate_fetched_at,
+                    subtotal_ngn, misc_charges_ngn, credits_applied_ngn,
+                    total_ngn, amount_paid_ngn, status, billed_at, created_by
+                ) VALUES (
+                    %(tenant_id)s, %(customer_id)s, %(container_id)s, %(invoice_number)s,
+                    %(total_cartons)s, %(total_cbm)s, %(cbm_rate_usd)s, %(cbm_rate_currency)s,
+                    %(cbm_rate_mode)s, %(cbm_breakdown)s::jsonb, %(subtotal_usd)s,
+                    %(exchange_rate_ngn)s, %(exchange_rate_source)s, %(exchange_rate_fetched_at)s,
+                    %(subtotal_ngn)s, %(misc_charges_ngn)s, %(credits_applied_ngn)s,
+                    %(total_ngn)s, %(amount_paid_ngn)s, %(status)s, %(billed_at)s, %(created_by)s
+                )
+                ON CONFLICT (tenant_id, customer_id, container_id) WHERE status <> 'cancelled'
+                DO NOTHING
+                RETURNING *
+                """,
+                {
+                    # Unknown unless the caller says (migration 068): an invoice built without a market rate lookup.
+                    "exchange_rate_source": None,
+                    "exchange_rate_fetched_at": None,
+                    **data,
+                    "invoice_number": f"{number_prefix}-{seq:04d}",
+                    "credits_applied_ngn": sum((c.amount_ngn for c in credit_applications), Decimal("0")),
+                },
+            )
+            row = cur.fetchone()
+            if row is None:
+                raise _AlreadyBilled
+            invoice = dict(row)
+
+            if carryover_ids:
+                cur.execute(
+                    """
+                    UPDATE carryover_ledger
+                       SET status = 'applied', target_billing_id = %(billing_id)s,
+                           applied_at = NOW(), updated_at = NOW()
+                     WHERE tenant_id = %(tenant_id)s AND id = ANY(%(ids)s::uuid[]) AND status = 'outstanding'
+                    RETURNING id
+                    """,
+                    {"tenant_id": tenant_id, "billing_id": invoice["id"], "ids": carryover_ids},
+                )
+                if len(cur.fetchall()) != len(carryover_ids):
+                    raise LedgerConflictError("a carryover was applied by another request")
+            for credit in credit_applications:
+                cur.execute(
+                    """
+                    UPDATE refund_request
+                       SET credit_applied_ngn = credit_applied_ngn + %(amount)s,
+                           status = CASE
+                               WHEN credit_applied_ngn + %(amount)s >= COALESCE(amount_approved_ngn, amount_ngn)
+                               THEN 'processed' ELSE status
+                           END,
+                           updated_at = NOW()
+                     WHERE tenant_id = %(tenant_id)s AND id = %(id)s AND status = 'applied_as_credit'
+                       AND credit_applied_ngn = %(applied_before)s
+                       AND credit_applied_ngn + %(amount)s <= COALESCE(amount_approved_ngn, amount_ngn)
+                    RETURNING id
+                    """,
+                    {
+                        "tenant_id": tenant_id,
+                        "id": credit.refund_id,
+                        "amount": credit.amount_ngn,
+                        "applied_before": credit.applied_before_ngn,
+                    },
+                )
+                if cur.fetchone() is None:
+                    raise LedgerConflictError("a credit was applied by another request")
+            return invoice, True
+    except _AlreadyBilled:
+        existing_row = get_live_invoice(tenant_id, data["customer_id"], data["container_id"])
+        if existing_row is None:
+            raise RuntimeError("invoice insert conflicted but no live invoice was found") from None
+        return existing_row, False
 
 
 def get_billing_by_id(tenant_id: str, billing_id: str) -> dict[str, Any] | None:
@@ -255,31 +478,7 @@ def list_billing_all(
     """
     from shared.pagination import build_paginated_query, extract_page
 
-    conditions = ["b.tenant_id = %(tenant_id)s"]
-    extra: dict[str, Any] = {"tenant_id": tenant_id}
-
-    if filters.get("status"):
-        # Accepts either a single status string or a list (Filters panel's
-        # multi-select sends several) — same ANY() idiom as
-        # tracking/repository.py::list_containers.
-        statuses = filters["status"]
-        if isinstance(statuses, str):
-            statuses = [statuses]
-        conditions.append("b.status = ANY(%(statuses)s)")
-        extra["statuses"] = list(statuses)
-    if filters.get("customer_id"):
-        conditions.append("b.customer_id = %(customer_id)s")
-        extra["customer_id"] = filters["customer_id"]
-    if filters.get("created_after"):
-        conditions.append("b.billed_at >= %(created_after)s")
-        extra["created_after"] = filters["created_after"]
-    if filters.get("created_before"):
-        conditions.append("b.billed_at <= %(created_before)s")
-        extra["created_before"] = filters["created_before"]
-
-    if filters.get("q"):
-        conditions.append("(b.invoice_number ILIKE %(q)s OR cu.name ILIKE %(q)s OR c.container_number ILIKE %(q)s)")
-        extra["q"] = f"%{filters['q']}%"
+    where_clause, extra = billing_filter(tenant_id, filters)
 
     base = f"""
         SELECT b.*, c.container_number,
@@ -287,12 +486,12 @@ def list_billing_all(
         FROM billing b
         LEFT JOIN container c  ON c.id  = b.container_id  AND c.tenant_id  = b.tenant_id
         LEFT JOIN customer  cu ON cu.id = b.customer_id   AND cu.tenant_id = b.tenant_id
-        WHERE {" AND ".join(conditions)}
+        WHERE {where_clause}
     """
     query, params = build_paginated_query(base, cursor, limit, sort_field=f"b.{sort_field}", sort_direction=sort_direction)
     params.update(extra)
     rows = execute_with_tenant(tenant_id, query, params)
-    return extract_page(rows, limit)
+    return extract_page(rows, limit, sort_field)
 
 
 def get_tenant_report(
@@ -627,104 +826,6 @@ def cancel_billing(
 # ---------------------------------------------------------------------------
 
 
-def mark_carryovers_applied(tenant_id: str, carryover_ids: list[str], billing_id: str) -> None:
-    if not carryover_ids:
-        return
-    execute_write_with_tenant(
-        tenant_id,
-        """
-        UPDATE carryover_ledger
-        SET status            = 'applied',
-            target_billing_id = %(billing_id)s,
-            applied_at        = NOW(),
-            updated_at        = NOW()
-        WHERE tenant_id = %(tenant_id)s
-          AND id        = ANY(%(ids)s::uuid[])
-        RETURNING id
-        """,
-        {"tenant_id": tenant_id, "billing_id": billing_id, "ids": carryover_ids},
-    )
-
-
-def set_billing_status(tenant_id: str, billing_id: str, status: str) -> dict[str, Any] | None:
-    """Set a billing record's payment status (money-status recompute after a
-    total change such as an applied carryover). RETURNING * so callers get the
-    fresh row incl. the generated balance_ngn."""
-    return execute_write_with_tenant(
-        tenant_id,
-        """
-        UPDATE billing
-        SET status = %(status)s, updated_at = NOW()
-        WHERE tenant_id = %(tenant_id)s AND id = %(id)s
-        RETURNING *
-        """,
-        {"tenant_id": tenant_id, "id": billing_id, "status": status},
-    )
-
-
-def mark_credit_refunds_applied(tenant_id: str, refund_ids: list[str]) -> None:
-    if not refund_ids:
-        return
-    execute_write_with_tenant(
-        tenant_id,
-        """
-        UPDATE refund_request
-        SET status     = 'completed',
-            updated_at = NOW()
-        WHERE tenant_id = %(tenant_id)s
-          AND id        = ANY(%(ids)s::uuid[])
-        RETURNING id
-        """,
-        {"tenant_id": tenant_id, "ids": refund_ids},
-    )
-
-
-def update_billing_cbm(
-    tenant_id: str,
-    billing_id: str,
-    new_cbm: Any,
-    new_subtotal_usd: Any,
-    new_subtotal_ngn: Any,
-    new_total_ngn: Any,
-) -> dict[str, Any] | None:
-    return execute_write_with_tenant(
-        tenant_id,
-        """
-        UPDATE billing
-        SET total_cbm    = %(total_cbm)s,
-            subtotal_usd = %(subtotal_usd)s,
-            subtotal_ngn = %(subtotal_ngn)s,
-            total_ngn    = %(total_ngn)s,
-            updated_at   = NOW()
-        WHERE tenant_id = %(tenant_id)s AND id = %(id)s
-        RETURNING *
-        """,
-        {
-            "tenant_id": tenant_id,
-            "id": billing_id,
-            "total_cbm": new_cbm,
-            "subtotal_usd": new_subtotal_usd,
-            "subtotal_ngn": new_subtotal_ngn,
-            "total_ngn": new_total_ngn,
-        },
-    )
-
-
-def create_overpayment_refund_request(tenant_id: str, data: dict[str, Any]) -> dict[str, Any] | None:
-    return execute_write_with_tenant(
-        tenant_id,
-        """
-        INSERT INTO refund_request (
-            tenant_id, customer_id, billing_id, amount_ngn, reason, status
-        ) VALUES (
-            %(tenant_id)s, %(customer_id)s, %(billing_id)s,
-            %(amount_ngn)s, %(reason)s, 'pending_review'
-        ) RETURNING *
-        """,
-        data,
-    )
-
-
 # ---------------------------------------------------------------------------
 # Billing enrichment reads
 # ---------------------------------------------------------------------------
@@ -790,6 +891,46 @@ def get_cbm_dispute_by_id(tenant_id: str, dispute_id: str) -> dict[str, Any] | N
         (tenant_id, dispute_id),
     )
     return rows[0] if rows else None
+
+
+def get_dispute_measurements(tenant_id: str, dispute_id: str) -> dict[str, Any] | None:
+    """A dispute with the measurement facts around it, and no payment data.
+
+    China staff resolve disputes but are not allowed to read invoices, so this selects only what they need to
+    judge a measurement: the dispute itself, the customer's and container's names, the CBM that was billed, and
+    the packing-list lines that CBM was summed from. `b.total_cbm` is read; no amount, rate or payment column is.
+    """
+    rows = execute_with_tenant(
+        tenant_id,
+        """
+        SELECT d.*, b.total_cbm AS billed_cbm, b.container_id,
+               cu.name AS customer_name, co.container_number
+        FROM cbm_dispute d
+        JOIN billing b ON b.id = d.billing_id AND b.tenant_id = d.tenant_id
+        LEFT JOIN customer cu ON cu.id = d.customer_id AND cu.tenant_id = d.tenant_id
+        LEFT JOIN container co ON co.id = b.container_id AND co.tenant_id = d.tenant_id
+        WHERE d.tenant_id = %s AND d.id = %s
+        LIMIT 1
+        """,
+        (tenant_id, dispute_id),
+    )
+    return rows[0] if rows else None
+
+
+def list_measurement_lines(tenant_id: str, container_id: str, customer_id: str) -> list[dict[str, Any]]:
+    """The approved packing-list lines a customer's CBM on one container is summed from (same set as the invoice)."""
+    return execute_with_tenant(
+        tenant_id,
+        """
+        SELECT pli.carton_tag, pli.description, pli.quantity, pli.package_unit, pli.cbm,
+               pli.length_cm, pli.width_cm, pli.height_cm, pli.weight_actual_kg, pl.reference
+        FROM packing_list_item pli
+        JOIN packing_list pl ON pl.id = pli.packing_list_id AND pl.tenant_id = %s
+        WHERE pl.container_id = %s AND pl.customer_id = %s AND pl.status = 'approved'
+        ORDER BY pl.reference, pli.carton_tag
+        """,
+        (tenant_id, container_id, customer_id),
+    )
 
 
 def list_disputes_for_billing(tenant_id: str, billing_id: str) -> list[dict[str, Any]]:
@@ -958,6 +1099,27 @@ def add_misc_charge(tenant_id: str, data: dict[str, Any]) -> dict[str, Any] | No
     )
 
 
+def add_misc_charge_to_billing(tenant_id: str, data: dict[str, Any]) -> tuple[dict[str, Any], dict[str, Any]]:
+    """Add a misc charge and move the invoice total, atomically.
+
+    The charge row, the new total and the recomputed status commit together. A
+    ``paid`` invoice that gains a charge becomes ``partially_paid`` instead of
+    staying ``paid`` while owing.
+
+    Returns:
+        ``(charge, updated_invoice)``.
+    """
+    amount = Decimal(str(data["amount_ngn"]))
+    with tenant_transaction(tenant_id):
+        charge = add_misc_charge(tenant_id, data)
+        if charge is None:
+            raise RuntimeError("misc_charge insert returned nothing")
+        billing = adjust_billing(tenant_id, str(data["billing_id"]), amount, amount)
+        if billing is None:
+            raise RuntimeError(f"billing {data['billing_id']} not found in tenant")
+    return charge, billing
+
+
 def get_misc_charge_by_id(charge_id: str) -> dict[str, Any] | None:
     """misc_charge has no RLS; use platform scope, scoped by billing_id + id."""
     rows = execute_with_tenant(
@@ -968,49 +1130,134 @@ def get_misc_charge_by_id(charge_id: str) -> dict[str, Any] | None:
     return rows[0] if rows else None
 
 
-def delete_misc_charge(charge_id: str, billing_id: str) -> None:
-    """Delete a misc_charge row by id, scoped by billing_id for defense-in-depth.
+def delete_misc_charge_from_billing(
+    tenant_id: str,
+    charge_id: str,
+    billing_id: str,
+    required_status: str,
+) -> dict[str, Any]:
+    """Remove a misc charge and take its amount off the invoice, atomically.
 
-    misc_charge has no tenant_id column (no RLS); isolation is enforced at the
-    service layer (billing ownership check) and here via billing_id FK constraint.
+    The invoice row is locked first and its status re-checked, so a payment that
+    arrives between the caller's check and this write cannot slip past it. The
+    amount taken off is the one actually deleted, so two requests deleting the same
+    charge reduce the total once, not twice.
+
+    Raises:
+        BillingStatusConflict: The invoice is not in ``required_status``.
+        RecordNotFound: The charge is already gone.
     """
-    execute_write_with_tenant(
-        PLATFORM_TENANT_ID,
-        "DELETE FROM misc_charge WHERE id = %s AND billing_id = %s RETURNING id",
-        (charge_id, billing_id),
-    )
+    with tenant_transaction(tenant_id):
+        billing = lock_billing(tenant_id, billing_id)
+        if billing is None:
+            raise RuntimeError(f"billing {billing_id} not found in tenant")
+        if billing["status"] != required_status:
+            raise BillingStatusConflict(str(billing["status"]))
+        deleted = execute_write_with_tenant(
+            tenant_id,
+            "DELETE FROM misc_charge WHERE id = %s AND billing_id = %s RETURNING *",
+            (charge_id, billing_id),
+        )
+        if deleted is None:
+            raise RecordNotFound(charge_id)
+        amount = Decimal(str(deleted["amount_ngn"]))
+        updated = adjust_billing(tenant_id, billing_id, -amount, -amount)
+        if updated is None:
+            raise RuntimeError(f"billing {billing_id} not found in tenant")
+    return updated
 
 
-def increment_billing_misc_fees(tenant_id: str, billing_id: str, amount_ngn: Any) -> dict[str, Any] | None:
-    """Increase billing.misc_charges_ngn and billing.total_ngn by amount_ngn."""
-    return execute_write_with_tenant(
-        tenant_id,
-        """
-        UPDATE billing
-        SET misc_charges_ngn = misc_charges_ngn + %(amount)s,
-            total_ngn        = total_ngn        + %(amount)s,
-            updated_at       = NOW()
-        WHERE tenant_id = %(tenant_id)s AND id = %(id)s
-        RETURNING *
-        """,
-        {"tenant_id": tenant_id, "id": billing_id, "amount": amount_ngn},
-    )
+def apply_carryover_to_billing(
+    tenant_id: str,
+    billing_id: str,
+    carryover_id: str,
+    customer_id: str,
+) -> tuple[dict[str, Any], Decimal]:
+    """Apply an outstanding carryover to an invoice, atomically.
+
+    Under the invoice lock: re-check the invoice can take it, mark the carryover
+    applied only if it is still ``outstanding`` and the customer's, add the amount
+    and recompute the status. Two requests applying the same carryover cannot both
+    succeed.
+
+    Returns:
+        ``(updated_invoice, carryover_amount)``.
+
+    Raises:
+        BillingStatusConflict: The invoice is cancelled or waived.
+        RecordNotFound: The carryover is no longer outstanding or is not this customer's.
+    """
+    with tenant_transaction(tenant_id):
+        billing = lock_billing(tenant_id, billing_id)
+        if billing is None:
+            raise RuntimeError(f"billing {billing_id} not found in tenant")
+        if billing["status"] in {"cancelled", "waived"}:
+            raise BillingStatusConflict(str(billing["status"]))
+        applied = execute_write_with_tenant(
+            tenant_id,
+            """
+            UPDATE carryover_ledger
+               SET status = 'applied', target_billing_id = %(billing_id)s, applied_at = NOW(), updated_at = NOW()
+             WHERE tenant_id = %(tenant_id)s AND id = %(id)s AND status = 'outstanding' AND customer_id = %(customer_id)s
+            RETURNING carryover_amount_ngn
+            """,
+            {"tenant_id": tenant_id, "billing_id": billing_id, "id": carryover_id, "customer_id": customer_id},
+        )
+        if applied is None:
+            raise RecordNotFound(carryover_id)
+        amount = Decimal(str(applied["carryover_amount_ngn"]))
+        updated = adjust_billing(tenant_id, billing_id, amount, amount)
+        if updated is None:
+            raise RuntimeError(f"billing {billing_id} not found in tenant")
+    return updated, amount
 
 
-def decrement_billing_misc_fees(tenant_id: str, billing_id: str, amount_ngn: Any) -> dict[str, Any] | None:
-    """Decrease billing.misc_charges_ngn and billing.total_ngn by amount_ngn."""
-    return execute_write_with_tenant(
-        tenant_id,
-        """
-        UPDATE billing
-        SET misc_charges_ngn = misc_charges_ngn - %(amount)s,
-            total_ngn        = total_ngn        - %(amount)s,
-            updated_at       = NOW()
-        WHERE tenant_id = %(tenant_id)s AND id = %(id)s
-        RETURNING *
-        """,
-        {"tenant_id": tenant_id, "id": billing_id, "amount": amount_ngn},
-    )
+def resolve_dispute_with_adjustment(
+    tenant_id: str,
+    dispute_id: str,
+    billing_id: str,
+    allowed_from: list[str],
+    new_cbm: Decimal,
+    new_subtotal_usd: Decimal,
+    new_subtotal_ngn: Decimal,
+    dispute_extra: dict[str, Any],
+) -> tuple[dict[str, Any], dict[str, Any], Decimal]:
+    """Resolve a CBM dispute and re-price the invoice, atomically.
+
+    Under the invoice lock: set the new CBM and subtotals, move the total by the
+    difference measured against the *current* subtotal, recompute the status, open
+    a refund for any new overpayment, and move the dispute to ``resolved_adjusted``
+    only if it is still in one of ``allowed_from``. A payment that lands during the
+    resolution is kept, not overwritten, and a dispute resolved twice reprices once.
+
+    Returns:
+        ``(dispute, updated_invoice, overpayment_refunded)``.
+
+    Raises:
+        RecordNotFound: The dispute is no longer in a resolvable status.
+    """
+    with tenant_transaction(tenant_id):
+        billing = lock_billing(tenant_id, billing_id)
+        if billing is None:
+            raise RuntimeError(f"billing {billing_id} not found in tenant")
+        dispute = set_dispute_status(tenant_id, dispute_id, "resolved_adjusted", dispute_extra, allowed_from=allowed_from)
+        if dispute is None:
+            raise RecordNotFound(dispute_id)
+        delta = new_subtotal_ngn - Decimal(str(billing["subtotal_ngn"]))
+        execute_write_with_tenant(
+            tenant_id,
+            """
+            UPDATE billing
+               SET total_cbm = %(cbm)s, subtotal_usd = %(usd)s, subtotal_ngn = %(ngn)s, updated_at = NOW()
+             WHERE tenant_id = %(tenant_id)s AND id = %(id)s
+            RETURNING id
+            """,
+            {"tenant_id": tenant_id, "id": billing_id, "cbm": new_cbm, "usd": new_subtotal_usd, "ngn": new_subtotal_ngn},
+        )
+        updated, overpayment = adjust_billing_and_refund_overpayment(
+            tenant_id, billing_id, delta, f"CBM dispute overpayment — dispute {dispute_id}"
+        )
+    return dispute, updated, overpayment
 
 
 # ---------------------------------------------------------------------------
@@ -1019,66 +1266,97 @@ def decrement_billing_misc_fees(tenant_id: str, billing_id: str, amount_ngn: Any
 
 
 def get_storage_fees_for_billing(tenant_id: str, billing_id: str) -> list[dict[str, Any]]:
-    """Return all storage_fee_log rows for a billing record, ordered by accrual_date."""
+    """Storage fees currently charged on a billing record (waived ones are excluded), by accrual date."""
     return execute_with_tenant(
         tenant_id,
         """
         SELECT * FROM storage_fee_log
-        WHERE tenant_id = %s AND billing_id = %s
+        WHERE tenant_id = %s AND billing_id = %s AND waived_at IS NULL
         ORDER BY accrual_date ASC
         """,
         (tenant_id, billing_id),
     )
 
 
+def get_storage_fee_total(tenant_id: str, billing_id: str) -> Decimal:
+    """Sum of the storage fees currently charged on a billing record."""
+    rows = execute_with_tenant(
+        tenant_id,
+        "SELECT COALESCE(SUM(amount_ngn), 0) AS total FROM storage_fee_log "
+        "WHERE tenant_id = %s AND billing_id = %s AND waived_at IS NULL",
+        (tenant_id, billing_id),
+    )
+    return Decimal(str(rows[0]["total"])) if rows else Decimal("0")
+
+
 def waive_storage_fees_for_billing(
     tenant_id: str,
     billing_id: str,
-    actor_id: str,
     reason: str,
-) -> dict[str, Any] | None:
-    """Mark all unwaived storage fee log entries as waived and void the linked misc charges.
+) -> tuple[dict[str, Any] | None, Decimal]:
+    """Waive every storage fee currently charged on an invoice, atomically.
 
-    Returns the updated billing row so the caller can return the fresh billing state.
-    Uses RETURNING to detect silent no-op (no rows updated).
+    Under the invoice lock: mark the un-waived fee rows waived, take their sum off
+    the total, recompute the status, and open a refund if the customer has now
+    overpaid. Fees accrued after this call are charged as normal.
+
+    Returns:
+        ``(updated_invoice, amount_waived)``; the invoice is ``None`` if it is not
+        in this tenant. ``amount_waived`` is ``0`` when there was nothing to waive.
     """
-    # Delete the misc_charge rows that were created by the storage fee job
-    execute_write_with_tenant(
-        tenant_id,
-        """
-        DELETE FROM misc_charge
-        WHERE tenant_id = %(tenant_id)s
-          AND billing_id = %(billing_id)s
-          AND charge_type = 'storage_fee'
-        RETURNING id
-        """,
-        {"tenant_id": tenant_id, "billing_id": billing_id},
-    )
-    # Clear the misc_charge_id links and mark fees as waived via is_billed=false
-    # so the scheduler does not re-accrue them
-    execute_write_with_tenant(
-        tenant_id,
-        """
-        UPDATE storage_fee_log
-        SET misc_charge_id = NULL,
-            is_billed = FALSE
-        WHERE tenant_id = %(tenant_id)s AND billing_id = %(billing_id)s
-        RETURNING id
-        """,
-        {"tenant_id": tenant_id, "billing_id": billing_id},
-    )
-    # Return the refreshed billing row
-    rows = execute_with_tenant(
-        tenant_id,
-        "SELECT * FROM billing WHERE tenant_id = %s AND id = %s",
-        (tenant_id, billing_id),
-    )
-    return rows[0] if rows else None
+    with tenant_transaction(tenant_id):
+        billing = lock_billing(tenant_id, billing_id)
+        if billing is None:
+            return None, Decimal("0")
+        waived_rows = execute_write_with_tenant_many(
+            tenant_id,
+            """
+            UPDATE storage_fee_log
+               SET waived_at = NOW(), waive_reason = %(reason)s
+             WHERE tenant_id = %(tenant_id)s AND billing_id = %(billing_id)s AND waived_at IS NULL
+            RETURNING amount_ngn
+            """,
+            {"tenant_id": tenant_id, "billing_id": billing_id, "reason": reason},
+        )
+        waived = sum((Decimal(str(r["amount_ngn"])) for r in waived_rows), Decimal("0"))
+        if waived == 0:
+            return billing, waived
+        updated, _ = adjust_billing_and_refund_overpayment(
+            tenant_id,
+            billing_id,
+            -waived,
+            f"Overpayment after storage fees were waived on invoice {billing.get('invoice_number')}",
+        )
+    return updated, waived
 
 
 # ---------------------------------------------------------------------------
 # Top-level dispute listing (all disputes for tenant)
 # ---------------------------------------------------------------------------
+
+
+def _dispute_predicates(tenant_id: str, filters: dict[str, Any]) -> tuple[str, dict[str, Any]]:
+    """The WHERE clause (on alias ``d``) and its parameters, shared by the dispute list and its count."""
+    conditions = ["d.tenant_id = %(tenant_id)s"]
+    params: dict[str, Any] = {"tenant_id": tenant_id}
+    if filters.get("status"):
+        conditions.append("d.status = %(status)s")
+        params["status"] = filters["status"]
+    if filters.get("customer_id"):
+        conditions.append("d.customer_id = %(customer_id)s")
+        params["customer_id"] = filters["customer_id"]
+    return " AND ".join(conditions), params
+
+
+def count_all_disputes(tenant_id: str, filters: dict[str, Any]) -> int:
+    """How many disputes match the same filters as ``list_all_disputes``."""
+    where_clause, params = _dispute_predicates(tenant_id, filters)
+    rows = execute_with_tenant(
+        tenant_id,
+        f"SELECT COUNT(*)::int AS total FROM cbm_dispute d WHERE {where_clause}",  # noqa: S608 - fixed fragments only
+        params,
+    )
+    return int(rows[0]["total"]) if rows else 0
 
 
 def list_all_disputes(
@@ -1089,18 +1367,22 @@ def list_all_disputes(
 ) -> tuple[list[dict[str, Any]], str | None, bool]:
     from shared.pagination import build_paginated_query, extract_page
 
-    conditions = ["tenant_id = %(tenant_id)s"]
-    extra: dict[str, Any] = {"tenant_id": tenant_id}
+    where_clause, extra = _dispute_predicates(tenant_id, filters)
 
-    if filters.get("status"):
-        conditions.append("status = %(status)s")
-        extra["status"] = filters["status"]
-    if filters.get("customer_id"):
-        conditions.append("customer_id = %(customer_id)s")
-        extra["customer_id"] = filters["customer_id"]
-
-    base = f"SELECT * FROM cbm_dispute WHERE {' AND '.join(conditions)}"
-    query, params = build_paginated_query(base, cursor, limit, sort_field="created_at")
+    # Customer, invoice and container come back with each dispute so the list can say which one it is (audit UX-06).
+    # Names and references only, no amounts: China staff read this list too and may not read invoice money.
+    base = f"""
+        SELECT d.*,
+               cu.name             AS customer_name,
+               b.invoice_number    AS invoice_number,
+               c.container_number  AS container_number
+        FROM cbm_dispute d
+        LEFT JOIN billing   b  ON b.id  = d.billing_id   AND b.tenant_id  = d.tenant_id
+        LEFT JOIN customer  cu ON cu.id = d.customer_id  AND cu.tenant_id = d.tenant_id
+        LEFT JOIN container c  ON c.id  = b.container_id AND c.tenant_id  = b.tenant_id
+        WHERE {where_clause}
+    """  # noqa: S608 - only fixed fragments are interpolated; every value is a bound parameter
+    query, params = build_paginated_query(base, cursor, limit, sort_field="d.created_at")
     params.update(extra)
     rows = execute_with_tenant(tenant_id, query, params)
     return extract_page(rows, limit)
@@ -1111,9 +1393,19 @@ def set_dispute_status(
     dispute_id: str,
     status: str,
     extra: dict[str, Any] | None = None,
+    allowed_from: list[str] | None = None,
 ) -> dict[str, Any] | None:
-    """Update dispute status + optional extra fields (allowlisted)."""
+    """Update dispute status + optional extra fields (allowlisted).
+
+    With ``allowed_from`` the update only applies if the dispute is currently in
+    one of those statuses, so two requests cannot both move it; ``None`` is
+    returned when it is not.
+    """
     params: dict[str, Any] = {"status": status, "tenant_id": tenant_id, "id": dispute_id}
+    guard = ""
+    if allowed_from is not None:
+        guard = " AND status = ANY(%(allowed_from)s)"
+        params["allowed_from"] = allowed_from
     extra_clause = ""
     if extra:
         safe = {k: v for k, v in extra.items() if k in _DISPUTE_EXTRA_FIELDS and v is not None}
@@ -1126,7 +1418,7 @@ def set_dispute_status(
         f"""
         UPDATE cbm_dispute
         SET status = %(status)s, updated_at = NOW(){extra_clause}
-        WHERE tenant_id = %(tenant_id)s AND id = %(id)s
+        WHERE tenant_id = %(tenant_id)s AND id = %(id)s{guard}
         RETURNING *
         """,
         params,

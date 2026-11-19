@@ -52,25 +52,39 @@ class TestStorageFeeAccrual:
             result = _accrue_for_note(TENANT_ID, note, _GRACE_PERIOD, _DAILY_RATE, date.today())
             assert result is False
 
+    def _patches(self, insert_result, adjust_result=None):
+        """The fee insert and the invoice update run inside one `tenant_transaction`.
+
+        The transaction is stubbed to a no-op context manager here; that the two
+        writes really commit or roll back together is covered against a real
+        database in tests/db/.
+        """
+        from contextlib import nullcontext
+
+        return (
+            patch("services.scheduled.storage_fee._sum_cartons_picked", return_value=3),
+            patch("services.scheduled.storage_fee.tenant_transaction", return_value=nullcontext()),
+            patch("services.scheduled.storage_fee.execute_write_with_tenant", return_value=insert_result),
+            patch("services.scheduled.storage_fee.adjust_billing", return_value=adjust_result or {"id": "billing-001"}),
+            patch("services.scheduled.storage_fee.publish_event"),
+        )
+
     def test_past_grace_period_with_unreleased_accrues_fee(self):
+        from contextlib import ExitStack
+
         from services.scheduled.storage_fee import _accrue_for_note
 
         note = self._note(created_days_ago=20, total_cartons=10)
-        inserted = {"id": "fee-log-001"}
-
-        with (
-            patch("services.scheduled.storage_fee._sum_cartons_picked", return_value=3),
-            patch(
-                "services.scheduled.storage_fee.execute_write_with_tenant",
-                return_value=inserted,
-            ),
-            patch("services.scheduled.storage_fee.publish_event"),
-        ):
+        with ExitStack() as stack:
+            for p in self._patches({"id": "fee-log-001"}):
+                stack.enter_context(p)
             result = _accrue_for_note(TENANT_ID, note, _GRACE_PERIOD, _DAILY_RATE, date.today())
-            assert result is True
+        assert result is True
 
     def test_fee_calculation_correct(self):
-        """7 unreleased cartons × 500 NGN = 3500 NGN."""
+        """7 unreleased cartons × 500 NGN = 3500 NGN, added to the invoice in the same step."""
+        from contextlib import ExitStack, nullcontext
+
         from services.scheduled.storage_fee import _accrue_for_note
 
         note = self._note(created_days_ago=20, total_cartons=10)
@@ -80,36 +94,54 @@ class TestStorageFeeAccrual:
             captured_calls.append(params)
             return {"id": "log-001"}
 
-        with (
-            patch("services.scheduled.storage_fee._sum_cartons_picked", return_value=3),
-            patch(
-                "services.scheduled.storage_fee.execute_write_with_tenant",
-                side_effect=_capture_write,
-            ),
-            patch("services.scheduled.storage_fee.publish_event"),
-        ):
+        with ExitStack() as stack:
+            stack.enter_context(patch("services.scheduled.storage_fee._sum_cartons_picked", return_value=3))
+            stack.enter_context(patch("services.scheduled.storage_fee.tenant_transaction", return_value=nullcontext()))
+            stack.enter_context(patch("services.scheduled.storage_fee.execute_write_with_tenant", side_effect=_capture_write))
+            mock_adjust = stack.enter_context(
+                patch("services.scheduled.storage_fee.adjust_billing", return_value={"id": "billing-001"})
+            )
+            stack.enter_context(patch("services.scheduled.storage_fee.publish_event"))
             _accrue_for_note(TENANT_ID, note, _GRACE_PERIOD, _DAILY_RATE, date.today())
 
-        # First write is the storage_fee_log INSERT
         insert_params = captured_calls[0]
         assert insert_params["cartons_in_storage"] == 7
         assert insert_params["amount_ngn"] == Decimal("3500")
         assert insert_params["daily_rate_ngn"] == _DAILY_RATE
+        mock_adjust.assert_called_once_with(TENANT_ID, "billing-001", Decimal("3500"))
 
     def test_idempotent_on_conflict(self):
-        """If log already exists for today (ON CONFLICT DO NOTHING → None returned), no billing update."""
+        """If log already exists for today (ON CONFLICT DO NOTHING → None returned), the invoice is not touched."""
+        from contextlib import ExitStack, nullcontext
+
         from services.scheduled.storage_fee import _accrue_for_note
 
         note = self._note(created_days_ago=20, total_cartons=10)
-        with (
-            patch("services.scheduled.storage_fee._sum_cartons_picked", return_value=3),
-            patch(
-                "services.scheduled.storage_fee.execute_write_with_tenant",
-                return_value=None,  # conflict → no row returned
-            ),
-        ):
+        with ExitStack() as stack:
+            stack.enter_context(patch("services.scheduled.storage_fee._sum_cartons_picked", return_value=3))
+            stack.enter_context(patch("services.scheduled.storage_fee.tenant_transaction", return_value=nullcontext()))
+            stack.enter_context(patch("services.scheduled.storage_fee.execute_write_with_tenant", return_value=None))
+            mock_adjust = stack.enter_context(patch("services.scheduled.storage_fee.adjust_billing"))
             result = _accrue_for_note(TENANT_ID, note, _GRACE_PERIOD, _DAILY_RATE, date.today())
-            assert result is False
+        assert result is False
+        mock_adjust.assert_not_called()
+
+    def test_a_failed_invoice_update_raises_so_the_log_row_rolls_back(self):
+        from contextlib import ExitStack
+
+        from services.scheduled.storage_fee import _accrue_for_note
+
+        note = self._note(created_days_ago=20, total_cartons=10)
+        with ExitStack() as stack:
+            for p in self._patches({"id": "fee-log-001"}, adjust_result=None):
+                stack.enter_context(p)
+            stack.enter_context(patch("services.scheduled.storage_fee.adjust_billing", return_value=None))
+            try:
+                _accrue_for_note(TENANT_ID, note, _GRACE_PERIOD, _DAILY_RATE, date.today())
+            except RuntimeError as exc:
+                assert "not found" in str(exc)
+            else:  # pragma: no cover
+                raise AssertionError("expected RuntimeError so the transaction rolls back")
 
 
 # ---------------------------------------------------------------------------
@@ -521,7 +553,7 @@ class TestScheduledLocaleForwarding:
                 tenant_id=TENANT_ID,
                 channel="email",
                 recipient="test@example.com",
-                template_id="test_template",
+                template_id="shipment_update",
                 template_vars={},
                 locale="zh",
             )

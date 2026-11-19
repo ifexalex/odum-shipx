@@ -1,0 +1,16 @@
+.wrap {
+  margin-bottom: var(--space-lg);
+}
+
+.header {
+  padding: 18px var(--space-lg);
+}
+
+.customers {
+  color: var(--color-ink-3);
+  font-size: 13px;
+}
+
+.error {
+  padding: 0 var(--space-lg) var(--space-md);
+}

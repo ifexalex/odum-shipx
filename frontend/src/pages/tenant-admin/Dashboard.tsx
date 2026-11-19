@@ -3,26 +3,32 @@
  * Shows summary stats from billing and containers via existing APIs.
  */
 
-import { useEffect, useState, type JSX } from 'react'
+import { useMemo, type JSX } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
-import { billingApi, disputeApi, type Billing, type CBMDispute } from '../../api/billing'
+import { billingApi } from '../../api/billing'
 import { claimsApi } from '../../api/claims'
 import { CONTAINER_STATUS_LABELS } from '../../api/containerRules'
 import { billingKeys, claimKeys, containerKeys, customerKeys } from '../../api/keys'
-import { formatNgnCompact } from '../../lib/format'
-import { manifestApi, type Manifest } from '../../api/manifest'
+import { formatNgnCompact, formatDate, formatNgn } from '../../lib/format'
 import { ARRIVED_IN_NG } from '../../api/manifestRules'
-import { packingListApi, type PackingList } from '../../api/packingList'
-import { releaseNotesApi, type ReleaseNote } from '../../api/releaseNotes'
 import { customersApi } from '../../api/tenantManagement'
-import { containersApi, type Container, type ContainerStatus } from '../../api/tracking'
+import { containersApi, type ContainerStatus } from '../../api/tracking'
 import { useSession } from '../../auth/useSession'
+import {
+  useActiveReleaseNotes,
+  useOpenDisputes,
+  useOutstandingBilling,
+  usePendingManifests,
+  usePendingPackingLists,
+  useRecentContainers,
+} from '../../hooks/useDashboard'
 import { Badge, Button, Card, Mono, QuickActionCard, StatCard, Table, UserCell, type BadgeVariant } from '../../design/components'
 import { ContainerPipeline } from './DashboardPipeline'
 import { ActivityFeed } from '../../shell/ActivityFeed'
 import { PlanUsagePanel } from '../../shell/PlanUsagePanel'
 import { SectionHead } from '../../shell/SectionHead'
+import { UnbilledQueue } from '../../shell/UnbilledQueue'
 import styles from './admin.module.css'
 
 function greeting(): string {
@@ -47,15 +53,6 @@ const CONTAINER_BADGE: Record<string, BadgeVariant> = {
 export function Dashboard(): JSX.Element {
   const navigate = useNavigate()
   const { session } = useSession()
-  const [containers, setContainers] = useState<Container[]>([])
-  const [pendingPls, setPendingPls] = useState<PackingList[]>([])
-  // Nigeria ops action queues (6.1, P2-5)
-  const [pendingManifests, setPendingManifests] = useState<Manifest[]>([])
-  const [openDisputes, setOpenDisputes] = useState<CBMDispute[]>([])
-  // Bottom two-column: money to collect (oldest outstanding) + goods to release.
-  const [outstanding, setOutstanding] = useState<Billing[]>([])
-  const [awaitingPickup, setAwaitingPickup] = useState<ReleaseNote[]>([])
-  const [readyForPickup, setReadyForPickup] = useState<number | null>(null)
 
   const isAdmin = session?.role === 'tenant_admin'
   const isNigeria = session?.role === 'nigeria_office_staff'
@@ -83,47 +80,23 @@ export function Dashboard(): JSX.Element {
 
   // Admin "Recent containers" table — a bounded visual sample. (Nigeria's
   // pipeline section fetches its own complete, stage-filtered list.)
-  useEffect(() => {
-    if (!isAdmin) return
-    void containersApi.list({})
-      .then((r) => setContainers(r.data))
-      .catch(() => undefined)
-  }, [isAdmin])
-
-  // Nigeria ops: packing-list approval queue (6.1)
-  useEffect(() => {
-    if (!isNigeria) return
-    void (async () => {
-      try {
-        const result = await packingListApi.list({ status: 'submitted', limit: 10 })
-        setPendingPls(result.data)
-      } catch {
-        // non-fatal
-      }
-    })()
-  }, [isNigeria])
+  const containers = useRecentContainers(isAdmin).data?.data ?? []
 
   // Nigeria ops action queues (6.1, P2-5) — all non-fatal, degrade to hidden/—.
-  useEffect(() => {
-    if (!isNigeria) return
-    void manifestApi.list({ verification_status: 'pending', limit: 20 })
-      // "Awaiting verification" only bites once the container has reached Nigeria (B11 predicate).
-      .then((r) => setPendingManifests(r.data.filter((m) => m.container_status && ARRIVED_IN_NG.has(m.container_status))))
-      .catch(() => setPendingManifests([]))
-    void disputeApi.list({ status: 'submitted', limit: 10 })
-      .then((r) => setOpenDisputes(r.data))
-      .catch(() => setOpenDisputes([]))
-    // Money to collect — unpaid/partial billing, oldest billed first so the
-    // most overdue (and highest storage-fee risk) surfaces at the top.
-    void billingApi.list({ status: 'unpaid,partially_paid', sort: 'billed_at', direction: 'asc', limit: 6 })
-      .then((r) => setOutstanding(r.data))
-      .catch(() => setOutstanding([]))
-    // Goods to release — active release notes (released, not yet collected).
-    // One call drives both the "Ready for pickup" stat count and the list.
-    void releaseNotesApi.list({ status: 'active', limit: 50 })
-      .then((r) => { setReadyForPickup(r.data.length); setAwaitingPickup(r.data) })
-      .catch(() => { setReadyForPickup(null); setAwaitingPickup([]) })
-  }, [isNigeria])
+  const pendingPls = usePendingPackingLists(isNigeria).data?.data ?? []
+  const manifests = usePendingManifests(isNigeria).data?.data
+  // "Awaiting verification" only bites once the container has reached Nigeria (B11 predicate).
+  const pendingManifests = useMemo(
+    () => (manifests ?? []).filter((m) => m.container_status && ARRIVED_IN_NG.has(m.container_status)),
+    [manifests],
+  )
+  const openDisputes = useOpenDisputes(isNigeria).data?.data ?? []
+  // Bottom two-column: money to collect (oldest outstanding) + goods to release.
+  const outstanding = useOutstandingBilling(isNigeria).data?.data ?? []
+  // One read drives both the "Ready for pickup" stat count and the list.
+  const activeNotes = useActiveReleaseNotes(isNigeria).data?.data
+  const awaitingPickup = activeNotes ?? []
+  const readyForPickup = activeNotes ? activeNotes.length : null
 
   const firstName = session?.name?.split(' ')[0] ?? 'team'
   const customsAwaiting = (containerStats?.customs_clearance ?? 0) + (containerStats?.arrived ?? 0)
@@ -168,6 +141,8 @@ export function Dashboard(): JSX.Element {
         {isAdmin && <StatCard label="Open claims" value={claimStats?.open ?? '—'} icon="warn" sublabel={claimStats?.open ? 'needs attention' : 'no active disputes'} />}
       </div>
 
+      <UnbilledQueue />
+
       {isNigeria && (
         <div style={{ marginTop: 8, marginBottom: 20 }}>
           <ContainerPipeline counts={containerStats} />
@@ -178,7 +153,7 @@ export function Dashboard(): JSX.Element {
                   <SectionHead
                     title="Packing lists awaiting approval"
                     sub={`${pendingPls.length} submitted`}
-                    action={<Button variant="secondary" size="sm" onClick={() => navigate('/packing-lists')}>Review all →</Button>}
+                    action={<Button variant="secondary" size="sm" onClick={() => navigate('/packing-lists?status=pending_approval')}>Review all →</Button>}
                   />
                 </div>
                 <Table
@@ -206,7 +181,7 @@ export function Dashboard(): JSX.Element {
                   <SectionHead
                     title="Containers awaiting manifest verification"
                     sub={`${pendingManifests.length} arrived in Nigeria, manifest still pending — blocks billing + release`}
-                    action={<Button variant="secondary" size="sm" onClick={() => navigate('/manifests')}>Verify →</Button>}
+                    action={<Button variant="secondary" size="sm" onClick={() => navigate('/manifests?status=pending')}>Verify →</Button>}
                   />
                 </div>
                 <Table
@@ -235,7 +210,7 @@ export function Dashboard(): JSX.Element {
                   <SectionHead
                     title="CBM disputes need response"
                     sub={`${openDisputes.length} submitted — 24h acknowledge SLA`}
-                    action={<Button variant="secondary" size="sm" onClick={() => navigate('/billing/disputes')}>Respond →</Button>}
+                    action={<Button variant="secondary" size="sm" onClick={() => navigate('/billing/disputes?status=submitted')}>Respond →</Button>}
                   />
                 </div>
                 <Table
@@ -244,7 +219,7 @@ export function Dashboard(): JSX.Element {
                   columns={[{ title: 'Submitted' }, { title: 'Original CBM', align: 'right' }, { title: 'Status' }]}
                   rows={openDisputes.slice(0, 5).map((d) => ({
                     cells: [
-                      <span key="when" style={{ fontSize: 12, color: 'var(--color-ink-3)' }}>{d.submitted_at.slice(0, 10)}</span>,
+                      <span key="when" style={{ fontSize: 12, color: 'var(--color-ink-3)' }}>{formatDate(d.submitted_at)}</span>,
                       <Mono key="cbm">{d.original_cbm ?? '—'}</Mono>,
                       <Badge key="status" variant="warning">Submitted</Badge>,
                     ],
@@ -273,7 +248,7 @@ export function Dashboard(): JSX.Element {
                     cells: [
                       <UserCell key="cust" name={b.customer_name ?? '—'} email="" />,
                       <Mono key="ctn">{b.container_number ?? '—'}</Mono>,
-                      <Mono key="out" color="var(--color-error)">₦{Number(b.outstanding_ngn).toLocaleString()}</Mono>,
+                      <Mono key="out" color="var(--color-error)">{formatNgn(b.outstanding_ngn)}</Mono>,
                       <Button key="view" variant="ghost" size="sm" onClick={() => navigate(`/billing/${b.id}`)}>View</Button>,
                     ],
                   }))}
@@ -342,7 +317,7 @@ export function Dashboard(): JSX.Element {
                   <Badge key="status" variant={CONTAINER_BADGE[c.status] ?? 'neutral'}>
                     {CONTAINER_STATUS_LABELS[c.status] ?? c.status}
                   </Badge>,
-                  <span key="eta" style={{ fontSize: 12, color: 'var(--color-ink-3)' }}>{c.estimated_arrival_date?.slice(0, 10) ?? '—'}</span>,
+                  <span key="eta" style={{ fontSize: 12, color: 'var(--color-ink-3)' }}>{formatDate(c.estimated_arrival_date)}</span>,
                   <Button key="view" variant="ghost" size="sm" onClick={() => navigate(`/containers/${c.id}`)}>View</Button>,
                 ],
               }))}

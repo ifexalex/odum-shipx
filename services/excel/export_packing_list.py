@@ -10,6 +10,8 @@ from openpyxl.styles import Font
 from openpyxl.utils import get_column_letter
 from openpyxl.worksheet.worksheet import Worksheet
 
+from ._tables import neutralise_formulas
+
 
 def _autosize_columns(ws: Worksheet) -> None:
     for col in ws.columns:
@@ -96,6 +98,7 @@ def generate_packing_list_xlsx(
     _autosize_columns(ws2)
 
     buf = BytesIO()
+    neutralise_formulas(wb)
     wb.save(buf)
     buf.seek(0)
     return buf

@@ -2,15 +2,18 @@ import { useQuery } from '@tanstack/react-query'
 import { useState, type JSX } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { billingApi, type Billing, type PaymentStatus } from '../../api/billing'
+import { canGenerateInvoices } from '../../api/billingRules'
 import { billingKeys } from '../../api/keys'
-import { formatNgnCompact } from '../../lib/format'
+import { formatNgnCompact, formatDate, formatNgn } from '../../lib/format'
 import { STALE_5_MIN } from '../../lib/queryClient'
-import { Badge, Banner, Button, Card, Chip, DateRangeFilter, Icon, ListFooter, Mono, StatCard, Table, UserCell, type BadgeVariant } from '../../design/components'
+import { Badge, Banner, Button, Card, Chip, DateRangeFilter, ExportButton, Icon, ListFooter, Mono, StatCard, Table, UserCell, type BadgeVariant } from '../../design/components'
 import { useSession } from '../../auth/useSession'
 import { useBillingList } from '../../hooks/useBilling'
 import { useDateRangeFilter } from '../../hooks/useDateRangeFilter'
+import { useListExport } from '../../hooks/useListExport'
 import { type SortableColumn, useTableSort } from '../../hooks/useTableSort'
 import { useTopBarSlot } from '../../shell/TopBarContext'
+import { GenerateBillingModal } from './GenerateBillingModal'
 import styles from './BillingList.module.css'
 
 // 'Reference' (invoice_number, text) defaults asc; 'Billed' (billed_at,
@@ -54,7 +57,7 @@ function fmtNgn(val: string | number | null | undefined): string {
   if (val == null) return '—'
   const n = Number(val)
   if (n === 0) return '—'
-  return `₦${n.toLocaleString('en-NG', { maximumFractionDigits: 0 })}`
+  return formatNgn(n)
 }
 
 // `openBilling` must carry the record in router state. BillingDetail reads
@@ -113,14 +116,32 @@ export function BillingList(): JSX.Element {
   const [filtersOpen, setFiltersOpen] = useState(false)
 
   const isAdmin = session?.role === 'tenant_admin'
+  const canGenerate = session ? canGenerateInvoices(session.role) : false
+  const [generateOpen, setGenerateOpen] = useState(false)
+
+  const { sort, onSort, sortField, sortDirection } = useTableSort(SORT_COLUMNS)
+
+  // What the list is showing: the same object drives the query below and the Export button, so an export is the
+  // rows on screen (every page of them), not a second reading of the filters.
+  const listParams = {
+    ...(activeStatuses?.length ? { status: activeStatuses.join(',') } : {}),
+    ...(search ? { q: search } : {}),
+    ...(billedRange.createdAfter ? { created_after: billedRange.createdAfter } : {}),
+    ...(billedRange.createdBefore ? { created_before: billedRange.createdBefore } : {}),
+    ...(sortField ? { sort: sortField, direction: sortDirection } : {}),
+  }
+  const exportList = useListExport((format: 'xlsx' | 'csv') => billingApi.exportList(listParams, format))
 
   useTopBarSlot({
-    actions: isAdmin ? (
-      <>
-        <Button variant="secondary" icon="download">Export</Button>
-        <Button variant="primary" icon="plus">Generate billing</Button>
-      </>
-    ) : null,
+    actions:
+      isAdmin || canGenerate ? (
+        <>
+          {isAdmin && <ExportButton formats={['xlsx', 'csv']} onExport={exportList.onExport} />}
+          {canGenerate && (
+            <Button variant="primary" icon="plus" onClick={() => setGenerateOpen(true)}>Generate billing</Button>
+          )}
+        </>
+      ) : null,
   })
 
   // Tenant-wide aggregates for the stats row + status chips — SQL-computed
@@ -132,15 +153,7 @@ export function BillingList(): JSX.Element {
     staleTime: STALE_5_MIN,
   })
 
-  const { sort, onSort, sortField, sortDirection } = useTableSort(SORT_COLUMNS)
-
-  const { items: records, isLoading, error, hasMore, loadMore, isFetchingMore, totalCount } = useBillingList({
-    ...(activeStatuses?.length ? { status: activeStatuses.join(',') } : {}),
-    ...(search ? { q: search } : {}),
-    ...(billedRange.createdAfter ? { created_after: billedRange.createdAfter } : {}),
-    ...(billedRange.createdBefore ? { created_before: billedRange.createdBefore } : {}),
-    ...(sortField ? { sort: sortField, direction: sortDirection } : {}),
-  })
+  const { items: records, isLoading, error, hasMore, loadMore, isFetchingMore, totalCount } = useBillingList(listParams)
 
   // Toggling a single status here overwrites `activeStatuses` — matches the
   // top chips' single-select semantics rather than adding a second,
@@ -166,6 +179,13 @@ export function BillingList(): JSX.Element {
       {error && (
         <div className={styles.banner}>
           <Banner variant="error" title="Couldn't load billing">{error.message}</Banner>
+        </div>
+      )}
+      {exportList.error && (
+        <div className={styles.banner}>
+          <Banner variant="error" title="Couldn't export invoices" dismissible onDismiss={exportList.dismissError}>
+            {exportList.error}
+          </Banner>
         </div>
       )}
 
@@ -309,7 +329,7 @@ export function BillingList(): JSX.Element {
               </Badge>,
               <span key="billed" className={styles.metaText}>
                 {b.billed_at
-                  ? new Date(b.billed_at).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })
+                  ? formatDate(b.billed_at, 'short')
                   : '—'}
               </span>,
               <div key="action" className={styles.rowActions}>
@@ -332,6 +352,8 @@ export function BillingList(): JSX.Element {
         onLoadMore={loadMore}
         noun="billing records"
       />
+
+      {generateOpen && <GenerateBillingModal onClose={() => setGenerateOpen(false)} />}
     </div>
   )
 }

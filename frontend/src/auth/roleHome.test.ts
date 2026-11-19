@@ -6,7 +6,7 @@ describe('homePathForRole', () => {
   it.each([
     ['platform_admin', '/platform/dashboard'],
     ['tenant_admin', '/dashboard'],
-    ['china_office_staff', '/containers'],
+    ['china_office_staff', '/work-queue'],
     ['nigeria_office_staff', '/dashboard'],
     ['warehouse_attendant', '/warehouse'],
     ['customer', '/my-shipments'],

@@ -14,6 +14,9 @@ See 00_CROSS_CUTTING_STANDARDS.md §2.2 for SQL injection prevention rules.
 import json
 import logging
 import os
+from collections.abc import Iterator
+from contextlib import contextmanager
+from contextvars import ContextVar
 from typing import Any
 
 import psycopg2
@@ -28,6 +31,12 @@ _connection: psycopg2.extensions.connection | None = None
 
 # Cached DB password — fetched from Secrets Manager once per cold start
 _cached_password: str | None = None
+
+# The cursor and tenant scope of the `tenant_transaction` currently open in this
+# context, if any. While one is open, every `execute_*` helper below runs on that
+# cursor and leaves committing to the transaction, so existing repository
+# functions compose into one atomic unit without being rewritten.
+_active_transaction: ContextVar[tuple[str, Any] | None] = ContextVar("active_tenant_transaction", default=None)
 
 
 def _get_db_password() -> str:
@@ -110,6 +119,27 @@ def _set_tenant(cursor: psycopg2.extensions.cursor, tenant_id: str) -> None:
     cursor.execute("SET LOCAL app.current_tenant_id = %s", (tenant_id,))
 
 
+def _transaction_cursor(tenant_id: str) -> psycopg2.extensions.cursor | None:
+    """The open transaction's cursor if one is active for this tenant scope, else None.
+
+    A query for a *different* scope inside an open transaction raises. The RLS
+    variable is set with `SET LOCAL`, which lasts until the transaction ends, so
+    letting a PLATFORM-scoped read (or an audit write) slip in would silently
+    widen the scope for every statement after it. Do such reads before opening the
+    transaction, and audit/publish after it commits.
+    """
+    active = _active_transaction.get()
+    if active is None:
+        return None
+    scope, cursor = active
+    if scope != tenant_id:
+        raise RuntimeError(
+            f"query scoped to {tenant_id!r} issued inside a transaction scoped to {scope!r}; "
+            "do cross-scope reads before the transaction and audit/publish after it"
+        )
+    return cursor
+
+
 def _rows_to_dicts(cursor: psycopg2.extensions.cursor) -> list[dict[str, Any]]:
     """Convert cursor results to plain dicts."""
     if cursor.description is None:
@@ -138,6 +168,10 @@ def execute_with_tenant(
     Returns:
         List of result rows as plain dicts.
     """
+    joined = _transaction_cursor(tenant_id)
+    if joined is not None:
+        joined.execute(query, params)
+        return _rows_to_dicts(joined)
     conn = get_connection()
     try:
         with conn.cursor() as cur:
@@ -162,6 +196,11 @@ def execute_write_with_tenant(
     Returns:
         The first returned row as a dict, or None if nothing was returned.
     """
+    joined = _transaction_cursor(tenant_id)
+    if joined is not None:
+        joined.execute(query, params)
+        rows = _rows_to_dicts(joined)
+        return rows[0] if rows else None
     conn = get_connection()
     try:
         with conn.cursor() as cur:
@@ -189,6 +228,10 @@ def execute_write_with_tenant_many(
     Returns:
         All returned rows as dicts.
     """
+    joined = _transaction_cursor(tenant_id)
+    if joined is not None:
+        joined.execute(query, params)
+        return _rows_to_dicts(joined)
     conn = get_connection()
     try:
         with conn.cursor() as cur:
@@ -219,8 +262,15 @@ def execute_transaction(
     Returns:
         List of result rows (one per query, None for queries without RETURNING).
     """
-    conn = get_connection()
     results: list[dict[str, Any] | None] = []
+    joined = _transaction_cursor(tenant_id)
+    if joined is not None:
+        for query, params in queries:
+            joined.execute(query, params)
+            rows = _rows_to_dicts(joined) if joined.description else []
+            results.append(rows[0] if rows else None)
+        return results
+    conn = get_connection()
     try:
         with conn.cursor() as cur:
             _set_tenant(cur, tenant_id)
@@ -236,3 +286,107 @@ def execute_transaction(
     except Exception:
         conn.rollback()
         raise
+
+
+@contextmanager
+def tenant_transaction(tenant_id: str) -> Iterator[psycopg2.extensions.cursor]:
+    """Run a multi-statement unit of work atomically within a tenant scope.
+
+    The tenant RLS variable is set once; the transaction commits when the block
+    exits normally and rolls back entirely if it raises. Nothing is visible to
+    other requests until it commits.
+
+    While the block is open, every `execute_with_tenant`, `execute_write_with_tenant`
+    and `execute_transaction` call for the same tenant runs inside it, so existing
+    repository functions can simply be called from within the block and will
+    commit or roll back together::
+
+        with tenant_transaction(tenant_id):
+            refund = repo.create_refund_request(tenant_id, data)
+            repo.link_refund_to_missing_item(tenant_id, item_id, refund["id"])
+
+    The yielded cursor is there for statements that need a value from an earlier
+    one (dict-like rows)::
+
+        with tenant_transaction(tenant_id) as cur:
+            cur.execute("UPDATE billing ... RETURNING *", params)
+            billing = cur.fetchone()
+
+    Rules:
+      * Keep the block to the money-state writes. Do `log_audit`, `publish_event`
+        and notifications AFTER it: `log_audit` swallows its own errors, and a
+        failed statement inside a transaction aborts every statement after it.
+      * Do not catch and swallow a database error inside the block for the same
+        reason; let it propagate so the whole unit rolls back.
+      * Reads scoped to another tenant (PLATFORM lookups) raise inside the block.
+        Do them first.
+      * Do not call `commit()` or `rollback()` on the connection inside the block.
+      * A nested block for the same tenant joins the outer one and commits with it.
+    """
+    active = _active_transaction.get()
+    if active is not None:
+        scope, cursor = active
+        if scope != tenant_id:
+            raise RuntimeError(f"cannot open a {tenant_id!r} transaction inside one scoped to {scope!r}")
+        yield cursor
+        return
+
+    conn = get_connection()
+    token = None
+    try:
+        with conn.cursor() as cur:
+            _set_tenant(cur, tenant_id)
+            token = _active_transaction.set((tenant_id, cur))
+            yield cur
+        conn.commit()
+    except Exception:
+        conn.rollback()
+        raise
+    finally:
+        if token is not None:
+            _active_transaction.reset(token)
+
+
+def next_tenant_counter(cursor: psycopg2.extensions.cursor, tenant_id: str, name: str) -> int:
+    """Atomically take the next value of a per-tenant named counter.
+
+    Replaces the `SELECT COUNT(*) + 1` pattern, which hands the same number to
+    two requests that run at the same moment. The upsert takes a row lock on the
+    counter, so concurrent callers are serialised and each receives a distinct
+    value. Call it inside `tenant_transaction` so a failed insert rolls the
+    increment back and leaves no gap.
+
+    Args:
+        cursor: The cursor yielded by `tenant_transaction`.
+        tenant_id: The tenant UUID the counter belongs to.
+        name: Counter name, for example ``invoice`` or ``receipt``.
+
+    Returns:
+        The new counter value, starting at 1 for a counter that did not exist.
+    """
+    cursor.execute(
+        """
+        INSERT INTO tenant_counter (tenant_id, name, last_value)
+        VALUES (%s, %s, 1)
+        ON CONFLICT (tenant_id, name)
+        DO UPDATE SET last_value = tenant_counter.last_value + 1
+        RETURNING last_value
+        """,
+        (tenant_id, name),
+    )
+    row = cursor.fetchone()
+    return int(row["last_value"])
+
+
+def take_tenant_counter(tenant_id: str, name: str) -> int:
+    """Take the next value of a per-tenant counter in its own transaction.
+
+    Use when the number is needed before the row that will carry it exists and the
+    two cannot share a transaction. Concurrent callers always receive distinct
+    values. If whatever uses the number then fails, that number is skipped, so this
+    gives uniqueness, not gap-free numbering; use `next_tenant_counter` inside the
+    inserting transaction when gaps matter. Inside an open `tenant_transaction` it
+    joins that transaction instead.
+    """
+    with tenant_transaction(tenant_id) as cur:
+        return next_tenant_counter(cur, tenant_id, name)

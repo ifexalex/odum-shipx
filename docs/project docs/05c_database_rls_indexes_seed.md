@@ -340,3 +340,7 @@ unprivileged probe role — that a tenant sees only its own rows, that PLATFORM
 scope still crosses tenants, that an unscoped connection sees nothing, and that
 `WITH CHECK` blocks a cross-tenant write. A future migration adding a table with
 a non-canonical policy fails CI.
+
+## `tenant_offboarding_export` (migration 067, 2026-11-17)
+
+Created with the canonical policy (`app.current_tenant_id` = `PLATFORM` or the row's `tenant_id`), ENABLE and FORCE, like `tenant_counter` (062). Only platform code touches it (PLATFORM scope); a tenant-scoped connection sees only its own rows. DML grants come from 059's default privileges.

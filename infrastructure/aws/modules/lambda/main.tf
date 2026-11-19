@@ -1,3 +1,10 @@
+# The secret that keys the pickup-code hash. Generated once and kept in state. Changing it makes every code already issued
+# unverifiable, so those release notes would need a new code (POST /v1/release-notes/{id}/pickup-code).
+resource "random_password" "pickup_code_pepper" {
+  length  = 48
+  special = false
+}
+
 data "aws_caller_identity" "current" {}
 data "aws_region" "current" {}
 
@@ -27,6 +34,7 @@ locals {
     payment_release   = { name = "payment-release", memory = 256, timeout = 30, handler = "payment_release.handler.lambda_handler" }
     refunds           = { name = "refunds", memory = 256, timeout = 30, handler = "refunds.handler.lambda_handler" }
     excel             = { name = "excel", memory = 256, timeout = 60, handler = "excel.handler.lambda_handler" }
+    search            = { name = "search", memory = 256, timeout = 15, handler = "search.handler.lambda_handler" }
 
     # Notification HTTP surface (2026-09-23). The delivery log, staff/customer
     # in-app bells and announcements all read/write Aurora, and announcing
@@ -72,6 +80,8 @@ locals {
     data_cleanup       = { name = "data-cleanup", memory = 256, timeout = 300, handler = "scheduled.data_cleanup.lambda_handler", rule_key = "tenant-data-cleanup" }
     usage_aggregation  = { name = "usage-aggregation", memory = 256, timeout = 300, handler = "scheduled.usage_aggregation.lambda_handler", rule_key = "usage-aggregation" }
     release_expiry     = { name = "release-expiry", memory = 256, timeout = 300, handler = "scheduled.release_expiry.lambda_handler", rule_key = "release-note-expiry" }
+    # Builds a tenant's whole data archive in memory, hence the size and the longest timeout.
+    offboarding_export = { name = "offboarding-export", memory = 1024, timeout = 900, handler = "scheduled.offboarding_export.lambda_handler", rule_key = "offboarding-export" }
   }
 
   # VPC SQS Lambda (metering queue consumer, needs DB)
@@ -122,20 +132,66 @@ locals {
       # Phase 1 provisions the credential: the migrate Lambda below receives
       # APP_DB_SECRET_ARN, so 060 sets the role's password on the next deploy.
       # Phase 2 then flips these two lines against a role that already works.
-      DATABASE_USER         = "postgres"
-      DB_SECRET_ARN         = var.db_secret_arn
-      S3_BUCKET             = var.bucket_name
+      DATABASE_USER = "postgres"
+      DB_SECRET_ARN = var.db_secret_arn
+      # The name shared/providers reads (`get_storage_provider`). This was `S3_BUCKET`, which nothing reads, so every
+      # Lambda fell back to the default "logistics-assets": not this deployment's bucket (2026-11-17).
+      S3_BUCKET_NAME        = var.bucket_name
       EVENT_BUS_NAME        = var.event_bus_name
       COGNITO_USER_POOL_ID  = var.cognito_user_pool_id
       ENVIRONMENT           = var.environment
       ENCRYPTION_KMS_KEY_ID = var.encryption_kms_key_arn
       REDIS_HOST            = var.redis_host
 
+      # Key for the HMAC that hashes release-note pickup codes (shared/pickup_code.py). Without it no codes are issued
+      # and none are required; with it, every new release note carries one.
+      PICKUP_CODE_PEPPER = random_password.pickup_code_pepper.result
+
       # shared/notifications.py reads these to enqueue; unset, it logs
       # "Queue URL env var not set — notification dropped" and returns False.
       SQS_SMS_QUEUE_URL      = lookup(var.sqs_queue_urls, "sms", "")
       SQS_WHATSAPP_QUEUE_URL = lookup(var.sqs_queue_urls, "whatsapp", "")
       SQS_EMAIL_QUEUE_URL    = lookup(var.sqs_queue_urls, "email", "")
+
+      # Absolute base URL for links in notifications — account activation
+      # (/activate/{token}) and customer invites (/invite/{token}).
+      # shared/app_urls.py refuses to build a relative link, so leaving these
+      # empty means those notifications are not sent at all (and say so in the
+      # log) rather than arriving with a dead link, which is what used to
+      # happen: neither variable was set here, so every invite carried the bare
+      # path "/invite/<token>".
+      APP_BASE_URL             = var.app_base_url
+      CUSTOMER_PORTAL_BASE_URL = var.customer_portal_base_url
+
+      # Origins allowed to call the cookie-authenticated /v1/auth/* endpoints, comma-separated.
+      # shared/origin_guard.py refuses any other Origin, and also trusts the origins of the two
+      # URLs above. With none of them set it refuses every request, so this must not be dropped.
+      ALLOWED_ORIGINS = join(",", var.cors_allow_origins)
+
+      # Email — SES. The sender must be a verified identity in this account's
+      # SES region, or every send is rejected.
+      SES_FROM_ADDRESS = var.ses_from_address
+
+      # SMS — Africa's Talking. AFRICASTALKING_USERNAME must be the live
+      # username in production: the code's default is "sandbox", which accepts
+      # messages and delivers nothing.
+      AFRICASTALKING_API_KEY   = var.africastalking_api_key
+      AFRICASTALKING_USERNAME  = var.africastalking_username
+      AFRICASTALKING_SENDER_ID = var.africastalking_sender_id
+
+      # WhatsApp — Meta Cloud API. Templates must be pre-approved by Meta under
+      # the names in WA_TEMPLATE_MAP (services/notification/service.py), and
+      # META_WHATSAPP_TEMPLATE_LANG must match the locale those templates were
+      # approved in, or Meta 404s the send.
+      META_WHATSAPP_ACCESS_TOKEN  = var.meta_whatsapp_access_token
+      META_WHATSAPP_PHONE_ID      = var.meta_whatsapp_phone_id
+      META_WHATSAPP_TEMPLATE_LANG = var.meta_whatsapp_template_lang
+      WHATSAPP_VERIFY_TOKEN       = var.whatsapp_verify_token
+
+      # Outside production nothing is messaged unless the contact is listed
+      # here — dev and staging databases hold real imported customer contacts.
+      # See shared/notifications.py::is_recipient_allowed.
+      NOTIFICATION_ALLOWLIST = var.notification_allowlist
     },
     var.local_env_overrides,
   )
@@ -411,6 +467,43 @@ resource "aws_iam_role_policy" "ses_send" {
   })
 }
 
+# offboarding_export (audit BE-10) — writes the archive into the tenant's export folder, nowhere else, and decrypts the
+# encrypted fields it hands over (decrypt only: it never encrypts).
+resource "aws_iam_role_policy" "offboarding_export" {
+  name = "${local.name_prefix}-offboarding-export"
+  role = aws_iam_role.lambda["offboarding_export"].id
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Effect   = "Allow"
+        Action   = ["s3:PutObject"]
+        Resource = ["arn:aws:s3:::${var.bucket_name}/*/exports/offboarding/*"]
+      },
+      {
+        Effect   = "Allow"
+        Action   = ["kms:Decrypt"]
+        Resource = [var.encryption_kms_key_arn]
+      },
+    ]
+  })
+}
+
+# tenant_management — signs the five-minute download link to an offboarding archive. A presigned URL is authorised
+# as the role that signed it, so the role needs GetObject, limited to the export folders.
+resource "aws_iam_role_policy" "tenant_management_export_download" {
+  name = "${local.name_prefix}-tenant-mgmt-export-download"
+  role = aws_iam_role.lambda["tenant_management"].id
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [{
+      Effect   = "Allow"
+      Action   = ["s3:GetObject"]
+      Resource = ["arn:aws:s3:::${var.bucket_name}/*/exports/offboarding/*"]
+    }]
+  })
+}
+
 # payment_release + refunds + tenant_management — KMS field-level encryption
 # (passport IDs, bank account details, per-tenant Paystack secret keys)
 resource "aws_iam_role_policy" "kms_field_encryption" {
@@ -577,6 +670,11 @@ resource "aws_lambda_function" "non_vpc_api" {
   environment {
     variables = merge(local.common_env_vars, {
       COGNITO_CLIENT_ID = var.cognito_client_id
+
+      # Outside the VPC this function cannot reach ElastiCache, and trying would only add a connection
+      # timeout to every request. Its public routes (/v1/auth/*) are throttled per route at API Gateway
+      # instead — see public_route_throttles in modules/api-gateway/main.tf. shared/rate_limit.py.
+      RATE_LIMIT_ENABLED = "false"
     })
   }
 

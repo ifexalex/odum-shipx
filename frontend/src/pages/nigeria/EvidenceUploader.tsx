@@ -73,7 +73,7 @@ export function EvidenceUploader({ getPresignedUrl, onUploaded, disabled }: Evid
         >
           {uploading ? 'Uploading…' : 'Attach file'}
         </Button>
-        <span className={styles.hint}>JPEG, PNG or PDF · max 10 MB</span>
+        <span className={styles.hint}>JPEG, PNG or PDF · max 5 MB</span>
       </div>
 
       {/* Determinate progress bar — only shown for files above the threshold */}

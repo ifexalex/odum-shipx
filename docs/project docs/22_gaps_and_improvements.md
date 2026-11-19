@@ -33,7 +33,7 @@ Work through these iteratively — check off each item when implemented and upda
   - _Touches_: new migration (019), `services/tracking/repository.py`, `services/tracking/service.py`, `05a_database_schema_core.md`, `10_api_tracking.md`
 
 - [x] **Missing item → refund / billing adjustment link**
-  - `missing_item` has `compensated` terminal status but no money movement record.
+  - `missing_item` had no money movement record for a lost item (it was written as a `compensated` status, which the schema never allowed; compensation now triggers on `confirmed_lost`, 2026-11-14).
   - Add optional `refund_request_id` FK on `missing_item`; allow staff to create a refund directly from a missing item resolution.
   - _Touches_: migration (020), `services/claims/`, `services/refunds/`, `12_api_claims.md`, `14_api_refunds.md`
 
@@ -111,9 +111,9 @@ Work through these iteratively — check off each item when implemented and upda
   - Add `webhook_config` to `tenant_config` (URL + HMAC secret); fire-and-forget HTTP POST on key domain events.
   - _Touches_: new `shared/webhook.py`, `services/tenant_management/`, EventBridge rules, `07_api_tenant_management.md`
 
-- [x] **API rate limiting per tenant**
+- [x] **API rate limiting per tenant** — **corrected 2026-11-15:** ticked in error. An HTTP API has no usage plans, so nothing was configured; done now in `shared/rate_limit.py` (ADR-007).
   - Usage is metered but not enforced. A runaway or compromised tenant can overwhelm the DB.
-  - Configure API Gateway usage plan + throttling per tenant; raise `UsageLimitExceededError` (429) when exceeded.
+  - ~~Configure API Gateway usage plan + throttling per tenant;~~ raise `RateLimitExceededError` (429, `Retry-After`) when exceeded.
   - _Touches_: `infrastructure/aws/modules/api-gateway/`, `04c_terraform_api_gateway.md`
 
 - [x] **Rate history (dollar rate + CBM rate changes)**
@@ -192,8 +192,8 @@ Work through these iteratively — check off each item when implemented and upda
 - **Billing void / cancel endpoint** — 2026-05-03. `PATCH /v1/billing/{id}/cancel` added with guards: `unpaid` status only, no confirmed payments, no active release notes. Migration 017 adds `cancelled` status + `cancel_reason/cancelled_by/cancelled_at` columns.
 - **Payment gateway webhook** — 2026-05-03. `POST /v1/webhooks/payment` added to payment_release handler. Supports Paystack (HMAC-SHA512) and Flutterwave (verif-hash). Duplicate-safe via `payment_record.gateway_transaction_id` partial UNIQUE index (migration 018). New `services/payment_release/webhook.py` module.
 - **Container status audit trail** — 2026-05-04. `container_event` table (migration 019, append-only, no RLS). Every `PATCH /v1/containers/{id}/status` writes a row. `GET /v1/containers/{id}/events` returns ordered history.
-- **Missing item → refund link** — 2026-05-04. `refund_request_id` nullable FK added to `missing_item` (migration 020). Setting status `compensated` with `refund_amount_ngn` auto-creates a `refund_request` and links it.
-- **Seized item → compensation link** — 2026-05-04. Same `refund_request_id` FK on `seized_item` (migration 020). Triggers on `recovered`/`forfeited` status with `refund_amount_ngn`.
+- **Missing item → refund link** — 2026-05-04. `refund_request_id` nullable FK added to `missing_item` (migration 020). ~~Setting status `compensated` with `refund_amount_ngn` auto-creates a `refund_request` and links it.~~ **Corrected 2026-11-14:** `compensated` is not an allowed status, so this never fired; it now triggers on `confirmed_lost` with `refund_amount_ngn`.
+- **Seized item → compensation link** — 2026-05-04. Same `refund_request_id` FK on `seized_item` (migration 020). ~~Triggers on `recovered`/`forfeited` status with `refund_amount_ngn`.~~ **Corrected 2026-11-16:** `forfeited` is not a status and recovered goods need no compensation; it triggers on `permanently_lost`.
 - **Carryover apply endpoint** — 2026-05-04. `PATCH /v1/billing/{id}/apply-carryover` manually applies an outstanding carryover to a billing record. Guards: billing not cancelled/waived; carryover must be outstanding and same customer.
 - **`GET /v1/release-notes`** — 2026-05-05. Paginated list with `customer_id`, `container_id`, `status` filters. Customers see only their own. Roles: `tenant_admin`, `nigeria_office_staff`, `warehouse_attendant`, `customer`.
 - **Release note split** — 2026-05-05. `POST /v1/release-notes/{id}/split` creates a child release note for un-collected carton tags. Guards: parent must be active; tags must be in parent and not already picked. Publishes `ReleaseNoteSplit` event.
@@ -205,7 +205,7 @@ Work through these iteratively — check off each item when implemented and upda
 - **Notification template management API** — 2026-05-05. Migration 024 adds `notification_template` table (RLS). `GET/PUT /v1/tenant/notification-templates/{event_type}/{channel}`. `enqueue_notifications` in `shared/notifications.py` now looks up custom templates and embeds as `template_override` in SQS messages.
 - **Customer self-registration** — 2026-05-05. `POST /v1/register` (public, no JWT). Tenant resolved from `Host` header: custom_domain first, then subdomain slug. Migration 023 adds `slug` (NOT NULL UNIQUE, auto-derived from company_name) and `custom_domain` (nullable, enterprise) to `tenant`. Slug auto-generated at tenant creation. Duplicate email guard. Cognito provisions user with role=customer; welcome notification enqueued.
 - **Outbound webhook** — 2026-05-06. `shared/webhook.py` HMAC-SHA256 fire-and-forget HTTP POST. Config stored in `tenant_config` key `webhook_config` (url, secret, enabled, events list). Fired from `services/tracking/service.py` on every `container.status_updated` event. `webhook_config` added to `DEFAULT_CONFIGS`. Signature sent as `X-ShipX-Signature-256: sha256=<hex>`.
-- **API rate limiting** — 2026-05-06. Implemented at API Gateway level via usage plans and throttling (10 RPS burst, 5 RPS steady per tenant). Documented in `04c_terraform_api_gateway.md`. App-level `UsageLimitExceededError` (429) already raised by metering checks when soft limits are breached.
+- ~~**API rate limiting** — 2026-05-06. Implemented at API Gateway level via usage plans and throttling (10 RPS burst, 5 RPS steady per tenant).~~ **Corrected 2026-11-15:** this never existed; an HTTP API has no usage plans and the only limit was one stage-wide throttle shared by every tenant. Real limits shipped with audit Phase 2: per client/username/tracking-code/tenant in `shared/rate_limit.py`, per-route throttles at API Gateway (`04c`, ADR-007). App-level `UsageLimitExceededError` (429) from metering is separate and unchanged.
 - **Rate history** — 2026-05-06. Migration 025 adds `rate_history` table (RLS-enabled, append-only). `update_dollar_rate` appends a row on every rate change (best-effort). `GET /v1/tenant/rate-history?rate_type=dollar_rate&limit=50` returns paginated history.
 - **Health check on all Lambdas** — 2026-05-06. `GET /v1/health` (no JWT) added to all 7 handlers: billing, claims, manifest, packing_list, payment_release, refunds, tenant_management. Returns `{"status":"healthy","timestamp":"..."}`. Checked before `get_tenant_context`.
 - **Cognito resend-invite / reset-password** — 2026-05-06. `POST /v1/tenant/users/{id}/resend-invite` (calls `admin_create_user` with `MessageAction=RESEND`) and `POST /v1/tenant/users/{id}/reset-password` (calls `admin_reset_user_password`). Both tenant_admin only.

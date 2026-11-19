@@ -1,4 +1,5 @@
-import { apiRequest, apiRequestList } from './client'
+import type { InvoiceResult } from './billing'
+import { apiDownloadFile, apiRequest, apiRequestList, type ExportFormat } from './client'
 
 // Ground truth: services/tracking/{models,service,repository}.py +
 // 05a_database_schema_core.md's `container` table. Vessel/voyage/shipping-line/
@@ -75,6 +76,9 @@ export interface CreateContainerInput {
   recommended_cbm?: number
 }
 
+/** `PATCH /v1/containers/{id}/status` response: the container, plus `billing_summary` when the new status is `cleared`. */
+export type ContainerStatusUpdate = Container & { billing_summary?: InvoiceResult[] }
+
 export interface UpdateContainerStatusInput {
   new_status: ContainerStatus
   ship_date?: string
@@ -100,6 +104,9 @@ export interface ContainerListParams {
   direction?: 'asc' | 'desc'
 }
 
+/** The container list's filters and sort, as the list sends them: what an export of that list is filtered by. */
+export type ContainerExportParams = Omit<ContainerListParams, 'cursor' | 'limit'>
+
 export interface ContainerStats {
   total: number
   loading: number
@@ -122,6 +129,13 @@ export const containersApi = {
       query: params as Record<string, string | number | undefined>,
     }),
 
+  /**
+   * xlsx or csv export of the container list: every container matching the same filters and sort the list is
+   * showing (not just the loaded page). Refused with 422 EXPORT_TOO_LARGE past 10,000 rows.
+   */
+  exportList: (params: ContainerExportParams, format: Exclude<ExportFormat, 'pdf'>) =>
+    apiDownloadFile('/v1/containers/export', format, `containers.${format}`, params as Record<string, string | undefined>),
+
   /** Tenant-wide per-status counts for the list stats row + chips — staff only,
    *  SQL-computed so it stays correct as containers grow past a single page. */
   stats: () => apiRequest<ContainerStats>({ method: 'GET', path: '/v1/containers/stats' }),
@@ -132,7 +146,7 @@ export const containersApi = {
     apiRequest<Container>({ method: 'POST', path: '/v1/containers', body, idempotencyKey }),
 
   updateStatus: (id: string, body: UpdateContainerStatusInput) =>
-    apiRequest<Container>({ method: 'PATCH', path: `/v1/containers/${id}/status`, body }),
+    apiRequest<ContainerStatusUpdate>({ method: 'PATCH', path: `/v1/containers/${id}/status`, body }),
 
   events: (id: string) => apiRequest<ContainerEvent[]>({ method: 'GET', path: `/v1/containers/${id}/events` }),
   delete: (id: string) => apiRequest<{ deleted: boolean }>({ method: 'DELETE', path: `/v1/containers/${id}` }),
@@ -176,7 +190,10 @@ export const containerDocumentsApi = {
   list: (containerId: string) =>
     apiRequest<ContainerDocument[]>({ method: 'GET', path: `/v1/containers/${containerId}/documents` }),
 
-  presignUpload: (containerId: string, body: { filename: string; content_type: string; document_type: ContainerDocumentType }) =>
+  presignUpload: (
+    containerId: string,
+    body: { filename: string; content_type: string; document_type: ContainerDocumentType; size_bytes: number },
+  ) =>
     apiRequest<DocumentPresignedUpload>({
       method: 'POST',
       path: `/v1/containers/${containerId}/documents/presigned-url`,

@@ -13,6 +13,7 @@ import { Badge, Card, Mono } from '../design/components'
 import { pctUsed, useQuota } from '../hooks/useQuota'
 import { SectionHead } from './SectionHead'
 import styles from './PlanUsagePanel.module.css'
+import { formatCount } from '../lib/format'
 
 function QuotaBarRow({ label, used, max, unit }: { label: string; used: number; max: number; unit?: string }): JSX.Element {
   const pct = Math.min(100, Math.round(pctUsed({ used, max }) * 100))
@@ -27,7 +28,7 @@ function QuotaBarRow({ label, used, max, unit }: { label: string; used: number; 
         <div className={styles.fill} style={{ width: `${pct}%`, background: color }} />
       </div>
       <Mono color="var(--color-ink-2)">
-        {used.toLocaleString()} / {max.toLocaleString()}{unit ? ` ${unit}` : ''}
+        {formatCount(used)} / {formatCount(max)}{unit ? ` ${unit}` : ''}
       </Mono>
       <div className={styles.pctCell}>
         {atLimit ? (
@@ -63,8 +64,8 @@ export function PlanUsagePanel(): JSX.Element | null {
       />
       <QuotaBarRow label="Storage" used={quota.limits.storage_gb.used} max={quota.limits.storage_gb.max} unit="GB" />
       <div className={styles.metaLine}>
-        This period: {quota.api_calls.toLocaleString()} API calls · {quota.notifications.sms_sent.toLocaleString()} SMS
-        · {quota.notifications.whatsapp_sent.toLocaleString()} WhatsApp · {quota.notifications.emails_sent.toLocaleString()} email
+        This period: {formatCount(quota.api_calls)} API calls · {formatCount(quota.notifications.sms_sent)} SMS
+        · {formatCount(quota.notifications.whatsapp_sent)} WhatsApp · {formatCount(quota.notifications.emails_sent)} email
       </div>
     </Card>
   )

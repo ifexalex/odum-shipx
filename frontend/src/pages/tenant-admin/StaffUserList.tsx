@@ -20,11 +20,13 @@ import {
   Icon,
   Table,
   ViewLink,
+  DialogGuard,
   type BadgeVariant,
 } from '../../design/components'
 import { useTopBarSlot } from '../../shell/TopBarContext'
 import { RoleCheckboxList } from './RoleCheckboxList'
 import styles from './admin.module.css'
+import { formatDate } from '../../lib/format'
 
 const ROLE_VARIANT: Record<TenantUserRole, BadgeVariant> = {
   tenant_admin: 'error',
@@ -87,6 +89,7 @@ function InviteModal({ onCancel, onSuccess }: InviteModalProps): JSX.Element {
 
   return (
     <div className={styles.modalOverlay} onClick={onCancel}>
+      <DialogGuard onClose={onCancel} />
       <div
         className={styles.modalPanel}
         onClick={(e) => e.stopPropagation()}
@@ -252,7 +255,7 @@ export function StaffUserList(): JSX.Element {
                   {u.status}
                 </Badge>,
                 <span key="created" style={{ fontSize: 12, color: 'var(--color-ink-3)' }}>
-                  {u.created_at?.slice(0, 10) ?? '—'}
+                  {formatDate(u.created_at)}
                 </span>,
                 <ViewLink
                   key="view"

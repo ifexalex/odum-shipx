@@ -8,7 +8,7 @@
  * the backend's presigned-url response (CLAUDE.md tenant isolation rule).
  *
  * Validated against backend limits (services/claims/service.py):
- *   Max size:      10 MB
+ *   Max size:      5 MB (lib/uploadLimits.ts)
  *   Allowed types: image/jpeg, image/png, application/pdf
  *
  * Usage:
@@ -16,10 +16,11 @@
  *   const { key, evidenceId } = await upload(file)
  */
 import { useCallback, useRef, useState } from 'react'
+import { MAX_UPLOAD_BYTES, uploadSizeProblem } from '../lib/uploadLimits'
 
 export type UploadStatus = 'idle' | 'validating' | 'uploading' | 'done' | 'error'
 
-export const UPLOAD_MAX_BYTES = 10 * 1024 * 1024 // 10 MB — mirrors backend _MAX_FILE_SIZE
+export const UPLOAD_MAX_BYTES = MAX_UPLOAD_BYTES // the API's limit (shared/uploads.py)
 export const UPLOAD_ALLOWED_TYPES = ['image/jpeg', 'image/png', 'application/pdf'] as const
 export const UPLOAD_PROGRESS_THRESHOLD = 100 * 1024 // show bar only for files > 100 KB
 
@@ -72,8 +73,9 @@ export function useFileUpload({
   const upload = useCallback(
     async (file: File): Promise<UploadResult> => {
       // Client-side validation — mirrors backend Pydantic limits
-      if (file.size > UPLOAD_MAX_BYTES) {
-        const msg = `File is too large (${(file.size / 1024 / 1024).toFixed(1)} MB). Maximum is 10 MB.`
+      const sizeProblem = uploadSizeProblem(file)
+      if (sizeProblem) {
+        const msg = sizeProblem
         setErrorMessage(msg)
         setStatus('error')
         onError?.(msg)

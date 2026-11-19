@@ -8,9 +8,11 @@ import { packingListKeys } from '../../api/keys'
 import { STALE_30S } from '../../lib/queryClient'
 import { canApproveOrReject, canEditPackingList, computeCbm, formatPackageMix, formatPackageUnit } from '../../api/packingListRules'
 import { useSession } from '../../auth/useSession'
-import { Badge, Banner, Button, Card, ExportButton, Field, Icon, Mono, Table, type BadgeVariant } from '../../design/components'
+import { Badge, Banner, Button, Card, ExportButton, Field, Icon, Mono, Table, DialogGuard, type BadgeVariant } from '../../design/components'
 import { SectionHead } from '../../shell/SectionHead'
 import styles from './PackingListDetail.module.css'
+import { formatDate } from '../../lib/format'
+import { useBreadcrumbLabel } from '../../shell/breadcrumbs'
 
 const STATUS_VARIANT: Record<PackingList['status'], BadgeVariant> = {
   draft: 'neutral',
@@ -34,6 +36,7 @@ function RejectModal({ onCancel, onConfirm, submitting, error }: RejectModalProp
   const [comments, setComments] = useState('')
   return (
     <div className={styles.modalOverlay} onClick={onCancel}>
+      <DialogGuard onClose={onCancel} />
       <div className={styles.modalPanel} onClick={(event) => event.stopPropagation()} role="dialog" aria-modal="true">
         <h3 className={styles.modalTitle}>Reject packing list</h3>
         {error && (
@@ -99,6 +102,8 @@ export function PackingListDetail(): JSX.Element {
     enabled: !!id,
     staleTime: STALE_30S,
   })
+  // Names this record in the breadcrumb once loaded (FD-46).
+  useBreadcrumbLabel(pl?.reference)
 
   const [actionError, setActionError] = useState<string | null>(null)
 
@@ -249,7 +254,7 @@ export function PackingListDetail(): JSX.Element {
               <Mono>{pl.container_number ?? pl.container_id}</Mono>
               <span>· {packageSummary} · {formatCbm(pl.total_cbm)} CBM</span>
               {pl.arrival_warehouse_name && <span>· To {pl.arrival_warehouse_name}</span>}
-              <span>· Submitted {pl.created_at.slice(0, 10)}</span>
+              <span>· Submitted {formatDate(pl.created_at)}</span>
             </div>
           </div>
         </div>
@@ -481,12 +486,6 @@ export function PackingListDetail(): JSX.Element {
           </div>
         )}
       </Card>
-
-      <div className={styles.backLink}>
-        <Button variant="ghost" icon="arrowleft" onClick={() => navigate('/packing-lists')}>
-          Back to packing lists
-        </Button>
-      </div>
 
       {showRejectModal && (
         <RejectModal

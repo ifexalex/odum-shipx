@@ -10,7 +10,8 @@ Routes:
   POST  /v1/uploads/presigned-url           — customer, nigeria_office_staff
 
   POST  /v1/claims/missing-items            — nigeria_office_staff
-  PATCH /v1/claims/missing-items/{id}       — nigeria_office_staff
+  PATCH /v1/claims/missing-items/{id}       — nigeria_office_staff (any status, compensation); china_office_staff
+                                              (investigating / found_and_shipping and notes only)
   POST  /v1/claims/seized-items             — nigeria_office_staff
   PATCH /v1/claims/seized-items/{id}        — nigeria_office_staff
 """
@@ -19,11 +20,12 @@ import json
 import logging
 import time
 import uuid
-from decimal import Decimal
+from decimal import Decimal, InvalidOperation
 from typing import Any
 
 from shared.auth import get_tenant_context
-from shared.exceptions import LogisticsBaseError, ResourceNotFoundError
+from shared.client_ip import client_ip
+from shared.exceptions import LogisticsBaseError, ResourceNotFoundError, ValidationError
 from shared.idempotency import check_idempotency, store_idempotency
 from shared.logging_config import bind_log_context, clear_log_context, setup_logging
 from shared.metering import record_usage
@@ -38,7 +40,9 @@ from .models import (
     FileDamageClaimRequest,
     LogMissingItemRequest,
     LogSeizedItemRequest,
+    MissingItemStatus,
     ResolveClaimRequest,
+    SeizedItemStatus,
     StartInspectionRequest,
 )
 
@@ -82,7 +86,7 @@ def lambda_handler(event: dict[str, Any], context: Any) -> dict[str, Any]:
     http = event.get("requestContext", {}).get("http", {})
     method = http.get("method", "")
     path = http.get("path", "")
-    ip_address = event.get("requestContext", {}).get("identity", {}).get("sourceIp")
+    ip_address = client_ip(event)
 
     if method == "GET" and path.strip("/") == "v1/health":
         return _health_response(request_id)
@@ -305,6 +309,7 @@ def _upload_routes(
             filename,
             content_type,
             actor_id=ctx.user_id,
+            size_bytes=body.get("size_bytes"),
         )
         return success(result, request_id=request_id)
 
@@ -317,6 +322,31 @@ def _upload_routes(
 
 
 _ITEM_READ_ROLES = (UserRole.NIGERIA_OFFICE_STAFF, UserRole.TENANT_ADMIN)
+# The China office records the supply and loading check on a missing item (PRD FR-DC-005/006, audit UX-08), so it
+# reads missing items and may update their investigation. It does not read seized items, and the service refuses it
+# any compensation or any decision.
+_MISSING_ITEM_READ_ROLES = (*_ITEM_READ_ROLES, UserRole.CHINA_OFFICE_STAFF)
+_MISSING_ITEM_UPDATE_ROLES = (UserRole.NIGERIA_OFFICE_STAFF, UserRole.CHINA_OFFICE_STAFF)
+
+
+def _compensation_amount(body: dict[str, Any]) -> Decimal | None:
+    """Parse the optional ``refund_amount_ngn`` of a missing/seized item update.
+
+    A non-numeric, non-finite or non-positive amount is a 422 here rather than a 500 from
+    the refund_request CHECK constraint later.
+    """
+    raw_amount = body.get("refund_amount_ngn")
+    if raw_amount is None or raw_amount == "":
+        return None
+    try:
+        amount = Decimal(str(raw_amount))
+    except InvalidOperation:
+        amount = None
+    if amount is None or not amount.is_finite() or amount <= 0:
+        raise ValidationError(
+            "refund_amount_ngn must be a positive number", field_errors={"refund_amount_ngn": "must be greater than 0"}
+        )
+    return amount
 
 
 def _missing_item_routes(
@@ -328,7 +358,7 @@ def _missing_item_routes(
     if item_id is None:
         # GET /v1/claims/missing-items
         if method == "GET":
-            ctx.assert_role(*_ITEM_READ_ROLES)
+            ctx.assert_role(*_MISSING_ITEM_READ_ROLES)
             filters = {}
             if _qp(event, "container_id"):
                 filters["container_id"] = _qp(event, "container_id")
@@ -355,13 +385,13 @@ def _missing_item_routes(
     else:
         # GET /v1/claims/missing-items/{id}
         if method == "GET":
-            ctx.assert_role(*_ITEM_READ_ROLES)
+            ctx.assert_role(*_MISSING_ITEM_READ_ROLES)
             result = service.get_missing_item(tenant_id, item_id)
             return success(result, request_id=request_id)
 
         # PATCH /v1/claims/missing-items/{id}
         if method == "PATCH":
-            ctx.assert_role(*_STAFF_ROLES)
+            ctx.assert_role(*_MISSING_ITEM_UPDATE_ROLES)
             body = _parse_body(event)
             status = body.get("status", "")
             notes = body.get("notes")
@@ -369,10 +399,12 @@ def _missing_item_routes(
                 from shared.exceptions import BusinessRuleViolationError
 
                 raise BusinessRuleViolationError("status is required", rule_id="MISSING_STATUS")
-            raw_amount = body.get("refund_amount_ngn")
-            refund_amount_ngn = Decimal(str(raw_amount)) if raw_amount is not None else None
+            if status not in MissingItemStatus:
+                raise ValidationError(
+                    f"status must be one of: {', '.join(MissingItemStatus)}", field_errors={"status": "invalid status"}
+                )
             result = service.update_missing_item(
-                tenant_id, item_id, status, notes, actor_id=ctx.user_id, ctx=ctx, refund_amount_ngn=refund_amount_ngn
+                tenant_id, item_id, status, notes, actor_id=ctx.user_id, ctx=ctx, refund_amount_ngn=_compensation_amount(body)
             )
             return success(result, request_id=request_id)
 
@@ -434,10 +466,19 @@ def _seized_item_routes(
                 from shared.exceptions import BusinessRuleViolationError
 
                 raise BusinessRuleViolationError("recovery_status is required", rule_id="MISSING_STATUS")
-            raw_amount = body.get("refund_amount_ngn")
-            refund_amount_ngn = Decimal(str(raw_amount)) if raw_amount is not None else None
+            if recovery_status not in SeizedItemStatus:
+                raise ValidationError(
+                    f"recovery_status must be one of: {', '.join(SeizedItemStatus)}",
+                    field_errors={"recovery_status": "invalid status"},
+                )
             result = service.update_seized_item(
-                tenant_id, item_id, recovery_status, notes, actor_id=ctx.user_id, ctx=ctx, refund_amount_ngn=refund_amount_ngn
+                tenant_id,
+                item_id,
+                recovery_status,
+                notes,
+                actor_id=ctx.user_id,
+                ctx=ctx,
+                refund_amount_ngn=_compensation_amount(body),
             )
             return success(result, request_id=request_id)
 

@@ -8,6 +8,7 @@ import { useDateRangeFilter } from '../../hooks/useDateRangeFilter'
 import { Badge, Banner, Button, Card, Chip, DateRangeFilter, Icon, Mono, Table, UserCell, ListFooter, type BadgeVariant } from '../../design/components'
 import { useTopBarSlot } from '../../shell/TopBarContext'
 import styles from './NotificationLog.module.css'
+import { formatDateTime } from '../../lib/format'
 
 const CHANNEL_FILTERS: Array<{ key: NotifChannel; label: string }> = [
   { key: 'sms',      label: 'SMS' },
@@ -41,9 +42,7 @@ const EVENT_LABELS: Record<string, string> = {
 }
 
 function fmtTs(ts: string): string {
-  return new Date(ts).toLocaleString('en-GB', {
-    day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit',
-  })
+  return formatDateTime(ts, { year: false })
 }
 
 function LogStat({ label, value, sub, color }: { label: string; value: number; sub?: string; color: string }): JSX.Element {

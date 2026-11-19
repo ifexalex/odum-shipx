@@ -275,3 +275,24 @@ describe('BillingDetail', () => {
     })
   })
 })
+
+describe('BillingDetail exchange-rate source (audit BE-11)', () => {
+  it('says when the invoice used the last known rate, and when it was fetched', async () => {
+    vi.mocked(billingApi.get).mockResolvedValue({
+      ...BILLING_STUB,
+      exchange_rate_source: 'last_known',
+      exchange_rate_fetched_at: '2026-11-16T08:00:00+00:00',
+    })
+    renderPage('nigeria_office_staff', null)
+    const note = await screen.findByRole('note')
+    expect(note).toHaveTextContent(/Last known market rate, fetched .*16 Nov.*9:00/)
+    expect(note).toHaveTextContent('The live rate could not be fetched when this invoice was issued.')
+  })
+
+  it.each([['live'], [null], [undefined]])('says nothing for a %s rate', async (source) => {
+    vi.mocked(billingApi.get).mockResolvedValue({ ...BILLING_STUB, exchange_rate_source: source as never })
+    renderPage('nigeria_office_staff', null)
+    await waitFor(() => expect(screen.getByText('ACME001')).toBeInTheDocument())
+    expect(screen.queryByText(/Last known market rate/)).not.toBeInTheDocument()
+  })
+})

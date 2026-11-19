@@ -11,13 +11,14 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { ApiError } from '../../api/client'
 import { configApi, type CbmRateConfig as CbmRateConfigShape } from '../../api/tenantManagement'
 import { CbmRateConfig } from './CbmRateConfig'
+import { withQuery } from '../../test/queryWrapper'
 
 function renderPage(): ReturnType<typeof render> {
-  return render(
+  return render(withQuery(
     <MemoryRouter>
       <CbmRateConfig />
     </MemoryRouter>,
-  )
+  ))
 }
 
 vi.mock('../../api/tenantManagement', async (importOriginal) => {

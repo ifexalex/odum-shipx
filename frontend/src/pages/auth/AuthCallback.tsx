@@ -12,6 +12,7 @@
 import { useEffect, useRef, useState, type JSX } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 import { homePathForRole } from '../../auth/roleHome'
+import { takeNext } from './returnPath'
 import { useSession } from '../../auth/useSession'
 import { Banner, Button } from '../../design/components'
 import { AuthShell, FormHead } from './AuthShell'
@@ -50,7 +51,7 @@ export function AuthCallback(): JSX.Element {
     if (initialError || !code || !state || !completeLogin) return
 
     completeLogin(code, state)
-      .then((session) => navigate(homePathForRole(session.role), { replace: true }))
+      .then((session) => navigate(takeNext() ?? homePathForRole(session.role), { replace: true }))
       .catch((err: unknown) => {
         setError(err instanceof Error ? err.message : 'Sign-in could not be completed. Please try again.')
       })

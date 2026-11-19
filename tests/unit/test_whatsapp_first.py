@@ -160,6 +160,83 @@ class TestSmsFallback:
         mock_sqs.return_value.send.assert_not_called()
 
 
+class TestUnconfiguredWhatsAppIsNotReportedAsSent:
+    """`send_whatsapp` returns "" without raising when the Meta credentials are
+    missing or the recipient is suppressed.
+
+    That used to fall straight through to `log_sent` + `record_usage`, so: the
+    log said "sent" when nothing was sent, the tenant was metered for a message
+    that never left, and — because no exception was raised — the SMS fallback
+    never fired, so the customer got nothing on either channel while the
+    staff-facing invite screen reported success.
+    """
+
+    def _body(self):
+        return {
+            "tenant_id": TENANT_ID,
+            "event_type": "customer_invite",
+            "recipient": {"phone": "+2348031234567", "name": "Ngozi"},
+            "template_data": {"name": "Ngozi", "invite_link": "https://app.test/invite/t"},
+            "tenant_branding": {"company_name": "Acme Shipping Ltd"},
+            "locale": "en",
+        }
+
+    def test_logs_failed_and_falls_back_to_sms(self):
+        from services.notification import handler
+
+        with (
+            patch.object(handler.service, "send_whatsapp", return_value=""),
+            patch.object(handler.service, "log_queued", return_value="log-wa-9"),
+            patch.object(handler.service, "log_sent") as log_sent,
+            patch.object(handler.service, "log_failed") as log_failed,
+            patch.object(handler.service, "trigger_sms_fallback", return_value=True) as fallback,
+            patch.object(handler, "record_usage") as usage,
+        ):
+            handler._process_whatsapp(self._body())
+
+        log_sent.assert_not_called()
+        usage.assert_not_called()
+        log_failed.assert_called_once()
+        assert "unconfigured" in log_failed.call_args[0][2] or "not sent" in log_failed.call_args[0][2]
+        fallback.assert_called_once()
+        assert fallback.call_args[0][2] == "whatsapp_unconfigured"
+
+    def test_a_real_message_id_still_records_a_send(self):
+        from services.notification import handler
+
+        with (
+            patch.object(handler.service, "send_whatsapp", return_value="wamid.ABC"),
+            patch.object(handler.service, "log_queued", return_value="log-wa-10"),
+            patch.object(handler.service, "log_sent") as log_sent,
+            patch.object(handler.service, "log_failed") as log_failed,
+            patch.object(handler.service, "trigger_sms_fallback") as fallback,
+            patch.object(handler, "record_usage") as usage,
+        ):
+            handler._process_whatsapp(self._body())
+
+        log_sent.assert_called_once()
+        assert log_sent.call_args[0][3] == "wamid.ABC"
+        usage.assert_called_once()
+        log_failed.assert_not_called()
+        fallback.assert_not_called()
+
+    def test_a_failing_fallback_does_not_mask_the_original_outcome(self):
+        from services.notification import handler
+
+        with (
+            patch.object(handler.service, "send_whatsapp", return_value=""),
+            patch.object(handler.service, "log_queued", return_value="log-wa-11"),
+            patch.object(handler.service, "log_failed") as log_failed,
+            patch.object(handler.service, "trigger_sms_fallback", side_effect=RuntimeError("queue down")),
+            patch.object(handler, "record_usage"),
+        ):
+            # Must not raise: an SQS retry would re-send the WhatsApp message
+            # that is already known to be unsendable.
+            handler._process_whatsapp(self._body())
+
+        log_failed.assert_called_once()
+
+
 class TestWhatsAppTemplateLanguage:
     """Meta templates are approved per language and the request must match."""
 

@@ -28,6 +28,7 @@ logger = logging.getLogger("shipx_scheduled")
 JOBS: tuple[str, ...] = (
     "data_cleanup",
     "dispute_escalation",
+    "offboarding_export",
     "release_expiry",
     "sla_check",
     "storage_fee",

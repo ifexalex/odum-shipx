@@ -104,3 +104,77 @@ variable "frontend_price_class" {
 # tenant connects their own key via PUT /v1/tenant/config/paystack, encrypted
 # in tenant_config. There is no platform-wide key to provision via Terraform
 # anymore. See services/payment_release/paystack.py's module docstring.
+
+# ---------------------------------------------------------------------------
+# Notification channels — email, SMS, WhatsApp
+# Passed through to modules/lambda, which documents each one.
+# ---------------------------------------------------------------------------
+
+variable "app_base_url" {
+  description = "Absolute base URL of the web app, for activation and invite links (e.g. https://app.example.com)."
+  type        = string
+  default     = ""
+}
+
+variable "customer_portal_base_url" {
+  description = "Override base URL for customer invite links if the customer portal is hosted separately. Falls back to app_base_url."
+  type        = string
+  default     = ""
+}
+
+variable "ses_from_address" {
+  description = "Verified SES sender address for outbound notification email."
+  type        = string
+  default     = ""
+}
+
+variable "africastalking_api_key" {
+  description = "Africa's Talking API key for SMS."
+  type        = string
+  default     = ""
+  sensitive   = true
+}
+
+variable "africastalking_username" {
+  description = "Africa's Talking username — the live one in production, not 'sandbox'."
+  type        = string
+  default     = ""
+}
+
+variable "africastalking_sender_id" {
+  description = "Africa's Talking sender ID / short code, if registered."
+  type        = string
+  default     = ""
+}
+
+variable "meta_whatsapp_access_token" {
+  description = "Meta Cloud API access token for WhatsApp Business."
+  type        = string
+  default     = ""
+  sensitive   = true
+}
+
+variable "meta_whatsapp_phone_id" {
+  description = "Meta Cloud API phone number ID for WhatsApp Business."
+  type        = string
+  default     = ""
+}
+
+variable "meta_whatsapp_template_lang" {
+  description = "Language code the WhatsApp templates were approved under. Must match Meta exactly."
+  type        = string
+  default     = ""
+}
+
+variable "whatsapp_verify_token" {
+  description = "Shared secret Meta echoes when verifying the WhatsApp webhook subscription."
+  type        = string
+  default     = ""
+  sensitive   = true
+}
+
+variable "notification_allowlist" {
+  description = "Comma-separated phones/emails messageable OUTSIDE production. Empty = nothing sent outside production."
+  type        = string
+  default     = ""
+}
