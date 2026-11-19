@@ -371,33 +371,18 @@ def _notify_customer_payment_due(
     charging a real customer real money with no notification at all is the
     same silent gap that let a payment-claim rejection go unnoticed (see
     payment_release/service.py). Never raises: a notification outage must
-    not fail billing generation itself."""
+    not fail billing generation itself.
+
+    An invoice the customer's credit covered in full (total 0) asks for no payment, so no "payment due" SMS,
+    WhatsApp or email goes out: it read "NGN 0.00 due". The in-app bell still says the credit covered it. A
+    dedicated message would need its own WhatsApp template approved by Meta (2026-11-19).
+    """
     try:
         customer = repo.get_customer_contact(tenant_id, customer_id)
         if not customer:
             return
-        warehouse_cfg = repo.get_tenant_config_value(tenant_id, "warehouse_address") or {}
-        address_parts = [warehouse_cfg.get("address"), warehouse_cfg.get("city"), warehouse_cfg.get("state")]
-        warehouse_address = ", ".join(p for p in address_parts if p) or "our warehouse"
-        enqueue_notifications(
-            tenant_id=tenant_id,
-            event_type="payment_due",
-            recipient={
-                "phone": customer.get("phone") or "",
-                "email": customer.get("email") or "",
-                "whatsapp": customer.get("whatsapp") or "",
-                "name": customer.get("name") or "",
-            },
-            template_data={
-                "container_number": container_number or "",
-                "currency": "NGN",
-                "amount": str(total_ngn),
-                "warehouse_address": warehouse_address,
-            },
-            locale=customer.get("locale", "en"),
-            request_id=request_id,
-            customer_id=customer_id,
-        )
+        if total_ngn > 0:
+            _enqueue_payment_due(tenant_id, customer_id, customer, container_number, total_ngn, request_id)
 
         # In-app customer bell — see payment_release/service.py's matching
         # comment: SMS/WhatsApp/email above can each fail for reasons
@@ -421,6 +406,39 @@ def _notify_customer_payment_due(
             "Failed to enqueue payment_due notification for customer %s",
             customer_id,
         )
+
+
+def _enqueue_payment_due(
+    tenant_id: str,
+    customer_id: str,
+    customer: dict[str, Any],
+    container_number: str | None,
+    total_ngn: Decimal,
+    request_id: str,
+) -> None:
+    """The "payment due" SMS / WhatsApp / email, through the customer's consent and channel rules."""
+    warehouse_cfg = repo.get_tenant_config_value(tenant_id, "warehouse_address") or {}
+    address_parts = [warehouse_cfg.get("address"), warehouse_cfg.get("city"), warehouse_cfg.get("state")]
+    warehouse_address = ", ".join(p for p in address_parts if p) or "our warehouse"
+    enqueue_notifications(
+        tenant_id=tenant_id,
+        event_type="payment_due",
+        recipient={
+            "phone": customer.get("phone") or "",
+            "email": customer.get("email") or "",
+            "whatsapp": customer.get("whatsapp") or "",
+            "name": customer.get("name") or "",
+        },
+        template_data={
+            "container_number": container_number or "",
+            "currency": "NGN",
+            "amount": str(total_ngn),
+            "warehouse_address": warehouse_address,
+        },
+        locale=customer.get("locale", "en"),
+        request_id=request_id,
+        customer_id=customer_id,
+    )
 
 
 # ---------------------------------------------------------------------------

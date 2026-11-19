@@ -2453,3 +2453,7 @@ Found by running them: **a real bug** (invoice generation set a used credit to `
 - `tests/unit/test_invoice_credits.py`: each credit used is recorded against the invoice; `TestCancelGivesBackWhatTheInvoiceTook` (4, fake cursor) pins the reversal SQL, the carryover reopening, nothing written for an invoice no longer unpaid, and rollback when a credit cannot be returned. `test_billing.py` `TestCancelBilling`: the response and audit report what was given back; an older invoice with unrecorded credit is refused `CREDIT_NOT_TRACEABLE`. An existing assertion that matched `INSERT INTO billing` as a prefix (and so also the new ledger insert) now matches `INSERT INTO billing (`.
 - `tests/db/test_invoice_credits.py` `TestCancelGivesBackWhatTheInvoiceTook` (5, real database): a used-up credit comes back and the container can be invoiced again with it; a credit shared by two invoices gets back only the cancelled one's part; a carried-over balance is outstanding again; a paid invoice is not cancelled and nothing is returned; another tenant sees no applications. `conftest.py` cleanup deletes `billing_credit_application` first.
 - Frontend: `CancelBillingModal.test.tsx` (2).
+
+## No payment-due message for a ₦0 invoice (2026-11-19)
+
+`tests/unit/test_billing.py::TestHandlePaymentDueNotification::test_an_invoice_the_credit_covered_sends_no_payment_due_message`: credit larger than the charge → no `enqueue_notifications`, one bell saying "nothing to pay". Mutation-checked (removing the guard fails it).

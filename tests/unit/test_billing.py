@@ -1252,6 +1252,43 @@ class TestHandlePaymentDueNotification:
         assert mock_notify.call_args.kwargs["template_data"]["warehouse_address"] == "12 Warehouse Rd, Lagos, Lagos"
         assert mock_notify.call_args.kwargs["customer_id"] == "customer-001"
 
+    def test_an_invoice_the_credit_covered_sends_no_payment_due_message(self):
+        """It used to send "NGN 0.00 due" by SMS, WhatsApp and email. The in-app bell says the credit covered it."""
+        from services.billing import service
+
+        big_credit = {
+            "id": "r1",
+            "amount_ngn": Decimal("99999999"),
+            "amount_approved_ngn": Decimal("99999999"),
+            "credit_applied_ngn": Decimal("0"),
+        }
+        patchers = self._mock_repo(
+            get_pending_credit_refunds=lambda *a: [big_credit],
+            get_customer_contact=lambda tid, cid: {
+                "id": cid,
+                "user_id": "portal-user-001",
+                "name": "Ngozi",
+                "phone": "+2348012345678",
+                "locale": "en",
+            },
+        )
+        try:
+            with (
+                patch("services.billing.service.publish_event"),
+                patch("services.billing.service.log_audit"),
+                patch("services.billing.service.enqueue_notifications") as mock_notify,
+                patch("services.billing.service.notify_staff") as mock_bell,
+            ):
+                outcome = service.handle_payment_due(TENANT_ID, "container-001", "customer-001", "ACME001")
+        finally:
+            for p in patchers:
+                p.stop()
+
+        assert outcome.status == "created"
+        mock_notify.assert_not_called()
+        mock_bell.assert_called_once()
+        assert "nothing to pay" in mock_bell.call_args.kwargs["body"]
+
     def test_a_notification_failure_does_not_fail_billing_creation(self):
         from services.billing import service
 
