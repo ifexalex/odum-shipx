@@ -100,6 +100,9 @@ def create_refund(
             "status": "pending_review",
             "customer_choice": customer_choice,
             "requested_by": actor_id,
+            "bank_name": req.bank_name,
+            "account_number": req.account_number,
+            "account_name": req.account_name,
         },
     )
 
@@ -110,7 +113,14 @@ def create_refund(
         action="CREATE",
         actor_id=actor_id,
         actor_role=str(ctx.role),
-        after_state={"refund_type": refund_type, "amount_ngn": str(req.amount_requested_ngn), "status": "pending_review"},
+        after_state={
+            "refund_type": refund_type,
+            "amount_ngn": str(req.amount_requested_ngn),
+            "status": "pending_review",
+            "customer_choice": customer_choice,
+            # Masked: the audit log never holds bank details (CLAUDE.md).
+            **({"bank_name": req.bank_name, "account_number": "***", "account_name": "***"} if req.account_number else {}),
+        },
     )
 
     return _fmt_refund(refund)
@@ -445,6 +455,9 @@ def _customer_view(refund: dict[str, Any], *, wrote_the_reason: bool) -> dict[st
         The refund without staff's working record, and with no approval threshold.
     """
     view = {**refund, **dict.fromkeys(_STAFF_ONLY_FIELDS), "threshold": None}
+    if refund.get("bank_details"):
+        number = str(refund["bank_details"].get("account_number") or "")
+        view["bank_details"] = {**refund["bank_details"], "account_number": f"******{number[-4:]}" if number else None}
     if not wrote_the_reason:
         view["reason"] = None
     return view
@@ -472,5 +485,15 @@ def _fmt_refund(row: dict[str, Any]) -> dict[str, Any]:
         "approval_level": row.get("approval_level"),
         "debt_check_passed": row.get("debt_check_passed"),
         "debt_check_notes": row.get("debt_check_notes"),
+        # Where a bank refund is paid: what accounts need to make the transfer. Customers see the number masked.
+        "bank_details": (
+            {
+                "bank_name": row.get("bank_name"),
+                "account_number": row.get("account_number"),
+                "account_name": row.get("account_name"),
+            }
+            if row.get("account_number")
+            else None
+        ),
         "created_at": row["created_at"],
     }

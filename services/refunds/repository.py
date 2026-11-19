@@ -17,7 +17,7 @@ from typing import Any
 
 from shared.billing_money import adjust_billing_and_refund_overpayment
 from shared.db import execute_with_tenant, execute_write_with_tenant, tenant_transaction
-from shared.encryption import decrypt_field
+from shared.encryption import decrypt_field, encrypt_field
 from shared.pagination import build_paginated_query, extract_page
 
 logger = logging.getLogger(__name__)
@@ -26,13 +26,14 @@ logger = logging.getLogger(__name__)
 def _decrypt_refund_row(row: dict[str, Any]) -> dict[str, Any]:
     """Decrypt sensitive bank-detail fields before returning a refund_request row.
 
-    account_number / account_name / bank_name are encrypted at rest using
+    account_number / account_name are encrypted at rest using
     envelope encryption (shared.encryption). This must be called on every
     row returned from refund_request SELECTs so callers always receive
     plaintext values.
 
-    NOTE: When a "capture bank details" write path is added, the values
-    MUST be passed through encrypt_field() before the INSERT/UPDATE.
+    account_number / account_name are written through encrypt_field() by
+    create_refund_request (the customer refund form, 2026-11-19); bank_name is
+    not sensitive and is stored as typed.
     """
     return {
         **row,
@@ -107,14 +108,22 @@ def create_refund_request(tenant_id: str, data: dict[str, Any]) -> dict[str, Any
         INSERT INTO refund_request (
             tenant_id, customer_id, billing_id, damage_claim_id,
             refund_type, amount_ngn, reason, status,
-            customer_choice, requested_by
+            customer_choice, requested_by,
+            bank_name, account_number, account_name
         ) VALUES (
             %(tenant_id)s, %(customer_id)s, %(billing_id)s, %(damage_claim_id)s,
             %(refund_type)s, %(amount_ngn)s, %(reason)s, %(status)s,
-            %(customer_choice)s, %(requested_by)s
+            %(customer_choice)s, %(requested_by)s,
+            %(bank_name)s, %(account_number)s, %(account_name)s
         ) RETURNING *
         """,
-        data,
+        {
+            "bank_name": None,
+            **data,
+            # PII: encrypted at rest (migration 013, widened to TEXT by 071).
+            "account_number": encrypt_field(data.get("account_number")),
+            "account_name": encrypt_field(data.get("account_name")),
+        },
     )
     if row is None:
         return {}

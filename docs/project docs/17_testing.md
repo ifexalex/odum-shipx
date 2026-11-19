@@ -2457,3 +2457,9 @@ Found by running them: **a real bug** (invoice generation set a used credit to `
 ## No payment-due message for a ₦0 invoice (2026-11-19)
 
 `tests/unit/test_billing.py::TestHandlePaymentDueNotification::test_an_invoice_the_credit_covered_sends_no_payment_due_message`: credit larger than the charge → no `enqueue_notifications`, one bell saying "nothing to pay". Mutation-checked (removing the guard fails it).
+
+## Refund bank details and encrypted column widths (2026-11-19)
+
+- `tests/unit/test_refund_bank_details.py` (15): required for a bank refund, refused for a credit, 10 digits; encrypted before the write; claim refunds write none; staff see the account, a customer the masked number; the audit entry is masked.
+- `tests/db/test_encrypted_columns.py` (2, real database): a 600-character ciphertext stores in the refund account columns; the three encrypted columns are TEXT.
+- Frontend: see `frontend/07_domain_modules.md`.

@@ -189,3 +189,14 @@ A refund approved as `credit_next_shipment` (`applied_as_credit`) used to be sub
 ## A credit comes back when the invoice that used it is cancelled (2026-11-19)
 
 Each use of a credit is recorded in `billing_credit_application` (migration 070). Cancelling the invoice subtracts that use from `credit_applied_ngn`, and a credit that had been used up (`processed`) is `applied_as_credit` again, so the customer's next invoice can use it. Previously the credit stayed spent.
+
+## A bank refund carries its bank account (2026-11-19)
+
+**Ground-truth gap closed:** the customer form offered "Bank account refund" but collected no account, and `POST /v1/refunds` had no field for one, so accounts had nowhere to pay.
+
+- `POST /v1/refunds` body gains `bank_name` (2–100), `account_number` (10 digits, NUBAN), `account_name` (2–255); whitespace is stripped. With `customer_choice: immediate_refund` all three are required; with any other choice they are refused (not stored for no purpose). Either violation → 422.
+- `account_number` and `account_name` are stored encrypted (`shared.encryption.encrypt_field`); the audit entry masks all three (`***`). Never logged.
+- Responses carry `bank_details: {bank_name, account_number, account_name} | null`. Staff get it whole; a customer gets `account_number` masked (`******6789`).
+- Refunds created from a claim decision still carry no account (`customer_choice` null); staff arrange those directly.
+- Migration 071 widened `account_number`/`account_name` to TEXT: an encrypted value is ~260+ characters and the old VARCHAR(50)/(255) would have refused every write once encryption was on.
+- Verified live on :3010: missing details, 9 digits and a credit with details → 422; valid → 201; staff read the account; audit masked.

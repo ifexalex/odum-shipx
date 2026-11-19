@@ -5375,7 +5375,7 @@
             ],
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"customer_id\": \"{{customer_id}}\",\n  \"damage_claim_id\": \"{{claim_id}}\",\n  \"refund_type\": \"damage_or_loss\",\n  \"amount_requested_ngn\": 132000.00,\n  \"customer_choice\": \"immediate_refund\",\n  \"notes\": \"Refund for water-damaged electronics per resolved claim\"\n}"
+              "raw": "{\n  \"customer_id\": \"{{customer_id}}\",\n  \"damage_claim_id\": \"{{claim_id}}\",\n  \"refund_type\": \"damage_or_loss\",\n  \"amount_requested_ngn\": 132000.0,\n  \"customer_choice\": \"immediate_refund\",\n  \"notes\": \"Refund for water-damaged electronics per resolved claim\",\n  \"bank_name\": \"Zenith Bank\",\n  \"account_number\": \"0123456789\",\n  \"account_name\": \"Test Customer\"\n}"
             },
             "url": {
               "raw": "{{base_url}}/v1/refunds",

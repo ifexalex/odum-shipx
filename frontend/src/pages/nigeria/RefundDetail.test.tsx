@@ -77,6 +77,25 @@ describe('RefundDetail credit use (BE-07)', () => {
   })
 })
 
+describe('RefundDetail bank details', () => {
+  it('shows staff the account a bank refund is paid into', async () => {
+    renderPage({
+      ...REFUND,
+      customer_choice: 'immediate_refund',
+      bank_details: { bank_name: 'Zenith Bank', account_number: '0123456789', account_name: 'Ngozi Okonkwo' },
+    })
+    expect(await screen.findByText('0123456789')).toBeInTheDocument()
+    expect(screen.getByText('Zenith Bank')).toBeInTheDocument()
+    expect(screen.getByText('Ngozi Okonkwo')).toBeInTheDocument()
+  })
+
+  it('shows no account rows for a refund without one', async () => {
+    renderPage({ ...REFUND, bank_details: null })
+    await screen.findByText('Customer preference')
+    expect(screen.queryByText('Account number')).not.toBeInTheDocument()
+  })
+})
+
 describe('RefundDetail', () => {
   it('renders refund type in hero', async () => {
     renderPage()

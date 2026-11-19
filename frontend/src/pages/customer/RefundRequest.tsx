@@ -9,6 +9,7 @@ import { useRef, useState, type JSX } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { ApiError } from '../../api/client'
 import { refundsApi, type CreateRefundInput } from '../../api/refunds'
+import { bankDetailsProblem } from '../../api/refundsRules'
 import { Banner, Button, Field } from '../../design/components'
 import { PageHeader } from '../../shell/PageHeader'
 import styles from './customer.module.css'
@@ -23,11 +24,22 @@ export function RefundRequest(): JSX.Element {
   const [amountNgn, setAmountNgn] = useState('')
   const [reason, setReason] = useState('')
   const [choice, setChoice] = useState<'immediate_refund' | 'credit_next_shipment'>('immediate_refund')
+  // Where a bank refund is paid. PII: never logged; stored encrypted server-side.
+  const [bankName, setBankName] = useState('')
+  const [accountNumber, setAccountNumber] = useState('')
+  const [accountName, setAccountName] = useState('')
+  const [showBankProblem, setShowBankProblem] = useState(false)
+  const toBank = choice === 'immediate_refund'
+  const bankProblem = toBank ? bankDetailsProblem({ bankName, accountNumber, accountName }) : null
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
   async function handleSubmit(): Promise<void> {
     if (!billingId) return
+    if (bankProblem) {
+      setShowBankProblem(true)
+      return
+    }
     setSubmitting(true)
     setError(null)
     try {
@@ -38,6 +50,9 @@ export function RefundRequest(): JSX.Element {
         amount_requested_ngn: amountNgn,
         customer_choice: choice,
         notes: reason || undefined,
+        ...(toBank
+          ? { bank_name: bankName.trim(), account_number: accountNumber.trim(), account_name: accountName.trim() }
+          : {}),
       }
       await refundsApi.create(body, idempotencyKey.current)
       navigate(`/my-billing/${billingId}`, { state: { refundFiled: true } })
@@ -117,6 +132,41 @@ export function RefundRequest(): JSX.Element {
             </label>
           </div>
         </div>
+
+        {toBank && (
+          <div>
+            <Field
+              label="Bank"
+              name="bank_name"
+              required
+              autoComplete="off"
+              placeholder="e.g. Zenith Bank"
+              value={bankName}
+              onChange={(e) => setBankName(e.target.value)}
+            />
+            <Field
+              label="Account number"
+              name="account_number"
+              required
+              inputMode="numeric"
+              maxLength={10}
+              autoComplete="off"
+              placeholder="10 digits"
+              value={accountNumber}
+              onChange={(e) => setAccountNumber(e.target.value.replace(/\D/g, ''))}
+            />
+            <Field
+              label="Account name"
+              name="account_name"
+              required
+              autoComplete="off"
+              placeholder="As it appears on the account"
+              value={accountName}
+              onChange={(e) => setAccountName(e.target.value)}
+            />
+            {showBankProblem && bankProblem && <Banner variant="error">{bankProblem}</Banner>}
+          </div>
+        )}
 
         <div className={styles.formActions}>
           <Button variant="ghost" onClick={() => navigate(-1)} disabled={submitting}>Cancel</Button>

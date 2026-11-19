@@ -1313,3 +1313,6 @@ VISUAL_ONLY=/billing npm run visual:compare   # only routes containing /billing
 
 234 screens take about 8 minutes, because the local API serves one request at a time. The clock is fixed and animations are off, so a compare run with no change finds no differences. Nothing is committed: seed data and dates move between machines and days. CI job `visual` (frontend-ci.yml) does the same on a pull request that touches a style sheet or `frontend/src/design/`: it captures the base branch, compares the pull request against it, lists the changed screens in the job summary and uploads the report as the `visual-report` artifact. Routes come from `scripts/routeSamples.mjs`, shared with the phone audit.
 
+## Field encryption is off locally (note, 2026-11-19)
+
+With no `ENCRYPTION_KMS_KEY_ID` / `ENCRYPTION_KEY_VAULT_KEY_ID`, `encrypt_field` stores plaintext, so a column too narrow for ciphertext does not fail locally. `tests/db/test_encrypted_columns.py` writes ciphertext-sized values to catch that.

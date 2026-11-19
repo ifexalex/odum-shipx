@@ -51,6 +51,16 @@ export interface RefundThreshold {
   exceeds_staff_limit: boolean
 }
 
+/**
+ * Where a refund to a bank account is paid. PII: never log it. Staff read it whole; a customer reads the account
+ * number masked (`******6789`). Null when the refund is a credit, or came from a claim decision.
+ */
+export interface BankDetails {
+  bank_name: string | null
+  account_number: string | null
+  account_name: string | null
+}
+
 export interface Refund {
   id: string
   status: RefundStatus
@@ -69,6 +79,7 @@ export interface Refund {
   debt_check_passed: boolean | null
   debt_check_notes: string | null
   created_at: string
+  bank_details?: BankDetails | null
   /** Present on detail responses only (absent on list items / route state). Null if threshold config is unavailable. */
   threshold?: RefundThreshold | null
 }
@@ -96,6 +107,10 @@ export interface CreateRefundInput {
   amount_requested_ngn: string
   customer_choice?: CustomerChoice
   notes?: string
+  /** Required for `immediate_refund`, refused for a credit. `account_number` is a 10-digit NUBAN. */
+  bank_name?: string
+  account_number?: string
+  account_name?: string
 }
 
 export interface AccountsReviewInput {

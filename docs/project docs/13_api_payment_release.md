@@ -508,3 +508,6 @@ Tests: `tests/unit/test_pickup_code.py` (30), `test_pickup_code_release.py` (46)
 
 `POST /v1/payments/claims` also checks the stored evidence file: missing → 422 `UPLOAD_NOT_FOUND`; over 5 MB → 422 `FILE_TOO_LARGE` (an Azure upload is not bound to its declared size).
 
+## Pickup ID number column widened (2026-11-19)
+
+**Bug found and fixed (latent until encryption is on):** `pickup_record.id_number` was VARCHAR(100) but holds `encrypt_field` output (~260+ characters), so recording a pickup with an ID number would have failed in production. Migration 071 made it TEXT.

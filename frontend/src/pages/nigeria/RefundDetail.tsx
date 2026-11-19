@@ -538,7 +538,18 @@ export function RefundDetail(): JSX.Element {
           {refund.damage_claim_id && (
             <Kvp label="Linked claim" value={<Mono>{refund.damage_claim_id}</Mono>} />
           )}
-          <Kvp label="Customer preference" value={customerChoiceLabel(refund.customer_choice)} divider={false} />
+          <Kvp
+            label="Customer preference"
+            value={customerChoiceLabel(refund.customer_choice)}
+            divider={Boolean(refund.bank_details)}
+          />
+          {refund.bank_details && (
+            <>
+              <Kvp label="Bank" value={refund.bank_details.bank_name ?? '—'} />
+              <Kvp label="Account number" value={<Mono>{refund.bank_details.account_number ?? '—'}</Mono>} />
+              <Kvp label="Account name" value={refund.bank_details.account_name ?? '—'} divider={false} />
+            </>
+          )}
         </Card>
       </div>
 

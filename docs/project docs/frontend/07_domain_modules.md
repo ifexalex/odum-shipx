@@ -1836,3 +1836,7 @@ The event log's Export button (`containerDetail/Tabs.tsx` `TrackingTab`) was a p
 ## Cancelling an invoice says what it gives back (2026-11-19)
 
 `CancelBillingModal` takes `creditsNgn` (BillingDetail passes `-adjustments_ngn`) and `carryoverNgn`; when either is above zero an info banner reads "₦X of credit goes back to the customer. ₦Y carried over from earlier invoices is owed again, on their next invoice." The cancel API now does both (see `11_api_billing.md`). Refusal `CREDIT_NOT_TRACEABLE` (an older invoice) shows in the modal's existing error banner. Test: `billingDetail/CancelBillingModal.test.tsx`.
+
+## Refund form collects the bank account (2026-11-19)
+
+`RefundRequest.tsx`: with "Bank account refund" chosen (the default) the form shows Bank, Account number (digits only, 10, `inputMode="numeric"`) and Account name; `bankDetailsProblem` (`api/refundsRules.ts`) blocks submit with a message until all are valid, and the three fields are sent only for a bank refund. `RefundDetail.tsx` (staff) shows Bank / Account number / Account name under "Customer preference" when `bank_details` is present. Types: `BankDetails`, `Refund.bank_details`, `CreateRefundInput.bank_name/account_number/account_name`. Tests: `RefundRequest.test.tsx` (+4), `refundsRules.test.ts` (+4), `RefundDetail.test.tsx` (+2).
