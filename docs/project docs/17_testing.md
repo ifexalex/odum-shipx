@@ -2463,3 +2463,7 @@ Found by running them: **a real bug** (invoice generation set a used credit to `
 - `tests/unit/test_refund_bank_details.py` (15): required for a bank refund, refused for a credit, 10 digits; encrypted before the write; claim refunds write none; staff see the account, a customer the masked number; the audit entry is masked.
 - `tests/db/test_encrypted_columns.py` (2, real database): a 600-character ciphertext stores in the refund account columns; the three encrypted columns are TEXT.
 - Frontend: see `frontend/07_domain_modules.md`.
+
+## Paging past empty sort values (2026-11-19)
+
+`tests/unit/test_pagination_walk.py::TestEmptySortValues` (6): a joined list sorted by a column with eight empty values, walked page by page in both directions, equals the one-shot ordering with nothing repeated or skipped, empty values last, and the cursor marks an empty value. Mutation-checked against the previous `shared/pagination.py` (all 6 fail). Three SQL-text assertions updated for `NULLS LAST`. `make test-db`: 202 passed.

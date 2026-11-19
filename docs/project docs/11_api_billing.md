@@ -346,3 +346,7 @@ Verified by running the generated SQL page by page in SQLite (`tests/unit/test_p
 ## No "payment due" message for an invoice the credit covered (2026-11-19)
 
 **Ground-truth gap closed:** an invoice whose total the customer's credit brought to ₦0 (issued `paid`) still sent the `payment_due` SMS, WhatsApp and email, reading "NGN 0.00 due". `_notify_customer_payment_due` now sends them only when `total_ngn > 0`; the in-app bell still goes out ("nothing to pay. Your credit covered this invoice."). The `PaymentDue` event and tenant webhook are unchanged. A dedicated "covered by credit" message would need its own WhatsApp template approved by Meta; not built.
+
+## Invoice list sorted by billed date pages correctly (2026-11-19)
+
+Unbilled invoices (no `billed_at`) now sort last in both directions, and paging through them no longer restarts at page one. See `02_shared_utilities.md`, "Paging past empty sort values".

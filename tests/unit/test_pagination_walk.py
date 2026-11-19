@@ -120,16 +120,43 @@ class TestPlainList:
         assert len(set(walked)) == ROW_COUNT
 
 
+@pytest.mark.parametrize("direction", ["DESC", "ASC"])
+class TestEmptySortValues:
+    """A column that is empty on some rows (billed date on an unbilled invoice). A cursor whose value was empty used
+    to be ignored, so the page after it restarted at page one (found 2026-11-17, fixed 2026-11-19)."""
+
+    @pytest.fixture
+    def db_with_gaps(self, db):
+        # Eight empty values, enough to span pages on their own, and some among the first rows.
+        db.execute("UPDATE billing SET invoice_number = NULL WHERE CAST(substr(id, 4) AS INTEGER) % 3 = 0 AND id < 'id-027'")
+        return db
+
+    def test_pages_add_up_to_the_whole_ordering(self, db_with_gaps, direction):
+        walked = _walk(db_with_gaps, JOINED, qualified="b.invoice_number", bare="invoice_number", direction=direction)
+        assert walked == _one_shot(db_with_gaps, JOINED, qualified="b.invoice_number", direction=direction)
+        assert len(walked) == len(set(walked)) == ROW_COUNT
+
+    def test_empty_values_come_last(self, db_with_gaps, direction):
+        walked = _walk(db_with_gaps, JOINED, qualified="b.invoice_number", bare="invoice_number", direction=direction)
+        empty = {row["id"] for row in _rows(db_with_gaps, "SELECT id FROM billing WHERE invoice_number IS NULL", {})}
+        assert len(empty) == 8
+        assert set(walked[-len(empty) :]) == empty
+
+    def test_the_cursor_says_the_value_was_empty(self, db_with_gaps, direction):
+        _, next_cursor, _ = extract_page([{"id": "x", "invoice_number": None}, {"id": "y"}], 1, "invoice_number")
+        assert decode_cursor(next_cursor) == {"sort_value": None, "id": "x", "sort_is_null": True}
+
+
 class TestGeneratedSql:
     def test_the_id_tiebreaker_follows_the_sort_fields_alias(self):
         query, _ = build_paginated_query("SELECT 1 FROM t b WHERE 1=1", {"sort_value": "x", "id": "1"}, 10, "b.created_at")
         assert "b.id <" in query
-        assert "ORDER BY b.created_at DESC, b.id DESC" in query
+        assert "ORDER BY b.created_at DESC NULLS LAST, b.id DESC" in query
         assert " id <" not in query and ", id DESC" not in query
 
     def test_an_unaliased_sort_field_keeps_a_bare_id(self):
         query, _ = build_paginated_query("SELECT 1 FROM t WHERE 1=1", {"sort_value": "x", "id": "1"}, 10, "created_at")
-        assert "ORDER BY created_at DESC, id DESC" in query
+        assert "ORDER BY created_at DESC NULLS LAST, id DESC" in query
 
     def test_a_cursor_round_trips(self):
         assert decode_cursor(encode_cursor({"sort_value": "2026-11-01", "id": "a"})) == {"sort_value": "2026-11-01", "id": "a"}

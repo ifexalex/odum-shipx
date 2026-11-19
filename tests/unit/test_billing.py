@@ -1089,7 +1089,7 @@ class TestDisputeList:
     def test_page_two_does_not_use_a_bare_id(self):
         """The cursor condition sits in WHERE, where `id` would be ambiguous across the joined tables."""
         query, _ = self._sql(cursor={"sort_value": "2026-11-10", "id": "d0"})
-        assert "d.id <" in query and "ORDER BY d.created_at DESC, d.id DESC" in query
+        assert "d.id <" in query and "ORDER BY d.created_at DESC NULLS LAST, d.id DESC" in query
         assert " AND id <" not in query and ", id DESC" not in query
 
 
