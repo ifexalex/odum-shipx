@@ -324,7 +324,7 @@ export function ContainerList(): JSX.Element {
       </div>
 
       {/* Filter bar */}
-      <Card padding={16}>
+      <Card padding="default">
         <div className={styles.filterRow}>
           <div className={styles.chips}>
             <Chip active={activeStatuses === null} onClick={() => setActiveStatuses(null)}>
@@ -446,7 +446,7 @@ export function ContainerList(): JSX.Element {
       </Card>
 
       <div className={styles.tableWrap}>
-        <Card padding={0}>
+        <Card padding="none">
           <Table
             columns={[
               { title: 'Container', sortable: true },

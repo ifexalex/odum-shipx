@@ -1,7 +1,7 @@
 .grid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 16px;
+  gap: var(--space-4);
 }
 
 @media (max-width: 860px) {
@@ -11,18 +11,18 @@
 }
 
 .queue {
-  padding: 18px 20px;
+  padding: var(--space-5) var(--space-5);
 }
 
 .muted {
-  margin: 4px 0 0;
+  margin: var(--space-1) 0 0;
   font-size: var(--text-sm);
   color: var(--color-ink-3);
 }
 
 .rows {
   list-style: none;
-  margin: 4px 0 0;
+  margin: var(--space-1) 0 0;
   padding: 0;
 }
 
@@ -33,9 +33,9 @@
 .row {
   display: flex;
   flex-direction: column;
-  gap: 2px;
+  gap: var(--space-0-5);
   width: 100%;
-  padding: 10px 0;
+  padding: var(--space-3) 0;
   border: 0;
   background: none;
   text-align: left;

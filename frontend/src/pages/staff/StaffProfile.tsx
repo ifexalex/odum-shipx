@@ -38,20 +38,20 @@ export function StaffProfile(): JSX.Element {
         subtitle={session.role.replace(/_/g, ' ')}
       />
 
-      {error && <div style={{ marginBottom: 16 }}><Banner variant="error">{error}</Banner></div>}
-      {saved && <div style={{ marginBottom: 16 }}><Banner variant="success">Notification language updated.</Banner></div>}
+      {error && <div style={{ marginBottom: 'var(--space-4)' }}><Banner variant="error">{error}</Banner></div>}
+      {saved && <div style={{ marginBottom: 'var(--space-4)' }}><Banner variant="success">Notification language updated.</Banner></div>}
 
       <SectionHead title="Profile" />
-      <Card padding={20} style={{ marginBottom: 24 }}>
+      <Card padding="default" style={{ marginBottom: 'var(--space-6)' }}>
         {session.name && <Kvp label="Name" value={session.name} />}
         <Kvp label="Role" value={session.role.replace(/_/g, ' ')} />
         <Kvp label="Tenant" value={session.tenantName ?? session.tenantId} divider={false} />
       </Card>
 
       <SectionHead title="Notification language" />
-      <Card padding={20}>
+      <Card padding="default">
         <LocaleCard value={locale} onChange={setLocale} />
-        <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: 16 }}>
+        <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: 'var(--space-4)' }}>
           <Action variant="primary" loading={saving} onClick={() => void handleSave()}>
             Save changes
           </Action>

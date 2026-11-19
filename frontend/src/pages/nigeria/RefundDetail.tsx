@@ -168,11 +168,11 @@ function AccountsReviewModal({ refund, onCancel, onSuccess }: AccountsReviewModa
           Check customer debt records (unpaid billing, outstanding carryovers) before advancing this refund.
         </Banner>
         <div>
-          <label style={{ display: 'flex', gap: 8, alignItems: 'center', cursor: 'pointer', marginBottom: 8 }}>
+          <label style={{ display: 'flex', gap: 'var(--space-2)', alignItems: 'center', cursor: 'pointer', marginBottom: 'var(--space-2)' }}>
             <input type="radio" checked={passed} onChange={() => setPassed(true)} />
             <span>Debt check passed — advance to manager approval</span>
           </label>
-          <label style={{ display: 'flex', gap: 8, alignItems: 'center', cursor: 'pointer' }}>
+          <label style={{ display: 'flex', gap: 'var(--space-2)', alignItems: 'center', cursor: 'pointer' }}>
             <input type="radio" checked={!passed} onChange={() => setPassed(false)} />
             <span>Debt check failed — reject (offset debt)</span>
           </label>
@@ -485,7 +485,7 @@ export function RefundDetail(): JSX.Element {
 
       {/* Status stepper */}
       <div className={styles.section}>
-        <Card padding={20}>
+        <Card padding="default">
           <SectionHead title="Approval progress" />
           <RefundStepper refund={refund} />
         </Card>
@@ -530,7 +530,7 @@ export function RefundDetail(): JSX.Element {
       {/* Details card */}
       <div className={styles.section}>
         <SectionHead title="Request details" />
-        <Card padding={20}>
+        <Card padding="default">
           <Kvp label="Refund type" value={refundTypeLabel(refund.refund_type)} />
           {refund.reason && <Kvp label="Reason" value={refund.reason} />}
           {refund.customer_id && <Kvp label="Customer ID" value={<Mono>{refund.customer_id}</Mono>} />}

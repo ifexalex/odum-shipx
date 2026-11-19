@@ -46,7 +46,7 @@ export function ForgotPasswordScreen(): JSX.Element {
   if (sent) {
     return (
       <AuthShell>
-        <button type="button" className={styles.link} style={{ marginBottom: 32, display: 'inline-flex', alignItems: 'center', gap: 6 }} onClick={() => navigate('/login')}>
+        <button type="button" className={styles.link} style={{ marginBottom: 'var(--space-8)', display: 'inline-flex', alignItems: 'center', gap: 'var(--space-2)' }} onClick={() => navigate('/login')}>
           <Icon name="arrowleft" size={14} /> Back to sign in
         </button>
         <div style={{ textAlign: 'center' }}>
@@ -59,18 +59,18 @@ export function ForgotPasswordScreen(): JSX.Element {
               display: 'flex',
               alignItems: 'center',
               justifyContent: 'center',
-              margin: '0 auto 24px',
+              margin: '0 auto var(--space-6)',
             }}
           >
             <Icon name="mail" size={38} color="var(--color-primary)" stroke={2} />
           </div>
-          <h2 className={styles.formTitle} style={{ marginBottom: 8 }}>Check your email</h2>
+          <h2 className={styles.formTitle} style={{ marginBottom: 'var(--space-2)' }}>Check your email</h2>
           <p className={styles.formSub}>We sent a verification code to</p>
-          <p style={{ fontSize: 'var(--text-lg)', fontWeight: 600, color: 'var(--color-ink)', margin: '0 0 24px' }}>{email}</p>
+          <p style={{ fontSize: 'var(--text-lg)', fontWeight: 600, color: 'var(--color-ink)', margin: '0 0 var(--space-6)' }}>{email}</p>
           <Banner variant="info" title="Code expires in 60 minutes">
             Enter the code on the next screen together with your new password.
           </Banner>
-          <div style={{ marginTop: 24 }}>
+          <div style={{ marginTop: 'var(--space-6)' }}>
             <Button
               variant="accent"
               size="lg"
@@ -80,7 +80,7 @@ export function ForgotPasswordScreen(): JSX.Element {
               Enter code &amp; set new password
             </Button>
           </div>
-          <p className={styles.footerLine} style={{ marginTop: 20 }}>
+          <p className={styles.footerLine} style={{ marginTop: 'var(--space-5)' }}>
             Didn&apos;t receive it?{' '}
             <button type="button" className={styles.footerLinkStrong} onClick={() => setSent(false)}>
               Resend code
@@ -93,7 +93,7 @@ export function ForgotPasswordScreen(): JSX.Element {
 
   return (
     <AuthShell>
-      <button type="button" className={styles.link} style={{ marginBottom: 32, display: 'inline-flex', alignItems: 'center', gap: 6 }} onClick={() => navigate('/login')}>
+      <button type="button" className={styles.link} style={{ marginBottom: 'var(--space-8)', display: 'inline-flex', alignItems: 'center', gap: 'var(--space-2)' }} onClick={() => navigate('/login')}>
         <Icon name="arrowleft" size={14} /> Back to sign in
       </button>
       <FormHead
@@ -102,7 +102,7 @@ export function ForgotPasswordScreen(): JSX.Element {
       />
 
       {error && (
-        <div style={{ marginBottom: 20 }}>
+        <div style={{ marginBottom: 'var(--space-5)' }}>
           <Banner variant="error" title="Something went wrong">{error}</Banner>
         </div>
       )}
@@ -124,7 +124,7 @@ export function ForgotPasswordScreen(): JSX.Element {
         </Button>
       </form>
 
-      <p className={styles.footerLine} style={{ marginTop: 20 }}>
+      <p className={styles.footerLine} style={{ marginTop: 'var(--space-5)' }}>
         Remember your password?{' '}
         <button type="button" className={styles.footerLinkStrong} onClick={() => navigate('/login')}>
           Sign in →

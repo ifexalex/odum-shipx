@@ -169,7 +169,7 @@ export function BillingDetail(): JSX.Element {
   return (
     <div>
       {session?.readOnly && (
-        <div style={{ marginBottom: 16 }}>
+        <div style={{ marginBottom: 'var(--space-4)' }}>
           <Banner variant="warning" icon="eye" title="Read-only session">
             You're viewing this tenant as their Tenant Admin for support. Data is fully visible, but every create, edit, approve, and delete action is disabled. The session ends automatically after 30 minutes or when you exit.
           </Banner>
@@ -280,9 +280,9 @@ export function BillingDetail(): JSX.Element {
             waiving={waivingFees}
           />
           {storageFees.length > 0 && (
-            <div style={{ marginTop: 12 }}>
+            <div style={{ marginTop: 'var(--space-3)' }}>
               <SectionHead title="Storage fee accrual log" />
-              <div style={{ marginTop: 8 }}>
+              <div style={{ marginTop: 'var(--space-2)' }}>
                 <StorageFeeLog fees={storageFees} />
               </div>
             </div>

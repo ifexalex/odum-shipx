@@ -71,12 +71,12 @@ export function PlatformAuditLog(): JSX.Element {
   return (
     <div>
 
-      {error && <div style={{ marginBottom: 16 }}><Banner variant="error" title="Couldn't load">{error}</Banner></div>}
+      {error && <div style={{ marginBottom: 'var(--space-4)' }}><Banner variant="error" title="Couldn't load">{error}</Banner></div>}
 
-      <div style={{ display: 'flex', gap: 12, marginBottom: 16, alignItems: 'center' }}>
+      <div style={{ display: 'flex', gap: 'var(--space-3)', marginBottom: 'var(--space-4)', alignItems: 'center' }}>
         <label style={{ fontSize: 'var(--text-sm)', fontWeight: 600, color: 'var(--color-ink-2)' }}>Tenant</label>
         <select
-          style={{ padding: '8px 12px', borderRadius: 8, border: '1px solid var(--color-line)', background: 'var(--color-surface)', fontSize: 'var(--text-md)', minWidth: 220 }}
+          style={{ padding: 'var(--space-2) var(--space-3)', borderRadius: 8, border: '1px solid var(--color-line)', background: 'var(--color-surface)', fontSize: 'var(--text-md)', minWidth: 220 }}
           value={tenantFilter}
           onChange={(e) => setTenantFilter(e.target.value)}
         >
@@ -87,7 +87,7 @@ export function PlatformAuditLog(): JSX.Element {
         </select>
       </div>
 
-      <Card padding={0}>
+      <Card padding="none">
         <Table
           columns={[
             { title: 'Timestamp' },
@@ -125,8 +125,8 @@ export function PlatformAuditLog(): JSX.Element {
       </Card>
 
       {expandedId && (
-        <div style={{ marginTop: 12 }}>
-          <Card padding={16}>
+        <div style={{ marginTop: 'var(--space-3)' }}>
+          <Card padding="default">
             <pre style={{ margin: 0, fontSize: 'var(--text-xs)', fontFamily: 'var(--font-mono)', whiteSpace: 'pre-wrap', overflowX: 'auto' }}>
               {JSON.stringify(entries.find((e) => e.id === expandedId)?.details ?? {}, null, 2)}
             </pre>

@@ -12,7 +12,7 @@
   min-width: 360px;
   background: radial-gradient(circle at 20% 100%, var(--color-primary-deep) 0%, var(--color-forest-dark) 60%);
   color: var(--color-on-brand);
-  padding: 40px 48px;
+  padding: var(--space-12) var(--space-12);
   display: flex;
   flex-direction: column;
   position: relative;
@@ -33,7 +33,7 @@
 .brandTop {
   display: flex;
   align-items: center;
-  gap: 12px;
+  gap: var(--space-3);
 }
 
 .brandByLine {
@@ -69,7 +69,7 @@
   font-size: var(--text-3xl);
   line-height: var(--text-3xl-line);
   letter-spacing: var(--tracking-tight);
-  margin: 28px 0 14px;
+  margin: var(--space-8) 0 var(--space-4);
   color: var(--color-on-brand);
 }
 
@@ -90,7 +90,7 @@
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding-top: 24px;
+  padding-top: var(--space-6);
   border-top: 1px solid rgba(255, 255, 255, 0.1);
   position: relative;
   z-index: 1;
@@ -107,7 +107,7 @@
 .statusRow {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: var(--space-2);
 }
 
 .statusDot {
@@ -130,7 +130,7 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  padding: 56px 32px;
+  padding: var(--space-16) var(--space-8);
   overflow: auto;
 }
 
@@ -140,7 +140,7 @@
 }
 
 .formHead {
-  margin-bottom: 28px;
+  margin-bottom: var(--space-8);
 }
 
 .formTitle {
@@ -149,7 +149,7 @@
   font-size: var(--text-2xl);
   letter-spacing: var(--tracking-tight);
   color: var(--color-ink);
-  margin: 0 0 6px;
+  margin: 0 0 var(--space-2);
 }
 
 .formSub {
@@ -163,13 +163,13 @@
   display: flex;
   justify-content: space-between;
   align-items: center;
-  margin: 4px 0 24px;
+  margin: var(--space-1) 0 var(--space-6);
 }
 
 .rememberLabel {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: var(--space-2);
   cursor: pointer;
   font-size: var(--text-sm);
   color: var(--color-ink-2);
@@ -204,8 +204,8 @@
 .divider {
   display: flex;
   align-items: center;
-  gap: 12px;
-  margin: 20px 0;
+  gap: var(--space-3);
+  margin: var(--space-5) 0;
   color: var(--color-ink-4);
   font-size: var(--text-xs);
   font-weight: 500;

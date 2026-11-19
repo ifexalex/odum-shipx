@@ -144,20 +144,20 @@ function ResolutionPick({ title, sub, current, onClick }: { title: string; sub: 
       type="button"
       onClick={onClick}
       style={{
-        display: 'flex', alignItems: 'flex-start', gap: 10, textAlign: 'left',
+        display: 'flex', alignItems: 'flex-start', gap: 'var(--space-3)', textAlign: 'left',
         border: `${current ? 2 : 1}px solid ${current ? 'var(--color-primary)' : 'var(--color-line-soft)'}`,
-        borderRadius: 10, padding: 12, cursor: 'pointer',
+        borderRadius: 10, padding: 'var(--space-3)', cursor: 'pointer',
         background: current ? 'var(--color-primary-tint)' : 'var(--color-surface)',
       }}
     >
       <span style={{
-        width: 18, height: 18, borderRadius: '50%', flexShrink: 0, marginTop: 1,
+        width: 18, height: 18, borderRadius: '50%', flexShrink: 0, marginTop: 'var(--space-0-5)',
         border: `${current ? 5 : 1.5}px solid ${current ? 'var(--color-primary)' : 'var(--color-line)'}`,
         background: 'var(--color-surface)',
       }} />
       <span>
         <span style={{ display: 'block', fontFamily: 'var(--font-display)', fontWeight: 700, fontSize: 'var(--text-sm)' }}>{title}</span>
-        <span style={{ display: 'block', fontSize: 'var(--text-xs)', color: 'var(--color-ink-3)', marginTop: 2 }}>{sub}</span>
+        <span style={{ display: 'block', fontSize: 'var(--text-xs)', color: 'var(--color-ink-3)', marginTop: 'var(--space-0-5)' }}>{sub}</span>
       </span>
     </button>
   )
@@ -216,7 +216,7 @@ function ResolveClaimModal({ onCancel, onSuccess, claimId, role }: ResolveClaimM
         )}
         <div>
           <label className={styles.selectLabel}>Resolution type <span className={styles.required}>*</span></label>
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 10, marginTop: 8, marginBottom: 4 }}>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 'var(--space-3)', marginTop: 'var(--space-2)', marginBottom: 'var(--space-1)' }}>
             {RESOLUTION_TYPES.map((r) => (
               <ResolutionPick
                 key={r.value}
@@ -370,7 +370,7 @@ export function ClaimDetail(): JSX.Element {
       {/* Status stepper */}
       <div className={styles.section}>
         <SectionHead title="Progress" />
-        <Card padding={20}>
+        <Card padding="default">
           <StatusStepper current={claim.status} />
         </Card>
       </div>
@@ -379,7 +379,7 @@ export function ClaimDetail(): JSX.Element {
       {(claim.description || claim.container_id || claim.customer_id) && (
         <div className={styles.section}>
           <SectionHead title="Claim details" />
-          <Card padding={20}>
+          <Card padding="default">
             {claim.description && <Kvp label="Description" value={claim.description} />}
             {claim.container_id && <Kvp label="Container ID" value={<Mono>{claim.container_id}</Mono>} />}
             {claim.customer_id && <Kvp label="Customer ID" value={<Mono>{claim.customer_id}</Mono>} divider={false} />}
@@ -390,7 +390,7 @@ export function ClaimDetail(): JSX.Element {
       {/* Cartons affected */}
       <div className={styles.section}>
         <SectionHead title="Cartons affected" />
-        <Card padding={20}>
+        <Card padding="default">
           {claim.cartons_affected.length > 0 ? (
             <div className={styles.cartonList}>
               {claim.cartons_affected.map((tag) => (
@@ -407,7 +407,7 @@ export function ClaimDetail(): JSX.Element {
       {!isTerminalClaimStatus(claim.status) && (
         <div className={styles.section}>
           <SectionHead title="Attach evidence" sub="Upload photos or PDF documents (JPEG · PNG · PDF, max 5 MB each)" />
-          <Card padding={20}>
+          <Card padding="default">
             <EvidenceUploader getPresignedUrl={(f) => presignedUploadApi.getUrl(claim.id, f.name, f.type, f.size)} onUploaded={() => { /* evidence logged server-side */ }} />
           </Card>
         </div>

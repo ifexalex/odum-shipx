@@ -50,7 +50,7 @@ export function PlanUsagePanel(): JSX.Element | null {
   const tierLabel = quota.subscription_tier[0]!.toUpperCase() + quota.subscription_tier.slice(1)
 
   return (
-    <Card padding={20}>
+    <Card padding="default">
       <SectionHead
         title={`Plan usage · ${tierLabel}`}
         sub={`Period ${quota.period} · limits reset monthly`}

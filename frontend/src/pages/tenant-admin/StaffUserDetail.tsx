@@ -171,7 +171,7 @@ export function StaffUserDetail(): JSX.Element {
     }
   }
 
-  if (loading && !user) return <div style={{ padding: 48, color: 'var(--color-text-muted)' }}>Loading…</div>
+  if (loading && !user) return <div style={{ padding: 'var(--space-12)', color: 'var(--color-text-muted)' }}>Loading…</div>
   if (error && !user) return <div className={styles.banner}><Banner variant="error">{error}</Banner></div>
   if (!user) return <></>
 
@@ -190,11 +190,11 @@ export function StaffUserDetail(): JSX.Element {
       {actionMsg && <div className={styles.banner}><Banner variant="success">{actionMsg}</Banner></div>}
 
       <SectionHead title="Profile" />
-      <Card padding={20}>
+      <Card padding="default">
         <Kvp label="Email" value={user.email} />
         <Kvp label="Roles" value={
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-3)' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-2)', flexWrap: 'wrap' }}>
               {(user.roles.length > 0 ? user.roles : [user.role]).map((r) => (
                 <Badge key={r} variant={ROLE_VARIANT[r]}>
                   {r.replace(/_/g, ' ')}{r === user.role ? ' · primary' : ''}
@@ -225,7 +225,7 @@ export function StaffUserDetail(): JSX.Element {
                   }}
                   roleLabel={(r) => r.replace(/_/g, ' ')}
                 />
-                <div style={{ display: 'flex', gap: 6, marginTop: 10 }}>
+                <div style={{ display: 'flex', gap: 'var(--space-2)', marginTop: 'var(--space-3)' }}>
                   <Action variant="primary" size="sm" loading={saving} disabled={editRoles.length === 0} onClick={() => void handleSaveRoles()}>
                     Save
                   </Action>
@@ -242,9 +242,9 @@ export function StaffUserDetail(): JSX.Element {
       </Card>
 
       <SectionHead title="Permissions" sub="What this role can and cannot do — fixed per role, enforced server-side" />
-      <Card padding={20}>
+      <Card padding="default">
         {ROLE_PERMISSIONS[user.role]?.map((p, i, arr) => (
-          <div key={p.label} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '8px 0', borderBottom: i < arr.length - 1 ? '1px dashed var(--color-line-soft)' : 'none' }}>
+          <div key={p.label} style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-3)', padding: 'var(--space-2) 0', borderBottom: i < arr.length - 1 ? '1px dashed var(--color-line-soft)' : 'none' }}>
             <span style={{
               width: 22, height: 22, borderRadius: 6, flexShrink: 0,
               display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
@@ -258,13 +258,13 @@ export function StaffUserDetail(): JSX.Element {
       </Card>
 
       <SectionHead title="Recent activity" sub="What this user has done across the tenant" />
-      <Card padding={20}>
+      <Card padding="default">
         <ActivityFeed actorId={user.id} limit={10} showActor={false} />
       </Card>
 
       <SectionHead title="Actions" />
-      <Card padding={20}>
-        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+      <Card padding="default">
+        <div style={{ display: 'flex', gap: 'var(--space-2)', flexWrap: 'wrap' }}>
           <Button variant="secondary" size="sm" loading={saving} onClick={() => void handleAction('activate')}>
             Resend activation link
           </Button>
@@ -283,9 +283,9 @@ export function StaffUserDetail(): JSX.Element {
       </Card>
 
       <SectionHead title="Notification language" />
-      <Card padding={20}>
+      <Card padding="default">
         <LocaleCard value={locale} onChange={setLocaleDraft} />
-        <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: 16 }}>
+        <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: 'var(--space-4)' }}>
           <Action variant="primary" size="sm" loading={savingLocale} onClick={() => void handleSaveLocale()}>
             Save language
           </Action>

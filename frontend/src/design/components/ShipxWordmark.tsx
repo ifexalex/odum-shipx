@@ -42,7 +42,7 @@ export function ShipxWordmark({
             textTransform: 'uppercase',
             color,
             opacity: 0.6,
-            marginTop: 2,
+            marginTop: 'var(--space-0-5)',
           }}
         >
           by Odum

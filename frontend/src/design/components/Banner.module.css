@@ -1,9 +1,9 @@
 .banner {
   display: flex;
-  gap: 12px;
+  gap: var(--space-3);
   align-items: flex-start;
   border-radius: var(--radius-sm);
-  padding: 14px 16px;
+  padding: var(--space-4) var(--space-4);
   font-size: var(--text-sm);
   line-height: var(--text-sm-line);
   border: 1px solid var(--banner-border);
@@ -43,7 +43,7 @@
 
 .title {
   font-weight: 700;
-  margin-bottom: 2px;
+  margin-bottom: var(--space-0-5);
 }
 
 .dismiss {

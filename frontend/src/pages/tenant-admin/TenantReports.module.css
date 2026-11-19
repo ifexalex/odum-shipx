@@ -3,18 +3,18 @@
 .statsRow {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
-  gap: 16px;
-  margin-bottom: 24px;
+  gap: var(--space-4);
+  margin-bottom: var(--space-6);
 }
 
 .grid2 {
   display: grid;
   grid-template-columns: 1fr 1.2fr;
-  gap: 20px;
+  gap: var(--space-5);
 }
 
 .tableHead {
-  padding: 18px 20px;
+  padding: var(--space-5) var(--space-5);
   display: flex;
   justify-content: space-between;
   align-items: center;
@@ -26,7 +26,7 @@
   display: flex;
   flex-wrap: wrap;
   align-items: center;
-  gap: 24px;
+  gap: var(--space-6);
 }
 
 .donutOuter {
@@ -62,7 +62,7 @@
   font-size: var(--text-lg);
   color: var(--color-ink);
   letter-spacing: var(--tracking-tight);
-  margin-top: 2px;
+  margin-top: var(--space-0-5);
 }
 
 .donutLegend {
@@ -74,8 +74,8 @@
 .donutLegendRow {
   display: flex;
   align-items: center;
-  gap: 10px;
-  padding: 6px 0;
+  gap: var(--space-3);
+  padding: var(--space-2) 0;
 }
 
 .donutDot {
@@ -102,8 +102,8 @@
 .topCustRow {
   display: flex;
   align-items: center;
-  gap: 12px;
-  padding: 7px 0;
+  gap: var(--space-3);
+  padding: var(--space-2) 0;
 }
 
 .topCustName {
@@ -134,13 +134,13 @@
 .pipelineWrap {
   display: flex;
   flex-direction: column;
-  gap: 12px;
+  gap: var(--space-3);
 }
 
 .pipelineBars {
   display: flex;
   align-items: flex-end;
-  gap: 8px;
+  gap: var(--space-2);
   height: 120px;
 }
 
@@ -149,7 +149,7 @@
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 4px;
+  gap: var(--space-1);
   position: relative;
 }
 
@@ -178,14 +178,14 @@
 
 .pipelineLegend {
   display: flex;
-  gap: 16px;
+  gap: var(--space-4);
   flex-wrap: wrap;
 }
 
 .pipelineLegendItem {
   display: flex;
   align-items: center;
-  gap: 6px;
+  gap: var(--space-2);
   font-size: var(--text-xs);
   color: var(--color-ink-3);
 }
@@ -203,15 +203,15 @@
 .claimsGrid {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
-  gap: 16px;
-  margin-bottom: 24px;
+  gap: var(--space-4);
+  margin-bottom: var(--space-6);
 }
 
 .claimCardHeader {
   display: flex;
   align-items: center;
-  gap: 10px;
-  margin-bottom: 14px;
+  gap: var(--space-3);
+  margin-bottom: var(--space-4);
 }
 
 .claimIcon {
@@ -234,7 +234,7 @@
 .claimStats {
   display: flex;
   flex-wrap: wrap;
-  gap: 20px;
+  gap: var(--space-5);
 }
 
 .claimStatVal {
@@ -251,7 +251,7 @@
   font-weight: 600;
   text-transform: uppercase;
   letter-spacing: var(--tracking-label);
-  margin-top: 2px;
+  margin-top: var(--space-0-5);
 }
 
 /* P2-6 — collapse the two-column report grid on narrow app frames */

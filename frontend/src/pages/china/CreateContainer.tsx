@@ -90,7 +90,7 @@ export function CreateContainer(): JSX.Element {
       )}
 
       <form onSubmit={handleSubmit}>
-        <Card padding={32}>
+        <Card padding="large">
           <SectionHead title="Container details" sub="ISO 6346 format · validated server-side" />
           <div className={styles.spacerLg} />
           <Field

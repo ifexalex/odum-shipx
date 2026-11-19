@@ -9,17 +9,17 @@ const MARK_SIZES = [16, 24, 32, 48, 64]
 // Mounted at /design-preview only when import.meta.env.DEV (see App.tsx).
 export function DesignPreview(): JSX.Element {
   return (
-    <div style={{ padding: 32, display: 'flex', flexDirection: 'column', gap: 40 }}>
+    <div style={{ padding: 'var(--space-8)', display: 'flex', flexDirection: 'column', gap: 'var(--space-12)' }}>
       <h1>ShipX Design Preview</h1>
 
       <section>
         <h2>Logo marks (16px–64px)</h2>
-        <div style={{ display: 'flex', gap: 24, alignItems: 'center', background: colors.forestDark, padding: 16 }}>
+        <div style={{ display: 'flex', gap: 'var(--space-6)', alignItems: 'center', background: colors.forestDark, padding: 'var(--space-4)' }}>
           {MARK_SIZES.map((size) => (
             <KolaMark key={size} size={size} color={colors.primaryBright} />
           ))}
         </div>
-        <div style={{ display: 'flex', gap: 24, alignItems: 'center', background: colors.forestDark, padding: 16, marginTop: 8 }}>
+        <div style={{ display: 'flex', gap: 'var(--space-6)', alignItems: 'center', background: colors.forestDark, padding: 'var(--space-4)', marginTop: 'var(--space-2)' }}>
           {MARK_SIZES.map((size) => (
             <ShipxWordmark key={size} size={size} />
           ))}
@@ -28,11 +28,11 @@ export function DesignPreview(): JSX.Element {
 
       <section>
         <h2>Colors</h2>
-        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 12 }}>
+        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 'var(--space-3)' }}>
           {Object.entries(colors).map(([name, hex]) => (
             <div key={name} style={{ width: 140 }}>
               <div style={{ height: 56, borderRadius: radius.sm, background: hex, border: `1px solid ${colors.line}` }} />
-              <div style={{ fontSize: 'var(--text-xs)', marginTop: 4 }}>{name}</div>
+              <div style={{ fontSize: 'var(--text-xs)', marginTop: 'var(--space-1)' }}>{name}</div>
               <div style={{ fontSize: 'var(--text-xs)', color: colors.ink4 }}>{hex}</div>
             </div>
           ))}
@@ -41,9 +41,9 @@ export function DesignPreview(): JSX.Element {
 
       <section>
         <h2>Type scale</h2>
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-3)' }}>
           {Object.entries(typeScale).map(([name, style]) => (
-            <div key={name} style={{ ...style, display: 'flex', gap: 12, alignItems: 'baseline' }}>
+            <div key={name} style={{ ...style, display: 'flex', gap: 'var(--space-3)', alignItems: 'baseline' }}>
               <span style={{ width: 110, fontSize: 'var(--text-xs)', fontFamily: fonts.mono, color: colors.ink4 }}>{name}</span>
               <span>The quick brown fox ships cargo</span>
             </div>
@@ -53,7 +53,7 @@ export function DesignPreview(): JSX.Element {
 
       <section>
         <h2>Radius</h2>
-        <div style={{ display: 'flex', gap: 16 }}>
+        <div style={{ display: 'flex', gap: 'var(--space-4)' }}>
           {Object.entries(radius).map(([name, value]) => (
             <div key={name} style={{ textAlign: 'center' }}>
               <div
@@ -65,7 +65,7 @@ export function DesignPreview(): JSX.Element {
                   border: `1px solid ${colors.primary}`,
                 }}
               />
-              <div style={{ fontSize: 'var(--text-xs)', marginTop: 4 }}>{name}</div>
+              <div style={{ fontSize: 'var(--text-xs)', marginTop: 'var(--space-1)' }}>{name}</div>
             </div>
           ))}
         </div>
@@ -73,7 +73,7 @@ export function DesignPreview(): JSX.Element {
 
       <section>
         <h2>Shadows</h2>
-        <div style={{ display: 'flex', gap: 24 }}>
+        <div style={{ display: 'flex', gap: 'var(--space-6)' }}>
           {Object.entries(shadows).map(([name, value]) => (
             <div key={name} style={{ textAlign: 'center' }}>
               <div
@@ -86,7 +86,7 @@ export function DesignPreview(): JSX.Element {
                   ...(name === 'scrimModal' ? { background: value } : {}),
                 }}
               />
-              <div style={{ fontSize: 'var(--text-xs)', marginTop: 4 }}>{name}</div>
+              <div style={{ fontSize: 'var(--text-xs)', marginTop: 'var(--space-1)' }}>{name}</div>
             </div>
           ))}
         </div>

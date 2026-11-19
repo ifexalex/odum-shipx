@@ -202,28 +202,28 @@ export function WebhookConfig(): JSX.Element {
     }
   }
 
-  if (loading) return <div style={{ padding: 32, color: 'var(--color-ink-4)' }}>Loading…</div>
+  if (loading) return <div style={{ padding: 'var(--space-8)', color: 'var(--color-ink-4)' }}>Loading…</div>
 
   return (
     <div>
       {error && (
-        <div style={{ marginBottom: 16 }}>
+        <div style={{ marginBottom: 'var(--space-4)' }}>
           <Banner variant="error">{error}</Banner>
         </div>
       )}
       {saveSuccess && (
-        <div style={{ marginBottom: 16 }}>
+        <div style={{ marginBottom: 'var(--space-4)' }}>
           <Banner variant="success">Webhook configuration saved.</Banner>
         </div>
       )}
       {newSecret && (
-        <div style={{ marginBottom: 16 }}>
+        <div style={{ marginBottom: 'var(--space-4)' }}>
           <NewSecretBanner secret={newSecret} onDismiss={() => setNewSecret(null)} />
         </div>
       )}
 
       {/* Card 1 — Endpoint + secret */}
-      <Card padding={24} style={{ marginBottom: 16 }}>
+      <Card padding="large" style={{ marginBottom: 'var(--space-4)' }}>
         <SectionHead
           title="Outbound webhook"
           sub="Push domain events to your ERP / WMS in real time."
@@ -240,7 +240,7 @@ export function WebhookConfig(): JSX.Element {
           }
         />
 
-        <div style={{ marginBottom: 16 }}>
+        <div style={{ marginBottom: 'var(--space-4)' }}>
           <Field
             label="Endpoint URL"
             name="endpoint_url"
@@ -274,7 +274,7 @@ export function WebhookConfig(): JSX.Element {
       </Card>
 
       {/* Card 2 — Events */}
-      <Card padding={24} style={{ marginBottom: 16 }}>
+      <Card padding="large" style={{ marginBottom: 'var(--space-4)' }}>
         <SectionHead title="Subscribed events" sub="Choose which events fire a webhook." />
         {WEBHOOK_EVENTS.map(({ type, label }) => (
           <EventToggleRow
@@ -289,7 +289,7 @@ export function WebhookConfig(): JSX.Element {
 
       {/* Test result */}
       {testResult && (
-        <div style={{ marginBottom: 16 }}>
+        <div style={{ marginBottom: 'var(--space-4)' }}>
           <Banner
             variant={testResult.success ? 'success' : 'error'}
             title={testResult.success ? 'Test event delivered' : 'Test event failed'}

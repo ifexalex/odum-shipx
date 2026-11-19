@@ -4,7 +4,7 @@
 .enabledRow {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: var(--space-2);
 }
 
 .enabledLabel {
@@ -18,13 +18,13 @@
   font-size: var(--text-sm);
   font-weight: 500;
   color: var(--color-ink-2);
-  margin-bottom: 6px;
+  margin-bottom: var(--space-2);
 }
 
 .secretRow {
   display: flex;
   flex-wrap: wrap;
-  gap: 8px;
+  gap: var(--space-2);
 }
 
 .secretDisplay {
@@ -32,16 +32,16 @@
   min-width: 0;
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: var(--space-2);
   height: 40px;
-  padding: 0 14px;
+  padding: 0 var(--space-4);
   background: var(--color-surface-muted);
   border-radius: var(--radius-sm);
   border: 1px solid var(--color-line);
 }
 
 .secretHint {
-  margin-top: 6px;
+  margin-top: var(--space-2);
   font-size: var(--text-xs);
   color: var(--color-ink-4);
 }
@@ -50,8 +50,8 @@
 .eventRow {
   display: flex;
   align-items: center;
-  gap: 12px;
-  padding: 10px 0;
+  gap: var(--space-3);
+  padding: var(--space-3) 0;
   border-bottom: 1px solid var(--color-line);
 }
 
@@ -66,7 +66,7 @@
   font-size: var(--text-md);
   font-weight: 600;
   color: var(--color-ink);
-  margin-bottom: 2px;
+  margin-bottom: var(--space-0-5);
 }
 
 /* Footer */
@@ -81,14 +81,14 @@
   background: var(--color-success-soft);
   border: 1px solid var(--color-success);
   border-radius: var(--radius-md);
-  padding: 14px 16px;
+  padding: var(--space-4) var(--space-4);
 }
 
 .newSecretTop {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  margin-bottom: 10px;
+  margin-bottom: var(--space-3);
 }
 
 .newSecretTitle {
@@ -100,10 +100,10 @@
 .newSecretRow {
   display: flex;
   align-items: center;
-  gap: 12px;
+  gap: var(--space-3);
   background: var(--color-surface);
   border-radius: var(--radius-sm);
-  padding: 10px 14px;
+  padding: var(--space-3) var(--space-4);
 }
 
 /* Rotate confirm modal. Ground-truth gap found live: .modal used a fixed
@@ -133,7 +133,7 @@
 
 @container sxapp (min-width: 861px) {
   .modalOverlay {
-    padding: 32px;
+    padding: var(--space-8);
   }
   .modal {
     width: 480px;
@@ -142,7 +142,7 @@
 }
 
 .modalHeader {
-  padding: 20px 24px;
+  padding: var(--space-5) var(--space-6);
   border-bottom: 1px solid var(--color-line);
   display: flex;
   align-items: center;
@@ -158,10 +158,10 @@
 }
 
 .modalBody {
-  padding: 20px 24px;
+  padding: var(--space-5) var(--space-6);
   display: flex;
   flex-direction: column;
-  gap: 14px;
+  gap: var(--space-4);
   overflow-y: auto;
 }
 
@@ -173,11 +173,11 @@
 }
 
 .modalFooter {
-  padding: 16px 24px;
+  padding: var(--space-4) var(--space-6);
   border-top: 1px solid var(--color-line);
   display: flex;
   justify-content: flex-end;
-  gap: 8px;
+  gap: var(--space-2);
 }
 
 .modalFooter > * {
@@ -195,7 +195,7 @@
 .closeBtn {
   background: transparent;
   border: none;
-  padding: 6px;
+  padding: var(--space-2);
   cursor: pointer;
   color: var(--color-ink-4);
   border-radius: 6px;

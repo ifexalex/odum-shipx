@@ -135,7 +135,7 @@ export function NotificationLog(): JSX.Element {
       )}
 
       {/* Stats bar */}
-      <Card padding={16} style={{ marginBottom: 16 }}>
+      <Card padding="default" style={{ marginBottom: 'var(--space-4)' }}>
         <div className={styles.statsBar}>
           <span className={styles.statsLabel}>Last 30 days</span>
           <LogStat label="Sent"      value={stats.sent}      color="var(--color-info)" />
@@ -148,7 +148,7 @@ export function NotificationLog(): JSX.Element {
       </Card>
 
       {/* Filter bar */}
-      <Card padding={16} style={{ marginBottom: 16 }}>
+      <Card padding="default" style={{ marginBottom: 'var(--space-4)' }}>
         <div className={styles.filterRow}>
           <div className={styles.chips}>
             <Chip active={channelFilter === null} onClick={() => setChannelFilter(null)}>
@@ -220,7 +220,7 @@ export function NotificationLog(): JSX.Element {
       </Card>
 
       {/* Table */}
-      <Card padding={0}>
+      <Card padding="none">
         <Table
           columns={[
             { title: 'Sent at' },

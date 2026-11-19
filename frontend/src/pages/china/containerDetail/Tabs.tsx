@@ -50,7 +50,7 @@ export function PackingListsTab({
   }
 
   return (
-    <Card padding={0}>
+    <Card padding="none">
       <div className={styles.tableHead}>
         <SectionHead
           title="Packing lists on this container"
@@ -133,7 +133,7 @@ export function TrackingTab({
         <ContainerStepper current={container.status} />
       </Card>
       <div className={styles.gridSpacer} />
-      <Card padding={0}>
+      <Card padding="none">
         <div className={styles.tableHead}>
           <SectionHead
             title="Event log"

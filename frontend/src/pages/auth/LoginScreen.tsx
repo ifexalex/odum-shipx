@@ -163,7 +163,7 @@ export function LoginScreen(): JSX.Element {
           </div>
 
           {error && (
-            <div style={{ marginBottom: 20 }}>
+            <div style={{ marginBottom: 'var(--space-5)' }}>
               <Banner variant="error" title="Couldn't sign in">
                 {error}
               </Banner>
@@ -234,7 +234,7 @@ export function LoginScreen(): JSX.Element {
               Create your account →
             </button>
           </p>
-          <p className={styles.footerLine} style={{ marginTop: 8 }}>
+          <p className={styles.footerLine} style={{ marginTop: 'var(--space-2)' }}>
             Are you a shipping company?{' '}
             <button type="button" className={styles.footerLinkStrong} onClick={() => navigate('/get-started')}>
               Onboard with ShipX →

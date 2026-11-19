@@ -63,7 +63,7 @@ function navAccentColor(role: Role): string {
 
 function DefaultBrand(): JSX.Element {
   return (
-    <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+    <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-3)' }}>
       <KolaMark size={28} color={colors.primaryBright} />
       <ShipxWordmark size={22} />
     </div>

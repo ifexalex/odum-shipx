@@ -177,11 +177,11 @@ function PickupSheet({ note, onCancel, onSuccess }: PickupSheetProps): JSX.Eleme
             <Field label="Delegate name" name="delegate_name" required value={delegateName} onChange={(e) => setDelegateName(e.target.value)} />
             <PhoneField label="Delegate phone" name="delegate_phone" required value={delegatePhone} onChange={setDelegatePhone} />
             <div>
-              <label style={{ fontSize: 'var(--text-lg)', fontWeight: 600, display: 'block', marginBottom: 8 }}>
+              <label style={{ fontSize: 'var(--text-lg)', fontWeight: 600, display: 'block', marginBottom: 'var(--space-2)' }}>
                 ID type <span style={{ color: 'var(--color-error)' }}>*</span>
               </label>
               <select
-                style={{ width: '100%', padding: '12px 14px', borderRadius: 8, border: '1px solid var(--color-border)', background: 'var(--color-surface)', fontSize: 'var(--text-lg)' }}
+                style={{ width: '100%', padding: 'var(--space-3) var(--space-4)', borderRadius: 8, border: '1px solid var(--color-border)', background: 'var(--color-surface)', fontSize: 'var(--text-lg)' }}
                 value={delegateIdType}
                 onChange={(e) => setDelegateIdType(e.target.value as DelegateIdType)}
               >
@@ -225,11 +225,11 @@ function NoteCard({ note, onPickup, lastPickup }: NoteCardProps): JSX.Element {
   return (
     <div className={styles.card} style={justDone ? { opacity: 0.5 } : undefined}>
       <div className={styles.cardLeft}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-2)', flexWrap: 'wrap' }}>
           <span
             style={{
               fontSize: 'var(--text-xs)', fontWeight: 700, textTransform: 'uppercase', letterSpacing: 'var(--tracking-label)',
-              padding: '2px 8px', borderRadius: 999, background: urgency.bg, color: urgency.fg,
+              padding: 'var(--space-0-5) var(--space-2)', borderRadius: 999, background: urgency.bg, color: urgency.fg,
             }}
           >
             {urgency.label}
@@ -446,7 +446,7 @@ export function WarehouseDashboard(): JSX.Element {
         <span className={styles.queueCount}>{activeNotes.length} note(s)</span>
       </div>
 
-      {loading && <div style={{ padding: 32, textAlign: 'center', color: 'var(--color-text-muted)' }}>Loading…</div>}
+      {loading && <div style={{ padding: 'var(--space-8)', textAlign: 'center', color: 'var(--color-text-muted)' }}>Loading…</div>}
 
       {!loading && activeNotes.length === 0 && (
         <div className={styles.empty}>

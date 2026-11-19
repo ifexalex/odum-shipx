@@ -103,7 +103,7 @@ export function ManifestList(): JSX.Element {
         </div>
       )}
 
-      <Card padding={16}>
+      <Card padding="default">
         <div className={styles.chips}>
           <Chip active={statusFilter === null} onClick={() => setStatusFilter(null)}>
             All
@@ -117,7 +117,7 @@ export function ManifestList(): JSX.Element {
       </Card>
 
       <div className={styles.tableWrap}>
-        <Card padding={0}>
+        <Card padding="none">
           <Table
             columns={[
               { title: 'Container' },
@@ -138,7 +138,7 @@ export function ManifestList(): JSX.Element {
                   <PackageMix key="packages" manifest={mf} />,
                   <Mono key="cbm">{formatCbm(mf.total_cbm)}</Mono>,
                   <span key="weight" style={{ fontSize: 'var(--text-xs)', color: 'var(--color-ink-3)' }}>{fmtWeight(mf.total_weight_kg)}</span>,
-                  <span key="status" style={{ display: 'inline-flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
+                  <span key="status" style={{ display: 'inline-flex', alignItems: 'center', gap: 'var(--space-2)', flexWrap: 'wrap' }}>
                     <Badge variant={STATUS_VARIANT[mf.verification_status]}>
                       {statusLabel(mf.verification_status)}
                     </Badge>

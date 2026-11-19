@@ -48,11 +48,11 @@ function ResolvePanel({ dispute, onResolved }: { dispute: DisputeDetailData; onR
   }
 
   return (
-    <Card padding={24}>
+    <Card padding="large">
       <SectionHead title="Resolve" sub="Decide whether the billed CBM stands or needs correcting." />
       <div style={{ height: 12 }} />
       {error && (
-        <div style={{ marginBottom: 12 }}>
+        <div style={{ marginBottom: 'var(--space-3)' }}>
           <Banner variant="error" title="Could not resolve">{error}</Banner>
         </div>
       )}
@@ -115,7 +115,7 @@ export function DisputeDetail(): JSX.Element {
   // Names this record in the breadcrumb once loaded (FD-46).
   useBreadcrumbLabel(dispute?.container_number)
 
-  if (isLoading) return <div style={{ padding: 32, color: 'var(--color-ink-3)' }}>Loading dispute…</div>
+  if (isLoading) return <div style={{ padding: 'var(--space-8)', color: 'var(--color-ink-3)' }}>Loading dispute…</div>
 
   if (error || !dispute) {
     return (
@@ -132,13 +132,13 @@ export function DisputeDetail(): JSX.Element {
 
   return (
     <div className={styles.page}>
-      <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-3)', flexWrap: 'wrap' }}>
         <Badge variant={terminal ? 'success' : dispute.status === 'escalated_china' ? 'error' : 'warning'}>
           {STATUS_LABEL[dispute.status] ?? dispute.status}
         </Badge>
       </div>
 
-      <Card padding={24}>
+      <Card padding="large">
         <SectionHead
           title={`${dispute.customer_name ?? 'Customer'} · ${dispute.container_number ?? 'container'}`}
           sub="What the customer claims against what was billed"
@@ -171,12 +171,12 @@ export function DisputeDetail(): JSX.Element {
           </>
         )}
         {dispute.resolution_notes && (
-          <p className={styles.reason} style={{ marginTop: 8 }}><strong>Resolution:</strong> {dispute.resolution_notes}</p>
+          <p className={styles.reason} style={{ marginTop: 'var(--space-2)' }}><strong>Resolution:</strong> {dispute.resolution_notes}</p>
         )}
       </Card>
 
-      <Card padding={0}>
-        <div style={{ padding: '18px 20px' }}>
+      <Card padding="none">
+        <div style={{ padding: 'var(--space-5) var(--space-5)' }}>
           <SectionHead
             title="Packing-list lines"
             sub={`${dispute.lines.length} line${dispute.lines.length === 1 ? '' : 's'} · ${totalLineCbm.toFixed(3)} CBM in total`}

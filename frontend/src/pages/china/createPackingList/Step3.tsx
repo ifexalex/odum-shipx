@@ -46,7 +46,7 @@ export function Step3({ form }: { form: PackingListForm }): JSX.Element {
         </Card>
         <div className={styles.spacerSm} />
         {/* Document preview — how this packing list will look when printed */}
-        <Card padding={0}>
+        <Card padding="none">
           <div className={styles.previewHeader}>
             <SectionHead
               title="Document preview"

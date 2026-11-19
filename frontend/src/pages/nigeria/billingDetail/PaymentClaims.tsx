@@ -79,13 +79,13 @@ export function PaymentClaimsSection({
         sub={`${paymentClaims.filter((c) => c.status === 'pending').length} pending review`}
       />
       {claimActionError && (
-        <div style={{ marginBottom: 12 }}>
+        <div style={{ marginBottom: 'var(--space-3)' }}>
           <Banner variant="error" title="Action failed">
             {claimActionError}
           </Banner>
         </div>
       )}
-      <Card padding={0}>
+      <Card padding="none">
         <Table
           columns={[
             { title: 'Amount (₦)', align: 'right' },
@@ -140,7 +140,7 @@ export function PaymentClaimsSection({
                           key="reject"
                           style={{
                             display: 'flex',
-                            gap: 6,
+                            gap: 'var(--space-2)',
                             alignItems: 'center',
                           }}
                         >
@@ -171,7 +171,7 @@ export function PaymentClaimsSection({
                           </Button>
                         </div>
                       ) : (
-                        <div key="actions" style={{ display: 'flex', gap: 6 }}>
+                        <div key="actions" style={{ display: 'flex', gap: 'var(--space-2)' }}>
                           <Button
                             variant="primary"
                             size="sm"

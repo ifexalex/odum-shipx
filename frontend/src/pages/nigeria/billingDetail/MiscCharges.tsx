@@ -53,7 +53,7 @@ export function MiscChargesSection({
         title="Miscellaneous charges"
         sub={miscCharges.length > 0 ? `${miscCharges.length} charge(s)` : undefined}
       />
-      <Card padding={0}>
+      <Card padding="none">
         <Table
           columns={[
             { title: 'Charge' },

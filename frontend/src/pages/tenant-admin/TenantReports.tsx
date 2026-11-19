@@ -13,7 +13,7 @@ import { formatNgn } from '../../lib/format'
 const dateInputStyle: CSSProperties = {
   height: 36,
   boxSizing: 'border-box',
-  padding: '0 8px',
+  padding: '0 var(--space-2)',
   background: 'var(--color-page)',
   border: '1px solid var(--color-line)',
   borderRadius: 'var(--radius-sm)',
@@ -153,7 +153,7 @@ function ClaimsSummaryCard({ iconName, color, title, stats }: {
   stats: Array<[string, string]>
 }): JSX.Element {
   return (
-    <Card padding={20}>
+    <Card padding="default">
       <div className={styles.claimCardHeader}>
         <div className={styles.claimIcon} style={{ background: color + '18', color }}>
           <Icon name={iconName} size={18} color={color} />
@@ -266,7 +266,7 @@ export function TenantReports(): JSX.Element {
     [report],
   )
 
-  if (loading) return <div style={{ padding: 32, color: 'var(--color-ink-4)' }}>Loading reports…</div>
+  if (loading) return <div style={{ padding: 'var(--space-8)', color: 'var(--color-ink-4)' }}>Loading reports…</div>
 
   return (
     <div>
@@ -279,7 +279,7 @@ export function TenantReports(): JSX.Element {
       </div>
 
       {/* Section B — Revenue breakdown donut + top customers */}
-      <div className={styles.grid2} style={{ marginBottom: 24 }}>
+      <div className={styles.grid2} style={{ marginBottom: 'var(--space-6)' }}>
         <Card>
           <SectionHead title="Revenue by payment status" sub={`Total: ${fmtNgn(totalRevenue)}`} />
           <div style={{ height: 16 }} />
@@ -297,14 +297,14 @@ export function TenantReports(): JSX.Element {
       </div>
 
       {/* Section C — Container pipeline (weekly stacked bar) */}
-      <Card style={{ marginBottom: 24 }}>
+      <Card style={{ marginBottom: 'var(--space-6)' }}>
         <SectionHead title="Container pipeline" sub="Containers created per week by stage" />
         <div style={{ height: 16 }} />
         <ContainerPipelineChart data={report?.container_pipeline ?? []} />
       </Card>
 
       {/* Section D — CBM & billing table */}
-      <Card padding={0} style={{ marginBottom: 24 }}>
+      <Card padding="none" style={{ marginBottom: 'var(--space-6)' }}>
         <div className={styles.tableHead}>
           <SectionHead title="CBM &amp; billing by container" sub="Every container processed this period" />
           <Button variant="secondary" size="sm" icon="download">Export</Button>

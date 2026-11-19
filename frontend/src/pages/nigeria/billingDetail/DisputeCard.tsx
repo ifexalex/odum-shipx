@@ -75,7 +75,7 @@ export function DisputeSLA({ dispute }: DisputeSLAProps): JSX.Element | null {
   ]
 
   return (
-    <div style={{ marginTop: 8, display: 'flex', flexDirection: 'column', gap: 4 }}>
+    <div style={{ marginTop: 'var(--space-2)', display: 'flex', flexDirection: 'column', gap: 'var(--space-1)' }}>
       {stages.map((stage) => {
         const cd = stage.done ? null : _slaCountdown(stage.deadline)
         const color = stage.done
@@ -92,7 +92,7 @@ export function DisputeSLA({ dispute }: DisputeSLAProps): JSX.Element | null {
             style={{
               display: 'flex',
               alignItems: 'center',
-              gap: 6,
+              gap: 'var(--space-2)',
               fontSize: 'var(--text-xs)',
               color,
             }}

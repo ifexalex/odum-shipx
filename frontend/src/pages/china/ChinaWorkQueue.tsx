@@ -75,7 +75,7 @@ function Queue({ title, countLabel, empty, viewAll, rows, pagination, loading, f
     )
 
   return (
-    <Card padding={0}>
+    <Card padding="none">
       <section className={styles.queue} aria-label={title}>
         <SectionHead
           title={title}

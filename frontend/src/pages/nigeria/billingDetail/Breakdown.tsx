@@ -10,7 +10,7 @@ export function BillingBreakdown({ billing }: { billing: Billing }): JSX.Element
   return (
     <div className={styles.section}>
       <SectionHead title="Billing breakdown" />
-      <Card padding={20}>
+      <Card padding="default">
         <div className={styles.breakdown}>
           <div className={styles.breakdownRow}>
             <span>CBM × rate</span>
@@ -30,7 +30,7 @@ export function BillingBreakdown({ billing }: { billing: Billing }): JSX.Element
                 const money = billing.cbm_rate_currency === 'NGN' ? formatNgn : formatUsd
                 return (
                   <div className={styles.breakdownRow} key={bucket}>
-                    <span style={{ paddingLeft: 16, textTransform: 'capitalize' }}>{bucket}s</span>
+                    <span style={{ paddingLeft: 'var(--space-4)', textTransform: 'capitalize' }}>{bucket}s</span>
                     <span>
                       {formatCbm(item.cbm)} CBM × {money(item.rate)} ={' '}
                       <Mono>{money(item.subtotal)}</Mono>
@@ -121,7 +121,7 @@ export function PaymentsTable({ payments }: { payments: Billing['payments'] }): 
   return (
     <div className={styles.section}>
       <SectionHead title="Payments" sub={`${payments.length} payment(s) recorded`} />
-      <Card padding={0}>
+      <Card padding="none">
         <Table
           columns={[
             { title: 'Amount (₦)', align: 'right' },

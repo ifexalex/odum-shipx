@@ -162,7 +162,7 @@ function WarehouseModal({ existing, onCancel, onSuccess }: WarehouseModalProps):
         />
         {!isEdit && (
           <label
-            style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 4, cursor: 'pointer' }}
+            style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-2)', marginTop: 'var(--space-1)', cursor: 'pointer' }}
           >
             <Check checked={makeDefault} onChange={setMakeDefault} disabled={submitting} />
             <span style={{ fontSize: 'var(--text-sm)' }}>
@@ -330,7 +330,7 @@ export function Warehouses(): JSX.Element {
         )}
       </div>
 
-      <Card padding={0}>
+      <Card padding="none">
         <Table
           columns={[
             { title: 'Name' },
@@ -359,7 +359,7 @@ export function Warehouses(): JSX.Element {
                   Active
                 </Badge>
               ),
-              <span key="action" style={{ display: 'inline-flex', gap: 6 }}>
+              <span key="action" style={{ display: 'inline-flex', gap: 'var(--space-2)' }}>
                 {!w.is_default && (
                   <Button
                     variant="ghost"

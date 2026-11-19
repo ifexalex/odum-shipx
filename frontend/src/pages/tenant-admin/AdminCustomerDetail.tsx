@@ -190,7 +190,7 @@ function ProfileTab({ customer, shipments, billing, claims, onSaved }: ProfileTa
   return (
     <>
       <div className={styles.profileGrid}>
-        <Card padding={20}>
+        <Card padding="default">
           <SectionHead title="Contact" />
           <div className={styles.spacer8} />
           <Kvp label="Full name" value={customer.name ?? <em>Erased</em>} />
@@ -205,7 +205,7 @@ function ProfileTab({ customer, shipments, billing, claims, onSaved }: ProfileTa
           />
         </Card>
 
-        <Card padding={20}>
+        <Card padding="default">
           <SectionHead title="Consent & GDPR" sub="Lawful-processing record (NDPR / GDPR Art. 6)" />
           <div className={styles.spacer8} />
           <Kvp
@@ -258,7 +258,7 @@ function ProfileTab({ customer, shipments, billing, claims, onSaved }: ProfileTa
 
 function ShipmentsTab({ customer, shipments, onOpen }: { customer: Customer; shipments: PackingList[] | null; onOpen: (id: string) => void }): JSX.Element {
   return (
-    <Card padding={0}>
+    <Card padding="none">
       <div className={styles.cardPad}>
         <SectionHead
           title={`Shipments${customer.name ? ` · ${customer.name}` : ''}`}
@@ -308,7 +308,7 @@ function BillingTab({ billing, onOpen }: { billing: Billing[] | null; onOpen: (b
         <StatCard label="Outstanding" value={outstanding != null ? fmtNgn(outstanding) : '—'} icon="warn" />
       </div>
 
-      <Card padding={0}>
+      <Card padding="none">
         <div className={styles.cardPad}>
           <SectionHead title="Billing records" />
         </div>
@@ -347,7 +347,7 @@ function BillingTab({ billing, onOpen }: { billing: Billing[] | null; onOpen: (b
 
 function ClaimsTab({ claims, onOpen }: { claims: Claim[] | null; onOpen: (c: Claim) => void }): JSX.Element {
   return (
-    <Card padding={0}>
+    <Card padding="none">
       <div className={styles.cardPad}>
         <SectionHead title="Damage claims" sub={claims ? `${claims.length} total` : 'Loading…'} />
       </div>
@@ -389,7 +389,7 @@ function PrivacyTab({ customer, exporting, readOnly, onExport, onAnonymise }: Pr
   const isAnonymised = !!customer.anonymised_at
   return (
     <div className={styles.profileGrid}>
-      <Card padding={20}>
+      <Card padding="default">
         <SectionHead title="Data export" sub="GDPR Art. 20 / NDPR — data portability" />
         <p className={styles.bodyText}>
           Downloads everything held about this customer — profile, shipments, billing, and claims —
@@ -400,7 +400,7 @@ function PrivacyTab({ customer, exporting, readOnly, onExport, onAnonymise }: Pr
         </Button>
       </Card>
 
-      <Card padding={20}>
+      <Card padding="default">
         <SectionHead title="Right to erasure" sub="GDPR Art. 17 / NDPR — anonymisation" />
         {isAnonymised ? (
           <p className={styles.bodyTextLast}>

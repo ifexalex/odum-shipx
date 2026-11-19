@@ -172,7 +172,7 @@ export function OverviewTab({
 
       <div className={styles.gridSpacer} />
       <div className={styles.grid2}>
-        <Card padding={0}>
+        <Card padding="none">
           <div className={styles.tableHead}>
             <SectionHead title="Recent events" sub="Last 5 tracking events" />
             {events.length > 5 && (

@@ -106,14 +106,14 @@ export function Dashboard(): JSX.Element {
   return (
     <div>
       {/* Greeting hero — prototype 3.1 */}
-      <div style={{ marginBottom: 24 }}>
-        <div style={{ fontSize: 'var(--text-xs)', fontWeight: 700, color: 'var(--color-primary)', textTransform: 'uppercase', letterSpacing: 'var(--tracking-label)', marginBottom: 4 }}>
+      <div style={{ marginBottom: 'var(--space-6)' }}>
+        <div style={{ fontSize: 'var(--text-xs)', fontWeight: 700, color: 'var(--color-primary)', textTransform: 'uppercase', letterSpacing: 'var(--tracking-label)', marginBottom: 'var(--space-1)' }}>
           {greeting()}
         </div>
         <h1 style={{ fontFamily: 'var(--font-display)', fontWeight: 700, fontSize: 'var(--text-2xl)', color: 'var(--color-ink)', margin: 0, letterSpacing: 'var(--tracking-tight)', lineHeight: 'var(--leading-tight)' }}>
           Lead every shipment, {firstName}.
         </h1>
-        <p style={{ fontSize: 'var(--text-md)', color: 'var(--color-ink-3)', margin: '6px 0 0' }}>{summaryLine}</p>
+        <p style={{ fontSize: 'var(--text-md)', color: 'var(--color-ink-3)', margin: 'var(--space-2) 0 0' }}>{summaryLine}</p>
       </div>
 
       {/* Headline + financial KPIs. The per-stage operational counts
@@ -144,12 +144,12 @@ export function Dashboard(): JSX.Element {
       <UnbilledQueue />
 
       {isNigeria && (
-        <div style={{ marginTop: 8, marginBottom: 20 }}>
+        <div style={{ marginTop: 'var(--space-2)', marginBottom: 'var(--space-5)' }}>
           <ContainerPipeline counts={containerStats} />
           {pendingPls.length > 0 && (
-            <div style={{ marginTop: 16 }}>
-              <Card padding={0}>
-                <div style={{ padding: '18px 20px' }}>
+            <div style={{ marginTop: 'var(--space-4)' }}>
+              <Card padding="none">
+                <div style={{ padding: 'var(--space-5) var(--space-5)' }}>
                   <SectionHead
                     title="Packing lists awaiting approval"
                     sub={`${pendingPls.length} submitted`}
@@ -175,9 +175,9 @@ export function Dashboard(): JSX.Element {
 
           {/* 6.1 action queues (P2-5) — only render when there's work to do */}
           {pendingManifests.length > 0 && (
-            <div style={{ marginTop: 16 }}>
-              <Card padding={0}>
-                <div style={{ padding: '18px 20px' }}>
+            <div style={{ marginTop: 'var(--space-4)' }}>
+              <Card padding="none">
+                <div style={{ padding: 'var(--space-5) var(--space-5)' }}>
                   <SectionHead
                     title="Containers awaiting manifest verification"
                     sub={`${pendingManifests.length} arrived in Nigeria, manifest still pending — blocks billing + release`}
@@ -204,9 +204,9 @@ export function Dashboard(): JSX.Element {
           )}
 
           {openDisputes.length > 0 && (
-            <div style={{ marginTop: 16 }}>
-              <Card padding={0}>
-                <div style={{ padding: '18px 20px' }}>
+            <div style={{ marginTop: 'var(--space-4)' }}>
+              <Card padding="none">
+                <div style={{ padding: 'var(--space-5) var(--space-5)' }}>
                   <SectionHead
                     title="CBM disputes need response"
                     sub={`${openDisputes.length} submitted — 24h acknowledge SLA`}
@@ -230,10 +230,10 @@ export function Dashboard(): JSX.Element {
           )}
 
           {/* Bottom two-column — what Nigeria ops chases: money in + goods out. */}
-          <div className={styles.dashGrid2} style={{ marginTop: 16 }}>
+          <div className={styles.dashGrid2} style={{ marginTop: 'var(--space-4)' }}>
             {outstanding.length > 0 && (
-              <Card padding={0}>
-                <div style={{ padding: '18px 20px' }}>
+              <Card padding="none">
+                <div style={{ padding: 'var(--space-5) var(--space-5)' }}>
                   <SectionHead
                     title="Outstanding invoices"
                     sub="Oldest unpaid first — chase these before storage fees mount"
@@ -256,8 +256,8 @@ export function Dashboard(): JSX.Element {
               </Card>
             )}
             {awaitingPickup.length > 0 && (
-              <Card padding={0}>
-                <div style={{ padding: '18px 20px' }}>
+              <Card padding="none">
+                <div style={{ padding: 'var(--space-5) var(--space-5)' }}>
                   <SectionHead
                     title="Awaiting pickup"
                     sub="Released — not yet collected by the customer"
@@ -288,9 +288,9 @@ export function Dashboard(): JSX.Element {
 
       {/* 3.1 two-column main — Recent containers (left) + Activity feed (right) */}
       {isAdmin && (
-        <div className={styles.dashCols} style={{ marginBottom: 20 }}>
-          <Card padding={0}>
-            <div style={{ padding: '18px 20px' }}>
+        <div className={styles.dashCols} style={{ marginBottom: 'var(--space-5)' }}>
+          <Card padding="none">
+            <div style={{ padding: 'var(--space-5) var(--space-5)' }}>
               <SectionHead
                 title="Recent containers"
                 sub="Latest across all stages"
@@ -310,7 +310,7 @@ export function Dashboard(): JSX.Element {
                 cells: [
                   <div key="num">
                     <Mono>{c.container_number}</Mono>
-                    <div style={{ fontSize: 'var(--text-xs)', color: 'var(--color-ink-4)', marginTop: 2 }}>
+                    <div style={{ fontSize: 'var(--text-xs)', color: 'var(--color-ink-4)', marginTop: 'var(--space-0-5)' }}>
                       {c.vessel_name ?? c.origin}
                     </div>
                   </div>,
@@ -324,11 +324,11 @@ export function Dashboard(): JSX.Element {
               emptyState={<span>No containers yet.</span>}
             />
           </Card>
-          <Card padding={0}>
-            <div style={{ padding: '18px 20px 4px' }}>
+          <Card padding="none">
+            <div style={{ padding: 'var(--space-5) var(--space-5) var(--space-1)' }}>
               <SectionHead title="Activity" sub="Recent across your tenant" />
             </div>
-            <div style={{ padding: '0 20px 12px' }}>
+            <div style={{ padding: '0 var(--space-5) var(--space-3)' }}>
               <ActivityFeed limit={8} />
             </div>
           </Card>
@@ -339,7 +339,7 @@ export function Dashboard(): JSX.Element {
       {isAdmin && (
         <div className={styles.dashCols}>
           <PlanUsagePanel />
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-4)' }}>
             <SectionHead title="Quick actions" />
             <QuickActionCard
               icon="plus"

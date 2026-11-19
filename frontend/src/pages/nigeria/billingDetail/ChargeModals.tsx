@@ -101,7 +101,7 @@ export function AddChargeModal({ billing, onCancel, onSuccess }: AddChargeModalP
               fontWeight: 600,
               fontSize: 'var(--text-md)',
               display: 'block',
-              marginBottom: 6,
+              marginBottom: 'var(--space-2)',
             }}
           >
             Charge type <span style={{ color: 'var(--color-error)' }}>*</span>
@@ -109,7 +109,7 @@ export function AddChargeModal({ billing, onCancel, onSuccess }: AddChargeModalP
           <select
             style={{
               width: '100%',
-              padding: '8px 12px',
+              padding: 'var(--space-2) var(--space-3)',
               borderRadius: 8,
               border: '1px solid var(--color-line)',
               background: 'var(--color-surface)',

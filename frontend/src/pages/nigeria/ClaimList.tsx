@@ -114,7 +114,7 @@ export function ClaimList(): JSX.Element {
       </div>
 
       {/* Filter bar */}
-      <Card padding={16} style={{ marginBottom: 16 }}>
+      <Card padding="default" style={{ marginBottom: 'var(--space-4)' }}>
         <div className={styles.filterRow}>
           <div className={styles.chips}>
             <Chip active={statusFilter === null} onClick={() => setStatusFilter(null)}>
@@ -163,7 +163,7 @@ export function ClaimList(): JSX.Element {
       </Card>
 
       {/* Table */}
-      <Card padding={0}>
+      <Card padding="none">
         <Table
           columns={[
             { title: 'Claim ID', sortable: true },

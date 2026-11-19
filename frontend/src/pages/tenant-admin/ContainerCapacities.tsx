@@ -206,7 +206,7 @@ export function ContainerCapacities(): JSX.Element {
         </div>
       )}
 
-      <Card padding={0}>
+      <Card padding="none">
         <Table
           columns={[
             { title: 'Name' },
@@ -225,7 +225,7 @@ export function ContainerCapacities(): JSX.Element {
               <Badge key="src" variant={c.is_custom ? 'info' : 'neutral'}>
                 {c.is_custom ? 'Custom' : 'Default'}
               </Badge>,
-              <span key="action" style={{ display: 'inline-flex', gap: 6 }}>
+              <span key="action" style={{ display: 'inline-flex', gap: 'var(--space-2)' }}>
                 <Button
                   variant="ghost"
                   size="sm"

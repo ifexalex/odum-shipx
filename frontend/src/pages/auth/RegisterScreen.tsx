@@ -90,13 +90,13 @@ export function RegisterScreen(): JSX.Element {
               display: 'flex',
               alignItems: 'center',
               justifyContent: 'center',
-              margin: '0 auto 24px',
+              margin: '0 auto var(--space-6)',
             }}
           >
             <Icon name="check" size={42} color="var(--color-success)" stroke={2.5} />
           </div>
-          <h2 className={styles.formTitle} style={{ marginBottom: 8 }}>Check your email.</h2>
-          <p className={styles.formSub} style={{ marginBottom: 24 }}>
+          <h2 className={styles.formTitle} style={{ marginBottom: 'var(--space-2)' }}>Check your email.</h2>
+          <p className={styles.formSub} style={{ marginBottom: 'var(--space-6)' }}>
             We&apos;ve sent a message to <strong>{email}</strong>. If this is your first time, it has a{' '}
             <strong>temporary password</strong>: sign in with it and you&apos;ll be asked to choose your own.
             If you already have an account, it tells you so, with a link to sign in.
@@ -104,7 +104,7 @@ export function RegisterScreen(): JSX.Element {
           <Banner variant="info" title="Didn't receive the email?">
             Check your spam folder. A temporary password expires in 7 days.
           </Banner>
-          <div style={{ marginTop: 24 }}>
+          <div style={{ marginTop: 'var(--space-6)' }}>
             <Button variant="primary" size="lg" full onClick={() => navigate('/login')}>
               Back to sign in
             </Button>
@@ -122,9 +122,9 @@ export function RegisterScreen(): JSX.Element {
       />
 
       {!slug && (
-        <div style={{ marginBottom: 20 }}>
+        <div style={{ marginBottom: 'var(--space-5)' }}>
           <Banner variant="warning" title="Which are you?">
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-2)' }}>
               <span>
                 <strong>A customer</strong> of a shipping company? Use the company-specific sign-up link your
                 shipping company gave you, or wait for their invite.
@@ -141,7 +141,7 @@ export function RegisterScreen(): JSX.Element {
       )}
 
       {error && (
-        <div style={{ marginBottom: 20 }}>
+        <div style={{ marginBottom: 'var(--space-5)' }}>
           <Banner variant="error" title="Registration failed">{error}</Banner>
         </div>
       )}
@@ -183,14 +183,14 @@ export function RegisterScreen(): JSX.Element {
           optional
         />
 
-        <div style={{ marginBottom: 16 }}>
-          <span style={{ display: 'block', fontWeight: 500, fontSize: 'var(--text-sm)', color: 'var(--color-ink-2)', marginBottom: 4 }}>
+        <div style={{ marginBottom: 'var(--space-4)' }}>
+          <span style={{ display: 'block', fontWeight: 500, fontSize: 'var(--text-sm)', color: 'var(--color-ink-2)', marginBottom: 'var(--space-1)' }}>
             Send me optional messages via
           </span>
-          <span style={{ display: 'block', fontSize: 'var(--text-xs)', color: 'var(--color-ink-3)', marginBottom: 8, lineHeight: 'var(--leading-body)' }}>
+          <span style={{ display: 'block', fontSize: 'var(--text-xs)', color: 'var(--color-ink-3)', marginBottom: 'var(--space-2)', lineHeight: 'var(--leading-body)' }}>
             Announcements and offers. Updates about your shipments, invoices and claims, and account emails, are always sent.
           </span>
-          <div style={{ display: 'flex', gap: 16 }}>
+          <div style={{ display: 'flex', gap: 'var(--space-4)' }}>
             {CHANNELS.map(({ key, label }) => (
               <label key={key} className={styles.rememberLabel}>
                 <Check checked={channels.includes(key)} onChange={() => toggleChannel(key)} />
@@ -200,7 +200,7 @@ export function RegisterScreen(): JSX.Element {
           </div>
         </div>
 
-        <div style={{ display: 'flex', alignItems: 'flex-start', gap: 8, margin: '8px 0 24px' }}>
+        <div style={{ display: 'flex', alignItems: 'flex-start', gap: 'var(--space-2)', margin: 'var(--space-2) 0 var(--space-6)' }}>
           <Check checked={agreed} onChange={setAgreed} />
           <span style={{ fontSize: 'var(--text-sm)', color: 'var(--color-ink-2)', lineHeight: 'var(--leading-body)' }}>
             I agree to the <a className={styles.link} href="#terms">Terms of Service</a> and{' '}
@@ -213,7 +213,7 @@ export function RegisterScreen(): JSX.Element {
         </Button>
       </form>
 
-      <p className={styles.footerLine} style={{ marginTop: 20 }}>
+      <p className={styles.footerLine} style={{ marginTop: 'var(--space-5)' }}>
         Already have an account?{' '}
         <button type="button" className={styles.footerLinkStrong} onClick={() => navigate('/login')}>
           Sign in →

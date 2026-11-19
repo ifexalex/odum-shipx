@@ -94,14 +94,17 @@
   --tracking-label: 0.04em;
   --tracking-tight: -0.01em;
 
-  /* Spacing — strict 4px base */
-  --space-xs: 4px;
-  --space-sm: 8px;
-  --space-md: 16px;
-  --space-lg: 24px;
-  --space-xl: 32px;
-  --space-2xl: 48px;
-  --space-3xl: 64px;
+  /* Spacing scale (FD-02): every gap, padding and margin is one of these. Named by 4 px units, so --space-3 is 12 px. */
+  --space-0-5: 2px;
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 20px;
+  --space-6: 24px;
+  --space-8: 32px;
+  --space-12: 48px;
+  --space-16: 64px;
 
   /* Layout */
   --sidebar-width: 240px;

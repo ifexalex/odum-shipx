@@ -74,8 +74,8 @@ function ProfileTab({ customer, onSaved }: { customer: Customer; onSaved: (c: Cu
   }
 
   return (
-    <Card padding={28}>
-      <div style={{ display: 'flex', alignItems: 'center', gap: 16, marginBottom: 24 }}>
+    <Card padding="large">
+      <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-4)', marginBottom: 'var(--space-6)' }}>
         <Avatar size={72} name={customer.name ?? 'Customer'} />
         <div>
           <div style={{ fontFamily: 'var(--font-display)', fontWeight: 700, fontSize: 'var(--text-xl)' }}>{customer.name}</div>
@@ -85,8 +85,8 @@ function ProfileTab({ customer, onSaved }: { customer: Customer; onSaved: (c: Cu
         </div>
       </div>
 
-      {error && <div style={{ marginBottom: 16 }}><Banner variant="error" title="Update failed">{error}</Banner></div>}
-      {saved && <div style={{ marginBottom: 16 }}><Banner variant="success" title="Profile updated">Your contact details were saved.</Banner></div>}
+      {error && <div style={{ marginBottom: 'var(--space-4)' }}><Banner variant="error" title="Update failed">{error}</Banner></div>}
+      {saved && <div style={{ marginBottom: 'var(--space-4)' }}><Banner variant="success" title="Profile updated">Your contact details were saved.</Banner></div>}
 
       <SectionHead title="Contact info" sub="Name and email are locked once an account is created. Other fields can be updated." />
       <div style={{ height: 16 }} />
@@ -114,7 +114,7 @@ function ProfileTab({ customer, onSaved }: { customer: Customer; onSaved: (c: Cu
         />
       </div>
 
-      <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 10, marginTop: 8, paddingTop: 16, borderTop: '1px solid var(--color-line-soft)' }}>
+      <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 'var(--space-3)', marginTop: 'var(--space-2)', paddingTop: 'var(--space-4)', borderTop: '1px solid var(--color-line-soft)' }}>
         <Button variant="ghost" disabled={!dirty || saving} onClick={() => { setPhone(customer.phone ?? ''); setWhatsapp(customer.whatsapp ?? '') }}>
           Discard
         </Button>
@@ -167,15 +167,15 @@ function NotificationsTab({ customer, onSaved }: { customer: Customer; onSaved: 
   }
 
   return (
-    <Card padding={28}>
+    <Card padding="large">
       <SectionHead
         title="How would you like updates?"
         sub="Choose the channels for optional messages such as announcements and offers. Updates about your own shipments, invoices and claims, and emails about your account, are always sent."
       />
       <div style={{ height: 12 }} />
 
-      {error && <div style={{ marginBottom: 16 }}><Banner variant="error" title="Save failed">{error}</Banner></div>}
-      {saved && <div style={{ marginBottom: 16 }}><Banner variant="success" title="Preferences saved">Your notification channels were updated.</Banner></div>}
+      {error && <div style={{ marginBottom: 'var(--space-4)' }}><Banner variant="error" title="Save failed">{error}</Banner></div>}
+      {saved && <div style={{ marginBottom: 'var(--space-4)' }}><Banner variant="success" title="Preferences saved">Your notification channels were updated.</Banner></div>}
 
       {CHANNELS.map(({ key, label, sub, ...rest }, i) => {
         const enabled = consent.includes(key)
@@ -185,8 +185,8 @@ function NotificationsTab({ customer, onSaved }: { customer: Customer; onSaved: 
             style={{
               display: 'flex',
               alignItems: 'center',
-              gap: 16,
-              padding: '16px 0',
+              gap: 'var(--space-4)',
+              padding: 'var(--space-4) 0',
               borderBottom: i === CHANNELS.length - 1 ? 'none' : '1px solid var(--color-line-soft)',
             }}
           >
@@ -206,15 +206,15 @@ function NotificationsTab({ customer, onSaved }: { customer: Customer; onSaved: 
               <Icon name={key === 'email' ? 'mail' : 'phone'} size={16} stroke={2} />
             </div>
             <div style={{ flex: 1, minWidth: 0 }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-2)' }}>
                 <span style={{ fontFamily: 'var(--font-display)', fontWeight: 700, fontSize: 'var(--text-md)' }}>{label}</span>
                 {'recommended' in rest && (
-                  <span style={{ fontSize: 'var(--text-xs)', fontWeight: 700, textTransform: 'uppercase', letterSpacing: 'var(--tracking-label)', color: 'var(--color-primary-deep)', background: 'var(--color-primary-soft)', borderRadius: 999, padding: '2px 8px' }}>
+                  <span style={{ fontSize: 'var(--text-xs)', fontWeight: 700, textTransform: 'uppercase', letterSpacing: 'var(--tracking-label)', color: 'var(--color-primary-deep)', background: 'var(--color-primary-soft)', borderRadius: 999, padding: 'var(--space-0-5) var(--space-2)' }}>
                     Recommended
                   </span>
                 )}
               </div>
-              <div style={{ fontSize: 'var(--text-xs)', color: 'var(--color-ink-3)', marginTop: 3 }}>{sub}</div>
+              <div style={{ fontSize: 'var(--text-xs)', color: 'var(--color-ink-3)', marginTop: 'var(--space-1)' }}>{sub}</div>
             </div>
             <ToggleSwitch checked={enabled} onChange={() => toggle(key)} label={label} />
           </div>
@@ -222,9 +222,9 @@ function NotificationsTab({ customer, onSaved }: { customer: Customer; onSaved: 
       })}
 
       {/* Notification language (P2-1) — selects the EN/ZH template set for SMS/WhatsApp/email */}
-      <div style={{ marginTop: 24, paddingTop: 20, borderTop: '1px solid var(--color-line-soft)' }}>
+      <div style={{ marginTop: 'var(--space-6)', paddingTop: 'var(--space-5)', borderTop: '1px solid var(--color-line-soft)' }}>
         <SectionHead title="Message language" sub="The language we use for SMS, WhatsApp and email updates" />
-        <div style={{ display: 'flex', gap: 12, marginTop: 12 }}>
+        <div style={{ display: 'flex', gap: 'var(--space-3)', marginTop: 'var(--space-3)' }}>
           {([
             { value: 'en', label: 'English', sub: 'EN — default' },
             { value: 'zh', label: '中文 (简体)', sub: 'ZH — Simplified Chinese' },
@@ -234,7 +234,7 @@ function NotificationsTab({ customer, onSaved }: { customer: Customer; onSaved: 
               <label
                 key={value}
                 style={{
-                  display: 'flex', alignItems: 'center', gap: 12, padding: '14px 16px', borderRadius: 10, flex: 1,
+                  display: 'flex', alignItems: 'center', gap: 'var(--space-3)', padding: 'var(--space-4) var(--space-4)', borderRadius: 10, flex: 1,
                   border: `1px solid ${active ? 'var(--color-primary)' : 'var(--color-line)'}`,
                   background: active ? 'var(--color-primary-soft)' : 'transparent',
                   cursor: 'pointer',
@@ -258,7 +258,7 @@ function NotificationsTab({ customer, onSaved }: { customer: Customer; onSaved: 
         </div>
       </div>
 
-      <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 10, marginTop: 24, paddingTop: 16, borderTop: '1px solid var(--color-line-soft)' }}>
+      <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 'var(--space-3)', marginTop: 'var(--space-6)', paddingTop: 'var(--space-4)', borderTop: '1px solid var(--color-line-soft)' }}>
         <Button variant="primary" icon="check" loading={saving} disabled={!dirty} onClick={() => void handleSave()}>
           Save preferences
         </Button>
@@ -312,14 +312,14 @@ function PrivacyTab({ customer }: { customer: Customer }): JSX.Element {
   }
 
   return (
-    <Card padding={28}>
+    <Card padding="large">
       <SectionHead
         title="Your data, your choice"
         sub="Under Nigeria's NDPR and the EU's GDPR, you have full control over your personal data."
       />
       <div style={{ height: 16 }} />
 
-      {error && <div style={{ marginBottom: 16 }}><Banner variant="error" title="Action failed">{error}</Banner></div>}
+      {error && <div style={{ marginBottom: 'var(--space-4)' }}><Banner variant="error" title="Action failed">{error}</Banner></div>}
 
       {customer.consent_given_at && (
         <Banner variant="success" title="Consent on file">
@@ -328,39 +328,39 @@ function PrivacyTab({ customer }: { customer: Customer }): JSX.Element {
         </Banner>
       )}
 
-      <div className={styles.twoCol} style={{ margin: '24px 0' }}>
-        <div style={{ background: 'var(--color-surface-muted)', border: '1px solid var(--color-line-soft)', borderRadius: 10, padding: 18 }}>
-          <div style={{ width: 36, height: 36, borderRadius: 10, background: 'var(--color-primary-soft)', color: 'var(--color-primary)', display: 'flex', alignItems: 'center', justifyContent: 'center', marginBottom: 12 }}>
+      <div className={styles.twoCol} style={{ margin: 'var(--space-6) 0' }}>
+        <div style={{ background: 'var(--color-surface-muted)', border: '1px solid var(--color-line-soft)', borderRadius: 10, padding: 'var(--space-5)' }}>
+          <div style={{ width: 36, height: 36, borderRadius: 10, background: 'var(--color-primary-soft)', color: 'var(--color-primary)', display: 'flex', alignItems: 'center', justifyContent: 'center', marginBottom: 'var(--space-3)' }}>
             <Icon name="download" size={16} />
           </div>
-          <div style={{ fontFamily: 'var(--font-display)', fontWeight: 700, fontSize: 'var(--text-md)', marginBottom: 4 }}>Download your data</div>
-          <div style={{ fontSize: 'var(--text-xs)', color: 'var(--color-ink-3)', lineHeight: 'var(--leading-body)', marginBottom: 12 }}>
+          <div style={{ fontFamily: 'var(--font-display)', fontWeight: 700, fontSize: 'var(--text-md)', marginBottom: 'var(--space-1)' }}>Download your data</div>
+          <div style={{ fontSize: 'var(--text-xs)', color: 'var(--color-ink-3)', lineHeight: 'var(--leading-body)', marginBottom: 'var(--space-3)' }}>
             Get a JSON export of everything we hold — profile, shipments, billing, claims, consents.
           </div>
           <Button variant="ghost" size="sm" icon="download" loading={exporting} onClick={() => void handleExport()}>
             Request my data export
           </Button>
         </div>
-        <div style={{ background: 'var(--color-surface-muted)', border: '1px solid var(--color-line-soft)', borderRadius: 10, padding: 18 }}>
-          <div style={{ width: 36, height: 36, borderRadius: 10, background: 'var(--color-primary-soft)', color: 'var(--color-primary)', display: 'flex', alignItems: 'center', justifyContent: 'center', marginBottom: 12 }}>
+        <div style={{ background: 'var(--color-surface-muted)', border: '1px solid var(--color-line-soft)', borderRadius: 10, padding: 'var(--space-5)' }}>
+          <div style={{ width: 36, height: 36, borderRadius: 10, background: 'var(--color-primary-soft)', color: 'var(--color-primary)', display: 'flex', alignItems: 'center', justifyContent: 'center', marginBottom: 'var(--space-3)' }}>
             <Icon name="settings" size={16} />
           </div>
-          <div style={{ fontFamily: 'var(--font-display)', fontWeight: 700, fontSize: 'var(--text-md)', marginBottom: 4 }}>Update consent preferences</div>
-          <div style={{ fontSize: 'var(--text-xs)', color: 'var(--color-ink-3)', lineHeight: 'var(--leading-body)', marginBottom: 12 }}>
+          <div style={{ fontFamily: 'var(--font-display)', fontWeight: 700, fontSize: 'var(--text-md)', marginBottom: 'var(--space-1)' }}>Update consent preferences</div>
+          <div style={{ fontSize: 'var(--text-xs)', color: 'var(--color-ink-3)', lineHeight: 'var(--leading-body)', marginBottom: 'var(--space-3)' }}>
             Change which channels you&apos;ve consented to on the Notifications tab. Transactional messages always go through.
           </div>
         </div>
       </div>
 
       {/* Danger zone */}
-      <div style={{ background: '#fff8f6', border: '1px solid rgba(220,38,38,0.2)', borderLeft: '4px solid var(--color-error)', borderRadius: 10, padding: 20 }}>
-        <div style={{ display: 'flex', alignItems: 'flex-start', gap: 14 }}>
+      <div style={{ background: '#fff8f6', border: '1px solid rgba(220,38,38,0.2)', borderLeft: '4px solid var(--color-error)', borderRadius: 10, padding: 'var(--space-5)' }}>
+        <div style={{ display: 'flex', alignItems: 'flex-start', gap: 'var(--space-4)' }}>
           <div style={{ width: 40, height: 40, borderRadius: 10, background: 'var(--color-error-soft)', color: 'var(--color-error)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
             <Icon name="suspend" size={18} stroke={2.2} />
           </div>
           <div style={{ flex: 1 }}>
             <div style={{ fontFamily: 'var(--font-display)', fontWeight: 700, fontSize: 'var(--text-lg)', color: 'var(--color-error)' }}>Delete my account</div>
-            <p style={{ fontSize: 'var(--text-sm)', color: 'var(--color-ink-2)', margin: '6px 0 12px', lineHeight: 'var(--leading-body)' }}>
+            <p style={{ fontSize: 'var(--text-sm)', color: 'var(--color-ink-2)', margin: 'var(--space-2) 0 var(--space-3)', lineHeight: 'var(--leading-body)' }}>
               Permanently erase your personal data — name, phone, email and address. Your{' '}
               <strong>billing and shipment records are kept</strong> as required by law, but they will no longer be
               linked to you. <strong>This cannot be undone.</strong>
@@ -370,7 +370,7 @@ function PrivacyTab({ customer }: { customer: Customer }): JSX.Element {
                 Delete my account
               </Button>
             ) : (
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-3)' }}>
                 <Field
                   label='Type "DELETE" to confirm'
                   name="confirm_delete"
@@ -378,7 +378,7 @@ function PrivacyTab({ customer }: { customer: Customer }): JSX.Element {
                   value={confirmText}
                   onChange={(e) => setConfirmText(e.target.value)}
                 />
-                <div style={{ display: 'flex', gap: 8 }}>
+                <div style={{ display: 'flex', gap: 'var(--space-2)' }}>
                   <Button variant="ghost" size="sm" onClick={() => { setShowDelete(false); setConfirmText('') }} disabled={deleting}>
                     Cancel
                   </Button>
@@ -422,7 +422,7 @@ export function Account(): JSX.Element {
         subtitle="Update your contact info, notification channels, and privacy choices."
       />
 
-      {error && <div style={{ marginBottom: 16 }}><Banner variant="error" title="Couldn't load your account">{error}</Banner></div>}
+      {error && <div style={{ marginBottom: 'var(--space-4)' }}><Banner variant="error" title="Couldn't load your account">{error}</Banner></div>}
       {loading && <p style={{ color: 'var(--color-ink-3)' }}>Loading your account…</p>}
 
       {!loading && !customer && !error && (

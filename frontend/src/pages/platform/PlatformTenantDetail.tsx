@@ -112,7 +112,7 @@ function UsersTab({ tenantId }: { tenantId: string }): JSX.Element {
 
   if (error) return <Banner variant="error" title="Error">{error}</Banner>
   return (
-    <Card padding={0}>
+    <Card padding="none">
       <Table
         columns={[{ title: 'User' }, { title: 'Role' }, { title: 'Status' }, { title: 'Locale' }]}
         rows={users.map((u) => ({
@@ -133,8 +133,8 @@ function QuotaBar({ label, used, max }: { label: string; used: number; max: numb
   const pct = max > 0 ? Math.min((used / max) * 100, 100) : 0
   const color = pct >= 100 ? 'var(--color-error)' : pct >= 80 ? 'var(--color-warning)' : 'var(--color-primary)'
   return (
-    <div style={{ marginBottom: 14 }}>
-      <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 'var(--text-xs)', marginBottom: 4 }}>
+    <div style={{ marginBottom: 'var(--space-4)' }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 'var(--text-xs)', marginBottom: 'var(--space-1)' }}>
         <span style={{ fontWeight: 600, color: 'var(--color-ink-2)' }}>{label}</span>
         <Mono>{used} / {max >= 999999 ? '∞' : max}</Mono>
       </div>
@@ -187,14 +187,14 @@ function UsageTab({ tenantId }: { tenantId: string }): JSX.Element {
   if (!usage) return <p style={{ color: 'var(--color-ink-3)' }}>Loading usage…</p>
 
   return (
-    <div style={{ display: 'grid', gap: 16 }}>
-      <Card padding={24}>
+    <div style={{ display: 'grid', gap: 'var(--space-4)' }}>
+      <Card padding="large">
         <SectionHead title={`Usage — ${usage.period}`} sub={`Tier: ${usage.subscription_tier}`} />
         <div style={{ height: 12 }} />
         <QuotaBar label="Staff users" used={usage.limits.users.used} max={usage.limits.users.max} />
         <QuotaBar label="Containers this month" used={usage.limits.containers_per_month.used} max={usage.limits.containers_per_month.max} />
         <QuotaBar label="Storage (GB)" used={usage.limits.storage_gb.used} max={usage.limits.storage_gb.max} />
-        <div style={{ display: 'flex', gap: 20, fontSize: 'var(--text-xs)', color: 'var(--color-ink-3)', marginTop: 8 }}>
+        <div style={{ display: 'flex', gap: 'var(--space-5)', fontSize: 'var(--text-xs)', color: 'var(--color-ink-3)', marginTop: 'var(--space-2)' }}>
           <span>API calls: <Mono>{usage.api_calls}</Mono></span>
           <span>SMS: <Mono>{usage.notifications.sms_sent}</Mono></span>
           <span>WhatsApp: <Mono>{usage.notifications.whatsapp_sent}</Mono></span>
@@ -202,11 +202,11 @@ function UsageTab({ tenantId }: { tenantId: string }): JSX.Element {
         </div>
       </Card>
 
-      <Card padding={24}>
+      <Card padding="large">
         <SectionHead title="Quota override" sub="Wins over tier defaults and plan overrides. Leave a field blank to keep the plan value; submit all-blank to clear the override." />
-        {error && <div style={{ margin: '8px 0' }}><Banner variant="error" title="Error">{error}</Banner></div>}
-        {saved && <div style={{ margin: '8px 0' }}><Banner variant="success" title="Saved">Override applied — bars above show the new effective limits.</Banner></div>}
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))', gap: 12, marginTop: 12 }}>
+        {error && <div style={{ margin: 'var(--space-2) 0' }}><Banner variant="error" title="Error">{error}</Banner></div>}
+        {saved && <div style={{ margin: 'var(--space-2) 0' }}><Banner variant="success" title="Saved">Override applied — bars above show the new effective limits.</Banner></div>}
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))', gap: 'var(--space-3)', marginTop: 'var(--space-3)' }}>
           <Field label="Users" name="ovr_users" type="number" optional value={override.users} onChange={(e) => setOverride((p) => ({ ...p, users: e.target.value }))} />
           <Field label="Containers / month" name="ovr_containers" type="number" optional value={override.containers} onChange={(e) => setOverride((p) => ({ ...p, containers: e.target.value }))} />
           <Field label="Storage (GB)" name="ovr_storage" type="number" optional value={override.storage} onChange={(e) => setOverride((p) => ({ ...p, storage: e.target.value }))} />
@@ -229,7 +229,7 @@ function ConfigTab({ tenantId }: { tenantId: string }): JSX.Element {
   if (!config) return <p style={{ color: 'var(--color-ink-3)' }}>Loading config…</p>
 
   return (
-    <Card padding={20}>
+    <Card padding="default">
       <SectionHead title="Tenant configuration" sub="Read-only view — secrets are masked server-side" />
       <div style={{ height: 8 }} />
       {Object.entries(config).map(([key, value], i, arr) => (
@@ -251,7 +251,7 @@ function AuditTab({ tenantId }: { tenantId: string }): JSX.Element {
 
   if (error) return <Banner variant="error" title="Error">{error}</Banner>
   return (
-    <Card padding={0}>
+    <Card padding="none">
       <Table
         columns={[{ title: 'Timestamp' }, { title: 'Action' }, { title: 'IP' }]}
         rows={entries.map((e) => ({
@@ -312,12 +312,12 @@ function OffboardingExportCard({ tenantId }: { tenantId: string }): JSX.Element 
 
   const status = exportInfo ? EXPORT_STATUS[exportInfo.status] : null
   return (
-    <Card padding={20}>
+    <Card padding="default">
       <SectionHead
         title="Data export"
         sub="Everything the tenant kept on ShipX, as one archive (JSON Lines). Hand it over before the data is deleted."
       />
-      {error && <div style={{ margin: '8px 0' }}><Banner variant="error" title="Error">{error}</Banner></div>}
+      {error && <div style={{ margin: 'var(--space-2) 0' }}><Banner variant="error" title="Error">{error}</Banner></div>}
       {!exportInfo && !error && <p style={{ color: 'var(--color-ink-3)' }}>Loading export…</p>}
       {exportInfo && status && (
         <>
@@ -352,7 +352,7 @@ function OffboardingExportCard({ tenantId }: { tenantId: string }): JSX.Element 
               divider={false}
             />
           )}
-          <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end', marginTop: 12 }}>
+          <div style={{ display: 'flex', gap: 'var(--space-2)', justifyContent: 'flex-end', marginTop: 'var(--space-3)' }}>
             {exportInfo.can_queue && (
               <Button variant="secondary" loading={busy === 'queue'} disabled={busy !== null} onClick={() => void run('queue')}>
                 Queue export
@@ -365,7 +365,7 @@ function OffboardingExportCard({ tenantId }: { tenantId: string }): JSX.Element 
             )}
           </div>
           {exportInfo.status === 'completed' && (
-            <p style={{ color: 'var(--color-ink-4)', fontSize: 'var(--text-xs)', textAlign: 'right', marginTop: 6 }}>
+            <p style={{ color: 'var(--color-ink-4)', fontSize: 'var(--text-xs)', textAlign: 'right', marginTop: 'var(--space-2)' }}>
               The link works for five minutes and every download is recorded in the audit log.
             </p>
           )}
@@ -420,7 +420,7 @@ export function PlatformTenantDetail(): JSX.Element {
     }
   }
 
-  if (loading && !tenant) return <div style={{ padding: 48, color: 'var(--color-text-muted)' }}>Loading…</div>
+  if (loading && !tenant) return <div style={{ padding: 'var(--space-12)', color: 'var(--color-text-muted)' }}>Loading…</div>
   if (error && !tenant) return <div className={styles.banner}><Banner variant="error">{error}</Banner></div>
   if (!tenant) return <></>
 
@@ -471,7 +471,7 @@ export function PlatformTenantDetail(): JSX.Element {
       {tab === 'overview' && (
       <>
       <SectionHead title="Tenant details" />
-      <Card padding={20}>
+      <Card padding="default">
         <Kvp label="Status" value={<Badge variant={STATUS_VARIANT[tenant.status]}>{tenant.status}</Badge>} />
         <Kvp label="Subscription" value={<span style={{ textTransform: 'capitalize' }}>{tenant.subscription_tier}</span>} />
         <Kvp label="Contact email" value={tenant.primary_contact_email} />
@@ -482,7 +482,7 @@ export function PlatformTenantDetail(): JSX.Element {
         <Kvp label="Tenant ID" value={<span style={{ fontFamily: 'var(--font-mono)', fontSize: 'var(--text-sm)' }}>{tenant.id}</span>} divider={false} />
       </Card>
       {tenant.status === 'offboarded' && (
-        <div style={{ marginTop: 16 }}>
+        <div style={{ marginTop: 'var(--space-4)' }}>
           <OffboardingExportCard tenantId={tenant.id} />
         </div>
       )}

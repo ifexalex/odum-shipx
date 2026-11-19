@@ -124,9 +124,9 @@ export function OnboardingRequests(): JSX.Element {
         </div>
       )}
 
-      <Card padding={16}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
-          <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+      <Card padding="default">
+        <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-3)', flexWrap: 'wrap' }}>
+          <div style={{ display: 'flex', gap: 'var(--space-2)', flexWrap: 'wrap' }}>
             <Chip active={statusFilter === null} onClick={() => setStatusFilter(null)}>
               All {requests.length > 0 && <span style={{ opacity: 0.6 }}>{requests.length}</span>}
             </Chip>
@@ -149,7 +149,7 @@ export function OnboardingRequests(): JSX.Element {
       </Card>
 
       <div className={styles.tableWrap}>
-        <Card padding={0}>
+        <Card padding="none">
           <Table
             columns={[
               { title: 'Company' },
@@ -198,7 +198,7 @@ export function OnboardingRequests(): JSX.Element {
                   {formatDate(r.created_at)}
                 </span>,
                 OPEN_STATUSES.includes(r.status) ? (
-                  <div key="actions" style={{ display: 'flex', gap: 6, justifyContent: 'flex-end' }}>
+                  <div key="actions" style={{ display: 'flex', gap: 'var(--space-2)', justifyContent: 'flex-end' }}>
                     {r.status === 'new' && (
                       <Button
                         variant="ghost"
@@ -259,7 +259,7 @@ export function OnboardingRequests(): JSX.Element {
           </>
         }
       >
-        <p style={{ fontSize: 'var(--text-sm)', color: 'var(--color-ink-3)', margin: '0 0 14px' }}>
+        <p style={{ fontSize: 'var(--text-sm)', color: 'var(--color-ink-3)', margin: '0 0 var(--space-4)' }}>
           Rejecting <strong>{rejecting?.company_name}</strong>&apos;s request. The reason is recorded for the
           audit trail; it is not emailed to the company.
         </p>

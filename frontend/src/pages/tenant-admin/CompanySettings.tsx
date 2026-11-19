@@ -241,7 +241,7 @@ function CompanySettingsForm({
       />
 
       {loadError && (
-        <div style={{ marginBottom: 16 }}>
+        <div style={{ marginBottom: 'var(--space-4)' }}>
           <Banner variant="error" title="Couldn't load settings">{loadError.message}</Banner>
         </div>
       )}
@@ -367,7 +367,7 @@ function CompanySettingsForm({
         </div>
 
         <div className={styles.previewCol}>
-          <Card padding={20}>
+          <Card padding="default">
             <SectionHead title="Live preview" sub="How your branding appears on documents" />
             <div style={{ height: 16 }} />
             <div className={styles.previewToggle} role="tablist">

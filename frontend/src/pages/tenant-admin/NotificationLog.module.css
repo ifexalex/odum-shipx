@@ -1,10 +1,10 @@
-.banner { margin-bottom: 16px; }
+.banner { margin-bottom: var(--space-4); }
 
 /* Stats bar */
 .statsBar {
   display: flex;
   align-items: center;
-  gap: 28px;
+  gap: var(--space-8);
   flex-wrap: wrap;
 }
 
@@ -19,7 +19,7 @@
 .logStat {
   display: flex;
   align-items: baseline;
-  gap: 6px;
+  gap: var(--space-2);
 }
 
 .logStatValue {
@@ -44,19 +44,19 @@
 .filterRow {
   display: flex;
   align-items: center;
-  gap: 12px;
+  gap: var(--space-3);
   flex-wrap: wrap;
 }
 
 .chips {
   display: flex;
-  gap: 6px;
+  gap: var(--space-2);
   flex-wrap: wrap;
 }
 
 .chipCount {
   opacity: 0.55;
-  margin-left: 4px;
+  margin-left: var(--space-1);
   font-weight: 500;
 }
 
@@ -69,8 +69,8 @@
   border-radius: var(--radius-sm);
   display: flex;
   align-items: center;
-  padding: 0 12px;
-  gap: 8px;
+  padding: 0 var(--space-3);
+  gap: var(--space-2);
 }
 
 /* Exact custom date range, alongside the "last N days" preset button —
@@ -78,7 +78,7 @@
 .customDateWrap {
   display: flex;
   align-items: center;
-  gap: 6px;
+  gap: var(--space-2);
   height: 36px;
 }
 
@@ -90,7 +90,7 @@
 .customDateInput {
   height: 36px;
   box-sizing: border-box;
-  padding: 0 8px;
+  padding: 0 var(--space-2);
   background: var(--color-page);
   border: 1px solid var(--color-line);
   border-radius: var(--radius-sm);
@@ -115,7 +115,7 @@
 .channelCell {
   display: inline-flex;
   align-items: center;
-  gap: 6px;
+  gap: var(--space-2);
 }
 
 .msgPreview {
@@ -132,7 +132,7 @@
 .rowActions {
   display: flex;
   justify-content: flex-end;
-  gap: 6px;
+  gap: var(--space-2);
 }
 
 /* Status dropdown */
@@ -156,7 +156,7 @@
 .dropdownItem {
   display: block;
   width: 100%;
-  padding: 10px 16px;
+  padding: var(--space-3) var(--space-4);
   text-align: left;
   background: none;
   border: none;
@@ -195,7 +195,7 @@
 
 @container sxapp (min-width: 861px) {
   .modalOverlay {
-    padding: 32px;
+    padding: var(--space-8);
   }
   .modal {
     width: 560px;
@@ -204,7 +204,7 @@
 }
 
 .modalHeader {
-  padding: 20px 24px;
+  padding: var(--space-5) var(--space-6);
   border-bottom: 1px solid var(--color-line);
   display: flex;
   align-items: flex-start;
@@ -221,7 +221,7 @@
 }
 
 .modalSub {
-  margin: 2px 0 0;
+  margin: var(--space-0-5) 0 0;
   font-size: var(--text-xs);
   color: var(--color-ink-4);
 }
@@ -229,7 +229,7 @@
 .closeBtn {
   background: transparent;
   border: none;
-  padding: 6px;
+  padding: var(--space-2);
   cursor: pointer;
   color: var(--color-ink-4);
   border-radius: 6px;
@@ -237,7 +237,7 @@
 }
 
 .modalBody {
-  padding: 20px 24px;
+  padding: var(--space-5) var(--space-6);
   overflow-y: auto;
 }
 
@@ -245,10 +245,10 @@
   display: flex;
   justify-content: space-between;
   align-items: center;
-  padding: 10px 0;
+  padding: var(--space-3) 0;
   border-bottom: 1px dashed var(--color-line);
   font-size: var(--text-sm);
-  gap: 16px;
+  gap: var(--space-4);
 }
 
 .kvp span:first-child {
@@ -273,14 +273,14 @@
 
 /* Message bubble (chat-style preview in modal) */
 .msgBubbleWrap {
-  padding: 12px 0;
+  padding: var(--space-3) 0;
   border-bottom: 1px dashed var(--color-line);
 }
 
 .msgBubble {
   background: var(--color-success-soft, #dcfce7);
   border-radius: 12px 12px 4px 12px;
-  padding: 12px 16px;
+  padding: var(--space-3) var(--space-4);
   font-size: var(--text-sm);
   color: var(--color-ink-2);
   line-height: var(--text-sm-line);
@@ -289,11 +289,11 @@
 }
 
 .modalFooter {
-  padding: 16px 24px;
+  padding: var(--space-4) var(--space-6);
   border-top: 1px solid var(--color-line);
   display: flex;
   justify-content: flex-end;
-  gap: 8px;
+  gap: var(--space-2);
 }
 
 /* On a narrow phone the two date fields wrap under each other instead of pushing the page wider. */

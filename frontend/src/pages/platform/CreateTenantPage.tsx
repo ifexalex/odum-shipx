@@ -36,11 +36,11 @@ function PlanRadio({ name, features, selected, onSelect }: { name: string; featu
       style={{
         textAlign: 'left', cursor: 'pointer', flex: 1, minWidth: 180,
         border: `${selected ? 2 : 1}px solid ${selected ? 'var(--color-primary)' : 'var(--color-line-soft)'}`,
-        borderRadius: 12, padding: 16,
+        borderRadius: 12, padding: 'var(--space-4)',
         background: selected ? 'var(--color-primary-tint)' : 'var(--color-surface)',
       }}
     >
-      <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-2)', marginBottom: 'var(--space-2)' }}>
         <span style={{
           width: 18, height: 18, borderRadius: '50%',
           border: `${selected ? 5 : 1.5}px solid ${selected ? 'var(--color-primary)' : 'var(--color-line)'}`,
@@ -48,7 +48,7 @@ function PlanRadio({ name, features, selected, onSelect }: { name: string; featu
         }} />
         <span style={{ fontFamily: 'var(--font-display)', fontWeight: 700, fontSize: 'var(--text-lg)' }}>{name}</span>
       </div>
-      <ul style={{ margin: 0, paddingLeft: 18, fontSize: 'var(--text-xs)', color: 'var(--color-ink-3)', lineHeight: 'var(--leading-body)' }}>
+      <ul style={{ margin: 0, paddingLeft: 'var(--space-5)', fontSize: 'var(--text-xs)', color: 'var(--color-ink-3)', lineHeight: 'var(--leading-body)' }}>
         {features.map((f) => <li key={f}>{f}</li>)}
       </ul>
     </button>
@@ -97,21 +97,21 @@ export function CreateTenantPage(): JSX.Element {
 
   if (created) {
     return (
-      <div style={{ maxWidth: 560, margin: '0 auto', textAlign: 'center', paddingTop: 40 }}>
-        <div style={{ width: 84, height: 84, borderRadius: '50%', background: 'var(--color-success-soft)', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 24px' }}>
+      <div style={{ maxWidth: 560, margin: '0 auto', textAlign: 'center', paddingTop: 'var(--space-12)' }}>
+        <div style={{ width: 84, height: 84, borderRadius: '50%', background: 'var(--color-success-soft)', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto var(--space-6)' }}>
           <Icon name="check" size={42} color="var(--color-success)" stroke={2.5} />
         </div>
-        <h2 style={{ fontFamily: 'var(--font-display)', fontWeight: 700, fontSize: 'var(--text-2xl)', margin: '0 0 8px' }}>
+        <h2 style={{ fontFamily: 'var(--font-display)', fontWeight: 700, fontSize: 'var(--text-2xl)', margin: '0 0 var(--space-2)' }}>
           {created.company_name} is live.
         </h2>
-        <p style={{ fontSize: 'var(--text-md)', color: 'var(--color-ink-3)', margin: '0 0 24px' }}>
+        <p style={{ fontSize: 'var(--text-md)', color: 'var(--color-ink-3)', margin: '0 0 var(--space-6)' }}>
           Tenant <Mono>{created.slug}</Mono> created on the <strong style={{ textTransform: 'capitalize' }}>{created.subscription_tier}</strong> plan.
         </p>
         <Banner variant="info" title="Admin invite sent">
           {adminEmail} received a temporary password by email. They&apos;ll set their own password on first
           sign-in and can then invite the rest of the team.
         </Banner>
-        <div style={{ display: 'flex', gap: 10, justifyContent: 'center', marginTop: 24 }}>
+        <div style={{ display: 'flex', gap: 'var(--space-3)', justifyContent: 'center', marginTop: 'var(--space-6)' }}>
           <Button variant="secondary" onClick={() => navigate(`/platform/tenants/${created.id}`)}>
             Open tenant
           </Button>
@@ -132,7 +132,7 @@ export function CreateTenantPage(): JSX.Element {
       />
 
       {lead && (
-        <div style={{ marginBottom: 16 }}>
+        <div style={{ marginBottom: 'var(--space-4)' }}>
           <Banner variant="info" title="Provisioning from an onboarding request">
             Pre-filled from <strong>{lead.company_name}</strong>&apos;s request. Creating this tenant marks the
             request as <strong>provisioned</strong>. Review the details and the admin&apos;s name before creating.
@@ -140,38 +140,38 @@ export function CreateTenantPage(): JSX.Element {
         </div>
       )}
 
-      {error && <div style={{ marginBottom: 16 }}><Banner variant="error" title="Could not create tenant">{error}</Banner></div>}
+      {error && <div style={{ marginBottom: 'var(--space-4)' }}><Banner variant="error" title="Could not create tenant">{error}</Banner></div>}
 
-      <Card padding={28} style={{ marginBottom: 16 }}>
+      <Card padding="large" style={{ marginBottom: 'var(--space-4)' }}>
         <SectionHead title="Company" />
         <div style={{ height: 12 }} />
         <Field label="Company name" name="company_name" required placeholder="Acme Logistics Ltd" value={companyName} onChange={(e) => setCompanyName(e.target.value)} />
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: 14 }}>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: 'var(--space-4)' }}>
           <Field label="Primary contact email" name="contact_email" icon="mail" required placeholder="ops@acme.com" value={contactEmail} onChange={(e) => setContactEmail(e.target.value)} />
           <PhoneField label="Contact phone" name="contact_phone" optional value={contactPhone} onChange={setContactPhone} />
         </div>
       </Card>
 
-      <Card padding={28} style={{ marginBottom: 16 }}>
+      <Card padding="large" style={{ marginBottom: 'var(--space-4)' }}>
         <SectionHead title="Initial admin" sub="Gets a temporary password by email and full tenant-admin access" />
         <div style={{ height: 12 }} />
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: 14 }}>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: 'var(--space-4)' }}>
           <Field label="Full name" name="admin_name" required placeholder="Amara Okafor" value={adminName} onChange={(e) => setAdminName(e.target.value)} />
           <Field label="Email" name="admin_email" icon="mail" required placeholder="amara@acme.com" value={adminEmail} onChange={(e) => setAdminEmail(e.target.value)} />
         </div>
       </Card>
 
-      <Card padding={28}>
+      <Card padding="large">
         <SectionHead title="Plan" sub="Limits can be overridden later from Platform Settings → Plans, or per-tenant" />
         <div style={{ height: 12 }} />
-        <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap' }}>
+        <div style={{ display: 'flex', gap: 'var(--space-3)', flexWrap: 'wrap' }}>
           {PLANS.map((p) => (
             <PlanRadio key={p.tier} name={p.name} features={p.features} selected={tier === p.tier} onSelect={() => setTier(p.tier)} />
           ))}
         </div>
       </Card>
 
-      <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 10, marginTop: 20 }}>
+      <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 'var(--space-3)', marginTop: 'var(--space-5)' }}>
         <Button variant="ghost" onClick={() => navigate('/platform/tenants')} disabled={submitting}>Cancel</Button>
         <Button variant="accent" icon="plus" loading={submitting} disabled={!canSubmit} onClick={() => void handleSubmit()}>
           Create tenant

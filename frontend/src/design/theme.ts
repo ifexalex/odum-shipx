@@ -79,14 +79,18 @@ export const typeScale = {
   mono: { fontFamily: fonts.mono, fontSize: 13, fontWeight: 400, lineHeight: 1.54 },
 } as const satisfies Record<string, TypeStyle>
 
+/** The spacing scale in px, mirroring --space-* in tokens.css (FD-02). */
 export const spacing = {
-  xs: 4,
-  sm: 8,
-  md: 16,
-  lg: 24,
-  xl: 32,
-  '2xl': 48,
-  '3xl': 64,
+  '0-5': 2,
+  1: 4,
+  2: 8,
+  3: 12,
+  4: 16,
+  5: 20,
+  6: 24,
+  8: 32,
+  12: 48,
+  16: 64,
 } as const
 
 export const layout = {

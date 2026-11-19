@@ -19,7 +19,7 @@ export function CustomerStepper({ containerStatus }: { containerStatus: string |
 
   return (
     <ScrollStrip minWidth={STAGES.length * 70}>
-    <div style={{ display: 'flex', alignItems: 'flex-start', gap: 4, position: 'relative' }}>
+    <div style={{ display: 'flex', alignItems: 'flex-start', gap: 'var(--space-1)', position: 'relative' }}>
       {STAGES.map((stage, i) => {
         const done = i < currentIdx
         const isCurrent = i === currentIdx
@@ -50,11 +50,11 @@ export function CustomerStepper({ containerStatus }: { containerStatus: string |
                   ? <div style={{ width: 8, height: 8, borderRadius: '50%', background: color }} />
                   : null}
             </div>
-            <div style={{ marginTop: 8, textAlign: 'center' }}>
+            <div style={{ marginTop: 'var(--space-2)', textAlign: 'center' }}>
               <div style={{ fontSize: 'var(--text-xs)', fontWeight: 700, color: done || isCurrent ? 'var(--color-ink)' : 'var(--color-ink-4)' }}>
                 {stage.label}
               </div>
-              <div style={{ fontSize: 'var(--text-xs)', color: 'var(--color-ink-4)', marginTop: 1 }}>{stage.sub}</div>
+              <div style={{ fontSize: 'var(--text-xs)', color: 'var(--color-ink-4)', marginTop: 'var(--space-0-5)' }}>{stage.sub}</div>
             </div>
           </div>
         )

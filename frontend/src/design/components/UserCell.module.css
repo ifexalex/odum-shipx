@@ -1,6 +1,6 @@
 .cell {
   display: flex;
-  gap: 10px;
+  gap: var(--space-3);
   align-items: center;
 }
 

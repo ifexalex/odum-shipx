@@ -1,7 +1,7 @@
 .brand {
   display: flex;
   align-items: center;
-  gap: 10px;
+  gap: var(--space-3);
 }
 
 .mark {
@@ -47,5 +47,5 @@
   letter-spacing: var(--tracking-label);
   text-transform: uppercase;
   font-weight: 600;
-  margin-top: 1px;
+  margin-top: var(--space-0-5);
 }

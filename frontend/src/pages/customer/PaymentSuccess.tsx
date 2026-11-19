@@ -70,7 +70,7 @@ export function PaymentSuccess(): JSX.Element {
           Your payment has been confirmed and your billing record is updated. Your release note is issued once the
           balance is fully settled.
         </p>
-        <div style={{ display: 'flex', gap: 12 }}>
+        <div style={{ display: 'flex', gap: 'var(--space-3)' }}>
           <Button variant="secondary" onClick={() => navigate(`/my-billing/${id}`)}>
             View invoice
           </Button>
@@ -91,7 +91,7 @@ export function PaymentSuccess(): JSX.Element {
           Paystack hasn't confirmed this payment as successful yet. If you completed the payment, check back on your
           invoice in a moment — otherwise no charge was made and you can try again.
         </p>
-        <div style={{ display: 'flex', gap: 12 }}>
+        <div style={{ display: 'flex', gap: 'var(--space-3)' }}>
           <Button variant="secondary" onClick={() => navigate(`/my-billing/${id}`)}>
             View invoice
           </Button>
@@ -111,7 +111,7 @@ export function PaymentSuccess(): JSX.Element {
         {error} If you were charged, your invoice will update shortly — otherwise please try again or contact your
         shipping company.
       </p>
-      <div style={{ display: 'flex', gap: 12 }}>
+      <div style={{ display: 'flex', gap: 'var(--space-3)' }}>
         <Button variant="secondary" onClick={() => navigate(`/my-billing/${id}`)}>
           View invoice
         </Button>

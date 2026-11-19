@@ -4,7 +4,7 @@
   border-radius: var(--radius-full);
   background: var(--color-line);
   border: none;
-  padding: 2px;
+  padding: var(--space-0-5);
   display: inline-flex;
   align-items: center;
   cursor: pointer;

@@ -106,7 +106,7 @@ export function StorageFeeBanner({
 export function StorageFeeLog({ fees }: { fees: StorageFeeEntry[] }): JSX.Element | null {
   if (fees.length === 0) return null
   return (
-    <Card padding={0}>
+    <Card padding="none">
       <Table
         dense
         columns={[

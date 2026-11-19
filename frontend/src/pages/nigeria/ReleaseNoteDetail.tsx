@@ -640,7 +640,7 @@ export function ReleaseNoteDetail(): JSX.Element {
       {/* Details */}
       <div className={styles.section}>
         <SectionHead title="Release details" />
-        <Card padding={20}>
+        <Card padding="default">
           <Kvp label="Reference" value={<Mono>{note.reference_number}</Mono>} />
           {note.physical_document_number && (
             <Kvp label="Physical document no." value={<Mono>{note.physical_document_number}</Mono>} />
@@ -683,7 +683,7 @@ export function ReleaseNoteDetail(): JSX.Element {
       {/* Carton tags */}
       <div className={styles.section}>
         <SectionHead title="Carton tags" sub={`${note.carton_tags.length} tag(s) on this release note`} />
-        <Card padding={20}>
+        <Card padding="default">
           {note.carton_tags.length > 0 ? (
             <div className={styles.tagGrid}>
               {note.carton_tags.map((tag) => (

@@ -1,8 +1,8 @@
 .tabs {
   display: flex;
-  gap: 4px;
+  gap: var(--space-1);
   border-bottom: 1px solid var(--color-line);
-  margin-bottom: var(--space-lg);
+  margin-bottom: var(--space-6);
   /* More tabs than a phone is wide scroll sideways here, never the page. */
   overflow-x: auto;
   scrollbar-width: none;
@@ -14,7 +14,7 @@
 .tab {
   flex-shrink: 0;
   white-space: nowrap;
-  padding: 12px 16px;
+  padding: var(--space-3) var(--space-4);
   background: transparent;
   border: none;
   font-family: var(--font-body);
@@ -22,7 +22,7 @@
   font-size: var(--text-md);
   color: var(--color-ink-3);
   border-bottom: 2px solid transparent;
-  margin-bottom: -1px;
+  margin-bottom: calc(-1 * var(--space-0-5));
   cursor: pointer;
 }
 .tab:focus-visible {

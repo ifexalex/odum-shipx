@@ -5,7 +5,7 @@
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 0 32px;
+  padding: 0 var(--space-8);
   flex-shrink: 0;
   font-family: var(--font-body);
 }
@@ -13,7 +13,7 @@
 .left {
   display: flex;
   align-items: center;
-  gap: 12px;
+  gap: var(--space-3);
   min-width: 0;
 }
 
@@ -41,7 +41,7 @@
 .titleBlock {
   display: flex;
   flex-direction: column;
-  gap: 2px;
+  gap: var(--space-0-5);
   min-width: 0;
 }
 
@@ -63,7 +63,7 @@
    never push the fixed-height bar taller; hidden entirely below 860px where
    the bar wraps and vertical room is at a premium. */
 .subtitle {
-  margin: 1px 0 0;
+  margin: var(--space-0-5) 0 0;
   font-size: var(--text-xs);
   line-height: var(--text-xs-line);
   color: var(--color-ink-3);
@@ -82,12 +82,12 @@
 .right {
   display: flex;
   align-items: center;
-  gap: 12px;
+  gap: var(--space-3);
 }
 
 .roleSwitch {
   height: 34px;
-  padding: 0 10px;
+  padding: 0 var(--space-3);
   border-radius: var(--radius-sm);
   background: var(--color-page);
   border: 1px solid transparent;
@@ -153,7 +153,7 @@
   font-weight: 700;
   min-width: 18px;
   height: 18px;
-  padding: 0 5px;
+  padding: 0 var(--space-1);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -164,8 +164,8 @@
 .userMenu {
   display: flex;
   align-items: center;
-  gap: 10px;
-  padding: 4px 14px 4px 4px;
+  gap: var(--space-3);
+  padding: var(--space-1) var(--space-4) var(--space-1) var(--space-1);
   border-radius: var(--radius-full);
   background: var(--color-page);
   cursor: pointer;
@@ -197,7 +197,7 @@
    user-meta hides at 860px. The search box has its own responsive rules (GlobalSearch.module.css). */
 @container sxapp (max-width: 860px) {
   .topbar {
-    padding: 0 16px;
+    padding: 0 var(--space-4);
     /* Ground-truth gap found live: a page injecting 1-2 action buttons via
        useTopBarSlot() (e.g. BillingList's "Export"/"Generate billing")
        still overflowed the topbar at phone widths even with search/role-
@@ -207,9 +207,9 @@
     min-height: 64px;
     height: auto;
     flex-wrap: wrap;
-    row-gap: 8px;
-    padding-top: 10px;
-    padding-bottom: 10px;
+    row-gap: var(--space-2);
+    padding-top: var(--space-3);
+    padding-bottom: var(--space-3);
   }
   .hamburger {
     display: inline-flex;
@@ -220,7 +220,7 @@
   .right {
     flex-wrap: wrap;
     justify-content: flex-end;
-    row-gap: 8px;
+    row-gap: var(--space-2);
   }
 }
 
@@ -233,14 +233,14 @@
    own below, instead of being mixed in with the icons over three or four rows. */
 @container sxapp (max-width: 600px) {
   .topbar {
-    column-gap: 6px;
+    column-gap: var(--space-2);
   }
   /* Room for the title next to the icons: the account button drops its arrow and padding, the title steps down. */
   .title {
     font-size: var(--text-xl);
   }
   .userMenu {
-    padding: 2px;
+    padding: var(--space-0-5);
     gap: 0;
   }
   .userMenu > :last-child {
@@ -261,6 +261,6 @@
     order: 3;
     flex: 1 0 100%;
     flex-wrap: wrap;
-    gap: 8px;
+    gap: var(--space-2);
   }
 }

@@ -52,7 +52,7 @@ export function UnbilledQueue(): JSX.Element | null {
 
   return (
     <div className={styles.wrap}>
-      <Card padding={0}>
+      <Card padding="none">
         <div className={styles.header}>
           <SectionHead
             title="Customers not invoiced"

@@ -60,9 +60,9 @@
 .dropdownItem {
   display: flex;
   align-items: center;
-  gap: 10px;
+  gap: var(--space-3);
   width: 100%;
-  padding: 10px 14px;
+  padding: var(--space-3) var(--space-4);
   background: none;
   border: none;
   font-family: var(--font-body);

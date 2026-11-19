@@ -505,7 +505,7 @@ export function ManifestDetail(): JSX.Element {
         <StatCard label="Total weight" value={`${manifest.total_weight_kg} kg`} icon="package" />
       </div>
 
-      <Card padding={0}>
+      <Card padding="none">
         <div className={styles.itemsHead}>
           <SectionHead
             title="Customers on this manifest"
@@ -555,7 +555,7 @@ export function ManifestDetail(): JSX.Element {
       {/* Carton diff view — expected vs missing per customer */}
       {manifest.missing_items && manifest.missing_items.length > 0 && (
         <div className={styles.discrepancySection}>
-          <Card padding={0}>
+          <Card padding="none">
             <div className={styles.itemsHead}>
               <SectionHead
                 title="Missing cartons — expected vs. reported"
@@ -597,7 +597,7 @@ export function ManifestDetail(): JSX.Element {
 
       {manifest.weight_discrepancies && manifest.weight_discrepancies.length > 0 && (
         <div className={styles.discrepancySection}>
-          <Card padding={0}>
+          <Card padding="none">
             <div className={styles.itemsHead}>
               <SectionHead
                 title="Weight discrepancies"
@@ -631,7 +631,7 @@ export function ManifestDetail(): JSX.Element {
 
       {manifest.evidence && manifest.evidence.length > 0 && (
         <div className={styles.discrepancySection}>
-          <Card padding={0}>
+          <Card padding="none">
             <div className={styles.itemsHead}>
               <SectionHead
                 title="Verification evidence"

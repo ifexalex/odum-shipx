@@ -102,7 +102,7 @@ export function ContainerPipeline({ counts }: { counts: ContainerStats | undefin
   const maxCount = Math.max(1, ...STAGES.map((s) => counts?.[s] ?? 0))
 
   return (
-    <Card padding={20}>
+    <Card padding="default">
       <SectionHead
         title="Container pipeline"
         sub="Every container by stage — select a stage to see all of them"

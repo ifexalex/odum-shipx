@@ -80,7 +80,7 @@ export function PlatformDashboard(): JSX.Element {
     return (id: string | null) => (id ? (map.get(id) ?? `${id.slice(0, 8)}…`) : 'Platform')
   }, [tenants])
 
-  if (loading) return <div style={{ padding: 48, textAlign: 'center', color: 'var(--color-ink-3)' }}>Loading platform dashboard…</div>
+  if (loading) return <div style={{ padding: 'var(--space-12)', textAlign: 'center', color: 'var(--color-ink-3)' }}>Loading platform dashboard…</div>
 
   return (
     <div>
@@ -95,21 +95,21 @@ export function PlatformDashboard(): JSX.Element {
         }
       />
 
-      {error && <div style={{ marginBottom: 16 }}><Banner variant="error" title="Couldn't load">{error}</Banner></div>}
+      {error && <div style={{ marginBottom: 'var(--space-4)' }}><Banner variant="error" title="Couldn't load">{error}</Banner></div>}
 
       {stats && (
         <>
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(170px, 1fr))', gap: 12, marginBottom: 20 }}>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(170px, 1fr))', gap: 'var(--space-3)', marginBottom: 'var(--space-5)' }}>
             <StatCard label="Active tenants" value={stats.tenants.active_tenants} />
             <StatCard label="Suspended" value={stats.tenants.suspended_tenants} />
             <StatCard label="Total staff users" value={stats.total_users} />
             <StatCard label="Total containers" value={stats.total_containers} />
           </div>
 
-          <div style={{ marginBottom: 20 }}>
-            <Card padding={20}>
+          <div style={{ marginBottom: 'var(--space-5)' }}>
+            <Card padding="default">
               <SectionHead title="Subscription mix" sub="Tenants by plan tier" />
-              <div style={{ display: 'flex', gap: 24, marginTop: 12, flexWrap: 'wrap' }}>
+              <div style={{ display: 'flex', gap: 'var(--space-6)', marginTop: 'var(--space-3)', flexWrap: 'wrap' }}>
                 {(
                   [
                     ['Starter', stats.tenants.starter_tenants],
@@ -117,7 +117,7 @@ export function PlatformDashboard(): JSX.Element {
                     ['Enterprise', stats.tenants.enterprise_tenants],
                   ] as const
                 ).map(([label, count]) => (
-                  <div key={label} style={{ display: 'flex', alignItems: 'baseline', gap: 8 }}>
+                  <div key={label} style={{ display: 'flex', alignItems: 'baseline', gap: 'var(--space-2)' }}>
                     <span style={{ fontFamily: 'var(--font-display)', fontWeight: 700, fontSize: 'var(--text-2xl)' }}>{count}</span>
                     <span style={{ fontSize: 'var(--text-sm)', color: 'var(--color-ink-3)' }}>{label}</span>
                   </div>
@@ -129,8 +129,8 @@ export function PlatformDashboard(): JSX.Element {
       )}
 
       <div className={styles.dashCols}>
-        <Card padding={0}>
-          <div style={{ padding: '18px 20px' }}>
+        <Card padding="none">
+          <div style={{ padding: 'var(--space-5) var(--space-5)' }}>
             <SectionHead
               title="Tenant health"
               sub={`${tenants.length} tenant(s) on the platform`}
@@ -165,29 +165,29 @@ export function PlatformDashboard(): JSX.Element {
           />
         </Card>
 
-        <Card padding={0}>
-          <div style={{ padding: '18px 20px 12px' }}>
+        <Card padding="none">
+          <div style={{ padding: 'var(--space-5) var(--space-5) var(--space-3)' }}>
             <SectionHead title="Recent activity" sub="Platform-level events" />
           </div>
           <div>
             {activity.length === 0 && (
-              <div style={{ padding: '0 20px 18px', fontSize: 'var(--text-sm)', color: 'var(--color-ink-4)' }}>No recent activity.</div>
+              <div style={{ padding: '0 var(--space-5) var(--space-5)', fontSize: 'var(--text-sm)', color: 'var(--color-ink-4)' }}>No recent activity.</div>
             )}
             {activity.map((e, i) => (
               <div
                 key={e.id}
-                style={{ display: 'flex', gap: 12, padding: '12px 20px', borderTop: i > 0 ? '1px solid var(--color-line-soft)' : 'none' }}
+                style={{ display: 'flex', gap: 'var(--space-3)', padding: 'var(--space-3) var(--space-5)', borderTop: i > 0 ? '1px solid var(--color-line-soft)' : 'none' }}
               >
-                <div style={{ paddingTop: 2 }}>
+                <div style={{ paddingTop: 'var(--space-0-5)' }}>
                   <Badge variant={actionVariant(e.action)} size="sm">{e.action.replace(/_/g, ' ')}</Badge>
                 </div>
                 <div style={{ flex: 1, minWidth: 0 }}>
                   <div style={{ fontSize: 'var(--text-sm)', color: 'var(--color-ink-2)', fontWeight: 500 }}>{tenantName(e.target_tenant_id)}</div>
-                  <div style={{ fontSize: 'var(--text-xs)', color: 'var(--color-ink-4)', marginTop: 2 }}>{relativeTime(e.created_at)}</div>
+                  <div style={{ fontSize: 'var(--text-xs)', color: 'var(--color-ink-4)', marginTop: 'var(--space-0-5)' }}>{relativeTime(e.created_at)}</div>
                 </div>
               </div>
             ))}
-            <div style={{ padding: '12px 20px', borderTop: '1px solid var(--color-line-soft)', textAlign: 'center' }}>
+            <div style={{ padding: 'var(--space-3) var(--space-5)', borderTop: '1px solid var(--color-line-soft)', textAlign: 'center' }}>
               <button
                 type="button"
                 onClick={() => navigate('/platform/audit-log')}
@@ -200,9 +200,9 @@ export function PlatformDashboard(): JSX.Element {
         </Card>
       </div>
 
-      <div style={{ marginTop: 24 }}>
+      <div style={{ marginTop: 'var(--space-6)' }}>
         <SectionHead title="Quick actions" />
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))', gap: 16, marginTop: 12 }}>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))', gap: 'var(--space-4)', marginTop: 'var(--space-3)' }}>
           {QUICK_ACTIONS.map((a) => (
             <QuickActionCard
               key={a.title}

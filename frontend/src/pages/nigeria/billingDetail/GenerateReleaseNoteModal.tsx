@@ -106,12 +106,12 @@ export function GenerateReleaseNoteModal({
               fontWeight: 600,
               fontSize: 'var(--text-md)',
               display: 'block',
-              marginBottom: 6,
+              marginBottom: 'var(--space-2)',
             }}
           >
             Release by
           </label>
-          <div style={{ display: 'flex', gap: 8 }}>
+          <div style={{ display: 'flex', gap: 'var(--space-2)' }}>
             <Button
               variant={releaseMode === 'tags' ? 'primary' : 'ghost'}
               onClick={() => setReleaseMode('tags')}
@@ -215,7 +215,7 @@ export function GenerateReleaseNoteModal({
         <label
           style={{
             display: 'flex',
-            gap: 8,
+            gap: 'var(--space-2)',
             alignItems: 'center',
             cursor: 'pointer',
             fontSize: 'var(--text-md)',

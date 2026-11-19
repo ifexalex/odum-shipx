@@ -74,7 +74,7 @@ function BankTransferSettings({ initial }: { initial: BankTransferConfig | null 
   }
 
   return (
-    <Card padding={24} style={{ marginBottom: 16 }}>
+    <Card padding="large" style={{ marginBottom: 'var(--space-4)' }}>
       <SectionHead
         title="Manual bank transfer"
         sub="Shown to your customers when they choose to pay by bank transfer. Get this right — it's where their money goes."
@@ -85,7 +85,7 @@ function BankTransferSettings({ initial }: { initial: BankTransferConfig | null 
         }
       />
       {!config && (
-        <div style={{ marginBottom: 16 }}>
+        <div style={{ marginBottom: 'var(--space-4)' }}>
           <Banner variant="warning" title="No bank account configured">
             Until you save one, customers who choose "Manual bank transfer" won't be shown any account
             details — that option is effectively unusable for them.
@@ -93,12 +93,12 @@ function BankTransferSettings({ initial }: { initial: BankTransferConfig | null 
         </div>
       )}
       {saveError && (
-        <div style={{ marginBottom: 16 }}>
+        <div style={{ marginBottom: 'var(--space-4)' }}>
           <Banner variant="error">{saveError}</Banner>
         </div>
       )}
       {saveSuccess && (
-        <div style={{ marginBottom: 16 }}>
+        <div style={{ marginBottom: 'var(--space-4)' }}>
           <Banner variant="success">Bank details saved.</Banner>
         </div>
       )}
@@ -132,7 +132,7 @@ function BankTransferSettings({ initial }: { initial: BankTransferConfig | null 
           onChange={(e) => setForm({ ...form, sort_code: e.target.value })}
         />
       </div>
-      <div style={{ marginTop: 16 }}>
+      <div style={{ marginTop: 'var(--space-4)' }}>
         <Field
           label="Extra instructions"
           name="instructions"
@@ -223,24 +223,24 @@ export function PaymentGatewayConfig(): JSX.Element {
     }
   }
 
-  if (loading) return <div style={{ padding: 32, color: 'var(--color-ink-4)' }}>Loading…</div>
+  if (loading) return <div style={{ padding: 'var(--space-8)', color: 'var(--color-ink-4)' }}>Loading…</div>
 
   const connected = config?.enabled === true
 
   return (
     <div>
       {saveError && (
-        <div style={{ marginBottom: 16 }}>
+        <div style={{ marginBottom: 'var(--space-4)' }}>
           <Banner variant="error">{saveError}</Banner>
         </div>
       )}
       {saveSuccess && (
-        <div style={{ marginBottom: 16 }}>
+        <div style={{ marginBottom: 'var(--space-4)' }}>
           <Banner variant="success">Paystack key saved.</Banner>
         </div>
       )}
 
-      <Card padding={24} style={{ marginBottom: 16 }}>
+      <Card padding="large" style={{ marginBottom: 'var(--space-4)' }}>
         <SectionHead
           title="Paystack"
           sub="Customer payments go straight to your own Paystack account — ShipX never holds or touches your funds."
@@ -266,12 +266,12 @@ export function PaymentGatewayConfig(): JSX.Element {
         )}
 
         {testResult && (
-          <div style={{ marginTop: 12 }}>
+          <div style={{ marginTop: 'var(--space-3)' }}>
             <Banner variant={testResult.success ? 'success' : 'error'}>{testResult.message}</Banner>
           </div>
         )}
 
-        <div style={{ marginTop: 16 }}>
+        <div style={{ marginTop: 'var(--space-4)' }}>
           <Field
             label={connected ? 'Replace secret key' : 'Secret key'}
             name="secret_key"

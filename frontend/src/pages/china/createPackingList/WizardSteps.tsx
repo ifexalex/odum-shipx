@@ -13,7 +13,7 @@ export function WizardSteps({ current }: WizardStepsProps): JSX.Element {
     { n: 3, label: 'Review', sub: 'Verify + submit' },
   ]
   return (
-    <Card padding={0}>
+    <Card padding="none">
       <div className={styles.steps}>
         {steps.map((step, index) => {
           const done = step.n < current

@@ -58,7 +58,7 @@ export function ReleaseNoteList(): JSX.Element {
         </div>
       )}
 
-      <Card padding={16}>
+      <Card padding="default">
         <div className={styles.chips}>
           <Chip active={statusFilter === null} onClick={() => setStatusFilter(null)}>All</Chip>
           {STATUS_FILTERS.map((s) => (
@@ -70,7 +70,7 @@ export function ReleaseNoteList(): JSX.Element {
       </Card>
 
       <div className={styles.tableWrap}>
-        <Card padding={0}>
+        <Card padding="none">
           <Table
             columns={[
               { title: 'Reference' },

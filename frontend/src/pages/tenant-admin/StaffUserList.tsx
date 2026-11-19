@@ -123,7 +123,7 @@ function InviteModal({ onCancel, onSuccess }: InviteModalProps): JSX.Element {
               fontWeight: 600,
               fontSize: 'var(--text-md)',
               display: 'block',
-              marginBottom: 6,
+              marginBottom: 'var(--space-2)',
             }}
           >
             Roles <span style={{ color: 'var(--color-error)' }}>*</span>
@@ -204,7 +204,7 @@ export function StaffUserList(): JSX.Element {
         </div>
       )}
 
-      <Card padding={16}>
+      <Card padding="default">
         <div className={styles.filterRow}>
           <div className={styles.chips}>
             <Chip active={roleFilter === null} onClick={() => setRoleFilter(null)}>
@@ -234,7 +234,7 @@ export function StaffUserList(): JSX.Element {
       </Card>
 
       <div className={styles.tableWrap}>
-        <Card padding={0}>
+        <Card padding="none">
           <Table
             columns={[
               { title: 'Name' },

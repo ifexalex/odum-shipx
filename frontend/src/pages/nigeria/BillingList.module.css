@@ -1,5 +1,5 @@
 .banner {
-  margin-bottom: 16px;
+  margin-bottom: var(--space-4);
 }
 
 /* Stats row — reflows to fewer columns as space shrinks, same pattern as
@@ -8,27 +8,27 @@
 .statsRow {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
-  gap: 16px;
-  margin-bottom: 20px;
+  gap: var(--space-4);
+  margin-bottom: var(--space-5);
 }
 
 /* Filter bar */
 .filterRow {
   display: flex;
   align-items: center;
-  gap: 12px;
+  gap: var(--space-3);
   flex-wrap: wrap;
 }
 
 .chips {
   display: flex;
-  gap: 6px;
+  gap: var(--space-2);
   flex-wrap: wrap;
 }
 
 .chipCount {
   opacity: 0.55;
-  margin-left: 4px;
+  margin-left: var(--space-1);
   font-weight: 500;
 }
 
@@ -41,8 +41,8 @@
   border-radius: var(--radius-sm);
   display: flex;
   align-items: center;
-  padding: 0 12px;
-  gap: 8px;
+  padding: 0 var(--space-3);
+  gap: var(--space-2);
 }
 
 .searchInput {
@@ -63,8 +63,8 @@
 .activeFilters {
   display: flex;
   align-items: center;
-  gap: 8px;
-  margin-bottom: 16px;
+  gap: var(--space-2);
+  margin-bottom: var(--space-4);
   flex-wrap: wrap;
   font-size: var(--text-xs);
   color: var(--color-ink-3);
@@ -97,7 +97,7 @@
 /* Row action cell */
 .rowActions {
   display: flex;
-  gap: 6px;
+  gap: var(--space-2);
   justify-content: flex-end;
 }
 
@@ -111,7 +111,7 @@
 .customDateWrap {
   display: flex;
   align-items: center;
-  gap: 6px;
+  gap: var(--space-2);
   height: 36px;
 }
 
@@ -123,7 +123,7 @@
 .customDateInput {
   height: 36px;
   box-sizing: border-box;
-  padding: 0 8px;
+  padding: 0 var(--space-2);
   background: var(--color-page);
   border: 1px solid var(--color-line);
   border-radius: var(--radius-sm);
@@ -154,7 +154,7 @@
   box-shadow: var(--shadow-lg);
   z-index: 10;
   min-width: 240px;
-  padding: 10px;
+  padding: var(--space-3);
 }
 
 .filtersPanelScroll {
@@ -166,7 +166,7 @@
   font-size: var(--text-sm);
   font-weight: 600;
   color: var(--color-ink);
-  padding: 2px 6px 8px;
+  padding: var(--space-0-5) var(--space-2) var(--space-2);
 }
 
 .filtersPanelLabel {
@@ -175,15 +175,15 @@
   text-transform: uppercase;
   letter-spacing: var(--tracking-label);
   color: var(--color-ink-4);
-  padding: 4px 6px;
+  padding: var(--space-1) var(--space-2);
 }
 
 .filtersPanelItem {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: var(--space-2);
   width: 100%;
-  padding: 8px 6px;
+  padding: var(--space-2) var(--space-2);
   background: none;
   border: none;
   border-radius: var(--radius-sm);
@@ -211,8 +211,8 @@
 
 .filtersPanelClear {
   width: 100%;
-  margin-top: 6px;
-  padding: 8px 6px;
+  margin-top: var(--space-2);
+  padding: var(--space-2) var(--space-2);
   background: none;
   border: none;
   border-top: 1px solid var(--color-line);

@@ -21,7 +21,7 @@ export interface QuickActionCardProps {
 
 export function QuickActionCard({ icon, title, sub, cta, onAction, accent = false }: QuickActionCardProps): JSX.Element {
   return (
-    <Card padding={20}>
+    <Card padding="default">
       <div className={styles.row}>
         <div className={accent ? styles.tileAccent : styles.tile}>
           <Icon name={icon} size={18} stroke={2.3} />

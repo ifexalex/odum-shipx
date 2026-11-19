@@ -58,7 +58,7 @@ export function ComposeAnnouncementModal({ open, onClose }: ComposeAnnouncementM
 
   return (
     <Modal open={open} onClose={handleClose} title="New announcement" width={480}>
-      <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-4)' }}>
         {send.isError && (
           <Banner variant="error" title="Couldn't send announcement">
             {send.error instanceof Error ? send.error.message : 'Something went wrong.'}
@@ -80,9 +80,9 @@ export function ComposeAnnouncementModal({ open, onClose }: ComposeAnnouncementM
           onChange={(e) => setBody(e.target.value)}
           placeholder="Optional details…"
         />
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-2)' }}>
           <span style={{ fontSize: 'var(--text-sm)', fontWeight: 600, color: 'var(--color-ink-2)' }}>Send to</span>
-          <div style={{ display: 'flex', gap: 6 }}>
+          <div style={{ display: 'flex', gap: 'var(--space-2)' }}>
             {!isStaffRequest && (
               <Chip active={audience === 'all_staff'} onClick={() => setAudience('all_staff')}>
                 All staff
@@ -98,7 +98,7 @@ export function ComposeAnnouncementModal({ open, onClose }: ComposeAnnouncementM
             </span>
           )}
         </div>
-        <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, marginTop: 4 }}>
+        <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 'var(--space-2)', marginTop: 'var(--space-1)' }}>
           <Button variant="secondary" onClick={handleClose}>
             Cancel
           </Button>

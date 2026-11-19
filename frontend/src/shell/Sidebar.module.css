@@ -15,20 +15,20 @@
 }
 
 .brandSlot {
-  padding: 20px 20px 16px;
+  padding: var(--space-5) var(--space-5) var(--space-4);
   border-bottom: 1px solid rgba(255, 255, 255, 0.06);
   overflow: hidden;
 }
 
 .roleBadge {
-  padding: 14px 20px 4px;
+  padding: var(--space-4) var(--space-5) var(--space-1);
 }
 
 .roleBadgeTag {
   display: inline-flex;
   align-items: center;
-  gap: 6px;
-  padding: 3px 10px;
+  gap: var(--space-2);
+  padding: var(--space-1) var(--space-3);
   border-radius: var(--radius-full);
   font-size: var(--text-xs);
   font-weight: 700;
@@ -40,19 +40,19 @@
 
 .nav {
   flex: 1;
-  padding: 8px 12px;
+  padding: var(--space-2) var(--space-3);
   overflow-y: auto;
 }
 
 .navGroup {
-  margin-top: 18px;
+  margin-top: var(--space-5);
 }
 .navGroup:first-child {
-  margin-top: 8px;
+  margin-top: var(--space-2);
 }
 
 .groupLabel {
-  padding: 6px 10px;
+  padding: var(--space-2) var(--space-3);
   font-size: var(--text-xs);
   letter-spacing: var(--tracking-label);
   text-transform: uppercase;
@@ -63,8 +63,8 @@
 .navItem {
   display: flex;
   align-items: center;
-  gap: 12px;
-  padding: 8px 12px;
+  gap: var(--space-3);
+  padding: var(--space-2) var(--space-3);
   border-radius: var(--radius-sm);
   font-weight: 500;
   font-size: var(--text-md);
@@ -113,7 +113,7 @@
 
 .navItemBadge {
   border-radius: 999px;
-  padding: 1px 7px;
+  padding: var(--space-0-5) var(--space-2);
   font-size: var(--text-xs);
   font-weight: 700;
   min-width: 18px;
@@ -129,15 +129,15 @@
 }
 
 .footer {
-  padding: 12px;
+  padding: var(--space-3);
   border-top: 1px solid rgba(255, 255, 255, 0.06);
 }
 
 .userRow {
   display: flex;
   align-items: center;
-  gap: 10px;
-  padding: 8px 10px;
+  gap: var(--space-3);
+  padding: var(--space-2) var(--space-3);
   border-radius: var(--radius-sm);
   background: rgba(255, 255, 255, 0.04);
 }
@@ -169,7 +169,7 @@
 .logoutButton {
   background: transparent;
   border: none;
-  padding: 6px;
+  padding: var(--space-2);
   color: rgba(255, 255, 255, 0.6);
   cursor: pointer;
   border-radius: var(--radius-sm);

@@ -4,12 +4,12 @@
   align-items: flex-start;
   justify-content: space-between;
   flex-wrap: wrap;
-  gap: 16px;
-  margin-bottom: 24px;
+  gap: var(--space-4);
+  margin-bottom: var(--space-6);
 }
-.heroLeft { display: flex; gap: 16px; align-items: flex-start; }
+.heroLeft { display: flex; gap: var(--space-4); align-items: flex-start; }
 .heroIcon { width: 52px; height: 52px; border-radius: 12px; background: var(--color-surface-muted); display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
-.heroTitleRow { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.heroTitleRow { display: flex; align-items: center; gap: var(--space-3); flex-wrap: wrap; }
 .heroTitle {
   font-family: var(--font-mono);
   font-weight: 700;
@@ -19,10 +19,10 @@
   letter-spacing: var(--tracking-tight);
   line-height: var(--text-2xl-line);
 }
-.heroMeta { font-size: var(--text-sm); color: var(--color-text-muted); margin-top: 4px; }
+.heroMeta { font-size: var(--text-sm); color: var(--color-text-muted); margin-top: var(--space-1); }
 .heroActions {
   display: flex;
-  gap: 8px;
+  gap: var(--space-2);
   flex-wrap: wrap;
   flex-shrink: 0;
   /* Never wider than the page: on a phone the buttons wrap instead of running off the edge. */
@@ -31,20 +31,20 @@
 }
 
 /* carton tags */
-.tagGrid { display: flex; flex-wrap: wrap; gap: 8px; padding: 4px 0; }
-.tag { padding: 4px 10px; border-radius: 6px; background: var(--color-surface-muted); font-family: var(--font-mono); font-size: var(--text-sm); border: 1px solid var(--color-border); }
+.tagGrid { display: flex; flex-wrap: wrap; gap: var(--space-2); padding: var(--space-1) 0; }
+.tag { padding: var(--space-1) var(--space-3); border-radius: 6px; background: var(--color-surface-muted); font-family: var(--font-mono); font-size: var(--text-sm); border: 1px solid var(--color-border); }
 .tagSelected { background: var(--color-primary-muted); border-color: var(--color-primary); color: var(--color-primary); cursor: pointer; }
 .tagClickable { cursor: pointer; }
 .tagClickable:hover { border-color: var(--color-primary); }
 
 /* layout */
-.section { margin-top: 20px; }
-.statsRow { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 12px; margin-top: 20px; }
-.loadingState { padding: 48px; text-align: center; color: var(--color-text-muted); }
-.banner { margin-bottom: 16px; }
+.section { margin-top: var(--space-5); }
+.statsRow { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: var(--space-3); margin-top: var(--space-5); }
+.loadingState { padding: var(--space-12); text-align: center; color: var(--color-text-muted); }
+.banner { margin-bottom: var(--space-4); }
 
 /* pickup success banner */
-.successBanner { margin-top: 20px; }
+.successBanner { margin-top: var(--space-5); }
 
 /* modal — mobile-first bottom sheet, matching the proven pattern in
    warehouse/WarehouseDashboard.module.css (its own copy of this exact
@@ -53,26 +53,26 @@
    — same action, same backend call — but had none of its mobile treatment
    (44/48px touch targets, bottom sheet, full-width buttons) until now. */
 .modalOverlay { position: fixed; inset: 0; background: rgba(11,47,13,0.55); display: flex; align-items: flex-end; justify-content: center; z-index: 200; }
-.modalPanel { background: var(--color-surface); border-radius: var(--radius-lg) var(--radius-lg) 0 0; padding: 24px 20px; width: 100%; display: flex; flex-direction: column; gap: 16px; box-shadow: var(--shadow-modal); max-height: 90vh; overflow-y: auto; }
+.modalPanel { background: var(--color-surface); border-radius: var(--radius-lg) var(--radius-lg) 0 0; padding: var(--space-6) var(--space-5); width: 100%; display: flex; flex-direction: column; gap: var(--space-4); box-shadow: var(--shadow-modal); max-height: 90vh; overflow-y: auto; }
 .modalTitle { font-size: var(--text-lg); font-weight: 700; margin: 0; }
 .modalBanner { margin: 0; }
-.modalActions { display: flex; gap: 8px; justify-content: flex-end; }
+.modalActions { display: flex; gap: var(--space-2); justify-content: flex-end; }
 .modalActions > * { min-height: 48px; font-size: var(--text-lg); }
 
 @container sxapp (min-width: 861px) {
-  .modalOverlay { align-items: center; padding: 16px; }
-  .modalPanel { border-radius: var(--radius-lg); max-width: 480px; padding: 24px; }
+  .modalOverlay { align-items: center; padding: var(--space-4); }
+  .modalPanel { border-radius: var(--radius-lg); max-width: 480px; padding: var(--space-6); }
   .modalActions > * { min-height: 36px; font-size: inherit; }
 }
 
 /* delegate toggle */
-.delegateToggle { display: flex; align-items: center; gap: 10px; cursor: pointer; font-size: var(--text-md); min-height: 44px; }
+.delegateToggle { display: flex; align-items: center; gap: var(--space-3); cursor: pointer; font-size: var(--text-md); min-height: 44px; }
 
 /* Raw <select>s in RecordPickupModal (delegate ID type, warehouse, CSO,
    accounting officer) — these bypass the shared Field component entirely,
    so they need their own iOS-zoom fix (Field.module.css's same rule can't
    reach them). */
-.rawSelect { width: 100%; padding: 8px 12px; border-radius: 8px; border: 1px solid var(--color-border); background: var(--color-surface); font-size: var(--text-md); min-height: 44px; }
+.rawSelect { width: 100%; padding: var(--space-2) var(--space-3); border-radius: 8px; border: 1px solid var(--color-border); background: var(--color-surface); font-size: var(--text-md); min-height: 44px; }
 
 @container sxapp (max-width: 860px) {
   .rawSelect { font-size: var(--text-lg); }
@@ -87,7 +87,7 @@
   font-size: var(--text-md);
   font-weight: 600;
   display: block;
-  margin-bottom: 6px;
+  margin-bottom: var(--space-2);
 }
 
 .requiredMark {
@@ -110,7 +110,7 @@
 }
 
 .pickupHint {
-  margin: 12px 0 0;
+  margin: var(--space-3) 0 0;
   color: var(--color-ink-3);
   font-size: var(--text-md);
 }

@@ -85,7 +85,7 @@ function BulkResultPanel({
   const groups = groupBulkFailures(result.failed)
   return (
     <div className={styles.resultWrap}>
-      <Card padding={0}>
+      <Card padding="none">
         <div className={styles.resultHead}>
           <span>
             {result.succeeded.length} succeeded · {result.failed.length} failed
@@ -312,7 +312,7 @@ export function PackingListList(): JSX.Element {
         </div>
       )}
 
-      <Card padding={16}>
+      <Card padding="default">
         <div className={styles.filterRow}>
           <div className={styles.chips}>
             <Chip active={statusFilter === null} onClick={() => setStatusFilter(null)}>
@@ -349,7 +349,7 @@ export function PackingListList(): JSX.Element {
             {statusFilter && ' in this status'}
           </div>
         )}
-        <Card padding={0}>
+        <Card padding="none">
           <Table
             selectable={canApprove}
             columns={[

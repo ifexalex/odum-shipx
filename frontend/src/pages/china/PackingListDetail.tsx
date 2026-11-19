@@ -334,7 +334,7 @@ export function PackingListDetail(): JSX.Element {
         </div>
       )}
 
-      <Card padding={0}>
+      <Card padding="none">
         <div className={styles.itemsHead}>
           <SectionHead
             title="Items"

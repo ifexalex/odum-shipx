@@ -66,7 +66,7 @@ function ChargeTypeModal({ existing, onCancel, onSuccess }: ChargeTypeModalProps
         alignItems: 'center',
         justifyContent: 'center',
         zIndex: 200,
-        padding: 16,
+        padding: 'var(--space-4)',
       }}
       onClick={onCancel}
     >
@@ -75,12 +75,12 @@ function ChargeTypeModal({ existing, onCancel, onSuccess }: ChargeTypeModalProps
         style={{
           background: 'var(--color-surface)',
           borderRadius: 14,
-          padding: 24,
+          padding: 'var(--space-6)',
           width: '100%',
           maxWidth: 480,
           display: 'flex',
           flexDirection: 'column',
-          gap: 16,
+          gap: 'var(--space-4)',
           maxHeight: '90vh',
           overflowY: 'auto',
         }}
@@ -123,7 +123,7 @@ function ChargeTypeModal({ existing, onCancel, onSuccess }: ChargeTypeModalProps
           value={description}
           onChange={(e) => setDescription(e.target.value)}
         />
-        <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
+        <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 'var(--space-2)' }}>
           <Button variant="ghost" size="lg" onClick={onCancel} disabled={submitting}>
             Cancel
           </Button>
@@ -204,7 +204,7 @@ export function ChargeTypes(): JSX.Element {
         </div>
       )}
 
-      <Card padding={0}>
+      <Card padding="none">
         <Table
           columns={[
             { title: 'Name' },
@@ -236,7 +236,7 @@ export function ChargeTypes(): JSX.Element {
               <Badge key="status" variant={t.is_active ? 'success' : 'neutral'}>
                 {t.is_active ? 'Active' : 'Inactive'}
               </Badge>,
-              <span key="actions" style={{ display: 'inline-flex', gap: 6 }}>
+              <span key="actions" style={{ display: 'inline-flex', gap: 'var(--space-2)' }}>
                 <Button
                   variant="ghost"
                   size="sm"

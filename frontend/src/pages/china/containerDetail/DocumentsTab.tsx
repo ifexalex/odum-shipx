@@ -126,13 +126,13 @@ export function DocumentsTab({
   return (
     <>
       {error && (
-        <div style={{ marginBottom: 16 }}>
+        <div style={{ marginBottom: 'var(--space-4)' }}>
           <Banner variant="error" title="Documents error">
             {error}
           </Banner>
         </div>
       )}
-      <Card padding={0}>
+      <Card padding="none">
         <div className={styles.tableHead}>
           <SectionHead
             title="Documents"
@@ -212,7 +212,7 @@ export function DocumentsTab({
                   fontWeight: 600,
                   fontSize: 'var(--text-md)',
                   display: 'block',
-                  marginBottom: 6,
+                  marginBottom: 'var(--space-2)',
                 }}
               >
                 Document type <span style={{ color: 'var(--color-error)' }}>*</span>
@@ -220,7 +220,7 @@ export function DocumentsTab({
               <select
                 style={{
                   width: '100%',
-                  padding: '8px 12px',
+                  padding: 'var(--space-2) var(--space-3)',
                   borderRadius: 8,
                   border: '1px solid var(--color-line)',
                   background: 'var(--color-surface)',
@@ -237,13 +237,13 @@ export function DocumentsTab({
               </select>
             </div>
 
-            <div style={{ marginTop: 12 }}>
+            <div style={{ marginTop: 'var(--space-3)' }}>
               <label
                 style={{
                   fontWeight: 600,
                   fontSize: 'var(--text-md)',
                   display: 'block',
-                  marginBottom: 6,
+                  marginBottom: 'var(--space-2)',
                 }}
               >
                 File <span style={{ color: 'var(--color-error)' }}>*</span>
@@ -257,7 +257,7 @@ export function DocumentsTab({
                 }}
                 style={{ fontSize: 'var(--text-sm)' }}
               />
-              <div style={{ fontSize: 'var(--text-xs)', color: 'var(--color-ink-4)', marginTop: 6 }}>
+              <div style={{ fontSize: 'var(--text-xs)', color: 'var(--color-ink-4)', marginTop: 'var(--space-2)' }}>
                 Accepted: PDF, JPG, PNG, WebP · max 5 MB
               </div>
             </div>

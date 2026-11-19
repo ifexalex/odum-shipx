@@ -7,3 +7,16 @@
   box-shadow: var(--shadow-rest);
   box-sizing: border-box;
 }
+
+/* Named paddings (FD-02): a table card uses none and lets the table run to the card's edge. */
+.padNone {
+  padding: 0;
+}
+
+.padDefault {
+  padding: var(--space-5);
+}
+
+.padLarge {
+  padding: var(--space-6);
+}

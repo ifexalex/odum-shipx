@@ -53,7 +53,7 @@ export function MyReleaseNote(): JSX.Element {
     }
   }
 
-  if (isLoading) return <div style={{ padding: 32, color: 'var(--color-text-muted)' }}>Loading your release note…</div>
+  if (isLoading) return <div style={{ padding: 'var(--space-8)', color: 'var(--color-text-muted)' }}>Loading your release note…</div>
 
   if (error || !note) {
     const missing = error instanceof ApiError && error.status === 404
@@ -105,8 +105,8 @@ export function MyReleaseNote(): JSX.Element {
         </div>
       )}
 
-      <Card padding={24}>
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap' }}>
+      <Card padding="large">
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 'var(--space-3)', flexWrap: 'wrap' }}>
           <Mono color="var(--color-ink)">{note.reference_number}</Mono>
           <Badge variant={STATUS_VARIANT[note.status] ?? 'neutral'}>{releaseNoteStatusLabel(note.status)}</Badge>
         </div>
@@ -122,11 +122,11 @@ export function MyReleaseNote(): JSX.Element {
       </Card>
 
       {downloadError && (
-        <div className={styles.banner} style={{ marginTop: 16 }}>
+        <div className={styles.banner} style={{ marginTop: 'var(--space-4)' }}>
           <Banner variant="error">{downloadError}</Banner>
         </div>
       )}
-      <div style={{ display: 'flex', gap: 8, marginTop: 20, flexWrap: 'wrap' }}>
+      <div style={{ display: 'flex', gap: 'var(--space-2)', marginTop: 'var(--space-5)', flexWrap: 'wrap' }}>
         <Button variant="primary" icon="download" loading={downloading} onClick={() => void downloadPdf()}>
           Download PDF
         </Button>

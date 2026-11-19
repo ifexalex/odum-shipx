@@ -40,7 +40,7 @@ const BANNER_VARIANTS: BannerVariant[] = ['info', 'success', 'warning', 'error']
 
 function Section({ title, children }: { title: string; children: ReactNode }): JSX.Element {
   return (
-    <section style={{ marginBottom: 40 }}>
+    <section style={{ marginBottom: 'var(--space-12)' }}>
       <SectionHead title={title} />
       {children}
     </section>
@@ -58,7 +58,7 @@ export function ComponentCatalog(): JSX.Element {
   const [tableSelected, setTableSelected] = useState<boolean[]>([false, true, false])
 
   return (
-    <div style={{ padding: 32, maxWidth: 1100 }}>
+    <div style={{ padding: 'var(--space-8)', maxWidth: 1100 }}>
       <PageHeader
         eyebrow="Design QA"
         title="ShipX Component Catalog"
@@ -66,7 +66,7 @@ export function ComponentCatalog(): JSX.Element {
       />
 
       <Section title="Brand marks">
-        <div style={{ display: 'flex', gap: 24, alignItems: 'center', background: 'var(--color-forest-dark)', padding: 16, borderRadius: 8 }}>
+        <div style={{ display: 'flex', gap: 'var(--space-6)', alignItems: 'center', background: 'var(--color-forest-dark)', padding: 'var(--space-4)', borderRadius: 8 }}>
           <KolaMark size={32} color="var(--color-primary-bright)" />
           <ShipxWordmark />
           <ShipxWordmark showBy />
@@ -75,7 +75,7 @@ export function ComponentCatalog(): JSX.Element {
       </Section>
 
       <Section title="Buttons">
-        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 12, alignItems: 'center' }}>
+        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 'var(--space-3)', alignItems: 'center' }}>
           {BUTTON_VARIANTS.map((variant) => (
             <Button key={variant} variant={variant}>
               {variant}
@@ -101,7 +101,7 @@ export function ComponentCatalog(): JSX.Element {
       </Section>
 
       <Section title="Badges">
-        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 12 }}>
+        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 'var(--space-3)' }}>
           {BADGE_VARIANTS.map((variant) => (
             <Badge key={variant} variant={variant}>
               {variant}
@@ -114,7 +114,7 @@ export function ComponentCatalog(): JSX.Element {
       </Section>
 
       <Section title="Chips">
-        <div style={{ display: 'flex', gap: 12 }}>
+        <div style={{ display: 'flex', gap: 'var(--space-3)' }}>
           <Chip active>In transit</Chip>
           <Chip>Cleared</Chip>
           <Chip count={4}>With count</Chip>
@@ -123,7 +123,7 @@ export function ComponentCatalog(): JSX.Element {
       </Section>
 
       <Section title="Avatar">
-        <div style={{ display: 'flex', gap: 12, alignItems: 'center' }}>
+        <div style={{ display: 'flex', gap: 'var(--space-3)', alignItems: 'center' }}>
           <Avatar name="Adaeze Eze" />
           <Avatar name="Joe Operator" roleColor="platform" />
           <Avatar name="Joe Operator" roleColor="china" />
@@ -134,14 +134,14 @@ export function ComponentCatalog(): JSX.Element {
       </Section>
 
       <Section title="Mono">
-        <div style={{ display: 'flex', gap: 16 }}>
+        <div style={{ display: 'flex', gap: 'var(--space-4)' }}>
           <Mono>SHPX-2024-00012</Mono>
           <Mono color="var(--color-error)">-12,000.00</Mono>
         </div>
       </Section>
 
       <Section title="Card / StatCard">
-        <div style={{ display: 'flex', gap: 16, flexWrap: 'wrap' }}>
+        <div style={{ display: 'flex', gap: 'var(--space-4)', flexWrap: 'wrap' }}>
           <Card>Plain card</Card>
           <StatCard label="Active containers" value={42} icon="container" />
           <StatCard label="Revenue" value="₦1.2M" trend={{ direction: 'up', pct: 12 }} sublabel="vs last month" />
@@ -150,7 +150,7 @@ export function ComponentCatalog(): JSX.Element {
       </Section>
 
       <Section title="Check">
-        <div style={{ display: 'flex', gap: 16, alignItems: 'center' }}>
+        <div style={{ display: 'flex', gap: 'var(--space-4)', alignItems: 'center' }}>
           <Check checked={false} />
           <Check checked />
           <Check partial />
@@ -159,7 +159,7 @@ export function ComponentCatalog(): JSX.Element {
       </Section>
 
       <Section title="ToggleSwitch">
-        <div style={{ display: 'flex', gap: 16, alignItems: 'center' }}>
+        <div style={{ display: 'flex', gap: 'var(--space-4)', alignItems: 'center' }}>
           <ToggleSwitch checked={toggle1} onChange={setToggle1} label="Email notifications" />
           <ToggleSwitch checked={toggle2} onChange={setToggle2} label="SMS notifications" />
           <ToggleSwitch checked={false} onChange={() => undefined} disabled label="Disabled" />
@@ -167,7 +167,7 @@ export function ComponentCatalog(): JSX.Element {
       </Section>
 
       <Section title="Field">
-        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 16, maxWidth: 640 }}>
+        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 'var(--space-4)', maxWidth: 640 }}>
           <div style={{ flex: 1, minWidth: 240 }}>
             <Field label="Email" name="email" placeholder="you@company.com" required />
           </div>
@@ -184,7 +184,7 @@ export function ComponentCatalog(): JSX.Element {
       </Section>
 
       <Section title="Banner">
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-3)' }}>
           {BANNER_VARIANTS.map((variant) => (
             <Banner key={variant} variant={variant} title={`${variant} banner`} dismissible>
               Example {variant} message body.

@@ -228,9 +228,9 @@ export function ActivityLog(): JSX.Element {
   return (
     <div>
 
-      {error && <div style={{ marginBottom: 16 }}><Banner variant="error" title="Couldn't load">{error}</Banner></div>}
+      {error && <div style={{ marginBottom: 'var(--space-4)' }}><Banner variant="error" title="Couldn't load">{error}</Banner></div>}
 
-      <Card padding={16} style={{ marginBottom: 16 }}>
+      <Card padding="default" style={{ marginBottom: 'var(--space-4)' }}>
         {/* Row 1 — primary dimension as chips + search, matching every other
             tenant-admin list page (Customers / Users / Billing). */}
         <div className={styles.filterRow}>
@@ -342,7 +342,7 @@ export function ActivityLog(): JSX.Element {
         </div>
       </Card>
 
-      <Card padding={0}>
+      <Card padding="none">
         <Table
           columns={[
             { title: 'Timestamp' },
@@ -387,25 +387,25 @@ export function ActivityLog(): JSX.Element {
       >
         {expandedEntry && (
           <>
-            <div style={{ fontSize: 'var(--text-xs)', color: 'var(--color-ink-3)', marginBottom: 16 }}>
+            <div style={{ fontSize: 'var(--text-xs)', color: 'var(--color-ink-3)', marginBottom: 'var(--space-4)' }}>
               {formatDateTime(expandedEntry.created_at)}
               {' · by '}
               {expandedEntry.actor_name ?? (expandedEntry.actor_id ? expandedEntry.actor_id.slice(0, 8) : 'System')}
             </div>
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: 16 }}>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: 'var(--space-4)' }}>
               <div>
-                <div style={{ fontSize: 'var(--text-xs)', fontWeight: 700, color: 'var(--color-ink-4)', textTransform: 'uppercase', letterSpacing: 'var(--tracking-label)', marginBottom: 6 }}>
+                <div style={{ fontSize: 'var(--text-xs)', fontWeight: 700, color: 'var(--color-ink-4)', textTransform: 'uppercase', letterSpacing: 'var(--tracking-label)', marginBottom: 'var(--space-2)' }}>
                   Before
                 </div>
-                <pre style={{ margin: 0, fontSize: 'var(--text-xs)', fontFamily: 'var(--font-mono)', whiteSpace: 'pre-wrap', overflowX: 'auto', background: 'var(--color-page)', padding: 12, borderRadius: 8 }}>
+                <pre style={{ margin: 0, fontSize: 'var(--text-xs)', fontFamily: 'var(--font-mono)', whiteSpace: 'pre-wrap', overflowX: 'auto', background: 'var(--color-page)', padding: 'var(--space-3)', borderRadius: 8 }}>
                   {JSON.stringify(expandedEntry.before_state ?? {}, null, 2)}
                 </pre>
               </div>
               <div>
-                <div style={{ fontSize: 'var(--text-xs)', fontWeight: 700, color: 'var(--color-ink-4)', textTransform: 'uppercase', letterSpacing: 'var(--tracking-label)', marginBottom: 6 }}>
+                <div style={{ fontSize: 'var(--text-xs)', fontWeight: 700, color: 'var(--color-ink-4)', textTransform: 'uppercase', letterSpacing: 'var(--tracking-label)', marginBottom: 'var(--space-2)' }}>
                   After
                 </div>
-                <pre style={{ margin: 0, fontSize: 'var(--text-xs)', fontFamily: 'var(--font-mono)', whiteSpace: 'pre-wrap', overflowX: 'auto', background: 'var(--color-page)', padding: 12, borderRadius: 8 }}>
+                <pre style={{ margin: 0, fontSize: 'var(--text-xs)', fontFamily: 'var(--font-mono)', whiteSpace: 'pre-wrap', overflowX: 'auto', background: 'var(--color-page)', padding: 'var(--space-3)', borderRadius: 8 }}>
                   {JSON.stringify(expandedEntry.after_state ?? {}, null, 2)}
                 </pre>
               </div>

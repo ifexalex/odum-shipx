@@ -198,7 +198,7 @@ export function BillingList(): JSX.Element {
       </div>
 
       {/* Filter bar */}
-      <Card padding={16} style={{ marginBottom: 16 }}>
+      <Card padding="default" style={{ marginBottom: 'var(--space-4)' }}>
         <div className={styles.filterRow}>
           <div className={styles.chips}>
             <Chip active={activeStatuses === null} onClick={() => setActiveStatuses(null)}>
@@ -300,7 +300,7 @@ export function BillingList(): JSX.Element {
       </div>
 
       {/* Table */}
-      <Card padding={0}>
+      <Card padding="none">
         <Table
           cardBreakpoint={960}
           columns={[

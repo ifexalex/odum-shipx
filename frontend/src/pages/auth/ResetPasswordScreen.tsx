@@ -93,13 +93,13 @@ export function ResetPasswordScreen(): JSX.Element {
               display: 'flex',
               alignItems: 'center',
               justifyContent: 'center',
-              margin: '0 auto 24px',
+              margin: '0 auto var(--space-6)',
             }}
           >
             <Icon name="check" size={42} color="var(--color-success)" stroke={2.5} />
           </div>
-          <h2 className={styles.formTitle} style={{ marginBottom: 8 }}>Password updated.</h2>
-          <p className={styles.formSub} style={{ marginBottom: 32 }}>
+          <h2 className={styles.formTitle} style={{ marginBottom: 'var(--space-2)' }}>Password updated.</h2>
+          <p className={styles.formSub} style={{ marginBottom: 'var(--space-8)' }}>
             Your password has been changed. Sign in with your new password.
           </p>
           <Button variant="primary" size="lg" full onClick={() => navigate('/login')}>
@@ -122,7 +122,7 @@ export function ResetPasswordScreen(): JSX.Element {
       />
 
       {error && (
-        <div style={{ marginBottom: 20 }}>
+        <div style={{ marginBottom: 'var(--space-5)' }}>
           <Banner variant="error" title="Could not update password">{error}</Banner>
         </div>
       )}
@@ -176,7 +176,7 @@ export function ResetPasswordScreen(): JSX.Element {
         />
         <PasswordStrength password={password} />
 
-        <div style={{ marginTop: 16 }}>
+        <div style={{ marginTop: 'var(--space-4)' }}>
           <Field
             label="Confirm new password"
             type={showPassword ? 'text' : 'password'}
@@ -197,19 +197,19 @@ export function ResetPasswordScreen(): JSX.Element {
             background: 'var(--color-surface-muted)',
             border: '1px solid var(--color-line-soft)',
             borderRadius: 8,
-            padding: '12px 14px',
-            margin: '8px 0 24px',
+            padding: 'var(--space-3) var(--space-4)',
+            margin: 'var(--space-2) 0 var(--space-6)',
             fontSize: 'var(--text-xs)',
             lineHeight: 'var(--leading-body)',
           }}
         >
-          <div style={{ fontWeight: 600, color: 'var(--color-ink-2)', marginBottom: 6, textTransform: 'uppercase', letterSpacing: 'var(--tracking-label)' }}>
+          <div style={{ fontWeight: 600, color: 'var(--color-ink-2)', marginBottom: 'var(--space-2)', textTransform: 'uppercase', letterSpacing: 'var(--tracking-label)' }}>
             Password requirements
           </div>
           {REQUIREMENTS.map((r) => {
             const met = r.ok(password)
             return (
-              <div key={r.label} style={{ display: 'flex', alignItems: 'center', gap: 6, color: met ? 'var(--color-success)' : 'var(--color-ink-3)' }}>
+              <div key={r.label} style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-2)', color: met ? 'var(--color-success)' : 'var(--color-ink-3)' }}>
                 <Icon name={met ? 'check' : 'minus'} size={12} stroke={3} />
                 {r.label}
               </div>

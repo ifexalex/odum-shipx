@@ -15,13 +15,13 @@ import { AppRoutes } from './shell/routes'
 function AuthPreview(): JSX.Element {
   const { session, status } = useSession()
   return (
-    <div style={{ padding: 32, fontFamily: 'var(--font-body)' }}>
+    <div style={{ padding: 'var(--space-8)', fontFamily: 'var(--font-body)' }}>
       <h1>Auth preview — local dev shim</h1>
       <p>Flip roles below; this is the same Session shape SessionProvider produces from a real Cognito login.</p>
       <p>
         status: <strong>{status}</strong>
       </p>
-      <pre style={{ background: 'var(--color-surface-muted)', padding: 16, borderRadius: 8 }}>
+      <pre style={{ background: 'var(--color-surface-muted)', padding: 'var(--space-4)', borderRadius: 8 }}>
         {JSON.stringify(session, null, 2)}
       </pre>
       <RoleSwitcher />

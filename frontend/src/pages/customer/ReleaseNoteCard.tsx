@@ -26,7 +26,7 @@ export function ReleaseNoteCard({ containerId }: { containerId: string | null | 
   if (notes.length === 0) return null
 
   return (
-    <Card padding={20} style={{ marginBottom: 16 }}>
+    <Card padding="default" style={{ marginBottom: 'var(--space-4)' }}>
       <SectionHead
         title={notes.length === 1 ? 'Your release note' : 'Your release notes'}
         sub="Show it at the warehouse to collect your goods."
@@ -34,7 +34,7 @@ export function ReleaseNoteCard({ containerId }: { containerId: string | null | 
       {notes.map((note) => (
         <div
           key={note.id}
-          style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap', paddingTop: 12 }}
+          style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 'var(--space-3)', flexWrap: 'wrap', paddingTop: 'var(--space-3)' }}
         >
           <div>
             <Mono color="var(--color-ink)">{note.reference_number}</Mono>{' '}

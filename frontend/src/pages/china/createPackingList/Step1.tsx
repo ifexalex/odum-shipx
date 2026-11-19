@@ -30,7 +30,7 @@ export function Step1({ form }: { form: PackingListForm }): JSX.Element {
     canProceedFrom1,
   } = form
   return (
-    <Card padding={32}>
+    <Card padding="large">
       <SectionHead
         title="Customer & container"
         sub="Who is this cargo for, and which container is it loading into?"

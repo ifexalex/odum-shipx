@@ -1,8 +1,12 @@
 /// <reference types="node" />
 /**
- * FD-01: every font size, line height and letter spacing on screen comes from the type scale in tokens.css, and only
- * weights 400-700 are used. Exempt: print pages, the marketing page, and a rule that says `scale-exempt` with a reason
- * (miniature document previews, emoji icons). `1` and `0` stay allowed (a single-line box, no spacing).
+ * Design foundations: visual values come from the tokens in tokens.css, not raw numbers in page styles.
+ *
+ * - FD-01 type: every font size, line height and letter spacing is a type token; only weights 400-700. A rule that
+ *   says `scale-exempt` with a reason (miniature document previews, emoji icons) is skipped. `1` and `0` stay allowed.
+ * - FD-02 spacing: every gap, padding and margin is a --space-* token (or 0, auto, a percentage).
+ *
+ * Exempt everywhere: print pages and the marketing page.
  */
 import { readdirSync, readFileSync } from 'node:fs'
 import { join, relative } from 'node:path'
@@ -29,9 +33,14 @@ const inScope = (path: string): boolean => {
 const RAW = /(?<![-\w])(font-size|line-height|letter-spacing):\s*(-?[\d.]+[a-z%]*)\s*;/g
 const WEIGHT = /(?<![-\w])font-weight:\s*([^;]+);/g
 const ALLOWED_RAW = new Set(['0', '1'])
+/** A px or rem length inside a spacing declaration's value. */
+const SPACING = /(?<![-\w])((?:row-|column-)?gap|padding(?:-[a-z-]+)?|margin(?:-[a-z-]+)?):\s*([^;]+);/g
+const INLINE_SPACING =
+  /\b((?:row|column)?[gG]ap|padding(?:Top|Bottom|Left|Right|Inline|Block)?|margin(?:Top|Bottom|Left|Right|Inline|Block)?):\s*('[^']*'|-?\d+(?:\.\d+)?)(?=\s*[,}\n])/g
+const hasLength = (value: string): boolean => /\d(?:px|rem)\b/.test(value) || /^-?[1-9]\d*(?:\.\d+)?$/.test(value)
 const ALLOWED_WEIGHTS = new Set(['400', '500', '600', '700', 'inherit', 'normal'])
 
-describe('type scale (FD-01)', () => {
+describe('design foundations: no raw values', () => {
   const sheets = files(SRC, '.css').filter(inScope)
   const components = files(SRC, '.tsx').filter(inScope)
 
@@ -69,5 +78,37 @@ describe('type scale (FD-01)', () => {
       }
     }
     expect(raw, "use fontSize: 'var(--text-sm)' and the like").toEqual([])
+  })
+
+  it('no declaration holds a script leftover (None, undefined, NaN), which the browser silently drops', () => {
+    // A codemod once wrote Python's None after 1,450 spacing values: the CSS still parsed, every check above passed,
+    // and every one of those declarations was dropped. Only the visual baseline showed it.
+    const broken: string[] = []
+    for (const path of files(SRC, '.css')) {
+      for (const [decl] of readFileSync(path, 'utf8').matchAll(/[\w-]+:\s*[^;{}]*\b(?:None|undefined|NaN)\b[^;{}]*;/g)) {
+        broken.push(`${relative(SRC, path)}: ${decl.trim()}`)
+      }
+    }
+    expect(broken).toEqual([])
+  })
+
+  it('style sheets space with --space-* tokens (FD-02)', () => {
+    const raw: string[] = []
+    for (const path of sheets) {
+      for (const [, prop, value] of readFileSync(path, 'utf8').matchAll(SPACING)) {
+        if (hasLength((value ?? '').trim())) raw.push(`${relative(SRC, path)} ${prop}: ${value}`)
+      }
+    }
+    expect(raw, 'use var(--space-1) ... var(--space-16)').toEqual([])
+  })
+
+  it('inline styles space with --space-* tokens too (FD-02)', () => {
+    const raw: string[] = []
+    for (const path of components) {
+      for (const [match, , value] of readFileSync(path, 'utf8').matchAll(INLINE_SPACING)) {
+        if (hasLength((value ?? '').replace(/'/g, '').trim())) raw.push(`${relative(SRC, path)}: ${match}`)
+      }
+    }
+    expect(raw, "use padding: 'var(--space-4)' and the like").toEqual([])
   })
 })

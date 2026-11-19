@@ -358,7 +358,7 @@ export function AnnouncementsPage(): JSX.Element {
     <div>
       {isAdmin ? (
         <>
-          <Card padding={16} style={{ marginBottom: 16 }}>
+          <Card padding="default" style={{ marginBottom: 'var(--space-4)' }}>
             <SectionHead
               title="Pending approval"
               sub="Customer announcements submitted by staff."
@@ -372,7 +372,7 @@ export function AnnouncementsPage(): JSX.Element {
             ))}
           </Card>
 
-          <Card padding={16}>
+          <Card padding="default">
             <SectionHead
               title="All announcements"
               sub="Toggle which one is visible as a page banner."
@@ -387,7 +387,7 @@ export function AnnouncementsPage(): JSX.Element {
           </Card>
         </>
       ) : (
-        <Card padding={16}>
+        <Card padding="default">
           <SectionHead title="My announcements" />
           {mineQuery.isLoading && <div className={styles.empty}>Loading…</div>}
           {!mineQuery.isLoading && mine.length === 0 && (

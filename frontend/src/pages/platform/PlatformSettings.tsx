@@ -73,9 +73,9 @@ function GeneralSettings(): JSX.Element {
   if (!settings && !error) return <p style={{ color: 'var(--color-ink-3)' }}>Loading settings…</p>
 
   return (
-    <Card padding={28}>
-      {error && <div style={{ marginBottom: 16 }}><Banner variant="error" title="Error">{error}</Banner></div>}
-      {saved && <div style={{ marginBottom: 16 }}><Banner variant="success" title="Saved">Platform settings updated.</Banner></div>}
+    <Card padding="large">
+      {error && <div style={{ marginBottom: 'var(--space-4)' }}><Banner variant="error" title="Error">{error}</Banner></div>}
+      {saved && <div style={{ marginBottom: 'var(--space-4)' }}><Banner variant="success" title="Saved">Platform settings updated.</Banner></div>}
 
       <SectionHead title="General" sub="Platform-wide identity and safety switches" />
       <div style={{ height: 16 }} />
@@ -96,7 +96,7 @@ function GeneralSettings(): JSX.Element {
         helper="Hard cap on tenant onboarding."
       />
 
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '14px 0', borderTop: '1px solid var(--color-line-soft)' }}>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: 'var(--space-4) 0', borderTop: '1px solid var(--color-line-soft)' }}>
         <div>
           <div style={{ fontWeight: 700, fontSize: 'var(--text-md)', color: maintenance ? 'var(--color-error)' : 'var(--color-ink)' }}>Maintenance mode</div>
           <div style={{ fontSize: 'var(--text-xs)', color: 'var(--color-ink-3)' }}>
@@ -106,7 +106,7 @@ function GeneralSettings(): JSX.Element {
         <ToggleSwitch checked={maintenance} onChange={setMaintenance} />
       </div>
 
-      <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 10, paddingTop: 16, borderTop: '1px solid var(--color-line-soft)' }}>
+      <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 'var(--space-3)', paddingTop: 'var(--space-4)', borderTop: '1px solid var(--color-line-soft)' }}>
         <Button variant="primary" icon="check" loading={saving} onClick={() => void handleSave()}>
           Save settings
         </Button>
@@ -195,11 +195,11 @@ function ProviderCard({ spec, initial }: { spec: ProviderSpec; initial: Record<s
   }
 
   return (
-    <Card padding={24}>
+    <Card padding="large">
       <SectionHead title={spec.title} sub={`Provider: ${spec.provider}`} />
       <div style={{ height: 12 }} />
       {result && (
-        <div style={{ marginBottom: 12 }}>
+        <div style={{ marginBottom: 'var(--space-3)' }}>
           <Banner variant={result.kind} title={result.kind === 'success' ? 'OK' : 'Problem'}>{result.msg}</Banner>
         </div>
       )}
@@ -215,7 +215,7 @@ function ProviderCard({ spec, initial }: { spec: ProviderSpec; initial: Record<s
           helper={f.secret ? 'Stored value shows as **** — leave as-is to keep it.' : undefined}
         />
       ))}
-      <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
+      <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 'var(--space-2)' }}>
         <Button variant="secondary" size="sm" loading={testing} onClick={() => void handleTest()}>
           Test configuration
         </Button>
@@ -241,7 +241,7 @@ function ProviderSettings(): JSX.Element {
   if (!configs) return <p style={{ color: 'var(--color-ink-3)' }}>Loading providers…</p>
 
   return (
-    <div style={{ display: 'grid', gap: 16 }}>
+    <div style={{ display: 'grid', gap: 'var(--space-4)' }}>
       {PROVIDERS.map((spec) => (
         <ProviderCard key={spec.kind} spec={spec} initial={(configs[spec.kind] ?? {}) as Record<string, unknown>} />
       ))}
@@ -280,10 +280,10 @@ function PlanEditor({ tier, limits, onSaved }: { tier: SubscriptionTier; limits:
   }
 
   return (
-    <Card padding={20}>
+    <Card padding="default">
       <SectionHead title={tier[0]!.toUpperCase() + tier.slice(1)} sub="Limits apply to every tenant on this tier unless a per-tenant override exists" />
-      {error && <div style={{ margin: '8px 0' }}><Banner variant="error" title="Save failed">{error}</Banner></div>}
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))', gap: 12, marginTop: 12 }}>
+      {error && <div style={{ margin: 'var(--space-2) 0' }}><Banner variant="error" title="Save failed">{error}</Banner></div>}
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))', gap: 'var(--space-3)', marginTop: 'var(--space-3)' }}>
         <Field label="Users" name={`${tier}_users`} type="number" value={users} onChange={(e) => setUsers(e.target.value)} />
         <Field label="Containers / month" name={`${tier}_containers`} type="number" value={containers} onChange={(e) => setContainers(e.target.value)} />
         <Field label="Storage (GB)" name={`${tier}_storage`} type="number" value={storage} onChange={(e) => setStorage(e.target.value)} />
@@ -311,7 +311,7 @@ function PlanSettings(): JSX.Element {
   if (!plans) return <p style={{ color: 'var(--color-ink-3)' }}>Loading plans…</p>
 
   return (
-    <div style={{ display: 'grid', gap: 16 }}>
+    <div style={{ display: 'grid', gap: 'var(--space-4)' }}>
       <Banner variant="info" title="How overrides resolve">
         Static tier defaults → these plan overrides → per-tenant quota overrides (set on a tenant&apos;s
         Usage tab). Only edited dimensions are overridden. Enterprise is effectively unlimited (

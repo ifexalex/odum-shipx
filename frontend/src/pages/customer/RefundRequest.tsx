@@ -82,16 +82,16 @@ export function RefundRequest(): JSX.Element {
         />
 
         <div>
-          <label style={{ display: 'block', fontWeight: 600, fontSize: 'var(--text-md)', marginBottom: 8 }}>
+          <label style={{ display: 'block', fontWeight: 600, fontSize: 'var(--text-md)', marginBottom: 'var(--space-2)' }}>
             Refund preference
           </label>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-            <label style={{ display: 'flex', gap: 8, alignItems: 'flex-start', cursor: 'pointer', fontSize: 'var(--text-md)' }}>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-2)' }}>
+            <label style={{ display: 'flex', gap: 'var(--space-2)', alignItems: 'flex-start', cursor: 'pointer', fontSize: 'var(--text-md)' }}>
               <input
                 type="radio"
                 checked={choice === 'immediate_refund'}
                 onChange={() => setChoice('immediate_refund')}
-                style={{ marginTop: 2 }}
+                style={{ marginTop: 'var(--space-0-5)' }}
               />
               <div>
                 <strong>Bank account refund</strong>
@@ -100,12 +100,12 @@ export function RefundRequest(): JSX.Element {
                 </p>
               </div>
             </label>
-            <label style={{ display: 'flex', gap: 8, alignItems: 'flex-start', cursor: 'pointer', fontSize: 'var(--text-md)' }}>
+            <label style={{ display: 'flex', gap: 'var(--space-2)', alignItems: 'flex-start', cursor: 'pointer', fontSize: 'var(--text-md)' }}>
               <input
                 type="radio"
                 checked={choice === 'credit_next_shipment'}
                 onChange={() => setChoice('credit_next_shipment')}
-                style={{ marginTop: 2 }}
+                style={{ marginTop: 'var(--space-0-5)' }}
               />
               <div>
                 <strong>Credit on next shipment</strong>

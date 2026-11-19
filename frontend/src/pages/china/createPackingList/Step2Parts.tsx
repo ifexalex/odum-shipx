@@ -9,7 +9,7 @@ import type { PackingListForm } from './useCreatePackingListForm'
 export function ContextBar({ form }: { form: PackingListForm }): JSX.Element {
   const { selectedCustomer, selectedContainer } = form
   return (
-    <Card padding={16}>
+    <Card padding="default">
       <div className={styles.contextBar}>
         {selectedCustomer && (
           <div className={styles.contextParty}>

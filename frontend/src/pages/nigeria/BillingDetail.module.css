@@ -1,5 +1,5 @@
 .loadingState {
-  padding: 48px;
+  padding: var(--space-12);
   text-align: center;
   color: var(--color-text-muted);
 }
@@ -10,14 +10,14 @@
   align-items: flex-start;
   justify-content: space-between;
   flex-wrap: wrap;
-  gap: 16px;
-  margin-bottom: 24px;
+  gap: var(--space-4);
+  margin-bottom: var(--space-6);
 }
 
 .heroLeft {
   display: flex;
   align-items: flex-start;
-  gap: 16px;
+  gap: var(--space-4);
 }
 
 .heroIcon {
@@ -35,7 +35,7 @@
 .heroTitleRow {
   display: flex;
   align-items: center;
-  gap: 10px;
+  gap: var(--space-3);
   flex-wrap: wrap;
 }
 
@@ -51,20 +51,20 @@
 }
 
 .heroMeta {
-  margin-top: 4px;
+  margin-top: var(--space-1);
   font-size: var(--text-sm);
   color: var(--color-text-muted);
   display: flex;
   flex-wrap: wrap;
-  gap: 4px 8px;
+  gap: var(--space-1) var(--space-2);
   align-items: center;
 }
 
 .heroContacts {
-  margin-top: 6px;
+  margin-top: var(--space-2);
   display: flex;
   flex-wrap: wrap;
-  gap: 4px 14px;
+  gap: var(--space-1) var(--space-4);
   font-size: var(--text-sm);
   color: var(--color-text-muted);
 }
@@ -72,12 +72,12 @@
 .heroContact {
   display: inline-flex;
   align-items: center;
-  gap: 5px;
+  gap: var(--space-1);
 }
 
 .heroActions {
   display: flex;
-  gap: 8px;
+  gap: var(--space-2);
   flex-wrap: wrap;
   flex-shrink: 0;
   /* Never wider than the page: on a phone the buttons wrap instead of running off the edge. */
@@ -90,20 +90,20 @@
 .stats {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
-  gap: 16px;
-  margin-bottom: 24px;
+  gap: var(--space-4);
+  margin-bottom: var(--space-6);
 }
 
 /* Sections */
 .section {
-  margin-bottom: 24px;
+  margin-bottom: var(--space-6);
 }
 
 /* Breakdown */
 .breakdown {
   display: flex;
   flex-direction: column;
-  gap: 10px;
+  gap: var(--space-3);
 }
 
 .breakdownRow {
@@ -111,7 +111,7 @@
   justify-content: space-between;
   align-items: center;
   font-size: var(--text-md);
-  padding-bottom: 8px;
+  padding-bottom: var(--space-2);
   border-bottom: 1px solid var(--color-border);
 }
 
@@ -123,7 +123,7 @@
 .breakdownTotal {
   font-weight: 600;
   font-size: var(--text-lg);
-  padding-top: 8px;
+  padding-top: var(--space-2);
   border-top: 2px solid var(--color-border);
   border-bottom: none;
 }
@@ -132,8 +132,8 @@
 .disputeCard {
   border: 1px solid var(--color-border);
   border-radius: var(--radius-md);
-  padding: 16px;
-  margin-bottom: 12px;
+  padding: var(--space-4);
+  margin-bottom: var(--space-3);
   background: var(--color-surface);
 }
 
@@ -141,13 +141,13 @@
   display: flex;
   justify-content: space-between;
   align-items: flex-start;
-  margin-bottom: 12px;
+  margin-bottom: var(--space-3);
 }
 
 .disputeMeta {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: var(--space-2);
 }
 
 .disputeLabel {
@@ -157,30 +157,30 @@
 
 .disputeNumbers {
   display: flex;
-  gap: 16px;
+  gap: var(--space-4);
   font-size: var(--text-sm);
   color: var(--color-text-muted);
 }
 
 .disputeError {
-  margin-bottom: 10px;
+  margin-bottom: var(--space-3);
 }
 
 .disputeActions {
   display: flex;
-  gap: 8px;
+  gap: var(--space-2);
   flex-wrap: wrap;
 }
 
 .inlineReject {
   width: 100%;
-  margin-top: 8px;
+  margin-top: var(--space-2);
 }
 
 .inlineRejectActions {
   display: flex;
-  gap: 8px;
-  margin-top: 8px;
+  gap: var(--space-2);
+  margin-top: var(--space-2);
 }
 
 /* Back link */
@@ -201,11 +201,11 @@
 .modalPanel {
   background: var(--color-surface);
   border-radius: var(--radius-lg) var(--radius-lg) 0 0;
-  padding: 24px 20px;
+  padding: var(--space-6) var(--space-5);
   width: 100%;
   display: flex;
   flex-direction: column;
-  gap: 16px;
+  gap: var(--space-4);
   box-shadow: var(--shadow-modal);
   max-height: 90vh;
   overflow-y: auto;
@@ -214,12 +214,12 @@
 @container sxapp (min-width: 861px) {
   .modalOverlay {
     align-items: center;
-    padding: 16px;
+    padding: var(--space-4);
   }
   .modalPanel {
     border-radius: var(--radius-lg);
     max-width: 480px;
-    padding: 28px;
+    padding: var(--space-8);
   }
 }
 
@@ -230,20 +230,20 @@
 }
 
 .modalBanner {
-  margin-bottom: 4px;
+  margin-bottom: var(--space-1);
 }
 
 /* Record-payment context: who is paying + for what, before the inputs */
 .modalSub {
-  margin: -8px 0 4px;
+  margin: calc(-1 * var(--space-2)) 0 var(--space-1);
   font-size: var(--text-sm);
   color: var(--color-ink-3);
 }
 .payCtx {
   display: flex;
   flex-direction: column;
-  gap: 10px;
-  padding: 14px 16px;
+  gap: var(--space-3);
+  padding: var(--space-4) var(--space-4);
   background: var(--color-surface-muted);
   border: 1px solid var(--color-line-soft);
   border-radius: var(--radius-md);
@@ -251,7 +251,7 @@
 .payCtxCustomer {
   display: flex;
   align-items: center;
-  gap: 10px;
+  gap: var(--space-3);
 }
 .payCtxName {
   font-weight: 700;
@@ -261,35 +261,35 @@
 .payCtxContacts {
   display: flex;
   flex-wrap: wrap;
-  gap: 4px 14px;
+  gap: var(--space-1) var(--space-4);
   font-size: var(--text-sm);
   color: var(--color-ink-3);
 }
 .payCtxContact {
   display: inline-flex;
   align-items: center;
-  gap: 5px;
+  gap: var(--space-1);
 }
 .payCtxMeta {
   display: flex;
   flex-wrap: wrap;
-  gap: 4px 14px;
+  gap: var(--space-1) var(--space-4);
   font-size: var(--text-sm);
   color: var(--color-ink-3);
   border-top: 1px solid var(--color-line-soft);
-  padding-top: 10px;
+  padding-top: var(--space-3);
 }
 .paySummary {
   display: grid;
   grid-template-columns: repeat(3, 1fr);
-  gap: 8px;
+  gap: var(--space-2);
   border-top: 1px solid var(--color-line-soft);
-  padding-top: 10px;
+  padding-top: var(--space-3);
 }
 .paySummaryItem {
   display: flex;
   flex-direction: column;
-  gap: 2px;
+  gap: var(--space-0-5);
 }
 .paySummaryLabel {
   font-size: var(--text-xs);
@@ -309,9 +309,9 @@
 
 .modalActions {
   display: flex;
-  gap: 8px;
+  gap: var(--space-2);
   justify-content: flex-end;
-  margin-top: 8px;
+  margin-top: var(--space-2);
 }
 
 .modalActions > * {
@@ -329,14 +329,14 @@
 /* Outcome toggle */
 .outcomeToggle {
   display: flex;
-  gap: 8px;
+  gap: var(--space-2);
 }
 
 /* Select field */
 .selectField {
   display: flex;
   flex-direction: column;
-  gap: 6px;
+  gap: var(--space-2);
 }
 
 .selectLabel {
@@ -346,20 +346,20 @@
 
 .required {
   color: var(--color-error);
-  margin-left: 2px;
+  margin-left: var(--space-0-5);
 }
 
 .optional {
   color: var(--color-text-muted);
   font-weight: 400;
   font-size: var(--text-xs);
-  margin-left: 4px;
+  margin-left: var(--space-1);
 }
 
 .select {
   border: 1px solid var(--color-border);
   border-radius: 6px;
-  padding: 8px 12px;
+  padding: var(--space-2) var(--space-3);
   font-size: var(--text-md);
   background: var(--color-surface);
   color: var(--color-text);
@@ -381,8 +381,8 @@
 
 /* Under the exchange-rate line when the invoice used the last known rate (audit BE-11). */
 .rateNotice {
-  margin: -2px 0 6px;
-  padding: 6px 10px;
+  margin: calc(-1 * var(--space-0-5)) 0 var(--space-2);
+  padding: var(--space-2) var(--space-3);
   border-radius: var(--radius-sm);
   background: var(--color-warning-soft);
   color: var(--color-warning-strong);

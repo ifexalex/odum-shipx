@@ -113,19 +113,19 @@ function AddCustomerModal({ onCancel, onSuccess }: AddCustomerModalProps): JSX.E
               fontWeight: 600,
               fontSize: 'var(--text-md)',
               display: 'block',
-              marginBottom: 6,
+              marginBottom: 'var(--space-2)',
             }}
           >
             Notification consent
           </label>
-          <div style={{ display: 'flex', gap: 16 }}>
+          <div style={{ display: 'flex', gap: 'var(--space-4)' }}>
             {CONSENT_CHANNELS.map((c) => (
               <label
                 key={c.key}
                 style={{
                   display: 'flex',
                   alignItems: 'center',
-                  gap: 8,
+                  gap: 'var(--space-2)',
                   cursor: 'pointer',
                   fontSize: 'var(--text-sm)',
                   fontWeight: 500,
@@ -136,7 +136,7 @@ function AddCustomerModal({ onCancel, onSuccess }: AddCustomerModalProps): JSX.E
               </label>
             ))}
           </div>
-          <p style={{ fontSize: 'var(--text-xs)', color: 'var(--color-ink-4)', marginTop: 6 }}>
+          <p style={{ fontSize: 'var(--text-xs)', color: 'var(--color-ink-4)', marginTop: 'var(--space-2)' }}>
             Only tick channels the customer has agreed to — this is their NDPR/GDPR consent record.
           </p>
         </div>
@@ -173,7 +173,7 @@ const CONSENT_PILLS: { key: string; short: string }[] = [
 function ConsentChips({ consent }: { consent: string[] | null }): JSX.Element {
   const granted = new Set(consent ?? [])
   return (
-    <div style={{ display: 'flex', gap: 4 }}>
+    <div style={{ display: 'flex', gap: 'var(--space-1)' }}>
       {CONSENT_PILLS.map(({ key, short }) => {
         const on = granted.has(key)
         return (
@@ -183,7 +183,7 @@ function ConsentChips({ consent }: { consent: string[] | null }): JSX.Element {
             style={{
               display: 'inline-flex',
               alignItems: 'center',
-              padding: '2px 6px',
+              padding: 'var(--space-0-5) var(--space-2)',
               borderRadius: 4,
               fontSize: 'var(--text-xs)',
               fontWeight: 700,
@@ -304,7 +304,7 @@ export function AdminCustomerList(): JSX.Element {
         />
       </div>
 
-      <Card padding={16}>
+      <Card padding="default">
         <div className={styles.filterRow}>
           <div className={styles.chips}>
             <Chip active={filter === 'all'} onClick={() => setFilter('all')}>
@@ -331,7 +331,7 @@ export function AdminCustomerList(): JSX.Element {
       </Card>
 
       <div className={styles.tableWrap}>
-        <Card padding={0}>
+        <Card padding="none">
           <Table
             columns={[
               { title: 'Name' },

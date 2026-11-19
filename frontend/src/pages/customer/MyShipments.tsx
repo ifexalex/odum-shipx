@@ -38,7 +38,7 @@ function CustStat({ label, value, color }: { label: string; value: string; color
       <div style={{ fontSize: 'var(--text-xs)', fontWeight: 700, color: 'var(--color-ink-4)', textTransform: 'uppercase', letterSpacing: 'var(--tracking-label)' }}>
         {label}
       </div>
-      <div style={{ fontFamily: 'var(--font-display)', fontWeight: 700, fontSize: 'var(--text-xl)', color: color ?? 'var(--color-ink)', marginTop: 2, letterSpacing: 'var(--tracking-tight)' }}>
+      <div style={{ fontFamily: 'var(--font-display)', fontWeight: 700, fontSize: 'var(--text-xl)', color: color ?? 'var(--color-ink)', marginTop: 'var(--space-0-5)', letterSpacing: 'var(--tracking-tight)' }}>
         {value}
       </div>
     </div>
@@ -107,7 +107,7 @@ export function MyShipments(): JSX.Element {
   const name = session?.name?.split(' ')[0] ?? 'there'
 
   if (loading) {
-    return <div style={{ padding: 32, color: 'var(--color-ink-4)' }}>Loading your shipments…</div>
+    return <div style={{ padding: 'var(--space-8)', color: 'var(--color-ink-4)' }}>Loading your shipments…</div>
   }
 
   return (
@@ -150,7 +150,7 @@ export function MyShipments(): JSX.Element {
               const b = billingByContainer.get(shipment.container_id)
               const statusInfo = CONTAINER_STATUS_BADGE[shipment.container_status ?? '']
               return (
-                <Card key={shipment.id} padding={0} style={{ overflow: 'hidden' }}>
+                <Card key={shipment.id} padding="none" style={{ overflow: 'hidden' }}>
                   <div className={styles.activeCardHeader}>
                     {/* Left — icon + reference + meta */}
                     <div className={styles.activeCardLeft}>
@@ -231,7 +231,7 @@ export function MyShipments(): JSX.Element {
             sub={`Your previous ${pastShipments.length} deliveries`}
           />
           <div className={styles.sectionSpacer} />
-          <Card padding={0}>
+          <Card padding="none">
             <Table
               columns={[
                 { title: 'Tracking code' },

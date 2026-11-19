@@ -1,9 +1,9 @@
 .wrap {
-  margin-bottom: var(--space-lg);
+  margin-bottom: var(--space-6);
 }
 
 .header {
-  padding: 18px var(--space-lg);
+  padding: var(--space-5) var(--space-6);
 }
 
 .customers {
@@ -12,5 +12,5 @@
 }
 
 .error {
-  padding: 0 var(--space-lg) var(--space-md);
+  padding: 0 var(--space-6) var(--space-4);
 }

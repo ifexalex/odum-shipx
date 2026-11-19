@@ -28,7 +28,7 @@ export function ItemsTable({ form }: { form: PackingListForm }): JSX.Element {
     batchSize,
   } = form
   return (
-    <Card padding={0}>
+    <Card padding="none">
       <div className={styles.itemsHead}>
         <SectionHead
           title="Line items"

@@ -51,14 +51,14 @@ function ExemptModal({ carryover, onCancel, onSuccess }: { carryover: Carryover;
 
   return (
     <div
-      style={{ position: 'fixed', inset: 0, background: 'rgba(11,47,13,0.55)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 200, padding: 16 }}
+      style={{ position: 'fixed', inset: 0, background: 'rgba(11,47,13,0.55)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 200, padding: 'var(--space-4)' }}
       onClick={onCancel}
     >
       <DialogGuard onClose={onCancel} />
       <div
         style={{
-          background: 'var(--color-surface)', borderRadius: 14, padding: 24, width: '100%', maxWidth: 480,
-          display: 'flex', flexDirection: 'column', gap: 16, maxHeight: '90vh', overflowY: 'auto',
+          background: 'var(--color-surface)', borderRadius: 14, padding: 'var(--space-6)', width: '100%', maxWidth: 480,
+          display: 'flex', flexDirection: 'column', gap: 'var(--space-4)', maxHeight: '90vh', overflowY: 'auto',
         }}
         onClick={(e) => e.stopPropagation()}
         role="dialog"
@@ -79,7 +79,7 @@ function ExemptModal({ carryover, onCancel, onSuccess }: { carryover: Carryover;
           value={notes}
           onChange={(e) => setNotes(e.target.value)}
         />
-        <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
+        <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 'var(--space-2)' }}>
           <Button variant="ghost" size="lg" onClick={onCancel} disabled={submitting}>Cancel</Button>
           <Button variant="danger" size="lg" loading={submitting} onClick={() => void handleSubmit()}>
             Exempt carryover
@@ -124,22 +124,22 @@ export function CarryoverLedger(): JSX.Element {
   return (
     <div>
 
-      {error && <div style={{ marginBottom: 16 }}><Banner variant="error" title="Couldn't load">{error}</Banner></div>}
+      {error && <div style={{ marginBottom: 'var(--space-4)' }}><Banner variant="error" title="Couldn't load">{error}</Banner></div>}
 
-      <div className={styles.statsRow ?? ''} style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: 12, marginBottom: 20 }}>
+      <div className={styles.statsRow ?? ''} style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: 'var(--space-3)', marginBottom: 'var(--space-5)' }}>
         <StatCard label="Outstanding total" value={formatNgn(outstandingTotal)} />
         <StatCard label="Outstanding entries" value={carryovers.filter((c) => c.status === 'outstanding').length} />
         <StatCard label="All entries" value={carryovers.length} />
       </div>
 
-      <div style={{ display: 'flex', gap: 8, marginBottom: 16, flexWrap: 'wrap' }}>
+      <div style={{ display: 'flex', gap: 'var(--space-2)', marginBottom: 'var(--space-4)', flexWrap: 'wrap' }}>
         <Chip active={statusFilter === null} onClick={() => setStatusFilter(null)}>All</Chip>
         {STATUS_FILTERS.map(({ key, label }) => (
           <Chip key={key} active={statusFilter === key} onClick={() => setStatusFilter(key)}>{label}</Chip>
         ))}
       </div>
 
-      <Card padding={0}>
+      <Card padding="none">
         <Table
           columns={[
             { title: 'Customer' },

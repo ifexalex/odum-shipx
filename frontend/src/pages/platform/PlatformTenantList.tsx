@@ -74,7 +74,7 @@ function avatarColor(id: string): string {
 
 function TenantCell({ tenant }: { tenant: Tenant }): JSX.Element {
   return (
-    <div style={{ display: 'flex', alignItems: 'center', gap: 10, minWidth: 0 }}>
+    <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-3)', minWidth: 0 }}>
       <div
         style={{
           width: 28,
@@ -148,9 +148,9 @@ export function PlatformTenantList(): JSX.Element {
         </div>
       )}
 
-      <Card padding={16}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
-          <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+      <Card padding="default">
+        <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-3)', flexWrap: 'wrap' }}>
+          <div style={{ display: 'flex', gap: 'var(--space-2)', flexWrap: 'wrap' }}>
             <Chip active={statusFilter === null} onClick={() => setStatusFilter(null)}>
               All {tenants.length > 0 && <span style={{ opacity: 0.6 }}>{tenants.length}</span>}
             </Chip>
@@ -178,7 +178,7 @@ export function PlatformTenantList(): JSX.Element {
       </Card>
 
       <div className={styles.tableWrap}>
-        <Card padding={0}>
+        <Card padding="none">
           <Table
             columns={[
               { title: 'Tenant' },
@@ -244,7 +244,7 @@ export function PlatformTenantList(): JSX.Element {
           />
         </Card>
         {!loading && tenants.length > 0 && (
-          <p style={{ fontSize: 'var(--text-xs)', color: 'var(--color-ink-4)', marginTop: 10 }}>
+          <p style={{ fontSize: 'var(--text-xs)', color: 'var(--color-ink-4)', marginTop: 'var(--space-3)' }}>
             Showing {visible.length} of {tenants.length} tenant(s)
           </p>
         )}

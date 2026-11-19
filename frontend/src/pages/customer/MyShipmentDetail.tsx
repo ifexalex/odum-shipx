@@ -124,7 +124,7 @@ export function MyShipmentDetail(): JSX.Element {
   })
   const pendingClaim = paymentClaims.find((c) => c.status === 'pending') ?? null
 
-  if (loading) return <div style={{ padding: 32, color: 'var(--color-text-muted)' }}>Loading your shipment…</div>
+  if (loading) return <div style={{ padding: 'var(--space-8)', color: 'var(--color-text-muted)' }}>Loading your shipment…</div>
 
   if (error || !pl) {
     return (
@@ -173,7 +173,7 @@ export function MyShipmentDetail(): JSX.Element {
       <ReleaseNoteCard containerId={pl.container_id} />
 
       {/* Tracking */}
-      <Card padding={28}>
+      <Card padding="large">
         <SectionHead title="Tracking" sub="Where your cargo is right now" />
         <div style={{ height: 20 }} />
         <CustomerStepper containerStatus={pl.container_status ?? null} />
@@ -187,8 +187,8 @@ export function MyShipmentDetail(): JSX.Element {
 
       <div className={styles.detailGrid}>
         {/* My cartons */}
-        <Card padding={0}>
-          <div style={{ padding: '18px 20px' }}>
+        <Card padding="none">
+          <div style={{ padding: 'var(--space-5) var(--space-5)' }}>
             <SectionHead
               title="My cartons"
               sub={`${pl.carton_count} carton${pl.carton_count === 1 ? '' : 's'} · ${totalCbm.toFixed(3)} CBM total`}
@@ -221,7 +221,7 @@ export function MyShipmentDetail(): JSX.Element {
         </Card>
 
         {/* Billing summary */}
-        <Card padding={20}>
+        <Card padding="default">
           <SectionHead
             title="Billing"
             action={

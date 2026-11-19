@@ -37,8 +37,8 @@ function RateTrendChart({ points, prefix }: { points: { date: string; value: num
   const net = last.value - first.value
 
   return (
-    <div style={{ padding: '4px 20px 16px' }}>
-      <div style={{ display: 'flex', alignItems: 'baseline', gap: 12, marginBottom: 8, flexWrap: 'wrap' }}>
+    <div style={{ padding: 'var(--space-1) var(--space-5) var(--space-4)' }}>
+      <div style={{ display: 'flex', alignItems: 'baseline', gap: 'var(--space-3)', marginBottom: 'var(--space-2)', flexWrap: 'wrap' }}>
         <span style={{ fontFamily: 'var(--font-display)', fontWeight: 700, fontSize: 'var(--text-2xl)' }}>{prefix}{formatAmount(last.value)}</span>
         <span style={{ fontSize: 'var(--text-sm)', fontWeight: 700, color: net >= 0 ? 'var(--color-success)' : 'var(--color-error)' }}>
           {net >= 0 ? '+' : ''}{prefix}{formatAmount(net)}
@@ -89,8 +89,8 @@ export function RateHistoryTable({ rateType, valueKey, prefix }: { rateType: 'do
     .reverse()
 
   return (
-    <Card padding={0} style={{ marginTop: 20 }}>
-      <div style={{ padding: '18px 20px 4px' }}>
+    <Card padding="none" style={{ marginTop: 'var(--space-5)' }}>
+      <div style={{ padding: 'var(--space-5) var(--space-5) var(--space-1)' }}>
         <SectionHead title="Rate history" sub="Every change, who made it, and the delta (append-only, migration 025)" />
       </div>
       {chartPoints.length >= 2 && <RateTrendChart points={chartPoints} prefix={prefix} />}
@@ -107,9 +107,9 @@ export function RateHistoryTable({ rateType, valueKey, prefix }: { rateType: 'do
           const delta = current != null && prev != null ? current - prev : null
           return {
             cells: [
-              <span key="rate" style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}>
+              <span key="rate" style={{ display: 'inline-flex', alignItems: 'center', gap: 'var(--space-2)' }}>
                 <Mono color={i === 0 ? 'var(--color-primary)' : undefined}>{prefix}{formatAmount(current)}</Mono>
-                {i === 0 && <span style={{ fontSize: 'var(--text-xs)', fontWeight: 700, textTransform: 'uppercase', color: 'var(--color-primary-deep)', background: 'var(--color-primary-soft)', borderRadius: 999, padding: '2px 8px' }}>Current</span>}
+                {i === 0 && <span style={{ fontSize: 'var(--text-xs)', fontWeight: 700, textTransform: 'uppercase', color: 'var(--color-primary-deep)', background: 'var(--color-primary-soft)', borderRadius: 999, padding: 'var(--space-0-5) var(--space-2)' }}>Current</span>}
               </span>,
               delta == null ? (
                 <span key="delta" style={{ fontSize: 'var(--text-xs)', color: 'var(--color-ink-4)' }}>—</span>
@@ -202,7 +202,7 @@ export function DollarRateConfig(): JSX.Element {
       {!loading && current && (
         <>
           <SectionHead title="Current rate" />
-          <Card padding={20}>
+          <Card padding="default">
             <Kvp
               label="Base rate (Bybit P2P)"
               value={<Mono>{formatNgn(current.base_rate)} per $1{baseRateFreshness(current)}</Mono>}
@@ -232,10 +232,10 @@ export function DollarRateConfig(): JSX.Element {
           <SectionHead title="Update markup" />
           <div className={styles.formCard}>
             <div>
-              <label style={{ fontWeight: 600, fontSize: 'var(--text-md)', display: 'block', marginBottom: 6 }}>
+              <label style={{ fontWeight: 600, fontSize: 'var(--text-md)', display: 'block', marginBottom: 'var(--space-2)' }}>
                 Markup type
               </label>
-              <div style={{ display: 'flex', gap: 8 }}>
+              <div style={{ display: 'flex', gap: 'var(--space-2)' }}>
                 <Button
                   variant={markupType === 'percentage' ? 'primary' : 'ghost'}
                   onClick={() => setMarkupType('percentage')}
@@ -251,14 +251,14 @@ export function DollarRateConfig(): JSX.Element {
               </div>
             </div>
             <div>
-              <label style={{ fontWeight: 600, fontSize: 'var(--text-md)', display: 'block', marginBottom: 6 }}>
+              <label style={{ fontWeight: 600, fontSize: 'var(--text-md)', display: 'block', marginBottom: 'var(--space-2)' }}>
                 {markupType === 'percentage' ? 'Markup (%)' : 'Markup (₦ per $1)'} <span style={{ color: 'var(--color-error)' }}>*</span>
               </label>
               <input
                 type="number"
                 value={markupValue}
                 onChange={(e) => setMarkupValue(e.target.value)}
-                style={{ width: '100%', padding: '8px 12px', borderRadius: 8, border: '1px solid var(--color-border)', background: 'var(--color-surface)', fontSize: 'var(--text-lg)' }}
+                style={{ width: '100%', padding: 'var(--space-2) var(--space-3)', borderRadius: 8, border: '1px solid var(--color-border)', background: 'var(--color-surface)', fontSize: 'var(--text-lg)' }}
                 placeholder={markupType === 'percentage' ? 'e.g. 2' : 'e.g. 15'}
                 min="0"
                 step={markupType === 'percentage' ? '0.1' : '1'}

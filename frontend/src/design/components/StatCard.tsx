@@ -28,7 +28,7 @@ export function StatCard({
   accentColor,
 }: StatCardProps): JSX.Element {
   return (
-    <Card padding={20} radius={12}>
+    <Card padding="default" radius={12}>
       <div className={styles.head}>
         {icon && (
           <div className={styles.iconSlot} style={accentColor ? { color: accentColor } : undefined}>

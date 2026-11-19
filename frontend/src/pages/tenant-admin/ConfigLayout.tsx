@@ -32,7 +32,7 @@ export function ConfigLayout({ children }: { children: ReactNode }): JSX.Element
   return (
     <div className={styles.layout}>
       <div className={styles.navCol}>
-        <Card padding={8}>
+        <Card padding="default">
           {SUB_NAV.map((item) => {
             const isActive = pathname === item.path
             return (

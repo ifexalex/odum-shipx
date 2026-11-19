@@ -89,7 +89,7 @@ export function ActivateScreen(): JSX.Element {
   if (loadState === 'loading') {
     return (
       <AuthShell>
-        <div style={{ textAlign: 'center', padding: '40px 0' }}>
+        <div style={{ textAlign: 'center', padding: 'var(--space-12) 0' }}>
           <p className={styles.formSub}>Loading…</p>
         </div>
       </AuthShell>
@@ -109,13 +109,13 @@ export function ActivateScreen(): JSX.Element {
               display: 'flex',
               alignItems: 'center',
               justifyContent: 'center',
-              margin: '0 auto 24px',
+              margin: '0 auto var(--space-6)',
             }}
           >
             <Icon name="alert" size={42} color="var(--color-error)" stroke={2.5} />
           </div>
-          <h2 className={styles.formTitle} style={{ marginBottom: 8 }}>This link is no longer valid.</h2>
-          <p className={styles.formSub} style={{ marginBottom: 24 }}>
+          <h2 className={styles.formTitle} style={{ marginBottom: 'var(--space-2)' }}>This link is no longer valid.</h2>
+          <p className={styles.formSub} style={{ marginBottom: 'var(--space-6)' }}>
             It may have expired or already been used. Ask your administrator to resend your invitation.
           </p>
           <Button variant="primary" size="lg" full onClick={() => navigate('/login')}>
@@ -139,13 +139,13 @@ export function ActivateScreen(): JSX.Element {
               display: 'flex',
               alignItems: 'center',
               justifyContent: 'center',
-              margin: '0 auto 24px',
+              margin: '0 auto var(--space-6)',
             }}
           >
             <Icon name="check" size={42} color="var(--color-success)" stroke={2.5} />
           </div>
-          <h2 className={styles.formTitle} style={{ marginBottom: 8 }}>You&rsquo;re all set.</h2>
-          <p className={styles.formSub} style={{ marginBottom: 24 }}>
+          <h2 className={styles.formTitle} style={{ marginBottom: 'var(--space-2)' }}>You&rsquo;re all set.</h2>
+          <p className={styles.formSub} style={{ marginBottom: 'var(--space-6)' }}>
             Sign in with <strong>{detail?.email}</strong> and the password you just chose.
           </p>
           <Button variant="primary" size="lg" full onClick={() => navigate('/login')}>
@@ -164,7 +164,7 @@ export function ActivateScreen(): JSX.Element {
       />
 
       {error && (
-        <div style={{ marginBottom: 20 }}>
+        <div style={{ marginBottom: 'var(--space-5)' }}>
           <Banner variant="error" title="Could not set password">{error}</Banner>
         </div>
       )}
@@ -195,7 +195,7 @@ export function ActivateScreen(): JSX.Element {
         />
         <PasswordStrength password={password} />
 
-        <div style={{ marginTop: 16, marginBottom: 8 }}>
+        <div style={{ marginTop: 'var(--space-4)', marginBottom: 'var(--space-2)' }}>
           <Field
             label="Confirm password"
             type={showPassword ? 'text' : 'password'}
@@ -215,8 +215,8 @@ export function ActivateScreen(): JSX.Element {
             background: 'var(--color-surface-muted)',
             border: '1px solid var(--color-line-soft)',
             borderRadius: 8,
-            padding: '12px 14px',
-            margin: '8px 0 24px',
+            padding: 'var(--space-3) var(--space-4)',
+            margin: 'var(--space-2) 0 var(--space-6)',
             fontSize: 'var(--text-xs)',
             lineHeight: 'var(--leading-body)',
           }}
@@ -225,7 +225,7 @@ export function ActivateScreen(): JSX.Element {
             style={{
               fontWeight: 600,
               color: 'var(--color-ink-2)',
-              marginBottom: 6,
+              marginBottom: 'var(--space-2)',
               textTransform: 'uppercase',
               letterSpacing: 'var(--tracking-label)',
             }}
@@ -237,7 +237,7 @@ export function ActivateScreen(): JSX.Element {
             return (
               <div
                 key={r.label}
-                style={{ display: 'flex', alignItems: 'center', gap: 6, color: met ? 'var(--color-success)' : 'var(--color-ink-3)' }}
+                style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-2)', color: met ? 'var(--color-success)' : 'var(--color-ink-3)' }}
               >
                 <Icon name={met ? 'check' : 'minus'} size={12} stroke={3} />
                 {r.label}

@@ -118,8 +118,8 @@ export function PasswordStrength({ password }: { password: string }): JSX.Elemen
   const labels = ['', 'Weak', 'Fair', 'Strong', 'Excellent']
   const barColors = ['', 'var(--color-error)', 'var(--color-warning)', 'var(--color-success)', 'var(--color-success)']
   return (
-    <div style={{ marginTop: 8 }}>
-      <div style={{ display: 'flex', gap: 4 }}>
+    <div style={{ marginTop: 'var(--space-2)' }}>
+      <div style={{ display: 'flex', gap: 'var(--space-1)' }}>
         {[1, 2, 3, 4].map((i) => (
           <div
             key={i}
@@ -132,7 +132,7 @@ export function PasswordStrength({ password }: { password: string }): JSX.Elemen
           />
         ))}
       </div>
-      <div style={{ marginTop: 4, fontSize: 'var(--text-xs)', fontWeight: 600, color: barColors[level] }}>
+      <div style={{ marginTop: 'var(--space-1)', fontSize: 'var(--text-xs)', fontWeight: 600, color: barColors[level] }}>
         Password strength: {labels[level]}
       </div>
     </div>

@@ -48,7 +48,7 @@ function fileSize(bytes: number | null): string {
 function ProgressSteps({ status }: { status: DamageClaimStatus }): JSX.Element {
   const current = CLAIM_STATUS_ORDER.indexOf(status)
   return (
-    <ol aria-label="Claim progress" style={{ display: 'flex', gap: 8, listStyle: 'none', padding: 0, margin: '0 0 4px', flexWrap: 'wrap' }}>
+    <ol aria-label="Claim progress" style={{ display: 'flex', gap: 'var(--space-2)', listStyle: 'none', padding: 0, margin: '0 0 var(--space-1)', flexWrap: 'wrap' }}>
       {CLAIM_STATUS_ORDER.map((step, index) => {
         const done = index < current
         const here = index === current
@@ -58,7 +58,7 @@ function ProgressSteps({ status }: { status: DamageClaimStatus }): JSX.Element {
             aria-current={here ? 'step' : undefined}
             style={{
               fontSize: 'var(--text-sm)',
-              padding: '4px 10px',
+              padding: 'var(--space-1) var(--space-3)',
               borderRadius: 999,
               border: '1px solid var(--color-border)',
               background: here ? 'var(--color-primary-soft)' : 'transparent',
@@ -78,9 +78,9 @@ function ProgressSteps({ status }: { status: DamageClaimStatus }): JSX.Element {
 function EvidenceList({ files }: { files: ClaimEvidenceFile[] }): JSX.Element {
   if (files.length === 0) return <p style={{ margin: 0, color: 'var(--color-text-muted)' }}>No files were attached to this claim.</p>
   return (
-    <ul style={{ listStyle: 'none', padding: 0, margin: 0, display: 'flex', flexDirection: 'column', gap: 8 }}>
+    <ul style={{ listStyle: 'none', padding: 0, margin: 0, display: 'flex', flexDirection: 'column', gap: 'var(--space-2)' }}>
       {files.map((file) => (
-        <li key={file.id} style={{ display: 'flex', justifyContent: 'space-between', gap: 12, alignItems: 'center', flexWrap: 'wrap' }}>
+        <li key={file.id} style={{ display: 'flex', justifyContent: 'space-between', gap: 'var(--space-3)', alignItems: 'center', flexWrap: 'wrap' }}>
           <span>
             {file.file_name}
             {file.file_size_bytes !== null && <span style={{ color: 'var(--color-text-muted)' }}> · {fileSize(file.file_size_bytes)}</span>}
@@ -114,8 +114,8 @@ function Outcome({ claim }: { claim: Claim }): JSX.Element | null {
   }
 
   return (
-    <Card padding={24}>
-      <h2 style={{ margin: '0 0 12px', fontSize: 'var(--text-lg)' }}>Outcome</h2>
+    <Card padding="large">
+      <h2 style={{ margin: '0 0 var(--space-3)', fontSize: 'var(--text-lg)' }}>Outcome</h2>
       <Kvp label="Decision" value={customerResolutionLabel(resolution)} />
       {resolution.amount_ngn !== null && resolution.resolution_type !== 'discount' && resolution.resolution_type !== 'no_action' && (
         <Kvp label="Amount" value={<Mono>{formatNgn(resolution.amount_ngn)}</Mono>} />
@@ -145,7 +145,7 @@ export function MyClaimDetail(): JSX.Element {
   // Names this record in the breadcrumb once loaded (FD-46).
   useBreadcrumbLabel(claim?.reference)
 
-  if (isLoading) return <div style={{ padding: 32, color: 'var(--color-text-muted)' }}>Loading your claim…</div>
+  if (isLoading) return <div style={{ padding: 'var(--space-8)', color: 'var(--color-text-muted)' }}>Loading your claim…</div>
 
   if (error || !claim) {
     const missing = error instanceof ApiError && error.status === 404
@@ -162,7 +162,7 @@ export function MyClaimDetail(): JSX.Element {
     <div className={styles.page}>
       <PageHeader title={`Claim ${claim.reference ?? ''}`.trim()} subtitle={`Filed ${formatDate(claim.created_at)}`} />
 
-      <div className={styles.banner} style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
+      <div className={styles.banner} style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-3)', flexWrap: 'wrap' }}>
         <Badge variant={STATUS_VARIANT[claim.status]}>{CUSTOMER_CLAIM_STATUS_LABELS[claim.status]}</Badge>
       </div>
       <ProgressSteps status={claim.status} />
@@ -171,8 +171,8 @@ export function MyClaimDetail(): JSX.Element {
       <Outcome claim={claim} />
 
       <div style={{ height: 16 }} />
-      <Card padding={24}>
-        <h2 style={{ margin: '0 0 12px', fontSize: 'var(--text-lg)' }}>Your claim</h2>
+      <Card padding="large">
+        <h2 style={{ margin: '0 0 var(--space-3)', fontSize: 'var(--text-lg)' }}>Your claim</h2>
         <Kvp label="Container" value={<Mono>{claim.container_number ?? '—'}</Mono>} />
         {claim.cartons_affected.length > 0 && <Kvp label="Cartons affected" value={<Mono>{claim.cartons_affected.join(', ')}</Mono>} />}
         <Kvp label="What you told us" value={claim.description ?? '—'} />
@@ -180,8 +180,8 @@ export function MyClaimDetail(): JSX.Element {
       </Card>
 
       <div style={{ height: 16 }} />
-      <Card padding={24}>
-        <h2 style={{ margin: '0 0 12px', fontSize: 'var(--text-lg)' }}>Evidence you provided</h2>
+      <Card padding="large">
+        <h2 style={{ margin: '0 0 var(--space-3)', fontSize: 'var(--text-lg)' }}>Evidence you provided</h2>
         <EvidenceList files={claim.evidence ?? []} />
       </Card>
 

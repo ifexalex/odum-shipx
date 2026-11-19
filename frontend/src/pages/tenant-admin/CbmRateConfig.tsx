@@ -92,7 +92,7 @@ export function CbmRateConfig(): JSX.Element {
       {!loading && current && (
         <>
           <SectionHead title="Current rate" />
-          <Card padding={20}>
+          <Card padding="default">
             <Kvp label="Currency" value={<Mono>{current.currency.toUpperCase()}</Mono>} />
             <Kvp label="Mode" value={<Mono>{current.rate_mode === 'flat' ? 'Single rate' : 'By package type'}</Mono>} />
             <Kvp label="Rate" value={<Mono color="var(--color-primary)">{formatRateLine(current)}</Mono>} divider={false} />
@@ -101,10 +101,10 @@ export function CbmRateConfig(): JSX.Element {
           <SectionHead title="Update rate" />
           <div className={styles.formCard}>
             <div>
-              <label style={{ fontWeight: 600, fontSize: 'var(--text-md)', display: 'block', marginBottom: 6 }}>
+              <label style={{ fontWeight: 600, fontSize: 'var(--text-md)', display: 'block', marginBottom: 'var(--space-2)' }}>
                 Currency
               </label>
-              <div style={{ display: 'flex', gap: 8 }}>
+              <div style={{ display: 'flex', gap: 'var(--space-2)' }}>
                 <Button variant={currency === 'usd' ? 'primary' : 'ghost'} onClick={() => setCurrency('usd')}>
                   Dollar ($)
                 </Button>
@@ -115,10 +115,10 @@ export function CbmRateConfig(): JSX.Element {
             </div>
 
             <div>
-              <label style={{ fontWeight: 600, fontSize: 'var(--text-md)', display: 'block', marginBottom: 6 }}>
+              <label style={{ fontWeight: 600, fontSize: 'var(--text-md)', display: 'block', marginBottom: 'var(--space-2)' }}>
                 Rate by
               </label>
-              <div style={{ display: 'flex', gap: 8 }}>
+              <div style={{ display: 'flex', gap: 'var(--space-2)' }}>
                 <Button variant={rateMode === 'flat' ? 'primary' : 'ghost'} onClick={() => setRateMode('flat')}>
                   Single rate
                 </Button>
@@ -130,14 +130,14 @@ export function CbmRateConfig(): JSX.Element {
 
             {rateMode === 'flat' ? (
               <div>
-                <label style={{ fontWeight: 600, fontSize: 'var(--text-md)', display: 'block', marginBottom: 6 }}>
+                <label style={{ fontWeight: 600, fontSize: 'var(--text-md)', display: 'block', marginBottom: 'var(--space-2)' }}>
                   {`Rate (${symbol(currency)} per CBM)`} <span style={{ color: 'var(--color-error)' }}>*</span>
                 </label>
                 <input
                   type="number"
                   value={cartonRate}
                   onChange={(e) => setCartonRate(e.target.value)}
-                  style={{ width: '100%', padding: '8px 12px', borderRadius: 8, border: '1px solid var(--color-border)', background: 'var(--color-surface)', fontSize: 'var(--text-lg)' }}
+                  style={{ width: '100%', padding: 'var(--space-2) var(--space-3)', borderRadius: 8, border: '1px solid var(--color-border)', background: 'var(--color-surface)', fontSize: 'var(--text-lg)' }}
                   placeholder="e.g. 45"
                   min="0.01"
                   step="0.01"
@@ -154,14 +154,14 @@ export function CbmRateConfig(): JSX.Element {
                   ['Bales', baleRate, setBaleRate],
                 ] as const).map(([label, value, setValue]) => (
                   <div key={label}>
-                    <label style={{ fontWeight: 600, fontSize: 'var(--text-md)', display: 'block', marginBottom: 6 }}>
+                    <label style={{ fontWeight: 600, fontSize: 'var(--text-md)', display: 'block', marginBottom: 'var(--space-2)' }}>
                       {`${label} (${symbol(currency)} per CBM)`} <span style={{ color: 'var(--color-error)' }}>*</span>
                     </label>
                     <input
                       type="number"
                       value={value}
                       onChange={(e) => setValue(e.target.value)}
-                      style={{ width: '100%', padding: '8px 12px', borderRadius: 8, border: '1px solid var(--color-border)', background: 'var(--color-surface)', fontSize: 'var(--text-lg)' }}
+                      style={{ width: '100%', padding: 'var(--space-2) var(--space-3)', borderRadius: 8, border: '1px solid var(--color-border)', background: 'var(--color-surface)', fontSize: 'var(--text-lg)' }}
                       placeholder="e.g. 45"
                       min="0.01"
                       step="0.01"
@@ -172,20 +172,20 @@ export function CbmRateConfig(): JSX.Element {
             )}
 
             <div>
-              <label style={{ fontWeight: 600, fontSize: 'var(--text-md)', display: 'block', marginBottom: 6 }}>
+              <label style={{ fontWeight: 600, fontSize: 'var(--text-md)', display: 'block', marginBottom: 'var(--space-2)' }}>
                 Minimum CBM per item
               </label>
               <input
                 type="number"
                 value={minCbm}
                 onChange={(e) => setMinCbm(e.target.value)}
-                style={{ width: '100%', padding: '8px 12px', borderRadius: 8, border: '1px solid var(--color-border)', background: 'var(--color-surface)', fontSize: 'var(--text-lg)' }}
+                style={{ width: '100%', padding: 'var(--space-2) var(--space-3)', borderRadius: 8, border: '1px solid var(--color-border)', background: 'var(--color-surface)', fontSize: 'var(--text-lg)' }}
                 placeholder="e.g. 0.1"
                 min="0.01"
                 step="0.01"
                 aria-label="Minimum CBM per item"
               />
-              <p style={{ fontSize: 'var(--text-sm)', color: 'var(--color-text-muted)', margin: '6px 0 0' }}>
+              <p style={{ fontSize: 'var(--text-sm)', color: 'var(--color-text-muted)', margin: 'var(--space-2) 0 0' }}>
                 A line item measuring below this is billed at this floor (handling minimum). Applied when a packing list is saved.
               </p>
             </div>

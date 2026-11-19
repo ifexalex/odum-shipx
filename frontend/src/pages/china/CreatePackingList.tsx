@@ -22,7 +22,7 @@ export function CreatePackingList(): JSX.Element {
       />
 
       {!editReady ? (
-        <Card padding={32}>
+        <Card padding="large">
           <span className={styles.fieldHelper}>Loading draft…</span>
         </Card>
       ) : (

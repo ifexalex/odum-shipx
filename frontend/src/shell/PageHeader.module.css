@@ -2,8 +2,8 @@
   display: flex;
   align-items: flex-start;
   justify-content: space-between;
-  gap: var(--space-md);
-  margin-bottom: var(--space-lg);
+  gap: var(--space-4);
+  margin-bottom: var(--space-6);
 }
 
 .titleBlock {
@@ -17,7 +17,7 @@
   text-transform: uppercase;
   font-weight: 600;
   color: var(--color-primary);
-  margin-bottom: 6px;
+  margin-bottom: var(--space-2);
 }
 
 .title {
@@ -31,14 +31,14 @@
 }
 
 .subtitle {
-  margin: 6px 0 0;
+  margin: var(--space-2) 0 0;
   font-size: var(--text-md);
   color: var(--color-ink-3);
 }
 
 .actions {
   display: flex;
-  gap: var(--space-sm);
+  gap: var(--space-2);
   flex-shrink: 0;
 }
 

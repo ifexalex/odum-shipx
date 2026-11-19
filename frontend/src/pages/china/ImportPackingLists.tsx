@@ -31,7 +31,7 @@ function WizardSteps({ current, mode }: WizardStepsProps & { mode: ImportMode })
     { n: 3, label: 'Results', sub: 'Per-row outcome' },
   ]
   return (
-    <Card padding={0}>
+    <Card padding="none">
       <div className={styles.steps}>
         {steps.map((step, index) => {
           const done = step.n < current
@@ -134,7 +134,7 @@ export function ImportPackingLists(): JSX.Element {
       )}
 
       {step === 1 && (
-        <Card padding={32}>
+        <Card padding="large">
           <SectionHead
             title="What are you importing?"
             sub="Pick the kind of file you have, then upload it."
@@ -360,7 +360,7 @@ export function ImportPackingLists(): JSX.Element {
 
           {manifestResult.error_details.length > 0 && (
             <div className={styles.errorSection}>
-              <Card padding={0}>
+              <Card padding="none">
                 <div className={styles.tableHead}>
                   <SectionHead
                     title="Skipped rows"
@@ -441,7 +441,7 @@ export function ImportPackingLists(): JSX.Element {
 
           {result.error_details.length > 0 && (
             <div className={styles.errorSection}>
-              <Card padding={0}>
+              <Card padding="none">
                 <div className={styles.tableHead}>
                   <SectionHead title="Skipped rows" sub={`${result.error_details.length} row(s) skipped`} />
                 </div>

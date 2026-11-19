@@ -13,7 +13,7 @@ export function PaymentFailed(): JSX.Element {
       <p className={styles.resultBody}>
         Your payment could not be completed. No charge was made. Please try again or use manual bank transfer.
       </p>
-      <div style={{ display: 'flex', gap: 12 }}>
+      <div style={{ display: 'flex', gap: 'var(--space-3)' }}>
         <Button variant="secondary" onClick={() => navigate(-1)}>
           Try again
         </Button>

@@ -3,7 +3,7 @@
    visual weight; the country name is still searchable inside the panel. */
 .row {
   display: flex;
-  gap: 8px;
+  gap: var(--space-2);
   align-items: flex-start;
 }
 
@@ -22,7 +22,7 @@
 @media (max-width: 420px) {
   .row {
     flex-direction: column;
-    gap: 6px;
+    gap: var(--space-2);
   }
 
   .dial,

@@ -22,7 +22,7 @@ function ClaimProgressBar({ status }: { status: DamageClaimStatus }): JSX.Elemen
   const idx = CLAIM_STATUS_ORDER.indexOf(status)
   const pct = Math.round(((idx + 1) / CLAIM_STATUS_ORDER.length) * 100)
   return (
-    <div style={{ marginTop: 8 }}>
+    <div style={{ marginTop: 'var(--space-2)' }}>
       <div style={{ height: 4, borderRadius: 2, background: 'var(--color-border)', overflow: 'hidden' }}>
         <div style={{ height: '100%', width: `${pct}%`, background: status === 'resolved' || status === 'closed' ? 'var(--color-success)' : 'var(--color-primary)', borderRadius: 2 }} />
       </div>

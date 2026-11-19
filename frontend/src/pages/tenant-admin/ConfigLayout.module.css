@@ -5,7 +5,7 @@
 .layout {
   display: grid;
   grid-template-columns: 240px minmax(0, 1fr);
-  gap: 20px;
+  gap: var(--space-5);
   align-items: start;
 }
 
@@ -30,8 +30,8 @@
 .subNavItem {
   display: flex;
   align-items: center;
-  gap: 12px;
-  padding: 10px 12px;
+  gap: var(--space-3);
+  padding: var(--space-3) var(--space-3);
   border-radius: var(--radius-sm);
   cursor: pointer;
 }
@@ -75,5 +75,5 @@
 .subNavDesc {
   font-size: var(--text-xs);
   color: var(--color-ink-4);
-  margin-top: 1px;
+  margin-top: var(--space-0-5);
 }

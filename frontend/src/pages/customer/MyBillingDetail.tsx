@@ -412,7 +412,7 @@ export function MyBillingDetail(): JSX.Element {
           <Banner variant="error">{invoiceError}</Banner>
         </div>
       )}
-      <Card padding={20}>
+      <Card padding="default">
         <Kvp label="CBM" value={<Mono>{Number(billing.total_cbm).toFixed(3)}</Mono>} />
         {/* A per-package-type invoice was actually priced against separate
             carton/bag/bale rates — showing only the blended USD-equivalent
@@ -495,7 +495,7 @@ export function MyBillingDetail(): JSX.Element {
               stayed fully active and clickable even after the customer had
               already told us they'd paid, with nothing on the page saying so. */}
           {pendingClaim ? (
-            <Card padding={20}>
+            <Card padding="default">
               <Banner variant="warning" title="Payment submitted — awaiting confirmation">
                 You told us you sent {formatNgn(pendingClaim.amount_ngn)} on{' '}
                 {formatDate(pendingClaim.submitted_at)}
@@ -578,7 +578,7 @@ export function MyBillingDetail(): JSX.Element {
       {billing.payments.length > 0 && (
         <>
           <SectionHead title="Payment history" />
-          <Card padding={0}>
+          <Card padding="none">
             <table className={styles.paymentsTable}>
               <thead>
                 <tr className={styles.paymentsHeadRow}>

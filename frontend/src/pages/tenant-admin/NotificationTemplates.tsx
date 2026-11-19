@@ -81,7 +81,7 @@ function TemplateCard({ template, onSaved }: TemplateCardProps): JSX.Element {
       <div className={styles.templateHeader}>
         <div>
           <span className={styles.templateEventType}>{template.event_type.replace(/_/g, ' ')}</span>
-          <span style={{ marginLeft: 8, fontSize: 'var(--text-xs)', fontWeight: 700, padding: '2px 8px', borderRadius: 4, background: 'var(--color-surface-muted)', color: 'var(--color-text-muted)' }}>
+          <span style={{ marginLeft: 'var(--space-2)', fontSize: 'var(--text-xs)', fontWeight: 700, padding: 'var(--space-0-5) var(--space-2)', borderRadius: 4, background: 'var(--color-surface-muted)', color: 'var(--color-text-muted)' }}>
             {template.channel.toUpperCase()}
           </span>
         </div>
@@ -101,16 +101,16 @@ function TemplateCard({ template, onSaved }: TemplateCardProps): JSX.Element {
       )}
 
       {template.channel === 'whatsapp' && body.trim() && (
-        <div style={{ marginBottom: 12 }}>
-          <div style={{ fontSize: 'var(--text-xs)', fontWeight: 600, color: 'var(--color-ink-3)', marginBottom: 6 }}>WhatsApp preview</div>
-          <div style={{ background: '#e5ddd5', borderRadius: 10, padding: 14 }}>
+        <div style={{ marginBottom: 'var(--space-3)' }}>
+          <div style={{ fontSize: 'var(--text-xs)', fontWeight: 600, color: 'var(--color-ink-3)', marginBottom: 'var(--space-2)' }}>WhatsApp preview</div>
+          <div style={{ background: '#e5ddd5', borderRadius: 10, padding: 'var(--space-4)' }}>
             <div style={{
-              background: '#dcf8c6', borderRadius: '8px 8px 8px 0', padding: '8px 12px',
+              background: '#dcf8c6', borderRadius: '8px 8px 8px 0', padding: 'var(--space-2) var(--space-3)',
               maxWidth: 340, fontSize: 'var(--text-sm)', lineHeight: 'var(--leading-body)', color: '#111',
               boxShadow: '0 1px 1px rgba(0,0,0,0.12)', whiteSpace: 'pre-wrap', wordBreak: 'break-word',
             }}>
               {body}
-              <div style={{ fontSize: 'var(--text-xs)', color: '#667781', textAlign: 'right', marginTop: 4 }}>
+              <div style={{ fontSize: 'var(--text-xs)', color: '#667781', textAlign: 'right', marginTop: 'var(--space-1)' }}>
                 {formatTime(new Date())} ✓✓
               </div>
             </div>
@@ -119,7 +119,7 @@ function TemplateCard({ template, onSaved }: TemplateCardProps): JSX.Element {
       )}
 
       <div>
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 'var(--space-2)' }}>
           <label style={{ fontWeight: 600, fontSize: 'var(--text-md)' }}>Message body</label>
           {isSms && <SmsCounter text={body} />}
         </div>
@@ -129,7 +129,7 @@ function TemplateCard({ template, onSaved }: TemplateCardProps): JSX.Element {
           style={{
             width: '100%',
             minHeight: 100,
-            padding: '8px 12px',
+            padding: 'var(--space-2) var(--space-3)',
             borderRadius: 8,
             border: '1px solid var(--color-border)',
             background: 'var(--color-surface)',
@@ -201,14 +201,14 @@ export function NotificationTemplates(): JSX.Element {
       {loading && <p style={{ color: 'var(--color-text-muted)' }}>Loading templates…</p>}
 
       {!loading && templates.length === 0 && (
-        <p style={{ color: 'var(--color-text-muted)', marginTop: 24 }}>
+        <p style={{ color: 'var(--color-text-muted)', marginTop: 'var(--space-6)' }}>
           No notification templates configured. They will appear here once seeded by the platform admin.
         </p>
       )}
 
       {Object.entries(grouped).map(([eventType, tpls]) => (
         <div key={eventType} className={styles.section}>
-          <p style={{ fontWeight: 700, fontSize: 'var(--text-md)', color: 'var(--color-text-muted)', textTransform: 'uppercase', letterSpacing: 'var(--tracking-label)', marginBottom: 8 }}>
+          <p style={{ fontWeight: 700, fontSize: 'var(--text-md)', color: 'var(--color-text-muted)', textTransform: 'uppercase', letterSpacing: 'var(--tracking-label)', marginBottom: 'var(--space-2)' }}>
             {eventType.replace(/_/g, ' ')}
           </p>
           {tpls.map((t) => (
