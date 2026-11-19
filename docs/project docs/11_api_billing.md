@@ -249,11 +249,16 @@ Guards (all must pass; any violation → 422 `BUSINESS_RULE_VIOLATION`):
 1. Billing status must be `unpaid` — billing with any payment cannot be cancelled.
 2. No confirmed `payment_record` rows linked to this billing.
 3. No active (non-terminal) `release_note` rows linked to this billing.
+4. (2026-11-19) If the invoice used customer credit (`credits_applied_ngn > 0`) but that use is not fully recorded in `billing_credit_application` (an invoice issued before migration 070) → 422 `rule_id: CREDIT_NOT_TRACEABLE`. Restore the credit by hand first (runbook).
 
-On success:
+On success, in one transaction (2026-11-19):
 - Sets `billing.status = 'cancelled'`; records `cancel_reason`, `cancelled_by`, `cancelled_at`.
-- Writes an audit log entry.
-- Returns the updated billing row.
+- Gives back every credit the invoice used: `refund_request.credit_applied_ngn` falls by what this invoice took, a used-up (`processed`) credit is `applied_as_credit` again, and each `billing_credit_application` row is stamped `reversed_at`.
+- Reopens the earlier balances it carried over: `carryover_ledger` rows `applied` to it become `outstanding` (target and `applied_at` cleared), so the customer's next invoice picks them up.
+- Writes an audit log entry; `after_state` lists `credits_restored` (`refund_request_id`, `amount_ngn`) and `carryovers_reopened`.
+- Returns the updated billing row plus `credits_restored_ngn` and `carryovers_reopened` (a count).
+
+~~Before 2026-11-19 the credit an invoice used stayed spent when it was cancelled, and its carried-over balance was lost.~~ An invoice paid in full by credit is issued `paid` and cannot be cancelled (guard 1).
 
 Billing status values (migration 017 adds `cancelled` to existing CHECK constraint):
 `unpaid | partially_paid | paid | overpaid | waived | released_with_outstanding | cancelled`

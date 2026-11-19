@@ -344,3 +344,7 @@ a non-canonical policy fails CI.
 ## `tenant_offboarding_export` (migration 067, 2026-11-17)
 
 Created with the canonical policy (`app.current_tenant_id` = `PLATFORM` or the row's `tenant_id`), ENABLE and FORCE, like `tenant_counter` (062). Only platform code touches it (PLATFORM scope); a tenant-scoped connection sees only its own rows. DML grants come from 059's default privileges.
+
+## `billing_credit_application` (migration 070, 2026-11-19)
+
+Canonical `tenant_isolation` policy (`FOR ALL`, PLATFORM-aware, USING and WITH CHECK) and `FORCE ROW LEVEL SECURITY`, as in 059. Covered by the default privileges from 059. DB test: another tenant reads no rows.

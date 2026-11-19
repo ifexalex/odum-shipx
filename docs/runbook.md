@@ -1165,3 +1165,11 @@ Tune the notice with `FX_RATE_MAX_AGE_MINUTES` (default 120).
 
 **Severity: HIGH on AWS, before go-live; not applicable on Azure.** CI zipped `services/` flattened, so handler modules loaded but any `from services.<other> import …` raised `No module named 'services'`. Tracking and claims failed at cold start (every request 502); packing-list approval and the import's customer invites would have failed when reached. The offboarding-export Lambda was also never built or deployed by CI. **Fixed:** zips carry the `services` package as well (`ci.yml`, `scripts/build_lambda_zip.sh`); offboarding export added to the build and deploy lists; guarded by `TestLambdaPackageLayout`. **On the next AWS deploy:** call `GET /v1/containers` and `GET /v1/claims` once and check CloudWatch for `Runtime.ImportModuleError`.
 
+## Cancelling an invoice that used credit (2026-11-19)
+
+Cancelling an invoice now returns the credit it used and reopens the balances it carried over (migration 070). An invoice issued **before** migration 070 that used credit has no record of which credit, so cancel refuses it with `CREDIT_NOT_TRACEABLE`. To cancel one:
+
+1. Find what it used: `SELECT credits_applied_ngn, customer_id FROM billing WHERE id = '<billing>'`, and the customer's credits: `SELECT id, amount_approved_ngn, credit_applied_ngn, status, updated_at FROM refund_request WHERE customer_id = '<customer>' AND customer_choice = 'credit_next_shipment' ORDER BY updated_at`. The audit entry for the invoice's creation (`audit_log`, entity `billing`, action `CREATE`) lists `credits_applied` per refund.
+2. Record it, so the normal cancel gives it back: `INSERT INTO billing_credit_application (tenant_id, billing_id, refund_request_id, amount_ngn, created_at) VALUES (…)` for each credit, as the tenant (`SET app.current_tenant_id`).
+3. Cancel from the app. Check the credits' `credit_applied_ngn` fell by those amounts.
+

@@ -342,6 +342,8 @@ export function BillingDetail(): JSX.Element {
         <CancelBillingModal
           billingId={billing.id}
           error={cancelError}
+          creditsNgn={-Number(billing.adjustments_ngn ?? 0)}
+          carryoverNgn={billing.carryover_ngn}
           onCancel={() => setShowCancelModal(false)}
           onSuccess={(updated) => {
             setShowCancelModal(false)

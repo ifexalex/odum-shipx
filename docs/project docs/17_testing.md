@@ -2447,3 +2447,9 @@ Found by running them: **a real bug** (invoice generation set a used credit to `
 - `tests/unit/test_list_exports.py` `TestContainerEventExport` (6) and `TestContainerEventExportRoute` (7): csv and xlsx content with readable statuses and roles, a formula in a note neutralised, an event with no actor, audit on the container, 404 before any upload; routing to excel, the four reading roles allowed, a customer refused, PDF refused. Live on :3010: csv/xlsx downloaded, PDF 422.
 - `tests/unit/test_infrastructure_contracts.py` `TestLambdaPackageLayout` (10): see `18_cicd_pipeline.md` "Lambda zips carry the `services` package".
 - Frontend: `ContainerDetail.test.tsx` tracking export (2): the button exports xlsx; a failed export is shown.
+
+## Cancelling an invoice gives back credit and carryover (2026-11-19)
+
+- `tests/unit/test_invoice_credits.py`: each credit used is recorded against the invoice; `TestCancelGivesBackWhatTheInvoiceTook` (4, fake cursor) pins the reversal SQL, the carryover reopening, nothing written for an invoice no longer unpaid, and rollback when a credit cannot be returned. `test_billing.py` `TestCancelBilling`: the response and audit report what was given back; an older invoice with unrecorded credit is refused `CREDIT_NOT_TRACEABLE`. An existing assertion that matched `INSERT INTO billing` as a prefix (and so also the new ledger insert) now matches `INSERT INTO billing (`.
+- `tests/db/test_invoice_credits.py` `TestCancelGivesBackWhatTheInvoiceTook` (5, real database): a used-up credit comes back and the container can be invoiced again with it; a credit shared by two invoices gets back only the cancelled one's part; a carried-over balance is outstanding again; a paid invoice is not cancelled and nothing is returned; another tenant sees no applications. `conftest.py` cleanup deletes `billing_credit_application` first.
+- Frontend: `CancelBillingModal.test.tsx` (2).

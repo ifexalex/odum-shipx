@@ -66,6 +66,7 @@ def world(admin):
             "notification_log",
             "release_note",
             "storage_fee_log",
+            "billing_credit_application",  # → billing, refund_request
             "claim_resolution",
             "missing_item",
             "seized_item",

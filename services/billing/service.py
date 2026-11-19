@@ -1119,11 +1119,16 @@ def cancel_billing(
     actor_id: str,
     ip_address: str | None = None,
 ) -> dict[str, Any]:
-    """Void an unpaid billing record.
+    """Void an unpaid billing record, and give back what issuing it took.
+
+    The credits the invoice used return to the customer, and the earlier balances it carried over become outstanding
+    again for their next invoice (``repo.cancel_billing``, one transaction).
 
     Guards:
       - Billing must be in 'unpaid' status (no partial/full payments).
       - No active (non-terminal) release notes may reference this billing.
+      - An invoice issued before credit use was recorded per invoice (migration 070) that used credit is refused:
+        which credit to give back is not known, and guessing could hand a customer credit twice.
     """
     billing = repo.get_billing_by_id(tenant_id, billing_id)
     if not billing:
@@ -1147,9 +1152,19 @@ def cancel_billing(
             rule_id="BR-BL-CANCEL-003",
         )
 
-    updated = repo.cancel_billing(tenant_id, billing_id, actor_id, cancel_reason)
-    if not updated:
+    credits_used = Decimal(str(billing.get("credits_applied_ngn") or 0))
+    recorded = sum((Decimal(str(a["amount_ngn"])) for a in repo.get_credit_applications(tenant_id, billing_id)), Decimal(0))
+    if credits_used > recorded:
+        raise BusinessRuleViolationError(
+            "This invoice used customer credit before credit use was recorded per invoice, so cancelling it cannot "
+            "give the credit back automatically. Ask support to restore the credit, then cancel.",
+            rule_id="CREDIT_NOT_TRACEABLE",
+        )
+
+    cancelled = repo.cancel_billing(tenant_id, billing_id, actor_id, cancel_reason)
+    if cancelled is None:
         raise ResourceNotFoundError("billing", billing_id)
+    updated = cancelled.row
 
     log_audit(
         tenant_id=tenant_id,
@@ -1159,11 +1174,20 @@ def cancel_billing(
         actor_id=actor_id,
         actor_role=str(UserRole.TENANT_ADMIN),
         before_state={"status": billing["status"]},
-        after_state={"status": "cancelled", "cancel_reason": cancel_reason},
+        after_state={
+            "status": "cancelled",
+            "cancel_reason": cancel_reason,
+            "credits_restored": [{"refund_request_id": rid, "amount_ngn": str(amt)} for rid, amt in cancelled.credits_restored],
+            "carryovers_reopened": cancelled.carryovers_reopened,
+        },
         ip_address=ip_address,
     )
 
-    return dict(updated)
+    return {
+        **updated,
+        "credits_restored_ngn": sum((amt for _, amt in cancelled.credits_restored), Decimal(0)),
+        "carryovers_reopened": len(cancelled.carryovers_reopened),
+    }
 
 
 # ---------------------------------------------------------------------------

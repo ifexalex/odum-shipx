@@ -99,6 +99,7 @@ TENANT_TABLES: tuple[TenantTable, ...] = (
     TenantTable("claim_evidence", via=("damage_claim_id", "damage_claim")),
     TenantTable("refund_request", decrypt=frozenset({"account_number", "account_name"})),  # → billing, damage_claim
     TenantTable("claim_resolution"),  # → damage_claim, refund_request
+    TenantTable("billing_credit_application"),  # → billing, refund_request
     TenantTable("missing_item"),  # → manifest, packing_list
     TenantTable("seized_item"),  # → container, packing_list_item
     TenantTable("staff_notification"),

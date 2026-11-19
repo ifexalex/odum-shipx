@@ -322,8 +322,9 @@ def create_invoice(
 
     In a single transaction this allocates the next invoice number from the
     tenant counter, inserts the invoice, marks the carryovers it absorbed as
-    applied and takes what it used from each credit. Either all of that happens
-    or none of it does.
+    applied and takes what it used from each credit, recording each use in
+    ``billing_credit_application`` so a cancellation can give it back. Either all
+    of that happens or none of it does.
 
     A credit is spent only as far as the invoice needed it: what is left stays
     ``applied_as_credit`` for the next invoice, and the credit becomes
@@ -428,6 +429,20 @@ def create_invoice(
                 )
                 if cur.fetchone() is None:
                     raise LedgerConflictError("a credit was applied by another request")
+                # Which credit this invoice used, and how much: what cancelling the invoice gives back (migration 070).
+                cur.execute(
+                    """
+                    INSERT INTO billing_credit_application (tenant_id, billing_id, refund_request_id, amount_ngn)
+                    VALUES (%(tenant_id)s, %(billing_id)s, %(refund_id)s, %(amount)s)
+                    RETURNING id
+                    """,
+                    {
+                        "tenant_id": tenant_id,
+                        "billing_id": invoice["id"],
+                        "refund_id": credit.refund_id,
+                        "amount": credit.amount_ngn,
+                    },
+                )
             return invoice, True
     except _AlreadyBilled:
         existing_row = get_live_invoice(tenant_id, data["customer_id"], data["container_id"])
@@ -791,34 +806,114 @@ def get_active_release_note_count(tenant_id: str, billing_id: str) -> int:
     return int(rows[0]["cnt"]) if rows else 0
 
 
+def get_credit_applications(tenant_id: str, billing_id: str) -> list[dict[str, Any]]:
+    """The credits an invoice used and has not given back, oldest first."""
+    return execute_with_tenant(
+        tenant_id,
+        """
+        SELECT id, refund_request_id, amount_ngn, created_at
+          FROM billing_credit_application
+         WHERE tenant_id = %s AND billing_id = %s AND reversed_at IS NULL
+         ORDER BY created_at, id
+        """,
+        (tenant_id, billing_id),
+    )
+
+
+@dataclass(frozen=True)
+class CancelledInvoice:
+    """An invoice cancelled, with what the cancellation gave back.
+
+    Attributes:
+        row: The billing row, now ``cancelled``.
+        credits_restored: ``(refund_request_id, amount_ngn)`` for each credit returned to the customer.
+        carryovers_reopened: Carryover ledger rows put back to ``outstanding`` for the next invoice.
+    """
+
+    row: dict[str, Any]
+    credits_restored: list[tuple[str, Decimal]]
+    carryovers_reopened: list[str]
+
+
 def cancel_billing(
     tenant_id: str,
     billing_id: str,
     actor_id: str,
     cancel_reason: str,
-) -> dict[str, Any] | None:
-    """Mark billing as cancelled; returns updated row or None on miss."""
-    return execute_write_with_tenant(
-        tenant_id,
-        """
-        UPDATE billing
-        SET status        = 'cancelled',
-            cancel_reason = %(cancel_reason)s,
-            cancelled_by  = %(actor_id)s,
-            cancelled_at  = NOW(),
-            updated_at    = NOW()
-        WHERE tenant_id = %(tenant_id)s
-          AND id        = %(id)s
-          AND status    = 'unpaid'
-        RETURNING *
-        """,
-        {
-            "tenant_id": tenant_id,
-            "id": billing_id,
-            "actor_id": actor_id,
-            "cancel_reason": cancel_reason,
-        },
-    )
+) -> CancelledInvoice | None:
+    """Cancel an unpaid invoice and undo what issuing it took, in one transaction.
+
+    - The credits it used go back to their ``refund_request``: ``credit_applied_ngn`` falls by the amount, and a
+      credit it had used up (``processed``) is ``applied_as_credit`` again. Each ``billing_credit_application`` row is
+      stamped ``reversed_at``.
+    - The earlier balances it carried over (``carryover_ledger`` rows ``applied`` to it) are ``outstanding`` again,
+      so the customer's next invoice picks them up rather than the debt disappearing.
+
+    Returns:
+        What was cancelled and given back, or None if no unpaid invoice with that id exists (another request
+        changed it first: nothing is written).
+
+    Raises:
+        LedgerConflictError: A credit could not be given back as recorded; everything rolls back.
+    """
+    with tenant_transaction(tenant_id) as cur:
+        cur.execute(
+            """
+            UPDATE billing
+            SET status        = 'cancelled',
+                cancel_reason = %(cancel_reason)s,
+                cancelled_by  = %(actor_id)s,
+                cancelled_at  = NOW(),
+                updated_at    = NOW()
+            WHERE tenant_id = %(tenant_id)s
+              AND id        = %(id)s
+              AND status    = 'unpaid'
+            RETURNING *
+            """,
+            {"tenant_id": tenant_id, "id": billing_id, "actor_id": actor_id, "cancel_reason": cancel_reason},
+        )
+        row = cur.fetchone()
+        if row is None:
+            return None
+
+        cur.execute(
+            """
+            UPDATE billing_credit_application
+               SET reversed_at = NOW()
+             WHERE tenant_id = %s AND billing_id = %s AND reversed_at IS NULL
+            RETURNING refund_request_id, amount_ngn
+            """,
+            (tenant_id, billing_id),
+        )
+        restored = [(str(r["refund_request_id"]), Decimal(str(r["amount_ngn"]))) for r in cur.fetchall()]
+        for refund_id, amount in restored:
+            cur.execute(
+                """
+                UPDATE refund_request
+                   SET credit_applied_ngn = credit_applied_ngn - %(amount)s,
+                       status = CASE WHEN status = 'processed' THEN 'applied_as_credit' ELSE status END,
+                       updated_at = NOW()
+                 WHERE tenant_id = %(tenant_id)s AND id = %(id)s
+                   AND status IN ('applied_as_credit', 'processed')
+                   AND credit_applied_ngn >= %(amount)s
+                RETURNING id
+                """,
+                {"tenant_id": tenant_id, "id": refund_id, "amount": amount},
+            )
+            if cur.fetchone() is None:
+                raise LedgerConflictError("a credit used by this invoice could not be given back")
+
+        cur.execute(
+            """
+            UPDATE carryover_ledger
+               SET status = 'outstanding', target_billing_id = NULL, applied_at = NULL, updated_at = NOW()
+             WHERE tenant_id = %s AND target_billing_id = %s AND status = 'applied'
+            RETURNING id
+            """,
+            (tenant_id, billing_id),
+        )
+        reopened = [str(r["id"]) for r in cur.fetchall()]
+        return CancelledInvoice(row=dict(row), credits_restored=restored, carryovers_reopened=reopened)
 
 
 # ---------------------------------------------------------------------------

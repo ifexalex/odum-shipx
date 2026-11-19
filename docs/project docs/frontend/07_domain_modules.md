@@ -1832,3 +1832,7 @@ Test harness: `src/test/setup.ts` sets Testing Library's `asyncUtilTimeout` to 3
 ## Container tracking tab export (2026-11-19)
 
 The event log's Export button (`containerDetail/Tabs.tsx` `TrackingTab`) was a plain button with no handler. It is now an `ExportButton` (xlsx, csv) calling `containersApi.exportEvents(id, format)` → `GET /v1/containers/{id}/events/export`, through `useListExport`, so a failure shows as a dismissible error banner above the table. Tests: `ContainerDetail.test.tsx` "ContainerDetail tracking export".
+
+## Cancelling an invoice says what it gives back (2026-11-19)
+
+`CancelBillingModal` takes `creditsNgn` (BillingDetail passes `-adjustments_ngn`) and `carryoverNgn`; when either is above zero an info banner reads "₦X of credit goes back to the customer. ₦Y carried over from earlier invoices is owed again, on their next invoice." The cancel API now does both (see `11_api_billing.md`). Refusal `CREDIT_NOT_TRACEABLE` (an older invoice) shows in the modal's existing error banner. Test: `billingDetail/CancelBillingModal.test.tsx`.

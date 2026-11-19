@@ -147,3 +147,86 @@ class TestTheTotalCannotGoBelowZero:
             admin, "SELECT convalidated FROM pg_constraint WHERE conname = %s", ("ck_billing_total_not_negative",)
         )
         assert validated is True
+
+
+class TestCancelGivesBackWhatTheInvoiceTook:
+    """Migration 070: cancelling an invoice returns the credit it used and reopens the balances it carried over."""
+
+    def test_the_credit_comes_back_and_the_next_invoice_can_use_it(self, admin, world):
+        from services.billing import repository as repo
+
+        credit = _make_credit(admin, world, "20000")
+        invoice, _ = _invoice(world, 0, "5000", [repo.CreditApplication(credit, Decimal("0"), Decimal("20000"))])
+        assert _credit_state(admin, credit) == ("processed", Decimal("20000"))
+        [application] = repo.get_credit_applications(world["tenant"], str(invoice["id"]))
+        assert Decimal(str(application["amount_ngn"])) == Decimal("20000")
+
+        cancelled = repo.cancel_billing(world["tenant"], str(invoice["id"]), world["user"], "Wrong container")
+
+        assert cancelled is not None and cancelled.row["status"] == "cancelled"
+        assert cancelled.credits_restored == [(credit, Decimal("20000.00"))]
+        assert _credit_state(admin, credit) == ("applied_as_credit", Decimal("0"))
+        assert repo.get_credit_applications(world["tenant"], str(invoice["id"])) == []
+        [(reversed_at,)] = _rows(
+            admin, "SELECT reversed_at FROM billing_credit_application WHERE billing_id = %s", (str(invoice["id"]),)
+        )
+        assert reversed_at is not None
+
+        # The container can be invoiced again (the cancelled invoice is not live), and the credit is spendable.
+        again, created = _invoice(world, 0, "5000", [repo.CreditApplication(credit, Decimal("0"), Decimal("20000"))])
+        assert created and again["id"] != invoice["id"]
+        assert _credit_state(admin, credit) == ("processed", Decimal("20000"))
+
+    def test_a_credit_used_in_part_gets_back_only_what_this_invoice_took(self, admin, world):
+        from services.billing import repository as repo
+
+        credit = _make_credit(admin, world, "50000")
+        first, _ = _invoice(world, 0, "100", [repo.CreditApplication(credit, Decimal("0"), Decimal("20000"))])
+        _invoice(world, 1, "100", [repo.CreditApplication(credit, Decimal("20000"), Decimal("30000"))])
+        assert _credit_state(admin, credit) == ("processed", Decimal("50000"))
+
+        repo.cancel_billing(world["tenant"], str(first["id"]), world["user"], "Duplicate")
+
+        assert _credit_state(admin, credit) == ("applied_as_credit", Decimal("30000"))
+
+    def test_a_carried_over_balance_is_outstanding_again(self, admin, world):
+        from services.billing import repository as repo
+
+        source, _ = _invoice(world, 1, "8000", [])
+        carryover = str(uuid.uuid4())
+        with admin.cursor() as cur:
+            cur.execute(
+                "INSERT INTO carryover_ledger (id, tenant_id, customer_id, source_billing_id, carryover_amount_ngn) "
+                "VALUES (%s, %s, %s, %s, 8000)",
+                (carryover, world["tenant"], world["customers"][0], str(source["id"])),
+            )
+        data = {**_invoice_data(world["tenant"], world["customers"][0], world["containers"][0]), "total_ngn": Decimal("108000")}
+        target, _ = repo.create_invoice(world["tenant"], data, INVOICE_PREFIX, [carryover], [])
+        assert _rows(admin, "SELECT status FROM carryover_ledger WHERE id = %s", (carryover,)) == [("applied",)]
+
+        cancelled = repo.cancel_billing(world["tenant"], str(target["id"]), world["user"], "Wrong rate")
+
+        assert cancelled.carryovers_reopened == [carryover]
+        [(status, target_id, applied_at)] = _rows(
+            admin, "SELECT status, target_billing_id, applied_at FROM carryover_ledger WHERE id = %s", (carryover,)
+        )
+        assert (status, target_id, applied_at) == ("outstanding", None, None)
+
+    def test_a_paid_invoice_is_not_cancelled_and_nothing_is_given_back(self, admin, world):
+        from services.billing import repository as repo
+
+        credit = _make_credit(admin, world, "20000")
+        invoice, _ = _invoice(world, 0, "5000", [repo.CreditApplication(credit, Decimal("0"), Decimal("20000"))])
+        with admin.cursor() as cur:
+            cur.execute("UPDATE billing SET status = 'paid' WHERE id = %s", (str(invoice["id"]),))
+
+        assert repo.cancel_billing(world["tenant"], str(invoice["id"]), world["user"], "x") is None
+        assert _credit_state(admin, credit) == ("processed", Decimal("20000"))
+        assert len(repo.get_credit_applications(world["tenant"], str(invoice["id"]))) == 1
+
+    def test_another_tenant_cannot_see_the_applications(self, admin, world):
+        from services.billing import repository as repo
+
+        credit = _make_credit(admin, world, "20000")
+        invoice, _ = _invoice(world, 0, "5000", [repo.CreditApplication(credit, Decimal("0"), Decimal("1000"))])
+        assert repo.get_credit_applications(str(uuid.uuid4()), str(invoice["id"])) == []

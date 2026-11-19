@@ -601,3 +601,7 @@ One row per tenant data export. Columns: `id`, `tenant_id` (FK `tenant` ON DELET
 - `confirmed_at TIMESTAMPTZ` on `claim_evidence`, `manifest_evidence` and `container_document`: when the client confirmed the upload and its stored size was checked. NULL means presigned but not confirmed; such a row is never listed or downloadable. Existing rows backfilled to `created_at`.
 - `container_document.file_size_bytes INTEGER` (the other two already had it), set at confirmation.
 - No RLS change: `container_document` keeps its tenant policy; the two evidence tables stay without RLS, scoped through their parent. Applied to the local dev database on 2026-11-19.
+
+## Migration 070 — `billing_credit_application` (2026-11-19)
+
+One row per credit an invoice used: `id`, `tenant_id`, `billing_id` → billing, `refund_request_id` → refund_request (both `ON DELETE RESTRICT`), `amount_ngn DECIMAL(15,2) CHECK (> 0)`, `created_at`, `reversed_at` (set when the invoice is cancelled and the amount returned). Written in `create_invoice`'s transaction; read by `get_credit_applications`; reversed by `cancel_billing`. Indexes on `(tenant_id, billing_id)` and `(tenant_id, refund_request_id)`. Invoices issued before the migration have no rows. In `shared/tenant_data.py` (export and offboarding cleanup). Applied to the local dev database on 2026-11-19.

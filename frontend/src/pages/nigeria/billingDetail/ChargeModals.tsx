@@ -15,6 +15,10 @@ export interface CancelBillingModalProps {
   onSuccess: (updated: Billing) => void
   billingId: string
   error: string | null
+  /** Customer credit this invoice used (`-adjustments_ngn`): cancelling gives it back. */
+  creditsNgn?: string | number
+  /** Earlier balances this invoice carried over: cancelling makes them outstanding again for the next invoice. */
+  carryoverNgn?: string | number
 }
 
 // ---------------------------------------------------------------------------
@@ -179,6 +183,8 @@ export function CancelBillingModal({
   onSuccess,
   billingId,
   error,
+  creditsNgn = 0,
+  carryoverNgn = 0,
 }: CancelBillingModalProps): JSX.Element {
   const [reason, setReason] = useState('')
   const [submitting, setSubmitting] = useState(false)
@@ -213,6 +219,16 @@ export function CancelBillingModal({
           <div className={styles.modalBanner}>
             <Banner variant="error" title="Action failed">
               {displayError}
+            </Banner>
+          </div>
+        )}
+        {(Number(creditsNgn) > 0 || Number(carryoverNgn) > 0) && (
+          <div className={styles.modalBanner}>
+            <Banner variant="info" title="What cancelling gives back">
+              {Number(creditsNgn) > 0 && <>{formatNgn(creditsNgn)} of credit goes back to the customer. </>}
+              {Number(carryoverNgn) > 0 && (
+                <>{formatNgn(carryoverNgn)} carried over from earlier invoices is owed again, on their next invoice.</>
+              )}
             </Banner>
           </div>
         )}

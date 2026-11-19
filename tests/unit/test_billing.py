@@ -436,17 +436,66 @@ class TestCancelBilling:
         from services.billing import service
 
         billing = _billing(status="unpaid")
-        cancelled = {**billing, "status": "cancelled"}
+        cancelled = service.repo.CancelledInvoice(
+            row={**billing, "status": "cancelled"}, credits_restored=[], carryovers_reopened=[]
+        )
 
         with (
             patch.object(service.repo, "get_billing_by_id", return_value=billing),
             patch.object(service.repo, "get_confirmed_payment_count", return_value=0),
             patch.object(service.repo, "get_active_release_note_count", return_value=0),
+            patch.object(service.repo, "get_credit_applications", return_value=[]),
             patch.object(service.repo, "cancel_billing", return_value=cancelled),
             patch("services.billing.service.log_audit"),
         ):
             result = service.cancel_billing(TENANT_ID, "billing-001", "Data entry error", actor_id="u")
             assert result["status"] == "cancelled"
+            assert result["credits_restored_ngn"] == Decimal("0") and result["carryovers_reopened"] == 0
+
+    def test_cancel_reports_and_audits_what_it_gave_back(self):
+        from services.billing import service
+
+        billing = _billing(status="unpaid", credits_applied_ngn=Decimal("7000"))
+        cancelled = service.repo.CancelledInvoice(
+            row={**billing, "status": "cancelled"},
+            credits_restored=[("r1", Decimal("5000")), ("r2", Decimal("2000"))],
+            carryovers_reopened=["c1"],
+        )
+        applications = [{"amount_ngn": Decimal("5000")}, {"amount_ngn": Decimal("2000")}]
+        with (
+            patch.object(service.repo, "get_billing_by_id", return_value=billing),
+            patch.object(service.repo, "get_confirmed_payment_count", return_value=0),
+            patch.object(service.repo, "get_active_release_note_count", return_value=0),
+            patch.object(service.repo, "get_credit_applications", return_value=applications),
+            patch.object(service.repo, "cancel_billing", return_value=cancelled),
+            patch("services.billing.service.log_audit") as audit,
+        ):
+            result = service.cancel_billing(TENANT_ID, "billing-001", "Wrong container", actor_id="u")
+        assert result["credits_restored_ngn"] == Decimal("7000") and result["carryovers_reopened"] == 1
+        after = audit.call_args.kwargs["after_state"]
+        assert after["credits_restored"] == [
+            {"refund_request_id": "r1", "amount_ngn": "5000"},
+            {"refund_request_id": "r2", "amount_ngn": "2000"},
+        ]
+        assert after["carryovers_reopened"] == ["c1"]
+
+    def test_an_invoice_whose_credit_use_was_never_recorded_is_refused(self):
+        """Issued before migration 070: which credit to give back is unknown."""
+        from services.billing import service
+        from shared.exceptions import BusinessRuleViolationError
+
+        billing = _billing(status="unpaid", credits_applied_ngn=Decimal("3000"))
+        with (
+            patch.object(service.repo, "get_billing_by_id", return_value=billing),
+            patch.object(service.repo, "get_confirmed_payment_count", return_value=0),
+            patch.object(service.repo, "get_active_release_note_count", return_value=0),
+            patch.object(service.repo, "get_credit_applications", return_value=[]),
+            patch.object(service.repo, "cancel_billing") as cancel,
+            pytest.raises(BusinessRuleViolationError) as caught,
+        ):
+            service.cancel_billing(TENANT_ID, "billing-001", "reason", actor_id="u")
+        assert caught.value.rule_id == "CREDIT_NOT_TRACEABLE"
+        cancel.assert_not_called()
 
     def test_billing_not_found_raises(self):
         from services.billing import service
@@ -514,6 +563,7 @@ class TestCancelBilling:
             patch.object(service.repo, "get_billing_by_id", return_value=billing),
             patch.object(service.repo, "get_confirmed_payment_count", return_value=0),
             patch.object(service.repo, "get_active_release_note_count", return_value=0),
+            patch.object(service.repo, "get_credit_applications", return_value=[]),
             patch.object(service.repo, "cancel_billing", return_value=None),
         ):
             with pytest.raises(ResourceNotFoundError):
