@@ -16,7 +16,7 @@
   letter-spacing: var(--tracking-label);
   text-transform: uppercase;
   font-weight: 600;
-  color: var(--color-primary);
+  color: var(--color-primary-text);
   margin-bottom: var(--space-2);
 }
 

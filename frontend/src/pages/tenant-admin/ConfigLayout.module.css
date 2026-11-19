@@ -56,7 +56,7 @@
 }
 .subNavIconActive {
   background: var(--color-primary);
-  color: #fff;
+  color: var(--color-on-dark);
 }
 .subNavText {
   flex: 1;

@@ -27,7 +27,7 @@
 
 .link,
 .back {
-  color: var(--color-primary);
+  color: var(--color-primary-text);
   font-weight: 600;
   text-decoration: none;
 }

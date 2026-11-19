@@ -12,7 +12,7 @@
 .panel {
   max-width: 480px;
   text-align: center;
-  color: #fff;
+  color: var(--color-on-dark);
 }
 
 .mark {
@@ -25,8 +25,8 @@
   height: 64px;
   border-radius: 50%;
   margin: 0 auto var(--space-6);
-  background: rgba(220, 38, 38, 0.15);
-  border: 1px solid rgba(220, 38, 38, 0.4);
+  background: color-mix(in srgb, var(--color-error) 15%, transparent);
+  border: 1px solid color-mix(in srgb, var(--color-error) 40%, transparent);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -38,20 +38,20 @@
   font-size: var(--text-2xl);
   margin: 0 0 var(--space-3);
   letter-spacing: var(--tracking-tight);
-  color: #fff;
+  color: var(--color-on-dark);
 }
 
 .body {
   margin: 0 0 var(--space-2);
   font-size: var(--text-lg);
-  color: rgba(255, 255, 255, 0.75);
+  color: var(--color-on-dark-muted);
   line-height: var(--text-lg-line);
 }
 
 .hint {
   margin: 0 0 var(--space-8);
   font-size: var(--text-sm);
-  color: rgba(255, 255, 255, 0.5);
+  color: var(--color-on-dark-subtle);
 }
 
 .actions {
@@ -67,12 +67,12 @@
 
 /* Ghost button sits on the dark panel — lift its text to white. */
 .signOut {
-  color: rgba(255, 255, 255, 0.85);
+  color: var(--color-on-dark);
 }
 
 .code {
   margin-top: var(--space-8);
   font-size: var(--text-xs);
-  color: rgba(255, 255, 255, 0.35);
+  color: var(--color-on-dark-subtle);
   font-family: var(--font-mono);
 }

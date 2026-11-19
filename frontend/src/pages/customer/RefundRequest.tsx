@@ -95,7 +95,7 @@ export function RefundRequest(): JSX.Element {
               />
               <div>
                 <strong>Bank account refund</strong>
-                <p style={{ margin: 0, color: 'var(--color-text-muted)' }}>
+                <p style={{ margin: 0, color: 'var(--color-ink-4)' }}>
                   Refunded to your bank account within 5–7 business days.
                 </p>
               </div>
@@ -109,7 +109,7 @@ export function RefundRequest(): JSX.Element {
               />
               <div>
                 <strong>Credit on next shipment</strong>
-                <p style={{ margin: 0, color: 'var(--color-text-muted)' }}>
+                <p style={{ margin: 0, color: 'var(--color-ink-4)' }}>
                   Applied automatically to your next container billing; anything left over stays as credit for the one
                   after.
                 </p>

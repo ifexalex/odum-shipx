@@ -98,7 +98,7 @@
 .select {
   height: 48px;
   background: var(--color-surface);
-  border: 1px solid var(--color-line-soft);
+  border: 1px solid var(--color-control-border);
   border-radius: 8px;
   padding: 0 var(--space-3);
   font-family: var(--font-body);
@@ -304,7 +304,7 @@
   padding: var(--space-4);
   text-align: left;
   background: var(--color-surface);
-  border: 1px solid var(--color-border);
+  border: 1px solid var(--color-line-soft);
   border-radius: 10px;
   cursor: pointer;
   transition: border-color 0.15s ease, background 0.15s ease;
@@ -316,7 +316,7 @@
 
 .modeCardActive {
   border-color: var(--color-primary);
-  background: var(--color-primary-tint, rgb(37 99 235 / 6%));
+  background: var(--color-primary-tint);
 }
 
 .modeRadio {

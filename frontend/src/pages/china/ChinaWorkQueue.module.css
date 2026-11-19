@@ -45,7 +45,7 @@
 
 .row:hover .primary,
 .row:focus-visible .primary {
-  color: var(--color-primary);
+  color: var(--color-primary-text);
 }
 
 .row:focus-visible {

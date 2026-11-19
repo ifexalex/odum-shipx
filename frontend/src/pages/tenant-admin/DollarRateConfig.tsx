@@ -258,7 +258,7 @@ export function DollarRateConfig(): JSX.Element {
                 type="number"
                 value={markupValue}
                 onChange={(e) => setMarkupValue(e.target.value)}
-                style={{ width: '100%', padding: 'var(--space-2) var(--space-3)', borderRadius: 8, border: '1px solid var(--color-border)', background: 'var(--color-surface)', fontSize: 'var(--text-lg)' }}
+                style={{ width: '100%', padding: 'var(--space-2) var(--space-3)', borderRadius: 8, border: '1px solid var(--color-line-soft)', background: 'var(--color-surface)', fontSize: 'var(--text-lg)' }}
                 placeholder={markupType === 'percentage' ? 'e.g. 2' : 'e.g. 15'}
                 min="0"
                 step={markupType === 'percentage' ? '0.1' : '1'}

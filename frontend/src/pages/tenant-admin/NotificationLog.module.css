@@ -65,7 +65,7 @@
   min-width: 220px;
   height: 36px;
   background: var(--color-page);
-  border: 1px solid var(--color-line);
+  border: 1px solid var(--color-control-border);
   border-radius: var(--radius-sm);
   display: flex;
   align-items: center;
@@ -92,7 +92,7 @@
   box-sizing: border-box;
   padding: 0 var(--space-2);
   background: var(--color-page);
-  border: 1px solid var(--color-line);
+  border: 1px solid var(--color-control-border);
   border-radius: var(--radius-sm);
   font-family: var(--font-body);
   font-size: var(--text-sm);
@@ -147,7 +147,7 @@
   background: var(--color-surface);
   border: 1px solid var(--color-line);
   border-radius: var(--radius-md);
-  box-shadow: var(--shadow-lg);
+  box-shadow: var(--shadow-popover);
   z-index: 20;
   min-width: 140px;
   overflow: hidden;
@@ -166,7 +166,7 @@
 }
 
 .dropdownItem:hover { background: var(--color-primary-tint); }
-.dropdownItemActive { color: var(--color-primary); font-weight: 600; }
+.dropdownItemActive { color: var(--color-primary-text); font-weight: 600; }
 
 /* Modal. Ground-truth gap found live: .modal used a fixed `width: 560px`
    (not max-width) — genuinely wider than a phone viewport. Mobile-first
@@ -175,7 +175,7 @@
 .modalOverlay {
   position: fixed;
   inset: 0;
-  background: rgba(11, 47, 13, 0.55);
+  background: var(--scrim-modal);
   display: flex;
   align-items: flex-end;
   justify-content: center;
@@ -278,7 +278,7 @@
 }
 
 .msgBubble {
-  background: var(--color-success-soft, #dcfce7);
+  background: var(--color-success-soft);
   border-radius: 12px 12px 4px 12px;
   padding: var(--space-3) var(--space-4);
   font-size: var(--text-sm);

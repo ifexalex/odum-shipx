@@ -16,11 +16,11 @@
 }
 .tile {
   background: var(--color-primary-soft);
-  color: var(--color-primary);
+  color: var(--color-primary-text);
 }
 .tileAccent {
   background: var(--color-accent);
-  color: #fff;
+  color: var(--color-on-dark);
 }
 
 .body {
@@ -58,7 +58,7 @@
   padding: 0;
 }
 .cta {
-  color: var(--color-primary);
+  color: var(--color-primary-text);
 }
 .ctaAccent {
   color: var(--color-accent-text);

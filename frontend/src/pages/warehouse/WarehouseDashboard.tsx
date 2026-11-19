@@ -181,7 +181,7 @@ function PickupSheet({ note, onCancel, onSuccess }: PickupSheetProps): JSX.Eleme
                 ID type <span style={{ color: 'var(--color-error)' }}>*</span>
               </label>
               <select
-                style={{ width: '100%', padding: 'var(--space-3) var(--space-4)', borderRadius: 8, border: '1px solid var(--color-border)', background: 'var(--color-surface)', fontSize: 'var(--text-lg)' }}
+                style={{ width: '100%', padding: 'var(--space-3) var(--space-4)', borderRadius: 8, border: '1px solid var(--color-line-soft)', background: 'var(--color-surface)', fontSize: 'var(--text-lg)' }}
                 value={delegateIdType}
                 onChange={(e) => setDelegateIdType(e.target.value as DelegateIdType)}
               >
@@ -446,7 +446,7 @@ export function WarehouseDashboard(): JSX.Element {
         <span className={styles.queueCount}>{activeNotes.length} note(s)</span>
       </div>
 
-      {loading && <div style={{ padding: 'var(--space-8)', textAlign: 'center', color: 'var(--color-text-muted)' }}>Loading…</div>}
+      {loading && <div style={{ padding: 'var(--space-8)', textAlign: 'center', color: 'var(--color-ink-4)' }}>Loading…</div>}
 
       {!loading && activeNotes.length === 0 && (
         <div className={styles.empty}>

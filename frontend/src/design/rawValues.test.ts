@@ -5,6 +5,8 @@
  * - FD-01 type: every font size, line height and letter spacing is a type token; only weights 400-700. A rule that
  *   says `scale-exempt` with a reason (miniature document previews, emoji icons) is skipped. `1` and `0` stay allowed.
  * - FD-02 spacing: every gap, padding and margin is a --space-* token (or 0, auto, a percentage).
+ * - FD-03 colour: no raw hex or rgb() colour in a style sheet, and no var(--…) that nothing defines (it renders as
+ *   nothing: popovers that used the undefined --shadow-lg had no shadow).
  *
  * Exempt everywhere: print pages and the marketing page.
  */
@@ -90,6 +92,32 @@ describe('design foundations: no raw values', () => {
       }
     }
     expect(broken).toEqual([])
+  })
+
+  it('style sheets use colour tokens, never a raw hex or rgb() colour (FD-03)', () => {
+    const raw: string[] = []
+    for (const path of sheets) {
+      for (const [, selector, body] of readFileSync(path, 'utf8').matchAll(/([^{}]*)\{([^{}]*)\}/g)) {
+        for (const [colour] of (body ?? '').matchAll(/#[0-9a-fA-F]{3,8}\b|rgba?\([^)]*\)/g)) {
+          raw.push(`${relative(SRC, path)} ${selector?.trim().split('\n').pop()}: ${colour}`)
+        }
+      }
+    }
+    expect(raw, 'use a --color-* token, or color-mix() of one for a tint').toEqual([])
+  })
+
+  it('every var(--…) names a defined custom property (FD-03)', () => {
+    const all = [...files(SRC, '.css'), ...files(SRC, '.tsx'), ...files(SRC, '.ts')].filter((p) => !p.includes('.test.'))
+    const defined = new Set<string>()
+    const used = new Map<string, string>()
+    for (const path of all) {
+      const source = readFileSync(path, 'utf8')
+      // In a style sheet `--name: value`; set from a component as `'--name': value`.
+      for (const [, name] of source.matchAll(/['"]?(--[\w-]+)['"]?\s*:/g)) defined.add(name!)
+      for (const [, name] of source.matchAll(/var\((--[\w-]+)/g)) if (!used.has(name!)) used.set(name!, relative(SRC, path))
+    }
+    const undefinedNames = [...used].filter(([name]) => !defined.has(name)).map(([name, where]) => `${name} (${where})`)
+    expect(undefinedNames).toEqual([])
   })
 
   it('style sheets space with --space-* tokens (FD-02)', () => {

@@ -60,7 +60,7 @@ function ProgressSteps({ status }: { status: DamageClaimStatus }): JSX.Element {
               fontSize: 'var(--text-sm)',
               padding: 'var(--space-1) var(--space-3)',
               borderRadius: 999,
-              border: '1px solid var(--color-border)',
+              border: '1px solid var(--color-line-soft)',
               background: here ? 'var(--color-primary-soft)' : 'transparent',
               color: here ? 'var(--color-primary-deep)' : done ? 'var(--color-ink-2)' : 'var(--color-ink-4)',
               fontWeight: here ? 700 : 500,
@@ -76,14 +76,14 @@ function ProgressSteps({ status }: { status: DamageClaimStatus }): JSX.Element {
 }
 
 function EvidenceList({ files }: { files: ClaimEvidenceFile[] }): JSX.Element {
-  if (files.length === 0) return <p style={{ margin: 0, color: 'var(--color-text-muted)' }}>No files were attached to this claim.</p>
+  if (files.length === 0) return <p style={{ margin: 0, color: 'var(--color-ink-4)' }}>No files were attached to this claim.</p>
   return (
     <ul style={{ listStyle: 'none', padding: 0, margin: 0, display: 'flex', flexDirection: 'column', gap: 'var(--space-2)' }}>
       {files.map((file) => (
         <li key={file.id} style={{ display: 'flex', justifyContent: 'space-between', gap: 'var(--space-3)', alignItems: 'center', flexWrap: 'wrap' }}>
           <span>
             {file.file_name}
-            {file.file_size_bytes !== null && <span style={{ color: 'var(--color-text-muted)' }}> · {fileSize(file.file_size_bytes)}</span>}
+            {file.file_size_bytes !== null && <span style={{ color: 'var(--color-ink-4)' }}> · {fileSize(file.file_size_bytes)}</span>}
           </span>
           {file.download_url ? (
             // The link is short-lived and points at private storage: no referrer, and no access to this page.
@@ -91,7 +91,7 @@ function EvidenceList({ files }: { files: ClaimEvidenceFile[] }): JSX.Element {
               Open
             </a>
           ) : (
-            <span style={{ color: 'var(--color-text-muted)' }}>Unavailable</span>
+            <span style={{ color: 'var(--color-ink-4)' }}>Unavailable</span>
           )}
         </li>
       ))}
@@ -145,7 +145,7 @@ export function MyClaimDetail(): JSX.Element {
   // Names this record in the breadcrumb once loaded (FD-46).
   useBreadcrumbLabel(claim?.reference)
 
-  if (isLoading) return <div style={{ padding: 'var(--space-8)', color: 'var(--color-text-muted)' }}>Loading your claim…</div>
+  if (isLoading) return <div style={{ padding: 'var(--space-8)', color: 'var(--color-ink-4)' }}>Loading your claim…</div>
 
   if (error || !claim) {
     const missing = error instanceof ApiError && error.status === 404

@@ -99,7 +99,7 @@
   font-family: var(--font-display);
   font-weight: 700;
   font-size: var(--text-xl);
-  color: var(--color-primary);
+  color: var(--color-primary-text);
   margin-top: var(--space-0-5);
   letter-spacing: var(--tracking-tight);
 }

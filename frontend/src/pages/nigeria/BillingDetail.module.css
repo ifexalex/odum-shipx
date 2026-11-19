@@ -1,7 +1,7 @@
 .loadingState {
   padding: var(--space-12);
   text-align: center;
-  color: var(--color-text-muted);
+  color: var(--color-ink-4);
 }
 
 /* Hero */
@@ -28,7 +28,7 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  color: var(--color-primary);
+  color: var(--color-primary-text);
   flex-shrink: 0;
 }
 
@@ -53,7 +53,7 @@
 .heroMeta {
   margin-top: var(--space-1);
   font-size: var(--text-sm);
-  color: var(--color-text-muted);
+  color: var(--color-ink-4);
   display: flex;
   flex-wrap: wrap;
   gap: var(--space-1) var(--space-2);
@@ -66,7 +66,7 @@
   flex-wrap: wrap;
   gap: var(--space-1) var(--space-4);
   font-size: var(--text-sm);
-  color: var(--color-text-muted);
+  color: var(--color-ink-4);
 }
 
 .heroContact {
@@ -112,7 +112,7 @@
   align-items: center;
   font-size: var(--text-md);
   padding-bottom: var(--space-2);
-  border-bottom: 1px solid var(--color-border);
+  border-bottom: 1px solid var(--color-line-soft);
 }
 
 .breakdownRow:last-child {
@@ -124,13 +124,13 @@
   font-weight: 600;
   font-size: var(--text-lg);
   padding-top: var(--space-2);
-  border-top: 2px solid var(--color-border);
+  border-top: 2px solid var(--color-line-soft);
   border-bottom: none;
 }
 
 /* Dispute cards */
 .disputeCard {
-  border: 1px solid var(--color-border);
+  border: 1px solid var(--color-line-soft);
   border-radius: var(--radius-md);
   padding: var(--space-4);
   margin-bottom: var(--space-3);
@@ -159,7 +159,7 @@
   display: flex;
   gap: var(--space-4);
   font-size: var(--text-sm);
-  color: var(--color-text-muted);
+  color: var(--color-ink-4);
 }
 
 .disputeError {
@@ -191,7 +191,7 @@
 .modalOverlay {
   position: fixed;
   inset: 0;
-  background: rgba(11, 47, 13, 0.55);
+  background: var(--scrim-modal);
   display: flex;
   align-items: flex-end;
   justify-content: center;
@@ -350,19 +350,19 @@
 }
 
 .optional {
-  color: var(--color-text-muted);
+  color: var(--color-ink-4);
   font-weight: 400;
   font-size: var(--text-xs);
   margin-left: var(--space-1);
 }
 
 .select {
-  border: 1px solid var(--color-border);
+  border: 1px solid var(--color-control-border);
   border-radius: 6px;
   padding: var(--space-2) var(--space-3);
   font-size: var(--text-md);
   background: var(--color-surface);
-  color: var(--color-text);
+  color: var(--color-ink);
   cursor: pointer;
   min-height: 44px;
 }
@@ -374,7 +374,7 @@
 }
 
 .emptyNote {
-  color: var(--color-text-muted);
+  color: var(--color-ink-4);
   font-size: var(--text-md);
   margin: 0;
 }

@@ -19,7 +19,7 @@
 /* Micro-interaction lift on hover, press on active (prototype .sx-btn). */
 .button:hover:not(:disabled) {
   transform: translateY(-1px);
-  box-shadow: 0 6px 14px rgba(11, 47, 13, 0.18);
+  box-shadow: var(--shadow-hover);
 }
 .button:active:not(:disabled) {
   transform: translateY(0);
@@ -93,7 +93,7 @@
 
 .ghost {
   background: transparent;
-  color: var(--color-primary);
+  color: var(--color-primary-text);
   border: none;
 }
 .ghost:hover:not(:disabled) {
@@ -101,7 +101,7 @@
 }
 
 .danger {
-  background: var(--color-error);
+  background: var(--color-error-fill);
   color: var(--color-on-brand);
   border: none;
 }
@@ -119,7 +119,7 @@
 }
 
 .success {
-  background: var(--color-success);
+  background: var(--color-success-fill);
   color: var(--color-on-brand);
   border: none;
 }

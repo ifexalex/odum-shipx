@@ -307,7 +307,7 @@ function ApproveModal({ refund, role, onCancel, onSuccess }: ApproveModalProps):
                   {formatNgn(enteredAmount)} exceeds staff limit of {formatNgn(staffLimitNgn)} (${staffLimitUsd} USD)
                 </span>
               ) : (
-                <span style={{ color: 'var(--color-text-muted)' }}>
+                <span style={{ color: 'var(--color-ink-4)' }}>
                   {formatNgn(enteredAmount)} of {formatNgn(staffLimitNgn)} staff limit (${staffLimitUsd} USD)
                 </span>
               )}

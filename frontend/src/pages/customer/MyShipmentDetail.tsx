@@ -124,7 +124,7 @@ export function MyShipmentDetail(): JSX.Element {
   })
   const pendingClaim = paymentClaims.find((c) => c.status === 'pending') ?? null
 
-  if (loading) return <div style={{ padding: 'var(--space-8)', color: 'var(--color-text-muted)' }}>Loading your shipment…</div>
+  if (loading) return <div style={{ padding: 'var(--space-8)', color: 'var(--color-ink-4)' }}>Loading your shipment…</div>
 
   if (error || !pl) {
     return (

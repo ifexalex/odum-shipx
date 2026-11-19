@@ -47,7 +47,7 @@ export function ContainerStepper({ current }: { current: ContainerStatus }): JSX
                 className={styles.stepDot}
                 style={{
                   background: done ? color : isCurrent ? '#fff' : 'var(--color-surface-muted)',
-                  border: `${isCurrent ? 3 : 2}px solid ${done || isCurrent ? color : 'var(--color-line-strong)'}`,
+                  border: `${isCurrent ? 3 : 2}px solid ${done || isCurrent ? color : 'var(--color-control-border)'}`,
                   boxShadow: isCurrent ? `0 0 0 6px ${color}22` : 'none',
                 }}
               >

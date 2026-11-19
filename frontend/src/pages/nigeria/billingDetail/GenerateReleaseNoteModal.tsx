@@ -142,7 +142,7 @@ export function GenerateReleaseNoteModal({
               <p
                 style={{
                   fontSize: 'var(--text-sm)',
-                  color: 'var(--color-text-muted)',
+                  color: 'var(--color-ink-4)',
                   margin: 0,
                 }}
               >

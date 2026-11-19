@@ -589,7 +589,7 @@ export function MyBillingDetail(): JSX.Element {
               </thead>
               <tbody>
                 {billing.payments.map((p, i) => (
-                  <tr key={p.id} style={{ borderBottom: i < billing.payments.length - 1 ? '1px solid var(--color-border)' : 'none' }}>
+                  <tr key={p.id} style={{ borderBottom: i < billing.payments.length - 1 ? '1px solid var(--color-line-soft)' : 'none' }}>
                     <td className={styles.paymentsTd}><Mono>{formatNgn(p.amount_ngn)}</Mono></td>
                     <td className={styles.paymentsTd}>{p.payment_method ?? '—'}</td>
                     <td className={styles.paymentsTd}><Mono>{p.payment_reference ?? '—'}</Mono></td>

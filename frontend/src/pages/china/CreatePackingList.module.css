@@ -48,7 +48,7 @@
   height: 36px;
   border-radius: 50%;
   background: var(--color-page);
-  border: 2px solid var(--color-line-strong);
+  border: 2px solid var(--color-control-border);
   color: var(--color-ink-4);
   display: flex;
   align-items: center;
@@ -59,7 +59,7 @@
 }
 
 .stepDone {
-  background: var(--color-success);
+  background: var(--color-success-fill);
   border-color: var(--color-success);
   color: var(--color-on-brand);
 }
@@ -68,7 +68,7 @@
   background: var(--color-primary);
   border-color: var(--color-primary);
   color: var(--color-on-brand);
-  box-shadow: 0 0 0 5px rgba(28, 121, 34, 0.14);
+  box-shadow: 0 0 0 5px color-mix(in srgb, var(--color-primary) 14%, transparent);
 }
 
 .stepText {
@@ -130,7 +130,7 @@
 .select {
   height: 48px;
   background: var(--color-surface);
-  border: 1px solid var(--color-line-soft);
+  border: 1px solid var(--color-control-border);
   border-radius: 8px;
   padding: 0 var(--space-3);
   font-family: var(--font-body);
@@ -204,7 +204,7 @@
 }
 
 .dividerDot {
-  color: var(--color-line-strong);
+  color: var(--color-control-border);
 }
 
 /* Green auto-computed CBM chip in the item rows */
@@ -338,7 +338,7 @@
 
 /* Auto-computed CBM column header is highlighted green, matching the prototype */
 .cbmHead {
-  color: var(--color-primary) !important;
+  color: var(--color-primary-text) !important;
 }
 
 .assignedOnSave {
@@ -350,7 +350,7 @@
 .cellInput {
   width: 100%;
   height: 32px;
-  border: 1px solid var(--color-line);
+  border: 1px solid var(--color-control-border);
   border-radius: 6px;
   padding: 0 var(--space-3);
   font-size: var(--text-sm);
@@ -361,7 +361,7 @@
 .cellInputNumber {
   width: 90px;
   height: 32px;
-  border: 1px solid var(--color-line);
+  border: 1px solid var(--color-control-border);
   border-radius: 6px;
   padding: 0 var(--space-3);
   font-family: var(--font-mono);
@@ -381,7 +381,7 @@
   width: 48px;
   height: 32px;
   background: var(--color-page);
-  border: 1px solid var(--color-line);
+  border: 1px solid var(--color-control-border);
   border-radius: 6px;
   text-align: center;
   font-family: var(--font-mono);
@@ -595,7 +595,7 @@
 }
 
 .previewCbm {
-  color: var(--color-primary);
+  color: var(--color-primary-text);
   font-weight: 700;
 }
 
@@ -622,7 +622,7 @@
 .typeSelect {
   height: 32px;
   box-sizing: border-box;
-  border: 1px solid var(--color-line);
+  border: 1px solid var(--color-control-border);
   border-radius: 6px;
   padding: 0 var(--space-2);
   font-family: var(--font-body);
@@ -692,7 +692,7 @@
 
 /* Reads as live once armed, so the row shows at a glance which lines are bulk. */
 .qtyConfirmOn {
-  color: var(--color-primary);
+  color: var(--color-primary-text);
 }
 
 /* Narrower than the measurement inputs and centred: this is a count, not a
@@ -701,7 +701,7 @@
 .qtyInput {
   width: 62px;
   height: 32px;
-  border: 1px solid var(--color-line);
+  border: 1px solid var(--color-control-border);
   border-radius: 6px;
   padding: 0 var(--space-2);
   font-family: var(--font-mono);

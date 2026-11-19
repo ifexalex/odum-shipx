@@ -53,7 +53,7 @@ export function MyReleaseNote(): JSX.Element {
     }
   }
 
-  if (isLoading) return <div style={{ padding: 'var(--space-8)', color: 'var(--color-text-muted)' }}>Loading your release note…</div>
+  if (isLoading) return <div style={{ padding: 'var(--space-8)', color: 'var(--color-ink-4)' }}>Loading your release note…</div>
 
   if (error || !note) {
     const missing = error instanceof ApiError && error.status === 404

@@ -79,12 +79,12 @@ export function DisputeSLA({ dispute }: DisputeSLAProps): JSX.Element | null {
       {stages.map((stage) => {
         const cd = stage.done ? null : _slaCountdown(stage.deadline)
         const color = stage.done
-          ? 'var(--color-text-muted)'
+          ? 'var(--color-ink-4)'
           : cd?.overdue
             ? 'var(--color-error)'
             : cd?.urgent
               ? 'var(--color-warning)'
-              : 'var(--color-text-muted)'
+              : 'var(--color-ink-4)'
 
         return (
           <div
@@ -105,7 +105,7 @@ export function DisputeSLA({ dispute }: DisputeSLAProps): JSX.Element | null {
             ) : stage.deadline ? (
               <span>Due {formatDate(stage.deadline)}</span>
             ) : (
-              <span style={{ color: 'var(--color-text-muted)' }}>—</span>
+              <span style={{ color: 'var(--color-ink-4)' }}>—</span>
             )}
           </div>
         )

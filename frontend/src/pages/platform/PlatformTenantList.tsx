@@ -59,7 +59,7 @@ function initialsFor(name: string): string {
 // Stable per-tenant avatar hue from the id, prototype-style variety.
 const AVATAR_COLORS = [
   'var(--color-accent)',
-  'var(--color-primary)',
+  'var(--color-primary-text)',
   'var(--color-info)',
   'var(--color-warning)',
   'var(--color-role-platform)',

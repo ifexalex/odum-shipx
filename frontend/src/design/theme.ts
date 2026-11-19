@@ -14,22 +14,22 @@ export const colors = {
   accentDeep: '#7c2d12',
   accentHover: '#c2410c',
   accentSoft: '#fed7aa',
-  ink: '#1c1b1c',
+  ink: '#1f2329',
   ink2: '#374151',
-  ink3: '#666666',
-  ink4: '#6b7280',
-  line: '#cccccc',
+  ink3: '#4b5563',
+  ink4: '#5f6672',
+  line: '#d1d5db',
   lineSoft: '#e5e7eb',
   surface: '#ffffff',
   surfaceMuted: '#f9fafb',
   page: '#f3f4f6',
-  success: '#16a34a',
+  success: '#15803d',
   successStrong: '#14532d',
   successSoft: '#dcfce7',
-  warning: '#d97706',
+  warning: '#b45309',
   warningStrong: '#7c2d0e',
   warningSoft: '#fef3c7',
-  error: '#dc2626',
+  error: '#c81e1e',
   errorStrong: '#991b1b',
   errorSoft: '#fee2e2',
   info: '#2563eb',
@@ -40,8 +40,8 @@ export const colors = {
   roleAdmin: '#1c7922',
   roleChina: '#4f46e5',
   roleNigeria: '#9a3412',
-  roleWarehouse: '#d97706',
-  roleCustomer: '#2dc438',
+  roleWarehouse: '#b45309',
+  roleCustomer: '#1a7f26',
 } as const satisfies Record<string, string>
 
 export const fonts = {
@@ -116,13 +116,17 @@ export const shadows = {
   scrimModal: 'rgba(11,47,13,0.55)',
 } as const
 
+/**
+ * Role colours as CSS variables, so a role-tinted element (an avatar's initials) follows the theme; the dark theme
+ * lightens them to stay readable (FD-03). `colors.role*` stay fixed hex values for the always-dark sidebar.
+ */
 export const roleColors = {
-  platform: colors.rolePlatform,
-  admin: colors.roleAdmin,
-  china: colors.roleChina,
-  nigeria: colors.roleNigeria,
-  warehouse: colors.roleWarehouse,
-  customer: colors.roleCustomer,
+  platform: 'var(--color-role-platform)',
+  admin: 'var(--color-role-admin)',
+  china: 'var(--color-role-china)',
+  nigeria: 'var(--color-role-nigeria)',
+  warehouse: 'var(--color-role-warehouse)',
+  customer: 'var(--color-role-customer)',
 } as const satisfies Record<string, string>
 
 export type Role = keyof typeof roleColors

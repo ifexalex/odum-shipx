@@ -99,7 +99,7 @@ export function Sidebar({ role, brand, items, user, collapsed = false, onLogout 
       <div className={styles.brandSlot}>{brand ?? <DefaultBrand />}</div>
       {roleLabel && !collapsed && (
         <div className={styles.roleBadge}>
-          <span className={styles.roleBadgeTag} style={{ '--role-badge-bg': accent } as CSSProperties}>
+          <span className={styles.roleBadgeTag} style={{ '--role-badge-bg': accent === colors.primaryBright ? colors.primary : accent } as CSSProperties}>
             <Icon name="shield" size={10} fill={colors.surface} color={colors.surface} stroke={0} />
             {roleLabel}
           </span>

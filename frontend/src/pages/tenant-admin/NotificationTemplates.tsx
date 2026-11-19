@@ -81,7 +81,7 @@ function TemplateCard({ template, onSaved }: TemplateCardProps): JSX.Element {
       <div className={styles.templateHeader}>
         <div>
           <span className={styles.templateEventType}>{template.event_type.replace(/_/g, ' ')}</span>
-          <span style={{ marginLeft: 'var(--space-2)', fontSize: 'var(--text-xs)', fontWeight: 700, padding: 'var(--space-0-5) var(--space-2)', borderRadius: 4, background: 'var(--color-surface-muted)', color: 'var(--color-text-muted)' }}>
+          <span style={{ marginLeft: 'var(--space-2)', fontSize: 'var(--text-xs)', fontWeight: 700, padding: 'var(--space-0-5) var(--space-2)', borderRadius: 4, background: 'var(--color-surface-muted)', color: 'var(--color-ink-4)' }}>
             {template.channel.toUpperCase()}
           </span>
         </div>
@@ -131,7 +131,7 @@ function TemplateCard({ template, onSaved }: TemplateCardProps): JSX.Element {
             minHeight: 100,
             padding: 'var(--space-2) var(--space-3)',
             borderRadius: 8,
-            border: '1px solid var(--color-border)',
+            border: '1px solid var(--color-line-soft)',
             background: 'var(--color-surface)',
             fontSize: 'var(--text-md)',
             fontFamily: 'inherit',
@@ -198,17 +198,17 @@ export function NotificationTemplates(): JSX.Element {
       />
 
       {error && <div className={styles.banner}><Banner variant="error">{error}</Banner></div>}
-      {loading && <p style={{ color: 'var(--color-text-muted)' }}>Loading templates…</p>}
+      {loading && <p style={{ color: 'var(--color-ink-4)' }}>Loading templates…</p>}
 
       {!loading && templates.length === 0 && (
-        <p style={{ color: 'var(--color-text-muted)', marginTop: 'var(--space-6)' }}>
+        <p style={{ color: 'var(--color-ink-4)', marginTop: 'var(--space-6)' }}>
           No notification templates configured. They will appear here once seeded by the platform admin.
         </p>
       )}
 
       {Object.entries(grouped).map(([eventType, tpls]) => (
         <div key={eventType} className={styles.section}>
-          <p style={{ fontWeight: 700, fontSize: 'var(--text-md)', color: 'var(--color-text-muted)', textTransform: 'uppercase', letterSpacing: 'var(--tracking-label)', marginBottom: 'var(--space-2)' }}>
+          <p style={{ fontWeight: 700, fontSize: 'var(--text-md)', color: 'var(--color-ink-4)', textTransform: 'uppercase', letterSpacing: 'var(--tracking-label)', marginBottom: 'var(--space-2)' }}>
             {eventType.replace(/_/g, ' ')}
           </p>
           {tpls.map((t) => (

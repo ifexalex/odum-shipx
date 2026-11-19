@@ -148,17 +148,17 @@
 
 /* On the customer portal's brand-coloured bar: a translucent field, light text. The panel stays a normal surface. */
 .onBrand .input {
-  background: rgba(255, 255, 255, 0.14);
+  background: var(--color-on-dark-fill-strong);
   color: var(--color-on-brand);
 }
 .onBrand .input::placeholder {
-  color: rgba(255, 255, 255, 0.72);
+  color: var(--color-on-dark);
 }
 .onBrand .icon {
-  color: rgba(255, 255, 255, 0.72);
+  color: var(--color-on-dark);
 }
 .onBrand .toggle {
-  background: rgba(255, 255, 255, 0.1);
+  background: var(--color-on-dark-fill);
   color: var(--color-on-brand);
 }
 .onBrand .panel {

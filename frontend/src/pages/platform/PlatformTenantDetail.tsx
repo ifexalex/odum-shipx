@@ -420,7 +420,7 @@ export function PlatformTenantDetail(): JSX.Element {
     }
   }
 
-  if (loading && !tenant) return <div style={{ padding: 'var(--space-12)', color: 'var(--color-text-muted)' }}>Loading…</div>
+  if (loading && !tenant) return <div style={{ padding: 'var(--space-12)', color: 'var(--color-ink-4)' }}>Loading…</div>
   if (error && !tenant) return <div className={styles.banner}><Banner variant="error">{error}</Banner></div>
   if (!tenant) return <></>
 

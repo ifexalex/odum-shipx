@@ -4,7 +4,7 @@
 
 /* Modal */
 .overlay {
-  position: fixed; inset: 0; background: rgba(11,47,13,0.55);
+  position: fixed; inset: 0; background: var(--scrim-modal);
   display: flex; align-items: center; justify-content: center; z-index: 200; padding: var(--space-4);
 }
 .panel {
@@ -20,9 +20,9 @@
 .selectLabel { font-size: var(--text-sm); font-weight: 500; }
 .required { color: var(--color-error); margin-left: var(--space-0-5); }
 .select {
-  border: 1px solid var(--color-border); border-radius: var(--radius-sm);
+  border: 1px solid var(--color-control-border); border-radius: var(--radius-sm);
   padding: var(--space-2) var(--space-3); font-size: var(--text-md);
-  background: var(--color-surface); color: var(--color-text); cursor: pointer;
+  background: var(--color-surface); color: var(--color-ink); cursor: pointer;
 }
 
 .panelNote {

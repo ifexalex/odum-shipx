@@ -41,21 +41,25 @@ Port these as CSS custom properties on `:root` in `src/design/tokens.css`, and a
   --color-accent-hover: #C2410C;
   --color-accent-soft: #FED7AA;
 
-  /* Neutrals (warm gray, never pure black) */
-  --color-ink: #1C1B1C;
+  /* Neutrals: one cool grey ramp (FD-03); every ink reads at 4.5:1 on every surface */
+  --color-ink: #1F2329;
   --color-ink-2: #374151;
-  --color-ink-3: #666666;
-  --color-ink-4: #6B7280;
-  --color-line: #CCCCCC;
+  --color-ink-3: #4B5563;
+  --color-ink-4: #5F6672;
+  --color-line: #D1D5DB;            /* dividers, card edges */
+  --color-control-border: #868C97;  /* inputs, selects, search boxes: 3:1 on every surface */
   --color-line-soft: #E5E7EB;
   --color-surface: #FFFFFF;
   --color-surface-muted: #F9FAFB;
   --color-page: #F3F4F6;
 
-  /* Status */
-  --color-success: #16A34A;       --color-success-strong: #14532D; --color-success-soft: #DCFCE7;
-  --color-warning: #D97706;       --color-warning-strong: #7C2D0E; --color-warning-soft: #FEF3C7;
-  --color-error:   #DC2626;       --color-error-strong:   #991B1B; --color-error-soft:   #FEE2E2;
+  /* Status: the bases are text-safe (4.5:1 on every surface); -fill is the background of white button text */
+  --color-success: #15803D;       --color-success-strong: #14532D; --color-success-soft: #DCFCE7;
+  --color-warning: #B45309;       --color-warning-strong: #7C2D0E; --color-warning-soft: #FEF3C7;
+  --color-error:   #C81E1E;       --color-error-strong:   #991B1B; --color-error-soft:   #FEE2E2;
+  --color-success-fill / --color-error-fill  (= the base in light; #15803D / #B91C1C in dark)
+  --color-primary-text  (brand green as text: = --color-primary in light, #5BD069 in dark)
+  --color-on-dark, -muted (0.72), -subtle (0.5), -fill, -fill-strong, -line; --color-shade; --color-on-light
   --color-info:    #2563EB;       --color-info-strong:    #1E3A8A; --color-info-soft:    #DBEAFE;
 
   /* Role accents — used for sidebar badges, avatars, role chips */
@@ -63,8 +67,8 @@ Port these as CSS custom properties on `:root` in `src/design/tokens.css`, and a
   --color-role-admin:     #1C7922;
   --color-role-china:     #4F46E5;
   --color-role-nigeria:   #9A3412;
-  --color-role-warehouse: #D97706;
-  --color-role-customer:  #2DC438;
+  --color-role-warehouse: #B45309;
+  --color-role-customer:  #1A7F26;
   --color-role-platform-soft: #EDE9FE; /* added in FE-03: purple Badge variant background (platform role badge) */
 
   /* Typography */
@@ -126,7 +130,7 @@ Port these as CSS custom properties on `:root` in `src/design/tokens.css`, and a
 - Never italicize. Use weight contrast instead.
 - Kola Copper (`--color-accent`) is reserved for **one** highest-stakes action per screen (payment confirmation, release-note generation, irreversible actions). If a screen has two CTAs that both feel critical, demote one to primary green.
 - Mix border radii freely *across* component families (a `full` badge inside an `md` card is fine) but never *within* one family (don't mix `sm` and `md` buttons in the same view).
-- Form inputs keep a visible 1px `--color-line` border at rest — never invisible-until-focus.
+- Form inputs keep a visible 1px `--color-control-border` border at rest, never invisible until focus. It is 3:1 against every surface (FD-03); `--color-line` is for dividers only.
 - No zebra-striping on tables. Use `--color-line-soft` row dividers only.
 - Contrast targets are already verified by the brand brief: primary-on-white 4.96:1, accent-on-white 5.76:1 — don't introduce new color pairs without checking WCAG AA.
 
@@ -194,13 +198,20 @@ the app-wide responsive pass).
 
 ## Implementation notes / ground-truth gaps found
 
+- **Colour tokens and contrast (FD-03, 2026-11-19).** Four names were used in 15 places and defined nowhere, so they rendered as nothing (popovers had no shadow). `--shadow-lg` is now `--shadow-popover` (new, light and dark), `--color-surface-2` is `--color-surface-muted`, `--color-ink-1` is `--color-ink`, and `--color-line-strong` is `--color-control-border`. The eight aliases (`--color-text`, `--color-text-muted`, `--color-border`, `--color-*-muted`; ~140 uses) are deleted and renamed to the canonical tokens. **About 90 raw colours** in 63 files became tokens: the scrim (16), translucent white on the dark brand surfaces (new `--color-on-dark*` set), `#fff` on brand, and raw-colour `var()` fallbacks; one-off tints use `color-mix()` of a token. **Contrast**, measured by `src/design/contrast.test.ts` in both themes:
+    - Light: success 3.3 → `#15803D` 5.0, warning 3.2 → `#B45309` 5.0, error 4.4 on the page → `#C81E1E`, `--color-ink-4` 4.4 on the page → `#5F6672` 5.3, `--color-ink-3` was nearly identical to ink-4 → `#4B5563`. The new control border is 3.4:1; it was 1.6:1 with `--color-line`. Role colours: warehouse 3.2 → `#B45309`, customer 2.3 → `#1A7F26`. The sidebar role badge put white text on the bright flash green; it now uses the brand green.
+    - Dark: the test found what the brief missed. Brand green as text was 3.1:1 on dark cards, so there is a new `--color-primary-text` (light green in dark), used by the ~60 `color: var(--color-primary)` rules. White on the success and error buttons was 2.7 and 3.3, so there are new `--color-success-fill` / `--color-error-fill`. Platform, admin, china, warehouse and customer role colours were 2.7–3.4 as text, so the dark theme lightens them. ink-4 is `#8A958A`.
+    - One colour cannot be both the background of white text and text on a dark card, so those two uses now have separate tokens.
+    - `Avatar` read role colours as fixed hex values from `theme.ts`, so its initials never adapted to dark mode. `roleColors` are now CSS variables; `colors.role*` stay hex for the always-dark sidebar.
+    - On the dark surfaces, white below 50% fails 4.5:1. Group labels and counts at 35–45% are now `--color-on-dark-subtle` (50%). On the brand-green customer top bar only full white passes, so its links are full white.
+    - Guards: `rawValues.test.ts` fails on a raw hex or `rgb()` colour in a style sheet and on any `var(--…)` that nothing defines; `contrast.test.ts` fails when any text, badge, button, on-dark or control pair drops below AA in either theme.
 - **Spacing scale (FD-02, 2026-11-19).** Spacing tokens appeared in 27 declarations; about 1,450 gaps, paddings and margins used raw px or rem, including off-scale 10, 14 and 6 px. The scale is now 2, 4, 8, 12, 16, 20, 24, 32, 48 and 64 px. The tokens are renamed by 4 px units (`--space-1` = 4 px … `--space-16` = 64 px, `--space-0-5` = 2 px) because the old xs–3xl names had no room for the new 12 and 20 px steps; the 27 old uses were renamed. A codemod moved every value to its nearest step (82 style sheets, 100 components), with ties going to the larger step (6 → 8, 10 → 12, 14 → 16). Negative margins become `calc(-1 * var(--space-*))`. `theme.ts` `spacing` mirrors the scale. **`Card` padding is now named**: `padding="none" | "default" | "large"` (20 / 24 px; `none` for a card holding a table). The prop no longer takes a number. Cards with no padding go from 24 to 20 px, as the brief says. Existing uses: 0 → none, 8–20 → default, 24–32 → large. Guard: `src/design/rawValues.test.ts` (renamed from `typeScale.test.ts`; it now covers type and spacing) fails on a px or rem gap, padding or margin in a style sheet or inline style. The codemod's first run wrote Python's `None` after every value (`padding: var(--space-4)None;`). The CSS still parsed and every check passed, but browsers dropped all about 1,450 declarations. Only the visual baseline (FD-38) showed it. The same test now fails on `None`, `undefined` or `NaN` in any declaration.
 - **Type scale (FD-01, 2026-11-19).** The style sheets used about 40 font sizes (6.5 to 64 px, mixed px and rem), 11 line heights, 17 letter-spacing values and weight 800. A codemod moved them onto the seven `--text-*` steps: 72 style sheets, 56 components. A size maps to the nearest step: up to 12 → xs, below 13.5 → sm, below 15 → md, below 18 → lg, below 22 → xl, up to 28 → 2xl, above → 3xl. A line height becomes its size's paired token, or `--leading-tight`/`--leading-body` where the rule inherits its size. Positive letter spacing becomes `--tracking-label`, negative becomes `--tracking-tight`. Weights 800 become 700. `<body>` had no size, so unsized text was the browser's 16 px; it is now `--text-md`. Text that was 9–11 px is now 12 px, the smallest on screen. Stat values are `--text-2xl`, as the scale says. Exempt, each rule marked `scale-exempt` with its reason: the miniature document previews (Company settings `.doc*`, packing-list wizard `.preview*`, sized like the printed page), two emoji icons and the 404 figure. Print pages and the marketing page are exempt by folder. Guard: `src/design/rawValues.test.ts` fails on any raw `font-size`, `line-height` or `letter-spacing`, or a weight outside 400–700, in a style sheet or an inline style. Values `0` and `1` stay allowed. Reviewed with the visual baseline (FD-38): all 234 screens changed, as expected, and sampled screens were checked for clipping. The phone audit then found two pages a few pixels too wide. The claim page's status stepper now scrolls inside a `ScrollStrip` at 320 px. The claim stats row on Reports wraps.
 - **Fonts are self-hosted; Manrope is the brand face (FD-06, 2026-11-19).** Owner decision: Manrope, not Averta. Averta was first in the display stack but never shipped, so a user who happened to have it installed saw a different product. Google Fonts loaded 13 weight files of three families on every visit and needed `fonts.googleapis.com`/`fonts.gstatic.com` in both CSPs. Now `src/design/fonts.css` imports the `@fontsource-variable` packages for Manrope, Kumbh Sans and JetBrains Mono, pinned exactly. Each family is one variable file per script subset, so a Latin page loads three files, about 95 KB. Both CSPs (`infrastructure/aws/modules/cloudfront/main.tf`, `infrastructure/azure/locals.tf`) now allow `font-src 'self'` only. `vite.config.ts` never inlines a font as a `data:` URL, because the AWS policy does not allow `data:` fonts.
     - **₦.** None of the three faces has U+20A6, so ₦ fell back to a system font and looked heavier than the digits beside it. `ShipX Naira` is that one glyph subset from Plus Jakarta Sans: 960 bytes, variable weight 200–800, SIL OFL licence in `src/design/fonts/`. It is listed first in every stack and, through `unicode-range: U+20A6`, draws nothing else. `size-adjust: 97.5%` matches its cap height to the others. Every ₦ in the app, through `formatNgn` or typed directly, gets it with no component change. The regeneration command is in `fonts.css`.
     - **Monospace is for codes, references and tabular numbers only.** The invoice page title (the customer's name) and the customer page's email are now proportional.
     - **To license Averta later:** add its `@font-face` to `fonts.css` and put it after `ShipX Naira` in `--font-display` and `fonts.display` (`theme.ts`). Guard: `src/design/fonts.test.ts` fails if a stack names a font that is not shipped, if ₦ is not first, or if a font loads from another origin.
-- **tokens.css semantic-aliases syntax bug (found & fixed 2026-07-10)**: the semantic-alias declarations (`--color-text`, `--color-text-muted`, `--color-border`, `--color-*-muted`) were appended after `:root`'s closing brace with no selector of their own. Per CSS error-recovery, the parser consumed the orphan declarations *and* the next rule as one invalid qualified rule — and the next rule was the global `* { box-sizing: border-box }` reset. Consequences until the fix: (1) the entire app silently rendered with `content-box` sizing (e.g. `.wrap`-style containers with `max-width` + padding rendered 64px wider than the prototypes intended); (2) the alias tokens never existed, so the 11 page stylesheets referencing them fell back to inherited values; (3) every `npm run build` emitted an esbuild `css-syntax-error` warning that had been ignored. Fix: wrapped the aliases in their own `:root {}` block. Discovered while pixel-diffing the marketing landing page against `Shipx Landing Page v2.html` — the implementation was 64px wider than the prototype despite identical CSS.
+- **tokens.css semantic-aliases syntax bug (found & fixed 2026-07-10; the aliases themselves were removed in FD-03, 2026-11-19)**: the semantic-alias declarations (`--color-text`, `--color-text-muted`, `--color-border`, `--color-*-muted`) were appended after `:root`'s closing brace with no selector of their own. Per CSS error-recovery, the parser consumed the orphan declarations *and* the next rule as one invalid qualified rule — and the next rule was the global `* { box-sizing: border-box }` reset. Consequences until the fix: (1) the entire app silently rendered with `content-box` sizing (e.g. `.wrap`-style containers with `max-width` + padding rendered 64px wider than the prototypes intended); (2) the alias tokens never existed, so the 11 page stylesheets referencing them fell back to inherited values; (3) every `npm run build` emitted an esbuild `css-syntax-error` warning that had been ignored. Fix: wrapped the aliases in their own `:root {}` block. Discovered while pixel-diffing the marketing landing page against `Shipx Landing Page v2.html` — the implementation was 64px wider than the prototype despite identical CSS.
 
 ## Light / Dark theme (2026-10-01)
 

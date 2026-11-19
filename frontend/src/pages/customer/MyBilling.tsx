@@ -62,7 +62,7 @@ export function MyBilling(): JSX.Element {
         </div>
       )}
 
-      {loading && <p style={{ color: 'var(--color-text-muted)' }}>Loading…</p>}
+      {loading && <p style={{ color: 'var(--color-ink-4)' }}>Loading…</p>}
 
       {!loading && records.length === 0 && (
         <div className={styles.empty}>

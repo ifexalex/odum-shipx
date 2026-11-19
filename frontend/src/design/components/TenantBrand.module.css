@@ -42,7 +42,7 @@
 }
 
 .tag {
-  color: rgba(255, 255, 255, 0.45);
+  color: var(--color-on-dark-subtle);
   font-size: var(--text-xs);
   letter-spacing: var(--tracking-label);
   text-transform: uppercase;

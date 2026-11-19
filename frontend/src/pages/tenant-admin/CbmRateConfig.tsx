@@ -137,7 +137,7 @@ export function CbmRateConfig(): JSX.Element {
                   type="number"
                   value={cartonRate}
                   onChange={(e) => setCartonRate(e.target.value)}
-                  style={{ width: '100%', padding: 'var(--space-2) var(--space-3)', borderRadius: 8, border: '1px solid var(--color-border)', background: 'var(--color-surface)', fontSize: 'var(--text-lg)' }}
+                  style={{ width: '100%', padding: 'var(--space-2) var(--space-3)', borderRadius: 8, border: '1px solid var(--color-line-soft)', background: 'var(--color-surface)', fontSize: 'var(--text-lg)' }}
                   placeholder="e.g. 45"
                   min="0.01"
                   step="0.01"
@@ -145,7 +145,7 @@ export function CbmRateConfig(): JSX.Element {
               </div>
             ) : (
               <>
-                <p style={{ fontSize: 'var(--text-sm)', color: 'var(--color-text-muted)', margin: 0 }}>
+                <p style={{ fontSize: 'var(--text-sm)', color: 'var(--color-ink-4)', margin: 0 }}>
                   Any other package type (pallets, mixed, unspecified) bills at the carton rate.
                 </p>
                 {([
@@ -161,7 +161,7 @@ export function CbmRateConfig(): JSX.Element {
                       type="number"
                       value={value}
                       onChange={(e) => setValue(e.target.value)}
-                      style={{ width: '100%', padding: 'var(--space-2) var(--space-3)', borderRadius: 8, border: '1px solid var(--color-border)', background: 'var(--color-surface)', fontSize: 'var(--text-lg)' }}
+                      style={{ width: '100%', padding: 'var(--space-2) var(--space-3)', borderRadius: 8, border: '1px solid var(--color-line-soft)', background: 'var(--color-surface)', fontSize: 'var(--text-lg)' }}
                       placeholder="e.g. 45"
                       min="0.01"
                       step="0.01"
@@ -179,13 +179,13 @@ export function CbmRateConfig(): JSX.Element {
                 type="number"
                 value={minCbm}
                 onChange={(e) => setMinCbm(e.target.value)}
-                style={{ width: '100%', padding: 'var(--space-2) var(--space-3)', borderRadius: 8, border: '1px solid var(--color-border)', background: 'var(--color-surface)', fontSize: 'var(--text-lg)' }}
+                style={{ width: '100%', padding: 'var(--space-2) var(--space-3)', borderRadius: 8, border: '1px solid var(--color-line-soft)', background: 'var(--color-surface)', fontSize: 'var(--text-lg)' }}
                 placeholder="e.g. 0.1"
                 min="0.01"
                 step="0.01"
                 aria-label="Minimum CBM per item"
               />
-              <p style={{ fontSize: 'var(--text-sm)', color: 'var(--color-text-muted)', margin: 'var(--space-2) 0 0' }}>
+              <p style={{ fontSize: 'var(--text-sm)', color: 'var(--color-ink-4)', margin: 'var(--space-2) 0 0' }}>
                 A line item measuring below this is billed at this floor (handling minimum). Applied when a packing list is saved.
               </p>
             </div>

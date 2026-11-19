@@ -30,12 +30,12 @@
   box-shadow: var(--shadow-focus-ring);
 }
 .tab:hover {
-  color: var(--color-primary);
+  color: var(--color-primary-text);
   transition: color 0.14s;
 }
 
 .tabActive {
   font-weight: 700;
-  color: var(--color-primary);
+  color: var(--color-primary-text);
   border-bottom-color: var(--color-primary);
 }

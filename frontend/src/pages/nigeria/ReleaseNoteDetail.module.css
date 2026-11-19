@@ -19,7 +19,7 @@
   letter-spacing: var(--tracking-tight);
   line-height: var(--text-2xl-line);
 }
-.heroMeta { font-size: var(--text-sm); color: var(--color-text-muted); margin-top: var(--space-1); }
+.heroMeta { font-size: var(--text-sm); color: var(--color-ink-4); margin-top: var(--space-1); }
 .heroActions {
   display: flex;
   gap: var(--space-2);
@@ -32,15 +32,15 @@
 
 /* carton tags */
 .tagGrid { display: flex; flex-wrap: wrap; gap: var(--space-2); padding: var(--space-1) 0; }
-.tag { padding: var(--space-1) var(--space-3); border-radius: 6px; background: var(--color-surface-muted); font-family: var(--font-mono); font-size: var(--text-sm); border: 1px solid var(--color-border); }
-.tagSelected { background: var(--color-primary-muted); border-color: var(--color-primary); color: var(--color-primary); cursor: pointer; }
+.tag { padding: var(--space-1) var(--space-3); border-radius: 6px; background: var(--color-surface-muted); font-family: var(--font-mono); font-size: var(--text-sm); border: 1px solid var(--color-line-soft); }
+.tagSelected { background: var(--color-primary-soft); border-color: var(--color-primary); color: var(--color-primary-text); cursor: pointer; }
 .tagClickable { cursor: pointer; }
 .tagClickable:hover { border-color: var(--color-primary); }
 
 /* layout */
 .section { margin-top: var(--space-5); }
 .statsRow { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: var(--space-3); margin-top: var(--space-5); }
-.loadingState { padding: var(--space-12); text-align: center; color: var(--color-text-muted); }
+.loadingState { padding: var(--space-12); text-align: center; color: var(--color-ink-4); }
 .banner { margin-bottom: var(--space-4); }
 
 /* pickup success banner */
@@ -52,7 +52,7 @@
    RecordPickupModal is a near-duplicate of WarehouseDashboard's PickupSheet
    — same action, same backend call — but had none of its mobile treatment
    (44/48px touch targets, bottom sheet, full-width buttons) until now. */
-.modalOverlay { position: fixed; inset: 0; background: rgba(11,47,13,0.55); display: flex; align-items: flex-end; justify-content: center; z-index: 200; }
+.modalOverlay { position: fixed; inset: 0; background: var(--scrim-modal); display: flex; align-items: flex-end; justify-content: center; z-index: 200; }
 .modalPanel { background: var(--color-surface); border-radius: var(--radius-lg) var(--radius-lg) 0 0; padding: var(--space-6) var(--space-5); width: 100%; display: flex; flex-direction: column; gap: var(--space-4); box-shadow: var(--shadow-modal); max-height: 90vh; overflow-y: auto; }
 .modalTitle { font-size: var(--text-lg); font-weight: 700; margin: 0; }
 .modalBanner { margin: 0; }
@@ -72,15 +72,15 @@
    accounting officer) — these bypass the shared Field component entirely,
    so they need their own iOS-zoom fix (Field.module.css's same rule can't
    reach them). */
-.rawSelect { width: 100%; padding: var(--space-2) var(--space-3); border-radius: 8px; border: 1px solid var(--color-border); background: var(--color-surface); font-size: var(--text-md); min-height: 44px; }
+.rawSelect { width: 100%; padding: var(--space-2) var(--space-3); border-radius: 8px; border: 1px solid var(--color-control-border); background: var(--color-surface); font-size: var(--text-md); min-height: 44px; }
 
 @container sxapp (max-width: 860px) {
   .rawSelect { font-size: var(--text-lg); }
 }
 
 /* split tag picker */
-.splitInstruction { font-size: var(--text-sm); color: var(--color-text-muted); margin: 0; }
-.splitCount { font-size: var(--text-sm); font-weight: 600; color: var(--color-primary); }
+.splitInstruction { font-size: var(--text-sm); color: var(--color-ink-4); margin: 0; }
+.splitCount { font-size: var(--text-sm); font-weight: 600; color: var(--color-primary-text); }
 
 /* ReleaseNoteDetail: static styles moved out of inline style props (audit FE-06). */
 .fieldLabel {
@@ -95,13 +95,13 @@
 }
 
 .optionalHint {
-  color: var(--color-text-muted);
+  color: var(--color-ink-4);
   font-weight: 400;
 }
 
 .mutedNote {
   font-size: var(--text-md);
-  color: var(--color-text-muted);
+  color: var(--color-ink-4);
   margin: 0;
 }
 
@@ -116,6 +116,6 @@
 }
 
 .mutedText {
-  color: var(--color-text-muted);
+  color: var(--color-ink-4);
   font-size: var(--text-md);
 }

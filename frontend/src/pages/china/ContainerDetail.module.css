@@ -106,7 +106,7 @@
   font-family: var(--font-body);
   font-size: var(--text-sm);
   font-weight: 600;
-  color: var(--color-primary);
+  color: var(--color-primary-text);
 }
 
 /* Cargo summary tiles (2×2) */
@@ -178,7 +178,7 @@
   font-family: var(--font-mono, monospace);
   font-size: var(--text-sm);
   font-weight: 700;
-  color: var(--color-primary);
+  color: var(--color-primary-text);
 }
 
 .utilTrack {
@@ -356,7 +356,7 @@
   font-weight: 700;
   letter-spacing: var(--tracking-label);
   text-transform: uppercase;
-  color: #fff;
+  color: var(--color-on-dark);
 }
 
 .eventTs {
@@ -400,7 +400,7 @@
 .modalOverlay {
   position: fixed;
   inset: 0;
-  background: rgba(11, 47, 13, 0.55);
+  background: var(--scrim-modal);
   display: flex;
   align-items: flex-end;
   justify-content: center;

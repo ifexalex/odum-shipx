@@ -97,7 +97,7 @@
 .newItemTag {
   font-style: normal;
   font-size: var(--text-xs);
-  color: var(--color-primary);
+  color: var(--color-primary-text);
   background: color-mix(in srgb, var(--color-primary) 10%, transparent);
   padding: var(--space-0-5) var(--space-2);
   border-radius: 4px;
@@ -113,7 +113,7 @@
   background: none;
   cursor: pointer;
   border-radius: 4px;
-  color: var(--color-text-muted);
+  color: var(--color-ink-4);
   transition: background 0.15s, color 0.15s;
 }
 
@@ -130,7 +130,7 @@
 .tagReadOnly {
   font-family: var(--font-mono, monospace);
   font-size: var(--text-xs);
-  color: var(--color-text-muted);
+  color: var(--color-ink-4);
   white-space: nowrap;
 }
 
@@ -140,7 +140,7 @@
   width: 100%;
   min-width: 140px;
   height: 30px;
-  border: 1px solid var(--color-line);
+  border: 1px solid var(--color-control-border);
   border-radius: 4px;
   padding: 0 var(--space-2);
   font-size: var(--text-sm);
@@ -157,7 +157,7 @@
 .cellInputNumber {
   width: 72px;
   height: 30px;
-  border: 1px solid var(--color-line);
+  border: 1px solid var(--color-control-border);
   border-radius: 4px;
   padding: 0 var(--space-2);
   font-size: var(--text-sm);
@@ -182,7 +182,7 @@
 .dimInput {
   width: 52px;
   height: 30px;
-  border: 1px solid var(--color-line);
+  border: 1px solid var(--color-control-border);
   border-radius: 4px;
   padding: 0 var(--space-1);
   font-size: var(--text-sm);
@@ -216,7 +216,7 @@
 .modalOverlay {
   position: fixed;
   inset: 0;
-  background: rgba(11, 47, 13, 0.55);
+  background: var(--scrim-modal);
   display: flex;
   align-items: flex-end;
   justify-content: center;

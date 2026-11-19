@@ -31,7 +31,7 @@
   gap: var(--space-2);
   min-height: 40px;
   background: var(--color-surface);
-  border: 1px solid var(--color-line);
+  border: 1px solid var(--color-control-border);
   border-radius: var(--radius-sm);
   padding: 0 var(--space-4);
 }

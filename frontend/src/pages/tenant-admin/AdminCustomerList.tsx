@@ -345,7 +345,7 @@ export function AdminCustomerList(): JSX.Element {
               cells: [
                 <div key="name">
                   <div style={{ fontWeight: 600, fontSize: 'var(--text-sm)' }}>
-                    {c.name ?? <em style={{ color: 'var(--color-text-muted)' }}>Anonymised</em>}
+                    {c.name ?? <em style={{ color: 'var(--color-ink-4)' }}>Anonymised</em>}
                   </div>
                   <div style={{ fontSize: 'var(--text-xs)', color: 'var(--color-ink-4)' }}>{c.email ?? '—'}</div>
                 </div>,

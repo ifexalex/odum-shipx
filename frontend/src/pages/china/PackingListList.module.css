@@ -27,7 +27,7 @@
   min-width: 220px;
   height: 36px;
   background: var(--color-page);
-  border: 1px solid var(--color-line);
+  border: 1px solid var(--color-control-border);
   border-radius: var(--radius-sm);
   display: flex;
   align-items: center;
@@ -60,7 +60,7 @@
 }
 
 .bulkBarWrap {
-  background: #0B2F0D;
+  background: var(--color-forest-dark);
   border-radius: var(--radius-md);
   padding: var(--space-3) var(--space-4);
   margin-bottom: var(--space-4);
@@ -77,15 +77,15 @@
 .bulkLabel {
   font-size: var(--text-md);
   font-weight: 600;
-  color: #fff;
+  color: var(--color-on-dark);
 }
 
 .bulkClearBtn {
   height: 32px;
   padding: 0 var(--space-4);
-  background: rgba(255, 255, 255, 0.08);
-  color: #fff;
-  border: 1px solid rgba(255, 255, 255, 0.15);
+  background: var(--color-on-dark-fill);
+  color: var(--color-on-dark);
+  border: 1px solid var(--color-on-dark-line);
   border-radius: var(--radius-sm);
   font-family: var(--font-body);
   font-weight: 600;
@@ -94,7 +94,7 @@
 }
 
 .bulkClearBtn:hover {
-  background: rgba(255, 255, 255, 0.14);
+  background: var(--color-on-dark-fill-strong);
 }
 
 .bulkActions {
@@ -126,7 +126,7 @@
 .modalOverlay {
   position: fixed;
   inset: 0;
-  background: rgba(11, 47, 13, 0.55);
+  background: var(--scrim-modal);
   display: flex;
   align-items: flex-end;
   justify-content: center;
@@ -184,7 +184,7 @@
 /* Bulk-result failures, grouped by cause rather than one row per record */
 .failureGroup {
   padding: var(--space-4) var(--space-4);
-  border-top: 1px solid var(--color-border);
+  border-top: 1px solid var(--color-line-soft);
 }
 
 .failureTitle {
@@ -201,7 +201,7 @@
   font-size: var(--text-xs);
   font-weight: 600;
   color: var(--color-ink-3);
-  background: var(--color-surface-2, rgb(0 0 0 / 5%));
+  background: var(--color-surface-muted);
   border-radius: 999px;
 }
 
@@ -223,7 +223,7 @@
   padding: var(--space-1) var(--space-2);
   font-size: var(--text-xs);
   color: var(--color-ink-2, var(--color-ink));
-  background: var(--color-surface-2, rgb(0 0 0 / 4%));
+  background: var(--color-surface-muted);
   border-radius: 6px;
 }
 

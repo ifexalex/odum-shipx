@@ -64,7 +64,7 @@
 }
 
 .sortActive {
-  color: var(--color-primary);
+  color: var(--color-primary-text);
 }
 
 .row {
@@ -80,7 +80,7 @@
 }
 
 .rowSuspended {
-  background: var(--color-error-soft, #fee2e2);
+  background: var(--color-error-soft);
   border-left: 2px solid var(--color-error);
 }
 
@@ -166,7 +166,7 @@
 }
 
 .cardSuspended {
-  background: var(--color-error-soft, #fee2e2);
+  background: var(--color-error-soft);
   border-color: var(--color-error);
 }
 

@@ -1,4 +1,4 @@
-.loadingState { padding: var(--space-12); text-align: center; color: var(--color-text-muted); }
+.loadingState { padding: var(--space-12); text-align: center; color: var(--color-ink-4); }
 
 .hero {
   display: flex;
@@ -19,8 +19,8 @@
   letter-spacing: var(--tracking-tight);
   line-height: var(--text-2xl-line);
 }
-.heroMeta { display: flex; align-items: center; gap: var(--space-2); font-size: var(--text-sm); color: var(--color-text-muted); }
-.dot { color: var(--color-text-muted); }
+.heroMeta { display: flex; align-items: center; gap: var(--space-2); font-size: var(--text-sm); color: var(--color-ink-4); }
+.dot { color: var(--color-ink-4); }
 .heroActions {
   display: flex;
   gap: var(--space-2);
@@ -46,7 +46,7 @@
   left: 10px;
   right: 10px;
   height: 2px;
-  background: var(--color-border);
+  background: var(--color-line-soft);
   z-index: 0;
 }
 
@@ -63,7 +63,7 @@
   width: 20px;
   height: 20px;
   border-radius: 50%;
-  border: 2px solid var(--color-border);
+  border: 2px solid var(--color-line-soft);
   background: var(--color-surface);
   margin-bottom: var(--space-2);
   flex-shrink: 0;
@@ -82,22 +82,22 @@
 .stepLabel {
   font-size: var(--text-xs);
   text-align: center;
-  color: var(--color-text-muted);
+  color: var(--color-ink-4);
   line-height: var(--text-xs-line);
 }
 
-.stepActive .stepLabel { color: var(--color-primary); font-weight: 600; }
-.stepDone .stepLabel { color: var(--color-text); }
+.stepActive .stepLabel { color: var(--color-primary-text); font-weight: 600; }
+.stepDone .stepLabel { color: var(--color-ink); }
 
 /* Cartons */
 .cartonList { display: flex; gap: var(--space-2); flex-wrap: wrap; }
 .cartonTag { background: var(--color-surface-muted); padding: var(--space-1) var(--space-3); border-radius: 4px; font-size: var(--text-sm); }
-.emptyNote { color: var(--color-text-muted); font-size: var(--text-md); }
+.emptyNote { color: var(--color-ink-4); font-size: var(--text-md); }
 
 /* Modal — mobile-first bottom sheet, see ReleaseNoteDetail.module.css's
    matching comment for the pattern reference. */
 .overlay {
-  position: fixed; inset: 0; background: rgba(11,47,13,0.55);
+  position: fixed; inset: 0; background: var(--scrim-modal);
   display: flex; align-items: flex-end; justify-content: center; z-index: 200;
 }
 .panel {
@@ -119,7 +119,7 @@
 .selectField { display: flex; flex-direction: column; gap: var(--space-2); }
 .selectLabel { font-size: var(--text-sm); font-weight: 500; }
 .required { color: var(--color-error); margin-left: var(--space-0-5); }
-.select { border: 1px solid var(--color-border); border-radius: var(--radius-sm); padding: var(--space-2) var(--space-3); font-size: var(--text-md); background: var(--color-surface); color: var(--color-text); cursor: pointer; min-height: 44px; }
+.select { border: 1px solid var(--color-control-border); border-radius: var(--radius-sm); padding: var(--space-2) var(--space-3); font-size: var(--text-md); background: var(--color-surface); color: var(--color-ink); cursor: pointer; min-height: 44px; }
 
 @container sxapp (max-width: 860px) {
   .select { font-size: var(--text-lg); }
