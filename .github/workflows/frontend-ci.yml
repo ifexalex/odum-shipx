@@ -281,6 +281,118 @@ jobs:
           retention-days: 7
 
   # ──────────────────────────────────────────────────────────────────────────
+  # Visual baseline (audit FD-38) — before and after screenshots of every route
+  # at 1366 px, 390 px and in dark mode, for a pull request that changes how the
+  # app looks: a style sheet, or anything under frontend/src/design/.
+  #
+  # No reference images are committed: seed data and dates move, so a stored
+  # image would fail for reasons that are not design. Instead the base branch
+  # and the pull request are captured in the same run, against one database:
+  # base first (--update-snapshots), then the pull request (compare). Every
+  # screen that changed is a failed test in the uploaded Playwright report, with
+  # the before, after and diff images side by side. Changes are expected on a
+  # design pull request, so differences do not fail the job: they are listed in
+  # the job summary for the reviewer to look at.
+  # ──────────────────────────────────────────────────────────────────────────
+  visual:
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    needs: build-and-test
+    defaults:
+      run:
+        working-directory: .
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0              # the base branch is checked out beside it
+
+      - name: Does this pull request change styles?
+        id: styles
+        run: |
+          changed=$(git diff --name-only "origin/${{ github.base_ref }}...HEAD" \
+            | grep -E '^frontend/src/(design/|.*\.css$)' || true)
+          echo "$changed"
+          if [ -n "$changed" ]; then echo "run=true" >> "$GITHUB_OUTPUT"; fi
+
+      - uses: actions/setup-node@v7
+        if: steps.styles.outputs.run
+        with:
+          node-version-file: frontend/.nvmrc
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - uses: astral-sh/setup-uv@v7
+        if: steps.styles.outputs.run
+        with:
+          enable-cache: true
+
+      - name: Bring up the local stack (same steps as e2e-local-stack)
+        if: steps.styles.outputs.run
+        run: |
+          uv sync --extra azure
+          echo "$GITHUB_WORKSPACE/.venv/bin" >> "$GITHUB_PATH"
+          export PATH="$GITHUB_WORKSPACE/.venv/bin:$PATH"
+          cp .env.local.sample .env.local
+          cp frontend/.env.local.sample frontend/.env.local
+          make up
+          make bootstrap
+          set -a; source .env.local; set +a
+          PYTHONPATH=. python3 scripts/reset_db.py
+          PYTHONPATH=. python3 scripts/migrate.py
+          PYTHONPATH=. python3 scripts/seed.py
+          PYTHONPATH=. nohup python3 scripts/local_server.py > flask.log 2>&1 &
+          npx --yes wait-on http://localhost:3000/health --timeout 60000
+
+      - name: Install frontend deps (pull request and base) + Playwright browser
+        if: steps.styles.outputs.run
+        run: |
+          git worktree add ../base "origin/${{ github.base_ref }}"
+          cp frontend/.env.local ../base/frontend/.env.local
+          (cd frontend && npm ci && npx playwright install --with-deps chromium)
+          (cd ../base/frontend && npm ci)
+
+      # The spec and route sampler come from the pull request; only the app
+      # being served changes between the two captures.
+      - name: Capture the base branch
+        if: steps.styles.outputs.run
+        env:
+          VITE_ENVIRONMENT: local
+        run: |
+          (cd ../base/frontend && nohup npm run dev -- --port 5173 > vite-base.log 2>&1 &)
+          npx --yes wait-on http://localhost:5173 --timeout 60000
+          cd frontend && npm run visual:baseline
+          pkill -f "vite.*--port 5173" || true
+          npx --yes wait-on --reverse http-get://localhost:5173 --timeout 30000
+
+      - name: Compare the pull request against it
+        if: steps.styles.outputs.run
+        env:
+          VITE_ENVIRONMENT: local
+        run: |
+          cd frontend
+          nohup npm run dev -- --port 5173 > vite.log 2>&1 &
+          npx --yes wait-on http://localhost:5173 --timeout 60000
+          PLAYWRIGHT_JSON_OUTPUT_NAME=visual.json npx playwright test --project=visual --reporter=list,html,json || true
+          node -e '
+            const json = JSON.parse(require("fs").readFileSync("visual.json", "utf8"));
+            const changed = [];
+            const walk = (s, trail) => { for (const c of s.suites ?? []) walk(c, [...trail, c.title]);
+              for (const sp of s.specs ?? []) if (!sp.ok) changed.push(`${trail.filter(Boolean).slice(-1)[0]} ${sp.title}`); };
+            walk(json, []);
+            const lines = changed.length ? changed.map((c) => `- ${c}`).join("\n") : "No screen changed.";
+            require("fs").appendFileSync(process.env.GITHUB_STEP_SUMMARY, `## Visual changes (${changed.length})\n\n${lines}\n\nBefore, after and diff images: the visual-report artifact.\n`);
+          '
+
+      - uses: actions/upload-artifact@v7
+        if: steps.styles.outputs.run
+        with:
+          name: visual-report
+          path: |
+            frontend/playwright-report/
+            flask.log
+            frontend/vite.log
+          retention-days: 14
+
+  # ──────────────────────────────────────────────────────────────────────────
   # Deploy job — only runs on merge to main
   # Requires GitHub Actions secrets:
   #   FRONTEND_DEPLOY_ROLE_ARN     — IAM role ARN with s3:PutObject + cloudfront:CreateInvalidation

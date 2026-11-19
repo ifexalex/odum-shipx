@@ -14,6 +14,8 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "test:e2e": "playwright test",
+    "visual:baseline": "PW_E2E=local-stack playwright test --project=visual --update-snapshots=all",
+    "visual:compare": "PW_E2E=local-stack playwright test --project=visual --reporter=list,html",
     "typecheck": "tsc -b --noEmit"
   },
   "dependencies": {

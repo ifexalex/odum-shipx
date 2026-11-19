@@ -321,6 +321,8 @@ user pool, not `MagicMock`, so these exercise the actual boto3 call shapes):
 
 Frontend — `frontend/scripts/mobile-audit.mjs` (2026-11-17): a browser audit, not a unit test; needs the local stack. Every route at 375/360/320 px, fails on sideways scroll or protruding content. All 78 routes pass.
 
+Frontend visual baseline — `frontend/e2e/visual/visual.spec.ts`, Playwright project `visual` (2026-11-19, FD-38): every route at 1366 px, 390 px and dark mode, as an allowed role, with real local-stack records. There are no committed reference images: `npm run visual:baseline` captures the current state, then `npm run visual:compare` fails each changed screen, with before, after and diff images in the report. Stability: a fixed clock (`page.clock.setFixedTime`), animations and caret off, and waiting until no API request is unanswered and nothing shows a loading state. It counts at the response, not `requestfinished`, because a 401 session refresh body is never read. A repeat run with no change finds no differences. CI job `visual` runs it base-then-head on style pull requests and reports the differences without failing the job.
+
 `tests/unit/test_uploads.py::TestSizeLimit` (2026-11-17): 5 MB on every policy, exactly-the-limit accepted, one byte over refused, nonsense sizes refused, the size signed as `content_length`, the stored-size check, and payment claims and imports refusing an over-size stored file. Frontend `lib/uploadLimits.test.ts`, `uploads.test.ts`, `ContainerDetail.test.tsx`.
 
 `tests/db/test_paginated_lists.py` (2026-11-17): the dispute and manifest counts match their filters, not the page.

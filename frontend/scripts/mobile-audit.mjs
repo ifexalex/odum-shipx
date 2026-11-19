@@ -12,52 +12,13 @@
  *
  * Exit code 1 when any page fails.
  */
-import fs from 'node:fs'
 import { chromium } from 'playwright'
+import { APP, loadRoutes, sampleIds, sampleUrl } from './routeSamples.mjs'
 
-const API = process.env.API_URL ?? 'http://localhost:3000'
-const APP = process.env.APP_URL ?? 'http://localhost:5173'
-const TENANT = process.env.AUDIT_TENANT ?? '10000000-0000-0000-0000-000000000001'
 const [widthArg, only] = process.argv.slice(2)
 const WIDTHS = widthArg ? [Number(widthArg)] : [375, 360, 320]
-
-async function first(role, path, tenant = TENANT) {
-  const res = await fetch(`${API}/v1/${path}`, { headers: { 'X-Tenant-ID': tenant, 'X-Role': role } })
-  const body = await res.json().catch(() => ({}))
-  const data = Array.isArray(body.data) ? body.data[0] : body.data
-  return data?.id ?? 'sample'
-}
-
-const ids = {
-  tenant: await first('platform_admin', 'platform/tenants?limit=1', 'PLATFORM'),
-  user: await first('tenant_admin', 'tenant/users?limit=1'),
-  customer: await first('tenant_admin', 'customers?limit=1'),
-  container: await first('china_office_staff', 'containers?limit=1'),
-  pl: await first('china_office_staff', 'packing-lists?limit=1'),
-  manifest: await first('nigeria_office_staff', 'manifests?limit=1'),
-  billing: await first('nigeria_office_staff', 'billing?limit=1'),
-  claim: await first('nigeria_office_staff', 'claims?limit=1'),
-  refund: await first('nigeria_office_staff', 'refunds?limit=1'),
-  rn: await first('nigeria_office_staff', 'release-notes?limit=1'),
-  cpl: await first('customer', 'packing-lists?limit=1'),
-  mybilling: await first('customer', 'billing?limit=1'),
-  myclaim: await first('customer', 'claims?limit=1'),
-}
-const PARAM = {
-  '/platform/tenants/:id': ids.tenant, '/admin/users/:id': ids.user, '/admin/customers/:id': ids.customer,
-  '/containers/:id': ids.container, '/packing-lists/:id': ids.pl, '/packing-lists/:id/edit': ids.pl,
-  '/packing-lists/:id/print': ids.pl, '/manifests/:id': ids.manifest, '/billing/:id': ids.billing,
-  '/claims/:id': ids.claim, '/refunds/:id': ids.refund, '/release-notes/:id': ids.rn, '/release-notes/:id/print': ids.rn,
-  '/my-shipments/:code': ids.cpl, '/my-billing/:id': ids.mybilling, '/my-billing/:id/payment-success': ids.mybilling,
-  '/my-billing/:id/refund-request': ids.mybilling, '/my-release-notes/:id': ids.rn, '/my-claims/:id': ids.myclaim,
-}
-
-const table = fs.readFileSync(new URL('../src/shell/routeTable.ts', import.meta.url), 'utf8')
-const routes = [...table.matchAll(/\{\s*path: '([^']+)',\s*(?:\/\/[^\n]*\n\s*)*allow: (\[[^\]]*\]|'public')/g)].map((m) => ({
-  path: m[1],
-  allow: m[2] === "'public'" ? 'public' : JSON.parse(m[2].replace(/'/g, '"')),
-}))
-const ROLE_PREF = ['tenant_admin', 'nigeria_office_staff', 'china_office_staff', 'warehouse_attendant', 'platform_admin', 'customer']
+const ids = await sampleIds()
+const routes = loadRoutes()
 
 const browser = await chromium.launch()
 let failures = 0
@@ -65,8 +26,8 @@ for (const WIDTH of WIDTHS) {
   console.log(`== ${WIDTH} px`)
   for (const r of routes) {
     if (only && !r.path.includes(only)) continue
-    const url = PARAM[r.path] ? r.path.replace(/:(id|code)/, PARAM[r.path]) : r.path.replace(/:(\w+)/g, 'sample')
-    const role = r.allow === 'public' ? null : ROLE_PREF.find((x) => r.allow.includes(x))
+    const url = sampleUrl(r.path, ids)
+    const role = r.role
     const page = await browser.newPage({ viewport: { width: WIDTH, height: 812 }, isMobile: true, hasTouch: true })
     if (role) await page.addInitScript((x) => sessionStorage.setItem('shipx_dev_identity', x), role)
     await page.goto(APP + url).catch(() => {})

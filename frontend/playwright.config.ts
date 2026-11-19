@@ -61,6 +61,19 @@ export default defineConfig({
       },
     },
     {
+      // FD-38 screenshot baseline: e2e/visual/visual.spec.ts. Needs the local stack like 'local-stack'. Images go to
+      // VISUAL_BASELINE_DIR (default visual-baseline/, gitignored), one flat folder, no platform suffix: the baseline
+      // and the comparison are always taken on the same machine in the same run.
+      name: 'visual',
+      testMatch: 'visual/**/*.spec.ts',
+      timeout: 90_000,
+      snapshotPathTemplate: `${process.env.VISUAL_BASELINE_DIR ?? 'visual-baseline'}/{arg}{ext}`,
+      use: {
+        ...devices['Desktop Chrome'],
+        baseURL: 'http://localhost:5173',
+      },
+    },
+    {
       name: 'local-stack',
       testMatch: 'flows/**/*.spec.ts',
       // 90s, not Playwright's 30s default: every case here drives a real

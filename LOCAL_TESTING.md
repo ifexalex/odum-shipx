@@ -1298,3 +1298,18 @@ node scripts/mobile-audit.mjs 360 /billing # one width, routes containing /billi
 
 It opens each route as an allowed role with real records from the local API and exits 1 if any page scrolls sideways or has content sticking out. A row meant to scroll sideways inside itself uses `shell/ScrollStrip` (`data-scroll-strip`). Run it after layout changes.
 
+## Visual baseline: before and after screenshots (2026-11-19, FD-38)
+
+Same prerequisites as the phone audit. Capture before a style change and compare after it:
+
+```
+cd frontend
+npm run visual:baseline                    # every route at 1366 px, 390 px and dark mode -> visual-baseline/ (gitignored)
+# ... make the change ...
+npm run visual:compare                     # every screen that changed fails
+npx playwright show-report                 # before, after and diff images side by side
+VISUAL_ONLY=/billing npm run visual:compare   # only routes containing /billing
+```
+
+234 screens take about 8 minutes, because the local API serves one request at a time. The clock is fixed and animations are off, so a compare run with no change finds no differences. Nothing is committed: seed data and dates move between machines and days. CI job `visual` (frontend-ci.yml) does the same on a pull request that touches a style sheet or `frontend/src/design/`: it captures the base branch, compares the pull request against it, lists the changed screens in the job summary and uploads the report as the `visual-report` artifact. Routes come from `scripts/routeSamples.mjs`, shared with the phone audit.
+
