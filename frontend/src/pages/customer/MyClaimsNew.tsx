@@ -22,18 +22,13 @@ import { Banner, Button, Field } from '../../design/components'
 import { PageHeader } from '../../shell/PageHeader'
 import { EvidenceUploader } from '../nigeria/EvidenceUploader'
 import styles from './customer.module.css'
+import { statusLabel } from '../../design/status'
 
 type Step = 'details' | 'evidence' | 'review'
 
 // Mirrors services/claims/service.py's `_PRE_ARRIVAL_STATUSES` complement —
 // a claim can only be filed once the container has physically arrived.
-const ARRIVED_STATUS_LABEL: Record<string, string> = {
-  arrived: 'Arrived NG',
-  customs_clearance: 'In customs',
-  cleared: 'Cleared',
-  at_warehouse: 'Ready for pickup',
-  fully_released: 'Delivered',
-}
+const ARRIVED_STATUSES: ReadonlySet<string> = new Set(['arrived', 'customs_clearance', 'cleared', 'at_warehouse', 'fully_released'])
 
 export function MyClaimsNew(): JSX.Element {
   const navigate = useNavigate()
@@ -70,7 +65,7 @@ export function MyClaimsNew(): JSX.Element {
   }, [])
 
   const arrivedShipments = (shipments ?? []).filter(
-    (pl) => pl.container_status && pl.container_status in ARRIVED_STATUS_LABEL,
+    (pl) => pl.container_status && ARRIVED_STATUSES.has(pl.container_status),
   )
   const selectedShipment = arrivedShipments.find((pl) => pl.id === selectedShipmentId) ?? null
 
@@ -155,7 +150,7 @@ export function MyClaimsNew(): JSX.Element {
                 {arrivedShipments.map((pl) => (
                   <option key={pl.id} value={pl.id}>
                     {pl.reference ?? pl.id.slice(0, 8)} — Container {pl.container_number ?? '—'}
-                    {' '}({ARRIVED_STATUS_LABEL[pl.container_status ?? ''] ?? pl.container_status})
+                    {' '}({statusLabel('container', pl.container_status ?? '', 'customer')})
                   </option>
                 ))}
               </select>

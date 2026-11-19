@@ -3,8 +3,8 @@ import type { JSX } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { releaseNoteKeys } from '../../api/keys'
 import { releaseNotesApi } from '../../api/releaseNotes'
-import { releaseNoteStatusLabel } from '../../api/releaseNotesRules'
-import { Badge, Button, Card, Mono } from '../../design/components'
+import { } from '../../api/releaseNotesRules'
+import {  Button, Card, Mono, StatusBadge } from '../../design/components'
 import { STALE_30S } from '../../lib/queryClient'
 import { SectionHead } from '../../shell/SectionHead'
 
@@ -38,9 +38,7 @@ export function ReleaseNoteCard({ containerId }: { containerId: string | null | 
         >
           <div>
             <Mono color="var(--color-ink)">{note.reference_number}</Mono>{' '}
-            <Badge variant={note.status === 'active' ? 'success' : note.status === 'expired' ? 'error' : 'neutral'}>
-              {releaseNoteStatusLabel(note.status)}
-            </Badge>
+            <StatusBadge kind="releaseNote" status={note.status} audience="customer" />
           </div>
           <Button variant="secondary" size="sm" onClick={() => navigate(`/my-release-notes/${note.id}`)}>
             Open

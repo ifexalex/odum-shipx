@@ -11,8 +11,10 @@ import {
   KolaMark,
   Mono,
   Modal,
+  RoleBadge,
   ShipxWordmark,
   StatCard,
+  StatusBadge,
   Table,
   TenantBrand,
   ToggleSwitch,
@@ -21,6 +23,7 @@ import {
   type ButtonVariant,
 } from './components'
 import { PageHeader } from '../shell/PageHeader'
+import { STATUS_REGISTRY, type StatusKind, statusesOf } from './status'
 import { SectionHead } from '../shell/SectionHead'
 import { Tabs } from '../shell/Tabs'
 import { TopBar } from '../shell/TopBar'
@@ -110,6 +113,31 @@ export function ComponentCatalog(): JSX.Element {
           <Badge variant="success" dot={false} size="sm">
             no dot, sm
           </Badge>
+        </div>
+      </Section>
+
+      <Section title="Statuses (FD-08)">
+        <p style={{ margin: '0 0 var(--space-4)', color: 'var(--color-ink-3)' }}>
+          Every status of every record, from the registry in <code>design/status.ts</code>. Colour rule: neutral not
+          started or done with nothing to do; info moving along; warning waiting on someone; success done; error
+          refused or lost; primary a container cleared and in Nigeria. Pages render <code>StatusBadge</code>, never
+          their own map.
+        </p>
+        <div style={{ display: 'grid', gap: 'var(--space-3)' }}>
+          {(Object.keys(STATUS_REGISTRY) as StatusKind[]).map((kind) => (
+            <div key={kind} style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 'var(--space-2)' }}>
+              <Mono>{kind}</Mono>
+              {statusesOf(kind).map((status) => (
+                <StatusBadge key={status} kind={kind} status={status} />
+              ))}
+            </div>
+          ))}
+          <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 'var(--space-2)' }}>
+            <Mono>roles</Mono>
+            {(['tenant_admin', 'china_office_staff', 'nigeria_office_staff', 'warehouse_attendant', 'customer'] as const).map((role) => (
+              <RoleBadge key={role} role={role} />
+            ))}
+          </div>
         </div>
       </Section>
 

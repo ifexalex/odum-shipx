@@ -3,7 +3,7 @@ import { useState, type JSX } from 'react'
 import { paymentClaimApi } from '../../../api/billing'
 import { ApiError } from '../../../api/client'
 import { billingKeys } from '../../../api/keys'
-import { Badge, Banner, Button, Card, Field, Mono, Table } from '../../../design/components'
+import {  Banner, Button, Card, Field, Mono, Table, StatusBadge } from '../../../design/components'
 import { formatDate, formatNgn } from '../../../lib/format'
 import { SectionHead } from '../../../shell/SectionHead'
 import styles from '../BillingDetail.module.css'
@@ -116,22 +116,7 @@ export function PaymentClaimsSection({
               >
                 {claim.evidence_file_name}
               </Button>,
-              <Badge
-                key="status"
-                variant={
-                  claim.status === 'confirmed'
-                    ? 'success'
-                    : claim.status === 'rejected'
-                      ? 'error'
-                      : 'warning'
-                }
-              >
-                {claim.status === 'pending'
-                  ? 'Pending'
-                  : claim.status === 'confirmed'
-                    ? 'Confirmed'
-                    : 'Rejected'}
-              </Badge>,
+              <StatusBadge key="status" kind="paymentClaim" status={claim.status} audience={isStaff ? 'staff' : 'customer'} />,
               ...(isStaff
                 ? [
                     claim.status === 'pending' ? (

@@ -206,7 +206,7 @@ describe('BillingDetail', () => {
     const resolved = { ...DISPUTE_STUB, status: 'resolved_no_change' as const }
     const billingWithDispute = { ...BILLING_STUB, _active_disputes: [resolved] }
     renderPage('nigeria_office_staff', { billing: billingWithDispute })
-    await waitFor(() => expect(screen.getByText('Resolved — no change')).toBeInTheDocument())
+    await waitFor(() => expect(screen.getByText('Resolved: no change')).toBeInTheDocument())
     expect(screen.queryByRole('button', { name: 'Acknowledge' })).not.toBeInTheDocument()
   })
 

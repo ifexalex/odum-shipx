@@ -5,32 +5,15 @@ import { canCompensateMissingItem, canUpdateMissingItem, missingItemStatusesFor 
 import { useMissingItemList } from '../../hooks/useItems'
 import { useSession } from '../../auth/useSession'
 import type { UserRole } from '../../auth/types'
-import { Badge, Banner, Button, Card, Chip, Field, Mono, Table, ListFooter, DialogGuard, type BadgeVariant } from '../../design/components'
+import { Banner, Button, Card, Chip, DialogGuard, Field, ListFooter, Mono, StatusBadge, Table } from '../../design/components'
 import { useTopBarSlot } from '../../shell/TopBarContext'
 import styles from './ItemList.module.css'
 import { formatDate } from '../../lib/format'
+import { statusLabel } from '../../design/status'
 
 const STATUS_FILTERS: MissingItemStatus[] = [
   'reported', 'investigating', 'found_and_shipping', 'confirmed_lost', 'resolved',
 ]
-
-const STATUS_VARIANT: Record<MissingItemStatus, BadgeVariant> = {
-  reported: 'warning',
-  investigating: 'warning',
-  found_and_shipping: 'warning',
-  confirmed_lost: 'error',
-  resolved: 'success',
-}
-
-function statusLabel(s: MissingItemStatus): string {
-  switch (s) {
-    case 'reported': return 'Reported'
-    case 'investigating': return 'Investigating'
-    case 'found_and_shipping': return 'Found & shipping'
-    case 'confirmed_lost': return 'Confirmed lost'
-    case 'resolved': return 'Resolved'
-  }
-}
 
 // ---------------------------------------------------------------------------
 // UpdateStatusModal
@@ -83,7 +66,7 @@ function UpdateModal({ item, role, onCancel, onSuccess }: UpdateModalProps): JSX
         <div className={styles.selectField}>
           <label className={styles.selectLabel}>New status <span className={styles.required}>*</span></label>
           <select className={styles.select} value={status} onChange={(e) => setStatus(e.target.value as MissingItemStatus)}>
-            {statuses.map((s) => <option key={s} value={s}>{statusLabel(s)}</option>)}
+            {statuses.map((s) => <option key={s} value={s}>{statusLabel('missingItem', s)}</option>)}
           </select>
         </div>
         {!canCompensateMissingItem(role) && (
@@ -147,7 +130,7 @@ export function MissingItemList(): JSX.Element {
         <div className={styles.chips}>
           <Chip active={statusFilter === null} onClick={() => setStatusFilter(null)}>All</Chip>
           {STATUS_FILTERS.map((s) => (
-            <Chip key={s} active={statusFilter === s} onClick={() => setStatusFilter(s)}>{statusLabel(s)}</Chip>
+            <Chip key={s} active={statusFilter === s} onClick={() => setStatusFilter(s)}>{statusLabel('missingItem', s)}</Chip>
           ))}
         </div>
       </Card>
@@ -166,7 +149,7 @@ export function MissingItemList(): JSX.Element {
               cells: [
                 <span key="desc">{item.description}</span>,
                 <Mono key="tags">{item.carton_tags.join(', ') || '—'}</Mono>,
-                <Badge key="status" variant={STATUS_VARIANT[item.status]}>{statusLabel(item.status)}</Badge>,
+                <StatusBadge key="status" kind="missingItem" status={item.status} />,
                 <span key="date">{formatDate(item.created_at)}</span>,
                 canUpdateMissingItem(role, item.status) ? (
                   <Button key="edit" variant="ghost" size="sm" onClick={() => setEditing(item)}>Update</Button>

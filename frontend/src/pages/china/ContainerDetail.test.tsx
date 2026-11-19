@@ -179,7 +179,7 @@ describe('ContainerDetail', () => {
     await userEvent.click(screen.getByRole('tab', { name: 'Packing lists' }))
     // The Packages cell names the unit rather than showing a bare row count.
     expect(screen.getAllByText(/cartons?|bales?|bags?|—/).length).toBeGreaterThan(0)
-    expect(screen.getByText('approved')).toBeInTheDocument()
+    expect(screen.getByText('Approved')).toBeInTheDocument()
   })
 
   it('sorts the packing-lists sub-table by Ref # client-side, with no API param involved', async () => {
@@ -214,8 +214,8 @@ describe('ContainerDetail', () => {
     vi.mocked(containersApi.get).mockResolvedValue({ ...containerStub, status: 'sealed' })
     vi.mocked(containersApi.updateStatus).mockResolvedValue({ ...containerStub, status: 'in_transit' })
     renderPage('china_office_staff')
-    await waitFor(() => expect(screen.getByText('Advance to In Transit')).toBeInTheDocument())
-    await userEvent.click(screen.getByText('Advance to In Transit'))
+    await waitFor(() => expect(screen.getByText('Advance to In transit')).toBeInTheDocument())
+    await userEvent.click(screen.getByText('Advance to In transit'))
 
     // Step 1 — Continue is gated on the required ship date
     const continueButton = screen.getByRole('button', { name: 'Continue' })

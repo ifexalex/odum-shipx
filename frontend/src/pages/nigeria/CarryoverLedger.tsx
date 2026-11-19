@@ -13,17 +13,10 @@ import { billingKeys } from '../../api/keys'
 import { STALE_30S } from '../../lib/queryClient'
 import { ApiError } from '../../api/client'
 import { useSession } from '../../auth/useSession'
-import { Badge, Banner, Button, Card, Chip, Field, Mono, StatCard, Table, UserCell, DialogGuard, type BadgeVariant } from '../../design/components'
+import { Banner, Button, Card, Chip, DialogGuard, Field, Mono, StatCard, StatusBadge, Table, UserCell } from '../../design/components'
 import { useTopBarSlot } from '../../shell/TopBarContext'
 import styles from './BillingList.module.css'
 import { formatDate, formatNgn } from '../../lib/format'
-
-const STATUS_VARIANT: Record<CarryoverStatus, BadgeVariant> = {
-  outstanding: 'warning',
-  applied: 'purple',
-  exempted: 'neutral',
-  expired: 'neutral',
-}
 
 const STATUS_FILTERS: { key: CarryoverStatus; label: string }[] = [
   { key: 'outstanding', label: 'Outstanding' },
@@ -161,7 +154,7 @@ export function CarryoverLedger(): JSX.Element {
                 <Mono color="var(--color-primary)">{c.source_container_number ?? c.source_billing_id.slice(0, 8)}</Mono>
               </button>,
               <Mono key="amt">{formatNgn(c.amount_ngn)}</Mono>,
-              <Badge key="status" variant={STATUS_VARIANT[c.status]}>{c.status}</Badge>,
+              <StatusBadge key="status" kind="carryover" status={c.status} />,
               <span key="created" style={{ fontSize: 'var(--text-xs)', color: 'var(--color-ink-3)' }}>{formatDate(c.created_at)}</span>,
               c.status === 'outstanding' && canExempt ? (
                 <Button key="exempt" variant="ghost" size="sm" onClick={() => setExempting(c)}>Exempt</Button>

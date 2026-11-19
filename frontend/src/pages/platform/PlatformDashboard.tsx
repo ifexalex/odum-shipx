@@ -12,18 +12,11 @@
 import { useMemo, type JSX } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { ApiError } from '../../api/client'
-import type { Tenant } from '../../api/tenantManagement'
 import { usePlatformDashboardStats, usePlatformTenantList, useRecentPlatformActivity } from '../../hooks/usePlatformTenants'
-import { Badge, Banner, Button, Card, Mono, QuickActionCard, StatCard, Table, UserCell, ViewLink, type BadgeVariant, type IconName } from '../../design/components'
+import { Badge, Banner, Button, Card, Mono, QuickActionCard, StatCard, StatusBadge, Table, type BadgeVariant, type IconName, UserCell, ViewLink } from '../../design/components'
 import { PageHeader } from '../../shell/PageHeader'
 import { SectionHead } from '../../shell/SectionHead'
 import styles from './admin.module.css'
-
-const TENANT_STATUS_VARIANT: Record<Tenant['status'], BadgeVariant> = {
-  active: 'success',
-  suspended: 'error',
-  offboarded: 'neutral',
-}
 
 function actionVariant(action: string): BadgeVariant {
   if (action.includes('SUSPEND') || action.includes('OFFBOARD') || action.includes('DELETE')) return 'error'
@@ -154,7 +147,7 @@ export function PlatformDashboard(): JSX.Element {
               cells: [
                 <UserCell key="name" name={t.company_name} email={t.primary_contact_email ?? ''} />,
                 <Badge key="tier" variant="info">{t.subscription_tier}</Badge>,
-                <Badge key="status" variant={TENANT_STATUS_VARIANT[t.status]}>{t.status}</Badge>,
+                <StatusBadge key="status" kind="tenant" status={t.status} />,
                 <Mono key="users">
                   {t.user_count != null ? `${t.user_count}${t.users_limit != null ? ` / ${t.users_limit}` : ''}` : '—'}
                 </Mono>,

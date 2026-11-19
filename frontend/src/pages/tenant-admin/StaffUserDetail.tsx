@@ -6,7 +6,17 @@ import { usersApi, type TenantUser, type TenantUserRole } from '../../api/tenant
 import { staffKeys } from '../../api/keys'
 import { STALE_30S } from '../../lib/queryClient'
 import { useSession } from '../../auth/useSession'
-import { Action, Badge, Banner, Button, Card, Kvp, LocaleCard, type BadgeVariant, type StaffLocale } from '../../design/components'
+import {
+  Action,
+  Banner,
+  Button,
+  Card,
+  Kvp,
+  LocaleCard,
+  type StaffLocale,
+  RoleBadge,
+  StatusBadge,
+} from '../../design/components'
 import { PageHeader } from '../../shell/PageHeader'
 import { ActivityFeed } from '../../shell/ActivityFeed'
 import { SectionHead } from '../../shell/SectionHead'
@@ -14,14 +24,8 @@ import { RoleCheckboxList } from './RoleCheckboxList'
 import styles from './admin.module.css'
 import { formatDate } from '../../lib/format'
 import { useBreadcrumbLabel } from '../../shell/breadcrumbs'
+import { roleLabel } from '../../design/status'
 
-const ROLE_VARIANT: Record<TenantUserRole, BadgeVariant> = {
-  tenant_admin: 'error',
-  china_office_staff: 'info',
-  nigeria_office_staff: 'success',
-  warehouse_attendant: 'warning',
-  customer: 'neutral',
-}
 
 const ROLE_OPTIONS: TenantUserRole[] = [
   'tenant_admin', 'china_office_staff', 'nigeria_office_staff', 'warehouse_attendant',
@@ -196,9 +200,10 @@ export function StaffUserDetail(): JSX.Element {
           <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-3)' }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-2)', flexWrap: 'wrap' }}>
               {(user.roles.length > 0 ? user.roles : [user.role]).map((r) => (
-                <Badge key={r} variant={ROLE_VARIANT[r]}>
-                  {r.replace(/_/g, ' ')}{r === user.role ? ' · primary' : ''}
-                </Badge>
+                <span key={r} style={{ display: 'inline-flex', alignItems: 'center', gap: 'var(--space-1)' }}>
+                  <RoleBadge role={r} />
+                  {r === user.role && <span style={{ fontSize: 'var(--text-xs)', color: 'var(--color-ink-3)' }}>Primary</span>}
+                </span>
               ))}
               {editRoles === null && (
                 <Button
@@ -223,7 +228,7 @@ export function StaffUserDetail(): JSX.Element {
                     setEditRoles(nextRoles)
                     setEditPrimaryRole(nextPrimary)
                   }}
-                  roleLabel={(r) => r.replace(/_/g, ' ')}
+                  roleLabel={roleLabel}
                 />
                 <div style={{ display: 'flex', gap: 'var(--space-2)', marginTop: 'var(--space-3)' }}>
                   <Action variant="primary" size="sm" loading={saving} disabled={editRoles.length === 0} onClick={() => void handleSaveRoles()}>
@@ -237,7 +242,7 @@ export function StaffUserDetail(): JSX.Element {
             )}
           </div>
         } />
-        <Kvp label="Status" value={<Badge variant={user.status === 'active' ? 'success' : 'neutral'}>{user.status}</Badge>} />
+        <Kvp label="Status" value={<StatusBadge kind="staffUser" status={user.status} />} />
         <Kvp label="Member since" value={formatDate(user.created_at)} divider={false} />
       </Card>
 

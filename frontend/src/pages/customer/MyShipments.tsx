@@ -6,7 +6,7 @@ import { billingApi, type Billing } from '../../api/billing'
 import { billingKeys, packingListKeys } from '../../api/keys'
 import { packingListApi } from '../../api/packingList'
 import { STALE_30S } from '../../lib/queryClient'
-import { Badge, Banner, Button, Card, Icon, Mono, Table, ViewLink } from '../../design/components'
+import {  Banner, Button, Card, Icon, Mono, Table, ViewLink, StatusBadge } from '../../design/components'
 import { SectionHead } from '../../shell/SectionHead'
 import { useSession } from '../../auth/useSession'
 import { CustomerStepper } from './CustomerStepper'
@@ -16,17 +16,6 @@ import { formatDate, formatNgn } from '../../lib/format'
 const ACTIVE_STATUSES = new Set([
   'loading', 'sealed', 'in_transit', 'arrived', 'customs_clearance', 'cleared', 'at_warehouse',
 ])
-
-const CONTAINER_STATUS_BADGE: Record<string, { label: string; variant: 'info' | 'warning' | 'success' | 'neutral' }> = {
-  loading:           { label: 'Packing',     variant: 'info' },
-  sealed:            { label: 'Packed',      variant: 'info' },
-  in_transit:        { label: 'In transit',  variant: 'info' },
-  arrived:           { label: 'Arrived NG',  variant: 'warning' },
-  customs_clearance: { label: 'Customs',     variant: 'warning' },
-  cleared:           { label: 'Cleared',     variant: 'success' },
-  at_warehouse:      { label: 'Ready',       variant: 'success' },
-  fully_released:    { label: 'Delivered',   variant: 'success' },
-}
 
 function fmtNgn(val: string | number | null | undefined): string {
   return formatNgn(val)
@@ -148,7 +137,6 @@ export function MyShipments(): JSX.Element {
           <div className={styles.activeList}>
             {activeShipments.map((shipment) => {
               const b = billingByContainer.get(shipment.container_id)
-              const statusInfo = CONTAINER_STATUS_BADGE[shipment.container_status ?? '']
               return (
                 <Card key={shipment.id} padding="none" style={{ overflow: 'hidden' }}>
                   <div className={styles.activeCardHeader}>
@@ -162,8 +150,8 @@ export function MyShipments(): JSX.Element {
                           <Mono color="var(--color-ink)" style={{ fontSize: 'var(--text-lg)', fontWeight: 700 }}>
                             {shipment.reference ?? shipment.id.slice(0, 8)}
                           </Mono>
-                          {statusInfo && (
-                            <Badge variant={statusInfo.variant}>{statusInfo.label}</Badge>
+                          {shipment.container_status && (
+                            <StatusBadge kind="container" status={shipment.container_status} audience="customer" />
                           )}
                         </div>
                         <div className={styles.activeCardMeta}>
@@ -248,7 +236,7 @@ export function MyShipments(): JSX.Element {
                   cells: [
                     <Mono key="ref">{pl.reference ?? pl.id.slice(0, 8)}</Mono>,
                     <Mono key="ctn">{pl.container_number ?? '—'}</Mono>,
-                    <Badge key="status" variant="success">Delivered</Badge>,
+                    <StatusBadge key="status" kind="container" status={pl.container_status ?? 'fully_released'} audience="customer" />,
                     <Mono key="cartons">{pl.carton_count}</Mono>,
                     <span key="date" style={{ fontSize: 'var(--text-xs)', color: 'var(--color-ink-3)' }}>
                       {formatDate(pl.created_at)}

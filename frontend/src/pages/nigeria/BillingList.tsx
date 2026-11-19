@@ -6,7 +6,7 @@ import { canGenerateInvoices } from '../../api/billingRules'
 import { billingKeys } from '../../api/keys'
 import { formatNgnCompact, formatDate, formatNgn } from '../../lib/format'
 import { STALE_5_MIN } from '../../lib/queryClient'
-import { Badge, Banner, Button, Card, Chip, DateRangeFilter, ExportButton, Icon, ListFooter, Mono, StatCard, Table, UserCell, type BadgeVariant } from '../../design/components'
+import { Banner, Button, Card, Chip, DateRangeFilter, ExportButton, Icon, ListFooter, Mono, StatCard, StatusBadge, Table, UserCell } from '../../design/components'
 import { useSession } from '../../auth/useSession'
 import { useBillingList } from '../../hooks/useBilling'
 import { useDateRangeFilter } from '../../hooks/useDateRangeFilter'
@@ -32,26 +32,6 @@ const STATUS_FILTERS: Array<{ key: PaymentStatus; label: string }> = [
   { key: 'waived',                   label: 'Waived' },
   { key: 'released_with_outstanding', label: 'Released w/ outstanding' },
 ]
-
-const STATUS_VARIANT: Record<PaymentStatus, BadgeVariant> = {
-  unpaid:                    'error',
-  partially_paid:            'warning',
-  paid:                      'success',
-  overpaid:                  'info',
-  waived:                    'neutral',
-  released_with_outstanding: 'warning',
-  cancelled:                 'neutral',
-}
-
-const STATUS_LABEL: Record<PaymentStatus, string> = {
-  unpaid:                    'Unpaid',
-  partially_paid:            'Partial',
-  paid:                      'Paid',
-  overpaid:                  'Overpaid',
-  waived:                    'Waived',
-  released_with_outstanding: 'Released',
-  cancelled:                 'Cancelled',
-}
 
 function fmtNgn(val: string | number | null | undefined): string {
   if (val == null) return '—'
@@ -324,9 +304,7 @@ export function BillingList(): JSX.Element {
               <Mono key="out" color={Number(b.outstanding_ngn) > 0 ? 'var(--color-error)' : Number(b.outstanding_ngn) < 0 ? 'var(--color-info)' : 'var(--color-success)'}>
                 {fmtNgn(b.outstanding_ngn)}
               </Mono>,
-              <Badge key="status" variant={STATUS_VARIANT[b.payment_status]}>
-                {STATUS_LABEL[b.payment_status]}
-              </Badge>,
+              <StatusBadge key="status" kind="invoice" status={b.payment_status} />,
               <span key="billed" className={styles.metaText}>
                 {b.billed_at
                   ? formatDate(b.billed_at, 'short')

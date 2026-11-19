@@ -2,21 +2,12 @@ import { type JSX } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { ApiError } from '../../api/client'
 import { type DamageClaimStatus } from '../../api/claims'
-import { CLAIM_STATUS_ORDER, CUSTOMER_CLAIM_STATUS_LABELS } from '../../api/claimsRules'
+import { CLAIM_STATUS_ORDER, } from '../../api/claimsRules'
 import { useClaimList } from '../../hooks/useClaims'
-import { Badge, Banner, Button, type BadgeVariant } from '../../design/components'
+import { Banner, Button, StatusBadge } from '../../design/components'
 import { PageHeader } from '../../shell/PageHeader'
 import styles from './customer.module.css'
 import { formatDate } from '../../lib/format'
-
-const STATUS_VARIANT: Record<DamageClaimStatus, BadgeVariant> = {
-  filed: 'warning',
-  under_inspection: 'warning',
-  inspection_complete: 'warning',
-  pending_resolution: 'warning',
-  resolved: 'success',
-  closed: 'neutral',
-}
 
 function ClaimProgressBar({ status }: { status: DamageClaimStatus }): JSX.Element {
   const idx = CLAIM_STATUS_ORDER.indexOf(status)
@@ -96,7 +87,7 @@ export function MyClaims(): JSX.Element {
                   </p>
                   {c.description && <p className={styles.cardSub}>{c.description}</p>}
                 </div>
-                <Badge variant={STATUS_VARIANT[c.status]}>{CUSTOMER_CLAIM_STATUS_LABELS[c.status]}</Badge>
+                <StatusBadge kind="claim" status={c.status} audience="customer" />
               </div>
               <div className={styles.cardMeta}>
                 <span>Filed {formatDate(c.created_at)}</span>

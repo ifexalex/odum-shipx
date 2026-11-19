@@ -4,7 +4,7 @@ import { useNavigate } from 'react-router-dom'
 import { claimsApi, type Claim, type DamageClaimStatus } from '../../api/claims'
 import { claimKeys } from '../../api/keys'
 import { STALE_5_MIN } from '../../lib/queryClient'
-import { Badge, Banner, Button, Card, Chip, DateRangeFilter, Icon, Mono, StatCard, Table, UserCell, ListFooter, type BadgeVariant } from '../../design/components'
+import { Badge, Banner, Button, Card, Chip, DateRangeFilter, Icon, ListFooter, Mono, StatCard, StatusBadge, Table, UserCell } from '../../design/components'
 import { useSession } from '../../auth/useSession'
 import { useClaimList } from '../../hooks/useClaims'
 import { useDateRangeFilter } from '../../hooks/useDateRangeFilter'
@@ -27,24 +27,6 @@ const STATUS_FILTERS: Array<{ key: DamageClaimStatus; label: string }> = [
   { key: 'resolved',           label: 'Resolved' },
   { key: 'closed',             label: 'Closed' },
 ]
-
-const STATUS_VARIANT: Record<DamageClaimStatus, BadgeVariant> = {
-  filed:                'error',
-  under_inspection:     'warning',
-  inspection_complete:  'warning',
-  pending_resolution:   'info',
-  resolved:             'success',
-  closed:               'neutral',
-}
-
-const STATUS_LABEL: Record<DamageClaimStatus, string> = {
-  filed:                'Filed',
-  under_inspection:     'Under inspection',
-  inspection_complete:  'Inspection complete',
-  pending_resolution:   'Pending resolution',
-  resolved:             'Resolved',
-  closed:               'Closed',
-}
 
 function rowAction(c: Claim, navigate: (p: string) => void): JSX.Element {
   if (c.status === 'filed') {
@@ -201,7 +183,7 @@ export function ClaimList(): JSX.Element {
                     {c.inspection_method === 'delegate_visit' ? 'Delegate visit' : 'Customer evidence'}
                   </Badge>
                 : <span key="method" style={{ color: 'var(--color-ink-4)', fontSize: 'var(--text-xs)' }}>—</span>,
-              <Badge key="status" variant={STATUS_VARIANT[c.status]}>{STATUS_LABEL[c.status]}</Badge>,
+              <StatusBadge key="status" kind="claim" status={c.status} />,
               <span key="filed" className={styles.metaText}>
                 {formatDate(c.created_at, 'short')}
               </span>,

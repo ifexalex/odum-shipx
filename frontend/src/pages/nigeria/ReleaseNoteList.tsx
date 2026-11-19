@@ -1,21 +1,15 @@
 import { useState, type JSX } from 'react'
 import { useNavigate } from 'react-router-dom'
 import type { ReleaseNoteStatus } from '../../api/releaseNotes'
-import { releaseNoteStatusLabel, releaseTypeLabel } from '../../api/releaseNotesRules'
+import { releaseTypeLabel } from '../../api/releaseNotesRules'
 import { useReleaseNoteList, useReleaseNoteStats } from '../../hooks/useReleaseNotes'
-import { Badge, Banner, Card, Chip, Mono, StatCard, Table, ViewLink, ListFooter, type BadgeVariant } from '../../design/components'
+import { Banner, Card, Chip, ListFooter, Mono, StatCard, StatusBadge, Table, ViewLink } from '../../design/components'
 import { useTopBarSlot } from '../../shell/TopBarContext'
 import styles from './ReleaseNoteList.module.css'
 import { formatDate } from '../../lib/format'
+import { statusLabel } from '../../design/status'
 
 const STATUS_FILTERS: ReleaseNoteStatus[] = ['active', 'picked_up', 'expired', 'cancelled']
-
-const STATUS_VARIANT: Record<ReleaseNoteStatus, BadgeVariant> = {
-  active: 'success',
-  picked_up: 'neutral',
-  expired: 'error',
-  cancelled: 'neutral',
-}
 
 
 export function ReleaseNoteList(): JSX.Element {
@@ -63,7 +57,7 @@ export function ReleaseNoteList(): JSX.Element {
           <Chip active={statusFilter === null} onClick={() => setStatusFilter(null)}>All</Chip>
           {STATUS_FILTERS.map((s) => (
             <Chip key={s} active={statusFilter === s} onClick={() => setStatusFilter(s)}>
-              {releaseNoteStatusLabel(s)}
+              {statusLabel('releaseNote', s)}
             </Chip>
           ))}
         </div>
@@ -89,7 +83,7 @@ export function ReleaseNoteList(): JSX.Element {
                 <Mono key="con">{n.container_number ?? '—'}</Mono>,
                 <Mono key="cartons">{n.carton_count} / {n.total_cartons_for_customer}</Mono>,
                 <span key="type" className={styles.partial}>{releaseTypeLabel(n)}</span>,
-                <Badge key="status" variant={STATUS_VARIANT[n.status]}>{releaseNoteStatusLabel(n.status)}</Badge>,
+                <StatusBadge key="status" kind="releaseNote" status={n.status} />,
                 <span key="date">{formatDate(n.authorized_at)}</span>,
                 <ViewLink key="view" onClick={() => navigate(`/release-notes/${n.id}`, { state: { note: n } })} />,
               ],

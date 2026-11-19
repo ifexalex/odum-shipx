@@ -1,16 +1,16 @@
 import { useQuery, useQueryClient } from '@tanstack/react-query'
-import {  useState, type JSX } from 'react'
+import { useState, type JSX } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { type InvoiceResult } from '../../api/billing'
 import { canGenerateInvoices } from '../../api/billingRules'
 import { ApiError } from '../../api/client'
-import { CONTAINER_STATUS_LABELS, canAdvanceContainerStatus, canCancelContainer, canDeleteContainer, nextContainerStatus } from '../../api/containerRules'
+import { canAdvanceContainerStatus, canCancelContainer, canDeleteContainer, nextContainerStatus } from '../../api/containerRules'
 import { containerKeys, packingListKeys } from '../../api/keys'
 import { STALE_30S } from '../../lib/queryClient'
 import { containersApi } from '../../api/tracking'
 import { useSession } from '../../auth/useSession'
 import { useTopBarSlot } from '../../shell/TopBarContext'
-import {  Badge, Banner, Button, Icon, Mono } from '../../design/components'
+import { Badge, Banner, Button, Icon, Mono, StatusBadge } from '../../design/components'
 import { Tabs } from '../../shell/Tabs'
 import styles from './ContainerDetail.module.css'
 import { InvoiceOutcomeBanner } from './InvoiceOutcomeBanner'
@@ -19,6 +19,7 @@ import { DocumentsTab } from './containerDetail/DocumentsTab'
 import { OverviewTab } from './containerDetail/OverviewTab'
 import { PackingListsTab, TrackingTab } from './containerDetail/Tabs'
 import { fetchAllPackingLists } from './containerDetail/packingLists'
+import { statusLabel } from '../../design/status'
 
 
 export function ContainerDetail(): JSX.Element {
@@ -140,7 +141,7 @@ export function ContainerDetail(): JSX.Element {
           <div>
             <div className={styles.heroTitleRow}>
               <h1 className={styles.heroTitle}>{container.container_number}</h1>
-              <Badge variant="info">{CONTAINER_STATUS_LABELS[container.status]}</Badge>
+              <StatusBadge kind="container" status={container.status} />
               {container.container_type && (
                 <Badge variant="neutral" dot={false}>{container.container_type}</Badge>
               )}
@@ -177,7 +178,7 @@ export function ContainerDetail(): JSX.Element {
           )}
           {canAdvance && target && (
             <Button variant="primary" icon="arrowright" onClick={() => setShowAdvanceModal(true)}>
-              Advance to {CONTAINER_STATUS_LABELS[target]}
+              Advance to {statusLabel('container', target)}
             </Button>
           )}
         </div>

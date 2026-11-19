@@ -16,7 +16,7 @@ import { ApiError, type ListResponse } from '../../api/client'
 import { releaseNotesApi, type DelegateIdType, type PickupResult, type ReleaseNote, type RecordPickupInput } from '../../api/releaseNotes'
 import { releaseNoteKeys } from '../../api/keys'
 import { STALE_30S } from '../../lib/queryClient'
-import { Banner, Button, Field, Icon, Mono, PhoneField, StatCard, ToggleSwitch, DialogGuard } from '../../design/components'
+import { Banner, Button, Field, Icon, Mono, PhoneField, StatCard, ToggleSwitch, DialogGuard, Badge } from '../../design/components'
 import styles from './WarehouseDashboard.module.css'
 import { todayIso } from '../../lib/format'
 
@@ -213,27 +213,26 @@ interface NoteCardProps {
   lastPickup: PickupResult | null
 }
 
-const URGENCY_STYLE: Record<Urgency, { label: string; bg: string; fg: string }> = {
-  urgent: { label: 'Urgent', bg: 'var(--color-error-soft)', fg: 'var(--color-error)' },
-  normal: { label: 'Normal', bg: 'var(--color-warning-soft)', fg: 'var(--color-warning)' },
-  new: { label: 'New', bg: 'var(--color-success-soft)', fg: 'var(--color-success)' },
+// Urgency is shown only when it is not normal (FD-08): a badge on every card that says "Normal" is noise, and it
+// used the warning colour.
+const URGENCY_BADGE: Record<Exclude<Urgency, 'normal'>, { label: string; variant: 'error' | 'info' }> = {
+  urgent: { label: 'Urgent', variant: 'error' },
+  new: { label: 'New', variant: 'info' },
 }
 
 function NoteCard({ note, onPickup, lastPickup }: NoteCardProps): JSX.Element {
   const justDone = lastPickup?.release_note_id === note.id && lastPickup.release_note_status === 'picked_up'
-  const urgency = URGENCY_STYLE[urgencyOf(note)]
+  const level = urgencyOf(note)
+  const urgency = level === 'normal' ? null : URGENCY_BADGE[level]
   return (
     <div className={styles.card} style={justDone ? { opacity: 0.5 } : undefined}>
       <div className={styles.cardLeft}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-2)', flexWrap: 'wrap' }}>
-          <span
-            style={{
-              fontSize: 'var(--text-xs)', fontWeight: 700, textTransform: 'uppercase', letterSpacing: 'var(--tracking-label)',
-              padding: 'var(--space-0-5) var(--space-2)', borderRadius: 'var(--radius-full)', background: urgency.bg, color: urgency.fg,
-            }}
-          >
-            {urgency.label}
-          </span>
+          {urgency && (
+            <Badge variant={urgency.variant} size="sm">
+              {urgency.label}
+            </Badge>
+          )}
           <div className={styles.cardRef}>{note.reference_number}</div>
         </div>
         <div className={styles.cardCustomer}>{note.customer_name ?? '—'}</div>

@@ -5,7 +5,7 @@ import { notifLogKeys } from '../../api/keys'
 import { STALE_5_MIN } from '../../lib/queryClient'
 import { useNotifLogPolling } from '../../hooks/useNotifications'
 import { useDateRangeFilter } from '../../hooks/useDateRangeFilter'
-import { Badge, Banner, Button, Card, Chip, DateRangeFilter, Icon, Mono, Table, UserCell, ListFooter, type BadgeVariant } from '../../design/components'
+import { Banner, Button, Card, Chip, DateRangeFilter, Icon, ListFooter, Mono, StatusBadge, Table, UserCell } from '../../design/components'
 import { useTopBarSlot } from '../../shell/TopBarContext'
 import styles from './NotificationLog.module.css'
 import { formatDateTime } from '../../lib/format'
@@ -22,14 +22,6 @@ const CHANNEL_COLOR: Record<NotifChannel, string> = {
   sms:      'var(--color-info)',
   whatsapp: 'var(--color-success)',
   email:    'var(--color-accent)',
-}
-
-const STATUS_VARIANT: Record<NotifStatus, BadgeVariant> = {
-  queued:    'neutral',
-  sent:      'info',
-  delivered: 'success',
-  failed:    'error',
-  pending:   'warning',
 }
 
 const EVENT_LABELS: Record<string, string> = {
@@ -254,9 +246,7 @@ export function NotificationLog(): JSX.Element {
               <span key="msg" className={styles.msgPreview}>
                 {entry.message_body ? `"${entry.message_body.slice(0, 60)}${entry.message_body.length > 60 ? '…' : ''}"` : '—'}
               </span>,
-              <Badge key="status" variant={STATUS_VARIANT[entry.status]} size="sm">
-                {entry.status.charAt(0).toUpperCase() + entry.status.slice(1)}
-              </Badge>,
+              <StatusBadge key="status" size="sm" kind="notification" status={entry.status} />,
               <div key="action" className={styles.rowActions}>
                 {entry.status === 'failed' && (
                   <Button variant="secondary" size="sm" icon="refresh"
@@ -309,9 +299,7 @@ export function NotificationLog(): JSX.Element {
               <div className={styles.kvp}><span>Channel</span><span>{selectedLog.channel}</span></div>
               <div className={styles.kvp}><span>Event type</span><span>{selectedLog.event_type}</span></div>
               <div className={styles.kvp}><span>Status</span>
-                <Badge variant={STATUS_VARIANT[selectedLog.status]} size="sm">
-                  {selectedLog.status}
-                </Badge>
+                <StatusBadge size="sm" kind="notification" status={selectedLog.status} />
               </div>
               <div className={styles.kvp}><span>Provider</span><span>{selectedLog.provider ?? '—'}</span></div>
               {selectedLog.message_body && (

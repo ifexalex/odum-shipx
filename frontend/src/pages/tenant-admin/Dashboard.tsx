@@ -8,12 +8,12 @@ import { useNavigate } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
 import { billingApi } from '../../api/billing'
 import { claimsApi } from '../../api/claims'
-import { CONTAINER_STATUS_LABELS } from '../../api/containerRules'
+import { } from '../../api/containerRules'
 import { billingKeys, claimKeys, containerKeys, customerKeys } from '../../api/keys'
 import { formatNgnCompact, formatDate, formatNgn } from '../../lib/format'
 import { ARRIVED_IN_NG } from '../../api/manifestRules'
 import { customersApi } from '../../api/tenantManagement'
-import { containersApi, type ContainerStatus } from '../../api/tracking'
+import { containersApi } from '../../api/tracking'
 import { useSession } from '../../auth/useSession'
 import {
   useActiveReleaseNotes,
@@ -23,7 +23,7 @@ import {
   usePendingPackingLists,
   useRecentContainers,
 } from '../../hooks/useDashboard'
-import { Badge, Button, Card, Mono, QuickActionCard, StatCard, Table, UserCell, type BadgeVariant } from '../../design/components'
+import { Badge, Button, Card, Mono, QuickActionCard, StatCard, StatusBadge, Table, UserCell } from '../../design/components'
 import { ContainerPipeline } from './DashboardPipeline'
 import { ActivityFeed } from '../../shell/ActivityFeed'
 import { PlanUsagePanel } from '../../shell/PlanUsagePanel'
@@ -36,18 +36,6 @@ function greeting(): string {
   if (h < 12) return 'Good morning'
   if (h < 17) return 'Good afternoon'
   return 'Good evening'
-}
-
-const CONTAINER_BADGE: Record<string, BadgeVariant> = {
-  loading: 'neutral',
-  sealed: 'info',
-  in_transit: 'info',
-  arrived: 'warning',
-  customs_clearance: 'warning',
-  cleared: 'primary',
-  at_warehouse: 'primary',
-  fully_released: 'success',
-  cancelled: 'neutral',
 }
 
 export function Dashboard(): JSX.Element {
@@ -165,7 +153,7 @@ export function Dashboard(): JSX.Element {
                       <Mono key="ref">{pl.reference ?? pl.id.slice(0, 8)}</Mono>,
                       <UserCell key="cust" name={pl.customer_name ?? '—'} email="" />,
                       <Mono key="cartons">{pl.carton_count}</Mono>,
-                      <Badge key="status" variant="warning">Submitted</Badge>,
+                      <StatusBadge key="status" kind="packingList" status={pl.status} />,
                     ],
                   }))}
                 />
@@ -191,9 +179,7 @@ export function Dashboard(): JSX.Element {
                   rows={pendingManifests.slice(0, 6).map((m) => ({
                     cells: [
                       <Mono key="num">{m.container_number ?? '—'}</Mono>,
-                      <Badge key="status" variant={CONTAINER_BADGE[m.container_status ?? ''] ?? 'neutral'}>
-                        {CONTAINER_STATUS_LABELS[m.container_status as ContainerStatus] ?? m.container_status}
-                      </Badge>,
+                      <StatusBadge key="status" kind="container" status={m.container_status ?? ''} />,
                       <Mono key="cartons">{m.total_cartons}</Mono>,
                       <Button key="view" variant="ghost" size="sm" onClick={() => navigate(`/manifests/${m.id}`)}>View</Button>,
                     ],
@@ -221,7 +207,7 @@ export function Dashboard(): JSX.Element {
                     cells: [
                       <span key="when" style={{ fontSize: 'var(--text-xs)', color: 'var(--color-ink-3)' }}>{formatDate(d.submitted_at)}</span>,
                       <Mono key="cbm">{d.original_cbm ?? '—'}</Mono>,
-                      <Badge key="status" variant="warning">Submitted</Badge>,
+                      <StatusBadge key="status" kind="dispute" status={d.status} />,
                     ],
                   }))}
                 />
@@ -314,9 +300,7 @@ export function Dashboard(): JSX.Element {
                       {c.vessel_name ?? c.origin}
                     </div>
                   </div>,
-                  <Badge key="status" variant={CONTAINER_BADGE[c.status] ?? 'neutral'}>
-                    {CONTAINER_STATUS_LABELS[c.status] ?? c.status}
-                  </Badge>,
+                  <StatusBadge key="status" kind="container" status={c.status} />,
                   <span key="eta" style={{ fontSize: 'var(--text-xs)', color: 'var(--color-ink-3)' }}>{formatDate(c.estimated_arrival_date)}</span>,
                   <Button key="view" variant="ghost" size="sm" onClick={() => navigate(`/containers/${c.id}`)}>View</Button>,
                 ],

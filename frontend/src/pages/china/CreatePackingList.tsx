@@ -1,6 +1,6 @@
-import {  type JSX } from 'react'
+import { type JSX } from 'react'
 import { BULK_CONFIRM_THRESHOLD } from '../../api/packingList'
-import {  Banner, Button, Card, Modal } from '../../design/components'
+import { Banner, Button, Card, Modal } from '../../design/components'
 import { PageHeader } from '../../shell/PageHeader'
 import styles from './CreatePackingList.module.css'
 import { WizardSteps } from './createPackingList/WizardSteps'

@@ -19,29 +19,14 @@ import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { useState, type JSX, type ReactNode } from 'react'
 import { useLocation, useNavigate, useParams } from 'react-router-dom'
 import { ApiError } from '../../api/client'
-import { billingApi, type Billing, type PaymentStatus } from '../../api/billing'
-import { claimsApi, type Claim, type DamageClaimStatus } from '../../api/claims'
+import { billingApi, type Billing } from '../../api/billing'
+import { claimsApi, type Claim } from '../../api/claims'
 import { packingListApi, type PackingList } from '../../api/packingList'
 import { customersApi, type Customer } from '../../api/tenantManagement'
 import { billingKeys, claimKeys, customerKeys, packingListKeys } from '../../api/keys'
 import { STALE_30S } from '../../lib/queryClient'
 import { useSession } from '../../auth/useSession'
-import {
-  Action,
-  Avatar,
-  Badge,
-  Banner,
-  Button,
-  Card,
-  Field,
-  Kvp,
-  Mono,
-  StatCard,
-  Table,
-  ViewLink,
-  DialogGuard,
-  type BadgeVariant,
-} from '../../design/components'
+import { Action, Avatar, Badge, Banner, Button, Card, DialogGuard, Field, Kvp, Mono, StatCard, StatusBadge, Table, ViewLink } from '../../design/components'
 import { SectionHead } from '../../shell/SectionHead'
 import { Tabs } from '../../shell/Tabs'
 import styles from './admin.module.css'
@@ -127,32 +112,6 @@ function AnonymiseModal({ customer, onCancel, onSuccess }: AnonymiseModalProps):
 // ---------------------------------------------------------------------------
 
 const CONSENT_LABEL: Record<string, string> = { sms: 'SMS', whatsapp: 'WhatsApp', email: 'Email' }
-
-const PL_STATUS_VARIANT: Record<string, BadgeVariant> = {
-  draft: 'neutral',
-  pending_approval: 'warning',
-  approved: 'success',
-  rejected: 'error',
-}
-
-const BILLING_VARIANT: Record<PaymentStatus, BadgeVariant> = {
-  unpaid: 'error',
-  partially_paid: 'warning',
-  paid: 'success',
-  overpaid: 'info',
-  waived: 'neutral',
-  released_with_outstanding: 'warning',
-  cancelled: 'neutral',
-}
-
-const CLAIM_VARIANT: Record<DamageClaimStatus, BadgeVariant> = {
-  filed: 'warning',
-  under_inspection: 'info',
-  inspection_complete: 'info',
-  pending_resolution: 'warning',
-  resolved: 'success',
-  closed: 'neutral',
-}
 
 function fmtNgn(value: number): string {
   return formatNgn(value)
@@ -279,9 +238,7 @@ function ShipmentsTab({ customer, shipments, onOpen }: { customer: Customer; shi
           cells: [
             <Mono key="code">{pl.reference ?? pl.id.slice(0, 8)}</Mono>,
             <Mono key="cont">{pl.container_number ?? '—'}</Mono>,
-            <Badge key="status" variant={PL_STATUS_VARIANT[pl.status] ?? 'neutral'}>
-              {pl.status.replace(/_/g, ' ')}
-            </Badge>,
+            <StatusBadge key="status" kind="packingList" status={pl.status} />,
             <Mono key="cartons">{pl.carton_count}</Mono>,
             <Mono key="cbm">{Number(pl.total_cbm).toFixed(3)}</Mono>,
             <span key="created" className={styles.smallMuted}>{formatDate(pl.created_at)}</span>,
@@ -331,9 +288,7 @@ function BillingTab({ billing, onOpen }: { billing: Billing[] | null; onOpen: (b
               <Mono key="out" color={Number(b.outstanding_ngn) > 0 ? 'var(--color-warning)' : 'var(--color-ink-3)'}>
                 {Number(b.outstanding_ngn) > 0 ? fmtNgn(Number(b.outstanding_ngn)) : '—'}
               </Mono>,
-              <Badge key="status" variant={BILLING_VARIANT[b.payment_status] ?? 'neutral'}>
-                {b.payment_status.replace(/_/g, ' ')}
-              </Badge>,
+              <StatusBadge key="status" kind="invoice" status={b.payment_status} />,
               <ViewLink key="view" onClick={() => onOpen(b)} />,
             ],
           }))}
@@ -364,7 +319,7 @@ function ClaimsTab({ claims, onOpen }: { claims: Claim[] | null; onOpen: (c: Cla
           cells: [
             <Mono key="ref">{c.reference ?? c.id.slice(0, 8)}</Mono>,
             <Mono key="cont">{c.container_number ?? '—'}</Mono>,
-            <Badge key="status" variant={CLAIM_VARIANT[c.status] ?? 'neutral'}>{c.status.replace(/_/g, ' ')}</Badge>,
+            <StatusBadge key="status" kind="claim" status={c.status} />,
             <Mono key="cartons">{c.cartons_affected?.length ?? 0}</Mono>,
             <span key="filed" className={styles.smallMuted}>{formatDate(c.created_at)}</span>,
             <ViewLink key="view" onClick={() => onOpen(c)} />,

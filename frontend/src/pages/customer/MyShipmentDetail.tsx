@@ -23,7 +23,7 @@ import { billingApi, paymentClaimApi, type Billing } from '../../api/billing'
 import { billingKeys, packingListKeys } from '../../api/keys'
 import { packingListApi } from '../../api/packingList'
 import { STALE_30S } from '../../lib/queryClient'
-import { Badge, Banner, Button, Card, Icon, Kvp, Mono, Table, type BadgeVariant } from '../../design/components'
+import { Banner, Button, Card, Icon, Kvp, Mono, StatusBadge, Table } from '../../design/components'
 import { SectionHead } from '../../shell/SectionHead'
 import { CustomerStepper } from './CustomerStepper'
 import { ReleaseNoteCard } from './ReleaseNoteCard'
@@ -38,30 +38,6 @@ import { useBreadcrumbLabel } from '../../shell/breadcrumbs'
 // literal fallback string; combined with the detail endpoint not returning
 // container_status at all (see repository.py fix), the badge always showed
 // "Preparing" regardless of the container's actual state.
-const CONTAINER_STATUS_LABELS: Record<string, string> = {
-  loading: 'Preparing',
-  sealed: 'Packed',
-  in_transit: 'In transit',
-  arrived: 'Arrived in Nigeria',
-  customs_clearance: 'Customs clearance',
-  cleared: 'Customs cleared',
-  at_warehouse: 'At warehouse',
-  fully_released: 'Completed',
-  cancelled: 'Cancelled',
-}
-
-const CONTAINER_STATUS_VARIANT: Record<string, BadgeVariant> = {
-  loading: 'neutral',
-  sealed: 'info',
-  in_transit: 'info',
-  arrived: 'warning',
-  customs_clearance: 'warning',
-  cleared: 'primary',
-  at_warehouse: 'primary',
-  fully_released: 'success',
-  cancelled: 'neutral',
-}
-
 // Customer-friendly "where is it now" hint per status (prototype's green banner).
 const STATUS_HINT: Record<string, string> = {
   loading: 'Your cartons are being received and packed at the China warehouse.',
@@ -152,9 +128,7 @@ export function MyShipmentDetail(): JSX.Element {
         <div style={{ minWidth: 0 }}>
           <div className={styles.shipmentHeroTitleRow}>
             <h1 className={styles.shipmentHeroCode}>{pl.reference ?? pl.id.slice(0, 8)}</h1>
-            <Badge variant={CONTAINER_STATUS_VARIANT[status] ?? 'neutral'}>
-              {CONTAINER_STATUS_LABELS[status] ?? status}
-            </Badge>
+            <StatusBadge kind="container" status={status} audience="customer" />
           </div>
           <div className={styles.shipmentHeroMeta}>
             {pl.container_number ? (

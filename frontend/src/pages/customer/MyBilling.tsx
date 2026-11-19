@@ -1,34 +1,11 @@
 import { type JSX } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { ApiError } from '../../api/client'
-import { type Billing } from '../../api/billing'
 import { useBillingList } from '../../hooks/useBilling'
-import { Badge, Banner, ListFooter, Mono, type BadgeVariant } from '../../design/components'
+import { Banner, ListFooter, Mono, StatusBadge } from '../../design/components'
 import { PageHeader } from '../../shell/PageHeader'
 import styles from './customer.module.css'
 import { formatNgn } from '../../lib/format'
-
-const STATUS_VARIANT: Record<Billing['payment_status'], BadgeVariant> = {
-  unpaid: 'error',
-  partially_paid: 'warning',
-  paid: 'success',
-  overpaid: 'warning',
-  waived: 'neutral',
-  released_with_outstanding: 'warning',
-  cancelled: 'neutral',
-}
-
-function statusLabel(s: Billing['payment_status']): string {
-  switch (s) {
-    case 'unpaid': return 'Unpaid'
-    case 'partially_paid': return 'Partially paid'
-    case 'paid': return 'Paid'
-    case 'overpaid': return 'Overpaid'
-    case 'waived': return 'Waived'
-    case 'released_with_outstanding': return 'Released (outstanding)'
-    case 'cancelled': return 'Cancelled'
-  }
-}
 
 export function MyBilling(): JSX.Element {
   const navigate = useNavigate()
@@ -91,7 +68,7 @@ export function MyBilling(): JSX.Element {
                 </div>
               </div>
               <div className={styles.cardRight}>
-                <Badge variant={STATUS_VARIANT[b.payment_status]}>{statusLabel(b.payment_status)}</Badge>
+                <StatusBadge kind="invoice" status={b.payment_status} audience="customer" />
                 {outstanding > 0 && (
                   <span className={styles.amountSub} style={{ color: 'var(--color-error)' }}>
                     {formatNgn(outstanding)} outstanding

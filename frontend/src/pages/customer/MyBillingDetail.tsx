@@ -7,28 +7,14 @@ import { billingKeys } from '../../api/keys'
 import { type BankTransferConfig } from '../../api/tenantManagement'
 import { useBankTransferConfig } from '../../hooks/useConfig'
 import { STALE_30S } from '../../lib/queryClient'
-import { Field, DialogGuard } from '../../design/components'
-import { Badge, Banner, Button, Card, Kvp, Mono, StatCard, type BadgeVariant } from '../../design/components'
+import { DialogGuard, Field, StatusBadge } from '../../design/components'
+import { Badge, Banner, Button, Card, Kvp, Mono, StatCard } from '../../design/components'
 import { SectionHead } from '../../shell/SectionHead'
 import { EvidenceUploader, type UploadedEvidence } from '../nigeria/EvidenceUploader'
 import { ReleaseNoteCard } from './ReleaseNoteCard'
 import styles from './customer.module.css'
 import { formatDate, formatNgn } from '../../lib/format'
 import { useBreadcrumbLabel } from '../../shell/breadcrumbs'
-
-const STATUS_VARIANT: Record<Billing['payment_status'], BadgeVariant> = {
-  unpaid: 'error', partially_paid: 'warning', paid: 'success', overpaid: 'warning',
-  waived: 'neutral', released_with_outstanding: 'warning', cancelled: 'neutral',
-}
-
-function statusLabel(s: Billing['payment_status']): string {
-  const map: Record<Billing['payment_status'], string> = {
-    unpaid: 'Unpaid', partially_paid: 'Partially paid', paid: 'Paid',
-    overpaid: 'Overpaid', waived: 'Waived',
-    released_with_outstanding: 'Released (outstanding)', cancelled: 'Cancelled',
-  }
-  return map[s]
-}
 
 // Bank details shown when customer selects manual transfer. Ground-truth gap
 // found live: this used to be a single hardcoded account shown to every
@@ -356,7 +342,7 @@ export function MyBillingDetail(): JSX.Element {
         <div>
           <h1 className={styles.detailTitle}>{billing.container_number ?? billing.container_id}</h1>
           <div className={styles.claimStatusRow}>
-            <Badge variant={STATUS_VARIANT[billing.payment_status]}>{statusLabel(billing.payment_status)}</Badge>
+            <StatusBadge kind="invoice" status={billing.payment_status} audience="customer" />
             {billing.billed_at && (
               <span className={styles.claimStatusText}>
                 Billed {formatDate(billing.billed_at)}

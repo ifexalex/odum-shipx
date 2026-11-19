@@ -4,12 +4,13 @@ import { isTerminalDisputeStatus } from '../../api/billingRules'
 import { type CBMDisputeStatus } from '../../api/billing'
 import { useSession } from '../../auth/useSession'
 import { useDisputeList } from '../../hooks/useBilling'
-import { Badge, Banner, Card, Chip, Mono, Table, ViewLink, ListFooter, type BadgeVariant } from '../../design/components'
+import { Banner, Card, Chip, ListFooter, Mono, StatusBadge, Table, ViewLink } from '../../design/components'
 import { useTopBarSlot } from '../../shell/TopBarContext'
 import { useNow } from '../../hooks/useNow'
 import styles from './DisputeList.module.css'
 import { formatDate } from '../../lib/format'
 import { useStatusParam } from '../../lib/useStatusParam'
+import { statusLabel } from '../../design/status'
 
 const _DISPUTE_SLA_DAYS = 7
 
@@ -49,28 +50,6 @@ const STATUS_FILTERS: CBMDisputeStatus[] = [
   'resolved_no_change',
   'closed',
 ]
-
-const STATUS_VARIANT: Record<CBMDisputeStatus, BadgeVariant> = {
-  submitted: 'warning',
-  acknowledged: 'warning',
-  investigating: 'warning',
-  escalated_china: 'error',
-  resolved_adjusted: 'success',
-  resolved_no_change: 'success',
-  closed: 'neutral',
-}
-
-function statusLabel(status: CBMDisputeStatus): string {
-  switch (status) {
-    case 'submitted': return 'Submitted'
-    case 'acknowledged': return 'Acknowledged'
-    case 'investigating': return 'Investigating'
-    case 'escalated_china': return 'Escalated to China'
-    case 'resolved_adjusted': return 'Resolved — adjusted'
-    case 'resolved_no_change': return 'Resolved — no change'
-    case 'closed': return 'Closed'
-  }
-}
 
 // The values `?status=` may hold (useStatusParam); anything else reads as no filter.
 const DISPUTE_STATUSES: readonly CBMDisputeStatus[] = [
@@ -112,7 +91,7 @@ export function DisputeList(): JSX.Element {
           <Chip active={statusFilter === null} onClick={() => setStatusFilter(null)}>All</Chip>
           {STATUS_FILTERS.map((s) => (
             <Chip key={s} active={statusFilter === s} onClick={() => setStatusFilter(s)}>
-              {statusLabel(s)}
+              {statusLabel('dispute', s)}
             </Chip>
           ))}
         </div>
@@ -139,9 +118,7 @@ export function DisputeList(): JSX.Element {
                 <Mono key="container">{d.container_number ?? '—'}</Mono>,
                 <Mono key="orig">{d.original_cbm ?? '—'}</Mono>,
                 <Mono key="corrected">{d.corrected_cbm ?? '—'}</Mono>,
-                <Badge key="status" variant={STATUS_VARIANT[d.status]}>
-                  {statusLabel(d.status)}
-                </Badge>,
+                <StatusBadge key="status" kind="dispute" status={d.status} />,
                 <span key="date">{formatDate(d.submitted_at)}</span>,
                 <SLACountdown key="sla" submittedAt={d.submitted_at} status={d.status} now={now} />,
                 // Nigeria staff and admins manage a dispute inline on its invoice; China staff cannot open invoices.

@@ -1,6 +1,6 @@
 import { useState, type JSX } from 'react'
 import { useSession } from '../../auth/useSession'
-import { Badge, Button, Card, Field, type BadgeVariant } from '../../design/components'
+import { Badge, Button, Card, Field, StatusBadge } from '../../design/components'
 import { useTopBarSlot } from '../../shell/TopBarContext'
 import { SectionHead } from '../../shell/SectionHead'
 import { ComposeAnnouncementModal } from '../../shell/ComposeAnnouncementModal'
@@ -26,18 +26,6 @@ import styles from './AnnouncementsPage.module.css'
 
 function audienceLabel(audience: AnnouncementAudience): string {
   return audience === 'all_staff' ? 'All staff' : 'All customers'
-}
-
-const STATUS_VARIANT: Record<AnnouncementRequest['status'], BadgeVariant> = {
-  pending: 'warning',
-  approved: 'success',
-  rejected: 'error',
-}
-
-const STATUS_LABEL: Record<AnnouncementRequest['status'], string> = {
-  pending: 'Pending approval',
-  approved: 'Approved',
-  rejected: 'Rejected',
 }
 
 function EditForm({
@@ -275,9 +263,7 @@ function MyRequestRow({ req }: { req: AnnouncementRequest }): JSX.Element {
     <div className={styles.row}>
       <div className={styles.rowHeader}>
         <span className={styles.rowTitle}>{req.title}</span>
-        <Badge variant={STATUS_VARIANT[req.status]} size="sm" dot={false}>
-          {STATUS_LABEL[req.status]}
-        </Badge>
+        <StatusBadge size="sm" kind="announcement" status={req.status} />
       </div>
       {req.body && <p className={styles.rowBody}>{req.body}</p>}
       {req.status === 'rejected' && req.rejection_reason && (

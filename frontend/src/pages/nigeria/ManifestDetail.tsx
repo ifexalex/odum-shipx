@@ -9,30 +9,13 @@ import {
   type DiscrepancyInput,
   type Manifest,
   type ManifestMissingItem,
-  type VerificationStatus,
 } from '../../api/manifest'
 import { manifestKeys } from '../../api/keys'
 import { STALE_30S } from '../../lib/queryClient'
 import { canResolveDiscrepancy, canRevokeVerification, canVerifyManifest } from '../../api/manifestRules'
 import { useSession } from '../../auth/useSession'
 import { EvidenceUploader } from './EvidenceUploader'
-import {
-  Action,
-  Badge,
-  Banner,
-  Button,
-  Card,
-  Chip,
-  ExportButton,
-  Field,
-  Icon,
-  Mono,
-  StatCard,
-  Table,
-  ViewLink,
-  DialogGuard,
-  type BadgeVariant,
-} from '../../design/components'
+import { Action, Banner, Button, Card, Chip, DialogGuard, ExportButton, Field, Icon, Mono, StatCard, StatusBadge, Table, ViewLink } from '../../design/components'
 import { SectionHead } from '../../shell/SectionHead'
 import styles from './ManifestDetail.module.css'
 import { useBreadcrumbLabel } from '../../shell/breadcrumbs'
@@ -62,18 +45,6 @@ function buildCartonDiff(
       missingTags,
     }
   })
-}
-
-const STATUS_VARIANT: Record<VerificationStatus, BadgeVariant> = {
-  pending: 'warning',
-  verified: 'success',
-  discrepancies_found: 'error',
-  resolved: 'neutral',
-}
-
-function statusLabel(status: VerificationStatus): string {
-  if (status === 'discrepancies_found') return 'Discrepancies found'
-  return status[0]!.toUpperCase() + status.slice(1)
 }
 
 interface DiscrepancyDraft {
@@ -434,9 +405,7 @@ export function ManifestDetail(): JSX.Element {
           <div>
             <div className={styles.heroTitleRow}>
               <h1 className={styles.heroTitle}>{manifest.container_number ?? manifest.container_id}</h1>
-              <Badge variant={STATUS_VARIANT[manifest.verification_status]}>
-                {statusLabel(manifest.verification_status)}
-              </Badge>
+              <StatusBadge kind="manifest" status={manifest.verification_status} />
             </div>
             <div className={styles.heroMeta}>
               <span>

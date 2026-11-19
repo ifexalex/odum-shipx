@@ -82,12 +82,10 @@ describe('StaffUserDetail — multi-role editing', () => {
   it('shows a badge for every assigned role, marking the primary one', async () => {
     renderPage(user())
 
-    // Exact-textContent match on the badge itself, scoped to avoid matching
-    // an ancestor whose concatenated text happens to also contain both substrings.
-    expect(
-      await screen.findByText((_, el) => el?.textContent === 'nigeria office staff · primary'),
-    ).toBeInTheDocument()
-    expect(screen.getByText('warehouse attendant')).toBeInTheDocument()
+    // Each role is a RoleBadge; the primary one is marked beside its badge.
+    const primary = await screen.findByText('Primary')
+    expect(primary.parentElement).toHaveTextContent('Nigeria office')
+    expect(screen.getAllByText('Warehouse').length).toBeGreaterThan(0)
   })
 
   // RoleCheckboxList renders ROLE_OPTIONS in this fixed order — index into

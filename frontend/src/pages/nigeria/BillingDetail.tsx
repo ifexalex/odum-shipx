@@ -7,11 +7,10 @@ import { useSession } from '../../auth/useSession'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { billingKeys, releaseNoteKeys } from '../../api/keys'
 import { STALE_30S } from '../../lib/queryClient'
-import { Action, Badge, Banner, ExportButton, Icon, Mono, StatCard } from '../../design/components'
+import { Action, Banner, ExportButton, Icon, Mono, StatCard, StatusBadge } from '../../design/components'
 import { SectionHead } from '../../shell/SectionHead'
 import styles from './BillingDetail.module.css'
 import { formatDate, formatNgn } from '../../lib/format'
-import { STATUS_VARIANT, statusLabel } from './billingDetail/status'
 import { StorageFeeBanner, StorageFeeLog } from './billingDetail/StorageFees'
 import { DisputeCard } from './billingDetail/DisputeCard'
 import { RecordPaymentModal } from './billingDetail/RecordPaymentModal'
@@ -184,7 +183,7 @@ export function BillingDetail(): JSX.Element {
           <div>
             <div className={styles.heroTitleRow}>
               <h1 className={styles.heroTitle}>{billing.customer_name ?? 'Billing record'}</h1>
-              <Badge variant={STATUS_VARIANT[billing.payment_status]}>{statusLabel(billing.payment_status)}</Badge>
+              <StatusBadge kind="invoice" status={billing.payment_status} />
             </div>
             <div className={styles.heroMeta}>
               {billing.invoice_number && <span><Mono>{billing.invoice_number}</Mono></span>}

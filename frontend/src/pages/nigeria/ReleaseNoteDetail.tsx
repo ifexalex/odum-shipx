@@ -10,46 +10,22 @@ import {
   canSendPickupCode,
   canSplitNote,
   isTerminalReleaseStatus,
-  releaseNoteStatusLabel,
   releaseTypeLabel,
   sentViaLabel,
 } from '../../api/releaseNotesRules'
 import { useSession } from '../../auth/useSession'
 import { useStaffList } from '../../hooks/useStaff'
 import { useWarehouses } from '../../hooks/useWarehouses'
-import {
-  Action,
-  Badge,
-  Banner,
-  Button,
-  Card,
-  ExportButton,
-  Field,
-  Icon,
-  Kvp,
-  Modal,
-  Mono,
-  PhoneField,
-  StatCard,
-  ToggleSwitch,
-  DialogGuard,
-  type BadgeVariant,
-} from '../../design/components'
+import { Action, Badge, Banner, Button, Card, DialogGuard, ExportButton, Field, Icon, Kvp, Modal, Mono, PhoneField, StatCard, StatusBadge, ToggleSwitch } from '../../design/components'
 import { SectionHead } from '../../shell/SectionHead'
 import styles from './ReleaseNoteDetail.module.css'
 import { formatDate, formatNgn } from '../../lib/format'
 import { useBreadcrumbLabel } from '../../shell/breadcrumbs'
+import { statusLabel } from '../../design/status'
 
 // ---------------------------------------------------------------------------
 // Status helpers
 // ---------------------------------------------------------------------------
-
-const STATUS_VARIANT: Record<ReleaseNote['status'], BadgeVariant> = {
-  active: 'success',
-  picked_up: 'neutral',
-  expired: 'error',
-  cancelled: 'neutral',
-}
 
 // ---------------------------------------------------------------------------
 // RecordPickupModal — mobile-optimised, large touch targets
@@ -528,7 +504,7 @@ export function ReleaseNoteDetail(): JSX.Element {
           <div>
             <div className={styles.heroTitleRow}>
               <h1 className={styles.heroTitle}>{note.reference_number}</h1>
-              <Badge variant={STATUS_VARIANT[note.status]}>{releaseNoteStatusLabel(note.status)}</Badge>
+              <StatusBadge kind="releaseNote" status={note.status} />
               {note.is_partial_release && (
                 <Badge variant="warning">Partial</Badge>
               )}
@@ -631,7 +607,7 @@ export function ReleaseNoteDetail(): JSX.Element {
       <div className={styles.statsRow}>
         <StatCard label="Cartons on note" value={`${note.carton_count} of ${note.total_cartons_for_customer}`} />
         <StatCard label="Type" value={releaseTypeLabel(note)} />
-        <StatCard label="Payment status" value={note.payment_status.replace('_', ' ')} />
+        <StatCard label="Payment status" value={statusLabel('invoice', note.payment_status)} />
         {isExpired && storageFees > 0 && (
           <StatCard label="Storage fees" value={formatNgn(storageFees)} />
         )}

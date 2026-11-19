@@ -18,36 +18,11 @@ import {
   useOnboardingRequests,
   useUpdateOnboardingRequest,
 } from '../../hooks/useOnboardingRequests'
-import {
-  Badge,
-  Banner,
-  Button,
-  Card,
-  Chip,
-  Field,
-  Modal,
-  Table,
-  type BadgeVariant,
-} from '../../design/components'
+import { Banner, Button, Card, Chip, Field, Modal, StatusBadge, Table } from '../../design/components'
 import { useTopBarSlot } from '../../shell/TopBarContext'
 import styles from './admin.module.css'
 import { formatDate } from '../../lib/format'
-
-const STATUS_LABELS: Record<OnboardingRequestStatus, string> = {
-  new: 'New',
-  contacted: 'Contacted',
-  approved: 'Approved',
-  rejected: 'Rejected',
-  provisioned: 'Provisioned',
-}
-
-const STATUS_VARIANT: Record<OnboardingRequestStatus, BadgeVariant> = {
-  new: 'info',
-  contacted: 'warning',
-  approved: 'accent',
-  rejected: 'error',
-  provisioned: 'success',
-}
+import { statusLabel, statusesOf } from '../../design/status'
 
 // Leads still worth acting on — a terminal lead (rejected/provisioned) shows no
 // row actions.
@@ -130,13 +105,13 @@ export function OnboardingRequests(): JSX.Element {
             <Chip active={statusFilter === null} onClick={() => setStatusFilter(null)}>
               All {requests.length > 0 && <span style={{ opacity: 0.6 }}>{requests.length}</span>}
             </Chip>
-            {(Object.keys(STATUS_LABELS) as OnboardingRequestStatus[]).map((status) => (
+            {statusesOf('onboardingRequest').map((status) => (
               <Chip
                 key={status}
                 active={statusFilter === status}
                 onClick={() => setStatusFilter(statusFilter === status ? null : status)}
               >
-                {STATUS_LABELS[status]} <span style={{ opacity: 0.6 }}>{counts[status]}</span>
+                {statusLabel('onboardingRequest', status)} <span style={{ opacity: 0.6 }}>{counts[status]}</span>
               </Chip>
             ))}
           </div>
@@ -191,9 +166,7 @@ export function OnboardingRequests(): JSX.Element {
                 <span key="volume" style={{ fontSize: 'var(--text-xs)', color: 'var(--color-ink-3)' }}>
                   {r.monthly_volume ?? '—'}
                 </span>,
-                <Badge key="status" variant={STATUS_VARIANT[r.status]}>
-                  {STATUS_LABELS[r.status]}
-                </Badge>,
+                <StatusBadge key="status" kind="onboardingRequest" status={r.status} />,
                 <span key="date" style={{ fontSize: 'var(--text-xs)', color: 'var(--color-ink-3)' }}>
                   {formatDate(r.created_at)}
                 </span>,

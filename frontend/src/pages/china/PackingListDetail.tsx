@@ -8,22 +8,11 @@ import { packingListKeys } from '../../api/keys'
 import { STALE_30S } from '../../lib/queryClient'
 import { canApproveOrReject, canEditPackingList, computeCbm, formatPackageMix, formatPackageUnit } from '../../api/packingListRules'
 import { useSession } from '../../auth/useSession'
-import { Badge, Banner, Button, Card, ExportButton, Field, Icon, Mono, Table, DialogGuard, type BadgeVariant } from '../../design/components'
+import { Badge, Banner, Button, Card, DialogGuard, ExportButton, Field, Icon, Mono, StatusBadge, Table } from '../../design/components'
 import { SectionHead } from '../../shell/SectionHead'
 import styles from './PackingListDetail.module.css'
 import { formatDate } from '../../lib/format'
 import { useBreadcrumbLabel } from '../../shell/breadcrumbs'
-
-const STATUS_VARIANT: Record<PackingList['status'], BadgeVariant> = {
-  draft: 'neutral',
-  pending_approval: 'warning',
-  approved: 'success',
-  rejected: 'error',
-}
-
-function statusLabel(status: PackingList['status']): string {
-  return status === 'pending_approval' ? 'Pending approval' : status[0]!.toUpperCase() + status.slice(1)
-}
 
 interface RejectModalProps {
   onCancel: () => void
@@ -248,7 +237,7 @@ export function PackingListDetail(): JSX.Element {
           <div>
             <div className={styles.heroTitleRow}>
               <h1 className={styles.heroTitle}>{pl.customer_name ?? 'Packing list'}</h1>
-              <Badge variant={STATUS_VARIANT[pl.status]}>{statusLabel(pl.status)}</Badge>
+              <StatusBadge kind="packingList" status={pl.status} />
             </div>
             <div className={styles.heroMeta}>
               <Mono>{pl.container_number ?? pl.container_id}</Mono>

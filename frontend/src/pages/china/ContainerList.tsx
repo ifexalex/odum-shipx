@@ -3,9 +3,9 @@ import { useCallback, useEffect, useMemo, useState, type JSX } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { containerKeys } from '../../api/keys'
 import { STALE_5_MIN } from '../../lib/queryClient'
-import { CONTAINER_STATUS_LABELS, containerCapacityCbm, utilizationLevel } from '../../api/containerRules'
+import { containerCapacityCbm, utilizationLevel } from '../../api/containerRules'
 import { containersApi, type Container, type ContainerStatus } from '../../api/tracking'
-import { Badge, Banner, Button, Card, Chip, DateRangeFilter, ExportButton, Icon, KebabBtn, Mono, StatCard, Table, ListFooter, type TableRow } from '../../design/components'
+import { Banner, Button, Card, Chip, DateRangeFilter, ExportButton, Icon, KebabBtn, ListFooter, Mono, StatCard, StatusBadge, Table, type TableRow } from '../../design/components'
 import { useSession } from '../../auth/useSession'
 import { useContainerList } from '../../hooks/useContainers'
 import { useDateRangeFilter } from '../../hooks/useDateRangeFilter'
@@ -14,6 +14,7 @@ import { type SortableColumn, useTableSort } from '../../hooks/useTableSort'
 import { useTopBarSlot } from '../../shell/TopBarContext'
 import styles from './ContainerList.module.css'
 import { isoDateOffset, todayIso } from '../../lib/format'
+import { statusLabel } from '../../design/status'
 
 const SEARCH_DEBOUNCE_MS = 300
 
@@ -51,8 +52,6 @@ const CHINA_PACKED: ContainerStatus[] = ['sealed']
 const IN_TRANSIT: ContainerStatus[] = ['in_transit']
 const ARRIVED_NG: ContainerStatus[] = ['arrived', 'customs_clearance']
 const CLEARED: ContainerStatus[] = ['cleared', 'at_warehouse', 'fully_released']
-const CHINA_SIDE: ContainerStatus[] = [...CHINA_ACTIVE, ...CHINA_PACKED]
-
 // Filter chips match the design exactly: All · Active · Packed · In transit · Arrived NG · Cleared
 const CHIP_FILTERS: Array<{ label: string; statuses: ContainerStatus[] }> = [
   { label: 'Active', statuses: CHINA_ACTIVE },
@@ -70,13 +69,6 @@ const ORIGIN_CODE: Record<string, string> = {
 }
 const DEST_CODE: Record<string, string> = {
   Lagos: 'NG-LOS', Abuja: 'NG-ABV', 'Port Harcourt': 'NG-PHC', Nigeria: 'NG',
-}
-
-function statusBadgeVariant(status: ContainerStatus): 'warning' | 'info' | 'success' {
-  if (CLEARED.includes(status)) return 'success'
-  if (CHINA_SIDE.includes(status)) return 'warning'
-  if (ARRIVED_NG.includes(status)) return 'warning'
-  return 'info'
 }
 
 function etaColor(container: Container): string {
@@ -164,9 +156,7 @@ function containerRow(container: Container, onView: () => void): TableRow {
         <Icon name="arrowright" size={10} color="var(--color-ink-4)" />
         <Mono color="var(--color-accent)">{destCode}</Mono>
       </span>,
-      <Badge key="status" variant={statusBadgeVariant(container.status)}>
-        {CONTAINER_STATUS_LABELS[container.status]}
-      </Badge>,
+      <StatusBadge key="status" kind="container" status={container.status} />,
       // Packing lists: "approved / total"
       <Mono key="pls" color={plTotal === 0 ? 'var(--color-ink-4)' : plApproved === plTotal && plTotal > 0 ? 'var(--color-success)' : 'var(--color-ink)'}>
         {plApproved} / {plTotal}
@@ -406,7 +396,7 @@ export function ContainerList(): JSX.Element {
                           <span className={styles.checkSlot}>
                             {isChecked && <Icon name="check" size={13} color="var(--color-primary)" />}
                           </span>
-                          {CONTAINER_STATUS_LABELS[s]}
+                          {statusLabel('container', s)}
                         </button>
                       )
                     })}

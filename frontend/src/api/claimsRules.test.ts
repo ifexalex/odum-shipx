@@ -1,7 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import {
   CLAIM_STATUS_ORDER,
-  CUSTOMER_CLAIM_STATUS_LABELS,
   canFileClaim,
   canResolveClaim,
   canStartInspection,
@@ -16,6 +15,7 @@ import {
   isTerminalClaimStatus,
 } from './claimsRules'
 import type { Claim } from './claims'
+import { statusLabel } from '../design/status'
 
 function makeClaim(status: Claim['status']): Claim {
   return {
@@ -70,7 +70,7 @@ describe('isTerminalClaimStatus', () => {
 
 describe('customer-facing claim wording (UX-07)', () => {
   it('has a label for every claim status, in progress order', () => {
-    expect(CLAIM_STATUS_ORDER.map((s) => CUSTOMER_CLAIM_STATUS_LABELS[s])).toEqual([
+    expect(CLAIM_STATUS_ORDER.map((s) => statusLabel('claim', s, 'customer'))).toEqual([
       'Filed',
       'Under inspection',
       'Inspection complete',

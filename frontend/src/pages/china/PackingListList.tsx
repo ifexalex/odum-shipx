@@ -7,23 +7,13 @@ import { canApproveOrReject, explainBulkFailure, formatPackageMix, groupBulkFail
 import { useSession } from '../../auth/useSession'
 import { usePackingListList } from '../../hooks/usePackingLists'
 import { useTopBarSlot } from '../../shell/TopBarContext'
-import { Badge, Banner, Button, Card, Chip, Field, Icon, Mono, Table, ViewLink, ListFooter, DialogGuard, type BadgeVariant } from '../../design/components'
+import { Banner, Button, Card, Chip, DialogGuard, Field, Icon, ListFooter, Mono, StatusBadge, Table, ViewLink } from '../../design/components'
 import styles from './PackingListList.module.css'
 import { formatDate } from '../../lib/format'
 import { useStatusParam } from '../../lib/useStatusParam'
+import { statusLabel } from '../../design/status'
 
 const STATUS_FILTERS: PackingListStatus[] = ['draft', 'pending_approval', 'approved', 'rejected']
-
-const STATUS_VARIANT: Record<PackingListStatus, BadgeVariant> = {
-  draft: 'neutral',
-  pending_approval: 'warning',
-  approved: 'success',
-  rejected: 'error',
-}
-
-function statusLabel(status: PackingListStatus): string {
-  return status === 'pending_approval' ? 'Pending approval' : status[0]!.toUpperCase() + status.slice(1)
-}
 
 interface BulkRejectModalProps {
   count: number
@@ -320,7 +310,7 @@ export function PackingListList(): JSX.Element {
             </Chip>
             {STATUS_FILTERS.map((status) => (
               <Chip key={status} active={statusFilter === status} onClick={() => setStatusFilter(status)}>
-                {statusLabel(status)}
+                {statusLabel('packingList', status)}
               </Chip>
             ))}
           </div>
@@ -377,9 +367,7 @@ export function PackingListList(): JSX.Element {
                 <Mono key="container">{pl.container_number ?? pl.container_id}</Mono>,
                 <span key="cartons">{formatPackageMix(pl.package_mix)}</span>,
                 <Mono key="cbm">{formatCbm(pl.total_cbm)}</Mono>,
-                <Badge key="status" variant={STATUS_VARIANT[pl.status]}>
-                  {statusLabel(pl.status)}
-                </Badge>,
+                <StatusBadge key="status" kind="packingList" status={pl.status} />,
                 <span key="submitted" className={styles.submittedDate}>
                   {formatDate(pl.created_at, 'short')},{' '}
                   {pl.created_at.slice(11, 16)}

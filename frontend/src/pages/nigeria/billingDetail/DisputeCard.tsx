@@ -7,10 +7,9 @@ import {
   canResolveDispute,
   isTerminalDisputeStatus,
 } from '../../../api/billingRules'
-import { Action, Badge, Banner, Button, Field, Mono, DialogGuard } from '../../../design/components'
+import { Action, Banner, Button, DialogGuard, Field, Mono, StatusBadge } from '../../../design/components'
 import styles from '../BillingDetail.module.css'
 import { formatDate } from '../../../lib/format'
-import { disputeStatusLabel, disputeVariant } from './status'
 
 // ---------------------------------------------------------------------------
 // DisputeSLA
@@ -277,9 +276,7 @@ export function DisputeCard({ dispute, role, onUpdated }: DisputeCardProps): JSX
       <div className={styles.disputeHeader}>
         <div className={styles.disputeMeta}>
           <span className={styles.disputeLabel}>CBM dispute</span>
-          <Badge variant={disputeVariant(dispute.status)}>
-            {disputeStatusLabel(dispute.status)}
-          </Badge>
+          <StatusBadge kind="dispute" status={dispute.status} />
           {!isTerminalDisputeStatus(dispute.status) && <DisputeSLA dispute={dispute} />}
         </div>
         <div className={styles.disputeNumbers}>

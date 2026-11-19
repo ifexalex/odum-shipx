@@ -12,33 +12,11 @@ import { useMemo, useState, type JSX } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { type Tenant, type TenantStatus } from '../../api/tenantManagement'
 import { usePlatformTenantList } from '../../hooks/usePlatformTenants'
-import {
-  Badge,
-  Banner,
-  Button,
-  Card,
-  Chip,
-  Field,
-  Mono,
-  Table,
-  ViewLink,
-  type BadgeVariant,
-} from '../../design/components'
+import { Banner, Button, Card, Chip, Field, Mono, StatusBadge, Table, ViewLink } from '../../design/components'
 import { useTopBarSlot } from '../../shell/TopBarContext'
 import styles from './admin.module.css'
 import { formatDate } from '../../lib/format'
-
-const STATUS_VARIANT: Record<TenantStatus, BadgeVariant> = {
-  active: 'success',
-  suspended: 'error',
-  offboarded: 'neutral',
-}
-
-const STATUS_LABELS: Record<TenantStatus, string> = {
-  active: 'Active',
-  suspended: 'Suspended',
-  offboarded: 'Offboarded',
-}
+import { statusLabel, statusesOf } from '../../design/status'
 
 const TIER_COLOR: Record<string, string> = {
   starter: 'var(--color-ink-3)',
@@ -154,13 +132,13 @@ export function PlatformTenantList(): JSX.Element {
             <Chip active={statusFilter === null} onClick={() => setStatusFilter(null)}>
               All {tenants.length > 0 && <span style={{ opacity: 0.6 }}>{tenants.length}</span>}
             </Chip>
-            {(Object.keys(STATUS_LABELS) as TenantStatus[]).map((status) => (
+            {statusesOf('tenant').map((status) => (
               <Chip
                 key={status}
                 active={statusFilter === status}
                 onClick={() => setStatusFilter(statusFilter === status ? null : status)}
               >
-                {STATUS_LABELS[status]} <span style={{ opacity: 0.6 }}>{counts[status]}</span>
+                {statusLabel('tenant', status)} <span style={{ opacity: 0.6 }}>{counts[status]}</span>
               </Chip>
             ))}
           </div>
@@ -196,9 +174,7 @@ export function PlatformTenantList(): JSX.Element {
                 <Mono key="id" color="var(--color-ink-4)">
                   <span title={t.id}>{t.id.slice(0, 8)}…</span>
                 </Mono>,
-                <Badge key="status" variant={STATUS_VARIANT[t.status]}>
-                  {STATUS_LABELS[t.status]}
-                </Badge>,
+                <StatusBadge key="status" kind="tenant" status={t.status} />,
                 <span
                   key="tier"
                   style={{

@@ -1,19 +1,9 @@
 import { useRef, useState, type JSX } from 'react'
 import { ApiError } from '../../../api/client'
 import { billingApi, type Billing, type RecordPaymentInput } from '../../../api/billing'
-import {
-  Action,
-  Badge,
-  Banner,
-  Button,
-  Field,
-  Icon,
-  Mono,
-  DialogGuard,
-} from '../../../design/components'
+import { Action, Banner, Button, DialogGuard, Field, Icon, Mono, StatusBadge } from '../../../design/components'
 import styles from '../BillingDetail.module.css'
 import { formatNgn } from '../../../lib/format'
-import { STATUS_VARIANT, statusLabel } from './status'
 
 // ---------------------------------------------------------------------------
 // RecordPaymentModal
@@ -109,9 +99,7 @@ export function RecordPaymentModal({
             </span>
             <span>
               Status{' '}
-              <Badge variant={STATUS_VARIANT[billing.payment_status]}>
-                {statusLabel(billing.payment_status)}
-              </Badge>
+              <StatusBadge kind="invoice" status={billing.payment_status} />
             </span>
           </div>
           <div className={styles.paySummary}>

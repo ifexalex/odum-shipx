@@ -4,26 +4,17 @@ import { ApiError } from '../../api/client'
 import type { Claim, ClaimEvidenceFile, DamageClaimStatus } from '../../api/claims'
 import {
   CLAIM_STATUS_ORDER,
-  CUSTOMER_CLAIM_STATUS_LABELS,
   customerInspectionLabel,
   customerRefundLabel,
   customerResolutionLabel,
 } from '../../api/claimsRules'
-import { Badge, Banner, Card, Kvp, Mono, type BadgeVariant } from '../../design/components'
+import { Banner, Card, Kvp, Mono, StatusBadge } from '../../design/components'
 import { useClaim } from '../../hooks/useClaims'
 import { formatCount, formatDate, formatNgn } from '../../lib/format'
 import { PageHeader } from '../../shell/PageHeader'
 import styles from './customer.module.css'
 import { useBreadcrumbLabel } from '../../shell/breadcrumbs'
-
-const STATUS_VARIANT: Record<DamageClaimStatus, BadgeVariant> = {
-  filed: 'warning',
-  under_inspection: 'warning',
-  inspection_complete: 'warning',
-  pending_resolution: 'warning',
-  resolved: 'success',
-  closed: 'neutral',
-}
+import { statusLabel } from '../../design/status'
 
 /** What the customer is waiting for, by where the claim is. */
 function waitingNote(status: DamageClaimStatus): string | null {
@@ -67,7 +58,7 @@ function ProgressSteps({ status }: { status: DamageClaimStatus }): JSX.Element {
             }}
           >
             {done ? '✓ ' : ''}
-            {CUSTOMER_CLAIM_STATUS_LABELS[step]}
+            {statusLabel('claim', step, 'customer')}
           </li>
         )
       })}
@@ -163,7 +154,7 @@ export function MyClaimDetail(): JSX.Element {
       <PageHeader title={`Claim ${claim.reference ?? ''}`.trim()} subtitle={`Filed ${formatDate(claim.created_at)}`} />
 
       <div className={styles.banner} style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-3)', flexWrap: 'wrap' }}>
-        <Badge variant={STATUS_VARIANT[claim.status]}>{CUSTOMER_CLAIM_STATUS_LABELS[claim.status]}</Badge>
+        <StatusBadge kind="claim" status={claim.status} audience="customer" />
       </div>
       <ProgressSteps status={claim.status} />
 

@@ -4,20 +4,13 @@ import { useParams } from 'react-router-dom'
 import { ApiError } from '../../api/client'
 import { releaseNoteKeys } from '../../api/keys'
 import { releaseNotesApi } from '../../api/releaseNotes'
-import { releaseNoteStatusLabel } from '../../api/releaseNotesRules'
-import { Badge, Banner, Button, Card, Kvp, Mono, type BadgeVariant } from '../../design/components'
+import { } from '../../api/releaseNotesRules'
+import { Banner, Button, Card, Kvp, Mono, StatusBadge } from '../../design/components'
 import { STALE_30S } from '../../lib/queryClient'
 import { PageHeader } from '../../shell/PageHeader'
 import styles from './customer.module.css'
 import { formatDate, formatNgn } from '../../lib/format'
 import { useBreadcrumbLabel } from '../../shell/breadcrumbs'
-
-const STATUS_VARIANT: Record<string, BadgeVariant> = {
-  active: 'success',
-  picked_up: 'neutral',
-  expired: 'error',
-  cancelled: 'neutral',
-}
 
 /**
  * A customer's own release note: what they show, or quote, at the warehouse to collect their goods.
@@ -108,7 +101,7 @@ export function MyReleaseNote(): JSX.Element {
       <Card padding="large">
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 'var(--space-3)', flexWrap: 'wrap' }}>
           <Mono color="var(--color-ink)">{note.reference_number}</Mono>
-          <Badge variant={STATUS_VARIANT[note.status] ?? 'neutral'}>{releaseNoteStatusLabel(note.status)}</Badge>
+          <StatusBadge kind="releaseNote" status={note.status} audience="customer" />
         </div>
         <div style={{ height: 16 }} />
         <Kvp label="Container" value={note.container_number ?? '—'} />

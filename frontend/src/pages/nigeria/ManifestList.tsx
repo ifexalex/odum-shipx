@@ -4,28 +4,17 @@ import { formatCbm } from '../../api/decimal'
 import { orderedPackageMix, type Manifest, type VerificationStatus } from '../../api/manifest'
 import { isManifestOverdue as isOverdue } from '../../api/manifestRules'
 import { useManifestList, useManifestStats } from '../../hooks/useManifests'
-import { Badge, Banner, Card, Chip, Mono, StatCard, Table, ViewLink, ListFooter, type BadgeVariant } from '../../design/components'
+import { Badge, Banner, Card, Chip, ListFooter, Mono, StatCard, StatusBadge, Table, ViewLink } from '../../design/components'
 import { useTopBarSlot } from '../../shell/TopBarContext'
 import styles from './ManifestList.module.css'
 import { formatNumber } from '../../lib/format'
 import { useStatusParam } from '../../lib/useStatusParam'
+import { statusLabel } from '../../design/status'
 
 // Per-status counts come from GET /v1/manifests/stats (P2-4) — a single
 // aggregate query, so no page-tallying. Chips still set the real
 // verification_status query param and refetch.
 const STATUS_FILTERS: VerificationStatus[] = ['pending', 'verified', 'discrepancies_found', 'resolved']
-
-const STATUS_VARIANT: Record<VerificationStatus, BadgeVariant> = {
-  pending: 'warning',
-  verified: 'success',
-  discrepancies_found: 'error',
-  resolved: 'neutral',
-}
-
-function statusLabel(status: VerificationStatus): string {
-  if (status === 'discrepancies_found') return 'Discrepancies found'
-  return status[0]!.toUpperCase() + status.slice(1)
-}
 
 // Package breakdown per container — "120 ctn · 8 bale · 30 bag" — so staff see
 // what kinds of goods are inside, not just a single (misleading) carton count.
@@ -110,7 +99,7 @@ export function ManifestList(): JSX.Element {
           </Chip>
           {STATUS_FILTERS.map((status) => (
             <Chip key={status} active={statusFilter === status} onClick={() => setStatusFilter(status)}>
-              {statusLabel(status)}
+              {statusLabel('manifest', status)}
             </Chip>
           ))}
         </div>
@@ -139,9 +128,7 @@ export function ManifestList(): JSX.Element {
                   <Mono key="cbm">{formatCbm(mf.total_cbm)}</Mono>,
                   <span key="weight" style={{ fontSize: 'var(--text-xs)', color: 'var(--color-ink-3)' }}>{fmtWeight(mf.total_weight_kg)}</span>,
                   <span key="status" style={{ display: 'inline-flex', alignItems: 'center', gap: 'var(--space-2)', flexWrap: 'wrap' }}>
-                    <Badge variant={STATUS_VARIANT[mf.verification_status]}>
-                      {statusLabel(mf.verification_status)}
-                    </Badge>
+                    <StatusBadge kind="manifest" status={mf.verification_status} />
                     {overdue && <Badge variant="error" size="sm">Overdue</Badge>}
                   </span>,
                   <ViewLink key="view" onClick={() => navigate(`/manifests/${mf.id}`)} />,

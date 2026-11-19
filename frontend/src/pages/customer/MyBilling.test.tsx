@@ -50,7 +50,7 @@ describe('MyBilling', () => {
     } as Awaited<ReturnType<typeof billingApi.list>>)
     renderPage()
     expect(await screen.findByText('ACME001')).toBeInTheDocument()
-    expect(screen.getByText('Partially paid')).toBeInTheDocument()
+    expect(screen.getByText('Partly paid')).toBeInTheDocument()
     expect(screen.getByText('₦100,000 outstanding')).toBeInTheDocument()
     // An invoice fully covered by credit (BE-07) is paid, with nothing outstanding to show.
     expect(screen.getByText('Paid')).toBeInTheDocument()

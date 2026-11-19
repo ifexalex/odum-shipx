@@ -11,6 +11,7 @@ import { useReleaseNote } from '../../hooks/useReleaseNotes'
 import { PrintBrandFoot, PrintBrandHead } from './PrintBrand'
 import styles from './print.module.css'
 import { formatDate, formatAmount } from '../../lib/format'
+import { statusLabel } from '../../design/status'
 
 export function PrintReleaseNote(): JSX.Element {
   const { id } = useParams<{ id: string }>()
@@ -78,7 +79,7 @@ export function PrintReleaseNote(): JSX.Element {
         </div>
         <div className={styles.metaRow}>
           <span className={styles.metaLabel}>Payment status</span>
-          <span className={styles.metaValue} style={{ textTransform: 'capitalize' }}>{note.payment_status.replace(/_/g, ' ')}</span>
+          <span className={styles.metaValue}>{statusLabel('invoice', note.payment_status)}</span>
         </div>
         {/* Ground-truth gap found live, against a real paper "Goods Release
             Note" reference: this read the tenant-wide branding.warehouse_address

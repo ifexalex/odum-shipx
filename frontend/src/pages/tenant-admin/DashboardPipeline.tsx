@@ -9,46 +9,20 @@
  */
 import { useEffect, useState, type JSX } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { CONTAINER_STATUS_LABELS } from '../../api/containerRules'
+import { } from '../../api/containerRules'
 import { type ContainerStats, type ContainerStatus } from '../../api/tracking'
 import { useContainerList } from '../../hooks/useContainers'
-import { Badge, Button, Card, Chip, Icon, ListFooter, Mono, Table, type BadgeVariant } from '../../design/components'
+import { Button, Card, Chip, Icon, ListFooter, Mono, StatusBadge, Table } from '../../design/components'
 import { SectionHead } from '../../shell/SectionHead'
 import styles from './DashboardPipeline.module.css'
 import { isoDateOffset, formatDate } from '../../lib/format'
+import { statusColor, statusLabel } from '../../design/status'
 
 // Pipeline order, loading → fully released (cancelled is not a pipeline stage).
 const STAGES: ContainerStatus[] = [
   'loading', 'sealed', 'in_transit', 'arrived', 'customs_clearance', 'cleared', 'at_warehouse', 'fully_released',
 ]
 const ACTIVE_STATUS_PARAM = STAGES.join(',')
-
-// Stage accent reuses the app's status semantics (same hues as the status
-// badges elsewhere), so a stage reads the same colour everywhere: cool while
-// at sea, amber while it needs attention (arrived/customs), green once cleared.
-const STAGE_ACCENT: Record<ContainerStatus, string> = {
-  loading: 'var(--color-ink-4)',
-  sealed: 'var(--color-info)',
-  in_transit: 'var(--color-info)',
-  arrived: 'var(--color-warning)',
-  customs_clearance: 'var(--color-warning)',
-  cleared: 'var(--color-primary)',
-  at_warehouse: 'var(--color-primary)',
-  fully_released: 'var(--color-success)',
-  cancelled: 'var(--color-ink-4)',
-}
-
-const CONTAINER_BADGE: Record<string, BadgeVariant> = {
-  loading: 'neutral',
-  sealed: 'info',
-  in_transit: 'info',
-  arrived: 'warning',
-  customs_clearance: 'warning',
-  cleared: 'primary',
-  at_warehouse: 'primary',
-  fully_released: 'success',
-  cancelled: 'neutral',
-}
 
 type Selected = ContainerStatus | 'all'
 
@@ -131,13 +105,13 @@ export function ContainerPipeline({ counts }: { counts: ContainerStats | undefin
               key={stage}
               type="button"
               className={[styles.stage, selected === stage ? styles.stageActive : ''].join(' ')}
-              style={{ ['--accent' as string]: STAGE_ACCENT[stage] }}
+              style={{ ['--accent' as string]: statusColor('container', stage) }}
               onClick={() => setSelected(stage)}
               aria-pressed={selected === stage}
             >
               <span className={styles.stageTop}>
                 <span className={styles.stageDot} />
-                <span className={styles.stageLabel}>{CONTAINER_STATUS_LABELS[stage]}</span>
+                <span className={styles.stageLabel}>{statusLabel('container', stage)}</span>
               </span>
               <span className={styles.stageCount}>{n}</span>
               <span className={styles.meterTrack}>
@@ -177,7 +151,7 @@ export function ContainerPipeline({ counts }: { counts: ContainerStats | undefin
 
       <div className={styles.tableMeta}>
         <span className={styles.tableTitle}>
-          {selected === 'all' ? 'All active containers' : CONTAINER_STATUS_LABELS[selected]}
+          {selected === 'all' ? 'All active containers' : statusLabel('container', selected)}
           {(debouncedSearch || etaPreset) && <span className={styles.filterNote}> · filtered</span>}
         </span>
       </div>
@@ -202,9 +176,7 @@ export function ContainerPipeline({ counts }: { counts: ContainerStats | undefin
             <span key="route" className={styles.subCell} style={{ marginTop: 0 }}>
               {c.origin} → {c.destination}
             </span>,
-            <Badge key="status" variant={CONTAINER_BADGE[c.status] ?? 'neutral'}>
-              {CONTAINER_STATUS_LABELS[c.status] ?? c.status}
-            </Badge>,
+            <StatusBadge key="status" kind="container" status={c.status} />,
             <span key="eta" style={{ fontSize: 'var(--text-xs)', color: 'var(--color-ink-3)' }}>
               {c.status === 'arrived' || c.status === 'customs_clearance' || c.status === 'cleared' || c.status === 'at_warehouse' || c.status === 'fully_released'
                 ? etaCell(c.actual_arrival_date ?? c.estimated_arrival_date)
@@ -220,7 +192,7 @@ export function ContainerPipeline({ counts }: { counts: ContainerStats | undefin
             <span style={{ color: 'var(--color-ink-3)', fontSize: 'var(--text-sm)' }}>
               {debouncedSearch || etaPreset
                 ? 'No containers match your search and filters.'
-                : `No containers in ${selected === 'all' ? 'the pipeline' : CONTAINER_STATUS_LABELS[selected]}.`}
+                : `No containers in ${selected === 'all' ? 'the pipeline' : statusLabel('container', selected)}.`}
             </span>
           ) : undefined
         }

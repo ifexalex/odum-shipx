@@ -13,6 +13,7 @@ import { usePackingList } from '../../hooks/usePackingLists'
 import { PrintBrandFoot, PrintBrandHead } from './PrintBrand'
 import styles from './print.module.css'
 import { formatDate } from '../../lib/format'
+import { statusLabel } from '../../design/status'
 
 export function PrintPackingList(): JSX.Element {
   const { id } = useParams<{ id: string }>()
@@ -63,7 +64,7 @@ export function PrintPackingList(): JSX.Element {
         </div>
         <div className={styles.metaRow}>
           <span className={styles.metaLabel}>Status</span>
-          <span className={styles.metaValue} style={{ textTransform: 'capitalize' }}>{pl.status.replace(/_/g, ' ')}</span>
+          <span className={styles.metaValue}>{statusLabel('packingList', pl.status)}</span>
         </div>
         <div className={styles.metaRow}>
           <span className={styles.metaLabel}>Created</span>

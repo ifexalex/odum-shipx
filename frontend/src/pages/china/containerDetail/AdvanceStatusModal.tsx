@@ -1,7 +1,6 @@
 import { useState, type JSX } from 'react'
 import { ApiError } from '../../../api/client'
 import {
-  CONTAINER_STATUS_LABELS,
   containerAdvanceRequirementHint,
 } from '../../../api/containerRules'
 import {
@@ -12,6 +11,7 @@ import {
 } from '../../../api/tracking'
 import { Banner, Button, Field, Mono, DialogGuard } from '../../../design/components'
 import styles from '../ContainerDetail.module.css'
+import { statusLabel } from '../../../design/status'
 
 export interface AdvanceModalProps {
   container: Container
@@ -93,8 +93,8 @@ export function AdvanceStatusModal({
       >
         <h3 className={styles.modalTitle}>
           {step === 'form'
-            ? `Advance to ${CONTAINER_STATUS_LABELS[target]}`
-            : `Confirm — ${CONTAINER_STATUS_LABELS[target]}`}
+            ? `Advance to ${statusLabel('container', target)}`
+            : `Confirm — ${statusLabel('container', target)}`}
         </h3>
         {error && (
           <div className={styles.modalBanner}>
@@ -148,8 +148,8 @@ export function AdvanceStatusModal({
             <div className={styles.advanceSummary}>
               <Mono>{container.container_number}</Mono>
               <span className={styles.advanceSummaryArrow}>
-                {CONTAINER_STATUS_LABELS[container.status]} →{' '}
-                <strong>{CONTAINER_STATUS_LABELS[target]}</strong>
+                {statusLabel('container', container.status)} →{' '}
+                <strong>{statusLabel('container', target)}</strong>
               </span>
               {shipDate && <span className={styles.advanceSummaryMeta}>Ship date: {shipDate}</span>}
             </div>

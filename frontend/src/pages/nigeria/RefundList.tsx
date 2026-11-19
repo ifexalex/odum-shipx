@@ -3,10 +3,11 @@ import { useNavigate } from 'react-router-dom'
 import { type RefundStatus } from '../../api/refunds'
 import { refundTypeLabel } from '../../api/refundsRules'
 import { useRefundList } from '../../hooks/useRefunds'
-import { Badge, Banner, Card, Chip, Mono, Table, ViewLink, ListFooter, type BadgeVariant } from '../../design/components'
+import { Banner, Card, Chip, ListFooter, Mono, StatusBadge, Table, ViewLink } from '../../design/components'
 import { useTopBarSlot } from '../../shell/TopBarContext'
 import styles from './RefundList.module.css'
 import { formatDate, formatNgn } from '../../lib/format'
+import { statusLabel } from '../../design/status'
 
 const STATUS_FILTERS: RefundStatus[] = [
   'pending_review',
@@ -15,28 +16,6 @@ const STATUS_FILTERS: RefundStatus[] = [
   'applied_as_credit',
   'rejected',
 ]
-
-const STATUS_VARIANT: Record<RefundStatus, BadgeVariant> = {
-  pending_review: 'warning',
-  accounts_reviewed: 'warning',
-  pending_approval: 'warning',
-  approved: 'warning',
-  rejected: 'error',
-  processed: 'success',
-  applied_as_credit: 'success',
-}
-
-function statusLabel(s: RefundStatus): string {
-  switch (s) {
-    case 'pending_review': return 'Pending review'
-    case 'accounts_reviewed': return 'Accounts reviewed'
-    case 'pending_approval': return 'Pending approval'
-    case 'approved': return 'Approved'
-    case 'rejected': return 'Rejected'
-    case 'processed': return 'Processed'
-    case 'applied_as_credit': return 'Applied as credit'
-  }
-}
 
 export function RefundList(): JSX.Element {
   const navigate = useNavigate()
@@ -61,7 +40,7 @@ export function RefundList(): JSX.Element {
           <Chip active={statusFilter === null} onClick={() => setStatusFilter(null)}>All</Chip>
           {STATUS_FILTERS.map((s) => (
             <Chip key={s} active={statusFilter === s} onClick={() => setStatusFilter(s)}>
-              {statusLabel(s)}
+              {statusLabel('refund', s)}
             </Chip>
           ))}
         </div>
@@ -90,7 +69,7 @@ export function RefundList(): JSX.Element {
                   {r.customer_choice === 'immediate_refund' ? 'Bank refund' :
                    r.customer_choice === 'credit_next_shipment' ? 'Credit' : '—'}
                 </span>,
-                <Badge key="status" variant={STATUS_VARIANT[r.status]}>{statusLabel(r.status)}</Badge>,
+                <StatusBadge key="status" kind="refund" status={r.status} />,
                 <span key="date">{formatDate(r.created_at)}</span>,
                 <ViewLink key="view" onClick={() => navigate(`/refunds/${r.id}`, { state: { refund: r } })} />,
               ],

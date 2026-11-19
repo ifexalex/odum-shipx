@@ -89,3 +89,7 @@ If the Storybook/component-catalog route from Task 03 exists, a lightweight scre
 - [ ] Every shared component (Task 03) has a test — partially done; key components tested, not 100% coverage. Full coverage deferred.
 - [ ] MSW-backed contract tests for API client — deferred; `vi.stubGlobal` approach is adequate, MSW adds infra overhead without current blocker
 - [x] Playwright e2e runs in CI — **done (2026-07-10)**: `frontend-ci.yml` has an `e2e-smoke` job (built artifact via preview, verified locally) and an `e2e-local-stack` job (boots `make up` + migrate/seed + Flask + Vite dev in local-auth mode, runs the `flows/**` project with `PW_E2E=local-stack`). Reports uploaded on failure.
+
+## Status registry guard (FD-08, 2026-11-19)
+
+`src/design/statusRegistry.test.ts` (22): registry coverage of every API status union, label hygiene, unknown-status fallback, and a source scan that fails on any page/shell status map. 11 page tests updated to the registry's words.

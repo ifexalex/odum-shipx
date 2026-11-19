@@ -50,7 +50,7 @@ describe('ContainerPipeline', () => {
   it('shows every stage with its count — no horizontal-scroll kanban, nothing hidden', async () => {
     renderPipeline()
     // All eight stages + the "All active" lead tile are always rendered.
-    for (const label of ['All active', 'Loading', 'Sealed', 'In Transit', 'Arrived (NG)', 'Customs Clearance', 'Cleared', 'At Warehouse', 'Fully Released']) {
+    for (const label of ['All active', 'Loading', 'Sealed', 'In transit', 'Arrived in Nigeria', 'Customs clearance', 'Cleared', 'At warehouse', 'Fully released']) {
       expect(screen.getByText(label)).toBeInTheDocument()
     }
     // Counts come straight from the stats (no 6-card cap).
@@ -78,7 +78,7 @@ describe('ContainerPipeline', () => {
       }) as never,
     )
     renderPipeline()
-    await userEvent.click(screen.getByText('At Warehouse'))
+    await userEvent.click(screen.getByText('At warehouse'))
     await waitFor(() =>
       expect(containersApi.list).toHaveBeenCalledWith(expect.objectContaining({ status: 'at_warehouse' })),
     )

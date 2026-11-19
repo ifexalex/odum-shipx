@@ -1,28 +1,19 @@
 import { useMemo, useState, type JSX } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { CONTAINER_STATUS_LABELS } from '../../../api/containerRules'
+import { } from '../../../api/containerRules'
 import { formatCbm } from '../../../api/decimal'
 import { containersApi, type ContainerStatus, type Container, type ContainerEvent } from '../../../api/tracking'
 import { formatPackageMix } from '../../../api/packingListRules'
-import {
-  Badge,
-  Banner,
-  Button,
-  Card,
-  ExportButton,
-  Mono,
-  Table,
-  UserCell,
-  ViewLink,
-  type TableSort,
-} from '../../../design/components'
+import { Badge, Banner, Button, Card, ExportButton, Mono, StatusBadge, Table, type TableSort, UserCell, ViewLink } from '../../../design/components'
 import { SectionHead } from '../../../shell/SectionHead'
 import styles from '../ContainerDetail.module.css'
 import { formatDate, formatTime } from '../../../lib/format'
-import { eventLabel, eventBadgeVariant, humanRole, PL_STATUS_VARIANT } from './labels'
+import { eventLabel, humanRole } from './labels'
 import { ContainerStepper } from './Timeline'
 import { type PackingList } from '../../../api/packingList'
 import { useListExport } from '../../../hooks/useListExport'
+import { statusLabel } from '../../../design/status'
+import { statusVariant } from '../../../design/status'
 
 /** Every packing list on the container, sortable by reference. */
 export function PackingListsTab({
@@ -100,9 +91,7 @@ export function PackingListsTab({
             <Mono key="weight">
               {pl.total_weight_kg ? `${Number(pl.total_weight_kg).toFixed(1)} kg` : '—'}
             </Mono>,
-            <Badge key="status" variant={PL_STATUS_VARIANT[pl.status]}>
-              {pl.status.replace('_', ' ')}
-            </Badge>,
+            <StatusBadge key="status" kind="packingList" status={pl.status} />,
             <span key="submitted" className={styles.metaText}>
               {formatDate(pl.created_at, 'short')}
             </span>,
@@ -163,17 +152,16 @@ export function TrackingTab({
               <Mono key="ts">
                 {formatDate(event.created_at, 'short')} {formatTime(event.created_at)}
               </Mono>,
-              <Badge key="event" variant={eventBadgeVariant(event.to_status)}>
+              <Badge key="event" variant={statusVariant('container', event.to_status)}>
                 {eventLabel(event.from_status, event.to_status)}
               </Badge>,
               <span key="change" className={styles.statusChange}>
                 <span className={styles.statusFrom}>
-                  {CONTAINER_STATUS_LABELS[event.from_status as ContainerStatus] ??
-                    event.from_status}
+                  {statusLabel('container', event.from_status as ContainerStatus)}
                 </span>
                 <span className={styles.statusArrow}>→</span>
                 <strong className={styles.statusTo}>
-                  {CONTAINER_STATUS_LABELS[event.to_status as ContainerStatus] ?? event.to_status}
+                  {statusLabel('container', event.to_status as ContainerStatus)}
                 </strong>
               </span>,
               event.actor_name ? (

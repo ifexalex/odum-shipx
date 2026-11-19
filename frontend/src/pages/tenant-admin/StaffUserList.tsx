@@ -11,7 +11,6 @@ import {
 import { staffKeys } from '../../api/keys'
 import { useStaffList } from '../../hooks/useStaff'
 import {
-  Badge,
   Banner,
   Button,
   Card,
@@ -21,31 +20,16 @@ import {
   Table,
   ViewLink,
   DialogGuard,
-  type BadgeVariant,
+  RoleBadge,
+  StatusBadge,
 } from '../../design/components'
 import { useTopBarSlot } from '../../shell/TopBarContext'
 import { RoleCheckboxList } from './RoleCheckboxList'
 import styles from './admin.module.css'
 import { formatDate } from '../../lib/format'
+import { roleLabel } from '../../design/status'
 
-const ROLE_VARIANT: Record<TenantUserRole, BadgeVariant> = {
-  tenant_admin: 'error',
-  china_office_staff: 'info',
-  nigeria_office_staff: 'success',
-  warehouse_attendant: 'warning',
-  customer: 'neutral',
-}
 
-function roleLabel(r: TenantUserRole): string {
-  const map: Record<TenantUserRole, string> = {
-    tenant_admin: 'Admin',
-    china_office_staff: 'China',
-    nigeria_office_staff: 'Nigeria',
-    warehouse_attendant: 'Warehouse',
-    customer: 'Customer',
-  }
-  return map[r]
-}
 
 const ROLES: TenantUserRole[] = [
   'tenant_admin',
@@ -248,12 +232,8 @@ export function StaffUserList(): JSX.Element {
               cells: [
                 <span key="name">{u.full_name}</span>,
                 <span key="email">{u.email}</span>,
-                <Badge key="role" variant={ROLE_VARIANT[u.role]}>
-                  {roleLabel(u.role)}
-                </Badge>,
-                <Badge key="status" variant={u.status === 'active' ? 'success' : 'neutral'}>
-                  {u.status}
-                </Badge>,
+                <RoleBadge key="role" role={u.role} />,
+                <StatusBadge key="status" kind="staffUser" status={u.status} />,
                 <span key="created" style={{ fontSize: 'var(--text-xs)', color: 'var(--color-ink-3)' }}>
                   {formatDate(u.created_at)}
                 </span>,

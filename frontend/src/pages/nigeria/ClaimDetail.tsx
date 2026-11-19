@@ -20,33 +20,14 @@ import {
 import { claimKeys } from '../../api/keys'
 import { STALE_30S } from '../../lib/queryClient'
 import { useSession } from '../../auth/useSession'
-import { Action, Badge, Banner, Button, Card, Field, Kvp, Mono, DialogGuard, type BadgeVariant } from '../../design/components'
+import { Action, Banner, Button, Card, DialogGuard, Field, Kvp, Mono, StatusBadge } from '../../design/components'
 import { SectionHead } from '../../shell/SectionHead'
 import { EvidenceUploader } from './EvidenceUploader'
 import styles from './ClaimDetail.module.css'
 import { formatDate, formatNgn } from '../../lib/format'
 import { useBreadcrumbLabel } from '../../shell/breadcrumbs'
 import { ScrollStrip } from '../../shell/ScrollStrip'
-
-const STATUS_VARIANT: Record<DamageClaimStatus, BadgeVariant> = {
-  filed: 'warning',
-  under_inspection: 'warning',
-  inspection_complete: 'warning',
-  pending_resolution: 'warning',
-  resolved: 'success',
-  closed: 'neutral',
-}
-
-function statusLabel(s: DamageClaimStatus): string {
-  switch (s) {
-    case 'filed': return 'Filed'
-    case 'under_inspection': return 'Under inspection'
-    case 'inspection_complete': return 'Inspection complete'
-    case 'pending_resolution': return 'Pending resolution'
-    case 'resolved': return 'Resolved'
-    case 'closed': return 'Closed'
-  }
-}
+import { statusLabel } from '../../design/status'
 
 // ---------------------------------------------------------------------------
 // StartInspectionModal
@@ -277,7 +258,7 @@ function StatusStepper({ current }: { current: DamageClaimStatus }): JSX.Element
           i === currentIdx ? styles.stepActive : '',
         ].join(' ')}>
           <div className={styles.stepDot} />
-          <span className={styles.stepLabel}>{statusLabel(s)}</span>
+          <span className={styles.stepLabel}>{statusLabel('claim', s)}</span>
         </div>
       ))}
     </div>
@@ -343,7 +324,7 @@ export function ClaimDetail(): JSX.Element {
           <div>
             <div className={styles.heroTitleRow}>
               <h1 className={styles.heroTitle}>Damage claim</h1>
-              <Badge variant={STATUS_VARIANT[claim.status]}>{statusLabel(claim.status)}</Badge>
+              <StatusBadge kind="claim" status={claim.status} />
             </div>
             <div className={styles.heroMeta}>
               <Mono>{claim.id}</Mono>

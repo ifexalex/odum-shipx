@@ -63,7 +63,7 @@ describe('StaffUserList (B4)', () => {
   it('filters by role chip', async () => {
     renderPage()
     await screen.findByText('Amara Okafor')
-    const chinaChip = screen.getAllByText('China').find((el) => el.closest('button'))!
+    const chinaChip = screen.getAllByText('China office').find((el) => el.closest('button'))!
     await userEvent.click(chinaChip)
     expect(screen.getByText('Kwame Asante')).toBeInTheDocument()
     expect(screen.queryByText('Amara Okafor')).toBeNull()
@@ -136,7 +136,7 @@ describe('StaffUserList (B4)', () => {
     const dialog = within(await screen.findByRole('dialog'))
     await dialog.findByLabelText(/email/i)
 
-    await userEvent.click(dialog.getByText('Nigeria'))
+    await userEvent.click(dialog.getByText('Nigeria office'))
 
     expect(dialog.getByText('Send invite').closest('button')).toBeDisabled()
   })

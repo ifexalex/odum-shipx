@@ -4,30 +4,15 @@ import { seizedItemsApi, type SeizedItem, type SeizedItemStatus, type UpdateSeiz
 import { canUpdateItem } from '../../api/claimsRules'
 import { useSeizedItemList } from '../../hooks/useItems'
 import { useSession } from '../../auth/useSession'
-import { Badge, Banner, Button, Card, Chip, Field, Mono, Table, ListFooter, DialogGuard, type BadgeVariant } from '../../design/components'
+import { Banner, Button, Card, Chip, DialogGuard, Field, ListFooter, Mono, StatusBadge, Table } from '../../design/components'
 import { useTopBarSlot } from '../../shell/TopBarContext'
 import styles from './ItemList.module.css'
 import { formatDate } from '../../lib/format'
+import { statusLabel } from '../../design/status'
 
 const STATUS_FILTERS: SeizedItemStatus[] = [
   'seized', 'recovery_in_progress', 'recovered', 'permanently_lost',
 ]
-
-const STATUS_VARIANT: Record<SeizedItemStatus, BadgeVariant> = {
-  seized: 'error',
-  recovery_in_progress: 'warning',
-  recovered: 'success',
-  permanently_lost: 'neutral',
-}
-
-function statusLabel(s: SeizedItemStatus): string {
-  switch (s) {
-    case 'seized': return 'Seized'
-    case 'recovery_in_progress': return 'Recovery in progress'
-    case 'recovered': return 'Recovered'
-    case 'permanently_lost': return 'Permanently lost'
-  }
-}
 
 // ---------------------------------------------------------------------------
 // UpdateStatusModal
@@ -77,7 +62,7 @@ function UpdateModal({ item, onCancel, onSuccess }: UpdateModalProps): JSX.Eleme
         <div className={styles.selectField}>
           <label className={styles.selectLabel}>Recovery status <span className={styles.required}>*</span></label>
           <select className={styles.select} value={status} onChange={(e) => setStatus(e.target.value as SeizedItemStatus)}>
-            {STATUS_FILTERS.map((s) => <option key={s} value={s}>{statusLabel(s)}</option>)}
+            {STATUS_FILTERS.map((s) => <option key={s} value={s}>{statusLabel('seizedItem', s)}</option>)}
           </select>
         </div>
         {offersCompensation && (
@@ -133,7 +118,7 @@ export function SeizedItemList(): JSX.Element {
         <div className={styles.chips}>
           <Chip active={statusFilter === null} onClick={() => setStatusFilter(null)}>All</Chip>
           {STATUS_FILTERS.map((s) => (
-            <Chip key={s} active={statusFilter === s} onClick={() => setStatusFilter(s)}>{statusLabel(s)}</Chip>
+            <Chip key={s} active={statusFilter === s} onClick={() => setStatusFilter(s)}>{statusLabel('seizedItem', s)}</Chip>
           ))}
         </div>
       </Card>
@@ -152,7 +137,7 @@ export function SeizedItemList(): JSX.Element {
               cells: [
                 <span key="reason">{item.reason || '—'}</span>,
                 <Mono key="tags">{item.carton_tags.join(', ') || '—'}</Mono>,
-                <Badge key="status" variant={STATUS_VARIANT[item.status]}>{statusLabel(item.status)}</Badge>,
+                <StatusBadge key="status" kind="seizedItem" status={item.status} />,
                 <span key="date">{formatDate(item.created_at)}</span>,
                 canUpdateItem(r) && item.status !== 'recovered' && item.status !== 'permanently_lost' ? (
                   <Button key="edit" variant="ghost" size="sm" onClick={() => setEditing(item)}>Update</Button>

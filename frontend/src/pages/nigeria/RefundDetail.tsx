@@ -2,7 +2,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { useState, type JSX } from 'react'
 import { useLocation, useParams } from 'react-router-dom'
 import { ApiError } from '../../api/client'
-import { refundsApi, type AccountsReviewInput, type ApproveRefundInput, type Refund, type RefundStatus } from '../../api/refunds'
+import { refundsApi, type AccountsReviewInput, type ApproveRefundInput, type Refund } from '../../api/refunds'
 import { refundKeys } from '../../api/keys'
 import { STALE_30S } from '../../lib/queryClient'
 import {
@@ -15,20 +15,7 @@ import {
   refundTypeLabel,
 } from '../../api/refundsRules'
 import { useSession } from '../../auth/useSession'
-import {
-  Action,
-  Badge,
-  Banner,
-  Button,
-  Card,
-  Field,
-  Icon,
-  Kvp,
-  Mono,
-  StatCard,
-  DialogGuard,
-  type BadgeVariant,
-} from '../../design/components'
+import { Action, Banner, Button, Card, DialogGuard, Field, Icon, Kvp, Mono, StatCard, StatusBadge } from '../../design/components'
 import { SectionHead } from '../../shell/SectionHead'
 import styles from './RefundDetail.module.css'
 import { formatDate, formatNgn } from '../../lib/format'
@@ -37,28 +24,6 @@ import { useBreadcrumbLabel } from '../../shell/breadcrumbs'
 // ---------------------------------------------------------------------------
 // Status helpers
 // ---------------------------------------------------------------------------
-
-const STATUS_VARIANT: Record<RefundStatus, BadgeVariant> = {
-  pending_review: 'warning',
-  accounts_reviewed: 'warning',
-  pending_approval: 'warning',
-  approved: 'warning',
-  rejected: 'error',
-  processed: 'success',
-  applied_as_credit: 'success',
-}
-
-function statusLabel(s: RefundStatus): string {
-  switch (s) {
-    case 'pending_review': return 'Pending review'
-    case 'accounts_reviewed': return 'Accounts reviewed'
-    case 'pending_approval': return 'Pending approval'
-    case 'approved': return 'Approved'
-    case 'rejected': return 'Rejected'
-    case 'processed': return 'Processed'
-    case 'applied_as_credit': return 'Applied as credit'
-  }
-}
 
 // ---------------------------------------------------------------------------
 // RefundStepper
@@ -452,7 +417,7 @@ export function RefundDetail(): JSX.Element {
           <div>
             <div className={styles.heroTitleRow}>
               <h1 className={styles.heroTitle}>{refundTypeLabel(refund.refund_type)}</h1>
-              <Badge variant={STATUS_VARIANT[refund.status]}>{statusLabel(refund.status)}</Badge>
+              <StatusBadge kind="refund" status={refund.status} />
             </div>
             <div className={styles.heroMeta}>
               <span>Requested {formatDate(refund.created_at)}</span>

@@ -2,14 +2,13 @@ import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { useState, type JSX } from 'react'
 import { useLocation, useNavigate, useParams } from 'react-router-dom'
 import { ApiError } from '../../api/client'
-import { platformApi, type Tenant, type TenantStatus } from '../../api/tenantManagement'
+import { platformApi, type Tenant } from '../../api/tenantManagement'
 import { platformTenantKeys } from '../../api/keys'
 import { STALE_30S } from '../../lib/queryClient'
 import { useSession } from '../../auth/useSession'
-import { Badge, Banner, Button, Card, Field, Kvp, Mono, Table, UserCell, DialogGuard, type BadgeVariant } from '../../design/components'
+import { Badge, Banner, Button, Card, DialogGuard, Field, Kvp, Mono, StatusBadge, Table, UserCell } from '../../design/components'
 import {
   platformApi as platformExtras,
-  type OffboardingExport,
   type PlanLimits,
 } from '../../api/tenantManagement'
 import {
@@ -24,12 +23,6 @@ import { SectionHead } from '../../shell/SectionHead'
 import styles from './admin.module.css'
 import { formatCount, formatDate, formatDateTime } from '../../lib/format'
 import { useBreadcrumbLabel } from '../../shell/breadcrumbs'
-
-const STATUS_VARIANT: Record<TenantStatus, BadgeVariant> = {
-  active: 'success',
-  suspended: 'error',
-  offboarded: 'neutral',
-}
 
 interface ActionModalProps {
   action: 'suspend' | 'activate' | 'offboard'
@@ -119,7 +112,7 @@ function UsersTab({ tenantId }: { tenantId: string }): JSX.Element {
           cells: [
             <UserCell key="u" name={u.full_name} email={u.email} />,
             <Badge key="r" variant="info">{u.role.replace(/_/g, ' ')}</Badge>,
-            <Badge key="s" variant={u.status === 'active' ? 'success' : 'neutral'}>{u.status}</Badge>,
+            <StatusBadge key="s" kind="staffUser" status={u.status} />,
             <Mono key="l">{u.locale ?? 'en'}</Mono>,
           ],
         }))}
@@ -271,15 +264,6 @@ function AuditTab({ tenantId }: { tenantId: string }): JSX.Element {
 // Offboarding data export (audit BE-10)
 // ---------------------------------------------------------------------------
 
-const EXPORT_STATUS: Record<OffboardingExport['status'], { label: string; variant: BadgeVariant }> = {
-  none: { label: 'Not queued', variant: 'warning' },
-  pending: { label: 'Queued', variant: 'info' },
-  running: { label: 'Being written', variant: 'info' },
-  completed: { label: 'Ready', variant: 'success' },
-  failed: { label: 'Failed', variant: 'error' },
-  cancelled: { label: 'Cancelled', variant: 'neutral' },
-}
-
 function formatBytes(bytes: number): string {
   if (bytes < 1024) return `${bytes} B`
   if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`
@@ -310,7 +294,6 @@ function OffboardingExportCard({ tenantId }: { tenantId: string }): JSX.Element 
     }
   }
 
-  const status = exportInfo ? EXPORT_STATUS[exportInfo.status] : null
   return (
     <Card padding="default">
       <SectionHead
@@ -319,9 +302,9 @@ function OffboardingExportCard({ tenantId }: { tenantId: string }): JSX.Element 
       />
       {error && <div style={{ margin: 'var(--space-2) 0' }}><Banner variant="error" title="Error">{error}</Banner></div>}
       {!exportInfo && !error && <p style={{ color: 'var(--color-ink-3)' }}>Loading export…</p>}
-      {exportInfo && status && (
+      {exportInfo && (
         <>
-          <Kvp label="Status" value={<Badge variant={status.variant}>{status.label}</Badge>} />
+          <Kvp label="Status" value={<StatusBadge kind="offboardingExport" status={exportInfo.status} />} />
           {exportInfo.status === 'completed' && (
             <>
               <Kvp label="Prepared" value={formatDateTime(exportInfo.completed_at)} />
@@ -472,7 +455,7 @@ export function PlatformTenantDetail(): JSX.Element {
       <>
       <SectionHead title="Tenant details" />
       <Card padding="default">
-        <Kvp label="Status" value={<Badge variant={STATUS_VARIANT[tenant.status]}>{tenant.status}</Badge>} />
+        <Kvp label="Status" value={<StatusBadge kind="tenant" status={tenant.status} />} />
         <Kvp label="Subscription" value={<span style={{ textTransform: 'capitalize' }}>{tenant.subscription_tier}</span>} />
         <Kvp label="Contact email" value={tenant.primary_contact_email} />
         {tenant.primary_contact_phone && <Kvp label="Contact phone" value={tenant.primary_contact_phone} />}

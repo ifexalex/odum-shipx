@@ -5,22 +5,12 @@ import { disputeApi, type DisputeDetail as DisputeDetailData, type ResolveCBMDis
 import { isTerminalDisputeStatus } from '../../api/billingRules'
 import { ApiError } from '../../api/client'
 import { disputeKeys } from '../../api/keys'
-import { Badge, Banner, Button, Card, Field, Mono, Table } from '../../design/components'
+import {  Banner, Button, Card, Field, Mono, Table, StatusBadge } from '../../design/components'
 import { STALE_30S } from '../../lib/queryClient'
 import { SectionHead } from '../../shell/SectionHead'
 import { useTopBarSlot } from '../../shell/TopBarContext'
 import styles from './DisputeDetail.module.css'
 import { useBreadcrumbLabel } from '../../shell/breadcrumbs'
-
-const STATUS_LABEL: Record<string, string> = {
-  submitted: 'Submitted',
-  acknowledged: 'Acknowledged',
-  investigating: 'Investigating',
-  escalated_china: 'Escalated to China',
-  resolved_adjusted: 'Resolved: adjusted',
-  resolved_no_change: 'Resolved: no change',
-  closed: 'Closed',
-}
 
 function ResolvePanel({ dispute, onResolved }: { dispute: DisputeDetailData; onResolved: () => void }): JSX.Element {
   const [outcome, setOutcome] = useState<'resolved_adjusted' | 'resolved_no_change'>('resolved_no_change')
@@ -133,9 +123,7 @@ export function DisputeDetail(): JSX.Element {
   return (
     <div className={styles.page}>
       <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-3)', flexWrap: 'wrap' }}>
-        <Badge variant={terminal ? 'success' : dispute.status === 'escalated_china' ? 'error' : 'warning'}>
-          {STATUS_LABEL[dispute.status] ?? dispute.status}
-        </Badge>
+        <StatusBadge kind="dispute" status={dispute.status} />
       </div>
 
       <Card padding="large">

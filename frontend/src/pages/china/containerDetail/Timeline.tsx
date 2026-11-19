@@ -1,11 +1,12 @@
 import { type JSX } from 'react'
-import { CONTAINER_STATUS_LABELS } from '../../../api/containerRules'
+import { } from '../../../api/containerRules'
 import { type ContainerEvent, type ContainerStatus } from '../../../api/tracking'
 import { Icon } from '../../../design/components'
 import styles from '../ContainerDetail.module.css'
 import { formatDate } from '../../../lib/format'
 import { eventIconForStatus } from './labels'
 import { ScrollStrip } from '../../../shell/ScrollStrip'
+import { statusLabel } from '../../../design/status'
 
 // Stepper stage config — display labels/subs match the prototype exactly.
 // Backend status keys are unchanged; only the visual pipeline uses these.
@@ -106,7 +107,7 @@ export function SummaryTile({
 export function EventRow({ event, last }: { event: ContainerEvent; last: boolean }): JSX.Element {
   const stage = STEPPER_STAGES.find((s) => s.status === event.to_status)
   const toLabel =
-    stage?.label ?? CONTAINER_STATUS_LABELS[event.to_status as ContainerStatus] ?? event.to_status
+    stage?.label ?? statusLabel('container', event.to_status as ContainerStatus)
   const { icon, color } = eventIconForStatus(event.to_status)
   const when = formatDate(event.created_at, 'short')
   return (

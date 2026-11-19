@@ -202,7 +202,7 @@ describe('AdminCustomerDetail — tabbed profile (A2)', () => {
     expect(await screen.findByText('BL-20260415-001')).toBeInTheDocument()
     // Appears in both the "Total paid" stat card and the table row
     expect(screen.getAllByText('₦49,352').length).toBeGreaterThanOrEqual(2)
-    expect(screen.getByText('partially paid')).toBeInTheDocument()
+    expect(screen.getByText('Partly paid')).toBeInTheDocument()
   })
 
   it('Claims tab lists the customer claims', async () => {
