@@ -28,7 +28,10 @@ export function documentTitle(
   owner?: string | null,
 ): string {
   const trail = breadcrumbTrail(pathname, roles, labels)
-  const page = trail.length > 0 ? trail.map((crumb) => crumb.label).reverse() : [matchRoute(pathname)?.route.title]
+  const route = matchRoute(pathname)?.route
+  // An address that matches no route is the not-found page (FD-55); the site root ("/") is just the app's name.
+  const unknown = !route && pathname !== '/' ? 'Page not found' : undefined
+  const page = trail.length > 0 ? trail.map((crumb) => crumb.label).reverse() : [route?.title ?? unknown]
   return [...page, owner?.trim() || APP_NAME].filter(Boolean).join(' · ')
 }
 

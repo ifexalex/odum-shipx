@@ -2489,3 +2489,7 @@ Found by running them: **a real bug** (invoice generation set a used credit to `
 ## Heading structure (FD-49, 2026-11-20)
 
 - `frontend/scripts/headings.mjs` (route audit, local stack): one non-empty `<h1>` per route and no skipped levels, all 78 routes passing; proved with `HEADINGS_INJECT='<h3>…</h3>'` (every injected page fails). The unit suite needed no changes: page tests query headings by name, not level.
+
+## Not-found page (FD-55, 2026-11-20)
+
+- `frontend/src/shell/routes.test.tsx` (+3, replacing one): a signed-in staff user and a customer see "Page not found" inside their layout, with "Go to your home page" and the nearest list, tab "Page not found · ShipX"; a signed-out visitor gets the bare page with "Sign in". `shell/nearestList.test.ts` (3): closest openable list, skips one the role cannot open, none when it is home or there is none.

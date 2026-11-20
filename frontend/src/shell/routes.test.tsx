@@ -90,9 +90,27 @@ describe('AppRoutes', () => {
     expect((await screen.findAllByText('My Shipments')).length).toBeGreaterThan(0) // landed on the customer's own home route
   })
 
-  it('renders a 404 page for an unknown path instead of a blank screen', () => {
-    renderAt(makeContextValue({ session: makeSession('tenant_admin'), status: 'authenticated' }), '/this-route-does-not-exist')
-    expect(screen.getByText('Page not found')).toBeInTheDocument()
+  it('keeps a signed-in user’s layout and menu around the not-found page (FD-55)', async () => {
+    renderAt(makeContextValue({ session: makeSession('nigeria_office_staff'), status: 'authenticated' }), '/billing/x/y/z')
+    expect(await screen.findByRole('heading', { level: 1, name: 'Page not found' })).toBeInTheDocument()
+    expect(screen.getAllByText('Release Notes').length).toBeGreaterThan(0) // the sidebar is there
+    expect(screen.getByRole('button', { name: 'Go to your home page' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Open billing' })).toBeInTheDocument() // the nearest list above the address
+    expect(document.title).toBe('Page not found · ShipX')
+  })
+
+  it('shows a customer the not-found page inside the customer portal', async () => {
+    renderAt(makeContextValue({ session: makeSession('customer'), status: 'authenticated' }), '/my-billing/x/oops')
+    expect(await screen.findByRole('heading', { level: 1, name: 'Page not found' })).toBeInTheDocument()
+    expect(screen.getAllByText('My Shipments').length).toBeGreaterThan(0) // the portal's top nav
+    expect(screen.getByRole('button', { name: 'Open billing' })).toBeInTheDocument()
+  })
+
+  it('gives a signed-out visitor the bare not-found page, with a way to sign in', () => {
+    renderAt(makeContextValue({}), '/this-route-does-not-exist')
+    expect(screen.getByRole('heading', { level: 1, name: 'Page not found' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Sign in' })).toBeInTheDocument()
+    expect(screen.queryByRole('navigation', { name: 'Breadcrumb' })).toBeNull()
   })
 
   it('tenant_admin sees Operations and Billing groups alongside admin-only nav, on the one shared Sidebar (no duplicated pages)', async () => {

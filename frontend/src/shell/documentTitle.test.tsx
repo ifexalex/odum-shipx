@@ -39,7 +39,8 @@ describe('tab titles (FD-48)', () => {
     expect(documentTitle('/containers', ALL_ROLES, {}, 'Acme Shipping')).toBe('Containers · Acme Shipping')
     expect(documentTitle('/login', [])).toBe(`Sign in · ${APP_NAME}`)
     expect(documentTitle('/my-shipments', ['customer'], {}, '  ')).toBe(`My shipments · ${APP_NAME}`)
-    expect(documentTitle('/no/such/page', ALL_ROLES)).toBe(APP_NAME)
+    expect(documentTitle('/no/such/page', ALL_ROLES)).toBe(`Page not found · ${APP_NAME}`)
+    expect(documentTitle('/', [])).toBe(APP_NAME)
   })
 
   // Each audience sees only its own pages, so titles must differ within one: staff, customer, and pages with no layout.

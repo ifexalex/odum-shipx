@@ -84,6 +84,24 @@ function elementForRoute(route: RouteDef): JSX.Element {
 // becomes exactly one <Route>, guarded and shelled per its own declaration,
 // so nav (navConfig.ts), guards, and the actual route tree all read from the
 // same source (06_routing_rbac_and_navigation.md).
+/**
+ * An address that matches no route (FD-55): a signed-in user keeps their layout and menu around the not-found page; a
+ * signed-out visitor gets the bare page.
+ */
+function UnknownPath(): JSX.Element {
+  const { session, status } = useSession()
+  if (status === 'loading') return <SessionLoading />
+  if (status !== 'authenticated' || !session) return <NotFoundPage />
+  const Layout = session.role === 'customer' ? CustomerLayout : StaffLayout
+  return (
+    <Suspense fallback={<SessionLoading />}>
+      <Layout>
+        <NotFoundPage inLayout />
+      </Layout>
+    </Suspense>
+  )
+}
+
 export function AppRoutes(): JSX.Element {
   return (
     <Routes>
@@ -91,7 +109,7 @@ export function AppRoutes(): JSX.Element {
       {routeTable.map((route) => (
         <Route key={route.path} path={route.path} element={elementForRoute(route)} />
       ))}
-      <Route path="*" element={<NotFoundPage />} />
+      <Route path="*" element={<UnknownPath />} />
     </Routes>
   )
 }
