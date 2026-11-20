@@ -27,6 +27,7 @@ import { RoleCheckboxList } from './RoleCheckboxList'
 import styles from './admin.module.css'
 import { formatDate } from '../../lib/format'
 import { roleLabel } from '../../design/status'
+import { toast } from '../../design/toast'
 
 
 
@@ -62,6 +63,7 @@ function InviteModal({ onCancel, onSuccess }: InviteModalProps): JSX.Element {
         primary_role: primaryRole ?? roles[0],
       }
       const user = await usersApi.create(body)
+      toast.success('Staff member invited', user.full_name)
       onSuccess(user)
     } catch (err) {
       setError(err instanceof ApiError ? err.message : 'Could not invite user.')

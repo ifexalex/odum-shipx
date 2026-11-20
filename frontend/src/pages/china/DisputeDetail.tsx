@@ -11,6 +11,7 @@ import { SectionHead } from '../../shell/SectionHead'
 import { useTopBarSlot } from '../../shell/TopBarContext'
 import styles from './DisputeDetail.module.css'
 import { useBreadcrumbLabel } from '../../shell/breadcrumbs'
+import { toast } from '../../design/toast'
 
 function ResolvePanel({ dispute, onResolved }: { dispute: DisputeDetailData; onResolved: () => void }): JSX.Element {
   const [outcome, setOutcome] = useState<'resolved_adjusted' | 'resolved_no_change'>('resolved_no_change')
@@ -29,6 +30,7 @@ function ResolvePanel({ dispute, onResolved }: { dispute: DisputeDetailData; onR
       const body: ResolveCBMDisputeInput = { status: outcome, resolution_notes: notes.trim() }
       if (outcome === 'resolved_adjusted') body.corrected_cbm = correctedCbm
       await disputeApi.resolve(dispute.id, body)
+      toast.success('Dispute resolved')
       onResolved()
     } catch (err) {
       setError(err instanceof ApiError ? err.message : 'Could not resolve the dispute. Please try again.')

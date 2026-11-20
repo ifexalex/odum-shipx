@@ -23,6 +23,7 @@ import { SectionHead } from '../../shell/SectionHead'
 import styles from './admin.module.css'
 import { formatCount, formatDate, formatDateTime } from '../../lib/format'
 import { useBreadcrumbLabel } from '../../shell/breadcrumbs'
+import { toast } from '../../design/toast'
 
 interface ActionModalProps {
   action: 'suspend' | 'activate' | 'offboard'
@@ -54,6 +55,7 @@ function ActionModal({ action, tenant, onCancel, onSuccess }: ActionModalProps):
       if (action === 'suspend') updated = await platformApi.suspendTenant(tenant.id, reason)
       else if (action === 'activate') updated = await platformApi.activateTenant(tenant.id)
       else updated = await platformApi.offboardTenant(tenant.id, reason)
+      toast.success(action === 'suspend' ? 'Tenant suspended' : action === 'activate' ? 'Suspension lifted' : 'Tenant offboarded', updated.company_name)
       onSuccess(updated)
     } catch (err) {
       setError(err instanceof ApiError ? err.message : 'Action failed.')
@@ -147,7 +149,6 @@ function UsageTab({ tenantId }: { tenantId: string }): JSX.Element {
   })
   const [override, setOverride] = useState<{ users: string; containers: string; storage: string }>({ users: '', containers: '', storage: '' })
   const [saving, setSaving] = useState(false)
-  const [saved, setSaved] = useState(false)
   const [actionError, setActionError] = useState<string | null>(null)
 
   const error =
@@ -161,14 +162,13 @@ function UsageTab({ tenantId }: { tenantId: string }): JSX.Element {
   async function handleOverride(): Promise<void> {
     setSaving(true)
     setActionError(null)
-    setSaved(false)
     try {
       const body: Partial<PlanLimits> = {}
       if (override.users) body.users = Number(override.users)
       if (override.containers) body.containers_per_month = Number(override.containers)
       if (override.storage) body.storage_gb = Number(override.storage)
       await platformExtras.setQuotaOverride(tenantId, body)
-      setSaved(true)
+      toast.success('Plan override applied', 'The bars above show the new limits.')
     } catch (err) {
       setActionError(err instanceof ApiError ? err.message : 'Could not set override.')
     } finally {
@@ -198,7 +198,6 @@ function UsageTab({ tenantId }: { tenantId: string }): JSX.Element {
       <Card padding="large">
         <SectionHead title="Quota override" sub="Wins over tier defaults and plan overrides. Leave a field blank to keep the plan value; submit all-blank to clear the override." />
         {error && <div style={{ margin: 'var(--space-2) 0' }}><Banner variant="error" title="Error">{error}</Banner></div>}
-        {saved && <div style={{ margin: 'var(--space-2) 0' }}><Banner variant="success" title="Saved">Override applied — bars above show the new effective limits.</Banner></div>}
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))', gap: 'var(--space-3)', marginTop: 'var(--space-3)' }}>
           <Field label="Users" name="ovr_users" type="number" optional value={override.users} onChange={(e) => setOverride((p) => ({ ...p, users: e.target.value }))} />
           <Field label="Containers / month" name="ovr_containers" type="number" optional value={override.containers} onChange={(e) => setOverride((p) => ({ ...p, containers: e.target.value }))} />

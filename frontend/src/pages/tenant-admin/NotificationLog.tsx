@@ -9,6 +9,7 @@ import { Banner, Button, Card, Chip, DateRangeFilter, Icon, ListFooter, Mono, St
 import { useTopBarSlot } from '../../shell/TopBarContext'
 import styles from './NotificationLog.module.css'
 import { formatDateTime } from '../../lib/format'
+import { toast } from '../../design/toast'
 
 const CHANNEL_FILTERS: Array<{ key: NotifChannel; label: string }> = [
   { key: 'sms',      label: 'SMS' },
@@ -102,6 +103,7 @@ export function NotificationLog(): JSX.Element {
     setRetryingId(entry.id)
     try {
       await notificationLogApi.retry(entry.id)
+      toast.success('Message queued to send again')
       refetch()
     } catch {
       // ignore — retry failure is non-critical

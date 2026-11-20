@@ -33,6 +33,7 @@ import {
   CheckboxField } from '../../design/components'
 import { useTopBarSlot } from '../../shell/TopBarContext'
 import styles from './admin.module.css'
+import { toast } from '../../design/toast'
 
 interface WarehouseModalProps {
   existing: Warehouse | null
@@ -200,7 +201,6 @@ export function Warehouses(): JSX.Element {
     existing: null,
   })
   const [busyId, setBusyId] = useState<string | null>(null)
-  const [notice, setNotice] = useState<string | null>(null)
   // The error banner renders at the top of the page, above the table. An action
   // taken on a row further down could therefore fail with its only feedback
   // scrolled out of view — reported as "I click it and nothing happens". Scroll
@@ -238,13 +238,12 @@ export function Warehouses(): JSX.Element {
   async function handleSetDefault(id: string): Promise<void> {
     setBusyId(id)
     setActionError(null)
-    setNotice(null)
     try {
       const updated = await setDefaultWarehouse.mutateAsync(id)
       // Confirm explicitly. The only previous signal was the row's badge
       // changing, which is easy to miss and indistinguishable from nothing
       // having happened.
-      setNotice(`${updated.name} is now the default warehouse.`)
+      toast.success(`${updated.name} is now the default warehouse.`)
     } catch (err) {
       fail(err instanceof ApiError ? err.message : 'Could not set default warehouse.')
     } finally {
@@ -268,11 +267,10 @@ export function Warehouses(): JSX.Element {
    */
   async function confirmDelete(warehouse: Warehouse): Promise<void> {
     setActionError(null)
-    setNotice(null)
     try {
       await removeWarehouse.mutateAsync(warehouse.id)
       setPendingRemoval(null)
-      setNotice(`${warehouse.name} was deleted.`)
+      toast.success(`${warehouse.name} was deleted.`)
     } catch (err) {
       if (err instanceof ApiError && err.ruleId === 'WAREHOUSE_IN_USE') {
         setPendingRemoval({ warehouse, stage: 'retire', reason: err.message })
@@ -285,10 +283,9 @@ export function Warehouses(): JSX.Element {
 
   async function confirmRetire(warehouse: Warehouse): Promise<void> {
     setActionError(null)
-    setNotice(null)
     try {
       await deactivateWarehouse.mutateAsync(warehouse.id)
-      setNotice(`${warehouse.name} was retired. Its name is free to reuse.`)
+      toast.success(`${warehouse.name} was retired. Its name is free to reuse.`)
     } catch (err) {
       fail(err instanceof ApiError ? err.message : 'Could not retire warehouse.')
     } finally {
@@ -313,13 +310,6 @@ export function Warehouses(): JSX.Element {
           <div className={styles.banner}>
             <Banner variant="error" title="Error">
               {error}
-            </Banner>
-          </div>
-        )}
-        {notice && !error && (
-          <div className={styles.banner}>
-            <Banner variant="success" title="Done">
-              {notice}
             </Banner>
           </div>
         )}

@@ -18,6 +18,7 @@ import { useTenantConfig } from '../../hooks/useConfig'
 import { useSeedOnce } from '../../hooks/useSeedOnce'
 import { SectionHead } from '../../shell/SectionHead'
 import styles from './PaymentGatewayConfig.module.css'
+import { toast } from '../../design/toast'
 
 const EMPTY_BANK_FORM = { bank_name: '', account_name: '', account_number: '', sort_code: '', instructions: '' }
 
@@ -44,7 +45,6 @@ function BankTransferSettings({ initial }: { initial: BankTransferConfig | null 
   )
   const [saving, setSaving] = useState(false)
   const [saveError, setSaveError] = useState<string | null>(null)
-  const [saveSuccess, setSaveSuccess] = useState(false)
 
   const canSave = form.bank_name.trim() && form.account_name.trim() && form.account_number.trim()
 
@@ -52,7 +52,6 @@ function BankTransferSettings({ initial }: { initial: BankTransferConfig | null 
     if (!canSave) return
     setSaving(true)
     setSaveError(null)
-    setSaveSuccess(false)
     try {
       const updated = await configApi.updateConfig({
         bank_transfer_config: {
@@ -64,8 +63,7 @@ function BankTransferSettings({ initial }: { initial: BankTransferConfig | null 
         },
       })
       setConfig(updated.bank_transfer_config ?? null)
-      setSaveSuccess(true)
-      setTimeout(() => setSaveSuccess(false), 3000)
+      toast.success('Bank details saved', 'Customers paying by transfer see the new account.')
     } catch (err) {
       setSaveError(err instanceof ApiError ? err.message : 'Could not save these bank details.')
     } finally {
@@ -95,11 +93,6 @@ function BankTransferSettings({ initial }: { initial: BankTransferConfig | null 
       {saveError && (
         <div style={{ marginBottom: 'var(--space-4)' }}>
           <Banner variant="error">{saveError}</Banner>
-        </div>
-      )}
-      {saveSuccess && (
-        <div style={{ marginBottom: 'var(--space-4)' }}>
-          <Banner variant="success">Bank details saved.</Banner>
         </div>
       )}
       <div className={styles.bankGrid}>
@@ -162,7 +155,6 @@ export function PaymentGatewayConfig(): JSX.Element {
   const [newKey, setNewKey] = useState('')
   const [saving, setSaving] = useState(false)
   const [saveError, setSaveError] = useState<string | null>(null)
-  const [saveSuccess, setSaveSuccess] = useState(false)
 
   const [testing, setTesting] = useState(false)
   const [testResult, setTestResult] = useState<{ success: boolean; message: string } | null>(null)
@@ -178,14 +170,12 @@ export function PaymentGatewayConfig(): JSX.Element {
     if (!KEY_PATTERN.test(newKey)) return
     setSaving(true)
     setSaveError(null)
-    setSaveSuccess(false)
     setTestResult(null)
     try {
       const updated = await configApi.updatePaystackConfig(newKey)
       setConfig(updated)
       setNewKey('')
-      setSaveSuccess(true)
-      setTimeout(() => setSaveSuccess(false), 3000)
+      toast.success('Paystack key saved', 'Online payments use the new key.')
     } catch (err) {
       setSaveError(err instanceof ApiError ? err.message : 'Could not save this key.')
     } finally {
@@ -213,6 +203,7 @@ export function PaymentGatewayConfig(): JSX.Element {
     setDisconnecting(true)
     try {
       await configApi.deletePaystackConfig()
+      toast.success('Paystack disconnected')
       setConfig(null)
       setTestResult(null)
       setShowDisconnectConfirm(false)
@@ -232,11 +223,6 @@ export function PaymentGatewayConfig(): JSX.Element {
       {saveError && (
         <div style={{ marginBottom: 'var(--space-4)' }}>
           <Banner variant="error">{saveError}</Banner>
-        </div>
-      )}
-      {saveSuccess && (
-        <div style={{ marginBottom: 'var(--space-4)' }}>
-          <Banner variant="success">Paystack key saved.</Banner>
         </div>
       )}
 

@@ -5,6 +5,7 @@ import { useChargeTypes } from '../../../hooks/useConfig'
 import { Banner, Button, Field, DialogGuard, Select } from '../../../design/components'
 import styles from '../BillingDetail.module.css'
 import { formatNgn } from '../../../lib/format'
+import { toast } from '../../../design/toast'
 
 // ---------------------------------------------------------------------------
 // CancelBillingModal
@@ -73,6 +74,7 @@ export function AddChargeModal({ billing, onCancel, onSuccess }: AddChargeModalP
         charge_type: configured ? 'service_charge' : 'other',
         charge_type_id: configured?.id,
       })
+      toast.success('Charge added', billing.invoice_number ?? undefined)
       onSuccess()
     } catch (err) {
       setError(err instanceof ApiError ? err.message : 'Could not add charge.')
@@ -177,6 +179,7 @@ export function CancelBillingModal({
     setLocalError(null)
     try {
       const updated = await billingApi.cancel(billingId, { cancel_reason: reason })
+      toast.success('Invoice cancelled')
       onSuccess(updated)
     } catch (err) {
       setLocalError(err instanceof ApiError ? err.message : 'Could not cancel billing.')
@@ -269,6 +272,7 @@ export function ApplyCarryoverModal({
     setError(null)
     try {
       await billingApi.applyCarryover(billing.id, selectedId)
+      toast.success('Carryover applied', billing.invoice_number ?? undefined)
       onSuccess()
     } catch (err) {
       setError(err instanceof ApiError ? err.message : 'Could not apply carryover.')

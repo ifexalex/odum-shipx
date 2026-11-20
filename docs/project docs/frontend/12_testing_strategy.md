@@ -101,3 +101,7 @@ If the Storybook/component-catalog route from Task 03 exists, a lightweight scre
 ## Form rules and named controls (FD-11, FD-50, 2026-11-19)
 
 `src/design/formRules.test.ts` (4) and `src/design/components/FieldFamily.test.tsx` (13). Page tests updated: date-range tests open the filter popover before typing a custom date and expect the button to read "Since …"; selectors by label text instead of DOM structure (rates, brand colour, collected-by); the `Account` language choice is a named radio group. The phone audit doubles as the FD-50 automated pass: it lists every unnamed control per route and fails on any.
+
+## Toasts (FD-21, 2026-11-19)
+
+`src/test/setup.ts` resets the toast store and mounts `ToastRegion` before every test. `ToastRegion.test.tsx` (4) and `src/design/toastRules.test.ts` (2) — the second found two pages that changed data silently (the announcement composer; the audit-log read was a false positive and is listed as a read).

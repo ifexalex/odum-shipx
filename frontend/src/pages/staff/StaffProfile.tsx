@@ -6,12 +6,12 @@ import { Banner, Card, Kvp, LocaleCard, type StaffLocale } from '../../design/co
 import { Action } from '../../design/components/Action'
 import { PageHeader } from '../../shell/PageHeader'
 import { SectionHead } from '../../shell/SectionHead'
+import { toast } from '../../design/toast'
 
 export function StaffProfile(): JSX.Element {
   const { session } = useSession()
   const [locale, setLocale] = useState<StaffLocale>('en')
   const [saving, setSaving] = useState(false)
-  const [saved, setSaved] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
   if (!session) return <></>
@@ -19,11 +19,9 @@ export function StaffProfile(): JSX.Element {
   async function handleSave(): Promise<void> {
     setSaving(true)
     setError(null)
-    setSaved(false)
     try {
       await usersApi.updateMe(locale)
-      setSaved(true)
-      setTimeout(() => setSaved(false), 3000)
+      toast.success('Notification language updated')
     } catch (err) {
       setError(err instanceof ApiError ? err.message : 'Could not update language preference.')
     } finally {
@@ -39,7 +37,6 @@ export function StaffProfile(): JSX.Element {
       />
 
       {error && <div style={{ marginBottom: 'var(--space-4)' }}><Banner variant="error">{error}</Banner></div>}
-      {saved && <div style={{ marginBottom: 'var(--space-4)' }}><Banner variant="success">Notification language updated.</Banner></div>}
 
       <SectionHead title="Profile" />
       <Card padding="default" style={{ marginBottom: 'var(--space-6)' }}>

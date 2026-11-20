@@ -12,6 +12,7 @@ import { platformApi, type OnboardingRequest, type SubscriptionTier, type Tenant
 import { Banner, Button, Card, Field, Icon, Mono, PhoneField, Pressable } from '../../design/components'
 import { PageHeader } from '../../shell/PageHeader'
 import { SectionHead } from '../../shell/SectionHead'
+import { toast } from '../../design/toast'
 
 /**
  * When provisioning is launched from a company onboarding lead, OnboardingRequests
@@ -86,6 +87,7 @@ export function CreateTenantPage(): JSX.Element {
         initial_admin: { email: adminEmail, full_name: adminName },
         ...(lead ? { onboarding_request_id: lead.id } : {}),
       })
+      toast.success('Tenant created')
       setCreated(result.tenant)
     } catch (err) {
       setError(err instanceof ApiError ? err.message : 'Could not create the tenant.')

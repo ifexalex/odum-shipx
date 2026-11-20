@@ -24,6 +24,7 @@ import { useBranding, useSaveBranding } from '../../hooks/useConfig'
 import { PageHeader } from '../../shell/PageHeader'
 import { SectionHead } from '../../shell/SectionHead'
 import styles from './CompanySettings.module.css'
+import { toast } from '../../design/toast'
 
 // ---------------------------------------------------------------------------
 // Form state
@@ -201,7 +202,6 @@ function CompanySettingsForm({
   const save = useSaveBranding()
 
   const [form, setForm] = useState<FormState>(() => formFromBranding(branding))
-  const [saved, setSaved] = useState(false)
   const [previewDoc, setPreviewDoc] = useState<'pl' | 'rn'>('pl')
 
   const dirty = useMemo(
@@ -213,7 +213,6 @@ function CompanySettingsForm({
 
   function set<K extends keyof FormState>(key: K) {
     return (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
-      setSaved(false)
       setForm((f) => ({ ...f, [key]: e.target.value }))
     }
   }
@@ -222,15 +221,13 @@ function CompanySettingsForm({
   // event (PhoneField emits E.164, CountrySelect/StateSelect emit a name).
   function setValue<K extends keyof FormState>(key: K) {
     return (value: string) => {
-      setSaved(false)
       setForm((f) => ({ ...f, [key]: value }))
     }
   }
 
   async function handleSave(): Promise<void> {
-    setSaved(false)
     await save.mutateAsync(brandingFromForm(form))
-    setSaved(true)
+    toast.success('Company settings saved', 'Documents and the portal show the change.')
   }
 
   return (
@@ -338,11 +335,6 @@ function CompanySettingsForm({
 
           {save.error && (
             <Banner variant="error" title="Couldn't save">{save.error.message}</Banner>
-          )}
-          {saved && (
-            <Banner variant="success" title="Saved">
-              Branding updated — documents and the app theme now use it.
-            </Banner>
           )}
 
           <div className={styles.saveBar}>

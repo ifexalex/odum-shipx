@@ -23,6 +23,7 @@ import { SectionHead } from '../../shell/SectionHead'
 import { Tabs } from '../../shell/Tabs'
 import styles from './customer.module.css'
 import { todayIso, formatDate } from '../../lib/format'
+import { toast } from '../../design/toast'
 
 type TabKey = 'Profile' | 'Notifications' | 'Privacy'
 
@@ -54,18 +55,16 @@ function ProfileTab({ customer, onSaved }: { customer: Customer; onSaved: (c: Cu
   const [whatsapp, setWhatsapp] = useState(customer.whatsapp ?? '')
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
-  const [saved, setSaved] = useState(false)
 
   const dirty = phone !== (customer.phone ?? '') || whatsapp !== (customer.whatsapp ?? '')
 
   async function handleSave(): Promise<void> {
     setSaving(true)
     setError(null)
-    setSaved(false)
     try {
       const updated = await customersApi.update(customer.id, { phone, whatsapp })
       onSaved(updated)
-      setSaved(true)
+      toast.success('Contact details saved')
     } catch (err) {
       setError(err instanceof ApiError ? err.message : 'Could not update your profile.')
     } finally {
@@ -86,7 +85,6 @@ function ProfileTab({ customer, onSaved }: { customer: Customer; onSaved: (c: Cu
       </div>
 
       {error && <div style={{ marginBottom: 'var(--space-4)' }}><Banner variant="error" title="Update failed">{error}</Banner></div>}
-      {saved && <div style={{ marginBottom: 'var(--space-4)' }}><Banner variant="success" title="Profile updated">Your contact details were saved.</Banner></div>}
 
       <SectionHead title="Contact info" sub="Name and email are locked once an account is created. Other fields can be updated." />
       <div style={{ height: 16 }} />
@@ -135,7 +133,6 @@ function NotificationsTab({ customer, onSaved }: { customer: Customer; onSaved: 
   const [locale, setLocale] = useState<'en' | 'zh'>(customer.locale ?? 'en')
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
-  const [saved, setSaved] = useState(false)
 
   const consentDirty =
     JSON.stringify([...consent].sort()) !== JSON.stringify([...(customer.notification_consent ?? [])].sort())
@@ -148,7 +145,6 @@ function NotificationsTab({ customer, onSaved }: { customer: Customer; onSaved: 
   async function handleSave(): Promise<void> {
     setSaving(true)
     setError(null)
-    setSaved(false)
     try {
       // Send only what changed. Saving notification_consent is what records that the customer made a
       // choice (shared/notification_consent.py), so a customer who only switches language must not be
@@ -158,7 +154,7 @@ function NotificationsTab({ customer, onSaved }: { customer: Customer; onSaved: 
       if (locale !== (customer.locale ?? 'en')) body.locale = locale
       const updated = await customersApi.update(customer.id, body)
       onSaved(updated)
-      setSaved(true)
+      toast.success('Notification preferences saved')
     } catch (err) {
       setError(err instanceof ApiError ? err.message : 'Could not save your preferences.')
     } finally {
@@ -175,7 +171,6 @@ function NotificationsTab({ customer, onSaved }: { customer: Customer; onSaved: 
       <div style={{ height: 12 }} />
 
       {error && <div style={{ marginBottom: 'var(--space-4)' }}><Banner variant="error" title="Save failed">{error}</Banner></div>}
-      {saved && <div style={{ marginBottom: 'var(--space-4)' }}><Banner variant="success" title="Preferences saved">Your notification channels were updated.</Banner></div>}
 
       {CHANNELS.map(({ key, label, sub, ...rest }, i) => {
         const enabled = consent.includes(key)

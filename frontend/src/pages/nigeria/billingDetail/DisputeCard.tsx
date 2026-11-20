@@ -10,6 +10,7 @@ import {
 import { Action, Banner, Button, DialogGuard, Field, Mono, StatusBadge } from '../../../design/components'
 import styles from '../BillingDetail.module.css'
 import { formatDate } from '../../../lib/format'
+import { toast } from '../../../design/toast'
 
 // ---------------------------------------------------------------------------
 // DisputeSLA
@@ -143,6 +144,7 @@ export function ResolveDisputeModal({
       const body: ResolveCBMDisputeInput = { status: outcome, resolution_notes: notes }
       if (outcome === 'resolved_adjusted' && correctedCbm) body.corrected_cbm = correctedCbm
       const updated = await disputeApi.resolve(dispute.id, body)
+      toast.success('Dispute resolved')
       onSuccess(updated)
     } catch (err) {
       setError(err instanceof ApiError ? err.message : 'Could not resolve dispute.')
@@ -247,6 +249,7 @@ export function DisputeCard({ dispute, role, onUpdated }: DisputeCardProps): JSX
     setError(null)
     try {
       const updated = await disputeApi.acknowledge(dispute.id)
+      toast.success('Dispute acknowledged')
       onUpdated(updated)
     } catch (err) {
       setError(err instanceof ApiError ? err.message : 'Could not acknowledge dispute.')
@@ -261,6 +264,7 @@ export function DisputeCard({ dispute, role, onUpdated }: DisputeCardProps): JSX
     setError(null)
     try {
       const updated = await disputeApi.reject(dispute.id, rejectingReason)
+      toast.success('Dispute rejected')
       onUpdated(updated)
     } catch (err) {
       setError(err instanceof ApiError ? err.message : 'Could not reject dispute.')

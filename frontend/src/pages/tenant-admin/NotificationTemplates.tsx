@@ -20,6 +20,7 @@ import { PageHeader } from '../../shell/PageHeader'
 import styles from './admin.module.css'
 import { formatTime } from '../../lib/format'
 import waStyles from './NotificationTemplates.module.css'
+import { toast } from '../../design/toast'
 
 // ---------------------------------------------------------------------------
 // SMS counter
@@ -53,14 +54,12 @@ function TemplateCard({ template, onSaved }: TemplateCardProps): JSX.Element {
   const [subject, setSubject] = useState(template.subject ?? '')
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
-  const [saved, setSaved] = useState(false)
 
   const isSms = template.channel === 'sms' || template.channel === 'whatsapp'
 
   async function handleSave(): Promise<void> {
     setSaving(true)
     setError(null)
-    setSaved(false)
     try {
       const updated = await configApi.upsertNotificationTemplate(
         template.event_type,
@@ -68,8 +67,7 @@ function TemplateCard({ template, onSaved }: TemplateCardProps): JSX.Element {
         { template_body: body, subject: subject || undefined },
       )
       onSaved(updated)
-      setSaved(true)
-      setTimeout(() => setSaved(false), 3000)
+      toast.success('Message template saved')
     } catch (err) {
       setError(err instanceof ApiError ? err.message : 'Could not save template.')
     } finally {
@@ -86,7 +84,6 @@ function TemplateCard({ template, onSaved }: TemplateCardProps): JSX.Element {
             {template.channel.toUpperCase()}
           </span>
         </div>
-        {saved && <span style={{ fontSize: 'var(--text-sm)', color: 'var(--color-success)' }}>✓ Saved</span>}
       </div>
 
       {error && <Banner variant="error">{error}</Banner>}

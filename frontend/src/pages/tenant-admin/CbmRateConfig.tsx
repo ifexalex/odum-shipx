@@ -10,6 +10,7 @@ import { RateHistoryTable } from './DollarRateConfig'
 import { PageHeader } from '../../shell/PageHeader'
 import { SectionHead } from '../../shell/SectionHead'
 import styles from './admin.module.css'
+import { toast } from '../../design/toast'
 
 function symbol(currency: CbmRateCurrency): string {
   return currency === 'ngn' ? '₦' : '$'
@@ -36,7 +37,6 @@ export function CbmRateConfig(): JSX.Element {
   const [minCbm, setMinCbm] = useState('')
   const [saving, setSaving] = useState(false)
   const [saveError, setSaveError] = useState<string | null>(null)
-  const [success, setSuccess] = useState(false)
 
   function fillForm(data: CbmRateConfig): void {
     setCurrency(data.currency)
@@ -54,7 +54,6 @@ export function CbmRateConfig(): JSX.Element {
   async function handleSave(): Promise<void> {
     setSaving(true)
     setSaveError(null)
-    setSuccess(false)
     try {
       const updated = await configApi.updateCbmRate({
         currency,
@@ -70,7 +69,7 @@ export function CbmRateConfig(): JSX.Element {
       // Show the saved value at once; the write also invalidates every config query (api/cacheInvalidation.ts).
       qc.setQueryData(configKeys.cbm(), updated)
       fillForm(updated)
-      setSuccess(true)
+      toast.success('CBM rate updated', 'New invoices use it.')
     } catch (err) {
       setSaveError(err instanceof ApiError ? err.message : 'Could not update CBM rate.')
     } finally {
@@ -87,7 +86,6 @@ export function CbmRateConfig(): JSX.Element {
       <PageHeader title="CBM Rate" subtitle="Freight charge per cubic metre, applied to customer billing." />
 
       {error && <div className={styles.banner}><Banner variant="error">{error}</Banner></div>}
-      {success && <div className={styles.banner}><Banner variant="success">CBM rate updated successfully.</Banner></div>}
 
       {!loading && current && (
         <>

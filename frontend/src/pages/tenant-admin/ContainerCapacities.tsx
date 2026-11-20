@@ -15,6 +15,7 @@ import { STALE_5_MIN } from '../../lib/queryClient'
 import { Badge, Banner, Button, Card, Field, Mono, Table, DialogGuard } from '../../design/components'
 import { useTopBarSlot } from '../../shell/TopBarContext'
 import styles from './admin.module.css'
+import { toast } from '../../design/toast'
 
 interface CapacityModalProps {
   /** null → create; a preset → edit. Defaults only allow editing recommended. */
@@ -58,12 +59,14 @@ function CapacityModal({ existing, onCancel, onSuccess }: CapacityModalProps): J
             ? { name: name.trim(), capacity_cbm: capacityNum }
             : {}),
         })
+        toast.success('Capacity updated')
       } else {
         await containerCapacitiesApi.create({
           name: name.trim(),
           capacity_cbm: capacityNum,
           ...(recommendedNum !== null ? { recommended_cbm: recommendedNum } : {}),
         })
+        toast.success('Capacity added')
       }
       onSuccess()
     } catch (err) {
@@ -179,6 +182,7 @@ export function ContainerCapacities(): JSX.Element {
     setActionError(null)
     try {
       await containerCapacitiesApi.remove(id)
+      toast.success('Capacity removed')
     } catch (err) {
       setActionError(err instanceof ApiError ? err.message : 'Could not remove capacity.')
     } finally {

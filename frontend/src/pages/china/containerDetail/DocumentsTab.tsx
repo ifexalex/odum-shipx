@@ -14,6 +14,7 @@ import { SectionHead } from '../../../shell/SectionHead'
 import styles from '../ContainerDetail.module.css'
 import { formatDate } from '../../../lib/format'
 import { uploadSizeProblem } from '../../../lib/uploadLimits'
+import { toast } from '../../../design/toast'
 
 // ---------------------------------------------------------------------------
 // Documents tab — prototype 5.3/14.4 (ContainerDocs + UploadDocumentModal).
@@ -97,6 +98,7 @@ export function DocumentsTab({
       // The document is listed only once confirmed, and the confirm POST refreshes this list (api/client.ts
       // invalidates the container keys on it). A file over the limit is refused here with the API's message.
       await containerDocumentsApi.confirmUpload(containerId, presigned.document_id)
+      toast.success('Document uploaded', file.name)
       setShowUpload(false)
       setFile(null)
     } catch (err) {

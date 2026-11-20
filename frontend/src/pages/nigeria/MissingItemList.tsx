@@ -10,6 +10,7 @@ import { useTopBarSlot } from '../../shell/TopBarContext'
 import styles from './ItemList.module.css'
 import { formatDate } from '../../lib/format'
 import { statusLabel } from '../../design/status'
+import { toast } from '../../design/toast'
 
 const STATUS_FILTERS: MissingItemStatus[] = [
   'reported', 'investigating', 'found_and_shipping', 'confirmed_lost', 'resolved',
@@ -49,6 +50,7 @@ function UpdateModal({ item, role, onCancel, onSuccess }: UpdateModalProps): JSX
       if (notes.trim()) body.notes = notes
       if (offersCompensation && compensationAmount !== null) body.refund_amount_ngn = compensation.trim()
       const updated = await missingItemsApi.update(item.id, body)
+      toast.success('Missing item updated')
       onSuccess(updated)
     } catch (err) {
       setError(err instanceof ApiError ? err.message : 'Could not update missing item.')

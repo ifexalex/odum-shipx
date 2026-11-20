@@ -10,6 +10,7 @@ import { Banner, Button, Card, Combobox, Field, type ComboboxOption, DateField }
 import { PageHeader } from '../../shell/PageHeader'
 import { SectionHead } from '../../shell/SectionHead'
 import styles from './CreateContainer.module.css'
+import { toast } from '../../design/toast'
 
 // Vessel/voyage/shipping-line/seal-number/container-type columns were added to
 // the `container` table in migration 030, so this form now captures the full
@@ -66,6 +67,7 @@ export function CreateContainer(): JSX.Element {
         },
         key,
       )
+      toast.success('Container created', container.container_number)
       regenerate()
       navigate(`/containers/${container.id}`)
     } catch (err) {

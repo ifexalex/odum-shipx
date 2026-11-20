@@ -25,6 +25,7 @@ import {
   StatCard,
   StatusBadge,
   Table,
+  ToastRegion,
   TenantBrand,
   ToggleSwitch,
   type BadgeVariant,
@@ -32,6 +33,7 @@ import {
   type ButtonVariant,
 } from './components'
 import { PageHeader } from '../shell/PageHeader'
+import { toast } from './toast'
 import { STATUS_REGISTRY, type StatusKind, statusesOf } from './status'
 import { SectionHead } from '../shell/SectionHead'
 import { Tabs } from '../shell/Tabs'
@@ -258,6 +260,27 @@ export function ComponentCatalog(): JSX.Element {
             <Field label="Notes" name="notes" multiline rows={3} optional />
           </div>
         </div>
+      </Section>
+
+      <Section title="Toasts (FD-21)">
+        <p style={{ margin: '0 0 var(--space-4)', color: 'var(--color-ink-3)' }}>
+          Every successful change ends with a toast naming what happened and to which record: top right on desktop,
+          bottom on a phone, four seconds, read once by screen readers. Banners are for state that lasts. Call{' '}
+          <code>toast.success(title, body)</code> from <code>design/toast</code>, or give a React Query mutation{' '}
+          <code>meta.successToast</code>.
+        </p>
+        <div style={{ display: 'flex', gap: 'var(--space-3)', flexWrap: 'wrap' }}>
+          <Button variant="secondary" onClick={() => toast.success('Payment recorded', 'ACM-INV-20261119-0042')}>
+            Success toast
+          </Button>
+          <Button variant="secondary" onClick={() => toast.info('Message queued to send again')}>
+            Info toast
+          </Button>
+          <Button variant="secondary" onClick={() => toast.error('Could not reach the server', 'Your change was not saved.')}>
+            Error toast
+          </Button>
+        </div>
+        <ToastRegion />
       </Section>
 
       <Section title="Banner">

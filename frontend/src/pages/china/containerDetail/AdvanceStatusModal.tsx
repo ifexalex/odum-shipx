@@ -12,6 +12,7 @@ import {
 import { Banner, Button, Field, Mono, DialogGuard, DateField } from '../../../design/components'
 import styles from '../ContainerDetail.module.css'
 import { statusLabel } from '../../../design/status'
+import { toast } from '../../../design/toast'
 
 export interface AdvanceModalProps {
   container: Container
@@ -74,6 +75,7 @@ export function AdvanceStatusModal({
         ship_date: shipDate || undefined,
         notes: notes || undefined,
       })
+      toast.success(`Container moved to ${statusLabel('container', updated.status)}`, updated.container_number)
       onAdvanced(updated)
     } catch (err) {
       setError(err instanceof ApiError ? err.message : 'Could not update the container status.')

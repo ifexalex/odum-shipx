@@ -7,6 +7,7 @@ import { Button, Card, Mono, Table } from '../../../design/components'
 import { formatNgn } from '../../../lib/format'
 import { SectionHead } from '../../../shell/SectionHead'
 import styles from '../BillingDetail.module.css'
+import { toast } from '../../../design/toast'
 
 interface MiscChargesSectionProps {
   billing: Billing
@@ -37,6 +38,7 @@ export function MiscChargesSection({
     setRemovingChargeId(chargeId)
     try {
       await billingApi.deleteMiscCharge(billing.id, chargeId)
+      toast.success('Charge removed')
       await refetchCharges()
       onChanged()
     } catch (err) {

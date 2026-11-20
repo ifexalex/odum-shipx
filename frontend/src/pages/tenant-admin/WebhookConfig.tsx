@@ -11,6 +11,7 @@ import { useTenantConfig } from '../../hooks/useConfig'
 import { useSeedOnce } from '../../hooks/useSeedOnce'
 import { SectionHead } from '../../shell/SectionHead'
 import styles from './WebhookConfig.module.css'
+import { toast } from '../../design/toast'
 
 // ─── Event toggle row ──────────────────────────────────────────────────────────
 const WEBHOOK_EVENTS: Array<{ type: WebhookEventType; label: string }> = [
@@ -123,7 +124,6 @@ export function WebhookConfig(): JSX.Element {
   const loading = !tenantConfig.isFetchedAfterMount && !tenantConfig.isError
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
-  const [saveSuccess, setSaveSuccess] = useState(false)
 
   const [showRotateModal, setShowRotateModal] = useState(false)
   const [rotating, setRotating] = useState(false)
@@ -149,7 +149,6 @@ export function WebhookConfig(): JSX.Element {
     if (!endpointValid && config.endpoint_url.length > 0) return
     setSaving(true)
     setError(null)
-    setSaveSuccess(false)
     try {
       const updated = await configApi.updateConfig({
         webhook_config: {
@@ -159,8 +158,7 @@ export function WebhookConfig(): JSX.Element {
         },
       })
       if (updated.webhook_config) setConfig(updated.webhook_config)
-      setSaveSuccess(true)
-      setTimeout(() => setSaveSuccess(false), 3000)
+      toast.success('Webhook settings saved')
     } catch (err) {
       setError(err instanceof ApiError ? err.message : 'Could not save webhook config.')
     } finally {
@@ -205,11 +203,6 @@ export function WebhookConfig(): JSX.Element {
       {error && (
         <div style={{ marginBottom: 'var(--space-4)' }}>
           <Banner variant="error">{error}</Banner>
-        </div>
-      )}
-      {saveSuccess && (
-        <div style={{ marginBottom: 'var(--space-4)' }}>
-          <Banner variant="success">Webhook configuration saved.</Banner>
         </div>
       )}
       {newSecret && (

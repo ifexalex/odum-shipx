@@ -25,6 +25,7 @@ import styles from './admin.module.css'
 import { formatDate } from '../../lib/format'
 import { useBreadcrumbLabel } from '../../shell/breadcrumbs'
 import { roleLabel } from '../../design/status'
+import { toast } from '../../design/toast'
 
 
 const ROLE_OPTIONS: TenantUserRole[] = [
@@ -89,7 +90,6 @@ export function StaffUserDetail(): JSX.Element {
   const [editRoles, setEditRoles] = useState<TenantUserRole[] | null>(null)
   const [editPrimaryRole, setEditPrimaryRole] = useState<TenantUserRole | null>(null)
   const [saving, setSaving] = useState(false)
-  const [actionMsg, setActionMsg] = useState<string | null>(null)
   const [savingLocale, setSavingLocale] = useState(false)
   const [actionError, setActionError] = useState<string | null>(null)
 
@@ -123,6 +123,7 @@ export function StaffUserDetail(): JSX.Element {
         roles: editRoles,
         primary_role: editPrimaryRole ?? editRoles[0],
       })
+      toast.success('Roles updated', updated.full_name)
       applyUser(updated)
       setEditRoles(null)
       setEditPrimaryRole(null)
@@ -140,17 +141,17 @@ export function StaffUserDetail(): JSX.Element {
     try {
       if (action === 'resend') {
         await usersApi.resendInvite(user.id)
-        setActionMsg('Invite email resent.')
+        toast.success('Invite email resent.')
       } else if (action === 'activate') {
         await usersApi.resendActivation(user.id)
-        setActionMsg('Activation link sent.')
+        toast.success('Activation link sent.')
       } else if (action === 'reset') {
         await usersApi.resetPassword(user.id)
-        setActionMsg('Password reset email sent.')
+        toast.success('Password reset email sent.')
       } else {
         await usersApi.deactivate(user.id)
         applyUser({ ...user, status: 'inactive' })
-        setActionMsg('User deactivated.')
+        toast.success('User deactivated.')
       }
     } catch (err) {
       setActionError(err instanceof ApiError ? err.message : 'Action failed.')
@@ -167,7 +168,7 @@ export function StaffUserDetail(): JSX.Element {
       const updated = await usersApi.update(user.id, { locale })
       applyUser(updated)
       setLocaleDraft(null)
-      setActionMsg('Notification language updated.')
+      toast.success('Notification language updated.')
     } catch (err) {
       setActionError(err instanceof ApiError ? err.message : 'Could not update locale.')
     } finally {
@@ -191,7 +192,6 @@ export function StaffUserDetail(): JSX.Element {
         </div>
       )}
       {error && <div className={styles.banner}><Banner variant="error">{error}</Banner></div>}
-      {actionMsg && <div className={styles.banner}><Banner variant="success">{actionMsg}</Banner></div>}
 
       <SectionHead title="Profile" />
       <Card padding="default">

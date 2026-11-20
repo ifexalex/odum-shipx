@@ -63,7 +63,7 @@ describe('PlatformSettings — General', () => {
     await waitFor(() =>
       expect(platformSettingsApi.update).toHaveBeenCalledWith({ platform_email_from: 'ops@shipx.test', max_tenants: 60, maintenance_mode: false }),
     )
-    expect(await screen.findByText('Platform settings updated.')).toBeInTheDocument()
+    expect(await screen.findByText('Platform settings saved')).toBeInTheDocument()
     expect(screen.getByDisplayValue('60')).toBeInTheDocument()
   })
 

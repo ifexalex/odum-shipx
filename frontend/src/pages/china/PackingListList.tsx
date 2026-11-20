@@ -12,6 +12,7 @@ import styles from './PackingListList.module.css'
 import { formatDate } from '../../lib/format'
 import { useStatusParam } from '../../lib/useStatusParam'
 import { statusLabel } from '../../design/status'
+import { toast } from '../../design/toast'
 
 const STATUS_FILTERS: PackingListStatus[] = ['draft', 'pending_approval', 'approved', 'rejected']
 
@@ -186,6 +187,7 @@ export function PackingListList(): JSX.Element {
     setActionError(null)
     try {
       const result = await packingListApi.bulkSubmit(Array.from(selected))
+      if (result.succeeded.length) toast.success(`${result.succeeded.length} packing list${result.succeeded.length === 1 ? '' : 's'} submitted`)
       setBulkResult(result)
       await reload()
     } catch (err) {
@@ -200,6 +202,7 @@ export function PackingListList(): JSX.Element {
     setActionError(null)
     try {
       const result = await packingListApi.bulkApprove(Array.from(selected))
+      if (result.succeeded.length) toast.success(`${result.succeeded.length} packing list${result.succeeded.length === 1 ? '' : 's'} approved`)
       setBulkResult(result)
       await reload()
     } catch (err) {
@@ -214,6 +217,7 @@ export function PackingListList(): JSX.Element {
     setActionError(null)
     try {
       const result = await packingListApi.bulkReject(Array.from(selected), comments)
+      if (result.succeeded.length) toast.success(`${result.succeeded.length} packing list${result.succeeded.length === 1 ? '' : 's'} rejected`)
       setBulkResult(result)
       setShowRejectModal(false)
       await reload()

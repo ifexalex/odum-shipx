@@ -15,6 +15,7 @@ import { Badge, Banner, Button, Card, Field, Mono, Table, DialogGuard } from '..
 import { useTopBarSlot } from '../../shell/TopBarContext'
 import styles from './admin.module.css'
 import { formatNgn } from '../../lib/format'
+import { toast } from '../../design/toast'
 
 interface ChargeTypeModalProps {
   existing: ChargeType | null
@@ -41,12 +42,14 @@ function ChargeTypeModal({ existing, onCancel, onSuccess }: ChargeTypeModalProps
           amount_ngn: amount,
           description: description || undefined,
         })
+        toast.success('Charge type updated')
       } else {
         await configApi.createChargeType({
           name,
           amount_ngn: amount,
           description: description || undefined,
         })
+        toast.success('Charge type added')
       }
       onSuccess()
     } catch (err) {
@@ -173,6 +176,7 @@ export function ChargeTypes(): JSX.Element {
     setActionError(null)
     try {
       await configApi.deactivateChargeType(id)
+      toast.success('Charge type deactivated')
     } catch (err) {
       setActionError(err instanceof ApiError ? err.message : 'Could not deactivate charge type.')
     } finally {

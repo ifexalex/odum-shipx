@@ -18,6 +18,7 @@ import { useWarehouses } from '../../../hooks/useWarehouses'
 import { collapseBatches, emptyItem } from './items'
 import { usePackingListPricing } from './usePackingListPricing'
 import { useBreadcrumbLabel } from '../../../shell/breadcrumbs'
+import { toast } from '../../../design/toast'
 
 /**
  * Everything the create/edit packing-list wizard holds: the chosen customer, container and dates, the item rows, the
@@ -257,6 +258,7 @@ export function useCreatePackingListForm() {
           arrival_warehouse_id: arrivalWarehouseId || undefined,
           items,
         })
+        toast.success('Draft saved')
         targetId = updated.id
       } else {
         const created = await packingListApi.create(
@@ -278,6 +280,7 @@ export function useCreatePackingListForm() {
       }
       if (submitForApproval) {
         await packingListApi.submit(targetId)
+        toast.success('Packing list submitted for approval')
       }
       navigate(`/packing-lists/${targetId}`)
     } catch (err) {

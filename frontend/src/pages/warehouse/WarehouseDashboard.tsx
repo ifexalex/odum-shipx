@@ -19,6 +19,7 @@ import { STALE_30S } from '../../lib/queryClient'
 import { Banner, Button, Field, Icon, Mono, PhoneField, StatCard, ToggleSwitch, DialogGuard, Badge, Select } from '../../design/components'
 import styles from './WarehouseDashboard.module.css'
 import { todayIso } from '../../lib/format'
+import { toast } from '../../design/toast'
 
 // ---------------------------------------------------------------------------
 // Urgency helpers (P2-2) — prototype §9.3 sorts the queue by age and flags
@@ -107,6 +108,7 @@ function PickupSheet({ note, onCancel, onSuccess }: PickupSheetProps): JSX.Eleme
       }
       if (codeRequired) body.pickup_code = pickupCode.trim()
       const result = await releaseNotesApi.recordPickup(note.id, body)
+      toast.success('Pickup recorded', note.reference_number)
       onSuccess(result)
     } catch (err) {
       setError(err instanceof ApiError ? err.message : 'Could not record pickup.')

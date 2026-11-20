@@ -32,6 +32,7 @@ import { Tabs } from '../../shell/Tabs'
 import styles from './admin.module.css'
 import { formatDate, formatDateTime, formatNgn } from '../../lib/format'
 import { useBreadcrumbLabel } from '../../shell/breadcrumbs'
+import { toast } from '../../design/toast'
 
 // ---------------------------------------------------------------------------
 // GDPR Anonymise Modal — MUST use exact "ANONYMISE" text confirmation
@@ -57,6 +58,7 @@ function AnonymiseModal({ customer, onCancel, onSuccess }: AnonymiseModalProps):
     setError(null)
     try {
       await customersApi.anonymise(customer.id)
+      toast.success('Customer anonymised')
       onSuccess()
     } catch (err) {
       setError(err instanceof ApiError ? err.message : 'Could not anonymise customer.')
@@ -139,6 +141,7 @@ function ProfileTab({ customer, shipments, billing, claims, onSaved }: ProfileTa
     setSavingLocale(true)
     try {
       onSaved(await customersApi.update(customer.id, { locale }))
+      toast.success('Message language updated', customer.name ?? undefined)
     } catch {
       // Non-fatal — the select snaps back to the stored value on re-render.
     } finally {
@@ -482,6 +485,7 @@ export function AdminCustomerDetail(): JSX.Element {
     setInviteMessage(null)
     try {
       const invite = await customersApi.invite(customer.id)
+      toast.success('Invite created', customer.name ?? undefined)
       setInviteMessage(
         `Invite sent via ${invite.sent_channel.toUpperCase()} to ${invite.sent_to_masked ?? 'the customer'}. ` +
           `Expires ${formatDateTime(invite.expires_at)}.`

@@ -9,6 +9,7 @@ import { Badge, Banner, Button, Card, Chip, Field, Mono, PhoneField, StatCard, T
 import { useTopBarSlot } from '../../shell/TopBarContext'
 import styles from './admin.module.css'
 import { formatDate } from '../../lib/format'
+import { toast } from '../../design/toast'
 
 // ---------------------------------------------------------------------------
 // Add customer modal (audit gap B5a — prototype 3.5's "Add customer" action).
@@ -52,6 +53,7 @@ function AddCustomerModal({ onCancel, onSuccess }: AddCustomerModalProps): JSX.E
         ...(whatsapp.trim() ? { whatsapp: whatsapp.trim() } : {}),
         notification_consent: consent,
       })
+      toast.success('Customer added', customer.name ?? undefined)
       onSuccess(customer)
     } catch (err) {
       setError(err instanceof ApiError ? err.message : 'Could not create the customer.')

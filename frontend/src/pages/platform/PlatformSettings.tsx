@@ -26,6 +26,7 @@ import { Banner, Button, Card, Field, Mono, ToggleSwitch } from '../../design/co
 import { PageHeader } from '../../shell/PageHeader'
 import { SectionHead } from '../../shell/SectionHead'
 import { Tabs } from '../../shell/Tabs'
+import { toast } from '../../design/toast'
 
 // ---------------------------------------------------------------------------
 // General
@@ -40,7 +41,6 @@ function GeneralSettings(): JSX.Element {
   const [maintenance, setMaintenance] = useState(false)
   const [saving, setSaving] = useState(false)
   const [saveError, setSaveError] = useState<string | null>(null)
-  const [saved, setSaved] = useState(false)
 
   useSeedOnce(query, (s) => {
     setEmailFrom(String(s.platform_email_from ?? ''))
@@ -54,7 +54,6 @@ function GeneralSettings(): JSX.Element {
   async function handleSave(): Promise<void> {
     setSaving(true)
     setSaveError(null)
-    setSaved(false)
     try {
       const updated = await platformSettingsApi.update({
         platform_email_from: emailFrom,
@@ -62,7 +61,7 @@ function GeneralSettings(): JSX.Element {
         maintenance_mode: maintenance,
       })
       qc.setQueryData(platformSettingsKeys.general(), updated)
-      setSaved(true)
+      toast.success('Platform settings saved')
     } catch (err) {
       setSaveError(err instanceof ApiError ? err.message : 'Could not save settings.')
     } finally {
@@ -75,7 +74,6 @@ function GeneralSettings(): JSX.Element {
   return (
     <Card padding="large">
       {error && <div style={{ marginBottom: 'var(--space-4)' }}><Banner variant="error" title="Error">{error}</Banner></div>}
-      {saved && <div style={{ marginBottom: 'var(--space-4)' }}><Banner variant="success" title="Saved">Platform settings updated.</Banner></div>}
 
       <SectionHead title="General" sub="Platform-wide identity and safety switches" />
       <div style={{ height: 16 }} />
@@ -169,6 +167,7 @@ function ProviderCard({ spec, initial }: { spec: ProviderSpec; initial: Record<s
     setResult(null)
     try {
       await platformSettingsApi.updateGateway(spec.kind, values)
+      toast.success('Gateway settings saved')
       setResult({ kind: 'success', msg: 'Configuration saved.' })
     } catch (err) {
       setResult({ kind: 'error', msg: err instanceof ApiError ? err.message : 'Save failed.' })
@@ -271,6 +270,7 @@ function PlanEditor({ tier, limits, onSaved }: { tier: SubscriptionTier; limits:
         containers_per_month: Number(containers),
         storage_gb: Number(storage),
       })
+      toast.success('Plan limits saved')
       onSaved(result.plans)
     } catch (err) {
       setError(err instanceof ApiError ? err.message : 'Could not update plan.')

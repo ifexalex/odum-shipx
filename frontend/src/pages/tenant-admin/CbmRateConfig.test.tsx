@@ -109,7 +109,7 @@ describe('CbmRateConfig', () => {
     await waitFor(() => expect(configApi.updateCbmRate).toHaveBeenCalledWith({
       currency: 'usd', rate_mode: 'flat', carton_rate: 50, bag_rate: 50, bale_rate: 50, min_cbm_per_item: 0.1,
     }))
-    expect(await screen.findByText('CBM rate updated successfully.')).toBeInTheDocument()
+    expect(await screen.findByText('CBM rate updated')).toBeInTheDocument()
     expect(screen.getByText('$50.00 per CBM')).toBeInTheDocument()
   })
 

@@ -13,6 +13,7 @@ import { SectionHead } from '../../shell/SectionHead'
 import styles from './PackingListDetail.module.css'
 import { formatDate } from '../../lib/format'
 import { useBreadcrumbLabel } from '../../shell/breadcrumbs'
+import { toast } from '../../design/toast'
 
 interface RejectModalProps {
   onCancel: () => void
@@ -126,6 +127,7 @@ export function PackingListDetail(): JSX.Element {
     setActionError(null)
     try {
       const updated = await packingListApi.approve(pl.id)
+      toast.success('Packing list approved', updated.reference ?? undefined)
       setPl(updated)
     } catch (err) {
       setActionError(err instanceof ApiError ? err.message : 'Could not approve this packing list.')
@@ -140,6 +142,7 @@ export function PackingListDetail(): JSX.Element {
     setActionError(null)
     try {
       const updated = await packingListApi.reject(pl.id, { comments })
+      toast.success('Packing list rejected', updated.reference ?? undefined)
       setPl(updated)
       setShowRejectModal(false)
     } catch (err) {
@@ -178,6 +181,7 @@ export function PackingListDetail(): JSX.Element {
     setActionError(null)
     try {
       const submitted = await packingListApi.submit(pl.id)
+      toast.success('Packing list submitted for approval', submitted.reference ?? undefined)
       setPl(submitted)
     } catch (err) {
       setActionError(err instanceof ApiError ? err.message : 'Could not submit this packing list for approval.')
@@ -192,6 +196,7 @@ export function PackingListDetail(): JSX.Element {
     try {
       const updated = await packingListApi.update(pl.id, { items: editItems })
       const resubmitted = await packingListApi.submit(updated.id)
+      toast.success('Packing list resubmitted', resubmitted.reference ?? undefined)
       setPl(resubmitted)
       setEditing(false)
     } catch (err) {

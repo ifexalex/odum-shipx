@@ -7,6 +7,7 @@ import {  Banner, Button, Card, Field, Mono, Table, StatusBadge } from '../../..
 import { formatDate, formatNgn } from '../../../lib/format'
 import { SectionHead } from '../../../shell/SectionHead'
 import styles from '../BillingDetail.module.css'
+import { toast } from '../../../design/toast'
 
 interface PaymentClaimsSectionProps {
   billingId: string
@@ -41,6 +42,7 @@ export function PaymentClaimsSection({
     setClaimActionError(null)
     try {
       await paymentClaimApi.confirm(claimId)
+      toast.success('Payment confirmed')
       await refetchClaims()
       onChanged()
     } catch (err) {
@@ -58,6 +60,7 @@ export function PaymentClaimsSection({
     setClaimActionError(null)
     try {
       await paymentClaimApi.reject(claimId, rejectReason.trim())
+      toast.success('Payment claim rejected')
       await refetchClaims()
       setRejectingClaimId(null)
       setRejectReason('')

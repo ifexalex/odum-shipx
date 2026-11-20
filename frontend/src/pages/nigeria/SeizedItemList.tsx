@@ -9,6 +9,7 @@ import { useTopBarSlot } from '../../shell/TopBarContext'
 import styles from './ItemList.module.css'
 import { formatDate } from '../../lib/format'
 import { statusLabel } from '../../design/status'
+import { toast } from '../../design/toast'
 
 const STATUS_FILTERS: SeizedItemStatus[] = [
   'seized', 'recovery_in_progress', 'recovered', 'permanently_lost',
@@ -45,6 +46,7 @@ function UpdateModal({ item, onCancel, onSuccess }: UpdateModalProps): JSX.Eleme
       if (notes.trim()) body.notes = notes
       if (offersCompensation && compensationAmount !== null) body.refund_amount_ngn = compensation.trim()
       const updated = await seizedItemsApi.update(item.id, body)
+      toast.success('Seized item updated')
       onSuccess(updated)
     } catch (err) {
       setError(err instanceof ApiError ? err.message : 'Could not update seized item.')

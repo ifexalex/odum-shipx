@@ -14,6 +14,7 @@ import { Banner, Button, Field, RadioGroup } from '../../design/components'
 import { PageHeader } from '../../shell/PageHeader'
 import styles from './customer.module.css'
 import { useInvoiceCrumb } from './useInvoiceCrumb'
+import { toast } from '../../design/toast'
 
 export function RefundRequest(): JSX.Element {
   const { id: billingId } = useParams<{ id: string }>()
@@ -55,6 +56,7 @@ export function RefundRequest(): JSX.Element {
           : {}),
       }
       await refundsApi.create(body, idempotencyKey.current)
+      toast.success('Refund request sent', 'Our accounts team will review it.')
       navigate(`/my-billing/${billingId}`, { state: { refundFiled: true } })
     } catch (err) {
       setError(err instanceof ApiError ? err.message : 'Could not submit refund request.')

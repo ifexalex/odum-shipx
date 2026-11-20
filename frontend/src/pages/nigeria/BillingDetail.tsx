@@ -20,6 +20,7 @@ import { BillingBreakdown, PaymentsTable } from './billingDetail/Breakdown'
 import { MiscChargesSection } from './billingDetail/MiscCharges'
 import { PaymentClaimsSection } from './billingDetail/PaymentClaims'
 import { useBreadcrumbLabel } from '../../shell/breadcrumbs'
+import { toast } from '../../design/toast'
 
 
 // ---------------------------------------------------------------------------
@@ -154,6 +155,7 @@ export function BillingDetail(): JSX.Element {
     setWaivingFees(true)
     try {
       const updated = await billingApi.waiveStorageFees(billing.id, 'Waived by staff')
+      toast.success('Storage fees waived', updated.invoice_number ?? undefined)
       applyBilling(updated)
       invalidateBillingCaches()
     } catch (err) {

@@ -19,6 +19,7 @@ import { Action, Banner, Button, Card, Chip, DialogGuard, ExportButton, Field, I
 import { SectionHead } from '../../shell/SectionHead'
 import styles from './ManifestDetail.module.css'
 import { useBreadcrumbLabel } from '../../shell/breadcrumbs'
+import { toast } from '../../design/toast'
 
 // ---------------------------------------------------------------------------
 // Carton diff helpers
@@ -111,6 +112,7 @@ function VerifyManifestModal({ manifest, onCancel, onVerified }: VerifyManifestM
             }))
           : undefined
       const updated = await manifestApi.verify(manifest.id, { verification_status: outcome, discrepancies })
+      toast.success(outcome === 'verified' ? 'Manifest verified' : 'Discrepancies recorded')
       onVerified(updated)
     } catch (err) {
       setError(err instanceof ApiError ? err.message : 'Could not verify this manifest.')
@@ -268,6 +270,7 @@ function ResolveDiscrepancyModal({ manifest, onCancel, onResolved }: ResolveDisc
     setError(null)
     try {
       const updated = await manifestApi.resolveDiscrepancy(manifest.id, { resolution_notes: notes })
+      toast.success('Discrepancy resolved')
       onResolved(updated)
     } catch (err) {
       setError(err instanceof ApiError ? err.message : 'Could not resolve this discrepancy.')
@@ -377,6 +380,7 @@ export function ManifestDetail(): JSX.Element {
     setActionError(null)
     try {
       const updated = await manifestApi.revokeVerification(manifest.id)
+      toast.success('Verification revoked')
       applyUpdated(updated)
       setShowRevokeConfirm(false)
     } catch (err) {

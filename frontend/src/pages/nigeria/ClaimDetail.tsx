@@ -28,6 +28,7 @@ import { formatDate, formatNgn } from '../../lib/format'
 import { useBreadcrumbLabel } from '../../shell/breadcrumbs'
 import { ScrollStrip } from '../../shell/ScrollStrip'
 import { statusLabel } from '../../design/status'
+import { toast } from '../../design/toast'
 
 // ---------------------------------------------------------------------------
 // StartInspectionModal
@@ -55,6 +56,7 @@ function StartInspectionModal({ onCancel, onSuccess, claimId }: StartInspectionM
     setError(null)
     try {
       const updated = await claimsApi.startInspection(claimId, { inspection_method: method })
+      toast.success('Inspection started', updated.reference ?? undefined)
       onSuccess(updated)
     } catch (err) {
       setError(err instanceof ApiError ? err.message : 'Could not start inspection.')
@@ -170,6 +172,7 @@ function ResolveClaimModal({ onCancel, onSuccess, claimId, role }: ResolveClaimM
       if (needsAmount && amountNgn) body.amount_ngn = amountNgn
       if (needsDiscount && discountPct) body.discount_percentage = discountPct
       const updated = await claimsApi.resolve(claimId, body)
+      toast.success('Claim resolved', updated.reference ?? undefined)
       onSuccess(updated)
     } catch (err) {
       setError(err instanceof ApiError ? err.message : 'Could not resolve claim.')

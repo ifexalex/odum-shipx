@@ -20,6 +20,7 @@ import { OverviewTab } from './containerDetail/OverviewTab'
 import { PackingListsTab, TrackingTab } from './containerDetail/Tabs'
 import { fetchAllPackingLists } from './containerDetail/packingLists'
 import { statusLabel } from '../../design/status'
+import { toast } from '../../design/toast'
 
 
 export function ContainerDetail(): JSX.Element {
@@ -110,6 +111,7 @@ export function ContainerDetail(): JSX.Element {
     setActionError(null)
     try {
       await containersApi.delete(id)
+      toast.success('Container deleted')
       navigate('/containers')
     } catch (err) {
       setActionError(err instanceof ApiError ? err.message : 'Could not delete this container.')
@@ -123,6 +125,7 @@ export function ContainerDetail(): JSX.Element {
     setActionError(null)
     try {
       const updated = await containersApi.cancel(id)
+      toast.success('Container cancelled', updated.container_number)
       qc.setQueryData(containerKeys.detail(id ?? ''), updated)
       setShowCancelModal(false)
     } catch (err) {

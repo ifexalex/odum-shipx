@@ -92,7 +92,7 @@ describe('CompanySettings (4.1)', () => {
         branding: expect.objectContaining({ display_name: 'Kola Cargo Hub', tagline: BRANDING.tagline }),
       })
     })
-    expect(await screen.findByText('Saved')).toBeInTheDocument()
+    expect(await screen.findByText('Company settings saved')).toBeInTheDocument()
   })
 
   it('save stays disabled until the form is dirty, and rejects a bad hex colour', async () => {

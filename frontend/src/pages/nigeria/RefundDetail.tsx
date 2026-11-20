@@ -20,6 +20,7 @@ import { SectionHead } from '../../shell/SectionHead'
 import styles from './RefundDetail.module.css'
 import { formatDate, formatNgn } from '../../lib/format'
 import { useBreadcrumbLabel } from '../../shell/breadcrumbs'
+import { toast } from '../../design/toast'
 
 // ---------------------------------------------------------------------------
 // Status helpers
@@ -115,6 +116,7 @@ function AccountsReviewModal({ refund, onCancel, onSuccess }: AccountsReviewModa
     try {
       const body: AccountsReviewInput = { debt_check_passed: passed, debt_check_notes: notes }
       const updated = await refundsApi.review(refund.id, body)
+      toast.success('Accounts review saved')
       onSuccess(updated)
     } catch (err) {
       setError(err instanceof ApiError ? err.message : 'Could not complete review.')
@@ -204,6 +206,7 @@ function ApproveModal({ refund, role, onCancel, onSuccess }: ApproveModalProps):
     try {
       const body: ApproveRefundInput = { amount_approved_ngn: amountApproved, approval_level: approvalLevel }
       const updated = await refundsApi.approve(refund.id, body)
+      toast.success('Refund approved')
       onSuccess(updated)
     } catch (err) {
       if (err instanceof ApiError && err.status === 403) {
@@ -321,6 +324,7 @@ function RejectModal({ onCancel, onSuccess, refundId }: RejectModalProps): JSX.E
     setError(null)
     try {
       const updated = await refundsApi.reject(refundId, reason)
+      toast.success('Refund rejected')
       onSuccess(updated)
     } catch (err) {
       setError(err instanceof ApiError ? err.message : 'Could not reject refund.')

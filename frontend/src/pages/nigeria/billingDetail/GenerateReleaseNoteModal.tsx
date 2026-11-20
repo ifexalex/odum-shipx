@@ -5,6 +5,7 @@ import { releaseNotesApi } from '../../../api/releaseNotes'
 import { useWarehouses } from '../../../hooks/useWarehouses'
 import { Action, Banner, Button, Field, DialogGuard, Select, CheckboxField, DateField } from '../../../design/components'
 import styles from '../BillingDetail.module.css'
+import { toast } from '../../../design/toast'
 
 // ---------------------------------------------------------------------------
 // GenerateReleaseNoteModal
@@ -67,6 +68,7 @@ export function GenerateReleaseNoteModal({
           : undefined,
         due_date: releaseWithOutstanding ? dueDate || undefined : undefined,
       })
+      toast.success('Release note generated')
       onSuccess()
     } catch (err) {
       setError(err instanceof ApiError ? err.message : 'Could not generate release note.')

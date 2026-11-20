@@ -4,6 +4,7 @@ import { useSession } from '../auth/useSession'
 import { Banner, Button, Chip, Field, Modal } from '../design/components'
 import { announcementsApi, type AnnouncementAudience } from '../api/announcements'
 import { announcementKeys, customerNotifKeys, staffNotifKeys } from '../api/keys'
+import { toast } from '../design/toast'
 
 export interface ComposeAnnouncementModalProps {
   open: boolean
@@ -36,7 +37,8 @@ export function ComposeAnnouncementModal({ open, onClose }: ComposeAnnouncementM
 
   const send = useMutation({
     mutationFn: () => announcementsApi.send({ title: title.trim(), body: body.trim() || undefined, audience }),
-    onSuccess: () => {
+    onSuccess: (result) => {
+      toast.success(result.status === 'pending' ? 'Announcement sent for approval' : 'Announcement sent', title.trim())
       // The sender is themself a staff member — their own bell should pick
       // up an "all_staff" announcement immediately, same as anyone else's.
       // A staff submission doesn't create a notification yet (it's pending

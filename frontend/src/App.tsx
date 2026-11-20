@@ -11,6 +11,7 @@ import { DesignPreview } from './design/DesignPreview'
 import { queryClient } from './lib/queryClient'
 import { ErrorBoundary } from './shell/ErrorBoundary'
 import { AppRoutes } from './shell/routes'
+import { ToastRegion } from './design/components/ToastRegion'
 
 function AuthPreview(): JSX.Element {
   const { session, status } = useSession()
@@ -41,6 +42,7 @@ function AppProviders({ children }: { children: JSX.Element }): JSX.Element {
         <LocalAuthProvider>
           {children}
           <RoleSwitcher />
+          <ToastRegion />
         </LocalAuthProvider>
       </QueryClientProvider>
     )
@@ -56,6 +58,7 @@ function AppProviders({ children }: { children: JSX.Element }): JSX.Element {
         }}
       >
         {children}
+        <ToastRegion />
       </SessionProvider>
     </QueryClientProvider>
   )

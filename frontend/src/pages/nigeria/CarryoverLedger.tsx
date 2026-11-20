@@ -17,6 +17,7 @@ import { Banner, Button, Card, Chip, DialogGuard, Field, Mono, StatCard, StatusB
 import { useTopBarSlot } from '../../shell/TopBarContext'
 import styles from './BillingList.module.css'
 import { formatDate, formatNgn } from '../../lib/format'
+import { toast } from '../../design/toast'
 
 const STATUS_FILTERS: { key: CarryoverStatus; label: string }[] = [
   { key: 'outstanding', label: 'Outstanding' },
@@ -34,6 +35,7 @@ function ExemptModal({ carryover, onCancel, onSuccess }: { carryover: Carryover;
     setError(null)
     try {
       await carryoverApi.exempt(carryover.id, notes || undefined)
+      toast.success('Carryover exempted')
       onSuccess()
     } catch (err) {
       setError(err instanceof ApiError ? err.message : 'Could not exempt this carryover.')

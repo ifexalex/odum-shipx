@@ -290,3 +290,15 @@ Known limit: focus is placed once, when the dialog mounts. A dialog whose first 
 - **Footer order** Cancel, then the commit button on the right: fixed in the announcement edit/reject/delete rows and the payment-claim reject row (they had the commit first). Commit labels name the object: "Upload document", "Generate release note". The results screen's "Done" is `mutates={false}`.
 - Test: `ModalDiscard.test.tsx` (6) types into a Modal and into a hand-rolled dialog, clicks the backdrop, and the input is still there; Escape asks too; Discard closes; Cancel and an untouched backdrop click close at once. Mutation-checked.
 - Catalog: "Modal (FD-12)" lists the rules and demonstrates the prompt.
+
+## Toasts: one way to say an action worked (FD-21, 2026-11-19)
+
+**Problem:** no toast. Each page confirmed a save its own way (an inline banner, a redirect, or nothing): 14 pages kept a `saved`/`success`/`notice` flag and a "Saved." banner, and most mutations showed nothing at all.
+
+**Now:**
+- `src/design/toast.ts`: a module-level store, `toast.success|info|error(title, body?)`, so a handler calls it without a hook; 4 s auto-dismiss, at most 3 shown. `ToastRegion` (mounted once in `App` for both auth providers, and in the catalog) renders them top right on desktop and along the bottom below 600 px, in a polite `role="status"` live region, each with a Dismiss button.
+- `queryClient` has a `MutationCache` whose `onSuccess` shows `mutation.meta.successToast` (string, `{title, body}` or a function of the response); `meta` is typed via `Register`. The billing, manifest, staff, container and claim mutation hooks declare it (no page uses those hooks yet; pages call the API directly).
+- Converted: the transient banners and their state on payment gateway (bank details, Paystack key), dollar rate, CBM rate, webhook, company settings, notification templates, platform settings, plan override, staff profile, staff user actions, warehouses, customer account (contact details, preferences), and the release note's "New pickup code sent".
+- Added at 65 call sites: every page that changes data now toasts on success, naming the record where it has one ("Payment recorded · ACM-INV-…", "Container moved to In transit · MSCU1234567", "Packing list approved · PL-…", "3 packing lists approved"). Pages that show a full result screen or panel instead are listed in the guard with their reason (auth flows, invoice-generation outcome, import results, webhook secret/test, impersonation, erasure).
+- Kept as banners (lasting state): "This dispute is resolved", "Consent on file", "Pickup recorded" on the note, the invoice outcome, the packing-list validity summary.
+- Tests: `ToastRegion.test.tsx` (4: shown and announced, gone after 4 s, dismiss, cap of 3); `src/design/toastRules.test.ts` (no page keeps saved/success state; every page with a write API call also calls `toast`, unless it is a listed result screen). The test setup mounts a `ToastRegion` for every test, so page tests assert the toast text a user sees; 6 page tests now assert the toast wording.

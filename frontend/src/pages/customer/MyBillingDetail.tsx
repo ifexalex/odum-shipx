@@ -15,6 +15,7 @@ import { ReleaseNoteCard } from './ReleaseNoteCard'
 import styles from './customer.module.css'
 import { formatDate, formatNgn } from '../../lib/format'
 import { useBreadcrumbLabel } from '../../shell/breadcrumbs'
+import { toast } from '../../design/toast'
 
 // Bank details shown when customer selects manual transfer. Ground-truth gap
 // found live: this used to be a single hardcoded account shown to every
@@ -90,6 +91,7 @@ function PaymentClaimPanel({
         },
         idempotencyKey.current,
       )
+      toast.success('Payment submitted', 'Staff will confirm it shortly.')
       onSubmitted(claim)
       setShowForm(false)
       setEvidence(null)
@@ -183,6 +185,7 @@ function CbmDisputeModal({ billing, onCancel, onSuccess }: { billing: Billing; o
     setError(null)
     try {
       await disputeApi.file(billing.id, { disputed_cbm: measuredCbm, reason })
+      toast.success('CBM dispute filed', 'We will look into it and reply on this invoice.')
       onSuccess()
     } catch (err) {
       setError(err instanceof ApiError ? err.message : 'Could not file the dispute.')

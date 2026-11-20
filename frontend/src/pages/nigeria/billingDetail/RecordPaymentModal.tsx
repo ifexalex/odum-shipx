@@ -4,6 +4,7 @@ import { billingApi, type Billing, type RecordPaymentInput } from '../../../api/
 import { Action, Banner, Button, DialogGuard, Field, Icon, Mono, StatusBadge, Select } from '../../../design/components'
 import styles from '../BillingDetail.module.css'
 import { formatNgn } from '../../../lib/format'
+import { toast } from '../../../design/toast'
 
 // ---------------------------------------------------------------------------
 // RecordPaymentModal
@@ -44,6 +45,7 @@ export function RecordPaymentModal({
       if (method) body.payment_method = method
       if (reference) body.payment_reference = reference
       const result = await billingApi.recordPayment(billing.id, body, idempotencyKey.current)
+      toast.success('Payment recorded', billing.invoice_number ?? undefined)
       onSuccess(result)
     } catch (err) {
       setError(err instanceof ApiError ? err.message : 'Could not record payment.')

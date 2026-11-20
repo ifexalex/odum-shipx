@@ -1,5 +1,9 @@
 import '@testing-library/jest-dom/vitest'
-import { configure } from '@testing-library/react'
+import { configure, render } from '@testing-library/react'
+import { createElement } from 'react'
+import { beforeEach } from 'vitest'
+import { ToastRegion } from '../design/components/ToastRegion'
+import { resetToasts } from '../design/toast'
 
 // findBy* / waitFor wait up to 3 s (default 1 s). A page's first render compiles its lazy chunk, which under the full
 // suite's parallel load sometimes took just over a second, failing tests at random (routes, ActivityLog). A passing
@@ -113,3 +117,11 @@ if (typeof Element !== 'undefined' && !Element.prototype.scrollIntoView) {
     /* no-op: layout is not simulated in jsdom */
   }
 }
+
+// Toasts (FD-21) appear in a region mounted once at the app root; mount it for every test too, so a page test sees
+// "Payment recorded" exactly as a user would, and start each test with none.
+beforeEach(() => {
+  resetToasts()
+  render(createElement(ToastRegion))
+})
+

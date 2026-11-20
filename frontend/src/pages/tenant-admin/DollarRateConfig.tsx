@@ -10,6 +10,7 @@ import { PageHeader } from '../../shell/PageHeader'
 import { SectionHead } from '../../shell/SectionHead'
 import styles from './admin.module.css'
 import { formatDate, formatNgn, formatAmount } from '../../lib/format'
+import { toast } from '../../design/toast'
 
 // B7 — rate trend line chart (prototype 4.2/4.3). Dependency-free SVG.
 // Takes ascending-by-date points and draws a filled area + line + endpoint dot,
@@ -166,7 +167,6 @@ export function DollarRateConfig(): JSX.Element {
   const [markupValue, setMarkupValue] = useState('')
   const [saving, setSaving] = useState(false)
   const [saveError, setSaveError] = useState<string | null>(null)
-  const [success, setSuccess] = useState(false)
 
   useSeedOnce(rate, (data) => {
     setMarkupType(data.markup_type)
@@ -179,12 +179,11 @@ export function DollarRateConfig(): JSX.Element {
   async function handleSave(): Promise<void> {
     setSaving(true)
     setSaveError(null)
-    setSuccess(false)
     try {
       const updated = await configApi.updateDollarRate({ markup_type: markupType, markup_value: Number(markupValue) })
       // Show the saved value at once; the write also invalidates every config query (api/cacheInvalidation.ts).
       qc.setQueryData(configKeys.dollar(), updated)
-      setSuccess(true)
+      toast.success('Dollar rate markup updated', 'New invoices use it.')
     } catch (err) {
       setSaveError(err instanceof ApiError ? err.message : 'Could not update markup.')
     } finally {
@@ -197,7 +196,6 @@ export function DollarRateConfig(): JSX.Element {
       <PageHeader title="Dollar Rate" subtitle="USD → NGN exchange rate used for all billing calculations." />
 
       {error && <div className={styles.banner}><Banner variant="error">{error}</Banner></div>}
-      {success && <div className={styles.banner}><Banner variant="success">Markup updated successfully.</Banner></div>}
 
       {!loading && current && (
         <>

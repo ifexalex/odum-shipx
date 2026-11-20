@@ -22,6 +22,7 @@ import styles from './ReleaseNoteDetail.module.css'
 import { formatDate, formatNgn } from '../../lib/format'
 import { useBreadcrumbLabel } from '../../shell/breadcrumbs'
 import { statusLabel } from '../../design/status'
+import { toast } from '../../design/toast'
 
 // ---------------------------------------------------------------------------
 // Status helpers
@@ -99,6 +100,7 @@ function RecordPickupModal({ note, onCancel, onSuccess }: RecordPickupModalProps
       if (accountingOfficerId) body.accounting_officer_id = accountingOfficerId
       if (notes.trim()) body.notes = notes
       const result = await releaseNotesApi.recordPickup(note.id, body)
+      toast.success('Pickup recorded', note.reference_number)
       onSuccess(result)
     } catch (err) {
       setError(err instanceof ApiError ? err.message : 'Could not record pickup.')
@@ -249,6 +251,7 @@ function ReissueConfirmModal({ note, onCancel, onSuccess }: ReissueConfirmModalP
     setError(null)
     try {
       const newNote = await releaseNotesApi.reissue(note.id)
+      toast.success('Release note re-issued', newNote.reference_number)
       onSuccess(newNote)
     } catch (err) {
       setError(err instanceof ApiError ? err.message : 'Could not re-issue this release note.')
@@ -372,6 +375,7 @@ function SplitModal({ note, onCancel, onSuccess }: SplitModalProps): JSX.Element
         carton_tags: Array.from(selected),
         notes: splitNotes || undefined,
       })
+      toast.success('Release note split', child.reference_number)
       onSuccess(child)
     } catch (err) {
       setError(err instanceof ApiError ? err.message : 'Could not split release note.')
@@ -452,7 +456,6 @@ export function ReleaseNoteDetail(): JSX.Element {
   const [showSplit, setShowSplit] = useState(false)
   const [showReissue, setShowReissue] = useState(false)
   const [showSendCode, setShowSendCode] = useState(false)
-  const [codeSentVia, setCodeSentVia] = useState<string[] | null>(null)
   const [pickupResult, setPickupResult] = useState<PickupResult | null>(null)
 
 
@@ -562,13 +565,6 @@ export function ReleaseNoteDetail(): JSX.Element {
           <Banner variant="error" title="Pickup code locked">
             Too many wrong pickup codes were entered at the warehouse, so these goods cannot be released. Check with the
             customer, then send them a new code.
-          </Banner>
-        </div>
-      )}
-      {codeSentVia && (
-        <div className={styles.successBanner}>
-          <Banner variant="success" title="New pickup code sent" dismissible onDismiss={() => setCodeSentVia(null)}>
-            Sent to the customer by {sentViaLabel(codeSentVia)}. Any earlier code no longer works.
           </Banner>
         </div>
       )}
@@ -692,7 +688,7 @@ export function ReleaseNoteDetail(): JSX.Element {
           onCancel={() => setShowSendCode(false)}
           onSent={(sentVia) => {
             setShowSendCode(false)
-            setCodeSentVia(sentVia)
+            toast.success('New pickup code sent', `Sent to the customer by ${sentViaLabel(sentVia)}. Any earlier code no longer works.`)
             void qc.invalidateQueries({ queryKey: releaseNoteKeys.all })
           }}
         />

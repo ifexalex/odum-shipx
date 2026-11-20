@@ -23,6 +23,7 @@ import { PageHeader } from '../../shell/PageHeader'
 import { EvidenceUploader } from '../nigeria/EvidenceUploader'
 import styles from './customer.module.css'
 import { statusLabel } from '../../design/status'
+import { toast } from '../../design/toast'
 
 type Step = 'details' | 'evidence' | 'review'
 
@@ -82,6 +83,7 @@ export function MyClaimsNew(): JSX.Element {
         cartons_affected: cartonsAffected.length > 0 ? cartonsAffected : undefined,
       }
       const claim = await claimsApi.file(body, idempotencyKey.current)
+      toast.success('Claim filed', claim.reference ?? undefined)
       setClaimId(claim.id)
       setStep('evidence')
     } catch (err) {
