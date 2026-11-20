@@ -304,3 +304,59 @@ class TestContainerExportMatchesTheList:
         )
         lines = io.StringIO(stored["bytes"].decode("utf-8-sig")).read().splitlines()
         assert len(lines) == 2 and lines[1].startswith("MNY0002,arrived,MSC Aurora")
+
+
+class TestReportExportEndToEnd:
+    """The reports page's billing by container: one row per container, summed, largest first, every container."""
+
+    def test_containers_are_summed_ranked_and_all_exported(self, admin, world):
+        # Two invoices on container 0 (different customers), one each on containers 1 and 2.
+        from tests.db.support import _invoice_data
+
+        for customer, container, total in ((0, 0, "100000.00"), (1, 0, "50000.00"), (2, 1, "250000.00"), (3, 2, "75000.50")):
+            billing_repo.create_invoice(
+                world["tenant"],
+                _invoice_data(world["tenant"], world["customers"][customer], world["containers"][container], total),
+                "MNY-INV",
+                [],
+                [],
+            )
+
+        result, stored = _exported_sheet(
+            service.export_report_container_billing,
+            world["tenant"],
+            {},
+            fmt="xlsx",
+            actor_id=world["user"],
+            actor_role="tenant_admin",
+        )
+        sheet = openpyxl.load_workbook(BytesIO(stored["bytes"])).active
+        rows = [[c.value for c in row] for row in sheet.iter_rows(min_row=2)]
+        assert result["row_count"] == 3
+        assert [(r[0], r[1], r[5]) for r in rows] == [("MNY0001", 1, 250000.0), ("MNY0000", 2, 150000.0), ("MNY0002", 1, 75000.5)]
+        assert rows[1][2] == 2.0 and rows[1][7] == 150000.0  # CBM and outstanding are summed too
+
+        # Averaged rates keep the columns' 4 places in csv, not AVG's 16.
+        _, csv_file = _exported_sheet(
+            service.export_report_container_billing,
+            world["tenant"],
+            {},
+            fmt="csv",
+            actor_id=world["user"],
+            actor_role="tenant_admin",
+        )
+        assert "45.0000,1550.0000," in csv_file["bytes"].decode("utf-8-sig")
+
+        # The page's top-N list is the same query.
+        assert [r["container_number"] for r in billing_repo.get_tenant_report(world["tenant"])["container_billing"]] == [
+            "MNY0001",
+            "MNY0000",
+            "MNY0002",
+        ]
+
+    def test_the_period_bounds_the_rows(self, world):
+        from tests.db.support import _make_invoice
+
+        _make_invoice(None, world)
+        assert billing_repo.get_container_billing(world["tenant"], "2999-01-01", None, limit=10) == []
+        assert len(billing_repo.get_container_billing(world["tenant"], "2000-01-01", None, limit=10)) == 1

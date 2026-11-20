@@ -2467,3 +2467,9 @@ Found by running them: **a real bug** (invoice generation set a used credit to `
 ## Paging past empty sort values (2026-11-19)
 
 `tests/unit/test_pagination_walk.py::TestEmptySortValues` (6): a joined list sorted by a column with eight empty values, walked page by page in both directions, equals the one-shot ordering with nothing repeated or skipped, empty values last, and the cursor marks an empty value. Mutation-checked against the previous `shared/pagination.py` (all 6 fail). Three SQL-text assertions updated for `NULLS LAST`. `make test-db`: 202 passed.
+
+## Reports page export (2026-11-20)
+
+- `tests/unit/test_report_export.py` (19): the shared per-container query binds the period and limit (a hostile date never reaches the SQL) and the report page takes its top 200 from it; `ReportExportQuery` refuses pdf and bad dates; the service asks for one row more than the limit, refuses past 10,000 with "Narrow the period", writes the page's columns and exact figures in csv, and audits the period; the handler is the tenant admin's (five other roles 403), forwards period and format, 422 on bad input, and is not taken by the single-invoice export route; `resolve_service` sends it to excel.
+- `tests/db/test_list_exports.py::TestReportExportEndToEnd` (2, real Postgres): invoices summed per container, ranked by billed, every container exported, the page's list in the same order; the period bounds the rows.
+- Frontend `TenantReports.test.tsx` (+4): one Export, beside the table, none in the top bar; Excel by default for the whole period; the period on screen at the click, CSV when chosen; a refusal shown as a banner; the note when the table is only the top 200.

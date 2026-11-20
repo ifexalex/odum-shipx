@@ -9,6 +9,7 @@ from datetime import date, datetime, timedelta
 from io import BytesIO
 from typing import Any
 
+from services.billing import repository as billing_repo
 from services.tracking import repository as tracking_repo
 from shared import uploads
 from shared.audit import log_audit
@@ -19,7 +20,12 @@ from shared.providers import get_storage_provider
 from . import repository as repo
 from ._tables import Column, build_csv, build_xlsx, csv_safe
 from .export_billing import generate_billing_xlsx
-from .export_lists import BILLING_LIST_COLUMNS, CONTAINER_EVENT_COLUMNS, CONTAINER_LIST_COLUMNS
+from .export_lists import (
+    BILLING_LIST_COLUMNS,
+    CONTAINER_EVENT_COLUMNS,
+    CONTAINER_LIST_COLUMNS,
+    REPORT_CONTAINER_BILLING_COLUMNS,
+)
 from .export_manifest import generate_manifest_xlsx
 from .export_packing_list import generate_packing_list_xlsx
 from .export_packing_list_pdf import generate_packing_list_pdf
@@ -426,16 +432,22 @@ def _list_export(
     filters: dict[str, Any],
     actor_id: str | None,
     actor_role: str,
+    stem_noun: str | None = None,
+    narrow_by: str = "the filters (status, dates or search)",
 ) -> dict[str, Any]:
-    """Build, store and presign a list export, and record who exported it."""
+    """Build, store and presign a list export, and record who exported it.
+
+    `noun` names the rows in the refusal message; `stem_noun`, when given, names the file instead of `noun`;
+    `narrow_by` is what the refusal tells the user to narrow.
+    """
     if truncated:
         raise BusinessRuleViolationError(
-            f"More than {EXPORT_ROW_LIMIT:,} {noun} match. Narrow the filters (status, dates or search) and export again.",
+            f"More than {EXPORT_ROW_LIMIT:,} {noun} match. Narrow {narrow_by} and export again.",
             rule_id="EXPORT_TOO_LARGE",
         )
 
     buf = build_csv(columns, rows) if fmt == "csv" else build_xlsx(sheet_title, columns, rows)
-    stem = f"{_safe_name(repo.get_tenant_display_name(tenant_id))}_{noun}_{date.today().strftime('%Y%m%d')}"
+    stem = f"{_safe_name(repo.get_tenant_display_name(tenant_id))}_{stem_noun or noun}_{date.today().strftime('%Y%m%d')}"
     result = _upload_and_presign(tenant_id, f"{stem}.{fmt}", buf, fmt=fmt)
     result["row_count"] = len(rows)
 
@@ -510,6 +522,52 @@ def export_container_list(
         filters=filters,
         actor_id=actor_id,
         actor_role=actor_role,
+    )
+
+
+def export_report_container_billing(
+    tenant_id: str,
+    filters: dict[str, Any],
+    *,
+    fmt: str,
+    actor_id: str | None,
+    actor_role: str,
+) -> dict[str, Any]:
+    """The reports page's billing-by-container table for the period, every container (the page shows the top 200).
+
+    Args:
+        tenant_id: Owning tenant.
+        filters: `created_after` / `created_before`, the report's period; either may be absent.
+        fmt: `xlsx` or `csv`.
+        actor_id: Who exported, for the audit log.
+        actor_role: Their role, for the audit log.
+
+    Returns:
+        The presigned download, as every export returns it, with `row_count`.
+
+    Raises:
+        BusinessRuleViolationError: More than `EXPORT_ROW_LIMIT` containers were billed in the period.
+    """
+    rows = billing_repo.get_container_billing(
+        tenant_id,
+        filters.get("created_after"),
+        filters.get("created_before"),
+        limit=EXPORT_ROW_LIMIT + 1,
+    )
+    return _list_export(
+        tenant_id,
+        entity_type="billing",
+        noun="containers",
+        sheet_title="Billing by container",
+        columns=REPORT_CONTAINER_BILLING_COLUMNS,
+        rows=rows[:EXPORT_ROW_LIMIT],
+        truncated=len(rows) > EXPORT_ROW_LIMIT,
+        fmt=fmt,
+        filters=filters,
+        actor_id=actor_id,
+        actor_role=actor_role,
+        stem_noun="billing_by_container",
+        narrow_by="the period",
     )
 
 

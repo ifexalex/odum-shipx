@@ -13,6 +13,8 @@ Routes:
                                                  container — never customer-facing)
   GET  /v1/billing/export                     — tenant_admin only (the invoice list's
                                                  filters and sort; xlsx or csv)
+  GET  /v1/billing/report/export              — tenant_admin only (the reports page's billing by
+                                                 container for its period; xlsx or csv)
   GET  /v1/containers/export                  — china_office_staff, nigeria_office_staff, tenant_admin
                                                  (the container list's filters and sort; xlsx or csv)
   POST /v1/packing-lists/import               — china_office_staff
@@ -45,6 +47,7 @@ from .models import (
     ImportRequest,
     ListExportQuery,
     ManifestImportRequest,
+    ReportExportQuery,
 )
 
 setup_logging()
@@ -285,6 +288,19 @@ def _dispatch(
             fmt=query.format,
             sort_field=query.sort,
             sort_direction=query.direction,
+            actor_id=ctx.user_id,
+            actor_role=str(ctx.role),
+        )
+        return success(result, request_id=request_id)
+
+    # GET /v1/billing/report/export — the reports page's billing by container, every container in its period
+    if resource == "billing" and len(parts) == 4 and parts[2] == "report" and parts[3] == "export" and method == "GET":
+        ctx.assert_role(*_BILLING_LIST_EXPORT_ROLES)
+        report_query = parse_validated(ReportExportQuery, _query_params(event))
+        result = service.export_report_container_billing(
+            tenant_id,
+            report_query.filters(),
+            fmt=report_query.format,
             actor_id=ctx.user_id,
             actor_role=str(ctx.role),
         )

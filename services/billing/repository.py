@@ -509,6 +509,64 @@ def list_billing_all(
     return extract_page(rows, limit, sort_field)
 
 
+#: How many containers the report page lists: the largest by amount billed. The export has every container.
+REPORT_CONTAINER_ROWS = 200
+
+
+def get_container_billing(
+    tenant_id: str,
+    created_after: str | None,
+    created_before: str | None,
+    *,
+    limit: int,
+) -> list[dict[str, Any]]:
+    """Billing for the period summed per container, largest amount billed first.
+
+    Backs the report page's "CBM & billing by container" table (the top `REPORT_CONTAINER_ROWS`) and its export
+    (every container; the caller passes one more than its row limit to learn whether the period has more).
+
+    Args:
+        tenant_id: Owning tenant.
+        created_after: Earliest billing `created_at` to include, or None for no lower bound.
+        created_before: Latest billing `created_at` to include, or None for no upper bound.
+        limit: Most rows to return.
+
+    Returns:
+        One row per container: number, customer count, CBM, amounts billed, collected and outstanding, and the
+        average CBM rate and dollar rate its invoices used.
+    """
+    params: dict[str, Any] = {"tenant_id": tenant_id, "limit": limit}
+    where = "b.tenant_id = %(tenant_id)s"
+    if created_after:
+        where += " AND b.created_at >= %(created_after)s"
+        params["created_after"] = created_after
+    if created_before:
+        where += " AND b.created_at <= %(created_before)s"
+        params["created_before"] = created_before
+    return execute_with_tenant(
+        tenant_id,
+        f"""
+        SELECT
+            COALESCE(c.container_number, b.container_id::text) AS container_number,
+            COUNT(DISTINCT b.customer_id)                      AS customers,
+            COALESCE(SUM(b.total_cbm), 0)                      AS cbm,
+            COALESCE(SUM(b.total_ngn), 0)                      AS billed,
+            COALESCE(SUM(b.amount_paid_ngn), 0)                AS collected,
+            COALESCE(SUM(b.balance_ngn), 0)                    AS outstanding,
+            -- Averages kept at the columns' own 4 places, not AVG's 16.
+            COALESCE(ROUND(AVG(NULLIF(b.cbm_rate_usd, 0)), 4), 0)      AS cbm_rate_usd,
+            COALESCE(ROUND(AVG(NULLIF(b.exchange_rate_ngn, 0)), 4), 0) AS dollar_rate
+        FROM billing b
+        LEFT JOIN container c ON c.id = b.container_id AND c.tenant_id = b.tenant_id
+        WHERE {where}
+        GROUP BY COALESCE(c.container_number, b.container_id::text)
+        ORDER BY billed DESC, container_number
+        LIMIT %(limit)s
+        """,  # noqa: S608 - only the fixed date predicates are interpolated; every value is a bound parameter
+        params,
+    )
+
+
 def get_tenant_report(
     tenant_id: str,
     created_after: str | None = None,
@@ -570,27 +628,7 @@ def get_tenant_report(
         params,
     )
 
-    container_billing = execute_with_tenant(
-        tenant_id,
-        f"""
-        SELECT
-            COALESCE(c.container_number, b.container_id::text) AS container_number,
-            COUNT(DISTINCT b.customer_id)                      AS customers,
-            COALESCE(SUM(b.total_cbm), 0)                      AS cbm,
-            COALESCE(SUM(b.total_ngn), 0)                      AS billed,
-            COALESCE(SUM(b.amount_paid_ngn), 0)               AS collected,
-            COALESCE(SUM(b.balance_ngn), 0)                   AS outstanding,
-            COALESCE(AVG(NULLIF(b.cbm_rate_usd, 0)), 0)       AS cbm_rate_usd,
-            COALESCE(AVG(NULLIF(b.exchange_rate_ngn, 0)), 0)  AS dollar_rate
-        FROM billing b
-        LEFT JOIN container c ON c.id = b.container_id AND c.tenant_id = b.tenant_id
-        WHERE {aliased}
-        GROUP BY COALESCE(c.container_number, b.container_id::text)
-        ORDER BY billed DESC
-        LIMIT 200
-        """,
-        params,
-    )
+    container_billing = get_container_billing(tenant_id, created_after, created_before, limit=REPORT_CONTAINER_ROWS)
 
     # Cross-table period counts (tenant-scoped via RLS).
     containers_processed = execute_with_tenant(

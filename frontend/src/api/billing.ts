@@ -469,6 +469,13 @@ export const billingApi = {
   exportList: (params: BillingExportParams, format: Exclude<ExportFormat, 'pdf'>) =>
     apiDownloadFile('/v1/billing/export', format, `invoices.${format}`, params as Record<string, string | undefined>),
 
+  /**
+   * xlsx or csv of the reports page's billing by container, every container billed in the period (the page lists the
+   * top 200). Tenant admin only. Refused with 422 EXPORT_TOO_LARGE past 10,000 containers.
+   */
+  exportReport: (params: { created_after?: string; created_before?: string }, format: Exclude<ExportFormat, 'pdf'>) =>
+    apiDownloadFile('/v1/billing/report/export', format, `billing-by-container.${format}`, params),
+
   /** xlsx or csv export for all billing records in a container. */
   exportByContainer: (containerId: string, format: Exclude<ExportFormat, 'pdf'>) =>
     apiDownloadFile(`/v1/containers/${containerId}/billing/export`, format, `billing-container-${containerId}.${format}`),

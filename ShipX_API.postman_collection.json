@@ -5960,6 +5960,53 @@
           }
         },
         {
+          "name": "Export report billing by container (xlsx/csv)",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "X-Tenant-ID",
+                "value": "{{tenant_id}}"
+              },
+              {
+                "key": "X-Role",
+                "value": "tenant_admin"
+              },
+              {
+                "key": "X-User-ID",
+                "value": "{{user_id}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/v1/billing/report/export?created_after=2026-01-01&created_before=2026-03-31&format=xlsx",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "v1",
+                "billing",
+                "report",
+                "export"
+              ],
+              "query": [
+                {
+                  "key": "created_after",
+                  "value": "2026-01-01"
+                },
+                {
+                  "key": "created_before",
+                  "value": "2026-03-31"
+                },
+                {
+                  "key": "format",
+                  "value": "xlsx"
+                }
+              ]
+            },
+            "description": "The reports page's \"CBM & billing by container\" table for the period: one row per container (customers, CBM, billed, collected, outstanding, average CBM rate and dollar rate), largest billed first, every container (the page lists the top 200). tenant_admin only; every other role is 403. Both dates optional (YYYY-MM-DD, on billing created_at). `format` is xlsx (default) or csv; pdf is 422. More than 10,000 containers is 422 EXPORT_TOO_LARGE. Response: `{filename, download_url, expires_at, file_size_bytes, format, row_count}`."
+          }
+        },
+        {
           "name": "Export container list (filtered, xlsx/csv)",
           "request": {
             "method": "GET",

@@ -33,6 +33,7 @@ Create the Terraform module for Amazon API Gateway HTTP API with JWT authorizer 
   - Route added 2026-11-16: `GET /v1/search` -> search (global search, audit UX-05).
   - Route added 2026-11-16: `POST /v1/release-notes/{id}/pickup-code` -> payment_release (send a new pickup code, audit UX-09).
   - Routes added 2026-11-16: `GET /v1/billing/export` and `GET /v1/containers/export` -> excel (whole-list exports). A literal segment wins over the `{id}` routes on the same path.
+  - Route added 2026-11-20: `GET /v1/billing/report/export` -> excel (the reports page's billing by container).
   - `route_settings` per public route (`public_route_throttles`, 2026-11-15): auth refresh 30/s (burst 60), the other auth routes 10/s, `/auth/login` 5/s, register 3/s, onboarding-requests 2/s. These are per ROUTE, not per client; they stop a flood of one public route from using the stage-wide budget. The stage `depends_on` the public routes, because API Gateway rejects a route key that does not exist yet.
   - access_log_settings → CloudWatch log group
 - Route integrations (one per Lambda, using `aws_apigatewayv2_integration` + `aws_apigatewayv2_route`):

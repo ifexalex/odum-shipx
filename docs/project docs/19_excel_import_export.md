@@ -39,6 +39,7 @@ services/excel/
 | GET | `/v1/manifests/{id}/export` | china_office_staff, tenant_admin, nigeria_office_staff | Export manifest (`?format=xlsx\|csv\|pdf`) |
 | GET | `/v1/billing/{id}/export` | tenant_admin, nigeria_office_staff, customer (own only) | Export billing (`?format=xlsx\|csv\|pdf`) — the `pdf` format doubles as the customer's downloadable invoice |
 | GET | `/v1/containers/{id}/billing/export` | tenant_admin, nigeria_office_staff | Export all billing for a container (`?format=xlsx\|csv\|pdf`) |
+| GET | `/v1/billing/report/export` | tenant_admin | **Report export** (2026-11-20): the reports page's billing by container for its period, every container (`?created_after=&created_before=&format=xlsx\|csv`) |
 | GET | `/v1/billing/export` | tenant_admin | **List export** (2026-11-16; tenant admin only since 2026-11-17, owner decision): every invoice matching the invoice list's filters and sort (`?format=xlsx\|csv`) |
 | GET | `/v1/containers/export` | tenant_admin, nigeria_office_staff, china_office_staff | **List export** (2026-11-16): every container matching the container list's filters and sort (`?format=xlsx\|csv`) |
 | POST | `/v1/packing-lists/import/presigned-url` | china_office_staff | Get a cloud-neutral **PUT** presigned URL for an import .xlsx (`content_type` must be the xlsx MIME type); returns `{ upload_url, upload_method, upload_headers, file_key }`. Reused unchanged by the manifest import flow below — there is no second presigned-url endpoint. |
@@ -237,7 +238,9 @@ The **Export** button on the invoice list and the container list downloads *what
 
 **Routes.** `GET /v1/billing/export` and `GET /v1/containers/export` are routed to the excel service by `resolve_service` (path ends in `/export`) and by two literal API Gateway routes, which win over the `{id}` routes on the same path.
 
-~~Not run against a real database.~~ `tests/db/test_list_exports.py` (42 tests) ran on 2026-11-17 against local Postgres: all pass.
+**Report export (2026-11-20).** The reports page's two Export buttons had no handler. `GET /v1/billing/report/export` (`export_report_container_billing`) writes the "CBM & billing by container" table for the report's period: one row per container (Container, Customers, Volume (CBM), Average CBM Rate (USD), Average Dollar Rate (NGN per USD), Billed, Collected, Outstanding (NGN)), largest billed first. It has every container; the page lists the top 200 (`REPORT_CONTAINER_ROWS`). Page and export share one query, `services/billing/repository.py::get_container_billing`, so their figures cannot drift; the export asks for `EXPORT_ROW_LIMIT + 1` rows and refuses (422 `EXPORT_TOO_LARGE`, "Narrow the period") past 10,000. Tenant admin only, like the invoice list export (`_BILLING_LIST_EXPORT_ROLES`). Query: `ReportExportQuery` (`created_after` / `created_before` as `YYYY-MM-DD`, `format` xlsx or csv). File `{tenant}_billing_by_container_{date}`. Audited as `EXPORT` on `billing` with the period. `_list_export` gained `stem_noun` and `narrow_by` for the file name and the refusal wording. Routed by `resolve_service` (ends in `/export`) and a literal API Gateway route. Tests: `tests/unit/test_report_export.py` (19), `tests/db/test_list_exports.py::TestReportExportEndToEnd` (2, real Postgres).
+
+~~Not run against a real database.~~ `tests/db/test_list_exports.py` (42 tests) ran on 2026-11-17 against local Postgres: all pass. With the report export, 44 tests pass (2026-11-20).
 
 ## Billing Excel Export (Backend Spec §7.4)
 

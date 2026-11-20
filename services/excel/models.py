@@ -126,6 +126,26 @@ class ListExportQuery(BaseModel):
         return {key: value for key, value in raw.items() if value}
 
 
+class ReportExportQuery(BaseModel):
+    """The query string of the reports page's export: its period and the file format."""
+
+    model_config = ConfigDict(extra="ignore")
+
+    format: Literal["xlsx", "csv"] = "xlsx"
+    created_after: str | None = None
+    created_before: str | None = None
+
+    @field_validator("created_after", "created_before", mode="before")
+    @classmethod
+    def _dates(cls, value: Any) -> Any:
+        return _iso_date_string(value)
+
+    def filters(self) -> dict[str, Any]:
+        """The period, with only the bounds that were set."""
+        raw = {"created_after": self.created_after, "created_before": self.created_before}
+        return {key: value for key, value in raw.items() if value}
+
+
 class ContainerListExportQuery(ListExportQuery):
     """The container list adds an ETA window."""
 

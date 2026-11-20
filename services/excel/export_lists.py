@@ -54,3 +54,16 @@ CONTAINER_EVENT_COLUMNS: list[Column] = [
     Column("actor_role_label", "Role"),
     Column("notes", "Notes"),
 ]
+
+#: The reports page's "CBM & billing by container" table, every container billed in the period: what its "Export"
+#: button downloads. Rates are the average over the container's invoices, as on the page.
+REPORT_CONTAINER_BILLING_COLUMNS: list[Column] = [
+    Column("container_number", "Container"),
+    Column("customers", "Customers", "integer"),
+    Column("cbm", "Volume (CBM)", "number"),
+    Column("cbm_rate_usd", "Average CBM Rate (USD)", "money"),
+    Column("dollar_rate", "Average Dollar Rate (NGN per USD)", "money"),
+    Column("billed", "Billed (NGN)", "money"),
+    Column("collected", "Collected (NGN)", "money"),
+    Column("outstanding", "Outstanding (NGN)", "money"),
+]

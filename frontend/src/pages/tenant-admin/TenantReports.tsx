@@ -3,13 +3,17 @@ import { useMemo, type JSX } from 'react'
 import { billingApi } from '../../api/billing'
 import { billingKeys } from '../../api/keys'
 import { STALE_5_MIN } from '../../lib/queryClient'
-import { Button, Card, DateRangeFilter, Icon, Mono, StatCard, Table, PageSkeleton, EmptyState } from '../../design/components'
+import { Banner, Card, DateRangeFilter, ExportButton, Icon, Mono, StatCard, Table, PageSkeleton, EmptyState } from '../../design/components'
 import { useDateRangeFilter } from '../../hooks/useDateRangeFilter'
+import { useListExport } from '../../hooks/useListExport'
 import { SectionHead } from '../../shell/SectionHead'
 import { useTopBarSlot } from '../../shell/TopBarContext'
 import styles from './TenantReports.module.css'
 import { formatNgn } from '../../lib/format'
 
+
+/** How many containers GET /v1/billing/report lists (REPORT_CONTAINER_ROWS in services/billing/repository.py). */
+const REPORT_CONTAINER_ROWS = 200
 
 function fmtNgn(n: number): string {
   if (n >= 1_000_000) return `₦${(n / 1_000_000).toFixed(2)}M`
@@ -171,15 +175,20 @@ export function TenantReports(): JSX.Element {
   const reportRange = useDateRangeFilter()
 
   useTopBarSlot({
-    actions: (
-      <>
-        <DateRangeFilter label="Period" range={reportRange} />
-        <Button variant="secondary" icon="download">Export</Button>
-      </>
-    ),
+    actions: <DateRangeFilter label="Period" range={reportRange} />,
   })
 
   const { createdAfter, createdBefore } = reportRange
+  // The table's Export downloads every container billed in the period on screen; the table itself shows the top 200.
+  const exportReport = useListExport((format: 'xlsx' | 'csv') =>
+    billingApi.exportReport(
+      {
+        ...(createdAfter ? { created_after: createdAfter } : {}),
+        ...(createdBefore ? { created_before: createdBefore } : {}),
+      },
+      format,
+    ),
+  )
   // One SQL-computed report endpoint — correct at scale (previously summed a
   // capped `limit: 500` sample of billing/containers/claims per period).
   const { data: report, isLoading: loading } = useQuery({
@@ -279,9 +288,23 @@ export function TenantReports(): JSX.Element {
       {/* Section D — CBM & billing table */}
       <Card padding="none" style={{ marginBottom: 'var(--space-6)' }}>
         <div className={styles.tableHead}>
-          <SectionHead title="CBM &amp; billing by container" sub="Every container processed this period" />
-          <Button variant="secondary" size="sm" icon="download">Export</Button>
+          <SectionHead
+            title="CBM &amp; billing by container"
+            sub={
+              containerBilling.length >= REPORT_CONTAINER_ROWS
+                ? `The ${REPORT_CONTAINER_ROWS} containers billed most this period. Export for every container.`
+                : 'Every container billed this period'
+            }
+          />
+          <ExportButton size="sm" formats={['xlsx', 'csv']} onExport={exportReport.onExport} />
         </div>
+        {exportReport.error && (
+          <div className={styles.exportError}>
+            <Banner variant="error" title="Couldn't export the report" dismissible onDismiss={exportReport.dismissError}>
+              {exportReport.error}
+            </Banner>
+          </div>
+        )}
         <Table
           columns={[
             { title: 'Container', type: 'reference' },

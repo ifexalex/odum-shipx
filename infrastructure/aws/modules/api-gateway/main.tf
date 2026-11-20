@@ -150,7 +150,7 @@ locals {
     # --- Uploads (1 route) --------------------------------------------------
     "POST /v1/uploads/presigned-url" = "claims"
 
-    # --- Excel import/export (8 routes) -------------------------------------
+    # --- Excel import/export (11 routes) -------------------------------------
     "GET /v1/packing-lists/{id}/export"           = "excel"
     "POST /v1/packing-lists/import"               = "excel"
     "POST /v1/packing-lists/import/presigned-url" = "excel"
@@ -159,8 +159,9 @@ locals {
     "GET /v1/containers/{id}/billing/export"      = "excel"
     "GET /v1/containers/{id}/events/export"       = "excel"
     # Whole-list exports: a literal segment beats the {id} routes on the same path.
-    "GET /v1/billing/export"    = "excel"
-    "GET /v1/containers/export" = "excel"
+    "GET /v1/billing/export"        = "excel"
+    "GET /v1/containers/export"     = "excel"
+    "GET /v1/billing/report/export" = "excel"
 
     # --- Customers (6 routes) -----------------------------------------------
     "POST /v1/customers"            = "tenant_management"
