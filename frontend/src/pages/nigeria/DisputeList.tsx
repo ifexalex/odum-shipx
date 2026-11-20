@@ -77,10 +77,7 @@ export function DisputeList(): JSX.Element {
 
   return (
     <div>
-      <PageHeader
-        title="CBM disputes"
-        meta={'Customer-filed disputes on cargo measurements.'}
-      />
+      <PageHeader title="CBM disputes" meta={'Customer-filed disputes on cargo measurements.'} />
 
       {error && (
         <div className={styles.banner}>

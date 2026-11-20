@@ -2497,3 +2497,7 @@ Found by running them: **a real bug** (invoice generation set a used credit to `
 ## Shell notices (FD-16, 2026-11-20)
 
 - `frontend/src/shell/ShellNotice.test.tsx` (7): the plan notice is one line with a "View plan" link for the tenant admin, hidden from other staff, warns from 80%, stays dismissed for the session, returns when a warning becomes a reached limit; the announcement shows first and the plan notice after it is dismissed; nothing in the content column during impersonation.
+
+## The menu (FD-15, 2026-11-20)
+
+- `frontend/src/shell/navConfig.test.ts` (+20): for every role, at most one item lit on every route it can open; the deepest item wins (`/claims/missing-items`, `/packing-lists/new`, `/billing/disputes/:id`); no two items share an icon; sentence case and no create pages; the tenant admin's groups. `TopBar.test.tsx` (+2) account menu; `Sidebar.test.tsx`, `AppSidebar.test.tsx`, `StaffLayout.test.tsx` updated (no sidebar sign-out; role switch through the account menu).

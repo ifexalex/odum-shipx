@@ -126,7 +126,10 @@ export function MyClaimDetail(): JSX.Element {
 
   return (
     <div className={styles.page}>
-      <PageHeader title={`Claim ${claim.reference ?? ''}`.trim()} meta={`Filed ${formatDate(claim.created_at)}`} />
+      <PageHeader
+        title={`Claim ${claim.reference ?? ''}`.trim()}
+        meta={`Filed ${formatDate(claim.created_at)}`}
+      />
 
       <div className={styles.banner} style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-3)', flexWrap: 'wrap' }}>
         <StatusBadge kind="claim" status={claim.status} audience="customer" />

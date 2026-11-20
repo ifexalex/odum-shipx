@@ -248,11 +248,21 @@ export function PackingListDetail(): JSX.Element {
         ]}
         primary={
           editing ? null : canAct ? (
-            <Button variant="primary" icon="check" loading={actionSubmitting} onClick={() => void handleApprove()}>
+            <Button
+              variant="primary"
+              icon="check"
+              loading={actionSubmitting}
+              onClick={() => void handleApprove()}
+            >
               Approve
             </Button>
           ) : canSubmitDraft ? (
-            <Button variant="primary" icon="check" loading={actionSubmitting} onClick={() => void handleSubmitForApproval()}>
+            <Button
+              variant="primary"
+              icon="check"
+              loading={actionSubmitting}
+              onClick={() => void handleSubmitForApproval()}
+            >
               Submit for approval
             </Button>
           ) : canEdit ? (
@@ -276,17 +286,29 @@ export function PackingListDetail(): JSX.Element {
               </Button>
             )}
             {pl.status === 'draft' && !editing && (
-              <Button variant="secondary" icon="edit" onClick={() => navigate(`/packing-lists/${pl.id}/edit`)}>
+              <Button
+                variant="secondary"
+                icon="edit"
+                onClick={() => navigate(`/packing-lists/${pl.id}/edit`)}
+              >
                 Edit
               </Button>
             )}
             <ExportButton
               formats={['xlsx', 'csv', 'pdf']}
-              onExport={(fmt) => (fmt === 'pdf' ? packingListApi.pdf(pl.id) : packingListApi.export(pl.id, fmt))}
+              onExport={(fmt) =>
+                fmt === 'pdf' ? packingListApi.pdf(pl.id) : packingListApi.export(pl.id, fmt)
+              }
             />
           </>
         }
-        more={[{ label: 'Print view', icon: 'file', onSelect: () => navigate(`/packing-lists/${pl.id}/print`) }]}
+        more={[
+          {
+            label: 'Print view',
+            icon: 'file',
+            onSelect: () => navigate(`/packing-lists/${pl.id}/print`),
+          },
+        ]}
         moreLabel="More packing list actions"
       />
 

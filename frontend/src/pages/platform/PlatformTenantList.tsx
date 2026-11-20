@@ -114,9 +114,11 @@ export function PlatformTenantList(): JSX.Element {
       <PageHeader
         title="Tenants"
         meta={'All onboarded tenants and their subscription status.'}
-        primary={<Button variant="primary" icon="plus" onClick={() => navigate('/platform/tenants/new')}>
-              Onboard tenant
-            </Button>}
+        primary={
+          <Button variant="primary" icon="plus" onClick={() => navigate('/platform/tenants/new')}>
+            Onboard tenant
+          </Button>
+        }
       />
       {error && (
         <div className={styles.banner}>

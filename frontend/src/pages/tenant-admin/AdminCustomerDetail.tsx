@@ -519,12 +519,18 @@ export function AdminCustomerDetail(): JSX.Element {
         title={customer.name ?? 'Anonymised customer'}
         status={
           <>
-            <Badge variant={isAnonymised ? 'error' : 'success'}>{isAnonymised ? 'Anonymised' : 'Active'}</Badge>
+            <Badge variant={isAnonymised ? 'error' : 'success'}>
+              {isAnonymised ? 'Anonymised' : 'Active'}
+            </Badge>
             {!isAnonymised && hasLogin && <Badge variant="info">Has portal login</Badge>}
             {!isAnonymised && !hasLogin && customer.pending_invite_expires_at && (
-              <Badge variant="warning">Invited · expires {formatDate(customer.pending_invite_expires_at)}</Badge>
+              <Badge variant="warning">
+                Invited · expires {formatDate(customer.pending_invite_expires_at)}
+              </Badge>
             )}
-            {!isAnonymised && !hasLogin && !customer.pending_invite_expires_at && <Badge variant="warning">No login</Badge>}
+            {!isAnonymised && !hasLogin && !customer.pending_invite_expires_at && (
+              <Badge variant="warning">No login</Badge>
+            )}
           </>
         }
         meta={heroMeta}

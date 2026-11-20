@@ -70,7 +70,9 @@ export function PlatformAuditLog(): JSX.Element {
     <div>
       <PageHeader
         title="Audit log"
-        meta={'Every platform-level action — tenant lifecycle, impersonation sessions, settings changes.'}
+        meta={
+          'Every platform-level action — tenant lifecycle, impersonation sessions, settings changes.'
+        }
       />
 
       {error && <div style={{ marginBottom: 'var(--space-4)' }}><Banner variant="error" title="Couldn't load">{error}</Banner></div>}

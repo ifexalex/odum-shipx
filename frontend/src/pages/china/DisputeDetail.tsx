@@ -128,7 +128,11 @@ export function DisputeDetail(): JSX.Element {
       <PageHeader
         title={dispute.container_number ? `CBM dispute on ${dispute.container_number}` : 'CBM dispute'}
         status={<StatusBadge kind="dispute" status={dispute.status} />}
-        meta={[dispute.customer_name, dispute.invoice_number, `Filed ${formatDate(dispute.submitted_at)}`]}
+        meta={[
+          dispute.customer_name,
+          dispute.invoice_number,
+          `Filed ${formatDate(dispute.submitted_at)}`,
+        ]}
       />
 
       <Card padding="large">

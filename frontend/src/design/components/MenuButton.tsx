@@ -9,7 +9,7 @@
  * jump, Escape closes it and returns focus to the button, Tab closes it. A click outside closes it. Read-only sessions
  * disable the items that change data, the same rule as `Button` (`mutates` defaults to true for a danger item).
  */
-import { useEffect, useId, useLayoutEffect, useRef, useState, type JSX, type KeyboardEvent } from 'react'
+import { useEffect, useId, useLayoutEffect, useRef, useState, type JSX, type KeyboardEvent, type ReactNode } from 'react'
 import { READ_ONLY_TITLE, useReadOnlyBlock } from './Button'
 import { Icon, type IconName } from './Icon'
 import { IconButton } from './IconButton'
@@ -26,10 +26,24 @@ export interface MenuItem {
   mutates?: boolean
 }
 
+/** What a custom trigger must spread onto its `<button>`. */
+export interface MenuTriggerProps {
+  'aria-haspopup': 'menu'
+  'aria-expanded': boolean
+  'aria-controls'?: string
+  onClick: () => void
+  onKeyDown: (event: KeyboardEvent) => void
+}
+
 export interface MenuButtonProps {
   items: MenuItem[]
-  /** The button's accessible name: "More actions", "More invoice actions". */
+  /** The button's accessible name: "More actions", "More invoice actions". Also names the menu. */
   label?: string
+  /**
+   * A button of your own in place of the "more" icon button, such as the top bar's account button. It must render a
+   * `<button>` and spread the props it is given.
+   */
+  trigger?: (props: MenuTriggerProps) => ReactNode
 }
 
 function Item({ item, onPick }: { item: MenuItem; onPick: (item: MenuItem) => void }): JSX.Element {
@@ -51,7 +65,7 @@ function Item({ item, onPick }: { item: MenuItem; onPick: (item: MenuItem) => vo
   )
 }
 
-export function MenuButton({ items, label = 'More actions' }: MenuButtonProps): JSX.Element | null {
+export function MenuButton({ items, label = 'More actions', trigger }: MenuButtonProps): JSX.Element | null {
   const [open, setOpen] = useState(false)
   const rootRef = useRef<HTMLDivElement>(null)
   const menuRef = useRef<HTMLDivElement>(null)
@@ -113,21 +127,24 @@ export function MenuButton({ items, label = 'More actions' }: MenuButtonProps): 
     }
   }
 
+  const triggerProps: MenuTriggerProps = {
+    'aria-haspopup': 'menu',
+    'aria-expanded': open,
+    'aria-controls': open ? menuId : undefined,
+    onClick: () => {
+      startAt.current = 'first'
+      setOpen((o) => !o)
+    },
+    onKeyDown: onButtonKey,
+  }
+
   return (
     <div ref={rootRef} className={styles.root}>
-      <IconButton
-        icon="dot3"
-        label={label}
-        variant="secondary"
-        aria-haspopup="menu"
-        aria-expanded={open}
-        aria-controls={open ? menuId : undefined}
-        onClick={() => {
-          startAt.current = 'first'
-          setOpen((o) => !o)
-        }}
-        onKeyDown={onButtonKey}
-      />
+      {trigger ? (
+        trigger(triggerProps)
+      ) : (
+        <IconButton icon="dot3" label={label} variant="secondary" {...triggerProps} />
+      )}
       {open && (
         <div
           ref={menuRef}

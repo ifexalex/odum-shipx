@@ -76,12 +76,13 @@ export function ClaimList(): JSX.Element {
     <div>
       <PageHeader
         title="Damage claims"
-        primary={isStaff && (
-      <Button variant="primary" icon="plus" onClick={() => navigate('/claims/new')}>
+        primary={
+          isStaff && (
+            <Button variant="primary" icon="plus" onClick={() => navigate('/claims/new')}>
               Log claim
             </Button>
-          
-      )}
+          )
+        }
       />
       {error && (
         <div className={styles.banner}>

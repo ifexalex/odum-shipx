@@ -2,15 +2,6 @@
   margin-bottom: var(--space-4);
 }
 
-/* Page-level actions sit above the stats row, right-aligned, matching
-   the TopBar actions placement in the design spec */
-.actionsRow {
-  display: flex;
-  justify-content: flex-end;
-  gap: var(--space-2);
-  margin-bottom: var(--space-5);
-}
-
 /* Reflows to fewer columns as space shrinks instead of forcing the page
    wider than its container on mobile (was a fixed 5-column grid). */
 .statsRow {

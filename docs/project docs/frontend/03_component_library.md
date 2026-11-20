@@ -387,3 +387,5 @@ Every page is titled one way. Before this, 18 pages used `PageHeader` (which ren
 - **Breadcrumb**: both layouts render it at the top of the content, above the page header, so it shows while the page loads (it was in the top bar on staff pages).
 - **Guard**: `pages/pageHeader.test.ts` fails if a routed page inside the layouts has no `PageHeader` or `ResultScreen`, if a page writes its own `<h1>`, or if anything uses the top-bar slot. Pages outside the layouts (sign-in flow, public tracking, landing, print) are exempt; FD-49 covers their headings. Proved by putting an `<h1>` back on the refunds list: two failures.
 - **Catalog**: the catalog's own header is a `PageHeader` with every slot filled, including the overflow menu.
+
+- **`MenuButton` `trigger`** (FD-15): a custom button in place of the "more" icon button; it must render a `<button>` and spread the `MenuTriggerProps` it is given (`aria-haspopup`, `aria-expanded`, `aria-controls`, `onClick`, `onKeyDown`). The top bar's account button uses it. `Sidebar` lost its `user` and `onLogout` props.

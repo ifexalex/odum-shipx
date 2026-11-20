@@ -202,7 +202,10 @@ export function BillingDetail(): JSX.Element {
         }
         actions={
           <>
-            <ExportButton formats={['xlsx', 'csv']} onExport={(fmt) => billingApi.export(billing.id, fmt)} />
+            <ExportButton
+              formats={['xlsx', 'csv']}
+              onExport={(fmt) => billingApi.export(billing.id, fmt)}
+            />
             {canGenerateRelease && (
               <Action variant="secondary" icon="file" onClick={() => setShowReleaseNoteModal(true)}>
                 Generate release note
@@ -212,7 +215,14 @@ export function BillingDetail(): JSX.Element {
         }
         more={[
           ...(isStaff && billing.payment_status !== 'cancelled' && billing.payment_status !== 'waived'
-            ? [{ label: 'Add charge', icon: 'plus' as const, mutates: true, onSelect: () => setShowAddChargeModal(true) }]
+            ? [
+                {
+                  label: 'Add charge',
+                  icon: 'plus' as const,
+                  mutates: true,
+                  onSelect: () => setShowAddChargeModal(true),
+                },
+              ]
             : []),
           ...(isCarryoverApplicable
             ? [

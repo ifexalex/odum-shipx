@@ -391,11 +391,13 @@ export function RefundDetail(): JSX.Element {
 
   return (
     <div>
-      {/* Hero */}
       <PageHeader
         title={refundTypeLabel(refund.refund_type)}
         status={<StatusBadge kind="refund" status={refund.status} />}
-        meta={[`Requested ${formatDate(refund.created_at)}`, refund.approval_level && approvalLevelLabel(refund.approval_level)]}
+        meta={[
+          `Requested ${formatDate(refund.created_at)}`,
+          refund.approval_level && approvalLevelLabel(refund.approval_level),
+        ]}
         primary={
           isTerminalRefundStatus(refund.status) ? null : showReviewBtn ? (
             <Action variant="primary" icon="check" onClick={() => setShowReview(true)}>

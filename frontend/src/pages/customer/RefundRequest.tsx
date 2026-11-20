@@ -69,7 +69,10 @@ export function RefundRequest(): JSX.Element {
 
   return (
     <div className={styles.page}>
-      <PageHeader title="Request a refund" meta="Submit a refund request for review by our accounts team." />
+      <PageHeader
+        title="Request a refund"
+        meta="Submit a refund request for review by our accounts team."
+      />
 
       <div className={styles.formCard}>
         {error && (

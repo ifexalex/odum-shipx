@@ -333,12 +333,16 @@ export function AnnouncementsPage(): JSX.Element {
     <div>
       <PageHeader
         title="Announcements"
-        meta={isAdmin
+        meta={
+          isAdmin
             ? 'Broadcast to every staff member or every customer — only one banner shows per audience at a time.'
-            : 'Submit an announcement for customers. A tenant admin reviews it before it reaches anyone.'}
-        primary={<Button variant="primary" icon="plus" onClick={() => setComposeOpen(true)}>
-              New announcement
-            </Button>}
+            : 'Submit an announcement for customers. A tenant admin reviews it before it reaches anyone.'
+        }
+        primary={
+          <Button variant="primary" icon="plus" onClick={() => setComposeOpen(true)}>
+            New announcement
+          </Button>
+        }
       />
       {isAdmin ? (
         <>

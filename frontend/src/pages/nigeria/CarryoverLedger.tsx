@@ -116,7 +116,9 @@ export function CarryoverLedger(): JSX.Element {
     <div>
       <PageHeader
         title="Carryover ledger"
-        meta={'Outstanding balances rolled forward from released-with-outstanding billings, across all customers.'}
+        meta={
+          'Outstanding balances rolled forward from released-with-outstanding billings, across all customers.'
+        }
       />
 
       {error && <div style={{ marginBottom: 'var(--space-4)' }}><Banner variant="error" title="Couldn't load">{error}</Banner></div>}

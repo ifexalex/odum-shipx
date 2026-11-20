@@ -199,7 +199,9 @@ export function ActivityLog(): JSX.Element {
     <div>
       <PageHeader
         title="Activity log"
-        meta={'Every recorded change in your account — who did what, and when. Confirmed/rejected payments, refunds, and claims all show exactly what changed, not just that something did.'}
+        meta={
+          'Every recorded change in your account — who did what, and when. Confirmed/rejected payments, refunds, and claims all show exactly what changed, not just that something did.'
+        }
       />
 
       {error && <div style={{ marginBottom: 'var(--space-4)' }}><Banner variant="error" title="Couldn't load">{error}</Banner></div>}

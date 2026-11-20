@@ -80,9 +80,8 @@ export function ContainerDetail(): JSX.Element {
 
 
 
-  // Must be called unconditionally (before any early returns) — React hook rules.
-  // The suffix is null until the container loads, then becomes the container number,
-  // giving the TopBar breadcrumb: Operations / Containers / MSCU1234567.
+  // Names the container in the breadcrumb and tab once loaded (Containers / MSCU1234567). Called before any early
+  // return (a hook).
   useBreadcrumbLabel(container?.container_number)
 
   if (loading && !container) {
@@ -153,7 +152,9 @@ export function ContainerDetail(): JSX.Element {
         }
         meta={[
           container.vessel_name &&
-            (container.voyage_number ? `${container.vessel_name}, voyage ${container.voyage_number}` : container.vessel_name),
+            (container.voyage_number
+              ? `${container.vessel_name}, voyage ${container.voyage_number}`
+              : container.vessel_name),
           `${container.origin} → ${container.destination}`,
           container.estimated_arrival_date && `ETA ${formatDate(container.estimated_arrival_date)}`,
         ]}
@@ -173,8 +174,26 @@ export function ContainerDetail(): JSX.Element {
           )
         }
         more={[
-          ...(canCancel ? [{ label: 'Cancel container', icon: 'warn' as const, tone: 'danger' as const, onSelect: () => setShowCancelModal(true) }] : []),
-          ...(canDelete ? [{ label: 'Delete container', icon: 'x' as const, tone: 'danger' as const, onSelect: () => setShowDeleteModal(true) }] : []),
+          ...(canCancel
+            ? [
+                {
+                  label: 'Cancel container',
+                  icon: 'warn' as const,
+                  tone: 'danger' as const,
+                  onSelect: () => setShowCancelModal(true),
+                },
+              ]
+            : []),
+          ...(canDelete
+            ? [
+                {
+                  label: 'Delete container',
+                  icon: 'x' as const,
+                  tone: 'danger' as const,
+                  onSelect: () => setShowDeleteModal(true),
+                },
+              ]
+            : []),
         ]}
         moreLabel="More container actions"
       />

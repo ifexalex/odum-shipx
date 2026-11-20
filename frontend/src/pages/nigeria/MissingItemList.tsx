@@ -115,9 +115,11 @@ export function MissingItemList(): JSX.Element {
     <div>
       <PageHeader
         title="Missing items"
-        meta={role === 'china_office_staff'
-              ? 'Cargo reported missing in Nigeria. Record the supply and loading check.'
-              : 'Cargo reported missing during manifest inspection.'}
+        meta={
+          role === 'china_office_staff'
+            ? 'Cargo reported missing in Nigeria. Record the supply and loading check.'
+            : 'Cargo reported missing during manifest inspection.'
+        }
       />
 
       {error && (

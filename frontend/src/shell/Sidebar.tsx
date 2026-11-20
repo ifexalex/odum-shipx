@@ -1,5 +1,5 @@
 import type { CSSProperties, JSX, ReactNode } from 'react'
-import { Avatar, Icon, KolaMark, ShipxWordmark, type IconName } from '../design/components'
+import { Icon, KolaMark, ShipxWordmark, type IconName } from '../design/components'
 import { colors, type Role } from '../design/theme'
 import styles from './Sidebar.module.css'
 
@@ -22,18 +22,11 @@ export interface NavGroup {
   items: NavItemDef[]
 }
 
-export interface SidebarUser {
-  name: string
-  role: string
-}
-
 export interface SidebarProps {
   role: Role
   brand?: ReactNode
   items: NavGroup[]
-  user?: SidebarUser
   collapsed?: boolean
-  onLogout?: () => void
 }
 
 const ROLE_LABEL: Partial<Record<Role, string>> = {
@@ -75,6 +68,7 @@ function NavItem({ icon, label, active, badge, count, onClick, accent }: NavItem
     <button
       type="button"
       onClick={onClick}
+      aria-current={active ? 'page' : undefined}
       className={[styles.navItem, active ? styles.navItemActive : ''].filter(Boolean).join(' ')}
     >
       {active && <span className={styles.navItemAccent} style={{ '--nav-accent': accent } as CSSProperties} />}
@@ -90,7 +84,11 @@ function NavItem({ icon, label, active, badge, count, onClick, accent }: NavItem
   )
 }
 
-export function Sidebar({ role, brand, items, user, collapsed = false, onLogout }: SidebarProps): JSX.Element {
+/**
+ * The staff sidebar: brand, role badge and the menu. The signed-in user, profile and sign-out live in the top bar's
+ * account menu (FD-15), so the sidebar does not repeat them.
+ */
+export function Sidebar({ role, brand, items, collapsed = false }: SidebarProps): JSX.Element {
   const accent = navAccentColor(role)
   const roleLabel = ROLE_LABEL[role]
 
@@ -115,28 +113,6 @@ export function Sidebar({ role, brand, items, user, collapsed = false, onLogout 
           </div>
         ))}
       </nav>
-      {(user || onLogout) && (
-        <div className={styles.footer}>
-          <div className={styles.userRow}>
-            {user && <Avatar size={32} name={user.name} roleColor={role} />}
-            {!collapsed && (
-              <>
-                {user && (
-                  <div className={styles.userText}>
-                    <div className={styles.userName}>{user.name}</div>
-                    <div className={styles.userRole}>{user.role}</div>
-                  </div>
-                )}
-                {onLogout && (
-                  <button type="button" aria-label="Log out" className={styles.logoutButton} onClick={onLogout}>
-                    <Icon name="logout" size={15} />
-                  </button>
-                )}
-              </>
-            )}
-          </div>
-        </div>
-      )}
     </aside>
   )
 }

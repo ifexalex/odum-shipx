@@ -228,18 +228,25 @@ export function PackingListList(): JSX.Element {
     }
   }
 
-  // Prototype: action button lives in the TopBar (between search and bell).
 
   return (
     <div>
       <PageHeader
         title="Packing lists"
-        primary={session?.role === 'china_office_staff' && (
-      <Button variant="primary" icon="plus" onClick={() => navigate('/packing-lists/new')}>
+        primary={
+          session?.role === 'china_office_staff' && (
+            <Button variant="primary" icon="plus" onClick={() => navigate('/packing-lists/new')}>
               Create packing list
             </Button>
-          
-      )}
+          )
+        }
+        actions={
+          session?.role === 'china_office_staff' && (
+            <Button variant="secondary" icon="upload" onClick={() => navigate('/packing-lists/import')}>
+              Import from Excel
+            </Button>
+          )
+        }
       />
       {error && (
         <div className={styles.banner}>

@@ -414,10 +414,21 @@ export function ManifestDetail(): JSX.Element {
             </Action>
           ) : null
         }
-        actions={<ExportButton formats={['xlsx', 'csv']} onExport={(fmt) => manifestApi.export(manifest.id, fmt)} />}
+        actions={
+          <ExportButton
+            formats={['xlsx', 'csv']}
+            onExport={(fmt) => manifestApi.export(manifest.id, fmt)}
+          />
+        }
         more={
           canRevoke && !revoking
-            ? [{ label: 'Revoke verification', tone: 'danger', onSelect: () => setShowRevokeConfirm(true) }]
+            ? [
+                {
+                  label: 'Revoke verification',
+                  tone: 'danger',
+                  onSelect: () => setShowRevokeConfirm(true),
+                },
+              ]
             : []
         }
         moreLabel="More manifest actions"

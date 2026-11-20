@@ -393,10 +393,7 @@ export function Account(): JSX.Element {
 
   return (
     <div className={styles.page}>
-      <PageHeader
-        title="Account"
-        meta="Your details, how we contact you, and your privacy choices."
-      />
+      <PageHeader title="Account" meta="Your details, how we contact you, and your privacy choices." />
 
       {error && <div style={{ marginBottom: 'var(--space-4)' }}><Banner variant="error" title="Couldn't load your account">{error}</Banner></div>}
       {loading && <LinesSkeleton label="Loading your account" />}

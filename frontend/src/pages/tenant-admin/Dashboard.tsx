@@ -94,7 +94,12 @@ export function Dashboard(): JSX.Element {
     <div>
       <PageHeader
         title="Dashboard"
-        meta={[`${greeting()}, ${firstName}`, `${containerStats?.in_transit ?? 0} in transit`, `${customsAwaiting} awaiting customs`, `${containerStats?.at_warehouse ?? 0} ready for pickup`]}
+        meta={[
+          `${greeting()}, ${firstName}`,
+          `${containerStats?.in_transit ?? 0} in transit`,
+          `${customsAwaiting} awaiting customs`,
+          `${containerStats?.at_warehouse ?? 0} ready for pickup`,
+        ]}
       />
 
       {/* Headline + financial KPIs. The per-stage operational counts

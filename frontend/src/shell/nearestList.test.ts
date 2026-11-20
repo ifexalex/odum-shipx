@@ -6,7 +6,7 @@ describe('nearestList (FD-55)', () => {
     expect(nearestList('/billing/x/y', ['nigeria_office_staff'], '/dashboard')).toEqual({ to: '/billing', label: 'Billing' })
     expect(nearestList('/admin/config/nope', ['tenant_admin'], '/dashboard')).toEqual({
       to: '/admin/config',
-      label: 'Configuration',
+      label: 'Settings',
     })
   })
 

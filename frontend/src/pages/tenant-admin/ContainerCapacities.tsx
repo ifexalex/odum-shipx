@@ -194,10 +194,18 @@ export function ContainerCapacities(): JSX.Element {
     <div>
       <PageHeader
         title="Container capacities"
-        meta={'Capacity presets for new containers — pick one when creating a container to drive its utilization bar.'}
-        primary={<Button variant="primary" icon="plus" onClick={() => setModal({ open: true, existing: null })}>
-              Add capacity
-            </Button>}
+        meta={
+          'Capacity presets for new containers — pick one when creating a container to drive its utilization bar.'
+        }
+        primary={
+          <Button
+            variant="primary"
+            icon="plus"
+            onClick={() => setModal({ open: true, existing: null })}
+          >
+            Add capacity
+          </Button>
+        }
       />
       {error && (
         <div className={styles.banner}>

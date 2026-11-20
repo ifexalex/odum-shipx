@@ -77,7 +77,7 @@ describe('StaffLayout', () => {
     )
     expect(screen.getByText('Dashboard content')).toBeInTheDocument()
     // Sidebar nav item for the current role.
-    expect(screen.getByText('Users')).toBeInTheDocument()
+    expect(screen.getByText('Staff')).toBeInTheDocument()
   })
 
   it('adds no title of its own: the page’s PageHeader is the only heading (FD-14)', () => {
@@ -107,7 +107,7 @@ describe('StaffLayout', () => {
     expect(container).toBeEmptyDOMElement()
   })
 
-  it('switching the active role navigates to that role\'s home path, not just updating the sidebar', () => {
+  it('switching the active role navigates to that role\'s home path, not just updating the sidebar', async () => {
     const setActiveRole = vi.fn()
     renderLayout(
       makeContextValue({
@@ -121,7 +121,8 @@ describe('StaffLayout', () => {
     // Regression test: previously setActiveRole flipped session.role (updating
     // nav/breadcrumb) but never navigated, so the page stayed mounted at the
     // OLD role's route until the user separately clicked a nav link.
-    fireEvent.change(screen.getByRole('combobox', { name: 'Active role' }), { target: { value: 'warehouse_attendant' } })
+    fireEvent.click(screen.getByRole('button', { name: /Nigeria Office Staff/ }))
+    fireEvent.click(await screen.findByRole('menuitem', { name: 'Work as Warehouse Attendant' }))
     expect(setActiveRole).toHaveBeenCalledWith('warehouse_attendant')
     expect(mockNavigate).toHaveBeenCalledWith('/warehouse')
   })

@@ -303,11 +303,14 @@ export function ClaimDetail(): JSX.Element {
 
   return (
     <div>
-      {/* Hero */}
       <PageHeader
         title={claim.reference ? `Damage claim ${claim.reference}` : 'Damage claim'}
         status={<StatusBadge kind="claim" status={claim.status} />}
-        meta={[claim.customer_name, claim.container_number && <Mono>{claim.container_number}</Mono>, `Filed ${formatDate(claim.created_at)}`]}
+        meta={[
+          claim.customer_name,
+          claim.container_number && <Mono>{claim.container_number}</Mono>,
+          `Filed ${formatDate(claim.created_at)}`,
+        ]}
         primary={
           isTerminalClaimStatus(claim.status) ? null : canStartInspection(claim, r) ? (
             <Action variant="primary" onClick={() => setShowInspect(true)}>

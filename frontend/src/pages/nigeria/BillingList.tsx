@@ -142,11 +142,13 @@ export function BillingList(): JSX.Element {
     <div>
       <PageHeader
         title="Billing"
-        primary={canGenerate && (
-                  <Button variant="primary" icon="plus" onClick={() => setGenerateOpen(true)}>
-                    Generate billing
-                  </Button>
-                )}
+        primary={
+          canGenerate && (
+            <Button variant="primary" icon="plus" onClick={() => setGenerateOpen(true)}>
+              Generate billing
+            </Button>
+          )
+        }
         actions={isAdmin && <ExportButton formats={['xlsx', 'csv']} onExport={exportList.onExport} />}
       />
       {error && (

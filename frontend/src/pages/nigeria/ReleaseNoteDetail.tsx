@@ -479,7 +479,6 @@ export function ReleaseNoteDetail(): JSX.Element {
 
   return (
     <div>
-      {/* Hero */}
       <PageHeader
         title={`Release note ${note.reference_number}`}
         status={
@@ -519,7 +518,11 @@ export function ReleaseNoteDetail(): JSX.Element {
           ...(!isTerminal && !isExpired && showSplitBtn && note.carton_tags.length > 1
             ? [{ label: 'Split note', mutates: true, onSelect: () => setShowSplit(true) }]
             : []),
-          { label: 'Print view', icon: 'file', onSelect: () => navigate(`/release-notes/${note.id}/print`) },
+          {
+            label: 'Print view',
+            icon: 'file',
+            onSelect: () => navigate(`/release-notes/${note.id}/print`),
+          },
         ]}
         moreLabel="More release note actions"
       />

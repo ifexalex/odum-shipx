@@ -106,10 +106,7 @@ export function SeizedItemList(): JSX.Element {
 
   return (
     <div>
-      <PageHeader
-        title="Seized items"
-        meta={'Cargo detained by customs or security authorities.'}
-      />
+      <PageHeader title="Seized items" meta={'Cargo detained by customs or security authorities.'} />
 
       {error && (
         <div className={styles.banner}>

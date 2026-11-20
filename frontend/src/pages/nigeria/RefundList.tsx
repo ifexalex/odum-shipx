@@ -26,10 +26,7 @@ export function RefundList(): JSX.Element {
 
   return (
     <div>
-      <PageHeader
-        title="Refunds"
-        meta={'Track refund requests across all customers and containers.'}
-      />
+      <PageHeader title="Refunds" meta={'Track refund requests across all customers and containers.'} />
 
       {error && (
         <div className={styles.banner}>

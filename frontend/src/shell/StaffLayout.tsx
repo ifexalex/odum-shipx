@@ -36,7 +36,7 @@ const ROLE_DISPLAY: Record<UserRole, string> = {
 }
 
 export function StaffLayout({ children }: StaffLayoutProps): JSX.Element | null {
-  const { session, setActiveRole } = useSession()
+  const { session, setActiveRole, logout } = useSession()
   const location = useLocation()
   const navigate = useNavigate()
   const breadcrumbLabels = useBreadcrumbLabelState()
@@ -107,7 +107,7 @@ export function StaffLayout({ children }: StaffLayoutProps): JSX.Element | null 
         <div style={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
           <ImpersonationBanner />
           <PageShell
-            sidebar={<AppSidebar user={shellUser} />}
+            sidebar={<AppSidebar />}
             topbar={
               <TopBar
                 role={visualRoleFor(session.role)}
@@ -120,7 +120,8 @@ export function StaffLayout({ children }: StaffLayoutProps): JSX.Element | null 
                     <StaffNotificationPanel open={notifPanelOpen} onClose={() => setNotifPanelOpen(false)} />
                   )
                 }
-                onUserMenuClick={() => navigate('/profile')}
+                onProfile={() => navigate('/profile')}
+                onLogout={logout}
                 roleOptions={roleOptions}
                 activeRole={session.role}
                 onRoleChange={(role) => {

@@ -300,10 +300,18 @@ export function Warehouses(): JSX.Element {
     <div>
       <PageHeader
         title="Warehouses"
-        meta={'Destination warehouses your customers’ goods arrive at — the arrival-warehouse picker and release-note letterheads draw from this list.'}
-        primary={<Button variant="primary" icon="plus" onClick={() => setModal({ open: true, existing: null })}>
-              Add warehouse
-            </Button>}
+        meta={
+          'Destination warehouses your customers’ goods arrive at — the arrival-warehouse picker and release-note letterheads draw from this list.'
+        }
+        primary={
+          <Button
+            variant="primary"
+            icon="plus"
+            onClick={() => setModal({ open: true, existing: null })}
+          >
+            Add warehouse
+          </Button>
+        }
       />
       <div ref={bannerRef}>
         {error && (

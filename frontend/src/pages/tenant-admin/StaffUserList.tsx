@@ -175,9 +175,11 @@ export function StaffUserList(): JSX.Element {
       <PageHeader
         title="Staff"
         meta={'Manage team members and their access roles.'}
-        primary={<Button variant="primary" icon="plus" onClick={() => setShowInvite(true)}>
-              Invite user
-            </Button>}
+        primary={
+          <Button variant="primary" icon="plus" onClick={() => setShowInvite(true)}>
+            Invite user
+          </Button>
+        }
       />
       {error && (
         <div className={styles.banner}>

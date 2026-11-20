@@ -248,9 +248,7 @@ export function ContainerList(): JSX.Element {
 
   const canCreate = session?.role === 'china_office_staff'
 
-  // Inject action buttons into the shared TopBar (prototype: actions sit between the
-  // search box and the bell, not in the page body). Everyone who can open the list can
-  // export it; only China staff create containers.
+  // Everyone who can open the list can export it; only China staff create containers (header actions below).
 
   function selectGroup(statuses: ContainerStatus[]): void {
     const alreadyActive = activeStatuses?.join() === statuses.join()
@@ -283,11 +281,13 @@ export function ContainerList(): JSX.Element {
     <div>
       <PageHeader
         title="Containers"
-        primary={canCreate && (
-                  <Button variant="primary" icon="plus" onClick={() => navigate('/containers/new')}>
-                    Create container
-                  </Button>
-                )}
+        primary={
+          canCreate && (
+            <Button variant="primary" icon="plus" onClick={() => navigate('/containers/new')}>
+              Create container
+            </Button>
+          )
+        }
         actions={<ExportButton formats={['xlsx', 'csv']} onExport={exportList.onExport} />}
       />
       {error && (

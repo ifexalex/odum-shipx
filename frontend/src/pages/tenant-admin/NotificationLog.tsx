@@ -118,7 +118,10 @@ export function NotificationLog(): JSX.Element {
 
   return (
     <div>
-      <PageHeader title="Notification log" meta="Every message sent to your customers, and whether it arrived." />
+      <PageHeader
+        title="Notification log"
+        meta="Every message sent to your customers, and whether it arrived."
+      />
       {error && (
         <div className={styles.banner}>
           <ErrorState compact title="Couldn't load log" error={error} onRetry={() => void refetch()} />

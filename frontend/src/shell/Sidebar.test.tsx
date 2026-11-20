@@ -45,27 +45,15 @@ describe('Sidebar', () => {
     expect(onClick).toHaveBeenCalledOnce()
   })
 
-  it('renders the user footer and calls onLogout', async () => {
-    const onLogout = vi.fn()
-    render(
-      <Sidebar
-        role="nigeria"
-        items={items}
-        user={{ name: 'Adaeze Eze', role: 'Nigeria Office Staff' }}
-        onLogout={onLogout}
-      />,
-    )
-    expect(screen.getByText('Adaeze Eze')).toBeInTheDocument()
-    await userEvent.click(screen.getByRole('button', { name: 'Log out' }))
-    expect(onLogout).toHaveBeenCalledOnce()
+  it('does not repeat the signed-in user or offer sign-out: both live in the top bar’s account menu (FD-15)', () => {
+    render(<Sidebar role="nigeria" items={items} />)
+    expect(screen.queryByRole('button', { name: /log out|sign out/i })).toBeNull()
   })
 
-  it('renders just the logout button when onLogout is given without a user', async () => {
-    const onLogout = vi.fn()
-    render(<Sidebar role="nigeria" items={items} onLogout={onLogout} />)
-    expect(screen.getByRole('button', { name: 'Log out' })).toBeInTheDocument()
-    await userEvent.click(screen.getByRole('button', { name: 'Log out' }))
-    expect(onLogout).toHaveBeenCalledOnce()
+  it('marks the active item as the current page', () => {
+    render(<Sidebar role="nigeria" items={[{ items: [{ label: 'Billing', active: true }, { label: 'Refunds' }] }]} />)
+    expect(screen.getByRole('button', { name: 'Billing' })).toHaveAttribute('aria-current', 'page')
+    expect(screen.getByRole('button', { name: 'Refunds' })).not.toHaveAttribute('aria-current')
   })
 
   it('renders a custom brand slot in place of the default wordmark', () => {

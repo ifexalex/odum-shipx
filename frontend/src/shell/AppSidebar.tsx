@@ -2,8 +2,8 @@ import type { JSX } from 'react'
 import { useLocation, useNavigate } from 'react-router-dom'
 import { useSession } from '../auth/useSession'
 import { useOnboardingPendingCount } from '../hooks/useOnboardingRequests'
-import { navConfig, visualRoleFor, type NavLinkGroup } from './navConfig'
-import { Sidebar, type NavGroup, type SidebarUser } from './Sidebar'
+import { activeNavPath, navConfig, visualRoleFor, type NavLinkGroup } from './navConfig'
+import { Sidebar, type NavGroup } from './Sidebar'
 
 const ONBOARDING_REQUESTS_PATH = '/platform/onboarding-requests'
 
@@ -16,25 +16,25 @@ function toNavGroups(
   navigate: (path: string) => void,
   liveCounts: Record<string, number>,
 ): NavGroup[] {
+  // Exactly one item is lit (FD-15): the longest one covering the page.
+  const active = activeNavPath(
+    pathname,
+    groups.flatMap((group) => group.items.map((item) => item.path)),
+  )
   return groups.map((group) => ({
     group: group.group,
     items: group.items.map((item) => ({
       icon: item.icon,
       label: item.label,
       count: liveCounts[item.path] ?? item.count,
-      active: pathname === item.path || pathname.startsWith(`${item.path}/`),
+      active: item.path === active,
       onClick: () => navigate(item.path),
     })),
   }))
 }
 
-export interface AppSidebarProps {
-  /** Passed from StaffLayout once session.name is available (extracted from the JWT `name` claim). */
-  user?: SidebarUser
-}
-
-export function AppSidebar({ user }: AppSidebarProps): JSX.Element | null {
-  const { session, logout } = useSession()
+export function AppSidebar(): JSX.Element | null {
+  const { session } = useSession()
   const location = useLocation()
   const navigate = useNavigate()
 
@@ -53,8 +53,6 @@ export function AppSidebar({ user }: AppSidebarProps): JSX.Element | null {
     <Sidebar
       role={visualRoleFor(session.role)}
       items={groups}
-      user={user}
-      onLogout={logout}
     />
   )
 }

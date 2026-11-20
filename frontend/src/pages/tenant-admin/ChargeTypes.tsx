@@ -188,14 +188,18 @@ export function ChargeTypes(): JSX.Element {
     <div>
       <PageHeader
         title="Charge types"
-        meta={'Reusable presets for miscellaneous billing charges — customs examination, port handling, and similar.'}
-        primary={<Button
-              variant="primary"
-              icon="plus"
-              onClick={() => setModal({ open: true, existing: null })}
-            >
-              New charge type
-            </Button>}
+        meta={
+          'Reusable presets for miscellaneous billing charges — customs examination, port handling, and similar.'
+        }
+        primary={
+          <Button
+            variant="primary"
+            icon="plus"
+            onClick={() => setModal({ open: true, existing: null })}
+          >
+            New charge type
+          </Button>
+        }
       />
       {error && (
         <div className={styles.banner}>

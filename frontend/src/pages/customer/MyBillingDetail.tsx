@@ -355,7 +355,10 @@ export function MyBillingDetail(): JSX.Element {
         ]}
         primary={
           needsPayment && (
-            <Button variant="primary" onClick={() => navigate(`/my-billing/${billing.id}/refund-request`)}>
+            <Button
+              variant="primary"
+              onClick={() => navigate(`/my-billing/${billing.id}/refund-request`)}
+            >
               Request refund
             </Button>
           )

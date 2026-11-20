@@ -71,12 +71,12 @@ describe('AppRoutes', () => {
   it('renders a guarded staff route inside StaffLayout for an allowed role', async () => {
     renderAt(makeContextValue({ session: makeSession('tenant_admin'), status: 'authenticated' }), '/dashboard')
     expect((await screen.findAllByText('Dashboard')).length).toBeGreaterThan(0) // real Dashboard page + nav link
-    expect(await screen.findByText('Users')).toBeInTheDocument() // Sidebar nav item, proves StaffLayout mounted
+    expect(await screen.findByText('Staff')).toBeInTheDocument() // Sidebar nav item, proves StaffLayout mounted
   })
 
   it('renders a guarded customer route inside CustomerLayout', async () => {
     renderAt(makeContextValue({ session: makeSession('customer'), status: 'authenticated' }), '/my-shipments')
-    expect((await screen.findAllByText('My Shipments')).length).toBeGreaterThan(0) // real MyShipments page + nav link
+    expect((await screen.findAllByText('My shipments')).length).toBeGreaterThan(0) // real MyShipments page + nav link
     expect(await screen.findByText('Account')).toBeInTheDocument() // CustomerTopNav link, proves CustomerLayout mounted
   })
 
@@ -87,13 +87,13 @@ describe('AppRoutes', () => {
 
   it("redirects a wrong-role visitor to their own role's home, not a blank screen", async () => {
     renderAt(makeContextValue({ session: makeSession('customer'), status: 'authenticated' }), '/platform/dashboard')
-    expect((await screen.findAllByText('My Shipments')).length).toBeGreaterThan(0) // landed on the customer's own home route
+    expect((await screen.findAllByText('My shipments')).length).toBeGreaterThan(0) // landed on the customer's own home route
   })
 
   it('keeps a signed-in user’s layout and menu around the not-found page (FD-55)', async () => {
     renderAt(makeContextValue({ session: makeSession('nigeria_office_staff'), status: 'authenticated' }), '/billing/x/y/z')
     expect(await screen.findByRole('heading', { level: 1, name: 'Page not found' })).toBeInTheDocument()
-    expect(screen.getAllByText('Release Notes').length).toBeGreaterThan(0) // the sidebar is there
+    expect(screen.getAllByText('Release notes').length).toBeGreaterThan(0) // the sidebar is there
     expect(screen.getByRole('button', { name: 'Go to your home page' })).toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'Open billing' })).toBeInTheDocument() // the nearest list above the address
     expect(document.title).toBe('Page not found · ShipX')
@@ -102,7 +102,7 @@ describe('AppRoutes', () => {
   it('shows a customer the not-found page inside the customer portal', async () => {
     renderAt(makeContextValue({ session: makeSession('customer'), status: 'authenticated' }), '/my-billing/x/oops')
     expect(await screen.findByRole('heading', { level: 1, name: 'Page not found' })).toBeInTheDocument()
-    expect(screen.getAllByText('My Shipments').length).toBeGreaterThan(0) // the portal's top nav
+    expect(screen.getAllByText('My shipments').length).toBeGreaterThan(0) // the portal's top nav
     expect(screen.getByRole('button', { name: 'Open billing' })).toBeInTheDocument()
   })
 
@@ -117,7 +117,7 @@ describe('AppRoutes', () => {
     renderAt(makeContextValue({ session: makeSession('tenant_admin'), status: 'authenticated' }), '/containers')
     expect(await screen.findByText('Billing')).toBeInTheDocument() // Billing group nav item
     expect(screen.getAllByText('Containers').length).toBeGreaterThanOrEqual(1) // Operations group nav item
-    expect(screen.getByText('Users')).toBeInTheDocument() // Admin-only nav item
+    expect(screen.getByText('Staff')).toBeInTheDocument() // Admin-only nav item
     // The page itself (its own heading) proves the real ContainerList rendered, not RouteStub.
     await waitFor(() => expect(screen.getAllByText('Containers').length).toBeGreaterThanOrEqual(2))
   })
@@ -138,7 +138,7 @@ describe('AppRoutes', () => {
     // Nothing has loaded yet on the first render: the fallback is what is on screen.
     expect(container.querySelector('[aria-busy="true"]')).not.toBeNull()
     // A cold page chunk can take over a second to compile when the whole suite runs in parallel.
-    expect((await screen.findAllByText('Users', {}, { timeout: 5000 })).length).toBeGreaterThan(0)
+    expect((await screen.findAllByText('Staff', {}, { timeout: 5000 })).length).toBeGreaterThan(0)
     await waitFor(() => expect(container.querySelector('[aria-busy="true"]')).toBeNull())
   })
 })

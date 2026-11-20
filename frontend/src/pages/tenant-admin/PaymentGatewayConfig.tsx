@@ -221,7 +221,10 @@ export function PaymentGatewayConfig(): JSX.Element {
 
   return (
     <div>
-      <PageHeader title="Payments" meta="How your customers pay you: online through Paystack, or by bank transfer." />
+      <PageHeader
+        title="Payments"
+        meta="How your customers pay you: online through Paystack, or by bank transfer."
+      />
       {saveError && (
         <div style={{ marginBottom: 'var(--space-4)' }}>
           <Banner variant="error">{saveError}</Banner>

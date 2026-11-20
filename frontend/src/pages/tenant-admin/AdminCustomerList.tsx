@@ -260,9 +260,11 @@ export function AdminCustomerList(): JSX.Element {
       <PageHeader
         title="Customers"
         meta={'Manage customer profiles and GDPR requests.'}
-        primary={<Button variant="primary" icon="plus" onClick={() => setShowAdd(true)}>
-              Add customer
-            </Button>}
+        primary={
+          <Button variant="primary" icon="plus" onClick={() => setShowAdd(true)}>
+            Add customer
+          </Button>
+        }
       />
       {error && (
         <div className={styles.banner}>

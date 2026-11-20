@@ -673,7 +673,6 @@ export function ComponentCatalog(): JSX.Element {
             sidebar={
               <Sidebar
                 role="nigeria"
-                user={{ name: 'Adaeze Eze', role: 'Nigeria Office Staff' }}
                 items={[
                   {
                     group: 'Operations',

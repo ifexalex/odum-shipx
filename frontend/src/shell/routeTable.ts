@@ -82,7 +82,7 @@ export const routeTable: RouteDef[] = [
   { path: '/admin/users/:id', allow: ['tenant_admin'], title: 'Staff member', layout: 'staff', parent: '/admin/users', crumb: 'Staff member' },
   { path: '/admin/customers', allow: ['tenant_admin'], title: 'Customers', layout: 'staff', crumb: 'Customers' },
   { path: '/admin/customers/:id', allow: ['tenant_admin'], title: 'Customer', layout: 'staff', parent: '/admin/customers', crumb: 'Customer' },
-  { path: '/admin/config', allow: ['tenant_admin'], title: 'Company settings', layout: 'staff', crumb: 'Configuration' },
+  { path: '/admin/config', allow: ['tenant_admin'], title: 'Company settings', layout: 'staff', crumb: 'Settings' },
   { path: '/admin/config/dollar-rate', allow: ['tenant_admin'], title: 'Dollar rate', layout: 'staff', parent: '/admin/config', crumb: 'Dollar rate' },
   { path: '/admin/config/cbm-rate', allow: ['tenant_admin'], title: 'CBM rate', layout: 'staff', parent: '/admin/config', crumb: 'CBM rate' },
   { path: '/admin/config/charge-types', allow: ['tenant_admin'], title: 'Charge types', layout: 'staff', parent: '/admin/config', crumb: 'Charge types' },

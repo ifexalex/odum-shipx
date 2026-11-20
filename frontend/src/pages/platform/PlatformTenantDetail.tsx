@@ -420,18 +420,29 @@ export function PlatformTenantDetail(): JSX.Element {
         actions={
           <div className={styles.tenantActions}>
             {tenant.status === 'active' && (
-              <Button variant="secondary" icon="eye" loading={impersonating} onClick={() => void handleImpersonate()}>
+              <Button
+                variant="secondary"
+                icon="eye"
+                loading={impersonating}
+                onClick={() => void handleImpersonate()}
+              >
                 Impersonate
               </Button>
             )}
             {tenant.status === 'active' && (
-              <Button variant="danger-ghost" onClick={() => setActiveModal('suspend')}>Suspend</Button>
+              <Button variant="danger-ghost" onClick={() => setActiveModal('suspend')}>
+                Suspend
+              </Button>
             )}
             {tenant.status === 'suspended' && (
-              <Button variant="primary" onClick={() => setActiveModal('activate')}>Lift suspension</Button>
+              <Button variant="primary" onClick={() => setActiveModal('activate')}>
+                Lift suspension
+              </Button>
             )}
             {tenant.status !== 'offboarded' && (
-              <Button variant="danger-ghost" onClick={() => setActiveModal('offboard')}>Offboard</Button>
+              <Button variant="danger-ghost" onClick={() => setActiveModal('offboard')}>
+                Offboard
+              </Button>
             )}
           </div>
         }
