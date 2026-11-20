@@ -5,11 +5,11 @@ import { orderedPackageMix, type Manifest, type VerificationStatus } from '../..
 import { isManifestOverdue as isOverdue } from '../../api/manifestRules'
 import { useManifestList, useManifestStats } from '../../hooks/useManifests'
 import { Badge, Banner, Card, Chip, ListFooter, Mono, StatCard, StatusBadge, Table, EmptyState } from '../../design/components'
-import { useTopBarSlot } from '../../shell/TopBarContext'
 import styles from './ManifestList.module.css'
 import { formatNumber } from '../../lib/format'
 import { useStatusParam } from '../../lib/useStatusParam'
 import { statusLabel } from '../../design/status'
+import { PageHeader } from '../../shell/PageHeader'
 
 // Per-status counts come from GET /v1/manifests/stats (P2-4) — a single
 // aggregate query, so no page-tallying. Chips still set the real
@@ -42,7 +42,6 @@ function fmtWeight(kg: string | null | undefined): string {
   return `${formatNumber(n, 0)} kg`
 }
 
-
 // The values `?status=` may hold (useStatusParam); anything else reads as no filter.
 const VERIFICATION_STATUSES: readonly VerificationStatus[] = ['pending', 'verified', 'discrepancies_found', 'resolved']
 
@@ -58,10 +57,12 @@ export function ManifestList(): JSX.Element {
   // §6.2 stats row (P2-4) — real per-status counts; hidden until loaded, and on failure.
   const { data: stats = null } = useManifestStats()
 
-  useTopBarSlot({ subtitle: 'Verify incoming container cargo against the packing list.' })
-
   return (
     <div>
+      <PageHeader
+        title="Manifests"
+        meta={'Verify incoming container cargo against the packing list.'}
+      />
 
       {error && (
         <div className={styles.banner}>

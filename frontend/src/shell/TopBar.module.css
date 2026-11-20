@@ -15,6 +15,7 @@
   align-items: center;
   gap: var(--space-3);
   min-width: 0;
+  flex: 1 1 auto;
 }
 
 /* Hamburger — hidden on desktop; shown under the 860px container query where
@@ -36,47 +37,6 @@
 .hamburger:focus-visible {
   outline: none;
   box-shadow: var(--shadow-focus-ring);
-}
-
-.titleBlock {
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-0-5);
-  min-width: 0;
-}
-
-
-.title {
-  font-family: var(--font-display);
-  font-weight: 700;
-  font-size: var(--text-xl);
-  color: var(--color-ink);
-  margin: 0;
-  letter-spacing: var(--tracking-tight);
-  line-height: var(--text-xl-line);
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-
-/* One-line page description under the title (list pages). Truncated so it can
-   never push the fixed-height bar taller; hidden entirely below 860px where
-   the bar wraps and vertical room is at a premium. */
-.subtitle {
-  margin: var(--space-0-5) 0 0;
-  font-size: var(--text-xs);
-  line-height: var(--text-xs-line);
-  color: var(--color-ink-3);
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  max-width: 52ch;
-}
-
-@container sxapp (max-width: 860px) {
-  .subtitle {
-    display: none;
-  }
 }
 
 .right {
@@ -193,23 +153,12 @@
   white-space: nowrap;
 }
 
-/* Responsive — breakpoints match the prototype (components.jsx): the hamburger appears and the
-   user-meta hides at 860px. The search box has its own responsive rules (GlobalSearch.module.css). */
+/* Responsive — the hamburger appears and the user's name hides at 860px; the bar stays one row at every width, since
+   it holds only global controls (FD-14). The search box has its own responsive rules (GlobalSearch.module.css). */
 @container sxapp (max-width: 860px) {
   .topbar {
     padding: 0 var(--space-4);
-    /* Ground-truth gap found live: a page injecting 1-2 action buttons via
-       useTopBarSlot() (e.g. BillingList's "Export"/"Generate billing")
-       still overflowed the topbar at phone widths even with search/role-
-       switch/user-text already hidden below — min-height (not a fixed
-       height) lets .right wrap onto a second row instead of clipping or
-       forcing the whole page wider. */
-    min-height: 64px;
-    height: auto;
-    flex-wrap: wrap;
-    row-gap: var(--space-2);
-    padding-top: var(--space-3);
-    padding-bottom: var(--space-3);
+    gap: var(--space-2);
   }
   .hamburger {
     display: inline-flex;
@@ -217,50 +166,21 @@
   .userMenuText {
     display: none;
   }
-  .right {
-    flex-wrap: wrap;
-    justify-content: flex-end;
-    row-gap: var(--space-2);
-  }
 }
 
-/* The page's actions sit in line with the bar's icons on desktop. */
-.pageActions {
-  display: contents;
-}
-
-/* On a phone: row one is the menu button, the title and the bar's own icons; the page's actions get a row of their
-   own below, instead of being mixed in with the icons over three or four rows. */
 @container sxapp (max-width: 600px) {
-  .topbar {
-    column-gap: var(--space-2);
+  .left {
+    flex: 1 1 0;
   }
-  /* Room for the title next to the icons: the account button drops its arrow and padding, the title steps down. */
-  .title {
-    font-size: var(--text-xl);
+  .right {
+    gap: var(--space-2);
   }
+  /* The account button drops its arrow and padding to leave room for the search button. */
   .userMenu {
     padding: var(--space-0-5);
     gap: 0;
   }
   .userMenu > :last-child {
     display: none;
-  }
-  .left {
-    flex: 1 1 0;
-  }
-  .title {
-    overflow: hidden;
-    text-overflow: ellipsis;
-  }
-  .right {
-    display: contents;
-  }
-  .pageActions {
-    display: flex;
-    order: 3;
-    flex: 1 0 100%;
-    flex-wrap: wrap;
-    gap: var(--space-2);
   }
 }

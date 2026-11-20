@@ -8,11 +8,12 @@ import { packingListKeys } from '../../api/keys'
 import { STALE_30S } from '../../lib/queryClient'
 import { canApproveOrReject, canEditPackingList, computeCbm, formatPackageMix, formatPackageUnit } from '../../api/packingListRules'
 import { useSession } from '../../auth/useSession'
-import { Badge, Banner, Button, Card, DialogGuard, ExportButton, Field, Icon, Mono, StatusBadge, Table, IconButton, CellInput, PageSkeleton, EmptyState, ErrorState } from '../../design/components'
+import { Badge, Banner, Button, Card, DialogGuard, ExportButton, Field, Mono, StatusBadge, Table, IconButton, CellInput, PageSkeleton, EmptyState, ErrorState } from '../../design/components'
 import { SectionHead } from '../../shell/SectionHead'
 import styles from './PackingListDetail.module.css'
 import { formatDate } from '../../lib/format'
 import { useBreadcrumbLabel } from '../../shell/breadcrumbs'
+import { PageHeader } from '../../shell/PageHeader'
 import { toast } from '../../design/toast'
 
 interface RejectModalProps {
@@ -232,51 +233,34 @@ export function PackingListDetail(): JSX.Element {
 
   return (
     <div>
-      <div className={styles.hero}>
-        <div className={styles.heroLeft}>
-          <div className={styles.heroIcon}>
-            <Icon name="package" size={28} stroke={2} />
-          </div>
-          <div>
-            <div className={styles.heroTitleRow}>
-              <h1 className={styles.heroTitle}>{pl.customer_name ?? 'Packing list'}</h1>
-              <StatusBadge kind="packingList" status={pl.status} />
-            </div>
-            <div className={styles.heroMeta}>
-              <Mono>{pl.container_number ?? pl.container_id}</Mono>
-              <span>· {packageSummary} · {formatCbm(pl.total_cbm)} CBM</span>
-              {pl.arrival_warehouse_name && <span>· To {pl.arrival_warehouse_name}</span>}
-              <span>· Submitted {formatDate(pl.created_at)}</span>
-            </div>
-          </div>
-        </div>
-        <div className={styles.heroActions}>
-          <ExportButton
-            formats={['xlsx', 'csv', 'pdf']}
-            onExport={(fmt) =>
-              fmt === 'pdf' ? packingListApi.pdf(pl.id) : packingListApi.export(pl.id, fmt)
-            }
-          />
-          <Button variant="secondary" icon="file" onClick={() => navigate(`/packing-lists/${pl.id}/print`)}>
-            Print view
-          </Button>
-          {pl.status === 'draft' && !editing && (
-            <Button variant="secondary" icon="edit" onClick={() => navigate(`/packing-lists/${pl.id}/edit`)}>
-              Edit
+      <PageHeader
+        title={pl.reference ? `Packing list ${pl.reference}` : 'Packing list'}
+        status={<StatusBadge kind="packingList" status={pl.status} />}
+        meta={[
+          pl.customer_name,
+          <Mono>{pl.container_number ?? pl.container_id}</Mono>,
+          `${packageSummary}, ${formatCbm(pl.total_cbm)} CBM`,
+          pl.arrival_warehouse_name && `To ${pl.arrival_warehouse_name}`,
+          `Submitted ${formatDate(pl.created_at)}`,
+        ]}
+        primary={
+          editing ? null : canAct ? (
+            <Button variant="primary" icon="check" loading={actionSubmitting} onClick={() => void handleApprove()}>
+              Approve
             </Button>
-          )}
-          {canSubmitDraft && !editing && (
+          ) : canSubmitDraft ? (
             <Button variant="primary" icon="check" loading={actionSubmitting} onClick={() => void handleSubmitForApproval()}>
               Submit for approval
             </Button>
-          )}
-          {canEdit && !editing && (
+          ) : canEdit ? (
             <Button variant="primary" icon="edit" onClick={startEditing}>
               Edit &amp; resubmit
             </Button>
-          )}
-          {canAct && (
-            <>
+          ) : null
+        }
+        actions={
+          <>
+            {canAct && !editing && (
               <Button
                 variant="danger-ghost"
                 icon="x"
@@ -287,13 +271,21 @@ export function PackingListDetail(): JSX.Element {
               >
                 Reject
               </Button>
-              <Button variant="primary" icon="check" loading={actionSubmitting} onClick={() => void handleApprove()}>
-                Approve
+            )}
+            {pl.status === 'draft' && !editing && (
+              <Button variant="secondary" icon="edit" onClick={() => navigate(`/packing-lists/${pl.id}/edit`)}>
+                Edit
               </Button>
-            </>
-          )}
-        </div>
-      </div>
+            )}
+            <ExportButton
+              formats={['xlsx', 'csv', 'pdf']}
+              onExport={(fmt) => (fmt === 'pdf' ? packingListApi.pdf(pl.id) : packingListApi.export(pl.id, fmt))}
+            />
+          </>
+        }
+        more={[{ label: 'Print view', icon: 'file', onSelect: () => navigate(`/packing-lists/${pl.id}/print`) }]}
+        moreLabel="More packing list actions"
+      />
 
       {error && (
         <div className={styles.banner}>

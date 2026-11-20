@@ -78,9 +78,8 @@ export function PlatformDashboard(): JSX.Element {
   return (
     <div>
       <PageHeader
-        eyebrow="Platform"
         title="Platform dashboard"
-        subtitle="Health and growth across every tenant on ShipX."
+        meta="Health and growth across every tenant on ShipX."
         actions={
           <Button variant="primary" icon="plus" onClick={() => navigate('/platform/tenants')}>
             Onboard tenant

@@ -80,9 +80,8 @@ export function CreateContainer(): JSX.Element {
   return (
     <div className={styles.wrap}>
       <PageHeader
-        eyebrow="China-side · operations"
         title="Create new container"
-        subtitle="Set up the container. You'll attach customer packing lists once it exists."
+        meta="Set up the container. You'll attach customer packing lists once it exists."
       />
 
       {error && (

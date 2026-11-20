@@ -7,7 +7,6 @@ import { SessionContext, type SessionContextValue } from '../../auth/SessionCont
 import type { Session } from '../../auth/types'
 import { billingApi } from '../../api/billing'
 import { ApiError } from '../../api/client'
-import { TopBarTestWrapper } from '../../test/TopBarTestWrapper'
 import { BillingList } from './BillingList'
 
 vi.mock('../../api/billing', () => ({
@@ -270,9 +269,9 @@ describe('BillingList — Generate billing', () => {
       <QueryClientProvider client={queryClient}>
         <MemoryRouter>
           <SessionContext.Provider value={makeCtx(role)}>
-            <TopBarTestWrapper>
+            <>
               <BillingList />
-            </TopBarTestWrapper>
+            </>
           </SessionContext.Provider>
         </MemoryRouter>
       </QueryClientProvider>,
@@ -323,9 +322,9 @@ describe('BillingList — Export', () => {
       <QueryClientProvider client={queryClient}>
         <MemoryRouter>
           <SessionContext.Provider value={makeCtx(role)}>
-            <TopBarTestWrapper>
+            <>
               <BillingList />
-            </TopBarTestWrapper>
+            </>
           </SessionContext.Provider>
         </MemoryRouter>
       </QueryClientProvider>,

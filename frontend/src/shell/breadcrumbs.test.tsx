@@ -108,10 +108,6 @@ describe('the trail (FD-45)', () => {
     ])
   })
 
-  it('falls back to the top-bar suffix when the page set no label', () => {
-    expect(breadcrumbTrail('/containers/c1', ALL_ROLES, {}, 'MSCU1234567').at(-1)).toEqual({ label: 'MSCU1234567' })
-  })
-
   it('is the same for every role that may open the page and the pages above it', () => {
     const byPath = new Map(routeTable.map((route) => [route.path, route]))
     const opens = (role: UserRole, path: string | undefined): boolean => {

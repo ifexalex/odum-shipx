@@ -162,8 +162,8 @@ describe('BillingDetail', () => {
       meta: { pagination: { has_more: false, next_cursor: null, total_count: 0 } },
     })
     renderPage()
-    await waitFor(() => expect(screen.getByRole('button', { name: 'Apply carryover' })).toBeInTheDocument())
-    await userEvent.click(screen.getByRole('button', { name: 'Apply carryover' }))
+    await userEvent.click(await screen.findByRole('button', { name: 'More invoice actions' }))
+    await userEvent.click(screen.getByRole('menuitem', { name: 'Apply carryover' }))
     await waitFor(() =>
       expect(carryoverApi.list).toHaveBeenCalledWith(
         expect.objectContaining({ status: 'outstanding', customer_id: 'cust1' }),

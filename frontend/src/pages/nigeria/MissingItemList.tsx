@@ -6,11 +6,11 @@ import { useMissingItemList } from '../../hooks/useItems'
 import { useSession } from '../../auth/useSession'
 import type { UserRole } from '../../auth/types'
 import { Banner, Button, Card, Chip, DialogGuard, Field, ListFooter, Mono, StatusBadge, Table, Select, EmptyState, ErrorState } from '../../design/components'
-import { useTopBarSlot } from '../../shell/TopBarContext'
 import styles from './ItemList.module.css'
 import { formatDate } from '../../lib/format'
 import { statusLabel } from '../../design/status'
 import { toast } from '../../design/toast'
+import { PageHeader } from '../../shell/PageHeader'
 
 const STATUS_FILTERS: MissingItemStatus[] = [
   'reported', 'investigating', 'found_and_shipping', 'confirmed_lost', 'resolved',
@@ -111,15 +111,14 @@ export function MissingItemList(): JSX.Element {
     refetch()
   }
 
-  useTopBarSlot({
-    subtitle:
-      role === 'china_office_staff'
-        ? 'Cargo reported missing in Nigeria. Record the supply and loading check.'
-        : 'Cargo reported missing during manifest inspection.',
-  })
-
   return (
     <div>
+      <PageHeader
+        title="Missing items"
+        meta={role === 'china_office_staff'
+              ? 'Cargo reported missing in Nigeria. Record the supply and loading check.'
+              : 'Cargo reported missing during manifest inspection.'}
+      />
 
       {error && (
         <div className={styles.banner}>

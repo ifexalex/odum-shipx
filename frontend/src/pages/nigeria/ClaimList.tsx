@@ -9,9 +9,9 @@ import { useSession } from '../../auth/useSession'
 import { useClaimList } from '../../hooks/useClaims'
 import { useDateRangeFilter } from '../../hooks/useDateRangeFilter'
 import { type SortableColumn, useTableSort } from '../../hooks/useTableSort'
-import { useTopBarSlot } from '../../shell/TopBarContext'
 import styles from './ClaimList.module.css'
 import { formatDate } from '../../lib/format'
+import { PageHeader } from '../../shell/PageHeader'
 
 // 'Claim ID' (reference, text) defaults asc; 'Filed' (created_at) defaults
 // desc (newest first) — same convention as BillingList/ContainerList.
@@ -53,14 +53,6 @@ export function ClaimList(): JSX.Element {
 
   const isStaff = session?.role === 'nigeria_office_staff' || session?.role === 'tenant_admin'
 
-  useTopBarSlot({
-    actions: isStaff ? (
-      <Button variant="primary" icon="plus" onClick={() => navigate('/claims/new')}>
-        Log claim
-      </Button>
-    ) : null,
-  })
-
   // Tenant-wide claim aggregates — SQL-computed server-side (GET /v1/claims/stats)
   // so the figures stay correct as claims grow to tens of thousands, instead of
   // counting a capped fetched sample.
@@ -82,6 +74,15 @@ export function ClaimList(): JSX.Element {
 
   return (
     <div>
+      <PageHeader
+        title="Damage claims"
+        primary={isStaff && (
+      <Button variant="primary" icon="plus" onClick={() => navigate('/claims/new')}>
+              Log claim
+            </Button>
+          
+      )}
+      />
       {error && (
         <div className={styles.banner}>
           <ErrorState compact title="Couldn't load claims" error={error} onRetry={() => void refetch()} />

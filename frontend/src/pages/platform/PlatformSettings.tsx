@@ -342,9 +342,8 @@ export function PlatformSettings(): JSX.Element {
   return (
     <div>
       <PageHeader
-        eyebrow="Platform"
         title="Platform settings"
-        subtitle="Global configuration for the ShipX platform — identity, providers, and plan limits."
+        meta="Global configuration for the ShipX platform — identity, providers, and plan limits."
       />
       <Tabs items={SUB_PAGES} active={active} onChange={(key) => navigate(key)} />
       {active === '/platform/settings' && <GeneralSettings />}

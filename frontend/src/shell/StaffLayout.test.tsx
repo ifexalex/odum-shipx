@@ -80,27 +80,26 @@ describe('StaffLayout', () => {
     expect(screen.getByText('Users')).toBeInTheDocument()
   })
 
-  it('shows a breadcrumb + TopBar title on a list route', () => {
+  it('adds no title of its own: the page’s PageHeader is the only heading (FD-14)', () => {
     renderLayout(
       makeContextValue({ session: makeSession('china_office_staff'), status: 'authenticated' }),
       '/containers',
       <div>Containers content</div>,
     )
-    // Breadcrumb (Operations / Containers) + TopBar h1 + sidebar nav all say "Containers"
-    expect(screen.getAllByText('Operations').length).toBeGreaterThanOrEqual(1)
-    expect(screen.getAllByText('Containers').length).toBeGreaterThanOrEqual(2)
-    expect(screen.getByRole('heading', { name: 'Containers' })).toBeInTheDocument()
+    expect(screen.queryByRole('heading', { level: 1 })).toBeNull()
+    expect(screen.queryByRole('navigation', { name: 'Breadcrumb' })).toBeNull() // a top-level page
   })
 
-  it('suppresses the TopBar title on a form (…/new) route so the body PageHeader is the only heading', () => {
+  it('puts the breadcrumb at the top of the content, ahead of the page, even before the page has loaded', () => {
     renderLayout(
       makeContextValue({ session: makeSession('china_office_staff'), status: 'authenticated' }),
       '/containers/new',
       <div>Create form body</div>,
     )
-    // No TopBar <h1> title on form routes (title is blanked); breadcrumb still present.
-    expect(screen.queryByRole('heading', { name: 'Create container' })).toBeNull()
-    expect(screen.getByText('Create form body')).toBeInTheDocument()
+    const nav = screen.getByRole('navigation', { name: 'Breadcrumb' })
+    expect(nav.closest('main')).not.toBeNull()
+    expect(nav.querySelector('a[href="/containers"]')).toHaveTextContent('Containers')
+    expect(nav.compareDocumentPosition(screen.getByText('Create form body')) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
   })
 
   it('renders nothing when there is no session', () => {

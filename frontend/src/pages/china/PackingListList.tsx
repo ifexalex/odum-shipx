@@ -6,13 +6,13 @@ import { packingListApi, type BulkActionResult, type PackingListStatus } from '.
 import { canApproveOrReject, explainBulkFailure, formatPackageMix, groupBulkFailures, isSelfApproval } from '../../api/packingListRules'
 import { useSession } from '../../auth/useSession'
 import { usePackingListList } from '../../hooks/usePackingLists'
-import { useTopBarSlot } from '../../shell/TopBarContext'
 import { Banner, Button, Card, Chip, DialogGuard, Field, ListFooter, Mono, StatusBadge, Table, Pressable, SearchField, EmptyState } from '../../design/components'
 import styles from './PackingListList.module.css'
 import { formatDate } from '../../lib/format'
 import { useStatusParam } from '../../lib/useStatusParam'
 import { statusLabel } from '../../design/status'
 import { toast } from '../../design/toast'
+import { PageHeader } from '../../shell/PageHeader'
 
 const STATUS_FILTERS: PackingListStatus[] = ['draft', 'pending_approval', 'approved', 'rejected']
 
@@ -229,16 +229,18 @@ export function PackingListList(): JSX.Element {
   }
 
   // Prototype: action button lives in the TopBar (between search and bell).
-  useTopBarSlot({
-    actions: session?.role === 'china_office_staff' ? (
-      <Button variant="primary" icon="plus" onClick={() => navigate('/packing-lists/new')}>
-        Create packing list
-      </Button>
-    ) : null,
-  })
 
   return (
     <div>
+      <PageHeader
+        title="Packing lists"
+        primary={session?.role === 'china_office_staff' && (
+      <Button variant="primary" icon="plus" onClick={() => navigate('/packing-lists/new')}>
+              Create packing list
+            </Button>
+          
+      )}
+      />
       {error && (
         <div className={styles.banner}>
           <Banner variant="error" title="Something went wrong">{error}</Banner>

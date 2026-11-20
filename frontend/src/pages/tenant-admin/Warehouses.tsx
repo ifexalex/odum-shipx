@@ -34,9 +34,9 @@ import {
   EmptyState,
   LinesSkeleton,
 } from '../../design/components'
-import { useTopBarSlot } from '../../shell/TopBarContext'
 import styles from './admin.module.css'
 import { toast } from '../../design/toast'
+import { PageHeader } from '../../shell/PageHeader'
 
 interface WarehouseModalProps {
   existing: Warehouse | null
@@ -296,18 +296,15 @@ export function Warehouses(): JSX.Element {
     }
   }
 
-  useTopBarSlot({
-    subtitle:
-      'Destination warehouses your customers’ goods arrive at — the arrival-warehouse picker and release-note letterheads draw from this list.',
-    actions: (
-      <Button variant="primary" icon="plus" onClick={() => setModal({ open: true, existing: null })}>
-        Add warehouse
-      </Button>
-    ),
-  })
-
   return (
     <div>
+      <PageHeader
+        title="Warehouses"
+        meta={'Destination warehouses your customers’ goods arrive at — the arrival-warehouse picker and release-note letterheads draw from this list.'}
+        primary={<Button variant="primary" icon="plus" onClick={() => setModal({ open: true, existing: null })}>
+              Add warehouse
+            </Button>}
+      />
       <div ref={bannerRef}>
         {error && (
           <div className={styles.banner}>

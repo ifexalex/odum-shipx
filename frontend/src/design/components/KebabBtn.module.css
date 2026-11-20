@@ -1,9 +1,0 @@
-.btn {
-  background: transparent;
-  border: 0;
-  padding: var(--space-1);
-  cursor: pointer;
-  color: var(--color-ink-4);
-  border-radius: var(--radius-sm);
-  display: flex;
-}

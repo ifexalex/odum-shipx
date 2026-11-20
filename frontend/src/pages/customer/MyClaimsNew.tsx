@@ -24,6 +24,7 @@ import { EvidenceUploader } from '../nigeria/EvidenceUploader'
 import styles from './customer.module.css'
 import { statusLabel } from '../../design/status'
 import { toast } from '../../design/toast'
+import { ResultScreen } from '../../shell/ResultScreen'
 
 type Step = 'details' | 'evidence' | 'review'
 
@@ -100,11 +101,12 @@ export function MyClaimsNew(): JSX.Element {
 
   if (done) {
     return (
-      <div className={styles.resultPage}>
-        <div className={styles.resultIcon}>✓</div>
-        <h1 className={styles.resultTitle}>Claim filed!</h1>
-        <p className={styles.resultBody}>Our team will contact you once we begin the inspection.</p>
-      </div>
+      <ResultScreen
+        tone="success"
+        title="Claim filed"
+      >
+        Our team will contact you once we begin the inspection.
+      </ResultScreen>
     )
   }
 
@@ -116,7 +118,7 @@ export function MyClaimsNew(): JSX.Element {
 
   return (
     <div className={styles.page}>
-      <PageHeader title="File a Damage Claim" />
+      <PageHeader title="File a damage claim" />
 
       <p className={styles.stepIndicator}>{STEP_LABELS[step]}</p>
 
@@ -208,10 +210,10 @@ export function MyClaimsNew(): JSX.Element {
           />
           <div className={styles.formActions}>
             <Button variant="ghost" onClick={() => setStep('review')}>Skip — add later</Button>
-            <Button
+              <Button
               variant="primary"
               onClick={() => setStep('review')}
-            >
+              >
               {uploadedEvidence.length > 0 ? `Next: Review (${uploadedEvidence.length} file(s))` : 'Next: Review'}
             </Button>
           </div>
@@ -234,7 +236,7 @@ export function MyClaimsNew(): JSX.Element {
           </div>
           <div className={styles.formActions}>
             <Button variant="ghost" onClick={() => setStep('evidence')}>Back</Button>
-            <Button variant="primary" onClick={handleDone}>
+              <Button variant="primary" onClick={handleDone}>
               Done — view my claims
             </Button>
           </div>

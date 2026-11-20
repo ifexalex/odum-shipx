@@ -6,7 +6,6 @@ import { SessionContext, type SessionContextValue } from '../../auth/SessionCont
 import type { Session } from '../../auth/types'
 import { announcementsApi } from '../../api/announcements'
 import { AnnouncementsPage } from './AnnouncementsPage'
-import { TopBarTestWrapper } from '../../test/TopBarTestWrapper'
 
 vi.mock('../../api/announcements', () => ({
   announcementsApi: {
@@ -59,7 +58,7 @@ function renderPage(session: Session | null) {
   render(
     <QueryClientProvider client={queryClient}>
       <SessionContext.Provider value={makeContextValue(session)}>
-        <TopBarTestWrapper><AnnouncementsPage /></TopBarTestWrapper>
+        <><AnnouncementsPage /></>
       </SessionContext.Provider>
     </QueryClientProvider>,
   )

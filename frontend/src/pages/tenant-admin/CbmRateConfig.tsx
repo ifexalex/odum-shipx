@@ -83,7 +83,7 @@ export function CbmRateConfig(): JSX.Element {
 
   return (
     <div>
-      <PageHeader title="CBM Rate" subtitle="Freight charge per cubic metre, applied to customer billing." />
+      <PageHeader title="CBM rate" meta="Freight charge per cubic metre, applied to customer billing." />
 
       {error && <div className={styles.banner}><Banner variant="error">{error}</Banner></div>}
 

@@ -2,28 +2,12 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { MemoryRouter } from 'react-router-dom'
-import { useState, type ReactNode } from 'react'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { SessionContext, type SessionContextValue } from '../../auth/SessionContext'
 import type { Session, UserRole } from '../../auth/types'
 import { ApiError } from '../../api/client'
 import { containersApi, type Container } from '../../api/tracking'
-import { TopBarContext } from '../../shell/TopBarContext'
 import { ContainerList } from './ContainerList'
-
-// Provides TopBarContext and renders any injected TopBar actions into a visible div
-// so tests can query them the same way as the real StaffLayout would.
-function TopBarWrapper({ children }: { children: ReactNode }) {
-  const [suffix, setSuffix] = useState<string | null>(null)
-  const [subtitle, setSubtitle] = useState<string | null>(null)
-  const [actions, setActions] = useState<ReactNode | null>(null)
-  return (
-    <TopBarContext.Provider value={{ suffix, setSuffix, subtitle, setSubtitle, actions, setActions }}>
-      {children}
-      {actions && <div data-testid="topbar-actions">{actions}</div>}
-    </TopBarContext.Provider>
-  )
-}
 
 vi.mock('../../api/tracking', () => ({
   containersApi: { list: vi.fn(), stats: vi.fn(), exportList: vi.fn() },
@@ -63,9 +47,9 @@ function renderPage(role: UserRole) {
     <QueryClientProvider client={queryClient}>
       <SessionContext.Provider value={makeContextValue(role)}>
         <MemoryRouter>
-          <TopBarWrapper>
+          <>
             <ContainerList />
-          </TopBarWrapper>
+          </>
         </MemoryRouter>
       </SessionContext.Provider>
     </QueryClientProvider>,

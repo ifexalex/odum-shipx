@@ -50,13 +50,11 @@ function allows(route: RouteDef, roles: readonly UserRole[]): boolean {
  * @param pathname The current location.
  * @param roles Every role the user holds; an ancestor none of them may open is left out.
  * @param labels Record labels the pages supplied, by route pattern.
- * @param fallbackLabel A label for the current page when it supplied none (the staff top bar's suffix).
  */
 export function breadcrumbTrail(
   pathname: string,
   roles: readonly UserRole[],
   labels: Readonly<Record<string, string>> = {},
-  fallbackLabel?: string | null,
 ): Crumb[] {
   const match = matchRoute(pathname)
   if (!match?.route.parent) return []
@@ -69,7 +67,7 @@ export function breadcrumbTrail(
   }
   // Nothing above it this role can open (China staff on CBM disputes): a lone crumb would only repeat the title.
   if (ancestors.length === 0) return []
-  const current = labels[route.path] ?? fallbackLabel ?? route.crumb ?? route.title
+  const current = labels[route.path] ?? route.crumb ?? route.title
   return [...ancestors, { label: current }]
 }
 

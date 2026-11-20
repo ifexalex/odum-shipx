@@ -16,6 +16,7 @@ import { ReleaseNoteCard } from './ReleaseNoteCard'
 import styles from './customer.module.css'
 import { formatDate, formatNgn } from '../../lib/format'
 import { useBreadcrumbLabel } from '../../shell/breadcrumbs'
+import { PageHeader } from '../../shell/PageHeader'
 import { toast } from '../../design/toast'
 
 // Bank details shown when customer selects manual transfer. Ground-truth gap
@@ -342,34 +343,32 @@ export function MyBillingDetail(): JSX.Element {
 
   return (
     <div className={styles.page}>
-      <div className={styles.heroRow}>
-        <div>
-          <h1 className={styles.detailTitle}>{billing.container_number ?? billing.container_id}</h1>
-          <div className={styles.claimStatusRow}>
-            <StatusBadge kind="invoice" status={billing.payment_status} audience="customer" />
-            {billing.billed_at && (
-              <span className={styles.claimStatusText}>
-                Billed {formatDate(billing.billed_at)}
-              </span>
-            )}
-          </div>
-        </div>
-        <div className={styles.actionsWrap}>
-          {billing._active_disputes.length === 0 && !disputeFiled && billing.payment_status !== 'cancelled' && (
+      <PageHeader
+        title={billing.invoice_number ? `Invoice ${billing.invoice_number}` : 'Invoice'}
+        status={<StatusBadge kind="invoice" status={billing.payment_status} audience="customer" />}
+        meta={[
+          <>
+            Container <Mono>{billing.container_number ?? billing.container_id}</Mono>
+          </>,
+          billing.billed_at && `Billed ${formatDate(billing.billed_at)}`,
+        ]}
+        primary={
+          needsPayment && (
+            <Button variant="primary" onClick={() => navigate(`/my-billing/${billing.id}/refund-request`)}>
+              Request refund
+            </Button>
+          )
+        }
+        actions={
+          billing._active_disputes.length === 0 &&
+          !disputeFiled &&
+          billing.payment_status !== 'cancelled' && (
             <Button variant="secondary" onClick={() => setShowDispute(true)}>
               Dispute CBM
             </Button>
-          )}
-          {needsPayment && (
-            <Button
-              variant="primary"
-              onClick={() => navigate(`/my-billing/${billing.id}/refund-request`)}
-            >
-              Request refund
-            </Button>
-          )}
-        </div>
-      </div>
+          )
+        }
+      />
 
       <ReleaseNoteCard containerId={billing.container_id} />
 

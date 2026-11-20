@@ -394,9 +394,8 @@ export function Account(): JSX.Element {
   return (
     <div className={styles.page}>
       <PageHeader
-        eyebrow="Account"
         title="Your details and preferences"
-        subtitle="Update your contact info, notification channels, and privacy choices."
+        meta="Update your contact info, notification channels, and privacy choices."
       />
 
       {error && <div style={{ marginBottom: 'var(--space-4)' }}><Banner variant="error" title="Couldn't load your account">{error}</Banner></div>}

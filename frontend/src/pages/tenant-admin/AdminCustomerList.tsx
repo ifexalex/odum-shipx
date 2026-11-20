@@ -6,10 +6,10 @@ import { customerKeys } from '../../api/keys'
 import { customersApi, type Customer } from '../../api/tenantManagement'
 import { useCustomerList } from '../../hooks/useCustomers'
 import { Badge, Banner, Button, Card, Chip, Field, Mono, PhoneField, StatCard, Table, ListFooter, DialogGuard, SearchField, CheckboxField, EmptyState } from '../../design/components'
-import { useTopBarSlot } from '../../shell/TopBarContext'
 import styles from './admin.module.css'
 import { formatDate } from '../../lib/format'
 import { toast } from '../../design/toast'
+import { PageHeader } from '../../shell/PageHeader'
 
 // ---------------------------------------------------------------------------
 // Add customer modal (audit gap B5a — prototype 3.5's "Add customer" action).
@@ -255,17 +255,15 @@ export function AdminCustomerList(): JSX.Element {
     navigate(`/admin/customers/${customer.id}`, { state: { customer } })
   }
 
-  useTopBarSlot({
-    subtitle: 'Manage customer profiles and GDPR requests.',
-    actions: (
-      <Button variant="primary" icon="plus" onClick={() => setShowAdd(true)}>
-        Add customer
-      </Button>
-    ),
-  })
-
   return (
     <div>
+      <PageHeader
+        title="Customers"
+        meta={'Manage customer profiles and GDPR requests.'}
+        primary={<Button variant="primary" icon="plus" onClick={() => setShowAdd(true)}>
+              Add customer
+            </Button>}
+      />
       {error && (
         <div className={styles.banner}>
           <Banner variant="error">{error.message}</Banner>

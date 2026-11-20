@@ -6,7 +6,6 @@ import { useCustomerBanner, useCustomerNotifUnreadCount } from '../hooks/useCust
 import { AnnouncementBanner } from './AnnouncementBanner'
 import { Breadcrumb } from './Breadcrumb'
 import { BreadcrumbContext, breadcrumbTrail, useBreadcrumbLabelState } from './breadcrumbs'
-import styles from './CustomerLayout.module.css'
 import { CustomerNotificationPanel } from './CustomerNotificationPanel'
 import { CustShell } from './CustShell'
 import { CustomerTopNav } from './CustomerTopNav'
@@ -63,11 +62,7 @@ export function CustomerLayout({ children }: CustomerLayoutProps): JSX.Element |
           }
         >
           <BreadcrumbContext.Provider value={breadcrumbLabels}>
-            {trail.length > 0 && (
-              <div className={styles.breadcrumb}>
-                <Breadcrumb trail={trail} />
-              </div>
-            )}
+            <Breadcrumb trail={trail} />
             <ContentErrorBoundary>{children}</ContentErrorBoundary>
           </BreadcrumbContext.Provider>
         </CustShell>

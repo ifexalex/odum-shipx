@@ -11,13 +11,11 @@
   min-width: 0;
 }
 
-.eyebrow {
-  font-size: var(--text-xs);
-  letter-spacing: var(--tracking-label);
-  text-transform: uppercase;
-  font-weight: 600;
-  color: var(--color-primary-text);
-  margin-bottom: var(--space-2);
+.titleRow {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--space-2) var(--space-3);
 }
 
 .title {
@@ -28,23 +26,52 @@
   color: var(--color-ink);
   letter-spacing: var(--tracking-tight);
   line-height: var(--text-2xl-line);
+  overflow-wrap: break-word;
+  min-width: 0;
 }
 
-.subtitle {
+.reference {
+  display: inline-block;
+  max-width: 100%;
+}
+
+/* One line of facts, joined by middle dots; wraps between facts, never inside one. */
+.meta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: var(--space-1) var(--space-2);
   margin: var(--space-2) 0 0;
   font-size: var(--text-md);
+  line-height: var(--text-md-line);
   color: var(--color-ink-3);
+}
+
+.fact {
+  min-width: 0;
+  overflow-wrap: break-word;
+}
+
+.dot {
+  color: var(--color-ink-4);
 }
 
 .actions {
   display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  justify-content: flex-end;
   gap: var(--space-2);
   flex-shrink: 0;
 }
 
 /* Stack title over actions on narrow shells (prototype .sx-pagehead). */
-@container sxapp (max-width: 560px) {
+@container sxapp (max-width: 600px) {
   .header {
     flex-direction: column;
+  }
+
+  .actions {
+    justify-content: flex-start;
   }
 }

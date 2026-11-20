@@ -5,12 +5,12 @@ import { type CBMDisputeStatus } from '../../api/billing'
 import { useSession } from '../../auth/useSession'
 import { useDisputeList } from '../../hooks/useBilling'
 import {  Card, Chip, ListFooter, Mono, StatusBadge, Table, EmptyState, ErrorState } from '../../design/components'
-import { useTopBarSlot } from '../../shell/TopBarContext'
 import { useNow } from '../../hooks/useNow'
 import styles from './DisputeList.module.css'
 import { formatDate } from '../../lib/format'
 import { useStatusParam } from '../../lib/useStatusParam'
 import { statusLabel } from '../../design/status'
+import { PageHeader } from '../../shell/PageHeader'
 
 const _DISPUTE_SLA_DAYS = 7
 
@@ -75,10 +75,12 @@ export function DisputeList(): JSX.Element {
     statusFilter ? { status: statusFilter } : {},
   )
 
-  useTopBarSlot({ subtitle: 'Customer-filed disputes on cargo measurements.' })
-
   return (
     <div>
+      <PageHeader
+        title="CBM disputes"
+        meta={'Customer-filed disputes on cargo measurements.'}
+      />
 
       {error && (
         <div className={styles.banner}>

@@ -60,7 +60,8 @@ beforeEach(() => {
 describe('ClaimDetail', () => {
   it('renders claim from router state without API fetch', async () => {
     renderPage()
-    await waitFor(() => expect(screen.getByText('c1')).toBeInTheDocument())
+    await waitFor(() => expect(screen.getByRole('heading', { name: 'Damage claim DC-20260601-001' })).toBeInTheDocument())
+    expect(screen.queryByText('c1')).toBeNull() // titled by its reference, never its database id (FD-17)
     expect(screen.getByText('C001')).toBeInTheDocument()
     expect(claimsApi.get).not.toHaveBeenCalled()
   })
@@ -69,7 +70,7 @@ describe('ClaimDetail', () => {
     vi.mocked(claimsApi.get).mockResolvedValue(CLAIM_STUB)
     renderPage('nigeria_office_staff', null)
     await waitFor(() => expect(claimsApi.get).toHaveBeenCalledWith('c1'))
-    await waitFor(() => expect(screen.getByText('c1')).toBeInTheDocument())
+    await waitFor(() => expect(screen.getByRole('heading', { name: 'Damage claim DC-20260601-001' })).toBeInTheDocument())
   })
 
   it('shows Start inspection button for nigeria on filed claim', async () => {
@@ -79,7 +80,7 @@ describe('ClaimDetail', () => {
 
   it('hides Start inspection for tenant_admin', async () => {
     renderPage('tenant_admin')
-    await waitFor(() => expect(screen.getByText('c1')).toBeInTheDocument())
+    await screen.findByRole('heading', { name: 'Damage claim DC-20260601-001' })
     expect(screen.queryByRole('button', { name: 'Start inspection' })).not.toBeInTheDocument()
   })
 

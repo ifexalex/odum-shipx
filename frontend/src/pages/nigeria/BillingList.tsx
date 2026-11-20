@@ -12,9 +12,9 @@ import { useBillingList } from '../../hooks/useBilling'
 import { useDateRangeFilter } from '../../hooks/useDateRangeFilter'
 import { useListExport } from '../../hooks/useListExport'
 import { type SortableColumn, useTableSort } from '../../hooks/useTableSort'
-import { useTopBarSlot } from '../../shell/TopBarContext'
 import { GenerateBillingModal } from './GenerateBillingModal'
 import styles from './BillingList.module.css'
+import { PageHeader } from '../../shell/PageHeader'
 
 // 'Reference' (invoice_number, text) defaults asc; 'Billed' (billed_at,
 // "when this record was billed") defaults desc — same created/billed-desc,
@@ -108,18 +108,6 @@ export function BillingList(): JSX.Element {
   }
   const exportList = useListExport((format: 'xlsx' | 'csv') => billingApi.exportList(listParams, format))
 
-  useTopBarSlot({
-    actions:
-      isAdmin || canGenerate ? (
-        <>
-          {isAdmin && <ExportButton formats={['xlsx', 'csv']} onExport={exportList.onExport} />}
-          {canGenerate && (
-            <Button variant="primary" icon="plus" onClick={() => setGenerateOpen(true)}>Generate billing</Button>
-          )}
-        </>
-      ) : null,
-  })
-
   // Tenant-wide aggregates for the stats row + status chips — SQL-computed
   // server-side (GET /v1/billing/stats) so the figures stay correct as billing
   // grows to tens of thousands, instead of summing a capped fetched sample.
@@ -152,6 +140,15 @@ export function BillingList(): JSX.Element {
 
   return (
     <div>
+      <PageHeader
+        title="Billing"
+        primary={canGenerate && (
+                  <Button variant="primary" icon="plus" onClick={() => setGenerateOpen(true)}>
+                    Generate billing
+                  </Button>
+                )}
+        actions={isAdmin && <ExportButton formats={['xlsx', 'csv']} onExport={exportList.onExport} />}
+      />
       {error && (
         <div className={styles.banner}>
           <ErrorState compact title="Couldn't load billing" error={error} onRetry={() => void refetch()} />

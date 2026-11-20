@@ -5,7 +5,6 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { withQuery } from '../../test/queryWrapper'
 import { ApiError } from '../../api/client'
 import { warehousesApi, type Warehouse } from '../../api/warehouses'
-import { TopBarTestWrapper } from '../../test/TopBarTestWrapper'
 import { Warehouses } from './Warehouses'
 
 vi.mock('../../api/warehouses', () => ({
@@ -43,9 +42,9 @@ function renderPage() {
   return render(
     withQuery(
       <MemoryRouter>
-        <TopBarTestWrapper>
+        <>
           <Warehouses />
-        </TopBarTestWrapper>
+        </>
       </MemoryRouter>,
     ),
   )

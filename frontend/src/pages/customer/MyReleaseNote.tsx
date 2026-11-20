@@ -64,7 +64,7 @@ export function MyReleaseNote(): JSX.Element {
 
   return (
     <div className={styles.page}>
-      <PageHeader title="Release note" subtitle="Show this at the warehouse to collect your goods." />
+      <PageHeader title="Release note" meta="Show this at the warehouse to collect your goods." />
 
       {note.status === 'active' && (
         <div className={styles.banner}>

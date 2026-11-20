@@ -6,7 +6,6 @@ import * as rnModule from '../../api/releaseNotes'
 import { SessionContext } from '../../auth/SessionContext'
 import type { Session } from '../../auth/types'
 import { ReleaseNoteList } from './ReleaseNoteList'
-import { TopBarTestWrapper } from '../../test/TopBarTestWrapper'
 
 const SESSION: Session = {
   userId: 'u-001', tenantId: 't-001', role: 'nigeria_office_staff', roles: ['nigeria_office_staff'],
@@ -29,7 +28,7 @@ function renderPage(stats?: Awaited<ReturnType<typeof rnModule.releaseNotesApi.s
   return render(
     <QueryClientProvider client={__qc()}><MemoryRouter>
       <SessionContext.Provider value={{ session: SESSION, status: 'authenticated', login: vi.fn(), logout: vi.fn(), refreshNow: vi.fn(), setActiveRole: vi.fn(), startImpersonation: vi.fn(), exitImpersonation: vi.fn() }}>
-        <TopBarTestWrapper><ReleaseNoteList /></TopBarTestWrapper>
+        <><ReleaseNoteList /></>
       </SessionContext.Provider>
     </MemoryRouter></QueryClientProvider>,
   )

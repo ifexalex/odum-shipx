@@ -16,9 +16,8 @@ export function CreatePackingList(): JSX.Element {
   return (
     <div className={styles.wrap}>
       <PageHeader
-        eyebrow="China-side · packing"
         title={isEdit ? 'Edit draft packing list' : 'Create packing list'}
-        subtitle="Capture carton-level details for a customer's cargo. Submit for approval when complete."
+        meta="Capture carton-level details for a customer's cargo. Submit for approval when complete."
       />
 
       {!editReady ? (

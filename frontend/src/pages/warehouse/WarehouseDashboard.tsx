@@ -20,6 +20,7 @@ import { Banner, Button, Field, Icon, Mono, PhoneField, StatCard, ToggleSwitch, 
 import styles from './WarehouseDashboard.module.css'
 import { todayIso } from '../../lib/format'
 import { toast } from '../../design/toast'
+import { PageHeader } from '../../shell/PageHeader'
 
 // ---------------------------------------------------------------------------
 // Urgency helpers (P2-2) — prototype §9.3 sorts the queue by age and flags
@@ -378,10 +379,7 @@ export function WarehouseDashboard(): JSX.Element {
 
   return (
     <div className={styles.page}>
-      <div className={styles.header}>
-        <h1 className={styles.title}>Warehouse</h1>
-        <p className={styles.subtitle}>Active release notes to process today</p>
-      </div>
+      <PageHeader title="Warehouse" meta="Active release notes to process today" />
 
       {error && (
         <div className={styles.banner}>

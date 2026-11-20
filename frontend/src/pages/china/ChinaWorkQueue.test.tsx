@@ -6,7 +6,6 @@ import { disputeApi } from '../../api/billing'
 import { manifestApi } from '../../api/manifest'
 import { packingListApi } from '../../api/packingList'
 import { withQuery } from '../../test/queryWrapper'
-import { TopBarTestWrapper } from '../../test/TopBarTestWrapper'
 import { ChinaWorkQueue } from './ChinaWorkQueue'
 
 vi.mock('../../api/packingList', () => ({ packingListApi: { list: vi.fn() } }))
@@ -27,12 +26,12 @@ function renderPage() {
   return render(
     withQuery(
       <MemoryRouter initialEntries={['/work-queue']}>
-        <TopBarTestWrapper>
+        <>
           <Routes>
             <Route path="/work-queue" element={<ChinaWorkQueue />} />
             <Route path="*" element={<Where />} />
           </Routes>
-        </TopBarTestWrapper>
+        </>
       </MemoryRouter>,
     ),
   )

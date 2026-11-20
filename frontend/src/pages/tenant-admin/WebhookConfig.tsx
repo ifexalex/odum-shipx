@@ -12,6 +12,7 @@ import { useSeedOnce } from '../../hooks/useSeedOnce'
 import { SectionHead } from '../../shell/SectionHead'
 import styles from './WebhookConfig.module.css'
 import { toast } from '../../design/toast'
+import { PageHeader } from '../../shell/PageHeader'
 
 // ─── Event toggle row ──────────────────────────────────────────────────────────
 const WEBHOOK_EVENTS: Array<{ type: WebhookEventType; label: string }> = [
@@ -200,6 +201,7 @@ export function WebhookConfig(): JSX.Element {
 
   return (
     <div>
+      <PageHeader title="Webhooks" meta="Send ShipX events to your own systems as they happen." />
       {error && (
         <div style={{ marginBottom: 'var(--space-4)' }}>
           <Banner variant="error">{error}</Banner>

@@ -20,6 +20,7 @@ import { BillingBreakdown, PaymentsTable } from './billingDetail/Breakdown'
 import { MiscChargesSection } from './billingDetail/MiscCharges'
 import { PaymentClaimsSection } from './billingDetail/PaymentClaims'
 import { useBreadcrumbLabel } from '../../shell/breadcrumbs'
+import { PageHeader } from '../../shell/PageHeader'
 import { toast } from '../../design/toast'
 
 
@@ -167,6 +168,76 @@ export function BillingDetail(): JSX.Element {
 
   return (
     <div>
+      <PageHeader
+        title={billing.invoice_number ? `Invoice ${billing.invoice_number}` : 'Invoice'}
+        status={<StatusBadge kind="invoice" status={billing.payment_status} />}
+        meta={[
+          billing.customer_name,
+          <>
+            Container <Mono>{billing.container_number ?? billing.container_id}</Mono>
+          </>,
+          billing.billed_at && `Billed ${formatDate(billing.billed_at)}`,
+          billing.customer_phone && (
+            <span className={styles.contact}>
+              <Icon name="phone" size={12} color="var(--color-ink-4)" />
+              {billing.customer_phone}
+            </span>
+          ),
+          billing.customer_email && (
+            <span className={styles.contact}>
+              <Icon name="mail" size={12} color="var(--color-ink-4)" />
+              {billing.customer_email}
+            </span>
+          ),
+        ]}
+        primary={
+          isActionable && (
+            <Action variant="primary" icon="coin" onClick={() => setShowPaymentModal(true)}>
+              Record payment
+            </Action>
+          )
+        }
+        actions={
+          <>
+            <ExportButton formats={['xlsx', 'csv']} onExport={(fmt) => billingApi.export(billing.id, fmt)} />
+            {canGenerateRelease && (
+              <Action variant="secondary" icon="file" onClick={() => setShowReleaseNoteModal(true)}>
+                Generate release note
+              </Action>
+            )}
+          </>
+        }
+        more={[
+          ...(isStaff && billing.payment_status !== 'cancelled' && billing.payment_status !== 'waived'
+            ? [{ label: 'Add charge', icon: 'plus' as const, mutates: true, onSelect: () => setShowAddChargeModal(true) }]
+            : []),
+          ...(isCarryoverApplicable
+            ? [
+                {
+                  label: 'Apply carryover',
+                  mutates: true,
+                  onSelect: () => {
+                    void loadCarryovers()
+                    setShowCarryoverModal(true)
+                  },
+                },
+              ]
+            : []),
+          ...(isCancellable
+            ? [
+                {
+                  label: 'Cancel billing',
+                  tone: 'danger' as const,
+                  onSelect: () => {
+                    setCancelError(null)
+                    setShowCancelModal(true)
+                  },
+                },
+              ]
+            : []),
+        ]}
+        moreLabel="More invoice actions"
+      />
       {session?.readOnly && (
         <div style={{ marginBottom: 'var(--space-4)' }}>
           <Banner variant="warning" icon="eye" title="Read-only session">
@@ -174,88 +245,6 @@ export function BillingDetail(): JSX.Element {
           </Banner>
         </div>
       )}
-      {/* Hero */}
-      <div className={styles.hero}>
-        <div className={styles.heroLeft}>
-          <div className={styles.heroIcon}>
-            <Icon name="coin" size={28} stroke={2} />
-          </div>
-          <div>
-            <div className={styles.heroTitleRow}>
-              <h1 className={styles.heroTitle}>{billing.customer_name ?? 'Billing record'}</h1>
-              <StatusBadge kind="invoice" status={billing.payment_status} />
-            </div>
-            <div className={styles.heroMeta}>
-              {billing.invoice_number && <span><Mono>{billing.invoice_number}</Mono></span>}
-              <span>· Container <Mono>{billing.container_number ?? billing.container_id}</Mono></span>
-              {billing.billed_at && <span>· Billed {formatDate(billing.billed_at)}</span>}
-            </div>
-            {(billing.customer_phone || billing.customer_email) && (
-              <div className={styles.heroContacts}>
-                {billing.customer_phone && (
-                  <span className={styles.heroContact}>
-                    <Icon name="phone" size={12} color="var(--color-ink-4)" />
-                    {billing.customer_phone}
-                  </span>
-                )}
-                {billing.customer_email && (
-                  <span className={styles.heroContact}>
-                    <Icon name="mail" size={12} color="var(--color-ink-4)" />
-                    {billing.customer_email}
-                  </span>
-                )}
-              </div>
-            )}
-          </div>
-        </div>
-        <div className={styles.heroActions}>
-          <ExportButton
-            formats={['xlsx', 'csv']}
-            onExport={(fmt) => billingApi.export(billing.id, fmt)}
-          />
-          {isActionable && (
-            <Action variant="primary" icon="coin" onClick={() => setShowPaymentModal(true)}>
-              Record payment
-            </Action>
-          )}
-          {isStaff && billing.payment_status !== 'cancelled' && billing.payment_status !== 'waived' && (
-            <Action variant="secondary" icon="plus" onClick={() => setShowAddChargeModal(true)}>
-              Add charge
-            </Action>
-          )}
-          {isCarryoverApplicable && (
-            <Action
-              variant="secondary"
-              onClick={() => {
-                void loadCarryovers()
-                setShowCarryoverModal(true)
-              }}
-            >
-              Apply carryover
-            </Action>
-          )}
-          {canGenerateRelease && (
-            <Action
-              variant="secondary"
-              icon="file"
-              onClick={() => setShowReleaseNoteModal(true)}
-            >
-              Generate release note
-            </Action>
-          )}
-          {isCancellable && (
-            <Action
-              variant="danger-ghost"
-              onClick={() => {
-                setCancelError(null)
-                setShowCancelModal(true)
-              }}
-            >
-              Cancel billing
-            </Action>
-          )}
-        </div>
-      </div>
 
       {/* Stat cards */}
       <div className={styles.stats}>

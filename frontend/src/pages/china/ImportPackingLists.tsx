@@ -132,9 +132,8 @@ export function ImportPackingLists(): JSX.Element {
   return (
     <div className={styles.wrap}>
       <PageHeader
-        eyebrow="China-side · bulk entry"
         title="Import from Excel"
-        subtitle="Bring a container’s cargo into ShipX in one pass — either your forwarder’s own manifest export, or a filled ShipX template."
+        meta="Bring a container’s cargo into ShipX in one pass — either your forwarder’s own manifest export, or a filled ShipX template."
       />
 
       <WizardSteps current={step} mode={mode} />

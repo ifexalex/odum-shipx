@@ -4,10 +4,10 @@ import { type RefundStatus } from '../../api/refunds'
 import { refundTypeLabel } from '../../api/refundsRules'
 import { useRefundList } from '../../hooks/useRefunds'
 import {  Card, Chip, ListFooter, Mono, StatusBadge, Table, EmptyState, ErrorState } from '../../design/components'
-import { useTopBarSlot } from '../../shell/TopBarContext'
 import styles from './RefundList.module.css'
 import { formatDate, formatNgn } from '../../lib/format'
 import { statusLabel } from '../../design/status'
+import { PageHeader } from '../../shell/PageHeader'
 
 const STATUS_FILTERS: RefundStatus[] = [
   'pending_review',
@@ -24,10 +24,12 @@ export function RefundList(): JSX.Element {
     statusFilter ? { status: statusFilter } : {},
   )
 
-  useTopBarSlot({ subtitle: 'Track refund requests across all customers and containers.' })
-
   return (
     <div>
+      <PageHeader
+        title="Refunds"
+        meta={'Track refund requests across all customers and containers.'}
+      />
 
       {error && (
         <div className={styles.banner}>

@@ -49,53 +49,6 @@
 .configCardTitle { font-weight: 700; font-size: var(--text-lg); margin: 0; }
 .configCardDesc { font-size: var(--text-sm); color: var(--color-ink-4); margin: 0; }
 .configCardValue { font-family: var(--font-mono); font-size: var(--text-md); color: var(--color-primary-text); font-weight: 700; margin: 0; }
-
-/* Customer profile hero + tabs (3.6 / audit gap A2) */
-.customerHero {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: var(--space-4);
-  margin-bottom: var(--space-5);
-  flex-wrap: wrap;
-}
-.customerHeroId {
-  display: flex;
-  align-items: center;
-  gap: var(--space-4);
-  min-width: 0;
-}
-.customerHeroTitleRow {
-  display: flex;
-  align-items: center;
-  gap: var(--space-3);
-  flex-wrap: wrap;
-}
-.customerHeroName {
-  font-family: var(--font-display);
-  font-weight: 700;
-  font-size: var(--text-2xl);
-  color: var(--color-ink);
-  margin: 0;
-  letter-spacing: var(--tracking-tight);
-  line-height: var(--text-2xl-line);
-}
-.customerHeroMeta {
-  font-size: var(--text-sm);
-  color: var(--color-ink-3);
-  margin-top: var(--space-1);
-  display: flex;
-  align-items: center;
-  flex-wrap: wrap;
-}
-.customerHeroMetaItem {
-  display: inline-flex;
-  align-items: center;
-}
-.customerHeroDot {
-  color: var(--color-line);
-  margin: 0 var(--space-2);
-}
 .profileGrid {
   display: grid;
   grid-template-columns: 1fr 1fr;

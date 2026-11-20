@@ -31,7 +31,7 @@ export function MyBilling(): JSX.Element {
 
   return (
     <div className={styles.page}>
-      <PageHeader title="My Billing" subtitle="Your payment history and outstanding balances." />
+      <PageHeader title="My billing" meta="Your payment history and outstanding balances." />
 
       {error && (
         <div className={styles.banner}>

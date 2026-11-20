@@ -9,8 +9,9 @@ import { containerKeys, packingListKeys } from '../../api/keys'
 import { STALE_30S } from '../../lib/queryClient'
 import { containersApi } from '../../api/tracking'
 import { useSession } from '../../auth/useSession'
-import { useTopBarSlot } from '../../shell/TopBarContext'
-import { Badge, Banner, Button, Icon, Mono, StatusBadge, PageSkeleton, ErrorState } from '../../design/components'
+import { useBreadcrumbLabel } from '../../shell/breadcrumbs'
+import { PageHeader } from '../../shell/PageHeader'
+import { Badge, Banner, Button, StatusBadge, PageSkeleton, ErrorState } from '../../design/components'
 import { Tabs } from '../../shell/Tabs'
 import styles from './ContainerDetail.module.css'
 import { InvoiceOutcomeBanner } from './InvoiceOutcomeBanner'
@@ -21,6 +22,7 @@ import { PackingListsTab, TrackingTab } from './containerDetail/Tabs'
 import { fetchAllPackingLists } from './containerDetail/packingLists'
 import { statusLabel } from '../../design/status'
 import { toast } from '../../design/toast'
+import { formatDate } from '../../lib/format'
 
 
 export function ContainerDetail(): JSX.Element {
@@ -81,7 +83,7 @@ export function ContainerDetail(): JSX.Element {
   // Must be called unconditionally (before any early returns) — React hook rules.
   // The suffix is null until the container loads, then becomes the container number,
   // giving the TopBar breadcrumb: Operations / Containers / MSCU1234567.
-  useTopBarSlot({ suffix: container?.container_number ?? null })
+  useBreadcrumbLabel(container?.container_number)
 
   if (loading && !container) {
     return <PageSkeleton kind="detail" label="Loading container" />
@@ -134,56 +136,45 @@ export function ContainerDetail(): JSX.Element {
   }
   return (
     <div>
-      <div className={styles.hero}>
-        <div className={styles.heroLeft}>
-          <div className={styles.heroIcon}>
-            <Icon name="container" size={28} stroke={2} />
-          </div>
-          <div>
-            <div className={styles.heroTitleRow}>
-              <h1 className={styles.heroTitle}>{container.container_number}</h1>
-              <StatusBadge kind="container" status={container.status} />
-              {container.container_type && (
-                <Badge variant="neutral" dot={false}>{container.container_type}</Badge>
-              )}
-            </div>
-            <div className={styles.heroMeta}>
-              {container.vessel_name && (
-                <span>
-                  {container.vessel_name}
-                  {container.voyage_number && <> · Voy {container.voyage_number}</>} ·{' '}
-                </span>
-              )}
-              <span>
-                {container.origin} <Mono>→</Mono> {container.destination}
-              </span>
-              {container.estimated_arrival_date && <span>· ETA {container.estimated_arrival_date}</span>}
-            </div>
-          </div>
-        </div>
-        <div className={styles.heroActions}>
-          {canCancel && (
-            <Button variant="ghost" icon="warn" onClick={() => setShowCancelModal(true)}>
-              Cancel container
-            </Button>
-          )}
-          {canDelete && (
-            <Button variant="ghost" icon="x" onClick={() => setShowDeleteModal(true)}>
-              Delete
-            </Button>
-          )}
-          {canAddPackingList && (
-            <Button variant="secondary" icon="plus" onClick={() => navigate('/packing-lists/new')}>
-              Add packing list
-            </Button>
-          )}
-          {canAdvance && target && (
+      <PageHeader
+        title={`Container ${container.container_number}`}
+        status={
+          <>
+            <StatusBadge kind="container" status={container.status} />
+            {container.container_type && (
+              <Badge variant="neutral" dot={false}>
+                {container.container_type}
+              </Badge>
+            )}
+          </>
+        }
+        meta={[
+          container.vessel_name &&
+            (container.voyage_number ? `${container.vessel_name}, voyage ${container.voyage_number}` : container.vessel_name),
+          `${container.origin} → ${container.destination}`,
+          container.estimated_arrival_date && `ETA ${formatDate(container.estimated_arrival_date)}`,
+        ]}
+        primary={
+          canAdvance &&
+          target && (
             <Button variant="primary" icon="arrowright" onClick={() => setShowAdvanceModal(true)}>
               Advance to {statusLabel('container', target)}
             </Button>
-          )}
-        </div>
-      </div>
+          )
+        }
+        actions={
+          canAddPackingList && (
+            <Button variant="secondary" icon="plus" onClick={() => navigate('/packing-lists/new')}>
+              Add packing list
+            </Button>
+          )
+        }
+        more={[
+          ...(canCancel ? [{ label: 'Cancel container', icon: 'warn' as const, tone: 'danger' as const, onSelect: () => setShowCancelModal(true) }] : []),
+          ...(canDelete ? [{ label: 'Delete container', icon: 'x' as const, tone: 'danger' as const, onSelect: () => setShowDeleteModal(true) }] : []),
+        ]}
+        moreLabel="More container actions"
+      />
 
       {invoiceResults.length > 0 && (
         <>

@@ -1088,10 +1088,12 @@ Part of the whole-project debugging pass (backend/infrastructure findings are in
 Comprehensive pass to make every list/detail page consistent and correct at scale (data grows to tens of
 thousands of rows). Three structural changes, applied app-wide:
 
-- **Header consistency.** List pages carry their title in the shared `TopBar` (via `useTopBarSlot`), with an
+- ~~**Header consistency.** List pages carry their title in the shared `TopBar` (via `useTopBarSlot`), with an
   optional `subtitle` (new `TopBar`/`StaffLayout`/`TopBarContext` plumbing). 14 list pages migrated their inline
   page-title block into the TopBar slot; 7 detail-page heroes unified onto one `.hero`/`.heroTitle`/`.heroActions`
-  spec (26px, `--color-ink`, `flex-start`, `flex-wrap`, mono for codes / display for names).
+  spec (26px, `--color-ink`, `flex-start`, `flex-wrap`, mono for codes / display for names).~~ *Superseded
+  2026-11-20 (FD-14): every page is titled by one in-page `PageHeader`; `useTopBarSlot`, `TopBarContext` and the
+  `.hero` blocks are gone. See "One page header (FD-14)" below.*
 - **Bounded load-more lists.** New shared `ListFooter` (`design/components`) renders "Showing X of N {noun}" + a
   "Load more (N remaining)" button, and past a 500-row cap nudges the user to refine their search instead of
   accumulating unbounded DOM. Adopted by all migrated list pages. Tables already paginate (DOM bounded); this makes
@@ -1811,7 +1813,7 @@ Removed: AdminCustomerDetail, StaffUserDetail, PlatformTenantDetail, ManifestDet
 Owner request: all pages responsive on mobile phones. Measured, not eyeballed: `frontend/scripts/mobile-audit.mjs` opens all 78 routes at 375, 360 and 320 px as an allowed role with real records and fails on any page that scrolls sideways or has an element sticking out (clipped or scrolling the content column). Before: 15 pages failed at 375 px, more at 360 and 320. After: all 78 routes pass at 375, 360 and 320 px.
 
 Fixed at the source, so the fix covers every page using the piece:
-- **Top bar** (`shell/TopBar`): below 600 px, row one is the menu button, title and the bar's icons; the page's own actions (`useTopBarSlot` `actions`, now wrapped in `.pageActions`) get a full-width row below. Before, actions mixed in with the icons over three or four rows. The title steps down to 18 px and the account button drops its arrow so the title fits.
+- ~~**Top bar** (`shell/TopBar`): below 600 px, row one is the menu button, title and the bar's icons; the page's own actions (`useTopBarSlot` `actions`, now wrapped in `.pageActions`) get a full-width row below.~~ *Superseded 2026-11-20 (FD-14): the top bar holds no title or page actions at any width, so it is one row; the title and actions are in the page's `PageHeader`.* Before, actions mixed in with the icons over three or four rows. The title steps down to 18 px and the account button drops its arrow so the title fits.
 - **Cards** (`Card`): `min-width: 0`, so no card forces its grid column wider than its share. **Stat cards**: below 600 px the icon gives its room to the label (whole words wrap, no "OUTSTANDI/NG"), and the number scales (`clamp`) and may wrap.
 - **Tabs** (`shell/Tabs`): scroll sideways inside their own strip (no visible scrollbar); tabs never shrink or wrap.
 - **Long pipelines**: new `shell/ScrollStrip` (container stepper, customer shipment stepper; the refund stepper was already one). A strip scrolls inside itself and is marked `data-scroll-strip`.
@@ -1867,3 +1869,23 @@ Ground-truth gap closed: `/admin/reports` showed two Export buttons (top bar and
 
 Container, shipment, claim, refund, packing-list form and import steps all render the shared `Stepper`; step names now match the status badges (container: "Loading … Fully released" for staff, "Being packed … Completed" for customers; previously "Received … Completed/Delivered"). On a phone each shows the current step, "n of N" and a bar. See `03_component_library.md` "Stepper (FD-09)".
 
+
+## One page header (FD-14, 2026-11-20)
+
+Every page inside the staff and customer layouts now opens with one `PageHeader` (see `03_component_library.md`): breadcrumb above it (from the layout), title, status, one meta line, then actions. The top bar keeps only global controls.
+
+- **List pages** (26, formerly `useTopBarSlot`): the subtitle became the meta line and the top-bar buttons moved into the header, the "create" button as `primary`. Titles are sentence case ("Packing lists", "Damage claims", "Staff", "Notification log"). In a read-only session the buttons stay visible but disabled (the `Button` read-only rule), where before the top bar hid them all; Export, which only reads, now works there.
+- **Record pages** are titled by record type and reference, with the customer in the meta line (FD-49): "Invoice INV-A-002", "Container MSCU1234567", "Packing list PL-…", "Manifest …", "Release note …", "Damage claim DC-…", "CBM dispute on …", and for customers "Shipment PL-…" and "Invoice …". The invoice page used to be titled by the customer's name and the claim page showed the claim's database id; both now name the record. The large icon tiles of the old heroes are gone.
+- **Actions** follow one primary, a few secondaries, the rest in the overflow menu:
+  - invoice: Record payment; Export and Generate release note; menu: Add charge, Apply carryover, Cancel billing;
+  - container: Advance to …; Add packing list; menu: Cancel container, Delete container;
+  - packing list: Approve, Submit for approval or Edit & resubmit; Reject, Edit, Export; menu: Print view;
+  - release note: Re-issue or Record pickup; Send pickup code, Export; menu: Split note, Print view;
+  - manifest: Verify or Resolve discrepancy; Export; menu: Revoke verification.
+- **Dashboards**: the tenant dashboard is titled "Dashboard" with the greeting and the container summary as its meta line (it was titled "Lead every shipment, …"); the warehouse page is "Warehouse". The customer's shipments page is "My shipments" with the counts and outstanding balance as its meta line.
+- **Pages that had no title of their own** (the top bar supplied it): Webhooks and Payments settings now have a header.
+- **Result pages** (payment successful, not confirmed, failed; claim filed) use `ResultScreen`.
+- **Read-only banner** on the invoice and customer pages now sits under the header instead of above it.
+- **Found and fixed:** the reports page replaced itself with a loading skeleton whenever the period changed, taking the period control with it (the From/To fields vanished mid-entry). The header now stays while the figures load. Release-note "Valid until" and container ETA printed raw ISO dates; they use `formatDate`.
+- **Removed:** the notification log's Export button. It never had a handler and no export endpoint exists; the owner chose (2026-11-20) not to build one, since the log holds customers' phone numbers and emails and the page's filters and Retry already answer "did the message arrive". An activity-log export is the better candidate if one is ever wanted.
+- **Next:** FD-17 (ids and raw values in record bodies), FD-18 (list layout) and FD-19 (detail layout) follow.

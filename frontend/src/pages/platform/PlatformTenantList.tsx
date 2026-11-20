@@ -13,10 +13,10 @@ import { useNavigate } from 'react-router-dom'
 import { type Tenant, type TenantStatus } from '../../api/tenantManagement'
 import { usePlatformTenantList } from '../../hooks/usePlatformTenants'
 import { Banner, Button, Card, Chip, Mono, StatusBadge, Table, SearchField, EmptyState } from '../../design/components'
-import { useTopBarSlot } from '../../shell/TopBarContext'
 import styles from './admin.module.css'
 import { formatDate } from '../../lib/format'
 import { statusLabel, statusesOf } from '../../design/status'
+import { PageHeader } from '../../shell/PageHeader'
 
 const TIER_COLOR: Record<string, string> = {
   starter: 'var(--color-ink-3)',
@@ -109,17 +109,15 @@ export function PlatformTenantList(): JSX.Element {
     })
   }, [tenants, statusFilter, query])
 
-  useTopBarSlot({
-    subtitle: 'All onboarded tenants and their subscription status.',
-    actions: (
-      <Button variant="primary" icon="plus" onClick={() => navigate('/platform/tenants/new')}>
-        Onboard tenant
-      </Button>
-    ),
-  })
-
   return (
     <div>
+      <PageHeader
+        title="Tenants"
+        meta={'All onboarded tenants and their subscription status.'}
+        primary={<Button variant="primary" icon="plus" onClick={() => navigate('/platform/tenants/new')}>
+              Onboard tenant
+            </Button>}
+      />
       {error && (
         <div className={styles.banner}>
           <Banner variant="error">{error.message}</Banner>

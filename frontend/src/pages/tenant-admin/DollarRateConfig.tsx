@@ -193,7 +193,7 @@ export function DollarRateConfig(): JSX.Element {
 
   return (
     <div>
-      <PageHeader title="Dollar Rate" subtitle="USD → NGN exchange rate used for all billing calculations." />
+      <PageHeader title="Dollar rate" meta="USD → NGN exchange rate used for all billing calculations." />
 
       {error && <div className={styles.banner}><Banner variant="error">{error}</Banner></div>}
 

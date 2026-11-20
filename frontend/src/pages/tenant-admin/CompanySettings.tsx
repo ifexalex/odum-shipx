@@ -234,7 +234,7 @@ function CompanySettingsForm({
     <div>
       <PageHeader
         title="Company settings"
-        subtitle="Your identity on packing lists, release notes, and the customer portal."
+        meta="Your identity on packing lists, release notes, and the customer portal."
       />
 
       {loadError && (

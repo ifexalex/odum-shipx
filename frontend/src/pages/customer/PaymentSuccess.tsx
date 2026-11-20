@@ -5,6 +5,7 @@ import { ApiError } from '../../api/client'
 import { Button } from '../../design/components'
 import styles from './customer.module.css'
 import { useInvoiceCrumb } from './useInvoiceCrumb'
+import { ResultScreen } from '../../shell/ResultScreen'
 
 type ReconcileState = 'verifying' | 'success' | 'pending' | 'error'
 
@@ -63,62 +64,65 @@ export function PaymentSuccess(): JSX.Element {
 
   if (state === 'success') {
     return (
-      <div className={styles.resultPage}>
-        <div className={styles.resultIcon}>✓</div>
-        <h1 className={styles.resultTitle}>Payment successful!</h1>
-        <p className={styles.resultBody}>
-          Your payment has been confirmed and your billing record is updated. Your release note is issued once the
-          balance is fully settled.
-        </p>
-        <div style={{ display: 'flex', gap: 'var(--space-3)' }}>
-          <Button variant="secondary" onClick={() => navigate(`/my-billing/${id}`)}>
-            View invoice
-          </Button>
-          <Button variant="primary" onClick={() => navigate('/my-billing')}>
-            Back to billing
-          </Button>
-        </div>
-      </div>
+      <ResultScreen
+        tone="success"
+        title="Payment successful"
+        actions={
+          <>
+            <Button variant="secondary" onClick={() => navigate(`/my-billing/${id}`)}>
+              View invoice
+            </Button>
+            <Button variant="primary" onClick={() => navigate('/my-billing')}>
+              Back to billing
+            </Button>
+          </>
+        }
+      >
+        Your payment has been confirmed and your billing record is updated. Your release note is issued once the
+        balance is fully settled.
+      </ResultScreen>
     )
   }
 
   if (state === 'pending') {
     return (
-      <div className={styles.resultPage}>
-        <div className={styles.resultIcon} style={{ color: 'var(--color-warning)' }}>!</div>
-        <h1 className={styles.resultTitle}>Payment not yet confirmed</h1>
-        <p className={styles.resultBody}>
-          Paystack hasn't confirmed this payment as successful yet. If you completed the payment, check back on your
-          invoice in a moment — otherwise no charge was made and you can try again.
-        </p>
-        <div style={{ display: 'flex', gap: 'var(--space-3)' }}>
+      <ResultScreen
+        tone="warning"
+        title="Payment not yet confirmed"
+        actions={
+          <>
+            <Button variant="secondary" onClick={() => navigate(`/my-billing/${id}`)}>
+              View invoice
+            </Button>
+            <Button variant="primary" onClick={() => navigate('/my-billing')}>
+              Back to billing
+            </Button>
+          </>
+        }
+      >
+        Paystack hasn't confirmed this payment as successful yet. If you completed the payment, check back on your
+        invoice in a moment — otherwise no charge was made and you can try again.
+      </ResultScreen>
+    )
+  }
+
+  return (
+    <ResultScreen
+      tone="error"
+      title="Couldn't confirm your payment automatically"
+      actions={
+        <>
           <Button variant="secondary" onClick={() => navigate(`/my-billing/${id}`)}>
             View invoice
           </Button>
           <Button variant="primary" onClick={() => navigate('/my-billing')}>
             Back to billing
           </Button>
-        </div>
-      </div>
-    )
-  }
-
-  return (
-    <div className={styles.resultPage}>
-      <div className={styles.resultIcon} style={{ color: 'var(--color-error)' }}>!</div>
-      <h1 className={styles.resultTitle}>Couldn't confirm your payment automatically</h1>
-      <p className={styles.resultBody}>
-        {error} If you were charged, your invoice will update shortly — otherwise please try again or contact your
-        shipping company.
-      </p>
-      <div style={{ display: 'flex', gap: 'var(--space-3)' }}>
-        <Button variant="secondary" onClick={() => navigate(`/my-billing/${id}`)}>
-          View invoice
-        </Button>
-        <Button variant="primary" onClick={() => navigate('/my-billing')}>
-          Back to billing
-        </Button>
-      </div>
-    </div>
+        </>
+      }
+    >
+      {error} If you were charged, your invoice will update shortly — otherwise please try again or contact your
+      shipping company.
+    </ResultScreen>
   )
 }

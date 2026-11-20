@@ -183,7 +183,7 @@ export function StaffUserDetail(): JSX.Element {
 
   return (
     <div>
-      <PageHeader title={user.full_name} subtitle={user.email} />
+      <PageHeader title={user.full_name} meta={user.email} />
 
       {session?.readOnly && (
         <div className={styles.banner}>

@@ -7,10 +7,9 @@ import { Banner, Card, DateRangeFilter, ExportButton, Icon, Mono, StatCard, Tabl
 import { useDateRangeFilter } from '../../hooks/useDateRangeFilter'
 import { useListExport } from '../../hooks/useListExport'
 import { SectionHead } from '../../shell/SectionHead'
-import { useTopBarSlot } from '../../shell/TopBarContext'
 import styles from './TenantReports.module.css'
 import { formatNgn } from '../../lib/format'
-
+import { PageHeader } from '../../shell/PageHeader'
 
 /** How many containers GET /v1/billing/report lists (REPORT_CONTAINER_ROWS in services/billing/repository.py). */
 const REPORT_CONTAINER_ROWS = 200
@@ -174,10 +173,6 @@ export function TenantReports(): JSX.Element {
   // per-period metric, so it's intentionally left unscoped.
   const reportRange = useDateRangeFilter()
 
-  useTopBarSlot({
-    actions: <DateRangeFilter label="Period" range={reportRange} />,
-  })
-
   const { createdAfter, createdBefore } = reportRange
   // The table's Export downloads every container billed in the period on screen; the table itself shows the top 200.
   const exportReport = useListExport((format: 'xlsx' | 'csv') =>
@@ -248,10 +243,20 @@ export function TenantReports(): JSX.Element {
     [report],
   )
 
-  if (loading) return <PageSkeleton kind="list" label="Loading reports" />
+  // The header holds the period filter, so it stays on screen while a new period loads; only the figures wait.
+  const header = <PageHeader title="Reports" actions={<DateRangeFilter label="Period" range={reportRange} />} />
+  if (loading) {
+    return (
+      <div>
+        {header}
+        <PageSkeleton kind="list" label="Loading reports" />
+      </div>
+    )
+  }
 
   return (
     <div>
+      {header}
       {/* Section A — Overview stats */}
       <div className={styles.statsRow}>
         <StatCard label="Containers processed" value={containersProcessed}   sublabel="cleared + released" icon="container" />

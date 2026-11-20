@@ -10,16 +10,15 @@ import { AnnouncementBanner } from './AnnouncementBanner'
 import { AppSidebar } from './AppSidebar'
 import { ImpersonationBanner } from './ImpersonationBanner'
 import { useStaffBanner, useStaffNotifUnreadCount } from '../hooks/useStaffNotifications'
-import { navConfig, roleForPath, visualRoleFor } from './navConfig'
+import { roleForPath, visualRoleFor } from './navConfig'
 import { PageShell } from './PageShell'
 import { QuotaWarningBanner } from './QuotaWarningBanner'
-import { routeTable } from './routeTable'
 import { StaffNotificationPanel } from './StaffNotificationPanel'
 import { TenantBlockedGate } from './TenantBlockedScreen'
 import { GlobalSearch } from './GlobalSearch'
 import { searchPlaceholderFor } from './searchRoutes'
 import { TopBar } from './TopBar'
-import { TopBarContext } from './TopBarContext'
+import { Breadcrumb } from './Breadcrumb'
 import { BreadcrumbContext, breadcrumbTrail, useBreadcrumbLabelState } from './breadcrumbs'
 
 export interface StaffLayoutProps {
@@ -36,32 +35,10 @@ const ROLE_DISPLAY: Record<UserRole, string> = {
   customer: 'Customer',
 }
 
-// Form/create routes render their own in-body PageHeader, so the TopBar title
-// is deliberately blanked — matching the prototype which sets title="" on those
-// screens and lets the body carry the heading.
-const FORM_ROUTE_SUFFIXES = ['/new', '/import']
-
-/**
- * Returns the TopBar title for list pages; undefined for form and detail pages
- * (detail pages never match a static nav path so they naturally return undefined).
- */
-function pageTitle(role: UserRole, pathname: string): string | undefined {
-  if (FORM_ROUTE_SUFFIXES.some((suffix) => pathname.endsWith(suffix))) return undefined
-  for (const group of navConfig[role]) {
-    const item = group.items.find((it) => pathname === it.path)
-    if (item) return item.label
-  }
-  const route = routeTable.find((r) => r.path === pathname)
-  return route?.title
-}
-
 export function StaffLayout({ children }: StaffLayoutProps): JSX.Element | null {
   const { session, setActiveRole } = useSession()
   const location = useLocation()
   const navigate = useNavigate()
-  const [topBarSuffix, setTopBarSuffix] = useState<string | null>(null)
-  const [topBarSubtitle, setTopBarSubtitle] = useState<string | null>(null)
-  const [topBarActions, setTopBarActions] = useState<ReactNode | null>(null)
   const breadcrumbLabels = useBreadcrumbLabelState()
   const [notifPanelOpen, setNotifPanelOpen] = useState(false)
 
@@ -104,14 +81,9 @@ export function StaffLayout({ children }: StaffLayoutProps): JSX.Element | null 
 
   // Null for a platform admin: the server refuses them (a tenant-scoped lookup, and they span tenants).
   const searchPlaceholder = searchPlaceholderFor(session.role)
-  // Where the page lives (FD-45/46): its parent routes, then itself, named by the page's record once loaded. A page
-  // that only sets the top-bar suffix (the container number) is named by that.
-  const breadcrumb = breadcrumbTrail(location.pathname, session.roles, breadcrumbLabels.labels, topBarSuffix)
-  // Suppress the static title when a detail-page suffix is set — the suffix IS
-  // the identifier; showing both would duplicate it.
-  const title = topBarSuffix ? undefined : pageTitle(session.role, location.pathname)
-  // Subtitle only accompanies a static list-page title — never a detail suffix.
-  const subtitle = topBarSuffix ? undefined : (topBarSubtitle ?? undefined)
+  // Where the page lives (FD-45/46): its parent routes, then itself, named by the page's record once loaded. Rendered
+  // above the page's content so it is there while the page loads; the page's own PageHeader follows it (FD-14).
+  const breadcrumb = breadcrumbTrail(location.pathname, session.roles, breadcrumbLabels.labels)
 
   // Always show a user identity in the TopBar / Sidebar — fall back to the role
   // label when the JWT `name` claim is absent (e.g. older tokens or missing attribute).
@@ -127,16 +99,6 @@ export function StaffLayout({ children }: StaffLayoutProps): JSX.Element | null 
 
   return (
     <BreadcrumbContext.Provider value={breadcrumbLabels}>
-    <TopBarContext.Provider
-      value={{
-        suffix: topBarSuffix,
-        setSuffix: setTopBarSuffix,
-        subtitle: topBarSubtitle,
-        setSubtitle: setTopBarSubtitle,
-        actions: topBarActions,
-        setActions: setTopBarActions,
-      }}
-    >
       <ThemeProvider primaryColor={isPlatformShell ? null : (branding?.primary_color ?? null)} style={{ height: '100%' }}>
         <TenantBlockedGate>
         <div style={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
@@ -152,11 +114,7 @@ export function StaffLayout({ children }: StaffLayoutProps): JSX.Element | null 
             topbar={
               <TopBar
                 role={visualRoleFor(session.role)}
-                breadcrumb={breadcrumb}
-                title={title}
-                subtitle={subtitle}
                 user={shellUser}
-                actions={session.readOnly ? undefined : (topBarActions ?? undefined)}
                 search={searchPlaceholder === null ? undefined : <GlobalSearch audience="staff" placeholder={searchPlaceholder} />}
                 notifications={isPlatformShell ? undefined : unreadCount}
                 onNotificationsClick={isPlatformShell ? undefined : () => setNotifPanelOpen((o) => !o)}
@@ -181,12 +139,12 @@ export function StaffLayout({ children }: StaffLayoutProps): JSX.Element | null 
               />
             }
           >
+            <Breadcrumb trail={breadcrumb} />
             <ContentErrorBoundary>{children}</ContentErrorBoundary>
           </PageShell>
         </div>
         </TenantBlockedGate>
       </ThemeProvider>
-    </TopBarContext.Provider>
     </BreadcrumbContext.Provider>
   )
 }

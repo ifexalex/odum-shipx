@@ -19,6 +19,7 @@ import { useSeedOnce } from '../../hooks/useSeedOnce'
 import { SectionHead } from '../../shell/SectionHead'
 import styles from './PaymentGatewayConfig.module.css'
 import { toast } from '../../design/toast'
+import { PageHeader } from '../../shell/PageHeader'
 
 const EMPTY_BANK_FORM = { bank_name: '', account_name: '', account_number: '', sort_code: '', instructions: '' }
 
@@ -220,6 +221,7 @@ export function PaymentGatewayConfig(): JSX.Element {
 
   return (
     <div>
+      <PageHeader title="Payments" meta="How your customers pay you: online through Paystack, or by bank transfer." />
       {saveError && (
         <div style={{ marginBottom: 'var(--space-4)' }}>
           <Banner variant="error">{saveError}</Banner>

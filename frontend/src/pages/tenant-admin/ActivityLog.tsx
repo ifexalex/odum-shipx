@@ -49,10 +49,10 @@ import {
   EmptyState,
   LinesSkeleton,
 } from '../../design/components'
-import { useTopBarSlot } from '../../shell/TopBarContext'
 import styles from './admin.module.css'
 import {  formatDateTime } from '../../lib/format'
 import { useDateRangeFilter } from '../../hooks/useDateRangeFilter'
+import { PageHeader } from '../../shell/PageHeader'
 
 // Every entity_type actually written by shared.audit.log_audit(...) across
 // the backend, grouped into the categories a tenant admin actually thinks
@@ -195,10 +195,12 @@ export function ActivityLog(): JSX.Element {
     when.clear()
   }
 
-  useTopBarSlot({ subtitle: 'Every recorded change in your account — who did what, and when. Confirmed/rejected payments, refunds, and claims all show exactly what changed, not just that something did.' })
-
   return (
     <div>
+      <PageHeader
+        title="Activity log"
+        meta={'Every recorded change in your account — who did what, and when. Confirmed/rejected payments, refunds, and claims all show exactly what changed, not just that something did.'}
+      />
 
       {error && <div style={{ marginBottom: 'var(--space-4)' }}><Banner variant="error" title="Couldn't load">{error}</Banner></div>}
 

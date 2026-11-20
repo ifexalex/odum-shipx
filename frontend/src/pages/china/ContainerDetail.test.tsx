@@ -1,7 +1,6 @@
 import { render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { MemoryRouter, Route, Routes } from 'react-router-dom'
-import { useState, type ReactNode } from 'react'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { withQuery } from '../../test/queryWrapper'
 import { SessionContext, type SessionContextValue } from '../../auth/SessionContext'
@@ -9,19 +8,7 @@ import type { Session, UserRole } from '../../auth/types'
 import { ApiError } from '../../api/client'
 import { containerDocumentsApi, containersApi, uploadToPresignedUrl, type Container } from '../../api/tracking'
 import { packingListApi, type PackingList } from '../../api/packingList'
-import { TopBarContext } from '../../shell/TopBarContext'
 import { ContainerDetail } from './ContainerDetail'
-
-function TopBarWrapper({ children }: { children: ReactNode }) {
-  const [suffix, setSuffix] = useState<string | null>(null)
-  const [subtitle, setSubtitle] = useState<string | null>(null)
-  const [actions, setActions] = useState<ReactNode | null>(null)
-  return (
-    <TopBarContext.Provider value={{ suffix, setSuffix, subtitle, setSubtitle, actions, setActions }}>
-      {children}
-    </TopBarContext.Provider>
-  )
-}
 
 vi.mock('../../api/tracking', () => ({
   containersApi: { get: vi.fn(), updateStatus: vi.fn(), events: vi.fn(), exportEvents: vi.fn() },
@@ -114,11 +101,11 @@ function renderPage(role: UserRole) {
     withQuery(
       <SessionContext.Provider value={makeContextValue(role)}>
         <MemoryRouter initialEntries={['/containers/c1']}>
-          <TopBarWrapper>
+          <>
             <Routes>
               <Route path="/containers/:id" element={<ContainerDetail />} />
             </Routes>
-          </TopBarWrapper>
+          </>
         </MemoryRouter>
       </SessionContext.Provider>,
     ),
@@ -141,7 +128,7 @@ describe('ContainerDetail', () => {
   it('renders the container number and status', async () => {
     vi.mocked(containersApi.get).mockResolvedValue(containerStub)
     renderPage('china_office_staff')
-    await waitFor(() => expect(screen.getByRole('heading', { name: 'MSCU1234567' })).toBeInTheDocument())
+    await waitFor(() => expect(screen.getByRole('heading', { name: 'Container MSCU1234567' })).toBeInTheDocument())
     expect(screen.getAllByText('Loading').length).toBeGreaterThan(0)
   })
 
@@ -154,7 +141,7 @@ describe('ContainerDetail', () => {
   it('hides the advance-status action for nigeria_office_staff on a china-owned stage', async () => {
     vi.mocked(containersApi.get).mockResolvedValue(containerStub)
     renderPage('nigeria_office_staff')
-    await waitFor(() => expect(screen.getByRole('heading', { name: 'MSCU1234567' })).toBeInTheDocument())
+    await waitFor(() => expect(screen.getByRole('heading', { name: 'Container MSCU1234567' })).toBeInTheDocument())
     expect(screen.queryByText(/Advance to/)).not.toBeInTheDocument()
   })
 
@@ -175,7 +162,7 @@ describe('ContainerDetail', () => {
   it('switches to the packing lists tab and lists them', async () => {
     vi.mocked(containersApi.get).mockResolvedValue(containerStub)
     renderPage('china_office_staff')
-    await waitFor(() => expect(screen.getByRole('heading', { name: 'MSCU1234567' })).toBeInTheDocument())
+    await waitFor(() => expect(screen.getByRole('heading', { name: 'Container MSCU1234567' })).toBeInTheDocument())
     await userEvent.click(screen.getByRole('tab', { name: 'Packing lists' }))
     // The Packages cell names the unit rather than showing a bare row count.
     expect(screen.getAllByText(/cartons?|bales?|bags?|—/).length).toBeGreaterThan(0)
@@ -192,7 +179,7 @@ describe('ContainerDetail', () => {
       meta: { pagination: { has_more: false, next_cursor: null, total_count: 2 } },
     })
     renderPage('china_office_staff')
-    await waitFor(() => expect(screen.getByRole('heading', { name: 'MSCU1234567' })).toBeInTheDocument())
+    await waitFor(() => expect(screen.getByRole('heading', { name: 'Container MSCU1234567' })).toBeInTheDocument())
     await userEvent.click(screen.getByRole('tab', { name: 'Packing lists' }))
 
     const refCellsInOrder = () => screen.getAllByText(/^PL-20260725-00[12]$/).map((el) => el.textContent)
@@ -267,7 +254,7 @@ describe('ContainerDetail', () => {
     vi.mocked(containersApi.get).mockResolvedValue(containerStub)
     renderPage('china_office_staff')
     await waitFor(() =>
-      expect(screen.getByRole('heading', { name: 'MSCU1234567' })).toBeInTheDocument(),
+      expect(screen.getByRole('heading', { name: 'Container MSCU1234567' })).toBeInTheDocument(),
     )
 
     // The overview's top-shippers list is a compact ranked view (no contact);
@@ -308,7 +295,7 @@ describe('ContainerDetail', () => {
 
     renderPage('china_office_staff')
     await waitFor(() =>
-      expect(screen.getByRole('heading', { name: 'MSCU1234567' })).toBeInTheDocument(),
+      expect(screen.getByRole('heading', { name: 'Container MSCU1234567' })).toBeInTheDocument(),
     )
 
     expect(vi.mocked(packingListApi.listByContainer)).toHaveBeenCalledTimes(2)
@@ -335,7 +322,7 @@ describe('ContainerDetail', () => {
 
     renderPage('china_office_staff')
     await waitFor(() =>
-      expect(screen.getByRole('heading', { name: 'MSCU1234567' })).toBeInTheDocument(),
+      expect(screen.getByRole('heading', { name: 'Container MSCU1234567' })).toBeInTheDocument(),
     )
 
     // Compact ranked list, not an uncapped table.

@@ -85,7 +85,8 @@ describe('ReleaseNoteDetail', () => {
   })
   it('shows Split note for staff on active note with multiple tags', async () => {
     renderPage(STAFF_SESSION)
-    expect(await screen.findByRole('button', { name: /split note/i })).toBeTruthy()
+    await userEvent.click(await screen.findByRole('button', { name: 'More release note actions' }))
+    expect(screen.getByRole('menuitem', { name: /split note/i })).toBeTruthy()
   })
   it('shows no action buttons on picked_up note', async () => {
     renderPage(WAREHOUSE_SESSION, { ...NOTE, status: 'picked_up' })
@@ -198,7 +199,7 @@ describe('ReleaseNoteDetail pickup code (UX-09)', () => {
 
   it('does not offer it on a note that is no longer active', async () => {
     renderPage(STAFF_SESSION, { ...NOTE, status: 'picked_up' })
-    await screen.findByRole('heading', { name: 'ACME-RN-20260704-0001' })
+    await screen.findByRole('heading', { name: 'Release note ACME-RN-20260704-0001' })
     expect(screen.queryByRole('button', { name: /Send (new )?pickup code/ })).toBeNull()
   })
 })

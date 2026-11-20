@@ -16,11 +16,12 @@ import {
 import { useSession } from '../../auth/useSession'
 import { useStaffList } from '../../hooks/useStaff'
 import { useWarehouses } from '../../hooks/useWarehouses'
-import { Action, Badge, Banner, Button, Card, DialogGuard, ExportButton, Field, Icon, Kvp, Modal, Mono, PhoneField, StatCard, StatusBadge, ToggleSwitch, Select, PageSkeleton, ErrorState } from '../../design/components'
+import { Action, Badge, Banner, Button, Card, DialogGuard, ExportButton, Field, Kvp, Modal, Mono, PhoneField, StatCard, StatusBadge, ToggleSwitch, Select, PageSkeleton, ErrorState } from '../../design/components'
 import { SectionHead } from '../../shell/SectionHead'
 import styles from './ReleaseNoteDetail.module.css'
 import { formatDate, formatNgn } from '../../lib/format'
 import { useBreadcrumbLabel } from '../../shell/breadcrumbs'
+import { PageHeader } from '../../shell/PageHeader'
 import { toast } from '../../design/toast'
 
 // ---------------------------------------------------------------------------
@@ -476,60 +477,49 @@ export function ReleaseNoteDetail(): JSX.Element {
   return (
     <div>
       {/* Hero */}
-      <div className={styles.hero}>
-        <div className={styles.heroLeft}>
-          <div className={styles.heroIcon}>
-            <Icon name="file" size={28} stroke={2} />
-          </div>
-          <div>
-            <div className={styles.heroTitleRow}>
-              <h1 className={styles.heroTitle}>{note.reference_number}</h1>
-              <StatusBadge kind="releaseNote" status={note.status} />
-              {note.is_partial_release && (
-                <Badge variant="warning">Partial</Badge>
-              )}
-            </div>
-            <div className={styles.heroMeta}>
-              {note.customer_name && <span>{note.customer_name}</span>}
-              {note.container_number && <span> · {note.container_number}</span>}
-              <span> · Issued {formatDate(note.authorized_at)}</span>
-              {note.valid_until && !isExpired && (
-                <span> · Valid until {note.valid_until}</span>
-              )}
-            </div>
-          </div>
-        </div>
-
-        <div className={styles.heroActions}>
-          <ExportButton
-            formats={['pdf']}
-            onExport={() => releaseNotesApi.pdf(note.id)}
-          />
-          <Button variant="secondary" icon="file" onClick={() => navigate(`/release-notes/${note.id}/print`)}>
-            Print view
-          </Button>
-          {isExpired && (
+      <PageHeader
+        title={`Release note ${note.reference_number}`}
+        status={
+          <>
+            <StatusBadge kind="releaseNote" status={note.status} />
+            {note.is_partial_release && <Badge variant="warning">Partial</Badge>}
+          </>
+        }
+        meta={[
+          note.customer_name,
+          note.container_number && <Mono>{note.container_number}</Mono>,
+          `Issued ${formatDate(note.authorized_at)}`,
+          note.valid_until && !isExpired && `Valid until ${formatDate(note.valid_until)}`,
+        ]}
+        primary={
+          isExpired ? (
             <Action variant="primary" icon="refresh" onClick={() => setShowReissue(true)}>
               Re-issue release note
             </Action>
-          )}
-          {!isTerminal && !isExpired && showPickupBtn && (
+          ) : !isTerminal && showPickupBtn ? (
             <Action variant="primary" icon="check" onClick={() => setShowPickup(true)}>
               Record pickup
             </Action>
-          )}
-          {canSendPickupCode(note, r) && (
-            <Action variant="secondary" icon="refresh" onClick={() => setShowSendCode(true)}>
-              {note.pickup_code_required ? 'Send new pickup code' : 'Send pickup code'}
-            </Action>
-          )}
-          {!isTerminal && !isExpired && showSplitBtn && note.carton_tags.length > 1 && (
-            <Action variant="secondary" onClick={() => setShowSplit(true)}>
-              Split note
-            </Action>
-          )}
-        </div>
-      </div>
+          ) : null
+        }
+        actions={
+          <>
+            {canSendPickupCode(note, r) && (
+              <Action variant="secondary" icon="refresh" onClick={() => setShowSendCode(true)}>
+                {note.pickup_code_required ? 'Send new pickup code' : 'Send pickup code'}
+              </Action>
+            )}
+            <ExportButton formats={['pdf']} onExport={() => releaseNotesApi.pdf(note.id)} />
+          </>
+        }
+        more={[
+          ...(!isTerminal && !isExpired && showSplitBtn && note.carton_tags.length > 1
+            ? [{ label: 'Split note', mutates: true, onSelect: () => setShowSplit(true) }]
+            : []),
+          { label: 'Print view', icon: 'file', onSelect: () => navigate(`/release-notes/${note.id}/print`) },
+        ]}
+        moreLabel="More release note actions"
+      />
 
       {/* Expired state banners */}
       {isExpired && (

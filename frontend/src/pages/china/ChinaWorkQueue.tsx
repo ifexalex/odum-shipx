@@ -18,8 +18,8 @@ import {
 } from '../../hooks/useDashboard'
 import { formatDate } from '../../lib/format'
 import { SectionHead } from '../../shell/SectionHead'
-import { useTopBarSlot } from '../../shell/TopBarContext'
 import styles from './ChinaWorkQueue.module.css'
+import { PageHeader } from '../../shell/PageHeader'
 
 const plural = (n: number, word: string): string => `${n} ${word}${n === 1 ? '' : 's'}`
 
@@ -98,8 +98,6 @@ export function ChinaWorkQueue(): JSX.Element {
   const manifests = useChinaManifestQueue()
   const disputes = useEscalatedDisputes()
 
-  useTopBarSlot({ subtitle: 'What is waiting on the China office.' })
-
   const packingListRows = (data: typeof rejected.data): QueueRow[] =>
     (data?.data ?? []).map((pl) => ({
       id: pl.id,
@@ -109,57 +107,60 @@ export function ChinaWorkQueue(): JSX.Element {
     }))
 
   return (
-    <div className={styles.grid}>
-      <Queue
-        title="Rejected packing lists"
-        countLabel={(n) => `${n} to revise and resubmit`}
-        empty="Nothing rejected."
-        viewAll="/packing-lists?status=rejected"
-        rows={packingListRows(rejected.data)}
-        pagination={rejected.data?.meta.pagination}
-        loading={rejected.isLoading}
-        failed={rejected.isError}
-      />
-      <Queue
-        title="Drafts not submitted"
-        countLabel={(n) => `${n} not sent for approval`}
-        empty="No drafts waiting."
-        viewAll="/packing-lists?status=draft"
-        rows={packingListRows(drafts.data)}
-        pagination={drafts.data?.meta.pagination}
-        loading={drafts.isLoading}
-        failed={drafts.isError}
-      />
-      <Queue
-        title="Manifests awaiting verification"
-        countLabel={(n) => `${n} not yet verified in Nigeria`}
-        empty="Every manifest is verified."
-        viewAll="/manifests?status=pending"
-        rows={(manifests.data?.data ?? []).map((m) => ({
-          id: m.id,
-          primary: m.container_number ?? 'Container',
-          secondary: `${plural(m.total_customers, 'customer')} · ${plural(m.total_cartons, 'carton')}`,
-          to: `/manifests/${m.id}`,
-        }))}
-        pagination={manifests.data?.meta.pagination}
-        loading={manifests.isLoading}
-        failed={manifests.isError}
-      />
-      <Queue
-        title="Disputes escalated to China"
-        countLabel={(n) => `${n} need a measurement answer`}
-        empty="No disputes escalated."
-        viewAll="/billing/disputes?status=escalated_china"
-        rows={(disputes.data?.data ?? []).map((d) => ({
-          id: d.id,
-          primary: d.container_number ?? 'CBM dispute',
-          secondary: [d.customer_name, `filed ${formatDate(d.submitted_at)}`].filter(Boolean).join(' · '),
-          to: `/billing/disputes/${d.id}`,
-        }))}
-        pagination={disputes.data?.meta.pagination}
-        loading={disputes.isLoading}
-        failed={disputes.isError}
-      />
-    </div>
+    <>
+      <PageHeader title="Work queue" meta="What is waiting on the China office." />
+      <div className={styles.grid}>
+        <Queue
+          title="Rejected packing lists"
+          countLabel={(n) => `${n} to revise and resubmit`}
+          empty="Nothing rejected."
+          viewAll="/packing-lists?status=rejected"
+          rows={packingListRows(rejected.data)}
+          pagination={rejected.data?.meta.pagination}
+          loading={rejected.isLoading}
+          failed={rejected.isError}
+        />
+        <Queue
+          title="Drafts not submitted"
+          countLabel={(n) => `${n} not sent for approval`}
+          empty="No drafts waiting."
+          viewAll="/packing-lists?status=draft"
+          rows={packingListRows(drafts.data)}
+          pagination={drafts.data?.meta.pagination}
+          loading={drafts.isLoading}
+          failed={drafts.isError}
+        />
+        <Queue
+          title="Manifests awaiting verification"
+          countLabel={(n) => `${n} not yet verified in Nigeria`}
+          empty="Every manifest is verified."
+          viewAll="/manifests?status=pending"
+          rows={(manifests.data?.data ?? []).map((m) => ({
+            id: m.id,
+            primary: m.container_number ?? 'Container',
+            secondary: `${plural(m.total_customers, 'customer')} · ${plural(m.total_cartons, 'carton')}`,
+            to: `/manifests/${m.id}`,
+          }))}
+          pagination={manifests.data?.meta.pagination}
+          loading={manifests.isLoading}
+          failed={manifests.isError}
+        />
+        <Queue
+          title="Disputes escalated to China"
+          countLabel={(n) => `${n} need a measurement answer`}
+          empty="No disputes escalated."
+          viewAll="/billing/disputes?status=escalated_china"
+          rows={(disputes.data?.data ?? []).map((d) => ({
+            id: d.id,
+            primary: d.container_number ?? 'CBM dispute',
+            secondary: [d.customer_name, `filed ${formatDate(d.submitted_at)}`].filter(Boolean).join(' · '),
+            to: `/billing/disputes/${d.id}`,
+          }))}
+          pagination={disputes.data?.meta.pagination}
+          loading={disputes.isLoading}
+          failed={disputes.isError}
+        />
+      </div>
+    </>
   )
 }

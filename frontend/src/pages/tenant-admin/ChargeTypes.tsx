@@ -12,10 +12,10 @@ import { configApi, type ChargeType } from '../../api/tenantManagement'
 import { configKeys } from '../../api/keys'
 import { STALE_5_MIN } from '../../lib/queryClient'
 import { Badge, Banner, Button, Card, Field, Mono, Table, DialogGuard, EmptyState, LinesSkeleton } from '../../design/components'
-import { useTopBarSlot } from '../../shell/TopBarContext'
 import styles from './admin.module.css'
 import { formatNgn } from '../../lib/format'
 import { toast } from '../../design/toast'
+import { PageHeader } from '../../shell/PageHeader'
 
 interface ChargeTypeModalProps {
   existing: ChargeType | null
@@ -184,22 +184,19 @@ export function ChargeTypes(): JSX.Element {
     }
   }
 
-  useTopBarSlot({
-    subtitle:
-      'Reusable presets for miscellaneous billing charges — customs examination, port handling, and similar.',
-    actions: (
-      <Button
-        variant="primary"
-        icon="plus"
-        onClick={() => setModal({ open: true, existing: null })}
-      >
-        New charge type
-      </Button>
-    ),
-  })
-
   return (
     <div>
+      <PageHeader
+        title="Charge types"
+        meta={'Reusable presets for miscellaneous billing charges — customs examination, port handling, and similar.'}
+        primary={<Button
+              variant="primary"
+              icon="plus"
+              onClick={() => setModal({ open: true, existing: null })}
+            >
+              New charge type
+            </Button>}
+      />
       {error && (
         <div className={styles.banner}>
           <Banner variant="error" title="Error">

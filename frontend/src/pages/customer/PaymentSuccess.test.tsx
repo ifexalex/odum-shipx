@@ -56,7 +56,7 @@ describe('PaymentSuccess', () => {
     renderPage()
 
     expect(screen.getByText('Confirming your payment…')).toBeInTheDocument()
-    expect(await screen.findByText('Payment successful!')).toBeInTheDocument()
+    expect(await screen.findByText('Payment successful')).toBeInTheDocument()
     expect(billingApi.verifyPayment).toHaveBeenCalledWith('b1', 'b1.abc123')
   })
 
@@ -64,7 +64,7 @@ describe('PaymentSuccess', () => {
     vi.mocked(billingApi.verifyPayment).mockResolvedValue({ gateway_status: 'success' })
     renderPage('?trxref=b1.xyz789')
 
-    await screen.findByText('Payment successful!')
+    await screen.findByText('Payment successful')
     expect(billingApi.verifyPayment).toHaveBeenCalledWith('b1', 'b1.xyz789')
   })
 
@@ -108,7 +108,7 @@ describe('PaymentSuccess', () => {
   it('"View invoice" navigates to the billing detail page', async () => {
     vi.mocked(billingApi.verifyPayment).mockResolvedValue({ gateway_status: 'success' })
     renderPage()
-    await screen.findByText('Payment successful!')
+    await screen.findByText('Payment successful')
 
     await userEvent.click(screen.getByRole('button', { name: 'View invoice' }))
 

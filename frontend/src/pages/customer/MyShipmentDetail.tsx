@@ -30,6 +30,7 @@ import { ReleaseNoteCard } from './ReleaseNoteCard'
 import styles from './customer.module.css'
 import { formatNgn } from '../../lib/format'
 import { useBreadcrumbLabel } from '../../shell/breadcrumbs'
+import { PageHeader } from '../../shell/PageHeader'
 
 // Ground truth: api/tracking.ts's ContainerStatus (services/tracking + the
 // `container` table) — the 9 real values. This map previously used fictional
@@ -116,30 +117,20 @@ export function MyShipmentDetail(): JSX.Element {
 
   return (
     <div className={styles.page}>
-
-      {/* Hero — prototype 10.2 */}
-      <div className={styles.shipmentHero}>
-        <div className={styles.shipmentHeroIcon}>
-          <Icon name="ship" size={26} stroke={2} />
-        </div>
-        <div style={{ minWidth: 0 }}>
-          <div className={styles.shipmentHeroTitleRow}>
-            <h1 className={styles.shipmentHeroCode}>{pl.reference ?? pl.id.slice(0, 8)}</h1>
-            <StatusBadge kind="container" status={status} audience="customer" />
-          </div>
-          <div className={styles.shipmentHeroMeta}>
-            {pl.container_number ? (
-              <>
-                Container <Mono color="var(--color-ink)">{pl.container_number}</Mono>
-              </>
-            ) : (
-              'Awaiting container assignment'
-            )}
-            {' · '}
-            {pl.carton_count} carton{pl.carton_count === 1 ? '' : 's'}
-          </div>
-        </div>
-      </div>
+      <PageHeader
+        title={pl.reference ? `Shipment ${pl.reference}` : 'Shipment'}
+        status={<StatusBadge kind="container" status={status} audience="customer" />}
+        meta={[
+          pl.container_number ? (
+            <>
+              Container <Mono color="var(--color-ink)">{pl.container_number}</Mono>
+            </>
+          ) : (
+            'Awaiting container assignment'
+          ),
+          `${pl.carton_count} carton${pl.carton_count === 1 ? '' : 's'}`,
+        ]}
+      />
 
       <ReleaseNoteCard containerId={pl.container_id} />
 

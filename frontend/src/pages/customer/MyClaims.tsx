@@ -38,8 +38,8 @@ export function MyClaims(): JSX.Element {
   return (
     <div className={styles.page}>
       <PageHeader
-        title="My Claims"
-        subtitle="Track damage claims you've filed."
+        title="My claims"
+        meta="Track damage claims you've filed."
         actions={
           <Button variant="primary" icon="plus" onClick={() => navigate('/my-claims/new')}>
             File a claim

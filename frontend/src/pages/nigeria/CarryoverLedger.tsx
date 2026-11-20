@@ -14,10 +14,10 @@ import { STALE_30S } from '../../lib/queryClient'
 import { ApiError } from '../../api/client'
 import { useSession } from '../../auth/useSession'
 import { Banner, Button, Card, Chip, DialogGuard, Field, Mono, StatCard, StatusBadge, Table, UserCell, EmptyState, LinesSkeleton } from '../../design/components'
-import { useTopBarSlot } from '../../shell/TopBarContext'
 import styles from './BillingList.module.css'
 import { formatDate, formatNgn } from '../../lib/format'
 import { toast } from '../../design/toast'
+import { PageHeader } from '../../shell/PageHeader'
 
 const STATUS_FILTERS: { key: CarryoverStatus; label: string }[] = [
   { key: 'outstanding', label: 'Outstanding' },
@@ -108,15 +108,16 @@ export function CarryoverLedger(): JSX.Element {
       : 'Could not load the carryover ledger.'
     : null
 
-
   const outstandingTotal = carryovers
     .filter((c) => c.status === 'outstanding')
     .reduce((s, c) => s + Number(c.amount_ngn), 0)
 
-  useTopBarSlot({ subtitle: 'Outstanding balances rolled forward from released-with-outstanding billings, across all customers.' })
-
   return (
     <div>
+      <PageHeader
+        title="Carryover ledger"
+        meta={'Outstanding balances rolled forward from released-with-outstanding billings, across all customers.'}
+      />
 
       {error && <div style={{ marginBottom: 'var(--space-4)' }}><Banner variant="error" title="Couldn't load">{error}</Banner></div>}
 

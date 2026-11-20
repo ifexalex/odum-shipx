@@ -30,6 +30,7 @@ import { PlanUsagePanel } from '../../shell/PlanUsagePanel'
 import { SectionHead } from '../../shell/SectionHead'
 import { UnbilledQueue } from '../../shell/UnbilledQueue'
 import styles from './admin.module.css'
+import { PageHeader } from '../../shell/PageHeader'
 
 function greeting(): string {
   const h = new Date().getHours()
@@ -88,21 +89,13 @@ export function Dashboard(): JSX.Element {
 
   const firstName = session?.name?.split(' ')[0] ?? 'team'
   const customsAwaiting = (containerStats?.customs_clearance ?? 0) + (containerStats?.arrived ?? 0)
-  const summaryLine =
-    `${containerStats?.in_transit ?? 0} in transit · ${customsAwaiting} awaiting customs · ${containerStats?.at_warehouse ?? 0} ready for pickup`
 
   return (
     <div>
-      {/* Greeting hero — prototype 3.1 */}
-      <div style={{ marginBottom: 'var(--space-6)' }}>
-        <div style={{ fontSize: 'var(--text-xs)', fontWeight: 700, color: 'var(--color-primary)', textTransform: 'uppercase', letterSpacing: 'var(--tracking-label)', marginBottom: 'var(--space-1)' }}>
-          {greeting()}
-        </div>
-        <h1 style={{ fontFamily: 'var(--font-display)', fontWeight: 700, fontSize: 'var(--text-2xl)', color: 'var(--color-ink)', margin: 0, letterSpacing: 'var(--tracking-tight)', lineHeight: 'var(--leading-tight)' }}>
-          Lead every shipment, {firstName}.
-        </h1>
-        <p style={{ fontSize: 'var(--text-md)', color: 'var(--color-ink-3)', margin: 'var(--space-2) 0 0' }}>{summaryLine}</p>
-      </div>
+      <PageHeader
+        title="Dashboard"
+        meta={[`${greeting()}, ${firstName}`, `${containerStats?.in_transit ?? 0} in transit`, `${customsAwaiting} awaiting customs`, `${containerStats?.at_warehouse ?? 0} ready for pickup`]}
+      />
 
       {/* Headline + financial KPIs. The per-stage operational counts
           (in transit / arrived / customs / at warehouse …) live in the

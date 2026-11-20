@@ -6,10 +6,10 @@ import { STALE_5_MIN } from '../../lib/queryClient'
 import { useNotifLogPolling } from '../../hooks/useNotifications'
 import { useDateRangeFilter } from '../../hooks/useDateRangeFilter'
 import {  Button, Card, Chip, DateRangeFilter, Icon, ListFooter, Mono, StatusBadge, Table, UserCell, IconButton, Pressable, SearchField, EmptyState, ErrorState } from '../../design/components'
-import { useTopBarSlot } from '../../shell/TopBarContext'
 import styles from './NotificationLog.module.css'
 import { formatDateTime } from '../../lib/format'
 import { toast } from '../../design/toast'
+import { PageHeader } from '../../shell/PageHeader'
 
 const CHANNEL_FILTERS: Array<{ key: NotifChannel; label: string }> = [
   { key: 'sms',      label: 'SMS' },
@@ -58,10 +58,6 @@ export function NotificationLog(): JSX.Element {
   // "Sent within" — null/'' means no date filter, same opt-in-only rationale
   // as BillingList/ContainerList/ClaimList's date filters.
   const sentRange = useDateRangeFilter()
-
-  useTopBarSlot({
-    actions: <Button variant="secondary" icon="download">Export</Button>,
-  })
 
   // Stats window — a larger cached sample, separate from the live table below.
   // On `lookup`, not `list`: `list` belongs to the infinite useNotifLogPolling
@@ -122,6 +118,7 @@ export function NotificationLog(): JSX.Element {
 
   return (
     <div>
+      <PageHeader title="Notification log" meta="Every message sent to your customers, and whether it arrived." />
       {error && (
         <div className={styles.banner}>
           <ErrorState compact title="Couldn't load log" error={error} onRetry={() => void refetch()} />

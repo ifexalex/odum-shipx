@@ -9,7 +9,6 @@ import { MemoryRouter, Route, Routes } from 'react-router-dom'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { customersApi } from '../../api/tenantManagement'
 import { AdminCustomerList } from './AdminCustomerList'
-import { TopBarTestWrapper } from '../../test/TopBarTestWrapper'
 
 vi.mock('../../api/tenantManagement', async (importOriginal) => {
   const original = await importOriginal<typeof import('../../api/tenantManagement')>()
@@ -39,7 +38,7 @@ function renderPage(state?: Record<string, unknown>) {
     <QueryClientProvider client={client}>
       <MemoryRouter initialEntries={[{ pathname: '/admin/customers', state: state ?? null }]}>
         <Routes>
-          <Route path="/admin/customers" element={<TopBarTestWrapper><AdminCustomerList /></TopBarTestWrapper>} />
+          <Route path="/admin/customers" element={<><AdminCustomerList /></>} />
           <Route path="/admin/customers/:id" element={<div>Customer detail page</div>} />
         </Routes>
       </MemoryRouter>

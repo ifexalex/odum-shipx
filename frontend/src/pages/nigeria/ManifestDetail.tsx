@@ -19,6 +19,7 @@ import { Action, Banner, Button, Card, Chip, DialogGuard, ExportButton, Field, I
 import { SectionHead } from '../../shell/SectionHead'
 import styles from './ManifestDetail.module.css'
 import { useBreadcrumbLabel } from '../../shell/breadcrumbs'
+import { PageHeader } from '../../shell/PageHeader'
 import { toast } from '../../design/toast'
 
 // ---------------------------------------------------------------------------
@@ -391,46 +392,33 @@ export function ManifestDetail(): JSX.Element {
 
   return (
     <div>
-      <div className={styles.hero}>
-        <div className={styles.heroLeft}>
-          <div className={styles.heroIcon}>
-            <Icon name="file" size={28} stroke={2} />
-          </div>
-          <div>
-            <div className={styles.heroTitleRow}>
-              <h1 className={styles.heroTitle}>{manifest.container_number ?? manifest.container_id}</h1>
-              <StatusBadge kind="manifest" status={manifest.verification_status} />
-            </div>
-            <div className={styles.heroMeta}>
-              <span>
-                {manifest.total_customers} customers · {packageTotal} packages
-                {packageMixLabel ? ` (${packageMixLabel})` : ''} · {formatCbm(manifest.total_cbm)} CBM
-              </span>
-            </div>
-          </div>
-        </div>
-        <div className={styles.heroActions}>
-          <ExportButton
-            formats={['xlsx', 'csv']}
-            onExport={(fmt) => manifestApi.export(manifest.id, fmt)}
-          />
-          {canRevoke && (
-            <Action variant="danger-ghost" loading={revoking} onClick={() => setShowRevokeConfirm(true)}>
-              Revoke verification
-            </Action>
-          )}
-          {canVerify && (
+      <PageHeader
+        title={`Manifest ${manifest.container_number ?? ''}`.trim()}
+        status={<StatusBadge kind="manifest" status={manifest.verification_status} />}
+        meta={[
+          `${manifest.total_customers} customers`,
+          `${packageTotal} packages${packageMixLabel ? ` (${packageMixLabel})` : ''}`,
+          `${formatCbm(manifest.total_cbm)} CBM`,
+        ]}
+        primary={
+          canVerify ? (
             <Action variant="primary" icon="check" onClick={() => setShowVerifyModal(true)}>
               Verify manifest
             </Action>
-          )}
-          {canResolve && (
+          ) : canResolve ? (
             <Action variant="primary" icon="check" onClick={() => setShowResolveModal(true)}>
               Resolve discrepancy
             </Action>
-          )}
-        </div>
-      </div>
+          ) : null
+        }
+        actions={<ExportButton formats={['xlsx', 'csv']} onExport={(fmt) => manifestApi.export(manifest.id, fmt)} />}
+        more={
+          canRevoke && !revoking
+            ? [{ label: 'Revoke verification', tone: 'danger', onSelect: () => setShowRevokeConfirm(true) }]
+            : []
+        }
+        moreLabel="More manifest actions"
+      />
 
       {error && (
         <div className={styles.banner}>

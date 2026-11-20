@@ -12,6 +12,7 @@ import { useSession } from '../../auth/useSession'
 import { CustomerStepper } from './CustomerStepper'
 import styles from './MyShipments.module.css'
 import { formatDate, formatNgn } from '../../lib/format'
+import { PageHeader } from '../../shell/PageHeader'
 
 const ACTIVE_STATUSES = new Set([
   'loading', 'sealed', 'in_transit', 'arrived', 'customs_clearance', 'cleared', 'at_warehouse',
@@ -107,24 +108,15 @@ export function MyShipments(): JSX.Element {
         </div>
       )}
 
-      {/* Greeting */}
-      <div className={styles.greeting}>
-        <div className={styles.greetingEyebrow}>My shipments</div>
-        <h2 className={styles.greetingTitle}>
-          Hello {name} 👋
-          {activeShipments.length === 1
-            ? ' — your shipment is moving.'
-            : activeShipments.length > 1
-              ? ` — ${activeShipments.length} shipments on the way.`
-              : ' — no active shipments right now.'}
-        </h2>
-        <p className={styles.greetingSub}>
-          {activeShipments.length} active
-          {' · '}
-          {pastShipments.length} completed
-          {outstandingTotal > 0 && ` · ${fmtNgn(outstandingTotal)} outstanding balance to settle`}
-        </p>
-      </div>
+      <PageHeader
+        title="My shipments"
+        meta={[
+          `Hello ${name}`,
+          `${activeShipments.length} active`,
+          `${pastShipments.length} completed`,
+          outstandingTotal > 0 && `${fmtNgn(outstandingTotal)} outstanding`,
+        ]}
+      />
 
       {/* Active shipments — every shipment still in transit, not just the most recent */}
       {activeShipments.length > 0 && (

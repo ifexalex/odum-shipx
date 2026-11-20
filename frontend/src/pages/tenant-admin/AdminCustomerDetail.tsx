@@ -26,12 +26,13 @@ import { customersApi, type Customer } from '../../api/tenantManagement'
 import { billingKeys, claimKeys, customerKeys, packingListKeys } from '../../api/keys'
 import { STALE_30S } from '../../lib/queryClient'
 import { useSession } from '../../auth/useSession'
-import { Action, Avatar, Badge, Banner, Button, Card, DialogGuard, Field, Kvp, Mono, StatCard, StatusBadge, Table, Select, PageSkeleton, EmptyState } from '../../design/components'
+import { Action, Badge, Banner, Button, Card, DialogGuard, Field, Kvp, Mono, StatCard, StatusBadge, Table, Select, PageSkeleton, EmptyState } from '../../design/components'
 import { SectionHead } from '../../shell/SectionHead'
 import { Tabs } from '../../shell/Tabs'
 import styles from './admin.module.css'
 import { formatDate, formatDateTime, formatNgn } from '../../lib/format'
 import { useBreadcrumbLabel } from '../../shell/breadcrumbs'
+import { PageHeader } from '../../shell/PageHeader'
 import { toast } from '../../design/toast'
 
 // ---------------------------------------------------------------------------
@@ -508,46 +509,21 @@ export function AdminCustomerDetail(): JSX.Element {
 
   return (
     <div>
-      {session?.readOnly && (
-        <div className={styles.bannerGap}>
-          <Banner variant="warning" icon="eye" title="Read-only session">
-            You're viewing this tenant as their Tenant Admin for support. Data is fully visible, but every create, edit, approve, and delete action is disabled. The session ends automatically after 30 minutes or when you exit.
-          </Banner>
-        </div>
-      )}
-
-      {/* Hero — prototype 3.6 */}
-      <div className={styles.customerHero}>
-        <div className={styles.customerHeroId}>
-          <Avatar size={64} name={customer.name ?? '?'} />
-          <div>
-            <div className={styles.customerHeroTitleRow}>
-              <h1 className={styles.customerHeroName}>{customer.name ?? 'Anonymised customer'}</h1>
-              <Badge variant={isAnonymised ? 'error' : 'success'}>{isAnonymised ? 'Anonymised' : 'Active'}</Badge>
-              {!isAnonymised && hasLogin && <Badge variant="info">Has portal login</Badge>}
-              {!isAnonymised && !hasLogin && customer.pending_invite_expires_at && (
-                <Badge variant="warning">
-                  Invited · expires {formatDate(customer.pending_invite_expires_at)}
-                </Badge>
-              )}
-              {!isAnonymised && !hasLogin && !customer.pending_invite_expires_at && (
-                <Badge variant="warning">No login</Badge>
-              )}
-            </div>
-            {heroMeta.length > 0 && (
-              <div className={styles.customerHeroMeta}>
-                {heroMeta.map((node, i) => (
-                  <span key={i} className={styles.customerHeroMetaItem}>
-                    {i > 0 && <span className={styles.customerHeroDot}>·</span>}
-                    {node}
-                  </span>
-                ))}
-              </div>
+      <PageHeader
+        title={customer.name ?? 'Anonymised customer'}
+        status={
+          <>
+            <Badge variant={isAnonymised ? 'error' : 'success'}>{isAnonymised ? 'Anonymised' : 'Active'}</Badge>
+            {!isAnonymised && hasLogin && <Badge variant="info">Has portal login</Badge>}
+            {!isAnonymised && !hasLogin && customer.pending_invite_expires_at && (
+              <Badge variant="warning">Invited · expires {formatDate(customer.pending_invite_expires_at)}</Badge>
             )}
-          </div>
-        </div>
-        <div className={styles.actionsRow}>
-          {!isAnonymised && (
+            {!isAnonymised && !hasLogin && !customer.pending_invite_expires_at && <Badge variant="warning">No login</Badge>}
+          </>
+        }
+        meta={heroMeta}
+        actions={
+          !isAnonymised && (
             <Action
               variant="secondary"
               disabled={!!session?.readOnly}
@@ -556,9 +532,16 @@ export function AdminCustomerDetail(): JSX.Element {
             >
               {hasLogin ? 'Resend account invite' : 'Send account invite'}
             </Action>
-          )}
+          )
+        }
+      />
+      {session?.readOnly && (
+        <div className={styles.bannerGap}>
+          <Banner variant="warning" icon="eye" title="Read-only session">
+            You're viewing this tenant as their Tenant Admin for support. Data is fully visible, but every create, edit, approve, and delete action is disabled. The session ends automatically after 30 minutes or when you exit.
+          </Banner>
         </div>
-      </div>
+      )}
 
       {inviteMessage && (
         <div className={styles.banner}>

@@ -410,7 +410,7 @@ export function PlatformTenantDetail(): JSX.Element {
     <div>
       <PageHeader
         title={tenant.company_name}
-        subtitle={tenant.slug}
+        meta={tenant.slug}
         actions={
           <div className={styles.tenantActions}>
             {tenant.status === 'active' && (

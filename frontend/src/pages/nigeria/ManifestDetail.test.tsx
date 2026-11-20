@@ -112,7 +112,7 @@ describe('ManifestDetail', () => {
   it('hides Verify manifest for tenant_admin (read-only role here)', async () => {
     vi.mocked(manifestApi.get).mockResolvedValue(manifestStub())
     renderPage('tenant_admin')
-    await waitFor(() => expect(screen.getByText('HLBU9384712')).toBeInTheDocument())
+    await waitFor(() => expect(screen.getByRole('heading', { name: 'Manifest HLBU9384712' })).toBeInTheDocument())
     expect(screen.queryByRole('button', { name: /Verify manifest/ })).not.toBeInTheDocument()
   })
 
@@ -125,7 +125,7 @@ describe('ManifestDetail', () => {
   it('hides Resolve discrepancy for china_office_staff — verify-only, not resolve', async () => {
     vi.mocked(manifestApi.get).mockResolvedValue(manifestStub({ verification_status: 'discrepancies_found' }))
     renderPage('china_office_staff')
-    await waitFor(() => expect(screen.getByText('HLBU9384712')).toBeInTheDocument())
+    await waitFor(() => expect(screen.getByRole('heading', { name: 'Manifest HLBU9384712' })).toBeInTheDocument())
     expect(screen.queryByRole('button', { name: /Resolve discrepancy/ })).not.toBeInTheDocument()
   })
 

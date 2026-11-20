@@ -22,14 +22,12 @@ import {
   StatusBadge,
   SearchField,
   EmptyState } from '../../design/components'
-import { useTopBarSlot } from '../../shell/TopBarContext'
 import { RoleCheckboxList } from './RoleCheckboxList'
 import styles from './admin.module.css'
 import { formatDate } from '../../lib/format'
 import { roleLabel } from '../../design/status'
 import { toast } from '../../design/toast'
-
-
+import { PageHeader } from '../../shell/PageHeader'
 
 const ROLES: TenantUserRole[] = [
   'tenant_admin',
@@ -172,17 +170,15 @@ export function StaffUserList(): JSX.Element {
     })
   }, [staff, roleFilter, query])
 
-  useTopBarSlot({
-    subtitle: 'Manage team members and their access roles.',
-    actions: (
-      <Button variant="primary" icon="plus" onClick={() => setShowInvite(true)}>
-        Invite user
-      </Button>
-    ),
-  })
-
   return (
     <div>
+      <PageHeader
+        title="Staff"
+        meta={'Manage team members and their access roles.'}
+        primary={<Button variant="primary" icon="plus" onClick={() => setShowInvite(true)}>
+              Invite user
+            </Button>}
+      />
       {error && (
         <div className={styles.banner}>
           <Banner variant="error">{error.message}</Banner>

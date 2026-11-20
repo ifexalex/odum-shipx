@@ -174,8 +174,8 @@ export function NotificationTemplates(): JSX.Element {
   return (
     <div>
       <PageHeader
-        title="Notification Templates"
-        subtitle="Customise SMS, WhatsApp, and Email messages sent to customers."
+        title="Notification templates"
+        meta="Customise SMS, WhatsApp, and Email messages sent to customers."
       />
 
       {error && <div className={styles.banner}><Banner variant="error">{error}</Banner></div>}

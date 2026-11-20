@@ -19,10 +19,10 @@ import {
   useUpdateOnboardingRequest,
 } from '../../hooks/useOnboardingRequests'
 import { Banner, Button, Card, Chip, Field, Modal, StatusBadge, Table, EmptyState } from '../../design/components'
-import { useTopBarSlot } from '../../shell/TopBarContext'
 import styles from './admin.module.css'
 import { formatDate } from '../../lib/format'
 import { statusLabel, statusesOf } from '../../design/status'
+import { PageHeader } from '../../shell/PageHeader'
 
 // Leads still worth acting on — a terminal lead (rejected/provisioned) shows no
 // row actions.
@@ -59,10 +59,6 @@ export function OnboardingRequests(): JSX.Element {
   const [rejecting, setRejecting] = useState<OnboardingRequest | null>(null)
   const [rejectReason, setRejectReason] = useState('')
 
-  useTopBarSlot({
-    subtitle: 'Shipping companies requesting to onboard onto ShipX.',
-  })
-
   function markContacted(req: OnboardingRequest): void {
     updateRequest.mutate({ id: req.id, status: 'contacted' })
   }
@@ -86,6 +82,10 @@ export function OnboardingRequests(): JSX.Element {
 
   return (
     <div>
+      <PageHeader
+        title="Onboarding requests"
+        meta={'Shipping companies requesting to onboard onto ShipX.'}
+      />
       {error && (
         <div className={styles.banner}>
           <Banner variant="error">{error.message}</Banner>

@@ -127,9 +127,8 @@ export function CreateTenantPage(): JSX.Element {
   return (
     <div style={{ maxWidth: 760, margin: '0 auto' }}>
       <PageHeader
-        eyebrow="Platform"
         title="Onboard a new tenant"
-        subtitle="Creates the tenant, provisions the first admin in Cognito, and applies default configuration."
+        meta="Creates the tenant, provisions the first admin in Cognito, and applies default configuration."
       />
 
       {lead && (

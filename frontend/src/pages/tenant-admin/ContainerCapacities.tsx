@@ -13,9 +13,9 @@ import { containerCapacitiesApi, type ContainerCapacity } from '../../api/tenant
 import { containerCapacityKeys } from '../../api/keys'
 import { STALE_5_MIN } from '../../lib/queryClient'
 import { Badge, Banner, Button, Card, Field, Mono, Table, DialogGuard, EmptyState, LinesSkeleton } from '../../design/components'
-import { useTopBarSlot } from '../../shell/TopBarContext'
 import styles from './admin.module.css'
 import { toast } from '../../design/toast'
+import { PageHeader } from '../../shell/PageHeader'
 
 interface CapacityModalProps {
   /** null → create; a preset → edit. Defaults only allow editing recommended. */
@@ -190,18 +190,15 @@ export function ContainerCapacities(): JSX.Element {
     }
   }
 
-  useTopBarSlot({
-    subtitle:
-      'Capacity presets for new containers — pick one when creating a container to drive its utilization bar.',
-    actions: (
-      <Button variant="primary" icon="plus" onClick={() => setModal({ open: true, existing: null })}>
-        Add capacity
-      </Button>
-    ),
-  })
-
   return (
     <div>
+      <PageHeader
+        title="Container capacities"
+        meta={'Capacity presets for new containers — pick one when creating a container to drive its utilization bar.'}
+        primary={<Button variant="primary" icon="plus" onClick={() => setModal({ open: true, existing: null })}>
+              Add capacity
+            </Button>}
+      />
       {error && (
         <div className={styles.banner}>
           <Banner variant="error" title="Error">

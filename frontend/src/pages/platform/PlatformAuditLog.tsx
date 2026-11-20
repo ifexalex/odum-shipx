@@ -12,8 +12,8 @@ import { useCursorPagination } from '../../hooks/useCursorPagination'
 import { usePlatformTenantList } from '../../hooks/usePlatformTenants'
 import { STALE_30S } from '../../lib/queryClient'
 import { Badge, Banner, Button, Card, ListFooter, Mono, Table, type BadgeVariant, Select, EmptyState, LinesSkeleton } from '../../design/components'
-import { useTopBarSlot } from '../../shell/TopBarContext'
 import { formatDateTime } from '../../lib/format'
+import { PageHeader } from '../../shell/PageHeader'
 
 function actionVariant(action: string): BadgeVariant {
   if (action.includes('SUSPEND') || action.includes('OFFBOARD')) return 'error'
@@ -66,10 +66,12 @@ export function PlatformAuditLog(): JSX.Element {
     [tenants],
   )
 
-  useTopBarSlot({ subtitle: 'Every platform-level action — tenant lifecycle, impersonation sessions, settings changes.' })
-
   return (
     <div>
+      <PageHeader
+        title="Audit log"
+        meta={'Every platform-level action — tenant lifecycle, impersonation sessions, settings changes.'}
+      />
 
       {error && <div style={{ marginBottom: 'var(--space-4)' }}><Banner variant="error" title="Couldn't load">{error}</Banner></div>}
 

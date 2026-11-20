@@ -1,8 +1,6 @@
 import type { JSX, ReactNode } from 'react'
 import { Avatar, Icon, ThemeToggle } from '../design/components'
 import type { Role } from '../design/theme'
-import { Breadcrumb } from './Breadcrumb'
-import type { Crumb } from './breadcrumbs'
 import { useShellDrawer } from './ShellDrawer'
 import styles from './TopBar.module.css'
 
@@ -18,15 +16,9 @@ export interface RoleOption {
 
 export interface TopBarProps {
   role: Role
-  title?: string
-  /** One-line descriptive subtitle shown under the title (list pages). */
-  subtitle?: string
-  /** Where the page lives (`breadcrumbTrail`); every crumb but the last is a link. */
-  breadcrumb?: Crumb[]
   user?: TopBarUser
   /** The global search box (<GlobalSearch>). A slot rather than markup so this bar stays presentational. */
   search?: ReactNode
-  actions?: ReactNode
   /** Unread count for the notification bell — wired to GET /v1/notifications/staff/unread-count. */
   notifications?: number
   /**
@@ -48,14 +40,14 @@ export interface TopBarProps {
   onRoleChange?: (role: string) => void
 }
 
+/**
+ * The staff top bar (FD-14): global controls only (menu, search, role switch, theme, notifications, user). The page's
+ * title, breadcrumb and actions belong to the page (`PageHeader`), never to this bar.
+ */
 export function TopBar({
   role,
-  title,
-  subtitle,
-  breadcrumb,
   user,
   search,
-  actions,
   notifications = 0,
   notificationsPanel,
   onNotificationsClick,
@@ -78,16 +70,9 @@ export function TopBar({
             <Icon name="menu" size={18} stroke={2} />
           </button>
         )}
-        <div className={styles.titleBlock}>
-          {breadcrumb && <Breadcrumb trail={breadcrumb} />}
-          {title && <h1 className={styles.title}>{title}</h1>}
-          {title && subtitle && <p className={styles.subtitle}>{subtitle}</p>}
-        </div>
+        {search}
       </div>
       <div className={styles.right}>
-        {search}
-        {/* The page's own actions: in line on desktop, their own full-width row on a phone (TopBar.module.css). */}
-        {actions && <div className={styles.pageActions}>{actions}</div>}
         {roleOptions && roleOptions.length > 1 && (
           <select
             aria-label="Active role"

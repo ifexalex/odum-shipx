@@ -88,13 +88,13 @@ describe('MyShipmentDetail — zones (A3)', () => {
 
   it('loads the packing list by id (not the dead /v1/track route)', async () => {
     renderPage()
-    expect(await screen.findByText('PL-20260415-001')).toBeInTheDocument()
+    expect(await screen.findByRole('heading', { name: 'Shipment PL-20260415-001' })).toBeInTheDocument()
     expect(packingListApi.get).toHaveBeenCalledWith('pl1')
   })
 
   it('renders hero with status badge, the stepper hint, and the cartons table', async () => {
     renderPage()
-    await screen.findByText('PL-20260415-001')
+    await screen.findByRole('heading', { name: 'Shipment PL-20260415-001' })
 
     // Appears in the hero badge and again as a stepper stage label
     expect(screen.getAllByText('In transit').length).toBeGreaterThanOrEqual(1)
@@ -109,7 +109,7 @@ describe('MyShipmentDetail — zones (A3)', () => {
 
   it('shows the billing summary and routes the pay CTA to the billing detail', async () => {
     renderPage()
-    await screen.findByText('PL-20260415-001')
+    await screen.findByRole('heading', { name: 'Shipment PL-20260415-001' })
 
     await waitFor(() => expect(screen.getByText('₦50,656')).toBeInTheDocument())
     expect(screen.getByText('₦100,008')).toBeInTheDocument()
@@ -124,7 +124,7 @@ describe('MyShipmentDetail — zones (A3)', () => {
       meta: { pagination: { has_more: false, next_cursor: null, total_count: 1 } },
     } as never)
     renderPage()
-    await screen.findByText('PL-20260415-001')
+    await screen.findByRole('heading', { name: 'Shipment PL-20260415-001' })
 
     // Total and Paid both read ₦100,008 when fully settled
     await waitFor(() => expect(screen.getAllByText('₦100,008').length).toBeGreaterThanOrEqual(2))
@@ -137,14 +137,14 @@ describe('MyShipmentDetail — zones (A3)', () => {
       meta: { pagination: { has_more: false, next_cursor: null, total_count: 0 } },
     } as never)
     renderPage()
-    await screen.findByText('PL-20260415-001')
+    await screen.findByRole('heading', { name: 'Shipment PL-20260415-001' })
 
     expect(await screen.findByText(/no bill yet for this shipment/i)).toBeInTheDocument()
   })
 
   it('file-a-claim prompt routes to the claim wizard', async () => {
     renderPage()
-    await screen.findByText('PL-20260415-001')
+    await screen.findByRole('heading', { name: 'Shipment PL-20260415-001' })
 
     await userEvent.click(screen.getByRole('button', { name: /file a claim/i }))
     expect(await screen.findByText('File claim wizard')).toBeInTheDocument()

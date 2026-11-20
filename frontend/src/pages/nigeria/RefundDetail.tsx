@@ -15,11 +15,12 @@ import {
   refundTypeLabel,
 } from '../../api/refundsRules'
 import { useSession } from '../../auth/useSession'
-import { Action, Banner, Button, Card, DialogGuard, Field, Icon, Kvp, Mono, StatCard, StatusBadge, RadioGroup, Stepper, PageSkeleton, ErrorState } from '../../design/components'
+import { Action, Banner, Button, Card, DialogGuard, Field, Kvp, Mono, StatCard, StatusBadge, RadioGroup, Stepper, PageSkeleton, ErrorState } from '../../design/components'
 import { SectionHead } from '../../shell/SectionHead'
 import styles from './RefundDetail.module.css'
 import { formatDate, formatNgn } from '../../lib/format'
 import { useBreadcrumbLabel } from '../../shell/breadcrumbs'
+import { PageHeader } from '../../shell/PageHeader'
 import { toast } from '../../design/toast'
 
 // ---------------------------------------------------------------------------
@@ -388,44 +389,30 @@ export function RefundDetail(): JSX.Element {
   return (
     <div>
       {/* Hero */}
-      <div className={styles.hero}>
-        <div className={styles.heroLeft}>
-          <div className={styles.heroIcon}>
-            <Icon name="card" size={28} stroke={2} />
-          </div>
-          <div>
-            <div className={styles.heroTitleRow}>
-              <h1 className={styles.heroTitle}>{refundTypeLabel(refund.refund_type)}</h1>
-              <StatusBadge kind="refund" status={refund.status} />
-            </div>
-            <div className={styles.heroMeta}>
-              <span>Requested {formatDate(refund.created_at)}</span>
-              {refund.approval_level && (
-                <span> · {approvalLevelLabel(refund.approval_level)}</span>
-              )}
-            </div>
-          </div>
-        </div>
-        {!isTerminalRefundStatus(refund.status) && (
-          <div className={styles.heroActions}>
-            {showReviewBtn && (
-              <Action variant="primary" icon="check" onClick={() => setShowReview(true)}>
-                Accounts review
-              </Action>
-            )}
-            {showApproveBtn && (
-              <Action variant="primary" icon="check" onClick={() => setShowApprove(true)}>
-                Approve
-              </Action>
-            )}
-            {showRejectBtn && (
-              <Action variant="danger-ghost" icon="x" onClick={() => setShowReject(true)}>
-                Reject
-              </Action>
-            )}
-          </div>
-        )}
-      </div>
+      <PageHeader
+        title={refundTypeLabel(refund.refund_type)}
+        status={<StatusBadge kind="refund" status={refund.status} />}
+        meta={[`Requested ${formatDate(refund.created_at)}`, refund.approval_level && approvalLevelLabel(refund.approval_level)]}
+        primary={
+          isTerminalRefundStatus(refund.status) ? null : showReviewBtn ? (
+            <Action variant="primary" icon="check" onClick={() => setShowReview(true)}>
+              Accounts review
+            </Action>
+          ) : showApproveBtn ? (
+            <Action variant="primary" icon="check" onClick={() => setShowApprove(true)}>
+              Approve
+            </Action>
+          ) : null
+        }
+        actions={
+          !isTerminalRefundStatus(refund.status) &&
+          showRejectBtn && (
+            <Action variant="danger-ghost" icon="x" onClick={() => setShowReject(true)}>
+              Reject
+            </Action>
+          )
+        }
+      />
 
       {/* Status stepper */}
       <div className={styles.section}>

@@ -1,35 +1,18 @@
 import { render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { useState, type ReactNode } from 'react'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { billingApi } from '../../api/billing'
 import { ApiError } from '../../api/client'
-import { TopBarContext } from '../../shell/TopBarContext'
 import { TenantReports } from './TenantReports'
 
 vi.mock('../../api/billing', () => ({ billingApi: { report: vi.fn(), exportReport: vi.fn() } }))
-
-// The "When" date-range control lives in the shared TopBar action slot, not
-// TenantReports' own render tree — same wrapper as china/ContainerList.test.tsx
-// so tests can query it the same way the real StaffLayout would.
-function TopBarWrapper({ children }: { children: ReactNode }) {
-  const [suffix, setSuffix] = useState<string | null>(null)
-  const [subtitle, setSubtitle] = useState<string | null>(null)
-  const [actions, setActions] = useState<ReactNode | null>(null)
-  return (
-    <TopBarContext.Provider value={{ suffix, setSuffix, subtitle, setSubtitle, actions, setActions }}>
-      {children}
-      {actions && <div data-testid="topbar-actions">{actions}</div>}
-    </TopBarContext.Provider>
-  )
-}
 
 function renderPage() {
   const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } })
   render(
     <QueryClientProvider client={qc}>
-      <TopBarWrapper><TenantReports /></TopBarWrapper>
+      <><TenantReports /></>
     </QueryClientProvider>,
   )
 }
@@ -97,7 +80,6 @@ describe('TenantReports', () => {
       renderPage()
       await screen.findByText('CBM & billing by container')
       expect(screen.getAllByRole('button', { name: 'Export' })).toHaveLength(1)
-      expect(screen.getByTestId('topbar-actions')).not.toHaveTextContent('Export')
 
       await userEvent.click(screen.getByRole('button', { name: 'Export' }))
       await waitFor(() => expect(billingApi.exportReport).toHaveBeenCalledWith({}, 'xlsx'))

@@ -8,9 +8,10 @@ import { disputeKeys } from '../../api/keys'
 import { Banner, Button, Card, Field, Mono, Table, StatusBadge, PageSkeleton, EmptyState } from '../../design/components'
 import { STALE_30S } from '../../lib/queryClient'
 import { SectionHead } from '../../shell/SectionHead'
-import { useTopBarSlot } from '../../shell/TopBarContext'
 import styles from './DisputeDetail.module.css'
 import { useBreadcrumbLabel } from '../../shell/breadcrumbs'
+import { PageHeader } from '../../shell/PageHeader'
+import { formatDate } from '../../lib/format'
 import { toast } from '../../design/toast'
 
 function ResolvePanel({ dispute, onResolved }: { dispute: DisputeDetailData; onResolved: () => void }): JSX.Element {
@@ -96,7 +97,6 @@ function ResolvePanel({ dispute, onResolved }: { dispute: DisputeDetailData; onR
 export function DisputeDetail(): JSX.Element {
   const { id } = useParams<{ id: string }>()
   const qc = useQueryClient()
-  useTopBarSlot({ subtitle: 'Judge the measurement, then resolve.' })
 
   const { data: dispute, isLoading, error } = useQuery({
     queryKey: disputeKeys.detail(id ?? ''),
@@ -124,15 +124,14 @@ export function DisputeDetail(): JSX.Element {
 
   return (
     <div className={styles.page}>
-      <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-3)', flexWrap: 'wrap' }}>
-        <StatusBadge kind="dispute" status={dispute.status} />
-      </div>
+      <PageHeader
+        title={dispute.container_number ? `CBM dispute on ${dispute.container_number}` : 'CBM dispute'}
+        status={<StatusBadge kind="dispute" status={dispute.status} />}
+        meta={[dispute.customer_name, dispute.invoice_number, `Filed ${formatDate(dispute.submitted_at)}`]}
+      />
 
       <Card padding="large">
-        <SectionHead
-          title={`${dispute.customer_name ?? 'Customer'} · ${dispute.container_number ?? 'container'}`}
-          sub="What the customer claims against what was billed"
-        />
+        <SectionHead title="Measurement" sub="What the customer claims against what was billed" />
         <div style={{ height: 16 }} />
         <div className={styles.compare}>
           <div className={styles.fact}>

@@ -1,7 +1,6 @@
 import { useState, type JSX } from 'react'
 import { useSession } from '../../auth/useSession'
 import { Badge, Button, Card, Field, StatusBadge, LinesSkeleton } from '../../design/components'
-import { useTopBarSlot } from '../../shell/TopBarContext'
 import { SectionHead } from '../../shell/SectionHead'
 import { ComposeAnnouncementModal } from '../../shell/ComposeAnnouncementModal'
 import type {
@@ -23,6 +22,7 @@ import {
   useUpdateAnnouncementRequest,
 } from '../../hooks/useAnnouncements'
 import styles from './AnnouncementsPage.module.css'
+import { PageHeader } from '../../shell/PageHeader'
 
 function audienceLabel(audience: AnnouncementAudience): string {
   return audience === 'all_staff' ? 'All staff' : 'All customers'
@@ -329,19 +329,17 @@ export function AnnouncementsPage(): JSX.Element {
   const history = historyQuery.data ?? []
   const mine = mineQuery.data ?? []
 
-  useTopBarSlot({
-    subtitle: isAdmin
-      ? 'Broadcast to every staff member or every customer — only one banner shows per audience at a time.'
-      : 'Submit an announcement for customers. A tenant admin reviews it before it reaches anyone.',
-    actions: (
-      <Button variant="primary" icon="plus" onClick={() => setComposeOpen(true)}>
-        New announcement
-      </Button>
-    ),
-  })
-
   return (
     <div>
+      <PageHeader
+        title="Announcements"
+        meta={isAdmin
+            ? 'Broadcast to every staff member or every customer — only one banner shows per audience at a time.'
+            : 'Submit an announcement for customers. A tenant admin reviews it before it reaches anyone.'}
+        primary={<Button variant="primary" icon="plus" onClick={() => setComposeOpen(true)}>
+              New announcement
+            </Button>}
+      />
       {isAdmin ? (
         <>
           <Card padding="default" style={{ marginBottom: 'var(--space-4)' }}>

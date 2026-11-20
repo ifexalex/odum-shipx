@@ -13,9 +13,9 @@ import {
   ExportButton,
   FileInput,
   Icon,
-  KebabBtn,
   Kvp,
   LimitReachedModal,
+  MenuButton,
   LinesSkeleton,
   ListFooter,
   LocaleCard,
@@ -144,10 +144,17 @@ export function ComponentCatalog(): JSX.Element {
 
   return (
     <div style={{ padding: 'var(--space-8)', maxWidth: 1100 }}>
+      {/* The page header (FD-14) with every slot filled: status, a meta line of facts, primary, secondary, overflow. */}
       <PageHeader
-        eyebrow="Design QA"
-        title="ShipX Component Catalog"
-        subtitle="Every shared component with every variant — FE-03 acceptance criteria"
+        title="Component catalog"
+        status={<Badge variant="success">Step 2 gate</Badge>}
+        meta={['Every shared component', 'every variant and state', 'light and dark']}
+        primary={<Button variant="primary" icon="plus">Primary action</Button>}
+        actions={<Button variant="secondary">Secondary</Button>}
+        more={[
+          { label: 'Overflow action', icon: 'file', onSelect: () => undefined },
+          { label: 'Destructive action', tone: 'danger', onSelect: () => undefined },
+        ]}
       />
 
       <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-3)', marginBottom: 'var(--space-8)' }}>
@@ -627,9 +634,15 @@ export function ComponentCatalog(): JSX.Element {
           <Demo label="Language">
             <LocaleCard value={locale} onChange={setLocale} />
           </Demo>
-          <Demo label="Row menu, pressable tile, guarded action">
+          <Demo label="More-actions menu, pressable tile, guarded action">
             <div style={{ display: 'flex', gap: 'var(--space-3)', alignItems: 'center', flexWrap: 'wrap' }}>
-              <KebabBtn label="Row actions for ACME001001" onClick={() => undefined} />
+              <MenuButton
+                label="More actions for ACME001001"
+                items={[
+                  { label: 'Download PDF', icon: 'download', onSelect: () => undefined },
+                  { label: 'Cancel invoice', tone: 'danger', onSelect: () => undefined },
+                ]}
+              />
               <Pressable style={{ padding: 'var(--space-3)', border: '1px solid var(--color-line)', borderRadius: 'var(--radius-md)' }}>Pressable tile</Pressable>
               <Action variant="primary" size="sm">Change data</Action>
             </div>
@@ -672,9 +685,9 @@ export function ComponentCatalog(): JSX.Element {
                 ]}
               />
             }
-            topbar={<TopBar role="nigeria" title="Containers" notifications={3} user={{ name: 'Adaeze Eze', role: 'Staff' }} />}
+            topbar={<TopBar role="nigeria" notifications={3} user={{ name: 'Adaeze Eze', role: 'Staff' }} />}
           >
-            <div>Page content goes here.</div>
+            <div>Page content goes here: a PageHeader, then the page.</div>
           </PageShell>
         </div>
       </Section>

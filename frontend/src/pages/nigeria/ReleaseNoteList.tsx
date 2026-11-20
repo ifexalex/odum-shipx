@@ -4,13 +4,12 @@ import type { ReleaseNoteStatus } from '../../api/releaseNotes'
 import { releaseTypeLabel } from '../../api/releaseNotesRules'
 import { useReleaseNoteList, useReleaseNoteStats } from '../../hooks/useReleaseNotes'
 import {  Card, Chip, ListFooter, Mono, StatCard, StatusBadge, Table, EmptyState, ErrorState } from '../../design/components'
-import { useTopBarSlot } from '../../shell/TopBarContext'
 import styles from './ReleaseNoteList.module.css'
 import { formatDate } from '../../lib/format'
 import { statusLabel } from '../../design/status'
+import { PageHeader } from '../../shell/PageHeader'
 
 const STATUS_FILTERS: ReleaseNoteStatus[] = ['active', 'picked_up', 'expired', 'cancelled']
-
 
 export function ReleaseNoteList(): JSX.Element {
   const navigate = useNavigate()
@@ -22,10 +21,12 @@ export function ReleaseNoteList(): JSX.Element {
   // §9.1 stats row (P2-3) — real per-status counts from GET /stats; hidden until loaded, and on failure.
   const { data: stats = null } = useReleaseNoteStats()
 
-  useTopBarSlot({ subtitle: 'Authorise and track carton pickups from the warehouse.' })
-
   return (
     <div>
+      <PageHeader
+        title="Release notes"
+        meta={'Authorise and track carton pickups from the warehouse.'}
+      />
 
       {error && (
         <div className={styles.banner}>

@@ -5,11 +5,11 @@ import { canUpdateItem } from '../../api/claimsRules'
 import { useSeizedItemList } from '../../hooks/useItems'
 import { useSession } from '../../auth/useSession'
 import { Banner, Button, Card, Chip, DialogGuard, Field, ListFooter, Mono, StatusBadge, Table, Select, EmptyState, ErrorState } from '../../design/components'
-import { useTopBarSlot } from '../../shell/TopBarContext'
 import styles from './ItemList.module.css'
 import { formatDate } from '../../lib/format'
 import { statusLabel } from '../../design/status'
 import { toast } from '../../design/toast'
+import { PageHeader } from '../../shell/PageHeader'
 
 const STATUS_FILTERS: SeizedItemStatus[] = [
   'seized', 'recovery_in_progress', 'recovered', 'permanently_lost',
@@ -104,10 +104,12 @@ export function SeizedItemList(): JSX.Element {
 
   const r = role as Parameters<typeof canUpdateItem>[0]
 
-  useTopBarSlot({ subtitle: 'Cargo detained by customs or security authorities.' })
-
   return (
     <div>
+      <PageHeader
+        title="Seized items"
+        meta={'Cargo detained by customs or security authorities.'}
+      />
 
       {error && (
         <div className={styles.banner}>

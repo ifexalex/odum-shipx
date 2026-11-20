@@ -11,10 +11,10 @@ import { useContainerList } from '../../hooks/useContainers'
 import { useDateRangeFilter } from '../../hooks/useDateRangeFilter'
 import { useListExport } from '../../hooks/useListExport'
 import { type SortableColumn, useTableSort } from '../../hooks/useTableSort'
-import { useTopBarSlot } from '../../shell/TopBarContext'
 import styles from './ContainerList.module.css'
 import { formatDate, isoDateOffset, todayIso } from '../../lib/format'
 import { statusLabel } from '../../design/status'
+import { PageHeader } from '../../shell/PageHeader'
 
 const SEARCH_DEBOUNCE_MS = 300
 
@@ -251,18 +251,6 @@ export function ContainerList(): JSX.Element {
   // Inject action buttons into the shared TopBar (prototype: actions sit between the
   // search box and the bell, not in the page body). Everyone who can open the list can
   // export it; only China staff create containers.
-  useTopBarSlot({
-    actions: (
-      <>
-        <ExportButton formats={['xlsx', 'csv']} onExport={exportList.onExport} />
-        {canCreate && (
-          <Button variant="primary" icon="plus" onClick={() => navigate('/containers/new')}>
-            Create container
-          </Button>
-        )}
-      </>
-    ),
-  })
 
   function selectGroup(statuses: ContainerStatus[]): void {
     const alreadyActive = activeStatuses?.join() === statuses.join()
@@ -293,6 +281,15 @@ export function ContainerList(): JSX.Element {
 
   return (
     <div>
+      <PageHeader
+        title="Containers"
+        primary={canCreate && (
+                  <Button variant="primary" icon="plus" onClick={() => navigate('/containers/new')}>
+                    Create container
+                  </Button>
+                )}
+        actions={<ExportButton formats={['xlsx', 'csv']} onExport={exportList.onExport} />}
+      />
       {error && (
         <div className={styles.banner}>
           <ErrorState compact title="Couldn't load containers" error={error} onRetry={() => void refetch()} />

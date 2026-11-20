@@ -78,9 +78,9 @@ describe('MyShipments — all active shipments render, not just the latest', () 
 
     renderPage()
 
-    // The outstanding total reaches the greeting, which it never could while
+    // The outstanding total reaches the header, which it never could while
     // the request 403'd.
-    expect(await screen.findByText(/outstanding balance to settle/)).toBeInTheDocument()
+    expect(await screen.findByText(/₦[\d,]+ outstanding/)).toBeInTheDocument()
     expect(billingApi.list).toHaveBeenCalled()
     expect(billingApi.listForCustomer).not.toHaveBeenCalled()
   })

@@ -25,6 +25,7 @@ import { EvidenceUploader } from './EvidenceUploader'
 import styles from './ClaimDetail.module.css'
 import { formatDate, formatNgn } from '../../lib/format'
 import { useBreadcrumbLabel } from '../../shell/breadcrumbs'
+import { PageHeader } from '../../shell/PageHeader'
 import { claimProgress, claimSteps } from '../../design/steps'
 import { toast } from '../../design/toast'
 
@@ -300,35 +301,22 @@ export function ClaimDetail(): JSX.Element {
   return (
     <div>
       {/* Hero */}
-      <div className={styles.hero}>
-        <div className={styles.heroLeft}>
-          <div>
-            <div className={styles.heroTitleRow}>
-              <h1 className={styles.heroTitle}>Damage claim</h1>
-              <StatusBadge kind="claim" status={claim.status} />
-            </div>
-            <div className={styles.heroMeta}>
-              <Mono>{claim.id}</Mono>
-              <span className={styles.dot}>·</span>
-              <span>Filed {formatDate(claim.created_at)}</span>
-            </div>
-          </div>
-        </div>
-        {!isTerminalClaimStatus(claim.status) && (
-          <div className={styles.heroActions}>
-            {canStartInspection(claim, r) && (
-              <Action variant="primary" onClick={() => setShowInspect(true)}>
-                Start inspection
-              </Action>
-            )}
-            {canResolveClaim(claim, r) && (
-              <Action variant="primary" onClick={() => setShowResolve(true)}>
-                Resolve claim
-              </Action>
-            )}
-          </div>
-        )}
-      </div>
+      <PageHeader
+        title={claim.reference ? `Damage claim ${claim.reference}` : 'Damage claim'}
+        status={<StatusBadge kind="claim" status={claim.status} />}
+        meta={[claim.customer_name, claim.container_number && <Mono>{claim.container_number}</Mono>, `Filed ${formatDate(claim.created_at)}`]}
+        primary={
+          isTerminalClaimStatus(claim.status) ? null : canStartInspection(claim, r) ? (
+            <Action variant="primary" onClick={() => setShowInspect(true)}>
+              Start inspection
+            </Action>
+          ) : canResolveClaim(claim, r) ? (
+            <Action variant="primary" onClick={() => setShowResolve(true)}>
+              Resolve claim
+            </Action>
+          ) : null
+        }
+      />
 
       {/* Status stepper */}
       <div className={styles.section}>
