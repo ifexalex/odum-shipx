@@ -394,3 +394,15 @@ Every page is titled one way. Before this, 18 pages used `PageHeader` (which ren
 - **Chart colours** (FD-52): `statusSeriesColors(kind, statuses)` gives a status series its badge's colour, the darker shade where two in one chart share one; `NEUTRAL_SERIES_COLOR` for a series that is not a status.
 - **`shell/ListPage`, `StatRow`, `FilterBar`** (FD-18): the list layout (header, notices, stats, filters, table in an edge-to-edge card, footer); a stat row of at most four (`StatRow` reports more in development); the filter bar with fixed slots `status`, `search`, `dateRange`, `more`, `activeCount`, `onClear`, `label` (a `search` landmark), which below 600 px of its own width becomes search plus a Filters sheet. **`StatCard onSelect` / `selected`**: a stat that applies its filter, a toggle button.
 - **Compact stat cards** (2026-11-20, owner): `StatCard` uses the new `Card padding="small"` (16 px), a 24 px icon tile beside a sentence-case label, the figure at most `--text-xl`, and tighter spacing: about 112 px tall on desktop (was about 140), so four stats on a phone take about 230 px instead of 300 and the first row of the list shows on the first screen.
+
+## Sleek pass (2026-11-20, owner request)
+
+The owner asked that every component look sleek. Reviewed the whole catalog (light and dark) and the main pages; the bulk came from a few shared components, fixed there so every page follows:
+
+- **Badge**: sentence case and a slimmer pill (it was capitals with wide tracking); long statuses such as "Released, balance owed" now fit one line in a table cell.
+- **Kvp** (key-value rows): sentence-case labels in a quieter colour, a hairline divider instead of a dashed rule, tighter rows (about 36 px, were 46), and no divider under the last row.
+- **Banner**: less padding and a 3 px accent (was 4); a one-line notice is about 56 px (was 75).
+- **Table**: 12 px cell padding (was 16), rows about 48 px (were about 60); the empty cell's padding halved.
+- **EmptyState / ErrorState**: a third less empty space.
+- **StatCard**: compact, see above.
+Buttons, fields, chips, the stepper and section headings were already in proportion and are unchanged.

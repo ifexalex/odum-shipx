@@ -6,20 +6,21 @@
   row-gap: var(--space-1);
   justify-content: space-between;
   align-items: center;
-  padding: var(--space-3) 0;
-  border-bottom: 1px dashed var(--color-line);
+  /* Sleek pass: a hairline, not a dashed rule, and tighter rows (they were 46 px). */
+  padding: var(--space-2) 0;
+  border-bottom: 1px solid var(--color-line-soft);
 }
 
-.noDivider {
+.noDivider,
+.row:last-child {
   border-bottom: none;
 }
 
 .label {
-  font-size: var(--text-xs);
-  color: var(--color-ink-4);
-  font-weight: 500;
-  text-transform: uppercase;
-  letter-spacing: var(--tracking-label);
+  font-size: var(--text-sm);
+  line-height: var(--text-sm-line);
+  color: var(--color-ink-3);
+  font-weight: 400;
   flex-shrink: 0;
 }
 

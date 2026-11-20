@@ -3,11 +3,12 @@
   gap: var(--space-3);
   align-items: flex-start;
   border-radius: var(--radius-md);
-  padding: var(--space-4) var(--space-4);
+  /* Sleek pass: less padding and a slimmer accent; a one-line notice no longer takes 75 px. */
+  padding: var(--space-3) var(--space-4);
   font-size: var(--text-sm);
   line-height: var(--text-sm-line);
   border: 1px solid var(--banner-border);
-  border-left: 4px solid var(--banner-accent);
+  border-left: 3px solid var(--banner-accent);
   background: var(--banner-bg);
   color: var(--banner-fg);
 }

@@ -1,14 +1,15 @@
 .badge {
   display: inline-flex;
   align-items: center;
-  gap: var(--space-2);
-  padding: var(--space-1) var(--space-3);
+  /* Sleek pass (2026-11-20, owner): sentence case and a slimmer pill. In capitals with wide tracking a status was
+     shouted and long ones ("Released, balance owed") took two lines in a table cell. */
+  gap: var(--space-1);
+  padding: var(--space-0-5) var(--space-2);
   border-radius: var(--radius-full);
   font-family: var(--font-body);
   font-weight: 600;
   font-size: var(--text-xs);
-  letter-spacing: var(--tracking-label);
-  text-transform: uppercase;
+  line-height: var(--text-xs-line);
   /* A long status ("Released, balance owed") wraps between words when its column is narrow, so a table fits its
      page instead of scrolling sideways (FD-10). */
   white-space: normal;
