@@ -42,7 +42,7 @@ export function StatCard({
   selected = false,
 }: StatCardProps): JSX.Element {
   const card = (
-    <Card padding="default">
+    <Card padding="small">
       <div className={styles.body}>
         <div className={styles.head}>
           {icon && (
@@ -50,7 +50,7 @@ export function StatCard({
               className={styles.iconSlot}
               style={accentColor ? { color: accentColor } : undefined}
             >
-              <Icon name={icon} size={16} />
+              <Icon name={icon} size={14} />
             </div>
           )}
           <div className={styles.label}>{label}</div>

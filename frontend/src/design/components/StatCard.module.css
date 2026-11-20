@@ -4,16 +4,18 @@
   container-type: inline-size;
 }
 
+/* Compact (2026-11-20, owner): a stat card is about one number, so the tile is short: icon and label on one line,
+   the figure, a sublabel. It was ~140 px tall; four on a phone pushed the list below the fold. */
 .head {
   display: flex;
   align-items: center;
-  gap: var(--space-3);
-  margin-bottom: var(--space-4);
+  gap: var(--space-2);
+  margin-bottom: var(--space-2);
 }
 
 .iconSlot {
-  width: 28px;
-  height: 28px;
+  width: 24px;
+  height: 24px;
   border-radius: var(--radius-md);
   background: var(--color-primary-soft);
   color: var(--color-primary-on-soft);
@@ -24,12 +26,10 @@
 }
 
 .label {
-  font-size: var(--text-xs);
-  letter-spacing: var(--tracking-label);
-  text-transform: uppercase;
+  font-size: var(--text-sm);
   font-weight: 600;
   color: var(--color-ink-3);
-  line-height: var(--text-xs-line);
+  line-height: var(--text-sm-line);
   flex: 1;
   min-width: 0;
   /* Last resort only: a single word wider than the whole card. */
@@ -48,10 +48,10 @@
   font-weight: 700;
   /* 2xl in the type scale (FD-01), scaled to the card's width; "3 of 12" may wrap between words, a figure never
      splits. */
-  font-size: clamp(var(--text-lg), 16cqi, var(--text-2xl));
+  font-size: clamp(var(--text-lg), 14cqi, var(--text-xl));
   letter-spacing: var(--tracking-tight);
   color: var(--color-ink);
-  margin-bottom: var(--space-2);
+  margin-bottom: var(--space-1);
   line-height: var(--leading-tight);
 }
 
