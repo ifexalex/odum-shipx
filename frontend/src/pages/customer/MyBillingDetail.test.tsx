@@ -140,6 +140,6 @@ describe('MyBillingDetail — download invoice', () => {
 
     await userEvent.click(await screen.findByRole('button', { name: /download invoice/i }))
 
-    expect(await screen.findByText(/invoice not found/i)).toBeInTheDocument()
+    expect(await screen.findByText(/couldn't find that/i)).toBeInTheDocument()
   })
 })

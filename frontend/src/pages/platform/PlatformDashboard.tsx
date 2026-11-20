@@ -13,7 +13,7 @@ import { useMemo, type JSX } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { ApiError } from '../../api/client'
 import { usePlatformDashboardStats, usePlatformTenantList, useRecentPlatformActivity } from '../../hooks/usePlatformTenants'
-import { Badge, Banner, Button, Card, Mono, QuickActionCard, StatCard, StatusBadge, Table, type BadgeVariant, type IconName, UserCell, ViewLink, Icon } from '../../design/components'
+import { Badge, Banner, Button, Card, Mono, QuickActionCard, StatCard, StatusBadge, Table, type BadgeVariant, type IconName, UserCell, ViewLink, Icon, PageSkeleton, EmptyState } from '../../design/components'
 import { PageHeader } from '../../shell/PageHeader'
 import { SectionHead } from '../../shell/SectionHead'
 import styles from './admin.module.css'
@@ -73,7 +73,7 @@ export function PlatformDashboard(): JSX.Element {
     return (id: string | null) => (id ? (map.get(id) ?? `${id.slice(0, 8)}…`) : 'Platform')
   }, [tenants])
 
-  if (loading) return <div style={{ padding: 'var(--space-12)', textAlign: 'center', color: 'var(--color-ink-3)' }}>Loading platform dashboard…</div>
+  if (loading) return <PageSkeleton kind="list" label="Loading platform dashboard" />
 
   return (
     <div>
@@ -154,7 +154,7 @@ export function PlatformDashboard(): JSX.Element {
                 <ViewLink key="view" onClick={() => navigate(`/platform/tenants/${t.id}`)} />,
               ],
             }))}
-            emptyState={<span style={{ color: 'var(--color-ink-3)', fontSize: 'var(--text-sm)' }}>No tenants yet.</span>}
+            emptyState={<EmptyState compact title="No tenants yet" />}
           />
         </Card>
 

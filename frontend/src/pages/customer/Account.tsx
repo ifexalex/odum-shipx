@@ -17,7 +17,7 @@ import { ApiError } from '../../api/client'
 import { customersApi, type Customer } from '../../api/tenantManagement'
 import { useSession } from '../../auth/useSession'
 import { OWN_CUSTOMER_KEY, useOwnCustomer } from '../../hooks/useCustomers'
-import { Avatar, Banner, Button, Card, Field, Icon, PhoneField, ToggleSwitch, RadioGroup } from '../../design/components'
+import { Avatar, Banner, Button, Card, Field, Icon, PhoneField, ToggleSwitch, RadioGroup, LinesSkeleton } from '../../design/components'
 import { PageHeader } from '../../shell/PageHeader'
 import { SectionHead } from '../../shell/SectionHead'
 import { Tabs } from '../../shell/Tabs'
@@ -400,7 +400,7 @@ export function Account(): JSX.Element {
       />
 
       {error && <div style={{ marginBottom: 'var(--space-4)' }}><Banner variant="error" title="Couldn't load your account">{error}</Banner></div>}
-      {loading && <p style={{ color: 'var(--color-ink-3)' }}>Loading your account…</p>}
+      {loading && <LinesSkeleton label="Loading your account" />}
 
       {!loading && !customer && !error && (
         <Banner variant="info" title="No customer profile linked">

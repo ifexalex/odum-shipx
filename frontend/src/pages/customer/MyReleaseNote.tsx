@@ -5,7 +5,7 @@ import { ApiError } from '../../api/client'
 import { releaseNoteKeys } from '../../api/keys'
 import { releaseNotesApi } from '../../api/releaseNotes'
 import { } from '../../api/releaseNotesRules'
-import { Banner, Button, Card, Kvp, Mono, StatusBadge } from '../../design/components'
+import { Banner, Button, Card, Kvp, Mono, StatusBadge, PageSkeleton } from '../../design/components'
 import { STALE_30S } from '../../lib/queryClient'
 import { PageHeader } from '../../shell/PageHeader'
 import styles from './customer.module.css'
@@ -46,7 +46,7 @@ export function MyReleaseNote(): JSX.Element {
     }
   }
 
-  if (isLoading) return <div style={{ padding: 'var(--space-8)', color: 'var(--color-ink-4)' }}>Loading your release note…</div>
+  if (isLoading) return <PageSkeleton kind="detail" label="Loading your release note" />
 
   if (error || !note) {
     const missing = error instanceof ApiError && error.status === 404

@@ -9,7 +9,7 @@ import { type JSX } from 'react'
 import { configApi, type TenantActivityEntry } from '../api/tenantManagement'
 import { configKeys } from '../api/keys'
 import { STALE_30S } from '../lib/queryClient'
-import { Badge, type BadgeVariant } from '../design/components'
+import { Badge, type BadgeVariant, LinesSkeleton } from '../design/components'
 import styles from './ActivityFeed.module.css'
 import { formatDate } from '../lib/format'
 
@@ -57,7 +57,7 @@ export function ActivityFeed({
   const entries: TenantActivityEntry[] | null = isPending ? null : (data?.data ?? [])
 
   if (entries === null) {
-    return <div className={styles.empty}>Loading activity…</div>
+    return <LinesSkeleton label="Loading activity" lines={4} />
   }
   if (entries.length === 0) {
     return <div className={styles.empty}>No recent activity.</div>

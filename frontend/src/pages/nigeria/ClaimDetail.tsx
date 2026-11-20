@@ -20,7 +20,7 @@ import {
 import { claimKeys } from '../../api/keys'
 import { STALE_30S } from '../../lib/queryClient'
 import { useSession } from '../../auth/useSession'
-import { Action, Banner, Button, Card, DialogGuard, Field, Kvp, Mono, StatusBadge, Pressable, Select } from '../../design/components'
+import { Action, Banner, Button, Card, DialogGuard, Field, Kvp, Mono, StatusBadge, Pressable, Select, PageSkeleton, ErrorState } from '../../design/components'
 import { SectionHead } from '../../shell/SectionHead'
 import { EvidenceUploader } from './EvidenceUploader'
 import styles from './ClaimDetail.module.css'
@@ -284,7 +284,7 @@ export function ClaimDetail(): JSX.Element {
   // Router state from ClaimList seeds the first paint; claimKeys.detail(id) is
   // the slot the existing `useClaim` hook reads, so the two share one entry.
   const stateClaim = (location.state as { claim?: Claim } | null)?.claim ?? null
-  const { data: claim = null, isLoading: loading, error: loadError } = useQuery({
+  const { data: claim = null, isLoading: loading, error: loadError, refetch } = useQuery({
     queryKey: claimKeys.detail(id ?? ''),
     queryFn: () => claimsApi.get(id!),
     enabled: !!id,
@@ -306,12 +306,10 @@ export function ClaimDetail(): JSX.Element {
     qc.setQueryData(claimKeys.detail(id ?? ''), updated)
   }
 
-  if (loading) return <div className={styles.loadingState}>Loading claim…</div>
+  if (loading) return <PageSkeleton kind="detail" label="Loading claim" />
   if (error || !claim) {
     return (
-      <div className={styles.loadingState}>
-        <Banner variant="error" title="Couldn't load this claim">{error ?? 'Not found.'}</Banner>
-      </div>
+      <ErrorState title="Couldn't load this claim" error={loadError} message="We couldn't find this record. It may have been removed, or the link is out of date." onRetry={() => void refetch()} />
     )
   }
 

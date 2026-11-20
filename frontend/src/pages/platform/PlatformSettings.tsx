@@ -22,7 +22,7 @@ import {
 } from '../../api/tenantManagement'
 import { usePlatformGateways, usePlatformGeneralSettings, usePlatformPlans } from '../../hooks/usePlatformSettings'
 import { useSeedOnce } from '../../hooks/useSeedOnce'
-import { Banner, Button, Card, Field, Mono, ToggleSwitch } from '../../design/components'
+import { Banner, Button, Card, Field, Mono, ToggleSwitch, PageSkeleton } from '../../design/components'
 import { PageHeader } from '../../shell/PageHeader'
 import { SectionHead } from '../../shell/SectionHead'
 import { Tabs } from '../../shell/Tabs'
@@ -69,7 +69,7 @@ function GeneralSettings(): JSX.Element {
     }
   }
 
-  if (!settings && !error) return <p style={{ color: 'var(--color-ink-3)' }}>Loading settings…</p>
+  if (!settings && !error) return <PageSkeleton kind="detail" label="Loading settings" />
 
   return (
     <Card padding="large">
@@ -237,7 +237,7 @@ function ProviderSettings(): JSX.Element {
     : null
 
   if (error) return <Banner variant="error" title="Error">{error}</Banner>
-  if (!configs) return <p style={{ color: 'var(--color-ink-3)' }}>Loading providers…</p>
+  if (!configs) return <PageSkeleton kind="detail" label="Loading providers" />
 
   return (
     <div style={{ display: 'grid', gap: 'var(--space-4)' }}>
@@ -308,7 +308,7 @@ function PlanSettings(): JSX.Element {
   }
 
   if (error) return <Banner variant="error" title="Error">{error}</Banner>
-  if (!plans) return <p style={{ color: 'var(--color-ink-3)' }}>Loading plans…</p>
+  if (!plans) return <PageSkeleton kind="detail" label="Loading plans" />
 
   return (
     <div style={{ display: 'grid', gap: 'var(--space-4)' }}>

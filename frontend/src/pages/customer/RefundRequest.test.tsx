@@ -110,7 +110,7 @@ describe('RefundRequest', () => {
     await userEvent.type(screen.getByLabelText(/Amount requested/), '5000')
     await fillBank()
     await userEvent.click(screen.getByRole('button', { name: 'Submit request' }))
-    expect(await screen.findByText('Try again shortly.')).toBeInTheDocument()
+    expect(await screen.findByText("We couldn't reach the server. Check your connection and try again.")).toBeInTheDocument()
     await userEvent.click(screen.getByRole('button', { name: 'Submit request' }))
 
     const keys = vi.mocked(refundsApi.create).mock.calls.map((call) => call[1])

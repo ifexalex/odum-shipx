@@ -1,6 +1,6 @@
 import { type JSX } from 'react'
 import { BULK_CONFIRM_THRESHOLD } from '../../api/packingList'
-import { Banner, Button, Card, Modal } from '../../design/components'
+import { Banner, Button, Card, Modal, LinesSkeleton } from '../../design/components'
 import { PageHeader } from '../../shell/PageHeader'
 import styles from './CreatePackingList.module.css'
 import { WizardSteps } from './createPackingList/WizardSteps'
@@ -23,7 +23,7 @@ export function CreatePackingList(): JSX.Element {
 
       {!editReady ? (
         <Card padding="large">
-          <span className={styles.fieldHelper}>Loading draft…</span>
+          <LinesSkeleton label="Loading draft" />
         </Card>
       ) : (
       <>

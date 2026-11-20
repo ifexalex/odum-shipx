@@ -23,7 +23,7 @@ import { billingApi, paymentClaimApi, type Billing } from '../../api/billing'
 import { billingKeys, packingListKeys } from '../../api/keys'
 import { packingListApi } from '../../api/packingList'
 import { STALE_30S } from '../../lib/queryClient'
-import { Banner, Button, Card, Icon, Kvp, Mono, StatusBadge, Table } from '../../design/components'
+import { Banner, Button, Card, Icon, Kvp, Mono, StatusBadge, Table, LinesSkeleton, PageSkeleton, EmptyState } from '../../design/components'
 import { SectionHead } from '../../shell/SectionHead'
 import { CustomerStepper } from './CustomerStepper'
 import { ReleaseNoteCard } from './ReleaseNoteCard'
@@ -100,7 +100,7 @@ export function MyShipmentDetail(): JSX.Element {
   })
   const pendingClaim = paymentClaims.find((c) => c.status === 'pending') ?? null
 
-  if (loading) return <div style={{ padding: 'var(--space-8)', color: 'var(--color-ink-4)' }}>Loading your shipment…</div>
+  if (loading) return <PageSkeleton kind="detail" label="Loading your shipment" />
 
   if (error || !pl) {
     return (
@@ -187,7 +187,7 @@ export function MyShipmentDetail(): JSX.Element {
                 </Mono>,
               ],
             }))}
-            emptyState={<span style={{ fontSize: 'var(--text-sm)', color: 'var(--color-ink-3)' }}>No cartons recorded yet.</span>}
+            emptyState={<EmptyState compact title="No cartons recorded yet" />}
           />
         </Card>
 
@@ -208,7 +208,7 @@ export function MyShipmentDetail(): JSX.Element {
             }
           />
           <div style={{ height: 8 }} />
-          {billing === null && <p className={styles.billingNote}>Loading billing…</p>}
+          {billing === null && <LinesSkeleton label="Loading billing" />}
           {billing !== null && !shipmentBilling && (
             <p className={styles.billingNote}>
               No bill yet for this shipment — billing is generated when the container arrives and is measured.

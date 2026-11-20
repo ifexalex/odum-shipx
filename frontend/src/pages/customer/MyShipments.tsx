@@ -6,7 +6,7 @@ import { billingApi, type Billing } from '../../api/billing'
 import { billingKeys, packingListKeys } from '../../api/keys'
 import { packingListApi } from '../../api/packingList'
 import { STALE_30S } from '../../lib/queryClient'
-import {  Banner, Button, Card, Icon, Mono, Table, ViewLink, StatusBadge } from '../../design/components'
+import { Banner, Button, Card, Icon, Mono, Table, ViewLink, StatusBadge, PageSkeleton } from '../../design/components'
 import { SectionHead } from '../../shell/SectionHead'
 import { useSession } from '../../auth/useSession'
 import { CustomerStepper } from './CustomerStepper'
@@ -96,7 +96,7 @@ export function MyShipments(): JSX.Element {
   const name = session?.name?.split(' ')[0] ?? 'there'
 
   if (loading) {
-    return <div style={{ padding: 'var(--space-8)', color: 'var(--color-ink-4)' }}>Loading your shipments…</div>
+    return <PageSkeleton kind="list" label="Loading your shipments" />
   }
 
   return (

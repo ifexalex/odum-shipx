@@ -5,7 +5,7 @@ import { disputeApi, type DisputeDetail as DisputeDetailData, type ResolveCBMDis
 import { isTerminalDisputeStatus } from '../../api/billingRules'
 import { ApiError } from '../../api/client'
 import { disputeKeys } from '../../api/keys'
-import {  Banner, Button, Card, Field, Mono, Table, StatusBadge } from '../../design/components'
+import { Banner, Button, Card, Field, Mono, Table, StatusBadge, PageSkeleton, EmptyState } from '../../design/components'
 import { STALE_30S } from '../../lib/queryClient'
 import { SectionHead } from '../../shell/SectionHead'
 import { useTopBarSlot } from '../../shell/TopBarContext'
@@ -107,7 +107,7 @@ export function DisputeDetail(): JSX.Element {
   // Names this record in the breadcrumb once loaded (FD-46).
   useBreadcrumbLabel(dispute?.container_number)
 
-  if (isLoading) return <div style={{ padding: 'var(--space-8)', color: 'var(--color-ink-3)' }}>Loading dispute…</div>
+  if (isLoading) return <PageSkeleton kind="detail" label="Loading dispute" />
 
   if (error || !dispute) {
     return (
@@ -195,7 +195,7 @@ export function DisputeDetail(): JSX.Element {
               <Mono key="cbm">{line.cbm}</Mono>,
             ],
           }))}
-          emptyState={<span>No approved packing-list lines for this customer on this container.</span>}
+          emptyState={<EmptyState compact title="No approved packing-list lines for this customer on this container" />}
         />
       </Card>
 

@@ -4,7 +4,7 @@ import { isTerminalDisputeStatus } from '../../api/billingRules'
 import { type CBMDisputeStatus } from '../../api/billing'
 import { useSession } from '../../auth/useSession'
 import { useDisputeList } from '../../hooks/useBilling'
-import { Banner, Card, Chip, ListFooter, Mono, StatusBadge, Table, ViewLink } from '../../design/components'
+import {  Card, Chip, ListFooter, Mono, StatusBadge, Table, ViewLink, EmptyState, ErrorState } from '../../design/components'
 import { useTopBarSlot } from '../../shell/TopBarContext'
 import { useNow } from '../../hooks/useNow'
 import styles from './DisputeList.module.css'
@@ -71,7 +71,7 @@ export function DisputeList(): JSX.Element {
   // instead of only refreshing when something unrelated re-renders the list.
   const now = useNow()
   const [statusFilter, setStatusFilter] = useStatusParam<CBMDisputeStatus>(DISPUTE_STATUSES)
-  const { items: disputes, isLoading: loading, error, hasMore, loadMore, isFetchingMore, totalCount } = useDisputeList(
+  const { items: disputes, isLoading: loading, error, hasMore, loadMore, isFetchingMore, totalCount, refetch } = useDisputeList(
     statusFilter ? { status: statusFilter } : {},
   )
 
@@ -82,7 +82,7 @@ export function DisputeList(): JSX.Element {
 
       {error && (
         <div className={styles.banner}>
-          <Banner variant="error" title="Couldn't load disputes">{error.message}</Banner>
+          <ErrorState compact title="Couldn't load disputes" error={error} onRetry={() => void refetch()} />
         </div>
       )}
 
@@ -128,7 +128,7 @@ export function DisputeList(): JSX.Element {
             loading={loading}
             emptyState={
               !loading && disputes.length === 0 ? (
-                <span>✓ No disputes match this filter.</span>
+                <EmptyState compact title="No disputes match this filter" />
               ) : undefined
             }
           />

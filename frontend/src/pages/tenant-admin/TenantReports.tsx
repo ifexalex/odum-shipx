@@ -3,7 +3,7 @@ import { useMemo, type JSX } from 'react'
 import { billingApi } from '../../api/billing'
 import { billingKeys } from '../../api/keys'
 import { STALE_5_MIN } from '../../lib/queryClient'
-import { Button, Card, DateRangeFilter, Icon, Mono, StatCard, Table } from '../../design/components'
+import { Button, Card, DateRangeFilter, Icon, Mono, StatCard, Table, PageSkeleton, EmptyState } from '../../design/components'
 import { useDateRangeFilter } from '../../hooks/useDateRangeFilter'
 import { SectionHead } from '../../shell/SectionHead'
 import { useTopBarSlot } from '../../shell/TopBarContext'
@@ -239,7 +239,7 @@ export function TenantReports(): JSX.Element {
     [report],
   )
 
-  if (loading) return <div style={{ padding: 'var(--space-8)', color: 'var(--color-ink-4)' }}>Loading reports…</div>
+  if (loading) return <PageSkeleton kind="list" label="Loading reports" />
 
   return (
     <div>
@@ -307,7 +307,7 @@ export function TenantReports(): JSX.Element {
               </Mono>,
             ],
           }))}
-          emptyState={<span>No billing records yet.</span>}
+          emptyState={<EmptyState compact title="No billing records yet" />}
         />
       </Card>
 

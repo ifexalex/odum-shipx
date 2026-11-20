@@ -15,7 +15,7 @@ import { ApiError } from '../../api/client'
 import { configApi, type NotificationTemplate } from '../../api/tenantManagement'
 import { configKeys } from '../../api/keys'
 import { STALE_5_MIN } from '../../lib/queryClient'
-import { Banner, Button, Field } from '../../design/components'
+import { Banner, Button, Field, LinesSkeleton } from '../../design/components'
 import { PageHeader } from '../../shell/PageHeader'
 import styles from './admin.module.css'
 import { formatTime } from '../../lib/format'
@@ -179,7 +179,7 @@ export function NotificationTemplates(): JSX.Element {
       />
 
       {error && <div className={styles.banner}><Banner variant="error">{error}</Banner></div>}
-      {loading && <p style={{ color: 'var(--color-ink-4)' }}>Loading templates…</p>}
+      {loading && <LinesSkeleton label="Loading templates" />}
 
       {!loading && templates.length === 0 && (
         <p style={{ color: 'var(--color-ink-4)', marginTop: 'var(--space-6)' }}>

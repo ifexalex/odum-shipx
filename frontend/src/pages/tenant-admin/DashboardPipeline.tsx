@@ -12,7 +12,7 @@ import { useNavigate } from 'react-router-dom'
 import { } from '../../api/containerRules'
 import { type ContainerStats, type ContainerStatus } from '../../api/tracking'
 import { useContainerList } from '../../hooks/useContainers'
-import { Button, Card, Chip, ListFooter, Mono, StatusBadge, Table, Pressable, SearchField } from '../../design/components'
+import { Button, Card, Chip, ListFooter, Mono, StatusBadge, Table, Pressable, SearchField, EmptyState } from '../../design/components'
 import { SectionHead } from '../../shell/SectionHead'
 import styles from './DashboardPipeline.module.css'
 import { isoDateOffset, formatDate } from '../../lib/format'
@@ -174,11 +174,7 @@ export function ContainerPipeline({ counts }: { counts: ContainerStats | undefin
         loading={isLoading}
         emptyState={
           !isLoading ? (
-            <span style={{ color: 'var(--color-ink-3)', fontSize: 'var(--text-sm)' }}>
-              {debouncedSearch || etaPreset
-                ? 'No containers match your search and filters.'
-                : `No containers in ${selected === 'all' ? 'the pipeline' : statusLabel('container', selected)}.`}
-            </span>
+            <EmptyState compact title={debouncedSearch || etaPreset ? 'No containers match your search and filters' : `No containers in ${selected === 'all' ? 'the pipeline' : statusLabel('container', selected)}`} />
           ) : undefined
         }
       />

@@ -26,7 +26,7 @@ import { customersApi, type Customer } from '../../api/tenantManagement'
 import { billingKeys, claimKeys, customerKeys, packingListKeys } from '../../api/keys'
 import { STALE_30S } from '../../lib/queryClient'
 import { useSession } from '../../auth/useSession'
-import { Action, Avatar, Badge, Banner, Button, Card, DialogGuard, Field, Kvp, Mono, StatCard, StatusBadge, Table, ViewLink, Select } from '../../design/components'
+import { Action, Avatar, Badge, Banner, Button, Card, DialogGuard, Field, Kvp, Mono, StatCard, StatusBadge, Table, ViewLink, Select, PageSkeleton, EmptyState } from '../../design/components'
 import { SectionHead } from '../../shell/SectionHead'
 import { Tabs } from '../../shell/Tabs'
 import styles from './admin.module.css'
@@ -222,7 +222,7 @@ function ShipmentsTab({ customer, shipments, onOpen }: { customer: Customer; shi
       <div className={styles.cardPad}>
         <SectionHead
           title={`Shipments${customer.name ? ` · ${customer.name}` : ''}`}
-          sub={shipments ? `${shipments.length} total` : 'Loading…'}
+          sub={shipments ? `${shipments.length} total` : undefined}
         />
       </div>
       <Table
@@ -247,7 +247,7 @@ function ShipmentsTab({ customer, shipments, onOpen }: { customer: Customer; shi
           ],
         }))}
         loading={shipments === null}
-        emptyState={shipments?.length === 0 ? <span>No shipments for this customer yet.</span> : undefined}
+        emptyState={shipments?.length === 0 ? <EmptyState compact title="No shipments for this customer yet" /> : undefined}
       />
     </Card>
   )
@@ -294,7 +294,7 @@ function BillingTab({ billing, onOpen }: { billing: Billing[] | null; onOpen: (b
             ],
           }))}
           loading={billing === null}
-          emptyState={billing?.length === 0 ? <span>No billing records for this customer yet.</span> : undefined}
+          emptyState={billing?.length === 0 ? <EmptyState compact title="No billing records for this customer yet" /> : undefined}
         />
       </Card>
     </>
@@ -305,7 +305,7 @@ function ClaimsTab({ claims, onOpen }: { claims: Claim[] | null; onOpen: (c: Cla
   return (
     <Card padding="none">
       <div className={styles.cardPad}>
-        <SectionHead title="Damage claims" sub={claims ? `${claims.length} total` : 'Loading…'} />
+        <SectionHead title="Damage claims" sub={claims ? `${claims.length} total` : undefined} />
       </div>
       <Table
         columns={[
@@ -327,7 +327,7 @@ function ClaimsTab({ claims, onOpen }: { claims: Claim[] | null; onOpen: (c: Cla
           ],
         }))}
         loading={claims === null}
-        emptyState={claims?.length === 0 ? <span>No claims filed by this customer.</span> : undefined}
+        emptyState={claims?.length === 0 ? <EmptyState compact title="No claims filed by this customer" /> : undefined}
       />
     </Card>
   )
@@ -497,7 +497,7 @@ export function AdminCustomerDetail(): JSX.Element {
     }
   }
 
-  if (loading && !customer) return <div className={styles.emptyState}>Loading…</div>
+  if (loading && !customer) return <PageSkeleton kind="detail" label="Loading the page" />
   if (error && !customer) return <div className={styles.banner}><Banner variant="error">{error}</Banner></div>
   if (!customer) return <></>
 

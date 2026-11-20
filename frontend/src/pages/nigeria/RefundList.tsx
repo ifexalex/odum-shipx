@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom'
 import { type RefundStatus } from '../../api/refunds'
 import { refundTypeLabel } from '../../api/refundsRules'
 import { useRefundList } from '../../hooks/useRefunds'
-import { Banner, Card, Chip, ListFooter, Mono, StatusBadge, Table, ViewLink } from '../../design/components'
+import {  Card, Chip, ListFooter, Mono, StatusBadge, Table, ViewLink, EmptyState, ErrorState } from '../../design/components'
 import { useTopBarSlot } from '../../shell/TopBarContext'
 import styles from './RefundList.module.css'
 import { formatDate, formatNgn } from '../../lib/format'
@@ -20,7 +20,7 @@ const STATUS_FILTERS: RefundStatus[] = [
 export function RefundList(): JSX.Element {
   const navigate = useNavigate()
   const [statusFilter, setStatusFilter] = useState<RefundStatus | null>(null)
-  const { items: refunds, isLoading: loading, error, hasMore, loadMore, isFetchingMore, totalCount } = useRefundList(
+  const { items: refunds, isLoading: loading, error, hasMore, loadMore, isFetchingMore, totalCount, refetch } = useRefundList(
     statusFilter ? { status: statusFilter } : {},
   )
 
@@ -31,7 +31,7 @@ export function RefundList(): JSX.Element {
 
       {error && (
         <div className={styles.banner}>
-          <Banner variant="error" title="Couldn't load refunds">{error.message}</Banner>
+          <ErrorState compact title="Couldn't load refunds" error={error} onRetry={() => void refetch()} />
         </div>
       )}
 
@@ -75,7 +75,7 @@ export function RefundList(): JSX.Element {
               ],
             }))}
             loading={loading}
-            emptyState={!loading && refunds.length === 0 ? <span>✓ No refund requests match this filter.</span> : undefined}
+            emptyState={!loading && refunds.length === 0 ? <EmptyState compact title="No refund requests match this filter" /> : undefined}
           />
         </Card>
         <ListFooter

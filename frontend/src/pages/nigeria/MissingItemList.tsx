@@ -5,7 +5,7 @@ import { canCompensateMissingItem, canUpdateMissingItem, missingItemStatusesFor 
 import { useMissingItemList } from '../../hooks/useItems'
 import { useSession } from '../../auth/useSession'
 import type { UserRole } from '../../auth/types'
-import { Banner, Button, Card, Chip, DialogGuard, Field, ListFooter, Mono, StatusBadge, Table, Select } from '../../design/components'
+import { Banner, Button, Card, Chip, DialogGuard, Field, ListFooter, Mono, StatusBadge, Table, Select, EmptyState, ErrorState } from '../../design/components'
 import { useTopBarSlot } from '../../shell/TopBarContext'
 import styles from './ItemList.module.css'
 import { formatDate } from '../../lib/format'
@@ -123,7 +123,7 @@ export function MissingItemList(): JSX.Element {
 
       {error && (
         <div className={styles.banner}>
-          <Banner variant="error" title="Couldn't load missing items">{error.message}</Banner>
+          <ErrorState compact title="Couldn't load missing items" error={error} onRetry={() => void refetch()} />
         </div>
       )}
 
@@ -158,7 +158,7 @@ export function MissingItemList(): JSX.Element {
               ],
             }))}
             loading={loading}
-            emptyState={!loading && items.length === 0 ? <span>✓ No missing items on record.</span> : undefined}
+            emptyState={!loading && items.length === 0 ? <EmptyState compact title="No missing items on record" /> : undefined}
           />
         </Card>
         <ListFooter

@@ -21,6 +21,9 @@
 }
 
 .chips {
+  /* Their own line (FD-20): counts arrive after the page renders, and a row that wraps then would move the
+     search box under the reader's cursor. */
+  flex-basis: 100%;
   display: flex;
   gap: var(--space-2);
   flex-wrap: wrap;

@@ -4,7 +4,7 @@ import { Link, useNavigate } from 'react-router-dom'
 import { claimsApi, type Claim, type DamageClaimStatus } from '../../api/claims'
 import { claimKeys } from '../../api/keys'
 import { STALE_5_MIN } from '../../lib/queryClient'
-import { Badge, Banner, Button, Card, Chip, DateRangeFilter, Icon, ListFooter, Mono, StatCard, StatusBadge, Table, UserCell, SearchField } from '../../design/components'
+import { Badge, Button, Card, Chip, DateRangeFilter, Icon, ListFooter, Mono, StatCard, StatusBadge, Table, UserCell, SearchField, EmptyState, ErrorState } from '../../design/components'
 import { useSession } from '../../auth/useSession'
 import { useClaimList } from '../../hooks/useClaims'
 import { useDateRangeFilter } from '../../hooks/useDateRangeFilter'
@@ -71,7 +71,7 @@ export function ClaimList(): JSX.Element {
 
   const { sort, onSort, sortField, sortDirection } = useTableSort(SORT_COLUMNS)
 
-  const { items: claims, isLoading, error, hasMore, loadMore, isFetchingMore, totalCount } = useClaimList({
+  const { items: claims, isLoading, error, hasMore, loadMore, isFetchingMore, totalCount, refetch } = useClaimList({
     ...(statusFilter ? { status: statusFilter } : {}),
     ...(search ? { q: search } : {}),
     ...(filedRange.createdAfter ? { created_after: filedRange.createdAfter } : {}),
@@ -83,7 +83,7 @@ export function ClaimList(): JSX.Element {
     <div>
       {error && (
         <div className={styles.banner}>
-          <Banner variant="error" title="Couldn't load claims">{error.message}</Banner>
+          <ErrorState compact title="Couldn't load claims" error={error} onRetry={() => void refetch()} />
         </div>
       )}
 
@@ -163,7 +163,7 @@ export function ClaimList(): JSX.Element {
             ],
           }))}
           loading={isLoading}
-          emptyState={!isLoading && claims.length === 0 ? <span>No claims match this filter.</span> : undefined}
+          emptyState={!isLoading && claims.length === 0 ? <EmptyState compact title="No claims match this filter" /> : undefined}
           sort={sort}
           onSort={onSort}
         />

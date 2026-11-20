@@ -6,7 +6,7 @@ import { platformApi, type Tenant } from '../../api/tenantManagement'
 import { platformTenantKeys } from '../../api/keys'
 import { STALE_30S } from '../../lib/queryClient'
 import { useSession } from '../../auth/useSession'
-import { Badge, Banner, Button, Card, DialogGuard, Field, Kvp, Mono, StatusBadge, Table, UserCell } from '../../design/components'
+import { Badge, Banner, Button, Card, DialogGuard, Field, Kvp, Mono, StatusBadge, Table, UserCell, LinesSkeleton, PageSkeleton, EmptyState } from '../../design/components'
 import {
   platformApi as platformExtras,
   type PlanLimits,
@@ -118,7 +118,7 @@ function UsersTab({ tenantId }: { tenantId: string }): JSX.Element {
             <Mono key="l">{u.locale ?? 'en'}</Mono>,
           ],
         }))}
-        emptyState={<span style={{ color: 'var(--color-ink-3)', fontSize: 'var(--text-sm)' }}>{loading ? 'Loading users…' : 'No staff users.'}</span>}
+        emptyState={loading ? <LinesSkeleton label="Loading users" /> : <EmptyState compact title="No staff users" />}
       />
     </Card>
   )
@@ -177,7 +177,7 @@ function UsageTab({ tenantId }: { tenantId: string }): JSX.Element {
   }
 
   if (error && !usage) return <Banner variant="error" title="Error">{error}</Banner>
-  if (!usage) return <p style={{ color: 'var(--color-ink-3)' }}>Loading usage…</p>
+  if (!usage) return <PageSkeleton kind="detail" label="Loading usage" />
 
   return (
     <div style={{ display: 'grid', gap: 'var(--space-4)' }}>
@@ -218,7 +218,7 @@ function ConfigTab({ tenantId }: { tenantId: string }): JSX.Element {
   const error = loadErrorMessage(loadError, 'Could not load config.')
 
   if (error) return <Banner variant="error" title="Error">{error}</Banner>
-  if (!config) return <p style={{ color: 'var(--color-ink-3)' }}>Loading config…</p>
+  if (!config) return <PageSkeleton kind="detail" label="Loading config" />
 
   return (
     <Card padding="default">
@@ -253,7 +253,7 @@ function AuditTab({ tenantId }: { tenantId: string }): JSX.Element {
             <Mono key="ip" color="var(--color-ink-4)">{e.ip_address ?? '—'}</Mono>,
           ],
         }))}
-        emptyState={<span style={{ color: 'var(--color-ink-3)', fontSize: 'var(--text-sm)' }}>{loading ? 'Loading…' : 'No platform-level audit entries for this tenant.'}</span>}
+        emptyState={loading ? <LinesSkeleton label="Loading" /> : <EmptyState compact title="No platform-level audit entries for this tenant" />}
       />
     </Card>
   )
@@ -300,7 +300,7 @@ function OffboardingExportCard({ tenantId }: { tenantId: string }): JSX.Element 
         sub="Everything the tenant kept on ShipX, as one archive (JSON Lines). Hand it over before the data is deleted."
       />
       {error && <div style={{ margin: 'var(--space-2) 0' }}><Banner variant="error" title="Error">{error}</Banner></div>}
-      {!exportInfo && !error && <p style={{ color: 'var(--color-ink-3)' }}>Loading export…</p>}
+      {!exportInfo && !error && <LinesSkeleton label="Loading export" />}
       {exportInfo && (
         <>
           <Kvp label="Status" value={<StatusBadge kind="offboardingExport" status={exportInfo.status} />} />
@@ -402,7 +402,7 @@ export function PlatformTenantDetail(): JSX.Element {
     }
   }
 
-  if (loading && !tenant) return <div style={{ padding: 'var(--space-12)', color: 'var(--color-ink-4)' }}>Loading…</div>
+  if (loading && !tenant) return <PageSkeleton kind="detail" label="Loading the page" />
   if (error && !tenant) return <div className={styles.banner}><Banner variant="error">{error}</Banner></div>
   if (!tenant) return <></>
 

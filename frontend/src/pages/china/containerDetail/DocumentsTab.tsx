@@ -9,7 +9,7 @@ import {
   type ContainerDocument,
   type ContainerDocumentType,
 } from '../../../api/tracking'
-import { Banner, Button, Card, Mono, Table, DialogGuard, Select, FileInput } from '../../../design/components'
+import { Banner, Button, Card, Mono, Table, DialogGuard, Select, FileInput, EmptyState, LinesSkeleton } from '../../../design/components'
 import { SectionHead } from '../../../shell/SectionHead'
 import styles from '../ContainerDetail.module.css'
 import { formatDate } from '../../../lib/format'
@@ -181,11 +181,7 @@ export function DocumentsTab({
               </Button>,
             ],
           }))}
-          emptyState={
-            <span style={{ color: 'var(--color-ink-3)', fontSize: 'var(--text-sm)' }}>
-              {loading ? 'Loading documents…' : 'No documents uploaded yet.'}
-            </span>
-          }
+          emptyState={loading ? <LinesSkeleton label="Loading documents" /> : <EmptyState compact title="No documents uploaded yet" />}
         />
       </Card>
 

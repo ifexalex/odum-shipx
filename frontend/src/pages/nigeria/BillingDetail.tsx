@@ -7,7 +7,7 @@ import { useSession } from '../../auth/useSession'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { billingKeys, releaseNoteKeys } from '../../api/keys'
 import { STALE_30S } from '../../lib/queryClient'
-import { Action, Banner, ExportButton, Icon, Mono, StatCard, StatusBadge } from '../../design/components'
+import { Action, Banner, ExportButton, Icon, Mono, StatCard, StatusBadge, PageSkeleton, ErrorState } from '../../design/components'
 import { SectionHead } from '../../shell/SectionHead'
 import styles from './BillingDetail.module.css'
 import { formatDate, formatNgn } from '../../lib/format'
@@ -55,7 +55,7 @@ export function BillingDetail(): JSX.Element {
   // list renders instantly; GET /v1/billing/{id}/detail is the real source and
   // backs direct links plus every refresh after a mutation.
   const stateBilling = (location.state as { billing?: Billing } | null)?.billing ?? null
-  const { data: billing = null, isLoading: loading, error: loadError } = useQuery({
+  const { data: billing = null, isLoading: loading, error: loadError, refetch } = useQuery({
     queryKey: billingKeys.detail(id ?? ''),
     queryFn: () => billingApi.get(id!),
     enabled: !!id,
@@ -126,12 +126,10 @@ export function BillingDetail(): JSX.Element {
     invalidateBillingCaches()
   }
 
-  if (loading) return <div className={styles.loadingState}>Loading billing record…</div>
+  if (loading) return <PageSkeleton kind="detail" label="Loading billing record" />
   if (error || !billing) {
     return (
-      <div className={styles.loadingState}>
-        <Banner variant="error" title="Couldn't load this billing record">{error ?? 'Not found.'}</Banner>
-      </div>
+      <ErrorState title="Couldn't load this billing record" error={loadError} message="We couldn't find this record. It may have been removed, or the link is out of date." onRetry={() => void refetch()} />
     )
   }
 

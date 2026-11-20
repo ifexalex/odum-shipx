@@ -21,7 +21,9 @@ import {
   DialogGuard,
   RoleBadge,
   StatusBadge,
-  SearchField } from '../../design/components'
+  SearchField,
+  EmptyState,
+} from '../../design/components'
 import { useTopBarSlot } from '../../shell/TopBarContext'
 import { RoleCheckboxList } from './RoleCheckboxList'
 import styles from './admin.module.css'
@@ -238,9 +240,7 @@ export function StaffUserList(): JSX.Element {
             loading={loading}
             emptyState={
               !loading && visible.length === 0 ? (
-                <span>
-                  {staff.length === 0 ? 'No staff members yet.' : 'No staff match this filter.'}
-                </span>
+                <EmptyState compact title={staff.length === 0 ? 'No staff members yet' : 'No staff match this filter'} />
               ) : undefined
             }
           />

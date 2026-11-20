@@ -12,7 +12,7 @@ import { ApiError } from '../../api/client'
 import { containerCapacitiesApi, type ContainerCapacity } from '../../api/tenantManagement'
 import { containerCapacityKeys } from '../../api/keys'
 import { STALE_5_MIN } from '../../lib/queryClient'
-import { Badge, Banner, Button, Card, Field, Mono, Table, DialogGuard } from '../../design/components'
+import { Badge, Banner, Button, Card, Field, Mono, Table, DialogGuard, EmptyState, LinesSkeleton } from '../../design/components'
 import { useTopBarSlot } from '../../shell/TopBarContext'
 import styles from './admin.module.css'
 import { toast } from '../../design/toast'
@@ -250,11 +250,7 @@ export function ContainerCapacities(): JSX.Element {
               </span>,
             ],
           }))}
-          emptyState={
-            <span style={{ color: 'var(--color-ink-3)', fontSize: 'var(--text-sm)' }}>
-              {loading ? 'Loading capacities…' : 'No capacities configured.'}
-            </span>
-          }
+          emptyState={loading ? <LinesSkeleton label="Loading capacities" /> : <EmptyState compact title="No capacities configured" />}
         />
       </Card>
 

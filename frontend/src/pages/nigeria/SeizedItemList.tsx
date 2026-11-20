@@ -4,7 +4,7 @@ import { seizedItemsApi, type SeizedItem, type SeizedItemStatus, type UpdateSeiz
 import { canUpdateItem } from '../../api/claimsRules'
 import { useSeizedItemList } from '../../hooks/useItems'
 import { useSession } from '../../auth/useSession'
-import { Banner, Button, Card, Chip, DialogGuard, Field, ListFooter, Mono, StatusBadge, Table, Select } from '../../design/components'
+import { Banner, Button, Card, Chip, DialogGuard, Field, ListFooter, Mono, StatusBadge, Table, Select, EmptyState, ErrorState } from '../../design/components'
 import { useTopBarSlot } from '../../shell/TopBarContext'
 import styles from './ItemList.module.css'
 import { formatDate } from '../../lib/format'
@@ -111,7 +111,7 @@ export function SeizedItemList(): JSX.Element {
 
       {error && (
         <div className={styles.banner}>
-          <Banner variant="error" title="Couldn't load seized items">{error.message}</Banner>
+          <ErrorState compact title="Couldn't load seized items" error={error} onRetry={() => void refetch()} />
         </div>
       )}
 
@@ -146,7 +146,7 @@ export function SeizedItemList(): JSX.Element {
               ],
             }))}
             loading={loading}
-            emptyState={!loading && items.length === 0 ? <span>✓ No seized items on record.</span> : undefined}
+            emptyState={!loading && items.length === 0 ? <EmptyState compact title="No seized items on record" /> : undefined}
           />
         </Card>
         <ListFooter

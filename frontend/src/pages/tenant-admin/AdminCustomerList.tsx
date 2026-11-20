@@ -5,7 +5,7 @@ import { ApiError } from '../../api/client'
 import { customerKeys } from '../../api/keys'
 import { customersApi, type Customer } from '../../api/tenantManagement'
 import { useCustomerList } from '../../hooks/useCustomers'
-import { Badge, Banner, Button, Card, Chip, Field, Mono, PhoneField, StatCard, Table, ViewLink, ListFooter, DialogGuard, SearchField, CheckboxField } from '../../design/components'
+import { Badge, Banner, Button, Card, Chip, Field, Mono, PhoneField, StatCard, Table, ViewLink, ListFooter, DialogGuard, SearchField, CheckboxField, EmptyState } from '../../design/components'
 import { useTopBarSlot } from '../../shell/TopBarContext'
 import styles from './admin.module.css'
 import { formatDate } from '../../lib/format'
@@ -359,11 +359,7 @@ export function AdminCustomerList(): JSX.Element {
             loading={loading}
             emptyState={
               !loading && visible.length === 0 ? (
-                <span>
-                  {customers.length === 0
-                    ? 'No customers found.'
-                    : 'No customers match this filter.'}
-                </span>
+                <EmptyState compact title={customers.length === 0 ? 'No customers found' : 'No customers match this filter'} />
               ) : undefined
             }
           />

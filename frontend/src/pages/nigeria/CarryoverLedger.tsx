@@ -13,7 +13,7 @@ import { billingKeys } from '../../api/keys'
 import { STALE_30S } from '../../lib/queryClient'
 import { ApiError } from '../../api/client'
 import { useSession } from '../../auth/useSession'
-import { Banner, Button, Card, Chip, DialogGuard, Field, Mono, StatCard, StatusBadge, Table, UserCell } from '../../design/components'
+import { Banner, Button, Card, Chip, DialogGuard, Field, Mono, StatCard, StatusBadge, Table, UserCell, EmptyState, LinesSkeleton } from '../../design/components'
 import { useTopBarSlot } from '../../shell/TopBarContext'
 import styles from './BillingList.module.css'
 import { formatDate, formatNgn } from '../../lib/format'
@@ -159,11 +159,7 @@ export function CarryoverLedger(): JSX.Element {
               ),
             ],
           }))}
-          emptyState={
-            <span style={{ color: 'var(--color-ink-3)', fontSize: 'var(--text-sm)' }}>
-              {loading ? 'Loading carryovers…' : 'No carryover entries match this filter.'}
-            </span>
-          }
+          emptyState={loading ? <LinesSkeleton label="Loading carryovers" /> : <EmptyState compact title="No carryover entries match this filter" />}
         />
       </Card>
 

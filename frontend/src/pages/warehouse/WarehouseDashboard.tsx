@@ -16,7 +16,7 @@ import { ApiError, type ListResponse } from '../../api/client'
 import { releaseNotesApi, type DelegateIdType, type PickupResult, type ReleaseNote, type RecordPickupInput } from '../../api/releaseNotes'
 import { releaseNoteKeys } from '../../api/keys'
 import { STALE_30S } from '../../lib/queryClient'
-import { Banner, Button, Field, Icon, Mono, PhoneField, StatCard, ToggleSwitch, DialogGuard, Badge, Select } from '../../design/components'
+import { Banner, Button, Field, Icon, Mono, PhoneField, StatCard, ToggleSwitch, DialogGuard, Badge, Select, LinesSkeleton } from '../../design/components'
 import styles from './WarehouseDashboard.module.css'
 import { todayIso } from '../../lib/format'
 import { toast } from '../../design/toast'
@@ -445,7 +445,7 @@ export function WarehouseDashboard(): JSX.Element {
         <span className={styles.queueCount}>{activeNotes.length} note(s)</span>
       </div>
 
-      {loading && <div style={{ padding: 'var(--space-8)', textAlign: 'center', color: 'var(--color-ink-4)' }}>Loading…</div>}
+      {loading && <LinesSkeleton label="Loading" />}
 
       {!loading && activeNotes.length === 0 && (
         <div className={styles.empty}>

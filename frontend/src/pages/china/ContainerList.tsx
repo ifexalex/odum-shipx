@@ -5,7 +5,7 @@ import { containerKeys } from '../../api/keys'
 import { STALE_5_MIN } from '../../lib/queryClient'
 import { containerCapacityCbm, utilizationLevel } from '../../api/containerRules'
 import { containersApi, type Container, type ContainerStatus } from '../../api/tracking'
-import { Banner, Button, Card, Chip, DateRangeFilter, ExportButton, Icon, KebabBtn, ListFooter, Mono, StatCard, StatusBadge, Table, type TableRow, Pressable, SearchField } from '../../design/components'
+import { Banner, Button, Card, Chip, DateRangeFilter, ExportButton, Icon, KebabBtn, ListFooter, Mono, StatCard, StatusBadge, Table, type TableRow, Pressable, SearchField, EmptyState, ErrorState } from '../../design/components'
 import { useSession } from '../../auth/useSession'
 import { useContainerList } from '../../hooks/useContainers'
 import { useDateRangeFilter } from '../../hooks/useDateRangeFilter'
@@ -241,7 +241,7 @@ export function ContainerList(): JSX.Element {
     eta_before: etaBefore,
     ...(sortField ? { sort: sortField, direction: sortDirection } : {}),
   }
-  const { items: containers, isLoading, error, hasMore, loadMore, isFetchingMore, totalCount } = useContainerList(listParams)
+  const { items: containers, isLoading, error, hasMore, loadMore, isFetchingMore, totalCount, refetch } = useContainerList(listParams)
   const exportList = useListExport((format: 'xlsx' | 'csv') => containersApi.exportList(listParams, format))
 
   const canCreate = session?.role === 'china_office_staff'
@@ -293,7 +293,7 @@ export function ContainerList(): JSX.Element {
     <div>
       {error && (
         <div className={styles.banner}>
-          <Banner variant="error" title="Couldn't load containers">{error.message}</Banner>
+          <ErrorState compact title="Couldn't load containers" error={error} onRetry={() => void refetch()} />
         </div>
       )}
       {exportList.error && (
@@ -421,7 +421,7 @@ export function ContainerList(): JSX.Element {
             ]}
             rows={containers.map((c) => containerRow(c, () => navigate(`/containers/${c.id}`)))}
             loading={isLoading}
-            emptyState={!isLoading && containers.length === 0 ? <span>No containers yet — create one to get started.</span> : undefined}
+            emptyState={!isLoading && containers.length === 0 ? <EmptyState compact title="No containers yet" body="Create one to get started." /> : undefined}
             sort={sort}
             onSort={onSort}
           />

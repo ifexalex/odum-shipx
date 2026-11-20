@@ -16,6 +16,7 @@ import {
   type StaffLocale,
   RoleBadge,
   StatusBadge,
+  PageSkeleton,
 } from '../../design/components'
 import { PageHeader } from '../../shell/PageHeader'
 import { ActivityFeed } from '../../shell/ActivityFeed'
@@ -176,7 +177,7 @@ export function StaffUserDetail(): JSX.Element {
     }
   }
 
-  if (loading && !user) return <div style={{ padding: 'var(--space-12)', color: 'var(--color-ink-4)' }}>Loading…</div>
+  if (loading && !user) return <PageSkeleton kind="detail" label="Loading the page" />
   if (error && !user) return <div className={styles.banner}><Banner variant="error">{error}</Banner></div>
   if (!user) return <></>
 

@@ -8,7 +8,7 @@ import { packingListKeys } from '../../api/keys'
 import { STALE_30S } from '../../lib/queryClient'
 import { canApproveOrReject, canEditPackingList, computeCbm, formatPackageMix, formatPackageUnit } from '../../api/packingListRules'
 import { useSession } from '../../auth/useSession'
-import { Badge, Banner, Button, Card, DialogGuard, ExportButton, Field, Icon, Mono, StatusBadge, Table, IconButton, CellInput } from '../../design/components'
+import { Badge, Banner, Button, Card, DialogGuard, ExportButton, Field, Icon, Mono, StatusBadge, Table, IconButton, CellInput, PageSkeleton, EmptyState, ErrorState } from '../../design/components'
 import { SectionHead } from '../../shell/SectionHead'
 import styles from './PackingListDetail.module.css'
 import { formatDate } from '../../lib/format'
@@ -86,7 +86,7 @@ export function PackingListDetail(): JSX.Element {
   const { session } = useSession()
   const qc = useQueryClient()
 
-  const { data: pl = null, isLoading: loading, error: loadError } = useQuery({
+  const { data: pl = null, isLoading: loading, error: loadError, refetch } = useQuery({
     queryKey: packingListKeys.detail(id ?? ''),
     queryFn: () => packingListApi.get(id!),
     enabled: !!id,
@@ -206,12 +206,10 @@ export function PackingListDetail(): JSX.Element {
     }
   }
 
-  if (loading && !pl) return <div className={styles.loadingState}>Loading packing list…</div>
+  if (loading && !pl) return <PageSkeleton kind="detail" label="Loading packing list" />
   if (error && !pl) {
     return (
-      <div className={styles.banner}>
-        <Banner variant="error" title="Couldn't load this packing list">{error}</Banner>
-      </div>
+      <ErrorState title="Couldn't load this packing list" error={loadError} message="We couldn't find this record. It may have been removed, or the link is out of date." onRetry={() => void refetch()} />
     )
   }
   if (!pl) return <></>
@@ -457,7 +455,7 @@ export function PackingListDetail(): JSX.Element {
                 ],
               }))
           }
-          emptyState={<span>No carton items.</span>}
+          emptyState={<EmptyState compact title="No carton items" />}
         />
 
         {!editing && (

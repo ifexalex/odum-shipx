@@ -18,7 +18,7 @@ import { ApiError } from '../../api/client'
 import { claimsApi, presignedUploadApi, type FileDamageClaimInput } from '../../api/claims'
 import { packingListApi, type PackingList } from '../../api/packingList'
 import { type UploadedEvidence } from '../nigeria/EvidenceUploader'
-import { Banner, Button, Field, Select } from '../../design/components'
+import { Banner, Button, Field, Select, LinesSkeleton } from '../../design/components'
 import { PageHeader } from '../../shell/PageHeader'
 import { EvidenceUploader } from '../nigeria/EvidenceUploader'
 import styles from './customer.module.css'
@@ -127,7 +127,7 @@ export function MyClaimsNew(): JSX.Element {
           {shipmentsError && <Banner variant="error" title="Could not load your shipments">{shipmentsError}</Banner>}
 
           {shipments === null ? (
-            <p style={{ color: 'var(--color-ink-3)', fontSize: 'var(--text-md)' }}>Loading your shipments…</p>
+            <LinesSkeleton label="Loading your shipments" />
           ) : arrivedShipments.length === 0 ? (
             <Banner variant="info" title="Nothing to claim against yet">
               A claim can only be filed once a shipment has arrived in Nigeria — damage or loss

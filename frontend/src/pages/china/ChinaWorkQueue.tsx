@@ -9,7 +9,7 @@
 import type { JSX, ReactNode } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import type { PaginationMeta } from '../../api/client'
-import { Banner, Button, Card } from '../../design/components'
+import { Banner, Button, Card, LinesSkeleton } from '../../design/components'
 import {
   CHINA_QUEUES,
   useChinaManifestQueue,
@@ -58,7 +58,7 @@ function Queue({ title, countLabel, empty, viewAll, rows, pagination, loading, f
   const count = queueCount(pagination, rows.length)
   let body: ReactNode
   if (failed) body = <Banner variant="error">This queue could not be loaded.</Banner>
-  else if (loading) body = <p className={styles.muted}>Loading…</p>
+  else if (loading) body = <LinesSkeleton label="Loading" lines={2} />
   else if (rows.length === 0) body = <p className={styles.muted}>{empty}</p>
   else
     body = (

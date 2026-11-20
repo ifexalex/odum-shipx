@@ -15,7 +15,7 @@ import { STALE_30S } from '../../lib/queryClient'
 import { canResolveDiscrepancy, canRevokeVerification, canVerifyManifest } from '../../api/manifestRules'
 import { useSession } from '../../auth/useSession'
 import { EvidenceUploader } from './EvidenceUploader'
-import { Action, Banner, Button, Card, Chip, DialogGuard, ExportButton, Field, Icon, Mono, StatCard, StatusBadge, Table, ViewLink, Select } from '../../design/components'
+import { Action, Banner, Button, Card, Chip, DialogGuard, ExportButton, Field, Icon, Mono, StatCard, StatusBadge, Table, ViewLink, Select, PageSkeleton, EmptyState, ErrorState } from '../../design/components'
 import { SectionHead } from '../../shell/SectionHead'
 import styles from './ManifestDetail.module.css'
 import { useBreadcrumbLabel } from '../../shell/breadcrumbs'
@@ -324,7 +324,7 @@ export function ManifestDetail(): JSX.Element {
   const { session } = useSession()
   const qc = useQueryClient()
 
-  const { data: manifest = null, isLoading: loading, error: loadError } = useQuery({
+  const { data: manifest = null, isLoading: loading, error: loadError, refetch } = useQuery({
     queryKey: manifestKeys.detail(id ?? ''),
     queryFn: () => manifestApi.get(id!),
     enabled: !!id,
@@ -355,12 +355,10 @@ export function ManifestDetail(): JSX.Element {
   const [revoking, setRevoking] = useState(false)
 
 
-  if (loading && !manifest) return <div className={styles.loadingState}>Loading manifest…</div>
+  if (loading && !manifest) return <PageSkeleton kind="detail" label="Loading manifest" />
   if (error && !manifest) {
     return (
-      <div className={styles.banner}>
-        <Banner variant="error" title="Couldn't load this manifest">{error}</Banner>
-      </div>
+      <ErrorState title="Couldn't load this manifest" error={loadError} message="We couldn't find this record. It may have been removed, or the link is out of date." onRetry={() => void refetch()} />
     )
   }
   if (!manifest) return <></>
@@ -514,7 +512,7 @@ export function ManifestDetail(): JSX.Element {
               ),
             ],
           }))}
-          emptyState={<span>No approved packing lists on this manifest yet.</span>}
+          emptyState={<EmptyState compact title="No approved packing lists on this manifest yet" />}
         />
       </Card>
 

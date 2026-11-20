@@ -18,7 +18,27 @@ export interface ApiErrorShape {
   errors?: { field: string; message: string }[]
 }
 
+/**
+ * What a person reads for an error (FD-20). A 409 or 422 carries the server's own words, which are written for users
+ * ("The file is larger than 5 MB."). Anything else is a system message ("Insufficient permissions for this operation.
+ * Required role: platform_admin"), so it gets plain words; the server's text stays on `detail` for logs and support.
+ */
+export function plainErrorMessage(status: number, serverText: string, errorCode?: string): string {
+  // A payment provider's refusal is written for the user ("Paystack rejected this key — check it's correct").
+  if (status === 409 || status === 422 || status === 400 || errorCode === 'EXTERNAL_SERVICE_ERROR') return serverText
+  if (status === 403) return "You don't have permission to do this. Ask your admin if you need it."
+  if (status === 404) return "We couldn't find that. It may have been removed, or the link is out of date."
+  if (status === 429) return 'Too many requests just now. Wait a moment and try again.'
+  if (status === 0 || status === 502 || status === 503 || status === 504) {
+    return "We couldn't reach the server. Check your connection and try again."
+  }
+  if (status >= 500) return 'Something went wrong on our side. Try again; if it keeps happening, contact support.'
+  return serverText
+}
+
 export class ApiError extends Error {
+  /** The server's own text, unchanged (`message` may be plainer). */
+  readonly detail: string
   readonly type: string
   readonly status: number
   readonly errorCode: string
@@ -31,7 +51,8 @@ export class ApiError extends Error {
   readonly requestId: string | null
 
   constructor(shape: ApiErrorShape, requestId: string | null) {
-    super(shape.detail || shape.title)
+    super(plainErrorMessage(shape.status, shape.detail || shape.title, shape.error_code))
+    this.detail = shape.detail || shape.title
     this.name = 'ApiError'
     this.type = shape.type
     this.status = shape.status

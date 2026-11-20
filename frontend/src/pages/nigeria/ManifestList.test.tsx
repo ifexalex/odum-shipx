@@ -109,7 +109,7 @@ describe('ManifestList', () => {
       meta: { pagination: { has_more: false, next_cursor: null, total_count: 0 } },
     })
     renderPage()
-    await waitFor(() => expect(screen.getByText('No manifests yet.')).toBeInTheDocument())
+    await waitFor(() => expect(screen.getByText('No manifests yet')).toBeInTheDocument())
   })
   it('flags a manifest as overdue when pending and the container has arrived in Nigeria (B11)', async () => {
     vi.mocked(manifestApi.list).mockResolvedValue({

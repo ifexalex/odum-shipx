@@ -10,7 +10,7 @@ import { STALE_30S } from '../../lib/queryClient'
 import { containersApi } from '../../api/tracking'
 import { useSession } from '../../auth/useSession'
 import { useTopBarSlot } from '../../shell/TopBarContext'
-import { Badge, Banner, Button, Icon, Mono, StatusBadge } from '../../design/components'
+import { Badge, Banner, Button, Icon, Mono, StatusBadge, PageSkeleton, ErrorState } from '../../design/components'
 import { Tabs } from '../../shell/Tabs'
 import styles from './ContainerDetail.module.css'
 import { InvoiceOutcomeBanner } from './InvoiceOutcomeBanner'
@@ -84,14 +84,12 @@ export function ContainerDetail(): JSX.Element {
   useTopBarSlot({ suffix: container?.container_number ?? null })
 
   if (loading && !container) {
-    return <div className={styles.loadingState}>Loading container…</div>
+    return <PageSkeleton kind="detail" label="Loading container" />
   }
 
   if (error && !container) {
     return (
-      <div className={styles.banner}>
-        <Banner variant="error" title="Couldn't load this container">{error}</Banner>
-      </div>
+      <ErrorState title="Couldn't load this container" error={null} message={error ?? undefined} />
     )
   }
 

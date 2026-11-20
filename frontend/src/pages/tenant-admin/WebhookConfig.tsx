@@ -6,7 +6,7 @@ import {
   type WebhookEventType,
   type WebhookTestResult,
 } from '../../api/tenantManagement'
-import { Banner, Button, Card, Field, Icon, Mono, ToggleSwitch, IconButton } from '../../design/components'
+import { Banner, Button, Card, Field, Icon, Mono, ToggleSwitch, IconButton, PageSkeleton } from '../../design/components'
 import { useTenantConfig } from '../../hooks/useConfig'
 import { useSeedOnce } from '../../hooks/useSeedOnce'
 import { SectionHead } from '../../shell/SectionHead'
@@ -196,7 +196,7 @@ export function WebhookConfig(): JSX.Element {
     }
   }
 
-  if (loading) return <div style={{ padding: 'var(--space-8)', color: 'var(--color-ink-4)' }}>Loading…</div>
+  if (loading) return <PageSkeleton kind="form" label="Loading the page" />
 
   return (
     <div>

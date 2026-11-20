@@ -6,7 +6,7 @@ import { canGenerateInvoices } from '../../api/billingRules'
 import { billingKeys } from '../../api/keys'
 import { formatNgnCompact, formatDate, formatNgn } from '../../lib/format'
 import { STALE_5_MIN } from '../../lib/queryClient'
-import { Banner, Button, Card, Chip, DateRangeFilter, ExportButton, Icon, ListFooter, Mono, StatCard, StatusBadge, Table, UserCell, Pressable, SearchField } from '../../design/components'
+import { Banner, Button, Card, Chip, DateRangeFilter, ExportButton, Icon, ListFooter, Mono, StatCard, StatusBadge, Table, UserCell, Pressable, SearchField, EmptyState, ErrorState } from '../../design/components'
 import { useSession } from '../../auth/useSession'
 import { useBillingList } from '../../hooks/useBilling'
 import { useDateRangeFilter } from '../../hooks/useDateRangeFilter'
@@ -133,7 +133,7 @@ export function BillingList(): JSX.Element {
     staleTime: STALE_5_MIN,
   })
 
-  const { items: records, isLoading, error, hasMore, loadMore, isFetchingMore, totalCount } = useBillingList(listParams)
+  const { items: records, isLoading, error, hasMore, loadMore, isFetchingMore, totalCount, refetch } = useBillingList(listParams)
 
   // Toggling a single status here overwrites `activeStatuses` — matches the
   // top chips' single-select semantics rather than adding a second,
@@ -158,7 +158,7 @@ export function BillingList(): JSX.Element {
     <div>
       {error && (
         <div className={styles.banner}>
-          <Banner variant="error" title="Couldn't load billing">{error.message}</Banner>
+          <ErrorState compact title="Couldn't load billing" error={error} onRetry={() => void refetch()} />
         </div>
       )}
       {exportList.error && (
@@ -288,7 +288,7 @@ export function BillingList(): JSX.Element {
             ],
           }))}
           loading={isLoading}
-          emptyState={!isLoading && records.length === 0 ? <span>No billing records match this filter.</span> : undefined}
+          emptyState={!isLoading && records.length === 0 ? <EmptyState compact title="No billing records match this filter" /> : undefined}
           sort={sort}
           onSort={onSort}
         />

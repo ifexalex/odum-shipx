@@ -2,7 +2,7 @@ import { type JSX } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { ApiError } from '../../api/client'
 import { useBillingList } from '../../hooks/useBilling'
-import { Banner, ListFooter, Mono, StatusBadge } from '../../design/components'
+import { Banner, ListFooter, Mono, StatusBadge, LinesSkeleton } from '../../design/components'
 import { PageHeader } from '../../shell/PageHeader'
 import styles from './customer.module.css'
 import { formatNgn } from '../../lib/format'
@@ -39,7 +39,7 @@ export function MyBilling(): JSX.Element {
         </div>
       )}
 
-      {loading && <p style={{ color: 'var(--color-ink-4)' }}>Loading…</p>}
+      {loading && <LinesSkeleton label="Loading" />}
 
       {!loading && records.length === 0 && (
         <div className={styles.empty}>

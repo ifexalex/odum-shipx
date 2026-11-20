@@ -4,7 +4,7 @@ import { formatCbm } from '../../api/decimal'
 import { orderedPackageMix, type Manifest, type VerificationStatus } from '../../api/manifest'
 import { isManifestOverdue as isOverdue } from '../../api/manifestRules'
 import { useManifestList, useManifestStats } from '../../hooks/useManifests'
-import { Badge, Banner, Card, Chip, ListFooter, Mono, StatCard, StatusBadge, Table, ViewLink } from '../../design/components'
+import { Badge, Banner, Card, Chip, ListFooter, Mono, StatCard, StatusBadge, Table, ViewLink, EmptyState } from '../../design/components'
 import { useTopBarSlot } from '../../shell/TopBarContext'
 import styles from './ManifestList.module.css'
 import { formatNumber } from '../../lib/format'
@@ -136,7 +136,7 @@ export function ManifestList(): JSX.Element {
               }
             })}
             loading={loading}
-            emptyState={!loading && manifests.length === 0 ? <span>No manifests yet.</span> : undefined}
+            emptyState={!loading && manifests.length === 0 ? <EmptyState compact title="No manifests yet" /> : undefined}
           />
         </Card>
         <ListFooter

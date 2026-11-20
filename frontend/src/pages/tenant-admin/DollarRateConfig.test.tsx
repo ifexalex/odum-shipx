@@ -151,7 +151,7 @@ describe('DollarRateConfig', () => {
     )
     renderPage()
 
-    expect(await screen.findByText('Boom')).toBeInTheDocument()
+    expect(await screen.findByText('Something went wrong on our side. Try again; if it keeps happening, contact support.')).toBeInTheDocument()
   })
 
   it('shows an error banner when updating the markup fails', async () => {

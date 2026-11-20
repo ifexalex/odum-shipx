@@ -7,7 +7,7 @@ import { billingKeys } from '../../api/keys'
 import { type BankTransferConfig } from '../../api/tenantManagement'
 import { useBankTransferConfig } from '../../hooks/useConfig'
 import { STALE_30S } from '../../lib/queryClient'
-import { DialogGuard, Field, StatusBadge } from '../../design/components'
+import { DialogGuard, Field, StatusBadge, PageSkeleton } from '../../design/components'
 import { Badge, Banner, Button, Card, Kvp, Mono, StatCard } from '../../design/components'
 import { SectionHead } from '../../shell/SectionHead'
 import { EvidenceUploader, type UploadedEvidence } from '../nigeria/EvidenceUploader'
@@ -325,7 +325,7 @@ export function MyBillingDetail(): JSX.Element {
   const [showDispute, setShowDispute] = useState(false)
   const [disputeFiled, setDisputeFiled] = useState(false)
 
-  if (isLoading && !billing) return <div className={styles.loadingState}>Loading…</div>
+  if (isLoading && !billing) return <PageSkeleton kind="detail" label="Loading the page" />
   if (error && !billing) return (
     <div className={styles.page}>
       <Banner variant="error">{error ?? 'Not found.'}</Banner>

@@ -1,5 +1,5 @@
 import type { JSX } from 'react'
-import { Icon } from '../design/components'
+import { Icon, LinesSkeleton } from '../design/components'
 import {
   useClearAllCustomerNotif,
   useDismissCustomerNotif,
@@ -116,7 +116,7 @@ export function CustomerNotificationPanel({ open, onClose }: CustomerNotificatio
           </div>
         </div>
         <div className={styles.list}>
-          {isLoading && <div className={styles.empty}>Loading…</div>}
+          {isLoading && <LinesSkeleton label="Loading notifications" />}
           {!isLoading && items.length === 0 && (
             <div className={styles.empty}>
               <Icon name="bell" size={20} color="var(--color-ink-4)" />

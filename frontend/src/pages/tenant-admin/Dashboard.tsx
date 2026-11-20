@@ -23,7 +23,7 @@ import {
   usePendingPackingLists,
   useRecentContainers,
 } from '../../hooks/useDashboard'
-import { Badge, Button, Card, Mono, QuickActionCard, StatCard, StatusBadge, Table, UserCell } from '../../design/components'
+import { Badge, Button, Card, Mono, QuickActionCard, StatCard, StatusBadge, Table, UserCell, EmptyState } from '../../design/components'
 import { ContainerPipeline } from './DashboardPipeline'
 import { ActivityFeed } from '../../shell/ActivityFeed'
 import { PlanUsagePanel } from '../../shell/PlanUsagePanel'
@@ -305,7 +305,7 @@ export function Dashboard(): JSX.Element {
                   <Button key="view" variant="ghost" size="sm" onClick={() => navigate(`/containers/${c.id}`)}>View</Button>,
                 ],
               }))}
-              emptyState={<span>No containers yet.</span>}
+              emptyState={<EmptyState compact title="No containers yet" />}
             />
           </Card>
           <Card padding="none">

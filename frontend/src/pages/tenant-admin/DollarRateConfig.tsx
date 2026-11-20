@@ -5,7 +5,7 @@ import { configKeys } from '../../api/keys'
 import { configApi, type DollarRateConfig } from '../../api/tenantManagement'
 import { useDollarRate, useRateHistory } from '../../hooks/useConfig'
 import { useSeedOnce } from '../../hooks/useSeedOnce'
-import { Banner, Button, Card, Kvp, Mono, Table, UserCell, Field } from '../../design/components'
+import { Banner, Button, Card, Kvp, Mono, Table, UserCell, Field, EmptyState, LinesSkeleton } from '../../design/components'
 import { PageHeader } from '../../shell/PageHeader'
 import { SectionHead } from '../../shell/SectionHead'
 import styles from './admin.module.css'
@@ -124,7 +124,7 @@ export function RateHistoryTable({ rateType, valueKey, prefix }: { rateType: 'do
             ],
           }
         })}
-        emptyState={<span style={{ color: 'var(--color-ink-3)', fontSize: 'var(--text-sm)' }}>{loading ? 'Loading history…' : 'No rate changes recorded yet.'}</span>}
+        emptyState={loading ? <LinesSkeleton label="Loading history" /> : <EmptyState compact title="No rate changes recorded yet" />}
       />
     </Card>
   )

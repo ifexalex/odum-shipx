@@ -18,7 +18,7 @@ import {
   useOnboardingRequests,
   useUpdateOnboardingRequest,
 } from '../../hooks/useOnboardingRequests'
-import { Banner, Button, Card, Chip, Field, Modal, StatusBadge, Table } from '../../design/components'
+import { Banner, Button, Card, Chip, Field, Modal, StatusBadge, Table, EmptyState } from '../../design/components'
 import { useTopBarSlot } from '../../shell/TopBarContext'
 import styles from './admin.module.css'
 import { formatDate } from '../../lib/format'
@@ -205,11 +205,7 @@ export function OnboardingRequests(): JSX.Element {
             loading={loading}
             emptyState={
               !loading && visible.length === 0 ? (
-                <span>
-                  {requests.length === 0
-                    ? 'No onboarding requests yet.'
-                    : 'No requests match the current filter.'}
-                </span>
+                <EmptyState compact title={requests.length === 0 ? 'No onboarding requests yet' : 'No requests match the current filter'} />
               ) : undefined
             }
           />

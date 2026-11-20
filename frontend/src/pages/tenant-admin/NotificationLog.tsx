@@ -5,7 +5,7 @@ import { notifLogKeys } from '../../api/keys'
 import { STALE_5_MIN } from '../../lib/queryClient'
 import { useNotifLogPolling } from '../../hooks/useNotifications'
 import { useDateRangeFilter } from '../../hooks/useDateRangeFilter'
-import { Banner, Button, Card, Chip, DateRangeFilter, Icon, ListFooter, Mono, StatusBadge, Table, UserCell, IconButton, Pressable, SearchField } from '../../design/components'
+import {  Button, Card, Chip, DateRangeFilter, Icon, ListFooter, Mono, StatusBadge, Table, UserCell, IconButton, Pressable, SearchField, EmptyState, ErrorState } from '../../design/components'
 import { useTopBarSlot } from '../../shell/TopBarContext'
 import styles from './NotificationLog.module.css'
 import { formatDateTime } from '../../lib/format'
@@ -124,7 +124,7 @@ export function NotificationLog(): JSX.Element {
     <div>
       {error && (
         <div className={styles.banner}>
-          <Banner variant="error" title="Couldn't load log">{error.message}</Banner>
+          <ErrorState compact title="Couldn't load log" error={error} onRetry={() => void refetch()} />
         </div>
       )}
 
@@ -236,7 +236,7 @@ export function NotificationLog(): JSX.Element {
             ],
           }))}
           loading={loading}
-          emptyState={!loading && displayed.length === 0 ? <span>No notifications logged yet.</span> : undefined}
+          emptyState={!loading && displayed.length === 0 ? <EmptyState compact title="No notifications logged yet" /> : undefined}
         />
       </Card>
 

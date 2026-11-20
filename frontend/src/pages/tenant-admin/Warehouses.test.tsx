@@ -295,7 +295,7 @@ describe('Warehouses', () => {
     renderPage()
     await screen.findByText('Aba — Ariaria')
     await userEvent.click(screen.getByRole('button', { name: 'Set default' }))
-    await screen.findByText('Internal server error')
+    await screen.findByText('Something went wrong on our side. Try again; if it keeps happening, contact support.')
   })
 
   it('can create a warehouse already marked as the default', async () => {

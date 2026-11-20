@@ -19,7 +19,7 @@
 import { useMemo, useState, type JSX } from 'react'
 import { type BrandingConfig } from '../../api/tenantManagement'
 import { isValidHexColor } from '../../design/deriveBrandShades'
-import { Banner, Button, Card, Field, PhoneField, Pressable, ColorField } from '../../design/components'
+import { Banner, Button, Card, Field, PhoneField, Pressable, ColorField, ErrorState } from '../../design/components'
 import { useBranding, useSaveBranding } from '../../hooks/useConfig'
 import { PageHeader } from '../../shell/PageHeader'
 import { SectionHead } from '../../shell/SectionHead'
@@ -239,7 +239,7 @@ function CompanySettingsForm({
 
       {loadError && (
         <div style={{ marginBottom: 'var(--space-4)' }}>
-          <Banner variant="error" title="Couldn't load settings">{loadError.message}</Banner>
+          <ErrorState compact title="Couldn't load settings" error={loadError} />
         </div>
       )}
 

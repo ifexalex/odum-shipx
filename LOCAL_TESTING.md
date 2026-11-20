@@ -1316,3 +1316,8 @@ VISUAL_ONLY=/billing npm run visual:compare   # only routes containing /billing
 ## Field encryption is off locally (note, 2026-11-19)
 
 With no `ENCRYPTION_KMS_KEY_ID` / `ENCRYPTION_KEY_VAULT_KEY_ID`, `encrypt_field` stores plaintext, so a column too narrow for ciphertext does not fail locally. `tests/db/test_encrypted_columns.py` writes ciphertext-sized values to catch that.
+
+## Layout-shift check (FD-20, 2026-11-19)
+
+With `make dev` (API :3000) and Vite (:5173) running: `cd frontend && node scripts/layout-shift.mjs` loads six sampled pages with real data and prints each one's cumulative layout shift; it exits 1 if any is above 0.1. The phone audit (`node scripts/mobile-audit.mjs`) now also fails a page with an unnamed control (FD-50).
+

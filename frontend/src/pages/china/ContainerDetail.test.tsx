@@ -513,6 +513,6 @@ describe('ContainerDetail tracking export', () => {
     renderPage('china_office_staff')
     await userEvent.click(await screen.findByRole('tab', { name: /Tracking/ }))
     await userEvent.click(await screen.findByRole('button', { name: 'Export' }))
-    expect(await screen.findByText('container not found')).toBeInTheDocument()
+    expect(await screen.findByText("We couldn't find that. It may have been removed, or the link is out of date.")).toBeInTheDocument()
   })
 })

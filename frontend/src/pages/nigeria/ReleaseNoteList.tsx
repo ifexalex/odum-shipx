@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom'
 import type { ReleaseNoteStatus } from '../../api/releaseNotes'
 import { releaseTypeLabel } from '../../api/releaseNotesRules'
 import { useReleaseNoteList, useReleaseNoteStats } from '../../hooks/useReleaseNotes'
-import { Banner, Card, Chip, ListFooter, Mono, StatCard, StatusBadge, Table, ViewLink } from '../../design/components'
+import {  Card, Chip, ListFooter, Mono, StatCard, StatusBadge, Table, ViewLink, EmptyState, ErrorState } from '../../design/components'
 import { useTopBarSlot } from '../../shell/TopBarContext'
 import styles from './ReleaseNoteList.module.css'
 import { formatDate } from '../../lib/format'
@@ -15,7 +15,7 @@ const STATUS_FILTERS: ReleaseNoteStatus[] = ['active', 'picked_up', 'expired', '
 export function ReleaseNoteList(): JSX.Element {
   const navigate = useNavigate()
   const [statusFilter, setStatusFilter] = useState<ReleaseNoteStatus | null>(null)
-  const { items: notes, isLoading: loading, error, hasMore, loadMore, isFetchingMore, totalCount } = useReleaseNoteList(
+  const { items: notes, isLoading: loading, error, hasMore, loadMore, isFetchingMore, totalCount, refetch } = useReleaseNoteList(
     statusFilter ? { status: statusFilter } : {},
   )
 
@@ -29,7 +29,7 @@ export function ReleaseNoteList(): JSX.Element {
 
       {error && (
         <div className={styles.banner}>
-          <Banner variant="error" title="Couldn't load release notes">{error.message}</Banner>
+          <ErrorState compact title="Couldn't load release notes" error={error} onRetry={() => void refetch()} />
         </div>
       )}
 
@@ -89,7 +89,7 @@ export function ReleaseNoteList(): JSX.Element {
               ],
             }))}
             loading={loading}
-            emptyState={!loading && notes.length === 0 ? <span>✓ No release notes match this filter.</span> : undefined}
+            emptyState={!loading && notes.length === 0 ? <EmptyState compact title="No release notes match this filter" /> : undefined}
           />
         </Card>
         <ListFooter

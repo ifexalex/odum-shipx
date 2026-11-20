@@ -1,6 +1,6 @@
 import { useState, type JSX } from 'react'
 import { useSession } from '../../auth/useSession'
-import { Badge, Button, Card, Field, StatusBadge } from '../../design/components'
+import { Badge, Button, Card, Field, StatusBadge, LinesSkeleton } from '../../design/components'
 import { useTopBarSlot } from '../../shell/TopBarContext'
 import { SectionHead } from '../../shell/SectionHead'
 import { ComposeAnnouncementModal } from '../../shell/ComposeAnnouncementModal'
@@ -349,7 +349,7 @@ export function AnnouncementsPage(): JSX.Element {
               title="Pending approval"
               sub="Customer announcements submitted by staff."
             />
-            {pendingQuery.isLoading && <div className={styles.empty}>Loading…</div>}
+            {pendingQuery.isLoading && <LinesSkeleton label="Loading" />}
             {!pendingQuery.isLoading && pending.length === 0 && (
               <div className={styles.empty}>No customer announcements awaiting approval.</div>
             )}
@@ -363,7 +363,7 @@ export function AnnouncementsPage(): JSX.Element {
               title="All announcements"
               sub="Toggle which one is visible as a page banner."
             />
-            {historyQuery.isLoading && <div className={styles.empty}>Loading…</div>}
+            {historyQuery.isLoading && <LinesSkeleton label="Loading" />}
             {!historyQuery.isLoading && history.length === 0 && (
               <div className={styles.empty}>No announcements sent yet.</div>
             )}
@@ -375,7 +375,7 @@ export function AnnouncementsPage(): JSX.Element {
       ) : (
         <Card padding="default">
           <SectionHead title="My announcements" />
-          {mineQuery.isLoading && <div className={styles.empty}>Loading…</div>}
+          {mineQuery.isLoading && <LinesSkeleton label="Loading" />}
           {!mineQuery.isLoading && mine.length === 0 && (
             <div className={styles.empty}>You haven't submitted any announcements yet.</div>
           )}

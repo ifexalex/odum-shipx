@@ -5,7 +5,7 @@ import { groupUnbilledByContainer } from '../../api/billingRules'
 import { ApiError } from '../../api/client'
 import { formatCbm } from '../../api/decimal'
 import { billingKeys } from '../../api/keys'
-import { Banner, Button, Modal, Mono, Select } from '../../design/components'
+import { Banner, Button, Modal, Mono, Select, LinesSkeleton } from '../../design/components'
 import { STALE_30S } from '../../lib/queryClient'
 import { InvoiceOutcomeBanner } from '../china/InvoiceOutcomeBanner'
 import styles from './GenerateBillingModal.module.css'
@@ -108,7 +108,7 @@ export function GenerateBillingModal({ onClose }: GenerateBillingModalProps): JS
           {unbilledQ.error instanceof ApiError ? unbilledQ.error.message : 'Try again in a moment.'}
         </Banner>
       ) : unbilledQ.isPending ? (
-        <p className={styles.muted}>Loading containers…</p>
+        <LinesSkeleton label="Loading containers" />
       ) : containers.length === 0 ? (
         <Banner variant="success" title="Nothing to invoice">
           Every customer on a cleared container already has an invoice. Containers are invoiced when they are

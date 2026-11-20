@@ -12,7 +12,7 @@ import { useEffect, useState, type FormEvent, type JSX } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { ApiError } from '../../api/client'
 import { activationApi, type ActivationDetail } from '../../api/customer'
-import { Banner, Button, Field, Icon, IconButton } from '../../design/components'
+import { Banner, Button, Field, Icon, IconButton, LinesSkeleton } from '../../design/components'
 import { AuthShell, FormHead, PasswordStrength } from './AuthShell'
 import styles from './LoginScreen.module.css'
 
@@ -90,7 +90,7 @@ export function ActivateScreen(): JSX.Element {
     return (
       <AuthShell>
         <div style={{ textAlign: 'center', padding: 'var(--space-12) 0' }}>
-          <p className={styles.formSub}>Loading…</p>
+          <LinesSkeleton label="Checking your activation link" />
         </div>
       </AuthShell>
     )

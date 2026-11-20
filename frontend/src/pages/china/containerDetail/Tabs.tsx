@@ -4,7 +4,7 @@ import { } from '../../../api/containerRules'
 import { formatCbm } from '../../../api/decimal'
 import { containersApi, type ContainerStatus, type Container, type ContainerEvent } from '../../../api/tracking'
 import { formatPackageMix } from '../../../api/packingListRules'
-import { Badge, Banner, Button, Card, ExportButton, Mono, StatusBadge, Table, type TableSort, UserCell, ViewLink } from '../../../design/components'
+import { Badge, Banner, Button, Card, ExportButton, Mono, StatusBadge, Table, type TableSort, UserCell, ViewLink, EmptyState } from '../../../design/components'
 import { SectionHead } from '../../../shell/SectionHead'
 import styles from '../ContainerDetail.module.css'
 import { formatDate, formatTime } from '../../../lib/format'
@@ -98,7 +98,7 @@ export function PackingListsTab({
             <ViewLink key="view" onClick={() => navigate(`/packing-lists/${pl.id}`)} />,
           ],
         }))}
-        emptyState={<span>No packing lists yet — add one to get started.</span>}
+        emptyState={<EmptyState compact title="No packing lists yet" body="Add one to get started." />}
         sort={plTableSort}
         onSort={togglePlSort}
       />
@@ -176,7 +176,7 @@ export function TrackingTab({
               </span>,
             ],
           }))}
-          emptyState={<span>No tracking events yet.</span>}
+          emptyState={<EmptyState compact title="No tracking events yet" />}
         />
       </Card>
     </>

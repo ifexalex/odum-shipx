@@ -4,7 +4,7 @@ import { ApiError } from '../../api/client'
 import { type DamageClaimStatus } from '../../api/claims'
 import { CLAIM_STATUS_ORDER, } from '../../api/claimsRules'
 import { useClaimList } from '../../hooks/useClaims'
-import { Banner, Button, StatusBadge } from '../../design/components'
+import { Banner, Button, StatusBadge, LinesSkeleton } from '../../design/components'
 import { PageHeader } from '../../shell/PageHeader'
 import styles from './customer.module.css'
 import { formatDate } from '../../lib/format'
@@ -53,7 +53,7 @@ export function MyClaims(): JSX.Element {
         </div>
       )}
 
-      {loading && <p style={{ color: 'var(--color-ink-4)' }}>Loading…</p>}
+      {loading && <LinesSkeleton label="Loading" />}
 
       {!loading && claims.length === 0 && (
         <div className={styles.empty}>

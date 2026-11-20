@@ -15,7 +15,7 @@ import {
   refundTypeLabel,
 } from '../../api/refundsRules'
 import { useSession } from '../../auth/useSession'
-import { Action, Banner, Button, Card, DialogGuard, Field, Icon, Kvp, Mono, StatCard, StatusBadge, RadioGroup } from '../../design/components'
+import { Action, Banner, Button, Card, DialogGuard, Field, Icon, Kvp, Mono, StatCard, StatusBadge, RadioGroup, PageSkeleton, ErrorState } from '../../design/components'
 import { SectionHead } from '../../shell/SectionHead'
 import styles from './RefundDetail.module.css'
 import { formatDate, formatNgn } from '../../lib/format'
@@ -371,7 +371,7 @@ export function RefundDetail(): JSX.Element {
 
   const qc = useQueryClient()
   const stateRefund = (location.state as { refund?: Refund } | null)?.refund ?? null
-  const { data: refund = null, isLoading: loading, error: loadError } = useQuery({
+  const { data: refund = null, isLoading: loading, error: loadError, refetch } = useQuery({
     queryKey: refundKeys.detail(id ?? ''),
     queryFn: () => refundsApi.get(id!),
     enabled: !!id,
@@ -395,12 +395,10 @@ export function RefundDetail(): JSX.Element {
   const [showReject, setShowReject] = useState(false)
 
 
-  if (loading && !refund) return <div className={styles.loadingState}>Loading refund…</div>
+  if (loading && !refund) return <PageSkeleton kind="detail" label="Loading refund" />
   if (error && !refund) {
     return (
-      <div className={styles.loadingState}>
-        <Banner variant="error" title="Couldn't load this refund">{error ?? 'Not found.'}</Banner>
-      </div>
+      <ErrorState title="Couldn't load this refund" error={loadError} message="We couldn't find this record. It may have been removed, or the link is out of date." onRetry={() => void refetch()} />
     )
   }
   if (!refund) return <></>

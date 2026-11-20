@@ -79,7 +79,7 @@ describe('ActivityLog — tenant-admin audit trail', () => {
     vi.mocked(configApi.activity).mockResolvedValue(emptyResult())
     render(<ActivityLog />)
 
-    await screen.findByText('No activity matches these filters.')
+    await screen.findByText('No activity matches these filters')
     await userEvent.click(screen.getByRole('button', { name: /^Money/ }))
 
     await waitFor(() =>
@@ -95,7 +95,7 @@ describe('ActivityLog — tenant-admin audit trail', () => {
     vi.mocked(configApi.activity).mockResolvedValue(emptyResult())
     render(<ActivityLog />)
 
-    await screen.findByText('No activity matches these filters.')
+    await screen.findByText('No activity matches these filters')
     await userEvent.click(screen.getByRole('button', { name: /^Money/ }))
     await userEvent.selectOptions(screen.getByLabelText('Record type'), 'payment_claim')
 
@@ -110,7 +110,7 @@ describe('ActivityLog — tenant-admin audit trail', () => {
     vi.mocked(configApi.activity).mockResolvedValue(emptyResult())
     render(<ActivityLog />)
 
-    await screen.findByText('No activity matches these filters.')
+    await screen.findByText('No activity matches these filters')
     await userEvent.click(screen.getByRole('button', { name: /^Money/ }))
     await userEvent.selectOptions(screen.getByLabelText('Record type'), 'payment_claim')
     await userEvent.click(screen.getByRole('button', { name: /^Goods & shipments/ }))
@@ -129,7 +129,7 @@ describe('ActivityLog — tenant-admin audit trail', () => {
     vi.mocked(configApi.activity).mockResolvedValue(emptyResult())
     render(<ActivityLog />)
 
-    await screen.findByText('No activity matches these filters.')
+    await screen.findByText('No activity matches these filters')
     await userEvent.selectOptions(screen.getByLabelText('Action'), 'STATUS_CHANGE')
 
     await waitFor(() =>
@@ -141,7 +141,7 @@ describe('ActivityLog — tenant-admin audit trail', () => {
     vi.mocked(configApi.activity).mockResolvedValue(emptyResult())
     render(<ActivityLog />)
 
-    await screen.findByText('No activity matches these filters.')
+    await screen.findByText('No activity matches these filters')
     await userEvent.type(screen.getByRole('searchbox', { name: 'Search the activity log' }), 'Emeka')
 
     await waitFor(() => expect(configApi.activity).toHaveBeenLastCalledWith(expect.objectContaining({ q: 'Emeka' })), {
@@ -153,7 +153,7 @@ describe('ActivityLog — tenant-admin audit trail', () => {
     vi.mocked(configApi.activity).mockResolvedValue(emptyResult())
     render(<ActivityLog />)
 
-    await screen.findByText('No activity matches these filters.')
+    await screen.findByText('No activity matches these filters')
     expect(configApi.activity).toHaveBeenLastCalledWith(expect.objectContaining({ sort: 'desc' }))
 
     await userEvent.selectOptions(screen.getByLabelText('Sort'), 'asc')
@@ -164,7 +164,7 @@ describe('ActivityLog — tenant-admin audit trail', () => {
     vi.mocked(configApi.activity).mockResolvedValue(emptyResult())
     render(<ActivityLog />)
 
-    await screen.findByText('No activity matches these filters.')
+    await screen.findByText('No activity matches these filters')
     await userEvent.click(screen.getByRole('button', { name: /^Money/ }))
     await userEvent.selectOptions(screen.getByLabelText('Action'), 'CREATE')
     await userEvent.type(screen.getByRole('searchbox', { name: 'Search the activity log' }), 'Emeka')
@@ -190,7 +190,7 @@ describe('ActivityLog — tenant-admin audit trail', () => {
     vi.mocked(configApi.activity).mockResolvedValue(emptyResult())
     render(<ActivityLog />)
 
-    await screen.findByText('No activity matches these filters.')
+    await screen.findByText('No activity matches these filters')
     await userEvent.click(screen.getByRole('button', { name: /^When:/ }))
     await userEvent.type(screen.getByLabelText('From'), '2026-09-01')
     await userEvent.type(screen.getByLabelText('To'), '2026-09-07')
@@ -206,7 +206,7 @@ describe('ActivityLog — tenant-admin audit trail', () => {
     vi.mocked(configApi.activity).mockResolvedValue(emptyResult())
     render(<ActivityLog />)
 
-    await screen.findByText('No activity matches these filters.')
+    await screen.findByText('No activity matches these filters')
     await userEvent.click(screen.getByRole('button', { name: /all time/i }))
     await userEvent.click(await screen.findByRole('option', { name: /last 7 days/i }))
     await waitFor(() =>
@@ -229,7 +229,7 @@ describe('ActivityLog — tenant-admin audit trail', () => {
     vi.mocked(configApi.activity).mockResolvedValue(emptyResult())
     render(<ActivityLog />)
 
-    await screen.findByText('No activity matches these filters.')
+    await screen.findByText('No activity matches these filters')
     // Category is a chip set; none of the chips name impersonation.
     expect(screen.queryByRole('button', { name: /imperson/i })).toBeNull()
 

@@ -12,7 +12,7 @@ import { useMemo, useState, type JSX } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { type Tenant, type TenantStatus } from '../../api/tenantManagement'
 import { usePlatformTenantList } from '../../hooks/usePlatformTenants'
-import { Banner, Button, Card, Chip, Mono, StatusBadge, Table, ViewLink, SearchField } from '../../design/components'
+import { Banner, Button, Card, Chip, Mono, StatusBadge, Table, ViewLink, SearchField, EmptyState } from '../../design/components'
 import { useTopBarSlot } from '../../shell/TopBarContext'
 import styles from './admin.module.css'
 import { formatDate } from '../../lib/format'
@@ -203,11 +203,7 @@ export function PlatformTenantList(): JSX.Element {
             loading={loading}
             emptyState={
               !loading && visible.length === 0 ? (
-                <span>
-                  {tenants.length === 0
-                    ? 'No tenants onboarded yet.'
-                    : 'No tenants match the current filter.'}
-                </span>
+                <EmptyState compact title={tenants.length === 0 ? 'No tenants onboarded yet' : 'No tenants match the current filter'} />
               ) : undefined
             }
           />

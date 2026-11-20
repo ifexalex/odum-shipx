@@ -8,7 +8,7 @@ import {
   customerRefundLabel,
   customerResolutionLabel,
 } from '../../api/claimsRules'
-import { Banner, Card, Kvp, Mono, StatusBadge } from '../../design/components'
+import { Banner, Card, Kvp, Mono, StatusBadge, PageSkeleton } from '../../design/components'
 import { useClaim } from '../../hooks/useClaims'
 import { formatCount, formatDate, formatNgn } from '../../lib/format'
 import { PageHeader } from '../../shell/PageHeader'
@@ -136,7 +136,7 @@ export function MyClaimDetail(): JSX.Element {
   // Names this record in the breadcrumb once loaded (FD-46).
   useBreadcrumbLabel(claim?.reference)
 
-  if (isLoading) return <div style={{ padding: 'var(--space-8)', color: 'var(--color-ink-4)' }}>Loading your claim…</div>
+  if (isLoading) return <PageSkeleton kind="detail" label="Loading your claim" />
 
   if (error || !claim) {
     const missing = error instanceof ApiError && error.status === 404

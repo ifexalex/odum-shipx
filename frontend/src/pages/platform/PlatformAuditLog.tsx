@@ -11,7 +11,7 @@ import { platformAuditKeys } from '../../api/keys'
 import { useCursorPagination } from '../../hooks/useCursorPagination'
 import { usePlatformTenantList } from '../../hooks/usePlatformTenants'
 import { STALE_30S } from '../../lib/queryClient'
-import { Badge, Banner, Button, Card, ListFooter, Mono, Table, type BadgeVariant, Select } from '../../design/components'
+import { Badge, Banner, Button, Card, ListFooter, Mono, Table, type BadgeVariant, Select, EmptyState, LinesSkeleton } from '../../design/components'
 import { useTopBarSlot } from '../../shell/TopBarContext'
 import { formatDateTime } from '../../lib/format'
 
@@ -114,11 +114,7 @@ export function PlatformAuditLog(): JSX.Element {
               ),
             ],
           }))}
-          emptyState={
-            <span style={{ color: 'var(--color-ink-3)', fontSize: 'var(--text-sm)' }}>
-              {loading ? 'Loading audit entries…' : 'No audit entries match this filter.'}
-            </span>
-          }
+          emptyState={loading ? <LinesSkeleton label="Loading audit entries" /> : <EmptyState compact title="No audit entries match this filter" />}
         />
       </Card>
 

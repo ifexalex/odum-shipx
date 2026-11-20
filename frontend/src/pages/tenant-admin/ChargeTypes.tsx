@@ -11,7 +11,7 @@ import { ApiError } from '../../api/client'
 import { configApi, type ChargeType } from '../../api/tenantManagement'
 import { configKeys } from '../../api/keys'
 import { STALE_5_MIN } from '../../lib/queryClient'
-import { Badge, Banner, Button, Card, Field, Mono, Table, DialogGuard } from '../../design/components'
+import { Badge, Banner, Button, Card, Field, Mono, Table, DialogGuard, EmptyState, LinesSkeleton } from '../../design/components'
 import { useTopBarSlot } from '../../shell/TopBarContext'
 import styles from './admin.module.css'
 import { formatNgn } from '../../lib/format'
@@ -261,11 +261,7 @@ export function ChargeTypes(): JSX.Element {
               </span>,
             ],
           }))}
-          emptyState={
-            <span style={{ color: 'var(--color-ink-3)', fontSize: 'var(--text-sm)' }}>
-              {loading ? 'Loading charge types…' : 'No charge types yet — create the first one.'}
-            </span>
-          }
+          emptyState={loading ? <LinesSkeleton label="Loading charge types" /> : <EmptyState compact title="No charge types yet" body="Create the first one." />}
         />
       </Card>
 

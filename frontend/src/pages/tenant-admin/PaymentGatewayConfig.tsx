@@ -13,7 +13,7 @@
 import { useState, type JSX } from 'react'
 import { ApiError } from '../../api/client'
 import { configApi, type BankTransferConfig, type PaystackConfig } from '../../api/tenantManagement'
-import { Banner, Button, Card, Field, Icon, Mono, IconButton } from '../../design/components'
+import { Banner, Button, Card, Field, Icon, Mono, IconButton, PageSkeleton } from '../../design/components'
 import { useTenantConfig } from '../../hooks/useConfig'
 import { useSeedOnce } from '../../hooks/useSeedOnce'
 import { SectionHead } from '../../shell/SectionHead'
@@ -214,7 +214,7 @@ export function PaymentGatewayConfig(): JSX.Element {
     }
   }
 
-  if (loading) return <div style={{ padding: 'var(--space-8)', color: 'var(--color-ink-4)' }}>Loading…</div>
+  if (loading) return <PageSkeleton kind="form" label="Loading the page" />
 
   const connected = config?.enabled === true
 

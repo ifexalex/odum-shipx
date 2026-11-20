@@ -16,7 +16,7 @@ import {
 import { useSession } from '../../auth/useSession'
 import { useStaffList } from '../../hooks/useStaff'
 import { useWarehouses } from '../../hooks/useWarehouses'
-import { Action, Badge, Banner, Button, Card, DialogGuard, ExportButton, Field, Icon, Kvp, Modal, Mono, PhoneField, StatCard, StatusBadge, ToggleSwitch, Select } from '../../design/components'
+import { Action, Badge, Banner, Button, Card, DialogGuard, ExportButton, Field, Icon, Kvp, Modal, Mono, PhoneField, StatCard, StatusBadge, ToggleSwitch, Select, PageSkeleton, ErrorState } from '../../design/components'
 import { SectionHead } from '../../shell/SectionHead'
 import styles from './ReleaseNoteDetail.module.css'
 import { formatDate, formatNgn } from '../../lib/format'
@@ -436,7 +436,7 @@ export function ReleaseNoteDetail(): JSX.Element {
   const role = session?.role ?? 'nigeria_office_staff'
 
   const stateNote = (location.state as { note?: ReleaseNote } | null)?.note ?? null
-  const { data: note = null, isLoading: loading, error: loadError } = useQuery({
+  const { data: note = null, isLoading: loading, error: loadError, refetch } = useQuery({
     queryKey: releaseNoteKeys.detail(id ?? ''),
     queryFn: () => releaseNotesApi.get(id!),
     enabled: !!id,
@@ -459,12 +459,10 @@ export function ReleaseNoteDetail(): JSX.Element {
   const [pickupResult, setPickupResult] = useState<PickupResult | null>(null)
 
 
-  if (loading && !note) return <div className={styles.loadingState}>Loading release note…</div>
+  if (loading && !note) return <PageSkeleton kind="detail" label="Loading release note" />
   if (error && !note) {
     return (
-      <div className={styles.loadingState}>
-        <Banner variant="error" title="Couldn't load this release note">{error ?? 'Not found.'}</Banner>
-      </div>
+      <ErrorState title="Couldn't load this release note" error={loadError} message="We couldn't find this record. It may have been removed, or the link is out of date." onRetry={() => void refetch()} />
     )
   }
   if (!note) return <></>

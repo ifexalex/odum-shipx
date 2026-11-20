@@ -46,6 +46,8 @@ import {
   type BadgeVariant,
   SearchField,
   Select,
+  EmptyState,
+  LinesSkeleton,
 } from '../../design/components'
 import { useTopBarSlot } from '../../shell/TopBarContext'
 import styles from './admin.module.css'
@@ -300,11 +302,7 @@ export function ActivityLog(): JSX.Element {
               ),
             ],
           }))}
-          emptyState={
-            <span style={{ color: 'var(--color-ink-3)', fontSize: 'var(--text-sm)' }}>
-              {loading ? 'Loading activity…' : 'No activity matches these filters.'}
-            </span>
-          }
+          emptyState={loading ? <LinesSkeleton label="Loading activity" /> : <EmptyState compact title="No activity matches these filters" />}
         />
       </Card>
 

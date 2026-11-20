@@ -30,7 +30,10 @@ import {
   StateSelect,
   Table,
   DialogGuard,
-  CheckboxField } from '../../design/components'
+  CheckboxField,
+  EmptyState,
+  LinesSkeleton,
+} from '../../design/components'
 import { useTopBarSlot } from '../../shell/TopBarContext'
 import styles from './admin.module.css'
 import { toast } from '../../design/toast'
@@ -371,11 +374,7 @@ export function Warehouses(): JSX.Element {
               </span>,
             ],
           }))}
-          emptyState={
-            <span style={{ color: 'var(--color-ink-3)', fontSize: 'var(--text-sm)' }}>
-              {loading ? 'Loading warehouses…' : 'No warehouses configured.'}
-            </span>
-          }
+          emptyState={loading ? <LinesSkeleton label="Loading warehouses" /> : <EmptyState compact title="No warehouses configured" />}
         />
       </Card>
 

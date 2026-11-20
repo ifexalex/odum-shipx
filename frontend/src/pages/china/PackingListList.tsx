@@ -7,7 +7,7 @@ import { canApproveOrReject, explainBulkFailure, formatPackageMix, groupBulkFail
 import { useSession } from '../../auth/useSession'
 import { usePackingListList } from '../../hooks/usePackingLists'
 import { useTopBarSlot } from '../../shell/TopBarContext'
-import { Banner, Button, Card, Chip, DialogGuard, Field, ListFooter, Mono, StatusBadge, Table, ViewLink, Pressable, SearchField } from '../../design/components'
+import { Banner, Button, Card, Chip, DialogGuard, Field, ListFooter, Mono, StatusBadge, Table, ViewLink, Pressable, SearchField, EmptyState } from '../../design/components'
 import styles from './PackingListList.module.css'
 import { formatDate } from '../../lib/format'
 import { useStatusParam } from '../../lib/useStatusParam'
@@ -372,7 +372,7 @@ export function PackingListList(): JSX.Element {
               ],
             }))}
             loading={loading}
-            emptyState={!loading && packingLists.length === 0 ? <span>No packing lists yet.</span> : undefined}
+            emptyState={!loading && packingLists.length === 0 ? <EmptyState compact title="No packing lists yet" /> : undefined}
             onSelectRow={(rowIndex, isSelected) => {
               const pl = packingLists[rowIndex]
               if (pl) toggleRow(pl.id, isSelected)
