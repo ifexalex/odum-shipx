@@ -360,10 +360,18 @@ Known limit: focus is placed once, when the dialog mounts. A dialog whose first 
 
 Rendered in both themes with no console errors. Reviewing it found and fixed:
 - dark mode's active chip was deep green on the soft green fill (unreadable): it uses `--color-primary-on-soft`;
-- `Pressable` showed the browser's grey button fill in dark mode: a zero-specificity `:where(.pressable)` reset (no background, border or padding), so page classes still win;
+- `Pressable` showed the browser's grey button fill in dark mode: a zero-specificity `:where(.pressable)` reset (no background, border or padding), so page classes still win. ~~It also reset `text-align: inherit`~~: that left-aligned every Pressable that relied on a button's default centring (CompanySettings' preview tabs), found in the step 2 visual comparison and removed 2026-11-20;
 - a table in card view inside a `Card` drew a bordered card per row inside the card's frame (every list page on a phone): inside a card the rows are divided by lines, not boxed, and the wrapper takes the card's radius so its rows and header clip to the rounded corners.
 
 - a phone card's fields sat two to a row even at 320 px, where a status ("COMPLETED") is wider than its cell; before FD-10 `anywhere` split the word, now the fields drop to one column (`repeat(auto-fit, minmax(min(100%, 136px), 1fr))`).
 
 Guard: `src/design/catalogCoverage.test.ts` fails when an exported component is missing from the catalog or the theme switch is gone.
+
+**Step 2 visual comparison (2026-11-20).** Every route at 1366 px, 390 px and dark, captured at `179c469` (before step 2) and compared with the branch. Every changed screen was reviewed. Most differences were intended: the Field family, no asterisks, buttons, badges, tables without "View", the Stepper, and the readable "All" chip in dark mode. Fixed:
+- **Long forms scrolled into blank space (FD-11 regression).** `FieldShell`'s visually hidden "Optional" is `position: absolute`. No ancestor was positioned, so it sat against the page, outside the shell's scroll area, and stretched the document: `/admin/config` 1420 px for a 976 px app, `/containers/new` 1180 px, and mobile `/admin/config` 2459 px. `.fieldRoot` is now `position: relative`. The shell scroll areas (`PageShell .content`, `CustShell .main`) are too, so no future absolute element can escape them.
+- **A banner scrolled the whole page by its height (before step 2).** `PageShell` kept `height: 100%` below StaffLayout's quota, announcement and impersonation banners in a flex column, so the page was 76 px taller than the window. `.shell` now has `min-height: 0` and shrinks to the space left.
+- **Pressable `text-align`** (above).
+- **The register page's "Get started here →"** dropped its arrow onto a line of its own on a phone. The link now keeps to one line (`white-space: nowrap`).
+
+Guard: `scripts/text-breaks.mjs` now fails a page taller than what it shows. It found the 76 px banner overflow, and fails at 280 px with the field defect put back.
 

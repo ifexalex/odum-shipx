@@ -1851,6 +1851,14 @@ Every list and summary table opens its record from the row (first cell is the ke
 
 Page-visible changes: release note detail lists Type and Payment status under "Release details" instead of stat cards; refund detail drops its "Payout method" stat card; the claim list shows the whole damage description; the warehouse queue shows the whole customer name; the invoice list counts once (footer). See `03_component_library.md` "Cards (FD-10)".
 
+## Step 2 visual comparison fixes (2026-11-20)
+
+Ground-truth gaps closed, found by comparing every route against the commit before design step 2. Details are in `03_component_library.md` under "Step 2 visual comparison".
+- Long forms (company settings, new container, packing-list create and edit, payments config) let the window scroll into blank space below the app: the hidden "Optional" text of each field escaped the shell's scroll area.
+- Any staff page showing a quota, announcement or impersonation banner scrolled by the banner's height.
+- CompanySettings' "Packing list / Release note" preview tabs lost their centred labels.
+- The register page's "Get started here →" link wrapped its arrow alone on a phone.
+
 ## Reports page Export (2026-11-20)
 
 Ground-truth gap closed: `/admin/reports` showed two Export buttons (top bar and the "CBM & billing by container" table) with no handler. Now one `ExportButton` (Excel or CSV) beside the table downloads every container billed in the period on screen (`billingApi.exportReport` → `GET /v1/billing/report/export`); a refusal shows as a dismissible banner. The top-bar Export is gone; the top bar holds only the Period filter. The table's subtitle said "Every container processed this period" but listed at most 200 containers by amount billed: it now says "Every container billed this period", or, at 200 rows, "The 200 containers billed most this period. Export for every container." `.tableHead` wraps on narrow screens.

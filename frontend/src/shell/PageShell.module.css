@@ -1,6 +1,9 @@
 .shell {
   display: flex;
   height: 100%;
+  /* Below StaffLayout's banners (quota, announcement, impersonation) in a flex column: shrink to the space left, so a
+     banner does not push the shell past the viewport and scroll the whole page by the banner's height. */
+  min-height: 0;
   background: var(--color-page);
   font-family: var(--font-body);
   color: var(--color-ink);
@@ -18,6 +21,9 @@
 }
 
 .content {
+  /* The scroll area contains its absolutely positioned descendants, so one with no positioned ancestor scrolls and
+     clips with the page instead of stretching the document past the viewport. */
+  position: relative;
   flex: 1;
   overflow-y: auto;
   padding: var(--space-8);

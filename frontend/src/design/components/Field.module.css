@@ -1,4 +1,7 @@
 .fieldRoot {
+  /* Anchors the visually hidden "Optional" and label to their own field. Without it they are positioned against the
+     page, outside the shell's scroll area, and lengthen the page by their offset (blank space under every long form). */
+  position: relative;
   margin-bottom: var(--space-4);
 }
 

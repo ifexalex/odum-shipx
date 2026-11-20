@@ -1,9 +1,10 @@
-/* Zero-specificity reset: no browser button chrome (a grey fill in dark mode), and any page class still wins. */
+/* Zero-specificity reset: no browser button chrome (a grey fill in dark mode), and any page class still wins.
+   Text alignment is left to the button default (centred) or the page class: resetting it to `inherit` left-aligned
+   every segmented tab and chip that relied on the default (found in the step 2 visual comparison, 2026-11-20). */
 :where(.pressable) {
   background: none;
   border: 0;
   padding: 0;
-  text-align: inherit;
 }
 
 .pressable {

@@ -1313,6 +1313,11 @@ VISUAL_ONLY=/billing npm run visual:compare   # only routes containing /billing
 
 234 screens take about 8 minutes, because the local API serves one request at a time. The clock is fixed and animations are off, so a compare run with no change finds no differences. Nothing is committed: seed data and dates move between machines and days. CI job `visual` (frontend-ci.yml) does the same on a pull request that touches a style sheet or `frontend/src/design/`: it captures the base branch, compares the pull request against it, lists the changed screens in the job summary and uploads the report as the `visual-report` artifact. Routes come from `scripts/routeSamples.mjs`, shared with the phone audit.
 
+**Comparing against an older commit without stopping your dev server (2026-11-20).** Check the old commit out in a throwaway worktree, symlink `frontend/node_modules`, and run its Vite on port 5174. Point the worktree's `visual` project at 5174, and capture with `VISUAL_BASELINE_DIR=<dir> npm run visual:baseline` there. Then run `VISUAL_BASELINE_DIR=<dir> npm run visual:compare` here, against 5173. Three things the worktree needs, or every screen differs for reasons that are not the change:
+- `server.fs.allow` in its `vite.config.ts` must include the real `node_modules` path. Otherwise Vite refuses the self-hosted fonts behind the symlink and the base renders in a fallback font.
+- The local API only allows the 5173 origin (CORS), so the worktree's `visual` project needs `launchOptions: { args: ['--disable-web-security'] }`. Only that disposable copy, never this repo.
+- The `make dev` API must be restarted after a backend change. It caches modules imported before the change, so a new route can import a stale repository and answer 500.
+
 ## Field encryption is off locally (note, 2026-11-19)
 
 With no `ENCRYPTION_KMS_KEY_ID` / `ENCRYPTION_KEY_VAULT_KEY_ID`, `encrypt_field` stores plaintext, so a column too narrow for ciphertext does not fail locally. `tests/db/test_encrypted_columns.py` writes ciphertext-sized values to catch that.
@@ -1323,5 +1328,5 @@ With `make dev` (API :3000) and Vite (:5173) running: `cd frontend && node scrip
 
 ## Split words, cut-off text and double frames (FD-10, 2026-11-20)
 
-With the same two servers running: `cd frontend && node scripts/text-breaks.mjs` opens every route at 375 and 1280 px and fails a page with an ordinary word split across two lines, text cut off by an ellipsis or line clamp, or a bordered box sitting on its bordered parent's edges. IDs, emails and figures may wrap anywhere; only words of five or more letters count. `node scripts/text-breaks.mjs 375 /billing` narrows it. To check the checks, `TEXT_BREAKS_INJECT_CSS='…'` adds a style to every page (for example a border back on `[data-surface=card] [class*=wrapper]`), and the page should then fail.
+With the same two servers running: `cd frontend && node scripts/text-breaks.mjs` opens every route at 375 and 1280 px and fails a page with an ordinary word split across two lines, text cut off by an ellipsis or line clamp, a bordered box sitting on its bordered parent's edges, or a page taller than what it shows (blank space to scroll into: an absolutely positioned element that escaped the shell's scroll area; added 2026-11-20). IDs, emails and figures may wrap anywhere; only words of five or more letters count. `node scripts/text-breaks.mjs 375 /billing` narrows it. To check the checks, `TEXT_BREAKS_INJECT_CSS='…'` adds a style to every page (for example a border back on `[data-surface=card] [class*=wrapper]`), and the page should then fail.
 

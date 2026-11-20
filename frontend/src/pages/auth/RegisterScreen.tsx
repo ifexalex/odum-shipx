@@ -131,7 +131,7 @@ export function RegisterScreen(): JSX.Element {
               </span>
               <span>
                 <strong>A shipping company</strong> wanting to run your operations on ShipX?{' '}
-                <Link to="/get-started" className={styles.link}>Get started here <Icon name="arrowright" size={12} /></Link>
+                <Link to="/get-started" className={[styles.link, styles.noWrap].join(' ')}>Get started here <Icon name="arrowright" size={12} /></Link>
               </span>
             </div>
           </Banner>

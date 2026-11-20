@@ -246,3 +246,8 @@
     display: none;
   }
 }
+
+/* A short call to action kept on one line, so its arrow never wraps alone (register screen, 2026-11-20). */
+.noWrap {
+  white-space: nowrap;
+}

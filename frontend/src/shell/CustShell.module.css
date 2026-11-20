@@ -12,6 +12,8 @@
 }
 
 .main {
+  /* Contains absolutely positioned descendants: see PageShell.module.css `.content`. */
+  position: relative;
   flex: 1;
   overflow-y: auto;
   padding: var(--space-8) var(--space-12);

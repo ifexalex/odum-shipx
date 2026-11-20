@@ -5,7 +5,9 @@
  *   - a word split across two lines ("OUTSTAN / DING"),
  *   - text cut off (an ellipsis or a line clamp hiding part of it),
  *   - a double frame: a bordered box whose edges sit on its bordered parent's edges,
- *   - at 1024 px and wider, a table that scrolls sideways (it should fit; columns wrap between words).
+ *   - at 1024 px and wider, a table that scrolls sideways (it should fit; columns wrap between words),
+ *   - a page taller than what it shows: blank space to scroll into, from an absolutely positioned element that escaped
+ *     the shell's scroll area (found 2026-11-20: the hidden "Optional" text of form fields stretched every long form).
  * IDs, emails, URLs and figures are allowed to wrap anywhere; only ordinary words count.
  *
  * Needs the local stack: the API on :3000 (`make dev`) and Vite on :5173 (`npm run dev`), local dev auth.
@@ -124,13 +126,30 @@ for (const WIDTH of WIDTHS) {
             sideways.push(`table +${box.scrollWidth - box.clientWidth}px`)
         }
       }
-      return { splits, clipped, doubles, sideways }
+      // The document should be as tall as the page's own boxes. Taller means something positioned against the page,
+      // outside the scroll area that should clip it, is pushing it down: blank space below the app.
+      // What the page shows: every box of real size (not 1px hidden text) that no scroll area clips.
+      const stretched = []
+      const unclipped = (el) => {
+        for (let a = el.parentElement; a && a !== document.body; a = a.parentElement)
+          if (getComputedStyle(a).overflowY !== 'visible') return false
+        return true
+      }
+      let shown = 0
+      for (const el of document.body.querySelectorAll('*')) {
+        const box = el.getBoundingClientRect()
+        if (box.width > 1 && box.height > 1 && visible(el) && unclipped(el)) shown = Math.max(shown, box.bottom + scrollY)
+      }
+      const extra = document.documentElement.scrollHeight - Math.max(shown, window.innerHeight)
+      if (extra > 2) stretched.push(`${extra}px of blank page below the app`)
+      return { splits, clipped, doubles, sideways, stretched }
     })
     if (
       found.splits.length ||
       found.clipped.length ||
       found.doubles.length ||
-      found.sideways.length
+      found.sideways.length ||
+      found.stretched.length
     ) {
       failures++
       console.log(`FAIL ${r.path} (${r.role ?? 'public'})`)
@@ -138,6 +157,7 @@ for (const WIDTH of WIDTHS) {
       for (const x of found.clipped) console.log(`     text cut off: ${x}`)
       for (const x of found.doubles) console.log(`     double frame: ${x}`)
       for (const x of found.sideways) console.log(`     scrolls sideways: ${x}`)
+      for (const x of found.stretched) console.log(`     page stretched: ${x}`)
     }
     await page.close()
   }
@@ -146,6 +166,6 @@ await browser.close()
 console.log(
   failures
     ? `${failures} page(s) fail`
-    : 'no split words, cut-off text, double frames or sideways tables',
+    : 'no split words, cut-off text, double frames, sideways tables or stretched pages',
 )
 process.exit(failures ? 1 : 0)
