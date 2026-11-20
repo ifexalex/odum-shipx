@@ -87,6 +87,7 @@ export function MyBilling(): JSX.Element {
         loading={isFetchingMore}
         onLoadMore={loadMore}
         noun="billing records"
+        nounOne="billing record"
       />
     </div>
   )

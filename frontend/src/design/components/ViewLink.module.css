@@ -1,9 +1,0 @@
-.link {
-  background: transparent;
-  border: 0;
-  color: var(--color-primary-text);
-  font-weight: 600;
-  font-size: var(--text-sm);
-  cursor: pointer;
-  padding: 0;
-}

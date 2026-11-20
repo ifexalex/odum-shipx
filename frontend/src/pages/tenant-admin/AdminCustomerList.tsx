@@ -5,7 +5,7 @@ import { ApiError } from '../../api/client'
 import { customerKeys } from '../../api/keys'
 import { customersApi, type Customer } from '../../api/tenantManagement'
 import { useCustomerList } from '../../hooks/useCustomers'
-import { Badge, Banner, Button, Card, Chip, Field, Mono, PhoneField, StatCard, Table, ViewLink, ListFooter, DialogGuard, SearchField, CheckboxField, EmptyState } from '../../design/components'
+import { Badge, Banner, Button, Card, Chip, Field, Mono, PhoneField, StatCard, Table, ListFooter, DialogGuard, SearchField, CheckboxField, EmptyState } from '../../design/components'
 import { useTopBarSlot } from '../../shell/TopBarContext'
 import styles from './admin.module.css'
 import { formatDate } from '../../lib/format'
@@ -317,11 +317,11 @@ export function AdminCustomerList(): JSX.Element {
               { title: 'Name' },
               { title: 'Phone' },
               { title: 'Consent' },
-              { title: 'Shipments', align: 'right' },
-              { title: 'Status' },
-              { title: '', width: '60px' },
+              { title: 'Shipments', type: 'number' },
+              { title: 'Status', type: 'status' },
             ]}
             rows={visible.map((c) => ({
+              onOpen: () => navigate(`/admin/customers/${c.id}`, { state: { customer: c }, }),
               cells: [
                 <div key="name">
                   <div style={{ fontWeight: 600, fontSize: 'var(--text-sm)' }}>
@@ -346,14 +346,6 @@ export function AdminCustomerList(): JSX.Element {
                 ),
                 <Mono key="ships">{c.shipment_count ?? 0}</Mono>,
                 <AccountStatusBadge key="status" customer={c} />,
-                <ViewLink
-                  key="view"
-                  onClick={() =>
-                    navigate(`/admin/customers/${c.id}`, {
-                      state: { customer: c },
-                    })
-                  }
-                />,
               ],
             }))}
             loading={loading}
@@ -371,6 +363,7 @@ export function AdminCustomerList(): JSX.Element {
         loading={isFetchingMore}
         onLoadMore={loadMore}
         noun="customers"
+        nounOne="customer"
       />
       </div>
 

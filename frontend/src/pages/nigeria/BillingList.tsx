@@ -49,7 +49,8 @@ function fmtNgn(val: string | number | null | undefined): string {
 //
 // AdminCustomerDetail already passes state when opening a billing; this list
 // was the outlier that did not.
-function rowAction(b: Billing, openBilling: (b: Billing) => void): JSX.Element {
+/** The row's next step, or nothing: opening the row itself is how you view a record (FD-13). */
+function rowAction(b: Billing, openBilling: (b: Billing) => void): JSX.Element | null {
   if (b.payment_status === 'unpaid' || b.payment_status === 'partially_paid') {
     return (
       <Button variant="secondary" size="sm" icon="coin" mutates={false}
@@ -60,18 +61,13 @@ function rowAction(b: Billing, openBilling: (b: Billing) => void): JSX.Element {
   }
   if (b.payment_status === 'paid') {
     return (
-      <Button variant="secondary" size="sm" icon="card"
+      <Button variant="secondary" size="sm" icon="card" mutates={false}
         onClick={(e) => { e.stopPropagation(); openBilling(b) }}>
         Release
       </Button>
     )
   }
-  return (
-    <Button variant="secondary" size="sm"
-      onClick={(e) => { e.stopPropagation(); openBilling(b) }}>
-      View
-    </Button>
-  )
+  return null
 }
 
 export function BillingList(): JSX.Element {
@@ -256,16 +252,18 @@ export function BillingList(): JSX.Element {
         <Table
           cardBreakpoint={960}
           columns={[
-            { title: 'Reference', sortable: true },
+            { title: 'Reference', type: 'reference', sortable: true },
             { title: 'Customer' },
-            { title: 'Container' },
-            { title: 'Total (₦)', align: 'right' },
-            { title: 'Outstanding (₦)', align: 'right' },
-            { title: 'Status' },
-            { title: 'Billed', sortable: true },
-            { title: '', width: '140px' },
+            { title: 'Container', type: 'reference' },
+            { title: 'Total (₦)', type: 'money' },
+            { title: 'Outstanding (₦)', type: 'money' },
+            { title: 'Status', type: 'status' },
+            { title: 'Billed', type: 'date', sortable: true },
+            { title: '', type: 'action', width: '140px' },
           ]}
           rows={records.map((b) => ({
+            onOpen: () => openBilling(b),
+            openLabel: `Open invoice ${b.invoice_number ?? ''}`.trim(),
             cells: [
               <Mono key="ref" color="var(--color-ink)">{b.invoice_number ?? '—'}</Mono>,
               b.customer_name
@@ -301,6 +299,7 @@ export function BillingList(): JSX.Element {
         loading={isFetchingMore}
         onLoadMore={loadMore}
         noun="billing records"
+        nounOne="billing record"
       />
 
       {generateOpen && <GenerateBillingModal onClose={() => setGenerateOpen(false)} />}

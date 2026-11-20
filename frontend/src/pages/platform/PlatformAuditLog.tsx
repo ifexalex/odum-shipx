@@ -88,11 +88,11 @@ export function PlatformAuditLog(): JSX.Element {
       <Card padding="none">
         <Table
           columns={[
-            { title: 'Timestamp' },
+            { title: 'Timestamp', type: 'date' },
             { title: 'Action' },
             { title: 'Tenant' },
-            { title: 'IP' },
-            { title: '', width: '90px' },
+            { title: 'IP', type: 'reference' },
+            { title: '', type: 'action', width: '90px' },
           ]}
           rows={entries.map((e) => ({
             cells: [
@@ -135,6 +135,7 @@ export function PlatformAuditLog(): JSX.Element {
         loading={isFetchingMore}
         onLoadMore={loadMore}
         noun="audit entries"
+        nounOne="audit entry"
       />
     </div>
   )

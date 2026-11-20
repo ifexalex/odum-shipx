@@ -214,10 +214,10 @@ export function ContainerCapacities(): JSX.Element {
         <Table
           columns={[
             { title: 'Name' },
-            { title: 'Capacity (CBM)', align: 'right' },
-            { title: 'Recommended (CBM)', align: 'right' },
+            { title: 'Capacity (CBM)', type: 'number' },
+            { title: 'Recommended (CBM)', type: 'number' },
             { title: 'Source' },
-            { title: '', width: '150px' },
+            { title: '', type: 'action', width: '150px' },
           ]}
           rows={capacities.map((c) => ({
             cells: [

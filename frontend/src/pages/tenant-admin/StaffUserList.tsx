@@ -17,13 +17,11 @@ import {
   Chip,
   Field,
   Table,
-  ViewLink,
   DialogGuard,
   RoleBadge,
   StatusBadge,
   SearchField,
-  EmptyState,
-} from '../../design/components'
+  EmptyState } from '../../design/components'
 import { useTopBarSlot } from '../../shell/TopBarContext'
 import { RoleCheckboxList } from './RoleCheckboxList'
 import styles from './admin.module.css'
@@ -218,11 +216,11 @@ export function StaffUserList(): JSX.Element {
               { title: 'Name' },
               { title: 'Email' },
               { title: 'Role' },
-              { title: 'Status' },
-              { title: 'Created' },
-              { title: '', width: '60px' },
+              { title: 'Status', type: 'status' },
+              { title: 'Created', type: 'date' },
             ]}
             rows={visible.map((u) => ({
+              onOpen: () => navigate(`/admin/users/${u.id}`, { state: { user: u } }),
               cells: [
                 <span key="name">{u.full_name}</span>,
                 <span key="email">{u.email}</span>,
@@ -231,10 +229,6 @@ export function StaffUserList(): JSX.Element {
                 <span key="created" style={{ fontSize: 'var(--text-xs)', color: 'var(--color-ink-3)' }}>
                   {formatDate(u.created_at)}
                 </span>,
-                <ViewLink
-                  key="view"
-                  onClick={() => navigate(`/admin/users/${u.id}`, { state: { user: u } })}
-                />,
               ],
             }))}
             loading={loading}

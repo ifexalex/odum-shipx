@@ -97,10 +97,10 @@ export function RateHistoryTable({ rateType, valueKey, prefix }: { rateType: 'do
       {chartPoints.length >= 2 && <RateTrendChart points={chartPoints} prefix={prefix} />}
       <Table
         columns={[
-          { title: 'Rate' },
+          { title: `Rate (${prefix})`, type: 'money' },
           { title: 'Change', align: 'right' },
           { title: 'Changed by' },
-          { title: 'Effective from' },
+          { title: 'Effective from', type: 'date' },
         ]}
         rows={rows.map((r, i) => {
           const current = val(r.rate_value)

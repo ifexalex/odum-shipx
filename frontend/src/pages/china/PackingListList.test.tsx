@@ -269,7 +269,7 @@ describe('PackingListList', () => {
       meta: { pagination: { has_more: true, next_cursor: 'CUR', total_count: 68 } },
     })
     renderPage('tenant_admin')
-    await waitFor(() => expect(screen.getByText(/Showing 2 of 68 packing lists/)).toBeInTheDocument())
+    await waitFor(() => expect(screen.getByText((_, el) => el?.tagName === 'SPAN' && el.textContent === 'Showing 2 of 68 packing lists')).toBeInTheDocument())
     expect(screen.getByRole('button', { name: /66 remaining/ })).toBeInTheDocument()
   })
 
@@ -279,7 +279,7 @@ describe('PackingListList', () => {
       meta: { pagination: { has_more: false, next_cursor: null, total_count: 1 } },
     })
     renderPage('tenant_admin')
-    await waitFor(() => expect(screen.getByText('Showing 1 packing list')).toBeInTheDocument())
+    await waitFor(() => expect(screen.getByText((_, el) => el?.tagName === 'SPAN' && el.textContent === 'Showing 1 packing list')).toBeInTheDocument())
     expect(screen.queryByRole('button', { name: /Load more/ })).not.toBeInTheDocument()
   })
 })

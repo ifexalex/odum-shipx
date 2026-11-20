@@ -276,11 +276,11 @@ export function ActivityLog(): JSX.Element {
       <Card padding="none">
         <Table
           columns={[
-            { title: 'Timestamp' },
+            { title: 'Timestamp', type: 'date' },
             { title: 'Record' },
             { title: 'Action' },
             { title: 'By' },
-            { title: '', width: '90px' },
+            { title: '', type: 'action', width: '90px' },
           ]}
           rows={entries.map((e) => ({
             cells: [
@@ -348,6 +348,7 @@ export function ActivityLog(): JSX.Element {
         loading={loading}
         onLoadMore={() => void load(cursor ?? undefined)}
         noun="log entries"
+        nounOne="log entry"
       />
     </div>
   )

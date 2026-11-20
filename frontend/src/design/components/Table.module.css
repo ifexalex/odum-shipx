@@ -222,3 +222,30 @@
   padding-top: var(--space-3);
   border-top: 1px solid var(--color-line);
 }
+
+/* Column types (FD-13). */
+.cellReference {
+  font-family: var(--font-mono);
+  font-size: var(--text-sm);
+}
+.cellNumeric {
+  font-variant-numeric: tabular-nums;
+}
+
+/* A row that opens its record (FD-07): the whole row is the target; its first cell is the keyboard control. */
+.openable {
+  cursor: pointer;
+}
+tr.openable:hover {
+  background: var(--color-surface-muted);
+}
+.openButton {
+  all: unset;
+  display: inline-flex;
+  max-width: 100%;
+  cursor: pointer;
+  border-radius: var(--radius-sm);
+}
+.openButton:focus-visible {
+  box-shadow: var(--shadow-focus-ring);
+}

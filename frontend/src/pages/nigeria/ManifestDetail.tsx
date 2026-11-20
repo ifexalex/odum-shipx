@@ -15,7 +15,7 @@ import { STALE_30S } from '../../lib/queryClient'
 import { canResolveDiscrepancy, canRevokeVerification, canVerifyManifest } from '../../api/manifestRules'
 import { useSession } from '../../auth/useSession'
 import { EvidenceUploader } from './EvidenceUploader'
-import { Action, Banner, Button, Card, Chip, DialogGuard, ExportButton, Field, Icon, Mono, StatCard, StatusBadge, Table, ViewLink, Select, PageSkeleton, EmptyState, ErrorState } from '../../design/components'
+import { Action, Banner, Button, Card, Chip, DialogGuard, ExportButton, Field, Icon, Mono, StatCard, StatusBadge, Table, Select, PageSkeleton, EmptyState, ErrorState } from '../../design/components'
 import { SectionHead } from '../../shell/SectionHead'
 import styles from './ManifestDetail.module.css'
 import { useBreadcrumbLabel } from '../../shell/breadcrumbs'
@@ -480,13 +480,13 @@ export function ManifestDetail(): JSX.Element {
           columns={[
             { title: 'Customer' },
             { title: 'Contact' },
-            { title: 'Cartons', align: 'right' },
-            { title: 'CBM', align: 'right' },
-            { title: 'Weight', align: 'right' },
-            { title: 'Carton tags' },
-            { title: '', width: '110px' },
+            { title: 'Cartons', type: 'number' },
+            { title: 'Volume (CBM)', type: 'number' },
+            { title: 'Weight (kg)', type: 'number' },
+            { title: 'Carton tags', type: 'reference' },
           ]}
           rows={manifest.customers.map((c) => ({
+            onOpen: c.packing_list_id ? () => navigate(`/packing-lists/${c.packing_list_id}`) : undefined,
             cells: [
               <span key="name">{c.customer_name ?? c.customer_id}</span>,
               // The paper manifest pairs NAME with CONTACT — staff ring the
@@ -505,11 +505,6 @@ export function ManifestDetail(): JSX.Element {
                 ))}
                 {c.carton_tags.length > 3 && <span className={styles.tagMore}>+{c.carton_tags.length - 3} more</span>}
               </div>,
-              c.packing_list_id ? (
-                <ViewLink key="view" onClick={() => navigate(`/packing-lists/${c.packing_list_id}`)} />
-              ) : (
-                <span key="view" />
-              ),
             ],
           }))}
           emptyState={<EmptyState compact title="No approved packing lists on this manifest yet" />}
@@ -529,10 +524,10 @@ export function ManifestDetail(): JSX.Element {
             <Table
               columns={[
                 { title: 'Customer' },
-                { title: 'Expected', align: 'right' },
-                { title: 'Missing', align: 'right' },
-                { title: 'Accounted for', align: 'right' },
-                { title: 'Missing tags' },
+                { title: 'Expected', type: 'number' },
+                { title: 'Missing', type: 'number' },
+                { title: 'Accounted for', type: 'number' },
+                { title: 'Missing tags', type: 'reference' },
               ]}
               rows={buildCartonDiff(manifest.customers, manifest.missing_items)
                 .filter((d) => d.missingTags.length > 0)
@@ -570,11 +565,11 @@ export function ManifestDetail(): JSX.Element {
             </div>
             <Table
               columns={[
-                { title: 'Carton tag' },
-                { title: 'Tracking code' },
-                { title: 'Dispatch (kg)', align: 'right' },
-                { title: 'Actual (kg)', align: 'right' },
-                { title: 'Difference (kg)', align: 'right' },
+                { title: 'Carton tag', type: 'reference' },
+                { title: 'Tracking code', type: 'reference' },
+                { title: 'Dispatch (kg)', type: 'number' },
+                { title: 'Actual (kg)', type: 'number' },
+                { title: 'Difference (kg)', type: 'number' },
               ]}
               rows={manifest.weight_discrepancies.map((wd) => ({
                 cells: [

@@ -118,6 +118,6 @@ describe('ContainerPipeline', () => {
     const row = num.closest('tr')!
     expect(within(row).getByText('Guangzhou → Lagos')).toBeInTheDocument()
     expect(within(row).getByText('4')).toBeInTheDocument()
-    expect(within(row).getByRole('button', { name: 'View' })).toBeInTheDocument()
+    expect(within(row).getByRole('button', { name: /MSCU1234567/ })).toBeInTheDocument()
   })
 })

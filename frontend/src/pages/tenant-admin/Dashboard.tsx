@@ -147,8 +147,9 @@ export function Dashboard(): JSX.Element {
                 <Table
                   dense
                   cardBreakpoint={600}
-                  columns={[{ title: 'Ref' }, { title: 'Customer' }, { title: 'Cartons', align: 'right' }, { title: 'Status' }]}
+                  columns={[{ title: 'Ref', type: 'reference' }, { title: 'Customer' }, { title: 'Cartons', type: 'number' }, { title: 'Status', type: 'status' }]}
                   rows={pendingPls.map((pl) => ({
+                    onOpen: () => navigate(`/packing-lists/${pl.id}`),
                     cells: [
                       <Mono key="ref">{pl.reference ?? pl.id.slice(0, 8)}</Mono>,
                       <UserCell key="cust" name={pl.customer_name ?? '—'} email="" />,
@@ -175,13 +176,13 @@ export function Dashboard(): JSX.Element {
                 <Table
                   dense
                   cardBreakpoint={600}
-                  columns={[{ title: 'Container' }, { title: 'Container status' }, { title: 'Cartons', align: 'right' }, { title: '', width: '60px' }]}
+                  columns={[{ title: 'Container', type: 'reference' }, { title: 'Container status', type: 'status' }, { title: 'Cartons', type: 'number' }]}
                   rows={pendingManifests.slice(0, 6).map((m) => ({
+                    onOpen: () => navigate(`/manifests/${m.id}`),
                     cells: [
                       <Mono key="num">{m.container_number ?? '—'}</Mono>,
                       <StatusBadge key="status" kind="container" status={m.container_status ?? ''} />,
                       <Mono key="cartons">{m.total_cartons}</Mono>,
-                      <Button key="view" variant="ghost" size="sm" onClick={() => navigate(`/manifests/${m.id}`)}>View</Button>,
                     ],
                   }))}
                 />
@@ -202,8 +203,9 @@ export function Dashboard(): JSX.Element {
                 <Table
                   dense
                   cardBreakpoint={600}
-                  columns={[{ title: 'Submitted' }, { title: 'Original CBM', align: 'right' }, { title: 'Status' }]}
+                  columns={[{ title: 'Submitted', type: 'date' }, { title: 'Original (CBM)', type: 'number' }, { title: 'Status', type: 'status' }]}
                   rows={openDisputes.slice(0, 5).map((d) => ({
+                    onOpen: () => navigate(`/billing/${d.billing_id}`),
                     cells: [
                       <span key="when" style={{ fontSize: 'var(--text-xs)', color: 'var(--color-ink-3)' }}>{formatDate(d.submitted_at)}</span>,
                       <Mono key="cbm">{d.original_cbm ?? '—'}</Mono>,
@@ -229,13 +231,13 @@ export function Dashboard(): JSX.Element {
                 <Table
                   dense
                   cardBreakpoint={420}
-                  columns={[{ title: 'Customer' }, { title: 'Container' }, { title: 'Outstanding (₦)', align: 'right' }, { title: '', width: '56px' }]}
+                  columns={[{ title: 'Customer' }, { title: 'Container', type: 'reference' }, { title: 'Outstanding (₦)', type: 'money' }]}
                   rows={outstanding.map((b) => ({
+                    onOpen: () => navigate(`/billing/${b.id}`),
                     cells: [
                       <UserCell key="cust" name={b.customer_name ?? '—'} email="" />,
                       <Mono key="ctn">{b.container_number ?? '—'}</Mono>,
                       <Mono key="out" color="var(--color-error)">{formatNgn(b.outstanding_ngn)}</Mono>,
-                      <Button key="view" variant="ghost" size="sm" onClick={() => navigate(`/billing/${b.id}`)}>View</Button>,
                     ],
                   }))}
                 />
@@ -253,8 +255,9 @@ export function Dashboard(): JSX.Element {
                 <Table
                   dense
                   cardBreakpoint={420}
-                  columns={[{ title: 'Customer' }, { title: 'Container' }, { title: 'Cartons', align: 'right' }, { title: 'Status' }, { title: '', width: '56px' }]}
+                  columns={[{ title: 'Customer' }, { title: 'Container', type: 'reference' }, { title: 'Cartons', type: 'number' }, { title: 'Status', type: 'status' }]}
                   rows={awaitingPickup.slice(0, 6).map((n) => ({
+                    onOpen: () => navigate(`/release-notes/${n.id}`),
                     cells: [
                       <UserCell key="cust" name={n.customer_name ?? '—'} email="" />,
                       <Mono key="ctn">{n.container_number ?? '—'}</Mono>,
@@ -262,7 +265,6 @@ export function Dashboard(): JSX.Element {
                       n.is_on_credit
                         ? <Badge key="st" variant="warning">On credit</Badge>
                         : <Badge key="st" variant="info">Ready</Badge>,
-                      <Button key="view" variant="ghost" size="sm" onClick={() => navigate(`/release-notes/${n.id}`)}>View</Button>,
                     ],
                   }))}
                 />
@@ -287,12 +289,12 @@ export function Dashboard(): JSX.Element {
               dense
               cardBreakpoint={600}
               columns={[
-                { title: 'Container' },
-                { title: 'Status' },
-                { title: 'ETA' },
-                { title: '', width: '60px' },
+                { title: 'Container', type: 'reference' },
+                { title: 'Status', type: 'status' },
+                { title: 'ETA', type: 'date' },
               ]}
               rows={containers.slice(0, 6).map((c) => ({
+                onOpen: () => navigate(`/containers/${c.id}`),
                 cells: [
                   <div key="num">
                     <Mono>{c.container_number}</Mono>
@@ -302,7 +304,6 @@ export function Dashboard(): JSX.Element {
                   </div>,
                   <StatusBadge key="status" kind="container" status={c.status} />,
                   <span key="eta" style={{ fontSize: 'var(--text-xs)', color: 'var(--color-ink-3)' }}>{formatDate(c.estimated_arrival_date)}</span>,
-                  <Button key="view" variant="ghost" size="sm" onClick={() => navigate(`/containers/${c.id}`)}>View</Button>,
                 ],
               }))}
               emptyState={<EmptyState compact title="No containers yet" />}

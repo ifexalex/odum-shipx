@@ -1,5 +1,5 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
-import { render, screen, waitFor } from '@testing-library/react'
+import { render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { MemoryRouter, Route, Routes } from 'react-router-dom'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
@@ -64,8 +64,9 @@ describe('China staff and a CBM dispute (UX-01)', () => {
     vi.mocked(disputeApi.resolve).mockResolvedValue({ ...DETAIL, status: 'resolved_adjusted' })
     renderAt('/billing/disputes')
 
-    // From the list: View goes to the dispute screen, not the invoice they cannot open.
-    await userEvent.click(await screen.findByRole('button', { name: /view/i }))
+    // From the list: opening the row goes to the dispute screen, not the invoice they cannot open.
+    const disputeRow = (await screen.findByText('2.000')).closest('tr')!
+    await userEvent.click(within(disputeRow).getAllByRole('button')[0]!)
     expect(await screen.findByText('Ngozi Okonkwo · MSKU1234567')).toBeInTheDocument()
     expect(screen.queryByText('THE INVOICE PAGE')).toBeNull()
 

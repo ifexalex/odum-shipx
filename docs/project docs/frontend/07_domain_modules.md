@@ -1840,3 +1840,10 @@ The event log's Export button (`containerDetail/Tabs.tsx` `TrackingTab`) was a p
 ## Refund form collects the bank account (2026-11-19)
 
 `RefundRequest.tsx`: with "Bank account refund" chosen (the default) the form shows Bank, Account number (digits only, 10, `inputMode="numeric"`) and Account name; `bankDetailsProblem` (`api/refundsRules.ts`) blocks submit with a message until all are valid, and the three fields are sent only for a bank refund. `RefundDetail.tsx` (staff) shows Bank / Account number / Account name under "Customer preference" when `bank_details` is present. Types: `BankDetails`, `Refund.bank_details`, `CreateRefundInput.bank_name/account_number/account_name`. Tests: `RefundRequest.test.tsx` (+4), `refundsRules.test.ts` (+4), `RefundDetail.test.tsx` (+2).
+
+## Tables read one way (FD-13, 2026-11-20)
+
+Every list and summary table opens its record from the row (first cell is the keyboard control), with no "View" column; see `03_component_library.md` "Tables (FD-13)". Page-visible changes: container list ETA shows the date after clearance and "Packed (CBM)" replaces "Utilization (%)"; the invoice and customer payment tables run Confirmed · Reference · Method · Amount with readable method names; the packing-list count appears once, in the footer; the dashboard's pending packing lists and open disputes now open (`/packing-lists/:id`, `/billing/:billing_id`).
+
+**Ground-truth gap:** the invoice list's Billed column was empty on local data because `scripts/seed.py` inserted billing rows without `billed_at` (the app's own path, `services/billing/service.py`, always sets it). The seed now sets `billed_at = now()`.
+

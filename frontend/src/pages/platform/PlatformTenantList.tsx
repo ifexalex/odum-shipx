@@ -12,7 +12,7 @@ import { useMemo, useState, type JSX } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { type Tenant, type TenantStatus } from '../../api/tenantManagement'
 import { usePlatformTenantList } from '../../hooks/usePlatformTenants'
-import { Banner, Button, Card, Chip, Mono, StatusBadge, Table, ViewLink, SearchField, EmptyState } from '../../design/components'
+import { Banner, Button, Card, Chip, Mono, StatusBadge, Table, SearchField, EmptyState } from '../../design/components'
 import { useTopBarSlot } from '../../shell/TopBarContext'
 import styles from './admin.module.css'
 import { formatDate } from '../../lib/format'
@@ -153,15 +153,15 @@ export function PlatformTenantList(): JSX.Element {
           <Table
             columns={[
               { title: 'Tenant' },
-              { title: 'ID' },
-              { title: 'Status' },
+              { title: 'ID', type: 'reference' },
+              { title: 'Status', type: 'status' },
               { title: 'Plan' },
               { title: 'Primary contact' },
-              { title: 'Users', align: 'right' },
-              { title: 'Created' },
-              { title: '', width: '60px' },
+              { title: 'Users', type: 'number' },
+              { title: 'Created', type: 'date' },
             ]}
             rows={visible.map((t) => ({
+              onOpen: () => navigate(`/platform/tenants/${t.id}`, { state: { tenant: t }, }),
               cells: [
                 <TenantCell key="tenant" tenant={t} />,
                 <Mono key="id" color="var(--color-ink-4)">
@@ -190,14 +190,6 @@ export function PlatformTenantList(): JSX.Element {
                 <span key="date" style={{ fontSize: 'var(--text-xs)', color: 'var(--color-ink-3)' }}>
                   {formatDate(t.created_at)}
                 </span>,
-                <ViewLink
-                  key="view"
-                  onClick={() =>
-                    navigate(`/platform/tenants/${t.id}`, {
-                      state: { tenant: t },
-                    })
-                  }
-                />,
               ],
             }))}
             loading={loading}

@@ -5,7 +5,7 @@ import { containerKeys } from '../../api/keys'
 import { STALE_5_MIN } from '../../lib/queryClient'
 import { containerCapacityCbm, utilizationLevel } from '../../api/containerRules'
 import { containersApi, type Container, type ContainerStatus } from '../../api/tracking'
-import { Banner, Button, Card, Chip, DateRangeFilter, ExportButton, Icon, KebabBtn, ListFooter, Mono, StatCard, StatusBadge, Table, type TableRow, Pressable, SearchField, EmptyState, ErrorState } from '../../design/components'
+import { Banner, Button, Card, Chip, DateRangeFilter, ExportButton, Icon, ListFooter, Mono, StatCard, StatusBadge, Table, type TableRow, Pressable, SearchField, EmptyState, ErrorState } from '../../design/components'
 import { useSession } from '../../auth/useSession'
 import { useContainerList } from '../../hooks/useContainers'
 import { useDateRangeFilter } from '../../hooks/useDateRangeFilter'
@@ -13,7 +13,7 @@ import { useListExport } from '../../hooks/useListExport'
 import { type SortableColumn, useTableSort } from '../../hooks/useTableSort'
 import { useTopBarSlot } from '../../shell/TopBarContext'
 import styles from './ContainerList.module.css'
-import { isoDateOffset, todayIso } from '../../lib/format'
+import { formatDate, isoDateOffset, todayIso } from '../../lib/format'
 import { statusLabel } from '../../design/status'
 
 const SEARCH_DEBOUNCE_MS = 300
@@ -71,16 +71,17 @@ const DEST_CODE: Record<string, string> = {
   Lagos: 'NG-LOS', Abuja: 'NG-ABV', 'Port Harcourt': 'NG-PHC', Nigeria: 'NG',
 }
 
+// ETA stays a date after clearance (FD-13): the Status column already says "Cleared", and a word in a date column
+// can't be sorted or compared.
 function etaColor(container: Container): string {
-  if (CLEARED.includes(container.status)) return 'var(--color-success)'
   if (!container.estimated_arrival_date) return 'var(--color-ink-4)'
+  if (CLEARED.includes(container.status)) return 'var(--color-ink-3)'
   if (container.estimated_arrival_date === todayIso()) return 'var(--color-warning)'
   return 'var(--color-ink)'
 }
 
 function etaLabel(container: Container): string {
-  if (CLEARED.includes(container.status)) return 'Cleared'
-  return container.estimated_arrival_date ?? '—'
+  return container.estimated_arrival_date ? formatDate(container.estimated_arrival_date, 'short') : '—'
 }
 
 /** ISO date (YYYY-MM-DD) for "N days ago" — used as the `created_after` query param. */
@@ -132,7 +133,7 @@ function UtilizationCell({ container }: { container: Container }): JSX.Element {
   )
 }
 
-function containerRow(container: Container, onView: () => void): TableRow {
+function containerRow(container: Container, onOpen: () => void): TableRow {
   const plTotal = container.packing_list_count ?? 0
   const plApproved = container.approved_packing_list_count ?? 0
 
@@ -140,6 +141,8 @@ function containerRow(container: Container, onView: () => void): TableRow {
   const destCode = DEST_CODE[container.destination] ?? container.destination
 
   return {
+    onOpen,
+    openLabel: `Open container ${container.container_number}`,
     cells: [
       <Mono key="num" color="var(--color-ink)">{container.container_number}</Mono>,
       // Vessel · voyage — two-line cell
@@ -165,7 +168,6 @@ function containerRow(container: Container, onView: () => void): TableRow {
       // absolute-CBM business rule. Bar hidden when capacity is unknown.
       <UtilizationCell key="util" container={container} />,
       <Mono key="eta" color={etaColor(container)}>{etaLabel(container)}</Mono>,
-      <KebabBtn key="actions" label={`Open ${container.container_number}`} onClick={onView} />,
     ],
   }
 }
@@ -410,14 +412,13 @@ export function ContainerList(): JSX.Element {
         <Card padding="none">
           <Table
             columns={[
-              { title: 'Container', sortable: true },
+              { title: 'Container', type: 'reference', sortable: true },
               { title: 'Vessel · voyage' },
               { title: 'Route' },
-              { title: 'Status' },
-              { title: 'Packing lists', align: 'right' },
-              { title: 'Utilization' },
-              { title: 'ETA', sortable: true },
-              { title: '', width: '40px' },
+              { title: 'Status', type: 'status' },
+              { title: 'Packing lists', type: 'number' },
+              { title: 'Packed (CBM)', type: 'number' },
+              { title: 'ETA', type: 'date', sortable: true },
             ]}
             rows={containers.map((c) => containerRow(c, () => navigate(`/containers/${c.id}`)))}
             loading={isLoading}
@@ -433,6 +434,7 @@ export function ContainerList(): JSX.Element {
         loading={isFetchingMore}
         onLoadMore={loadMore}
         noun="containers"
+        nounOne="container"
       />
       </div>
     </div>

@@ -111,10 +111,10 @@ export function StorageFeeLog({ fees }: { fees: StorageFeeEntry[] }): JSX.Elemen
         dense
         columns={[
           { title: 'Day' },
-          { title: 'Date' },
-          { title: 'Cartons', align: 'right' },
-          { title: 'Rate', align: 'right' },
-          { title: 'Fee', align: 'right' },
+          { title: 'Date', type: 'date' },
+          { title: 'Cartons', type: 'number' },
+          { title: 'Daily rate (₦)', type: 'money' },
+          { title: 'Fee (₦)', type: 'money' },
         ]}
         rows={fees.map((f) => ({
           cells: [

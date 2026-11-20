@@ -26,7 +26,7 @@ import { customersApi, type Customer } from '../../api/tenantManagement'
 import { billingKeys, claimKeys, customerKeys, packingListKeys } from '../../api/keys'
 import { STALE_30S } from '../../lib/queryClient'
 import { useSession } from '../../auth/useSession'
-import { Action, Avatar, Badge, Banner, Button, Card, DialogGuard, Field, Kvp, Mono, StatCard, StatusBadge, Table, ViewLink, Select, PageSkeleton, EmptyState } from '../../design/components'
+import { Action, Avatar, Badge, Banner, Button, Card, DialogGuard, Field, Kvp, Mono, StatCard, StatusBadge, Table, Select, PageSkeleton, EmptyState } from '../../design/components'
 import { SectionHead } from '../../shell/SectionHead'
 import { Tabs } from '../../shell/Tabs'
 import styles from './admin.module.css'
@@ -227,15 +227,15 @@ function ShipmentsTab({ customer, shipments, onOpen }: { customer: Customer; shi
       </div>
       <Table
         columns={[
-          { title: 'Tracking code' },
-          { title: 'Container' },
-          { title: 'Status' },
-          { title: 'Cartons', align: 'right' },
-          { title: 'CBM', align: 'right' },
-          { title: 'Created' },
-          { title: '', width: '60px' },
+          { title: 'Tracking code', type: 'reference' },
+          { title: 'Container', type: 'reference' },
+          { title: 'Status', type: 'status' },
+          { title: 'Cartons', type: 'number' },
+          { title: 'Volume (CBM)', type: 'number' },
+          { title: 'Created', type: 'date' },
         ]}
         rows={(shipments ?? []).map((pl) => ({
+          onOpen: () => onOpen(pl.id),
           cells: [
             <Mono key="code">{pl.reference ?? pl.id.slice(0, 8)}</Mono>,
             <Mono key="cont">{pl.container_number ?? '—'}</Mono>,
@@ -243,7 +243,6 @@ function ShipmentsTab({ customer, shipments, onOpen }: { customer: Customer; shi
             <Mono key="cartons">{pl.carton_count}</Mono>,
             <Mono key="cbm">{Number(pl.total_cbm).toFixed(3)}</Mono>,
             <span key="created" className={styles.smallMuted}>{formatDate(pl.created_at)}</span>,
-            <ViewLink key="view" onClick={() => onOpen(pl.id)} />,
           ],
         }))}
         loading={shipments === null}
@@ -272,15 +271,15 @@ function BillingTab({ billing, onOpen }: { billing: Billing[] | null; onOpen: (b
         </div>
         <Table
           columns={[
-            { title: 'Invoice' },
-            { title: 'Container' },
-            { title: 'Total NGN', align: 'right' },
-            { title: 'Paid', align: 'right' },
-            { title: 'Outstanding', align: 'right' },
-            { title: 'Status' },
-            { title: '', width: '60px' },
+            { title: 'Invoice', type: 'reference' },
+            { title: 'Container', type: 'reference' },
+            { title: 'Total (₦)', type: 'money' },
+            { title: 'Paid (₦)', type: 'money' },
+            { title: 'Outstanding (₦)', type: 'money' },
+            { title: 'Status', type: 'status' },
           ]}
           rows={(billing ?? []).map((b) => ({
+            onOpen: () => onOpen(b),
             cells: [
               <Mono key="ref">{b.invoice_number ?? b.id.slice(0, 8)}</Mono>,
               <Mono key="cont">{b.container_number ?? '—'}</Mono>,
@@ -290,7 +289,6 @@ function BillingTab({ billing, onOpen }: { billing: Billing[] | null; onOpen: (b
                 {Number(b.outstanding_ngn) > 0 ? fmtNgn(Number(b.outstanding_ngn)) : '—'}
               </Mono>,
               <StatusBadge key="status" kind="invoice" status={b.payment_status} />,
-              <ViewLink key="view" onClick={() => onOpen(b)} />,
             ],
           }))}
           loading={billing === null}
@@ -309,21 +307,20 @@ function ClaimsTab({ claims, onOpen }: { claims: Claim[] | null; onOpen: (c: Cla
       </div>
       <Table
         columns={[
-          { title: 'Reference' },
-          { title: 'Container' },
-          { title: 'Status' },
-          { title: 'Cartons', align: 'right' },
-          { title: 'Filed' },
-          { title: '', width: '60px' },
+          { title: 'Reference', type: 'reference' },
+          { title: 'Container', type: 'reference' },
+          { title: 'Status', type: 'status' },
+          { title: 'Cartons', type: 'number' },
+          { title: 'Filed', type: 'date' },
         ]}
         rows={(claims ?? []).map((c) => ({
+          onOpen: () => onOpen(c),
           cells: [
             <Mono key="ref">{c.reference ?? c.id.slice(0, 8)}</Mono>,
             <Mono key="cont">{c.container_number ?? '—'}</Mono>,
             <StatusBadge key="status" kind="claim" status={c.status} />,
             <Mono key="cartons">{c.cartons_affected?.length ?? 0}</Mono>,
             <span key="filed" className={styles.smallMuted}>{formatDate(c.created_at)}</span>,
-            <ViewLink key="view" onClick={() => onOpen(c)} />,
           ],
         }))}
         loading={claims === null}

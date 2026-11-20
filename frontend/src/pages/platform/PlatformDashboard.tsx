@@ -13,7 +13,7 @@ import { useMemo, type JSX } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { ApiError } from '../../api/client'
 import { usePlatformDashboardStats, usePlatformTenantList, useRecentPlatformActivity } from '../../hooks/usePlatformTenants'
-import { Badge, Banner, Button, Card, Mono, QuickActionCard, StatCard, StatusBadge, Table, type BadgeVariant, type IconName, UserCell, ViewLink, Icon, PageSkeleton, EmptyState } from '../../design/components'
+import { Badge, Banner, Button, Card, Mono, QuickActionCard, StatCard, StatusBadge, Table, type BadgeVariant, type IconName, UserCell, Icon, PageSkeleton, EmptyState } from '../../design/components'
 import { PageHeader } from '../../shell/PageHeader'
 import { SectionHead } from '../../shell/SectionHead'
 import styles from './admin.module.css'
@@ -138,12 +138,12 @@ export function PlatformDashboard(): JSX.Element {
             columns={[
               { title: 'Tenant' },
               { title: 'Tier' },
-              { title: 'Status' },
-              { title: 'Users', align: 'right' },
-              { title: '', width: '70px' },
+              { title: 'Status', type: 'status' },
+              { title: 'Users', type: 'number' },
             ]}
             rows={tenants.slice(0, 8).map((t) => ({
               suspended: t.status === 'suspended',
+              onOpen: () => navigate(`/platform/tenants/${t.id}`),
               cells: [
                 <UserCell key="name" name={t.company_name} email={t.primary_contact_email ?? ''} />,
                 <Badge key="tier" variant="info">{t.subscription_tier}</Badge>,
@@ -151,7 +151,6 @@ export function PlatformDashboard(): JSX.Element {
                 <Mono key="users">
                   {t.user_count != null ? `${t.user_count}${t.users_limit != null ? ` / ${t.users_limit}` : ''}` : '—'}
                 </Mono>,
-                <ViewLink key="view" onClick={() => navigate(`/platform/tenants/${t.id}`)} />,
               ],
             }))}
             emptyState={<EmptyState compact title="No tenants yet" />}

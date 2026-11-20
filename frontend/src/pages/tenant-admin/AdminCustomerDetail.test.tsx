@@ -190,7 +190,7 @@ describe('AdminCustomerDetail — tabbed profile (A2)', () => {
     await userEvent.click(screen.getByRole('tab', { name: 'Shipments' }))
     expect(await screen.findByText('PL-20260410-008')).toBeInTheDocument()
 
-    await userEvent.click(screen.getByText('View'))
+    await userEvent.click(screen.getByText('PL-20260410-008'))
     expect(await screen.findByText('PL detail page')).toBeInTheDocument()
   })
 

@@ -284,14 +284,14 @@ export function TenantReports(): JSX.Element {
         </div>
         <Table
           columns={[
-            { title: 'Container' },
-            { title: 'Customers', align: 'right' },
-            { title: 'Total CBM', align: 'right' },
-            { title: 'CBM rate', align: 'right' },
-            { title: 'FX rate', align: 'right' },
-            { title: 'Billed', align: 'right' },
-            { title: 'Collected', align: 'right' },
-            { title: 'Outstanding', align: 'right' },
+            { title: 'Container', type: 'reference' },
+            { title: 'Customers', type: 'number' },
+            { title: 'Volume (CBM)', type: 'number' },
+            { title: 'CBM rate ($)', type: 'money' },
+            { title: 'FX rate (₦ per $)', type: 'money' },
+            { title: 'Billed (₦)', type: 'money' },
+            { title: 'Collected (₦)', type: 'money' },
+            { title: 'Outstanding (₦)', type: 'money' },
           ]}
           rows={containerBilling.map((row) => ({
             cells: [

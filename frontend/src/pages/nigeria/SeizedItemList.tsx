@@ -129,10 +129,10 @@ export function SeizedItemList(): JSX.Element {
           <Table
             columns={[
               { title: 'Reason / notes' },
-              { title: 'Carton tags' },
-              { title: 'Status' },
-              { title: 'Reported' },
-              { title: '', width: '80px' },
+              { title: 'Carton tags', type: 'reference' },
+              { title: 'Status', type: 'status' },
+              { title: 'Reported', type: 'date' },
+              { title: '', type: 'action', width: '80px' },
             ]}
             rows={items.map((item) => ({
               cells: [
@@ -156,6 +156,7 @@ export function SeizedItemList(): JSX.Element {
         loading={isFetchingMore}
         onLoadMore={loadMore}
         noun="seized items"
+        nounOne="seized item"
       />
       </div>
 

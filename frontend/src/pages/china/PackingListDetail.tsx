@@ -348,15 +348,15 @@ export function PackingListDetail(): JSX.Element {
 
         <Table
           columns={[
-            { title: 'Tag' },
+            { title: 'Tag', type: 'reference' as const },
             { title: 'Description' },
-            { title: 'Packages' },
-            { title: 'Weight', align: 'right' },
-            { title: 'L × W × H', align: 'center' },
-            { title: 'CBM', align: 'right' },
-            { title: 'Declared', align: 'right' },
+            { title: 'Packages', type: 'number' as const },
+            { title: 'Weight (kg)', type: 'number' as const },
+            { title: 'L × W × H (cm)', align: 'center' },
+            { title: 'Volume (CBM)', type: 'number' as const },
+            { title: 'Declared ($)', type: 'money' as const },
             ...(showFlagColumn ? [{ title: 'Flag' }] : []),
-            ...(editing ? [{ title: '', width: '40px' }] : []),
+            ...(editing ? [{ title: '', type: 'action' as const, width: '40px' }] : []),
           ]}
           rows={editing
             ? editItems.map((item, index) => {

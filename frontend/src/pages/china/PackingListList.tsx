@@ -7,7 +7,7 @@ import { canApproveOrReject, explainBulkFailure, formatPackageMix, groupBulkFail
 import { useSession } from '../../auth/useSession'
 import { usePackingListList } from '../../hooks/usePackingLists'
 import { useTopBarSlot } from '../../shell/TopBarContext'
-import { Banner, Button, Card, Chip, DialogGuard, Field, ListFooter, Mono, StatusBadge, Table, ViewLink, Pressable, SearchField, EmptyState } from '../../design/components'
+import { Banner, Button, Card, Chip, DialogGuard, Field, ListFooter, Mono, StatusBadge, Table, Pressable, SearchField, EmptyState } from '../../design/components'
 import styles from './PackingListList.module.css'
 import { formatDate } from '../../lib/format'
 import { useStatusParam } from '../../lib/useStatusParam'
@@ -323,29 +323,18 @@ export function PackingListList(): JSX.Element {
       </Card>
 
       <div className={styles.tableWrap}>
-        {/* Without a total, a full page read as the whole result: searching a
-            container showed 50 rows and looked like "this container has 50
-            packing lists" when it had 68, the rest being one status filter
-            away. State the total explicitly. */}
-        {!loading && packingLists.length > 0 && (
-          <div className={styles.resultCount}>
-            Showing {packingLists.length}
-            {totalCount > packingLists.length && ` of ${totalCount}`} packing list
-            {totalCount === 1 ? '' : 's'}
-            {statusFilter && ' in this status'}
-          </div>
-        )}
+        {/* Without a total, a full page read as the whole result: searching a container showed 50 rows and looked
+            like "this container has 50 packing lists" when it had 68. The footer states the total (FD-13: one count). */}
         <Card padding="none">
           <Table
             selectable={canApprove}
             columns={[
               { title: 'Customer' },
-              { title: 'Container' },
-              { title: 'Packages' },
-              { title: 'CBM', align: 'right' },
-              { title: 'Status' },
-              { title: 'Submitted' },
-              { title: '', width: '40px' },
+              { title: 'Container', type: 'reference' },
+              { title: 'Packages', type: 'number' },
+              { title: 'Volume (CBM)', type: 'number' },
+              { title: 'Status', type: 'status' },
+              { title: 'Submitted', type: 'date' },
             ]}
             rows={packingLists.map((pl) => ({
               selected: selected.has(pl.id),
@@ -358,6 +347,7 @@ export function PackingListList(): JSX.Element {
               // left "Submit for approval" permanently unreachable for the
               // one case it exists for.
               selectable: pl.status === 'pending_approval' || pl.status === 'draft',
+              onOpen: () => navigate(`/packing-lists/${pl.id}`),
               cells: [
                 <span key="customer">{pl.customer_name ?? '—'}</span>,
                 <Mono key="container">{pl.container_number ?? pl.container_id}</Mono>,
@@ -368,7 +358,6 @@ export function PackingListList(): JSX.Element {
                   {formatDate(pl.created_at, 'short')},{' '}
                   {pl.created_at.slice(11, 16)}
                 </span>,
-                <ViewLink key="view" onClick={() => navigate(`/packing-lists/${pl.id}`)} />,
               ],
             }))}
             loading={loading}
@@ -386,7 +375,8 @@ export function PackingListList(): JSX.Element {
         hasMore={hasMore}
         loading={isFetchingMore}
         onLoadMore={loadMore}
-        noun="packing lists"
+        noun={statusFilter ? 'packing lists in this status' : 'packing lists'}
+        nounOne={statusFilter ? 'packing list in this status' : 'packing list'}
       />
       </div>
 

@@ -109,7 +109,7 @@ function UsersTab({ tenantId }: { tenantId: string }): JSX.Element {
   return (
     <Card padding="none">
       <Table
-        columns={[{ title: 'User' }, { title: 'Role' }, { title: 'Status' }, { title: 'Locale' }]}
+        columns={[{ title: 'User' }, { title: 'Role' }, { title: 'Status', type: 'status' }, { title: 'Locale' }]}
         rows={users.map((u) => ({
           cells: [
             <UserCell key="u" name={u.full_name} email={u.email} />,
@@ -245,7 +245,7 @@ function AuditTab({ tenantId }: { tenantId: string }): JSX.Element {
   return (
     <Card padding="none">
       <Table
-        columns={[{ title: 'Timestamp' }, { title: 'Action' }, { title: 'IP' }]}
+        columns={[{ title: 'Timestamp', type: 'date' }, { title: 'Action' }, { title: 'IP', type: 'reference' }]}
         rows={entries.map((e) => ({
           cells: [
             <Mono key="ts">{formatDateTime(e.created_at, { year: false })}</Mono>,

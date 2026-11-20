@@ -60,8 +60,8 @@ export function MiscChargesSection({
           columns={[
             { title: 'Charge' },
             { title: 'Type' },
-            { title: 'Amount (₦)', align: 'right' },
-            ...(canRemove ? [{ title: '', width: '48px' }] : []),
+            { title: 'Amount (₦)', type: 'money' as const },
+            ...(canRemove ? [{ title: '', type: 'action' as const, width: '48px' }] : []),
           ]}
           rows={
             miscCharges.length > 0

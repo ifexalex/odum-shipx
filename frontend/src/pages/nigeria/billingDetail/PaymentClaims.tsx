@@ -91,11 +91,11 @@ export function PaymentClaimsSection({
       <Card padding="none">
         <Table
           columns={[
-            { title: 'Amount (₦)', align: 'right' },
-            { title: 'Submitted' },
+            { title: 'Amount (₦)', type: 'money' as const },
+            { title: 'Submitted', type: 'date' as const },
             { title: 'Evidence' },
-            { title: 'Status' },
-            ...(isStaff ? [{ title: '', width: '220px' }] : []),
+            { title: 'Status', type: 'status' as const },
+            ...(isStaff ? [{ title: '', type: 'action' as const, width: '220px' }] : []),
           ]}
           rows={paymentClaims.map((claim) => ({
             cells: [

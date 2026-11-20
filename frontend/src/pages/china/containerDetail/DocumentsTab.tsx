@@ -156,9 +156,9 @@ export function DocumentsTab({
         <Table
           columns={[
             { title: 'Type' },
-            { title: 'Filename' },
-            { title: 'Uploaded' },
-            { title: '', width: '120px' },
+            { title: 'Filename', type: 'reference' },
+            { title: 'Uploaded', type: 'date' },
+            { title: '', type: 'action', width: '120px' },
           ]}
           rows={docs.map((doc) => ({
             cells: [

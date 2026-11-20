@@ -189,16 +189,18 @@ export function NotificationLog(): JSX.Element {
       <Card padding="none">
         <Table
           columns={[
-            { title: 'Sent at' },
+            { title: 'Sent at', type: 'date' },
             { title: 'Customer' },
             { title: 'Channel' },
             { title: 'Event type' },
             { title: 'Message preview' },
-            { title: 'Status' },
-            { title: '', width: '100px' },
+            { title: 'Status', type: 'status' },
+            { title: '', type: 'action', width: '100px' },
           ]}
           rows={displayed.map((entry) => ({
             suspended: entry.status === 'failed',
+            onOpen: () => setSelectedLog(entry),
+            openLabel: 'Open notification details',
             cells: [
               <Mono key="ts" color="var(--color-ink-2)">{fmtTs(entry.created_at)}</Mono>,
               entry.recipient_name
@@ -229,9 +231,6 @@ export function NotificationLog(): JSX.Element {
                     Retry
                   </Button>
                 )}
-                <Button variant="ghost" size="sm" onClick={() => setSelectedLog(entry)}>
-                  View
-                </Button>
               </div>,
             ],
           }))}
@@ -247,6 +246,7 @@ export function NotificationLog(): JSX.Element {
         loading={isFetchingMore}
         onLoadMore={loadMore}
         noun="notifications"
+        nounOne="notification"
       />
 
       {/* Detail modal */}

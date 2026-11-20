@@ -4,7 +4,7 @@ import { isTerminalDisputeStatus } from '../../api/billingRules'
 import { type CBMDisputeStatus } from '../../api/billing'
 import { useSession } from '../../auth/useSession'
 import { useDisputeList } from '../../hooks/useBilling'
-import {  Card, Chip, ListFooter, Mono, StatusBadge, Table, ViewLink, EmptyState, ErrorState } from '../../design/components'
+import {  Card, Chip, ListFooter, Mono, StatusBadge, Table, EmptyState, ErrorState } from '../../design/components'
 import { useTopBarSlot } from '../../shell/TopBarContext'
 import { useNow } from '../../hooks/useNow'
 import styles from './DisputeList.module.css'
@@ -102,16 +102,16 @@ export function DisputeList(): JSX.Element {
           <Table
             columns={[
               { title: 'Customer' },
-              { title: 'Invoice' },
-              { title: 'Container' },
-              { title: 'Original CBM', align: 'right' },
-              { title: 'Corrected CBM', align: 'right' },
-              { title: 'Status' },
-              { title: 'Submitted' },
+              { title: 'Invoice', type: 'reference' },
+              { title: 'Container', type: 'reference' },
+              { title: 'Original (CBM)', type: 'number' },
+              { title: 'Corrected (CBM)', type: 'number' },
+              { title: 'Status', type: 'status' },
+              { title: 'Submitted', type: 'date' },
               { title: 'SLA', align: 'right' },
-              { title: '', width: '60px' },
             ]}
             rows={disputes.map((d) => ({
+              onOpen: () => navigate(isChina ? `/billing/disputes/${d.id}` : `/billing/${d.billing_id}`),
               cells: [
                 <span key="customer" className={styles.customer}>{d.customer_name ?? '—'}</span>,
                 <Mono key="invoice">{d.invoice_number ?? '—'}</Mono>,
@@ -122,7 +122,6 @@ export function DisputeList(): JSX.Element {
                 <span key="date">{formatDate(d.submitted_at)}</span>,
                 <SLACountdown key="sla" submittedAt={d.submitted_at} status={d.status} now={now} />,
                 // Nigeria staff and admins manage a dispute inline on its invoice; China staff cannot open invoices.
-                <ViewLink key="view" onClick={() => navigate(isChina ? `/billing/disputes/${d.id}` : `/billing/${d.billing_id}`)} />,
               ],
             }))}
             loading={loading}
@@ -140,6 +139,7 @@ export function DisputeList(): JSX.Element {
         loading={isFetchingMore}
         onLoadMore={loadMore}
         noun="disputes"
+        nounOne="dispute"
       />
       </div>
     </div>

@@ -4,7 +4,7 @@ import { formatCbm } from '../../api/decimal'
 import { orderedPackageMix, type Manifest, type VerificationStatus } from '../../api/manifest'
 import { isManifestOverdue as isOverdue } from '../../api/manifestRules'
 import { useManifestList, useManifestStats } from '../../hooks/useManifests'
-import { Badge, Banner, Card, Chip, ListFooter, Mono, StatCard, StatusBadge, Table, ViewLink, EmptyState } from '../../design/components'
+import { Badge, Banner, Card, Chip, ListFooter, Mono, StatCard, StatusBadge, Table, EmptyState } from '../../design/components'
 import { useTopBarSlot } from '../../shell/TopBarContext'
 import styles from './ManifestList.module.css'
 import { formatNumber } from '../../lib/format'
@@ -109,18 +109,18 @@ export function ManifestList(): JSX.Element {
         <Card padding="none">
           <Table
             columns={[
-              { title: 'Container' },
-              { title: 'Customers', align: 'right' },
-              { title: 'Packages' },
-              { title: 'CBM', align: 'right' },
-              { title: 'Weight', align: 'right' },
-              { title: 'Status' },
-              { title: '', width: '40px' },
+              { title: 'Container', type: 'reference' },
+              { title: 'Customers', type: 'number' },
+              { title: 'Packages', type: 'number' },
+              { title: 'Volume (CBM)', type: 'number' },
+              { title: 'Weight (kg)', type: 'number' },
+              { title: 'Status', type: 'status' },
             ]}
             rows={manifests.map((mf) => {
               const overdue = isOverdue(mf)
               return {
                 suspended: overdue,
+                onOpen: () => navigate(`/manifests/${mf.id}`),
                 cells: [
                   <Mono key="container">{mf.container_number ?? mf.container_id}</Mono>,
                   <Mono key="customers">{mf.total_customers}</Mono>,
@@ -131,7 +131,6 @@ export function ManifestList(): JSX.Element {
                     <StatusBadge kind="manifest" status={mf.verification_status} />
                     {overdue && <Badge variant="error" size="sm">Overdue</Badge>}
                   </span>,
-                  <ViewLink key="view" onClick={() => navigate(`/manifests/${mf.id}`)} />,
                 ],
               }
             })}
@@ -146,6 +145,7 @@ export function ManifestList(): JSX.Element {
         loading={isFetchingMore}
         onLoadMore={loadMore}
         noun="manifests"
+        nounOne="manifest"
       />
       </div>
     </div>

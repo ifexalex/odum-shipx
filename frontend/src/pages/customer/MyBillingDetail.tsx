@@ -11,6 +11,7 @@ import { DialogGuard, Field, StatusBadge, PageSkeleton } from '../../design/comp
 import { Badge, Banner, Button, Card, Kvp, Mono, StatCard } from '../../design/components'
 import { SectionHead } from '../../shell/SectionHead'
 import { EvidenceUploader, type UploadedEvidence } from '../nigeria/EvidenceUploader'
+import { PaymentsTable } from '../nigeria/billingDetail/Breakdown'
 import { ReleaseNoteCard } from './ReleaseNoteCard'
 import styles from './customer.module.css'
 import { formatDate, formatNgn } from '../../lib/format'
@@ -563,33 +564,8 @@ export function MyBillingDetail(): JSX.Element {
         </div>
       )}
 
-      {/* Payment history */}
-      {billing.payments.length > 0 && (
-        <>
-          <SectionHead title="Payment history" />
-          <Card padding="none">
-            <table className={styles.paymentsTable}>
-              <thead>
-                <tr className={styles.paymentsHeadRow}>
-                  {['Amount', 'Method', 'Reference', 'Date'].map((h) => (
-                    <th key={h} className={styles.paymentsTh}>{h}</th>
-                  ))}
-                </tr>
-              </thead>
-              <tbody>
-                {billing.payments.map((p, i) => (
-                  <tr key={p.id} style={{ borderBottom: i < billing.payments.length - 1 ? '1px solid var(--color-line-soft)' : 'none' }}>
-                    <td className={styles.paymentsTd}><Mono>{formatNgn(p.amount_ngn)}</Mono></td>
-                    <td className={styles.paymentsTd}>{p.payment_method ?? '—'}</td>
-                    <td className={styles.paymentsTd}><Mono>{p.payment_reference ?? '—'}</Mono></td>
-                    <td className={styles.paymentsTd}>{formatDate(p.confirmed_at)}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </Card>
-        </>
-      )}
+      {/* Payment history: the same table staff see (FD-13). */}
+      <PaymentsTable payments={billing.payments} title="Payment history" />
 
       {showDispute && (
         <CbmDisputeModal

@@ -1,9 +1,9 @@
 import { useRef, useState, type ChangeEvent, type DragEvent, type JSX } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { ApiError } from '../../api/client'
-import { excelApi, type ImportResult, type ManifestImportResult } from '../../api/excel'
+import { excelApi, type ImportErrorDetail, type ImportResult, type ManifestImportResult } from '../../api/excel'
 import { FileTooLargeError, UploadFailedError, uploadImportFile } from '../../api/uploads'
-import { Banner, Button, Card, Icon, Mono, Pressable, Select, FileInput } from '../../design/components'
+import { Banner, Button, Card, Icon, Mono, Pressable, Select, FileInput, Table } from '../../design/components'
 import { useContainerLookup } from '../../hooks/useContainers'
 import { PageHeader } from '../../shell/PageHeader'
 import { SectionHead } from '../../shell/SectionHead'
@@ -53,6 +53,37 @@ function WizardSteps({ current, mode }: WizardStepsProps & { mode: ImportMode })
         })}
       </div>
     </Card>
+  )
+}
+
+/** The rows an import skipped and why. Manifest imports also name the sheet each row came from. */
+function SkippedRowsTable({ details, showSheet }: { details: ImportErrorDetail[]; showSheet: boolean }): JSX.Element {
+  return (
+    <div className={styles.errorSection}>
+      <Card padding="none">
+        <div className={styles.tableHead}>
+          <SectionHead title="Skipped rows" sub={`${details.length} ${details.length === 1 ? 'row' : 'rows'} skipped`} />
+        </div>
+        <Table
+          columns={[
+            { title: 'Row', type: 'number' },
+            ...(showSheet ? [{ title: 'Sheet' }] : []),
+            { title: 'Field' },
+            { title: 'Value' },
+            { title: 'Reason' },
+          ]}
+          rows={details.map((detail) => ({
+            cells: [
+              <Mono key="row">{detail.row}</Mono>,
+              ...(showSheet ? [<span key="sheet">{detail.sheet ?? '—'}</span>] : []),
+              <span key="field">{detail.field}</span>,
+              <span key="value">{detail.value}</span>,
+              <span key="reason">{detail.error}</span>,
+            ],
+          }))}
+        />
+      </Card>
+    </div>
   )
 }
 
@@ -348,40 +379,7 @@ export function ImportPackingLists(): JSX.Element {
           </Card>
 
           {manifestResult.error_details.length > 0 && (
-            <div className={styles.errorSection}>
-              <Card padding="none">
-                <div className={styles.tableHead}>
-                  <SectionHead
-                    title="Skipped rows"
-                    sub={`${manifestResult.error_details.length} row(s) skipped`}
-                  />
-                </div>
-                <table className={styles.errorTable}>
-                  <thead>
-                    <tr>
-                      <th>Sheet</th>
-                      <th>Row</th>
-                      <th>Field</th>
-                      <th>Value</th>
-                      <th>Reason</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {manifestResult.error_details.map((detail, index) => (
-                      <tr key={index}>
-                        <td>{detail.sheet ?? '—'}</td>
-                        <td>
-                          <Mono>{detail.row}</Mono>
-                        </td>
-                        <td>{detail.field}</td>
-                        <td>{detail.value}</td>
-                        <td>{detail.error}</td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </Card>
-            </div>
+            <SkippedRowsTable details={manifestResult.error_details} showSheet />
           )}
 
           <div className={styles.actionsRow}>
@@ -428,37 +426,7 @@ export function ImportPackingLists(): JSX.Element {
             </div>
           </Card>
 
-          {result.error_details.length > 0 && (
-            <div className={styles.errorSection}>
-              <Card padding="none">
-                <div className={styles.tableHead}>
-                  <SectionHead title="Skipped rows" sub={`${result.error_details.length} row(s) skipped`} />
-                </div>
-                <table className={styles.errorTable}>
-                  <thead>
-                    <tr>
-                      <th>Row</th>
-                      <th>Field</th>
-                      <th>Value</th>
-                      <th>Reason</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {result.error_details.map((detail, index) => (
-                      <tr key={index}>
-                        <td>
-                          <Mono>{detail.row}</Mono>
-                        </td>
-                        <td>{detail.field}</td>
-                        <td>{detail.value}</td>
-                        <td>{detail.error}</td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </Card>
-            </div>
-          )}
+          {result.error_details.length > 0 && <SkippedRowsTable details={result.error_details} showSheet={false} />}
 
           <div className={styles.actionsRow}>
             <Button variant="secondary" icon="upload" onClick={() => { setStep(1); setFile(null); setResult(null) }}>

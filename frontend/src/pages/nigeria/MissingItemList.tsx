@@ -141,10 +141,10 @@ export function MissingItemList(): JSX.Element {
           <Table
             columns={[
               { title: 'Description' },
-              { title: 'Carton tags' },
-              { title: 'Status' },
-              { title: 'Reported' },
-              { title: '', width: '80px' },
+              { title: 'Carton tags', type: 'reference' },
+              { title: 'Status', type: 'status' },
+              { title: 'Reported', type: 'date' },
+              { title: '', type: 'action', width: '80px' },
             ]}
             rows={items.map((item) => ({
               cells: [
@@ -168,6 +168,7 @@ export function MissingItemList(): JSX.Element {
         loading={isFetchingMore}
         onLoadMore={loadMore}
         noun="missing items"
+        nounOne="missing item"
       />
       </div>
 

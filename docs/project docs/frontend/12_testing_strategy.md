@@ -105,3 +105,8 @@ If the Storybook/component-catalog route from Task 03 exists, a lightweight scre
 ## Toasts (FD-21, 2026-11-19)
 
 `src/test/setup.ts` resets the toast store and mounts `ToastRegion` before every test. `ToastRegion.test.tsx` (4) and `src/design/toastRules.test.ts` (2) — the second found two pages that changed data silently (the announcement composer; the audit-log read was a false positive and is listed as a read).
+
+## Tables (FD-13, 2026-11-20)
+
+`src/design/tableRules.test.ts` (4) and 6 new cases in `Table.test.tsx`. Page tests that clicked "View" now click the row's first cell (`within(row).getAllByRole('button')[0]`) or its text. A count whose numbers sit in `<strong>` is matched with a function on `textContent`; `getByText` reads only an element's own text nodes.
+

@@ -3,9 +3,19 @@ import { Check } from './Check'
 import { Icon } from './Icon'
 import styles from './Table.module.css'
 
+/**
+ * What a column holds (FD-13). It sets the column's alignment and font, so every table reads the same way:
+ * `reference` (an ID or number, monospaced), `number` and `money` (right-aligned, tabular figures), `date`, `status`
+ * (a badge), `action` (the row's one button, right-aligned), `text` (the default). Put the unit in the title:
+ * "Total (₦)", "Volume (CBM)".
+ */
+export type ColumnType = 'text' | 'reference' | 'number' | 'money' | 'date' | 'status' | 'action'
+
 export interface TableColumn {
   title: string
+  type?: ColumnType
   width?: string
+  /** Overrides the type's alignment; rarely needed. */
   align?: 'left' | 'right' | 'center'
   sortable?: boolean
   /** Omit this column's label:value pair from the mobile card view — for a
@@ -16,6 +26,11 @@ export interface TableColumn {
 
 export interface TableRow {
   cells: ReactNode[]
+  /** Opens the row's record (FD-07 row pattern): the whole row is the target, and its first cell is the keyboard
+   * control. Replaces a "View" link in a column of its own. */
+  onOpen?: () => void
+  /** What opening does, for screen readers: "Open invoice ACM-INV-0042". */
+  openLabel?: string
   selected?: boolean
   /** When false the row's checkbox is hidden even if the table is selectable. */
   selectable?: boolean
@@ -61,9 +76,35 @@ const ALIGN_TD: Record<'left' | 'right' | 'center', string> = {
 
 const SKELETON_ROWS = 5
 
-// Matches the app-wide 860px mobile convention (PageShell/TopBar/Sidebar's
-// @container sxapp breakpoint) — see 02_design_tokens_and_theming.md.
-const CARD_VIEW_BREAKPOINT = 860
+const TYPE_ALIGN: Record<ColumnType, 'left' | 'right' | 'center'> = {
+  text: 'left',
+  reference: 'left',
+  number: 'right',
+  money: 'right',
+  date: 'left',
+  status: 'left',
+  action: 'right',
+}
+
+function alignOf(column: TableColumn | undefined): 'left' | 'right' | 'center' {
+  return column?.align ?? TYPE_ALIGN[column?.type ?? 'text']
+}
+
+function typeClass(column: TableColumn | undefined): string {
+  const type = column?.type ?? 'text'
+  if (type === 'reference') return styles.cellReference!
+  if (type === 'number' || type === 'money') return styles.cellNumeric!
+  return ''
+}
+
+/** A click on a control inside the row (a button, a link, a field) is that control's, not the row's. */
+function isInteractive(target: EventTarget | null, row: HTMLElement): boolean {
+  const el = target instanceof Element ? target.closest('a, button, input, select, textarea, label, [role="checkbox"]') : null
+  return Boolean(el && row.contains(el))
+}
+
+// Cards only on a phone (FD-13): a table in a narrow desktop column (a two-column detail layout) stays a table.
+const CARD_VIEW_BREAKPOINT = 600
 
 /** True once this element's own measured width drops to/below `breakpoint`.
  *
@@ -124,7 +165,15 @@ export function Table({
   const someSelected = selectedCount > 0 && !allSelected
 
   const lastIndex = columns.length - 1
-  const hasTrailingAction = lastIndex >= 0 && columns[lastIndex]?.title === ''
+  const hasTrailingAction = lastIndex >= 0 && (columns[lastIndex]?.title === '' || columns[lastIndex]?.type === 'action')
+  const firstCell = (row: TableRow): ReactNode =>
+    row.onOpen ? (
+      <button type="button" className={styles.openButton} aria-label={row.openLabel} onClick={row.onOpen}>
+        {row.cells[0]}
+      </button>
+    ) : (
+      row.cells[0]
+    )
   const cardFieldIndices = columns
     .map((_, i) => i)
     .filter((i) => i !== 0 && !(hasTrailingAction && i === lastIndex) && !columns[i]?.hideInCard)
@@ -154,15 +203,16 @@ export function Table({
             rows.map((row, rowIndex) => (
               <div
                 key={rowIndex}
-                className={[styles.card, row.selected ? styles.cardSelected : '', row.suspended ? styles.cardSuspended : '']
+                className={[styles.card, row.selected ? styles.cardSelected : '', row.suspended ? styles.cardSuspended : '', row.onOpen ? styles.openable : '']
                   .filter(Boolean)
                   .join(' ')}
+                onClick={row.onOpen ? (event) => !isInteractive(event.target, event.currentTarget) && row.onOpen?.() : undefined}
               >
                 <div className={styles.cardHeader}>
                   {selectable && row.selectable !== false && (
                     <Check label={`Select row ${rowIndex + 1}`} checked={row.selected ?? false} onChange={(checked) => onSelectRow?.(rowIndex, checked)} />
                   )}
-                  <div className={styles.cardHeaderValue}>{row.cells[0]}</div>
+                  <div className={styles.cardHeaderValue}>{firstCell(row)}</div>
                 </div>
                 {cardFieldIndices.length > 0 && (
                   <div className={styles.cardBody}>
@@ -194,7 +244,7 @@ export function Table({
                 </th>
               )}
               {columns.map((column, index) => {
-                const align = column.align ?? 'left'
+                const align = alignOf(column)
                 const isActive = sort?.columnIndex === index
                 const headContent = (
                   <span
@@ -259,7 +309,13 @@ export function Table({
               </tr>
             ) : (
               rows.map((row, rowIndex) => (
-                <tr key={rowIndex} className={[styles.row, row.selected ? styles.rowSelected : '', row.suspended ? styles.rowSuspended : ''].filter(Boolean).join(' ')}>
+                <tr
+                  key={rowIndex}
+                  className={[styles.row, row.selected ? styles.rowSelected : '', row.suspended ? styles.rowSuspended : '', row.onOpen ? styles.openable : '']
+                    .filter(Boolean)
+                    .join(' ')}
+                  onClick={row.onOpen ? (event) => !isInteractive(event.target, event.currentTarget) && row.onOpen?.() : undefined}
+                >
                   {selectable && (
                     <td className={dense ? styles.tdSelectDense : styles.tdSelect}>
                       {row.selectable !== false && (
@@ -272,15 +328,15 @@ export function Table({
                     </td>
                   )}
                   {row.cells.map((cell, cellIndex) => {
-                    const align = columns[cellIndex]?.align ?? 'left'
+                    const column = columns[cellIndex]
                     return (
                       <td
                         key={cellIndex}
-                        className={[dense ? styles.tdDense : styles.td, ALIGN_TD[align]]
+                        className={[dense ? styles.tdDense : styles.td, ALIGN_TD[alignOf(column)], typeClass(column)]
                           .filter(Boolean)
                           .join(' ')}
                       >
-                        {cell}
+                        {cellIndex === 0 ? firstCell(row) : cell}
                       </td>
                     )
                   })}

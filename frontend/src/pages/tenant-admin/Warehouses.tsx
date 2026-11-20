@@ -324,8 +324,8 @@ export function Warehouses(): JSX.Element {
             { title: 'Name' },
             { title: 'Location' },
             { title: 'Phone' },
-            { title: 'Status' },
-            { title: '', width: '210px' },
+            { title: 'Status', type: 'status' },
+            { title: '', type: 'action', width: '210px' },
           ]}
           rows={warehouses.map((w) => ({
             cells: [

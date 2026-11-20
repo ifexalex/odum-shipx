@@ -264,31 +264,6 @@
   padding: var(--space-5) var(--space-5);
 }
 
-.errorTable {
-  width: 100%;
-  border-collapse: collapse;
-  font-family: var(--font-body);
-  font-size: var(--text-sm);
-}
-
-.errorTable th {
-  background: var(--color-page);
-  border-bottom: 1px solid var(--color-line);
-  padding: var(--space-3) var(--space-4);
-  text-align: left;
-  font-size: var(--text-xs);
-  font-weight: 700;
-  color: var(--color-ink-3);
-  letter-spacing: var(--tracking-label);
-  text-transform: uppercase;
-}
-
-.errorTable td {
-  padding: var(--space-3) var(--space-4);
-  border-bottom: 1px solid var(--color-line);
-  color: var(--color-ink-2);
-}
-
 /* Import-type selector (forwarder manifest vs ShipX template) */
 .modeGrid {
   display: grid;

@@ -177,11 +177,11 @@ export function DisputeDetail(): JSX.Element {
           cardBreakpoint={640}
           columns={[
             { title: 'List' },
-            { title: 'Tag' },
+            { title: 'Tag', type: 'reference' },
             { title: 'Description' },
-            { title: 'Qty', align: 'right' },
+            { title: 'Qty', type: 'number' },
             { title: 'L × W × H (cm)' },
-            { title: 'CBM', align: 'right' },
+            { title: 'Volume (CBM)', type: 'number' },
           ]}
           rows={dispute.lines.map((line) => ({
             cells: [

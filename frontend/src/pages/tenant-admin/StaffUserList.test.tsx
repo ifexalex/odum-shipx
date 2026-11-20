@@ -83,11 +83,11 @@ describe('StaffUserList (B4)', () => {
     expect(await screen.findByLabelText(/full name/i)).toBeInTheDocument()
   })
 
-  it('opens a staff profile on view', async () => {
+  it('opens a staff profile from its row', async () => {
     renderPage()
     await screen.findByText('Amara Okafor')
     const row = screen.getByText('Amara Okafor').closest('tr')!
-    await userEvent.click(within(row).getByText('View'))
+    await userEvent.click(within(row).getAllByRole('button')[0]!)
     expect(await screen.findByText('Staff profile')).toBeInTheDocument()
   })
 

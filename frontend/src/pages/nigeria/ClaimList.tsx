@@ -28,7 +28,8 @@ const STATUS_FILTERS: Array<{ key: DamageClaimStatus; label: string }> = [
   { key: 'closed',             label: 'Closed' },
 ]
 
-function rowAction(c: Claim, navigate: (p: string) => void): JSX.Element {
+/** The row's next step, or nothing: opening the row itself is how you view a claim (FD-13). */
+function rowAction(c: Claim, navigate: (p: string) => void): JSX.Element | null {
   if (c.status === 'filed') {
     return <Button variant="secondary" size="sm" mutates={false} onClick={(e) => { e.stopPropagation(); navigate(`/claims/${c.id}`) }}>Start inspection</Button>
   }
@@ -38,7 +39,7 @@ function rowAction(c: Claim, navigate: (p: string) => void): JSX.Element {
   if (c.status === 'pending_resolution') {
     return <Button variant="secondary" size="sm" mutates={false} onClick={(e) => { e.stopPropagation(); navigate(`/claims/${c.id}`) }}>Resolve</Button>
   }
-  return <Button variant="secondary" size="sm" mutates={false} onClick={(e) => { e.stopPropagation(); navigate(`/claims/${c.id}`) }}>View</Button>
+  return null
 }
 
 export function ClaimList(): JSX.Element {
@@ -120,17 +121,19 @@ export function ClaimList(): JSX.Element {
       <Card padding="none">
         <Table
           columns={[
-            { title: 'Claim ID', sortable: true },
+            { title: 'Claim ID', type: 'reference', sortable: true },
             { title: 'Customer' },
-            { title: 'Container' },
-            { title: 'Cartons affected' },
+            { title: 'Container', type: 'reference' },
+            { title: 'Cartons affected', type: 'number' },
             { title: 'Description' },
             { title: 'Inspection' },
-            { title: 'Status' },
-            { title: 'Filed', sortable: true },
-            { title: '', width: '130px' },
+            { title: 'Status', type: 'status' },
+            { title: 'Filed', type: 'date', sortable: true },
+            { title: '', type: 'action', width: '130px' },
           ]}
           rows={claims.map((c) => ({
+            onOpen: () => navigate(`/claims/${c.id}`),
+            openLabel: `Open claim ${c.reference ?? c.id.slice(0, 8)}`,
             cells: [
               <Mono key="id" color="var(--color-ink)">{c.reference ?? c.id.slice(0, 8)}</Mono>,
               c.customer_name
@@ -176,6 +179,7 @@ export function ClaimList(): JSX.Element {
         loading={isFetchingMore}
         onLoadMore={loadMore}
         noun="claims"
+        nounOne="claim"
       />
 
       <div className={styles.subLinks}>

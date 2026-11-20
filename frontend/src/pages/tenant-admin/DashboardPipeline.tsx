@@ -145,14 +145,14 @@ export function ContainerPipeline({ counts }: { counts: ContainerStats | undefin
         dense
         cardBreakpoint={700}
         columns={[
-          { title: 'Container' },
+          { title: 'Container', type: 'reference' },
           { title: 'Route' },
-          { title: 'Status' },
-          { title: 'ETA / Arrival' },
-          { title: 'Packing lists', align: 'right' },
-          { title: '', width: '64px' },
+          { title: 'Status', type: 'status' },
+          { title: 'ETA / Arrival', type: 'date' },
+          { title: 'Packing lists', type: 'number' },
         ]}
         rows={items.map((c) => ({
+          onOpen: () => navigate(`/containers/${c.id}`),
           cells: [
             <div key="num">
               <Mono>{c.container_number}</Mono>
@@ -168,7 +168,6 @@ export function ContainerPipeline({ counts }: { counts: ContainerStats | undefin
                 : etaCell(c.estimated_arrival_date)}
             </span>,
             <Mono key="pl">{c.packing_list_count ?? 0}</Mono>,
-            <Button key="view" variant="ghost" size="sm" onClick={() => navigate(`/containers/${c.id}`)}>View</Button>,
           ],
         }))}
         loading={isLoading}
@@ -186,6 +185,7 @@ export function ContainerPipeline({ counts }: { counts: ContainerStats | undefin
         loading={isFetchingMore}
         onLoadMore={loadMore}
         noun="containers"
+        nounOne="container"
       />
     </Card>
   )

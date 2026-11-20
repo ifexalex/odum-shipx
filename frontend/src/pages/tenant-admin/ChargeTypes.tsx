@@ -212,11 +212,11 @@ export function ChargeTypes(): JSX.Element {
         <Table
           columns={[
             { title: 'Name' },
-            { title: 'Default amount (₦)', align: 'right' },
-            { title: 'Times used', align: 'right' },
+            { title: 'Default amount (₦)', type: 'money' },
+            { title: 'Times used', type: 'number' },
             { title: 'Description' },
-            { title: 'Status' },
-            { title: '', width: '160px' },
+            { title: 'Status', type: 'status' },
+            { title: '', type: 'action', width: '160px' },
           ]}
           rows={chargeTypes.map((t) => ({
             cells: [

@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom'
 import type { ReleaseNoteStatus } from '../../api/releaseNotes'
 import { releaseTypeLabel } from '../../api/releaseNotesRules'
 import { useReleaseNoteList, useReleaseNoteStats } from '../../hooks/useReleaseNotes'
-import {  Card, Chip, ListFooter, Mono, StatCard, StatusBadge, Table, ViewLink, EmptyState, ErrorState } from '../../design/components'
+import {  Card, Chip, ListFooter, Mono, StatCard, StatusBadge, Table, EmptyState, ErrorState } from '../../design/components'
 import { useTopBarSlot } from '../../shell/TopBarContext'
 import styles from './ReleaseNoteList.module.css'
 import { formatDate } from '../../lib/format'
@@ -67,16 +67,16 @@ export function ReleaseNoteList(): JSX.Element {
         <Card padding="none">
           <Table
             columns={[
-              { title: 'Reference' },
+              { title: 'Reference', type: 'reference' },
               { title: 'Customer' },
-              { title: 'Container' },
-              { title: 'Cartons', align: 'right' },
+              { title: 'Container', type: 'reference' },
+              { title: 'Cartons', type: 'number' },
               { title: 'Type' },
-              { title: 'Status' },
-              { title: 'Issued' },
-              { title: '', width: '60px' },
+              { title: 'Status', type: 'status' },
+              { title: 'Issued', type: 'date' },
             ]}
             rows={notes.map((n) => ({
+              onOpen: () => navigate(`/release-notes/${n.id}`, { state: { note: n } }),
               cells: [
                 <Mono key="ref">{n.reference_number}</Mono>,
                 <span key="cust">{n.customer_name ?? '—'}</span>,
@@ -85,7 +85,6 @@ export function ReleaseNoteList(): JSX.Element {
                 <span key="type" className={styles.partial}>{releaseTypeLabel(n)}</span>,
                 <StatusBadge key="status" kind="releaseNote" status={n.status} />,
                 <span key="date">{formatDate(n.authorized_at)}</span>,
-                <ViewLink key="view" onClick={() => navigate(`/release-notes/${n.id}`, { state: { note: n } })} />,
               ],
             }))}
             loading={loading}
@@ -99,6 +98,7 @@ export function ReleaseNoteList(): JSX.Element {
         loading={isFetchingMore}
         onLoadMore={loadMore}
         noun="release notes"
+        nounOne="release note"
       />
       </div>
     </div>

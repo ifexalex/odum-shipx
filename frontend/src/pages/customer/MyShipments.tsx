@@ -6,7 +6,7 @@ import { billingApi, type Billing } from '../../api/billing'
 import { billingKeys, packingListKeys } from '../../api/keys'
 import { packingListApi } from '../../api/packingList'
 import { STALE_30S } from '../../lib/queryClient'
-import { Banner, Button, Card, Icon, Mono, Table, ViewLink, StatusBadge, PageSkeleton } from '../../design/components'
+import { Banner, Button, Card, Icon, Mono, Table, StatusBadge, PageSkeleton } from '../../design/components'
 import { SectionHead } from '../../shell/SectionHead'
 import { useSession } from '../../auth/useSession'
 import { CustomerStepper } from './CustomerStepper'
@@ -222,17 +222,17 @@ export function MyShipments(): JSX.Element {
           <Card padding="none">
             <Table
               columns={[
-                { title: 'Tracking code' },
-                { title: 'Container' },
-                { title: 'Status' },
-                { title: 'Cartons', align: 'right' },
-                { title: 'Delivered' },
-                { title: 'Amount paid', align: 'right' },
-                { title: '', width: '60px' },
+                { title: 'Tracking code', type: 'reference' },
+                { title: 'Container', type: 'reference' },
+                { title: 'Status', type: 'status' },
+                { title: 'Cartons', type: 'number' },
+                { title: 'Delivered', type: 'date' },
+                { title: 'Amount paid (₦)', type: 'money' },
               ]}
               rows={pastShipments.map((pl) => {
                 const b = billingByContainer.get(pl.container_id)
                 return {
+                  onOpen: () => navigate(`/my-shipments/${pl.id}`),
                   cells: [
                     <Mono key="ref">{pl.reference ?? pl.id.slice(0, 8)}</Mono>,
                     <Mono key="ctn">{pl.container_number ?? '—'}</Mono>,
@@ -242,7 +242,6 @@ export function MyShipments(): JSX.Element {
                       {formatDate(pl.created_at)}
                     </span>,
                     <Mono key="paid">{b ? fmtNgn(b.total_paid_ngn) : '—'}</Mono>,
-                    <ViewLink key="view" onClick={() => navigate(`/my-shipments/${pl.id}`)} />,
                   ],
                 }
               })}

@@ -1,6 +1,7 @@
 import { useRef, useState, type JSX } from 'react'
 import { ApiError } from '../../../api/client'
 import { billingApi, type Billing, type RecordPaymentInput } from '../../../api/billing'
+import { PAYMENT_METHODS, paymentMethodLabel } from '../../../lib/paymentMethods'
 import { Action, Banner, Button, DialogGuard, Field, Icon, Mono, StatusBadge, Select } from '../../../design/components'
 import styles from '../BillingDetail.module.css'
 import { formatNgn } from '../../../lib/format'
@@ -15,8 +16,6 @@ export interface RecordPaymentModalProps {
   onCancel: () => void
   onSuccess: (updated: { new_payment_status: string }) => void
 }
-
-const PAYMENT_METHODS = ['bank_transfer', 'cash', 'online', 'card', 'other']
 
 export function RecordPaymentModal({
   billing,
@@ -156,7 +155,7 @@ export function RecordPaymentModal({
             <option value="">Select method…</option>
             {PAYMENT_METHODS.map((m) => (
               <option key={m} value={m}>
-                {m.replace('_', ' ')}
+                {paymentMethodLabel(m)}
               </option>
             ))}
           </Select>

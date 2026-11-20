@@ -4,7 +4,7 @@ import { } from '../../../api/containerRules'
 import { formatCbm } from '../../../api/decimal'
 import { containersApi, type ContainerStatus, type Container, type ContainerEvent } from '../../../api/tracking'
 import { formatPackageMix } from '../../../api/packingListRules'
-import { Badge, Banner, Button, Card, ExportButton, Mono, StatusBadge, Table, type TableSort, UserCell, ViewLink, EmptyState } from '../../../design/components'
+import { Badge, Banner, Button, Card, ExportButton, Mono, StatusBadge, Table, type TableSort, UserCell, EmptyState } from '../../../design/components'
 import { SectionHead } from '../../../shell/SectionHead'
 import styles from '../ContainerDetail.module.css'
 import { formatDate, formatTime } from '../../../lib/format'
@@ -63,17 +63,17 @@ export function PackingListsTab({
       </div>
       <Table
         columns={[
-          { title: 'Ref #', sortable: true },
+          { title: 'Ref #', type: 'reference', sortable: true },
           { title: 'Customer' },
           { title: 'Contact' },
-          { title: 'Packages' },
-          { title: 'CBM', align: 'right' },
-          { title: 'Weight', align: 'right' },
-          { title: 'Status' },
-          { title: 'Submitted' },
-          { title: '', width: '60px' },
+          { title: 'Packages', type: 'number' },
+          { title: 'Volume (CBM)', type: 'number' },
+          { title: 'Weight (kg)', type: 'number' },
+          { title: 'Status', type: 'status' },
+          { title: 'Submitted', type: 'date' },
         ]}
         rows={sortedPackingLists.map((pl) => ({
+          onOpen: () => navigate(`/packing-lists/${pl.id}`),
           cells: [
             <Mono key="ref" color="var(--color-ink)">
               {pl.reference ?? '—'}
@@ -95,7 +95,6 @@ export function PackingListsTab({
             <span key="submitted" className={styles.metaText}>
               {formatDate(pl.created_at, 'short')}
             </span>,
-            <ViewLink key="view" onClick={() => navigate(`/packing-lists/${pl.id}`)} />,
           ],
         }))}
         emptyState={<EmptyState compact title="No packing lists yet" body="Add one to get started." />}
@@ -141,7 +140,7 @@ export function TrackingTab({
         )}
         <Table
           columns={[
-            { title: 'Timestamp' },
+            { title: 'Timestamp', type: 'date' },
             { title: 'Event' },
             { title: 'Status change' },
             { title: 'Updated by' },

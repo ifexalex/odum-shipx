@@ -168,10 +168,10 @@ export function MyShipmentDetail(): JSX.Element {
           <Table
             dense
             columns={[
-              { title: 'Tag' },
+              { title: 'Tag', type: 'reference' },
               { title: 'Description' },
-              { title: 'Weight', align: 'right' },
-              { title: 'CBM', align: 'right' },
+              { title: 'Weight (kg)', type: 'number' },
+              { title: 'Volume (CBM)', type: 'number' },
             ]}
             rows={pl.items.map((item) => ({
               cells: [

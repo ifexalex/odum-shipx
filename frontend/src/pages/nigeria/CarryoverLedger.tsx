@@ -138,10 +138,10 @@ export function CarryoverLedger(): JSX.Element {
           columns={[
             { title: 'Customer' },
             { title: 'Source' },
-            { title: 'Amount (₦)', align: 'right' },
-            { title: 'Status' },
-            { title: 'Created' },
-            { title: '', width: '100px' },
+            { title: 'Amount (₦)', type: 'money' },
+            { title: 'Status', type: 'status' },
+            { title: 'Created', type: 'date' },
+            { title: '', type: 'action', width: '100px' },
           ]}
           rows={carryovers.map((c) => ({
             cells: [

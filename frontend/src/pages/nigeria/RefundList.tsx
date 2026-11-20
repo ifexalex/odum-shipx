@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom'
 import { type RefundStatus } from '../../api/refunds'
 import { refundTypeLabel } from '../../api/refundsRules'
 import { useRefundList } from '../../hooks/useRefunds'
-import {  Card, Chip, ListFooter, Mono, StatusBadge, Table, ViewLink, EmptyState, ErrorState } from '../../design/components'
+import {  Card, Chip, ListFooter, Mono, StatusBadge, Table, EmptyState, ErrorState } from '../../design/components'
 import { useTopBarSlot } from '../../shell/TopBarContext'
 import styles from './RefundList.module.css'
 import { formatDate, formatNgn } from '../../lib/format'
@@ -51,14 +51,14 @@ export function RefundList(): JSX.Element {
           <Table
             columns={[
               { title: 'Type' },
-              { title: 'Amount requested (₦)', align: 'right' },
-              { title: 'Amount approved (₦)', align: 'right' },
+              { title: 'Amount requested (₦)', type: 'money' },
+              { title: 'Amount approved (₦)', type: 'money' },
               { title: 'Customer preference' },
-              { title: 'Status' },
-              { title: 'Requested' },
-              { title: '', width: '60px' },
+              { title: 'Status', type: 'status' },
+              { title: 'Requested', type: 'date' },
             ]}
             rows={refunds.map((r) => ({
+              onOpen: () => navigate(`/refunds/${r.id}`, { state: { refund: r } }),
               cells: [
                 <span key="type">{refundTypeLabel(r.refund_type)}</span>,
                 <Mono key="req">{formatNgn(r.amount_requested_ngn)}</Mono>,
@@ -71,7 +71,6 @@ export function RefundList(): JSX.Element {
                 </span>,
                 <StatusBadge key="status" kind="refund" status={r.status} />,
                 <span key="date">{formatDate(r.created_at)}</span>,
-                <ViewLink key="view" onClick={() => navigate(`/refunds/${r.id}`, { state: { refund: r } })} />,
               ],
             }))}
             loading={loading}
@@ -85,6 +84,7 @@ export function RefundList(): JSX.Element {
         loading={isFetchingMore}
         onLoadMore={loadMore}
         noun="refund requests"
+        nounOne="refund request"
       />
       </div>
     </div>

@@ -130,10 +130,10 @@ export function OnboardingRequests(): JSX.Element {
               { title: 'Company' },
               { title: 'Contact' },
               { title: 'Route' },
-              { title: 'Volume' },
-              { title: 'Status' },
-              { title: 'Received' },
-              { title: '', width: '280px' },
+              { title: 'Volume (CBM)', type: 'number' },
+              { title: 'Status', type: 'status' },
+              { title: 'Received', type: 'date' },
+              { title: '', type: 'action', width: '280px' },
             ]}
             rows={visible.map((r) => ({
               cells: [
