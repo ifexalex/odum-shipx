@@ -156,6 +156,11 @@
   --layer-modal: 40;
   --layer-toast: 50;
 
+  /* Room the shell leaves at the bottom of the content for a page's fixed action bar on a phone (FD-35): 0 here,
+     72px while a page shows one (PageHeader.module.css), and the device's own bottom inset (home indicator). */
+  --app-bottom-bar: 0px;
+  --safe-area-bottom: env(safe-area-inset-bottom, 0px);
+
   /* Dialog widths (FD-12): alert/confirm, form, long form, detail. */
   --dialog-sm: 480px;
   --dialog-md: 560px;

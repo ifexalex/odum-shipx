@@ -13,6 +13,9 @@
  * It also fails a page with an unnamed control (FD-50): a button, link, input, select, switch or checkbox whose
  * accessible name is empty (no label, aria-label, text or title).
  *
+ * And, inside the app's layouts, a page whose title starts more than 140 px from the top of the screen (FD-35): the
+ * top bar, a notice and the breadcrumb together must leave the page itself in view.
+ *
  * Exit code 1 when any page fails.
  */
 import { chromium } from 'playwright'
@@ -113,17 +116,26 @@ for (const WIDTH of WIDTHS) {
       }
       return out.slice(0, 6)
     })
-    const bad = found.docOverflow > 1 || found.offenders.length || found.sideways.some((x) => !x.table) || unnamed.length
+    // Where the page starts: its PageHeader or ResultScreen (`data-page-start`) inside the layout's <main>. Pages
+    // without the layout (sign-in, print) are skipped.
+    const titleTop = await page.evaluate(() => {
+      const start = document.querySelector('main [data-page-start]')
+      return start ? Math.round(start.getBoundingClientRect().top) : null
+    })
+    const late = titleTop !== null && titleTop > 140
+    const bad =
+      found.docOverflow > 1 || found.offenders.length || found.sideways.some((x) => !x.table) || unnamed.length || late
     if (bad) {
       failures++
       console.log(`FAIL ${r.path} (${role ?? 'public'})`)
       for (const o of found.offenders) console.log(`     sticks out: ${o.el} to ${o.right}px "${o.text}"`)
       for (const x of found.sideways.filter((y) => !y.table)) console.log(`     scrolls sideways: ${x.el} +${x.by}px; ${(x.culprits || []).join('; ')}`)
       for (const u of unnamed) console.log(`     unnamed control: ${u}`)
+      if (late) console.log(`     page starts ${titleTop}px down (at most 140)`)
     }
     await page.close()
   }
 }
 await browser.close()
-console.log(failures ? `${failures} page(s) fail` : 'every page fits, and every control is named')
+console.log(failures ? `${failures} page(s) fail` : 'every page fits, every control is named, every page starts within 140 px')
 process.exit(failures ? 1 : 0)

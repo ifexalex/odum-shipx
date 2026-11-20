@@ -31,8 +31,11 @@ export function ConfigLayout({ children }: { children: ReactNode }): JSX.Element
 
   return (
     <div className={styles.layout}>
-      <div className={styles.navCol}>
+      <nav className={styles.navCol} aria-label="Settings">
         <Card padding="default">
+          <p className={styles.navHeading} aria-hidden="true">
+            All settings
+          </p>
           {SUB_NAV.map((item) => {
             const isActive = pathname === item.path
             return (
@@ -59,7 +62,7 @@ export function ConfigLayout({ children }: { children: ReactNode }): JSX.Element
             )
           })}
         </Card>
-      </div>
+      </nav>
       <div className={styles.content}>{children}</div>
     </div>
   )

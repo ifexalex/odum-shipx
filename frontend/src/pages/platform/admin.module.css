@@ -31,7 +31,7 @@
   /* Cards side by side share one height (FD-10). */
   align-items: stretch;
 }
-@container sxapp (max-width: 1080px) {
+@container sxapp (max-width: 1200px) {
   .dashCols {
     grid-template-columns: 1fr;
   }

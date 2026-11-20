@@ -74,6 +74,30 @@
   .actions {
     justify-content: flex-start;
   }
+
+  /* The primary action becomes a bar fixed to the bottom of the screen (FD-35): always in reach of a thumb, however
+     far the page scrolls. The shell pads its content by --app-bottom-bar so nothing hides behind it. */
+  .primary {
+    position: fixed;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    z-index: var(--layer-sticky);
+    padding: var(--space-3) var(--space-4) calc(var(--space-3) + var(--safe-area-bottom));
+    background: var(--color-surface);
+    border-top: 1px solid var(--color-line);
+    box-shadow: var(--shadow-popover);
+  }
+
+  .primary > * {
+    width: 100%;
+  }
+}
+
+@media (max-width: 600px) {
+  :global(body):has([data-sticky-action]) {
+    --app-bottom-bar: 72px; /* scale-exempt: the fixed action bar's height (a 40px button and its padding) */
+  }
 }
 
 /* Focus lands here after a navigation (FD-48); the heading is not a control, so no ring. */

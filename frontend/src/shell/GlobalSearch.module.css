@@ -166,7 +166,7 @@
   right: 0;
 }
 
-@container sxapp (max-width: 1080px) {
+@container sxapp (max-width: 1200px) {
   .box {
     width: 220px;
   }

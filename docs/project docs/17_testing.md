@@ -2501,3 +2501,8 @@ Found by running them: **a real bug** (invoice generation set a used credit to `
 ## The menu (FD-15, 2026-11-20)
 
 - `frontend/src/shell/navConfig.test.ts` (+20): for every role, at most one item lit on every route it can open; the deepest item wins (`/claims/missing-items`, `/packing-lists/new`, `/billing/disputes/:id`); no two items share an icon; sentence case and no create pages; the tenant admin's groups. `TopBar.test.tsx` (+2) account menu; `Sidebar.test.tsx`, `AppSidebar.test.tsx`, `StaffLayout.test.tsx` updated (no sidebar sign-out; role switch through the account menu).
+
+## The staff layout on a phone (FD-35, 2026-11-20)
+
+- `frontend/src/design/breakpoints.test.ts` (2): every `@media` and `@container sxapp` rule uses 600, 860 or 1200 px. Proved with a 640 px rule.
+- `frontend/scripts/mobile-audit.mjs` (route audit): also fails a page whose header starts more than 140 px from the top at phone widths.

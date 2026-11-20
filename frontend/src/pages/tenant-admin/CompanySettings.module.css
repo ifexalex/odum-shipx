@@ -22,7 +22,7 @@
   min-width: 0;
 }
 
-@container sxapp (max-width: 1240px) {
+@container sxapp (max-width: 1200px) {
   .grid {
     grid-template-columns: 1fr;
   }
@@ -37,7 +37,7 @@
   grid-template-columns: 1fr 1fr;
   gap: var(--space-4);
 }
-@container sxapp (max-width: 560px) {
+@container sxapp (max-width: 600px) {
   .grid2 {
     grid-template-columns: 1fr;
   }
@@ -85,7 +85,7 @@
   width: 160px;
   flex-shrink: 0;
 }
-@container sxapp (max-width: 560px) {
+@container sxapp (max-width: 600px) {
   .logoRow {
     flex-wrap: wrap;
   }

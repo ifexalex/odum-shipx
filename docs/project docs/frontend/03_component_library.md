@@ -389,3 +389,4 @@ Every page is titled one way. Before this, 18 pages used `PageHeader` (which ren
 - **Catalog**: the catalog's own header is a `PageHeader` with every slot filled, including the overflow menu.
 
 - **`MenuButton` `trigger`** (FD-15): a custom button in place of the "more" icon button; it must render a `<button>` and spread the `MenuTriggerProps` it is given (`aria-haspopup`, `aria-expanded`, `aria-controls`, `onClick`, `onKeyDown`). The top bar's account button uses it. `Sidebar` lost its `user` and `onLogout` props.
+- **`PageHeader` on a phone** (FD-35): below 600 px the `primary` action is a bar fixed to the bottom of the screen (`data-sticky-action`); `body:has([data-sticky-action])` sets `--app-bottom-bar` so the shells and toasts make room. `PageHeader` and `ResultScreen` roots carry `data-page-start`, which the phone audit measures.

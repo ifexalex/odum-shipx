@@ -63,7 +63,7 @@ export function PageHeader({ title, status, meta, primary, actions, more, moreLa
   const heading = useRef<HTMLHeadingElement>(null)
   useFocusOnNavigate(heading)
   return (
-    <div className={styles.header}>
+    <div className={styles.header} data-page-start="">
       <div className={styles.titleBlock}>
         <div className={styles.titleRow}>
           <h1 ref={heading} tabIndex={-1} className={styles.title}>
@@ -89,7 +89,12 @@ export function PageHeader({ title, status, meta, primary, actions, more, moreLa
       {hasActions && (
         <div className={styles.actions}>
           {actions}
-          {primary}
+          {isShown(primary) && (
+            // On a phone the primary action is a bar fixed to the bottom of the screen, always in reach (FD-35).
+            <div className={styles.primary} data-sticky-action="">
+              {primary}
+            </div>
+          )}
           {more && more.length > 0 && <MenuButton items={more} label={moreLabel} />}
         </div>
       )}

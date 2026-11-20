@@ -19,6 +19,19 @@
   padding: var(--space-8) var(--space-12);
 }
 
+/* A 16 px gutter on a phone (it kept 48 px, a quarter of a 375 px screen), room below for the fixed action bar. */
+@container sxapp (max-width: 860px) {
+  .main {
+    padding: var(--space-6) var(--space-6) calc(var(--space-6) + var(--app-bottom-bar));
+  }
+}
+
+@container sxapp (max-width: 600px) {
+  .main {
+    padding: var(--space-4) var(--space-4) calc(var(--space-4) + var(--app-bottom-bar));
+  }
+}
+
 .inner {
   max-width: 1180px;
   margin: 0 auto;

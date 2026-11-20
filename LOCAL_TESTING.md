@@ -1324,7 +1324,7 @@ With no `ENCRYPTION_KMS_KEY_ID` / `ENCRYPTION_KEY_VAULT_KEY_ID`, `encrypt_field`
 
 ## Layout-shift check (FD-20, 2026-11-19)
 
-With `make dev` (API :3000) and Vite (:5173) running: `cd frontend && node scripts/layout-shift.mjs` loads six sampled pages with real data and prints each one's cumulative layout shift; it exits 1 if any is above 0.1. The phone audit (`node scripts/mobile-audit.mjs`) now also fails a page with an unnamed control (FD-50).
+With `make dev` (API :3000) and Vite (:5173) running: `cd frontend && node scripts/layout-shift.mjs` loads six sampled pages with real data and prints each one's cumulative layout shift; it exits 1 if any is above 0.1. The phone audit (`node scripts/mobile-audit.mjs`) now also fails a page with an unnamed control (FD-50). Since FD-35 (2026-11-20) it also fails a page inside the app's layouts whose header (`data-page-start`) starts more than 140 px from the top of the screen.
 
 ## Split words, cut-off text and double frames (FD-10, 2026-11-20)
 

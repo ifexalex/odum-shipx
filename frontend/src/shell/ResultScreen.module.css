@@ -62,3 +62,12 @@
 .title:focus {
   outline: none;
 }
+
+/* On a phone the result sits at the top, in view at once, rather than centred below the fold (FD-35). */
+@container sxapp (max-width: 600px) {
+  .page {
+    min-height: 0;
+    justify-content: flex-start;
+    padding-top: var(--space-4);
+  }
+}

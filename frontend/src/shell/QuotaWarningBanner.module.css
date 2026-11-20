@@ -39,3 +39,9 @@
   outline-offset: 2px;
   border-radius: var(--radius-sm);
 }
+
+@container sxapp (max-width: 600px) {
+  .bar {
+    display: none;
+  }
+}

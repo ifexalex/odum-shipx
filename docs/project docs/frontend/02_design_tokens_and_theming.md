@@ -175,8 +175,8 @@ Implementation: a `ThemeProvider` that writes CSS custom property overrides onto
 **Added 2026-09-20** (previously informal, never written down — codified during
 the app-wide responsive pass).
 
-- **860px is the one mobile breakpoint** used everywhere new responsive work
-  touches. Both app shells (`PageShell.module.css` for staff/admin,
+- ~~**860px is the one mobile breakpoint** used everywhere new responsive work
+  touches.~~ *Superseded 2026-11-20 (FD-35): three breakpoints, see below.* Both app shells (`PageShell.module.css` for staff/admin,
   `CustShell.module.css` for the customer portal) declare
   `container-type: inline-size; container-name: sxapp` on their shell root, so
   every descendant component queries the **shell's own measured width**, not
@@ -198,6 +198,12 @@ the app-wide responsive pass).
   panel are the three mobile hygiene rules applied wherever a modal or form
   input was touched in the 2026-09-20 pass — see `Field.module.css` and the
   modal pattern in `03_component_library.md`.
+
+### Three breakpoints (FD-35, 2026-11-20)
+
+The app changes layout at **600, 860 and 1200 px** only: phone, tablet (the sidebar becomes a drawer), desktop. Styles had switched at eleven widths (420, 520, 560, 600, 720, 760, 768, 860, 920, 1080, 1240), so neighbouring parts of a page changed at different widths. Every `@media` rule and every `@container sxapp` rule uses one of the three (`min-width` takes the next pixel: 601, 861, 1201); the 1080 and 1240 rules became 1200, 720 to 920 became 860, 420 to 560 became 600, and the modal goes full-screen below 600 (it was 768). Container queries on a component's own width (a table's `cardBreakpoint`, a stat card too narrow for its icon) are that component's behaviour and are not counted. Guard: `src/design/breakpoints.test.ts` (proved with a 640 px rule).
+
+Tokens added with it: `--app-bottom-bar` (0, or 72px while a page shows its fixed action bar on a phone; the shells pad their content by it and toasts sit above it) and `--safe-area-bottom` (the device's bottom inset).
 
 ## Acceptance Criteria
 

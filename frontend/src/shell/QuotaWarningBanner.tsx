@@ -3,7 +3,8 @@
  * near or reached, with a link to the plan. Other roles meet a limit through the limit-reached dialog when an action is
  * blocked, so they are not shown a warning they cannot act on all day.
  *
- * The admin can dismiss it for the session. It comes back when the situation changes: another dimension, or a
+ * Not on a phone, where the top of the screen belongs to the page itself (FD-35); there the dashboard's plan-usage panel
+ * marks the limit ("At limit"). The admin can dismiss it for the session. It comes back when the situation changes: another dimension, or a
  * warning that becomes a reached limit.
  */
 import { useState, type JSX } from 'react'

@@ -122,7 +122,7 @@
   box-shadow: var(--shadow-focus-ring);
 }
 
-@media (max-width: 768px) {
+@media (max-width: 600px) {
   .overlay {
     padding: 0;
   }

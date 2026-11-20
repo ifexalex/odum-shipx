@@ -18,12 +18,31 @@
   min-width: 0;
 }
 
+/* Narrow: the page first, the list of settings after it (FD-35); nine entries above the page pushed it off the
+   screen. The breadcrumb's "Settings" link leads back here. */
 @container sxapp (max-width: 860px) {
   .layout {
     grid-template-columns: 1fr;
   }
   .navCol {
     position: static;
+    order: 2;
+  }
+}
+
+.navHeading {
+  display: none;
+  margin: 0 0 var(--space-2);
+  font-size: var(--text-xs);
+  font-weight: 700;
+  letter-spacing: var(--tracking-label);
+  text-transform: uppercase;
+  color: var(--color-ink-4);
+}
+
+@container sxapp (max-width: 860px) {
+  .navHeading {
+    display: block;
   }
 }
 

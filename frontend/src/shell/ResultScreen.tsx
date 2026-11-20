@@ -26,7 +26,7 @@ export function ResultScreen({ tone, title, children, actions }: ResultScreenPro
   const heading = useRef<HTMLHeadingElement>(null)
   useFocusOnNavigate(heading)
   return (
-    <div className={styles.page}>
+    <div className={styles.page} data-page-start="">
       <div className={[styles.icon, styles[tone]].join(' ')} aria-hidden="true">
         <Icon name={ICON[tone]} size={32} stroke={2.4} />
       </div>

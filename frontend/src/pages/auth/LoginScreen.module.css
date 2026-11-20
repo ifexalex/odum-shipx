@@ -241,7 +241,7 @@
 /* Prototype (auth-screens.jsx @container sxauth): brand panel hides at 920px,
    two-column form grids collapse at 560px. The auth frame is full-viewport, so
    media queries are equivalent to the prototype's container queries here. */
-@media (max-width: 920px) {
+@media (max-width: 860px) {
   .brandPanel {
     display: none;
   }

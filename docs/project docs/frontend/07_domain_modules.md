@@ -1907,3 +1907,16 @@ Every route has exactly one top-level heading, it names the page, and no level i
 - **Now** (`shell/ShellNotice.tsx`): one notice at the top of the content column, above the breadcrumb, in this order: impersonation (still across the top of the app, `ImpersonationBanner`; nothing else shows with it), tenant blocked (the full-page gate), the active announcement, the plan-limit notice. Dismissing the announcement lets the plan notice show. Used by both layouts.
 - **Plan-limit notice** (`shell/QuotaWarningBanner.tsx`): one line, "Users: 14 of 10. You have reached your Starter plan's limit." (error) or "… used, close to your … limit." (from 80%, warning), a "View plan" link to `/dashboard#plan` (the plan-usage panel scrolls into view; the app scrolls inside its content area, so the browser's own jump does nothing), and a dismiss button. Tenant admin only; other roles meet a limit through the existing limit-reached dialog when an action is blocked. Dismissed for the session (`sessionStorage`, keyed by dimension and level), so it shows again when a warning becomes a reached limit or another dimension is affected.
 - Tests: `shell/ShellNotice.test.tsx` (7).
+
+## The staff layout on a phone (FD-35, 2026-11-20)
+
+Measured at 375 px on every route with real records (`frontend/scripts/mobile-audit.mjs`, which now also fails a page whose `PageHeader` or `ResultScreen` starts more than 140 px from the top).
+
+- **Top bar** is one row at every width (FD-14 took the title and page actions out of it; FD-15 put the role switch in the account menu).
+- **Primary action** (`PageHeader` `primary`) is a bar fixed to the bottom of the screen below 600 px, full width, above the device's home indicator; the content and toasts make room for it (`--app-bottom-bar`). Secondary actions and the overflow menu stay under the title.
+- **Plan-limit notice** is not shown on a phone (it wrapped to three lines and pushed every admin page down to 166-198 px); the dashboard's plan-usage panel marks the limit there.
+- **Settings**: the list of nine settings sat above each settings page on a narrow screen, so the page started 768 px down; below 860 px it now follows the page, headed "All settings" (a `nav` labelled Settings). The breadcrumb's "Settings" link leads back to it.
+- **Result pages** (payment received, failed; claim filed) sit at the top on a phone instead of centred below the fold.
+- **Customer portal** kept 48 px side padding at every width (a quarter of a 375 px screen); it is 24 px below 860 px and 16 px below 600 px.
+- **Three breakpoints** (600, 860, 1200) across the app's styles; see `02_design_tokens_and_theming.md`.
+- Not done here: filter bars collapsing to search plus a "Filters" sheet comes with the shared `FilterBar` (FD-18).

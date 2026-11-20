@@ -49,7 +49,7 @@
   color: var(--color-ink-4);
 }
 
-@container sxapp (max-width: 560px) {
+@container sxapp (max-width: 600px) {
   .row {
     grid-template-columns: 1fr 80px;
   }

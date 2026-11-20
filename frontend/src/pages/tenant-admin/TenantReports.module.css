@@ -266,12 +266,7 @@
 }
 
 /* The two report columns stack when there is no room for both (a phone, a narrow window). */
-@container sxapp (max-width: 720px) {
-  .grid2 {
-    grid-template-columns: 1fr;
-  }
-}
-@media (max-width: 720px) {
+@container sxapp (max-width: 860px) {
   .grid2 {
     grid-template-columns: 1fr;
   }
