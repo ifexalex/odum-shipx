@@ -2481,3 +2481,7 @@ Found by running them: **a real bug** (invoice generation set a used credit to `
 - `design/components/MenuButton.test.tsx` (6): named button with `aria-haspopup`/`aria-expanded`, focus on the first item; choosing runs the action, closes and refocuses the button; arrow keys wrap, End, Escape; click outside closes; nothing rendered with no items; a destructive item disabled in a read-only session.
 - `shell/TopBar.test.tsx`, `shell/StaffLayout.test.tsx`: the top bar has no heading, breadcrumb or page actions; the layout adds no `<h1>` and puts the breadcrumb at the top of `main`, ahead of the page, before the page has loaded.
 - Page tests updated for the record titles ("Container MSCU1234567", "Invoice …", "Damage claim DC-…") and for actions now in the overflow menu (Apply carryover, Split note). `TopBarTestWrapper` and the per-file `TopBarContext` fixtures were deleted: actions render in the page now.
+
+## Tab titles (FD-48, 2026-11-20)
+
+- `frontend/src/shell/documentTitle.test.tsx` (9): tab title order (record, parents, tenant), the route's name before a record loads, top-level and public titles, a distinct title for every staff, customer and shell-less route, sentence-case route titles, `useDocumentTitle` sets `document.title`, and focus moves to the new page's heading after a navigation but not on first load. Mutation-checked (two staff pages given one title fail).

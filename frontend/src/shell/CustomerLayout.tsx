@@ -6,6 +6,7 @@ import { useCustomerBanner, useCustomerNotifUnreadCount } from '../hooks/useCust
 import { AnnouncementBanner } from './AnnouncementBanner'
 import { Breadcrumb } from './Breadcrumb'
 import { BreadcrumbContext, breadcrumbTrail, useBreadcrumbLabelState } from './breadcrumbs'
+import { useDocumentTitle } from './documentTitle'
 import { CustomerNotificationPanel } from './CustomerNotificationPanel'
 import { CustShell } from './CustShell'
 import { CustomerTopNav } from './CustomerTopNav'
@@ -35,6 +36,7 @@ export function CustomerLayout({ children }: CustomerLayoutProps): JSX.Element |
   const { data: banner } = useCustomerBanner(!!session)
   const breadcrumbLabels = useBreadcrumbLabelState()
   const { pathname } = useLocation()
+  useDocumentTitle(session?.roles ?? [], breadcrumbLabels.labels)
   if (!session) return null
   const trail = breadcrumbTrail(pathname, session.roles, breadcrumbLabels.labels)
 

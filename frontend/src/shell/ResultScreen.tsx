@@ -7,8 +7,9 @@
  *     Your payment has been confirmed.
  *   </ResultScreen>
  */
-import type { JSX, ReactNode } from 'react'
+import { useRef, type JSX, type ReactNode } from 'react'
 import { Icon, type IconName } from '../design/components'
+import { useFocusOnNavigate } from './headingFocus'
 import styles from './ResultScreen.module.css'
 
 export interface ResultScreenProps {
@@ -22,12 +23,16 @@ export interface ResultScreenProps {
 const ICON: Record<ResultScreenProps['tone'], IconName> = { success: 'check', warning: 'alert', error: 'x' }
 
 export function ResultScreen({ tone, title, children, actions }: ResultScreenProps): JSX.Element {
+  const heading = useRef<HTMLHeadingElement>(null)
+  useFocusOnNavigate(heading)
   return (
     <div className={styles.page}>
       <div className={[styles.icon, styles[tone]].join(' ')} aria-hidden="true">
         <Icon name={ICON[tone]} size={32} stroke={2.4} />
       </div>
-      <h1 className={styles.title}>{title}</h1>
+      <h1 ref={heading} tabIndex={-1} className={styles.title}>
+        {title}
+      </h1>
       {children && <p className={styles.body}>{children}</p>}
       {actions && <div className={styles.actions}>{actions}</div>}
     </div>

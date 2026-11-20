@@ -10,12 +10,13 @@
  *     more={[{ label: 'Cancel invoice', tone: 'danger', onSelect: … }]}
  *   />
  *
- * It holds the page's only top-level heading (FD-49), so a page never writes its own `<h1>`, and the page's actions,
+ * After an in-app navigation, keyboard focus moves to its heading (FD-48). It holds the page's only top-level heading (FD-49), so a page never writes its own `<h1>`, and the page's actions,
  * so the top bar keeps only global controls. The breadcrumb above it comes from the layout (FD-45), which renders it
  * even while the page is still loading.
  */
-import { Fragment, type JSX, type ReactNode } from 'react'
+import { Fragment, useRef, type JSX, type ReactNode } from 'react'
 import { MenuButton, type MenuItem } from '../design/components'
+import { useFocusOnNavigate } from './headingFocus'
 import styles from './PageHeader.module.css'
 
 export interface PageHeaderProps {
@@ -59,11 +60,15 @@ const isShown = (fact: ReactNode): boolean => fact !== null && fact !== undefine
 export function PageHeader({ title, status, meta, primary, actions, more, moreLabel }: PageHeaderProps): JSX.Element {
   const facts = (Array.isArray(meta) ? meta : [meta]).filter(isShown)
   const hasActions = isShown(primary) || isShown(actions) || (more?.length ?? 0) > 0
+  const heading = useRef<HTMLHeadingElement>(null)
+  useFocusOnNavigate(heading)
   return (
     <div className={styles.header}>
       <div className={styles.titleBlock}>
         <div className={styles.titleRow}>
-          <h1 className={styles.title}>{titleWords(title)}</h1>
+          <h1 ref={heading} tabIndex={-1} className={styles.title}>
+            {titleWords(title)}
+          </h1>
           {status}
         </div>
         {facts.length > 0 && (

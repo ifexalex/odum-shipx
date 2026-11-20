@@ -75,3 +75,8 @@
     justify-content: flex-start;
   }
 }
+
+/* Focus lands here after a navigation (FD-48); the heading is not a control, so no ring. */
+.title:focus {
+  outline: none;
+}

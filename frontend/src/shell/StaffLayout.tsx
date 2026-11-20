@@ -20,6 +20,7 @@ import { searchPlaceholderFor } from './searchRoutes'
 import { TopBar } from './TopBar'
 import { Breadcrumb } from './Breadcrumb'
 import { BreadcrumbContext, breadcrumbTrail, useBreadcrumbLabelState } from './breadcrumbs'
+import { useDocumentTitle } from './documentTitle'
 
 export interface StaffLayoutProps {
   children: ReactNode
@@ -60,6 +61,9 @@ export function StaffLayout({ children }: StaffLayoutProps): JSX.Element | null 
   // Same gate as the bell above — GET /v1/notifications/staff/banner 403s
   // for platform_admin (no real tenant context).
   const { data: banner } = useStaffBanner(!!session && !isPlatformShell)
+
+  // The tab names the page, where it lives and whose account it is (FD-48). Before the early return: it is a hook.
+  useDocumentTitle(session?.roles ?? [], breadcrumbLabels.labels, isPlatformShell ? null : branding?.display_name)
 
   // Ground-truth fix (2026-07-20): the active role is UI-only state, never
   // persisted (no localStorage/sessionStorage in src/auth/ — see
