@@ -61,7 +61,7 @@ export function MyBilling(): JSX.Element {
               onKeyDown={(e) => e.key === 'Enter' && navigate(`/my-billing/${b.id}`, { state: { billing: b } })}
             >
               <div className={styles.cardLeft}>
-                <p className={styles.cardTitle}>{b.container_number ?? b.container_id}</p>
+                <p className={styles.cardTitle}>{b.container_number ?? b.invoice_number ?? 'Invoice'}</p>
                 <div className={styles.cardMeta}>
                   <span>Total due: <Mono>{formatNgn(b.total_due_ngn)}</Mono></span>
                   <span>Paid: <Mono>{formatNgn(b.total_paid_ngn)}</Mono></span>

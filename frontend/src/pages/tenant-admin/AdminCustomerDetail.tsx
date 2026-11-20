@@ -30,7 +30,7 @@ import { Action, Badge, Banner, Button, Card, DialogGuard, Field, Kvp, Mono, Sta
 import { SectionHead } from '../../shell/SectionHead'
 import { Tabs } from '../../shell/Tabs'
 import styles from './admin.module.css'
-import { formatDate, formatDateTime, formatNgn } from '../../lib/format'
+import { formatCbm, formatDate, formatDateTime, formatNgn, plural } from '../../lib/format'
 import { useBreadcrumbLabel } from '../../shell/breadcrumbs'
 import { PageHeader } from '../../shell/PageHeader'
 import { toast } from '../../design/toast'
@@ -150,22 +150,19 @@ function ProfileTab({ customer, shipments, billing, claims, onSaved }: ProfileTa
     }
   }
 
+  const missing = customer.anonymised_at ? <em>Erased</em> : <span className={styles.notSet}>Not set</span>
   return (
     <>
       <div className={styles.profileGrid}>
         <Card padding="default">
           <SectionHead title="Contact" />
           <div className={styles.spacer8} />
-          <Kvp label="Full name" value={customer.name ?? <em>Erased</em>} />
-          <Kvp label="Email" value={customer.email ? customer.email : <em>Erased</em>} />
-          <Kvp label="Phone" value={customer.phone ? <Mono>{customer.phone}</Mono> : <em>Erased</em>} />
-          <Kvp label="WhatsApp" value={customer.whatsapp ? <Mono>{customer.whatsapp}</Mono> : '—'} />
-          <Kvp label="Address" value={customer.address ?? <em>Erased</em>} />
-          <Kvp
-            label="Customer ID"
-            value={<span className={styles.monoValue}>{customer.id}</span>}
-            divider={false}
-          />
+          {/* "Erased" only after a GDPR erasure; a detail never given reads "Not set" (FD-17). No database id. */}
+          <Kvp label="Full name" value={customer.name ?? missing} />
+          <Kvp label="Email" value={customer.email || missing} />
+          <Kvp label="Phone" value={customer.phone ? <Mono>{customer.phone}</Mono> : missing} />
+          <Kvp label="WhatsApp" value={customer.whatsapp ? <Mono>{customer.whatsapp}</Mono> : missing} />
+          <Kvp label="Address" value={customer.address || missing} divider={false} />
         </Card>
 
         <Card padding="default">
@@ -242,7 +239,7 @@ function ShipmentsTab({ customer, shipments, onOpen }: { customer: Customer; shi
             <Mono key="cont">{pl.container_number ?? '—'}</Mono>,
             <StatusBadge key="status" kind="packingList" status={pl.status} />,
             <Mono key="cartons">{pl.carton_count}</Mono>,
-            <Mono key="cbm">{Number(pl.total_cbm).toFixed(3)}</Mono>,
+            <Mono key="cbm">{formatCbm(pl.total_cbm)}</Mono>,
             <span key="created" className={styles.smallMuted}>{formatDate(pl.created_at)}</span>,
           ],
         }))}
@@ -261,7 +258,7 @@ function BillingTab({ billing, onOpen }: { billing: Billing[] | null; onOpen: (b
   return (
     <>
       <div className={styles.statsRow}>
-        <StatCard label="Total billed" value={totalBilled != null ? fmtNgn(totalBilled) : '—'} icon="coin" sublabel={billing ? `across ${billing.length} record(s)` : undefined} />
+        <StatCard label="Total billed" value={totalBilled != null ? fmtNgn(totalBilled) : '—'} icon="coin" sublabel={billing ? `across ${plural(billing.length, 'invoice')}` : undefined} />
         <StatCard label="Total paid" value={totalPaid != null ? fmtNgn(totalPaid) : '—'} icon="check" />
         <StatCard label="Outstanding" value={outstanding != null ? fmtNgn(outstanding) : '—'} icon="warn" />
       </div>

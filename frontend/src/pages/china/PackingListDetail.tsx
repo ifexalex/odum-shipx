@@ -11,9 +11,10 @@ import { useSession } from '../../auth/useSession'
 import { Badge, Banner, Button, Card, DialogGuard, ExportButton, Field, Mono, StatusBadge, Table, IconButton, CellInput, PageSkeleton, EmptyState, ErrorState } from '../../design/components'
 import { SectionHead } from '../../shell/SectionHead'
 import styles from './PackingListDetail.module.css'
-import { formatDate } from '../../lib/format'
+import { formatDate, formatKg, plural } from '../../lib/format'
 import { useBreadcrumbLabel } from '../../shell/breadcrumbs'
 import { PageHeader } from '../../shell/PageHeader'
+import { RecordLink } from '../../shell/RecordLink'
 import { toast } from '../../design/toast'
 
 interface RejectModalProps {
@@ -240,8 +241,14 @@ export function PackingListDetail(): JSX.Element {
         title={pl.reference ? `Packing list ${pl.reference}` : 'Packing list'}
         status={<StatusBadge kind="packingList" status={pl.status} />}
         meta={[
-          pl.customer_name,
-          <Mono>{pl.container_number ?? pl.container_id}</Mono>,
+          pl.customer_name && (
+            <RecordLink to={`/admin/customers/${pl.customer_id}`}>{pl.customer_name}</RecordLink>
+          ),
+          pl.container_number && (
+            <RecordLink to={`/containers/${pl.container_id}`}>
+              <Mono>{pl.container_number}</Mono>
+            </RecordLink>
+          ),
           `${packageSummary}, ${formatCbm(pl.total_cbm)} CBM`,
           pl.arrival_warehouse_name && `To ${pl.arrival_warehouse_name}`,
           `Submitted ${formatDate(pl.created_at)}`,
@@ -348,7 +355,7 @@ export function PackingListDetail(): JSX.Element {
           <SectionHead
             title="Items"
             sub={editing
-              ? `${editItems.length} item(s)`
+              ? plural(editItems.length, 'item')
               : `${packageSummary} · ${pl.total_weight_kg} kg · ${formatCbm(pl.total_cbm)} CBM`}
           />
           {editing && (
@@ -429,7 +436,7 @@ export function PackingListDetail(): JSX.Element {
                       />
                     </div>,
                     <Mono key="cbm" color="var(--color-success)">
-                      {liveCbm != null ? liveCbm.toFixed(3) : '—'}
+                      {liveCbm != null ? formatCbm(liveCbm) : '—'}
                     </Mono>,
                     <CellInput
                         label={`Declared value (USD), item ${index + 1}`}
@@ -478,7 +485,7 @@ export function PackingListDetail(): JSX.Element {
         {!editing && (
           <div className={styles.totalsRow}>
             <span>{packageSummary}</span>
-            <span>· <span className={styles.totalsLabel}>Weight:</span> <Mono>{pl.total_weight_kg} kg</Mono></span>
+            <span>· <span className={styles.totalsLabel}>Weight:</span> <Mono>{formatKg(pl.total_weight_kg)} kg</Mono></span>
             <span>· <span className={styles.totalsLabel}>CBM:</span> <Mono color="var(--color-success)">{formatCbm(pl.total_cbm)}</Mono></span>
           </div>
         )}

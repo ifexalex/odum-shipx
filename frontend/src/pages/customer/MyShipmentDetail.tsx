@@ -28,7 +28,7 @@ import { SectionHead } from '../../shell/SectionHead'
 import { CustomerStepper } from './CustomerStepper'
 import { ReleaseNoteCard } from './ReleaseNoteCard'
 import styles from './customer.module.css'
-import { formatNgn } from '../../lib/format'
+import { formatCbm, formatKg, formatNgn } from '../../lib/format'
 import { useBreadcrumbLabel } from '../../shell/breadcrumbs'
 import { PageHeader } from '../../shell/PageHeader'
 
@@ -154,7 +154,7 @@ export function MyShipmentDetail(): JSX.Element {
           <div style={{ padding: 'var(--space-5) var(--space-5)' }}>
             <SectionHead
               title="My cartons"
-              sub={`${pl.carton_count} carton${pl.carton_count === 1 ? '' : 's'} · ${totalCbm.toFixed(3)} CBM total`}
+              sub={`${pl.carton_count} carton${pl.carton_count === 1 ? '' : 's'} · ${formatCbm(totalCbm)} CBM total`}
             />
           </div>
           <Table
@@ -171,11 +171,11 @@ export function MyShipmentDetail(): JSX.Element {
                 <span key="desc" style={{ fontSize: 'var(--text-sm)' }}>{item.description}</span>,
                 <Mono key="wt">
                   {item.weight_actual_kg ?? item.weight_dispatch_kg
-                    ? `${Number(item.weight_actual_kg ?? item.weight_dispatch_kg).toFixed(1)} kg`
+                    ? `${formatKg(item.weight_actual_kg ?? item.weight_dispatch_kg)} kg`
                     : '—'}
                 </Mono>,
                 <Mono key="cbm" color="var(--color-primary)">
-                  {item.cbm ? Number(item.cbm).toFixed(3) : '—'}
+                  {item.cbm ? formatCbm(item.cbm) : '—'}
                 </Mono>,
               ],
             }))}

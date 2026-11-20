@@ -8,6 +8,7 @@ import { useContainerLookup } from '../../hooks/useContainers'
 import { PageHeader } from '../../shell/PageHeader'
 import { SectionHead } from '../../shell/SectionHead'
 import styles from './ImportPackingLists.module.css'
+import { plural } from '../../lib/format'
 
 /**
  * Two genuinely different import shapes share this wizard:
@@ -311,7 +312,7 @@ export function ImportPackingLists(): JSX.Element {
           <Card>
             <SectionHead
               title="Import complete"
-              sub={`${manifestResult.items_created} item(s) added across ${manifestResult.packing_lists_created} packing list(s), ready for approval`}
+              sub={`${plural(manifestResult.items_created, 'item')} added across ${plural(manifestResult.packing_lists_created, 'packing list')}), ready for approval`}
             />
             <div className={styles.spacerLg} />
             <div className={styles.statsGrid}>
@@ -385,7 +386,7 @@ export function ImportPackingLists(): JSX.Element {
       {step === 3 && result && (
         <>
           <Card>
-            <SectionHead title="Import complete" sub={`${result.packing_lists_created} packing list(s) ready for approval`} />
+            <SectionHead title="Import complete" sub={`${plural(result.packing_lists_created, 'packing list')} ready for approval`} />
             <div className={styles.spacerLg} />
             <div className={styles.statsGrid}>
               <div className={styles.statTile}>

@@ -25,6 +25,7 @@ import styles from './customer.module.css'
 import { statusLabel } from '../../design/status'
 import { toast } from '../../design/toast'
 import { ResultScreen } from '../../shell/ResultScreen'
+import { plural } from '../../lib/format'
 
 type Step = 'details' | 'evidence' | 'review'
 
@@ -149,7 +150,7 @@ export function MyClaimsNew(): JSX.Element {
                 <option value="" disabled>Select an arrived shipment…</option>
                 {arrivedShipments.map((pl) => (
                   <option key={pl.id} value={pl.id}>
-                    {pl.reference ?? pl.id.slice(0, 8)} — Container {pl.container_number ?? '—'}
+                    {pl.reference ?? 'Shipment'} — Container {pl.container_number ?? 'not assigned yet'}
                     {' '}({statusLabel('container', pl.container_status ?? '', 'customer')})
                   </option>
                 ))}
@@ -214,7 +215,7 @@ export function MyClaimsNew(): JSX.Element {
               variant="primary"
               onClick={() => setStep('review')}
               >
-              {uploadedEvidence.length > 0 ? `Next: Review (${uploadedEvidence.length} file(s))` : 'Next: Review'}
+              {uploadedEvidence.length > 0 ? `Next: Review (${plural(uploadedEvidence.length, 'file')})` : 'Next: Review'}
             </Button>
           </div>
         </div>
@@ -227,12 +228,12 @@ export function MyClaimsNew(): JSX.Element {
             Your claim has been filed. Review the details below and submit.
           </Banner>
           <div style={{ fontSize: 'var(--text-md)', lineHeight: 'var(--leading-body)' }}>
-            <p><strong>Shipment:</strong> {selectedShipment?.reference ?? selectedShipment?.id.slice(0, 8)} — Container {selectedShipment?.container_number ?? '—'}</p>
+            <p><strong>Shipment:</strong> {selectedShipment?.reference ?? 'Shipment'} — Container {selectedShipment?.container_number ?? 'not assigned yet'}</p>
             <p><strong>Description:</strong> {description}</p>
             {cartonsAffected.length > 0 && (
               <p><strong>Cartons affected:</strong> {cartonsAffected.join(', ')}</p>
             )}
-            <p><strong>Evidence files:</strong> {uploadedEvidence.length > 0 ? `${uploadedEvidence.length} file(s) uploaded` : 'None'}</p>
+            <p><strong>Evidence files:</strong> {uploadedEvidence.length > 0 ? `${plural(uploadedEvidence.length, 'file')} uploaded` : 'None'}</p>
           </div>
           <div className={styles.formActions}>
             <Button variant="ghost" onClick={() => setStep('evidence')}>Back</Button>

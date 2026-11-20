@@ -14,7 +14,7 @@ import { type Tenant, type TenantStatus } from '../../api/tenantManagement'
 import { usePlatformTenantList } from '../../hooks/usePlatformTenants'
 import { Banner, Button, Card, Chip, Mono, StatusBadge, Table, SearchField, EmptyState } from '../../design/components'
 import styles from './admin.module.css'
-import { formatDate } from '../../lib/format'
+import { formatDate, plural } from '../../lib/format'
 import { statusLabel, statusesOf } from '../../design/status'
 import { PageHeader } from '../../shell/PageHeader'
 
@@ -202,7 +202,7 @@ export function PlatformTenantList(): JSX.Element {
         </Card>
         {!loading && tenants.length > 0 && (
           <p style={{ fontSize: 'var(--text-xs)', color: 'var(--color-ink-4)', marginTop: 'var(--space-3)' }}>
-            Showing {visible.length} of {tenants.length} tenant(s)
+            Showing {visible.length} of {plural(tenants.length, 'tenant')}
           </p>
         )}
       </div>

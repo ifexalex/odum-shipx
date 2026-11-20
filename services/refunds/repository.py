@@ -131,9 +131,25 @@ def create_refund_request(tenant_id: str, data: dict[str, Any]) -> dict[str, Any
 
 
 def get_refund_request_by_id(tenant_id: str, refund_id: str) -> dict[str, Any] | None:
+    """One refund request, with the names a reader needs instead of ids (FD-17).
+
+    Joins the customer's name, the invoice number and the damage claim's reference, each scoped to the same tenant, so
+    the detail page shows "Ngozi Adeyemi", "INV-A-002" and "DC-20261113-001" rather than three UUIDs.
+    """
     rows = execute_with_tenant(
         tenant_id,
-        "SELECT * FROM refund_request WHERE tenant_id = %s AND id = %s LIMIT 1",
+        """
+        SELECT r.*,
+               c.name          AS customer_name,
+               b.invoice_number AS invoice_number,
+               d.reference     AS claim_reference
+          FROM refund_request r
+          LEFT JOIN customer c ON c.id = r.customer_id AND c.tenant_id = r.tenant_id
+          LEFT JOIN billing b ON b.id = r.billing_id AND b.tenant_id = r.tenant_id
+          LEFT JOIN damage_claim d ON d.id = r.damage_claim_id AND d.tenant_id = r.tenant_id
+         WHERE r.tenant_id = %s AND r.id = %s
+         LIMIT 1
+        """,
         (tenant_id, refund_id),
     )
     return _decrypt_refund_row(rows[0]) if rows else None

@@ -19,7 +19,7 @@ import { useWarehouses } from '../../hooks/useWarehouses'
 import { Action, Badge, Banner, Button, Card, DialogGuard, ExportButton, Field, Kvp, Modal, Mono, PhoneField, StatCard, StatusBadge, ToggleSwitch, Select, PageSkeleton, ErrorState } from '../../design/components'
 import { SectionHead } from '../../shell/SectionHead'
 import styles from './ReleaseNoteDetail.module.css'
-import { formatDate, formatNgn } from '../../lib/format'
+import { formatDate, formatNgn, plural } from '../../lib/format'
 import { useBreadcrumbLabel } from '../../shell/breadcrumbs'
 import { PageHeader } from '../../shell/PageHeader'
 import { toast } from '../../design/toast'
@@ -409,7 +409,7 @@ function SplitModal({ note, onCancel, onSuccess }: SplitModalProps): JSX.Element
           ))}
         </div>
         {selected.size > 0 && (
-          <p className={styles.splitCount}>{selected.size} carton(s) selected for new note</p>
+          <p className={styles.splitCount}>{plural(selected.size, 'carton')} selected for the new note</p>
         )}
         <Field label="Notes" name="split_notes" multiline optional placeholder="Reason for splitting…" value={splitNotes} onChange={(e) => setSplitNotes(e.target.value)} />
         <div className={styles.modalActions}>
@@ -565,7 +565,7 @@ export function ReleaseNoteDetail(): JSX.Element {
         <div className={styles.successBanner}>
           <Banner variant="success" title="Pickup recorded">
             {pickupResult.remaining_cartons > 0
-              ? `${pickupResult.remaining_cartons} carton(s) still pending collection on this note.`
+              ? `${plural(pickupResult.remaining_cartons, 'carton')} still to collect on this note.`
               : 'All cartons on this note have been collected.'}
             {pickupResult.shipment_status === 'picked_up' && ' All customer cartons are now picked up — shipment tracking updated.'}
           </Banner>
@@ -605,7 +605,7 @@ export function ReleaseNoteDetail(): JSX.Element {
             <Kvp label="Balance remaining" value={<Mono>{note.packages_balance}</Mono>} />
           )}
           {note.packing_list_invoice_numbers.length > 0 && (
-            <Kvp label="Packing list invoice(s)" value={note.packing_list_invoice_numbers.join(', ')} />
+            <Kvp label={note.packing_list_invoice_numbers.length === 1 ? 'Packing list invoice' : 'Packing list invoices'} value={note.packing_list_invoice_numbers.join(', ')} />
           )}
           <Kvp label="Warehouse" value={note.warehouse_name ? `${note.warehouse_name}${note.warehouse_address ? ` — ${note.warehouse_address}` : ''}` : '—'} />
           <Kvp label="Issued" value={formatDate(note.authorized_at)} divider={!note.is_on_credit && !note.receipt_number} />
@@ -628,7 +628,7 @@ export function ReleaseNoteDetail(): JSX.Element {
 
       {/* Carton tags */}
       <div className={styles.section}>
-        <SectionHead title="Carton tags" sub={`${note.carton_tags.length} tag(s) on this release note`} />
+        <SectionHead title="Carton tags" sub={`${plural(note.carton_tags.length, 'tag')} on this release note`} />
         <Card padding="default">
           {note.carton_tags.length > 0 ? (
             <div className={styles.tagGrid}>

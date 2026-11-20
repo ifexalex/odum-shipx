@@ -6,6 +6,7 @@ import { useWarehouses } from '../../../hooks/useWarehouses'
 import { Action, Banner, Button, Field, DialogGuard, Select, CheckboxField, DateField } from '../../../design/components'
 import styles from '../BillingDetail.module.css'
 import { toast } from '../../../design/toast'
+import { plural } from '../../../lib/format'
 
 // ---------------------------------------------------------------------------
 // GenerateReleaseNoteModal
@@ -148,7 +149,7 @@ export function GenerateReleaseNoteModal({
                   margin: 0,
                 }}
               >
-                {cartonTags.length} tag(s) parsed
+                {plural(cartonTags.length, 'tag')} read
               </p>
             )}
           </>

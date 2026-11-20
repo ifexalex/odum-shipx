@@ -4,12 +4,14 @@ import {
   formatCount,
   formatDate,
   formatDateTime,
+  formatKg,
   formatNgn,
   formatNgnCompact,
   formatNumber,
   formatTime,
   formatUsd,
   isoDateOffset,
+  plural,
   todayIso,
 } from './format'
 
@@ -108,6 +110,27 @@ describe('formatUsd, formatCbm, formatNumber, formatCount', () => {
   })
 })
 
+describe('formatKg and plural (FD-17)', () => {
+  it('weighs to one decimal, grouped, whatever arrives', () => {
+    expect(formatKg('12.345')).toBe('12.3')
+    expect(formatKg(1240.55)).toBe('1,240.6')
+    expect(formatKg(7)).toBe('7.0')
+    expect(formatKg(null)).toBe('—')
+  })
+
+  it('formatCbm groups a large volume and keeps three decimals', () => {
+    expect(formatCbm(1234.5)).toBe('1,234.500')
+    expect(formatCbm('5.05')).toBe('5.050')
+  })
+
+  it('names a count in the singular or the plural, never "(s)"', () => {
+    expect(plural(1, 'carton')).toBe('1 carton')
+    expect(plural(0, 'carton')).toBe('0 cartons')
+    expect(plural(1200, 'carton')).toBe('1,200 cartons')
+    expect(plural(2, 'person', 'people')).toBe('2 people')
+  })
+})
+
 describe('formatDate (Lagos time)', () => {
   it('writes a day-month-year date', () => {
     expect(formatDate('2026-11-10T10:00:00Z')).toBe('10 Nov 2026')
@@ -190,6 +213,10 @@ const SOURCES = import.meta.glob('../**/*.{ts,tsx}', { query: '?raw', import: 'd
 describe('nothing formats numbers or dates by hand (FE-03)', () => {
   // format.ts is the one place that may do this (the glob names it relative to this folder).
   const files = Object.entries(SOURCES).filter(([path]) => !path.includes('.test.') && path !== './format.ts')
+  const lineAt = (where: string): string => {
+    const [path, line] = [where.slice(0, where.lastIndexOf(':')), Number(where.slice(where.lastIndexOf(':') + 1))]
+    return SOURCES[path.replace('src', '..')]?.split('\n')[line - 1] ?? ''
+  }
   const offenders = (pattern: RegExp): string[] =>
     files.flatMap(([path, text]) =>
       text.split('\n').flatMap((line, index) => (pattern.test(line) && !line.trim().startsWith('//') && !line.trim().startsWith('*') ? [`${path.replace('..', 'src')}:${index + 1}`] : [])),
@@ -201,6 +228,20 @@ describe('nothing formats numbers or dates by hand (FE-03)', () => {
 
   it('no slicing an ISO string to get a date', () => {
     expect(offenders(/\.slice\(0, ?10\)/)).toEqual([])
+  })
+
+  // FD-17: one precision per quantity. CBM and weights go through formatCbm and formatKg; a rate written beside a
+  // CBM ("$45.00 / CBM") is money, not a volume, and is allowed.
+  it('no CBM or weight rounded by hand', () => {
+    const byHand = /(cbm|Cbm|weight|Weight|_kg)\w*\)?\.toFixed\(/
+    const rate = /[Rr]ate\w*\)?\.toFixed\(/
+    expect(offenders(byHand).filter((where) => !rate.test(lineAt(where)))).toEqual([])
+  })
+
+  it('no "(s)" plurals: plural() picks the word', () => {
+    // A lone `s` passed as an argument (`String(s)`, `includes(s)`) is code, not a plural.
+    const code = /=>|includes\(s\)|Status\(s\)|String\(s\)/
+    expect(offenders(/[a-z]\(s\)[\s`'".,)<]/i).filter((where) => !code.test(lineAt(where)))).toEqual([])
   })
 })
 

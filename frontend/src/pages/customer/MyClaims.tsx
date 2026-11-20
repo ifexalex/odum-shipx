@@ -7,7 +7,7 @@ import { useClaimList } from '../../hooks/useClaims'
 import { Banner, Button, StatusBadge, LinesSkeleton } from '../../design/components'
 import { PageHeader } from '../../shell/PageHeader'
 import styles from './customer.module.css'
-import { formatDate } from '../../lib/format'
+import { formatDate, plural } from '../../lib/format'
 
 function ClaimProgressBar({ status }: { status: DamageClaimStatus }): JSX.Element {
   const idx = CLAIM_STATUS_ORDER.indexOf(status)
@@ -92,7 +92,7 @@ export function MyClaims(): JSX.Element {
               <div className={styles.cardMeta}>
                 <span>Filed {formatDate(c.created_at)}</span>
                 {c.cartons_affected.length > 0 && (
-                  <span>· {c.cartons_affected.length} carton(s) affected</span>
+                  <span>· {plural(c.cartons_affected.length, 'carton')} affected</span>
                 )}
               </div>
               <ClaimProgressBar status={c.status} />

@@ -2506,3 +2506,8 @@ Found by running them: **a real bug** (invoice generation set a used credit to `
 
 - `frontend/src/design/breakpoints.test.ts` (2): every `@media` and `@container sxapp` rule uses 600, 860 or 1200 px. Proved with a 640 px rule.
 - `frontend/scripts/mobile-audit.mjs` (route audit): also fails a page whose header starts more than 140 px from the top at phone widths.
+
+## Names and precision (FD-17, 2026-11-20)
+
+- `tests/db/test_refund_read.py` (3, real Postgres): the refund detail read joins the customer's name, invoice number and claim reference; absent links read as null; another tenant cannot read it.
+- `frontend/src/lib/format.test.ts` (+5): `formatKg`, grouped `formatCbm`, `plural`; guards against CBM or weight rounded by hand and against "(s)" plurals (each proved by reintroducing one). `design/components/Kvp.test.tsx` (+2): optional rows. Page tests updated for the new precision ("68.400", "412.0 kg", "+1.7").

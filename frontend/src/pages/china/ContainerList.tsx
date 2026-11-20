@@ -12,7 +12,7 @@ import { useDateRangeFilter } from '../../hooks/useDateRangeFilter'
 import { useListExport } from '../../hooks/useListExport'
 import { type SortableColumn, useTableSort } from '../../hooks/useTableSort'
 import styles from './ContainerList.module.css'
-import { formatDate, isoDateOffset, todayIso } from '../../lib/format'
+import { formatCbm, formatDate, isoDateOffset, todayIso } from '../../lib/format'
 import { statusLabel } from '../../design/status'
 import { PageHeader } from '../../shell/PageHeader'
 
@@ -121,11 +121,11 @@ function UtilizationCell({ container }: { container: Container }): JSX.Element {
   return (
     <div className={styles.utilCell}>
       <div className={styles.utilTop}>
-        <Mono color="var(--color-ink)">{packed.toFixed(1)}</Mono>
+        <Mono color="var(--color-ink)">{formatCbm(packed)}</Mono>
         {pct != null && <span className={styles.utilPct}>{pct}%</span>}
       </div>
       {pct != null && (
-        <div className={styles.utilTrack} title={`${packed.toFixed(1)} / ${capacity} CBM`}>
+        <div className={styles.utilTrack} title={`${formatCbm(packed)} / ${capacity} CBM`}>
           <div className={[styles.utilFill, fillClass].join(' ')} style={{ width: `${Math.min(pct, 100)}%` }} />
         </div>
       )}

@@ -77,7 +77,7 @@ describe('ManifestList', () => {
     expect(within(row).getByText('50')).toBeInTheDocument()
     expect(within(row).getByText('6')).toBeInTheDocument()
     // Total weight column.
-    expect(within(row).getByText('412 kg')).toBeInTheDocument()
+    expect(within(row).getByText('412.0 kg')).toBeInTheDocument()
   })
 
   it('falls back to the carton count when no package mix is present', async () => {

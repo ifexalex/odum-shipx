@@ -135,7 +135,7 @@ export function ClaimList(): JSX.Element {
           ]}
           rows={claims.map((c) => ({
             onOpen: () => navigate(`/claims/${c.id}`),
-            openLabel: `Open claim ${c.reference ?? c.id.slice(0, 8)}`,
+            openLabel: c.reference ? `Open claim ${c.reference}` : 'Open claim',
             cells: [
               <Mono key="id" color="var(--color-ink)">{c.reference ?? c.id.slice(0, 8)}</Mono>,
               c.customer_name

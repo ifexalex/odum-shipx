@@ -18,7 +18,7 @@ import { releaseNoteKeys } from '../../api/keys'
 import { STALE_30S } from '../../lib/queryClient'
 import { Banner, Button, Field, Icon, Mono, PhoneField, StatCard, ToggleSwitch, DialogGuard, Badge, Select, LinesSkeleton } from '../../design/components'
 import styles from './WarehouseDashboard.module.css'
-import { todayIso } from '../../lib/format'
+import { plural, todayIso } from '../../lib/format'
 import { toast } from '../../design/toast'
 import { PageHeader } from '../../shell/PageHeader'
 
@@ -237,7 +237,7 @@ function NoteCard({ note, onPickup, lastPickup }: NoteCardProps): JSX.Element {
         <div className={styles.cardCustomer}>{note.customer_name ?? '—'}</div>
         <div className={styles.cardMeta}>
           {note.container_number && <Mono>{note.container_number}</Mono>}
-          <span>{note.carton_count} carton(s)</span>
+          <span>{plural(note.carton_count, 'carton')}</span>
           {note.is_partial_release && <span>· Partial</span>}
           <span style={{ fontStyle: 'italic', color: 'var(--color-ink-4)' }}>{ageLabel(note)}</span>
         </div>
@@ -433,14 +433,14 @@ export function WarehouseDashboard(): JSX.Element {
       {lastPickup && lastPickup.release_note_status !== 'picked_up' && (
         <div className={styles.banner}>
           <Banner variant="info">
-            {lastPickup.remaining_cartons} carton(s) still pending on this note.
+            {plural(lastPickup.remaining_cartons, 'carton')} still to collect on this note.
           </Banner>
         </div>
       )}
 
       <div className={styles.queueHead}>
         <span className={styles.queueLabel}>Queue</span>
-        <span className={styles.queueCount}>{activeNotes.length} note(s)</span>
+        <span className={styles.queueCount}>{plural(activeNotes.length, 'note')}</span>
       </div>
 
       {loading && <LinesSkeleton label="Loading" />}

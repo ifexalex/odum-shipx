@@ -150,7 +150,7 @@ export function CarryoverLedger(): JSX.Element {
             cells: [
               <UserCell key="cust" name={c.customer_name ?? c.customer_id} email="" />,
               <Link key="src" to={`/billing/${c.source_billing_id}`}>
-                <Mono color="var(--color-primary)">{c.source_container_number ?? c.source_billing_id.slice(0, 8)}</Mono>
+                <Mono color="var(--color-primary)">{c.source_container_number ?? 'Invoice'}</Mono>
               </Link>,
               <Mono key="amt">{formatNgn(c.amount_ngn)}</Mono>,
               <StatusBadge key="status" kind="carryover" status={c.status} />,

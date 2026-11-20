@@ -44,6 +44,12 @@ function allows(route: RouteDef, roles: readonly UserRole[]): boolean {
   return route.allow === 'public' || roles.some((role) => (route.allow as UserRole[]).includes(role))
 }
 
+/** Whether one of `roles` may open `pathname` (a concrete address such as `/admin/customers/c1`). */
+export function canOpen(pathname: string, roles: readonly UserRole[]): boolean {
+  const match = matchRoute(pathname)
+  return !!match && allows(match.route, roles)
+}
+
 /**
  * The trail for `pathname`: every ancestor as a link, then the current page. Empty for a top-level page.
  *

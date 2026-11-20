@@ -10,7 +10,7 @@ import { STALE_30S } from '../../lib/queryClient'
 import { Action, Banner, ExportButton, Icon, Mono, StatCard, StatusBadge, PageSkeleton, ErrorState } from '../../design/components'
 import { SectionHead } from '../../shell/SectionHead'
 import styles from './BillingDetail.module.css'
-import { formatDate, formatNgn } from '../../lib/format'
+import { formatCbm, formatDate, formatNgn } from '../../lib/format'
 import { StorageFeeBanner, StorageFeeLog } from './billingDetail/StorageFees'
 import { DisputeCard } from './billingDetail/DisputeCard'
 import { RecordPaymentModal } from './billingDetail/RecordPaymentModal'
@@ -21,6 +21,7 @@ import { MiscChargesSection } from './billingDetail/MiscCharges'
 import { PaymentClaimsSection } from './billingDetail/PaymentClaims'
 import { useBreadcrumbLabel } from '../../shell/breadcrumbs'
 import { PageHeader } from '../../shell/PageHeader'
+import { RecordLink } from '../../shell/RecordLink'
 import { toast } from '../../design/toast'
 
 
@@ -175,10 +176,17 @@ export function BillingDetail(): JSX.Element {
         title={billing.invoice_number ? `Invoice ${billing.invoice_number}` : 'Invoice'}
         status={<StatusBadge kind="invoice" status={billing.payment_status} />}
         meta={[
-          billing.customer_name,
-          <>
-            Container <Mono>{billing.container_number ?? billing.container_id}</Mono>
-          </>,
+          billing.customer_name && billing.customer_id && (
+            <RecordLink to={`/admin/customers/${billing.customer_id}`}>{billing.customer_name}</RecordLink>
+          ),
+          billing.container_number && billing.container_id && (
+            <>
+              Container{' '}
+              <RecordLink to={`/containers/${billing.container_id}`}>
+                <Mono>{billing.container_number}</Mono>
+              </RecordLink>
+            </>
+          ),
           billing.billed_at && `Billed ${formatDate(billing.billed_at)}`,
           billing.customer_phone && (
             <span className={styles.contact}>
@@ -261,7 +269,7 @@ export function BillingDetail(): JSX.Element {
 
       {/* Stat cards */}
       <div className={styles.stats}>
-        <StatCard label="Total CBM" value={Number(billing.total_cbm).toFixed(3)} />
+        <StatCard label="Total CBM" value={formatCbm(billing.total_cbm)} />
         <StatCard label="Total due" value={formatNgn(billing.total_due_ngn)} />
         <StatCard label="Total paid" value={formatNgn(billing.total_paid_ngn)} />
         <StatCard

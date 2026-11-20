@@ -113,7 +113,24 @@ export function formatAmount(value: string | number | null | undefined): string 
  */
 export function formatCbm(value: string | number | null | undefined): string {
   const n = toNumber(value)
-  return n === null ? MISSING : n.toFixed(3)
+  return n === null ? MISSING : numberFormat(3, 3).format(n)
+}
+
+/**
+ * Kilograms to one decimal, with grouping: `1,240.5` (owner decision, 2026-11-20: one precision per quantity, three
+ * decimals for CBM, one for weight). Missing is "—". The caller writes the unit.
+ */
+export function formatKg(value: string | number | null | undefined): string {
+  const n = toNumber(value)
+  return n === null ? MISSING : numberFormat(1, 1).format(n)
+}
+
+/**
+ * A count and its noun, singular or plural to match: `plural(1, 'carton')` is "1 carton", `plural(3, 'carton')` is
+ * "3 cartons", `plural(2, 'person', 'people')` is "2 people". Replaces "carton(s)" (FD-17). The count is grouped.
+ */
+export function plural(count: number, singular: string, pluralForm = `${singular}s`): string {
+  return `${formatCount(count)} ${count === 1 ? singular : pluralForm}`
 }
 
 // ---------------------------------------------------------------------------

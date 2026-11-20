@@ -21,6 +21,7 @@ import styles from './ManifestDetail.module.css'
 import { useBreadcrumbLabel } from '../../shell/breadcrumbs'
 import { PageHeader } from '../../shell/PageHeader'
 import { toast } from '../../design/toast'
+import { formatKg } from '../../lib/format'
 
 // ---------------------------------------------------------------------------
 // Carton diff helpers
@@ -165,7 +166,7 @@ function VerifyManifestModal({ manifest, onCancel, onVerified }: VerifyManifestM
                         <option value="">Select a customer…</option>
                         {manifest.customers.map((c) => (
                           <option key={c.customer_id} value={c.customer_id}>
-                            {c.customer_name ?? c.customer_id}
+                            {c.customer_name ?? 'Unnamed customer'}
                           </option>
                         ))}
                       </Select>
@@ -468,7 +469,7 @@ export function ManifestDetail(): JSX.Element {
         <StatCard label="Total customers" value={manifest.total_customers} icon="users" />
         <StatCard label="Packages" value={packageTotal} icon="package" sublabel={packageMixLabel || undefined} />
         <StatCard label="Total CBM" value={formatCbm(manifest.total_cbm)} icon="container" />
-        <StatCard label="Total weight" value={`${manifest.total_weight_kg} kg`} icon="package" />
+        <StatCard label="Total weight" value={`${formatKg(manifest.total_weight_kg)} kg`} icon="package" />
       </div>
 
       <Card padding="none">
@@ -577,11 +578,11 @@ export function ManifestDetail(): JSX.Element {
                 cells: [
                   <Mono key="tag">{wd.carton_tag ?? '—'}</Mono>,
                   <Mono key="tracking">{wd.tracking_code ?? '—'}</Mono>,
-                  <Mono key="dispatch">{wd.weight_dispatch_kg.toFixed(3)}</Mono>,
-                  <Mono key="actual">{wd.weight_actual_kg.toFixed(3)}</Mono>,
+                  <Mono key="dispatch">{formatKg(wd.weight_dispatch_kg)}</Mono>,
+                  <Mono key="actual">{formatKg(wd.weight_actual_kg)}</Mono>,
                   <Mono key="diff" color={wd.difference_kg < 0 ? 'var(--color-error)' : 'var(--color-warning)'}>
                     {wd.difference_kg > 0 ? '+' : ''}
-                    {wd.difference_kg.toFixed(3)}
+                    {formatKg(wd.difference_kg)}
                   </Mono>,
                 ],
               }))}

@@ -11,6 +11,7 @@ import { SectionHead } from '../../../shell/SectionHead'
 import styles from '../CreatePackingList.module.css'
 import { blockInvalidNumberKeys, clampQuantity, emptyItem, sanitizeNumber } from './items'
 import type { PackingListForm } from './useCreatePackingListForm'
+import { formatCbm, formatKg } from '../../../lib/format'
 
 /** The line items: one row per carton or batch, with package type, size, CBM, weight and value. */
 export function ItemsTable({ form }: { form: PackingListForm }): JSX.Element {
@@ -197,7 +198,7 @@ export function ItemsTable({ form }: { form: PackingListForm }): JSX.Element {
                     <td className={styles.right}>
                       <div className={styles.cbmCell}>
                         <span className={styles.cbmChip}>
-                          {hasData ? effectiveCbm.toFixed(3) : '—'}
+                          {hasData ? formatCbm(effectiveCbm) : '—'}
                         </span>
                         {hasData && floored && (
                           <span
@@ -334,9 +335,9 @@ export function ItemsTable({ form }: { form: PackingListForm }): JSX.Element {
                             `Creates ${qtyOf(item)} ${item.package_unit ?? 'carton'}${
                               qtyOf(item) === 1 ? '' : 's'
                             }`,
-                            hasData ? `${(effectiveCbm * qtyOf(item)).toFixed(2)} CBM` : null,
+                            hasData ? `${formatCbm(effectiveCbm * qtyOf(item))} CBM` : null,
                             item.weight_actual_kg != null
-                              ? `${(item.weight_actual_kg * qtyOf(item)).toFixed(1)} kg`
+                              ? `${formatKg(item.weight_actual_kg * qtyOf(item))} kg`
                               : null,
                             'separate tags, one per package',
                           ]
@@ -356,17 +357,17 @@ export function ItemsTable({ form }: { form: PackingListForm }): JSX.Element {
                 Totals — {formatPackageMix(buildPackageMix(items))}
               </td>
               <td className={styles.right}>
-                <Mono>{totals.weightDispatch.toFixed(1)} kg</Mono>
+                <Mono>{formatKg(totals.weightDispatch)} kg</Mono>
               </td>
               <td className={styles.right}>
-                <Mono>{totals.weight.toFixed(1)} kg</Mono>
+                <Mono>{formatKg(totals.weight)} kg</Mono>
               </td>
               <td />
               <td className={styles.right}>
-                <Mono color="var(--color-success)">{totals.cbm.toFixed(3)}</Mono>
+                <Mono color="var(--color-success)">{formatCbm(totals.cbm)}</Mono>
               </td>
               {/* Qty has no meaningful total of its own — the package
-                  count is already stated as "N item(s)" on the left — but
+                  count is already stated as "N items" on the left — but
                   the cell must exist, or every figure after CBM shifts a
                   column left and the declared total lands under Qty. */}
               <td />

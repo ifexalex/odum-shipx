@@ -14,7 +14,7 @@ import { EvidenceUploader, type UploadedEvidence } from '../nigeria/EvidenceUplo
 import { PaymentsTable } from '../nigeria/billingDetail/Breakdown'
 import { ReleaseNoteCard } from './ReleaseNoteCard'
 import styles from './customer.module.css'
-import { formatDate, formatNgn } from '../../lib/format'
+import { formatCbm, formatDate, formatNgn, formatUsd } from '../../lib/format'
 import { useBreadcrumbLabel } from '../../shell/breadcrumbs'
 import { PageHeader } from '../../shell/PageHeader'
 import { toast } from '../../design/toast'
@@ -210,7 +210,7 @@ function CbmDisputeModal({ billing, onCancel, onSuccess }: { billing: Billing; o
       >
         <h3 className={styles.dialogTitle}>Dispute the CBM measurement</h3>
         {error && <Banner variant="error" title="Could not file dispute">{error}</Banner>}
-        <Banner variant="info" title={`We measured ${Number(billing.total_cbm).toFixed(3)} CBM`}>
+        <Banner variant="info" title={`We measured ${formatCbm(billing.total_cbm)} CBM`}>
           If your own measurement differs, file a dispute — our team acknowledges within 24 hours and
           re-measures. Your invoice is adjusted automatically if the correction is upheld.
         </Banner>
@@ -219,7 +219,7 @@ function CbmDisputeModal({ billing, onCancel, onSuccess }: { billing: Billing; o
           name="disputed_cbm"
           required
           type="number"
-          placeholder={`e.g. ${Math.max(0, Number(billing.total_cbm) - 0.07).toFixed(2)}`}
+          placeholder={`e.g. ${formatCbm(Math.max(0, Number(billing.total_cbm) - 0.07))}`}
           value={measuredCbm}
           onChange={(e) => setMeasuredCbm(e.target.value)}
         />
@@ -348,9 +348,11 @@ export function MyBillingDetail(): JSX.Element {
         title={billing.invoice_number ? `Invoice ${billing.invoice_number}` : 'Invoice'}
         status={<StatusBadge kind="invoice" status={billing.payment_status} audience="customer" />}
         meta={[
-          <>
-            Container <Mono>{billing.container_number ?? billing.container_id}</Mono>
-          </>,
+          billing.container_number && (
+            <>
+              Container <Mono>{billing.container_number}</Mono>
+            </>
+          ),
           billing.billed_at && `Billed ${formatDate(billing.billed_at)}`,
         ]}
         primary={
@@ -406,7 +408,7 @@ export function MyBillingDetail(): JSX.Element {
         </div>
       )}
       <Card padding="default">
-        <Kvp label="CBM" value={<Mono>{Number(billing.total_cbm).toFixed(3)}</Mono>} />
+        <Kvp label="CBM" value={<Mono>{formatCbm(billing.total_cbm)}</Mono>} />
         {/* A per-package-type invoice was actually priced against separate
             carton/bag/bale rates — showing only the blended USD-equivalent
             "Rate" line here would correspond to nothing the customer was
@@ -420,12 +422,12 @@ export function MyBillingDetail(): JSX.Element {
               <Kvp
                 key={bucket}
                 label={`${bucket.charAt(0).toUpperCase()}${bucket.slice(1)}s`}
-                value={<Mono>{Number(item.cbm).toFixed(3)} CBM × {sym}{Number(item.rate).toFixed(2)}</Mono>}
+                value={<Mono>{formatCbm(item.cbm)} CBM × {sym}{Number(item.rate).toFixed(2)}</Mono>}
               />
             )
           })
         ) : (
-          <Kvp label="Rate" value={<Mono>${Number(billing.cbm_rate_usd).toFixed(2)} / CBM</Mono>} />
+          <Kvp label="Rate" value={<Mono>{formatUsd(billing.cbm_rate_usd)} / CBM</Mono>} />
         )}
         <Kvp label="Exchange rate" value={<Mono>{formatNgn(billing.dollar_rate)} / $</Mono>} />
         <Kvp label="Shipping cost (CBM subtotal)" value={<Mono>{formatNgn(billing.subtotal_ngn)}</Mono>} />

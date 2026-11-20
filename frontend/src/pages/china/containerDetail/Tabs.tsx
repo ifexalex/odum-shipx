@@ -7,7 +7,7 @@ import { formatPackageMix } from '../../../api/packingListRules'
 import { Badge, Banner, Button, Card, ExportButton, Mono, StatusBadge, Table, type TableSort, UserCell, EmptyState } from '../../../design/components'
 import { SectionHead } from '../../../shell/SectionHead'
 import styles from '../ContainerDetail.module.css'
-import { formatDate, formatTime } from '../../../lib/format'
+import { formatDate, formatKg, formatTime, plural } from '../../../lib/format'
 import { eventLabel, humanRole } from './labels'
 import { ContainerStepper } from './Timeline'
 import { type PackingList } from '../../../api/packingList'
@@ -48,7 +48,7 @@ export function PackingListsTab({
       <div className={styles.tableHead}>
         <SectionHead
           title="Packing lists on this container"
-          sub={`${packingLists.length} list(s)`}
+          sub={plural(packingLists.length, 'packing list')}
         />
         {canAdd && (
           <Button
@@ -89,7 +89,7 @@ export function PackingListsTab({
             <span key="cartons">{formatPackageMix(pl.package_mix)}</span>,
             <Mono key="cbm">{formatCbm(pl.total_cbm)}</Mono>,
             <Mono key="weight">
-              {pl.total_weight_kg ? `${Number(pl.total_weight_kg).toFixed(1)} kg` : '—'}
+              {pl.total_weight_kg ? `${formatKg(pl.total_weight_kg)} kg` : '—'}
             </Mono>,
             <StatusBadge key="status" kind="packingList" status={pl.status} />,
             <span key="submitted" className={styles.metaText}>

@@ -215,7 +215,7 @@ describe('ManifestDetail', () => {
     renderPage('nigeria_office_staff')
     await waitFor(() => expect(screen.getByText('Weight discrepancies')).toBeInTheDocument())
     expect(screen.getByText('SHX-00005')).toBeInTheDocument()
-    expect(screen.getByText('+1.700')).toBeInTheDocument()
+    expect(screen.getByText('+1.7')).toBeInTheDocument()
   })
 
   // F-D3 — manifest-verify photo upload

@@ -73,6 +73,10 @@ export interface Refund {
   customer_id: string | null
   billing_id: string | null
   damage_claim_id: string | null
+  /** What the three ids above are called (FD-17). Sent on the detail read only; absent on list rows. */
+  customer_name?: string | null
+  invoice_number?: string | null
+  claim_reference?: string | null
   reason: string | null
   rejection_reason: string | null
   approval_level: ApprovalLevel | null

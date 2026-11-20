@@ -26,6 +26,7 @@ import styles from './ClaimDetail.module.css'
 import { formatDate, formatNgn } from '../../lib/format'
 import { useBreadcrumbLabel } from '../../shell/breadcrumbs'
 import { PageHeader } from '../../shell/PageHeader'
+import { RecordLink } from '../../shell/RecordLink'
 import { claimProgress, claimSteps } from '../../design/steps'
 import { toast } from '../../design/toast'
 
@@ -307,8 +308,14 @@ export function ClaimDetail(): JSX.Element {
         title={claim.reference ? `Damage claim ${claim.reference}` : 'Damage claim'}
         status={<StatusBadge kind="claim" status={claim.status} />}
         meta={[
-          claim.customer_name,
-          claim.container_number && <Mono>{claim.container_number}</Mono>,
+          claim.customer_name && claim.customer_id && (
+            <RecordLink to={`/admin/customers/${claim.customer_id}`}>{claim.customer_name}</RecordLink>
+          ),
+          claim.container_number && claim.container_id && (
+            <RecordLink to={`/containers/${claim.container_id}`}>
+              <Mono>{claim.container_number}</Mono>
+            </RecordLink>
+          ),
           `Filed ${formatDate(claim.created_at)}`,
         ]}
         primary={
@@ -333,13 +340,11 @@ export function ClaimDetail(): JSX.Element {
       </div>
 
       {/* Claim context */}
-      {(claim.description || claim.container_id || claim.customer_id) && (
+      {claim.description && (
         <div className={styles.section}>
           <SectionHead title="Claim details" />
           <Card padding="default">
-            {claim.description && <Kvp label="Description" value={claim.description} />}
-            {claim.container_id && <Kvp label="Container ID" value={<Mono>{claim.container_id}</Mono>} />}
-            {claim.customer_id && <Kvp label="Customer ID" value={<Mono>{claim.customer_id}</Mono>} divider={false} />}
+            <Kvp label="Description" value={claim.description} divider={false} />
           </Card>
         </div>
       )}

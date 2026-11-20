@@ -8,7 +8,7 @@ import { useSession } from '../../auth/useSession'
 import { usePackingListList } from '../../hooks/usePackingLists'
 import { Banner, Button, Card, Chip, DialogGuard, Field, ListFooter, Mono, StatusBadge, Table, Pressable, SearchField, EmptyState } from '../../design/components'
 import styles from './PackingListList.module.css'
-import { formatDate } from '../../lib/format'
+import { formatDate, plural } from '../../lib/format'
 import { useStatusParam } from '../../lib/useStatusParam'
 import { statusLabel } from '../../design/status'
 import { toast } from '../../design/toast'
@@ -30,7 +30,7 @@ function BulkRejectModal({ count, onCancel, onConfirm, submitting, error }: Bulk
     <div className={styles.modalOverlay} onClick={onCancel}>
       <DialogGuard onClose={onCancel} />
       <div className={styles.modalPanel} onClick={(event) => event.stopPropagation()} role="dialog" aria-modal="true">
-        <h3 className={styles.modalTitle}>Reject {count} packing list(s)</h3>
+        <h3 className={styles.modalTitle}>Reject {plural(count, 'packing list')}</h3>
         {error && (
           <div className={styles.banner}>
             <Banner variant="error" title="Action failed">{error}</Banner>
@@ -173,12 +173,11 @@ export function PackingListList(): JSX.Element {
   // (wrong_status:pending_approval etc.).
   const submittableCount = selectedPls.filter((pl) => pl.status === 'draft').length
 
-  // A UUID means nothing to staff — show the reference and customer they see
-  // in the table. Ids outside the current page fall back to a short suffix.
+  // A UUID means nothing to staff — show the reference and customer they see in the table (FD-17).
   function labelForPackingList(id: string): string {
     const pl = packingLists.find((candidate) => candidate.id === id)
-    if (!pl) return `#${id.slice(0, 8)}`
-    const reference = pl.reference ?? `#${id.slice(0, 8)}`
+    if (!pl) return 'A packing list not on this page'
+    const reference = pl.reference ?? 'Packing list'
     return pl.customer_name ? `${reference} · ${pl.customer_name}` : reference
   }
 
@@ -266,7 +265,7 @@ export function PackingListList(): JSX.Element {
         <div className={styles.bulkBarWrap}>
           <div className={styles.bulkBar}>
             <span className={styles.bulkLabel}>
-              {selected.size} packing list(s) selected
+              {plural(selected.size, 'packing list')} selected
               {blockedByOwnership > 0 && (
                 <span className={styles.bulkHint}>
                   {blockedByOwnership === selected.size

@@ -109,7 +109,7 @@ describe('ContainerList', () => {
     } as never)
     renderPage('china_office_staff')
     const row = (await screen.findByText('MSCU1234567')).closest('tr')!
-    expect(within(row).getByText('68.4')).toBeInTheDocument()
+    expect(within(row).getByText('68.400')).toBeInTheDocument()
     expect(within(row).getByText('90%')).toBeInTheDocument() // 68.4 / 76 ≈ 90%
   })
 
@@ -131,7 +131,7 @@ describe('ContainerList', () => {
     } as never)
     renderPage('china_office_staff')
     const row = (await screen.findByText('MSCU1234567')).closest('tr')!
-    expect(within(row).getByText('42.0')).toBeInTheDocument()
+    expect(within(row).getByText('42.000')).toBeInTheDocument()
     expect(within(row).queryByText(/%$/)).toBeNull()
   })
 

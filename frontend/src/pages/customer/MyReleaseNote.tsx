@@ -105,11 +105,11 @@ export function MyReleaseNote(): JSX.Element {
           <StatusBadge kind="releaseNote" status={note.status} audience="customer" />
         </div>
         <div style={{ height: 16 }} />
-        <Kvp label="Container" value={note.container_number ?? '—'} />
+        <Kvp optional label="Container" value={note.container_number} />
         <Kvp label="Cartons" value={cartons} />
         {note.is_partial_release && <Kvp label="Release" value="Partial: more cartons remain on your shipment" />}
         <Kvp label="Valid until" value={formatDate(note.valid_until)} />
-        <Kvp label="Warehouse" value={note.warehouse_name ?? '—'} />
+        <Kvp optional label="Warehouse" value={note.warehouse_name} />
         {note.warehouse_address && <Kvp label="Address" value={note.warehouse_address} />}
         {note.warehouse_phone && <Kvp label="Phone" value={note.warehouse_phone} />}
         {note.carton_tags.length > 0 && <Kvp label="Carton tags" value={<Mono>{note.carton_tags.join(', ')}</Mono>} />}

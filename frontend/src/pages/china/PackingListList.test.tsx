@@ -117,7 +117,7 @@ describe('PackingListList', () => {
 
     const rowCheckboxes = screen.getAllByRole('checkbox').slice(1)
     await userEvent.click(rowCheckboxes[0]!)
-    expect(screen.getByText('1 packing list(s) selected')).toBeInTheDocument()
+    expect(screen.getByText('1 packing list selected')).toBeInTheDocument()
 
     await userEvent.click(screen.getByText('Bulk approve · 1'))
     await waitFor(() => expect(packingListApi.bulkApprove).toHaveBeenCalledWith(['pl1']))

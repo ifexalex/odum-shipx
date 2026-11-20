@@ -21,6 +21,7 @@ import styles from './RefundDetail.module.css'
 import { formatDate, formatNgn } from '../../lib/format'
 import { useBreadcrumbLabel } from '../../shell/breadcrumbs'
 import { PageHeader } from '../../shell/PageHeader'
+import { RecordLink } from '../../shell/RecordLink'
 import { toast } from '../../design/toast'
 
 // ---------------------------------------------------------------------------
@@ -395,6 +396,9 @@ export function RefundDetail(): JSX.Element {
         title={refundTypeLabel(refund.refund_type)}
         status={<StatusBadge kind="refund" status={refund.status} />}
         meta={[
+          refund.customer_name && refund.customer_id && (
+            <RecordLink to={`/admin/customers/${refund.customer_id}`}>{refund.customer_name}</RecordLink>
+          ),
           `Requested ${formatDate(refund.created_at)}`,
           refund.approval_level && approvalLevelLabel(refund.approval_level),
         ]}
@@ -468,10 +472,25 @@ export function RefundDetail(): JSX.Element {
         <Card padding="default">
           <Kvp label="Refund type" value={refundTypeLabel(refund.refund_type)} />
           {refund.reason && <Kvp label="Reason" value={refund.reason} />}
-          {refund.customer_id && <Kvp label="Customer ID" value={<Mono>{refund.customer_id}</Mono>} />}
-          {refund.billing_id && <Kvp label="Linked billing" value={<Mono>{refund.billing_id}</Mono>} />}
+          {refund.customer_id && (
+            <Kvp
+              label="Customer"
+              value={
+                <RecordLink to={`/admin/customers/${refund.customer_id}`}>{refund.customer_name ?? 'Customer'}</RecordLink>
+              }
+            />
+          )}
+          {refund.billing_id && (
+            <Kvp
+              label="Invoice"
+              value={<RecordLink to={`/billing/${refund.billing_id}`}>{refund.invoice_number ?? 'Invoice'}</RecordLink>}
+            />
+          )}
           {refund.damage_claim_id && (
-            <Kvp label="Linked claim" value={<Mono>{refund.damage_claim_id}</Mono>} />
+            <Kvp
+              label="Damage claim"
+              value={<RecordLink to={`/claims/${refund.damage_claim_id}`}>{refund.claim_reference ?? 'Claim'}</RecordLink>}
+            />
           )}
           <Kvp
             label="Customer preference"

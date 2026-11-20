@@ -200,3 +200,7 @@ Each use of a credit is recorded in `billing_credit_application` (migration 070)
 - Refunds created from a claim decision still carry no account (`customer_choice` null); staff arrange those directly.
 - Migration 071 widened `account_number`/`account_name` to TEXT: an encrypted value is ~260+ characters and the old VARCHAR(50)/(255) would have refused every write once encryption was on.
 - Verified live on :3010: missing details, 9 digits and a credit with details → 422; valid → 201; staff read the account; audit masked.
+
+## The detail read names its customer, invoice and claim (2026-11-20, audit FD-17)
+
+`GET /v1/refunds/{id}` adds three fields beside the ids it already returned: `customer_name` (the customer's name), `invoice_number` (of `billing_id`) and `claim_reference` (of `damage_claim_id`, e.g. `DC-20261113-001`), each `null` when the link is absent. `repository.get_refund_request_by_id` joins `customer`, `billing` and `damage_claim`, every join scoped to the refund's own tenant. The list (`GET /v1/refunds`) does not join them and omits the fields. Customers reading their own refund get them too (it is their own name and invoice). Ground-truth gap closed: the staff refund page printed the customer, invoice and claim as three UUIDs. Tests: `tests/db/test_refund_read.py` (3, real Postgres: names joined, absent links read as null, another tenant cannot read the row).

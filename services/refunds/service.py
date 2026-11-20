@@ -480,6 +480,10 @@ def _fmt_refund(row: dict[str, Any]) -> dict[str, Any]:
         "customer_id": str(row["customer_id"]) if row.get("customer_id") else None,
         "billing_id": str(row["billing_id"]) if row.get("billing_id") else None,
         "damage_claim_id": str(row["damage_claim_id"]) if row.get("damage_claim_id") else None,
+        # What the ids above are called, for the detail page (FD-17); absent on list rows, which do not join them.
+        "customer_name": row.get("customer_name"),
+        "invoice_number": row.get("invoice_number"),
+        "claim_reference": row.get("claim_reference"),
         "reason": row.get("reason"),
         "rejection_reason": row.get("rejection_reason"),
         "approval_level": row.get("approval_level"),

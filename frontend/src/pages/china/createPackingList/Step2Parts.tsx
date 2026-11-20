@@ -2,7 +2,7 @@ import { type JSX } from 'react'
 import { Avatar, Badge, Card, Icon, Mono } from '../../../design/components'
 import { SectionHead } from '../../../shell/SectionHead'
 import styles from '../CreatePackingList.module.css'
-import { formatNgn } from '../../../lib/format'
+import { formatCbm, formatNgn } from '../../../lib/format'
 import type { PackingListForm } from './useCreatePackingListForm'
 
 /** Who and where this cargo is for, kept in view while the items are entered. */
@@ -56,7 +56,7 @@ export function PricingEstimate({ form }: { form: PackingListForm }): JSX.Elemen
       <div className={styles.priceTiles}>
         <div className={styles.priceTile}>
           <div className={styles.priceLabel}>Total CBM</div>
-          <div className={styles.priceValue}>{totals.cbm.toFixed(3)}</div>
+          <div className={styles.priceValue}>{formatCbm(totals.cbm)}</div>
           <div className={styles.priceSub}>auto-computed</div>
         </div>
         <div className={styles.priceTile}>
@@ -74,7 +74,7 @@ export function PricingEstimate({ form }: { form: PackingListForm }): JSX.Elemen
           <div className={styles.priceSub}>
             {cbmCurrency === 'usd'
               ? cbmRate != null
-                ? `${totals.cbm.toFixed(3)} × $${cbmRate.toFixed(2)}`
+                ? `${formatCbm(totals.cbm)} × $${cbmRate.toFixed(2)}`
                 : 'rate unavailable'
               : fxRate != null
                 ? 'derived from ₦ via FX'
@@ -89,7 +89,7 @@ export function PricingEstimate({ form }: { form: PackingListForm }): JSX.Elemen
           <div className={styles.priceSub}>
             {cbmCurrency === 'ngn'
               ? cbmRate != null
-                ? `${totals.cbm.toFixed(3)} × ₦${cbmRate.toFixed(2)}`
+                ? `${formatCbm(totals.cbm)} × ₦${cbmRate.toFixed(2)}`
                 : 'rate unavailable'
               : fxRate != null
                 ? `× ${formatNgn(fxRate)} FX`

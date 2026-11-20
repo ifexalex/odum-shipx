@@ -168,10 +168,6 @@
   height: 8px;
 }
 
-.monoValue {
-  font-family: var(--font-mono);
-  font-size: var(--text-sm);
-}
 
 .prefRow {
   padding: var(--space-3) 0;
@@ -254,4 +250,9 @@
 
 .spacer16 {
   height: 16px;
+}
+
+/* An optional detail nobody has filled in (FD-17), quieter than a value. */
+.notSet {
+  color: var(--color-ink-4);
 }

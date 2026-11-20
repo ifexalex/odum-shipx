@@ -17,6 +17,7 @@ import { Badge, Banner, Button, Card, Mono, QuickActionCard, StatCard, StatusBad
 import { PageHeader } from '../../shell/PageHeader'
 import { SectionHead } from '../../shell/SectionHead'
 import styles from './admin.module.css'
+import { plural } from '../../lib/format'
 
 function actionVariant(action: string): BadgeVariant {
   if (action.includes('SUSPEND') || action.includes('OFFBOARD') || action.includes('DELETE')) return 'error'
@@ -125,7 +126,7 @@ export function PlatformDashboard(): JSX.Element {
           <div style={{ padding: 'var(--space-5) var(--space-5)' }}>
             <SectionHead
               title="Tenant health"
-              sub={`${tenants.length} tenant(s) on the platform`}
+              sub={`${plural(tenants.length, 'tenant')} on the platform`}
               action={
                 <Button variant="secondary" size="sm" trailingIcon="arrowright" onClick={() => navigate('/platform/tenants')}>
                   Manage tenants

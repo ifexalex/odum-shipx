@@ -8,7 +8,7 @@ import { useDateRangeFilter } from '../../hooks/useDateRangeFilter'
 import { useListExport } from '../../hooks/useListExport'
 import { SectionHead } from '../../shell/SectionHead'
 import styles from './TenantReports.module.css'
-import { formatNgn } from '../../lib/format'
+import { formatCbm, formatNgn, formatUsd } from '../../lib/format'
 import { PageHeader } from '../../shell/PageHeader'
 
 /** How many containers GET /v1/billing/report lists (REPORT_CONTAINER_ROWS in services/billing/repository.py). */
@@ -200,7 +200,7 @@ export function TenantReports(): JSX.Element {
   const claimCounts = report?.claims ?? { open: 0, resolved: 0, total: 0 }
 
   const avgCbmPerContainer = containersProcessed > 0
-    ? (totalCbm / containersProcessed).toFixed(1)
+    ? formatCbm(totalCbm / containersProcessed)
     : '—'
 
   // Revenue donut segments
@@ -325,8 +325,8 @@ export function TenantReports(): JSX.Element {
             cells: [
               <Mono key="ctn">{row.ctn}</Mono>,
               <Mono key="cust">{row.customers}</Mono>,
-              <Mono key="cbm">{Number(row.cbm).toFixed(2)}</Mono>,
-              <Mono key="cbmrate" color="var(--color-ink-3)">{row.cbmRateUsd > 0 ? `$${row.cbmRateUsd.toFixed(2)}` : '—'}</Mono>,
+              <Mono key="cbm">{formatCbm(row.cbm)}</Mono>,
+              <Mono key="cbmrate" color="var(--color-ink-3)">{row.cbmRateUsd > 0 ? formatUsd(row.cbmRateUsd) : '—'}</Mono>,
               <Mono key="fx" color="var(--color-ink-3)">{row.dollarRate > 0 ? `₦${row.dollarRate.toFixed(0)}` : '—'}</Mono>,
               <Mono key="billed">{fmtNgn(row.billed)}</Mono>,
               <Mono key="collected" color="var(--color-success)">{fmtNgn(row.collected)}</Mono>,

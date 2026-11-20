@@ -11,7 +11,7 @@ import { SectionHead } from '../../shell/SectionHead'
 import { useSession } from '../../auth/useSession'
 import { CustomerStepper } from './CustomerStepper'
 import styles from './MyShipments.module.css'
-import { formatDate, formatNgn } from '../../lib/format'
+import { formatCbm, formatDate, formatNgn } from '../../lib/format'
 import { PageHeader } from '../../shell/PageHeader'
 
 const ACTIVE_STATUSES = new Set([
@@ -175,7 +175,7 @@ export function MyShipments(): JSX.Element {
                   <div className={styles.activeCardFooter}>
                     <div className={styles.footerStats}>
                       <CustStat label="Cartons" value={String(shipment.carton_count)} />
-                      <CustStat label="CBM" value={Number(shipment.total_cbm ?? 0).toFixed(3)} />
+                      <CustStat label="CBM" value={formatCbm(shipment.total_cbm ?? 0)} />
                       <CustStat
                         label="Total cost"
                         value={b ? fmtNgn(b.total_due_ngn) : '—'}

@@ -9,7 +9,7 @@ import {
 } from '../../../api/billingRules'
 import { Action, Banner, Button, DialogGuard, Field, Mono, StatusBadge } from '../../../design/components'
 import styles from '../BillingDetail.module.css'
-import { formatDate } from '../../../lib/format'
+import { formatCbm, formatDate } from '../../../lib/format'
 import { toast } from '../../../design/toast'
 
 // ---------------------------------------------------------------------------
@@ -195,7 +195,7 @@ export function ResolveDisputeModal({
             name="corrected_cbm"
             required
             type="number"
-            placeholder={`Original: ${dispute.original_cbm ?? '—'}`}
+            placeholder={`Original: ${formatCbm(dispute.original_cbm)}`}
             value={correctedCbm}
             onChange={(e) => setCorrectedCbm(e.target.value)}
           />
@@ -286,12 +286,12 @@ export function DisputeCard({ dispute, role, onUpdated }: DisputeCardProps): JSX
         <div className={styles.disputeNumbers}>
           {dispute.original_cbm && (
             <span>
-              Original CBM: <Mono>{dispute.original_cbm}</Mono>
+              Original CBM: <Mono>{formatCbm(dispute.original_cbm)}</Mono>
             </span>
           )}
           {dispute.corrected_cbm && (
             <span>
-              Corrected: <Mono>{dispute.corrected_cbm}</Mono>
+              Corrected: <Mono>{formatCbm(dispute.corrected_cbm)}</Mono>
             </span>
           )}
         </div>

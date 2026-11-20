@@ -6,7 +6,7 @@ import { isManifestOverdue as isOverdue } from '../../api/manifestRules'
 import { useManifestList, useManifestStats } from '../../hooks/useManifests'
 import { Badge, Banner, Card, Chip, ListFooter, Mono, StatCard, StatusBadge, Table, EmptyState } from '../../design/components'
 import styles from './ManifestList.module.css'
-import { formatNumber } from '../../lib/format'
+import { formatKg } from '../../lib/format'
 import { useStatusParam } from '../../lib/useStatusParam'
 import { statusLabel } from '../../design/status'
 import { PageHeader } from '../../shell/PageHeader'
@@ -39,7 +39,7 @@ function PackageMix({ manifest }: { manifest: Manifest }): JSX.Element {
 function fmtWeight(kg: string | null | undefined): string {
   const n = Number(kg)
   if (!kg || Number.isNaN(n) || n === 0) return '—'
-  return `${formatNumber(n, 0)} kg`
+  return `${formatKg(n)} kg`
 }
 
 // The values `?status=` may hold (useStatusParam); anything else reads as no filter.

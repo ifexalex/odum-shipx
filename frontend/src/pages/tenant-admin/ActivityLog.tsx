@@ -321,7 +321,7 @@ export function ActivityLog(): JSX.Element {
             <div style={{ fontSize: 'var(--text-xs)', color: 'var(--color-ink-3)', marginBottom: 'var(--space-4)' }}>
               {formatDateTime(expandedEntry.created_at)}
               {' · by '}
-              {expandedEntry.actor_name ?? (expandedEntry.actor_id ? expandedEntry.actor_id.slice(0, 8) : 'System')}
+              {expandedEntry.actor_name ?? (expandedEntry.actor_id ? 'A former user' : 'System')}
             </div>
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: 'var(--space-4)' }}>
               <div>

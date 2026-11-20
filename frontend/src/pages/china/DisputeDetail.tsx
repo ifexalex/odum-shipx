@@ -11,7 +11,7 @@ import { SectionHead } from '../../shell/SectionHead'
 import styles from './DisputeDetail.module.css'
 import { useBreadcrumbLabel } from '../../shell/breadcrumbs'
 import { PageHeader } from '../../shell/PageHeader'
-import { formatDate } from '../../lib/format'
+import { formatCbm, formatDate } from '../../lib/format'
 import { toast } from '../../design/toast'
 
 function ResolvePanel({ dispute, onResolved }: { dispute: DisputeDetailData; onResolved: () => void }): JSX.Element {
@@ -63,7 +63,7 @@ function ResolvePanel({ dispute, onResolved }: { dispute: DisputeDetailData; onR
           name="corrected_cbm"
           type="number"
           required
-          placeholder={`Billed: ${dispute.billed_cbm ?? '—'}`}
+          placeholder={`Billed: ${formatCbm(dispute.billed_cbm)}`}
           value={correctedCbm}
           onChange={(e) => setCorrectedCbm(e.target.value)}
         />
@@ -141,20 +141,20 @@ export function DisputeDetail(): JSX.Element {
         <div className={styles.compare}>
           <div className={styles.fact}>
             <span className={styles.factLabel}>Billed CBM</span>
-            <span className={styles.factValue}>{dispute.billed_cbm ?? '—'}</span>
+            <span className={styles.factValue}>{formatCbm(dispute.billed_cbm)}</span>
           </div>
           <div className={styles.fact}>
             <span className={styles.factLabel}>Customer measured</span>
-            <span className={styles.factValue}>{dispute.customer_measured_cbm ?? '—'}</span>
+            <span className={styles.factValue}>{formatCbm(dispute.customer_measured_cbm)}</span>
           </div>
           <div className={styles.fact}>
             <span className={styles.factLabel}>Disputed CBM</span>
-            <span className={styles.factValue}>{dispute.original_cbm ?? '—'}</span>
+            <span className={styles.factValue}>{formatCbm(dispute.original_cbm)}</span>
           </div>
           {dispute.corrected_cbm && (
             <div className={styles.fact}>
               <span className={styles.factLabel}>Corrected CBM</span>
-              <span className={styles.factValue}>{dispute.corrected_cbm}</span>
+              <span className={styles.factValue}>{formatCbm(dispute.corrected_cbm)}</span>
             </div>
           )}
         </div>
@@ -173,7 +173,7 @@ export function DisputeDetail(): JSX.Element {
         <div style={{ padding: 'var(--space-5) var(--space-5)' }}>
           <SectionHead
             title="Packing-list lines"
-            sub={`${dispute.lines.length} line${dispute.lines.length === 1 ? '' : 's'} · ${totalLineCbm.toFixed(3)} CBM in total`}
+            sub={`${dispute.lines.length} line${dispute.lines.length === 1 ? '' : 's'} · ${formatCbm(totalLineCbm)} CBM in total`}
           />
         </div>
         <Table

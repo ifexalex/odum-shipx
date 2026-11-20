@@ -4,7 +4,7 @@ import { billingApi, type Billing } from '../../../api/billing'
 import { ApiError } from '../../../api/client'
 import { billingKeys } from '../../../api/keys'
 import { Button, Card, Mono, Table } from '../../../design/components'
-import { formatNgn } from '../../../lib/format'
+import { formatNgn, plural } from '../../../lib/format'
 import { SectionHead } from '../../../shell/SectionHead'
 import styles from '../BillingDetail.module.css'
 import { toast } from '../../../design/toast'
@@ -53,7 +53,7 @@ export function MiscChargesSection({
     <div className={styles.section}>
       <SectionHead
         title="Miscellaneous charges"
-        sub={miscCharges.length > 0 ? `${miscCharges.length} charge(s)` : undefined}
+        sub={miscCharges.length > 0 ? plural(miscCharges.length, 'charge') : undefined}
       />
       <Card padding="none">
         <Table

@@ -12,7 +12,7 @@ import { useBranding } from '../../hooks/useConfig'
 import { usePackingList } from '../../hooks/usePackingLists'
 import { PrintBrandFoot, PrintBrandHead } from './PrintBrand'
 import styles from './print.module.css'
-import { formatDate } from '../../lib/format'
+import { formatCbm, formatDate, formatKg } from '../../lib/format'
 import { statusLabel } from '../../design/status'
 
 export function PrintPackingList(): JSX.Element {
@@ -121,9 +121,9 @@ export function PrintPackingList(): JSX.Element {
                   ? `${Number(item.length_cm)}×${Number(item.width_cm)}×${Number(item.height_cm)}`
                   : '—'}
               </td>
-              <td className={`${styles.right} ${styles.mono}`}>{item.cbm ? Number(item.cbm).toFixed(3) : '—'}</td>
-              <td className={`${styles.right} ${styles.mono}`}>{item.weight_dispatch_kg ? Number(item.weight_dispatch_kg).toFixed(1) : '—'}</td>
-              <td className={`${styles.right} ${styles.mono}`}>{item.weight_actual_kg ? Number(item.weight_actual_kg).toFixed(1) : '—'}</td>
+              <td className={`${styles.right} ${styles.mono}`}>{item.cbm ? formatCbm(item.cbm) : '—'}</td>
+              <td className={`${styles.right} ${styles.mono}`}>{item.weight_dispatch_kg ? formatKg(item.weight_dispatch_kg) : '—'}</td>
+              <td className={`${styles.right} ${styles.mono}`}>{item.weight_actual_kg ? formatKg(item.weight_actual_kg) : '—'}</td>
               <td className={`${styles.right} ${styles.mono}`}>{item.received_date ?? '—'}</td>
             </tr>
           ))}
@@ -145,15 +145,15 @@ export function PrintPackingList(): JSX.Element {
           </div>
           <div className={styles.metaRow}>
             <span className={styles.metaLabel}>Total CBM</span>
-            <span className={`${styles.metaValue} ${styles.mono}`}>{totalCbm.toFixed(3)}</span>
+            <span className={`${styles.metaValue} ${styles.mono}`}>{formatCbm(totalCbm)}</span>
           </div>
           <div className={styles.metaRow}>
             <span className={styles.metaLabel}>Total weight (dispatch)</span>
-            <span className={`${styles.metaValue} ${styles.mono}`}>{totalWeight.toFixed(1)} kg</span>
+            <span className={`${styles.metaValue} ${styles.mono}`}>{formatKg(totalWeight)} kg</span>
           </div>
           <div className={styles.metaRow}>
             <span className={styles.metaLabel}>Total weight (actual)</span>
-            <span className={`${styles.metaValue} ${styles.mono}`}>{totalWeightActual.toFixed(1)} kg</span>
+            <span className={`${styles.metaValue} ${styles.mono}`}>{formatKg(totalWeightActual)} kg</span>
           </div>
         </div>
       </div>

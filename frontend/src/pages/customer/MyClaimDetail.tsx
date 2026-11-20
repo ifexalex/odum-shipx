@@ -144,7 +144,7 @@ export function MyClaimDetail(): JSX.Element {
         <h2 style={{ margin: '0 0 var(--space-3)', fontSize: 'var(--text-lg)' }}>Your claim</h2>
         <Kvp label="Container" value={<Mono>{claim.container_number ?? '—'}</Mono>} />
         {claim.cartons_affected.length > 0 && <Kvp label="Cartons affected" value={<Mono>{claim.cartons_affected.join(', ')}</Mono>} />}
-        <Kvp label="What you told us" value={claim.description ?? '—'} />
+        <Kvp optional label="What you told us" value={claim.description} />
         <Kvp label="How it was checked" value={customerInspectionLabel(claim.inspection_method)} />
       </Card>
 

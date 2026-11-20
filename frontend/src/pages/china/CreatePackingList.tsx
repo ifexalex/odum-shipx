@@ -8,6 +8,7 @@ import { Step1 } from './createPackingList/Step1'
 import { Step2 } from './createPackingList/Step2'
 import { Step3 } from './createPackingList/Step3'
 import { useCreatePackingListForm } from './createPackingList/useCreatePackingListForm'
+import { formatCbm, formatKg } from '../../lib/format'
 
 export function CreatePackingList(): JSX.Element {
   const form = useCreatePackingListForm()
@@ -78,7 +79,7 @@ export function CreatePackingList(): JSX.Element {
                 <>
                   {' — '}
                   {item.length_cm}×{item.width_cm}×{item.height_cm} cm
-                  {item.weight_actual_kg != null && `, ${item.weight_actual_kg} kg each`}
+                  {item.weight_actual_kg != null && `, ${formatKg(item.weight_actual_kg)} kg each`}
                 </>
               )}
             </li>
@@ -86,7 +87,7 @@ export function CreatePackingList(): JSX.Element {
         </ul>
         <p>
           Totals for this packing list: <strong>{totals.cartons}</strong> packages,{' '}
-          <strong>{totals.cbm.toFixed(2)} CBM</strong>, <strong>{totals.weight.toFixed(1)} kg</strong>.
+          <strong>{formatCbm(totals.cbm)} CBM</strong>, <strong>{formatKg(totals.weight)} kg</strong>.
         </p>
         <Banner variant="warning">
           Only use a quantity when the packages are genuinely identical. CBM drives billing, so one wrong

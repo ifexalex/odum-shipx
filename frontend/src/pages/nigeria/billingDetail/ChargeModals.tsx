@@ -310,7 +310,7 @@ export function ApplyCarryoverModal({
               {outstanding.map((c) => (
                 <option key={c.id} value={c.id}>
                   {formatNgn(c.amount_ngn)} — from{' '}
-                  {c.source_container_number ?? c.source_billing_id}
+                  {c.source_container_number ?? 'An earlier invoice'}
                 </option>
               ))}
             </Select>

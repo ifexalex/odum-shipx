@@ -4,7 +4,7 @@ import { formatPackageMix } from '../../../api/packingListRules'
 import { Avatar, Card, Kvp, Mono, Button } from '../../../design/components'
 import { SectionHead } from '../../../shell/SectionHead'
 import styles from '../ContainerDetail.module.css'
-import { formatDate } from '../../../lib/format'
+import { formatCbm, formatDate } from '../../../lib/format'
 import { utilizationColorClass } from './labels'
 import { ContainerStepper, SummaryTile, EventRow } from './Timeline'
 import { type Container, type ContainerEvent } from '../../../api/tracking'
@@ -106,17 +106,12 @@ export function OverviewTab({
         <Card>
           <SectionHead title="Container info" />
           <Kvp label="Container #" value={<Mono>{container.container_number}</Mono>} />
-          <Kvp label="Container type" value={container.container_type ?? '—'} />
-          <Kvp
-            label="Seal #"
-            value={container.seal_number ? <Mono>{container.seal_number}</Mono> : '—'}
-          />
-          <Kvp label="Vessel" value={container.vessel_name ?? '—'} />
-          <Kvp
-            label="Voyage"
-            value={container.voyage_number ? <Mono>{container.voyage_number}</Mono> : '—'}
-          />
-          <Kvp label="Shipping line" value={container.shipping_line ?? '—'} />
+          {/* Optional facts are left out when empty, not shown as a column of dashes (FD-17). */}
+          <Kvp optional label="Container type" value={container.container_type} />
+          <Kvp optional label="Seal #" value={container.seal_number && <Mono>{container.seal_number}</Mono>} />
+          <Kvp optional label="Vessel" value={container.vessel_name} />
+          <Kvp optional label="Voyage" value={container.voyage_number && <Mono>{container.voyage_number}</Mono>} />
+          <Kvp optional label="Shipping line" value={container.shipping_line} />
           <Kvp
             label="Created by"
             value={
@@ -144,7 +139,7 @@ export function OverviewTab({
             />
             <SummaryTile
               label="Total CBM"
-              value={totalCbm.toFixed(2)}
+              value={formatCbm(totalCbm)}
               sub={capacityCbm ? `of ${capacityCbm} capacity` : 'packed'}
             />
           </div>
@@ -161,8 +156,8 @@ export function OverviewTab({
                 />
               </div>
               <div className={styles.utilSub}>
-                {totalCbm.toFixed(2)} of {capacityCbm} CBM packed · room for{' '}
-                {Math.max(capacityCbm! - totalCbm, 0).toFixed(2)} more
+                {formatCbm(totalCbm)} of {capacityCbm} CBM packed · room for{' '}
+                {formatCbm(Math.max(capacityCbm! - totalCbm, 0))} more
                 {recommendedCbm ? ` · recommended ${recommendedCbm} CBM` : ''}
               </div>
             </div>
@@ -219,7 +214,7 @@ export function OverviewTab({
                           {group.name}
                         </span>
                         <span className={styles.shipperCbm}>
-                          <Mono>{group.cbm.toFixed(2)}</Mono> CBM
+                          <Mono>{formatCbm(group.cbm)}</Mono> CBM
                         </span>
                       </div>
                       <div className={styles.shipperBarRow}>
