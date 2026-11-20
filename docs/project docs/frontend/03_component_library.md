@@ -354,3 +354,16 @@ Known limit: focus is placed once, when the dialog mounts. A dialog whose first 
 - Used by `ContainerStepper` (overview and tracking tabs), `CustomerStepper` (shipment list and detail), claim detail (staff and customer), refund detail, the packing-list form and the import wizard. The container event log names events from the registry too. About 300 lines of per-page stepper CSS deleted.
 - Tests: `Stepper.test.tsx` (6: named list and states, complete, failed, wizard numbers, compact form at 390 px with "2 of 4" and the progress bar, full form above 600 px); `src/design/stepperRules.test.ts` (no page CSS draws step dots or lines; the seven pages use `Stepper`). Checked in the browser: the customer tracker at 390 px fits ("Completed · 8 of 8"), the page does not scroll sideways.
 
+## Component catalog: every component, light and dark (step 2 gate, 2026-11-20)
+
+`/component-catalog` (dev only) now has a theme switch (`ThemeToggle`) at the top and renders every component `src/design/components/index.ts` exports: new sections for cards and stat cards (FD-10), the key-value list, tables (FD-13: column types, rows that open, the footer count, phone cards, loading, empty, selectable), the Stepper (FD-09: in progress, complete, refused, wizard, compact at phone width), empty/loading/error states (FD-20, the three page skeletons), and the remaining controls (Combobox, country/state/phone, date range, export, file input behind its button, language, kebab, Pressable, Action, quick action, user cell, icons, the plan-limit dialog, `ModalOverlay` + `DialogGuard`, cell checkbox and radio).
+
+Rendered in both themes with no console errors. Reviewing it found and fixed:
+- dark mode's active chip was deep green on the soft green fill (unreadable): it uses `--color-primary-on-soft`;
+- `Pressable` showed the browser's grey button fill in dark mode: a zero-specificity `:where(.pressable)` reset (no background, border or padding), so page classes still win;
+- a table in card view inside a `Card` drew a bordered card per row inside the card's frame (every list page on a phone): inside a card the rows are divided by lines, not boxed, and the wrapper takes the card's radius so its rows and header clip to the rounded corners.
+
+- a phone card's fields sat two to a row even at 320 px, where a status ("COMPLETED") is wider than its cell; before FD-10 `anywhere` split the word, now the fields drop to one column (`repeat(auto-fit, minmax(min(100%, 136px), 1fr))`).
+
+Guard: `src/design/catalogCoverage.test.ts` fails when an exported component is missing from the catalog or the theme switch is gone.
+

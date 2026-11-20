@@ -118,3 +118,7 @@ If the Storybook/component-catalog route from Task 03 exists, a lightweight scre
 
 `Stepper.test.tsx` (6) stubs `getBoundingClientRect` to drive the compact form, as `Table.test.tsx` does for cards. `src/design/stepperRules.test.ts` (2). `MyClaimDetail.test.tsx` now finds each step's list item and checks its `aria-current` and its "done" text.
 
+## Component catalog coverage (step 2 gate, 2026-11-20)
+
+`src/design/catalogCoverage.test.ts` (2): every component exported from `src/design/components/index.ts` renders in `ComponentCatalog.tsx`, and the theme switch is there. The catalog itself was checked in a browser in light and dark (full-page screenshots, no console errors).
+

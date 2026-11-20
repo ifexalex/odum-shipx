@@ -22,7 +22,8 @@
 
 .active {
   background: var(--color-primary-soft);
-  color: var(--color-primary-deep);
+  /* on-soft, not primary-deep: deep green on the dark theme's soft fill was unreadable. */
+  color: var(--color-primary-on-soft);
   border-color: color-mix(in srgb, var(--color-primary) 33%, transparent);
   font-weight: 600;
 }

@@ -8,7 +8,9 @@
 /* Inside a card the card's edge is the table's frame (FD-10): no second border just inside it. */
 :global([data-surface='card']) .wrapper {
   border: 0;
-  border-radius: 0;
+  /* The card's own radius (when the table is its direct child), so its overflow clips the header row and card rows
+     to the card's rounded corners instead of poking past them. */
+  border-radius: inherit;
 }
 
 .table {
@@ -166,6 +168,22 @@
   padding: var(--space-4) var(--space-4);
 }
 
+/* Inside a card the rows are divided, not boxed: no card inside a card (FD-10). */
+:global([data-surface='card']) .cardList {
+  gap: 0;
+  padding: 0;
+}
+
+:global([data-surface='card']) .card {
+  border: 0;
+  border-radius: 0;
+  border-bottom: 1px solid var(--color-line);
+}
+
+:global([data-surface='card']) .card:last-child {
+  border-bottom: 0;
+}
+
 .cardSelected {
   background: var(--color-primary-soft);
   border-color: var(--color-primary);
@@ -192,7 +210,9 @@
 
 .cardBody {
   display: grid;
-  grid-template-columns: repeat(2, 1fr);
+  /* Two fields a row while each still holds a whole word ("COMPLETED"); one a row on the narrowest phones, so a
+     status never splits or runs out of its cell (FD-10). */
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 136px), 1fr));
   gap: var(--space-3) var(--space-4);
   margin-top: var(--space-3);
   padding-top: var(--space-3);

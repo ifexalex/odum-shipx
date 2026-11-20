@@ -1,6 +1,34 @@
-import { useState, type JSX, type ReactNode } from 'react'
+import { useRef, useState, type JSX, type ReactNode } from 'react'
+import { ApiError } from '../api/client'
+import type { TenantQuota } from '../api/tenantManagement'
+import { useDateRangeFilter } from '../hooks/useDateRangeFilter'
 import {
+  Action,
   Avatar,
+  Combobox,
+  CountrySelect,
+  DateRangeFilter,
+  EmptyState,
+  ErrorState,
+  ExportButton,
+  FileInput,
+  Icon,
+  KebabBtn,
+  Kvp,
+  LimitReachedModal,
+  LinesSkeleton,
+  ListFooter,
+  LocaleCard,
+  PageSkeleton,
+  PhoneField,
+  Pressable,
+  QuickActionCard,
+  Skeleton,
+  StateSelect,
+  Stepper,
+  ThemeToggle,
+  UserCell,
+  type StaffLocale,
   Badge,
   Banner,
   Button,
@@ -9,6 +37,10 @@ import {
   Chip,
   CellInput,
   CellSelect,
+  CellCheckbox,
+  CellRadio,
+  DialogGuard,
+  ModalOverlay,
   CheckboxField,
   ColorField,
   DateField,
@@ -35,6 +67,7 @@ import {
 import { PageHeader } from '../shell/PageHeader'
 import { toast } from './toast'
 import { STATUS_REGISTRY, type StatusKind, statusesOf } from './status'
+import { claimProgress, claimSteps, containerSteps } from './steps'
 import { SectionHead } from '../shell/SectionHead'
 import { Tabs } from '../shell/Tabs'
 import { TopBar } from '../shell/TopBar'
@@ -50,6 +83,36 @@ const BUTTON_VARIANTS: ButtonVariant[] = [
 ]
 const BADGE_VARIANTS: BadgeVariant[] = ['success', 'warning', 'error', 'info', 'accent', 'purple', 'neutral', 'primary']
 const BANNER_VARIANTS: BannerVariant[] = ['info', 'success', 'warning', 'error']
+
+const DEMO_QUOTA: TenantQuota = {
+  tenant_id: 'demo',
+  period: '2026-11',
+  subscription_tier: 'starter',
+  limits: { users: { used: 10, max: 10 }, containers_per_month: { used: 4, max: 20 }, storage_gb: { used: 1, max: 5 } },
+  api_calls: 0,
+  notifications: { sms_sent: 0, whatsapp_sent: 0, emails_sent: 0 },
+}
+
+const WIZARD_STEPS = [
+  { key: 'details', label: 'Details', sub: 'Customer + container' },
+  { key: 'items', label: 'Items', sub: 'Cartons + measurements' },
+  { key: 'review', label: 'Review', sub: 'Verify + submit' },
+]
+
+/** A labelled frame for one demo, so each state in a row says what it shows. */
+function Demo({ label, width, children }: { label: string; width?: number; children: ReactNode }): JSX.Element {
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-2)', width, maxWidth: '100%' }}>
+      <span style={{ fontSize: 'var(--text-xs)', color: 'var(--color-ink-4)', textTransform: 'uppercase', letterSpacing: 'var(--tracking-label)' }}>{label}</span>
+      {children}
+    </div>
+  )
+}
+
+function DateRangeDemo(): JSX.Element {
+  const range = useDateRangeFilter()
+  return <DateRangeFilter range={range} label="Created" />
+}
 
 function Section({ title, children }: { title: string; children: ReactNode }): JSX.Element {
   return (
@@ -69,6 +132,15 @@ export function ComponentCatalog(): JSX.Element {
   const [toggle2, setToggle2] = useState(false)
   const [activeTab, setActiveTab] = useState('overview')
   const [tableSelected, setTableSelected] = useState<boolean[]>([false, true, false])
+  const [combo, setCombo] = useState<string | null>(null)
+  const [country, setCountry] = useState('Nigeria')
+  const [state, setState] = useState('')
+  const [phone, setPhone] = useState('')
+  const [locale, setLocale] = useState<StaffLocale>('en')
+  const [limitOpen, setLimitOpen] = useState(false)
+  const [overlayOpen, setOverlayOpen] = useState(false)
+  const fileRef = useRef<HTMLInputElement>(null)
+  const [opened, setOpened] = useState<string | null>(null)
 
   return (
     <div style={{ padding: 'var(--space-8)', maxWidth: 1100 }}>
@@ -77,6 +149,13 @@ export function ComponentCatalog(): JSX.Element {
         title="ShipX Component Catalog"
         subtitle="Every shared component with every variant — FE-03 acceptance criteria"
       />
+
+      <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-3)', marginBottom: 'var(--space-8)' }}>
+        <span style={{ fontSize: 'var(--text-sm)', color: 'var(--color-ink-3)' }}>
+          Theme (system, light, dark): every section below reads in both.
+        </span>
+        <ThemeToggle />
+      </div>
 
       <Section title="Brand marks">
         <div style={{ display: 'flex', gap: 'var(--space-6)', alignItems: 'center', background: 'var(--color-forest-dark)', padding: 'var(--space-4)', borderRadius: 'var(--radius-md)' }}>
@@ -185,13 +264,35 @@ export function ComponentCatalog(): JSX.Element {
         </div>
       </Section>
 
-      <Section title="Card / StatCard">
-        <div style={{ display: 'flex', gap: 'var(--space-4)', flexWrap: 'wrap' }}>
-          <Card>Plain card</Card>
+      <Section title="Cards and stat cards (FD-10)">
+        <ul style={{ margin: '0 0 var(--space-4)', paddingLeft: 'var(--space-5)', fontSize: 'var(--text-sm)', color: 'var(--color-ink-2)' }}>
+          <li>A stat card holds one figure. A word or a status goes in the record's key-value list.</li>
+          <li>Labels wrap between words, never inside one, and are never cut off; the figure scales to the card.</li>
+          <li>A table inside a card uses the card's edge as its frame.</li>
+        </ul>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', gap: 'var(--space-3)', marginBottom: 'var(--space-4)' }}>
           <StatCard label="Active containers" value={42} icon="container" />
           <StatCard label="Revenue" value="₦1.2M" trend={{ direction: 'up', pct: 12 }} sublabel="vs last month" />
           <StatCard label="Disputes" value={3} trend={{ direction: 'down', pct: 5 }} />
+          <StatCard label="Outstanding (30+ days)" value="₦12,345,678" sublabel="unpaid and partly paid invoices" icon="coin" />
+          <StatCard label="Cartons on note" value="3 of 12" />
         </div>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))', gap: 'var(--space-3)' }}>
+          <Card>Plain card (padding default)</Card>
+          <Card padding="large">Large padding</Card>
+          <Card padding="none">
+            <Table dense columns={[{ title: 'Item' }, { title: 'Qty', type: 'number' }]} rows={[{ cells: ['Table in a card', '2'] }]} />
+          </Card>
+        </div>
+      </Section>
+
+      <Section title="Key-value list">
+        <Card>
+          <Kvp label="Reference" value={<Mono>REL-2026-0042</Mono>} />
+          <Kvp label="Type" value="Partial release" />
+          <Kvp label="Payment status" value={<StatusBadge kind="invoice" status="partially_paid" />} />
+          <Kvp label="Warehouse" value="Apapa main warehouse — Plot 12, Wharf Road, Apapa, Lagos" divider={false} />
+        </Card>
       </Section>
 
       <Section title="Check">
@@ -255,6 +356,9 @@ export function ComponentCatalog(): JSX.Element {
               <option value="carton">Carton</option>
               <option value="bale">Bale</option>
             </CellSelect>
+            <CellCheckbox label="Fragile, item 1" defaultChecked />
+            <CellRadio label="Primary role, row 1" name="catalog_primary" defaultChecked />
+            <CellRadio label="Primary role, row 2" name="catalog_primary" />
           </div>
           <div style={{ flex: '1 0 100%' }}>
             <Field label="Notes" name="notes" multiline rows={3} optional />
@@ -321,6 +425,19 @@ export function ComponentCatalog(): JSX.Element {
         >
           <Field label="Amount (₦)" name="catalog_amount" type="number" />
         </Modal>
+        <Button variant="secondary" mutates={false} onClick={() => setOverlayOpen(true)} style={{ marginLeft: 'var(--space-3)' }}>
+          Open hand-rolled dialog
+        </Button>
+        {overlayOpen && (
+          <ModalOverlay onClose={() => setOverlayOpen(false)}>
+            <Card radius="xl" padding="large" style={{ width: 'var(--dialog-sm)' }}>
+              <DialogGuard onClose={() => setOverlayOpen(false)} />
+              <p style={{ marginTop: 0 }}>A page's own dialog panel inside <code>ModalOverlay</code>, guarded by <code>DialogGuard</code>.</p>
+              <Field label="Reason" name="catalog_reason" />
+              <Button variant="ghost" onClick={() => setOverlayOpen(false)}>Close</Button>
+            </Card>
+          </ModalOverlay>
+        )}
       </Section>
 
       <Section title="Tabs">
@@ -334,7 +451,60 @@ export function ComponentCatalog(): JSX.Element {
         />
       </Section>
 
-      <Section title="Table">
+      <Section title="Table (FD-13)">
+        <ul style={{ margin: '0 0 var(--space-4)', paddingLeft: 'var(--space-5)', fontSize: 'var(--text-sm)', color: 'var(--color-ink-2)' }}>
+          <li>Each column declares its type: reference (monospaced), number and money (right-aligned, unit in the title), date, status, action.</li>
+          <li>A row opens its record from anywhere on it; its first cell is the keyboard control. No "View" column.</li>
+          <li>Below 600 px of its own width a table becomes cards. The list counts once, in the footer.</li>
+        </ul>
+        <Card padding="none">
+          <Table
+            columns={[
+              { title: 'Reference', type: 'reference', sortable: true },
+              { title: 'Customer' },
+              { title: 'Total (₦)', type: 'money' },
+              { title: 'Status', type: 'status' },
+              { title: 'Billed', type: 'date' },
+              { title: '', type: 'action' },
+            ]}
+            rows={[
+              {
+                onOpen: () => setOpened('INV-A-002'),
+                openLabel: 'Open invoice INV-A-002',
+                cells: [<Mono key="r">INV-A-002</Mono>, 'Ibrahim Musa', <Mono key="t">₦139,500</Mono>, <StatusBadge key="s" kind="invoice" status="released_with_outstanding" />, '13 Nov', null],
+              },
+              {
+                onOpen: () => setOpened('INV-A-003'),
+                openLabel: 'Open invoice INV-A-003',
+                suspended: true,
+                cells: [<Mono key="r">INV-A-003</Mono>, 'Ngozi Adeyemi', <Mono key="t">₦111,600</Mono>, <StatusBadge key="s" kind="invoice" status="unpaid" />, '13 Nov', <Button key="a" size="sm" variant="secondary" mutates={false} onClick={() => setOpened('Record payment')}>Record payment</Button>],
+              },
+            ]}
+          />
+          <ListFooter shown={2} total={68} hasMore onLoadMore={() => undefined} noun="billing records" nounOne="billing record" />
+        </Card>
+        <p style={{ fontSize: 'var(--text-sm)', color: 'var(--color-ink-3)' }}>Last opened: {opened ?? 'nothing yet'}</p>
+        <div style={{ display: 'flex', gap: 'var(--space-4)', flexWrap: 'wrap', alignItems: 'flex-start' }}>
+          <Demo label="Phone width: cards" width={360}>
+            <Card padding="none">
+              <Table
+                columns={[{ title: 'Reference', type: 'reference' }, { title: 'Total (₦)', type: 'money' }, { title: 'Status', type: 'status' }]}
+                rows={[{ onOpen: () => setOpened('INV-A-001'), cells: [<Mono key="r">INV-A-001</Mono>, <Mono key="t">₦104,625</Mono>, <StatusBadge key="s" kind="invoice" status="paid" />] }]}
+              />
+            </Card>
+          </Demo>
+          <Demo label="Loading" width={360}>
+            <Card padding="none">
+              <Table columns={[{ title: 'Reference', type: 'reference' }, { title: 'Total (₦)', type: 'money' }]} rows={[]} loading />
+            </Card>
+          </Demo>
+          <Demo label="Empty" width={360}>
+            <Card padding="none">
+              <Table columns={[{ title: 'Reference', type: 'reference' }]} rows={[]} emptyState={<EmptyState compact title="No billing records match this filter" onClearFilters={() => undefined} />} />
+            </Card>
+          </Demo>
+        </div>
+        <Demo label="Selectable">
         <Table
           selectable
           columns={[{ title: 'Container', sortable: true }, { title: 'Status' }, { title: 'Weight', align: 'right' }]}
@@ -348,6 +518,140 @@ export function ComponentCatalog(): JSX.Element {
           }
           onSelectAll={(selected) => setTableSelected((prev) => prev.map(() => selected))}
         />
+        </Demo>
+      </Section>
+
+
+      <Section title="Stepper (FD-09)">
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-6)' }}>
+          <Demo label="Progress: in transit (staff wording)">
+            <Stepper steps={containerSteps('staff')} current={2} label="Container progress" />
+          </Demo>
+          <Demo label="Progress: complete (customer wording)">
+            <Stepper steps={containerSteps('customer')} current={7} complete label="Shipment progress" />
+          </Demo>
+          <Demo label="Progress: refused at a step">
+            <Stepper
+              steps={[{ key: 'a', label: 'Accounts review' }, { key: 'b', label: 'Manager approval' }, { key: 'c', label: 'Paid out' }]}
+              current={1}
+              failed
+              label="Refund progress"
+            />
+          </Demo>
+          <Demo label="Wizard: step 2">
+            <Stepper mode="wizard" steps={WIZARD_STEPS} current={1} label="Packing list steps" />
+          </Demo>
+          <div style={{ display: 'flex', gap: 'var(--space-4)', flexWrap: 'wrap' }}>
+            <Demo label="Phone width: compact" width={360}>
+              <Stepper steps={containerSteps('customer')} current={2} label="Shipment progress" />
+            </Demo>
+            <Demo label="Phone width: claim, refused" width={360}>
+              <Stepper steps={claimSteps('customer')} current={claimProgress('under_inspection').current} failed label="Claim progress" />
+            </Demo>
+          </div>
+        </div>
+      </Section>
+
+      <Section title="Empty, loading and error states (FD-20)">
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))', gap: 'var(--space-4)' }}>
+          <Demo label="Empty: first use">
+            <Card>
+              <EmptyState icon="container" title="No containers yet" body="Create the first one to start packing." action={{ label: 'Create container', onClick: () => undefined }} />
+            </Card>
+          </Demo>
+          <Demo label="Empty: no results">
+            <Card>
+              <EmptyState title="No invoices match these filters" onClearFilters={() => undefined} />
+            </Card>
+          </Demo>
+          <Demo label="Error with retry">
+            <Card>
+              <ErrorState title="Couldn't load this invoice" error={new ApiError({ type: 'about:blank', title: 'Service unavailable', status: 503, detail: 'upstream down', error_code: 'SERVICE_UNAVAILABLE' }, 'req-1234')} onRetry={() => undefined} />
+            </Card>
+          </Demo>
+          <Demo label="Error, compact">
+            <ErrorState compact title="Couldn't load the list" error={new Error('boom')} onRetry={() => undefined} />
+          </Demo>
+          <Demo label="Lines loading">
+            <Card>
+              <LinesSkeleton label="Loading billing" lines={3} />
+            </Card>
+          </Demo>
+          <Demo label="Skeleton shapes">
+            <Card>
+              <Skeleton width="60%" height={20} />
+              <div style={{ height: 'var(--space-2)' }} />
+              <Skeleton width="40%" />
+            </Card>
+          </Demo>
+        </div>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))', gap: 'var(--space-4)', marginTop: 'var(--space-4)' }}>
+          {(['detail', 'list', 'form'] as const).map((kind) => (
+            <Demo key={kind} label={`Page skeleton: ${kind}`}>
+              <div style={{ height: 260, overflow: 'hidden', border: '1px dashed var(--color-line)', borderRadius: 'var(--radius-md)' }}>
+                <PageSkeleton kind={kind} label={`Loading ${kind}`} />
+              </div>
+            </Demo>
+          ))}
+        </div>
+      </Section>
+
+      <Section title="More controls">
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(260px, 1fr))', gap: 'var(--space-4)' }}>
+          <Demo label="Combobox">
+            <Combobox
+              ariaLabel="Container"
+              value={combo}
+              onChange={setCombo}
+              placeholder="Pick a container"
+              options={[{ value: 'a', label: 'ACME001001', meta: '76 CBM · rec. 70' }, { value: 'b', label: 'ACME001002', meta: '33 CBM' }]}
+            />
+          </Demo>
+          <Demo label="Country, state, phone">
+            <CountrySelect label="Country" value={country} onChange={setCountry} />
+            <StateSelect label="State" country={country} value={state} onChange={setState} optional />
+            <PhoneField label="Phone" value={phone} onChange={setPhone} />
+          </Demo>
+          <Demo label="Date range filter">
+            <DateRangeDemo />
+          </Demo>
+          <Demo label="Export">
+            <ExportButton formats={['xlsx', 'csv'] as const} onExport={async () => undefined} />
+          </Demo>
+          <Demo label="File input (hidden, opened by a button)">
+            <FileInput ref={fileRef} label="Upload document" />
+            <Button variant="secondary" icon="upload" mutates={false} onClick={() => fileRef.current?.click()}>
+              Choose file
+            </Button>
+          </Demo>
+          <Demo label="Language">
+            <LocaleCard value={locale} onChange={setLocale} />
+          </Demo>
+          <Demo label="Row menu, pressable tile, guarded action">
+            <div style={{ display: 'flex', gap: 'var(--space-3)', alignItems: 'center', flexWrap: 'wrap' }}>
+              <KebabBtn label="Row actions for ACME001001" onClick={() => undefined} />
+              <Pressable style={{ padding: 'var(--space-3)', border: '1px solid var(--color-line)', borderRadius: 'var(--radius-md)' }}>Pressable tile</Pressable>
+              <Action variant="primary" size="sm">Change data</Action>
+            </div>
+          </Demo>
+          <Demo label="Quick action">
+            <QuickActionCard icon="plus" title="Invite staff" sub="Add a team member" cta="Invite" onAction={() => undefined} />
+          </Demo>
+          <Demo label="User cell, icons">
+            <UserCell name="Ngozi Adeyemi" email="ngozi@example.com" />
+            <div style={{ display: 'flex', gap: 'var(--space-3)', color: 'var(--color-ink-2)' }}>
+              <Icon name="container" size={18} />
+              <Icon name="ship" size={18} />
+              <Icon name="coin" size={18} />
+              <Icon name="warn" size={18} />
+              <Icon name="check" size={18} />
+            </div>
+          </Demo>
+          <Demo label="Plan limit dialog">
+            <Button variant="secondary" mutates={false} onClick={() => setLimitOpen(true)}>Show limit reached</Button>
+            {limitOpen && <LimitReachedModal resource="users" quota={DEMO_QUOTA} onClose={() => setLimitOpen(false)} />}
+          </Demo>
+        </div>
       </Section>
 
       <Section title="App shell (Sidebar + TopBar + PageShell)">

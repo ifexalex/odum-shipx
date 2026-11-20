@@ -1,3 +1,11 @@
+/* Zero-specificity reset: no browser button chrome (a grey fill in dark mode), and any page class still wins. */
+:where(.pressable) {
+  background: none;
+  border: 0;
+  padding: 0;
+  text-align: inherit;
+}
+
 .pressable {
   font: inherit;
   color: inherit;
