@@ -1321,3 +1321,7 @@ With no `ENCRYPTION_KMS_KEY_ID` / `ENCRYPTION_KEY_VAULT_KEY_ID`, `encrypt_field`
 
 With `make dev` (API :3000) and Vite (:5173) running: `cd frontend && node scripts/layout-shift.mjs` loads six sampled pages with real data and prints each one's cumulative layout shift; it exits 1 if any is above 0.1. The phone audit (`node scripts/mobile-audit.mjs`) now also fails a page with an unnamed control (FD-50).
 
+## Split words, cut-off text and double frames (FD-10, 2026-11-20)
+
+With the same two servers running: `cd frontend && node scripts/text-breaks.mjs` opens every route at 375 and 1280 px and fails a page with an ordinary word split across two lines, text cut off by an ellipsis or line clamp, or a bordered box sitting on its bordered parent's edges. IDs, emails and figures may wrap anywhere; only words of five or more letters count. `node scripts/text-breaks.mjs 375 /billing` narrows it. To check the checks, `TEXT_BREAKS_INJECT_CSS='…'` adds a style to every page (for example a border back on `[data-surface=card] [class*=wrapper]`), and the page should then fail.
+

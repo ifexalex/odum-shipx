@@ -1847,3 +1847,7 @@ Every list and summary table opens its record from the row (first cell is the ke
 
 **Ground-truth gap:** the invoice list's Billed column was empty on local data because `scripts/seed.py` inserted billing rows without `billed_at` (the app's own path, `services/billing/service.py`, always sets it). The seed now sets `billed_at = now()`.
 
+## Cards and text (FD-10, 2026-11-20)
+
+Page-visible changes: release note detail lists Type and Payment status under "Release details" instead of stat cards; refund detail drops its "Payout method" stat card; the claim list shows the whole damage description; the warehouse queue shows the whole customer name; the invoice list counts once (footer). See `03_component_library.md` "Cards (FD-10)".
+

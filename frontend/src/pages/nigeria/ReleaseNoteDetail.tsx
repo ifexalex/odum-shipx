@@ -21,7 +21,6 @@ import { SectionHead } from '../../shell/SectionHead'
 import styles from './ReleaseNoteDetail.module.css'
 import { formatDate, formatNgn } from '../../lib/format'
 import { useBreadcrumbLabel } from '../../shell/breadcrumbs'
-import { statusLabel } from '../../design/status'
 import { toast } from '../../design/toast'
 
 // ---------------------------------------------------------------------------
@@ -580,8 +579,6 @@ export function ReleaseNoteDetail(): JSX.Element {
       {/* Stats */}
       <div className={styles.statsRow}>
         <StatCard label="Cartons on note" value={`${note.carton_count} of ${note.total_cartons_for_customer}`} />
-        <StatCard label="Type" value={releaseTypeLabel(note)} />
-        <StatCard label="Payment status" value={statusLabel('invoice', note.payment_status)} />
         {isExpired && storageFees > 0 && (
           <StatCard label="Storage fees" value={formatNgn(storageFees)} />
         )}
@@ -597,6 +594,9 @@ export function ReleaseNoteDetail(): JSX.Element {
           )}
           <Kvp label="Customer" value={note.customer_name ?? '—'} />
           <Kvp label="Container" value={note.container_number ? <Mono>{note.container_number}</Mono> : '—'} />
+          {/* Type and payment status are words, not figures: they live here, not in the stat row (FD-10). */}
+          <Kvp label="Type" value={releaseTypeLabel(note)} />
+          <Kvp label="Payment status" value={<StatusBadge kind="invoice" status={note.payment_status} />} />
           <Kvp
             label="Carton count"
             value={

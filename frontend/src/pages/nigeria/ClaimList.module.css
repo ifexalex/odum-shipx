@@ -92,12 +92,10 @@
 }
 
 .descCell {
+  /* The whole description wraps between words (FD-10): cutting it off hid what the damage was. */
   font-size: var(--text-xs);
   color: var(--color-ink-2);
   max-width: 220px;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
   display: block;
 }
 

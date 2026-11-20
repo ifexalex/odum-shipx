@@ -9,15 +9,11 @@
   font-size: var(--text-xs);
   letter-spacing: var(--tracking-label);
   text-transform: uppercase;
-  white-space: nowrap;
-  /* In a narrow cell (a table's phone card) a long status wraps instead of running out of it. */
+  /* A long status ("Released, balance owed") wraps between words when its column is narrow, so a table fits its
+     page instead of scrolling sideways (FD-10). */
+  white-space: normal;
+  overflow-wrap: break-word;
   max-width: 100%;
-}
-@media (max-width: 600px) {
-  .badge {
-    white-space: normal;
-    overflow-wrap: anywhere;
-  }
 }
 
 .sm {

@@ -88,11 +88,6 @@
   padding: 0;
 }
 
-.recordCount {
-  margin-left: auto;
-  color: var(--color-ink-3);
-}
-
 .tableWrap {
   margin-top: 0;
 }

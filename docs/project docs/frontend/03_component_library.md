@@ -329,3 +329,17 @@ Known limit: focus is placed once, when the dialog mounts. A dialog whose first 
 - Import "Skipped rows" is one `SkippedRowsTable` on `Table`.
 - Guards: `src/design/tableRules.test.ts` (no "View" button or `ViewLink`; every money column names its currency; no hand-built `<table>` outside print pages and the packing-list item grid; no second count beside `ListFooter`). `Table.test.tsx` gained 6 (open button, row click opens once, a row's own action does not open it, cards open, money right-aligned, 600px switch).
 
+## Cards: one frame, numbers in stat cards, words kept whole (FD-10, 2026-11-20)
+
+**Problem:** every table inside a `Card padding="none"` drew its own border 1 px inside the card's (two frames); the release note and refund showed words in stat cards ("Partial release", "Unpaid", "Bank account refund"); stat labels were clamped to two lines and sublabels cut with an ellipsis; `overflow-wrap: anywhere` in Kvp, Badge, table cards and toasts split ordinary words ("OUTSTAN / DING") because it also shrinks an element's minimum width; dashboard cards side by side had different heights.
+
+**Now:**
+- `Card` renders `data-surface="card"`; `Table`'s wrapper drops its border and radius inside one. A table outside a card keeps its frame.
+- `StatCard` is for one figure. Its body is a size container: the value is `clamp(lg, 16cqi, 2xl)` and wraps only between words; the label wraps between words with no clamp; the sublabel wraps; the icon hides when the card is under 180 px. Release note "Type" and "Payment status" moved to its details list (status as a badge); the refund's "Payout method" card was removed (the details list already says "Customer preference").
+- `overflow-wrap: break-word` (breaks only a word wider than its whole line) replaces `anywhere` and `word-break: break-word` in Kvp, Badge, Table card values, toasts, and the notification message previews. The gateway response in the notification log keeps `break-all` (one long token).
+- Badges wrap between words at every width, so a table's status column can narrow and the table fits the page (the invoice list scrolled sideways by 64 px at 1280 px because of "Released, balance owed").
+- Dashboard grids (`dashCols`, `dashGrid2`, platform `dashCols`) stretch, so cards side by side share one height.
+- Text that was cut off now wraps: the claim list's description, the warehouse queue's customer name.
+- The invoice list's own "Showing N records" above the table was removed (FD-13's one count; the guard now also catches `Showing <strong>`).
+- Guards: `src/design/cardRules.test.ts` (no `*Label(…)` as a stat value; no `anywhere`/`break-all`/`break-word` outside the allowlist; no clamp or ellipsis in StatCard; the table-in-card rule exists). `scripts/text-breaks.mjs` checks every route at 375 and 1280 px for split words, cut-off text, double frames and, at desktop width, tables that scroll sideways.
+

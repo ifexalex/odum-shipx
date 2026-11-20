@@ -62,7 +62,7 @@ describe('table rules (FD-13)', () => {
   it('a list states its count once, in the footer', () => {
     // ListFooter carries the count; a second "Showing N" line above the table is the duplicate FD-13 removed.
     const offenders = files
-      .filter(([, text]) => /<ListFooter\b/.test(text) && />\s*Showing \{/.test(text))
+      .filter(([, text]) => /<ListFooter\b/.test(text) && />\s*Showing\s*(\{|<strong)/.test(text))
       .map(([p]) => p)
     expect(offenders).toEqual([])
   })

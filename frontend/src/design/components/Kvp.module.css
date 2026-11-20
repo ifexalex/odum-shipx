@@ -29,5 +29,6 @@
   text-align: right;
   margin-left: auto;
   min-width: 0;
-  overflow-wrap: anywhere;
+  /* break-word, not anywhere: anywhere also shrinks the value's minimum width, so ordinary words split (FD-10). */
+  overflow-wrap: break-word;
 }

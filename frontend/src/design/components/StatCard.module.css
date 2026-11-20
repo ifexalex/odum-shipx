@@ -1,3 +1,9 @@
+/* A stat card holds one number (FD-10). Its words never clip and never break inside a word: the label wraps between
+   words, and the number scales with the card's own width (a container query) instead of wrapping or running out. */
+.body {
+  container-type: inline-size;
+}
+
 .head {
   display: flex;
   align-items: center;
@@ -24,47 +30,29 @@
   font-weight: 600;
   color: var(--color-ink-3);
   line-height: var(--text-xs-line);
-  /* Wrap to at most two lines rather than truncating — "AWAITING CUSTOMS",
-     "READY FOR PICKUP" etc. truncate to unreadable on a dense 6-card row.
-     Single-word labels that fit still render on one line. */
-  overflow-wrap: break-word;
-  display: -webkit-box;
-  -webkit-line-clamp: 2;
-  line-clamp: 2;
-  -webkit-box-orient: vertical;
-  overflow: hidden;
   flex: 1;
   min-width: 0;
+  /* Last resort only: a single word wider than the whole card. */
+  overflow-wrap: break-word;
+}
+
+/* A narrow card gives the icon's room to the label. */
+@container (max-width: 180px) {
+  .iconSlot {
+    display: none;
+  }
 }
 
 .value {
   font-family: var(--font-display);
   font-weight: 700;
-  font-size: var(--text-2xl); /* stat values are 2xl in the type scale (FD-01) */
+  /* 2xl in the type scale (FD-01), scaled to the card's width; "3 of 12" may wrap between words, a figure never
+     splits. */
+  font-size: clamp(var(--text-lg), 16cqi, var(--text-2xl));
   letter-spacing: var(--tracking-tight);
   color: var(--color-ink);
   margin-bottom: var(--space-2);
-  line-height: 1;
-  white-space: nowrap;
-}
-
-/* On a phone two cards share a row: the number scales down and may wrap (₦1,234,567 · "1 of 2") rather than run out
-   of its card. */
-@media (max-width: 600px) {
-  /* Two cards share a phone's row: the icon gives its room to the label, which then wraps whole words
-     ("OUTSTANDING", "CONTAINERS SHIPPED") instead of breaking mid-word or being cut off. */
-  .iconSlot {
-    display: none;
-  }
-  .label {
-    overflow-wrap: normal;
-  }
-  .value {
-    font-size: clamp(var(--text-xl), 6.5vw, var(--text-2xl));
-    white-space: normal;
-    overflow-wrap: anywhere;
-    line-height: var(--leading-tight);
-  }
+  line-height: var(--leading-tight);
 }
 
 .suffix {
@@ -76,11 +64,10 @@
 
 .footRow {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
-  gap: var(--space-2);
+  gap: var(--space-1) var(--space-2);
   font-size: var(--text-xs);
-  white-space: nowrap;
-  overflow: hidden;
 }
 
 .trend {
@@ -103,22 +90,4 @@
   color: var(--color-ink-4);
   font-weight: 500;
   min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-
-/* Ground-truth gap found live: stat-row grids that reflow to fewer/narrower
-   columns on mobile (Table.module.css §"Fixed-column stat grids" pattern)
-   left .label truncated to an unreadable "OUTSTANDI…" — nowrap+ellipsis
-   only ever looked right at the original wide desktop card width. Wrapping
-   onto 2 lines below 860px reads better than either truncating or forcing
-   the card wider than its grid cell. */
-@container sxapp (max-width: 860px) {
-  .label {
-    white-space: normal;
-    /* "OUTSTANDING" etc. are single long words with no natural break
-       point — plain `white-space: normal` alone can't wrap them, it just
-       overflows past the card edge instead. */
-    overflow-wrap: break-word;
-  }
 }

@@ -288,7 +288,7 @@
   color: var(--color-ink-2);
   line-height: var(--text-sm-line);
   white-space: pre-wrap;
-  word-break: break-word;
+  overflow-wrap: break-word;
 }
 
 .modalFooter {

@@ -21,7 +21,7 @@ export interface CardProps {
 
 export function Card({ children, padding = 'default', radius = 'lg', style }: CardProps): JSX.Element {
   return (
-    <div className={`${styles.card} ${PADDING_CLASS[padding]}`} style={{ borderRadius: `var(--radius-${radius})`, ...style }}>
+    <div data-surface="card" className={`${styles.card} ${PADDING_CLASS[padding]}`} style={{ borderRadius: `var(--radius-${radius})`, ...style }}>
       {children}
     </div>
   )

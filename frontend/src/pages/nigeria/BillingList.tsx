@@ -240,13 +240,6 @@ export function BillingList(): JSX.Element {
         </div>
       </Card>
 
-      {/* Record count */}
-      <div className={styles.activeFilters}>
-        <span className={styles.recordCount}>
-          Showing <strong style={{ color: 'var(--color-ink)' }}>{records.length}</strong> records
-        </span>
-      </div>
-
       {/* Table */}
       <Card padding="none">
         <Table

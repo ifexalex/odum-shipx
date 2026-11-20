@@ -113,7 +113,8 @@
   display: grid;
   grid-template-columns: minmax(0, 1fr) 340px;
   gap: var(--space-5);
-  align-items: start;
+  /* Cards side by side share one height (FD-10). */
+  align-items: stretch;
 }
 @container sxapp (max-width: 1080px) {
   .dashCols {
@@ -129,7 +130,8 @@
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(min(440px, 100%), 1fr));
   gap: var(--space-5);
-  align-items: start;
+  /* Cards side by side share one height (FD-10). */
+  align-items: stretch;
 }
 @container sxapp (max-width: 520px) {
   .dashGrid2 {

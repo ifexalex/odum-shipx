@@ -110,3 +110,7 @@ If the Storybook/component-catalog route from Task 03 exists, a lightweight scre
 
 `src/design/tableRules.test.ts` (4) and 6 new cases in `Table.test.tsx`. Page tests that clicked "View" now click the row's first cell (`within(row).getAllByRole('button')[0]`) or its text. A count whose numbers sit in `<strong>` is matched with a function on `textContent`; `getByText` reads only an element's own text nodes.
 
+## Cards and text (FD-10, 2026-11-20)
+
+`src/design/cardRules.test.ts` (4). The browser check `scripts/text-breaks.mjs` (see `LOCAL_TESTING.md`) was proved by injecting each defect with `TEXT_BREAKS_INJECT_CSS`: a border back on a table inside a card, a 40 px stat label, an ellipsis on a sublabel. Its first run also caught a bug in itself (a red test border read as transparent because `rgb(255, 0, 0)` ends in ", 0)").
+

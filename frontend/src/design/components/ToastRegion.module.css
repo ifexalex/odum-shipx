@@ -67,7 +67,7 @@
   margin-top: var(--space-0-5);
   font-size: var(--text-sm);
   color: var(--color-ink-3);
-  overflow-wrap: anywhere;
+  overflow-wrap: break-word;
 }
 @keyframes enter {
   from {
