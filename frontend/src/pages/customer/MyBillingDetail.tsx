@@ -330,6 +330,7 @@ export function MyBillingDetail(): JSX.Element {
   if (isLoading && !billing) return <PageSkeleton kind="detail" label="Loading the page" />
   if (error && !billing) return (
     <div className={styles.page}>
+      <PageHeader title="Invoice" />
       <Banner variant="error">{error ?? 'Not found.'}</Banner>
     </div>
   )

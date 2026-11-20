@@ -210,7 +210,10 @@ export function PackingListDetail(): JSX.Element {
   if (loading && !pl) return <PageSkeleton kind="detail" label="Loading packing list" />
   if (error && !pl) {
     return (
-      <ErrorState title="Couldn't load this packing list" error={loadError} message="We couldn't find this record. It may have been removed, or the link is out of date." onRetry={() => void refetch()} />
+      <>
+        <PageHeader title="Packing list" />
+        <ErrorState title="Couldn't load this packing list" error={loadError} message="We couldn't find this record. It may have been removed, or the link is out of date." onRetry={() => void refetch()} />
+      </>
     )
   }
   if (!pl) return <></>

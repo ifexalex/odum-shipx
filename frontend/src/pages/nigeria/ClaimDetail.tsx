@@ -292,7 +292,10 @@ export function ClaimDetail(): JSX.Element {
   if (loading) return <PageSkeleton kind="detail" label="Loading claim" />
   if (error || !claim) {
     return (
-      <ErrorState title="Couldn't load this claim" error={loadError} message="We couldn't find this record. It may have been removed, or the link is out of date." onRetry={() => void refetch()} />
+      <>
+        <PageHeader title="Damage claim" />
+        <ErrorState title="Couldn't load this claim" error={loadError} message="We couldn't find this record. It may have been removed, or the link is out of date." onRetry={() => void refetch()} />
+      </>
     )
   }
 

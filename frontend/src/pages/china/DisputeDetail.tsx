@@ -112,6 +112,7 @@ export function DisputeDetail(): JSX.Element {
   if (error || !dispute) {
     return (
       <div className={styles.page}>
+        <PageHeader title="CBM dispute" />
         <Banner variant="error" title="Couldn't open this dispute">
           {error instanceof ApiError && error.status === 404 ? 'Dispute not found.' : 'Please try again.'}
         </Banner>

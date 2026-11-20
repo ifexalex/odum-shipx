@@ -376,7 +376,10 @@ export function RefundDetail(): JSX.Element {
   if (loading && !refund) return <PageSkeleton kind="detail" label="Loading refund" />
   if (error && !refund) {
     return (
-      <ErrorState title="Couldn't load this refund" error={loadError} message="We couldn't find this record. It may have been removed, or the link is out of date." onRetry={() => void refetch()} />
+      <>
+        <PageHeader title="Refund" />
+        <ErrorState title="Couldn't load this refund" error={loadError} message="We couldn't find this record. It may have been removed, or the link is out of date." onRetry={() => void refetch()} />
+      </>
     )
   }
   if (!refund) return <></>

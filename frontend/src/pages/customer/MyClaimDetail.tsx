@@ -116,6 +116,7 @@ export function MyClaimDetail(): JSX.Element {
     const missing = error instanceof ApiError && error.status === 404
     return (
       <div className={styles.page}>
+        <PageHeader title="Claim" />
         <Banner variant="error">
           {missing || !error ? 'Claim not found.' : 'Could not load this claim. Please try again.'}
         </Banner>

@@ -359,7 +359,10 @@ export function ManifestDetail(): JSX.Element {
   if (loading && !manifest) return <PageSkeleton kind="detail" label="Loading manifest" />
   if (error && !manifest) {
     return (
-      <ErrorState title="Couldn't load this manifest" error={loadError} message="We couldn't find this record. It may have been removed, or the link is out of date." onRetry={() => void refetch()} />
+      <>
+        <PageHeader title="Manifest" />
+        <ErrorState title="Couldn't load this manifest" error={loadError} message="We couldn't find this record. It may have been removed, or the link is out of date." onRetry={() => void refetch()} />
+      </>
     )
   }
   if (!manifest) return <></>

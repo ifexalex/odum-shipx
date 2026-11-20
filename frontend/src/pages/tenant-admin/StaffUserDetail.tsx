@@ -178,7 +178,13 @@ export function StaffUserDetail(): JSX.Element {
   }
 
   if (loading && !user) return <PageSkeleton kind="detail" label="Loading the page" />
-  if (error && !user) return <div className={styles.banner}><Banner variant="error">{error}</Banner></div>
+  if (error && !user)
+    return (
+      <>
+        <PageHeader title="Staff member" />
+        <div className={styles.banner}><Banner variant="error">{error}</Banner></div>
+      </>
+    )
   if (!user) return <></>
 
   return (

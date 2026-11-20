@@ -119,7 +119,7 @@ export function InviteClaimScreen(): JSX.Element {
           >
             <Icon name="alert" size={42} color="var(--color-error)" stroke={2.5} />
           </div>
-          <h2 className={styles.formTitle} style={{ marginBottom: 'var(--space-2)' }}>This link is no longer valid.</h2>
+          <h1 className={styles.formTitle} style={{ marginBottom: 'var(--space-2)' }}>This link is no longer valid.</h1>
           <p className={styles.formSub} style={{ marginBottom: 'var(--space-6)' }}>
             It may have expired or already been used. Contact your shipping company to request a new one.
           </p>

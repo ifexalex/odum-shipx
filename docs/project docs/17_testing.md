@@ -2485,3 +2485,7 @@ Found by running them: **a real bug** (invoice generation set a used credit to `
 ## Tab titles (FD-48, 2026-11-20)
 
 - `frontend/src/shell/documentTitle.test.tsx` (9): tab title order (record, parents, tenant), the route's name before a record loads, top-level and public titles, a distinct title for every staff, customer and shell-less route, sentence-case route titles, `useDocumentTitle` sets `document.title`, and focus moves to the new page's heading after a navigation but not on first load. Mutation-checked (two staff pages given one title fail).
+
+## Heading structure (FD-49, 2026-11-20)
+
+- `frontend/scripts/headings.mjs` (route audit, local stack): one non-empty `<h1>` per route and no skipped levels, all 78 routes passing; proved with `HEADINGS_INJECT='<h3>…</h3>'` (every injected page fails). The unit suite needed no changes: page tests query headings by name, not level.

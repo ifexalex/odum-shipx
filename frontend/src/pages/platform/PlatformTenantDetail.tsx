@@ -403,7 +403,13 @@ export function PlatformTenantDetail(): JSX.Element {
   }
 
   if (loading && !tenant) return <PageSkeleton kind="detail" label="Loading the page" />
-  if (error && !tenant) return <div className={styles.banner}><Banner variant="error">{error}</Banner></div>
+  if (error && !tenant)
+    return (
+      <>
+        <PageHeader title="Tenant" />
+        <div className={styles.banner}><Banner variant="error">{error}</Banner></div>
+      </>
+    )
   if (!tenant) return <></>
 
   return (

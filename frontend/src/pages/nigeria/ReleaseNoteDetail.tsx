@@ -462,7 +462,10 @@ export function ReleaseNoteDetail(): JSX.Element {
   if (loading && !note) return <PageSkeleton kind="detail" label="Loading release note" />
   if (error && !note) {
     return (
-      <ErrorState title="Couldn't load this release note" error={loadError} message="We couldn't find this record. It may have been removed, or the link is out of date." onRetry={() => void refetch()} />
+      <>
+        <PageHeader title="Release note" />
+        <ErrorState title="Couldn't load this release note" error={loadError} message="We couldn't find this record. It may have been removed, or the link is out of date." onRetry={() => void refetch()} />
+      </>
     )
   }
   if (!note) return <></>

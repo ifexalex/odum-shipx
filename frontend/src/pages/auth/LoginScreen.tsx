@@ -132,11 +132,12 @@ export function LoginScreen(): JSX.Element {
         </div>
         <div className={styles.tagline}>
           <BrandIllustration />
-          <h1 className={styles.heroHeading}>
+          {/* The brand line, not the page's heading: the form's title is the h1 (FD-49). */}
+          <p className={styles.heroHeading}>
             Cargo logistics,
             <br />
             <span className={styles.heroAccent}>engineered to move.</span>
-          </h1>
+          </p>
           <p className={styles.heroSub}>
             Guangzhou to Lagos. End-to-end. Unstoppable. Built for the operators, customers, and developers
             who lead every shipment.
@@ -154,7 +155,7 @@ export function LoginScreen(): JSX.Element {
       <div className={styles.formPanel}>
         <div className={styles.formWrap}>
           <div className={styles.formHead}>
-            <h2 className={styles.formTitle}>Sign in to ShipX</h2>
+            <h1 className={styles.formTitle}>Sign in to ShipX</h1>
             <p className={styles.formSub}>
               {isInteractiveLogin
                 ? 'Sign in to access your portal.'

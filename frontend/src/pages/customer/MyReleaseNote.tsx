@@ -52,6 +52,7 @@ export function MyReleaseNote(): JSX.Element {
     const missing = error instanceof ApiError && error.status === 404
     return (
       <div className={styles.page}>
+        <PageHeader title="Release note" />
         <Banner variant="error">
           {missing || !error ? 'Release note not found.' : 'Could not load this release note. Please try again.'}
         </Banner>

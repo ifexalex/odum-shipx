@@ -106,6 +106,7 @@ export function MyShipmentDetail(): JSX.Element {
   if (error || !pl) {
     return (
       <div className={styles.page}>
+        <PageHeader title="Shipment" />
         <Banner variant="error">{error ?? 'Shipment not found.'}</Banner>
       </div>
     )

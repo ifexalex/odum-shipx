@@ -31,10 +31,7 @@ export function StaffProfile(): JSX.Element {
 
   return (
     <div>
-      <PageHeader
-        title={session.name ?? 'My profile'}
-        meta={session.role.replace(/_/g, ' ')}
-      />
+      <PageHeader title="My profile" meta={[session.name, session.role.replace(/_/g, ' ')]} />
 
       {error && <div style={{ marginBottom: 'var(--space-4)' }}><Banner variant="error">{error}</Banner></div>}
 

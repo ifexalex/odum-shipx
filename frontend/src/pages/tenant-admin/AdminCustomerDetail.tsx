@@ -496,7 +496,13 @@ export function AdminCustomerDetail(): JSX.Element {
   }
 
   if (loading && !customer) return <PageSkeleton kind="detail" label="Loading the page" />
-  if (error && !customer) return <div className={styles.banner}><Banner variant="error">{error}</Banner></div>
+  if (error && !customer)
+    return (
+      <>
+        <PageHeader title="Customer" />
+        <div className={styles.banner}><Banner variant="error">{error}</Banner></div>
+      </>
+    )
   if (!customer) return <></>
 
   const isAnonymised = !!customer.anonymised_at

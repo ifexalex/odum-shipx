@@ -393,7 +393,7 @@ export function WarehouseDashboard(): JSX.Element {
           <Icon name="qr" size={40} stroke={2} />
         </div>
         <div className={styles.scanBody}>
-          <h3 className={styles.scanTitle}>Scan or type a release note reference</h3>
+          <h2 className={styles.scanTitle}>Scan or type a release note reference</h2>
           <p className={styles.scanSub}>
             Use the handheld scanner or type the RN-XXXX reference on the customer&apos;s release note.
           </p>

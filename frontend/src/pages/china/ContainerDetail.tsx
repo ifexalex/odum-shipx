@@ -91,7 +91,10 @@ export function ContainerDetail(): JSX.Element {
 
   if (error && !container) {
     return (
-      <ErrorState title="Couldn't load this container" error={null} message={error ?? undefined} />
+      <>
+        <PageHeader title="Container" />
+        <ErrorState title="Couldn't load this container" error={null} message={error ?? undefined} />
+      </>
     )
   }
 

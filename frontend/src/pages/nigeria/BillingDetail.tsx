@@ -130,7 +130,10 @@ export function BillingDetail(): JSX.Element {
   if (loading) return <PageSkeleton kind="detail" label="Loading billing record" />
   if (error || !billing) {
     return (
-      <ErrorState title="Couldn't load this billing record" error={loadError} message="We couldn't find this record. It may have been removed, or the link is out of date." onRetry={() => void refetch()} />
+      <>
+        <PageHeader title="Invoice" />
+        <ErrorState title="Couldn't load this billing record" error={loadError} message="We couldn't find this record. It may have been removed, or the link is out of date." onRetry={() => void refetch()} />
+      </>
     )
   }
 

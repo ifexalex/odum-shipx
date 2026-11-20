@@ -1889,3 +1889,14 @@ Every page inside the staff and customer layouts now opens with one `PageHeader`
 - **Found and fixed:** the reports page replaced itself with a loading skeleton whenever the period changed, taking the period control with it (the From/To fields vanished mid-entry). The header now stays while the figures load. Release-note "Valid until" and container ETA printed raw ISO dates; they use `formatDate`.
 - **Removed:** the notification log's Export button. It never had a handler and no export endpoint exists; the owner chose (2026-11-20) not to build one, since the log holds customers' phone numbers and emails and the page's filters and Retry already answer "did the message arrive". An activity-log export is the better candidate if one is ever wanted.
 - **Next:** FD-17 (ids and raw values in record bodies), FD-18 (list layout) and FD-19 (detail layout) follow.
+
+## Heading structure (FD-49, 2026-11-20)
+
+Every route has exactly one top-level heading, it names the page, and no level is skipped going down. Checked on all 78 routes with real records by `frontend/scripts/headings.mjs` (see `LOCAL_TESTING.md`); it printed every page's `<h1>` for review.
+
+- **Sign-in flow**: the brand line "Cargo logistics, engineered to move." was the `<h1>` on every sign-in, register, password, invite and onboarding page; it is now a paragraph, and the form's title ("Sign in to ShipX", "Create your customer account", "Reset your password", "This link is no longer valid.") is the `<h1>` (`AuthShell` `FormHead`, `LoginScreen`, `InviteClaimScreen`, `ActivateScreen`).
+- **Sections**: `SectionHead` renders an `<h2>` (it was an `<h3>` straight under the `<h1>`), with `level={3}` for a section inside a section. `QuickActionCard` titles are `<h3>` (they were `<h4>` under an `<h2>`); the warehouse page's scan block title is an `<h2>`.
+- **Record pages that fail to load** (15: invoice, container, packing list, manifest, claim, refund, release note, CBM dispute, customer, staff member, tenant, and the customer's shipment, invoice, claim and release note) showed only an error box with no heading; each now shows its `PageHeader` ("Manifest", "Invoice", …) above the error, so the heading, breadcrumb and tab still name the page.
+- **Titles that did not name the page**: staff profile was titled by the person's name, now "My profile" (name and role in the meta line); the customer account page was "Your details and preferences", now "Account".
+- Record pages were already titled by type and reference in FD-14; FD-48 moves focus to the `<h1>` after a navigation.
+- Print pages keep their document titles ("Packing List", "Release Note"); the documents themselves are FD-39 to FD-44.
