@@ -2511,3 +2511,7 @@ Found by running them: **a real bug** (invoice generation set a used credit to `
 
 - `tests/db/test_refund_read.py` (3, real Postgres): the refund detail read joins the customer's name, invoice number and claim reference; absent links read as null; another tenant cannot read it.
 - `frontend/src/lib/format.test.ts` (+5): `formatKg`, grouped `formatCbm`, `plural`; guards against CBM or weight rounded by hand and against "(s)" plurals (each proved by reintroducing one). `design/components/Kvp.test.tsx` (+2): optional rows. Page tests updated for the new precision ("68.400", "412.0 kg", "+1.7").
+
+## Chart colours (FD-52, 2026-11-20)
+
+- `frontend/src/design/statusRegistry.test.ts` (+2): a status series takes its badge's colour, "Released, balance owed" is amber not purple, two of one colour stay apart; the neutral series colour.

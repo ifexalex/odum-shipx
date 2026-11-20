@@ -10,6 +10,7 @@ import { SectionHead } from '../../shell/SectionHead'
 import styles from './TenantReports.module.css'
 import { formatCbm, formatNgn, formatUsd } from '../../lib/format'
 import { PageHeader } from '../../shell/PageHeader'
+import { NEUTRAL_SERIES_COLOR, statusLabel, statusSeriesColors } from '../../design/status'
 
 /** How many containers GET /v1/billing/report lists (REPORT_CONTAINER_ROWS in services/billing/repository.py). */
 const REPORT_CONTAINER_ROWS = 200
@@ -54,12 +55,14 @@ function DonutChart({ segments, total }: { segments: DonutSegment[]; total: numb
   )
 }
 
+const DONUT_INVOICE_STATUSES = ['paid', 'partially_paid', 'unpaid', 'released_with_outstanding', 'waived'] as const
+
 // ─── Top customers horizontal bars ───────────────────────────────────────────
 function TopCustomersChart({ data }: { data: Array<{ name: string; amount: number }> }): JSX.Element {
   const max = data[0]?.amount ?? 1
   return (
     <div>
-      {data.slice(0, 7).map((c, i) => (
+      {data.slice(0, 7).map((c) => (
         <div key={c.name} className={styles.topCustRow}>
           <span className={styles.topCustName}>{c.name}</span>
           <div className={styles.topCustBar}>
@@ -67,7 +70,8 @@ function TopCustomersChart({ data }: { data: Array<{ name: string; amount: numbe
               className={styles.topCustFill}
               style={{
                 width: `${(c.amount / max) * 100}%`,
-                background: i === 0 ? 'var(--color-accent)' : 'var(--color-primary)',
+                // One series of amounts, not statuses: one neutral colour (the first bar is not special) (FD-52).
+                background: NEUTRAL_SERIES_COLOR,
               }}
             />
           </div>
@@ -83,11 +87,15 @@ function TopCustomersChart({ data }: { data: Array<{ name: string; amount: numbe
 // → container_pipeline) so this never needs every container row client-side.
 type PipelineWeek = { week: string; cn: number; transit: number; arrived: number; released: number }
 
+// Each stage group is coloured as the container status it stands for (FD-52): sealed in China, in transit, arrived,
+// fully released, with the registry's badge colours (in transit shares sealed's blue, so it takes the darker shade).
+const PIPELINE_STATUSES = ['sealed', 'in_transit', 'arrived', 'fully_released'] as const
+const PIPELINE_COLORS = statusSeriesColors('container', PIPELINE_STATUSES)
 const PIPELINE_GROUPS = [
-  { key: 'cn',       label: 'China',      color: 'var(--color-info)' },
-  { key: 'transit',  label: 'In transit', color: 'var(--color-accent)' },
-  { key: 'arrived',  label: 'Arrived',    color: 'var(--color-warning)' },
-  { key: 'released', label: 'Released',   color: 'var(--color-success)' },
+  { key: 'cn', label: 'China', color: PIPELINE_COLORS[0]! },
+  { key: 'transit', label: 'In transit', color: PIPELINE_COLORS[1]! },
+  { key: 'arrived', label: 'Arrived', color: PIPELINE_COLORS[2]! },
+  { key: 'released', label: 'Released', color: PIPELINE_COLORS[3]! },
 ] as const
 
 function ContainerPipelineChart({ data }: { data: PipelineWeek[] }): JSX.Element {
@@ -204,22 +212,20 @@ export function TenantReports(): JSX.Element {
     : '—'
 
   // Revenue donut segments
-  const DONUT_STATUS: Array<{ key: keyof NonNullable<typeof report>['overview']; label: string; color: string }> = [
-    { key: 'revenue_paid', label: 'Paid', color: 'var(--color-success)' },
-    { key: 'revenue_partially_paid', label: 'Partially paid', color: 'var(--color-warning)' },
-    { key: 'revenue_unpaid', label: 'Unpaid', color: 'var(--color-error)' },
-    { key: 'revenue_released_with_outstanding', label: 'Released w/ outstanding', color: 'var(--color-role-platform)' },
-    { key: 'revenue_waived', label: 'Waived', color: 'var(--color-ink-4)' },
-  ]
+  // Each slice is an invoice status: its words and colour come from the status registry, so "Released, balance owed"
+  // is the amber of its badge, not purple (FD-52). Colours are picked for the slices on screen, so a status keeps its
+  // badge's own shade unless another slice shares it.
   const donutSegments = useMemo(() => {
     if (!report) return []
-    return DONUT_STATUS
-      .map(({ key, label, color }) => {
-        const value = Number(report.overview[key] ?? 0)
-        return { label, value, color, amount: value }
-      })
-      .filter((s) => s.value > 0)
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    const present = DONUT_INVOICE_STATUSES.map((status) => ({
+      status,
+      value: Number(report.overview[`revenue_${status}` as keyof typeof report.overview] ?? 0),
+    })).filter((s) => s.value > 0)
+    const colors = statusSeriesColors(
+      'invoice',
+      present.map((s) => s.status),
+    )
+    return present.map((s, i) => ({ label: statusLabel('invoice', s.status), value: s.value, color: colors[i]!, amount: s.value }))
   }, [report])
 
   // Top customers by amount billed (server-ranked, top 20).

@@ -245,6 +245,35 @@ export function statusColor<K extends StatusKind>(kind: K, status: StatusOf<K> |
   return VARIANT_COLOR[statusVariant(kind, status)]
 }
 
+const VARIANT_STRONG: Record<BadgeVariant, string> = {
+  success: 'var(--color-success-strong)',
+  warning: 'var(--color-warning-strong)',
+  error: 'var(--color-error-strong)',
+  info: 'var(--color-info-strong)',
+  primary: 'var(--color-primary-strong)',
+  accent: 'var(--color-accent)',
+  purple: 'var(--color-role-platform)',
+  neutral: 'var(--color-ink-3)',
+}
+
+/**
+ * Colours for a chart whose series are statuses (FD-52): each the colour of that status's badge, so a slice means
+ * what its badge means. Where two statuses in one chart share a badge colour ("Partly paid" and "Released, balance
+ * owed" are both amber) the later one takes the darker shade of it, so the two stay apart.
+ */
+export function statusSeriesColors<K extends StatusKind>(kind: K, statuses: readonly (StatusOf<K> | string)[]): string[] {
+  const used = new Set<BadgeVariant>()
+  return statuses.map((status) => {
+    const variant = statusVariant(kind, status)
+    const color = used.has(variant) ? VARIANT_STRONG[variant] : VARIANT_COLOR[variant]
+    used.add(variant)
+    return color
+  })
+}
+
+/** The one colour of a chart series that is not a status (customers ranked by revenue): neutral, so it means nothing. */
+export const NEUTRAL_SERIES_COLOR = 'var(--color-ink-3)'
+
 export type TenantRole = 'tenant_admin' | 'china_office_staff' | 'nigeria_office_staff' | 'warehouse_attendant' | 'customer'
 
 /** Roles are not states: their own words, and their own colour as a dot on a neutral badge (`RoleBadge`). */

@@ -7,7 +7,7 @@
 import { readFileSync, readdirSync, statSync } from 'node:fs'
 import { join, relative, resolve } from 'node:path'
 import { describe, expect, it } from 'vitest'
-import { STATUS_REGISTRY, type StatusKind, statusColor, statusLabel, statusVariant, statusesOf } from './status'
+import { NEUTRAL_SERIES_COLOR, STATUS_REGISTRY, statusColor, statusLabel, statusSeriesColors, statusVariant, statusesOf, type StatusKind } from './status'
 
 const SRC = resolve(process.cwd(), 'src')
 
@@ -104,5 +104,21 @@ describe('no page keeps its own status map (FD-08)', () => {
       [...text.matchAll(/<Badge[^>]*variant=\{[^}]*\.(?:status|payment_status|verification_status)\s*===/g)].map(() => path),
     )
     expect(offenders).toEqual([])
+  })
+})
+
+describe('chart colours (FD-52)', () => {
+  it('colour each status series as its badge, and keep two of one colour apart', () => {
+    const colors = statusSeriesColors('invoice', ['paid', 'partially_paid', 'unpaid', 'released_with_outstanding', 'waived'])
+    expect(colors[0]).toBe(statusColor('invoice', 'paid'))
+    expect(colors[2]).toBe(statusColor('invoice', 'unpaid'))
+    // "Released, balance owed" is amber like its badge, never purple; it shares amber with "Partly paid", so darker.
+    expect(colors[1]).toBe('var(--color-warning)')
+    expect(colors[3]).toBe('var(--color-warning-strong)')
+    expect(new Set(colors).size).toBe(colors.length)
+  })
+
+  it('a series that is not a status is one neutral colour', () => {
+    expect(NEUTRAL_SERIES_COLOR).toBe('var(--color-ink-3)')
   })
 })

@@ -1929,3 +1929,10 @@ Measured at 375 px on every route with real records (`frontend/scripts/mobile-au
 - **One precision per quantity** (owner decision 2026-11-20): CBM to three decimals (`formatCbm`, now grouped: `1,234.500`), weight to one (`formatKg`, new: `1,240.6`). About 50 hand-rounded values across 20 files moved to them (CBM was shown with 1, 2 or 3 decimals depending on the page, weights with 0, 1 or 3). Rates written beside a CBM ("$45.00 / CBM") are money and keep two decimals; container capacities are presets and stay whole. Raw values printed straight from the API (dispute CBMs, manifest and packing-list weights) go through the same helpers.
 - **Plurals**: `plural(count, noun)` (`lib/format.ts`) replaced every "carton(s)", "tenant(s)", "packing list(s)", "file(s)" and the rest (21).
 - **Guards** (`lib/format.test.ts`): no CBM or weight rounded by hand, and no "(s)" plural, anywhere in `src/`; both proved by putting one back.
+
+## Report chart colours (FD-52, 2026-11-20)
+
+- **Revenue by payment status**: each slice is an invoice status, with its words and colour from the status registry (`design/status.ts::statusSeriesColors`), so "Released, balance owed" is the amber of its badge (it was purple) and labels match the badges ("Partly paid", not "Partially paid"). Colours are picked for the slices present; where two share a badge colour (Partly paid and Released, balance owed are both amber) the later takes the darker shade.
+- **Top customers by revenue**: one neutral colour (`NEUTRAL_SERIES_COLOR`); the first bar was copper and the rest green for no reason.
+- **Container pipeline**: each stage group takes the colour of the container status it stands for (sealed, in transit, arrived, fully released); in transit shares sealed's blue, so it is the darker blue.
+- The page's sideways scroll at 1366 px was fixed in design step 2 (the period filter left the top bar).
