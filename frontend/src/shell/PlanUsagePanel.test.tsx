@@ -4,6 +4,7 @@
  */
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { render, screen } from '@testing-library/react'
+import { MemoryRouter } from 'react-router-dom'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { quotaApi } from '../api/tenantManagement'
 import { SessionContext, type SessionContextValue } from '../auth/SessionContext'
@@ -42,7 +43,9 @@ function renderPanel() {
   return render(
     <QueryClientProvider client={client}>
       <SessionContext.Provider value={ctx}>
-        <PlanUsagePanel />
+        <MemoryRouter>
+          <PlanUsagePanel />
+        </MemoryRouter>
       </SessionContext.Provider>
     </QueryClientProvider>,
   )

@@ -6,13 +6,12 @@ import { homePathForRole } from '../auth/roleHome'
 import type { UserRole } from '../auth/types'
 import { ThemeProvider } from '../design/ThemeProvider'
 import { useBranding } from '../hooks/useConfig'
-import { AnnouncementBanner } from './AnnouncementBanner'
 import { AppSidebar } from './AppSidebar'
 import { ImpersonationBanner } from './ImpersonationBanner'
 import { useStaffBanner, useStaffNotifUnreadCount } from '../hooks/useStaffNotifications'
 import { roleForPath, visualRoleFor } from './navConfig'
 import { PageShell } from './PageShell'
-import { QuotaWarningBanner } from './QuotaWarningBanner'
+import { ShellNotice } from './ShellNotice'
 import { StaffNotificationPanel } from './StaffNotificationPanel'
 import { TenantBlockedGate } from './TenantBlockedScreen'
 import { GlobalSearch } from './GlobalSearch'
@@ -107,12 +106,6 @@ export function StaffLayout({ children }: StaffLayoutProps): JSX.Element | null 
         <TenantBlockedGate>
         <div style={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
           <ImpersonationBanner />
-          <QuietBoundary>
-            <AnnouncementBanner banner={banner} />
-          </QuietBoundary>
-          <QuietBoundary>
-            <QuotaWarningBanner />
-          </QuietBoundary>
           <PageShell
             sidebar={<AppSidebar user={shellUser} />}
             topbar={
@@ -143,6 +136,9 @@ export function StaffLayout({ children }: StaffLayoutProps): JSX.Element | null 
               />
             }
           >
+            <QuietBoundary>
+              <ShellNotice announcement={banner} />
+            </QuietBoundary>
             <Breadcrumb trail={breadcrumb} />
             <ContentErrorBoundary>{children}</ContentErrorBoundary>
           </PageShell>

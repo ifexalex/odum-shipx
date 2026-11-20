@@ -10,6 +10,8 @@ export interface AnnouncementBannerData {
 
 export interface AnnouncementBannerProps {
   banner: AnnouncementBannerData | null | undefined
+  /** Told when the user dismisses it, so the shell can show the next notice in line (FD-16). */
+  onDismiss?: (id: string) => void
 }
 
 /**
@@ -42,7 +44,7 @@ export interface AnnouncementBannerProps {
  * variant), distinct from success/error so it never reads as good or bad
  * news, just "read this."
  */
-export function AnnouncementBanner({ banner }: AnnouncementBannerProps): JSX.Element | null {
+export function AnnouncementBanner({ banner, onDismiss }: AnnouncementBannerProps): JSX.Element | null {
   const [dismissedId, setDismissedId] = useState<string | null>(null)
 
   if (!banner || banner.id === dismissedId) return null
@@ -54,7 +56,10 @@ export function AnnouncementBanner({ banner }: AnnouncementBannerProps): JSX.Ele
         icon="bell"
         title={banner.title}
         dismissible
-        onDismiss={() => setDismissedId(banner.id)}
+        onDismiss={() => {
+          setDismissedId(banner.id)
+          onDismiss?.(banner.id)
+        }}
       >
         {banner.body}
       </Banner>

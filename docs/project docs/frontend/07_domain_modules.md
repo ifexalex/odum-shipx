@@ -1900,3 +1900,10 @@ Every route has exactly one top-level heading, it names the page, and no level i
 - **Titles that did not name the page**: staff profile was titled by the person's name, now "My profile" (name and role in the meta line); the customer account page was "Your details and preferences", now "Account".
 - Record pages were already titled by type and reference in FD-14; FD-48 moves focus to the `<h1>` after a navigation.
 - Print pages keep their document titles ("Packing List", "Release Note"); the documents themselves are FD-39 to FD-44.
+
+## One notice at a time; the plan-limit notice is one line (FD-16, 2026-11-20)
+
+- **Before:** the plan-limit banner spanned the whole window above the sidebar on every staff page, for every role, about 70 px on desktop and 110 px on a phone, and could not be dismissed. The announcement banner sat above it, so both could show at once.
+- **Now** (`shell/ShellNotice.tsx`): one notice at the top of the content column, above the breadcrumb, in this order: impersonation (still across the top of the app, `ImpersonationBanner`; nothing else shows with it), tenant blocked (the full-page gate), the active announcement, the plan-limit notice. Dismissing the announcement lets the plan notice show. Used by both layouts.
+- **Plan-limit notice** (`shell/QuotaWarningBanner.tsx`): one line, "Users: 14 of 10. You have reached your Starter plan's limit." (error) or "… used, close to your … limit." (from 80%, warning), a "View plan" link to `/dashboard#plan` (the plan-usage panel scrolls into view; the app scrolls inside its content area, so the browser's own jump does nothing), and a dismiss button. Tenant admin only; other roles meet a limit through the existing limit-reached dialog when an action is blocked. Dismissed for the session (`sessionStorage`, keyed by dimension and level), so it shows again when a warning becomes a reached limit or another dimension is affected.
+- Tests: `shell/ShellNotice.test.tsx` (7).

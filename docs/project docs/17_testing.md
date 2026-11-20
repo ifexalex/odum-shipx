@@ -2493,3 +2493,7 @@ Found by running them: **a real bug** (invoice generation set a used credit to `
 ## Not-found page (FD-55, 2026-11-20)
 
 - `frontend/src/shell/routes.test.tsx` (+3, replacing one): a signed-in staff user and a customer see "Page not found" inside their layout, with "Go to your home page" and the nearest list, tab "Page not found · ShipX"; a signed-out visitor gets the bare page with "Sign in". `shell/nearestList.test.ts` (3): closest openable list, skips one the role cannot open, none when it is home or there is none.
+
+## Shell notices (FD-16, 2026-11-20)
+
+- `frontend/src/shell/ShellNotice.test.tsx` (7): the plan notice is one line with a "View plan" link for the tenant admin, hidden from other staff, warns from 80%, stays dismissed for the session, returns when a warning becomes a reached limit; the announcement shows first and the plan notice after it is dismissed; nothing in the content column during impersonation.

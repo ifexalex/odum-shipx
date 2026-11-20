@@ -3,7 +3,7 @@ import { useState, type JSX, type ReactNode } from 'react'
 import { useLocation } from 'react-router-dom'
 import { useSession } from '../auth/useSession'
 import { useCustomerBanner, useCustomerNotifUnreadCount } from '../hooks/useCustomerNotifications'
-import { AnnouncementBanner } from './AnnouncementBanner'
+import { ShellNotice } from './ShellNotice'
 import { Breadcrumb } from './Breadcrumb'
 import { BreadcrumbContext, breadcrumbTrail, useBreadcrumbLabelState } from './breadcrumbs'
 import { useDocumentTitle } from './documentTitle'
@@ -46,9 +46,6 @@ export function CustomerLayout({ children }: CustomerLayoutProps): JSX.Element |
     <TenantBlockedGate>
       <div style={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
         <ImpersonationBanner />
-        <QuietBoundary>
-          <AnnouncementBanner banner={banner} />
-        </QuietBoundary>
         <CustShell
           topnav={
             <CustomerTopNav
@@ -64,6 +61,9 @@ export function CustomerLayout({ children }: CustomerLayoutProps): JSX.Element |
           }
         >
           <BreadcrumbContext.Provider value={breadcrumbLabels}>
+            <QuietBoundary>
+              <ShellNotice announcement={banner} />
+            </QuietBoundary>
             <Breadcrumb trail={trail} />
             <ContentErrorBoundary>{children}</ContentErrorBoundary>
           </BreadcrumbContext.Provider>
