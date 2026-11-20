@@ -2515,3 +2515,9 @@ Found by running them: **a real bug** (invoice generation set a used credit to `
 ## Chart colours (FD-52, 2026-11-20)
 
 - `frontend/src/design/statusRegistry.test.ts` (+2): a status series takes its badge's colour, "Released, balance owed" is amber not purple, two of one colour stay apart; the neutral series colour.
+
+## One list layout (FD-18, 2026-11-20)
+
+- `frontend/src/pages/listPages.test.ts` (19): every staff list page uses `ListPage` and `FilterBar` and builds no stats row or filter card of its own. `shell/ListPage.test.tsx` (6): layout order, more than four stats reported, a stat as a toggle, the filter bar's fixed order and landmark, More filters and clear-all.
+- `tests/db/test_overdue_filter.py` (2, real Postgres): `overdue` lists exactly what the Overdue stat counts. Unit: `overdue_condition` and the `overdue` parameter in the handler and the export query.
+- Page tests: chips are found inside the filter bar (a stat and a chip can now both say "Unpaid"); "Filters" is "More filters"; new tests for the Overdue and Outstanding stats and a release-note stat as a filter.

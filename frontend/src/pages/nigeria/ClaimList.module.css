@@ -1,79 +1,8 @@
-.banner { margin-bottom: var(--space-4); }
-
-/* Reflows to fewer columns as space shrinks instead of forcing the page
-   wider than its container on mobile (was a fixed 4-column grid). */
-.statsRow {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
-  gap: var(--space-4);
-  margin-bottom: var(--space-5);
-}
-
-.filterRow {
-  display: flex;
-  align-items: center;
-  gap: var(--space-3);
-  flex-wrap: wrap;
-}
-
-.chips { display: flex; gap: var(--space-2); flex-wrap: wrap; }
-
 .chipCount {
   opacity: 0.55;
   margin-left: var(--space-1);
   font-weight: 500;
 }
-
-.searchWrap {
-  flex: 1;
-  min-width: 220px;
-  height: 36px;
-  background: var(--color-page);
-  border: 1px solid var(--color-control-border);
-  border-radius: var(--radius-md);
-  display: flex;
-  align-items: center;
-  padding: 0 var(--space-3);
-  gap: var(--space-2);
-}
-
-/* Exact custom date range, alongside the "last N days" preset button —
-   presets alone can't answer "everything on this one specific day". */
-.customDateWrap {
-  display: flex;
-  align-items: center;
-  gap: var(--space-2);
-  height: 36px;
-}
-
-.customDateLabel {
-  font-size: var(--text-xs);
-  color: var(--color-ink-3);
-}
-
-.customDateInput {
-  height: 36px;
-  box-sizing: border-box;
-  padding: 0 var(--space-2);
-  background: var(--color-page);
-  border: 1px solid var(--color-control-border);
-  border-radius: var(--radius-md);
-  font-family: var(--font-body);
-  font-size: var(--text-sm);
-  color: var(--color-ink);
-}
-
-.searchInput {
-  flex: 1;
-  border: none;
-  outline: none;
-  background: transparent;
-  font-family: var(--font-body);
-  font-size: var(--text-sm);
-  color: var(--color-ink);
-}
-
-.searchInput::placeholder { color: var(--color-ink-4); }
 
 .cartonTag {
   font-family: var(--font-mono);
@@ -107,35 +36,4 @@
 .rowActions {
   display: flex;
   justify-content: flex-end;
-}
-
-.subLinks {
-  display: flex;
-  gap: var(--space-5);
-  margin-top: var(--space-5);
-  padding-top: var(--space-4);
-  border-top: 1px solid var(--color-line);
-}
-
-.subLink {
-  background: none;
-  border: none;
-  color: var(--color-primary-text);
-  cursor: pointer;
-  font-size: var(--text-md);
-  font-weight: 500;
-  padding: 0;
-}
-
-.subLink:hover { text-decoration: underline; }
-
-/* On a narrow phone the two date fields wrap under each other instead of pushing the page wider. */
-.customDateWrap {
-  flex-wrap: wrap;
-  height: auto;
-  min-width: 0;
-}
-.customDateInput {
-  flex: 1 1 120px;
-  min-width: 0;
 }

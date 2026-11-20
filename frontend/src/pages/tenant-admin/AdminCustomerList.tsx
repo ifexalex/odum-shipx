@@ -5,10 +5,12 @@ import { ApiError } from '../../api/client'
 import { customerKeys } from '../../api/keys'
 import { customersApi, type Customer } from '../../api/tenantManagement'
 import { useCustomerList } from '../../hooks/useCustomers'
-import { Badge, Banner, Button, Card, Chip, Field, Mono, PhoneField, StatCard, Table, ListFooter, DialogGuard, SearchField, CheckboxField, EmptyState } from '../../design/components'
+import { Badge, Banner, Button, Chip, Field, Mono, PhoneField, Table, ListFooter, DialogGuard, SearchField, CheckboxField, EmptyState } from '../../design/components'
 import styles from './admin.module.css'
 import { formatDate } from '../../lib/format'
 import { toast } from '../../design/toast'
+import { FilterBar } from '../../shell/FilterBar'
+import { ListPage } from '../../shell/ListPage'
 import { PageHeader } from '../../shell/PageHeader'
 
 // ---------------------------------------------------------------------------
@@ -256,118 +258,112 @@ export function AdminCustomerList(): JSX.Element {
   }
 
   return (
-    <div>
-      <PageHeader
-        title="Customers"
-        meta={'Manage customer profiles and GDPR requests.'}
-        primary={
-          <Button variant="primary" icon="plus" onClick={() => setShowAdd(true)}>
-            Add customer
-          </Button>
-        }
-      />
-      {error && (
-        <div className={styles.banner}>
-          <Banner variant="error">{error.message}</Banner>
-        </div>
-      )}
-
-      <div className={styles.statsRow}>
-        <StatCard
-          label="Customers"
-          value={stats?.total ?? 0}
-          icon="users"
-          sublabel={`${stats?.active ?? 0} active · ${stats?.anonymised ?? 0} anonymised`}
-        />
-        <StatCard
-          label="Shipments"
-          value={stats?.shipments ?? 0}
-          icon="package"
-          sublabel="all time"
-        />
-        <StatCard
-          label="WhatsApp consent"
-          value={stats?.with_whatsapp ?? 0}
-          icon="phone"
-          sublabel={`of ${stats?.total ?? 0} customers`}
-        />
-      </div>
-
-      <Card padding="default">
-        <div className={styles.filterRow}>
-          <div className={styles.chips}>
-            <Chip active={filter === 'all'} onClick={() => setFilter('all')}>
-              All <span style={{ opacity: 0.6 }}>{stats?.total ?? 0}</span>
-            </Chip>
-            <Chip active={filter === 'active'} onClick={() => setFilter('active')}>
-              Active <span style={{ opacity: 0.6 }}>{stats?.active ?? 0}</span>
-            </Chip>
-            <Chip active={filter === 'anonymised'} onClick={() => setFilter('anonymised')}>
-              Anonymised <span style={{ opacity: 0.6 }}>{stats?.anonymised ?? 0}</span>
-            </Chip>
-          </div>
-          <SearchField label="Search customers" placeholder="Search by name, phone, or email…" value={query} onChange={setQuery} />
-        </div>
-      </Card>
-
-      <div className={styles.tableWrap}>
-        <Card padding="none">
-          <Table
-            columns={[
-              { title: 'Name' },
-              { title: 'Phone' },
-              { title: 'Consent' },
-              { title: 'Shipments', type: 'number' },
-              { title: 'Status', type: 'status' },
-            ]}
-            rows={visible.map((c) => ({
-              onOpen: () => navigate(`/admin/customers/${c.id}`, { state: { customer: c }, }),
-              cells: [
-                <div key="name">
-                  <div style={{ fontWeight: 600, fontSize: 'var(--text-sm)' }}>
-                    {c.name ?? <em style={{ color: 'var(--color-ink-4)' }}>Anonymised</em>}
-                  </div>
-                  <div style={{ fontSize: 'var(--text-xs)', color: 'var(--color-ink-4)' }}>{c.email ?? '—'}</div>
-                </div>,
-                <Mono key="phone">{c.phone ?? '—'}</Mono>,
-                c.anonymised_at ? (
-                  <span
-                    key="consent"
-                    style={{
-                      fontSize: 'var(--text-xs)',
-                      color: 'var(--color-ink-4)',
-                      fontStyle: 'italic',
-                    }}
-                  >
-                    Withdrawn
-                  </span>
-                ) : (
-                  <ConsentChips key="consent" consent={c.notification_consent} />
-                ),
-                <Mono key="ships">{c.shipment_count ?? 0}</Mono>,
-                <AccountStatusBadge key="status" customer={c} />,
-              ],
-            }))}
-            loading={loading}
-            emptyState={
-              !loading && visible.length === 0 ? (
-                <EmptyState compact title={customers.length === 0 ? 'No customers found' : 'No customers match this filter'} />
-              ) : undefined
+    <>
+      <ListPage
+        header={
+          <PageHeader
+            title="Customers"
+            meta={'Manage customer profiles and GDPR requests.'}
+            primary={
+              <Button variant="primary" icon="plus" onClick={() => setShowAdd(true)}>
+                Add customer
+              </Button>
             }
           />
-        </Card>
-        <ListFooter
-        shown={customers.length}
-        total={totalCount}
-        hasMore={hasMore}
-        loading={isFetchingMore}
-        onLoadMore={loadMore}
-        noun="customers"
-        nounOne="customer"
-      />
-      </div>
-
+        }
+        notices={<>{error && <Banner variant="error">{error.message}</Banner>}</>}
+        filters={
+          <FilterBar
+            label="Filter customers"
+            status={
+              <>
+                <Chip active={filter === 'all'} onClick={() => setFilter('all')}>
+                  All <span style={{ opacity: 0.6 }}>{stats?.total ?? 0}</span>
+                </Chip>
+                <Chip active={filter === 'active'} onClick={() => setFilter('active')}>
+                  Active <span style={{ opacity: 0.6 }}>{stats?.active ?? 0}</span>
+                </Chip>
+                <Chip active={filter === 'anonymised'} onClick={() => setFilter('anonymised')}>
+                  Anonymised <span style={{ opacity: 0.6 }}>{stats?.anonymised ?? 0}</span>
+                </Chip>
+              </>
+            }
+            search={
+              <>
+                <SearchField
+                  label="Search customers"
+                  placeholder="Search by name, phone, or email…"
+                  value={query}
+                  onChange={setQuery}
+                />
+              </>
+            }
+          />
+        }
+        footer={
+          <ListFooter
+            shown={customers.length}
+            total={totalCount}
+            hasMore={hasMore}
+            loading={isFetchingMore}
+            onLoadMore={loadMore}
+            noun="customers"
+            nounOne="customer"
+          />
+        }
+      >
+        <Table
+          columns={[
+            { title: 'Name' },
+            { title: 'Phone' },
+            { title: 'Consent' },
+            { title: 'Shipments', type: 'number' },
+            { title: 'Status', type: 'status' },
+          ]}
+          rows={visible.map((c) => ({
+            onOpen: () => navigate(`/admin/customers/${c.id}`, { state: { customer: c } }),
+            cells: [
+              <div key="name">
+                <div style={{ fontWeight: 600, fontSize: 'var(--text-sm)' }}>
+                  {c.name ?? <em style={{ color: 'var(--color-ink-4)' }}>Anonymised</em>}
+                </div>
+                <div style={{ fontSize: 'var(--text-xs)', color: 'var(--color-ink-4)' }}>
+                  {c.email ?? '—'}
+                </div>
+              </div>,
+              <Mono key="phone">{c.phone ?? '—'}</Mono>,
+              c.anonymised_at ? (
+                <span
+                  key="consent"
+                  style={{
+                    fontSize: 'var(--text-xs)',
+                    color: 'var(--color-ink-4)',
+                    fontStyle: 'italic',
+                  }}
+                >
+                  Withdrawn
+                </span>
+              ) : (
+                <ConsentChips key="consent" consent={c.notification_consent} />
+              ),
+              <Mono key="ships">{c.shipment_count ?? 0}</Mono>,
+              <AccountStatusBadge key="status" customer={c} />,
+            ],
+          }))}
+          loading={loading}
+          emptyState={
+            !loading && visible.length === 0 ? (
+              <EmptyState
+                compact
+                title={
+                  customers.length === 0 ? 'No customers found' : 'No customers match this filter'
+                }
+              />
+            ) : undefined
+          }
+        />
+      </ListPage>
       {showAdd && <AddCustomerModal onCancel={() => setShowAdd(false)} onSuccess={handleCreated} />}
-    </div>
+    </>
   )
 }

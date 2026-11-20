@@ -31,8 +31,11 @@ from shared.db import (
     next_tenant_counter,
     tenant_transaction,
 )
-from shared.list_filters import billing_filter
+from shared.list_filters import billing_filter, overdue_condition
 from shared.tenant_context import PLATFORM_TENANT_ID
+
+# Owed for over 30 days: a fixed SQL fragment (no input), shared with the invoice list's `overdue` filter.
+_OVERDUE = overdue_condition()
 
 logger = logging.getLogger(__name__)
 
@@ -736,10 +739,9 @@ def get_billing_stats(tenant_id: str) -> dict[str, Any]:
                 WHERE status NOT IN ('paid', 'waived', 'cancelled')), 0)          AS outstanding_ngn,
             COALESCE(SUM(amount_paid_ngn) FILTER (
                 WHERE billed_at >= date_trunc('month', now())), 0)                AS paid_this_month_ngn,
-            COUNT(*) FILTER (
-                WHERE status NOT IN ('paid', 'waived', 'cancelled')
-                  AND balance_ngn > 0
-                  AND billed_at < now() - interval '30 days')                     AS overdue,
+            COUNT(*) FILTER (WHERE """
+        + _OVERDUE
+        + """)                                                                    AS overdue,
             COUNT(*)                                                              AS total,
             COUNT(*) FILTER (WHERE status = 'unpaid')                             AS unpaid,
             COUNT(*) FILTER (WHERE status = 'partially_paid')                     AS partially_paid,

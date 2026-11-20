@@ -4,11 +4,13 @@ import { formatCbm } from '../../api/decimal'
 import { orderedPackageMix, type Manifest, type VerificationStatus } from '../../api/manifest'
 import { isManifestOverdue as isOverdue } from '../../api/manifestRules'
 import { useManifestList, useManifestStats } from '../../hooks/useManifests'
-import { Badge, Banner, Card, Chip, ListFooter, Mono, StatCard, StatusBadge, Table, EmptyState } from '../../design/components'
+import { Badge, Banner, Chip, ListFooter, Mono, StatCard, StatusBadge, Table, EmptyState } from '../../design/components'
 import styles from './ManifestList.module.css'
 import { formatKg } from '../../lib/format'
 import { useStatusParam } from '../../lib/useStatusParam'
 import { statusLabel } from '../../design/status'
+import { FilterBar } from '../../shell/FilterBar'
+import { ListPage, StatRow } from '../../shell/ListPage'
 import { PageHeader } from '../../shell/PageHeader'
 
 // Per-status counts come from GET /v1/manifests/stats (P2-4) — a single
@@ -58,97 +60,162 @@ export function ManifestList(): JSX.Element {
   const { data: stats = null } = useManifestStats()
 
   return (
-    <div>
-      <PageHeader
-        title="Manifests"
-        meta={'Verify incoming container cargo against the packing list.'}
-      />
-
-      {error && (
-        <div className={styles.banner}>
-          <Banner variant="error" title="Something went wrong">{error.message}</Banner>
-        </div>
-      )}
-
-      {stats && (
-        <div className={styles.statsRow}>
-          <StatCard
-            label="Awaiting verification"
-            value={stats.pending}
-            icon="clock"
-            sublabel={stats.overdue > 0 ? `${stats.overdue} overdue — container arrived` : 'none overdue'}
+    <>
+      <ListPage
+        header={
+          <PageHeader
+            title="Manifests"
+            meta={'Verify incoming container cargo against the packing list.'}
           />
-          <StatCard label="Verified" value={stats.verified} icon="check" />
-          <StatCard label="With discrepancies" value={stats.discrepancies_found} icon="warn" />
-          <StatCard label="Resolved" value={stats.resolved} icon="flag" />
-        </div>
-      )}
-
-      {overdueCount > 0 && (
-        <div className={styles.banner}>
-          <Banner variant="warning" icon="alert" title={`${overdueCount} manifest${overdueCount === 1 ? '' : 's'} overdue for verification`}>
-            {overdueCount === 1 ? 'This container has' : 'These containers have'} arrived in Nigeria but{' '}
-            {overdueCount === 1 ? 'its manifest is' : 'their manifests are'} still unverified — verify to unblock billing and release.
-          </Banner>
-        </div>
-      )}
-
-      <Card padding="default">
-        <div className={styles.chips}>
-          <Chip active={statusFilter === null} onClick={() => setStatusFilter(null)}>
-            All
-          </Chip>
-          {STATUS_FILTERS.map((status) => (
-            <Chip key={status} active={statusFilter === status} onClick={() => setStatusFilter(status)}>
-              {statusLabel('manifest', status)}
-            </Chip>
-          ))}
-        </div>
-      </Card>
-
-      <div className={styles.tableWrap}>
-        <Card padding="none">
-          <Table
-            columns={[
-              { title: 'Container', type: 'reference' },
-              { title: 'Customers', type: 'number' },
-              { title: 'Packages', type: 'number' },
-              { title: 'Volume (CBM)', type: 'number' },
-              { title: 'Weight (kg)', type: 'number' },
-              { title: 'Status', type: 'status' },
-            ]}
-            rows={manifests.map((mf) => {
-              const overdue = isOverdue(mf)
-              return {
-                suspended: overdue,
-                onOpen: () => navigate(`/manifests/${mf.id}`),
-                cells: [
-                  <Mono key="container">{mf.container_number ?? mf.container_id}</Mono>,
-                  <Mono key="customers">{mf.total_customers}</Mono>,
-                  <PackageMix key="packages" manifest={mf} />,
-                  <Mono key="cbm">{formatCbm(mf.total_cbm)}</Mono>,
-                  <span key="weight" style={{ fontSize: 'var(--text-xs)', color: 'var(--color-ink-3)' }}>{fmtWeight(mf.total_weight_kg)}</span>,
-                  <span key="status" style={{ display: 'inline-flex', alignItems: 'center', gap: 'var(--space-2)', flexWrap: 'wrap' }}>
-                    <StatusBadge kind="manifest" status={mf.verification_status} />
-                    {overdue && <Badge variant="error" size="sm">Overdue</Badge>}
-                  </span>,
-                ],
-              }
-            })}
-            loading={loading}
-            emptyState={!loading && manifests.length === 0 ? <EmptyState compact title="No manifests yet" /> : undefined}
+        }
+        notices={
+          <>
+            {error && (
+              <Banner variant="error" title="Something went wrong">
+                {error.message}
+              </Banner>
+            )}
+            {overdueCount > 0 && (
+              <Banner
+                variant="warning"
+                icon="alert"
+                title={`${overdueCount} manifest${overdueCount === 1 ? '' : 's'} overdue for verification`}
+              >
+                {overdueCount === 1 ? 'This container has' : 'These containers have'} arrived in
+                Nigeria but {overdueCount === 1 ? 'its manifest is' : 'their manifests are'} still
+                unverified — verify to unblock billing and release.
+              </Banner>
+            )}
+          </>
+        }
+        stats={
+          stats && (
+            <StatRow>
+              <StatCard
+                label="Awaiting verification"
+                value={stats.pending}
+                icon="clock"
+                sublabel={
+                  stats.overdue > 0
+                    ? `${stats.overdue} overdue — container arrived`
+                    : 'none overdue'
+                }
+                selected={statusFilter === 'pending'}
+                onSelect={() => setStatusFilter(statusFilter === 'pending' ? null : 'pending')}
+              />
+              <StatCard
+                label="With discrepancies"
+                value={stats.discrepancies_found}
+                icon="warn"
+                selected={statusFilter === 'discrepancies_found'}
+                onSelect={() =>
+                  setStatusFilter(
+                    statusFilter === 'discrepancies_found' ? null : 'discrepancies_found',
+                  )
+                }
+              />
+              <StatCard
+                label="Verified"
+                value={stats.verified}
+                icon="check"
+                selected={statusFilter === 'verified'}
+                onSelect={() => setStatusFilter(statusFilter === 'verified' ? null : 'verified')}
+              />
+              <StatCard
+                label="Resolved"
+                value={stats.resolved}
+                icon="flag"
+                selected={statusFilter === 'resolved'}
+                onSelect={() => setStatusFilter(statusFilter === 'resolved' ? null : 'resolved')}
+              />
+            </StatRow>
+          )
+        }
+        filters={
+          <FilterBar
+            label="Filter manifests"
+            status={
+              <>
+                <Chip active={statusFilter === null} onClick={() => setStatusFilter(null)}>
+                  All
+                </Chip>
+                {STATUS_FILTERS.map((status) => (
+                  <Chip
+                    key={status}
+                    active={statusFilter === status}
+                    onClick={() => setStatusFilter(status)}
+                  >
+                    {statusLabel('manifest', status)}
+                  </Chip>
+                ))}
+              </>
+            }
           />
-        </Card>
-        <ListFooter
-        shown={manifests.length}
-        total={totalCount}
-        hasMore={hasMore}
-        loading={isFetchingMore}
-        onLoadMore={loadMore}
-        noun="manifests"
-        nounOne="manifest"
-      />
-      </div>
-    </div>
+        }
+        footer={
+          <ListFooter
+            shown={manifests.length}
+            total={totalCount}
+            hasMore={hasMore}
+            loading={isFetchingMore}
+            onLoadMore={loadMore}
+            noun="manifests"
+            nounOne="manifest"
+          />
+        }
+      >
+        <Table
+          columns={[
+            { title: 'Container', type: 'reference' },
+            { title: 'Customers', type: 'number' },
+            { title: 'Packages', type: 'number' },
+            { title: 'Volume (CBM)', type: 'number' },
+            { title: 'Weight (kg)', type: 'number' },
+            { title: 'Status', type: 'status' },
+          ]}
+          rows={manifests.map((mf) => {
+            const overdue = isOverdue(mf)
+            return {
+              suspended: overdue,
+              onOpen: () => navigate(`/manifests/${mf.id}`),
+              cells: [
+                <Mono key="container">{mf.container_number ?? mf.container_id}</Mono>,
+                <Mono key="customers">{mf.total_customers}</Mono>,
+                <PackageMix key="packages" manifest={mf} />,
+                <Mono key="cbm">{formatCbm(mf.total_cbm)}</Mono>,
+                <span
+                  key="weight"
+                  style={{ fontSize: 'var(--text-xs)', color: 'var(--color-ink-3)' }}
+                >
+                  {fmtWeight(mf.total_weight_kg)}
+                </span>,
+                <span
+                  key="status"
+                  style={{
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    gap: 'var(--space-2)',
+                    flexWrap: 'wrap',
+                  }}
+                >
+                  <StatusBadge kind="manifest" status={mf.verification_status} />
+                  {overdue && (
+                    <Badge variant="error" size="sm">
+                      Overdue
+                    </Badge>
+                  )}
+                </span>,
+              ],
+            }
+          })}
+          loading={loading}
+          emptyState={
+            !loading && manifests.length === 0 ? (
+              <EmptyState compact title="No manifests yet" />
+            ) : undefined
+          }
+        />
+      </ListPage>
+    </>
   )
 }

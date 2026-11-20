@@ -205,7 +205,7 @@ def _dispatch(event: dict[str, Any], method: str, path: str, ctx: Any, request_i
     if segment is None:
         if method == "GET":
             ctx.assert_role(*_BILLING_READ_ROLES)
-            filters = {}
+            filters: dict[str, Any] = {}
             if _qp(event, "status"):
                 # Comma-separated multi-select (Filters panel) — a single
                 # status is just a 1-element list, matched against
@@ -217,6 +217,9 @@ def _dispatch(event: dict[str, Any], method: str, path: str, ctx: Any, request_i
                 filters["created_after"] = _qp(event, "created_after")
             if _qp(event, "created_before"):
                 filters["created_before"] = _qp(event, "created_before")
+            if (_qp(event, "overdue") or "").lower() in ("true", "1"):
+                # Only invoices owed for over 30 days: what the "Overdue" stat opens (FD-18).
+                filters["overdue"] = True
             if _qp(event, "q"):
                 # Free-text search over invoice_number / customer name /
                 # container_number (ILIKE in list_billing_all). The frontend

@@ -5,11 +5,13 @@ import { canCompensateMissingItem, canUpdateMissingItem, missingItemStatusesFor 
 import { useMissingItemList } from '../../hooks/useItems'
 import { useSession } from '../../auth/useSession'
 import type { UserRole } from '../../auth/types'
-import { Banner, Button, Card, Chip, DialogGuard, Field, ListFooter, Mono, StatusBadge, Table, Select, EmptyState, ErrorState } from '../../design/components'
+import { Banner, Button, Chip, DialogGuard, Field, ListFooter, Mono, StatusBadge, Table, Select, EmptyState, ErrorState } from '../../design/components'
 import styles from './ItemList.module.css'
 import { formatDate } from '../../lib/format'
 import { statusLabel } from '../../design/status'
 import { toast } from '../../design/toast'
+import { FilterBar } from '../../shell/FilterBar'
+import { ListPage } from '../../shell/ListPage'
 import { PageHeader } from '../../shell/PageHeader'
 
 const STATUS_FILTERS: MissingItemStatus[] = [
@@ -112,70 +114,98 @@ export function MissingItemList(): JSX.Element {
   }
 
   return (
-    <div>
-      <PageHeader
-        title="Missing items"
-        meta={
-          role === 'china_office_staff'
-            ? 'Cargo reported missing in Nigeria. Record the supply and loading check.'
-            : 'Cargo reported missing during manifest inspection.'
-        }
-      />
-
-      {error && (
-        <div className={styles.banner}>
-          <ErrorState compact title="Couldn't load missing items" error={error} onRetry={() => void refetch()} />
-        </div>
-      )}
-
-      <Card padding="default">
-        <div className={styles.chips}>
-          <Chip active={statusFilter === null} onClick={() => setStatusFilter(null)}>All</Chip>
-          {STATUS_FILTERS.map((s) => (
-            <Chip key={s} active={statusFilter === s} onClick={() => setStatusFilter(s)}>{statusLabel('missingItem', s)}</Chip>
-          ))}
-        </div>
-      </Card>
-
-      <div className={styles.tableWrap}>
-        <Card padding="none">
-          <Table
-            columns={[
-              { title: 'Description' },
-              { title: 'Carton tags', type: 'reference' },
-              { title: 'Status', type: 'status' },
-              { title: 'Reported', type: 'date' },
-              { title: '', type: 'action', width: '80px' },
-            ]}
-            rows={items.map((item) => ({
-              cells: [
-                <span key="desc">{item.description}</span>,
-                <Mono key="tags">{item.carton_tags.join(', ') || '—'}</Mono>,
-                <StatusBadge key="status" kind="missingItem" status={item.status} />,
-                <span key="date">{formatDate(item.created_at)}</span>,
-                canUpdateMissingItem(role, item.status) ? (
-                  <Button key="edit" variant="ghost" size="sm" onClick={() => setEditing(item)}>Update</Button>
-                ) : <span key="noop" />,
-              ],
-            }))}
-            loading={loading}
-            emptyState={!loading && items.length === 0 ? <EmptyState compact title="No missing items on record" /> : undefined}
+    <>
+      <ListPage
+        header={
+          <PageHeader
+            title="Missing items"
+            meta={
+              role === 'china_office_staff'
+                ? 'Cargo reported missing in Nigeria. Record the supply and loading check.'
+                : 'Cargo reported missing during manifest inspection.'
+            }
           />
-        </Card>
-        <ListFooter
-        shown={items.length}
-        total={totalCount}
-        hasMore={hasMore}
-        loading={isFetchingMore}
-        onLoadMore={loadMore}
-        noun="missing items"
-        nounOne="missing item"
-      />
-      </div>
-
+        }
+        notices={
+          <>
+            {error && (
+              <ErrorState
+                compact
+                title="Couldn't load missing items"
+                error={error}
+                onRetry={() => void refetch()}
+              />
+            )}
+          </>
+        }
+        filters={
+          <FilterBar
+            label="Filter missing items"
+            status={
+              <>
+                <Chip active={statusFilter === null} onClick={() => setStatusFilter(null)}>
+                  All
+                </Chip>
+                {STATUS_FILTERS.map((s) => (
+                  <Chip key={s} active={statusFilter === s} onClick={() => setStatusFilter(s)}>
+                    {statusLabel('missingItem', s)}
+                  </Chip>
+                ))}
+              </>
+            }
+          />
+        }
+        footer={
+          <ListFooter
+            shown={items.length}
+            total={totalCount}
+            hasMore={hasMore}
+            loading={isFetchingMore}
+            onLoadMore={loadMore}
+            noun="missing items"
+            nounOne="missing item"
+          />
+        }
+      >
+        <Table
+          columns={[
+            { title: 'Description' },
+            { title: 'Carton tags', type: 'reference' },
+            { title: 'Status', type: 'status' },
+            { title: 'Reported', type: 'date' },
+            { title: '', type: 'action', width: '80px' },
+          ]}
+          rows={items.map((item) => ({
+            cells: [
+              <span key="desc">{item.description}</span>,
+              <Mono key="tags">{item.carton_tags.join(', ') || '—'}</Mono>,
+              <StatusBadge key="status" kind="missingItem" status={item.status} />,
+              <span key="date">{formatDate(item.created_at)}</span>,
+              canUpdateMissingItem(role, item.status) ? (
+                <Button key="edit" variant="ghost" size="sm" onClick={() => setEditing(item)}>
+                  Update
+                </Button>
+              ) : (
+                <span key="noop" />
+              ),
+            ],
+          }))}
+          loading={loading}
+          emptyState={
+            !loading && items.length === 0 ? (
+              <EmptyState compact title="No missing items on record" />
+            ) : undefined
+          }
+        />
+      </ListPage>
       {editing && (
-        <UpdateModal item={editing} role={role} onCancel={() => setEditing(null)} onSuccess={handleUpdated} />
+        <UpdateModal
+          item={editing}
+          role={role}
+          onCancel={() => setEditing(null)}
+          onSuccess={handleUpdated}
+        />
       )}
-    </div>
+    </>
   )
 }

@@ -2,60 +2,6 @@
   margin-bottom: var(--space-4);
 }
 
-.actionsRow {
-  display: flex;
-  justify-content: flex-end;
-  gap: var(--space-2);
-  margin-bottom: var(--space-4);
-}
-
-.filterRow {
-  display: flex;
-  align-items: center;
-  gap: var(--space-3);
-  flex-wrap: wrap;
-}
-
-.chips {
-  /* Their own line (FD-20): counts arrive after the page renders, and a row that wraps then would move the
-     search box under the reader's cursor. */
-  flex-basis: 100%;
-  display: flex;
-  gap: var(--space-2);
-  flex-wrap: wrap;
-}
-
-.searchWrap {
-  flex: 1;
-  min-width: 220px;
-  height: 36px;
-  background: var(--color-page);
-  border: 1px solid var(--color-control-border);
-  border-radius: var(--radius-md);
-  display: flex;
-  align-items: center;
-  padding: 0 var(--space-3);
-  gap: var(--space-2);
-}
-
-.searchInput {
-  flex: 1;
-  border: none;
-  outline: none;
-  background: transparent;
-  font-family: var(--font-body);
-  font-size: var(--text-sm);
-  color: var(--color-ink);
-}
-
-.searchInput::placeholder {
-  color: var(--color-ink-4);
-}
-
-.tableWrap {
-  margin-top: var(--space-4);
-}
-
 .submittedDate {
   font-size: var(--text-xs);
   color: var(--color-ink-3);
@@ -234,4 +180,3 @@
   font-weight: 400;
   color: var(--color-ink-3);
 }
-

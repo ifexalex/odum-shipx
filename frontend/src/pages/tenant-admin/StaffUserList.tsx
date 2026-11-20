@@ -13,7 +13,6 @@ import { useStaffList } from '../../hooks/useStaff'
 import {
   Banner,
   Button,
-  Card,
   Chip,
   Field,
   Table,
@@ -27,6 +26,8 @@ import styles from './admin.module.css'
 import { formatDate } from '../../lib/format'
 import { roleLabel } from '../../design/status'
 import { toast } from '../../design/toast'
+import { FilterBar } from '../../shell/FilterBar'
+import { ListPage } from '../../shell/ListPage'
 import { PageHeader } from '../../shell/PageHeader'
 
 const ROLES: TenantUserRole[] = [
@@ -171,74 +172,86 @@ export function StaffUserList(): JSX.Element {
   }, [staff, roleFilter, query])
 
   return (
-    <div>
-      <PageHeader
-        title="Staff"
-        meta={'Manage team members and their access roles.'}
-        primary={
-          <Button variant="primary" icon="plus" onClick={() => setShowInvite(true)}>
-            Invite user
-          </Button>
-        }
-      />
-      {error && (
-        <div className={styles.banner}>
-          <Banner variant="error">{error.message}</Banner>
-        </div>
-      )}
-
-      <Card padding="default">
-        <div className={styles.filterRow}>
-          <div className={styles.chips}>
-            <Chip active={roleFilter === null} onClick={() => setRoleFilter(null)}>
-              All <span style={{ opacity: 0.6 }}>{staff.length}</span>
-            </Chip>
-            {ROLES.map((r) => (
-              <Chip
-                key={r}
-                active={roleFilter === r}
-                onClick={() => setRoleFilter(roleFilter === r ? null : r)}
-              >
-                {roleLabel(r)} <span style={{ opacity: 0.6 }}>{counts[r] ?? 0}</span>
-              </Chip>
-            ))}
-          </div>
-          <SearchField label="Search staff" placeholder="Search by name or email…" value={query} onChange={setQuery} />
-        </div>
-      </Card>
-
-      <div className={styles.tableWrap}>
-        <Card padding="none">
-          <Table
-            columns={[
-              { title: 'Name' },
-              { title: 'Email' },
-              { title: 'Role' },
-              { title: 'Status', type: 'status' },
-              { title: 'Created', type: 'date' },
-            ]}
-            rows={visible.map((u) => ({
-              onOpen: () => navigate(`/admin/users/${u.id}`, { state: { user: u } }),
-              cells: [
-                <span key="name">{u.full_name}</span>,
-                <span key="email">{u.email}</span>,
-                <RoleBadge key="role" role={u.role} />,
-                <StatusBadge key="status" kind="staffUser" status={u.status} />,
-                <span key="created" style={{ fontSize: 'var(--text-xs)', color: 'var(--color-ink-3)' }}>
-                  {formatDate(u.created_at)}
-                </span>,
-              ],
-            }))}
-            loading={loading}
-            emptyState={
-              !loading && visible.length === 0 ? (
-                <EmptyState compact title={staff.length === 0 ? 'No staff members yet' : 'No staff match this filter'} />
-              ) : undefined
+    <>
+      <ListPage
+        header={
+          <PageHeader
+            title="Staff"
+            meta={'Manage team members and their access roles.'}
+            primary={
+              <Button variant="primary" icon="plus" onClick={() => setShowInvite(true)}>
+                Invite user
+              </Button>
             }
           />
-        </Card>
-      </div>
-
+        }
+        notices={<>{error && <Banner variant="error">{error.message}</Banner>}</>}
+        filters={
+          <FilterBar
+            label="Filter staff"
+            status={
+              <>
+                <Chip active={roleFilter === null} onClick={() => setRoleFilter(null)}>
+                  All <span style={{ opacity: 0.6 }}>{staff.length}</span>
+                </Chip>
+                {ROLES.map((r) => (
+                  <Chip
+                    key={r}
+                    active={roleFilter === r}
+                    onClick={() => setRoleFilter(roleFilter === r ? null : r)}
+                  >
+                    {roleLabel(r)} <span style={{ opacity: 0.6 }}>{counts[r] ?? 0}</span>
+                  </Chip>
+                ))}
+              </>
+            }
+            search={
+              <>
+                <SearchField
+                  label="Search staff"
+                  placeholder="Search by name or email…"
+                  value={query}
+                  onChange={setQuery}
+                />
+              </>
+            }
+          />
+        }
+      >
+        <Table
+          columns={[
+            { title: 'Name' },
+            { title: 'Email' },
+            { title: 'Role' },
+            { title: 'Status', type: 'status' },
+            { title: 'Created', type: 'date' },
+          ]}
+          rows={visible.map((u) => ({
+            onOpen: () => navigate(`/admin/users/${u.id}`, { state: { user: u } }),
+            cells: [
+              <span key="name">{u.full_name}</span>,
+              <span key="email">{u.email}</span>,
+              <RoleBadge key="role" role={u.role} />,
+              <StatusBadge key="status" kind="staffUser" status={u.status} />,
+              <span
+                key="created"
+                style={{ fontSize: 'var(--text-xs)', color: 'var(--color-ink-3)' }}
+              >
+                {formatDate(u.created_at)}
+              </span>,
+            ],
+          }))}
+          loading={loading}
+          emptyState={
+            !loading && visible.length === 0 ? (
+              <EmptyState
+                compact
+                title={staff.length === 0 ? 'No staff members yet' : 'No staff match this filter'}
+              />
+            ) : undefined
+          }
+        />
+      </ListPage>
       {showInvite && (
         <InviteModal
           onCancel={() => setShowInvite(false)}
@@ -248,6 +261,6 @@ export function StaffUserList(): JSX.Element {
           }}
         />
       )}
-    </div>
+    </>
   )
 }

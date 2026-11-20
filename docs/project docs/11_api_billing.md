@@ -352,3 +352,7 @@ Verified by running the generated SQL page by page in SQLite (`tests/unit/test_p
 ## Invoice list sorted by billed date pages correctly (2026-11-19)
 
 Unbilled invoices (no `billed_at`) now sort last in both directions, and paging through them no longer restarts at page one. See `02_shared_utilities.md`, "Paging past empty sort values".
+
+## Overdue filter on the invoice list (2026-11-20, audit FD-18)
+
+`GET /v1/billing?overdue=true` (also `1`) returns only overdue invoices: status not paid, waived or cancelled, a balance still owed, billed more than 30 days ago. It is the definition the list's "Overdue (30+ days)" stat counts with (`GET /v1/billing/stats` `overdue`), shared as `shared/list_filters.py::overdue_condition` so the stat and the list it opens cannot disagree. `GET /v1/billing/export` accepts the same parameter. Tests: `tests/db/test_overdue_filter.py` (real Postgres: the list is exactly what the stat counts), `tests/unit/test_list_exports.py`, `tests/unit/test_billing.py`.

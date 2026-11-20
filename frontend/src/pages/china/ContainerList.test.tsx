@@ -177,7 +177,7 @@ describe('ContainerList', () => {
     renderPage('china_office_staff')
     // One call on mount: the paginated table (stats loads via containersApi.stats)
     await waitFor(() => expect(containersApi.list).toHaveBeenCalledTimes(1))
-    await userEvent.click(screen.getByRole('button', { name: /in transit/i }))
+    await userEvent.click(within(screen.getByRole('search', { name: 'Filter containers' })).getByRole('button', { name: /in transit/i }))
     // Third call: paginated list re-fetch with the status filter
     await waitFor(() => expect(containersApi.list).toHaveBeenCalledTimes(2))
     expect(vi.mocked(containersApi.list).mock.calls[1]?.[0]).toMatchObject({ status: 'in_transit' })
@@ -279,11 +279,11 @@ describe('ContainerList', () => {
     // Set a status filter first (panel closed — clicking a chip while the
     // Filters popover is open would hit its click-away overlay instead, same
     // as the existing ExportButton dropdown pattern).
-    await userEvent.click(screen.getByRole('button', { name: /in transit/i }))
+    await userEvent.click(within(screen.getByRole('search', { name: 'Filter containers' })).getByRole('button', { name: /in transit/i }))
     await waitFor(() => expect(containersApi.list).toHaveBeenCalledTimes(2))
 
-    await userEvent.click(screen.getByRole('button', { name: /^filters$/i }))
-    expect(screen.getByRole('dialog', { name: /filters/i })).toBeInTheDocument()
+    await userEvent.click(screen.getByRole('button', { name: /^more filters/i }))
+    expect(screen.getByRole('dialog', { name: /more filters/i })).toBeInTheDocument()
 
     await userEvent.click(screen.getByRole('button', { name: /clear all filters/i }))
 
@@ -336,8 +336,8 @@ describe('ContainerList', () => {
     renderPage('china_office_staff')
     await waitFor(() => expect(containersApi.list).toHaveBeenCalledTimes(1))
 
-    await userEvent.click(screen.getByRole('button', { name: /^filters$/i }))
-    const dialog = screen.getByRole('dialog', { name: /filters/i })
+    await userEvent.click(screen.getByRole('button', { name: /^more filters/i }))
+    const dialog = screen.getByRole('dialog', { name: /more filters/i })
 
     // All 9 individual statuses are selectable here — distinct from the
     // grouped quick-access chips above the table.
@@ -360,8 +360,8 @@ describe('ContainerList', () => {
     renderPage('china_office_staff')
     await waitFor(() => expect(containersApi.list).toHaveBeenCalledTimes(1))
 
-    await userEvent.click(screen.getByRole('button', { name: /^filters$/i }))
-    const dialog = screen.getByRole('dialog', { name: /filters/i })
+    await userEvent.click(screen.getByRole('button', { name: /^more filters/i }))
+    const dialog = screen.getByRole('dialog', { name: /more filters/i })
     await userEvent.click(within(dialog).getByRole('checkbox', { name: /^sealed$/i }))
 
     await waitFor(() => expect(containersApi.list).toHaveBeenCalledTimes(2))
@@ -375,7 +375,7 @@ describe('ContainerList', () => {
     expect(vi.mocked(containersApi.list).mock.calls[2]?.[0]).toMatchObject({ status: 'sealed,cancelled' })
   })
 
-  it('"Clear all filters" resets the status multi-select and ETA range, but leaves the standalone date-created button untouched', async () => {
+  it('"Clear all filters" clears every filter, the date range too (it is all of them, FD-18)', async () => {
     vi.mocked(containersApi.list).mockResolvedValue({
       data: [],
       meta: { pagination: { has_more: false, next_cursor: null, total_count: 0 } },
@@ -389,8 +389,8 @@ describe('ContainerList', () => {
     await waitFor(() => expect(containersApi.list).toHaveBeenCalledTimes(2))
 
     // Set an ETA preset inside the Filters panel, then clear.
-    await userEvent.click(screen.getByRole('button', { name: /^filters$/i }))
-    const dialog = screen.getByRole('dialog', { name: /filters/i })
+    await userEvent.click(screen.getByRole('button', { name: /^more filters/i }))
+    const dialog = screen.getByRole('dialog', { name: /more filters/i })
     await userEvent.click(within(dialog).getByRole('option', { name: /arriving in 30 days/i }))
     await waitFor(() => expect(containersApi.list).toHaveBeenCalledTimes(3))
 
@@ -402,9 +402,9 @@ describe('ContainerList', () => {
     }
     expect(clearedCall.eta_after).toBeUndefined()
     expect(clearedCall.eta_before).toBeUndefined()
-    // The standalone date button's own filter survives the panel's "Clear all filters".
-    expect(clearedCall.created_after).toBeDefined()
-    expect(screen.getByRole('button', { name: /last 30 days/i })).toBeInTheDocument()
+    // "Clear all filters" means all of them: the date range goes too.
+    expect(clearedCall.created_after).toBeUndefined()
+    expect(screen.getByRole('button', { name: /all time/i })).toBeInTheDocument()
   })
 
   describe('Export', () => {
@@ -436,7 +436,7 @@ describe('ContainerList', () => {
       renderPage('china_office_staff')
       await waitFor(() => expect(containersApi.list).toHaveBeenCalledTimes(1))
       // The button is placed in the top bar once, on mount; it must still see filters chosen afterwards.
-      await userEvent.click(screen.getByRole('button', { name: /in transit/i }))
+      await userEvent.click(within(screen.getByRole('search', { name: 'Filter containers' })).getByRole('button', { name: /in transit/i }))
       await userEvent.type(screen.getByPlaceholderText(/container number, vessel name, voyage/i), 'MSCU')
       await waitFor(() => expect(containersApi.list).toHaveBeenLastCalledWith(expect.objectContaining({ status: 'in_transit', q: 'MSCU' })))
 

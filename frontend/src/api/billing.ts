@@ -222,6 +222,8 @@ export interface BillingListParams {
   /** ISO date (YYYY-MM-DD) — filters on `billed_at`, inclusive. */
   created_after?: string
   created_before?: string
+  /** Only invoices owed for over 30 days: what the list's "Overdue" stat opens (FD-18). */
+  overdue?: boolean
   cursor?: string
   limit?: number
   /** Column to sort by — must match shared/pagination.py's ALLOWED_SORT_FIELDS. */

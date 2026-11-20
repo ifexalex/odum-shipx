@@ -82,7 +82,7 @@ describe('ClaimList', () => {
     await waitFor(() => expect(claimsApi.stats).toHaveBeenCalled())
     await waitFor(() => expect(claimsApi.list).toHaveBeenCalledWith({ cursor: undefined }))
     // Chip click refetches the table server-side with the status filter.
-    await userEvent.click(screen.getByRole('button', { name: /Resolved/ }))
+    await userEvent.click(within(screen.getByRole('search', { name: 'Filter damage claims' })).getByRole('button', { name: /Resolved/ }))
     await waitFor(() => expect(claimsApi.list).toHaveBeenCalledWith({ status: 'resolved', cursor: undefined }))
   })
 

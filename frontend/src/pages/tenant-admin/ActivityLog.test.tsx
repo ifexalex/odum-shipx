@@ -36,6 +36,13 @@ function emptyResult() {
   return { data: [], meta: { pagination: { has_more: false, next_cursor: null, total_count: 0 } } }
 }
 
+// Record type, action and sort sit under "More filters" (FD-18); open the panel once before using them.
+async function openMoreFilters(): Promise<void> {
+  if (!screen.queryByRole('dialog', { name: 'More filters' })) {
+    await userEvent.click(screen.getByRole('button', { name: /^more filters/i }))
+  }
+}
+
 describe('ActivityLog — tenant-admin audit trail', () => {
   it('renders activity rows with actor and action', async () => {
     vi.mocked(configApi.activity).mockResolvedValue({
@@ -97,6 +104,7 @@ describe('ActivityLog — tenant-admin audit trail', () => {
 
     await screen.findByText('No activity matches these filters')
     await userEvent.click(screen.getByRole('button', { name: /^Money/ }))
+    await openMoreFilters()
     await userEvent.selectOptions(screen.getByLabelText('Record type'), 'payment_claim')
 
     await waitFor(() =>
@@ -112,9 +120,11 @@ describe('ActivityLog — tenant-admin audit trail', () => {
 
     await screen.findByText('No activity matches these filters')
     await userEvent.click(screen.getByRole('button', { name: /^Money/ }))
+    await openMoreFilters()
     await userEvent.selectOptions(screen.getByLabelText('Record type'), 'payment_claim')
     await userEvent.click(screen.getByRole('button', { name: /^Goods & shipments/ }))
 
+    await openMoreFilters()
     expect(screen.getByLabelText('Record type')).toHaveValue('')
     await waitFor(() =>
       expect(configApi.activity).toHaveBeenLastCalledWith(
@@ -130,6 +140,7 @@ describe('ActivityLog — tenant-admin audit trail', () => {
     render(<ActivityLog />)
 
     await screen.findByText('No activity matches these filters')
+    await openMoreFilters()
     await userEvent.selectOptions(screen.getByLabelText('Action'), 'STATUS_CHANGE')
 
     await waitFor(() =>
@@ -156,6 +167,7 @@ describe('ActivityLog — tenant-admin audit trail', () => {
     await screen.findByText('No activity matches these filters')
     expect(configApi.activity).toHaveBeenLastCalledWith(expect.objectContaining({ sort: 'desc' }))
 
+    await openMoreFilters()
     await userEvent.selectOptions(screen.getByLabelText('Sort'), 'asc')
     await waitFor(() => expect(configApi.activity).toHaveBeenLastCalledWith(expect.objectContaining({ sort: 'asc' })))
   })
@@ -166,18 +178,22 @@ describe('ActivityLog — tenant-admin audit trail', () => {
 
     await screen.findByText('No activity matches these filters')
     await userEvent.click(screen.getByRole('button', { name: /^Money/ }))
+    await openMoreFilters()
     await userEvent.selectOptions(screen.getByLabelText('Action'), 'CREATE')
     await userEvent.type(screen.getByRole('searchbox', { name: 'Search the activity log' }), 'Emeka')
     await userEvent.click(screen.getByRole('button', { name: /^When:/ }))
     await userEvent.type(screen.getByLabelText('From'), '2026-09-01')
 
-    await userEvent.click(await screen.findByRole('button', { name: /clear filters/i }))
+    await openMoreFilters()
+    await userEvent.click(await screen.findByRole('button', { name: /clear all filters/i }))
 
+    await openMoreFilters()
     expect(screen.getByLabelText('Action')).toHaveValue('')
     expect(screen.getByRole('searchbox', { name: 'Search the activity log' })).toHaveValue('')
     expect(screen.getByLabelText('From')).toHaveValue('')
     // Category cleared → Record type offers all types again, and the query
     // goes back to an unfiltered entityTypes (proves the category reset).
+    await openMoreFilters()
     expect(screen.getByLabelText('Record type')).toContainHTML('All types')
     await waitFor(() =>
       expect(configApi.activity).toHaveBeenLastCalledWith(
@@ -233,6 +249,7 @@ describe('ActivityLog — tenant-admin audit trail', () => {
     // Category is a chip set; none of the chips name impersonation.
     expect(screen.queryByRole('button', { name: /imperson/i })).toBeNull()
 
+    await openMoreFilters()
     const recordTypeOptions = screen.getByLabelText('Record type').querySelectorAll('option')
     expect(Array.from(recordTypeOptions).some((o) => /imperson/i.test(o.textContent ?? ''))).toBe(false)
   })

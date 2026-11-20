@@ -13,17 +13,18 @@ import { billingKeys } from '../../api/keys'
 import { STALE_30S } from '../../lib/queryClient'
 import { ApiError } from '../../api/client'
 import { useSession } from '../../auth/useSession'
-import { Banner, Button, Card, Chip, DialogGuard, Field, Mono, StatCard, StatusBadge, Table, UserCell, EmptyState, LinesSkeleton } from '../../design/components'
-import styles from './BillingList.module.css'
-import { formatDate, formatNgn } from '../../lib/format'
+import { Banner, Button, Chip, DialogGuard, Field, Mono, StatCard, StatusBadge, Table, UserCell, EmptyState, LinesSkeleton } from '../../design/components'
+import { formatDate, formatNgn, plural } from '../../lib/format'
 import { toast } from '../../design/toast'
+import { FilterBar } from '../../shell/FilterBar'
+import { ListPage, StatRow } from '../../shell/ListPage'
+import { statusLabel } from '../../design/status'
 import { PageHeader } from '../../shell/PageHeader'
 
-const STATUS_FILTERS: { key: CarryoverStatus; label: string }[] = [
-  { key: 'outstanding', label: 'Outstanding' },
-  { key: 'applied', label: 'Applied' },
-  { key: 'exempted', label: 'Exempted' },
-]
+// In the status registry's words (FD-08).
+const STATUS_FILTERS: { key: CarryoverStatus; label: string }[] = (['outstanding', 'applied', 'exempted'] as const).map(
+  (key) => ({ key, label: statusLabel('carryover', key) }),
+)
 
 function ExemptModal({ carryover, onCancel, onSuccess }: { carryover: Carryover; onCancel: () => void; onSuccess: () => void }): JSX.Element {
   const [notes, setNotes] = useState('')
@@ -113,30 +114,65 @@ export function CarryoverLedger(): JSX.Element {
     .reduce((s, c) => s + Number(c.amount_ngn), 0)
 
   return (
-    <div>
-      <PageHeader
-        title="Carryover ledger"
-        meta={
-          'Outstanding balances rolled forward from released-with-outstanding billings, across all customers.'
+    <>
+      <ListPage
+        header={
+          <PageHeader
+            title="Carryover ledger"
+            meta={
+              'Outstanding balances rolled forward from released-with-outstanding billings, across all customers.'
+            }
+          />
         }
-      />
-
-      {error && <div style={{ marginBottom: 'var(--space-4)' }}><Banner variant="error" title="Couldn't load">{error}</Banner></div>}
-
-      <div className={styles.statsRow ?? ''} style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: 'var(--space-3)', marginBottom: 'var(--space-5)' }}>
-        <StatCard label="Outstanding total" value={formatNgn(outstandingTotal)} />
-        <StatCard label="Outstanding entries" value={carryovers.filter((c) => c.status === 'outstanding').length} />
-        <StatCard label="All entries" value={carryovers.length} />
-      </div>
-
-      <div style={{ display: 'flex', gap: 'var(--space-2)', marginBottom: 'var(--space-4)', flexWrap: 'wrap' }}>
-        <Chip active={statusFilter === null} onClick={() => setStatusFilter(null)}>All</Chip>
-        {STATUS_FILTERS.map(({ key, label }) => (
-          <Chip key={key} active={statusFilter === key} onClick={() => setStatusFilter(key)}>{label}</Chip>
-        ))}
-      </div>
-
-      <Card padding="none">
+        notices={
+          <>
+            {error && (
+              <Banner variant="error" title="Couldn't load">
+                {error}
+              </Banner>
+            )}
+          </>
+        }
+        stats={
+          <StatRow>
+            <StatCard
+              label="Outstanding"
+              value={formatNgn(outstandingTotal)}
+              sublabel={plural(
+                carryovers.filter((c) => c.status === 'outstanding').length,
+                'entry',
+                'entries',
+              )}
+              icon="coin"
+              selected={statusFilter === 'outstanding'}
+              onSelect={() =>
+                setStatusFilter(statusFilter === 'outstanding' ? null : 'outstanding')
+              }
+            />
+          </StatRow>
+        }
+        filters={
+          <FilterBar
+            label="Filter the carryover ledger"
+            status={
+              <>
+                <Chip active={statusFilter === null} onClick={() => setStatusFilter(null)}>
+                  All
+                </Chip>
+                {STATUS_FILTERS.map(({ key, label }) => (
+                  <Chip
+                    key={key}
+                    active={statusFilter === key}
+                    onClick={() => setStatusFilter(key)}
+                  >
+                    {label}
+                  </Chip>
+                ))}
+              </>
+            }
+          />
+        }
+      >
         <Table
           columns={[
             { title: 'Customer' },
@@ -154,18 +190,30 @@ export function CarryoverLedger(): JSX.Element {
               </Link>,
               <Mono key="amt">{formatNgn(c.amount_ngn)}</Mono>,
               <StatusBadge key="status" kind="carryover" status={c.status} />,
-              <span key="created" style={{ fontSize: 'var(--text-xs)', color: 'var(--color-ink-3)' }}>{formatDate(c.created_at)}</span>,
+              <span
+                key="created"
+                style={{ fontSize: 'var(--text-xs)', color: 'var(--color-ink-3)' }}
+              >
+                {formatDate(c.created_at)}
+              </span>,
               c.status === 'outstanding' && canExempt ? (
-                <Button key="exempt" variant="ghost" size="sm" onClick={() => setExempting(c)}>Exempt</Button>
+                <Button key="exempt" variant="ghost" size="sm" onClick={() => setExempting(c)}>
+                  Exempt
+                </Button>
               ) : (
                 <span key="exempt" />
               ),
             ],
           }))}
-          emptyState={loading ? <LinesSkeleton label="Loading carryovers" /> : <EmptyState compact title="No carryover entries match this filter" />}
+          emptyState={
+            loading ? (
+              <LinesSkeleton label="Loading carryovers" />
+            ) : (
+              <EmptyState compact title="No carryover entries match this filter" />
+            )
+          }
         />
-      </Card>
-
+      </ListPage>
       {exempting && (
         <ExemptModal
           carryover={exempting}
@@ -175,6 +223,6 @@ export function CarryoverLedger(): JSX.Element {
           }}
         />
       )}
-    </div>
+    </>
   )
 }

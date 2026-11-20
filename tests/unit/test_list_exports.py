@@ -26,7 +26,7 @@ from services.excel.models import ContainerListExportQuery, ListExportQuery
 from services.tracking import repository as tracking_repo
 from shared.exceptions import BusinessRuleViolationError, ResourceNotFoundError, ValidationError
 from shared.http_routing import resolve_service
-from shared.list_filters import billing_filter, container_filter
+from shared.list_filters import billing_filter, container_filter, overdue_condition
 from shared.tenant_context import TenantContext, UserRole
 
 TENANT = "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa"
@@ -74,6 +74,16 @@ class TestSharedFilters:
             "created_before": "2026-02-01",
             "q": "%50%_x%",
         }
+
+    def test_billing_overdue_is_the_stats_own_definition(self):
+        """The list's `overdue` filter (FD-18) is the fragment the billing stats count with, aliased to `b`."""
+        clause, params = billing_filter("t1", {"overdue": True})
+        assert clause == f"b.tenant_id = %(tenant_id)s AND ({overdue_condition('b')})"
+        assert params == {"tenant_id": "t1"}
+        assert overdue_condition("b") == (
+            "b.status NOT IN ('paid', 'waived', 'cancelled') AND b.balance_ngn > 0 AND b.billed_at < now() - interval '30 days'"
+        )
+        assert billing_filter("t1", {"overdue": False})[0] == "b.tenant_id = %(tenant_id)s"
 
     def test_container_filter_with_nothing_set_is_only_the_tenant(self):
         assert container_filter("t1", {}) == ("c.tenant_id = %(tenant_id)s", {"tenant_id": "t1"})
@@ -304,6 +314,10 @@ class TestListExportQuery:
             "created_before": "2026-02-01",
         }
         assert (q.format, q.sort, q.direction) == ("xlsx", "billed_at", "desc")
+
+    def test_the_overdue_list_exports_as_overdue(self):
+        assert ListExportQuery(overdue="true").filters() == {"overdue": True}
+        assert ListExportQuery(overdue="false").filters() == {}
 
     def test_only_what_is_set_becomes_a_filter(self):
         assert ListExportQuery().filters() == {}

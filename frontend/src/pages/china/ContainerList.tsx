@@ -5,7 +5,7 @@ import { containerKeys } from '../../api/keys'
 import { STALE_5_MIN } from '../../lib/queryClient'
 import { containerCapacityCbm, utilizationLevel } from '../../api/containerRules'
 import { containersApi, type Container, type ContainerStatus } from '../../api/tracking'
-import { Banner, Button, Card, Chip, DateRangeFilter, ExportButton, Icon, ListFooter, Mono, StatCard, StatusBadge, Table, type TableRow, Pressable, SearchField, EmptyState, ErrorState } from '../../design/components'
+import { Banner, Button, Chip, DateRangeFilter, ExportButton, Icon, ListFooter, Mono, StatCard, StatusBadge, Table, type IconName, type TableRow, Pressable, SearchField, EmptyState, ErrorState } from '../../design/components'
 import { useSession } from '../../auth/useSession'
 import { useContainerList } from '../../hooks/useContainers'
 import { useDateRangeFilter } from '../../hooks/useDateRangeFilter'
@@ -14,6 +14,8 @@ import { type SortableColumn, useTableSort } from '../../hooks/useTableSort'
 import styles from './ContainerList.module.css'
 import { formatCbm, formatDate, isoDateOffset, todayIso } from '../../lib/format'
 import { statusLabel } from '../../design/status'
+import { FilterBar } from '../../shell/FilterBar'
+import { ListPage, StatRow } from '../../shell/ListPage'
 import { PageHeader } from '../../shell/PageHeader'
 
 const SEARCH_DEBOUNCE_MS = 300
@@ -53,6 +55,14 @@ const IN_TRANSIT: ContainerStatus[] = ['in_transit']
 const ARRIVED_NG: ContainerStatus[] = ['arrived', 'customs_clearance']
 const CLEARED: ContainerStatus[] = ['cleared', 'at_warehouse', 'fully_released']
 // Filter chips match the design exactly: All · Active · Packed · In transit · Arrived NG · Cleared
+// The four stats a container list shows (FD-18): work waiting at each stage, each a filter.
+const STAT_GROUPS: Array<{ label: string; sublabel: string; icon: IconName; statuses: ContainerStatus[] }> = [
+  { label: 'Active', sublabel: 'China-side', icon: 'container', statuses: CHINA_ACTIVE },
+  { label: 'Packed', sublabel: 'ready to ship', icon: 'package', statuses: CHINA_PACKED },
+  { label: 'In transit', sublabel: 'at sea', icon: 'ship', statuses: IN_TRANSIT },
+  { label: 'Arrived (NG)', sublabel: 'handed off', icon: 'map', statuses: ARRIVED_NG },
+]
+
 const CHIP_FILTERS: Array<{ label: string; statuses: ContainerStatus[] }> = [
   { label: 'Active', statuses: CHINA_ACTIVE },
   { label: 'Packed', statuses: CHINA_PACKED },
@@ -187,7 +197,6 @@ export function ContainerList(): JSX.Element {
   // "Arriving" (ETA range) — lives only in the Filters panel, distinct from
   // the standalone date button above which filters on `created_at`.
   const [etaPreset, setEtaPreset] = useState<EtaPresetKey | null>(null)
-  const [filtersOpen, setFiltersOpen] = useState(false)
 
   // Debounce the search term; the query hook only refetches once typing settles.
   useEffect(() => {
@@ -272,168 +281,191 @@ export function ContainerList(): JSX.Element {
     setActiveStatuses(null)
     setSearch('')
     setEtaPreset(null)
-    setFiltersOpen(false)
+    createdRange.clear()
   }
 
   const chipCount = (statuses: ContainerStatus[]): number => sumStatuses(statuses)
 
+  // Filters applied besides the search, shown on the More filters / Filters button.
+  const activeFilters = (activeStatuses ? 1 : 0) + (etaPreset ? 1 : 0) + (createdRange.isActive ? 1 : 0)
+
   return (
-    <div>
-      <PageHeader
-        title="Containers"
-        primary={
-          canCreate && (
-            <Button variant="primary" icon="plus" onClick={() => navigate('/containers/new')}>
-              Create container
-            </Button>
-          )
-        }
-        actions={<ExportButton formats={['xlsx', 'csv']} onExport={exportList.onExport} />}
-      />
-      {error && (
-        <div className={styles.banner}>
-          <ErrorState compact title="Couldn't load containers" error={error} onRetry={() => void refetch()} />
-        </div>
-      )}
-      {exportList.error && (
-        <div className={styles.banner}>
-          <Banner variant="error" title="Couldn't export containers" dismissible onDismiss={exportList.dismissError}>
-            {exportList.error}
-          </Banner>
-        </div>
-      )}
-
-      {/* Stats row — matches design exactly: Active · Packed · In transit · Arrived (NG) · Cleared */}
-      <div className={styles.statsRow}>
-        <StatCard label="Active"       value={stats.active}    sublabel="China-side"   icon="container" />
-        <StatCard label="Packed"       value={stats.packed}    sublabel="ready to ship" icon="package" />
-        <StatCard label="In transit"   value={stats.inTransit} sublabel="at sea"        icon="ship" />
-        <StatCard label="Arrived (NG)" value={stats.arrivedNg} sublabel="handed off"    icon="map" />
-        <StatCard label="Cleared (30d)" value={stats.cleared}  sublabel="released"      icon="check" />
-      </div>
-
-      {/* Filter bar */}
-      <Card padding="default">
-        <div className={styles.filterRow}>
-          <div className={styles.chips}>
-            <Chip active={activeStatuses === null} onClick={() => setActiveStatuses(null)}>
-              All{stats.total > 0 && <span className={styles.chipCount}>{stats.total}</span>}
-            </Chip>
-            {CHIP_FILTERS.map((group) => (
-              <Chip
-                key={group.label}
-                active={activeStatuses?.join() === group.statuses.join()}
-                onClick={() => selectGroup(group.statuses)}
-              >
-                {group.label}
-                {statsRaw && (
-                  <span className={styles.chipCount}>{chipCount(group.statuses)}</span>
-                )}
+    <ListPage
+      header={
+        <PageHeader
+          title="Containers"
+          primary={
+            canCreate && (
+              <Button variant="primary" icon="plus" onClick={() => navigate('/containers/new')}>
+                Create container
+              </Button>
+            )
+          }
+          actions={<ExportButton formats={['xlsx', 'csv']} onExport={exportList.onExport} />}
+        />
+      }
+      notices={
+        <>
+          {error && (
+            <ErrorState
+              compact
+              title="Couldn't load containers"
+              error={error}
+              onRetry={() => void refetch()}
+            />
+          )}
+          {exportList.error && (
+            <Banner
+              variant="error"
+              title="Couldn't export containers"
+              dismissible
+              onDismiss={exportList.dismissError}
+            >
+              {exportList.error}
+            </Banner>
+          )}
+        </>
+      }
+      // Four numbers worth acting on (FD-18); each applies its filter. "Cleared (30d)" was history, not work.
+      stats={
+        <StatRow>
+          {STAT_GROUPS.map((group) => (
+            <StatCard
+              key={group.label}
+              label={group.label}
+              value={sumStatuses(group.statuses)}
+              sublabel={group.sublabel}
+              icon={group.icon}
+              selected={activeStatuses?.join() === group.statuses.join()}
+              onSelect={() => selectGroup(group.statuses)}
+            />
+          ))}
+        </StatRow>
+      }
+      filters={
+        <FilterBar
+          status={
+            <>
+              <Chip active={activeStatuses === null} onClick={() => setActiveStatuses(null)}>
+                All{stats.total > 0 && <span className={styles.chipCount}>{stats.total}</span>}
               </Chip>
-            ))}
-          </div>
+              {CHIP_FILTERS.map((group) => (
+                <Chip
+                  key={group.label}
+                  active={activeStatuses?.join() === group.statuses.join()}
+                  onClick={() => selectGroup(group.statuses)}
+                >
+                  {group.label}
+                  {statsRaw && (
+                    <span className={styles.chipCount}>{chipCount(group.statuses)}</span>
+                  )}
+                </Chip>
+              ))}
+            </>
+          }
+          search={
+            <SearchField
+              label="Search containers"
+              placeholder="Container number, vessel name, voyage…"
+              value={search}
+              onChange={setSearch}
+            />
+          }
+          dateRange={<DateRangeFilter label="Created" range={createdRange} />}
+          more={
+            <>
+              {/* Granular multi-select across all 9 statuses — independent
+            entry point from the grouped chips above, same underlying
+            `activeStatuses` state (see toggleStatus). */}
+              <div className={styles.filtersPanelLabel}>Any status</div>
+              <div className={styles.filtersPanelScroll}>
+                {ALL_STATUSES.map((s) => {
+                  const isChecked = activeStatuses?.includes(s) ?? false
+                  return (
+                    <Pressable
+                      key={s}
+                      type="button"
+                      role="checkbox"
+                      aria-checked={isChecked}
+                      className={[
+                        styles.filtersPanelItem,
+                        isChecked ? styles.filtersPanelItemActive : '',
+                      ].join(' ')}
+                      onClick={() => toggleStatus(s)}
+                    >
+                      <span className={styles.checkSlot}>
+                        {isChecked && <Icon name="check" size={13} color="var(--color-primary)" />}
+                      </span>
+                      {statusLabel('container', s)}
+                    </Pressable>
+                  )
+                })}
+              </div>
 
-          <SearchField label="Search containers" placeholder="Container number, vessel name, voyage…" value={search} onChange={setSearch} />
-
-          <DateRangeFilter label="Created" range={createdRange} />
-
-          <div className={styles.filtersWrap}>
-            <Button variant="secondary" icon="filter" onClick={() => setFiltersOpen((o) => !o)}>
-              Filters
-            </Button>
-            {filtersOpen && (
-              <>
-                <div className={styles.filtersOverlay} onClick={() => setFiltersOpen(false)} />
-                <div className={styles.filtersPanel} role="dialog" aria-label="Filters">
-                  <div className={styles.filtersPanelHeader}>Filters</div>
-
-                  {/* Granular multi-select across all 9 statuses — independent
-                      entry point from the grouped chips above, same underlying
-                      `activeStatuses` state (see toggleStatus). */}
-                  <div className={styles.filtersPanelLabel}>Status</div>
-                  <div className={styles.filtersPanelScroll}>
-                    {ALL_STATUSES.map((s) => {
-                      const isChecked = activeStatuses?.includes(s) ?? false
-                      return (
-                        <Pressable
-                          key={s}
-                          type="button"
-                          role="checkbox"
-                          aria-checked={isChecked}
-                          className={[styles.filtersPanelItem, isChecked ? styles.filtersPanelItemActive : ''].join(' ')}
-                          onClick={() => toggleStatus(s)}
-                        >
-                          <span className={styles.checkSlot}>
-                            {isChecked && <Icon name="check" size={13} color="var(--color-primary)" />}
-                          </span>
-                          {statusLabel('container', s)}
-                        </Pressable>
-                      )
-                    })}
-                  </div>
-
-                  {/* ETA range — distinct from the standalone "date created"
-                      button, which stays outside this panel and is untouched
-                      by Clear all filters below. */}
-                  <div className={styles.filtersPanelLabel}>Arriving</div>
-                  {ETA_PRESET_KEYS.map((key) => {
-                    const isActive = etaPreset === key
-                    return (
-                      <Pressable
-                        key={key}
-                        type="button"
-                        role="option"
-                        aria-selected={isActive}
-                        className={[styles.filtersPanelItem, isActive ? styles.filtersPanelItemActive : ''].join(' ')}
-                        onClick={() => setEtaPreset(isActive ? null : key)}
-                      >
-                        <span className={styles.checkSlot}>
-                          {isActive && <Icon name="check" size={13} color="var(--color-primary)" />}
-                        </span>
-                        {ETA_PRESET_LABELS[key]}
-                      </Pressable>
-                    )
-                  })}
-
-                  <Button variant="ghost" size="sm" onClick={clearAllFilters}>
-                    Clear all filters
-                  </Button>
-                </div>
-              </>
-            )}
-          </div>
-        </div>
-      </Card>
-
-      <div className={styles.tableWrap}>
-        <Card padding="none">
-          <Table
-            columns={[
-              { title: 'Container', type: 'reference', sortable: true },
-              { title: 'Vessel · voyage' },
-              { title: 'Route' },
-              { title: 'Status', type: 'status' },
-              { title: 'Packing lists', type: 'number' },
-              { title: 'Packed (CBM)', type: 'number' },
-              { title: 'ETA', type: 'date', sortable: true },
-            ]}
-            rows={containers.map((c) => containerRow(c, () => navigate(`/containers/${c.id}`)))}
-            loading={isLoading}
-            emptyState={!isLoading && containers.length === 0 ? <EmptyState compact title="No containers yet" body="Create one to get started." /> : undefined}
-            sort={sort}
-            onSort={onSort}
-          />
-        </Card>
+              {/* ETA range — distinct from the standalone "date created"
+            button, which stays outside this panel and is untouched
+            by Clear all filters below. */}
+              <div className={styles.filtersPanelLabel}>Arriving</div>
+              {ETA_PRESET_KEYS.map((key) => {
+                const isActive = etaPreset === key
+                return (
+                  <Pressable
+                    key={key}
+                    type="button"
+                    role="option"
+                    aria-selected={isActive}
+                    className={[
+                      styles.filtersPanelItem,
+                      isActive ? styles.filtersPanelItemActive : '',
+                    ].join(' ')}
+                    onClick={() => setEtaPreset(isActive ? null : key)}
+                  >
+                    <span className={styles.checkSlot}>
+                      {isActive && <Icon name="check" size={13} color="var(--color-primary)" />}
+                    </span>
+                    {ETA_PRESET_LABELS[key]}
+                  </Pressable>
+                )
+              })}
+            </>
+          }
+          activeCount={activeFilters}
+          onClear={clearAllFilters}
+          label="Filter containers"
+        />
+      }
+      footer={
         <ListFooter
-        shown={containers.length}
-        total={totalCount}
-        hasMore={hasMore}
-        loading={isFetchingMore}
-        onLoadMore={loadMore}
-        noun="containers"
-        nounOne="container"
+          shown={containers.length}
+          total={totalCount}
+          hasMore={hasMore}
+          loading={isFetchingMore}
+          onLoadMore={loadMore}
+          noun="containers"
+          nounOne="container"
+        />
+      }
+    >
+      <Table
+        columns={[
+          { title: 'Container', type: 'reference', sortable: true },
+          { title: 'Vessel · voyage' },
+          { title: 'Route' },
+          { title: 'Status', type: 'status' },
+          { title: 'Packing lists', type: 'number' },
+          { title: 'Packed (CBM)', type: 'number' },
+          { title: 'ETA', type: 'date', sortable: true },
+        ]}
+        rows={containers.map((c) => containerRow(c, () => navigate(`/containers/${c.id}`)))}
+        loading={isLoading}
+        emptyState={
+          !isLoading && containers.length === 0 ? (
+            <EmptyState compact title="No containers yet" body="Create one to get started." />
+          ) : undefined
+        }
+        sort={sort}
+        onSort={onSort}
       />
-      </div>
-    </div>
+    </ListPage>
   )
 }

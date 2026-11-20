@@ -1,6 +1,7 @@
 import type { JSX, ReactNode } from 'react'
 import { Card } from './Card'
 import { Icon, type IconName } from './Icon'
+import { Pressable } from './Pressable'
 import styles from './StatCard.module.css'
 
 export interface StatCardTrend {
@@ -20,6 +21,13 @@ export interface StatCardProps {
   sublabel?: string
   icon?: IconName
   accentColor?: string
+  /**
+   * A stat on a list page applies its filter when clicked (FD-18): "Overdue 3" shows the three. The card becomes a
+   * toggle button (`aria-pressed`), outlined while its filter is on.
+   */
+  onSelect?: () => void
+  /** Whether this stat's filter is the one applied. */
+  selected?: boolean
 }
 
 export function StatCard({
@@ -30,8 +38,10 @@ export function StatCard({
   sublabel,
   icon,
   accentColor,
+  onSelect,
+  selected = false,
 }: StatCardProps): JSX.Element {
-  return (
+  const card = (
     <Card padding="default">
       <div className={styles.body}>
         <div className={styles.head}>
@@ -71,5 +81,15 @@ export function StatCard({
         )}
       </div>
     </Card>
+  )
+  if (!onSelect) return card
+  return (
+    <Pressable
+      className={[styles.selectable, selected ? styles.selected : ''].join(' ')}
+      aria-pressed={selected}
+      onClick={onSelect}
+    >
+      {card}
+    </Pressable>
   )
 }

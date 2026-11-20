@@ -13,6 +13,8 @@ import { usePlatformTenantList } from '../../hooks/usePlatformTenants'
 import { STALE_30S } from '../../lib/queryClient'
 import { Badge, Banner, Button, Card, ListFooter, Mono, Table, type BadgeVariant, Select, EmptyState, LinesSkeleton } from '../../design/components'
 import { formatDateTime } from '../../lib/format'
+import { FilterBar } from '../../shell/FilterBar'
+import { ListPage } from '../../shell/ListPage'
 import { PageHeader } from '../../shell/PageHeader'
 
 function actionVariant(action: string): BadgeVariant {
@@ -67,29 +69,58 @@ export function PlatformAuditLog(): JSX.Element {
   )
 
   return (
-    <div>
-      <PageHeader
-        title="Audit log"
-        meta={
-          'Every platform-level action — tenant lifecycle, impersonation sessions, settings changes.'
+    <>
+      <ListPage
+        header={
+          <PageHeader
+            title="Audit log"
+            meta={
+              'Every platform-level action — tenant lifecycle, impersonation sessions, settings changes.'
+            }
+          />
         }
-      />
-
-      {error && <div style={{ marginBottom: 'var(--space-4)' }}><Banner variant="error" title="Couldn't load">{error}</Banner></div>}
-
-      <div style={{ display: 'flex', gap: 'var(--space-3)', marginBottom: 'var(--space-4)', alignItems: 'center' }}>
-        <Select label="Tenant"
-          value={tenantFilter}
-          onChange={(e) => setTenantFilter(e.target.value)}
-        >
-          <option value="">All tenants</option>
-          {tenants.map((t) => (
-            <option key={t.id} value={t.id}>{t.company_name}</option>
-          ))}
-        </Select>
-      </div>
-
-      <Card padding="none">
+        notices={
+          <>
+            {error && (
+              <Banner variant="error" title="Couldn't load">
+                {error}
+              </Banner>
+            )}
+          </>
+        }
+        filters={
+          <FilterBar
+            label="Filter the audit log"
+            more={
+              <>
+                <Select
+                  label="Tenant"
+                  value={tenantFilter}
+                  onChange={(e) => setTenantFilter(e.target.value)}
+                >
+                  <option value="">All tenants</option>
+                  {tenants.map((t) => (
+                    <option key={t.id} value={t.id}>
+                      {t.company_name}
+                    </option>
+                  ))}
+                </Select>
+              </>
+            }
+          />
+        }
+        footer={
+          <ListFooter
+            shown={entries.length}
+            total={totalCount}
+            hasMore={hasMore}
+            loading={isFetchingMore}
+            onLoadMore={loadMore}
+            noun="audit entries"
+            nounOne="audit entry"
+          />
+        }
+      >
         <Table
           columns={[
             { title: 'Timestamp', type: 'date' },
@@ -101,9 +132,15 @@ export function PlatformAuditLog(): JSX.Element {
           rows={entries.map((e) => ({
             cells: [
               <Mono key="ts">{formatDateTime(e.created_at, { year: false })}</Mono>,
-              <Badge key="action" variant={actionVariant(e.action)}>{e.action.replace(/_/g, ' ')}</Badge>,
-              <span key="tenant" style={{ fontSize: 'var(--text-sm)' }}>{tenantName(e.target_tenant_id)}</span>,
-              <Mono key="ip" color="var(--color-ink-4)">{e.ip_address ?? '—'}</Mono>,
+              <Badge key="action" variant={actionVariant(e.action)}>
+                {e.action.replace(/_/g, ' ')}
+              </Badge>,
+              <span key="tenant" style={{ fontSize: 'var(--text-sm)' }}>
+                {tenantName(e.target_tenant_id)}
+              </span>,
+              <Mono key="ip" color="var(--color-ink-4)">
+                {e.ip_address ?? '—'}
+              </Mono>,
               e.details ? (
                 <Button
                   key="details"
@@ -118,29 +155,32 @@ export function PlatformAuditLog(): JSX.Element {
               ),
             ],
           }))}
-          emptyState={loading ? <LinesSkeleton label="Loading audit entries" /> : <EmptyState compact title="No audit entries match this filter" />}
+          emptyState={
+            loading ? (
+              <LinesSkeleton label="Loading audit entries" />
+            ) : (
+              <EmptyState compact title="No audit entries match this filter" />
+            )
+          }
         />
-      </Card>
-
+      </ListPage>
       {expandedId && (
         <div style={{ marginTop: 'var(--space-3)' }}>
           <Card padding="default">
-            <pre style={{ margin: 0, fontSize: 'var(--text-xs)', fontFamily: 'var(--font-mono)', whiteSpace: 'pre-wrap', overflowX: 'auto' }}>
+            <pre
+              style={{
+                margin: 0,
+                fontSize: 'var(--text-xs)',
+                fontFamily: 'var(--font-mono)',
+                whiteSpace: 'pre-wrap',
+                overflowX: 'auto',
+              }}
+            >
               {JSON.stringify(entries.find((e) => e.id === expandedId)?.details ?? {}, null, 2)}
             </pre>
           </Card>
         </div>
       )}
-
-      <ListFooter
-        shown={entries.length}
-        total={totalCount}
-        hasMore={hasMore}
-        loading={isFetchingMore}
-        onLoadMore={loadMore}
-        noun="audit entries"
-        nounOne="audit entry"
-      />
-    </div>
+    </>
   )
 }

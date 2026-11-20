@@ -4,11 +4,13 @@ import { seizedItemsApi, type SeizedItem, type SeizedItemStatus, type UpdateSeiz
 import { canUpdateItem } from '../../api/claimsRules'
 import { useSeizedItemList } from '../../hooks/useItems'
 import { useSession } from '../../auth/useSession'
-import { Banner, Button, Card, Chip, DialogGuard, Field, ListFooter, Mono, StatusBadge, Table, Select, EmptyState, ErrorState } from '../../design/components'
+import { Banner, Button, Chip, DialogGuard, Field, ListFooter, Mono, StatusBadge, Table, Select, EmptyState, ErrorState } from '../../design/components'
 import styles from './ItemList.module.css'
 import { formatDate } from '../../lib/format'
 import { statusLabel } from '../../design/status'
 import { toast } from '../../design/toast'
+import { FilterBar } from '../../shell/FilterBar'
+import { ListPage } from '../../shell/ListPage'
 import { PageHeader } from '../../shell/PageHeader'
 
 const STATUS_FILTERS: SeizedItemStatus[] = [
@@ -105,63 +107,91 @@ export function SeizedItemList(): JSX.Element {
   const r = role as Parameters<typeof canUpdateItem>[0]
 
   return (
-    <div>
-      <PageHeader title="Seized items" meta={'Cargo detained by customs or security authorities.'} />
-
-      {error && (
-        <div className={styles.banner}>
-          <ErrorState compact title="Couldn't load seized items" error={error} onRetry={() => void refetch()} />
-        </div>
-      )}
-
-      <Card padding="default">
-        <div className={styles.chips}>
-          <Chip active={statusFilter === null} onClick={() => setStatusFilter(null)}>All</Chip>
-          {STATUS_FILTERS.map((s) => (
-            <Chip key={s} active={statusFilter === s} onClick={() => setStatusFilter(s)}>{statusLabel('seizedItem', s)}</Chip>
-          ))}
-        </div>
-      </Card>
-
-      <div className={styles.tableWrap}>
-        <Card padding="none">
-          <Table
-            columns={[
-              { title: 'Reason / notes' },
-              { title: 'Carton tags', type: 'reference' },
-              { title: 'Status', type: 'status' },
-              { title: 'Reported', type: 'date' },
-              { title: '', type: 'action', width: '80px' },
-            ]}
-            rows={items.map((item) => ({
-              cells: [
-                <span key="reason">{item.reason || '—'}</span>,
-                <Mono key="tags">{item.carton_tags.join(', ') || '—'}</Mono>,
-                <StatusBadge key="status" kind="seizedItem" status={item.status} />,
-                <span key="date">{formatDate(item.created_at)}</span>,
-                canUpdateItem(r) && item.status !== 'recovered' && item.status !== 'permanently_lost' ? (
-                  <Button key="edit" variant="ghost" size="sm" onClick={() => setEditing(item)}>Update</Button>
-                ) : <span key="noop" />,
-              ],
-            }))}
-            loading={loading}
-            emptyState={!loading && items.length === 0 ? <EmptyState compact title="No seized items on record" /> : undefined}
+    <>
+      <ListPage
+        header={
+          <PageHeader
+            title="Seized items"
+            meta={'Cargo detained by customs or security authorities.'}
           />
-        </Card>
-        <ListFooter
-        shown={items.length}
-        total={totalCount}
-        hasMore={hasMore}
-        loading={isFetchingMore}
-        onLoadMore={loadMore}
-        noun="seized items"
-        nounOne="seized item"
-      />
-      </div>
-
+        }
+        notices={
+          <>
+            {error && (
+              <ErrorState
+                compact
+                title="Couldn't load seized items"
+                error={error}
+                onRetry={() => void refetch()}
+              />
+            )}
+          </>
+        }
+        filters={
+          <FilterBar
+            label="Filter seized items"
+            status={
+              <>
+                <Chip active={statusFilter === null} onClick={() => setStatusFilter(null)}>
+                  All
+                </Chip>
+                {STATUS_FILTERS.map((s) => (
+                  <Chip key={s} active={statusFilter === s} onClick={() => setStatusFilter(s)}>
+                    {statusLabel('seizedItem', s)}
+                  </Chip>
+                ))}
+              </>
+            }
+          />
+        }
+        footer={
+          <ListFooter
+            shown={items.length}
+            total={totalCount}
+            hasMore={hasMore}
+            loading={isFetchingMore}
+            onLoadMore={loadMore}
+            noun="seized items"
+            nounOne="seized item"
+          />
+        }
+      >
+        <Table
+          columns={[
+            { title: 'Reason / notes' },
+            { title: 'Carton tags', type: 'reference' },
+            { title: 'Status', type: 'status' },
+            { title: 'Reported', type: 'date' },
+            { title: '', type: 'action', width: '80px' },
+          ]}
+          rows={items.map((item) => ({
+            cells: [
+              <span key="reason">{item.reason || '—'}</span>,
+              <Mono key="tags">{item.carton_tags.join(', ') || '—'}</Mono>,
+              <StatusBadge key="status" kind="seizedItem" status={item.status} />,
+              <span key="date">{formatDate(item.created_at)}</span>,
+              canUpdateItem(r) &&
+              item.status !== 'recovered' &&
+              item.status !== 'permanently_lost' ? (
+                <Button key="edit" variant="ghost" size="sm" onClick={() => setEditing(item)}>
+                  Update
+                </Button>
+              ) : (
+                <span key="noop" />
+              ),
+            ],
+          }))}
+          loading={loading}
+          emptyState={
+            !loading && items.length === 0 ? (
+              <EmptyState compact title="No seized items on record" />
+            ) : undefined
+          }
+        />
+      </ListPage>
       {editing && (
         <UpdateModal item={editing} onCancel={() => setEditing(null)} onSuccess={handleUpdated} />
       )}
-    </div>
+    </>
   )
 }

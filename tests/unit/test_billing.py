@@ -1171,6 +1171,20 @@ class TestBillingListHandlerQueryParams:
         filters = mock_list.call_args.args[1]
         assert filters["q"] == "INV-2026"
 
+    @pytest.mark.parametrize(("value", "expected"), [("true", True), ("1", True), ("false", None), ("", None)])
+    def test_overdue_reaches_the_repo_only_when_asked_for(self, value, expected):
+        # What the list's "Overdue" stat opens (FD-18).
+        from services.billing import handler, service
+
+        with (
+            patch("services.billing.handler.get_tenant_context", return_value=_ctx(UserRole.NIGERIA_OFFICE_STAFF)),
+            patch.object(service, "list_billing", return_value=([], None, False)) as mock_list,
+        ):
+            resp = handler.lambda_handler(self._event({"overdue": value}), None)
+
+        assert resp["statusCode"] == 200
+        assert mock_list.call_args.args[1].get("overdue") is expected
+
 
 class TestHandlePaymentDueNotification:
     """Ground-truth gap found live, reported by the user (while investigating

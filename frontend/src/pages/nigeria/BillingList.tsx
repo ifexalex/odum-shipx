@@ -6,7 +6,7 @@ import { canGenerateInvoices } from '../../api/billingRules'
 import { billingKeys } from '../../api/keys'
 import { formatNgnCompact, formatDate, formatNgn } from '../../lib/format'
 import { STALE_5_MIN } from '../../lib/queryClient'
-import { Banner, Button, Card, Chip, DateRangeFilter, ExportButton, Icon, ListFooter, Mono, StatCard, StatusBadge, Table, UserCell, Pressable, SearchField, EmptyState, ErrorState } from '../../design/components'
+import { Banner, Button, Chip, DateRangeFilter, ExportButton, Icon, ListFooter, Mono, StatCard, StatusBadge, Table, UserCell, Pressable, SearchField, EmptyState, ErrorState } from '../../design/components'
 import { useSession } from '../../auth/useSession'
 import { useBillingList } from '../../hooks/useBilling'
 import { useDateRangeFilter } from '../../hooks/useDateRangeFilter'
@@ -14,6 +14,9 @@ import { useListExport } from '../../hooks/useListExport'
 import { type SortableColumn, useTableSort } from '../../hooks/useTableSort'
 import { GenerateBillingModal } from './GenerateBillingModal'
 import styles from './BillingList.module.css'
+import { statusLabel } from '../../design/status'
+import { FilterBar } from '../../shell/FilterBar'
+import { ListPage, StatRow } from '../../shell/ListPage'
 import { PageHeader } from '../../shell/PageHeader'
 
 // 'Reference' (invoice_number, text) defaults asc; 'Billed' (billed_at,
@@ -24,14 +27,13 @@ const SORT_COLUMNS: SortableColumn[] = [
   { index: 6, field: 'billed_at', defaultDirection: 'desc' },
 ]
 
-const STATUS_FILTERS: Array<{ key: PaymentStatus; label: string }> = [
-  { key: 'unpaid',                   label: 'Unpaid' },
-  { key: 'partially_paid',           label: 'Partial' },
-  { key: 'paid',                     label: 'Paid' },
-  { key: 'overpaid',                 label: 'Overpaid' },
-  { key: 'waived',                   label: 'Waived' },
-  { key: 'released_with_outstanding', label: 'Released w/ outstanding' },
-]
+// The statuses an invoice list filters on, in its own words from the status registry (FD-08).
+const STATUS_FILTERS: Array<{ key: PaymentStatus; label: string }> = (
+  ['unpaid', 'partially_paid', 'paid', 'overpaid', 'waived', 'released_with_outstanding'] as const
+).map((key) => ({ key, label: statusLabel('invoice', key) }))
+
+// Money still owed on an invoice: what the "Outstanding" stat opens.
+const OWED: PaymentStatus[] = ['unpaid', 'partially_paid', 'released_with_outstanding']
 
 function fmtNgn(val: string | number | null | undefined): string {
   if (val == null) return '—'
@@ -89,7 +91,7 @@ export function BillingList(): JSX.Element {
   // scope would silently hide most of a tenant's billing records, same
   // rationale as ContainerList's date filter.
   const billedRange = useDateRangeFilter()
-  const [filtersOpen, setFiltersOpen] = useState(false)
+  const [overdueOnly, setOverdueOnly] = useState(false)
 
   const isAdmin = session?.role === 'tenant_admin'
   const canGenerate = session ? canGenerateInvoices(session.role) : false
@@ -104,6 +106,7 @@ export function BillingList(): JSX.Element {
     ...(search ? { q: search } : {}),
     ...(billedRange.createdAfter ? { created_after: billedRange.createdAfter } : {}),
     ...(billedRange.createdBefore ? { created_before: billedRange.createdBefore } : {}),
+    ...(overdueOnly ? { overdue: true } : {}),
     ...(sortField ? { sort: sortField, direction: sortDirection } : {}),
   }
   const exportList = useListExport((format: 'xlsx' | 'csv') => billingApi.exportList(listParams, format))
@@ -129,172 +132,240 @@ export function BillingList(): JSX.Element {
     setActiveStatuses(next.length ? next : null)
   }
 
-  // Note: does NOT reset the "Billed" date range — same convention as
-  // china/ContainerList.tsx's standalone date-created control, which lives
-  // outside the Filters panel and isn't touched by the panel's own Clear.
   function clearAllFilters(): void {
     setActiveStatuses(null)
     setSearch('')
-    setFiltersOpen(false)
+    setOverdueOnly(false)
+    billedRange.clear()
   }
 
+  // A stat applies its filter, or lifts it when it is already the one applied (FD-18).
+  const sameStatuses = (statuses: PaymentStatus[]): boolean => activeStatuses?.join() === statuses.join()
+  function selectStatuses(statuses: PaymentStatus[]): void {
+    setOverdueOnly(false)
+    setActiveStatuses(sameStatuses(statuses) ? null : statuses)
+  }
+  function clearStatus(): void {
+    setOverdueOnly(false)
+    setActiveStatuses(null)
+  }
+  function selectOverdue(): void {
+    setActiveStatuses(null)
+    setOverdueOnly((on) => !on)
+  }
+  const activeFilters = (activeStatuses ? 1 : 0) + (overdueOnly ? 1 : 0) + (billedRange.isActive ? 1 : 0)
+
   return (
-    <div>
-      <PageHeader
-        title="Billing"
-        primary={
-          canGenerate && (
-            <Button variant="primary" icon="plus" onClick={() => setGenerateOpen(true)}>
-              Generate billing
-            </Button>
-          )
-        }
-        actions={isAdmin && <ExportButton formats={['xlsx', 'csv']} onExport={exportList.onExport} />}
-      />
-      {error && (
-        <div className={styles.banner}>
-          <ErrorState compact title="Couldn't load billing" error={error} onRetry={() => void refetch()} />
-        </div>
-      )}
-      {exportList.error && (
-        <div className={styles.banner}>
-          <Banner variant="error" title="Couldn't export invoices" dismissible onDismiss={exportList.dismissError}>
-            {exportList.error}
-          </Banner>
-        </div>
-      )}
-
-      {/* Stats row */}
-      <div className={styles.statsRow}>
-        <StatCard label="Outstanding" value={formatNgnCompact(stats?.outstanding_ngn)} sublabel="unpaid + partial" icon="warn" />
-        <StatCard label="Paid this month" value={formatNgnCompact(stats?.paid_this_month_ngn)} sublabel="confirmed payments" icon="check" />
-        <StatCard label="Overdue (30+ days)" value={stats?.overdue ?? 0} sublabel="records flagged" icon="clock" />
-        <StatCard label="Total records" value={stats?.total ?? 0} sublabel="all time" icon="coin" />
-      </div>
-
-      {/* Filter bar */}
-      <Card padding="default" style={{ marginBottom: 'var(--space-4)' }}>
-        <div className={styles.filterRow}>
-          <div className={styles.chips}>
-            <Chip active={activeStatuses === null} onClick={() => setActiveStatuses(null)}>
-              All{stats && <span className={styles.chipCount}>{stats.total}</span>}
-            </Chip>
-            {STATUS_FILTERS.map(({ key, label }) => (
-              <Chip
-                key={key}
-                active={activeStatuses?.join() === key}
-                onClick={() => setActiveStatuses([key])}
-              >
-                {label}
-                {stats && (
-                  <span className={styles.chipCount}>{Number(stats[key as keyof typeof stats] ?? 0)}</span>
-                )}
-              </Chip>
-            ))}
-          </div>
-          <SearchField label="Search invoices" placeholder="Reference, customer, container…" value={search} onChange={setSearch} />
-          <DateRangeFilter label="Billed" range={billedRange} />
-          <div className={styles.filtersWrap}>
-            <Button variant="secondary" icon="filter" onClick={() => setFiltersOpen((o) => !o)}>
-              Filters
-            </Button>
-            {filtersOpen && (
-              <>
-                <div className={styles.filtersOverlay} onClick={() => setFiltersOpen(false)} />
-                <div className={styles.filtersPanel} role="dialog" aria-label="Filters">
-                  <div className={styles.filtersPanelHeader}>Filters</div>
-
-                  {/* Granular multi-select across all statuses — independent
-                      entry point from the single-select chips above, same
-                      underlying activeStatuses state (see toggleStatus). */}
-                  <div className={styles.filtersPanelLabel}>Status</div>
-                  <div className={styles.filtersPanelScroll}>
-                    {STATUS_FILTERS.map(({ key, label }) => {
-                      const isChecked = activeStatuses?.includes(key) ?? false
-                      return (
-                        <Pressable
-                          key={key}
-                          type="button"
-                          role="checkbox"
-                          aria-checked={isChecked}
-                          className={[styles.filtersPanelItem, isChecked ? styles.filtersPanelItemActive : ''].join(' ')}
-                          onClick={() => toggleStatus(key)}
-                        >
-                          <span className={styles.checkSlot}>
-                            {isChecked && <Icon name="check" size={13} color="var(--color-primary)" />}
-                          </span>
-                          {label}
-                        </Pressable>
-                      )
-                    })}
-                  </div>
-
-                  <Button variant="ghost" size="sm" onClick={clearAllFilters}>
-                    Clear all filters
-                  </Button>
-                </div>
-              </>
-            )}
-          </div>
-        </div>
-      </Card>
-
-      {/* Table */}
-      <Card padding="none">
-        <Table
-          cardBreakpoint={960}
-          columns={[
-            { title: 'Reference', type: 'reference', sortable: true },
-            { title: 'Customer' },
-            { title: 'Container', type: 'reference' },
-            { title: 'Total (₦)', type: 'money' },
-            { title: 'Outstanding (₦)', type: 'money' },
-            { title: 'Status', type: 'status' },
-            { title: 'Billed', type: 'date', sortable: true },
-            { title: '', type: 'action', width: '140px' },
-          ]}
-          rows={records.map((b) => ({
-            onOpen: () => openBilling(b),
-            openLabel: `Open invoice ${b.invoice_number ?? ''}`.trim(),
-            cells: [
-              <Mono key="ref" color="var(--color-ink)">{b.invoice_number ?? '—'}</Mono>,
-              b.customer_name
-                ? <UserCell key="cust" name={b.customer_name} email="" />
-                : <span key="cust" style={{ color: 'var(--color-ink-4)', fontSize: 'var(--text-sm)' }}>—</span>,
-              <Mono key="ctn">{b.container_number ?? '—'}</Mono>,
-              <Mono key="total">{fmtNgn(b.total_due_ngn)}</Mono>,
-              <Mono key="out" color={Number(b.outstanding_ngn) > 0 ? 'var(--color-error)' : Number(b.outstanding_ngn) < 0 ? 'var(--color-info)' : 'var(--color-success)'}>
-                {fmtNgn(b.outstanding_ngn)}
-              </Mono>,
-              <StatusBadge key="status" kind="invoice" status={b.payment_status} />,
-              <span key="billed" className={styles.metaText}>
-                {b.billed_at
-                  ? formatDate(b.billed_at, 'short')
-                  : '—'}
-              </span>,
-              <div key="action" className={styles.rowActions}>
-                {rowAction(b, openBilling)}
-              </div>,
-            ],
-          }))}
-          loading={isLoading}
-          emptyState={!isLoading && records.length === 0 ? <EmptyState compact title="No billing records match this filter" /> : undefined}
-          sort={sort}
-          onSort={onSort}
+    <ListPage
+      header={
+        <PageHeader
+          title="Billing"
+          primary={
+            canGenerate && (
+              <Button variant="primary" icon="plus" onClick={() => setGenerateOpen(true)}>
+                Generate billing
+              </Button>
+            )
+          }
+          actions={
+            isAdmin && <ExportButton formats={['xlsx', 'csv']} onExport={exportList.onExport} />
+          }
         />
-      </Card>
-
-      <ListFooter
-        shown={records.length}
-        total={totalCount}
-        hasMore={hasMore}
-        loading={isFetchingMore}
-        onLoadMore={loadMore}
-        noun="billing records"
-        nounOne="billing record"
+      }
+      notices={
+        <>
+          {error && (
+            <ErrorState
+              compact
+              title="Couldn't load billing"
+              error={error}
+              onRetry={() => void refetch()}
+            />
+          )}
+          {exportList.error && (
+            <Banner
+              variant="error"
+              title="Couldn't export invoices"
+              dismissible
+              onDismiss={exportList.dismissError}
+            >
+              {exportList.error}
+            </Banner>
+          )}
+        </>
+      }
+      // Four numbers to act on, each a filter (FD-18). "Paid this month" was history and "Total records" filler.
+      stats={
+        <StatRow>
+          <StatCard
+            label="Outstanding"
+            value={formatNgnCompact(stats?.outstanding_ngn)}
+            sublabel="still owed"
+            icon="warn"
+            selected={sameStatuses(OWED)}
+            onSelect={() => selectStatuses(OWED)}
+          />
+          <StatCard
+            label="Overdue (30+ days)"
+            value={stats?.overdue ?? 0}
+            sublabel="owed for over a month"
+            icon="clock"
+            selected={overdueOnly}
+            onSelect={selectOverdue}
+          />
+          <StatCard
+            label={statusLabel('invoice', 'unpaid')}
+            value={stats?.unpaid ?? 0}
+            sublabel="nothing paid yet"
+            icon="coin"
+            selected={sameStatuses(['unpaid'])}
+            onSelect={() => selectStatuses(['unpaid'])}
+          />
+          <StatCard
+            label={statusLabel('invoice', 'partially_paid')}
+            value={stats?.partially_paid ?? 0}
+            sublabel="part of it paid"
+            icon="card"
+            selected={sameStatuses(['partially_paid'])}
+            onSelect={() => selectStatuses(['partially_paid'])}
+          />
+        </StatRow>
+      }
+      filters={
+        <FilterBar
+          label="Filter invoices"
+          status={
+            <>
+              <Chip active={activeStatuses === null && !overdueOnly} onClick={clearStatus}>
+                All{stats && <span className={styles.chipCount}>{stats.total}</span>}
+              </Chip>
+              {STATUS_FILTERS.map(({ key, label }) => (
+                <Chip key={key} active={sameStatuses([key])} onClick={() => selectStatuses([key])}>
+                  {label}
+                  {stats && (
+                    <span className={styles.chipCount}>
+                      {Number(stats[key as keyof typeof stats] ?? 0)}
+                    </span>
+                  )}
+                </Chip>
+              ))}
+            </>
+          }
+          search={
+            <SearchField
+              label="Search invoices"
+              placeholder="Reference, customer, container…"
+              value={search}
+              onChange={setSearch}
+            />
+          }
+          dateRange={<DateRangeFilter label="Billed" range={billedRange} />}
+          more={
+            <>
+              {/* Granular multi-select across all statuses — independent
+                entry point from the single-select chips above, same
+                underlying activeStatuses state (see toggleStatus). */}
+              <div className={styles.filtersPanelLabel}>Any status</div>
+              <div className={styles.filtersPanelScroll}>
+                {STATUS_FILTERS.map(({ key, label }) => {
+                  const isChecked = activeStatuses?.includes(key) ?? false
+                  return (
+                    <Pressable
+                      key={key}
+                      type="button"
+                      role="checkbox"
+                      aria-checked={isChecked}
+                      className={[
+                        styles.filtersPanelItem,
+                        isChecked ? styles.filtersPanelItemActive : '',
+                      ].join(' ')}
+                      onClick={() => toggleStatus(key)}
+                    >
+                      <span className={styles.checkSlot}>
+                        {isChecked && <Icon name="check" size={13} color="var(--color-primary)" />}
+                      </span>
+                      {label}
+                    </Pressable>
+                  )
+                })}
+              </div>
+            </>
+          }
+          activeCount={activeFilters}
+          onClear={clearAllFilters}
+        />
+      }
+      footer={
+        <ListFooter
+          shown={records.length}
+          total={totalCount}
+          hasMore={hasMore}
+          loading={isFetchingMore}
+          onLoadMore={loadMore}
+          noun="billing records"
+          nounOne="billing record"
+        />
+      }
+    >
+      <Table
+        cardBreakpoint={960}
+        columns={[
+          { title: 'Reference', type: 'reference', sortable: true },
+          { title: 'Customer' },
+          { title: 'Container', type: 'reference' },
+          { title: 'Total (₦)', type: 'money' },
+          { title: 'Outstanding (₦)', type: 'money' },
+          { title: 'Status', type: 'status' },
+          { title: 'Billed', type: 'date', sortable: true },
+          { title: '', type: 'action', width: '140px' },
+        ]}
+        rows={records.map((b) => ({
+          onOpen: () => openBilling(b),
+          openLabel: `Open invoice ${b.invoice_number ?? ''}`.trim(),
+          cells: [
+            <Mono key="ref" color="var(--color-ink)">
+              {b.invoice_number ?? '—'}
+            </Mono>,
+            b.customer_name ? (
+              <UserCell key="cust" name={b.customer_name} email="" />
+            ) : (
+              <span key="cust" style={{ color: 'var(--color-ink-4)', fontSize: 'var(--text-sm)' }}>
+                —
+              </span>
+            ),
+            <Mono key="ctn">{b.container_number ?? '—'}</Mono>,
+            <Mono key="total">{fmtNgn(b.total_due_ngn)}</Mono>,
+            <Mono
+              key="out"
+              color={
+                Number(b.outstanding_ngn) > 0
+                  ? 'var(--color-error)'
+                  : Number(b.outstanding_ngn) < 0
+                    ? 'var(--color-info)'
+                    : 'var(--color-success)'
+              }
+            >
+              {fmtNgn(b.outstanding_ngn)}
+            </Mono>,
+            <StatusBadge key="status" kind="invoice" status={b.payment_status} />,
+            <span key="billed" className={styles.metaText}>
+              {b.billed_at ? formatDate(b.billed_at, 'short') : '—'}
+            </span>,
+            <div key="action" className={styles.rowActions}>
+              {rowAction(b, openBilling)}
+            </div>,
+          ],
+        }))}
+        loading={isLoading}
+        emptyState={
+          !isLoading && records.length === 0 ? (
+            <EmptyState compact title="No billing records match this filter" />
+          ) : undefined
+        }
+        sort={sort}
+        onSort={onSort}
       />
-
       {generateOpen && <GenerateBillingModal onClose={() => setGenerateOpen(false)} />}
-    </div>
+    </ListPage>
   )
 }

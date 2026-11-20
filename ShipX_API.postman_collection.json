@@ -3224,6 +3224,12 @@
                   "value": "",
                   "description": "Free-text search: invoice number, customer name, or container number",
                   "disabled": true
+                },
+                {
+                  "key": "overdue",
+                  "value": "true",
+                  "description": "Only invoices owed for over 30 days (the list's Overdue stat, FD-18)",
+                  "disabled": true
                 }
               ]
             }

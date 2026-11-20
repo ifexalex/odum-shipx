@@ -18,10 +18,11 @@ import {
   useOnboardingRequests,
   useUpdateOnboardingRequest,
 } from '../../hooks/useOnboardingRequests'
-import { Banner, Button, Card, Chip, Field, Modal, StatusBadge, Table, EmptyState } from '../../design/components'
-import styles from './admin.module.css'
+import { Banner, Button, Chip, Field, Modal, StatusBadge, Table, EmptyState } from '../../design/components'
 import { formatDate } from '../../lib/format'
 import { statusLabel, statusesOf } from '../../design/status'
+import { FilterBar } from '../../shell/FilterBar'
+import { ListPage } from '../../shell/ListPage'
 import { PageHeader } from '../../shell/PageHeader'
 
 // Leads still worth acting on — a terminal lead (rejected/provisioned) shows no
@@ -81,137 +82,153 @@ export function OnboardingRequests(): JSX.Element {
   }
 
   return (
-    <div>
-      <PageHeader
-        title="Onboarding requests"
-        meta={'Shipping companies requesting to onboard onto ShipX.'}
-      />
-      {error && (
-        <div className={styles.banner}>
-          <Banner variant="error">{error.message}</Banner>
-        </div>
-      )}
-      {updateRequest.isError && (
-        <div className={styles.banner}>
-          <Banner variant="error" title="Could not update the request">
-            {updateRequest.error.message}
-          </Banner>
-        </div>
-      )}
-
-      <Card padding="default">
-        <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-3)', flexWrap: 'wrap' }}>
-          <div style={{ display: 'flex', gap: 'var(--space-2)', flexWrap: 'wrap' }}>
-            <Chip active={statusFilter === null} onClick={() => setStatusFilter(null)}>
-              All {requests.length > 0 && <span style={{ opacity: 0.6 }}>{requests.length}</span>}
-            </Chip>
-            {statusesOf('onboardingRequest').map((status) => (
-              <Chip
-                key={status}
-                active={statusFilter === status}
-                onClick={() => setStatusFilter(statusFilter === status ? null : status)}
-              >
-                {statusLabel('onboardingRequest', status)} <span style={{ opacity: 0.6 }}>{counts[status]}</span>
-              </Chip>
-            ))}
-          </div>
-          {pendingCount > 0 && (
-            <span style={{ marginLeft: 'auto', fontSize: 'var(--text-xs)', color: 'var(--color-ink-4)' }}>
-              {pendingCount} awaiting action
-            </span>
-          )}
-        </div>
-      </Card>
-
-      <div className={styles.tableWrap}>
-        <Card padding="none">
-          <Table
-            columns={[
-              { title: 'Company' },
-              { title: 'Contact' },
-              { title: 'Route' },
-              { title: 'Volume (CBM)', type: 'number' },
-              { title: 'Status', type: 'status' },
-              { title: 'Received', type: 'date' },
-              { title: '', type: 'action', width: '280px' },
+    <>
+      <ListPage
+        header={
+          <PageHeader
+            title="Onboarding requests"
+            meta={[
+              'Shipping companies requesting to onboard onto ShipX.',
+              pendingCount > 0 && `${pendingCount} awaiting action`,
             ]}
-            rows={visible.map((r) => ({
-              cells: [
-                <div key="company" style={{ minWidth: 0 }}>
-                  <div style={{ fontWeight: 600, fontSize: 'var(--text-sm)' }}>{r.company_name}</div>
-                  {r.notes && (
-                    <div
-                      style={{ fontSize: 'var(--text-xs)', color: 'var(--color-ink-4)', maxWidth: 260 }}
-                      title={r.notes}
-                    >
-                      {r.notes.length > 60 ? `${r.notes.slice(0, 60)}…` : r.notes}
-                    </div>
-                  )}
-                  {r.status === 'rejected' && r.rejection_reason && (
-                    <div style={{ fontSize: 'var(--text-xs)', color: 'var(--color-error)' }}>
-                      Rejected: {r.rejection_reason}
-                    </div>
-                  )}
-                </div>,
-                <div key="contact" style={{ fontSize: 'var(--text-xs)' }}>
-                  <div style={{ color: 'var(--color-ink-2)' }}>{r.contact_name}</div>
-                  <div style={{ color: 'var(--color-ink-4)' }}>{r.contact_email}</div>
-                  {r.contact_phone && (
-                    <div style={{ color: 'var(--color-ink-4)' }}>{r.contact_phone}</div>
-                  )}
-                </div>,
-                <span key="route" style={{ fontSize: 'var(--text-xs)', color: 'var(--color-ink-3)' }}>
-                  {r.origin_country} → {r.destination_country}
-                </span>,
-                <span key="volume" style={{ fontSize: 'var(--text-xs)', color: 'var(--color-ink-3)' }}>
-                  {r.monthly_volume ?? '—'}
-                </span>,
-                <StatusBadge key="status" kind="onboardingRequest" status={r.status} />,
-                <span key="date" style={{ fontSize: 'var(--text-xs)', color: 'var(--color-ink-3)' }}>
-                  {formatDate(r.created_at)}
-                </span>,
-                OPEN_STATUSES.includes(r.status) ? (
-                  <div key="actions" style={{ display: 'flex', gap: 'var(--space-2)', justifyContent: 'flex-end' }}>
-                    {r.status === 'new' && (
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        disabled={updateRequest.isPending}
-                        onClick={() => markContacted(r)}
-                      >
-                        Mark contacted
-                      </Button>
-                    )}
+          />
+        }
+        notices={
+          <>
+            {error && <Banner variant="error">{error.message}</Banner>}
+            {updateRequest.isError && (
+              <Banner variant="error" title="Could not update the request">
+                {updateRequest.error.message}
+              </Banner>
+            )}
+          </>
+        }
+        filters={
+          <FilterBar
+            label="Filter onboarding requests"
+            status={
+              <>
+                <Chip active={statusFilter === null} onClick={() => setStatusFilter(null)}>
+                  All{' '}
+                  {requests.length > 0 && <span style={{ opacity: 0.6 }}>{requests.length}</span>}
+                </Chip>
+                {statusesOf('onboardingRequest').map((status) => (
+                  <Chip
+                    key={status}
+                    active={statusFilter === status}
+                    onClick={() => setStatusFilter(statusFilter === status ? null : status)}
+                  >
+                    {statusLabel('onboardingRequest', status)}{' '}
+                    <span style={{ opacity: 0.6 }}>{counts[status]}</span>
+                  </Chip>
+                ))}
+              </>
+            }
+          />
+        }
+      >
+        <Table
+          columns={[
+            { title: 'Company' },
+            { title: 'Contact' },
+            { title: 'Route' },
+            { title: 'Volume (CBM)', type: 'number' },
+            { title: 'Status', type: 'status' },
+            { title: 'Received', type: 'date' },
+            { title: '', type: 'action', width: '280px' },
+          ]}
+          rows={visible.map((r) => ({
+            cells: [
+              <div key="company" style={{ minWidth: 0 }}>
+                <div style={{ fontWeight: 600, fontSize: 'var(--text-sm)' }}>{r.company_name}</div>
+                {r.notes && (
+                  <div
+                    style={{
+                      fontSize: 'var(--text-xs)',
+                      color: 'var(--color-ink-4)',
+                      maxWidth: 260,
+                    }}
+                    title={r.notes}
+                  >
+                    {r.notes.length > 60 ? `${r.notes.slice(0, 60)}…` : r.notes}
+                  </div>
+                )}
+                {r.status === 'rejected' && r.rejection_reason && (
+                  <div style={{ fontSize: 'var(--text-xs)', color: 'var(--color-error)' }}>
+                    Rejected: {r.rejection_reason}
+                  </div>
+                )}
+              </div>,
+              <div key="contact" style={{ fontSize: 'var(--text-xs)' }}>
+                <div style={{ color: 'var(--color-ink-2)' }}>{r.contact_name}</div>
+                <div style={{ color: 'var(--color-ink-4)' }}>{r.contact_email}</div>
+                {r.contact_phone && (
+                  <div style={{ color: 'var(--color-ink-4)' }}>{r.contact_phone}</div>
+                )}
+              </div>,
+              <span key="route" style={{ fontSize: 'var(--text-xs)', color: 'var(--color-ink-3)' }}>
+                {r.origin_country} → {r.destination_country}
+              </span>,
+              <span
+                key="volume"
+                style={{ fontSize: 'var(--text-xs)', color: 'var(--color-ink-3)' }}
+              >
+                {r.monthly_volume ?? '—'}
+              </span>,
+              <StatusBadge key="status" kind="onboardingRequest" status={r.status} />,
+              <span key="date" style={{ fontSize: 'var(--text-xs)', color: 'var(--color-ink-3)' }}>
+                {formatDate(r.created_at)}
+              </span>,
+              OPEN_STATUSES.includes(r.status) ? (
+                <div
+                  key="actions"
+                  style={{ display: 'flex', gap: 'var(--space-2)', justifyContent: 'flex-end' }}
+                >
+                  {r.status === 'new' && (
                     <Button
                       variant="ghost"
                       size="sm"
                       disabled={updateRequest.isPending}
-                      onClick={() => {
-                        setRejectReason('')
-                        setRejecting(r)
-                      }}
+                      onClick={() => markContacted(r)}
                     >
-                      Reject
+                      Mark contacted
                     </Button>
-                    <Button variant="primary" size="sm" icon="plus" onClick={() => provision(r)}>
-                      Provision
-                    </Button>
-                  </div>
-                ) : (
-                  <span key="actions" />
-                ),
-              ],
-            }))}
-            loading={loading}
-            emptyState={
-              !loading && visible.length === 0 ? (
-                <EmptyState compact title={requests.length === 0 ? 'No onboarding requests yet' : 'No requests match the current filter'} />
-              ) : undefined
-            }
-          />
-        </Card>
-      </div>
-
+                  )}
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    disabled={updateRequest.isPending}
+                    onClick={() => {
+                      setRejectReason('')
+                      setRejecting(r)
+                    }}
+                  >
+                    Reject
+                  </Button>
+                  <Button variant="primary" size="sm" icon="plus" onClick={() => provision(r)}>
+                    Provision
+                  </Button>
+                </div>
+              ) : (
+                <span key="actions" />
+              ),
+            ],
+          }))}
+          loading={loading}
+          emptyState={
+            !loading && visible.length === 0 ? (
+              <EmptyState
+                compact
+                title={
+                  requests.length === 0
+                    ? 'No onboarding requests yet'
+                    : 'No requests match the current filter'
+                }
+              />
+            ) : undefined
+          }
+        />
+      </ListPage>
       <Modal
         open={rejecting !== null}
         onClose={() => setRejecting(null)}
@@ -219,7 +236,11 @@ export function OnboardingRequests(): JSX.Element {
         size="sm"
         footer={
           <>
-            <Button variant="ghost" onClick={() => setRejecting(null)} disabled={updateRequest.isPending}>
+            <Button
+              variant="ghost"
+              onClick={() => setRejecting(null)}
+              disabled={updateRequest.isPending}
+            >
               Cancel
             </Button>
             <Button variant="danger" loading={updateRequest.isPending} onClick={confirmReject}>
@@ -228,9 +249,15 @@ export function OnboardingRequests(): JSX.Element {
           </>
         }
       >
-        <p style={{ fontSize: 'var(--text-sm)', color: 'var(--color-ink-3)', margin: '0 0 var(--space-4)' }}>
-          Rejecting <strong>{rejecting?.company_name}</strong>&apos;s request. The reason is recorded for the
-          audit trail; it is not emailed to the company.
+        <p
+          style={{
+            fontSize: 'var(--text-sm)',
+            color: 'var(--color-ink-3)',
+            margin: '0 0 var(--space-4)',
+          }}
+        >
+          Rejecting <strong>{rejecting?.company_name}</strong>&apos;s request. The reason is
+          recorded for the audit trail; it is not emailed to the company.
         </p>
         <Field
           label="Reason"
@@ -241,6 +268,6 @@ export function OnboardingRequests(): JSX.Element {
           optional
         />
       </Modal>
-    </div>
+    </>
   )
 }

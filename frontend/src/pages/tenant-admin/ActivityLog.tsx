@@ -36,7 +36,6 @@ import {
   Badge,
   Banner,
   Button,
-  Card,
   Chip,
   DateRangeFilter,
   ListFooter,
@@ -49,9 +48,10 @@ import {
   EmptyState,
   LinesSkeleton,
 } from '../../design/components'
-import styles from './admin.module.css'
 import {  formatDateTime } from '../../lib/format'
 import { useDateRangeFilter } from '../../hooks/useDateRangeFilter'
+import { FilterBar } from '../../shell/FilterBar'
+import { ListPage } from '../../shell/ListPage'
 import { PageHeader } from '../../shell/PageHeader'
 
 // Every entity_type actually written by shared.audit.log_audit(...) across
@@ -184,7 +184,6 @@ export function ActivityLog(): JSX.Element {
   }, [effectiveEntityFilter, category, actionFilter, search, createdAfter, createdBefore, sortDirection])
 
   const expandedEntry = entries.find((e) => e.id === expandedId) ?? null
-  const filtersActive = !!(category || actionFilter || search || when.isActive)
 
   function clearFilters(): void {
     setCategory('')
@@ -196,88 +195,118 @@ export function ActivityLog(): JSX.Element {
   }
 
   return (
-    <div>
-      <PageHeader
-        title="Activity log"
-        meta={
-          'Every recorded change in your account — who did what, and when. Confirmed/rejected payments, refunds, and claims all show exactly what changed, not just that something did.'
+    <>
+      <ListPage
+        header={
+          <PageHeader
+            title="Activity log"
+            meta={
+              'Every recorded change in your account — who did what, and when. Confirmed/rejected payments, refunds, and claims all show exactly what changed, not just that something did.'
+            }
+          />
         }
-      />
-
-      {error && <div style={{ marginBottom: 'var(--space-4)' }}><Banner variant="error" title="Couldn't load">{error}</Banner></div>}
-
-      <Card padding="default" style={{ marginBottom: 'var(--space-4)' }}>
-        {/* Row 1 — primary dimension as chips + search, matching every other
-            tenant-admin list page (Customers / Users / Billing). */}
-        <div className={styles.filterRow}>
-          <div className={styles.chips}>
-            <Chip active={category === ''} onClick={() => setCategory('')}>
-              All
-            </Chip>
-            {CATEGORIES.map((c) => (
-              <Chip
-                key={c.label}
-                active={category === c.label}
-                onClick={() => setCategory(category === c.label ? '' : c.label)}
-              >
-                {c.label}
-              </Chip>
-            ))}
-          </div>
-          <SearchField label="Search the activity log" placeholder="Person's name, or paste a record id…" value={searchInput} onChange={setSearchInput} />
-        </div>
-
-        {/* Row 2 — secondary controls, all on the same 36px baseline. */}
-        <div className={styles.filterControls}>
-          <div className={styles.controlGroup}>
-            <Select label="Record type"
-              id="activity_entity_type"
-              value={effectiveEntityFilter}
-              onChange={(e) => setEntityFilter(e.target.value)}
-            >
-              <option value="">{activeCategory ? `All in ${activeCategory.label}` : 'All types'}</option>
-              {entityOptions.map((t) => (
-                <option key={t} value={t} style={{ textTransform: 'capitalize' }}>{humanEntity(t)}</option>
-              ))}
-            </Select>
-          </div>
-
-          <div className={styles.controlGroup}>
-            <Select label="Action"
-              id="activity_action"
-              value={actionFilter}
-              onChange={(e) => setActionFilter(e.target.value)}
-            >
-              <option value="">All actions</option>
-              {ACTIONS.map((a) => (
-                <option key={a} value={a} style={{ textTransform: 'capitalize' }}>{a.replace(/_/g, ' ').toLowerCase()}</option>
-              ))}
-            </Select>
-          </div>
-
-          <div className={styles.controlGroup}>
-            <span className={styles.controlLabel}>When</span>
-            <DateRangeFilter label="When" range={when} />
-          </div>
-
-          <div className={styles.controlGroup}>
-            <Select label="Sort"
-              id="activity_sort"
-              value={sortDirection}
-              onChange={(e) => setSortDirection(e.target.value as 'asc' | 'desc')}
-            >
-              <option value="desc">Newest first</option>
-              <option value="asc">Oldest first</option>
-            </Select>
-          </div>
-
-          {filtersActive && (
-            <Button variant="ghost" onClick={clearFilters}>Clear filters</Button>
-          )}
-        </div>
-      </Card>
-
-      <Card padding="none">
+        notices={
+          <>
+            {error && (
+              <Banner variant="error" title="Couldn't load">
+                {error}
+              </Banner>
+            )}
+          </>
+        }
+        filters={
+          <FilterBar
+            label="Filter the activity log"
+            activeCount={
+              [category, actionFilter, effectiveEntityFilter, when.isActive].filter(Boolean).length
+            }
+            onClear={clearFilters}
+            status={
+              <>
+                <Chip active={category === ''} onClick={() => setCategory('')}>
+                  All
+                </Chip>
+                {CATEGORIES.map((c) => (
+                  <Chip
+                    key={c.label}
+                    active={category === c.label}
+                    onClick={() => setCategory(category === c.label ? '' : c.label)}
+                  >
+                    {c.label}
+                  </Chip>
+                ))}
+              </>
+            }
+            search={
+              <>
+                <SearchField
+                  label="Search the activity log"
+                  placeholder="Person's name, or paste a record id…"
+                  value={searchInput}
+                  onChange={setSearchInput}
+                />
+              </>
+            }
+            dateRange={
+              <>
+                <DateRangeFilter label="When" range={when} />
+              </>
+            }
+            more={
+              <>
+                <Select
+                  label="Record type"
+                  id="activity_entity_type"
+                  value={effectiveEntityFilter}
+                  onChange={(e) => setEntityFilter(e.target.value)}
+                >
+                  <option value="">
+                    {activeCategory ? `All in ${activeCategory.label}` : 'All types'}
+                  </option>
+                  {entityOptions.map((t) => (
+                    <option key={t} value={t} style={{ textTransform: 'capitalize' }}>
+                      {humanEntity(t)}
+                    </option>
+                  ))}
+                </Select>
+                <Select
+                  label="Action"
+                  id="activity_action"
+                  value={actionFilter}
+                  onChange={(e) => setActionFilter(e.target.value)}
+                >
+                  <option value="">All actions</option>
+                  {ACTIONS.map((a) => (
+                    <option key={a} value={a} style={{ textTransform: 'capitalize' }}>
+                      {a.replace(/_/g, ' ').toLowerCase()}
+                    </option>
+                  ))}
+                </Select>
+                <Select
+                  label="Sort"
+                  id="activity_sort"
+                  value={sortDirection}
+                  onChange={(e) => setSortDirection(e.target.value as 'asc' | 'desc')}
+                >
+                  <option value="desc">Newest first</option>
+                  <option value="asc">Oldest first</option>
+                </Select>
+              </>
+            }
+          />
+        }
+        footer={
+          <ListFooter
+            shown={entries.length}
+            total={totalCount}
+            hasMore={hasMore}
+            loading={loading}
+            onLoadMore={() => void load(cursor ?? undefined)}
+            noun="log entries"
+            nounOne="log entry"
+          />
+        }
+      >
         <Table
           columns={[
             { title: 'Timestamp', type: 'date' },
@@ -289,16 +318,20 @@ export function ActivityLog(): JSX.Element {
           rows={entries.map((e) => ({
             cells: [
               <Mono key="ts">{formatDateTime(e.created_at, { year: false })}</Mono>,
-              <span key="entity" style={{ fontSize: 'var(--text-sm)', textTransform: 'capitalize' }}>{humanEntity(e.entity_type)}</span>,
-              <Badge key="action" variant={actionVariant(e.action)}>{e.action.replace(/_/g, ' ')}</Badge>,
-              <span key="actor" style={{ fontSize: 'var(--text-sm)', color: 'var(--color-ink-3)' }}>{e.actor_name ?? (e.actor_id ? e.actor_id.slice(0, 8) : 'System')}</span>,
-              (e.before_state || e.after_state) ? (
-                <Button
-                  key="details"
-                  variant="ghost"
-                  size="sm"
-                  onClick={() => setExpandedId(e.id)}
-                >
+              <span
+                key="entity"
+                style={{ fontSize: 'var(--text-sm)', textTransform: 'capitalize' }}
+              >
+                {humanEntity(e.entity_type)}
+              </span>,
+              <Badge key="action" variant={actionVariant(e.action)}>
+                {e.action.replace(/_/g, ' ')}
+              </Badge>,
+              <span key="actor" style={{ fontSize: 'var(--text-sm)', color: 'var(--color-ink-3)' }}>
+                {e.actor_name ?? (e.actor_id ? e.actor_id.slice(0, 8) : 'System')}
+              </span>,
+              e.before_state || e.after_state ? (
+                <Button key="details" variant="ghost" size="sm" onClick={() => setExpandedId(e.id)}>
                   Details
                 </Button>
               ) : (
@@ -306,37 +339,98 @@ export function ActivityLog(): JSX.Element {
               ),
             ],
           }))}
-          emptyState={loading ? <LinesSkeleton label="Loading activity" /> : <EmptyState compact title="No activity matches these filters" />}
+          emptyState={
+            loading ? (
+              <LinesSkeleton label="Loading activity" />
+            ) : (
+              <EmptyState compact title="No activity matches these filters" />
+            )
+          }
         />
-      </Card>
-
+      </ListPage>
       <Modal
         open={!!expandedEntry}
         onClose={() => setExpandedId(null)}
-        title={expandedEntry ? `${humanEntity(expandedEntry.entity_type)} — ${expandedEntry.action.replace(/_/g, ' ')}` : undefined}
+        title={
+          expandedEntry
+            ? `${humanEntity(expandedEntry.entity_type)} — ${expandedEntry.action.replace(/_/g, ' ')}`
+            : undefined
+        }
         size="lg"
       >
         {expandedEntry && (
           <>
-            <div style={{ fontSize: 'var(--text-xs)', color: 'var(--color-ink-3)', marginBottom: 'var(--space-4)' }}>
+            <div
+              style={{
+                fontSize: 'var(--text-xs)',
+                color: 'var(--color-ink-3)',
+                marginBottom: 'var(--space-4)',
+              }}
+            >
               {formatDateTime(expandedEntry.created_at)}
               {' · by '}
               {expandedEntry.actor_name ?? (expandedEntry.actor_id ? 'A former user' : 'System')}
             </div>
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: 'var(--space-4)' }}>
+            <div
+              style={{
+                display: 'grid',
+                gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))',
+                gap: 'var(--space-4)',
+              }}
+            >
               <div>
-                <div style={{ fontSize: 'var(--text-xs)', fontWeight: 700, color: 'var(--color-ink-4)', textTransform: 'uppercase', letterSpacing: 'var(--tracking-label)', marginBottom: 'var(--space-2)' }}>
+                <div
+                  style={{
+                    fontSize: 'var(--text-xs)',
+                    fontWeight: 700,
+                    color: 'var(--color-ink-4)',
+                    textTransform: 'uppercase',
+                    letterSpacing: 'var(--tracking-label)',
+                    marginBottom: 'var(--space-2)',
+                  }}
+                >
                   Before
                 </div>
-                <pre style={{ margin: 0, fontSize: 'var(--text-xs)', fontFamily: 'var(--font-mono)', whiteSpace: 'pre-wrap', overflowX: 'auto', background: 'var(--color-page)', padding: 'var(--space-3)', borderRadius: 'var(--radius-md)' }}>
+                <pre
+                  style={{
+                    margin: 0,
+                    fontSize: 'var(--text-xs)',
+                    fontFamily: 'var(--font-mono)',
+                    whiteSpace: 'pre-wrap',
+                    overflowX: 'auto',
+                    background: 'var(--color-page)',
+                    padding: 'var(--space-3)',
+                    borderRadius: 'var(--radius-md)',
+                  }}
+                >
                   {JSON.stringify(expandedEntry.before_state ?? {}, null, 2)}
                 </pre>
               </div>
               <div>
-                <div style={{ fontSize: 'var(--text-xs)', fontWeight: 700, color: 'var(--color-ink-4)', textTransform: 'uppercase', letterSpacing: 'var(--tracking-label)', marginBottom: 'var(--space-2)' }}>
+                <div
+                  style={{
+                    fontSize: 'var(--text-xs)',
+                    fontWeight: 700,
+                    color: 'var(--color-ink-4)',
+                    textTransform: 'uppercase',
+                    letterSpacing: 'var(--tracking-label)',
+                    marginBottom: 'var(--space-2)',
+                  }}
+                >
                   After
                 </div>
-                <pre style={{ margin: 0, fontSize: 'var(--text-xs)', fontFamily: 'var(--font-mono)', whiteSpace: 'pre-wrap', overflowX: 'auto', background: 'var(--color-page)', padding: 'var(--space-3)', borderRadius: 'var(--radius-md)' }}>
+                <pre
+                  style={{
+                    margin: 0,
+                    fontSize: 'var(--text-xs)',
+                    fontFamily: 'var(--font-mono)',
+                    whiteSpace: 'pre-wrap',
+                    overflowX: 'auto',
+                    background: 'var(--color-page)',
+                    padding: 'var(--space-3)',
+                    borderRadius: 'var(--radius-md)',
+                  }}
+                >
                   {JSON.stringify(expandedEntry.after_state ?? {}, null, 2)}
                 </pre>
               </div>
@@ -344,16 +438,6 @@ export function ActivityLog(): JSX.Element {
           </>
         )}
       </Modal>
-
-      <ListFooter
-        shown={entries.length}
-        total={totalCount}
-        hasMore={hasMore}
-        loading={loading}
-        onLoadMore={() => void load(cursor ?? undefined)}
-        noun="log entries"
-        nounOne="log entry"
-      />
-    </div>
+    </>
   )
 }

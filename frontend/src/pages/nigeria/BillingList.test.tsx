@@ -117,7 +117,7 @@ describe('BillingList', () => {
     await waitFor(() => expect(billingApi.stats).toHaveBeenCalled())
     await waitFor(() => expect(billingApi.list).toHaveBeenCalledWith({ cursor: undefined }))
     // Chip click refetches the table server-side with the status filter.
-    await userEvent.click(screen.getByRole('button', { name: /Unpaid/ }))
+    await userEvent.click(within(screen.getByRole('search', { name: 'Filter invoices' })).getByRole('button', { name: /Unpaid/ }))
     await waitFor(() => expect(billingApi.list).toHaveBeenCalledWith({ status: 'unpaid', cursor: undefined }))
   })
 
@@ -227,13 +227,46 @@ describe('BillingList', () => {
     renderPage()
     await waitFor(() => expect(billingApi.stats).toHaveBeenCalled())
 
-    await userEvent.click(screen.getByRole('button', { name: /^filters$/i }))
+    await userEvent.click(screen.getByRole('button', { name: /^more filters/i }))
     await userEvent.click(screen.getByRole('checkbox', { name: /^unpaid$/i }))
-    await userEvent.click(screen.getByRole('checkbox', { name: /^partial$/i }))
+    await userEvent.click(screen.getByRole('checkbox', { name: /^partly paid$/i }))
 
     await waitFor(() =>
       expect(billingApi.list).toHaveBeenLastCalledWith(
         expect.objectContaining({ status: 'unpaid,partially_paid' }),
+      ),
+    )
+  })
+
+  it('the Overdue stat lists the invoices it counts, and a second click lifts it (FD-18)', async () => {
+    vi.mocked(billingApi.list).mockResolvedValue({
+      data: [],
+      meta: { pagination: { has_more: false, next_cursor: null, total_count: 0 } },
+    })
+    renderPage()
+    await waitFor(() => expect(billingApi.stats).toHaveBeenCalled())
+
+    const overdue = screen.getByRole('button', { name: /Overdue \(30\+ days\)/ })
+    expect(overdue).toHaveAttribute('aria-pressed', 'false')
+    await userEvent.click(overdue)
+    await waitFor(() => expect(billingApi.list).toHaveBeenLastCalledWith(expect.objectContaining({ overdue: true })))
+    expect(overdue).toHaveAttribute('aria-pressed', 'true')
+
+    await userEvent.click(overdue)
+    await waitFor(() => expect(billingApi.list).toHaveBeenLastCalledWith({ cursor: undefined }))
+  })
+
+  it('the Outstanding stat lists every invoice still owed', async () => {
+    vi.mocked(billingApi.list).mockResolvedValue({
+      data: [],
+      meta: { pagination: { has_more: false, next_cursor: null, total_count: 0 } },
+    })
+    renderPage()
+    await waitFor(() => expect(billingApi.stats).toHaveBeenCalled())
+    await userEvent.click(screen.getByRole('button', { name: /^Outstanding/ }))
+    await waitFor(() =>
+      expect(billingApi.list).toHaveBeenLastCalledWith(
+        expect.objectContaining({ status: 'unpaid,partially_paid,released_with_outstanding' }),
       ),
     )
   })
@@ -246,14 +279,14 @@ describe('BillingList', () => {
     renderPage()
     await waitFor(() => expect(billingApi.stats).toHaveBeenCalled())
 
-    await userEvent.click(screen.getByRole('button', { name: /Unpaid/ }))
+    await userEvent.click(within(screen.getByRole('search', { name: 'Filter invoices' })).getByRole('button', { name: /Unpaid/ }))
     await waitFor(() =>
       expect(billingApi.list).toHaveBeenLastCalledWith(
         expect.objectContaining({ status: 'unpaid' }),
       ),
     )
 
-    await userEvent.click(screen.getByRole('button', { name: /^filters$/i }))
+    await userEvent.click(screen.getByRole('button', { name: /^more filters/i }))
     await userEvent.click(screen.getByRole('button', { name: /clear all filters/i }))
 
     await waitFor(() =>
@@ -369,7 +402,7 @@ describe('BillingList — Export', () => {
     renderWithTopBar('tenant_admin')
     await screen.findByText('ACME001')
     // The button is placed in the top bar once, on mount; it must still see filters chosen afterwards.
-    await userEvent.click(screen.getByRole('button', { name: /Unpaid/ }))
+    await userEvent.click(within(screen.getByRole('search', { name: 'Filter invoices' })).getByRole('button', { name: /Unpaid/ }))
     await userEvent.type(screen.getByPlaceholderText(/Reference, customer, container/), 'acme')
     await waitFor(() => expect(billingApi.list).toHaveBeenLastCalledWith(expect.objectContaining({ status: 'unpaid', q: 'acme' })))
 

@@ -5,10 +5,13 @@ import { notifLogKeys } from '../../api/keys'
 import { STALE_5_MIN } from '../../lib/queryClient'
 import { useNotifLogPolling } from '../../hooks/useNotifications'
 import { useDateRangeFilter } from '../../hooks/useDateRangeFilter'
-import {  Button, Card, Chip, DateRangeFilter, Icon, ListFooter, Mono, StatusBadge, Table, UserCell, IconButton, Pressable, SearchField, EmptyState, ErrorState } from '../../design/components'
+import { Button, Card, Chip, DateRangeFilter, Icon, ListFooter, Mono, StatusBadge, Table, UserCell, IconButton, SearchField, Select, EmptyState, ErrorState } from '../../design/components'
+import { statusLabel } from '../../design/status'
 import styles from './NotificationLog.module.css'
 import { formatDateTime } from '../../lib/format'
 import { toast } from '../../design/toast'
+import { FilterBar } from '../../shell/FilterBar'
+import { ListPage } from '../../shell/ListPage'
 import { PageHeader } from '../../shell/PageHeader'
 
 const CHANNEL_FILTERS: Array<{ key: NotifChannel; label: string }> = [
@@ -51,7 +54,6 @@ function LogStat({ label, value, sub, color }: { label: string; value: number; s
 export function NotificationLog(): JSX.Element {
   const [channelFilter, setChannelFilter] = useState<NotifChannel | null>(null)
   const [statusFilter, setStatusFilter] = useState<NotifStatus | 'all'>('all')
-  const [statusDropdownOpen, setStatusDropdownOpen] = useState(false)
   const [search, setSearch] = useState('')
   const [retryingId, setRetryingId] = useState<string | null>(null)
   const [selectedLog, setSelectedLog] = useState<NotificationLogEntry | null>(null)
@@ -117,76 +119,121 @@ export function NotificationLog(): JSX.Element {
     : logs
 
   return (
-    <div>
-      <PageHeader
-        title="Notification log"
-        meta="Every message sent to your customers, and whether it arrived."
-      />
-      {error && (
-        <div className={styles.banner}>
-          <ErrorState compact title="Couldn't load log" error={error} onRetry={() => void refetch()} />
-        </div>
-      )}
-
-      {/* Stats bar */}
-      <Card padding="default" style={{ marginBottom: 'var(--space-4)' }}>
-        <div className={styles.statsBar}>
-          <span className={styles.statsLabel}>Last 30 days</span>
-          <LogStat label="Sent"      value={stats.sent}      color="var(--color-info)" />
-          <LogStat label="Delivered" value={stats.delivered}
-            sub={stats.sent > 0 ? `${((stats.delivered / stats.sent) * 100).toFixed(1)}%` : undefined}
-            color="var(--color-success)" />
-          <LogStat label="Failed"    value={stats.failed}    color="var(--color-error)" />
-          <LogStat label="Pending"   value={stats.pending}   color="var(--color-ink-4)" />
-        </div>
-      </Card>
-
-      {/* Filter bar */}
-      <Card padding="default" style={{ marginBottom: 'var(--space-4)' }}>
-        <div className={styles.filterRow}>
-          <div className={styles.chips}>
-            <Chip active={channelFilter === null} onClick={() => setChannelFilter(null)}>
-              All channels
-            </Chip>
-            {CHANNEL_FILTERS.map(({ key, label }) => (
-              <Chip key={key} active={channelFilter === key} onClick={() => setChannelFilter(key)}>
-                {label}
-                {allLogs.length > 0 && (
-                  <span className={styles.chipCount}>{channelCounts[key] ?? 0}</span>
-                )}
-              </Chip>
-            ))}
-          </div>
-          <div className={styles.statusDropdown}>
-            <Button
-              variant="secondary"
-              trailingIcon="chevdown"
-              onClick={() => setStatusDropdownOpen((o) => !o)}
-            >
-              {statusFilter === 'all' ? 'Status: All' : `Status: ${statusFilter.charAt(0).toUpperCase() + statusFilter.slice(1)}`}
-            </Button>
-            {statusDropdownOpen && (
-              <div className={styles.dropdown}>
-                {STATUS_FILTER_OPTS.map((s) => (
-                  <Pressable
-                    key={s}
-                    type="button"
-                    className={[styles.dropdownItem, statusFilter === s ? styles.dropdownItemActive : ''].filter(Boolean).join(' ')}
-                    onClick={() => { setStatusFilter(s); setStatusDropdownOpen(false) }}
-                  >
-                    {s === 'all' ? 'All' : s.charAt(0).toUpperCase() + s.slice(1)}
-                  </Pressable>
-                ))}
-              </div>
+    <>
+      <ListPage
+        header={
+          <PageHeader
+            title="Notification log"
+            meta="Every message sent to your customers, and whether it arrived."
+          />
+        }
+        notices={
+          <>
+            {error && (
+              <ErrorState
+                compact
+                title="Couldn't load log"
+                error={error}
+                onRetry={() => void refetch()}
+              />
             )}
-          </div>
-          <SearchField label="Search notifications" placeholder="Customer, event type, message…" value={search} onChange={setSearch} />
-          <DateRangeFilter label="Sent" range={sentRange} />
-        </div>
-      </Card>
-
-      {/* Table */}
-      <Card padding="none">
+          </>
+        }
+        stats={
+          <Card padding="default">
+            <div className={styles.statsBar}>
+              <span className={styles.statsLabel}>Last 30 days</span>
+              <LogStat label="Sent" value={stats.sent} color="var(--color-info)" />
+              <LogStat
+                label="Delivered"
+                value={stats.delivered}
+                sub={
+                  stats.sent > 0
+                    ? `${((stats.delivered / stats.sent) * 100).toFixed(1)}%`
+                    : undefined
+                }
+                color="var(--color-success)"
+              />
+              <LogStat label="Failed" value={stats.failed} color="var(--color-error)" />
+              <LogStat label="Pending" value={stats.pending} color="var(--color-ink-4)" />
+            </div>
+          </Card>
+        }
+        filters={
+          <FilterBar
+            label="Filter notifications"
+            status={
+              <>
+                <Chip active={channelFilter === null} onClick={() => setChannelFilter(null)}>
+                  All channels
+                </Chip>
+                {CHANNEL_FILTERS.map(({ key, label }) => (
+                  <Chip
+                    key={key}
+                    active={channelFilter === key}
+                    onClick={() => setChannelFilter(key)}
+                  >
+                    {label}
+                    {allLogs.length > 0 && (
+                      <span className={styles.chipCount}>{channelCounts[key] ?? 0}</span>
+                    )}
+                  </Chip>
+                ))}
+              </>
+            }
+            search={
+              <>
+                <SearchField
+                  label="Search notifications"
+                  placeholder="Customer, event type, message…"
+                  value={search}
+                  onChange={setSearch}
+                />
+              </>
+            }
+            more={
+              <Select
+                label="Status"
+                value={statusFilter}
+                onChange={(e) => setStatusFilter(e.target.value as NotifStatus | 'all')}
+              >
+                {STATUS_FILTER_OPTS.map((option) => (
+                  <option key={option} value={option}>
+                    {option === 'all' ? 'Any status' : statusLabel('notification', option)}
+                  </option>
+                ))}
+              </Select>
+            }
+            activeCount={
+              (channelFilter ? 1 : 0) +
+              (statusFilter !== 'all' ? 1 : 0) +
+              (sentRange.isActive ? 1 : 0)
+            }
+            onClear={() => {
+              setChannelFilter(null)
+              setStatusFilter('all')
+              setSearch('')
+              sentRange.clear()
+            }}
+            dateRange={
+              <>
+                <DateRangeFilter label="Sent" range={sentRange} />
+              </>
+            }
+          />
+        }
+        footer={
+          <ListFooter
+            shown={logs.length}
+            total={totalCount}
+            hasMore={hasMore}
+            loading={isFetchingMore}
+            onLoadMore={loadMore}
+            noun="notifications"
+            nounOne="notification"
+          />
+        }
+      >
         <Table
           columns={[
             { title: 'Sent at', type: 'date' },
@@ -202,10 +249,19 @@ export function NotificationLog(): JSX.Element {
             onOpen: () => setSelectedLog(entry),
             openLabel: 'Open notification details',
             cells: [
-              <Mono key="ts" color="var(--color-ink-2)">{fmtTs(entry.created_at)}</Mono>,
-              entry.recipient_name
-                ? <UserCell key="cust" name={entry.recipient_name} email="" />
-                : <span key="cust" style={{ color: 'var(--color-ink-4)', fontSize: 'var(--text-sm)' }}>—</span>,
+              <Mono key="ts" color="var(--color-ink-2)">
+                {fmtTs(entry.created_at)}
+              </Mono>,
+              entry.recipient_name ? (
+                <UserCell key="cust" name={entry.recipient_name} email="" />
+              ) : (
+                <span
+                  key="cust"
+                  style={{ color: 'var(--color-ink-4)', fontSize: 'var(--text-sm)' }}
+                >
+                  —
+                </span>
+              ),
               <div key="ch" className={styles.channelCell}>
                 <Icon
                   name={entry.channel === 'email' ? 'mail' : 'phone'}
@@ -220,14 +276,20 @@ export function NotificationLog(): JSX.Element {
                 {EVENT_LABELS[entry.event_type] ?? entry.event_type.replace(/_/g, ' ')}
               </span>,
               <span key="msg" className={styles.msgPreview}>
-                {entry.message_body ? `"${entry.message_body.slice(0, 60)}${entry.message_body.length > 60 ? '…' : ''}"` : '—'}
+                {entry.message_body
+                  ? `"${entry.message_body.slice(0, 60)}${entry.message_body.length > 60 ? '…' : ''}"`
+                  : '—'}
               </span>,
               <StatusBadge key="status" size="sm" kind="notification" status={entry.status} />,
               <div key="action" className={styles.rowActions}>
                 {entry.status === 'failed' && (
-                  <Button variant="secondary" size="sm" icon="refresh"
+                  <Button
+                    variant="secondary"
+                    size="sm"
+                    icon="refresh"
                     loading={retryingId === entry.id}
-                    onClick={() => void handleRetry(entry)}>
+                    onClick={() => void handleRetry(entry)}
+                  >
                     Retry
                   </Button>
                 )}
@@ -235,21 +297,14 @@ export function NotificationLog(): JSX.Element {
             ],
           }))}
           loading={loading}
-          emptyState={!loading && displayed.length === 0 ? <EmptyState compact title="No notifications logged yet" /> : undefined}
+          emptyState={
+            !loading && displayed.length === 0 ? (
+              <EmptyState compact title="No notifications logged yet" />
+            ) : undefined
+          }
         />
-      </Card>
+      </ListPage>
 
-      <ListFooter
-        shown={logs.length}
-        total={totalCount}
-        hasMore={hasMore}
-        loading={isFetchingMore}
-        onLoadMore={loadMore}
-        noun="notifications"
-        nounOne="notification"
-      />
-
-      {/* Detail modal */}
       {selectedLog && (
         <div className={styles.modalOverlay} onClick={() => setSelectedLog(null)}>
           <div className={styles.modal} onClick={(e) => e.stopPropagation()}>
@@ -257,7 +312,9 @@ export function NotificationLog(): JSX.Element {
               <div>
                 <h3 className={styles.modalTitle}>Notification detail</h3>
                 <p className={styles.modalSub}>
-                  {selectedLog.channel === 'whatsapp' ? 'WhatsApp' : selectedLog.channel.toUpperCase()}
+                  {selectedLog.channel === 'whatsapp'
+                    ? 'WhatsApp'
+                    : selectedLog.channel.toUpperCase()}
                   {' · '}
                   {EVENT_LABELS[selectedLog.event_type] ?? selectedLog.event_type}
                   {' · '}
@@ -267,13 +324,26 @@ export function NotificationLog(): JSX.Element {
               <IconButton icon="x" label="Close" size="sm" onClick={() => setSelectedLog(null)} />
             </div>
             <div className={styles.modalBody}>
-              <div className={styles.kvp}><span>Recipient</span><span>{selectedLog.recipient_name ?? '—'}</span></div>
-              <div className={styles.kvp}><span>Channel</span><span>{selectedLog.channel}</span></div>
-              <div className={styles.kvp}><span>Event type</span><span>{selectedLog.event_type}</span></div>
-              <div className={styles.kvp}><span>Status</span>
+              <div className={styles.kvp}>
+                <span>Recipient</span>
+                <span>{selectedLog.recipient_name ?? '—'}</span>
+              </div>
+              <div className={styles.kvp}>
+                <span>Channel</span>
+                <span>{selectedLog.channel}</span>
+              </div>
+              <div className={styles.kvp}>
+                <span>Event type</span>
+                <span>{selectedLog.event_type}</span>
+              </div>
+              <div className={styles.kvp}>
+                <span>Status</span>
                 <StatusBadge size="sm" kind="notification" status={selectedLog.status} />
               </div>
-              <div className={styles.kvp}><span>Provider</span><span>{selectedLog.provider ?? '—'}</span></div>
+              <div className={styles.kvp}>
+                <span>Provider</span>
+                <span>{selectedLog.provider ?? '—'}</span>
+              </div>
               {selectedLog.message_body && (
                 <div className={styles.msgBubbleWrap}>
                   <div className={styles.msgBubble}>{selectedLog.message_body}</div>
@@ -288,17 +358,22 @@ export function NotificationLog(): JSX.Element {
             </div>
             <div className={styles.modalFooter}>
               {selectedLog.status === 'failed' && (
-                <Button variant="primary" icon="refresh"
+                <Button
+                  variant="primary"
+                  icon="refresh"
                   loading={retryingId === selectedLog.id}
-                  onClick={() => void handleRetry(selectedLog)}>
+                  onClick={() => void handleRetry(selectedLog)}
+                >
                   Resend
                 </Button>
               )}
-              <Button variant="secondary" onClick={() => setSelectedLog(null)}>Close</Button>
+              <Button variant="secondary" onClick={() => setSelectedLog(null)}>
+                Close
+              </Button>
             </div>
           </div>
         </div>
       )}
-    </div>
+    </>
   )
 }

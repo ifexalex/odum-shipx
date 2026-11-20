@@ -1,7 +1,5 @@
 .banner { margin-bottom: var(--space-4); }
 .section { margin-top: var(--space-6); }
-.tableWrap { margin-top: var(--space-4); }
-.chips { display: flex; gap: var(--space-2); flex-wrap: wrap; }
 .formCard { background: var(--color-surface); border: 1px solid var(--color-line-soft); border-radius: var(--radius-lg); padding: var(--space-6); display: flex; flex-direction: column; gap: var(--space-4); max-width: 560px; }
 .formActions { display: flex; gap: var(--space-2); justify-content: flex-end; }
 .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: var(--space-3); }
@@ -41,14 +39,6 @@
 /* Confirm input */
 .confirmInput { font-family: var(--font-mono); font-size: var(--text-lg); letter-spacing: var(--tracking-label); }
 .confirmHint { font-size: var(--text-sm); color: var(--color-ink-4); margin: 0; }
-
-/* Config page */
-.configGrid { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: var(--space-3); margin-top: var(--space-4); }
-.configCard { display: flex; flex-direction: column; padding: var(--space-5); background: var(--color-surface); border: 1px solid var(--color-line-soft); border-radius: var(--radius-lg); gap: var(--space-2); cursor: pointer; transition: border-color var(--motion-fast) var(--ease-standard); text-decoration: none; color: inherit; }
-.configCard:hover { border-color: var(--color-primary); }
-.configCardTitle { font-weight: 700; font-size: var(--text-lg); margin: 0; }
-.configCardDesc { font-size: var(--text-sm); color: var(--color-ink-4); margin: 0; }
-.configCardValue { font-family: var(--font-mono); font-size: var(--text-md); color: var(--color-primary-text); font-weight: 700; margin: 0; }
 .profileGrid {
   display: grid;
   grid-template-columns: 1fr 1fr;
@@ -92,82 +82,10 @@
   }
 }
 
-/* ---------------------------------------------------------------------------
-   Shared filter-bar pattern — one consistent look across the tenant-admin
-   list pages (Customers, Users, Activity Log), matching nigeria/BillingList's
-   established chips + 36px search + 36px controls layout. Every control sits
-   at CONTROL_HEIGHT (36px) so their bottom edges line up with the chips and
-   each other, instead of a tall Field search floating next to short chips.
-   --------------------------------------------------------------------------- */
-.filterRow {
-  display: flex;
-  align-items: center;
-  gap: var(--space-3);
-  flex-wrap: wrap;
-}
-.searchWrap {
-  flex: 1;
-  min-width: 220px;
-  height: 36px;
-  background: var(--color-page);
-  border: 1px solid var(--color-control-border);
-  border-radius: var(--radius-md);
-  display: flex;
-  align-items: center;
-  padding: 0 var(--space-3);
-  gap: var(--space-2);
-}
-.searchInput {
-  flex: 1;
-  border: none;
-  outline: none;
-  background: transparent;
-  font-family: var(--font-body);
-  font-size: var(--text-sm);
-  color: var(--color-ink);
-  min-width: 0;
-}
-.searchInput::placeholder {
-  color: var(--color-ink-4);
-}
-
-/* Secondary control row (Activity Log): compact, labelled selects/date inputs
-   that all align on the same 36px baseline as the chips + search above. */
-.filterControls {
-  display: flex;
-  align-items: center;
-  gap: var(--space-3) var(--space-4);
-  flex-wrap: wrap;
-  margin-top: var(--space-3);
-}
-.controlGroup {
-  display: flex;
-  align-items: center;
-  gap: var(--space-2);
-}
-.controlLabel {
-  font-size: var(--text-xs);
-  font-weight: 600;
-  color: var(--color-ink-3);
-  white-space: nowrap;
-}
-.control {
-  height: 36px;
-  box-sizing: border-box;
-  padding: 0 var(--space-3);
-  border-radius: var(--radius-md);
-  border: 1px solid var(--color-control-border);
-  background: var(--color-surface);
-  font-family: var(--font-body);
-  font-size: var(--text-sm);
-  color: var(--color-ink);
-}
-
 /* AdminCustomerDetail: static styles moved out of inline style props (audit FE-06). */
 .spacer8 {
   height: 8px;
 }
-
 
 .prefRow {
   padding: var(--space-3) 0;
@@ -234,18 +152,8 @@
   margin: var(--space-2) 0 0;
 }
 
-.emptyState {
-  padding: var(--space-12);
-  color: var(--color-ink-4);
-}
-
 .bannerGap {
   margin-bottom: var(--space-4);
-}
-
-.actionsRow {
-  display: flex;
-  gap: var(--space-2);
 }
 
 .spacer16 {
