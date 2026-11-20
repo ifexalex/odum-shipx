@@ -15,67 +15,6 @@
   margin-bottom: var(--space-4);
 }
 
-.steps {
-  display: flex;
-  padding: var(--space-2);
-}
-
-.stepWrap {
-  display: flex;
-  align-items: center;
-}
-
-.step {
-  display: flex;
-  align-items: center;
-  gap: var(--space-3);
-  padding: var(--space-4) var(--space-4);
-  border-radius: var(--radius-lg);
-}
-
-.stepActive {
-  background: var(--color-primary-tint);
-}
-
-.stepCircle {
-  width: 36px;
-  height: 36px;
-  border-radius: 50%;
-  background: var(--color-page);
-  border: 2px solid var(--color-line-soft);
-  color: var(--color-ink-4);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-weight: 700;
-  font-size: var(--text-md);
-  flex-shrink: 0;
-}
-
-.stepDone {
-  background: var(--color-success);
-  border-color: var(--color-success);
-}
-
-.stepCurrent {
-  background: var(--color-primary);
-  border-color: var(--color-primary);
-  color: var(--color-on-brand);
-}
-
-.stepLabel {
-  font-family: var(--font-display);
-  font-weight: 700;
-  font-size: var(--text-md);
-  color: var(--color-ink);
-}
-
-.stepSub {
-  font-size: var(--text-xs);
-  color: var(--color-ink-4);
-  margin-top: var(--space-0-5);
-}
-
 .selectField {
   display: flex;
   flex-direction: column;
@@ -334,22 +273,4 @@
   font-size: var(--text-sm);
   font-style: italic;
   color: var(--color-ink-3);
-}
-
-/* On a phone every step keeps its number; only the current one keeps its words, so the row fits. */
-@media (max-width: 600px) {
-  .step {
-    padding: var(--space-2);
-    gap: var(--space-2);
-  }
-  .stepWrap {
-    flex: 0 0 auto;
-  }
-  .stepWrap:has(.stepActive) {
-    flex: 1 1 auto;
-    min-width: 0;
-  }
-  .step:not(.stepActive) > div:last-child {
-    display: none;
-  }
 }

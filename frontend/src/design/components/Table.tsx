@@ -1,4 +1,5 @@
-import { useLayoutEffect, useRef, useState, type JSX, type ReactNode, type RefObject } from 'react'
+import { useRef, type JSX, type ReactNode } from 'react'
+import { useIsNarrow } from '../useIsNarrow'
 import { Check } from './Check'
 import { Icon } from './Icon'
 import styles from './Table.module.css'
@@ -106,43 +107,10 @@ function isInteractive(target: EventTarget | null, row: HTMLElement): boolean {
 // Cards only on a phone (FD-13): a table in a narrow desktop column (a two-column detail layout) stays a table.
 const CARD_VIEW_BREAKPOINT = 600
 
-/** True once this element's own measured width drops to/below `breakpoint`.
- *
- * A real ResizeObserver-driven measurement of the Table's own wrapper,
- * not a shared-ancestor container query — deliberately so a table nested
- * in a narrower column (e.g. a two-column detail layout) switches to the
- * card view at the width it actually has, not the full page's width.
- *
- * Defaults to `false` (table view) and only flips based on a genuine
- * nonzero measurement — jsdom has no layout engine and always reports 0
- * for getBoundingClientRect(), so every existing test that renders <Table>
- * keeps seeing the table markup unchanged unless it explicitly drives a
- * ResizeObserver callback itself.
+/**
+ * Below `cardBreakpoint` px of its own width (measured with `useIsNarrow`, not the viewport) the table renders as
+ * cards, so a table in a narrow column switches at the width it actually has.
  */
-function useIsNarrow(ref: RefObject<HTMLDivElement | null>, breakpoint: number): boolean {
-  const [isNarrow, setIsNarrow] = useState(false)
-
-  useLayoutEffect(() => {
-    const el = ref.current
-    if (!el) return
-
-    const measure = (width: number): void => {
-      if (width > 0) setIsNarrow(width <= breakpoint)
-    }
-    measure(el.getBoundingClientRect().width)
-
-    if (typeof ResizeObserver === 'undefined') return
-    const observer = new ResizeObserver((entries) => {
-      const width = entries[0]?.contentRect.width
-      if (width != null) measure(width)
-    })
-    observer.observe(el)
-    return () => observer.disconnect()
-  }, [ref, breakpoint])
-
-  return isNarrow
-}
-
 export function Table({
   columns,
   rows,

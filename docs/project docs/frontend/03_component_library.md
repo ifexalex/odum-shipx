@@ -343,3 +343,14 @@ Known limit: focus is placed once, when the dialog mounts. A dialog whose first 
 - The invoice list's own "Showing N records" above the table was removed (FD-13's one count; the guard now also catches `Showing <strong>`).
 - Guards: `src/design/cardRules.test.ts` (no `*Label(…)` as a stat value; no `anywhere`/`break-all`/`break-word` outside the allowlist; no clamp or ellipsis in StatCard; the table-in-card rule exists). `scripts/text-breaks.mjs` checks every route at 375 and 1280 px for split words, cut-off text, double frames and, at desktop width, tables that scroll sideways.
 
+## Stepper: one progress row (FD-09, 2026-11-20)
+
+**Problem:** seven hand-drawn steppers (container pipeline, customer tracker, staff and customer claim progress, refund approval, the packing-list form and the import wizard), each with its own dots, lines and labels. The container pipeline's upcoming steps were faint grey; the customer tracker ran off a phone's edge inside a sideways scroll strip; step names were copies that disagreed with the status badges ("Received", "Ready", "Delivered").
+
+**Now:**
+- `Stepper` (`steps: { key, label, sub?, tone? }[]`, `current`, `mode: 'progress' | 'wizard'`, `failed`, `complete`, `label`, `compactBelow` = 600): an ordered list named by `label`, `aria-current="step"` on the current step, and each step's state ("done", "current step", "stopped here", "not started") in screen-reader text. Upcoming steps keep a visible ring and second-ink label. Wizard mode numbers the dots and adds "Step n". `failed` marks the current step with a cross in the error colour (a rejected refund).
+- At or below 600 px of its own width (`useIsNarrow`, now shared with `Table` in `src/design/useIsNarrow.ts`) it shows the current step, "3 of 8", its second line and a bar (`role="progressbar"` with a text value). No sideways scroll.
+- `src/design/steps.ts`: `containerSteps(audience)` / `containerProgress(status)` and `claimSteps(audience)` / `claimProgress(status)` name the steps from the status registry (staff or customer wording), so a stepper and a badge always agree. Tone: the first three container steps are China-side (info blue).
+- Used by `ContainerStepper` (overview and tracking tabs), `CustomerStepper` (shipment list and detail), claim detail (staff and customer), refund detail, the packing-list form and the import wizard. The container event log names events from the registry too. About 300 lines of per-page stepper CSS deleted.
+- Tests: `Stepper.test.tsx` (6: named list and states, complete, failed, wizard numbers, compact form at 390 px with "2 of 4" and the progress bar, full form above 600 px); `src/design/stepperRules.test.ts` (no page CSS draws step dots or lines; the seven pages use `Stepper`). Checked in the browser: the customer tracker at 390 px fits ("Completed · 8 of 8"), the page does not scroll sideways.
+

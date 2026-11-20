@@ -28,23 +28,6 @@
   align-items: center;
 }
 
-/* stepper */
-.stepperWrap { overflow-x: auto; padding: var(--space-1) 0 var(--space-2); }
-.stepper { display: flex; align-items: flex-start; gap: 0; min-width: 400px; }
-.step { display: flex; flex-direction: column; align-items: center; flex: 1; position: relative; }
-.step:not(:last-child)::after { content: ''; position: absolute; top: 13px; left: 50%; width: 100%; height: 2px; background: var(--color-line-soft); z-index: 0; }
-.step:not(:last-child).stepDone::after { background: var(--color-success); }
-.stepDot { width: 28px; height: 28px; border-radius: 50%; background: var(--color-surface-muted); border: 2px solid var(--color-line-soft); display: flex; align-items: center; justify-content: center; z-index: 1; position: relative; flex-shrink: 0; }
-.step.stepDone .stepDot { background: var(--color-success); border-color: var(--color-success); }
-.step.stepActive .stepDot { background: var(--color-primary); border-color: var(--color-primary); }
-.step.stepRejected .stepDot { background: var(--color-error); border-color: var(--color-error); }
-.stepLabel { font-size: var(--text-xs); color: var(--color-ink-4); margin-top: var(--space-2); text-align: center; max-width: 80px; line-height: var(--text-xs-line); }
-.step.stepDone .stepLabel, .step.stepActive .stepLabel { color: var(--color-ink); font-weight: 600; }
-.step.stepRejected .stepLabel { color: var(--color-error); font-weight: 600; }
-
-/* approval level badge */
-.approvalNote { font-size: var(--text-xs); color: var(--color-ink-4); margin-top: var(--space-2); display: flex; align-items: center; gap: var(--space-1); }
-
 /* layout */
 .section { margin-top: var(--space-5); }
 .statsRow { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: var(--space-3); margin-top: var(--space-5); }

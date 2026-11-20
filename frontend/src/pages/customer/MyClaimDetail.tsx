@@ -3,18 +3,17 @@ import { useParams } from 'react-router-dom'
 import { ApiError } from '../../api/client'
 import type { Claim, ClaimEvidenceFile, DamageClaimStatus } from '../../api/claims'
 import {
-  CLAIM_STATUS_ORDER,
   customerInspectionLabel,
   customerRefundLabel,
   customerResolutionLabel,
 } from '../../api/claimsRules'
-import { Banner, Card, Kvp, Mono, StatusBadge, PageSkeleton } from '../../design/components'
+import { Banner, Card, Kvp, Mono, StatusBadge, Stepper, PageSkeleton } from '../../design/components'
 import { useClaim } from '../../hooks/useClaims'
 import { formatCount, formatDate, formatNgn } from '../../lib/format'
 import { PageHeader } from '../../shell/PageHeader'
 import styles from './customer.module.css'
 import { useBreadcrumbLabel } from '../../shell/breadcrumbs'
-import { statusLabel } from '../../design/status'
+import { claimProgress, claimSteps } from '../../design/steps'
 
 /** What the customer is waiting for, by where the claim is. */
 function waitingNote(status: DamageClaimStatus): string | null {
@@ -37,33 +36,8 @@ function fileSize(bytes: number | null): string {
 }
 
 function ProgressSteps({ status }: { status: DamageClaimStatus }): JSX.Element {
-  const current = CLAIM_STATUS_ORDER.indexOf(status)
-  return (
-    <ol aria-label="Claim progress" style={{ display: 'flex', gap: 'var(--space-2)', listStyle: 'none', padding: 0, margin: '0 0 var(--space-1)', flexWrap: 'wrap' }}>
-      {CLAIM_STATUS_ORDER.map((step, index) => {
-        const done = index < current
-        const here = index === current
-        return (
-          <li
-            key={step}
-            aria-current={here ? 'step' : undefined}
-            style={{
-              fontSize: 'var(--text-sm)',
-              padding: 'var(--space-1) var(--space-3)',
-              borderRadius: 'var(--radius-full)',
-              border: '1px solid var(--color-line-soft)',
-              background: here ? 'var(--color-primary-soft)' : 'transparent',
-              color: here ? 'var(--color-primary-deep)' : done ? 'var(--color-ink-2)' : 'var(--color-ink-4)',
-              fontWeight: here ? 700 : 500,
-            }}
-          >
-            {done ? '✓ ' : ''}
-            {statusLabel('claim', step, 'customer')}
-          </li>
-        )
-      })}
-    </ol>
-  )
+  const progress = claimProgress(status)
+  return <Stepper steps={claimSteps('customer')} current={progress.current} complete={progress.complete} label="Claim progress" />
 }
 
 function EvidenceList({ files }: { files: ClaimEvidenceFile[] }): JSX.Element {

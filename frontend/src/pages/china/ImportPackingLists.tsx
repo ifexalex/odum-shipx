@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom'
 import { ApiError } from '../../api/client'
 import { excelApi, type ImportErrorDetail, type ImportResult, type ManifestImportResult } from '../../api/excel'
 import { FileTooLargeError, UploadFailedError, uploadImportFile } from '../../api/uploads'
-import { Banner, Button, Card, Icon, Mono, Pressable, Select, FileInput, Table } from '../../design/components'
+import { Banner, Button, Card, Icon, Mono, Pressable, Select, FileInput, Stepper, Table } from '../../design/components'
 import { useContainerLookup } from '../../hooks/useContainers'
 import { PageHeader } from '../../shell/PageHeader'
 import { SectionHead } from '../../shell/SectionHead'
@@ -24,34 +24,16 @@ interface WizardStepsProps {
   current: 1 | 2 | 3
 }
 
+/** The import's three steps (FD-09: the shared Stepper in wizard mode). */
 function WizardSteps({ current, mode }: WizardStepsProps & { mode: ImportMode }): JSX.Element {
-  const steps: { n: 1 | 2 | 3; label: string; sub: string }[] = [
-    { n: 1, label: 'Upload file', sub: mode === 'manifest' ? 'Pick the .xlsx manifest' : 'Pick container + .xlsx' },
-    { n: 2, label: 'Confirm import', sub: 'Create packing lists' },
-    { n: 3, label: 'Results', sub: 'Per-row outcome' },
+  const steps = [
+    { key: 'upload', label: 'Upload file', sub: mode === 'manifest' ? 'Pick the .xlsx manifest' : 'Pick container + .xlsx' },
+    { key: 'confirm', label: 'Confirm import', sub: 'Create packing lists' },
+    { key: 'results', label: 'Results', sub: 'Per-row outcome' },
   ]
   return (
-    <Card padding="none">
-      <div className={styles.steps}>
-        {steps.map((step, index) => {
-          const done = step.n < current
-          const isCurrent = step.n === current
-          return (
-            <div key={step.n} className={styles.stepWrap}>
-              <div className={[styles.step, isCurrent ? styles.stepActive : ''].join(' ')}>
-                <div className={[styles.stepCircle, done ? styles.stepDone : '', isCurrent ? styles.stepCurrent : ''].join(' ')}>
-                  {done ? <Icon name="check" size={16} stroke={3} color="#fff" /> : step.n}
-                </div>
-                <div>
-                  <div className={styles.stepLabel}>{step.label}</div>
-                  <div className={styles.stepSub}>{step.sub}</div>
-                </div>
-              </div>
-              {index < steps.length - 1 && <Icon name="chevright" size={14} color="var(--color-ink-4)" />}
-            </div>
-          )
-        })}
-      </div>
+    <Card padding="default">
+      <Stepper mode="wizard" steps={steps} current={current - 1} complete={current === 3} label="Import steps" />
     </Card>
   )
 }

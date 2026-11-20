@@ -15,7 +15,7 @@ import {
   refundTypeLabel,
 } from '../../api/refundsRules'
 import { useSession } from '../../auth/useSession'
-import { Action, Banner, Button, Card, DialogGuard, Field, Icon, Kvp, Mono, StatCard, StatusBadge, RadioGroup, PageSkeleton, ErrorState } from '../../design/components'
+import { Action, Banner, Button, Card, DialogGuard, Field, Icon, Kvp, Mono, StatCard, StatusBadge, RadioGroup, Stepper, PageSkeleton, ErrorState } from '../../design/components'
 import { SectionHead } from '../../shell/SectionHead'
 import styles from './RefundDetail.module.css'
 import { formatDate, formatNgn } from '../../lib/format'
@@ -60,37 +60,14 @@ function buildSteps(refund: Refund): { steps: StepDef[]; activeIndex: number; is
 
 function RefundStepper({ refund }: { refund: Refund }): JSX.Element {
   const { steps, activeIndex, isRejected } = buildSteps(refund)
-  const isTerminal = isTerminalRefundStatus(refund.status) && !isRejected
-
   return (
-    <div className={styles.stepperWrap} data-scroll-strip="">
-      <div className={styles.stepper}>
-        {steps.map((step, i) => {
-          const done = isTerminal ? i <= activeIndex : i < activeIndex
-          const isCurrent = i === activeIndex
-          const rejected = isRejected && isCurrent
-
-          return (
-            <div
-              key={step.label}
-              className={[
-                styles.step,
-                done ? styles.stepDone : '',
-                isCurrent && !rejected ? styles.stepActive : '',
-                rejected ? styles.stepRejected : '',
-              ].join(' ')}
-            >
-              <div className={styles.stepDot}>
-                {done && <Icon name="check" size={12} color="#fff" />}
-                {rejected && <Icon name="x" size={12} color="#fff" />}
-              </div>
-              <span className={styles.stepLabel}>{step.label}</span>
-              {step.sub && <span className={styles.approvalNote}>{step.sub}</span>}
-            </div>
-          )
-        })}
-      </div>
-    </div>
+    <Stepper
+      steps={steps.map((step) => ({ key: step.label, label: step.label, sub: step.sub }))}
+      current={activeIndex}
+      failed={isRejected}
+      complete={isTerminalRefundStatus(refund.status) && !isRejected}
+      label="Refund progress"
+    />
   )
 }
 

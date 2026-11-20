@@ -14,20 +14,18 @@ import {
 import {
   canResolveClaim,
   canStartInspection,
-  CLAIM_STATUS_ORDER,
   isTerminalClaimStatus,
 } from '../../api/claimsRules'
 import { claimKeys } from '../../api/keys'
 import { STALE_30S } from '../../lib/queryClient'
 import { useSession } from '../../auth/useSession'
-import { Action, Banner, Button, Card, DialogGuard, Field, Kvp, Mono, StatusBadge, Pressable, Select, PageSkeleton, ErrorState } from '../../design/components'
+import { Action, Banner, Button, Card, DialogGuard, Field, Kvp, Mono, StatusBadge, Pressable, Select, Stepper, PageSkeleton, ErrorState } from '../../design/components'
 import { SectionHead } from '../../shell/SectionHead'
 import { EvidenceUploader } from './EvidenceUploader'
 import styles from './ClaimDetail.module.css'
 import { formatDate, formatNgn } from '../../lib/format'
 import { useBreadcrumbLabel } from '../../shell/breadcrumbs'
-import { ScrollStrip } from '../../shell/ScrollStrip'
-import { statusLabel } from '../../design/status'
+import { claimProgress, claimSteps } from '../../design/steps'
 import { toast } from '../../design/toast'
 
 // ---------------------------------------------------------------------------
@@ -247,24 +245,8 @@ function ResolveClaimModal({ onCancel, onSuccess, claimId, role }: ResolveClaimM
 // ---------------------------------------------------------------------------
 
 function StatusStepper({ current }: { current: DamageClaimStatus }): JSX.Element {
-  const currentIdx = CLAIM_STATUS_ORDER.indexOf(current)
-  // At 12 px the labels no longer fit a 320 px phone side by side: the row scrolls inside itself there.
-  return (
-    <ScrollStrip minWidth={CLAIM_STATUS_ORDER.length * 64}>
-    <div className={styles.stepper}>
-      {CLAIM_STATUS_ORDER.map((s, i) => (
-        <div key={s} className={[
-          styles.step,
-          i < currentIdx ? styles.stepDone : '',
-          i === currentIdx ? styles.stepActive : '',
-        ].join(' ')}>
-          <div className={styles.stepDot} />
-          <span className={styles.stepLabel}>{statusLabel('claim', s)}</span>
-        </div>
-      ))}
-    </div>
-    </ScrollStrip>
-  )
+  const progress = claimProgress(current)
+  return <Stepper steps={claimSteps('staff')} current={progress.current} complete={progress.complete} label="Claim progress" />
 }
 
 // ---------------------------------------------------------------------------

@@ -1851,3 +1851,7 @@ Every list and summary table opens its record from the row (first cell is the ke
 
 Page-visible changes: release note detail lists Type and Payment status under "Release details" instead of stat cards; refund detail drops its "Payout method" stat card; the claim list shows the whole damage description; the warehouse queue shows the whole customer name; the invoice list counts once (footer). See `03_component_library.md` "Cards (FD-10)".
 
+## One stepper (FD-09, 2026-11-20)
+
+Container, shipment, claim, refund, packing-list form and import steps all render the shared `Stepper`; step names now match the status badges (container: "Loading … Fully released" for staff, "Being packed … Completed" for customers; previously "Received … Completed/Delivered"). On a phone each shows the current step, "n of N" and a bar. See `03_component_library.md` "Stepper (FD-09)".
+

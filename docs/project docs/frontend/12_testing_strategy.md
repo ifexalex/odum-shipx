@@ -114,3 +114,7 @@ If the Storybook/component-catalog route from Task 03 exists, a lightweight scre
 
 `src/design/cardRules.test.ts` (4). The browser check `scripts/text-breaks.mjs` (see `LOCAL_TESTING.md`) was proved by injecting each defect with `TEXT_BREAKS_INJECT_CSS`: a border back on a table inside a card, a 40 px stat label, an ellipsis on a sublabel. Its first run also caught a bug in itself (a red test border read as transparent because `rgb(255, 0, 0)` ends in ", 0)").
 
+## Stepper (FD-09, 2026-11-20)
+
+`Stepper.test.tsx` (6) stubs `getBoundingClientRect` to drive the compact form, as `Table.test.tsx` does for cards. `src/design/stepperRules.test.ts` (2). `MyClaimDetail.test.tsx` now finds each step's list item and checks its `aria-current` and its "done" text.
+
