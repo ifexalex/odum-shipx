@@ -148,7 +148,7 @@
     padding: var(--space-8);
   }
   .modalPanel {
-    width: 480px;
+    width: var(--dialog-sm);
     border-radius: var(--radius-xl);
     padding: var(--space-6);
   }
@@ -156,8 +156,8 @@
 
 .modalTitle {
   font-family: var(--font-display);
-  font-weight: 700;
-  font-size: var(--text-xl);
+  font-weight: 600;
+  font-size: var(--text-lg);
   color: var(--color-ink);
   margin: 0 0 var(--space-4);
 }

@@ -218,14 +218,14 @@
   }
   .modalPanel {
     border-radius: var(--radius-xl);
-    max-width: 480px;
+    max-width: var(--dialog-sm);
     padding: var(--space-8);
   }
 }
 
 .modalTitle {
-  font-size: var(--text-xl);
-  font-weight: 700;
+  font-size: var(--text-lg);
+  font-weight: 600;
   margin: 0;
 }
 

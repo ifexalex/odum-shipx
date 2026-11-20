@@ -312,7 +312,7 @@ export function ActivityLog(): JSX.Element {
         open={!!expandedEntry}
         onClose={() => setExpandedId(null)}
         title={expandedEntry ? `${humanEntity(expandedEntry.entity_type)} — ${expandedEntry.action.replace(/_/g, ' ')}` : undefined}
-        width={720}
+        size="lg"
       >
         {expandedEntry && (
           <>

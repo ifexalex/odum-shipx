@@ -1,4 +1,4 @@
-import { render, screen, waitFor } from '@testing-library/react'
+import { render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { MemoryRouter, Route, Routes } from 'react-router-dom'
 import { useState, type ReactNode } from 'react'
@@ -382,7 +382,7 @@ describe('ContainerDetail document upload (audit BE-12)', () => {
   it('refuses a file the browser could not type, in the dialog, without asking the server', async () => {
     const dialog = await openUpload()
     await pick(dialog, new File(['x'], 'scan', { type: '' }))
-    await userEvent.click(screen.getByRole('button', { name: 'Upload' }))
+    await userEvent.click(within(dialog).getByRole('button', { name: 'Upload document' }))
     expect(await screen.findByText('Choose a PDF, JPEG, PNG or WebP file.')).toBeInTheDocument()
     expect(dialog).toContainElement(screen.getByText('Choose a PDF, JPEG, PNG or WebP file.'))
     expect(containerDocumentsApi.presignUpload).not.toHaveBeenCalled()
@@ -397,7 +397,7 @@ describe('ContainerDetail document upload (audit BE-12)', () => {
     } as never)
     const dialog = await openUpload()
     await pick(dialog, new File(['%PDF'], 'bl.pdf', { type: 'application/pdf' }))
-    await userEvent.click(screen.getByRole('button', { name: 'Upload' }))
+    await userEvent.click(within(dialog).getByRole('button', { name: 'Upload document' }))
     await waitFor(() =>
       expect(containerDocumentsApi.presignUpload).toHaveBeenCalledWith('c1', {
         filename: 'bl.pdf',
@@ -424,7 +424,7 @@ describe('ContainerDetail document upload (audit BE-12)', () => {
     )
     const dialog = await openUpload()
     await pick(dialog, new File(['x'], 'a.png', { type: 'image/png' }))
-    await userEvent.click(screen.getByRole('button', { name: 'Upload' }))
+    await userEvent.click(within(dialog).getByRole('button', { name: 'Upload document' }))
     const message = await screen.findByText("content_type 'image/png' is not allowed.")
     expect(dialog).toContainElement(message)
   })
@@ -442,7 +442,7 @@ describe('ContainerDetail document upload (audit BE-12)', () => {
     vi.mocked(containerDocumentsApi.confirmUpload).mockResolvedValue({} as never)
     const dialog = await openUpload()
     await pick(dialog, new File(['%PDF'], 'bl.pdf', { type: 'application/pdf' }))
-    await userEvent.click(screen.getByRole('button', { name: 'Upload' }))
+    await userEvent.click(within(dialog).getByRole('button', { name: 'Upload document' }))
     await waitFor(() => expect(containerDocumentsApi.confirmUpload).toHaveBeenCalledWith('c1', 'd1'))
     expect(vi.mocked(uploadToPresignedUrl).mock.invocationCallOrder[0]).toBeLessThan(
       vi.mocked(containerDocumentsApi.confirmUpload).mock.invocationCallOrder[0]!,
@@ -468,7 +468,7 @@ describe('ContainerDetail document upload (audit BE-12)', () => {
     )
     const dialog = await openUpload()
     await pick(dialog, new File(['%PDF'], 'bl.pdf', { type: 'application/pdf' }))
-    await userEvent.click(screen.getByRole('button', { name: 'Upload' }))
+    await userEvent.click(within(dialog).getByRole('button', { name: 'Upload document' }))
     expect(dialog).toContainElement(await screen.findByText('The file is larger than 5 MB.'))
   })
 
@@ -477,7 +477,7 @@ describe('ContainerDetail document upload (audit BE-12)', () => {
     const big = new File(['x'], 'scan.pdf', { type: 'application/pdf' })
     Object.defineProperty(big, 'size', { value: 6 * 1024 * 1024 })
     await pick(dialog, big)
-    await userEvent.click(screen.getByRole('button', { name: 'Upload' }))
+    await userEvent.click(within(dialog).getByRole('button', { name: 'Upload document' }))
     expect(await screen.findByText('This file is 6.0 MB. The limit is 5 MB.')).toBeInTheDocument()
     expect(containerDocumentsApi.presignUpload).not.toHaveBeenCalled()
   })

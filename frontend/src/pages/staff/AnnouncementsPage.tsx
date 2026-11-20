@@ -56,6 +56,9 @@ function EditForm({
         onChange={(e) => setBody(e.target.value)}
       />
       <div className={styles.rowActions}>
+        <Button size="sm" variant="secondary" onClick={onCancel} disabled={saving}>
+          Cancel
+        </Button>
         <Button
           size="sm"
           variant="primary"
@@ -64,9 +67,6 @@ function EditForm({
           onClick={() => onSave(title.trim(), body.trim() || undefined)}
         >
           Save
-        </Button>
-        <Button size="sm" variant="secondary" onClick={onCancel} disabled={saving}>
-          Cancel
         </Button>
       </div>
     </div>
@@ -122,6 +122,14 @@ function PendingRow({ req }: { req: AnnouncementRequest }): JSX.Element {
           <div className={styles.rowActions}>
             <Button
               size="sm"
+              variant="secondary"
+              onClick={() => setRejecting(false)}
+              disabled={reject.isPending}
+            >
+              Cancel
+            </Button>
+            <Button
+              size="sm"
               variant="danger"
               onClick={() =>
                 reject.mutate({
@@ -132,14 +140,6 @@ function PendingRow({ req }: { req: AnnouncementRequest }): JSX.Element {
               loading={reject.isPending}
             >
               Confirm reject
-            </Button>
-            <Button
-              size="sm"
-              variant="secondary"
-              onClick={() => setRejecting(false)}
-              disabled={reject.isPending}
-            >
-              Cancel
             </Button>
           </div>
         </div>
@@ -231,19 +231,19 @@ function HistoryRow({ entry }: { entry: AnnouncementHistoryEntry }): JSX.Element
             <>
               <Button
                 size="sm"
-                variant="danger"
-                loading={remove.isPending}
-                onClick={() => remove.mutate(entry.announcement_group_id)}
-              >
-                Confirm delete
-              </Button>
-              <Button
-                size="sm"
                 variant="secondary"
                 onClick={() => setConfirmingDelete(false)}
                 disabled={remove.isPending}
               >
                 Cancel
+              </Button>
+              <Button
+                size="sm"
+                variant="danger"
+                loading={remove.isPending}
+                onClick={() => remove.mutate(entry.announcement_group_id)}
+              >
+                Confirm delete
               </Button>
             </>
           )}

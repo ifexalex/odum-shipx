@@ -317,7 +317,7 @@ function SendPickupCodeModal({ note, onCancel, onSent }: SendPickupCodeModalProp
     <Modal
       open
       title="Send a new pickup code"
-      width={480}
+      size="sm"
       onClose={onCancel}
       footer={
         <>

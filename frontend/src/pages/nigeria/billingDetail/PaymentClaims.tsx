@@ -138,15 +138,6 @@ export function PaymentClaimsSection({
                             onChange={(e) => setRejectReason(e.target.value)}
                           />
                           <Button
-                            variant="danger"
-                            size="sm"
-                            loading={reviewingClaimId === claim.id}
-                            disabled={!rejectReason.trim()}
-                            onClick={() => void handleRejectClaim(claim.id)}
-                          >
-                            Confirm reject
-                          </Button>
-                          <Button
                             variant="ghost"
                             size="sm"
                             onClick={() => {
@@ -155,6 +146,15 @@ export function PaymentClaimsSection({
                             }}
                           >
                             Cancel
+                          </Button>
+                          <Button
+                            variant="danger"
+                            size="sm"
+                            loading={reviewingClaimId === claim.id}
+                            disabled={!rejectReason.trim()}
+                            onClick={() => void handleRejectClaim(claim.id)}
+                          >
+                            Confirm reject
                           </Button>
                         </div>
                       ) : (

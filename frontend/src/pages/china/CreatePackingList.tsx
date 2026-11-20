@@ -49,7 +49,7 @@ export function CreatePackingList(): JSX.Element {
         open={pendingSave !== null}
         onClose={() => setPendingSave(null)}
         title={`Create ${totals.cartons} packages?`}
-        width={520}
+        size="sm"
         footer={
           <>
             <Button variant="ghost" onClick={() => setPendingSave(null)}>

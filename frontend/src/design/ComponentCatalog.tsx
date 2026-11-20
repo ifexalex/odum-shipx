@@ -270,26 +270,33 @@ export function ComponentCatalog(): JSX.Element {
         </div>
       </Section>
 
-      <Section title="Modal">
+      <Section title="Modal (FD-12)">
+        <p style={{ margin: '0 0 var(--space-4)', color: 'var(--color-ink-3)' }}>
+          Sizes <code>sm</code> 480, <code>md</code> 560 (default), <code>lg</code> 720, <code>xl</code> 960; hand-rolled
+          dialogs use <code>--dialog-*</code>. Title 16 px semibold. Footer: Cancel, then the commit button on the right,
+          named for the action and the object (&quot;Record payment&quot;). Once something is typed, a backdrop click or
+          Escape asks &quot;Discard your changes?&quot; — type below, then click outside.
+        </p>
         <Button variant="primary" onClick={() => setModalOpen(true)}>
           Open modal
         </Button>
         <Modal
           open={modalOpen}
           onClose={() => setModalOpen(false)}
-          title="Confirm payment"
+          size="sm"
+          title="Record payment"
           footer={
             <>
               <Button variant="ghost" onClick={() => setModalOpen(false)}>
                 Cancel
               </Button>
               <Button variant="primary" onClick={() => setModalOpen(false)}>
-                Confirm payment
+                Record payment
               </Button>
             </>
           }
         >
-          This action cannot be undone.
+          <Field label="Amount (₦)" name="catalog_amount" type="number" />
         </Modal>
       </Section>
 

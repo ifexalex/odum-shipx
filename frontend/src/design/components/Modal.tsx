@@ -1,4 +1,4 @@
-import { useEffect, useId, useLayoutEffect, useRef, useState, type JSX, type MouseEvent, type ReactNode, type RefObject } from 'react'
+import { useEffect, useId, useLayoutEffect, useRef, useState, type JSX, type MouseEvent as ReactMouseEvent, type ReactNode, type RefObject } from 'react'
 import { createPortal } from 'react-dom'
 import styles from './Modal.module.css'
 import { Icon } from './Icon'
@@ -54,18 +54,57 @@ function unlockScroll(): void {
   restoreScroll = null
 }
 
+export interface DialogCloseGuard {
+  /** True while the "Discard your changes?" question is showing. */
+  confirming: boolean
+  /** Close, unless something was typed in the dialog: then ask first (FD-12). */
+  requestClose: () => void
+  /** Whether the dialog holds input the user typed since it opened. */
+  isDirty: () => boolean
+  keepEditing: () => void
+  discard: () => void
+}
+
 /**
  * Gives a dialog the behaviour every dialog needs, on the overlay element `overlayRef` points at: focus moves in when
- * it opens, Tab and Shift+Tab stay inside it, Escape calls `onClose`, background scroll is locked, and focus goes back
+ * it opens, Tab and Shift+Tab stay inside it, Escape asks to close, background scroll is locked, and focus goes back
  * to whatever opened it. A dialog with no accessible name is named from its first heading.
+ *
+ * Unsaved input (FD-12): once the user has typed into the dialog, Escape or a click on the backdrop asks "Discard
+ * your changes?" instead of closing, so a stray click no longer throws a half-filled form away. The dialog's own
+ * Cancel and Close buttons still close at once: that is a decision, not an accident.
  */
-function useDialogBehavior(overlayRef: RefObject<HTMLElement | null>, onClose: (() => void) | undefined): void {
+function useDialogBehavior(overlayRef: RefObject<HTMLElement | null>, onClose: (() => void) | undefined): DialogCloseGuard {
   // Read while rendering, before anything inside the dialog can take focus (an `autoFocus` field does so at commit).
   const [opener] = useState<Element | null>(() => document.activeElement)
+  const [confirming, setConfirming] = useState(false)
+  const dirtyRef = useRef(false)
+  const confirmingRef = useRef(false)
   const onCloseRef = useRef(onClose)
   useEffect(() => {
     onCloseRef.current = onClose
+    confirmingRef.current = confirming
   })
+
+  const ask = (show: boolean): void => {
+    confirmingRef.current = show
+    setConfirming(show)
+  }
+  const guardRef = useRef<DialogCloseGuard>(null as unknown as DialogCloseGuard)
+  guardRef.current = {
+    confirming,
+    isDirty: () => dirtyRef.current,
+    requestClose: () => {
+      if (dirtyRef.current) ask(true)
+      else onCloseRef.current?.()
+    },
+    keepEditing: () => ask(false),
+    discard: () => {
+      dirtyRef.current = false
+      ask(false)
+      onCloseRef.current?.()
+    },
+  }
 
   useEffect(() => {
     const overlay = overlayRef.current
@@ -78,10 +117,18 @@ function useDialogBehavior(overlayRef: RefObject<HTMLElement | null>, onClose: (
     // A field that asked for focus itself (`autoFocus`) keeps it.
     if (!overlay.contains(document.activeElement)) initialFocusTarget(overlay).focus()
 
+    const markDirty = (event: Event): void => {
+      // Typing in the discard question itself does not count.
+      if ((event.target as Element | null)?.closest?.('[data-discard-prompt]')) return
+      dirtyRef.current = true
+    }
+    overlay.addEventListener('input', markDirty)
+
     function onKeyDown(event: KeyboardEvent): void {
       if (overlayStack[overlayStack.length - 1] !== token || !overlay) return
       if (event.key === 'Escape') {
-        onCloseRef.current?.()
+        if (confirmingRef.current) guardRef.current.keepEditing()
+        else guardRef.current.requestClose()
         return
       }
       if (event.key !== 'Tab') return
@@ -111,12 +158,45 @@ function useDialogBehavior(overlayRef: RefObject<HTMLElement | null>, onClose: (
 
     return () => {
       document.removeEventListener('keydown', onKeyDown)
+      overlay.removeEventListener('input', markDirty)
       overlayStack.splice(overlayStack.indexOf(token), 1)
       unlockScroll()
       // Back to the control that opened the dialog, unless it has since left the page.
       if (opener instanceof HTMLElement && opener.isConnected) opener.focus()
     }
   }, [overlayRef, opener])
+
+  return guardRef.current
+}
+
+/** "Discard your changes?", shown over a dialog whose backdrop was clicked (or Escape pressed) with input in it. */
+function DiscardPrompt({ guard }: { guard: DialogCloseGuard }): JSX.Element {
+  const titleId = useId()
+  const keepRef = useRef<HTMLButtonElement>(null)
+  useEffect(() => keepRef.current?.focus(), [])
+  return (
+    <div
+      className={styles.discard}
+      role="alertdialog"
+      aria-modal="true"
+      aria-labelledby={titleId}
+      data-discard-prompt
+      onClick={(event) => event.stopPropagation()}
+    >
+      <p id={titleId} className={styles.discardTitle}>
+        Discard your changes?
+      </p>
+      <p className={styles.discardBody}>What you typed in this dialog will be lost.</p>
+      <div className={styles.discardActions}>
+        <button ref={keepRef} type="button" className={styles.discardKeep} onClick={guard.keepEditing}>
+          Keep editing
+        </button>
+        <button type="button" className={styles.discardDrop} onClick={guard.discard}>
+          Discard changes
+        </button>
+      </div>
+    </div>
+  )
 }
 
 let headingCount = 0
@@ -142,11 +222,19 @@ export interface ModalOverlayProps {
  */
 export function ModalOverlay({ onClose, children }: ModalOverlayProps): JSX.Element {
   const overlayRef = useRef<HTMLDivElement>(null)
-  useDialogBehavior(overlayRef, onClose)
+  const guard = useDialogBehavior(overlayRef, onClose)
 
   return createPortal(
-    <div ref={overlayRef} className={styles.overlay} tabIndex={-1} onClick={() => onClose?.()}>
+    <div
+      ref={overlayRef}
+      className={styles.overlay}
+      tabIndex={-1}
+      onClick={(event) => {
+        if (event.target === event.currentTarget) guard.requestClose()
+      }}
+    >
       {children}
+      {guard.confirming && <DiscardPrompt guard={guard} />}
     </div>,
     document.body,
   )
@@ -168,41 +256,64 @@ export function ModalOverlay({ onClose, children }: ModalOverlayProps): JSX.Elem
 export function DialogGuard({ onClose }: { onClose?: () => void }): JSX.Element {
   const anchorRef = useRef<HTMLSpanElement>(null)
   const overlayRef = useRef<HTMLElement | null>(null)
+  const [overlay, setOverlay] = useState<HTMLElement | null>(null)
   // Before `useDialogBehavior`'s effect runs (layout effects come first), point it at the parent.
   useLayoutEffect(() => {
-    const overlay = anchorRef.current?.parentElement ?? null
-    overlayRef.current = overlay
-    if (overlay && !overlay.hasAttribute('tabindex')) {
+    const parent = anchorRef.current?.parentElement ?? null
+    overlayRef.current = parent
+    setOverlay(parent)
+    if (parent && !parent.hasAttribute('tabindex')) {
       // Last-resort focus target for a dialog with nothing focusable in it.
-      overlay.tabIndex = -1
-      overlay.style.outline = 'none'
+      parent.tabIndex = -1
+      parent.style.outline = 'none'
     }
   }, [])
-  useDialogBehavior(overlayRef, onClose)
-  return <span ref={anchorRef} hidden />
+  const guard = useDialogBehavior(overlayRef, onClose)
+  const guardRef = useRef(guard)
+  guardRef.current = guard
+
+  // The page's own overlay closes on click. With unsaved input, catch that click on the backdrop before it reaches
+  // the page's handler (React's listener runs later, at the root) and ask first.
+  useEffect(() => {
+    if (!overlay) return undefined
+    const onBackdropClick = (event: MouseEvent): void => {
+      if (event.target !== overlay || !guardRef.current.isDirty()) return
+      event.stopPropagation()
+      guardRef.current.requestClose()
+    }
+    overlay.addEventListener('click', onBackdropClick)
+    return () => overlay.removeEventListener('click', onBackdropClick)
+  }, [overlay])
+
+  return (
+    <>
+      <span ref={anchorRef} hidden />
+      {guard.confirming && overlay && createPortal(<DiscardPrompt guard={guard} />, overlay)}
+    </>
+  )
 }
 
 export interface ModalProps {
   open: boolean
   onClose?: () => void
   title?: string
-  /** Panel width in px — 480 (alert), 560 (form, default), 720 (long-form), 960 (detail). */
-  width?: number
+  /** Panel width (FD-12): sm 480 (alert, confirmation), md 560 (form, default), lg 720 (long form), xl 960 (detail). */
+  size?: 'sm' | 'md' | 'lg' | 'xl'
   children: ReactNode
   footer?: ReactNode
 }
 
-export function Modal({ open, onClose, title, width = 560, children, footer }: ModalProps): JSX.Element | null {
+export function Modal({ open, onClose, title, size = 'md', children, footer }: ModalProps): JSX.Element | null {
   const titleId = useId()
   if (!open) return null
 
-  const stopPropagation = (event: MouseEvent<HTMLDivElement>): void => event.stopPropagation()
+  const stopPropagation = (event: ReactMouseEvent<HTMLDivElement>): void => event.stopPropagation()
 
   return (
     <ModalOverlay onClose={onClose}>
       <div
         className={styles.panel}
-        style={{ maxWidth: width }}
+        style={{ maxWidth: `var(--dialog-${size})` }}
         role="dialog"
         aria-modal="true"
         // Named by its own visible heading, so what a screen reader announces can never drift from what is on screen.

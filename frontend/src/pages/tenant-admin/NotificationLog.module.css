@@ -198,7 +198,7 @@
     padding: var(--space-8);
   }
   .modal {
-    width: 560px;
+    width: var(--dialog-md);
     border-radius: var(--radius-xl);
   }
 }
@@ -213,8 +213,8 @@
 
 .modalTitle {
   font-family: var(--font-display);
-  font-weight: 700;
-  font-size: var(--text-xl);
+  font-weight: 600;
+  font-size: var(--text-lg);
   color: var(--color-ink);
   margin: 0;
   letter-spacing: var(--tracking-tight);

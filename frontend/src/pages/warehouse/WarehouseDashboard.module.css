@@ -33,8 +33,8 @@
 .modalOverlay { position: fixed; inset: 0; background: var(--scrim-modal); display: flex; align-items: flex-end; justify-content: center; z-index: var(--layer-modal); }
 @media (min-width: 600px) { .modalOverlay { align-items: center; padding: var(--space-4); } }
 .modalPanel { background: var(--color-surface); border-radius: var(--radius-xl) var(--radius-xl) 0 0; padding: var(--space-6) var(--space-5); width: 100%; display: flex; flex-direction: column; gap: var(--space-5); }
-@media (min-width: 600px) { .modalPanel { border-radius: var(--radius-xl); max-width: 480px; } }
-.modalTitle { font-size: var(--text-xl); font-weight: 700; margin: 0; }
+@media (min-width: 600px) { .modalPanel { border-radius: var(--radius-xl); max-width: var(--dialog-sm); } }
+.modalTitle { font-size: var(--text-lg); font-weight: 600; margin: 0; }
 .modalRef { font-family: var(--font-mono); font-size: var(--text-md); color: var(--color-ink-4); }
 .modalBanner { margin: 0; }
 .modalActions { display: flex; gap: var(--space-3); }

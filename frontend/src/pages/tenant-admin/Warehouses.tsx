@@ -393,7 +393,7 @@ export function Warehouses(): JSX.Element {
         open={pendingRemoval !== null}
         onClose={confirming ? undefined : () => setPendingRemoval(null)}
         title={pendingRemoval?.stage === 'retire' ? 'Retire this warehouse instead?' : 'Delete this warehouse?'}
-        width={480}
+        size="sm"
         footer={
           pendingRemoval && (
             <>

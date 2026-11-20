@@ -156,6 +156,12 @@
   --layer-modal: 40;
   --layer-toast: 50;
 
+  /* Dialog widths (FD-12): alert/confirm, form, long form, detail. */
+  --dialog-sm: 480px;
+  --dialog-md: 560px;
+  --dialog-lg: 720px;
+  --dialog-xl: 960px;
+
   /* Motion (FD-05): two durations and one easing. Reduced motion turns both off (below). */
   --motion-fast: 120ms; /* colour and border changes */
   --motion-base: 180ms; /* size, position, opacity */

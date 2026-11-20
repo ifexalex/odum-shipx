@@ -281,3 +281,12 @@ Known limit: focus is placed once, when the dialog mounts. A dialog whose first 
 - Catalog: "Field family (FD-11, FD-50)" shows every control and state. The catalog now renders inside a router.
 - `Check` (the custom tri-state box) takes a required `label`; table selection boxes read "Select all rows" / "Select row N". Found by the new audit: on login, registration, the customer consent filter and the warehouse form, `Check` sat inside a `<label>` with text, which named nothing and — a span, not a form control — did not toggle when the text was clicked. Those are native `CheckboxField`s now. The platform tenant search had `label=""`; it is a `SearchField`.
 - Found on the way: the reports page's "Export" button has no handler (not fixed here).
+
+## Dialogs: named widths, quieter titles, and no lost input (FD-12, 2026-11-19)
+
+- **Unsaved input:** `useDialogBehavior` (shared by `Modal`/`ModalOverlay` and `DialogGuard`) marks a dialog dirty on any `input` event inside it. Then Escape or a backdrop click shows "Discard your changes?" (Keep editing / Discard changes) instead of closing; the dialog's own Cancel/Close buttons still close at once. For hand-rolled dialogs, `DialogGuard` catches the backdrop click in a native listener on the overlay, before the page's React `onClick` runs, and renders the prompt into the overlay. Escape while the prompt is up means Keep editing.
+- **Widths:** `Modal` takes `size` = `sm` 480 · `md` 560 (default) · `lg` 720 · `xl` 960 (was a free `width` number; 7 callers moved). Tokens `--dialog-sm|md|lg|xl` in `tokens.css`; hand-rolled dialog panels use them (440/480 → sm, 560 → md, 640 → lg).
+- **Titles** 16 px semibold (`--text-lg`, 600) in `Modal` and every hand-rolled `modalTitle`/`panelTitle`/`dialogTitle` (were 20–24 px bold).
+- **Footer order** Cancel, then the commit button on the right: fixed in the announcement edit/reject/delete rows and the payment-claim reject row (they had the commit first). Commit labels name the object: "Upload document", "Generate release note". The results screen's "Done" is `mutates={false}`.
+- Test: `ModalDiscard.test.tsx` (6) types into a Modal and into a hand-rolled dialog, clicks the backdrop, and the input is still there; Escape asks too; Discard closes; Cancel and an untouched backdrop click close at once. Mutation-checked.
+- Catalog: "Modal (FD-12)" lists the rules and demonstrates the prompt.

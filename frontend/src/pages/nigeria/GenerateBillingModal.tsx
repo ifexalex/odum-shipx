@@ -71,7 +71,7 @@ export function GenerateBillingModal({ onClose }: GenerateBillingModalProps): JS
         open
         onClose={onClose}
         title="Generate billing"
-        footer={<Button variant="primary" onClick={onClose}>Done</Button>}
+        footer={<Button variant="primary" mutates={false} onClick={onClose}>Done</Button>}
       >
         {outcome.results.length === 0 ? (
           <Banner variant="info" title="Nothing to invoice">

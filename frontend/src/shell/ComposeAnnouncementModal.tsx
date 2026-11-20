@@ -57,7 +57,7 @@ export function ComposeAnnouncementModal({ open, onClose }: ComposeAnnouncementM
   }
 
   return (
-    <Modal open={open} onClose={handleClose} title="New announcement" width={480}>
+    <Modal open={open} onClose={handleClose} title="New announcement" size="sm">
       <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-4)' }}>
         {send.isError && (
           <Banner variant="error" title="Couldn't send announcement">

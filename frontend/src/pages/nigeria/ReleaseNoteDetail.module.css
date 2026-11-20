@@ -54,14 +54,14 @@
    (44/48px touch targets, bottom sheet, full-width buttons) until now. */
 .modalOverlay { position: fixed; inset: 0; background: var(--scrim-modal); display: flex; align-items: flex-end; justify-content: center; z-index: var(--layer-modal); }
 .modalPanel { background: var(--color-surface); border-radius: var(--radius-xl) var(--radius-xl) 0 0; padding: var(--space-6) var(--space-5); width: 100%; display: flex; flex-direction: column; gap: var(--space-4); box-shadow: var(--shadow-modal); max-height: 90vh; overflow-y: auto; }
-.modalTitle { font-size: var(--text-lg); font-weight: 700; margin: 0; }
+.modalTitle { font-size: var(--text-lg); font-weight: 600; margin: 0; }
 .modalBanner { margin: 0; }
 .modalActions { display: flex; gap: var(--space-2); justify-content: flex-end; }
 .modalActions > * { min-height: 48px; font-size: var(--text-lg); }
 
 @container sxapp (min-width: 861px) {
   .modalOverlay { align-items: center; padding: var(--space-4); }
-  .modalPanel { border-radius: var(--radius-xl); max-width: 480px; padding: var(--space-6); }
+  .modalPanel { border-radius: var(--radius-xl); max-width: var(--dialog-sm); padding: var(--space-6); }
   .modalActions > * { min-height: 36px; font-size: inherit; }
 }
 

@@ -252,7 +252,7 @@ export function GenerateReleaseNoteModal({
             disabled={!canSubmit}
             onClick={() => void handleSubmit()}
           >
-            Generate
+            Generate release note
           </Action>
         </div>
       </div>

@@ -220,7 +220,7 @@ export function OnboardingRequests(): JSX.Element {
         open={rejecting !== null}
         onClose={() => setRejecting(null)}
         title="Reject onboarding request"
-        width={480}
+        size="sm"
         footer={
           <>
             <Button variant="ghost" onClick={() => setRejecting(null)} disabled={updateRequest.isPending}>

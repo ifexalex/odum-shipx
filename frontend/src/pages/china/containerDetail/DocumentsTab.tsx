@@ -251,7 +251,7 @@ export function DocumentsTab({
                 disabled={!file}
                 onClick={() => void handleUpload()}
               >
-                Upload
+                Upload document
               </Button>
             </div>
           </div>
