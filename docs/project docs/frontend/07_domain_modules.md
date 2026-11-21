@@ -2041,3 +2041,8 @@ All 15 record pages (container, packing list, CBM dispute, invoice, damage claim
 - **FD-44, `apiDownloadFile`**: a PDF's tab is opened inside the click, before the request (Safari and mobile browsers blocked a tab opened after it, so buttons looked dead), shows "Preparing your document…", then goes to the document; a blocked tab falls back to opening it here; a failure closes it. Spreadsheets take their filename from the link (the API signs `Content-Disposition`), since `<a download>` is ignored cross-origin.
 - **`lib/documents.ts::runDocument(label, run)`**: "Preparing the invoice…" while it works, "Couldn't prepare the invoice" with the reason when it fails. Used by `ExportButton` (which used to swallow failures), the invoice download and the Print / Invoice PDF menu items.
 - `DataExportFormat` (`xlsx | csv`) types the data exports; a record's PDF has its own binding.
+
+## Receipts you can download (FD-43, 2026-11-21)
+
+- **Every payment row** on the invoice page, staff and customer alike (`billingDetail/Breakdown.tsx::PaymentsTable`), has a **Receipt** button (named "Download receipt for ₦5,000 paid 21 Nov 2026" for screen readers) that opens `GET /v1/payments/{id}/receipt/pdf` through `billingApi.receiptPdf` with the FD-44 feedback. The endpoint existed and worked; no screen called it.
+- **The payment-success page** offers **Download receipt** for the payment it just confirmed, found on the invoice by its Paystack reference once the payment is verified (its own query, enabled on success; no button if the payment is not on the invoice yet).

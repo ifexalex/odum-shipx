@@ -1,8 +1,11 @@
+import { useQuery } from '@tanstack/react-query'
 import { useEffect, useState, type JSX } from 'react'
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import { billingApi } from '../../api/billing'
+import { billingKeys } from '../../api/keys'
 import { ApiError } from '../../api/client'
 import { Button } from '../../design/components'
+import { runDocument } from '../../lib/documents'
 import styles from './customer.module.css'
 import { useInvoiceCrumb } from './useInvoiceCrumb'
 import { ResultScreen } from '../../shell/ResultScreen'
@@ -33,6 +36,15 @@ export function PaymentSuccess(): JSX.Element {
   // browser back/forward).
   const missingReference = !id || !reference
   const [state, setState] = useState<ReconcileState>(() => (missingReference ? 'error' : 'verifying'))
+  // The payment this page confirmed, for its receipt (FD-43): found on the invoice by its Paystack reference, read once
+  // the payment is confirmed (its own cache slot, so a copy read before the payment cannot answer). A receipt is a
+  // bonus here: not finding one leaves the page as it was.
+  const { data: confirmedInvoice } = useQuery({
+    queryKey: [...billingKeys.detail(id ?? ''), 'after-payment', reference],
+    queryFn: () => billingApi.get(id!),
+    enabled: state === 'success' && !!id,
+  })
+  const receiptPaymentId = confirmedInvoice?.payments?.find((p) => p.payment_reference === reference)?.id ?? null
   const [error, setError] = useState<string | null>(() =>
     missingReference ? 'No payment reference found for this page.' : null,
   )
@@ -69,6 +81,15 @@ export function PaymentSuccess(): JSX.Element {
         title="Payment successful"
         actions={
           <>
+            {receiptPaymentId && (
+              <Button
+                variant="secondary"
+                icon="download"
+                onClick={() => void runDocument('your receipt', () => billingApi.receiptPdf(receiptPaymentId))}
+              >
+                Download receipt
+              </Button>
+            )}
             <Button variant="secondary" onClick={() => navigate(`/my-billing/${id}`)}>
               View invoice
             </Button>

@@ -24,7 +24,7 @@ const files = [...sources(join(SRC, 'pages')), ...sources(join(SRC, 'shell'))].f
 
 // API methods that read or fetch a file; anything else on an `xxxApi` changes data.
 const READS =
-  /^(get|list\w*|\w+List|stats|search|export\w*|download\w*|lookup|presign\w*|getUrl|getEvidenceUploadUrl|report|activity|history|events|for\w*|me|summary|preview|pdf|verifyPayment|initializePayment|\w*Stats|\w+ByContainer|byId|query\w*|fetch\w*|count\w*|check\w*|validate\w*|auditLog)$/
+  /^(get|list\w*|\w+List|stats|search|export\w*|download\w*|lookup|presign\w*|getUrl|getEvidenceUploadUrl|report|activity|history|events|for\w*|me|summary|preview|pdf|\w+Pdf|verifyPayment|initializePayment|\w*Stats|\w+ByContainer|byId|query\w*|fetch\w*|count\w*|check\w*|validate\w*|auditLog)$/
 
 /** Pages that change data but show the outcome as a whole screen or result panel instead of a toast. */
 const RESULT_SCREENS: Record<string, string> = {

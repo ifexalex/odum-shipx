@@ -464,6 +464,10 @@ export const billingApi = {
   export: (id: string, format: DataExportFormat) =>
     apiDownloadFile(`/v1/billing/${id}/export`, format, `billing-${id}.${format}`),
 
+  /** A payment's receipt as a PDF (FD-43), opened in a new tab. A customer may open their own. */
+  receiptPdf: (paymentId: string) =>
+    apiDownloadFile(`/v1/payments/${paymentId}/receipt/pdf`, 'pdf', `receipt-${paymentId}.pdf`),
+
   /** The invoice as a branded PDF (FD-39), opened in a new tab. A customer may open their own. */
   invoicePdf: (id: string) => apiDownloadFile(`/v1/billing/${id}/pdf`, 'pdf', `invoice-${id}.pdf`),
 
