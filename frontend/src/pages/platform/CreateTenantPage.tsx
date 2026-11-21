@@ -11,6 +11,7 @@ import { ApiError } from '../../api/client'
 import { platformApi, type OnboardingRequest, type SubscriptionTier, type Tenant } from '../../api/tenantManagement'
 import { Banner, Button, Card, Field, Icon, Mono, PhoneField, Pressable } from '../../design/components'
 import { PageHeader } from '../../shell/PageHeader'
+import { UnsavedChangesGuard } from '../../shell/UnsavedChangesGuard'
 import { SectionHead } from '../../shell/SectionHead'
 import { toast } from '../../design/toast'
 
@@ -75,6 +76,17 @@ export function CreateTenantPage(): JSX.Element {
     adminEmail.trim().length > 3 &&
     !submitting
 
+  // Typed but not yet created (FD-54): anything that differs from the form as it opened (blank, or the lead's details).
+  const unsaved =
+    !created &&
+    !submitting &&
+    (companyName !== (lead?.company_name ?? '') ||
+      contactEmail !== (lead?.contact_email ?? '') ||
+      contactPhone !== (lead?.contact_phone ?? '') ||
+      adminName !== (lead?.contact_name ?? '') ||
+      adminEmail !== (lead?.contact_email ?? '') ||
+      tier !== 'starter')
+
   async function handleSubmit(): Promise<void> {
     setSubmitting(true)
     setError(null)
@@ -126,6 +138,7 @@ export function CreateTenantPage(): JSX.Element {
 
   return (
     <div style={{ maxWidth: 760, margin: '0 auto' }}>
+      <UnsavedChangesGuard when={unsaved} />
       <PageHeader
         title="Onboard a new tenant"
         meta="Creates the tenant, provisions the first admin in Cognito, and applies default configuration."

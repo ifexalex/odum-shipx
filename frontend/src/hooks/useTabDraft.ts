@@ -67,11 +67,15 @@ export function useTabDraft<T>(form: string, value: T, pristine: T, enabled = tr
   const pristineSerialised = JSON.stringify(pristine)
   // Set by clear(), so a write already scheduled for the input being discarded does not bring it back.
   const cleared = useRef(false)
+  // The write waiting out the typing pause. Leaving the page (in the app or the browser) writes it at once, so the
+  // last few keystrokes before a click away are not lost (FD-54).
+  const pending = useRef<(() => void) | null>(null)
 
   useEffect(() => {
     if (!enabled) return undefined
     cleared.current = false
-    const timer = window.setTimeout(() => {
+    const write = (): void => {
+      pending.current = null
       if (cleared.current) return
       try {
         if (serialised === pristineSerialised) {
@@ -86,9 +90,21 @@ export function useTabDraft<T>(form: string, value: T, pristine: T, enabled = tr
       } catch {
         // Blocked or full storage: the form still works, it just keeps no draft.
       }
-    }, WRITE_DELAY_MS)
+    }
+    pending.current = write
+    const timer = window.setTimeout(write, WRITE_DELAY_MS)
     return () => window.clearTimeout(timer)
   }, [enabled, key, serialised, pristineSerialised])
+
+  // Flush a pending write when the form unmounts (navigating away) or the page is hidden (reload, tab close).
+  useEffect(() => {
+    const flush = (): void => pending.current?.()
+    window.addEventListener('pagehide', flush)
+    return () => {
+      window.removeEventListener('pagehide', flush)
+      flush()
+    }
+  }, [])
 
   const clear = useCallback(() => {
     cleared.current = true

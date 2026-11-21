@@ -44,3 +44,27 @@ describe('useTabDraft', () => {
     expect(result.current.savedAt).toBeNull()
   })
 })
+
+describe('useTabDraft when the form goes away (FD-54)', () => {
+  beforeEach(() => vi.useFakeTimers())
+  afterEach(() => vi.useRealTimers())
+
+  it('writes the last input at once when the form unmounts before the pause ends', () => {
+    const { unmount } = renderHook(() => useTabDraft('form', { name: 'Ada' }, { name: '' }), { wrapper })
+    unmount()
+    expect(readTabDraft('form', ME)).toEqual({ name: 'Ada' })
+  })
+
+  it('writes it when the page is hidden (reload, tab close)', () => {
+    renderHook(() => useTabDraft('form', { name: 'Ada' }, { name: '' }), { wrapper })
+    window.dispatchEvent(new Event('pagehide'))
+    expect(readTabDraft('form', ME)).toEqual({ name: 'Ada' })
+  })
+
+  it('does not bring back a cleared draft on unmount', () => {
+    const { result, unmount } = renderHook(() => useTabDraft('form', { name: 'Ada' }, { name: '' }), { wrapper })
+    act(() => result.current.clear())
+    unmount()
+    expect(readTabDraft('form', ME)).toBeNull()
+  })
+})

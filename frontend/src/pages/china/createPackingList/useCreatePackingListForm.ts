@@ -35,6 +35,11 @@ interface WizardDraft {
 
 const DRAFT_FORM = 'packing-list'
 
+/** The wizard's fields as one comparable string; which step it is on is not input. */
+function fieldsSnapshot(draft: WizardDraft): string {
+  return JSON.stringify({ ...draft, step: null })
+}
+
 /**
  * Everything the create/edit packing-list wizard holds: the chosen customer, container and dates, the item rows, the
  * draft being edited, the save. ``CreatePackingList`` renders the wizard; each step reads what it needs from here.
@@ -190,20 +195,26 @@ export function useCreatePackingListForm() {
   // The tab keeps the input until it is saved for real. An untouched form (the default warehouse pre-selected and
   // nothing else) stores nothing, so opening the wizard and leaving does not leave a "draft" behind.
   const defaultWarehouseId = warehouseQuery.data?.find((w) => w.is_default)?.id ?? ''
-  const tabDraft = useTabDraft<WizardDraft>(
-    DRAFT_FORM,
-    { step, customerId, containerId, arrivalWarehouseId, loadingDate, deliveryDate, items },
-    {
-      step,
-      customerId: '',
-      containerId: '',
-      arrivalWarehouseId: arrivalWarehouseId === defaultWarehouseId ? arrivalWarehouseId : '',
-      loadingDate: '',
-      deliveryDate: '',
-      items: [emptyItem()],
-    },
-    keepsTabDraft,
-  )
+  const current: WizardDraft = { step, customerId, containerId, arrivalWarehouseId, loadingDate, deliveryDate, items }
+  const pristine: WizardDraft = {
+    step,
+    customerId: '',
+    containerId: '',
+    arrivalWarehouseId: arrivalWarehouseId === defaultWarehouseId ? arrivalWarehouseId : '',
+    loadingDate: '',
+    deliveryDate: '',
+    items: [emptyItem()],
+  }
+  const tabDraft = useTabDraft<WizardDraft>(DRAFT_FORM, current, pristine, keepsTabDraft)
+
+  // Unsaved input, for the leave-without-saving guard (FD-54). A new list: anything typed. A server draft being
+  // edited: anything changed since it was loaded (its fields as copied in are the baseline, the step aside).
+  const snapshot = fieldsSnapshot(current)
+  const [editBaseline, setEditBaseline] = useState<string | null>(null)
+  if (editId && draftSeeded && editBaseline === null) setEditBaseline(snapshot)
+  const hasUnsavedInput = editId
+    ? editBaseline !== null && snapshot !== editBaseline
+    : snapshot !== fieldsSnapshot(pristine)
   // Whether the form opened from the tab's draft, to say so; dismissed once the user starts over or acknowledges it.
   const [restoredDraft, setRestoredDraft] = useState(seed !== null)
 
@@ -446,6 +457,7 @@ export function useCreatePackingListForm() {
     requestSave,
     handleSave,
     tabDraft,
+    hasUnsavedInput,
     restoredDraft,
     setRestoredDraft,
     startOver,

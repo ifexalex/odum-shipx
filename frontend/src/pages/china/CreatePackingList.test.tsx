@@ -1,6 +1,6 @@
-import { render, screen, waitFor } from '@testing-library/react'
+import { render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { MemoryRouter, Route, Routes } from 'react-router-dom'
+import { createMemoryRouter, MemoryRouter, Route, RouterProvider, Routes } from 'react-router-dom'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { MAX_ITEM_QUANTITY, packingListApi, type PackingList } from '../../api/packingList'
 import { containersApi, type Container } from '../../api/tracking'
@@ -851,5 +851,51 @@ describe('CreatePackingList — prerequisite links for a China office user (FD-2
     )
     const link = await screen.findByRole('link', { name: 'Create a container' })
     expect(link).toHaveAttribute('href', '/containers/new?return=%2Fpacking-lists%2Fnew')
+  })
+})
+
+describe('CreatePackingList — leaving with unsaved input (FD-54)', () => {
+  beforeEach(() => {
+    vi.mocked(customersApi.list).mockResolvedValue({
+      data: [customerStub],
+      meta: { pagination: { has_more: false, next_cursor: null, total_count: 1 } },
+    })
+    vi.mocked(containersApi.list).mockResolvedValue({
+      data: [containerStub],
+      meta: { pagination: { has_more: false, next_cursor: null, total_count: 1 } },
+    })
+  })
+
+  function renderInApp() {
+    const router = createMemoryRouter(
+      [
+        { path: '/packing-lists/new', element: <CreatePackingList /> },
+        { path: '/packing-lists', element: <p>Packing list index</p> },
+      ],
+      { initialEntries: ['/packing-lists/new'] },
+    )
+    render(withQuery(<RouterProvider router={router} />))
+    return router
+  }
+
+  it('asks before leaving a half-filled wizard, and the input is there on return', async () => {
+    const router = renderInApp()
+    await pickCustomerAndContainer()
+    await userEvent.click(screen.getByRole('button', { name: 'Cancel' }))
+    const dialog = await screen.findByRole('dialog', { name: 'Leave this packing list?' })
+    expect(dialog).toHaveTextContent('It stays in this tab')
+    await userEvent.click(within(dialog).getByRole('button', { name: 'Leave' }))
+    expect(await screen.findByText('Packing list index')).toBeInTheDocument()
+
+    await router.navigate('/packing-lists/new')
+    expect(await screen.findByText('Picked up where you left off')).toBeInTheDocument()
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Next: Add items' })).toBeEnabled())
+  })
+
+  it('leaves an untouched wizard without asking', async () => {
+    renderInApp()
+    await screen.findByRole('button', { name: 'Customer' })
+    await userEvent.click(screen.getByRole('button', { name: 'Cancel' }))
+    expect(await screen.findByText('Packing list index')).toBeInTheDocument()
   })
 })

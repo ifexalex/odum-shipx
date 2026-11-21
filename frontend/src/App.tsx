@@ -1,6 +1,6 @@
 import { QueryClientProvider } from '@tanstack/react-query'
-import type { JSX } from 'react'
-import { BrowserRouter } from 'react-router-dom'
+import { useState, type JSX } from 'react'
+import { BrowserRouter, createBrowserRouter, RouterProvider } from 'react-router-dom'
 import { LocalAuthProvider } from './auth/LocalAuthProvider'
 import { RoleSwitcher } from './auth/RoleSwitcher'
 import { SessionProvider } from './auth/SessionProvider'
@@ -64,6 +64,29 @@ function AppProviders({ children }: { children: JSX.Element }): JSX.Element {
   )
 }
 
+// A data router (FD-54), so a form can hold navigation while it has unsaved input (`shell/UnsavedChangesGuard`, which
+// needs `useBlocker`). One catch-all route renders the same tree as before: `AppRoutes` still declares every path with
+// <Routes>, and each layout keeps its own error boundary. The app-level boundary sits inside the route as well as
+// around the router, so a render error reaches it rather than the router's default error screen.
+function MainApp(): JSX.Element {
+  // Created on mount, not at import: the dev preview pages above run without it.
+  const [router] = useState(() =>
+    createBrowserRouter([
+      {
+        path: '*',
+        element: (
+          <ErrorBoundary variant="app">
+            <AppProviders>
+              <AppRoutes />
+            </AppProviders>
+          </ErrorBoundary>
+        ),
+      },
+    ]),
+  )
+  return <RouterProvider router={router} />
+}
+
 // Router + providers root. The dev-only path checks below are a temporary
 // stand-in for design/component preview tooling, kept outside the real
 // route tree on purpose — AppRoutes (Task 06) owns every production path.
@@ -90,11 +113,7 @@ function App(): JSX.Element {
   // Each layout has its own boundary around its routed content, which keeps the menu usable.
   return (
     <ErrorBoundary variant="app">
-      <BrowserRouter>
-        <AppProviders>
-          <AppRoutes />
-        </AppProviders>
-      </BrowserRouter>
+      <MainApp />
     </ErrorBoundary>
   )
 }

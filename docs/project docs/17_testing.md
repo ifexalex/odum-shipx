@@ -2569,3 +2569,9 @@ Found by running them: **a real bug** (invoice generation set a used credit to `
 ## Failed loads (FD-53, 2026-11-21)
 
 - `ActivityFeed.test.tsx` (+1): a failed request shows "Couldn't load activity", not the empty state, and Retry loads the entries. `StaffNotificationPanel.test.tsx` (+1): a failed list is not "No notifications yet.". `pages/customer/ReleaseNoteCard.test.tsx` (new, 2): nothing shown with no note; a failed load shows an error with a retry.
+
+## Unsaved changes (FD-54, 2026-11-21)
+
+- `shell/UnsavedChangesGuard.test.tsx` (new, 7, under `createMemoryRouter`): an untouched form leaves freely; unsaved input asks, Keep editing keeps it, Leave goes on; Back asks; an allowed destination does not; the tab-close prompt only while dirty; without a data router, the tab-close prompt only.
+- `CreatePackingList.test.tsx` (+2): leaving a half-filled wizard asks ("It stays in this tab") and the input is restored on return; an untouched wizard leaves without asking. `hooks/useTabDraft.test.tsx` (+3): a pending write is flushed on unmount and on `pagehide`; a cleared draft is not brought back.
+- Verified live (2026-11-21): the sidebar and in-app Back prompt on Company settings with an edit, Keep editing keeps it, reload gets the browser prompt; `scripts/headings.mjs` passes on every route under the data router.

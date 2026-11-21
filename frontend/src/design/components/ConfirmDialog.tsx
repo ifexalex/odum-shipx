@@ -31,6 +31,8 @@ export interface ConfirmDialogProps {
   children: ReactNode
   /** The commit button, naming the action: "Cancel container". */
   confirmLabel: string
+  /** The button that backs out; "Keep it" unless the action reads better with another ("Keep editing"). */
+  cancelLabel?: string
   /** How to undo it ("You can reactivate it later."), or false when it cannot be undone. */
   undo: string | false
   /** For an irreversible action: the reference the user must type before the button works. */
@@ -47,6 +49,7 @@ export function ConfirmDialog({
   title,
   children,
   confirmLabel,
+  cancelLabel = 'Keep it',
   undo,
   typeToConfirm,
   error,
@@ -70,7 +73,7 @@ export function ConfirmDialog({
       footer={
         <>
           <Button variant="ghost" onClick={cancel} disabled={busy}>
-            Keep it
+            {cancelLabel}
           </Button>
           <Button variant="danger" loading={busy} disabled={!matches} onClick={() => void onConfirm()}>
             {confirmLabel}

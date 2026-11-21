@@ -25,6 +25,7 @@ import { Banner, Button, Card, Field, PhoneField, Pressable, ColorField, Confirm
 import { useBranding, useSaveBranding, useTenantLogo } from '../../hooks/useConfig'
 import { TenantLogo } from '../../shell/TenantLogo'
 import { PageHeader } from '../../shell/PageHeader'
+import { UnsavedChangesGuard } from '../../shell/UnsavedChangesGuard'
 import { SectionHead } from '../../shell/SectionHead'
 import styles from './CompanySettings.module.css'
 import { toast } from '../../design/toast'
@@ -321,6 +322,8 @@ function CompanySettingsForm({
 
   return (
     <div>
+      {/* Ask before leaving with unsaved edits (FD-54); the logo saves on its own, so it never counts. */}
+      <UnsavedChangesGuard when={dirty && !save.isPending} />
       <PageHeader
         title="Company settings"
         meta="Your identity on packing lists, release notes, and the customer portal."

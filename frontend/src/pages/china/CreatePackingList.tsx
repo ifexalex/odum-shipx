@@ -2,7 +2,9 @@ import { type JSX } from 'react'
 import { BULK_CONFIRM_THRESHOLD } from '../../api/packingList'
 import { Banner, Button, Card, Modal, LinesSkeleton } from '../../design/components'
 import { PageHeader } from '../../shell/PageHeader'
+import { UnsavedChangesGuard } from '../../shell/UnsavedChangesGuard'
 import styles from './CreatePackingList.module.css'
+import { CREATE_CONTAINER_FOR_PACKING_LIST } from './createPackingList/Step1'
 import { WizardSteps } from './createPackingList/WizardSteps'
 import { Step1 } from './createPackingList/Step1'
 import { Step2 } from './createPackingList/Step2'
@@ -13,10 +15,22 @@ import { formatCbm, formatKg, formatTime } from '../../lib/format'
 export function CreatePackingList(): JSX.Element {
   const form = useCreatePackingListForm()
   const { isEdit, step, pendingSave, setPendingSave, submitting, editReady, error, totals, bulkLines, handleSave } = form
-  const { tabDraft, restoredDraft, setRestoredDraft, startOver } = form
+  const { tabDraft, hasUnsavedInput, restoredDraft, setRestoredDraft, startOver } = form
 
   return (
     <div className={styles.wrap}>
+      {/* Ask before leaving with unsaved input (FD-54). A new list's input is kept in the tab, so leaving loses nothing
+          until the tab closes; creating the container it needs is a round trip, not a departure. */}
+      <UnsavedChangesGuard
+        when={hasUnsavedInput && !submitting}
+        allow={(pathname) => pathname === CREATE_CONTAINER_FOR_PACKING_LIST.split('?')[0]}
+        title="Leave this packing list?"
+        undo={isEdit ? false : 'It stays in this tab, so you can come back and finish it.'}
+      >
+        {isEdit
+          ? 'Your changes to this draft have not been saved.'
+          : 'It has not been saved to ShipX yet. Save a draft to keep it for good.'}
+      </UnsavedChangesGuard>
       <PageHeader
         title={isEdit ? 'Edit draft packing list' : 'Create packing list'}
         meta="Capture carton-level details for a customer's cargo. Submit for approval when complete."

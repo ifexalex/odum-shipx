@@ -20,6 +20,7 @@ import { packingListApi, type PackingList } from '../../api/packingList'
 import { type UploadedEvidence } from '../nigeria/EvidenceUploader'
 import { Banner, Button, Field, Select, LinesSkeleton } from '../../design/components'
 import { PageHeader } from '../../shell/PageHeader'
+import { UnsavedChangesGuard } from '../../shell/UnsavedChangesGuard'
 import { EvidenceUploader } from '../nigeria/EvidenceUploader'
 import styles from './customer.module.css'
 import { statusLabel } from '../../design/status'
@@ -74,6 +75,12 @@ export function MyClaimsNew(): JSX.Element {
 
   const cartonsAffected = cartonsRaw.split(/[\n,\s]+/).map((t) => t.trim()).filter(Boolean)
 
+  // A claim being written but not yet filed (FD-54). Once filed it exists, and adding evidence is optional.
+  const unsaved =
+    step === 'details' &&
+    !submitting &&
+    (selectedShipmentId !== '' || description.trim() !== '' || cartonsRaw.trim() !== '')
+
   async function handleCreateClaim(): Promise<void> {
     if (!selectedShipment?.container_number) return
     setSubmitting(true)
@@ -119,6 +126,7 @@ export function MyClaimsNew(): JSX.Element {
 
   return (
     <div className={styles.page}>
+      <UnsavedChangesGuard when={unsaved}>Your claim has not been filed yet, and what you wrote will be lost.</UnsavedChangesGuard>
       <PageHeader title="File a damage claim" />
 
       <p className={styles.stepIndicator}>{STEP_LABELS[step]}</p>
