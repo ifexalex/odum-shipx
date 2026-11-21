@@ -119,14 +119,14 @@ describe('ManifestDetail', () => {
   it('shows Resolve discrepancy for nigeria_office_staff when discrepancies_found', async () => {
     vi.mocked(manifestApi.get).mockResolvedValue(manifestStub({ verification_status: 'discrepancies_found' }))
     renderPage('nigeria_office_staff')
-    await waitFor(() => expect(screen.getByRole('button', { name: /Resolve discrepancy/ })).toBeInTheDocument())
+    await waitFor(() => expect(screen.getByRole('button', { name: /Resolve discrepancies/ })).toBeInTheDocument())
   })
 
   it('hides Resolve discrepancy for china_office_staff — verify-only, not resolve', async () => {
     vi.mocked(manifestApi.get).mockResolvedValue(manifestStub({ verification_status: 'discrepancies_found' }))
     renderPage('china_office_staff')
     await waitFor(() => expect(screen.getByRole('heading', { name: 'Manifest HLBU9384712' })).toBeInTheDocument())
-    expect(screen.queryByRole('button', { name: /Resolve discrepancy/ })).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /Resolve discrepancies/ })).not.toBeInTheDocument()
   })
 
   it('submits a Verified outcome with no discrepancies', async () => {
@@ -183,9 +183,9 @@ describe('ManifestDetail', () => {
     vi.mocked(manifestApi.get).mockResolvedValue(manifestStub({ verification_status: 'discrepancies_found' }))
     vi.mocked(manifestApi.resolveDiscrepancy).mockResolvedValue(manifestStub({ verification_status: 'resolved' }))
     renderPage('nigeria_office_staff')
-    await waitFor(() => expect(screen.getByRole('button', { name: /Resolve discrepancy/ })).toBeInTheDocument())
+    await waitFor(() => expect(screen.getByRole('button', { name: /Resolve discrepancies/ })).toBeInTheDocument())
 
-    await userEvent.click(screen.getByRole('button', { name: /Resolve discrepancy/ }))
+    await userEvent.click(screen.getByRole('button', { name: /Resolve discrepancies/ }))
     await userEvent.type(screen.getByLabelText('Resolution notes', { exact: false }), 'Recounted, all cartons found.')
     await userEvent.click(screen.getByRole('button', { name: /Confirm resolution/ }))
 

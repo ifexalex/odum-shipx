@@ -22,9 +22,9 @@ import { DocumentsTab } from './containerDetail/DocumentsTab'
 import { OverviewTab } from './containerDetail/OverviewTab'
 import { PackingListsTab, TrackingTab } from './containerDetail/Tabs'
 import { fetchAllPackingLists } from './containerDetail/packingLists'
-import { statusLabel } from '../../design/status'
 import { toast } from '../../design/toast'
 import { formatDate } from '../../lib/format'
+import { nextActionLabel } from '../../design/nextAction'
 
 
 export function ContainerDetail(): JSX.Element {
@@ -171,7 +171,7 @@ export function ContainerDetail(): JSX.Element {
                   icon="arrowright"
                   onClick={() => setShowAdvanceModal(true)}
                 >
-                  Advance to {statusLabel('container', target)}
+                  {nextActionLabel('container', container.status)}
                 </Button>
               )
             }

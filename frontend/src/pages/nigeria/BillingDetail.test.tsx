@@ -296,3 +296,22 @@ describe('BillingDetail exchange-rate source (audit BE-11)', () => {
     expect(screen.queryByText(/Last known market rate/)).not.toBeInTheDocument()
   })
 })
+
+describe('BillingDetail next step (FD-23)', () => {
+  const headerOf = async (): Promise<HTMLElement> =>
+    (await screen.findByRole('heading', { level: 1 })).closest('[data-page-start]') as HTMLElement
+
+  it('leads with recording a payment while money is owed', async () => {
+    renderPage('nigeria_office_staff', { billing: BILLING_STUB })
+    expect(within(await headerOf()).getByRole('button', { name: 'Record payment' })).toBeInTheDocument()
+  })
+
+  it('leads with the release note once the invoice is paid', async () => {
+    renderPage('nigeria_office_staff', {
+      billing: { ...BILLING_STUB, payment_status: 'paid', total_paid_ngn: '174375.00', outstanding_ngn: '0' },
+    })
+    const header = await headerOf()
+    expect(within(header).getByRole('button', { name: 'Generate release note' })).toBeInTheDocument()
+    expect(within(header).queryByRole('button', { name: 'Record payment' })).toBeNull()
+  })
+})

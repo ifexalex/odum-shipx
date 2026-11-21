@@ -25,6 +25,7 @@ import { PageHeader } from '../../shell/PageHeader'
 import { Section } from '../../shell/Section'
 import { RecordLink } from '../../shell/RecordLink'
 import { toast } from '../../design/toast'
+import { nextActionLabel } from '../../design/nextAction'
 
 
 // ---------------------------------------------------------------------------
@@ -207,12 +208,17 @@ export function BillingDetail(): JSX.Element {
                 </span>
               ),
             ]}
+            // One next step (FD-23): money owed → record it; settled → release the goods.
             primary={
-              isActionable && (
+              isActionable ? (
                 <Action variant="primary" icon="coin" onClick={() => setShowPaymentModal(true)}>
-                  Record payment
+                  {nextActionLabel('invoice', 'unpaid')}
                 </Action>
-              )
+              ) : canGenerateRelease ? (
+                <Action variant="primary" icon="file" onClick={() => setShowReleaseNoteModal(true)}>
+                  {nextActionLabel('invoice', 'paid')}
+                </Action>
+              ) : null
             }
             actions={
               <>
@@ -220,7 +226,7 @@ export function BillingDetail(): JSX.Element {
                   formats={['xlsx', 'csv']}
                   onExport={(fmt) => billingApi.export(billing.id, fmt)}
                 />
-                {canGenerateRelease && (
+                {isActionable && canGenerateRelease && (
                   <Action
                     variant="secondary"
                     icon="file"

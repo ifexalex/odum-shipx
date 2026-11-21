@@ -103,16 +103,16 @@ describe('RefundDetail', () => {
     expect((await screen.findAllByText('Overpayment refund')).length).toBeGreaterThan(0)
   })
 
-  it('shows Accounts review button for pending_review', async () => {
+  it('shows Complete review for pending_review (FD-23)', async () => {
     renderPage()
     // Button role is the specific element to assert
-    expect(await screen.findByRole('button', { name: /accounts review/i })).toBeTruthy()
+    expect(await screen.findByRole('button', { name: /complete review/i })).toBeTruthy()
   })
 
   it('shows no action buttons when processed', async () => {
     renderPage({ ...REFUND, status: 'processed', amount_approved_ngn: '25000' })
     await screen.findAllByText('Overpayment refund')
-    expect(screen.queryByRole('button', { name: /accounts review/i })).toBeNull()
+    expect(screen.queryByRole('button', { name: /complete review/i })).toBeNull()
     expect(screen.queryByRole('button', { name: /approve/i })).toBeNull()
   })
 

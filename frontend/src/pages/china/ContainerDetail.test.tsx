@@ -135,7 +135,7 @@ describe('ContainerDetail', () => {
   it('shows the advance-status action for china_office_staff on a china-owned stage', async () => {
     vi.mocked(containersApi.get).mockResolvedValue(containerStub)
     renderPage('china_office_staff')
-    await waitFor(() => expect(screen.getByText('Advance to Sealed')).toBeInTheDocument())
+    await waitFor(() => expect(screen.getByText('Seal container')).toBeInTheDocument())
   })
 
   it('hides the advance-status action for nigeria_office_staff on a china-owned stage', async () => {
@@ -201,8 +201,8 @@ describe('ContainerDetail', () => {
     vi.mocked(containersApi.get).mockResolvedValue({ ...containerStub, status: 'sealed' })
     vi.mocked(containersApi.updateStatus).mockResolvedValue({ ...containerStub, status: 'in_transit' })
     renderPage('china_office_staff')
-    await waitFor(() => expect(screen.getByText('Advance to In transit')).toBeInTheDocument())
-    await userEvent.click(screen.getByText('Advance to In transit'))
+    await waitFor(() => expect(screen.getByText('Mark in transit')).toBeInTheDocument())
+    await userEvent.click(screen.getByText('Mark in transit'))
 
     // Step 1 — Continue is gated on the required ship date
     const continueButton = screen.getByRole('button', { name: 'Continue' })

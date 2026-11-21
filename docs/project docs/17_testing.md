@@ -2525,3 +2525,7 @@ Found by running them: **a real bug** (invoice generation set a used credit to `
 ## One detail layout (FD-19, 2026-11-21)
 
 - `frontend/src/pages/detailPages.test.ts` (16): every record page uses `DetailPage`; both invoices use `InvoiceBreakdown`. `shell/DetailPage.test.tsx` (2): layout order, the summary as a complementary region, a section named by its heading with the heading inside its card. `pages/shared/InvoiceBreakdown.test.tsx` (3): rows and figures, optional rows, the last-known-rate note. `ContainerDetail.test.tsx`: the container type is stated once (it asserted it appeared twice).
+
+## Next steps (FD-23, 2026-11-21)
+
+- `frontend/src/design/nextAction.test.ts` (32): each status's next step, none for finished records, every registry status covered. `BillingDetail.test.tsx` (+2): owed → Record payment, paid → Generate release note. Page tests renamed for the new labels.

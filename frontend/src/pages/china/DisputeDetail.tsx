@@ -14,6 +14,10 @@ import { PageHeader } from '../../shell/PageHeader'
 import { formatCbm, formatDate } from '../../lib/format'
 import { toast } from '../../design/toast'
 import { DetailPage } from '../../shell/DetailPage'
+import { nextActionLabel } from '../../design/nextAction'
+
+/** Where the header's "Resolve dispute" takes the reader (FD-23). */
+const RESOLVE_ID = 'resolve-dispute'
 
 function ResolvePanel({ dispute, onResolved }: { dispute: DisputeDetailData; onResolved: () => void }): JSX.Element {
   const [outcome, setOutcome] = useState<'resolved_adjusted' | 'resolved_no_change'>('resolved_no_change')
@@ -42,6 +46,7 @@ function ResolvePanel({ dispute, onResolved }: { dispute: DisputeDetailData; onR
   }
 
   return (
+    <div id={RESOLVE_ID} tabIndex={-1} className={styles.resolveAnchor}>
     <Card padding="large">
       <SectionHead title="Resolve" sub="Decide whether the billed CBM stands or needs correcting." />
       <div style={{ height: 12 }} />
@@ -84,6 +89,7 @@ function ResolvePanel({ dispute, onResolved }: { dispute: DisputeDetailData; onR
         </Button>
       </div>
     </Card>
+    </div>
   )
 }
 
@@ -137,6 +143,22 @@ export function DisputeDetail(): JSX.Element {
             dispute.invoice_number,
             `Filed ${formatDate(dispute.submitted_at)}`,
           ]}
+          // The next step (FD-23): the form is at the foot of the page, below the evidence it is decided on.
+          primary={
+            !terminal && (
+              <Button
+                variant="primary"
+                icon="check"
+                onClick={() => {
+                  const panel = document.getElementById(RESOLVE_ID)
+                  panel?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+                  panel?.querySelector<HTMLElement>('input, textarea, select, button')?.focus({ preventScroll: true })
+                }}
+              >
+                {nextActionLabel('dispute', 'acknowledged')}
+              </Button>
+            )
+          }
         />
       }
     >

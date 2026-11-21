@@ -17,6 +17,7 @@ import { PageHeader } from '../../shell/PageHeader'
 import { RecordLink } from '../../shell/RecordLink'
 import { toast } from '../../design/toast'
 import { DetailPage } from '../../shell/DetailPage'
+import { nextActionLabel } from '../../design/nextAction'
 
 interface RejectModalProps {
   onCancel: () => void
@@ -263,7 +264,7 @@ export function PackingListDetail(): JSX.Element {
                 loading={actionSubmitting}
                 onClick={() => void handleApprove()}
               >
-                Approve
+                {nextActionLabel('packingList', 'pending_approval')}
               </Button>
             ) : canSubmitDraft ? (
               <Button
@@ -272,11 +273,11 @@ export function PackingListDetail(): JSX.Element {
                 loading={actionSubmitting}
                 onClick={() => void handleSubmitForApproval()}
               >
-                Submit for approval
+                {nextActionLabel('packingList', 'draft')}
               </Button>
             ) : canEdit ? (
               <Button variant="primary" icon="edit" onClick={startEditing}>
-                Edit &amp; resubmit
+                {nextActionLabel('packingList', 'rejected')}
               </Button>
             ) : null
           }

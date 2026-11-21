@@ -48,3 +48,12 @@
   margin-top: var(--space-2);
   flex-wrap: wrap;
 }
+
+/* The resolve form, where the header's "Resolve dispute" scrolls to. */
+.resolveAnchor {
+  scroll-margin-top: var(--space-4);
+}
+
+.resolveAnchor:focus {
+  outline: none;
+}

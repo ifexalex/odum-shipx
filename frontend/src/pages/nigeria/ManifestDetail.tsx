@@ -23,6 +23,7 @@ import { PageHeader } from '../../shell/PageHeader'
 import { toast } from '../../design/toast'
 import { formatKg } from '../../lib/format'
 import { DetailPage } from '../../shell/DetailPage'
+import { nextActionLabel } from '../../design/nextAction'
 
 // ---------------------------------------------------------------------------
 // Carton diff helpers
@@ -409,11 +410,11 @@ export function ManifestDetail(): JSX.Element {
           primary={
             canVerify ? (
               <Action variant="primary" icon="check" onClick={() => setShowVerifyModal(true)}>
-                Verify manifest
+                {nextActionLabel('manifest', 'pending')}
               </Action>
             ) : canResolve ? (
               <Action variant="primary" icon="check" onClick={() => setShowResolveModal(true)}>
-                Resolve discrepancy
+                {nextActionLabel('manifest', 'discrepancies_found')}
               </Action>
             ) : null
           }

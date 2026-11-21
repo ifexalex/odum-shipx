@@ -25,6 +25,7 @@ import { RecordLink } from '../../shell/RecordLink'
 import { toast } from '../../design/toast'
 import { Section } from '../../shell/Section'
 import { DetailPage } from '../../shell/DetailPage'
+import { nextActionLabel } from '../../design/nextAction'
 
 // ---------------------------------------------------------------------------
 // Status helpers
@@ -410,11 +411,11 @@ export function RefundDetail(): JSX.Element {
           primary={
             isTerminalRefundStatus(refund.status) ? null : showReviewBtn ? (
               <Action variant="primary" icon="check" onClick={() => setShowReview(true)}>
-                Accounts review
+                {nextActionLabel('refund', 'pending_review')}
               </Action>
             ) : showApproveBtn ? (
               <Action variant="primary" icon="check" onClick={() => setShowApprove(true)}>
-                Approve
+                {nextActionLabel('refund', 'pending_approval')}
               </Action>
             ) : null
           }
