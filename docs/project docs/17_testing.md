@@ -2560,3 +2560,8 @@ Found by running them: **a real bug** (invoice generation set a used credit to `
 - `tests/unit/test_tenant_logo.py` (new, 20): the policy (PNG/JPEG/WebP accepted; SVG, PDF, HTML refused; over 1 MB refused); presign under `{tenant}/branding/logo/`; set stores the key, keeps the rest, returns a link not the key, audits, deletes the replaced file; set refuses another tenant's key, a non-logo key, a path that walks out, a nested key, an upload that never landed, and deletes an oversize one; remove drops the key and deletes the file; readers get a link and a foreign key is never signed; a branding save keeps the stored logo and ignores one sent by the client.
 - `CompanySettings.test.tsx` (+5): no forward-looking copy; upload to storage then set; SVG and over-1 MB refused before sending; the uploaded logo shows and Remove confirms first; a branding save never sends `logo_url`.
 - Verified live against a second local API on :3011 (2026-11-21): presign, PUT to Moto S3, set, fetch through `logo_url`, a branding save keeping the logo, staff 403, foreign key 422, remove.
+
+## Sign-up entry points (FD-30, 2026-11-21)
+
+- `pages/marketing/LandingPage.test.tsx` (new, 3): no link to `/register`; every "Request access" goes to `/get-started`; no "free trial", "30-day" or "no card required" copy. Off the untested-pages list.
+- `RegisterScreen.test.tsx` (rewritten chooser tests, +4): bare `/register` explains the company link with no "Which are you?"; the footer's Request access reaches `/get-started`; every channel starts unticked; nothing ticked sends `[]`, one ticked sends exactly that one.

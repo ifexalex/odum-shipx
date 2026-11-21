@@ -40,7 +40,8 @@ export function RegisterScreen(): JSX.Element {
   const [email, setEmail] = useState('')
   const [phone, setPhone] = useState('')
   const [whatsapp, setWhatsapp] = useState('')
-  const [channels, setChannels] = useState<string[]>(['sms', 'whatsapp', 'email'])
+  // Nothing ticked until the person ticks it: a pre-ticked box is not consent (FD-30, SEC-01).
+  const [channels, setChannels] = useState<string[]>([])
   const [agreed, setAgreed] = useState(false)
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -118,22 +119,15 @@ export function RegisterScreen(): JSX.Element {
     <AuthShell>
       <FormHead
         title="Create your customer account"
-        sub="For customers of a shipping company — track your shipments and manage billing. Not onboarding a company?"
+        sub="For customers of a shipping company: track your shipments and pay your invoices."
       />
 
       {!slug && (
         <div style={{ marginBottom: 'var(--space-5)' }}>
-          <Banner variant="warning" title="Which are you?">
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-2)' }}>
-              <span>
-                <strong>A customer</strong> of a shipping company? Use the company-specific sign-up link your
-                shipping company gave you, or wait for their invite.
-              </span>
-              <span>
-                <strong>A shipping company</strong> wanting to run your operations on ShipX?{' '}
-                <Link to="/get-started" className={[styles.link, styles.noWrap].join(' ')}>Get started here <Icon name="arrowright" size={12} /></Link>
-              </span>
-            </div>
+          {/* Only why the form cannot be sent from here; companies are no longer sent to this page (FD-30). */}
+          <Banner variant="info" title="Use your shipping company's link">
+            Sign up through the link your shipping company sent you, or wait for their invite. It connects your
+            account to them.
           </Banner>
         </div>
       )}
@@ -211,6 +205,10 @@ export function RegisterScreen(): JSX.Element {
       <p className={styles.footerLine} style={{ marginTop: 'var(--space-5)' }}>
         Already have an account?{' '}
         <Link to="/login" className={styles.footerLinkStrong}>Sign in <Icon name="arrowright" size={12} /></Link>
+      </p>
+      <p className={styles.footerLine}>
+        Running a shipping company?{' '}
+        <Link to="/get-started" className={styles.link}>Request access</Link>
       </p>
     </AuthShell>
   )

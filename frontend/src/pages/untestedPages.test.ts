@@ -21,7 +21,6 @@ const KNOWN_UNTESTED: Record<string, string> = {
   './customer/CustomerStepper.tsx': 'shipment progress strip (rendered in MyShipments tests)',
   './customer/PaymentFailed.tsx': 'static "payment failed" page',
   './customer/ReleaseNoteCard.tsx': 'release note summary card',
-  './marketing/LandingPage.tsx': 'marketing page',
   './nigeria/EvidenceUploader.tsx': 'claim evidence upload widget',
   './platform/CreateTenantPage.tsx': 'tenant provisioning form',
   './platform/PlatformAuditLog.tsx': 'cross-tenant audit log',
