@@ -68,10 +68,10 @@ function renderPage() {
 describe('WarehouseDashboard', () => {
   beforeEach(() => vi.restoreAllMocks())
 
-  it('renders dashboard title', () => {
+  it('is titled for its task, not the role the shell already names (FD-26)', () => {
     mockLists({})
     renderPage()
-    expect(screen.getByText('Warehouse')).toBeTruthy()
+    expect(screen.getByRole('heading', { level: 1, name: 'Pickups' })).toBeInTheDocument()
   })
 
   it('shows empty state when queue is empty', async () => {
@@ -114,8 +114,16 @@ describe('WarehouseDashboard', () => {
     })
     renderPage()
 
-    await waitFor(() => expect(screen.getByText('Urgent')).toBeInTheDocument())
+    await waitFor(() => expect(screen.getByText('Waiting 24h+')).toBeInTheDocument())
     expect(screen.getByText(/1 urgent · 24h\+ old/)).toBeInTheDocument()
+  })
+
+  it('shows no chip on a note that is not urgent (FD-26)', async () => {
+    mockLists({ active: [note({})] })
+    renderPage()
+    await screen.findByRole('button', { name: 'Record pickup' })
+    expect(screen.queryByText('Waiting 24h+')).toBeNull()
+    expect(screen.queryByText('New')).toBeNull()
   })
 
   // P2-2 — scan-or-type lookup: active match opens the pickup sheet directly
@@ -217,3 +225,42 @@ describe('WarehouseDashboard pickup sheet (UX-09)', () => {
   })
 })
 
+describe('WarehouseDashboard at the counter: scanner and keyboard only (FD-26)', () => {
+  beforeEach(() => vi.restoreAllMocks())
+
+  it('starts with the reference field focused', async () => {
+    mockLists({})
+    renderPage()
+    await waitFor(() => expect(screen.getByLabelText('Release note reference')).toHaveFocus())
+  })
+
+  it('records a pickup and is ready for the next scan with no click', async () => {
+    mockLists({ active: [note({ pickup_code_required: true })] })
+    const recordPickup = vi.spyOn(rnModule.releaseNotesApi, 'recordPickup').mockResolvedValue({
+      release_note_id: 'rn1', release_note_status: 'picked_up', pickup_record_id: 'pr-1',
+      pickup_date: '2026-11-16', pickup_time: '10:00', attendant_name: 'Tunde',
+      customer_service_officer_name: null, accounting_officer_name: null,
+      remaining_cartons: 0, shipment_status: null,
+    })
+    renderPage()
+    await screen.findByRole('button', { name: 'Record pickup' })
+    // The scanner types the reference and sends Enter.
+    await userEvent.keyboard('RN-20260716-ABC123{Enter}')
+    // The sheet opens on the code field; the collector reads the code out and Enter confirms.
+    await waitFor(() => expect(screen.getByLabelText(/Pickup code/)).toHaveFocus())
+    await userEvent.keyboard('048213{Enter}')
+    await waitFor(() => expect(recordPickup).toHaveBeenCalledWith('rn1', expect.objectContaining({ pickup_code: '048213' })))
+    expect(await screen.findByText('Pickup recorded')).toBeInTheDocument()
+    await waitFor(() => expect(screen.getByLabelText('Release note reference')).toHaveFocus())
+    expect(screen.getByLabelText('Release note reference')).toHaveValue('')
+  })
+
+  it('says what is needed when Look up is pressed with nothing entered, instead of a disabled button', async () => {
+    mockLists({})
+    renderPage()
+    const lookUp = screen.getByRole('button', { name: 'Look up' })
+    expect(lookUp).toBeEnabled()
+    await userEvent.click(lookUp)
+    expect(await screen.findByText('Scan or type a release note reference first.')).toBeInTheDocument()
+  })
+})

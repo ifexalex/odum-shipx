@@ -10,7 +10,7 @@
  */
 
 import { useQuery, useQueryClient } from '@tanstack/react-query'
-import { useMemo, useState, type JSX } from 'react'
+import { useEffect, useMemo, useRef, useState, type FormEvent, type JSX } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { ApiError, type ListResponse } from '../../api/client'
 import { releaseNotesApi, type DelegateIdType, type PickupResult, type ReleaseNote, type RecordPickupInput } from '../../api/releaseNotes'
@@ -93,7 +93,10 @@ function PickupSheet({ note, onCancel, onSuccess }: PickupSheetProps): JSX.Eleme
   const codeGiven = !codeRequired || pickupCode.trim().length > 0
   const canSubmit = Number(cartons) > 0 && delegateFilled && collectorNamed && codeGiven && !codeLocked && !submitting
 
-  async function handleSubmit(): Promise<void> {
+  async function handleSubmit(event?: FormEvent<HTMLFormElement>): Promise<void> {
+    event?.preventDefault()
+    // Enter submits the form (FD-26: a keyboard-only pickup), so the same checks as the button apply.
+    if (!canSubmit) return
     setSubmitting(true)
     setError(null)
     try {
@@ -121,7 +124,13 @@ function PickupSheet({ note, onCancel, onSuccess }: PickupSheetProps): JSX.Eleme
   return (
     <div className={styles.modalOverlay} onClick={onCancel}>
       <DialogGuard onClose={onCancel} />
-      <div className={styles.modalPanel} onClick={(e) => e.stopPropagation()} role="dialog" aria-modal="true">
+      <form
+        className={styles.modalPanel}
+        onClick={(e) => e.stopPropagation()}
+        onSubmit={(e) => void handleSubmit(e)}
+        role="dialog"
+        aria-modal="true"
+      >
         <div>
           <h3 className={styles.modalTitle}>{note.customer_name ?? 'Pickup'}</h3>
           <span className={styles.modalRef}>{note.reference_number}</span>
@@ -138,6 +147,8 @@ function PickupSheet({ note, onCancel, onSuccess }: PickupSheetProps): JSX.Eleme
 
         {codeRequired && !codeLocked && (
           <Field
+            // The first thing to ask the collector, so the sheet opens on it.
+            autoFocus
             label="Pickup code"
             name="pickup_code"
             required
@@ -151,6 +162,7 @@ function PickupSheet({ note, onCancel, onSuccess }: PickupSheetProps): JSX.Eleme
         )}
 
         <Field
+          autoFocus={!codeRequired || codeLocked}
           label="Cartons collected"
           name="cartons_released"
           required
@@ -193,11 +205,11 @@ function PickupSheet({ note, onCancel, onSuccess }: PickupSheetProps): JSX.Eleme
 
         <div className={styles.modalActions}>
           <Button variant="ghost" onClick={onCancel} disabled={submitting}>Cancel</Button>
-          <Button variant="primary" loading={submitting} disabled={!canSubmit} onClick={() => void handleSubmit()}>
+          <Button type="submit" variant="primary" loading={submitting} disabled={!canSubmit}>
             Confirm pickup
           </Button>
         </div>
-      </div>
+      </form>
     </div>
   )
 }
@@ -212,24 +224,19 @@ interface NoteCardProps {
   lastPickup: PickupResult | null
 }
 
-// Urgency is shown only when it is not normal (FD-08): a badge on every card that says "Normal" is noise, and it
-// used the warning colour.
-const URGENCY_BADGE: Record<Exclude<Urgency, 'normal'>, { label: string; variant: 'error' | 'info' }> = {
-  urgent: { label: 'Urgent', variant: 'error' },
-  new: { label: 'New', variant: 'info' },
-}
+// A chip only on a note waiting more than a day (FD-08, FD-26): a chip on every card, "Normal" or "New", is noise
+// and hides the ones that matter.
 
 function NoteCard({ note, onPickup, lastPickup }: NoteCardProps): JSX.Element {
   const justDone = lastPickup?.release_note_id === note.id && lastPickup.release_note_status === 'picked_up'
-  const level = urgencyOf(note)
-  const urgency = level === 'normal' ? null : URGENCY_BADGE[level]
+  const urgent = urgencyOf(note) === 'urgent'
   return (
     <div className={styles.card} style={justDone ? { opacity: 0.5 } : undefined}>
       <div className={styles.cardLeft}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-2)', flexWrap: 'wrap' }}>
-          {urgency && (
-            <Badge variant={urgency.variant} size="sm">
-              {urgency.label}
+          {urgent && (
+            <Badge variant="error" size="sm">
+              Waiting 24h+
             </Badge>
           )}
           <div className={styles.cardRef}>{note.reference_number}</div>
@@ -256,11 +263,8 @@ function NoteCard({ note, onPickup, lastPickup }: NoteCardProps): JSX.Element {
         {justDone ? (
           <span style={{ color: 'var(--color-success)', fontWeight: 700 }}>✓ Done</span>
         ) : (
-          <Button
-            variant="primary"
-            className={styles.pickupBtn}
-            onClick={() => onPickup(note)}
-          >
+          // Secondary: the page's one primary is the lookup, which a scanner drives (FD-26).
+          <Button variant="secondary" size="lg" className={styles.pickupBtn} onClick={() => onPickup(note)}>
             Record pickup
           </Button>
         )}
@@ -281,6 +285,13 @@ export function WarehouseDashboard(): JSX.Element {
   const [lookupRef, setLookupRef] = useState('')
   const [lookupError, setLookupError] = useState<string | null>(null)
   const [lookupBusy, setLookupBusy] = useState(false)
+  // The counter works from a scanner (FD-26): the reference field has focus on arrival and after every pickup, so
+  // the next customer's note is scanned with no click.
+  const lookupField = useRef<HTMLInputElement>(null)
+  const [refocusLookup, setRefocusLookup] = useState(0)
+  useEffect(() => {
+    lookupField.current?.focus()
+  }, [refocusLookup])
 
   // Queue + real completed-today count + expired backlog, still in parallel
   // (P2-2) but as three cached queries rather than one Promise.all in an
@@ -306,7 +317,8 @@ export function WarehouseDashboard(): JSX.Element {
     staleTime: STALE_30S,
   })
 
-  const loading = activeQ.isLoading || pickedUpQ.isLoading || expiredQ.isLoading
+  // The queue waits only on its own list; the counts fill in as theirs arrive.
+  const loading = activeQ.isLoading
   const firstError = activeQ.error ?? pickedUpQ.error ?? expiredQ.error
   const error = firstError
     ? firstError instanceof ApiError
@@ -329,6 +341,8 @@ export function WarehouseDashboard(): JSX.Element {
   function handlePickupSuccess(result: PickupResult): void {
     setPickingNote(null)
     setLastPickup(result)
+    // After the sheet has closed and handed focus back, take it to the field for the next customer.
+    setRefocusLookup((n) => n + 1)
     if (result.release_note_status === 'picked_up') {
       // Drop the fully-collected note from the queue after a short delay so
       // staff sees the ✓ first. Written into the cache rather than local state;
@@ -351,7 +365,12 @@ export function WarehouseDashboard(): JSX.Element {
   // else (picked_up / expired) opens the detail page for context.
   async function handleLookup(): Promise<void> {
     const ref = lookupRef.trim().toUpperCase()
-    if (!ref) return
+    if (!ref) {
+      // Never a disabled button (it was unreadable on the panel): an empty lookup says what is needed instead.
+      setLookupError('Scan or type a release note reference first.')
+      lookupField.current?.focus()
+      return
+    }
     setLookupError(null)
     const local = activeNotes.find((n) => n.reference_number.toUpperCase() === ref)
     if (local) {
@@ -379,7 +398,8 @@ export function WarehouseDashboard(): JSX.Element {
 
   return (
     <div className={styles.page}>
-      <PageHeader title="Warehouse" meta="Active release notes to process today" />
+      {/* Not "Warehouse" again: the role badge and the nav item already say where this is (FD-26). */}
+      <PageHeader title="Pickups" meta="Scan a customer's release note to record what they collect." />
 
       {error && (
         <div className={styles.banner}>
@@ -393,14 +413,10 @@ export function WarehouseDashboard(): JSX.Element {
           <Icon name="qr" size={40} stroke={2} />
         </div>
         <div className={styles.scanBody}>
-          <h2 className={styles.scanTitle}>Scan or type a release note reference</h2>
-          <p className={styles.scanSub}>
-            Use the handheld scanner or type the RN-XXXX reference on the customer&apos;s release note.
-          </p>
           <div className={styles.scanRow}>
             <Field
+              ref={lookupField}
               label="Release note reference"
-              hideLabel
               name="release_note_reference"
               className={styles.scanField}
               placeholder="RN-20260716-ABC123"
@@ -408,25 +424,30 @@ export function WarehouseDashboard(): JSX.Element {
               onChange={(e) => { setLookupRef(e.target.value); setLookupError(null) }}
               onKeyDown={(e) => { if (e.key === 'Enter') void handleLookup() }}
             />
-            <Button variant="primary" icon="arrowright" loading={lookupBusy} disabled={!lookupRef.trim()} onClick={() => void handleLookup()}>
+            <Button variant="primary" size="lg" trailingIcon="arrowright" loading={lookupBusy} onClick={() => void handleLookup()}>
               Look up
             </Button>
           </div>
-          {lookupError && <div className={styles.scanError}>{lookupError}</div>}
+          <p className={styles.scanSub}>Scan it with the handheld scanner, or type it and press Enter.</p>
+          {lookupError && (
+            <div className={styles.scanError} role="alert">
+              {lookupError}
+            </div>
+          )}
         </div>
       </div>
 
       <div className={styles.statsRow}>
         <StatCard
           label="Awaiting pickup"
-          value={activeNotes.length}
-          sublabel={urgentCount > 0 ? `${urgentCount} urgent · 24h+ old` : 'none urgent'}
+          value={activeQ.data ? activeNotes.length : '—'}
+          sublabel={activeQ.data && (urgentCount > 0 ? `${urgentCount} urgent · 24h+ old` : 'none urgent')}
         />
         <StatCard label="Completed today" value={doneToday ?? '—'} />
         <StatCard
           label="Expired · not collected"
           value={expiredCount ?? '—'}
-          sublabel={expiredCount && expiredCount !== '0' ? 'contact the customer' : 'all clear'}
+          sublabel={expiredCount === null ? undefined : expiredCount !== '0' ? 'contact the customer' : 'all clear'}
         />
       </div>
 
@@ -440,7 +461,7 @@ export function WarehouseDashboard(): JSX.Element {
 
       <div className={styles.queueHead}>
         <span className={styles.queueLabel}>Queue</span>
-        <span className={styles.queueCount}>{plural(activeNotes.length, 'note')}</span>
+        <span className={styles.queueCount}>{activeQ.data && plural(activeNotes.length, 'note')}</span>
       </div>
 
       {loading && <LinesSkeleton label="Loading" />}

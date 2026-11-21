@@ -2540,3 +2540,7 @@ Found by running them: **a real bug** (invoice generation set a used credit to `
 - `CreatePackingList.test.tsx` (+6): the no-container callout (ask the China office without a session; a "Create a container" link with `return` for China office staff), no callout when one is loading, the draft restored on reopening, nothing stored for an untouched form, Start over.
 - `CreateContainer.test.tsx` (+2): goes back to `return` after creating; ignores a `return` that leaves the app.
 - `test/setup.ts` clears `sessionStorage` before every test, so one test's draft never pre-fills the next.
+
+## Warehouse counter (FD-26, 2026-11-21)
+
+- `WarehouseDashboard.test.tsx` (+4, 2 updated): the reference field is focused on arrival; a full pickup by keyboard only (scan + Enter, code + Enter, focus back on the empty field with the toast shown); Look up with nothing entered explains rather than being disabled; no chip on a note that is not urgent; the title is "Pickups"; the urgent chip reads "Waiting 24h+".
