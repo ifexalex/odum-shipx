@@ -216,6 +216,21 @@ class UpdateTenantConfigRequest(BaseModel):
     bank_transfer_config: BankTransferConfigRequest | None = None
 
 
+class LogoUploadRequest(BaseModel):
+    """Presigned-upload request for the tenant's logo (FD-29)."""
+
+    filename: str = Field(min_length=1, max_length=255)
+    content_type: str = Field(min_length=1, max_length=100)
+    #: The file's size in bytes; at most 1 MB (shared.uploads.TENANT_LOGO), checked by the upload policy.
+    size_bytes: int | None = None
+
+
+class SetLogoRequest(BaseModel):
+    """Use an uploaded file as the tenant's logo (FD-29). The key must be one this tenant's presign returned."""
+
+    file_key: str = Field(min_length=1, max_length=512)
+
+
 class PaystackConfigRequest(BaseModel):
     """Connect this tenant's own Paystack account (audit gap: multi-tenant
     payment gateway, 2026-07-19).

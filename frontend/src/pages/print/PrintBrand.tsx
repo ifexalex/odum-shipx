@@ -9,13 +9,9 @@
 import type { JSX } from 'react'
 import { type BrandingConfig } from '../../api/tenantManagement'
 import { KolaMark, ShipxWordmark } from '../../design/components'
-import { isValidHexColor } from '../../design/deriveBrandShades'
+import { TenantLogo } from '../../shell/TenantLogo'
 import styles from './print.module.css'
 
-function initialsFor(name: string): string {
-  const words = name.trim().split(/\s+/).filter(Boolean)
-  return words.slice(0, 2).map((w) => w[0]!.toUpperCase()).join('') || '?'
-}
 
 export function PrintBrandHead({ branding }: { branding: BrandingConfig | null }): JSX.Element {
   const name = branding?.display_name?.trim()
@@ -27,12 +23,16 @@ export function PrintBrandHead({ branding }: { branding: BrandingConfig | null }
       </div>
     )
   }
-  const color = branding?.primary_color && isValidHexColor(branding.primary_color) ? branding.primary_color : '#1c7922'
   return (
     <div className={styles.brand}>
-      <div className={styles.brandTile} style={{ background: color }}>
-        {initialsFor(name)}
-      </div>
+      {/* The uploaded logo, or the initials on the brand colour (FD-29). */}
+      <TenantLogo
+        name={name}
+        color={branding?.primary_color}
+        logoUrl={branding?.logo_url}
+        className={styles.brandTile}
+        fallbackColor="#1c7922"
+      />
       <div>
         <div className={styles.brandName}>{name}</div>
         {branding?.tagline?.trim() && <div className={styles.brandTagline}>{branding.tagline}</div>}

@@ -11,16 +11,19 @@
  *
  * Renders inside ConfigLayout (persistent config sub-nav rail — routes.tsx).
  *
- * Divergence from the prototype (documented in AUDIT_GAPS.md): the logo is an
- * initials tile + brand colour, not an uploaded image — there is no
- * tenant-scoped upload endpoint yet (the only presigned-upload route is
- * claim-scoped). The tile mirrors exactly what TenantBrand renders in-app.
+ * The logo (FD-29) is an uploaded image (PNG, JPEG or WebP, up to 1 MB) through
+ * the tenant-scoped logo endpoints, saved as soon as it is chosen rather than with
+ * the form; until one is uploaded, the initials on the brand colour stand in.
+ * `TenantLogo` draws it here, in the live preview and on the printed documents.
  */
-import { useMemo, useState, type JSX } from 'react'
+import { useMemo, useRef, useState, type JSX } from 'react'
 import { type BrandingConfig } from '../../api/tenantManagement'
 import { isValidHexColor } from '../../design/deriveBrandShades'
-import { Banner, Button, Card, Field, PhoneField, Pressable, ColorField, ErrorState } from '../../design/components'
-import { useBranding, useSaveBranding } from '../../hooks/useConfig'
+import { ApiError } from '../../api/client'
+import { LogoFileError } from '../../api/uploads'
+import { Banner, Button, Card, Field, PhoneField, Pressable, ColorField, ConfirmDialog, ErrorState, FileInput } from '../../design/components'
+import { useBranding, useSaveBranding, useTenantLogo } from '../../hooks/useConfig'
+import { TenantLogo } from '../../shell/TenantLogo'
 import { PageHeader } from '../../shell/PageHeader'
 import { SectionHead } from '../../shell/SectionHead'
 import styles from './CompanySettings.module.css'
@@ -30,7 +33,8 @@ import { toast } from '../../design/toast'
 // Form state
 // ---------------------------------------------------------------------------
 
-type FormState = Required<{ [K in keyof BrandingConfig]: string }>
+// The logo is not a form field: it is uploaded and saved on its own (FD-29).
+type FormState = Required<{ [K in Exclude<keyof BrandingConfig, 'logo_url'>]: string }>
 
 const EMPTY_FORM: FormState = {
   display_name: '',
@@ -63,14 +67,6 @@ function brandingFromForm(form: FormState): BrandingConfig {
   return out
 }
 
-function initialsFor(name: string): string {
-  const words = name.trim().split(/\s+/).filter(Boolean)
-  if (words.length === 0) return '?'
-  return words
-    .slice(0, 2)
-    .map((w) => w[0]!.toUpperCase())
-    .join('')
-}
 
 // ---------------------------------------------------------------------------
 // Live document preview (prototype DocPreview) — driven by the form state so
@@ -78,9 +74,8 @@ function initialsFor(name: string): string {
 // (PrintPackingList/PrintReleaseNote), which read the same branding fields.
 // ---------------------------------------------------------------------------
 
-function DocPreview({ form, doc }: { form: FormState; doc: 'pl' | 'rn' }): JSX.Element {
+function DocPreview({ form, doc, logoUrl }: { form: FormState; doc: 'pl' | 'rn'; logoUrl?: string }): JSX.Element {
   const name = form.display_name.trim() || 'Your company name'
-  const brandColor = isValidHexColor(form.primary_color) ? form.primary_color : 'var(--color-primary)'
   const footerLines = form.document_footer.trim()
     ? form.document_footer.trim().split('\n')
     : ['Set a document footer to see it here.']
@@ -89,9 +84,7 @@ function DocPreview({ form, doc }: { form: FormState; doc: 'pl' | 'rn' }): JSX.E
     <div className={styles.docPreview} data-testid="doc-preview">
       <div className={styles.docHead}>
         <div className={styles.docBrand}>
-          <div className={styles.docLogo} style={{ background: brandColor }}>
-            {initialsFor(name)}
-          </div>
+          <TenantLogo name={name} color={form.primary_color} logoUrl={logoUrl} className={styles.docLogo} />
           <div>
             <div className={styles.docCompany}>{name}</div>
             {form.tagline.trim() && <div className={styles.docTagline}>{form.tagline}</div>}
@@ -171,6 +164,102 @@ function DocPreview({ form, doc }: { form: FormState; doc: 'pl' | 'rn' }): JSX.E
           <div key={i}>{line}</div>
         ))}
       </div>
+    </div>
+  )
+}
+
+// ---------------------------------------------------------------------------
+// Logo (FD-29): uploaded and saved on its own, not with the form
+// ---------------------------------------------------------------------------
+
+function LogoBlock({
+  name,
+  color,
+  logoUrl,
+  disabled,
+}: {
+  name: string
+  color: string
+  logoUrl?: string
+  disabled: boolean
+}): JSX.Element {
+  const { upload, remove } = useTenantLogo()
+  const fileInput = useRef<HTMLInputElement>(null)
+  const [problem, setProblem] = useState<string | null>(null)
+  const [confirmRemove, setConfirmRemove] = useState(false)
+
+  async function handleFile(file: File | undefined): Promise<void> {
+    if (!file) return
+    setProblem(null)
+    try {
+      await upload.mutateAsync(file)
+      toast.success(logoUrl ? 'Logo replaced' : 'Logo uploaded', 'Your documents show it from now on.')
+    } catch (err) {
+      setProblem(
+        err instanceof LogoFileError || err instanceof ApiError ? err.message : 'The logo could not be uploaded. Try again.',
+      )
+    } finally {
+      if (fileInput.current) fileInput.current.value = ''
+    }
+  }
+
+  async function handleRemove(): Promise<void> {
+    await remove.mutateAsync()
+    setConfirmRemove(false)
+    toast.success('Logo removed', 'Your initials on your brand colour are used instead.')
+  }
+
+  return (
+    <div className={styles.logoBlock}>
+      <TenantLogo name={name} color={color} logoUrl={logoUrl} className={styles.logoTile} />
+      <div className={styles.logoMeta}>
+        <div className={styles.logoTitle}>Logo</div>
+        <div className={styles.logoDesc}>
+          {logoUrl
+            ? 'Shown on your packing lists and release notes.'
+            : 'Until you upload one, your initials on your brand colour are used.'}{' '}
+          PNG, JPEG or WebP, up to 1 MB. Saved as soon as you choose it.
+        </div>
+        {problem && (
+          <p className={styles.logoProblem} role="alert">
+            {problem}
+          </p>
+        )}
+      </div>
+      <div className={styles.logoActions}>
+        <FileInput
+          ref={fileInput}
+          label="Logo file"
+          accept="image/png,image/jpeg,image/webp"
+          onChange={(e) => void handleFile(e.target.files?.[0])}
+        />
+        <Button
+          variant="secondary"
+          icon="upload"
+          loading={upload.isPending}
+          disabled={disabled}
+          onClick={() => fileInput.current?.click()}
+        >
+          {logoUrl ? 'Replace logo' : 'Upload logo'}
+        </Button>
+        {logoUrl && (
+          <Button variant="danger-ghost" disabled={disabled} onClick={() => setConfirmRemove(true)}>
+            Remove logo
+          </Button>
+        )}
+      </div>
+      <ConfirmDialog
+        open={confirmRemove}
+        title="Remove your logo?"
+        confirmLabel="Remove logo"
+        undo="You can upload it again at any time."
+        busy={remove.isPending}
+        error={remove.error ? (remove.error instanceof ApiError ? remove.error.message : 'The logo could not be removed.') : null}
+        onConfirm={handleRemove}
+        onCancel={() => setConfirmRemove(false)}
+      >
+        Documents will show your initials on your brand colour instead.
+      </ConfirmDialog>
     </div>
   )
 }
@@ -266,32 +355,22 @@ function CompanySettingsForm({
               helper="Shown beneath the logo on documents."
               disabled={isLoading}
             />
-            <div className={styles.logoRow}>
-              <div
-                className={styles.logoTile}
-                style={{ background: isValidHexColor(form.primary_color) ? form.primary_color : 'var(--color-primary)' }}
-              >
-                {initialsFor(form.display_name || '?')}
-              </div>
-              <div className={styles.logoMeta}>
-                <div className={styles.logoTitle}>Logo mark</div>
-                <div className={styles.logoDesc}>
-                  Your initials on your brand colour — used in the sidebar and on documents. Image
-                  upload is coming once file storage for branding lands.
-                </div>
-              </div>
-              <div className={styles.colorField}>
-                <ColorField
-                  label="Brand colour"
-                  name="primary_color"
-                  optional
-                  value={form.primary_color}
-                  onChange={(hex) => setForm((f) => ({ ...f, primary_color: hex }))}
-                  error={colorInvalid ? 'Use a hex colour like #1a73e8.' : undefined}
-                  disabled={isLoading}
-                />
-              </div>
-            </div>
+            <LogoBlock
+              name={form.display_name || '?'}
+              color={form.primary_color}
+              logoUrl={branding?.logo_url}
+              disabled={isLoading}
+            />
+            <ColorField
+              label="Brand colour"
+              name="primary_color"
+              optional
+              value={form.primary_color}
+              onChange={(hex) => setForm((f) => ({ ...f, primary_color: hex }))}
+              error={colorInvalid ? 'Use a hex colour like #1a73e8.' : undefined}
+              helper="Buttons and highlights across your workspace, and the initials tile when there is no logo."
+              disabled={isLoading}
+            />
           </Card>
 
           <Card>
@@ -380,7 +459,7 @@ function CompanySettingsForm({
               </Pressable>
             </div>
             <div style={{ height: 16 }} />
-            <DocPreview form={form} doc={previewDoc} />
+            <DocPreview form={form} doc={previewDoc} logoUrl={branding?.logo_url} />
           </Card>
         </div>
       </div>

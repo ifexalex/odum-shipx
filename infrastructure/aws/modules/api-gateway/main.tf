@@ -243,6 +243,9 @@ locals {
     "GET /v1/tenant/rate-history"                             = "tenant_management"
     "PATCH /v1/tenant/me"                                     = "tenant_management" # self-service profile/locale
     "GET /v1/tenants/me/quota"                                = "tenant_management"
+    "POST /v1/tenant/config/logo/upload-url"                  = "tenant_management" # FD-29 tenant logo
+    "PUT /v1/tenant/config/logo"                              = "tenant_management"
+    "DELETE /v1/tenant/config/logo"                           = "tenant_management"
     "PUT /v1/tenant/config/paystack"                          = "tenant_management"
     "DELETE /v1/tenant/config/paystack"                       = "tenant_management"
     "POST /v1/tenant/config/paystack/test"                    = "tenant_management"

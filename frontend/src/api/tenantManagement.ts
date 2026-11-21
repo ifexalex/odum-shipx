@@ -359,6 +359,14 @@ export interface WebhookConfig {
  * frontend writes and every consumer (print documents, ThemeProvider, sidebar
  * TenantBrand) reads. All fields optional: absent = fall back to defaults.
  */
+/** A presigned direct-to-storage upload: PUT the file to `upload_url` with `upload_headers`, then use `file_key`. */
+export interface PresignedUpload {
+  file_key: string
+  upload_url: string
+  upload_method?: string
+  upload_headers?: Record<string, string>
+}
+
 export interface BrandingConfig {
   /** Company name as shown on documents and the portal (may differ from the legal `tenant.company_name`). */
   display_name?: string
@@ -366,6 +374,11 @@ export interface BrandingConfig {
   tagline?: string
   /** Hex colour driving the tenant-scoped theme (ThemeProvider derives shades). */
   primary_color?: string
+  /**
+   * A short-lived link to the uploaded logo (FD-29), or absent for the initials tile. Read-only: the logo is set through
+   * `configApi.setLogo`, and the API ignores this field on a branding save.
+   */
+  logo_url?: string
   /** Multiline pickup address printed on release notes. */
   warehouse_address?: string
   pickup_hours?: string
@@ -513,6 +526,17 @@ export const configApi = {
 
   getConfig: () =>
     apiRequest<TenantConfig>({ method: 'GET', path: '/v1/tenant/config' }),
+
+  /** Presign the logo upload (FD-29): PNG, JPEG or WebP, at most 1 MB. */
+  getLogoUploadUrl: (body: { filename: string; content_type: string; size_bytes: number }) =>
+    apiRequest<PresignedUpload>({ method: 'POST', path: '/v1/tenant/config/logo/upload-url', body }),
+
+  /** Use the uploaded file as the logo; returns the branding with its new `logo_url`. */
+  setLogo: (fileKey: string) =>
+    apiRequest<BrandingConfig>({ method: 'PUT', path: '/v1/tenant/config/logo', body: { file_key: fileKey } }),
+
+  /** Stop using a logo: documents go back to the initials tile. */
+  removeLogo: () => apiRequest<BrandingConfig>({ method: 'DELETE', path: '/v1/tenant/config/logo' }),
 
   updateConfig: (body: {
     webhook_config?: Partial<Omit<WebhookConfig, 'secret'>>

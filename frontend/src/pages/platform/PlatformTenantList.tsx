@@ -18,6 +18,7 @@ import { statusLabel, statusesOf } from '../../design/status'
 import { FilterBar } from '../../shell/FilterBar'
 import { ListPage } from '../../shell/ListPage'
 import { PageHeader } from '../../shell/PageHeader'
+import { initialsFor } from '../../lib/initials'
 import styles from './admin.module.css'
 
 const TIER_COLOR: Record<string, string> = {
@@ -26,15 +27,6 @@ const TIER_COLOR: Record<string, string> = {
   enterprise: 'var(--color-accent)',
 }
 
-function initialsFor(name: string): string {
-  const words = name.trim().split(/\s+/).filter(Boolean)
-  return (
-    words
-      .slice(0, 2)
-      .map((w) => w[0]!.toUpperCase())
-      .join('') || '?'
-  )
-}
 
 // Stable per-tenant avatar hue from the id, prototype-style variety.
 const AVATAR_COLORS = [

@@ -2,6 +2,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { configKeys } from '../api/keys'
 import { configApi, type BrandingConfig, type UpdateCbmRateInput, type UpdateDollarRateMarkupInput } from '../api/tenantManagement'
 import { STALE_FOREVER } from '../lib/queryClient'
+import { uploadTenantLogo } from '../api/uploads'
 import { FRESH_ON_OPEN } from './useSeedOnce'
 
 /** `freshOnOpen` is for the settings form: see FRESH_ON_OPEN. */
@@ -148,4 +149,18 @@ export function useSaveBranding() {
       void qc.invalidateQueries({ queryKey: configKeys.webhook() })
     },
   })
+}
+
+/**
+ * Upload a logo or stop using one (FD-29). Either way the config is read again, so every consumer (the settings page,
+ * printed documents) gets the new `logo_url`.
+ */
+export function useTenantLogo() {
+  const qc = useQueryClient()
+  const refresh = (): void => {
+    void qc.invalidateQueries({ queryKey: configKeys.tenantConfig() })
+  }
+  const upload = useMutation({ mutationFn: (file: File) => uploadTenantLogo(file), onSuccess: refresh })
+  const remove = useMutation({ mutationFn: () => configApi.removeLogo(), onSuccess: refresh })
+  return { upload, remove }
 }

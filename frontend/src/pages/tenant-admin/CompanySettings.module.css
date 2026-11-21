@@ -43,11 +43,12 @@
   }
 }
 
-.logoRow {
+.logoBlock {
   display: flex;
-  align-items: flex-start;
+  align-items: center;
+  flex-wrap: wrap;
   gap: var(--space-4);
-  border: 1.5px dashed var(--color-line);
+  border: 1px solid var(--color-line-soft);
   border-radius: var(--radius-lg);
   padding: var(--space-4);
   background: var(--color-surface-muted);
@@ -68,7 +69,7 @@
 }
 .logoMeta {
   flex: 1;
-  min-width: 0;
+  min-width: 200px;
 }
 .logoTitle {
   font-weight: 600;
@@ -76,24 +77,22 @@
   font-size: var(--text-md);
 }
 .logoDesc {
-  font-size: var(--text-xs);
-  color: var(--color-ink-4);
+  font-size: var(--text-sm);
+  color: var(--color-ink-3);
   margin-top: var(--space-1);
-  line-height: var(--text-xs-line);
+  line-height: var(--text-sm-line);
 }
-.colorField {
-  width: 160px;
-  flex-shrink: 0;
+.logoProblem {
+  margin: var(--space-2) 0 0;
+  font-size: var(--text-sm);
+  font-weight: 600;
+  color: var(--color-error);
 }
-@container sxapp (max-width: 600px) {
-  .logoRow {
-    flex-wrap: wrap;
-  }
-  .colorField {
-    width: 100%;
-  }
+.logoActions {
+  display: flex;
+  gap: var(--space-2);
+  flex-wrap: wrap;
 }
-
 .saveBar {
   display: flex;
   justify-content: flex-end;

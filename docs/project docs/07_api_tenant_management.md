@@ -62,7 +62,10 @@ Entra adapter + user migration), scoped in `docs/adr/004-cognito-to-entra-portab
 |---|---|---|---|
 | GET | `/v1/tenant/activity` | Tenant-scoped audit feed; `?actor_id=` narrows to one staff member, `?entity_type=` narrows to one kind of record; cursor-paginated; response includes `before_state`/`after_state` | tenant_admin |
 | GET | `/v1/tenant/config` | Get tenant config (webhook_config.secret masked to `****`; paystack_config.secret_key_encrypted stripped entirely) | all staff roles + customer (read widened 2026-07-11 for staff — printable documents render `branding_config` for whoever prints them; widened again 2026-09-06 for customer — `MyBillingDetail.tsx`'s bank-transfer panel needs `bank_transfer_config`) |
-| PUT | `/v1/tenant/config` | Update branding, notifications, webhook_config, and/or bank_transfer_config | tenant_admin |
+| PUT | `/v1/tenant/config` | Update branding, notifications, webhook_config, and/or bank_transfer_config. `branding.logo_key` / `branding.logo_url` sent by a client are ignored; the stored logo is kept (FD-29) | tenant_admin |
+| POST | `/v1/tenant/config/logo/upload-url` | Presign the tenant logo upload (FD-29): `{filename, content_type, size_bytes}`; PNG, JPEG or WebP, at most 1 MB; key under `{tenant_id}/branding/logo/`. 201 | tenant_admin |
+| PUT | `/v1/tenant/config/logo` | Use an uploaded file as the logo: `{file_key}`, which must be this tenant's logo upload (422 otherwise). Confirms the stored size, replaces and deletes the previous logo, audits `logo_set`. Returns `branding_config` with `logo_url` | tenant_admin |
+| DELETE | `/v1/tenant/config/logo` | Stop using a logo; deletes the file, audits `logo_removed` | tenant_admin |
 | POST | `/v1/tenant/config/webhook/rotate-secret` | Generate new HMAC signing secret; returns it once in plaintext | tenant_admin |
 | POST | `/v1/tenant/config/webhook/test` | Send a signed test event to the configured webhook URL; returns delivery result | tenant_admin |
 | PUT | `/v1/tenant/config/paystack` | Connect/replace this tenant's own Paystack secret key (encrypted at rest; always a full replace, never a partial merge) | tenant_admin |
@@ -931,3 +934,11 @@ Tests: `tests/unit/test_tenant_offboarding_export.py` (29), `test_offboarding_ex
 
 Tests: no assertion changed; only patch targets moved. A collaborator held by one module is patched there (`patch("services.tenant_management.rates.get_effective_dollar_rate")`); one several modules use (`log_audit`, `get_identity_provider`, a public function a handler test stubs) goes through `tests/patching.py::patch_tenant_management`, which patches it in every module with one shared mock — what the old single `patch.object(service, ...)` did.
 
+
+### Tenant logo (FD-29, 2026-11-21)
+
+- **Storage:** `{tenant_id}/branding/logo/{random hex}-{safe name}` via `shared/uploads.py::TENANT_LOGO` (PNG, JPEG, WebP; 1 MB; 15-minute presign). SVG is refused: it can carry script, and the logo is shown to every user of the tenant and on its documents. `branding_config.logo_key` names the file; `services/tenant_management/branding_logo.py` owns it.
+- **The key is the server's.** `PUT /v1/tenant/config {branding}` drops any `logo_key` or `logo_url` the client sends and keeps the stored key, so the settings form's save never loses the logo and a client can never point it at a file of its choosing (another tenant's, say). `PUT .../logo` accepts only a key directly under this tenant's logo prefix (no `/`, `\` or `..` after it).
+- **Readers get a link, never the key:** `GET /v1/tenant/config` returns `branding_config.logo_url`, a presigned GET valid for 1 hour, in place of `logo_key`; a key outside the tenant's prefix is never signed. The read is open to every role that reads the config (staff print documents; customers see the bank panel), which is fine for a logo. The frontend re-reads the config once if a link has expired.
+- **Lifecycle:** confirming an upload reads its stored size (`confirm_stored_upload`) and deletes an oversize file; replacing or removing a logo deletes the old file (a failed delete is logged and leaves an orphan, never a broken logo). Each change writes the config row and `tenant.branding_config`, and audits `logo_set` / `logo_removed` (no file name or PII).
+- **Not yet consumers:** the server-rendered PDFs (`services/excel/export_*_pdf.py`) still draw the initials tile; the browser print views and the settings preview show the logo.

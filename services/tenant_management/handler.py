@@ -35,7 +35,7 @@ from shared.responses import (
 from shared.tenant_context import UserRole
 from shared.validation import parse_validated
 
-from . import impersonation, service
+from . import branding_logo, impersonation, service
 from .models import (
     AcceptCustomerInviteRequest,
     ActivateAccountRequest,
@@ -43,8 +43,10 @@ from .models import (
     CreateTenantRequest,
     CreateTenantUserRequest,
     CustomerRegistrationRequest,
+    LogoUploadRequest,
     OnboardingRequestStatusUpdate,
     PaystackConfigRequest,
+    SetLogoRequest,
     SuspendTenantRequest,
     UpdateCbmRateRequest,
     UpdateDollarRateMarkupRequest,
@@ -705,6 +707,28 @@ def _tenant_admin_routes(
     if resource == "config":
         config_sub = parts[3] if len(parts) > 3 else None  # "webhook" | "paystack"
         config_action = parts[4] if len(parts) > 4 else None  # "rotate-secret" | "test"
+
+        # POST /v1/tenant/config/logo/upload-url — presign the logo upload (FD-29)
+        if config_sub == "logo" and config_action == "upload-url" and method == "POST":
+            ctx.assert_role(UserRole.TENANT_ADMIN)
+            req_upload = parse_validated(LogoUploadRequest, _parse_body(event))
+            result = branding_logo.create_logo_upload(
+                tenant_id, req_upload.filename, req_upload.content_type, req_upload.size_bytes
+            )
+            return success(result, request_id=request_id, status_code=201)
+
+        # PUT /v1/tenant/config/logo — use the uploaded file as the logo
+        if config_sub == "logo" and config_action is None and method == "PUT":
+            ctx.assert_role(UserRole.TENANT_ADMIN)
+            req_logo = parse_validated(SetLogoRequest, _parse_body(event))
+            result = branding_logo.set_logo(tenant_id, req_logo.file_key, actor_id=ctx.user_id, ip_address=ip_address)
+            return success(result, request_id=request_id)
+
+        # DELETE /v1/tenant/config/logo — back to the initials tile
+        if config_sub == "logo" and config_action is None and method == "DELETE":
+            ctx.assert_role(UserRole.TENANT_ADMIN)
+            result = branding_logo.remove_logo(tenant_id, actor_id=ctx.user_id, ip_address=ip_address)
+            return success(result, request_id=request_id)
 
         # POST /v1/tenant/config/webhook/rotate-secret
         if config_sub == "webhook" and config_action == "rotate-secret" and method == "POST":

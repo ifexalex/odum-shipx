@@ -20,7 +20,6 @@ const KNOWN_UNTESTED: Record<string, string> = {
   './auth/ResetPasswordScreen.tsx': 'password reset',
   './customer/CustomerStepper.tsx': 'shipment progress strip (rendered in MyShipments tests)',
   './customer/PaymentFailed.tsx': 'static "payment failed" page',
-  './customer/PublicTrack.tsx': 'public tracking page',
   './customer/ReleaseNoteCard.tsx': 'release note summary card',
   './marketing/LandingPage.tsx': 'marketing page',
   './nigeria/EvidenceUploader.tsx': 'claim evidence upload widget',

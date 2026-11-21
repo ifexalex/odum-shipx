@@ -20,6 +20,7 @@ from shared.exceptions import (
 from shared.webhook import test_fire_tenant_webhook
 
 from . import repository as repo
+from .branding_logo import keep_server_owned, with_logo_url
 from .models import (
     PaystackConfigRequest,
     UpdateTenantConfigRequest,
@@ -76,6 +77,9 @@ def get_tenant_config(tenant_id: str) -> dict[str, Any]:
     """
     rows = repo.get_all_configs(tenant_id)
     config_map = {row["config_key"]: row["config_value"] for row in rows}
+    # The logo is shown through a short-lived link, never its storage key (FD-29).
+    if "branding_config" in config_map:
+        config_map["branding_config"] = with_logo_url(tenant_id, config_map["branding_config"])
     return _mask_paystack_config(_mask_webhook_config(config_map))
 
 
@@ -86,9 +90,12 @@ def update_tenant_config(
     ip_address: str | None = None,
 ) -> dict[str, Any]:
     if req.branding is not None:
-        repo.upsert_config(tenant_id, "branding_config", req.branding, updated_by=actor_id)
+        # The logo fields are the server's (FD-29): a save from the settings form keeps the stored logo, and a client
+        # can never point it at a file of its choosing.
+        branding = keep_server_owned(tenant_id, req.branding)
+        repo.upsert_config(tenant_id, "branding_config", branding, updated_by=actor_id)
         # Also update tenant.branding_config column
-        repo.update_tenant(tenant_id, {"branding_config": json.dumps(req.branding)})
+        repo.update_tenant(tenant_id, {"branding_config": json.dumps(branding)})
     if req.notification_preferences is not None:
         repo.upsert_config(tenant_id, "notification_preferences", req.notification_preferences, updated_by=actor_id)
         repo.update_tenant(tenant_id, {"notification_preferences": json.dumps(req.notification_preferences)})

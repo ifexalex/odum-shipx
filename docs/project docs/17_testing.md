@@ -2554,3 +2554,9 @@ Found by running them: **a real bug** (invoice generation set a used credit to `
 
 - `PublicTrack.test.tsx` (new, 5): ShipX header and footer before a lookup; the company's name and colour after one (the `--color-primary` override on the theme wrapper); ShipX colours when the company has none; the shared stepper, the latest update and the sign-in link; Enter submits.
 - `tests/unit/test_tracking.py` (+6): `brand_color` returned only as a plain `#rrggbb` (named colours, short hex, a value carrying extra CSS and non-strings are dropped).
+
+## Tenant logo (FD-29, 2026-11-21)
+
+- `tests/unit/test_tenant_logo.py` (new, 20): the policy (PNG/JPEG/WebP accepted; SVG, PDF, HTML refused; over 1 MB refused); presign under `{tenant}/branding/logo/`; set stores the key, keeps the rest, returns a link not the key, audits, deletes the replaced file; set refuses another tenant's key, a non-logo key, a path that walks out, a nested key, an upload that never landed, and deletes an oversize one; remove drops the key and deletes the file; readers get a link and a foreign key is never signed; a branding save keeps the stored logo and ignores one sent by the client.
+- `CompanySettings.test.tsx` (+5): no forward-looking copy; upload to storage then set; SVG and over-1 MB refused before sending; the uploaded logo shows and Remove confirms first; a branding save never sends `logo_url`.
+- Verified live against a second local API on :3011 (2026-11-21): presign, PUT to Moto S3, set, fetch through `logo_url`, a branding save keeping the logo, staff 403, foreign key 422, remove.

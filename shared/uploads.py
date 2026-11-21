@@ -104,6 +104,14 @@ EVIDENCE = UploadPolicy(name="evidence", content_types=_IMAGES_AND_PDF, expires_
 #: Container documents (bill of lading, customs certificate, ...). WebP for phone photos of paperwork.
 CONTAINER_DOCUMENT = UploadPolicy(name="container document", content_types=_IMAGES_AND_PDF | {"image/webp"}, expires_in=900)
 
+#: A tenant's logo (FD-29): raster images only. SVG is refused, since an SVG can carry script and the logo is shown to
+#: every user of the tenant and on its public pages. 1 MB is ample for a logo and keeps documents light.
+TENANT_LOGO = UploadPolicy(
+    name="logo",
+    content_types=frozenset({"image/png", "image/jpeg", "image/webp"}),
+    expires_in=900,
+    max_bytes=1024 * 1024,
+)
 #: A packing-list spreadsheet, read once by the import and never listed.
 SPREADSHEET_IMPORT = UploadPolicy(
     name="spreadsheet import",

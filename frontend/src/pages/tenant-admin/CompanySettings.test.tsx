@@ -4,7 +4,7 @@
  * preview, and the config sub-nav preserves the old hub's navigation.
  */
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
-import { render, screen, waitFor } from '@testing-library/react'
+import { render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { MemoryRouter, Route, Routes } from 'react-router-dom'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
@@ -16,7 +16,14 @@ vi.mock('../../api/tenantManagement', async (importOriginal) => {
   const original = await importOriginal<typeof import('../../api/tenantManagement')>()
   return {
     ...original,
-    configApi: { ...original.configApi, getConfig: vi.fn(), updateConfig: vi.fn() },
+    configApi: {
+      ...original.configApi,
+      getConfig: vi.fn(),
+      updateConfig: vi.fn(),
+      getLogoUploadUrl: vi.fn(),
+      setLogo: vi.fn(),
+      removeLogo: vi.fn(),
+    },
   }
 })
 
@@ -123,5 +130,86 @@ describe('CompanySettings (4.1)', () => {
 
     await userEvent.click(screen.getByRole('tab', { name: /release note/i }))
     expect(screen.getByTestId('doc-preview')).toHaveTextContent('12 Wharf Road, Apapa')
+  })
+})
+
+describe('CompanySettings logo (FD-29)', () => {
+  const LOGO_URL = 'https://storage.test/get/t1/branding/logo/abc-logo.png'
+
+  beforeEach(() => {
+    vi.clearAllMocks()
+    vi.mocked(configApi.getConfig).mockResolvedValue({ webhook_config: null, branding_config: BRANDING })
+    vi.mocked(configApi.updateConfig).mockImplementation(async (body) => ({
+      webhook_config: null,
+      branding_config: body.branding ?? BRANDING,
+    }))
+  })
+
+  function png(size = 20_000, type = 'image/png', name = 'logo.png'): File {
+    return new File([new Uint8Array(size)], name, { type })
+  }
+
+  it('has no forward-looking copy', async () => {
+    renderPage()
+    await screen.findByDisplayValue('Acme Logistics Ltd')
+    expect(screen.queryByText(/coming once/i)).toBeNull()
+  })
+
+  it('uploads a logo to storage, then tells the API to use it', async () => {
+    vi.mocked(configApi.getLogoUploadUrl).mockResolvedValue({
+      file_key: 't1/branding/logo/abc-logo.png',
+      upload_url: 'https://storage.test/put',
+      upload_method: 'PUT',
+      upload_headers: { 'Content-Type': 'image/png' },
+    })
+    vi.mocked(configApi.setLogo).mockResolvedValue({ ...BRANDING, logo_url: LOGO_URL })
+    const put = vi.spyOn(globalThis, 'fetch').mockResolvedValue(new Response(null, { status: 200 }))
+    renderPage()
+    await screen.findByDisplayValue('Acme Logistics Ltd')
+    vi.mocked(configApi.getConfig).mockResolvedValue({ webhook_config: null, branding_config: { ...BRANDING, logo_url: LOGO_URL } })
+
+    await userEvent.upload(screen.getByLabelText('Logo file'), png())
+
+    await waitFor(() => expect(configApi.setLogo).toHaveBeenCalledWith('t1/branding/logo/abc-logo.png'))
+    expect(configApi.getLogoUploadUrl).toHaveBeenCalledWith({ filename: 'logo.png', content_type: 'image/png', size_bytes: 20_000 })
+    expect(put).toHaveBeenCalledWith('https://storage.test/put', expect.objectContaining({ method: 'PUT' }))
+    expect(await screen.findByText('Logo uploaded')).toBeInTheDocument()
+    expect(await screen.findAllByRole('img', { name: 'Acme Logistics Ltd logo' })).not.toHaveLength(0)
+    put.mockRestore()
+  })
+
+  it.each([
+    ['an SVG', png(2_000, 'image/svg+xml', 'logo.svg'), 'Use a PNG, JPEG or WebP image.'],
+    ['a file over 1 MB', png(1024 * 1024 + 1), 'The limit is 1 MB.'],
+  ])('refuses %s before sending anything', async (_label, file, message) => {
+    renderPage()
+    await screen.findByDisplayValue('Acme Logistics Ltd')
+    // applyAccept off: the browser's picker filter is a convenience, not the check under test.
+    await userEvent.upload(screen.getByLabelText('Logo file'), file, { applyAccept: false })
+    expect(await screen.findByRole('alert')).toHaveTextContent(message)
+    expect(configApi.getLogoUploadUrl).not.toHaveBeenCalled()
+  })
+
+  it('shows the uploaded logo, and removes it only after confirming', async () => {
+    vi.mocked(configApi.getConfig).mockResolvedValue({ webhook_config: null, branding_config: { ...BRANDING, logo_url: LOGO_URL } })
+    vi.mocked(configApi.removeLogo).mockResolvedValue(BRANDING)
+    renderPage()
+    expect((await screen.findAllByRole('img', { name: 'Acme Logistics Ltd logo' }))[0]).toHaveAttribute('src', LOGO_URL)
+
+    await userEvent.click(screen.getByRole('button', { name: 'Remove logo' }))
+    expect(configApi.removeLogo).not.toHaveBeenCalled()
+    const dialog = await screen.findByRole('dialog', { name: 'Remove your logo?' })
+    await userEvent.click(within(dialog).getByRole('button', { name: 'Remove logo' }))
+    await waitFor(() => expect(configApi.removeLogo).toHaveBeenCalledTimes(1))
+  })
+
+  it('never sends the logo link back with a branding save', async () => {
+    vi.mocked(configApi.getConfig).mockResolvedValue({ webhook_config: null, branding_config: { ...BRANDING, logo_url: LOGO_URL } })
+    renderPage()
+    const tagline = await screen.findByDisplayValue('Trusted China-Nigeria cargo since 2019')
+    await userEvent.type(tagline, '!')
+    await userEvent.click(screen.getByRole('button', { name: 'Save changes' }))
+    await waitFor(() => expect(configApi.updateConfig).toHaveBeenCalled())
+    expect(vi.mocked(configApi.updateConfig).mock.calls[0]![0].branding).not.toHaveProperty('logo_url')
   })
 })
