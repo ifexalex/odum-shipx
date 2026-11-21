@@ -1,6 +1,6 @@
 import { useState, type JSX } from 'react'
 import { useSession } from '../../auth/useSession'
-import { Badge, Button, Card, Field, StatusBadge, LinesSkeleton, ConfirmDialog } from '../../design/components'
+import { Badge, Button, Card, Field, StatusBadge, LinesSkeleton, ConfirmDialog, ErrorState } from '../../design/components'
 import { SectionHead } from '../../shell/SectionHead'
 import { ComposeAnnouncementModal } from '../../shell/ComposeAnnouncementModal'
 import type {
@@ -364,7 +364,10 @@ export function AnnouncementsPage(): JSX.Element {
               sub="Customer announcements submitted by staff."
             />
             {pendingQuery.isLoading && <LinesSkeleton label="Loading" />}
-            {!pendingQuery.isLoading && pending.length === 0 && (
+            {pendingQuery.error && (
+              <ErrorState compact title="Couldn't load announcements awaiting approval" error={pendingQuery.error} onRetry={() => void pendingQuery.refetch()} />
+            )}
+            {!pendingQuery.isLoading && !pendingQuery.error && pending.length === 0 && (
               <div className={styles.empty}>No customer announcements awaiting approval.</div>
             )}
             {pending.map((req) => (
@@ -378,7 +381,10 @@ export function AnnouncementsPage(): JSX.Element {
               sub="Toggle which one is visible as a page banner."
             />
             {historyQuery.isLoading && <LinesSkeleton label="Loading" />}
-            {!historyQuery.isLoading && history.length === 0 && (
+            {historyQuery.error && (
+              <ErrorState compact title="Couldn't load announcements" error={historyQuery.error} onRetry={() => void historyQuery.refetch()} />
+            )}
+            {!historyQuery.isLoading && !historyQuery.error && history.length === 0 && (
               <div className={styles.empty}>No announcements sent yet.</div>
             )}
             {history.map((entry) => (
@@ -390,7 +396,10 @@ export function AnnouncementsPage(): JSX.Element {
         <Card padding="default">
           <SectionHead title="My announcements" />
           {mineQuery.isLoading && <LinesSkeleton label="Loading" />}
-          {!mineQuery.isLoading && mine.length === 0 && (
+          {mineQuery.error && (
+            <ErrorState compact title="Couldn't load your announcements" error={mineQuery.error} onRetry={() => void mineQuery.refetch()} />
+          )}
+          {!mineQuery.isLoading && !mineQuery.error && mine.length === 0 && (
             <div className={styles.empty}>You haven't submitted any announcements yet.</div>
           )}
           {mine.map((req) => (

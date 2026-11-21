@@ -4,7 +4,7 @@ import { useNavigate } from 'react-router-dom'
 import { releaseNoteKeys } from '../../api/keys'
 import { releaseNotesApi } from '../../api/releaseNotes'
 import { } from '../../api/releaseNotesRules'
-import {  Button, Card, Mono, StatusBadge } from '../../design/components'
+import { Button, Card, Mono, StatusBadge, ErrorState } from '../../design/components'
 import { STALE_30S } from '../../lib/queryClient'
 import { SectionHead } from '../../shell/SectionHead'
 
@@ -16,12 +16,21 @@ import { SectionHead } from '../../shell/SectionHead'
  */
 export function ReleaseNoteCard({ containerId }: { containerId: string | null | undefined }): JSX.Element | null {
   const navigate = useNavigate()
-  const { data } = useQuery({
+  const { data, error, refetch } = useQuery({
     queryKey: releaseNoteKeys.lookup({ container_id: containerId }),
     queryFn: () => releaseNotesApi.list({ container_id: containerId! }),
     enabled: !!containerId,
     staleTime: STALE_30S,
   })
+  // Not hidden when the load fails (FD-53): this is the note a customer shows to collect their goods, so a failure
+  // says so with a retry instead of looking like "no release note yet".
+  if (error) {
+    return (
+      <div style={{ marginBottom: 'var(--space-4)' }}>
+        <ErrorState compact title="Couldn't load your release notes" error={error} onRetry={() => void refetch()} />
+      </div>
+    )
+  }
   const notes = data?.data ?? []
   if (notes.length === 0) return null
 

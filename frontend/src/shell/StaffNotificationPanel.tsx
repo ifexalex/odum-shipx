@@ -1,5 +1,5 @@
 import type { JSX } from 'react'
-import { Icon, LinesSkeleton } from '../design/components'
+import { Icon, LinesSkeleton, ErrorState } from '../design/components'
 import {
   useClearAllStaffNotif,
   useDismissStaffNotif,
@@ -77,7 +77,7 @@ function NotificationRow({
  * `pages/staff/AnnouncementsPage.tsx`.
  */
 export function StaffNotificationPanel({ open, onClose }: StaffNotificationPanelProps): JSX.Element | null {
-  const { data, isLoading } = useStaffNotifList({ limit: 20 }, open)
+  const { data, isLoading, error, refetch } = useStaffNotifList({ limit: 20 }, open)
   const markRead = useMarkStaffNotifRead()
   const markAllRead = useMarkAllStaffNotifRead()
   const dismiss = useDismissStaffNotif()
@@ -119,7 +119,11 @@ export function StaffNotificationPanel({ open, onClose }: StaffNotificationPanel
         </div>
         <div className={styles.list}>
           {isLoading && <LinesSkeleton label="Loading notifications" />}
-          {!isLoading && items.length === 0 && (
+          {/* A failed load is not "No notifications yet." (FD-53). */}
+          {!isLoading && error && (
+            <ErrorState compact title="Couldn't load notifications" error={error} onRetry={() => void refetch()} />
+          )}
+          {!isLoading && !error && items.length === 0 && (
             <div className={styles.empty}>
               <Icon name="bell" size={20} color="var(--color-ink-4)" />
               <span>No notifications yet.</span>

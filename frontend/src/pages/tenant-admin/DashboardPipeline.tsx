@@ -12,7 +12,7 @@ import { useNavigate } from 'react-router-dom'
 import { } from '../../api/containerRules'
 import { type ContainerStats, type ContainerStatus } from '../../api/tracking'
 import { useContainerList } from '../../hooks/useContainers'
-import { Button, Card, Chip, ListFooter, Mono, StatusBadge, Table, Pressable, SearchField, EmptyState } from '../../design/components'
+import { Button, Card, Chip, ListFooter, Mono, StatusBadge, Table, Pressable, SearchField, EmptyState, ErrorState } from '../../design/components'
 import { SectionHead } from '../../shell/SectionHead'
 import styles from './DashboardPipeline.module.css'
 import { isoDateOffset, formatDate } from '../../lib/format'
@@ -65,7 +65,7 @@ export function ContainerPipeline({ counts }: { counts: ContainerStats | undefin
   // The full, paginated list for the current stage + search + ETA filter —
   // not a 6-card sample. Stage (rail), search (q), and ETA are independent AND
   // filters, so any container is reachable by narrowing, then load-more.
-  const { items, hasMore, loadMore, isFetchingMore, isLoading, totalCount } = useContainerList({
+  const { items, hasMore, loadMore, isFetchingMore, isLoading, totalCount, error, refetch } = useContainerList({
     status: selected === 'all' ? ACTIVE_STATUS_PARAM : selected,
     ...(debouncedSearch ? { q: debouncedSearch } : {}),
     ...etaRange(etaPreset),
@@ -172,7 +172,10 @@ export function ContainerPipeline({ counts }: { counts: ContainerStats | undefin
         }))}
         loading={isLoading}
         emptyState={
-          !isLoading ? (
+          // A failed load is not "No containers in the pipeline" (FD-53).
+          !isLoading && error ? (
+            <ErrorState compact title="Couldn't load containers" error={error} onRetry={refetch} />
+          ) : !isLoading ? (
             <EmptyState compact title={debouncedSearch || etaPreset ? 'No containers match your search and filters' : `No containers in ${selected === 'all' ? 'the pipeline' : statusLabel('container', selected)}`} />
           ) : undefined
         }

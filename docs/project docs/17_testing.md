@@ -2565,3 +2565,7 @@ Found by running them: **a real bug** (invoice generation set a used credit to `
 
 - `pages/marketing/LandingPage.test.tsx` (new, 3): no link to `/register`; every "Request access" goes to `/get-started`; no "free trial", "30-day" or "no card required" copy. Off the untested-pages list.
 - `RegisterScreen.test.tsx` (rewritten chooser tests, +4): bare `/register` explains the company link with no "Which are you?"; the footer's Request access reaches `/get-started`; every channel starts unticked; nothing ticked sends `[]`, one ticked sends exactly that one.
+
+## Failed loads (FD-53, 2026-11-21)
+
+- `ActivityFeed.test.tsx` (+1): a failed request shows "Couldn't load activity", not the empty state, and Retry loads the entries. `StaffNotificationPanel.test.tsx` (+1): a failed list is not "No notifications yet.". `pages/customer/ReleaseNoteCard.test.tsx` (new, 2): nothing shown with no note; a failed load shows an error with a retry.

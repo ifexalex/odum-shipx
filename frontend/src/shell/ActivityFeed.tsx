@@ -9,7 +9,7 @@ import { type JSX } from 'react'
 import { configApi, type TenantActivityEntry } from '../api/tenantManagement'
 import { configKeys } from '../api/keys'
 import { STALE_30S } from '../lib/queryClient'
-import { Badge, type BadgeVariant, LinesSkeleton } from '../design/components'
+import { Badge, type BadgeVariant, ErrorState, LinesSkeleton } from '../design/components'
 import styles from './ActivityFeed.module.css'
 import { formatDate } from '../lib/format'
 
@@ -45,20 +45,21 @@ export function ActivityFeed({
   /** Hide the actor name (redundant on the staff-profile, where it's always this user). */
   showActor?: boolean
 }): JSX.Element {
-  const { data, isPending } = useQuery({
+  const { data, isPending, error, refetch } = useQuery({
     queryKey: configKeys.activity({ actorId, limit }),
     queryFn: () => configApi.activity({ actorId, limit }),
     staleTime: STALE_30S,
   })
 
-  // A failed fetch renders as "No recent activity." — the pre-migration
-  // behaviour, and the right one for a dashboard widget that must not break
-  // the page around it. `null` means still loading, nothing else.
-  const entries: TenantActivityEntry[] | null = isPending ? null : (data?.data ?? [])
-
-  if (entries === null) {
+  if (isPending) {
     return <LinesSkeleton label="Loading activity" lines={4} />
   }
+  // A failed load says so, with a retry, inside the widget (FD-53): it used to read "No recent activity.", so a
+  // broken feed looked like a quiet one. Still compact, so the page around it is unaffected.
+  if (error) {
+    return <ErrorState compact title="Couldn't load activity" error={error} onRetry={() => void refetch()} />
+  }
+  const entries: TenantActivityEntry[] = data?.data ?? []
   if (entries.length === 0) {
     return <div className={styles.empty}>No recent activity.</div>
   }
