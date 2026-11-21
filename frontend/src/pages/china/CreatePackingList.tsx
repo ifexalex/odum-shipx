@@ -8,18 +8,45 @@ import { Step1 } from './createPackingList/Step1'
 import { Step2 } from './createPackingList/Step2'
 import { Step3 } from './createPackingList/Step3'
 import { useCreatePackingListForm } from './createPackingList/useCreatePackingListForm'
-import { formatCbm, formatKg } from '../../lib/format'
+import { formatCbm, formatKg, formatTime } from '../../lib/format'
 
 export function CreatePackingList(): JSX.Element {
   const form = useCreatePackingListForm()
   const { isEdit, step, pendingSave, setPendingSave, submitting, editReady, error, totals, bulkLines, handleSave } = form
+  const { tabDraft, restoredDraft, setRestoredDraft, startOver } = form
 
   return (
     <div className={styles.wrap}>
       <PageHeader
         title={isEdit ? 'Edit draft packing list' : 'Create packing list'}
         meta="Capture carton-level details for a customer's cargo. Submit for approval when complete."
+        // Says the input is safe while the list is not yet saved to the server (FD-25).
+        status={
+          tabDraft.savedAt && (
+            <span className={styles.draftSaved} role="status">
+              Draft saved in this tab · {formatTime(tabDraft.savedAt)}
+            </span>
+          )
+        }
       />
+
+      {restoredDraft && (
+        <div className={styles.banner}>
+          <Banner
+            variant="info"
+            title="Picked up where you left off"
+            dismissible
+            onDismiss={() => setRestoredDraft(false)}
+            action={
+              <Button variant="ghost" size="sm" onClick={startOver}>
+                Start over
+              </Button>
+            }
+          >
+            This packing list was not saved yet, so this tab kept what you had entered.
+          </Banner>
+        </div>
+      )}
 
       {!editReady ? (
         <Card padding="large">

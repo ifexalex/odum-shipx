@@ -1,6 +1,7 @@
-import { useMemo, useState } from 'react'
+import { useContext, useMemo, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { ApiError } from '../../../api/client'
+import { SessionContext } from '../../../auth/SessionContext'
 import {
   packingListApi,
   type PackageUnit,
@@ -18,7 +19,21 @@ import { useWarehouses } from '../../../hooks/useWarehouses'
 import { collapseBatches, emptyItem } from './items'
 import { usePackingListPricing } from './usePackingListPricing'
 import { useBreadcrumbLabel } from '../../../shell/breadcrumbs'
+import { readTabDraft, useTabDraft } from '../../../hooks/useTabDraft'
 import { toast } from '../../../design/toast'
+
+/** The wizard's input as kept in the tab (FD-25). */
+interface WizardDraft {
+  step: 1 | 2 | 3
+  customerId: string
+  containerId: string
+  arrivalWarehouseId: string
+  loadingDate: string
+  deliveryDate: string
+  items: PackingListItemInput[]
+}
+
+const DRAFT_FORM = 'packing-list'
 
 /**
  * Everything the create/edit packing-list wizard holds: the chosen customer, container and dates, the item rows, the
@@ -27,6 +42,7 @@ import { toast } from '../../../design/toast'
 export function useCreatePackingListForm() {
   const navigate = useNavigate()
   const { id: editId } = useParams<{ id: string }>()
+  const session = useContext(SessionContext)?.session
 
   // The list THIS page created, if it already saved once.
   //
@@ -46,13 +62,17 @@ export function useCreatePackingListForm() {
   // packing list, then edits it. Regenerating after a successful create
   // would discard the only thing protecting a double-submit.
   const { key } = useIdempotencyKey()
-  const [step, setStep] = useState<1 | 2 | 3>(1)
-  const [customerId, setCustomerId] = useState('')
-  const [containerId, setContainerId] = useState('')
-  const [arrivalWarehouseId, setArrivalWarehouseId] = useState('')
-  const [loadingDate, setLoadingDate] = useState('')
-  const [deliveryDate, setDeliveryDate] = useState('')
-  const [items, setItems] = useState<PackingListItemInput[]>([emptyItem()])
+  // A new list's input is kept in the tab as it is typed (FD-25): leaving to create the container it needs, a reload
+  // or the back button brings the user back to the form as they left it. A server draft being edited is not.
+  const keepsTabDraft = !editId
+  const [seed] = useState(() => (keepsTabDraft ? readTabDraft<WizardDraft>(DRAFT_FORM, session) : null))
+  const [step, setStep] = useState<1 | 2 | 3>(seed?.step ?? 1)
+  const [customerId, setCustomerId] = useState(seed?.customerId ?? '')
+  const [containerId, setContainerId] = useState(seed?.containerId ?? '')
+  const [arrivalWarehouseId, setArrivalWarehouseId] = useState(seed?.arrivalWarehouseId ?? '')
+  const [loadingDate, setLoadingDate] = useState(seed?.loadingDate ?? '')
+  const [deliveryDate, setDeliveryDate] = useState(seed?.deliveryDate ?? '')
+  const [items, setItems] = useState<PackingListItemInput[]>(seed?.items ?? [emptyItem()])
   // CBM and dollar rates, totals and the live shipping estimate (usePackingListPricing).
   const {
     cbmRateQuery,
@@ -167,6 +187,39 @@ export function useCreatePackingListForm() {
     },
   )
 
+  // The tab keeps the input until it is saved for real. An untouched form (the default warehouse pre-selected and
+  // nothing else) stores nothing, so opening the wizard and leaving does not leave a "draft" behind.
+  const defaultWarehouseId = warehouseQuery.data?.find((w) => w.is_default)?.id ?? ''
+  const tabDraft = useTabDraft<WizardDraft>(
+    DRAFT_FORM,
+    { step, customerId, containerId, arrivalWarehouseId, loadingDate, deliveryDate, items },
+    {
+      step,
+      customerId: '',
+      containerId: '',
+      arrivalWarehouseId: arrivalWarehouseId === defaultWarehouseId ? arrivalWarehouseId : '',
+      loadingDate: '',
+      deliveryDate: '',
+      items: [emptyItem()],
+    },
+    keepsTabDraft,
+  )
+  // Whether the form opened from the tab's draft, to say so; dismissed once the user starts over or acknowledges it.
+  const [restoredDraft, setRestoredDraft] = useState(seed !== null)
+
+  /** Discard the tab's draft and begin a blank packing list. */
+  function startOver(): void {
+    tabDraft.clear()
+    setRestoredDraft(false)
+    setStep(1)
+    setCustomerId('')
+    setContainerId('')
+    setArrivalWarehouseId(defaultWarehouseId)
+    setLoadingDate('')
+    setDeliveryDate('')
+    setItems([emptyItem()])
+  }
+
   // The pickers only list open containers; when editing, make sure the draft's own (fixed) customer and container
   // are in them even if the container has since moved on.
   const customers = useMemo<Customer[]>(() => {
@@ -278,6 +331,8 @@ export function useCreatePackingListForm() {
         setCreatedId(created.id)
         targetId = created.id
       }
+      // Saved on the server now, which is the draft from here on.
+      tabDraft.clear()
       if (submitForApproval) {
         await packingListApi.submit(targetId)
         toast.success('Packing list submitted for approval')
@@ -312,8 +367,9 @@ export function useCreatePackingListForm() {
       ? 'Cannot be before the delivery date — goods must be received before they are loaded.'
       : undefined
 
+  // A restored draft can name a container that has since been sealed; it is no longer offered, so it cannot be used.
   const canProceedFrom1 =
-    Boolean(customerId && containerId) && !deliveryDateError && !loadingDateError
+    Boolean(customerId && selectedContainer) && !deliveryDateError && !loadingDateError
   const canProceedFrom2 = items.length > 0 && items.every((item) => item.description.trim() !== '')
 
   return {
@@ -389,6 +445,10 @@ export function useCreatePackingListForm() {
     batchSize,
     requestSave,
     handleSave,
+    tabDraft,
+    restoredDraft,
+    setRestoredDraft,
+    startOver,
   }
 }
 

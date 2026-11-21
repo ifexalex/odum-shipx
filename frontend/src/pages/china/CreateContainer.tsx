@@ -1,11 +1,12 @@
 import { useState, type FormEvent, type JSX } from 'react'
 import { useQuery } from '@tanstack/react-query'
-import { useNavigate } from 'react-router-dom'
+import { useNavigate, useSearchParams } from 'react-router-dom'
 import { useIdempotencyKey } from '../../api/useIdempotencyKey'
 import { containersApi } from '../../api/tracking'
 import { containerCapacitiesApi } from '../../api/tenantManagement'
 import { containerCapacityKeys } from '../../api/keys'
 import { ApiError } from '../../api/client'
+import { safeNextPath } from '../../auth/returnPath'
 import { Banner, Button, Card, Combobox, Field, type ComboboxOption, DateField } from '../../design/components'
 import { PageHeader } from '../../shell/PageHeader'
 import { SectionHead } from '../../shell/SectionHead'
@@ -18,6 +19,10 @@ import { toast } from '../../design/toast'
 // are optional server-side — only container_number is required.
 export function CreateContainer(): JSX.Element {
   const navigate = useNavigate()
+  // Set when another form sent the user here for a container it needs (FD-25: the packing-list wizard); they go back
+  // to it afterwards instead of to the new container. Only ever an in-app path.
+  const [searchParams] = useSearchParams()
+  const returnTo = safeNextPath(searchParams.get('return'))
   const { key, regenerate } = useIdempotencyKey()
   const { data: capacities = [] } = useQuery({
     queryKey: containerCapacityKeys.list(),
@@ -67,9 +72,14 @@ export function CreateContainer(): JSX.Element {
         },
         key,
       )
-      toast.success('Container created', container.container_number)
       regenerate()
-      navigate(`/containers/${container.id}`)
+      if (returnTo) {
+        toast.success('Container created', `${container.container_number} is ready to choose.`)
+        navigate(returnTo)
+      } else {
+        toast.success('Container created', container.container_number)
+        navigate(`/containers/${container.id}`)
+      }
     } catch (err) {
       setError(err instanceof ApiError ? err.message : 'Could not create the container.')
     } finally {
@@ -81,7 +91,11 @@ export function CreateContainer(): JSX.Element {
     <div className={styles.wrap}>
       <PageHeader
         title="Create new container"
-        meta="Set up the container. You'll attach customer packing lists once it exists."
+        meta={
+          returnTo
+            ? "Set up the container, and you'll go back to your packing list to choose it."
+            : "Set up the container. You'll attach customer packing lists once it exists."
+        }
       />
 
       {error && (
@@ -214,7 +228,7 @@ export function CreateContainer(): JSX.Element {
         </Card>
 
         <div className={styles.actions}>
-          <Button type="button" variant="ghost" icon="arrowleft" onClick={() => navigate('/containers')}>
+          <Button type="button" variant="ghost" icon="arrowleft" onClick={() => navigate(returnTo ?? '/containers')}>
             Cancel
           </Button>
           <Button type="submit" variant="primary" icon="check" loading={submitting} disabled={!containerNumber}>

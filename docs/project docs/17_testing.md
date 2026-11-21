@@ -2533,3 +2533,10 @@ Found by running them: **a real bug** (invoice generation set a used credit to `
 ## Destructive actions (FD-24, 2026-11-21)
 
 - `design/components/ConfirmDialog.test.tsx` (3), `pages/destructiveActions.test.ts` (every page: destructive buttons styled as danger). Page tests updated: Reject from the overflow menu (packing list, refund), withdrawing an announcement asks first.
+
+## Create packing list prerequisites and tab draft (FD-25, 2026-11-21)
+
+- `hooks/useTabDraft.test.tsx` (4): kept per tenant and user, nothing stored for an untouched form or when disabled, clear wins over a pending write.
+- `CreatePackingList.test.tsx` (+6): the no-container callout (ask the China office without a session; a "Create a container" link with `return` for China office staff), no callout when one is loading, the draft restored on reopening, nothing stored for an untouched form, Start over.
+- `CreateContainer.test.tsx` (+2): goes back to `return` after creating; ignores a `return` that leaves the app.
+- `test/setup.ts` clears `sessionStorage` before every test, so one test's draft never pre-fills the next.

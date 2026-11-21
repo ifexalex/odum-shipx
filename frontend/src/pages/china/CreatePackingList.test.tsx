@@ -6,6 +6,7 @@ import { MAX_ITEM_QUANTITY, packingListApi, type PackingList } from '../../api/p
 import { containersApi, type Container } from '../../api/tracking'
 import { configApi, customersApi, type Customer } from '../../api/tenantManagement'
 import { warehousesApi } from '../../api/warehouses'
+import { SessionContext, type SessionContextValue } from '../../auth/SessionContext'
 import { CreatePackingList } from './CreatePackingList'
 
 vi.mock('../../api/packingList', async (importOriginal) => {
@@ -763,3 +764,92 @@ describe('CreatePackingList — saving twice must not make two lists', () => {
   })
 })
 
+
+describe('CreatePackingList — missing prerequisites and the tab draft (FD-25)', () => {
+  beforeEach(() => {
+    vi.mocked(customersApi.list).mockResolvedValue({
+      data: [customerStub],
+      meta: { pagination: { has_more: false, next_cursor: null, total_count: 1 } },
+    })
+    vi.mocked(containersApi.list).mockResolvedValue({
+      data: [containerStub],
+      meta: { pagination: { has_more: false, next_cursor: null, total_count: 1 } },
+    })
+  })
+
+  it('names a missing container at the top of the step and says who can create one', async () => {
+    vi.mocked(containersApi.list).mockResolvedValue({
+      data: [],
+      meta: { pagination: { has_more: false, next_cursor: null, total_count: 0 } },
+    })
+    renderPage()
+    // Outside a session nobody may open the create page, so the callout says whom to ask instead of linking.
+    const callout = (await screen.findByText(/Ask the China office to create one/)).closest('[role="alert"]')
+    expect(callout).toHaveTextContent('No container is loading')
+  })
+
+  it('shows no prerequisite callout when a container is loading', async () => {
+    renderPage()
+    await selectFromCombobox('Container', 'MSCU1234567')
+    expect(screen.queryByText(/there is none yet/)).toBeNull()
+  })
+
+  it('keeps the input in the tab and restores it when the wizard is opened again', async () => {
+    const first = renderPage()
+    await pickCustomerAndContainer()
+    expect(await screen.findByText(/Draft saved in this tab/)).toBeInTheDocument()
+    first.unmount()
+
+    renderPage()
+    expect(await screen.findByText('Picked up where you left off')).toBeInTheDocument()
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Next: Add items' })).toBeEnabled())
+  })
+
+  it('stores nothing for a form that was opened and left untouched', async () => {
+    const first = renderPage()
+    await screen.findByRole('button', { name: 'Customer' })
+    await new Promise((resolve) => setTimeout(resolve, 500))
+    expect(screen.queryByText(/Draft saved in this tab/)).toBeNull()
+    first.unmount()
+    renderPage()
+    await screen.findByRole('button', { name: 'Customer' })
+    expect(screen.queryByText('Picked up where you left off')).toBeNull()
+  })
+
+  it('starts over from a restored draft', async () => {
+    const first = renderPage()
+    await pickCustomerAndContainer()
+    await screen.findByText(/Draft saved in this tab/)
+    first.unmount()
+
+    renderPage()
+    await userEvent.click(await screen.findByRole('button', { name: 'Start over' }))
+    expect(screen.queryByText('Picked up where you left off')).toBeNull()
+    expect(screen.getByRole('button', { name: 'Next: Add items' })).toBeDisabled()
+  })
+})
+
+describe('CreatePackingList — prerequisite links for a China office user (FD-25)', () => {
+  it('links to creating a container, which returns to the wizard', async () => {
+    vi.mocked(customersApi.list).mockResolvedValue({
+      data: [customerStub],
+      meta: { pagination: { has_more: false, next_cursor: null, total_count: 1 } },
+    })
+    vi.mocked(containersApi.list).mockResolvedValue({
+      data: [],
+      meta: { pagination: { has_more: false, next_cursor: null, total_count: 0 } },
+    })
+    const session = { session: { tenantId: 't1', userId: 'u1', roles: ['china_office_staff'] } } as unknown as SessionContextValue
+    render(
+      withQuery(
+        <SessionContext.Provider value={session}>
+          <MemoryRouter>
+            <CreatePackingList />
+          </MemoryRouter>
+        </SessionContext.Provider>,
+      ),
+    )
+    const link = await screen.findByRole('link', { name: 'Create a container' })
+    expect(link).toHaveAttribute('href', '/containers/new?return=%2Fpacking-lists%2Fnew')
+  })
+})

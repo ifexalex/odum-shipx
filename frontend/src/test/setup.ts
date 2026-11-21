@@ -125,3 +125,9 @@ beforeEach(() => {
   render(createElement(ToastRegion))
 })
 
+// A form's unsaved input is kept in the tab (hooks/useTabDraft), so one test's half-filled form would otherwise
+// open pre-filled in the next. Every test starts with an empty tab.
+beforeEach(() => {
+  window.sessionStorage.clear()
+})
+

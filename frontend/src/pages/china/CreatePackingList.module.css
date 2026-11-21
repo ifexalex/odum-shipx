@@ -19,6 +19,18 @@
   margin-bottom: var(--space-4);
 }
 
+.draftSaved {
+  font-size: var(--text-sm);
+  color: var(--color-ink-3);
+}
+
+.prerequisites {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  margin-bottom: var(--space-5);
+}
+
 .grid2 {
   display: grid;
   grid-template-columns: 1fr 1fr;
