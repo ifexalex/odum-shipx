@@ -59,7 +59,7 @@ _EXCEL_EXPORT_PREFIXES = ("/v1/packing-lists/", "/v1/manifests/", "/v1/billing/"
 # under other resources' prefixes (/v1/release-notes/, /v1/payments/), which
 # ROUTES would otherwise hand to payment_release. Production API Gateway routes
 # these to the excel Lambda explicitly (04c_terraform_api_gateway.md).
-_EXCEL_PDF_PREFIXES = ("/v1/packing-lists/", "/v1/release-notes/", "/v1/payments/")
+_EXCEL_PDF_PREFIXES = ("/v1/packing-lists/", "/v1/release-notes/", "/v1/payments/", "/v1/billing/", "/v1/manifests/")
 
 # Public routes — no JWT required. Mirrors `local.public_routes` in
 # infrastructure/aws/modules/api-gateway/main.tf. In production API Gateway marks

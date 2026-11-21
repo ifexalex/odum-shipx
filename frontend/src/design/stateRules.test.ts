@@ -18,7 +18,7 @@ function sources(dir: string): Array<[string, string]> {
 }
 
 const files = [...sources(join(SRC, 'pages')), ...sources(join(SRC, 'shell'))].filter(
-  ([p]) => !p.startsWith('pages/marketing/') && !p.startsWith('pages/print/'),
+  ([p]) => !p.startsWith('pages/marketing/'),
 )
 
 describe('state rules (FD-20)', () => {

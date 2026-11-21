@@ -420,8 +420,8 @@ export function ManifestDetail(): JSX.Element {
           }
           actions={
             <ExportButton
-              formats={['xlsx', 'csv']}
-              onExport={(fmt) => manifestApi.export(manifest.id, fmt)}
+              formats={['xlsx', 'csv', 'pdf']}
+              onExport={(fmt) => (fmt === 'pdf' ? manifestApi.pdf(manifest.id) : manifestApi.export(manifest.id, fmt))}
             />
           }
           more={

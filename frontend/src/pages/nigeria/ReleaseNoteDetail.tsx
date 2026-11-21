@@ -24,6 +24,7 @@ import { DetailPage } from '../../shell/DetailPage'
 import { PageHeader } from '../../shell/PageHeader'
 import { Section } from '../../shell/Section'
 import { toast } from '../../design/toast'
+import { runDocument } from '../../lib/documents'
 
 // ---------------------------------------------------------------------------
 // Status helpers
@@ -521,10 +522,11 @@ export function ReleaseNoteDetail(): JSX.Element {
               ...(!isTerminal && !isExpired && showSplitBtn && note.carton_tags.length > 1
                 ? [{ label: 'Split note', mutates: true, onSelect: () => setShowSplit(true) }]
                 : []),
+              // Print is the PDF, the one release-note document (FD-40).
               {
-                label: 'Print view',
+                label: 'Print',
                 icon: 'file',
-                onSelect: () => navigate(`/release-notes/${note.id}/print`),
+                onSelect: () => void runDocument('the release note', () => releaseNotesApi.pdf(note.id)),
               },
             ]}
             moreLabel="More release note actions"

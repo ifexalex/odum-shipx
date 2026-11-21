@@ -262,3 +262,5 @@ A WCAG contrast audit of the dark palette found a few combinations below usable 
 - **Platform / purple badge** (impersonation audit, carryover "applied") was ~2.6. New `--color-role-platform-text` (light `#7c3aed`, dark `#b99af2`).
 
 Left as acceptable: primary-coloured links/text (~3.1–3.4 on dark) — a single `--color-primary` can't satisfy both "link text on dark" and "white text on a primary button", and it's tenant-overridable, so splitting it is deferred; the green reads as interactive and passes large-text AA. `success`-button white text (~2.7) matches the same marginal choice already shipped in light mode.
+
+- **Print documents follow the tokens too (FD-41, 2026-11-21).** `services/excel/pdf_theme.py` carries the light-theme ink, line and surface colours, the default brand green `#1c7922` and the type scale (12-24 px scaled to 7.5-17 pt). Change a token there when it changes here.

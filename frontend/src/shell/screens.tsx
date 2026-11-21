@@ -13,7 +13,6 @@ const chinaArea = () => import('./areas/china')
 const customerArea = () => import('./areas/customer')
 const nigeriaArea = () => import('./areas/nigeria')
 const platformArea = () => import('./areas/platform')
-const printArea = () => import('./areas/print')
 const tenantAdminArea = () => import('./areas/tenantAdmin')
 const warehouseArea = () => import('./areas/warehouse')
 
@@ -65,8 +64,6 @@ const PlatformSettings = lazyNamed(platformArea, 'PlatformSettings')
 const PlatformDashboard = lazyNamed(platformArea, 'PlatformDashboard')
 const PlatformTenantList = lazyNamed(platformArea, 'PlatformTenantList')
 const PlatformTenantDetail = lazyNamed(platformArea, 'PlatformTenantDetail')
-const PrintPackingList = lazyNamed(printArea, 'PrintPackingList')
-const PrintReleaseNote = lazyNamed(printArea, 'PrintReleaseNote')
 const Dashboard = lazyNamed(tenantAdminArea, 'Dashboard')
 const StaffUserList = lazyNamed(tenantAdminArea, 'StaffUserList')
 const StaffUserDetail = lazyNamed(tenantAdminArea, 'StaffUserDetail')
@@ -117,7 +114,6 @@ export const GUARDED_SCREENS: Record<string, JSX.Element> = {
   '/packing-lists/import': <ImportPackingLists />,
   '/packing-lists/:id/edit': <CreatePackingList />,
   '/packing-lists/:id': <PackingListDetail />,
-  '/packing-lists/:id/print': <PrintPackingList />,
   '/manifests': <ManifestList />,
   '/manifests/:id': <ManifestDetail />,
   '/billing': <BillingList />,
@@ -169,7 +165,6 @@ export const GUARDED_SCREENS: Record<string, JSX.Element> = {
   // Release notes (already here, kept)
   '/release-notes': <ReleaseNoteList />,
   '/release-notes/:id': <ReleaseNoteDetail />,
-  '/release-notes/:id/print': <PrintReleaseNote />,
   '/warehouse': <WarehouseDashboard />,
   // Customer portal
   '/my-shipments': <MyShipments />,

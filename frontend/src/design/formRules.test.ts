@@ -20,7 +20,7 @@ function sources(dir: string): Array<[string, string]> {
 }
 
 const pages = sources(join(SRC, 'pages')).filter(
-  ([p]) => !p.startsWith('pages/marketing/') && !p.startsWith('pages/print/'),
+  ([p]) => !p.startsWith('pages/marketing/'),
 )
 
 describe('form rules (FD-11, FD-50)', () => {

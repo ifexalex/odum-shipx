@@ -511,3 +511,7 @@ Tests: `tests/unit/test_pickup_code.py` (30), `test_pickup_code_release.py` (46)
 ## Pickup ID number column widened (2026-11-19)
 
 **Bug found and fixed (latent until encryption is on):** `pickup_record.id_number` was VARCHAR(100) but holds `encrypt_field` output (~260+ characters), so recording a pickup with an ID number would have failed in production. Migration 071 made it TEXT.
+
+### Release note and receipt PDFs rebuilt (FD-40 to FD-42, 2026-11-21)
+
+Both are built on the shared PDF theme (`services/excel/pdf_theme.py`). The release note adds its valid-until date, "(partial release)", every carton tag with a "Collected" box, and terms; its **QR code now holds the bare reference** (owner decision): the warehouse screen's lookup opens the note from a scan (it held `RELEASE:{ref}`, which found nothing). The receipt adds the balance after the payment and who received it. The browser print page for release notes is retired: "Print" opens this PDF. See `19_excel_import_export.md`.

@@ -20,6 +20,7 @@ import { formatCbm, formatDate, formatNgn } from '../../lib/format'
 import { useBreadcrumbLabel } from '../../shell/breadcrumbs'
 import { PageHeader } from '../../shell/PageHeader'
 import { toast } from '../../design/toast'
+import { runDocument } from '../../lib/documents'
 
 // Bank details shown when customer selects manual transfer. Ground-truth gap
 // found live: this used to be a single hardcoded account shown to every
@@ -272,7 +273,6 @@ export function MyBillingDetail(): JSX.Element {
   const [payLoading, setPayLoading] = useState(false)
   const [payError, setPayError] = useState<string | null>(null)
   const [invoiceLoading, setInvoiceLoading] = useState(false)
-  const [invoiceError, setInvoiceError] = useState<string | null>(null)
 
   const { bankConfig } = useBankTransferConfig()
 
@@ -298,14 +298,12 @@ export function MyBillingDetail(): JSX.Element {
         : 'Could not load this billing record.'
     : null
 
+  // The branded invoice PDF (FD-39), not the data export; feedback while it is prepared and if it fails (FD-44).
   async function handleDownloadInvoice(): Promise<void> {
     if (!billing) return
     setInvoiceLoading(true)
-    setInvoiceError(null)
     try {
-      await billingApi.export(billing.id, 'pdf')
-    } catch (err) {
-      setInvoiceError(err instanceof ApiError ? err.message : 'Could not download the invoice. Try again.')
+      await runDocument('your invoice', () => billingApi.invoicePdf(billing.id))
     } finally {
       setInvoiceLoading(false)
     }
@@ -446,11 +444,6 @@ export function MyBillingDetail(): JSX.Element {
             </Button>
           }
         >
-          {invoiceError && (
-            <div className={styles.bannerGap}>
-              <Banner variant="error">{invoiceError}</Banner>
-            </div>
-          )}
           {/* The same breakdown staff read (FD-19). */}
           <InvoiceBreakdown billing={billing} />
         </Section>

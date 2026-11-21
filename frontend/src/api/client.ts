@@ -262,6 +262,8 @@ export async function apiRequestList<T>(opts: RequestOptions): Promise<ListRespo
 }
 
 export type ExportFormat = 'xlsx' | 'csv' | 'pdf'
+/** The formats of a data export: spreadsheets only. A PDF is a document with its own route (FD-39). */
+export type DataExportFormat = Exclude<ExportFormat, 'pdf'>
 
 interface ExportResultShape {
   filename: string
@@ -299,23 +301,48 @@ export async function apiDownloadFile(
   defaultFilename: string,
   query: Record<string, string | number | undefined> = {},
 ): Promise<void> {
-  const response = await fetchWithAuth({ method: 'GET', path, query: { ...query, format } })
+  // A PDF opens in a new tab, and the tab must be opened now, inside the click (FD-44): opened after the request
+  // returns, Safari and most mobile browsers treat it as a pop-up and block it, so the button looked dead. It shows
+  // a holding line until the link arrives. Must run before the first await.
+  const tab = format === 'pdf' ? openPendingTab() : null
+  try {
+    const response = await fetchWithAuth({ method: 'GET', path, query: format === 'pdf' ? query : { ...query, format } })
+    if (!response.ok) {
+      throw await parseError(response)
+    }
+    const envelope = (await response.json()) as SuccessEnvelope<ExportResultShape>
+    const { download_url: downloadUrl, filename } = envelope.data
 
-  if (!response.ok) {
-    throw await parseError(response)
+    if (format === 'pdf') {
+      // A blocked tab (some browsers block even this) falls back to opening the document here.
+      if (tab) tab.location.replace(downloadUrl)
+      else window.location.assign(downloadUrl)
+    } else {
+      // The API names the file on the link itself (Content-Disposition); `download` is ignored cross-origin.
+      const a = document.createElement('a')
+      a.href = downloadUrl
+      a.download = filename ?? defaultFilename
+      document.body.appendChild(a)
+      a.click()
+      document.body.removeChild(a)
+    }
+  } catch (err) {
+    tab?.close()
+    throw err
   }
+}
 
-  const envelope = (await response.json()) as SuccessEnvelope<ExportResultShape>
-  const { download_url: downloadUrl, filename } = envelope.data
-
-  if (format === 'pdf') {
-    window.open(downloadUrl, '_blank', 'noopener,noreferrer')
-  } else {
-    const a = document.createElement('a')
-    a.href = downloadUrl
-    a.download = filename ?? defaultFilename
-    document.body.appendChild(a)
-    a.click()
-    document.body.removeChild(a)
+/** A new tab saying the document is on its way, detached from this page; null when the browser refuses it. */
+function openPendingTab(): Window | null {
+  const tab = window.open('', '_blank')
+  if (!tab) return null
+  try {
+    tab.opener = null
+    tab.document.title = 'Preparing document…'
+    tab.document.body.style.fontFamily = 'system-ui, sans-serif'
+    tab.document.body.textContent = 'Preparing your document…'
+  } catch {
+    // A tab we cannot write to still receives the document's address.
   }
+  return tab
 }

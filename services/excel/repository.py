@@ -75,10 +75,17 @@ def get_packing_list_for_export(tenant_id: str, pl_id: str) -> dict[str, Any] | 
         """
         SELECT pl.*,
                c.name              AS customer_name,
-               co.container_number AS container_number
+               c.phone             AS customer_phone,
+               co.container_number AS container_number,
+               w.name              AS arrival_warehouse_name,
+               tu_c.full_name      AS created_by_name,
+               tu_a.full_name      AS approved_by_name
         FROM packing_list pl
         LEFT JOIN customer  c  ON c.id  = pl.customer_id  AND c.tenant_id  = pl.tenant_id
         LEFT JOIN container co ON co.id = pl.container_id AND co.tenant_id = pl.tenant_id
+        LEFT JOIN warehouse w  ON w.id  = pl.arrival_warehouse_id AND w.tenant_id = pl.tenant_id
+        LEFT JOIN tenant_user tu_c ON tu_c.id::text = pl.created_by::text  AND tu_c.tenant_id = pl.tenant_id
+        LEFT JOIN tenant_user tu_a ON tu_a.id::text = pl.approved_by::text AND tu_a.tenant_id = pl.tenant_id
         WHERE pl.tenant_id = %s AND pl.id = %s
         LIMIT 1
         """,
@@ -111,9 +118,21 @@ def get_manifest_for_export(tenant_id: str, manifest_id: str) -> dict[str, Any] 
     rows = execute_with_tenant(
         tenant_id,
         """
-        SELECT m.*, co.container_number
+        SELECT m.*,
+               co.container_number,
+               co.vessel_name,
+               co.voyage_number,
+               co.shipping_line,
+               co.origin,
+               co.destination,
+               co.ship_date,
+               co.departure_date,
+               co.estimated_arrival_date,
+               co.actual_arrival_date,
+               tu.full_name AS verified_by_name
         FROM manifest m
         LEFT JOIN container co ON co.id = m.container_id AND co.tenant_id = m.tenant_id
+        LEFT JOIN tenant_user tu ON tu.id::text = m.verified_by::text AND tu.tenant_id = m.tenant_id
         WHERE m.tenant_id = %s AND m.id = %s
         LIMIT 1
         """,
@@ -166,6 +185,7 @@ def get_billing_for_export(tenant_id: str, billing_id: str) -> dict[str, Any] | 
         """
         SELECT b.*,
                cu.name              AS customer_name,
+               cu.phone             AS customer_phone,
                co.container_number  AS container_number,
                COALESCE((
                    SELECT SUM(cl.carryover_amount_ngn)
@@ -349,13 +369,16 @@ def get_release_note_for_pdf(tenant_id: str, note_id: str) -> dict[str, Any] | N
                w.address            AS warehouse_address,
                w.city               AS warehouse_city,
                w.state              AS warehouse_state,
-               pr.receipt_number    AS receipt_number
+               w.phone              AS warehouse_phone,
+               pr.receipt_number    AS receipt_number,
+               tu.full_name         AS issued_by_name
         FROM release_note rn
         LEFT JOIN customer  cu   ON cu.id   = rn.customer_id  AND cu.tenant_id  = rn.tenant_id
         LEFT JOIN container cont ON cont.id  = rn.container_id AND cont.tenant_id = rn.tenant_id
         LEFT JOIN billing   b    ON b.id     = rn.billing_id
         LEFT JOIN warehouse w    ON w.id     = rn.warehouse_id
         LEFT JOIN payment_record pr ON pr.id = rn.payment_record_id
+        LEFT JOIN tenant_user tu ON tu.id::text = rn.issued_by::text AND tu.tenant_id = rn.tenant_id
         WHERE rn.tenant_id = %s AND rn.id = %s
         LIMIT 1
         """,
@@ -374,6 +397,15 @@ def get_payment_for_receipt_pdf(tenant_id: str, payment_id: str) -> dict[str, An
         SELECT p.*,
                b.invoice_number    AS billing_reference,
                b.customer_id       AS billing_customer_id,
+               b.total_ngn         AS billing_total_ngn,
+               tu.full_name        AS received_by_name,
+               b.total_ngn - COALESCE((
+                   SELECT SUM(p2.amount_ngn)
+                   FROM payment_record p2
+                   WHERE p2.tenant_id = p.tenant_id
+                     AND p2.billing_id = p.billing_id
+                     AND (p2.created_at, p2.id::text) <= (p.created_at, p.id::text)
+               ), 0)               AS balance_after_ngn,
                cu.name             AS customer_name,
                cu.phone            AS customer_phone,
                cu.address          AS customer_address,
@@ -383,12 +415,35 @@ def get_payment_for_receipt_pdf(tenant_id: str, payment_id: str) -> dict[str, An
         LEFT JOIN billing  b  ON b.id  = p.billing_id
         LEFT JOIN customer cu ON cu.id = b.customer_id AND cu.tenant_id = p.tenant_id
         LEFT JOIN warehouse w ON w.id  = p.warehouse_id
+        LEFT JOIN tenant_user tu ON tu.id::text = p.recorded_by::text AND tu.tenant_id = p.tenant_id
         WHERE p.tenant_id = %s AND p.id = %s
         LIMIT 1
         """,
         (tenant_id, payment_id),
     )
     return rows[0] if rows else None
+
+
+def get_bank_transfer_config(tenant_id: str) -> dict[str, Any] | None:
+    """The tenant's bank-transfer details for an invoice's "how to pay" (FD-40), or None when not set."""
+    rows = execute_with_tenant(
+        tenant_id,
+        "SELECT config_value FROM tenant_config WHERE tenant_id = %s AND config_key = 'bank_transfer_config' LIMIT 1",
+        (tenant_id,),
+    )
+    value = rows[0].get("config_value") if rows else None
+    return value if isinstance(value, dict) else None
+
+
+def paystack_enabled(tenant_id: str) -> bool:
+    """Whether the tenant takes card payments online, so the invoice can say so."""
+    rows = execute_with_tenant(
+        tenant_id,
+        "SELECT config_value FROM tenant_config WHERE tenant_id = %s AND config_key = 'paystack_config' LIMIT 1",
+        (tenant_id,),
+    )
+    value = rows[0].get("config_value") if rows else None
+    return isinstance(value, dict) and bool(value.get("enabled"))
 
 
 def get_customer_id_for_user(tenant_id: str, user_id: str) -> str | None:

@@ -26,6 +26,7 @@ import { Section } from '../../shell/Section'
 import { RecordLink } from '../../shell/RecordLink'
 import { toast } from '../../design/toast'
 import { nextActionLabel } from '../../design/nextAction'
+import { runDocument } from '../../lib/documents'
 
 
 // ---------------------------------------------------------------------------
@@ -239,6 +240,12 @@ export function BillingDetail(): JSX.Element {
               </>
             }
             more={[
+              // The branded invoice the customer receives (FD-39), to print or send.
+              {
+                label: 'Invoice PDF',
+                icon: 'file' as const,
+                onSelect: () => void runDocument('the invoice', () => billingApi.invoicePdf(billing.id)),
+              },
               ...(isStaff &&
               billing.payment_status !== 'cancelled' &&
               billing.payment_status !== 'waived'

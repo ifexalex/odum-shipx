@@ -6,7 +6,7 @@
  * `tenant.branding_config` (PUT /v1/tenant/config {branding}): company
  * identity, warehouse/contact details, and the document footer, with a live
  * preview of how branding renders on generated documents. Consumers:
- * PrintPackingList / PrintReleaseNote (header + footer) and StaffLayout's
+ * the generated PDFs (services/excel/pdf_theme.py: brand block and footer) and StaffLayout's
  * ThemeProvider (primary_color).
  *
  * Renders inside ConfigLayout (persistent config sub-nav rail — routes.tsx).
@@ -72,7 +72,7 @@ function brandingFromForm(form: FormState): BrandingConfig {
 // ---------------------------------------------------------------------------
 // Live document preview (prototype DocPreview) — driven by the form state so
 // edits render immediately. Mirrors the real print layouts
-// (PrintPackingList/PrintReleaseNote), which read the same branding fields.
+// (services/excel/pdf_theme.py), which read the same branding fields.
 // ---------------------------------------------------------------------------
 
 function DocPreview({ form, doc, logoUrl }: { form: FormState; doc: 'pl' | 'rn'; logoUrl?: string }): JSX.Element {

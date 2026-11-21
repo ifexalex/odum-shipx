@@ -185,4 +185,7 @@ export const manifestApi = {
 
   export: (id: string, format: Exclude<ExportFormat, 'pdf'>) =>
     apiDownloadFile(`/v1/manifests/${id}/export`, format, `manifest-${id}.${format}`),
+
+  /** The manifest as a branded PDF (FD-39), opened in a new tab. */
+  pdf: (id: string) => apiDownloadFile(`/v1/manifests/${id}/pdf`, 'pdf', `manifest-${id}.pdf`),
 }

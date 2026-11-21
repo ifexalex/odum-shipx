@@ -27,8 +27,6 @@ const files = [...sources(join(SRC, 'pages')), ...sources(join(SRC, 'shell'))].f
  * spreadsheet-style grid with keyboard movement between cells, which `Table` does not do.
  */
 const RAW_TABLE_ALLOWED = new Set([
-  'pages/print/PrintReleaseNote.tsx',
-  'pages/print/PrintPackingList.tsx',
   'pages/china/createPackingList/ItemsTable.tsx',
 ])
 

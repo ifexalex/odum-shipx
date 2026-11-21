@@ -219,3 +219,5 @@ targets a service key with no deployed Lambda, or a route key is duplicated.
 - Routes added 2026-11-17 (audit BE-10): `GET` and `POST /v1/platform/tenants/{id}/offboarding-export`, `POST /v1/platform/tenants/{id}/offboarding-export/link` → tenant_management.
 
 **Tenant logo routes (FD-29, 2026-11-21):** `POST /v1/tenant/config/logo/upload-url`, `PUT /v1/tenant/config/logo` and `DELETE /v1/tenant/config/logo` → `tenant_management` (added to `infrastructure/aws/modules/api-gateway/main.tf`). JWT-authorised like the other tenant-admin routes; the handler asserts `tenant_admin`.
+
+**Document routes (FD-39, 2026-11-21):** `GET /v1/billing/{id}/pdf` and `GET /v1/manifests/{id}/pdf` → `excel`. `shared/http_routing._EXCEL_PDF_PREFIXES` gains `/v1/billing/` and `/v1/manifests/` so the local server and the container app route them the same way.

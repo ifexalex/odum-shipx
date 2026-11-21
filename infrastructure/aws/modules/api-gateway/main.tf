@@ -216,6 +216,8 @@ locals {
     # Lambda (see scripts/local_server.py's _excel_pdf_prefixes).
     "POST /v1/manifests/import"         = "excel"
     "GET /v1/packing-lists/{id}/pdf"    = "excel"
+    "GET /v1/billing/{id}/pdf"          = "excel" # FD-39 invoice
+    "GET /v1/manifests/{id}/pdf"        = "excel" # FD-39 manifest
     "GET /v1/release-notes/{id}/pdf"    = "excel"
     "GET /v1/payments/{id}/receipt/pdf" = "excel"
 

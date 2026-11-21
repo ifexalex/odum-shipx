@@ -23,7 +23,7 @@ function sources(dir: string): Array<[string, string]> {
 
 // Marketing and print pages are standalone documents with their own styling (as for the design-token guards).
 const pages = sources(join(SRC, 'pages')).filter(
-  ([p]) => !p.startsWith('pages/marketing/') && !p.startsWith('pages/print/'),
+  ([p]) => !p.startsWith('pages/marketing/'),
 )
 const app = [...pages, ...sources(join(SRC, 'shell')), ...sources(join(SRC, 'auth'))]
 

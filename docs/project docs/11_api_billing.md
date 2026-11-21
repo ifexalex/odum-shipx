@@ -356,3 +356,7 @@ Unbilled invoices (no `billed_at`) now sort last in both directions, and paging 
 ## Overdue filter on the invoice list (2026-11-20, audit FD-18)
 
 `GET /v1/billing?overdue=true` (also `1`) returns only overdue invoices: status not paid, waived or cancelled, a balance still owed, billed more than 30 days ago. It is the definition the list's "Overdue (30+ days)" stat counts with (`GET /v1/billing/stats` `overdue`), shared as `shared/list_filters.py::overdue_condition` so the stat and the list it opens cannot disagree. `GET /v1/billing/export` accepts the same parameter. Tests: `tests/db/test_overdue_filter.py` (real Postgres: the list is exactly what the stat counts), `tests/unit/test_list_exports.py`, `tests/unit/test_billing.py`.
+
+### Invoice PDF (FD-39, 2026-11-21)
+
+`GET /v1/billing/{id}/pdf` (excel service; nigeria_office_staff, tenant_admin, customer own only → 404 otherwise) returns `{filename, download_url, expires_in_seconds: 300, ...}`: the branded invoice (line items, totals, how to pay). It replaces `GET /v1/billing/{id}/export?format=pdf`, a landscape table of column names; `?format=pdf` on the export is now 422. See `19_excel_import_export.md` "PDF documents".

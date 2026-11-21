@@ -17,7 +17,7 @@ const AREAS = import.meta.glob(['../shell/areas/*.ts'], { query: '?raw', import:
   string
 >
 
-const OUTSIDE_THE_LAYOUTS = ['./auth/', './print/', './marketing/', './customer/PublicTrack.tsx']
+const OUTSIDE_THE_LAYOUTS = ['./auth/', './marketing/', './customer/PublicTrack.tsx']
 /** Routed through ConfigLayout, which frames the settings page it wraps; the page inside has the header. */
 const FRAMES = new Set(['./tenant-admin/ConfigLayout.tsx'])
 

@@ -171,22 +171,18 @@ test.describe('release note — count-based generation with warehouse and docume
     await expect(page.getByText(/picked up/i).first()).toBeVisible()
   })
 
-  test('print view shows the document number, invoice numbers and paper-form signature lines', async ({ page }) => {
+  test('Print opens the release note PDF in a new tab (FD-40: the PDF is the one document)', async ({ page, context }) => {
     const row = await findReleaseNoteRow(page)
     test.skip(!(await hasRows(row)), 'No release note found for this customer — run the generation test first')
 
     await row.getByRole('button', { name: /^view$/i }).click()
     await expect(page).toHaveURL(/\/release-notes\//)
-    await page.getByRole('button', { name: /print view/i }).click()
-    await expect(page).toHaveURL(/\/release-notes\/.*\/print/)
-
-    await expect(page.getByText('Release Note', { exact: true })).toBeVisible()
-    await expect(page.getByText(PHYSICAL_DOC_NUMBER)).toBeVisible()
-    await expect(page.getByText(INVOICE_NUMBER)).toBeVisible()
-    await expect(page.getByText(/Customer Service Officer.*signature/i)).toBeVisible()
-    await expect(page.getByText(/Accounting Officer.*signature/i)).toBeVisible()
-    await expect(page.getByText(/Warehouse Attendant.*signature/i)).toBeVisible()
-    await expect(page.getByText(/management will not be/i)).toBeVisible()
+    // The document's content (document number, invoice numbers, signature lines, terms) is checked where it is
+    // made: tests/unit/test_pdf_documents.py.
+    await page.getByRole('button', { name: 'More release note actions' }).click()
+    const [tab] = await Promise.all([context.waitForEvent('page'), page.getByRole('menuitem', { name: 'Print' }).click()])
+    await tab.waitForURL(/release_note.*\.pdf/)
+    await tab.close()
   })
 
   test('PDF export opens a document from the release-note detail page', async ({ page }) => {

@@ -18,6 +18,7 @@ import { RecordLink } from '../../shell/RecordLink'
 import { toast } from '../../design/toast'
 import { DetailPage } from '../../shell/DetailPage'
 import { nextActionLabel } from '../../design/nextAction'
+import { runDocument } from '../../lib/documents'
 
 interface RejectModalProps {
   onCancel: () => void
@@ -315,10 +316,11 @@ export function PackingListDetail(): JSX.Element {
                   },
                 ]
               : []),
+            // Print is the PDF, the one packing-list document (FD-40).
             {
-              label: 'Print view',
+              label: 'Print',
               icon: 'file',
-              onSelect: () => navigate(`/packing-lists/${pl.id}/print`),
+              onSelect: () => void runDocument('the packing list', () => packingListApi.pdf(pl.id)),
             },
           ]}
           moreLabel="More packing list actions"

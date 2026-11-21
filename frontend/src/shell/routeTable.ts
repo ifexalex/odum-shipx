@@ -135,12 +135,6 @@ export const routeTable: RouteDef[] = [
   { path: '/packing-lists/:id/edit', allow: ['china_office_staff'], title: 'Edit packing list', layout: 'staff', parent: '/packing-lists/:id', crumb: 'Edit' },
   { path: '/packing-lists/import', allow: ['china_office_staff'], title: 'Import packing lists', layout: 'staff', parent: '/packing-lists', crumb: 'Import from Excel' },
   {
-    path: '/packing-lists/:id/print',
-    allow: ['china_office_staff', 'nigeria_office_staff', 'tenant_admin'],
-    title: 'Print packing list',
-    layout: 'none',
-  },
-  {
     path: '/packing-lists/:id',
     allow: ['china_office_staff', 'nigeria_office_staff', 'tenant_admin'],
     title: 'Packing list',
@@ -228,12 +222,6 @@ export const routeTable: RouteDef[] = [
     layout: 'staff',
     parent: '/release-notes',
     crumb: 'Release note',
-  },
-  {
-    path: '/release-notes/:id/print',
-    allow: ['nigeria_office_staff', 'tenant_admin', 'warehouse_attendant'],
-    title: 'Print release note',
-    layout: 'none',
   },
   { path: '/warehouse', allow: ['warehouse_attendant'], title: 'Warehouse', layout: 'staff' },
 

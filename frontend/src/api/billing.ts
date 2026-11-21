@@ -14,7 +14,7 @@
  *    _enrich_billing() — no separate fetch needed for dispute status display.
  */
 
-import { apiDownloadFile, apiRequest, apiRequestList, type ExportFormat } from './client'
+import { apiDownloadFile, apiRequest, apiRequestList, type ExportFormat, type DataExportFormat } from './client'
 import type { PresignedResponse } from '../hooks/useFileUpload'
 
 // ---------------------------------------------------------------------------
@@ -461,8 +461,11 @@ export const billingApi = {
    * role too (own record only, enforced server-side), so this doubles as
    * the customer-facing "Download invoice" action.
    */
-  export: (id: string, format: ExportFormat) =>
+  export: (id: string, format: DataExportFormat) =>
     apiDownloadFile(`/v1/billing/${id}/export`, format, `billing-${id}.${format}`),
+
+  /** The invoice as a branded PDF (FD-39), opened in a new tab. A customer may open their own. */
+  invoicePdf: (id: string) => apiDownloadFile(`/v1/billing/${id}/pdf`, 'pdf', `invoice-${id}.pdf`),
 
   /**
    * xlsx or csv export of the invoice list: every invoice matching the same filters and sort the list is showing

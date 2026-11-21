@@ -23,7 +23,6 @@ const KNOWN_UNTESTED: Record<string, string> = {
   './nigeria/EvidenceUploader.tsx': 'claim evidence upload widget',
   './platform/CreateTenantPage.tsx': 'tenant provisioning form',
   './platform/PlatformAuditLog.tsx': 'cross-tenant audit log',
-  './print/PrintPackingList.tsx': 'print view',
   './staff/StaffProfile.tsx': 'staff profile',
   './tenant-admin/NotificationTemplates.tsx': 'message template editor',
   './tenant-admin/RoleCheckboxList.tsx': 'role picker',

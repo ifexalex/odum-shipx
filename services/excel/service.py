@@ -5,7 +5,7 @@ import io
 import logging
 import re
 import uuid
-from datetime import date, datetime, timedelta
+from datetime import UTC, date, datetime, timedelta
 from io import BytesIO
 from typing import Any
 
@@ -17,9 +17,11 @@ from shared.exceptions import BusinessRuleViolationError, ResourceNotFoundError
 from shared.phone import dial_code_for_country, normalize_phone
 from shared.providers import get_storage_provider
 
+from . import pdf_theme
 from . import repository as repo
 from ._tables import Column, build_csv, build_xlsx, csv_safe
 from .export_billing import generate_billing_xlsx
+from .export_invoice_pdf import generate_invoice_pdf
 from .export_lists import (
     BILLING_LIST_COLUMNS,
     CONTAINER_EVENT_COLUMNS,
@@ -27,6 +29,7 @@ from .export_lists import (
     REPORT_CONTAINER_BILLING_COLUMNS,
 )
 from .export_manifest import generate_manifest_xlsx
+from .export_manifest_pdf import generate_manifest_pdf
 from .export_packing_list import generate_packing_list_xlsx
 from .export_packing_list_pdf import generate_packing_list_pdf
 from .export_receipt_pdf import generate_receipt_pdf
@@ -56,14 +59,25 @@ _CONTENT_TYPES = {
 }
 
 
+def _disposition(filename: str, fmt: str) -> str:
+    """How the browser should treat the download (FD-44): a PDF opens in the tab, a spreadsheet saves under our name.
+
+    Set on the presigned link because the browser ignores an <a download> name on a cross-origin URL. The name is
+    already reduced to safe characters by ``_safe_name``.
+    """
+    return f'{"inline" if fmt == "pdf" else "attachment"}; filename="{filename}"'
+
+
 def _upload_and_presign(tenant_id: str, filename: str, buf: BytesIO, fmt: str = "xlsx") -> dict[str, Any]:
     today = date.today().strftime("%Y-%m-%d")
     key = f"{tenant_id}/exports/{today}/{filename}"
     file_bytes = buf.getvalue()
     storage = get_storage_provider()
     storage.put_object(key, file_bytes, content_type=_CONTENT_TYPES.get(fmt, _CONTENT_TYPES["xlsx"]))
-    download_url = storage.presigned_get_url(key, expires_in=_PRESIGNED_EXPIRY)
-    expires_at = (datetime.utcnow() + timedelta(seconds=_PRESIGNED_EXPIRY)).strftime("%Y-%m-%dT%H:%M:%SZ")
+    download_url = storage.presigned_get_url(
+        key, expires_in=_PRESIGNED_EXPIRY, response_content_disposition=_disposition(filename, fmt)
+    )
+    expires_at = (datetime.now(UTC) + timedelta(seconds=_PRESIGNED_EXPIRY)).strftime("%Y-%m-%dT%H:%M:%SZ")
     return {
         "filename": filename,
         "download_url": download_url,
@@ -85,57 +99,6 @@ def _rows_to_csv(rows: list[dict[str, Any]], columns: list[str]) -> BytesIO:
     # Typed-in text (names, descriptions) must not run as a formula when the file is opened in a spreadsheet.
     writer.writerows({column: csv_safe(row.get(column)) for column in columns} for row in rows)
     return BytesIO(buf.getvalue().encode("utf-8-sig"))  # utf-8-sig for Excel compatibility
-
-
-# ---------------------------------------------------------------------------
-# PDF generators (reportlab — simple table layout)
-# ---------------------------------------------------------------------------
-
-
-def _rows_to_pdf(title: str, rows: list[dict[str, Any]], columns: list[str]) -> BytesIO:
-    from reportlab.lib import colors
-    from reportlab.lib.pagesizes import A4, landscape
-    from reportlab.lib.styles import getSampleStyleSheet
-    from reportlab.lib.units import cm
-    from reportlab.platypus import Paragraph, SimpleDocTemplate, Spacer, Table, TableStyle
-
-    buf = BytesIO()
-    doc = SimpleDocTemplate(
-        buf, pagesize=landscape(A4), leftMargin=1 * cm, rightMargin=1 * cm, topMargin=1.5 * cm, bottomMargin=1.5 * cm
-    )
-    styles = getSampleStyleSheet()
-
-    header_row = [col.replace("_", " ").title() for col in columns]
-    data = [header_row]
-    for row in rows:
-        data.append([str(row.get(col, "") or "") for col in columns])
-
-    col_width = (landscape(A4)[0] - 2 * cm) / max(len(columns), 1)
-    table = Table(data, colWidths=[col_width] * len(columns), repeatRows=1)
-    table.setStyle(
-        TableStyle(
-            [
-                ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#1a56db")),
-                ("TEXTCOLOR", (0, 0), (-1, 0), colors.white),
-                ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
-                ("FONTSIZE", (0, 0), (-1, -1), 8),
-                ("ROWBACKGROUNDS", (0, 1), (-1, -1), [colors.white, colors.HexColor("#f3f4f6")]),
-                ("GRID", (0, 0), (-1, -1), 0.4, colors.HexColor("#d1d5db")),
-                ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
-                ("TOPPADDING", (0, 0), (-1, -1), 4),
-                ("BOTTOMPADDING", (0, 0), (-1, -1), 4),
-            ]
-        )
-    )
-
-    elements = [
-        Paragraph(title, styles["Title"]),
-        Spacer(1, 0.4 * cm),
-        table,
-    ]
-    doc.build(elements)
-    buf.seek(0)
-    return buf
 
 
 # ---------------------------------------------------------------------------
@@ -172,9 +135,6 @@ def export_packing_list(tenant_id: str, pl_id: str, fmt: str = "xlsx") -> dict[s
 
     if fmt == "csv":
         buf = _rows_to_csv(items, _PL_COLUMNS)
-    elif fmt == "pdf":
-        title = f"Packing List — {container_number} — {customer_name}"
-        buf = _rows_to_pdf(title, items, _PL_COLUMNS)
     else:
         buf = generate_packing_list_xlsx(display_name, container_number, customer_name, items)
 
@@ -229,9 +189,6 @@ def export_manifest(tenant_id: str, manifest_id: str, fmt: str = "xlsx") -> dict
 
     if fmt == "csv":
         buf = _rows_to_csv(customer_rows, _MANIFEST_COLUMNS)
-    elif fmt == "pdf":
-        title = f"Manifest — {container_number}"
-        buf = _rows_to_pdf(title, customer_rows, _MANIFEST_COLUMNS)
     else:
         buf = generate_manifest_xlsx(display_name, container_number, customer_rows, all_items)
 
@@ -314,9 +271,6 @@ def export_billing(
 
     if fmt == "csv":
         buf = _rows_to_csv([billing], _BILLING_COLUMNS)
-    elif fmt == "pdf":
-        title = f"Billing — {container_number}"
-        buf = _rows_to_pdf(title, [billing], _BILLING_COLUMNS)
     else:
         buf = generate_billing_xlsx([billing])
 
@@ -344,9 +298,6 @@ def export_container_billing(tenant_id: str, container_id: str, fmt: str = "xlsx
 
     if fmt == "csv":
         buf = _rows_to_csv(billing_rows, _BILLING_COLUMNS)
-    elif fmt == "pdf":
-        title = f"Container Billing — {container_number}"
-        buf = _rows_to_pdf(title, billing_rows, _BILLING_COLUMNS)
     else:
         buf = generate_billing_xlsx(billing_rows)
 
@@ -572,8 +523,70 @@ def export_report_container_billing(
 
 
 # ---------------------------------------------------------------------------
-# Packing list PDF (dedicated layout — EXPORT audit)
+# Dedicated PDFs (FD-39, FD-40, FD-41): one document per record, on pdf_theme
 # ---------------------------------------------------------------------------
+
+#: A document link lasts five minutes: long enough to open, short enough that a forwarded link soon stops working.
+_PDF_LINK_SECONDS = 300
+
+
+def _brand(tenant_id: str) -> pdf_theme.Brand:
+    """The tenant's branding for a document, with its logo's bytes when one is set (FD-29).
+
+    The logo is read only from this tenant's own logo prefix. A logo that cannot be read leaves the initials tile:
+    a document must never fail for want of its logo.
+    """
+    branding = repo.get_tenant_branding(tenant_id)
+    logo: bytes | None = None
+    key = branding.get("logo_key")
+    if isinstance(key, str) and key.startswith(f"{tenant_id}/branding/logo/"):
+        try:
+            logo = get_storage_provider().get_object(key)
+        except Exception:  # noqa: BLE001 — any storage failure falls back to the initials tile
+            logger.warning("Could not read the tenant logo for a document", exc_info=True)
+    return pdf_theme.Brand.from_branding(branding, logo=logo)
+
+
+def _publish_pdf(
+    tenant_id: str,
+    buf: BytesIO,
+    stem: str,
+    *,
+    entity_type: str,
+    entity_id: str,
+    actor_id: str,
+    actor_role: str,
+) -> dict[str, Any]:
+    """Store a document, return a five-minute link that opens it in the browser, and audit the export."""
+    filename = f"{stem}.pdf"
+    result = _upload_and_presign(tenant_id, filename, buf, fmt="pdf")
+    key = f"{tenant_id}/exports/{date.today().strftime('%Y-%m-%d')}/{filename}"
+    result["download_url"] = get_storage_provider().presigned_get_url(
+        key, expires_in=_PDF_LINK_SECONDS, response_content_disposition=_disposition(filename, "pdf")
+    )
+    result["expires_in_seconds"] = _PDF_LINK_SECONDS
+    log_audit(
+        tenant_id=tenant_id,
+        entity_type=entity_type,
+        entity_id=entity_id,
+        action="EXPORT",
+        actor_id=actor_id,
+        actor_role=actor_role,
+        after_state={"format": "pdf", "filename": result["filename"]},
+    )
+    return result
+
+
+def _assert_customer_owns(tenant_id: str, customer_user_id: str | None, owner_id: object, entity: str, entity_id: str) -> None:
+    """A customer reads only their own documents; anything else is "not found", never "forbidden"."""
+    if customer_user_id:
+        customer_id = repo.get_customer_id_for_user(tenant_id, customer_user_id)
+        if not customer_id or str(owner_id) != customer_id:
+            raise ResourceNotFoundError(entity, entity_id)
+
+
+def _stem(brand: pdf_theme.Brand, kind: str, reference: object) -> str:
+    return f"{_safe_name(brand.name)}_{kind}_{_safe_name(str(reference or ''))}"
 
 
 def export_packing_list_pdf(
@@ -583,53 +596,22 @@ def export_packing_list_pdf(
     actor_role: str,
     customer_user_id: str | None = None,
 ) -> dict[str, Any]:
-    """Generate a branded A4 packing list PDF and return a 5-min presigned GET URL.
-
-    When customer_user_id is supplied (CUSTOMER role), verifies that the packing
-    list belongs to that customer; raises ResourceNotFoundError (not 403) on mismatch.
-    """
-    from shared.audit import log_audit
-    from shared.exceptions import ResourceNotFoundError
-
+    """The packing list as its one PDF, behind a five-minute link (a customer: their own only)."""
     pl = repo.get_packing_list_for_export(tenant_id, pl_id)
     if not pl:
         raise ResourceNotFoundError("packing_list", pl_id)
-
-    if customer_user_id:
-        customer_id = repo.get_customer_id_for_user(tenant_id, customer_user_id)
-        if not customer_id or str(pl.get("customer_id")) != customer_id:
-            raise ResourceNotFoundError("packing_list", pl_id)
-
-    items = repo.get_items_for_packing_list(tenant_id, pl_id)
-    branding = repo.get_tenant_branding(tenant_id)
-
-    buf = generate_packing_list_pdf(branding, dict(pl), items)
-
-    today_str = date.today().strftime("%Y%m%d")
-    company_part = _safe_name(branding.get("company_name", "export"))
-    container_part = _safe_name(str(pl.get("container_number") or ""))
-    stem = f"{company_part}_packing_list_{container_part}_pdf_{today_str}"
-    result = _upload_and_presign(tenant_id, f"{stem}.pdf", buf, fmt="pdf")
-    result["expires_in_seconds"] = 300
-    # Override the presigned URL expiry to 5 minutes (task requirement)
-    key = f"{tenant_id}/exports/{date.today().strftime('%Y-%m-%d')}/{stem}.pdf"
-    result["download_url"] = get_storage_provider().presigned_get_url(key, expires_in=300)
-
-    log_audit(
-        tenant_id=tenant_id,
+    _assert_customer_owns(tenant_id, customer_user_id, pl.get("customer_id"), "packing_list", pl_id)
+    brand = _brand(tenant_id)
+    buf = generate_packing_list_pdf(brand, dict(pl), repo.get_items_for_packing_list(tenant_id, pl_id))
+    return _publish_pdf(
+        tenant_id,
+        buf,
+        _stem(brand, "packing_list", pl.get("reference") or pl.get("container_number")),
         entity_type="packing_list",
         entity_id=pl_id,
-        action="EXPORT",
         actor_id=actor_id,
         actor_role=actor_role,
-        after_state={"format": "pdf", "filename": result["filename"]},
     )
-    return result
-
-
-# ---------------------------------------------------------------------------
-# Release note PDF (dedicated layout — EXPORT audit)
-# ---------------------------------------------------------------------------
 
 
 def export_release_note_pdf(
@@ -639,44 +621,22 @@ def export_release_note_pdf(
     actor_role: str,
     customer_user_id: str | None = None,
 ) -> dict[str, Any]:
-    """Generate a branded A4 release note PDF and return a 5-min presigned GET URL.
-
-    When customer_user_id is supplied (CUSTOMER role), verifies ownership; raises
-    ResourceNotFoundError (not 403) on mismatch.
-    """
-    from shared.audit import log_audit
-    from shared.exceptions import ResourceNotFoundError
-
+    """The release note as its one PDF, behind a five-minute link (a customer: their own only)."""
     note = repo.get_release_note_for_pdf(tenant_id, note_id)
     if not note:
         raise ResourceNotFoundError("release_note", note_id)
-
-    if customer_user_id:
-        customer_id = repo.get_customer_id_for_user(tenant_id, customer_user_id)
-        if not customer_id or str(note.get("customer_id")) != customer_id:
-            raise ResourceNotFoundError("release_note", note_id)
-
-    branding = repo.get_tenant_branding(tenant_id)
-    buf = generate_release_note_pdf(branding, dict(note))
-
-    today_str = date.today().strftime("%Y%m%d")
-    ref = _safe_name(str(note.get("reference_number") or note_id))
-    stem = f"{_safe_name(branding.get('company_name', 'export'))}_release_note_{ref}_{today_str}"
-    result = _upload_and_presign(tenant_id, f"{stem}.pdf", buf, fmt="pdf")
-    result["expires_in_seconds"] = 300
-    key = f"{tenant_id}/exports/{date.today().strftime('%Y-%m-%d')}/{stem}.pdf"
-    result["download_url"] = get_storage_provider().presigned_get_url(key, expires_in=300)
-
-    log_audit(
-        tenant_id=tenant_id,
+    _assert_customer_owns(tenant_id, customer_user_id, note.get("customer_id"), "release_note", note_id)
+    brand = _brand(tenant_id)
+    buf = generate_release_note_pdf(brand, dict(note))
+    return _publish_pdf(
+        tenant_id,
+        buf,
+        _stem(brand, "release_note", note.get("reference_number") or note_id),
         entity_type="release_note",
         entity_id=note_id,
-        action="EXPORT",
         actor_id=actor_id,
         actor_role=actor_role,
-        after_state={"format": "pdf", "filename": result["filename"]},
     )
-    return result
 
 
 def export_receipt_pdf(
@@ -686,46 +646,72 @@ def export_receipt_pdf(
     actor_role: str,
     customer_user_id: str | None = None,
 ) -> dict[str, Any]:
-    """Generate a branded A4 cash receipt PDF and return a 5-min presigned GET URL.
-
-    Mirrors export_release_note_pdf: same presign/audit shape, and the same
-    404-not-403 ownership rule — when customer_user_id is supplied (CUSTOMER
-    role), a payment belonging to another customer raises ResourceNotFoundError
-    so the endpoint never doubles as an existence oracle.
-    """
-    from shared.audit import log_audit
-    from shared.exceptions import ResourceNotFoundError
-
+    """A payment's receipt as a PDF, behind a five-minute link (a customer: their own only, else "not found")."""
     payment = repo.get_payment_for_receipt_pdf(tenant_id, payment_id)
     if not payment:
         raise ResourceNotFoundError("payment_record", payment_id)
-
-    if customer_user_id:
-        customer_id = repo.get_customer_id_for_user(tenant_id, customer_user_id)
-        if not customer_id or str(payment.get("billing_customer_id")) != customer_id:
-            raise ResourceNotFoundError("payment_record", payment_id)
-
-    branding = repo.get_tenant_branding(tenant_id)
-    buf = generate_receipt_pdf(branding, dict(payment))
-
-    today_str = date.today().strftime("%Y%m%d")
-    ref = _safe_name(str(payment.get("receipt_number") or payment_id))
-    stem = f"{_safe_name(branding.get('company_name', 'export'))}_receipt_{ref}_{today_str}"
-    result = _upload_and_presign(tenant_id, f"{stem}.pdf", buf, fmt="pdf")
-    result["expires_in_seconds"] = 300
-    key = f"{tenant_id}/exports/{date.today().strftime('%Y-%m-%d')}/{stem}.pdf"
-    result["download_url"] = get_storage_provider().presigned_get_url(key, expires_in=300)
-
-    log_audit(
-        tenant_id=tenant_id,
+    _assert_customer_owns(tenant_id, customer_user_id, payment.get("billing_customer_id"), "payment_record", payment_id)
+    brand = _brand(tenant_id)
+    buf = generate_receipt_pdf(brand, dict(payment))
+    return _publish_pdf(
+        tenant_id,
+        buf,
+        _stem(brand, "receipt", payment.get("receipt_number") or payment_id),
         entity_type="payment_record",
         entity_id=payment_id,
-        action="EXPORT",
         actor_id=actor_id,
         actor_role=actor_role,
-        after_state={"format": "pdf", "filename": result["filename"]},
     )
-    return result
+
+
+def export_invoice_pdf(
+    tenant_id: str,
+    billing_id: str,
+    actor_id: str,
+    actor_role: str,
+    customer_user_id: str | None = None,
+) -> dict[str, Any]:
+    """The invoice as its one PDF (FD-39), behind a five-minute link (a customer: their own only)."""
+    billing = repo.get_billing_for_export(tenant_id, billing_id)
+    if not billing:
+        raise ResourceNotFoundError("billing", billing_id)
+    _assert_customer_owns(tenant_id, customer_user_id, billing.get("customer_id"), "billing", billing_id)
+    brand = _brand(tenant_id)
+    buf = generate_invoice_pdf(
+        brand,
+        dict(billing),
+        repo.get_misc_charges_for_export(tenant_id, billing_id),
+        bank=repo.get_bank_transfer_config(tenant_id),
+        online=repo.paystack_enabled(tenant_id),
+    )
+    return _publish_pdf(
+        tenant_id,
+        buf,
+        _stem(brand, "invoice", billing.get("invoice_number") or billing_id),
+        entity_type="billing",
+        entity_id=billing_id,
+        actor_id=actor_id,
+        actor_role=actor_role,
+    )
+
+
+def export_manifest_pdf(tenant_id: str, manifest_id: str, actor_id: str, actor_role: str) -> dict[str, Any]:
+    """The manifest as its one PDF (FD-39), behind a five-minute link."""
+    manifest = repo.get_manifest_for_export(tenant_id, manifest_id)
+    if not manifest:
+        raise ResourceNotFoundError("manifest", manifest_id)
+    brand = _brand(tenant_id)
+    items = repo.get_items_for_manifest(tenant_id, str(manifest.get("container_id") or ""))
+    buf = generate_manifest_pdf(brand, dict(manifest), items)
+    return _publish_pdf(
+        tenant_id,
+        buf,
+        _stem(brand, "manifest", manifest.get("container_number") or manifest_id),
+        entity_type="manifest",
+        entity_id=manifest_id,
+        actor_id=actor_id,
+        actor_role=actor_role,
+    )
 
 
 # ---------------------------------------------------------------------------

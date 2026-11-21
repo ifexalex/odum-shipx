@@ -19,7 +19,7 @@ import { describe, expect, it } from 'vitest'
 
 // Read from disk: Vitest stubs CSS imports, `?raw` included.
 const SRC = join(process.cwd(), 'src')
-const EXEMPT_DIRS = ['pages/print/', 'pages/marketing/']
+const EXEMPT_DIRS = ['pages/marketing/']
 const EXEMPT_FILES = new Set(['design/tokens.css', 'design/fonts.css'])
 
 function files(dir: string, ext: string): string[] {

@@ -5959,6 +5959,72 @@
           }
         },
         {
+          "name": "Invoice PDF",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "X-Tenant-ID",
+                "value": "{{tenant_id}}"
+              },
+              {
+                "key": "X-Role",
+                "value": "nigeria_office_staff"
+              },
+              {
+                "key": "X-User-ID",
+                "value": "{{user_id}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/v1/billing/{{billing_id}}/pdf",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "v1",
+                "billing",
+                "{{billing_id}}",
+                "pdf"
+              ]
+            },
+            "description": "FD-39 (2026-11-21). The branded invoice: line items, totals, how to pay. nigeria_office_staff, tenant_admin, customer (own only; 404 otherwise). Returns {filename, download_url (5 min, Content-Disposition inline), expires_in_seconds}. Replaces /export?format=pdf, which is now 422."
+          }
+        },
+        {
+          "name": "Manifest PDF",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "X-Tenant-ID",
+                "value": "{{tenant_id}}"
+              },
+              {
+                "key": "X-Role",
+                "value": "nigeria_office_staff"
+              },
+              {
+                "key": "X-User-ID",
+                "value": "{{user_id}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/v1/manifests/{{manifest_id}}/pdf",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "v1",
+                "manifests",
+                "{{manifest_id}}",
+                "pdf"
+              ]
+            },
+            "description": "FD-39 (2026-11-21). The branded manifest: vessel, voyage, one row per customer with totals, verification. Staff who can export manifests. 5-minute link."
+          }
+        },
+        {
           "name": "Export Container Billing (XLSX)",
           "request": {
             "method": "GET",
@@ -6092,7 +6158,7 @@
                 }
               ]
             },
-            "description": "Every invoice matching the invoice list's filters and sort, not just the loaded page. tenant_admin only (owner decision 2026-11-17; every other role is 403). `format` is xlsx (default) or csv; pdf is 422. More than 10,000 matches is 422 EXPORT_TOO_LARGE. Response: `{filename, download_url, expires_at, file_size_bytes, format, row_count}`."
+            "description": "Every invoice matching the invoice list's filters and sort, not just the loaded page. tenant_admin only (owner decision 2026-11-17; every other role is 403). `format` is xlsx (default) or csv; pdf is 422. More than 10,000 matches is 422 EXPORT_TOO_LARGE. Response: `{filename, download_url, expires_at, file_size_bytes, format, row_count}`.\n\n2026-11-21 (FD-39): format=pdf is no longer accepted (422); use the record's /pdf route."
           }
         },
         {
@@ -6139,7 +6205,7 @@
                 }
               ]
             },
-            "description": "The reports page's \"CBM & billing by container\" table for the period: one row per container (customers, CBM, billed, collected, outstanding, average CBM rate and dollar rate), largest billed first, every container (the page lists the top 200). tenant_admin only; every other role is 403. Both dates optional (YYYY-MM-DD, on billing created_at). `format` is xlsx (default) or csv; pdf is 422. More than 10,000 containers is 422 EXPORT_TOO_LARGE. Response: `{filename, download_url, expires_at, file_size_bytes, format, row_count}`."
+            "description": "The reports page's \"CBM & billing by container\" table for the period: one row per container (customers, CBM, billed, collected, outstanding, average CBM rate and dollar rate), largest billed first, every container (the page lists the top 200). tenant_admin only; every other role is 403. Both dates optional (YYYY-MM-DD, on billing created_at). `format` is xlsx (default) or csv; pdf is 422. More than 10,000 containers is 422 EXPORT_TOO_LARGE. Response: `{filename, download_url, expires_at, file_size_bytes, format, row_count}`.\n\n2026-11-21 (FD-39): format=pdf is no longer accepted (422); use the record's /pdf route."
           }
         },
         {

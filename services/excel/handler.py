@@ -3,6 +3,8 @@
 Routes:
   GET  /v1/packing-lists/{id}/export          — china_office_staff, nigeria_office_staff, tenant_admin
   GET  /v1/packing-lists/{id}/pdf             — china_office_staff, nigeria_office_staff, tenant_admin, customer (own only)
+  GET  /v1/billing/{id}/pdf                   — the invoice: nigeria_office_staff, tenant_admin, customer (own only)
+  GET  /v1/manifests/{id}/pdf                 — platform_admin, tenant_admin, china/nigeria office staff
   GET  /v1/release-notes/{id}/pdf             — nigeria_office_staff, tenant_admin, warehouse_attendant, customer (own only)
   GET  /v1/payments/{id}/receipt/pdf          — nigeria_office_staff, tenant_admin, customer (own only)
   GET  /v1/manifests/{id}/export              — china_office_staff, nigeria_office_staff, tenant_admin
@@ -252,6 +254,21 @@ def _dispatch(
         )
         return success(result, request_id=request_id)
 
+    # GET /v1/billing/{id}/pdf — the invoice (FD-39); a customer gets their own only
+    if resource == "billing" and len(parts) == 4 and parts[3] == "pdf" and method == "GET":
+        ctx.assert_role(*_BILLING_SINGLE_EXPORT_ROLES)
+        customer_user_id = ctx.user_id if ctx.role == UserRole.CUSTOMER else None
+        result = service.export_invoice_pdf(
+            tenant_id, parts[2], actor_id=ctx.user_id, actor_role=str(ctx.role), customer_user_id=customer_user_id
+        )
+        return success(result, request_id=request_id)
+
+    # GET /v1/manifests/{id}/pdf — the manifest (FD-39), staff who can export it
+    if resource == "manifests" and len(parts) == 4 and parts[3] == "pdf" and method == "GET":
+        ctx.assert_role(*_EXPORT_ROLES)
+        result = service.export_manifest_pdf(tenant_id, parts[2], actor_id=ctx.user_id, actor_role=str(ctx.role))
+        return success(result, request_id=request_id)
+
     # GET /v1/release-notes/{id}/pdf
     if resource == "release-notes" and len(parts) == 4 and parts[3] == "pdf" and method == "GET":
         ctx.assert_role(*_RELEASE_NOTE_PDF_ROLES)
@@ -345,10 +362,6 @@ def _dispatch(
     # GET /v1/containers/{id}/events/export — the tracking tab's event log, xlsx or csv
     if resource == "containers" and len(parts) == 5 and parts[3] == "events" and parts[4] == "export" and method == "GET":
         ctx.assert_role(*_EVENT_EXPORT_ROLES)
-        if fmt == "pdf":
-            from shared.exceptions import ValidationError
-
-            raise ValidationError("Invalid export format", field_errors={"format": "Must be one of: xlsx, csv."})
         result = service.export_container_events(tenant_id, parts[2], fmt=fmt, actor_id=ctx.user_id, actor_role=str(ctx.role))
         return success(result, request_id=request_id)
 
@@ -366,13 +379,17 @@ def _query_params(event: dict[str, Any]) -> dict[str, Any]:
 
 
 def _resolve_format(event: dict[str, Any]) -> str:
-    """Return validated export format from ?format= query param (default: xlsx)."""
+    """Return validated export format from ?format= query param (default: xlsx).
+
+    The data exports are spreadsheets only (FD-39): a PDF is a document with its own layout, served from the record's
+    ``/pdf`` route, never a table of column names.
+    """
     raw = cast(str, (event.get("queryStringParameters") or {}).get("format", "xlsx")).lower()
-    if raw not in {"xlsx", "csv", "pdf"}:
+    if raw not in {"xlsx", "csv"}:
         from shared.exceptions import ValidationError
 
         raise ValidationError(
-            "Invalid export format",
-            field_errors={"format": f"Must be one of: xlsx, csv, pdf. Got: '{raw}'"},
+            "Invalid export format: use xlsx or csv. A record's PDF has its own /pdf link.",
+            field_errors={"format": f"Must be one of: xlsx, csv. Got: '{raw}'."},
         )
     return raw
