@@ -283,18 +283,6 @@ export function PackingListDetail(): JSX.Element {
           }
           actions={
             <>
-              {canAct && !editing && (
-                <Button
-                  variant="danger-ghost"
-                  icon="x"
-                  onClick={() => {
-                    setActionError(null)
-                    setShowRejectModal(true)
-                  }}
-                >
-                  Reject
-                </Button>
-              )}
               {pl.status === 'draft' && !editing && (
                 <Button
                   variant="secondary"
@@ -312,7 +300,21 @@ export function PackingListDetail(): JSX.Element {
               />
             </>
           }
+          // Reject is a decision against the list: in the overflow menu, as danger, not beside Approve (FD-24).
           more={[
+            ...(canAct && !editing
+              ? [
+                  {
+                    label: 'Reject packing list',
+                    icon: 'x' as const,
+                    tone: 'danger' as const,
+                    onSelect: () => {
+                      setActionError(null)
+                      setShowRejectModal(true)
+                    },
+                  },
+                ]
+              : []),
             {
               label: 'Print view',
               icon: 'file',

@@ -420,35 +420,30 @@ export function PlatformTenantDetail(): JSX.Element {
         <PageHeader
           title={tenant.company_name}
           meta={tenant.slug}
-          actions={
-            <div className={styles.tenantActions}>
-              {tenant.status === 'active' && (
-                <Button
-                  variant="secondary"
-                  icon="eye"
-                  loading={impersonating}
-                  onClick={() => void handleImpersonate()}
-                >
-                  Impersonate
-                </Button>
-              )}
-              {tenant.status === 'active' && (
-                <Button variant="danger-ghost" onClick={() => setActiveModal('suspend')}>
-                  Suspend
-                </Button>
-              )}
-              {tenant.status === 'suspended' && (
-                <Button variant="primary" onClick={() => setActiveModal('activate')}>
-                  Lift suspension
-                </Button>
-              )}
-              {tenant.status !== 'offboarded' && (
-                <Button variant="danger-ghost" onClick={() => setActiveModal('offboard')}>
-                  Offboard
-                </Button>
-              )}
-            </div>
+          primary={
+            tenant.status === 'suspended' && (
+              <Button variant="primary" onClick={() => setActiveModal('activate')}>
+                Lift suspension
+              </Button>
+            )
           }
+          actions={
+            tenant.status === 'active' && (
+              <Button variant="secondary" icon="eye" loading={impersonating} onClick={() => void handleImpersonate()}>
+                Impersonate
+              </Button>
+            )
+          }
+          // Destructive actions live in the overflow menu, never beside the main button (FD-24); each confirms.
+          more={[
+            ...(tenant.status === 'active'
+              ? [{ label: 'Suspend tenant', icon: 'pause' as const, tone: 'danger' as const, onSelect: () => setActiveModal('suspend') }]
+              : []),
+            ...(tenant.status !== 'offboarded'
+              ? [{ label: 'Offboard tenant', icon: 'x' as const, tone: 'danger' as const, onSelect: () => setActiveModal('offboard') }]
+              : []),
+          ]}
+          moreLabel="More tenant actions"
         />
       }
     >

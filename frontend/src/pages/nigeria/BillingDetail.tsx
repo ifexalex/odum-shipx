@@ -7,7 +7,7 @@ import { useSession } from '../../auth/useSession'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { billingKeys, releaseNoteKeys } from '../../api/keys'
 import { STALE_30S } from '../../lib/queryClient'
-import { Action, Banner, ExportButton, Icon, Kvp, Mono, StatusBadge, PageSkeleton, ErrorState } from '../../design/components'
+import { Action, Banner, ExportButton, Icon, Kvp, Mono, StatusBadge, PageSkeleton, ErrorState, ConfirmDialog } from '../../design/components'
 import styles from './BillingDetail.module.css'
 import { formatCbm, formatDate, formatNgn } from '../../lib/format'
 import { StorageFeeBanner, StorageFeeLog } from './billingDetail/StorageFees'
@@ -93,6 +93,7 @@ export function BillingDetail(): JSX.Element {
   const [showAddChargeModal, setShowAddChargeModal] = useState(false)
   const [cancelError, setCancelError] = useState<string | null>(null)
   const [waivingFees, setWaivingFees] = useState(false)
+  const [confirmWaive, setConfirmWaive] = useState(false)
 
   // Storage fee accrual log — loaded lazily once a billing record is known
   const { data: storageFees = [] } = useQuery({
@@ -292,7 +293,7 @@ export function BillingDetail(): JSX.Element {
                 billing={billing}
                 storageFees={storageFees}
                 canWaive={canWaiveFees}
-                onWaive={() => void handleWaiveStorageFees()}
+                onWaive={() => setConfirmWaive(true)}
                 waiving={waivingFees}
               />
             )}
@@ -344,6 +345,20 @@ export function BillingDetail(): JSX.Element {
         )}
       </DetailPage>
       {/* Modals */}
+      <ConfirmDialog
+        open={confirmWaive}
+        title={`Waive the storage fees on ${billing.invoice_number ?? 'this invoice'}?`}
+        confirmLabel="Waive storage fees"
+        undo="Fees from later days still accrue; the ones waived now do not come back."
+        busy={waivingFees}
+        onConfirm={async () => {
+          await handleWaiveStorageFees()
+          setConfirmWaive(false)
+        }}
+        onCancel={() => setConfirmWaive(false)}
+      >
+        {formatNgn(billing.storage_fees_ngn)} of storage fees come off what the customer owes.
+      </ConfirmDialog>
       {showAddChargeModal && (
         <AddChargeModal
           billing={billing}

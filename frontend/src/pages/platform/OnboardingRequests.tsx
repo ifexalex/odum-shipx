@@ -195,7 +195,7 @@ export function OnboardingRequests(): JSX.Element {
                     </Button>
                   )}
                   <Button
-                    variant="ghost"
+                    variant="danger-ghost"
                     size="sm"
                     disabled={updateRequest.isPending}
                     onClick={() => {

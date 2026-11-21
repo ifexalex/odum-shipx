@@ -171,7 +171,7 @@ export function PaymentClaimsSection({
                             Confirm
                           </Button>
                           <Button
-                            variant="secondary"
+                            variant="danger-ghost"
                             size="sm"
                             onClick={() => setRejectingClaimId(claim.id)}
                           >

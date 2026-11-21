@@ -419,14 +419,12 @@ export function RefundDetail(): JSX.Element {
               </Action>
             ) : null
           }
-          actions={
-            !isTerminalRefundStatus(refund.status) &&
-            showRejectBtn && (
-              <Action variant="danger-ghost" icon="x" onClick={() => setShowReject(true)}>
-                Reject
-              </Action>
-            )
+          more={
+            !isTerminalRefundStatus(refund.status) && showRejectBtn
+              ? [{ label: 'Reject refund', icon: 'x', tone: 'danger', onSelect: () => setShowReject(true) }]
+              : []
           }
+          moreLabel="More refund actions"
         />
       }
     >

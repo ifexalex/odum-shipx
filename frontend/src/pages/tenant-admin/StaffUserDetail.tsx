@@ -6,17 +6,7 @@ import { usersApi, type TenantUser, type TenantUserRole } from '../../api/tenant
 import { staffKeys } from '../../api/keys'
 import { STALE_30S } from '../../lib/queryClient'
 import { useSession } from '../../auth/useSession'
-import {
-  Action,
-  Banner,
-  Button,
-  Kvp,
-  LocaleCard,
-  type StaffLocale,
-  RoleBadge,
-  StatusBadge,
-  PageSkeleton,
-} from '../../design/components'
+import { Action, Banner, Button, Kvp, LocaleCard, type StaffLocale, RoleBadge, StatusBadge, PageSkeleton, ConfirmDialog } from '../../design/components'
 import { PageHeader } from '../../shell/PageHeader'
 import { ActivityFeed } from '../../shell/ActivityFeed'
 import { RoleCheckboxList } from './RoleCheckboxList'
@@ -91,6 +81,7 @@ export function StaffUserDetail(): JSX.Element {
   const [editRoles, setEditRoles] = useState<TenantUserRole[] | null>(null)
   const [editPrimaryRole, setEditPrimaryRole] = useState<TenantUserRole | null>(null)
   const [saving, setSaving] = useState(false)
+  const [confirmDeactivate, setConfirmDeactivate] = useState(false)
   const [savingLocale, setSavingLocale] = useState(false)
   const [actionError, setActionError] = useState<string | null>(null)
 
@@ -362,7 +353,7 @@ export function StaffUserDetail(): JSX.Element {
               variant="danger-ghost"
               size="sm"
               loading={saving}
-              onClick={() => void handleAction('deactivate')}
+              onClick={() => setConfirmDeactivate(true)}
             >
               Deactivate user
             </Button>
@@ -383,6 +374,21 @@ export function StaffUserDetail(): JSX.Element {
           </Action>
         </div>
       </Section>
+      <ConfirmDialog
+        open={confirmDeactivate}
+        title={`Deactivate ${user.full_name}?`}
+        confirmLabel="Deactivate user"
+        undo="You can reactivate them later from this page."
+        busy={saving}
+        error={actionError}
+        onConfirm={async () => {
+          await handleAction('deactivate')
+          setConfirmDeactivate(false)
+        }}
+        onCancel={() => setConfirmDeactivate(false)}
+      >
+        They will be signed out and will not be able to sign in. Their records and history stay.
+      </ConfirmDialog>
     </DetailPage>
   )
 }

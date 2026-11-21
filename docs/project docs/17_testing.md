@@ -2529,3 +2529,7 @@ Found by running them: **a real bug** (invoice generation set a used credit to `
 ## Next steps (FD-23, 2026-11-21)
 
 - `frontend/src/design/nextAction.test.ts` (32): each status's next step, none for finished records, every registry status covered. `BillingDetail.test.tsx` (+2): owed → Record payment, paid → Generate release note. Page tests renamed for the new labels.
+
+## Destructive actions (FD-24, 2026-11-21)
+
+- `design/components/ConfirmDialog.test.tsx` (3), `pages/destructiveActions.test.ts` (every page: destructive buttons styled as danger). Page tests updated: Reject from the overflow menu (packing list, refund), withdrawing an announcement asks first.

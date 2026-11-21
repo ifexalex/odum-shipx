@@ -16,6 +16,7 @@ import {
   Kvp,
   LimitReachedModal,
   MenuButton,
+  ConfirmDialog,
   LinesSkeleton,
   ListFooter,
   LocaleCard,
@@ -138,6 +139,7 @@ export function ComponentCatalog(): JSX.Element {
   const [phone, setPhone] = useState('')
   const [locale, setLocale] = useState<StaffLocale>('en')
   const [limitOpen, setLimitOpen] = useState(false)
+  const [confirmOpen, setConfirmOpen] = useState(false)
   const [overlayOpen, setOverlayOpen] = useState(false)
   const fileRef = useRef<HTMLInputElement>(null)
   const [opened, setOpened] = useState<string | null>(null)
@@ -659,6 +661,20 @@ export function ComponentCatalog(): JSX.Element {
               <Icon name="warn" size={18} />
               <Icon name="check" size={18} />
             </div>
+          </Demo>
+          <Demo label="Confirm a destructive action (FD-24)">
+            <Button variant="danger-ghost" onClick={() => setConfirmOpen(true)}>Delete container</Button>
+            <ConfirmDialog
+              open={confirmOpen}
+              title="Delete container MSCU1234567?"
+              confirmLabel="Delete container"
+              undo={false}
+              typeToConfirm="MSCU1234567"
+              onConfirm={() => setConfirmOpen(false)}
+              onCancel={() => setConfirmOpen(false)}
+            >
+              It has no packing lists and will be removed from ShipX.
+            </ConfirmDialog>
           </Demo>
           <Demo label="Plan limit dialog">
             <Button variant="secondary" mutates={false} onClick={() => setLimitOpen(true)}>Show limit reached</Button>

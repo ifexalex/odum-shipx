@@ -12,7 +12,7 @@ import { ApiError } from '../../api/client'
 import { containerCapacitiesApi, type ContainerCapacity } from '../../api/tenantManagement'
 import { containerCapacityKeys } from '../../api/keys'
 import { STALE_5_MIN } from '../../lib/queryClient'
-import { Badge, Banner, Button, Card, Field, Mono, Table, DialogGuard, EmptyState, LinesSkeleton } from '../../design/components'
+import { Badge, Banner, Button, Card, Field, Mono, Table, DialogGuard, EmptyState, LinesSkeleton, ConfirmDialog } from '../../design/components'
 import styles from './admin.module.css'
 import { toast } from '../../design/toast'
 import { PageHeader } from '../../shell/PageHeader'
@@ -156,6 +156,8 @@ export function ContainerCapacities(): JSX.Element {
     existing: null,
   })
   const [removingId, setRemovingId] = useState<string | null>(null)
+  // The preset waiting on a confirmation before it is removed (FD-24).
+  const [confirming, setConfirming] = useState<{ id: string; name: string } | null>(null)
   const [actionError, setActionError] = useState<string | null>(null)
 
   // containerCapacityKeys.list() is the slot CreateContainer.tsx already reads,
@@ -244,10 +246,10 @@ export function ContainerCapacities(): JSX.Element {
                 </Button>
                 {c.is_custom && (
                   <Button
-                    variant="ghost"
+                    variant="danger-ghost"
                     size="sm"
                     loading={removingId === c.id}
-                    onClick={() => void handleRemove(c.id)}
+                    onClick={() => setConfirming(c)}
                   >
                     Remove
                   </Button>
@@ -266,6 +268,22 @@ export function ContainerCapacities(): JSX.Element {
           onSuccess={() => setModal({ open: false, existing: null })}
         />
       )}
+      <ConfirmDialog
+        open={confirming !== null}
+        title={`Remove ${confirming?.name ?? 'this capacity'}?`}
+        confirmLabel="Remove capacity"
+        undo="Containers already set up keep their capacity. You can add the preset again later."
+        busy={removingId !== null}
+        error={actionError}
+        onConfirm={async () => {
+          if (!confirming) return
+          await handleRemove(confirming.id)
+          setConfirming(null)
+        }}
+        onCancel={() => setConfirming(null)}
+      >
+        It will no longer be offered when a container is created.
+      </ConfirmDialog>
     </div>
   )
 }

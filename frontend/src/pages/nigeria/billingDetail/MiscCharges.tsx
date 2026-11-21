@@ -3,7 +3,7 @@ import { useState, type JSX } from 'react'
 import { billingApi, type Billing } from '../../../api/billing'
 import { ApiError } from '../../../api/client'
 import { billingKeys } from '../../../api/keys'
-import { Button, Mono, Table } from '../../../design/components'
+import { Button, Mono, Table, ConfirmDialog } from '../../../design/components'
 import { formatNgn, plural } from '../../../lib/format'
 import { toast } from '../../../design/toast'
 import { Section } from '../../../shell/Section'
@@ -25,6 +25,8 @@ export function MiscChargesSection({
   onError,
 }: MiscChargesSectionProps): JSX.Element | null {
   const [removingChargeId, setRemovingChargeId] = useState<string | null>(null)
+  // The charge waiting on a confirmation before it is removed (FD-24).
+  const [confirming, setConfirming] = useState<{ id: string; description: string; amount_ngn: string } | null>(null)
   // Full misc-charge rows (with ids) — the embedded misc_fees list has no ids,
   // so add/remove (prototype 7.2 AddChargeModal + removable rows) needs this.
   const { data: miscCharges = [], refetch: refetchCharges } = useQuery({
@@ -71,12 +73,12 @@ export function MiscChargesSection({
                     ? [
                         <Button
                           key="rm"
-                          variant="ghost"
+                          variant="danger-ghost"
                           size="sm"
                           icon="x"
-                          aria-label="Remove charge"
+                          aria-label={`Remove charge ${c.description}`}
                           loading={removingChargeId === c.id}
-                          onClick={() => void handleRemoveCharge(c.id)}
+                          onClick={() => setConfirming(c)}
                         />,
                       ]
                     : []),
@@ -93,6 +95,21 @@ export function MiscChargesSection({
         }
       />
 
+      <ConfirmDialog
+        open={confirming !== null}
+        title={`Remove ${confirming?.description ?? 'this charge'}?`}
+        confirmLabel="Remove charge"
+        undo="You can add the charge again if it was removed by mistake."
+        busy={removingChargeId !== null}
+        onConfirm={async () => {
+          if (!confirming) return
+          await handleRemoveCharge(confirming.id)
+          setConfirming(null)
+        }}
+        onCancel={() => setConfirming(null)}
+      >
+        {confirming && `${formatNgn(confirming.amount_ngn)} comes off this invoice's total.`}
+      </ConfirmDialog>
     </Section>
   )
 }

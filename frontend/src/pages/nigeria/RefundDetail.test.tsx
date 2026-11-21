@@ -1,3 +1,4 @@
+import userEvent from '@testing-library/user-event'
 import { render, screen } from '@testing-library/react'
 import { MemoryRouter, Route, Routes } from 'react-router-dom'
 import { describe, expect, it, vi } from 'vitest'
@@ -119,7 +120,9 @@ describe('RefundDetail', () => {
   it('shows Approve and Reject for pending_approval', async () => {
     renderPage({ ...REFUND, status: 'pending_approval' })
     expect(await screen.findByRole('button', { name: /approve/i })).toBeTruthy()
-    expect(screen.getByRole('button', { name: /reject/i })).toBeTruthy()
+    // Reject is in the overflow menu, not beside Approve (FD-24).
+    await userEvent.click(screen.getByRole('button', { name: 'More refund actions' }))
+    expect(screen.getByRole('menuitem', { name: 'Reject refund' })).toBeTruthy()
   })
 
   // Threshold-aware approval (gap-fix B1: refund approve threshold)

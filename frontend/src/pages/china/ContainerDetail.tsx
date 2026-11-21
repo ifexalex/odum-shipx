@@ -13,9 +13,8 @@ import { useBreadcrumbLabel } from '../../shell/breadcrumbs'
 import { ContainerStepper } from './containerDetail/Timeline'
 import { DetailPage } from '../../shell/DetailPage'
 import { PageHeader } from '../../shell/PageHeader'
-import { Badge, Banner, Button, StatusBadge, PageSkeleton, ErrorState } from '../../design/components'
+import { Badge, Button, ConfirmDialog, StatusBadge, PageSkeleton, ErrorState } from '../../design/components'
 import { Tabs } from '../../shell/Tabs'
-import styles from './ContainerDetail.module.css'
 import { InvoiceOutcomeBanner } from './InvoiceOutcomeBanner'
 import { AdvanceStatusModal } from './containerDetail/AdvanceStatusModal'
 import { DocumentsTab } from './containerDetail/DocumentsTab'
@@ -273,78 +272,33 @@ export function ContainerDetail(): JSX.Element {
         />
       )}
 
-      {showDeleteModal && (
-        <div className={styles.modalOverlay}>
-          <div className={styles.modalPanel}>
-            <h3 className={styles.modalTitle}>Delete container?</h3>
-            <p className={styles.modalBody}>
-              <strong>{container.container_number}</strong> has no packing lists and will be
-              permanently removed. This cannot be undone.
-            </p>
-            {actionError && (
-              <div className={styles.modalBanner}>
-                <Banner variant="error" title="Could not delete">
-                  {actionError}
-                </Banner>
-              </div>
-            )}
-            <div className={styles.modalActions}>
-              <Button
-                variant="ghost"
-                onClick={() => setShowDeleteModal(false)}
-                disabled={actionBusy}
-              >
-                Keep container
-              </Button>
-              <Button
-                variant="primary"
-                onClick={() => void handleDelete()}
-                loading={actionBusy}
-                style={{ background: 'var(--color-error)', borderColor: 'var(--color-error)' }}
-              >
-                Delete permanently
-              </Button>
-            </div>
-          </div>
-        </div>
-      )}
+      <ConfirmDialog
+        open={showDeleteModal}
+        title={`Delete container ${container.container_number}?`}
+        confirmLabel="Delete container"
+        undo={false}
+        typeToConfirm={container.container_number}
+        error={actionError}
+        busy={actionBusy}
+        onConfirm={handleDelete}
+        onCancel={() => setShowDeleteModal(false)}
+      >
+        It has no packing lists, and it will be removed from ShipX.
+      </ConfirmDialog>
 
-      {showCancelModal && (
-        <div className={styles.modalOverlay}>
-          <div className={styles.modalPanel}>
-            <h3 className={styles.modalTitle}>Cancel container?</h3>
-            <p className={styles.modalBody}>
-              <strong>{container.container_number}</strong> will be marked as{' '}
-              <strong>Cancelled</strong>. Existing packing lists are preserved for record-keeping
-              but no further changes can be made.
-            </p>
-            {actionError && (
-              <div className={styles.modalBanner}>
-                <Banner variant="error" title="Could not cancel">
-                  {actionError}
-                </Banner>
-              </div>
-            )}
-            <div className={styles.modalActions}>
-              <Button
-                variant="ghost"
-                onClick={() => setShowCancelModal(false)}
-                disabled={actionBusy}
-              >
-                Keep container
-              </Button>
-              <Button
-                variant="primary"
-                onClick={() => void handleCancel()}
-                loading={actionBusy}
-                style={{ background: 'var(--color-error)', borderColor: 'var(--color-error)' }}
-              >
-                Cancel container
-              </Button>
-            </div>
-          </div>
-        </div>
-      )}
+      <ConfirmDialog
+        open={showCancelModal}
+        title={`Cancel container ${container.container_number}?`}
+        confirmLabel="Cancel container"
+        undo={false}
+        error={actionError}
+        busy={actionBusy}
+        onConfirm={handleCancel}
+        onCancel={() => setShowCancelModal(false)}
+      >
+        It will be marked Cancelled. Its packing lists are kept for the record, but nothing on the container can be
+        changed afterwards.
+      </ConfirmDialog>
     </>
   )
 }

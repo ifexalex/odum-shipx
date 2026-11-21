@@ -321,7 +321,7 @@ export function DisputeCard({ dispute, role, onUpdated }: DisputeCardProps): JSX
             </Button>
           )}
           {canRejectDispute(dispute, r) && rejectingReason === null && (
-            <Button variant="ghost" size="sm" onClick={() => setRejectingReason('')}>
+            <Button variant="danger-ghost" size="sm" onClick={() => setRejectingReason('')}>
               Reject
             </Button>
           )}

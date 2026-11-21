@@ -280,6 +280,8 @@ describe('AnnouncementsPage — nigeria_office_staff', () => {
 
     await screen.findByText('Customs delay')
     await userEvent.click(screen.getByRole('button', { name: /withdraw/i }))
+    expect(announcementsApi.deleteRequest).not.toHaveBeenCalled() // it asks first (FD-24)
+    await userEvent.click(screen.getByRole('button', { name: 'Withdraw announcement' }))
 
     await waitFor(() => expect(announcementsApi.deleteRequest).toHaveBeenCalledWith('req1'))
   })

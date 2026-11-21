@@ -368,7 +368,7 @@ export function Warehouses(): JSX.Element {
                 </Button>
                 {!w.is_default && (
                   <Button
-                    variant="ghost"
+                    variant="danger-ghost"
                     size="sm"
                     disabled={busyId === w.id}
                     onClick={() => setPendingRemoval({ warehouse: w, stage: 'delete' })}

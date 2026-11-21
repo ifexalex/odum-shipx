@@ -407,3 +407,4 @@ The owner asked that every component look sleek. Reviewed the whole catalog (lig
 - **StatCard**: compact, see above.
 Buttons, fields, chips, the stepper and section headings were already in proportion and are unchanged.
 - **`shell/DetailPage`, `shell/Section`** (FD-19): the record layout (`header`, `notices`, `progress`, `aside`, children) and a titled card with its heading inside (`title`, `sub`, `action`, `flush` for an edge-to-edge table), a region named by its heading. `SectionHead` takes `headingId`. **`pages/shared/InvoiceBreakdown`**: the one invoice breakdown, the body of a `Section`.
+- **`ConfirmDialog`** (FD-24): `title`, children (what happens), `confirmLabel`, `undo` (how to undo, or false), `typeToConfirm` (the reference to type for an irreversible action), `error`, `busy`, `onConfirm`, `onCancel`; "Keep it" cancels. In the catalog.

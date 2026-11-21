@@ -1,6 +1,6 @@
 import { useState, type JSX } from 'react'
 import { useSession } from '../../auth/useSession'
-import { Badge, Button, Card, Field, StatusBadge, LinesSkeleton } from '../../design/components'
+import { Badge, Button, Card, Field, StatusBadge, LinesSkeleton, ConfirmDialog } from '../../design/components'
 import { SectionHead } from '../../shell/SectionHead'
 import { ComposeAnnouncementModal } from '../../shell/ComposeAnnouncementModal'
 import type {
@@ -258,9 +258,21 @@ function MyRequestRow({ req }: { req: AnnouncementRequest }): JSX.Element {
   const update = useUpdateAnnouncementRequest()
   const remove = useDeleteAnnouncementRequest()
   const [editing, setEditing] = useState(false)
+  const [confirmWithdraw, setConfirmWithdraw] = useState(false)
 
   return (
     <div className={styles.row}>
+      <ConfirmDialog
+        open={confirmWithdraw}
+        title={`Withdraw "${req.title}"?`}
+        confirmLabel="Withdraw announcement"
+        undo="You can submit it again later."
+        busy={remove.isPending}
+        onConfirm={() => remove.mutate(req.id, { onSettled: () => setConfirmWithdraw(false) })}
+        onCancel={() => setConfirmWithdraw(false)}
+      >
+        It will be taken out of the admin's review queue and will not be sent.
+      </ConfirmDialog>
       <div className={styles.rowHeader}>
         <span className={styles.rowTitle}>{req.title}</span>
         <StatusBadge size="sm" kind="announcement" status={req.status} />
@@ -292,7 +304,7 @@ function MyRequestRow({ req }: { req: AnnouncementRequest }): JSX.Element {
             size="sm"
             variant="danger-ghost"
             loading={remove.isPending}
-            onClick={() => remove.mutate(req.id)}
+            onClick={() => setConfirmWithdraw(true)}
           >
             Withdraw
           </Button>

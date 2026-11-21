@@ -11,7 +11,7 @@ import { ApiError } from '../../api/client'
 import { configApi, type ChargeType } from '../../api/tenantManagement'
 import { configKeys } from '../../api/keys'
 import { STALE_5_MIN } from '../../lib/queryClient'
-import { Badge, Banner, Button, Card, Field, Mono, Table, DialogGuard, EmptyState, LinesSkeleton } from '../../design/components'
+import { Badge, Banner, Button, Card, Field, Mono, Table, DialogGuard, EmptyState, LinesSkeleton, ConfirmDialog } from '../../design/components'
 import styles from './admin.module.css'
 import { formatNgn } from '../../lib/format'
 import { toast } from '../../design/toast'
@@ -152,6 +152,8 @@ export function ChargeTypes(): JSX.Element {
     existing: null,
   })
   const [deactivatingId, setDeactivatingId] = useState<string | null>(null)
+  // The charge type waiting on a confirmation before it is deactivated (FD-24).
+  const [confirming, setConfirming] = useState<{ id: string; name: string } | null>(null)
   const [actionError, setActionError] = useState<string | null>(null)
 
   const { data: chargeTypes = [], isLoading: loading, error: loadError } = useQuery({
@@ -251,10 +253,10 @@ export function ChargeTypes(): JSX.Element {
                 </Button>
                 {t.is_active && (
                   <Button
-                    variant="ghost"
+                    variant="danger-ghost"
                     size="sm"
                     loading={deactivatingId === t.id}
-                    onClick={() => void handleDeactivate(t.id)}
+                    onClick={() => setConfirming(t)}
                   >
                     Deactivate
                   </Button>
@@ -273,6 +275,22 @@ export function ChargeTypes(): JSX.Element {
           onSuccess={() => setModal({ open: false, existing: null })}
         />
       )}
+      <ConfirmDialog
+        open={confirming !== null}
+        title={`Deactivate ${confirming?.name ?? 'this charge type'}?`}
+        confirmLabel="Deactivate charge type"
+        undo="Charges already on invoices stay as they are. You can add the charge type again later."
+        busy={deactivatingId !== null}
+        error={actionError}
+        onConfirm={async () => {
+          if (!confirming) return
+          await handleDeactivate(confirming.id)
+          setConfirming(null)
+        }}
+        onCancel={() => setConfirming(null)}
+      >
+        It will no longer be offered when staff add a charge to an invoice.
+      </ConfirmDialog>
     </div>
   )
 }

@@ -104,11 +104,19 @@ describe('PackingListDetail', () => {
     vi.mocked(packingListApi.submit).mockReset()
   })
 
+  // Reject packing list: from the overflow menu (FD-24).
+  async function openReject(): Promise<void> {
+    await userEvent.click(await screen.findByRole('button', { name: 'More packing list actions' }))
+    await userEvent.click(screen.getByRole('menuitem', { name: 'Reject packing list' }))
+  }
+
   it('shows approve/reject for an authorized non-creator on a pending list', async () => {
     vi.mocked(packingListApi.get).mockResolvedValue(plStub({ created_by: 'staff-1' }))
     renderPage('china_office_staff', 'staff-2')
     await waitFor(() => expect(screen.getByRole('button', { name: 'Approve' })).toBeInTheDocument())
-    expect(screen.getByRole('button', { name: 'Reject' })).toBeInTheDocument()
+    // Reject is in the overflow menu, not beside Approve (FD-24).
+    expect(screen.queryByRole('button', { name: 'Reject' })).toBeNull()
+    await openReject()
   })
 
   it('hides approve/reject when the actor created the list (self-approval prevention)', async () => {
@@ -138,8 +146,7 @@ describe('PackingListDetail', () => {
   it('requires comments before confirming a reject', async () => {
     vi.mocked(packingListApi.get).mockResolvedValue(plStub({ created_by: 'staff-1' }))
     renderPage('china_office_staff', 'staff-2')
-    await waitFor(() => expect(screen.getByRole('button', { name: 'Reject' })).toBeInTheDocument())
-    await userEvent.click(screen.getByRole('button', { name: 'Reject' }))
+    await openReject()
     expect(screen.getByRole('button', { name: 'Confirm reject' })).toBeDisabled()
   })
 
@@ -147,8 +154,7 @@ describe('PackingListDetail', () => {
     vi.mocked(packingListApi.get).mockResolvedValue(plStub({ created_by: 'staff-1' }))
     vi.mocked(packingListApi.reject).mockRejectedValue(new Error('boom'))
     renderPage('china_office_staff', 'staff-2')
-    await waitFor(() => expect(screen.getByRole('button', { name: 'Reject' })).toBeInTheDocument())
-    await userEvent.click(screen.getByRole('button', { name: 'Reject' }))
+    await openReject()
     await userEvent.type(screen.getByLabelText('Comments', { exact: false }), 'bad transition')
     await userEvent.click(screen.getByRole('button', { name: 'Confirm reject' }))
     const dialog = await screen.findByRole('dialog')
