@@ -2003,3 +2003,10 @@ All 15 record pages (container, packing list, CBM dispute, invoice, damage claim
 - **The whole card opens the shipment:** the reference is a link stretched over the card (one link per card for a screen reader, focus ring on the card); the per-card "View details" button is gone, a chevron shows it opens.
 - **Cartons as compact rows** on the detail page (tag, description, "20.5 kg · 0.800 CBM" on one line, wrapping on a phone): the table turned into a card per carton on a phone, which does not scale to fifty.
 - The past-shipments column "Delivered" showed the packing list's creation date; it is now "Booked".
+
+## Public tracking page: brand and context (FD-28, 2026-11-21)
+
+- **A brand header and footer**, like the sign-in pages: before a lookup the header carries the ShipX mark (linking home) and "Sign in"; the footer reads "ShipX · China to Nigeria cargo" with Sign in and About ShipX links. The form is a card in a centred column, submits on Enter, and the button is full width at 48 px.
+- **The shipping company's name and colour** once a lookup succeeds: the header shows the company name with a swatch, the page is wrapped in `ThemeProvider` with the response's new `brand_color` (buttons and the stepper take the company's colour), and the footer says "Tracking for {company}, powered by ShipX". Before a lookup, or when the company has no colour, it stays ShipX. The tenant is known only after the code and phone match, so the brand never shows for a code alone.
+- **The result uses the shared `Stepper`** over the seven public stages (`PUBLIC_STAGE_ORDER` in `api/customer.ts`), each reached stage dated; the latest three updates with notes below; and "Sign in for full details" (`/login?next=/my-shipments`). The hand-built timeline and its styles in `customer.module.css` are gone (`PublicTrack.module.css`).
+- Wire format: `GET /v1/shipments/{code}` gained `brand_color` (see `10_api_tracking.md`).

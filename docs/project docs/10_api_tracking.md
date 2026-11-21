@@ -110,6 +110,7 @@ No date filter is applied when `created_after`/`created_before` (or `eta_after`/
 - Query: match tracking_code AND customer phone
 - Return: current_stage, stage_history, estimated_stages (optional)
 - Include tenant's company_name from branding config
+- `brand_color` (FD-28, 2026-11-21): the tenant's `branding_config.primary_color` when it is a plain `#rrggbb` value, else `null` (the public page puts it into a style, so anything else is dropped). Returned, like `company_name`, only after the code and phone matched: a tracking code alone reveals nothing about the tenant. Additive and nullable.
 
 **Ground-truth gap found and fixed (2026-11-02): the phone match was
 unnormalised, so public tracking did not work for most customers.** The query

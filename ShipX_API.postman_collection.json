@@ -2308,7 +2308,7 @@
                 }
               ]
             },
-            "description": "Public endpoint — no auth required. Customer looks up shipment by tracking code + phone number.\n\nThe phone is normalised to E.164 before matching (fixed 2026-11-02). Customer phones are stored E.164 and this previously compared ONE exact string, so a local-format number never matched. Note this very request used phone=08012345678 — it would have returned 404 against a customer stored as +2348012345678. Both the normalised and the raw form are now accepted."
+            "description": "Public endpoint — no auth required. Customer looks up shipment by tracking code + phone number.\n\nThe phone is normalised to E.164 before matching (fixed 2026-11-02). Customer phones are stored E.164 and this previously compared ONE exact string, so a local-format number never matched. Note this very request used phone=08012345678 — it would have returned 404 against a customer stored as +2348012345678. Both the normalised and the raw form are now accepted.\n\nResponse (FD-28): tracking_code, current_stage, company_name, brand_color (the tenant's #rrggbb brand colour or null), stage_history, estimated_stages."
           }
         },
         {

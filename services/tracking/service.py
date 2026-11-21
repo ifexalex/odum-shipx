@@ -5,6 +5,7 @@ tracking updates, billing event triggers, and customer-facing tracking lookup.
 """
 
 import logging
+import re
 from typing import Any
 
 from services.billing.service import generate_container_invoices
@@ -28,6 +29,9 @@ from . import repository as repo
 from .models import TrackingStage
 
 _URL_EXPIRY = 900  # 15 minutes
+# A tenant's brand colour as the public tracking page may use it: a plain #rrggbb value and nothing else, since the
+# page puts it into a style (FD-28).
+_HEX_COLOR = re.compile(r"^#[0-9a-fA-F]{6}$")
 _ALLOWED_DOCUMENT_TYPES = frozenset({"bill_of_lading", "customs_certificate", "insurance", "inspection_report", "other"})
 
 logger = logging.getLogger(__name__)
@@ -603,14 +607,19 @@ def get_shipment_by_code_and_phone(tracking_code: str, phone: str) -> dict[str, 
 
     # Extract company_name (may be in branding_config or company_name column)
     company_name = row.get("company_name")
+    brand_color: str | None = None
     branding = row.get("branding_config") or {}
     if isinstance(branding, dict):
         company_name = branding.get("display_name") or company_name
+        # Returned only after the code and phone matched, like the name: the code alone says nothing about the tenant.
+        color = branding.get("primary_color")
+        brand_color = color if isinstance(color, str) and _HEX_COLOR.match(color) else None
 
     return {
         "tracking_code": row["tracking_code"],
         "current_stage": current_stage,
         "company_name": company_name,
+        "brand_color": brand_color,
         "stage_history": stage_history,
         "estimated_stages": None,
     }

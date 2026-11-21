@@ -1,0 +1,181 @@
+/* Public tracking (FD-28): a brand header and footer around a centred column, like the sign-in pages. */
+.page {
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+  background: var(--color-page);
+}
+
+.header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-4);
+  padding: var(--space-4) var(--space-6);
+  background: var(--color-surface);
+  border-bottom: 1px solid var(--color-line-soft);
+}
+
+.brand {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  text-decoration: none;
+}
+
+.company {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  font-family: var(--font-display);
+  font-weight: 700;
+  font-size: var(--text-lg);
+  color: var(--color-ink);
+}
+
+/* The shipping company's colour, from its branding (ThemeProvider sets --color-primary). */
+.companyMark {
+  width: 14px;
+  height: 14px;
+  border-radius: var(--radius-sm);
+  background: var(--color-primary);
+}
+
+.headerLink {
+  font-weight: 600;
+  color: var(--color-primary-text);
+  text-decoration: none;
+}
+
+.main {
+  flex: 1;
+  width: 100%;
+  max-width: 640px;
+  margin: 0 auto;
+  padding: var(--space-12) var(--space-4) var(--space-8);
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+}
+
+.title {
+  font-family: var(--font-display);
+  font-size: var(--text-2xl);
+  font-weight: 700;
+  margin: 0 0 var(--space-2);
+  text-align: center;
+}
+
+.sub {
+  font-size: var(--text-md);
+  color: var(--color-ink-3);
+  margin: 0 0 var(--space-6);
+  text-align: center;
+}
+
+.form {
+  width: 100%;
+  max-width: 440px;
+  align-self: center;
+  background: var(--color-surface);
+  border: 1px solid var(--color-line-soft);
+  border-radius: var(--radius-lg);
+  padding: var(--space-6);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+}
+
+.result {
+  margin-top: var(--space-6);
+  background: var(--color-surface);
+  border: 1px solid var(--color-line-soft);
+  border-radius: var(--radius-lg);
+  padding: var(--space-6);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-5);
+}
+
+.resultTitle {
+  font-family: var(--font-display);
+  font-size: var(--text-xl);
+  font-weight: 700;
+  margin: 0;
+}
+
+.resultMeta {
+  margin: var(--space-1) 0 0;
+  font-size: var(--text-sm);
+  color: var(--color-ink-3);
+}
+
+.muted {
+  margin: 0;
+  color: var(--color-ink-3);
+}
+
+.notes {
+  list-style: none;
+  margin: 0;
+  padding: var(--space-3) 0 0;
+  border-top: 1px solid var(--color-line-soft);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  font-size: var(--text-sm);
+}
+
+.noteDate {
+  color: var(--color-ink-3);
+  font-variant-numeric: tabular-nums;
+}
+
+.signIn {
+  margin: 0;
+  font-size: var(--text-sm);
+  color: var(--color-ink-3);
+}
+
+.signIn a {
+  font-weight: 600;
+  color: var(--color-primary-text);
+}
+
+.footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: var(--space-2) var(--space-4);
+  padding: var(--space-5) var(--space-6);
+  border-top: 1px solid var(--color-line-soft);
+  font-size: var(--text-sm);
+  color: var(--color-ink-3);
+}
+
+.footerLinks {
+  display: flex;
+  gap: var(--space-4);
+}
+
+.footerLinks a {
+  color: var(--color-ink-2);
+  text-decoration: none;
+}
+
+@media (max-width: 600px) {
+  .header,
+  .footer {
+    padding-inline: var(--space-4);
+  }
+
+  .main {
+    padding-top: var(--space-6);
+  }
+
+  .form,
+  .result {
+    padding: var(--space-5) var(--space-4);
+  }
+}

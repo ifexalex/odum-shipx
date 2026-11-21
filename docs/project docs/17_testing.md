@@ -2549,3 +2549,8 @@ Found by running them: **a real bug** (invoice generation set a used credit to `
 
 - `pages/customer/shipmentStage.test.ts` (22): the stage of every container status; the by-stage summary; the arrival label for each status (expected, delayed with a past date, arrived from `arrived` onwards, nothing without a date).
 - `MyShipments.test.tsx` (+6): "3 in transit, 2 ready for pickup"; Delayed / Arrived / Expected arrival on the card; the card opens the shipment through one link with no button; total in ink and only the owed amount red. `MyShipmentDetail.test.tsx`: cartons asserted as rows.
+
+## Public tracking page (FD-28, 2026-11-21)
+
+- `PublicTrack.test.tsx` (new, 5): ShipX header and footer before a lookup; the company's name and colour after one (the `--color-primary` override on the theme wrapper); ShipX colours when the company has none; the shared stepper, the latest update and the sign-in link; Enter submits.
+- `tests/unit/test_tracking.py` (+6): `brand_color` returned only as a plain `#rrggbb` (named colours, short hex, a value carrying extra CSS and non-strings are dropped).
