@@ -4,7 +4,7 @@
  * never navigate away.
  */
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
-import { render, screen, waitFor } from '@testing-library/react'
+import { render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { MemoryRouter, Route, Routes } from 'react-router-dom'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
@@ -141,5 +141,16 @@ describe('MyBillingDetail — download invoice', () => {
     await userEvent.click(await screen.findByRole('button', { name: /download invoice/i }))
 
     expect(await screen.findByText(/couldn't find that/i)).toBeInTheDocument()
+  })
+})
+
+describe('MyBillingDetail next step (FD-22)', () => {
+  it('leads with paying what is owed; a refund (part is paid) is only in the overflow menu', async () => {
+    renderPage()
+    const header = (await screen.findByRole('heading', { level: 1 })).closest('[data-page-start]') as HTMLElement
+    expect(within(header).getByRole('button', { name: 'Pay ₦50,656' })).toBeInTheDocument()
+    expect(within(header).queryByRole('button', { name: /refund/i })).toBeNull()
+    await userEvent.click(within(header).getByRole('button', { name: 'More invoice actions' }))
+    expect(screen.getByRole('menuitem', { name: 'Request a refund' })).toBeInTheDocument()
   })
 })

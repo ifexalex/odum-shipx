@@ -361,16 +361,29 @@ export function MyBillingDetail(): JSX.Element {
               ),
               billing.billed_at && `Billed ${formatDate(billing.billed_at)}`,
             ]}
+            // The next step is paying (FD-22): it leads, and on a phone it is the bar at the bottom of the screen. Not
+            // while a bank-transfer claim is pending, which would invite a second payment.
             primary={
-              needsPayment && (
-                <Button
-                  variant="primary"
-                  onClick={() => navigate(`/my-billing/${billing.id}/refund-request`)}
-                >
-                  Request refund
+              needsPayment &&
+              !pendingClaim && (
+                <Button variant="accent" loading={payLoading} onClick={() => void handlePayOnline()}>
+                  Pay {formatNgn(outstanding)}
                 </Button>
               )
             }
+            // A refund is for money already paid: offered only then, and out of the way.
+            more={
+              Number(billing.total_paid_ngn) > 0 && billing.payment_status !== 'cancelled'
+                ? [
+                    {
+                      label: 'Request a refund',
+                      icon: 'refresh',
+                      onSelect: () => navigate(`/my-billing/${billing.id}/refund-request`),
+                    },
+                  ]
+                : []
+            }
+            moreLabel="More invoice actions"
             actions={
               billing._active_disputes.length === 0 &&
               !disputeFiled &&
@@ -384,6 +397,11 @@ export function MyBillingDetail(): JSX.Element {
         }
         notices={
           <>
+            {payError && (
+              <Banner variant="error" title="Couldn't start the payment">
+                {payError}
+              </Banner>
+            )}
             {(disputeFiled || billing._active_disputes.length > 0) && (
               <Banner variant="info" title="CBM dispute open">
                 Your dispute is with our team — we acknowledge within 24 hours and re-measure.
@@ -470,11 +488,6 @@ export function MyBillingDetail(): JSX.Element {
                       Instant card, transfer, or USSD payment via Paystack. You'll be redirected to
                       a secure checkout page.
                     </p>
-                    {payError && (
-                      <div className={styles.noteGap}>
-                        <Banner variant="error">{payError}</Banner>
-                      </div>
-                    )}
                     <Button
                       variant="accent"
                       loading={payLoading}

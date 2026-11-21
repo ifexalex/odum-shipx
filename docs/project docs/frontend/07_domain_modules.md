@@ -1958,3 +1958,9 @@ All 15 record pages (container, packing list, CBM dispute, invoice, damage claim
 - **One invoice breakdown** (`pages/shared/InvoiceBreakdown.tsx`) for staff and customers: the staff version used sentence-case rows and the customer version small-capital key-value rows with different words for the same lines. The old staff `BillingBreakdown` is removed.
 - **The container's stage pipeline** is the layout's progress strip, so it shows on every tab, not only Overview.
 - Hand-placed spacer elements inside the pages were removed (the layout's gap does the spacing); the customer profile's consent labels are sentence case like every key-value label; "View full invoice →" keeps its arrow with its words.
+
+## Customer invoice leads with paying (FD-22, 2026-11-21)
+
+- The header's primary action on an unpaid invoice is "Pay ₦…" (online, Paystack); on a phone it is the fixed bar at the bottom of the screen. It was a filled "Request refund", and the pay button sat below the breakdown, off the first screen. While a bank-transfer claim is pending there is no pay button (it would invite a second payment).
+- "Request a refund" is in the overflow menu, offered only once something has been paid; an unpaid invoice offers none. "Dispute CBM" stays a secondary action. A failed payment start shows as a notice at the top.
+- The release notes card already sits first on the page once the invoice is settled (UX-02).
