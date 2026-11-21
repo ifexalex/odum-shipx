@@ -1,27 +1,25 @@
 import { useQuery } from '@tanstack/react-query'
 import { useMemo, type JSX } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { Link, useNavigate } from 'react-router-dom'
 import { ApiError } from '../../api/client'
 import { billingApi, type Billing } from '../../api/billing'
 import { billingKeys, packingListKeys } from '../../api/keys'
 import { packingListApi } from '../../api/packingList'
 import { STALE_30S } from '../../lib/queryClient'
-import { Banner, Button, Card, Icon, Mono, Table, StatusBadge, PageSkeleton } from '../../design/components'
+import { Banner, Card, Icon, Mono, Table, StatusBadge, PageSkeleton } from '../../design/components'
 import { SectionHead } from '../../shell/SectionHead'
 import { useSession } from '../../auth/useSession'
 import { CustomerStepper } from './CustomerStepper'
 import styles from './MyShipments.module.css'
-import { formatCbm, formatDate, formatNgn } from '../../lib/format'
+import { formatCbm, formatDate, formatNgn, todayIso } from '../../lib/format'
+import { activeSummary, arrivalLabel, shipmentStage } from './shipmentStage'
 import { PageHeader } from '../../shell/PageHeader'
-
-const ACTIVE_STATUSES = new Set([
-  'loading', 'sealed', 'in_transit', 'arrived', 'customs_clearance', 'cleared', 'at_warehouse',
-])
 
 function fmtNgn(val: string | number | null | undefined): string {
   return formatNgn(val)
 }
 
+// Money is ink; only an amount still owed is red (FD-27). The total cost was amber, with no meaning behind it.
 function CustStat({ label, value, color }: { label: string; value: string; color?: string }): JSX.Element {
   return (
     <div>
@@ -76,8 +74,11 @@ export function MyShipments(): JSX.Element {
 
   // Split into active and past
   const { active: activeShipments, past: pastShipments } = useMemo(() => {
-    const active = shipments.filter((pl) => pl.container_status && ACTIVE_STATUSES.has(pl.container_status))
-    const past = shipments.filter((pl) => pl.container_status === 'fully_released' || pl.container_status === 'cancelled')
+    const active = shipments.filter((pl) => {
+      const stage = shipmentStage(pl.container_status)
+      return stage === 'in_transit' || stage === 'ready_for_pickup'
+    })
+    const past = shipments.filter((pl) => shipmentStage(pl.container_status) === 'complete')
     return { active, past }
   }, [shipments])
 
@@ -95,6 +96,7 @@ export function MyShipments(): JSX.Element {
   }, [billing])
 
   const name = session?.name?.split(' ')[0] ?? 'there'
+  const today = todayIso()
 
   if (loading) {
     return <PageSkeleton kind="list" label="Loading your shipments" />
@@ -112,7 +114,8 @@ export function MyShipments(): JSX.Element {
         title="My shipments"
         meta={[
           `Hello ${name}`,
-          `${activeShipments.length} active`,
+          // By stage, not "5 on the way" counting ones already waiting at the warehouse (FD-27).
+          activeSummary(activeShipments.map((pl) => pl.container_status)),
           `${pastShipments.length} completed`,
           outstandingTotal > 0 && `${fmtNgn(outstandingTotal)} outstanding`,
         ]}
@@ -129,8 +132,13 @@ export function MyShipments(): JSX.Element {
           <div className={styles.activeList}>
             {activeShipments.map((shipment) => {
               const b = billingByContainer.get(shipment.container_id)
+              const arrival = arrivalLabel(shipment.container_status, shipment.container_eta, today)
+              const owed = b ? Number(b.outstanding_ngn) : 0
               return (
-                <Card key={shipment.id} padding="none" style={{ overflow: 'hidden' }}>
+                // The whole card opens the shipment (FD-27): the reference is a link stretched over the card, so
+                // there is one link per card for a screen reader and no separate button.
+                <div key={shipment.id} className={styles.activeCard}>
+                  <Card padding="none" style={{ overflow: 'hidden' }}>
                   <div className={styles.activeCardHeader}>
                     {/* Left — icon + reference + meta */}
                     <div className={styles.activeCardLeft}>
@@ -139,9 +147,11 @@ export function MyShipments(): JSX.Element {
                       </div>
                       <div>
                         <div className={styles.activeCardRef}>
-                          <Mono color="var(--color-ink)" style={{ fontSize: 'var(--text-lg)', fontWeight: 700 }}>
-                            {shipment.reference ?? shipment.id.slice(0, 8)}
-                          </Mono>
+                          <Link to={`/my-shipments/${shipment.id}`} className={styles.cardLink}>
+                            <Mono color="var(--color-ink)" style={{ fontSize: 'var(--text-lg)', fontWeight: 700 }}>
+                              {shipment.reference ?? shipment.id.slice(0, 8)}
+                            </Mono>
+                          </Link>
                           {shipment.container_status && (
                             <StatusBadge kind="container" status={shipment.container_status} audience="customer" />
                           )}
@@ -154,14 +164,20 @@ export function MyShipments(): JSX.Element {
                         </div>
                       </div>
                     </div>
-                    {/* Right — ETA */}
-                    {shipment.container_eta && (
+                    {/* Right — arrival: expected, delayed or arrived, by the container's real stage */}
+                    {arrival && (
                       <div className={styles.activeCardEta}>
-                        <div className={styles.etaLabel}>Expected arrival</div>
-                        <div className={styles.etaDate}>
-                          {formatDate(shipment.container_eta)}
-                        </div>
-                        <div className={styles.etaSub}>Tin Can Port, Lagos</div>
+                        {arrival.label === 'Expected arrival' ? (
+                          <>
+                            <div className={styles.etaLabel}>{arrival.label}</div>
+                            <div className={styles.etaDate}>{arrival.detail}</div>
+                          </>
+                        ) : (
+                          <>
+                            <div className={styles.etaDate}>{arrival.label}</div>
+                            {arrival.detail && <div className={styles.etaSub}>{arrival.detail}</div>}
+                          </>
+                        )}
                       </div>
                     )}
                   </div>
@@ -171,32 +187,22 @@ export function MyShipments(): JSX.Element {
                     <CustomerStepper containerStatus={shipment.container_status ?? null} />
                   </div>
 
-                  {/* Stats row + CTA */}
+                  {/* Stats row */}
                   <div className={styles.activeCardFooter}>
                     <div className={styles.footerStats}>
                       <CustStat label="Cartons" value={String(shipment.carton_count)} />
                       <CustStat label="CBM" value={formatCbm(shipment.total_cbm ?? 0)} />
-                      <CustStat
-                        label="Total cost"
-                        value={b ? fmtNgn(b.total_due_ngn) : '—'}
-                        color={b ? 'var(--color-warning)' : undefined}
-                      />
+                      <CustStat label="Total cost" value={b ? fmtNgn(b.total_due_ngn) : '—'} />
                       <CustStat
                         label="Outstanding"
-                        value={b && Number(b.outstanding_ngn) > 0 ? fmtNgn(b.outstanding_ngn) : '—'}
-                        color={b && Number(b.outstanding_ngn) > 0 ? 'var(--color-error)' : undefined}
+                        value={owed > 0 ? fmtNgn(owed) : '—'}
+                        color={owed > 0 ? 'var(--color-error)' : undefined}
                       />
                     </div>
-                    <Button
-                      className={styles.footerCta}
-                      variant="primary"
-                      icon="arrowright"
-                      onClick={() => navigate(`/my-shipments/${shipment.id}`)}
-                    >
-                      View details
-                    </Button>
+                    <Icon name="chevright" size={20} color="var(--color-ink-4)" />
                   </div>
-                </Card>
+                  </Card>
+                </div>
               )
             })}
           </div>
@@ -218,7 +224,8 @@ export function MyShipments(): JSX.Element {
                 { title: 'Container', type: 'reference' },
                 { title: 'Status', type: 'status' },
                 { title: 'Cartons', type: 'number' },
-                { title: 'Delivered', type: 'date' },
+                // The packing list's own date: "Delivered" claimed a delivery date this is not (FD-27).
+                { title: 'Booked', type: 'date' },
                 { title: 'Amount paid (₦)', type: 'money' },
               ]}
               rows={pastShipments.map((pl) => {

@@ -1994,3 +1994,12 @@ All 15 record pages (container, packing list, CBM dispute, invoice, damage claim
 - **The lookup block is a plain surface** with a soft-green icon tile (hidden under 600 px), not a green gradient panel, so the field, button and error read in their normal colours.
 - **Chips only when it matters:** "Waiting 24h+" on a note authorised more than a day ago; no "New" chip.
 - **Title "Pickups"**, not a third "Warehouse" beside the role badge and the nav item. The queue no longer shows a skeleton under cards already loaded (it waited on all three lists); the counts show "—" until theirs arrive.
+
+## Customer shipments: wording and emphasis match the real stage (FD-27, 2026-11-21)
+
+- **`pages/customer/shipmentStage.ts`** derives everything from the container status, so the page, its counts and its tests agree: `shipmentStage` (in transit = loading through cleared; ready for pickup = at warehouse; complete = fully released or cancelled), `activeSummary` ("3 in transit, 2 ready for pickup", a stage with none left out) and `arrivalLabel`.
+- **Arrival label:** once the container has reached Nigeria (arrived onwards) the card says **Arrived**, with no date (the packing list carries only the expected date, so none is claimed). Before then, an expected date already past says **Delayed**, "Was expected 9 Sept 2026", in neutral text; otherwise "Expected arrival" and the date, in ink rather than green. The invented "Tin Can Port, Lagos" line under the date is gone. The detail page's header carries the same label.
+- **Money in ink; red only for an amount owed.** The card's total cost was amber; on the detail page "Paid" was green and a zero outstanding green.
+- **The whole card opens the shipment:** the reference is a link stretched over the card (one link per card for a screen reader, focus ring on the card); the per-card "View details" button is gone, a chevron shows it opens.
+- **Cartons as compact rows** on the detail page (tag, description, "20.5 kg · 0.800 CBM" on one line, wrapping on a phone): the table turned into a card per carton on a phone, which does not scale to fifty.
+- The past-shipments column "Delivered" showed the packing list's creation date; it is now "Booked".

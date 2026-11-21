@@ -2544,3 +2544,8 @@ Found by running them: **a real bug** (invoice generation set a used credit to `
 ## Warehouse counter (FD-26, 2026-11-21)
 
 - `WarehouseDashboard.test.tsx` (+4, 2 updated): the reference field is focused on arrival; a full pickup by keyboard only (scan + Enter, code + Enter, focus back on the empty field with the toast shown); Look up with nothing entered explains rather than being disabled; no chip on a note that is not urgent; the title is "Pickups"; the urgent chip reads "Waiting 24h+".
+
+## Customer shipments wording (FD-27, 2026-11-21)
+
+- `pages/customer/shipmentStage.test.ts` (22): the stage of every container status; the by-stage summary; the arrival label for each status (expected, delayed with a past date, arrived from `arrived` onwards, nothing without a date).
+- `MyShipments.test.tsx` (+6): "3 in transit, 2 ready for pickup"; Delayed / Arrived / Expected arrival on the card; the card opens the shipment through one link with no button; total in ink and only the owed amount red. `MyShipmentDetail.test.tsx`: cartons asserted as rows.

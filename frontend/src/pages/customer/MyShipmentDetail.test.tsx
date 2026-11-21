@@ -92,7 +92,7 @@ describe('MyShipmentDetail — zones (A3)', () => {
     expect(packingListApi.get).toHaveBeenCalledWith('pl1')
   })
 
-  it('renders hero with status badge, the stepper hint, and the cartons table', async () => {
+  it('renders hero with status badge, the stepper hint, and the carton rows', async () => {
     renderPage()
     await screen.findByRole('heading', { name: 'Shipment PL-20260415-001' })
 
@@ -104,7 +104,9 @@ describe('MyShipmentDetail — zones (A3)', () => {
     expect(screen.getByText('My cartons')).toBeInTheDocument()
     expect(screen.getByText('SHX-00001')).toBeInTheDocument()
     expect(screen.getByText('Electronics (mixed)')).toBeInTheDocument()
-    expect(screen.getByText('0.030')).toBeInTheDocument()
+    // One compact row per carton (FD-27): weight and volume on the row's own line.
+    expect(screen.getByRole('list', { name: 'Cartons' }).querySelectorAll('li')).toHaveLength(2)
+    expect(screen.getByText(/0\.030 CBM/)).toBeInTheDocument()
   })
 
   it('shows the billing summary and routes the pay CTA to the billing detail', async () => {

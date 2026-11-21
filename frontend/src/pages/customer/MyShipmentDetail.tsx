@@ -23,12 +23,13 @@ import { billingApi, paymentClaimApi, type Billing } from '../../api/billing'
 import { billingKeys, packingListKeys } from '../../api/keys'
 import { packingListApi } from '../../api/packingList'
 import { STALE_30S } from '../../lib/queryClient'
-import { Banner, Button, Card, Icon, Kvp, Mono, StatusBadge, Table, LinesSkeleton, PageSkeleton, EmptyState } from '../../design/components'
+import { Banner, Button, Card, Icon, Kvp, Mono, StatusBadge, LinesSkeleton, PageSkeleton, EmptyState } from '../../design/components'
 import { SectionHead } from '../../shell/SectionHead'
 import { CustomerStepper } from './CustomerStepper'
 import { ReleaseNoteCard } from './ReleaseNoteCard'
 import styles from './customer.module.css'
-import { formatCbm, formatKg, formatNgn } from '../../lib/format'
+import { formatCbm, formatKg, formatNgn, plural, todayIso } from '../../lib/format'
+import { arrivalLabel } from './shipmentStage'
 import { useBreadcrumbLabel } from '../../shell/breadcrumbs'
 import { PageHeader } from '../../shell/PageHeader'
 import { DetailPage } from '../../shell/DetailPage'
@@ -116,6 +117,8 @@ export function MyShipmentDetail(): JSX.Element {
   const status = pl.container_status ?? 'loading'
   const totalCbm = Number(pl.total_cbm)
   const outstanding = shipmentBilling ? Number(shipmentBilling.outstanding_ngn) : 0
+  // Expected, delayed or arrived, by the container's real stage (FD-27).
+  const arrival = arrivalLabel(pl.container_status, pl.container_eta, todayIso())
 
   return (
     <DetailPage
@@ -131,7 +134,8 @@ export function MyShipmentDetail(): JSX.Element {
             ) : (
               'Awaiting container assignment'
             ),
-            `${pl.carton_count} carton${pl.carton_count === 1 ? '' : 's'}`,
+            plural(pl.carton_count, 'carton'),
+            arrival && (arrival.detail ? `${arrival.label}: ${arrival.detail}` : arrival.label),
           ]}
         />
       }
@@ -160,32 +164,30 @@ export function MyShipmentDetail(): JSX.Element {
               sub={`${pl.carton_count} carton${pl.carton_count === 1 ? '' : 's'} · ${formatCbm(totalCbm)} CBM total`}
             />
           </div>
-          <Table
-            dense
-            columns={[
-              { title: 'Tag', type: 'reference' },
-              { title: 'Description' },
-              { title: 'Weight (kg)', type: 'number' },
-              { title: 'Volume (CBM)', type: 'number' },
-            ]}
-            rows={pl.items.map((item) => ({
-              cells: [
-                <Mono key="tag">{item.carton_tag ?? item.tracking_code ?? '—'}</Mono>,
-                <span key="desc" style={{ fontSize: 'var(--text-sm)' }}>
-                  {item.description}
-                </span>,
-                <Mono key="wt">
-                  {(item.weight_actual_kg ?? item.weight_dispatch_kg)
-                    ? `${formatKg(item.weight_actual_kg ?? item.weight_dispatch_kg)} kg`
-                    : '—'}
-                </Mono>,
-                <Mono key="cbm" color="var(--color-primary)">
-                  {item.cbm ? formatCbm(item.cbm) : '—'}
-                </Mono>,
-              ],
-            }))}
-            emptyState={<EmptyState compact title="No cartons recorded yet" />}
-          />
+          {/* One compact row per carton (FD-27): the table became a card per carton on a phone, which does not
+              scale to fifty cartons. */}
+          {pl.items.length === 0 ? (
+            <EmptyState compact title="No cartons recorded yet" />
+          ) : (
+            <ul className={styles.cartonList} aria-label="Cartons">
+              {pl.items.map((item) => {
+                const kg = item.weight_actual_kg ?? item.weight_dispatch_kg
+                return (
+                  <li key={item.id} className={styles.cartonRow}>
+                    <span className={styles.cartonTag}>
+                      <Mono>{item.carton_tag ?? item.tracking_code ?? '—'}</Mono>
+                    </span>
+                    <span className={styles.cartonDesc}>{item.description}</span>
+                    <span className={styles.cartonMetrics}>
+                      {[kg ? `${formatKg(kg)} kg` : null, item.cbm ? `${formatCbm(item.cbm)} CBM` : null]
+                        .filter(Boolean)
+                        .join(' · ') || '—'}
+                    </span>
+                  </li>
+                )
+              })}
+            </ul>
+          )}
         </Card>
 
         {/* Billing summary */}
@@ -240,16 +242,13 @@ export function MyShipmentDetail(): JSX.Element {
               />
               <Kvp
                 label="Paid"
-                value={
-                  <Mono color="var(--color-success)">
-                    {fmtNgn(Number(shipmentBilling.total_paid_ngn))}
-                  </Mono>
-                }
+                value={<Mono>{fmtNgn(Number(shipmentBilling.total_paid_ngn))}</Mono>}
               />
               <Kvp
                 label="Outstanding"
                 value={
-                  <Mono color={outstanding > 0 ? 'var(--color-error)' : 'var(--color-success)'}>
+                  // Money in ink; red only for an amount still owed (FD-27).
+                  <Mono color={outstanding > 0 ? 'var(--color-error)' : undefined}>
                     {fmtNgn(outstanding)}
                   </Mono>
                 }
