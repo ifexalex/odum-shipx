@@ -24,6 +24,8 @@ import styles from './admin.module.css'
 import { formatCount, formatDate, formatDateTime } from '../../lib/format'
 import { useBreadcrumbLabel } from '../../shell/breadcrumbs'
 import { toast } from '../../design/toast'
+import { Section } from '../../shell/Section'
+import { DetailPage } from '../../shell/DetailPage'
 
 interface ActionModalProps {
   action: 'suspend' | 'activate' | 'offboard'
@@ -413,42 +415,48 @@ export function PlatformTenantDetail(): JSX.Element {
   if (!tenant) return <></>
 
   return (
-    <div>
-      <PageHeader
-        title={tenant.company_name}
-        meta={tenant.slug}
-        actions={
-          <div className={styles.tenantActions}>
-            {tenant.status === 'active' && (
-              <Button
-                variant="secondary"
-                icon="eye"
-                loading={impersonating}
-                onClick={() => void handleImpersonate()}
-              >
-                Impersonate
-              </Button>
-            )}
-            {tenant.status === 'active' && (
-              <Button variant="danger-ghost" onClick={() => setActiveModal('suspend')}>
-                Suspend
-              </Button>
-            )}
-            {tenant.status === 'suspended' && (
-              <Button variant="primary" onClick={() => setActiveModal('activate')}>
-                Lift suspension
-              </Button>
-            )}
-            {tenant.status !== 'offboarded' && (
-              <Button variant="danger-ghost" onClick={() => setActiveModal('offboard')}>
-                Offboard
-              </Button>
-            )}
-          </div>
-        }
-      />
-
-      {error && <div className={styles.banner}><Banner variant="error">{error}</Banner></div>}
+    <DetailPage
+      header={
+        <PageHeader
+          title={tenant.company_name}
+          meta={tenant.slug}
+          actions={
+            <div className={styles.tenantActions}>
+              {tenant.status === 'active' && (
+                <Button
+                  variant="secondary"
+                  icon="eye"
+                  loading={impersonating}
+                  onClick={() => void handleImpersonate()}
+                >
+                  Impersonate
+                </Button>
+              )}
+              {tenant.status === 'active' && (
+                <Button variant="danger-ghost" onClick={() => setActiveModal('suspend')}>
+                  Suspend
+                </Button>
+              )}
+              {tenant.status === 'suspended' && (
+                <Button variant="primary" onClick={() => setActiveModal('activate')}>
+                  Lift suspension
+                </Button>
+              )}
+              {tenant.status !== 'offboarded' && (
+                <Button variant="danger-ghost" onClick={() => setActiveModal('offboard')}>
+                  Offboard
+                </Button>
+              )}
+            </div>
+          }
+        />
+      }
+    >
+      {error && (
+        <div className={styles.banner}>
+          <Banner variant="error">{error}</Banner>
+        </div>
+      )}
 
       <Tabs
         items={[
@@ -468,24 +476,42 @@ export function PlatformTenantDetail(): JSX.Element {
       {tab === 'audit' && <AuditTab tenantId={tenant.id} />}
 
       {tab === 'overview' && (
-      <>
-      <SectionHead title="Tenant details" />
-      <Card padding="default">
-        <Kvp label="Status" value={<StatusBadge kind="tenant" status={tenant.status} />} />
-        <Kvp label="Subscription" value={<span style={{ textTransform: 'capitalize' }}>{tenant.subscription_tier}</span>} />
-        <Kvp label="Contact email" value={tenant.primary_contact_email} />
-        {tenant.primary_contact_phone && <Kvp label="Contact phone" value={tenant.primary_contact_phone} />}
-        <Kvp label="Created" value={formatDate(tenant.created_at)} />
-        {tenant.offboarded_at && <Kvp label="Offboarded" value={formatDate(tenant.offboarded_at)} />}
-        {tenant.reactivated_at && <Kvp label="Reactivated" value={formatDate(tenant.reactivated_at)} />}
-        <Kvp label="Tenant ID" value={<span style={{ fontFamily: 'var(--font-mono)', fontSize: 'var(--text-sm)' }}>{tenant.id}</span>} divider={false} />
-      </Card>
-      {tenant.status === 'offboarded' && (
-        <div style={{ marginTop: 'var(--space-4)' }}>
-          <OffboardingExportCard tenantId={tenant.id} />
-        </div>
-      )}
-      </>
+        <>
+          <Section title="Tenant details">
+            <Kvp label="Status" value={<StatusBadge kind="tenant" status={tenant.status} />} />
+            <Kvp
+              label="Subscription"
+              value={
+                <span style={{ textTransform: 'capitalize' }}>{tenant.subscription_tier}</span>
+              }
+            />
+            <Kvp label="Contact email" value={tenant.primary_contact_email} />
+            {tenant.primary_contact_phone && (
+              <Kvp label="Contact phone" value={tenant.primary_contact_phone} />
+            )}
+            <Kvp label="Created" value={formatDate(tenant.created_at)} />
+            {tenant.offboarded_at && (
+              <Kvp label="Offboarded" value={formatDate(tenant.offboarded_at)} />
+            )}
+            {tenant.reactivated_at && (
+              <Kvp label="Reactivated" value={formatDate(tenant.reactivated_at)} />
+            )}
+            <Kvp
+              label="Tenant ID"
+              value={
+                <span style={{ fontFamily: 'var(--font-mono)', fontSize: 'var(--text-sm)' }}>
+                  {tenant.id}
+                </span>
+              }
+              divider={false}
+            />
+          </Section>
+          {tenant.status === 'offboarded' && (
+            <div style={{ marginTop: 'var(--space-4)' }}>
+              <OffboardingExportCard tenantId={tenant.id} />
+            </div>
+          )}
+        </>
       )}
 
       {activeModal && (
@@ -499,6 +525,6 @@ export function PlatformTenantDetail(): JSX.Element {
           }}
         />
       )}
-    </div>
+    </DetailPage>
   )
 }

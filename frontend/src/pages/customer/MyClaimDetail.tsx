@@ -14,6 +14,7 @@ import { PageHeader } from '../../shell/PageHeader'
 import styles from './customer.module.css'
 import { useBreadcrumbLabel } from '../../shell/breadcrumbs'
 import { claimProgress, claimSteps } from '../../design/steps'
+import { DetailPage } from '../../shell/DetailPage'
 
 /** What the customer is waiting for, by where the claim is. */
 function waitingNote(status: DamageClaimStatus): string | null {
@@ -125,35 +126,40 @@ export function MyClaimDetail(): JSX.Element {
   }
 
   return (
-    <div className={styles.page}>
-      <PageHeader
-        title={`Claim ${claim.reference ?? ''}`.trim()}
-        meta={`Filed ${formatDate(claim.created_at)}`}
-      />
-
-      <div className={styles.banner} style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-3)', flexWrap: 'wrap' }}>
+    <DetailPage
+      header={
+        <PageHeader
+          title={`Claim ${claim.reference ?? ''}`.trim()}
+          meta={`Filed ${formatDate(claim.created_at)}`}
+        />
+      }
+    >
+      <div
+        className={styles.banner}
+        style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-3)', flexWrap: 'wrap' }}
+      >
         <StatusBadge kind="claim" status={claim.status} audience="customer" />
       </div>
       <ProgressSteps status={claim.status} />
 
-      <div style={{ height: 16 }} />
       <Outcome claim={claim} />
 
-      <div style={{ height: 16 }} />
       <Card padding="large">
         <h2 style={{ margin: '0 0 var(--space-3)', fontSize: 'var(--text-lg)' }}>Your claim</h2>
         <Kvp label="Container" value={<Mono>{claim.container_number ?? '—'}</Mono>} />
-        {claim.cartons_affected.length > 0 && <Kvp label="Cartons affected" value={<Mono>{claim.cartons_affected.join(', ')}</Mono>} />}
+        {claim.cartons_affected.length > 0 && (
+          <Kvp label="Cartons affected" value={<Mono>{claim.cartons_affected.join(', ')}</Mono>} />
+        )}
         <Kvp optional label="What you told us" value={claim.description} />
         <Kvp label="How it was checked" value={customerInspectionLabel(claim.inspection_method)} />
       </Card>
 
-      <div style={{ height: 16 }} />
       <Card padding="large">
-        <h2 style={{ margin: '0 0 var(--space-3)', fontSize: 'var(--text-lg)' }}>Evidence you provided</h2>
+        <h2 style={{ margin: '0 0 var(--space-3)', fontSize: 'var(--text-lg)' }}>
+          Evidence you provided
+        </h2>
         <EvidenceList files={claim.evidence ?? []} />
       </Card>
-
-    </div>
+    </DetailPage>
   )
 }

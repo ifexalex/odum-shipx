@@ -93,11 +93,10 @@
 }
 
 .prefLabel {
-  font-size: var(--text-xs);
-  color: var(--color-ink-4);
-  font-weight: 500;
-  text-transform: uppercase;
-  letter-spacing: var(--tracking-label);
+  /* Reads like a Kvp label (sleek pass): sentence case, not small capitals. */
+  font-size: var(--text-sm);
+  color: var(--color-ink-3);
+  font-weight: 400;
   margin-bottom: var(--space-2);
 }
 
@@ -117,11 +116,10 @@
 }
 
 .prefLabelInline {
-  font-size: var(--text-xs);
-  color: var(--color-ink-4);
-  font-weight: 500;
-  text-transform: uppercase;
-  letter-spacing: var(--tracking-label);
+  /* Reads like a Kvp label (sleek pass): sentence case, not small capitals. */
+  font-size: var(--text-sm);
+  color: var(--color-ink-3);
+  font-weight: 400;
 }
 
 .compactSelectField {
@@ -154,10 +152,6 @@
 
 .bannerGap {
   margin-bottom: var(--space-4);
-}
-
-.spacer16 {
-  height: 16px;
 }
 
 /* An optional detail nobody has filled in (FD-17), quieter than a value. */

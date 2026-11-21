@@ -13,6 +13,7 @@ import { useBreadcrumbLabel } from '../../shell/breadcrumbs'
 import { PageHeader } from '../../shell/PageHeader'
 import { formatCbm, formatDate } from '../../lib/format'
 import { toast } from '../../design/toast'
+import { DetailPage } from '../../shell/DetailPage'
 
 function ResolvePanel({ dispute, onResolved }: { dispute: DisputeDetailData; onResolved: () => void }): JSX.Element {
   const [outcome, setOutcome] = useState<'resolved_adjusted' | 'resolved_no_change'>('resolved_no_change')
@@ -124,17 +125,21 @@ export function DisputeDetail(): JSX.Element {
   const totalLineCbm = dispute.lines.reduce((sum, line) => sum + Number(line.cbm), 0)
 
   return (
-    <div className={styles.page}>
-      <PageHeader
-        title={dispute.container_number ? `CBM dispute on ${dispute.container_number}` : 'CBM dispute'}
-        status={<StatusBadge kind="dispute" status={dispute.status} />}
-        meta={[
-          dispute.customer_name,
-          dispute.invoice_number,
-          `Filed ${formatDate(dispute.submitted_at)}`,
-        ]}
-      />
-
+    <DetailPage
+      header={
+        <PageHeader
+          title={
+            dispute.container_number ? `CBM dispute on ${dispute.container_number}` : 'CBM dispute'
+          }
+          status={<StatusBadge kind="dispute" status={dispute.status} />}
+          meta={[
+            dispute.customer_name,
+            dispute.invoice_number,
+            `Filed ${formatDate(dispute.submitted_at)}`,
+          ]}
+        />
+      }
+    >
       <Card padding="large">
         <SectionHead title="Measurement" sub="What the customer claims against what was billed" />
         <div style={{ height: 16 }} />
@@ -161,11 +166,15 @@ export function DisputeDetail(): JSX.Element {
         {dispute.reason && (
           <>
             <div style={{ height: 16 }} />
-            <p className={styles.reason}><strong>Customer&apos;s reason:</strong> {dispute.reason}</p>
+            <p className={styles.reason}>
+              <strong>Customer&apos;s reason:</strong> {dispute.reason}
+            </p>
           </>
         )}
         {dispute.resolution_notes && (
-          <p className={styles.reason} style={{ marginTop: 'var(--space-2)' }}><strong>Resolution:</strong> {dispute.resolution_notes}</p>
+          <p className={styles.reason} style={{ marginTop: 'var(--space-2)' }}>
+            <strong>Resolution:</strong> {dispute.resolution_notes}
+          </p>
         )}
       </Card>
 
@@ -192,14 +201,24 @@ export function DisputeDetail(): JSX.Element {
               <Mono key="ref">{line.reference ?? '—'}</Mono>,
               <Mono key="tag">{line.carton_tag}</Mono>,
               <span key="desc">{line.description}</span>,
-              <span key="qty">{line.quantity}{line.package_unit ? ` ${line.package_unit}` : ''}</span>,
+              <span key="qty">
+                {line.quantity}
+                {line.package_unit ? ` ${line.package_unit}` : ''}
+              </span>,
               <Mono key="dims">
-                {line.length_cm && line.width_cm && line.height_cm ? `${line.length_cm} × ${line.width_cm} × ${line.height_cm}` : '—'}
+                {line.length_cm && line.width_cm && line.height_cm
+                  ? `${line.length_cm} × ${line.width_cm} × ${line.height_cm}`
+                  : '—'}
               </Mono>,
               <Mono key="cbm">{line.cbm}</Mono>,
             ],
           }))}
-          emptyState={<EmptyState compact title="No approved packing-list lines for this customer on this container" />}
+          emptyState={
+            <EmptyState
+              compact
+              title="No approved packing-list lines for this customer on this container"
+            />
+          }
         />
       </Card>
 
@@ -217,6 +236,6 @@ export function DisputeDetail(): JSX.Element {
           }}
         />
       )}
-    </div>
+    </DetailPage>
   )
 }

@@ -11,6 +11,7 @@ import { PageHeader } from '../../shell/PageHeader'
 import styles from './customer.module.css'
 import { formatDate, formatNgn } from '../../lib/format'
 import { useBreadcrumbLabel } from '../../shell/breadcrumbs'
+import { DetailPage } from '../../shell/DetailPage'
 
 /**
  * A customer's own release note: what they show, or quote, at the warehouse to collect their goods.
@@ -64,19 +65,25 @@ export function MyReleaseNote(): JSX.Element {
   const owing = Number(note.balance_ngn) > 0
 
   return (
-    <div className={styles.page}>
-      <PageHeader title="Release note" meta="Show this at the warehouse to collect your goods." />
-
+    <DetailPage
+      header={
+        <PageHeader title="Release note" meta="Show this at the warehouse to collect your goods." />
+      }
+    >
       {note.status === 'active' && (
         <div className={styles.banner}>
           <Banner variant="info" title="Ready for collection">
-            Show this page, or quote the reference below, at the warehouse. You can also download it as a PDF.
+            Show this page, or quote the reference below, at the warehouse. You can also download it
+            as a PDF.
           </Banner>
         </div>
       )}
       {note.status === 'active' && note.pickup_code_required && (
         <div className={styles.banner}>
-          <Banner variant={note.pickup_code_locked ? 'error' : 'warning'} title={note.pickup_code_locked ? 'Pickup code locked' : 'A pickup code is needed'}>
+          <Banner
+            variant={note.pickup_code_locked ? 'error' : 'warning'}
+            title={note.pickup_code_locked ? 'Pickup code locked' : 'A pickup code is needed'}
+          >
             {note.pickup_code_locked
               ? 'Too many wrong codes were entered at the warehouse. Contact your shipping company for a new code.'
               : 'We sent you a pickup code by SMS or email. Whoever collects your goods must give it at the warehouse, so share it only with them. If you cannot find it, ask your shipping company to send a new one.'}
@@ -100,19 +107,31 @@ export function MyReleaseNote(): JSX.Element {
       )}
 
       <Card padding="large">
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 'var(--space-3)', flexWrap: 'wrap' }}>
+        <div
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            gap: 'var(--space-3)',
+            flexWrap: 'wrap',
+          }}
+        >
           <Mono color="var(--color-ink)">{note.reference_number}</Mono>
           <StatusBadge kind="releaseNote" status={note.status} audience="customer" />
         </div>
         <div style={{ height: 16 }} />
         <Kvp optional label="Container" value={note.container_number} />
         <Kvp label="Cartons" value={cartons} />
-        {note.is_partial_release && <Kvp label="Release" value="Partial: more cartons remain on your shipment" />}
+        {note.is_partial_release && (
+          <Kvp label="Release" value="Partial: more cartons remain on your shipment" />
+        )}
         <Kvp label="Valid until" value={formatDate(note.valid_until)} />
         <Kvp optional label="Warehouse" value={note.warehouse_name} />
         {note.warehouse_address && <Kvp label="Address" value={note.warehouse_address} />}
         {note.warehouse_phone && <Kvp label="Phone" value={note.warehouse_phone} />}
-        {note.carton_tags.length > 0 && <Kvp label="Carton tags" value={<Mono>{note.carton_tags.join(', ')}</Mono>} />}
+        {note.carton_tags.length > 0 && (
+          <Kvp label="Carton tags" value={<Mono>{note.carton_tags.join(', ')}</Mono>} />
+        )}
       </Card>
 
       {downloadError && (
@@ -120,11 +139,23 @@ export function MyReleaseNote(): JSX.Element {
           <Banner variant="error">{downloadError}</Banner>
         </div>
       )}
-      <div style={{ display: 'flex', gap: 'var(--space-2)', marginTop: 'var(--space-5)', flexWrap: 'wrap' }}>
-        <Button variant="primary" icon="download" loading={downloading} onClick={() => void downloadPdf()}>
+      <div
+        style={{
+          display: 'flex',
+          gap: 'var(--space-2)',
+          marginTop: 'var(--space-5)',
+          flexWrap: 'wrap',
+        }}
+      >
+        <Button
+          variant="primary"
+          icon="download"
+          loading={downloading}
+          onClick={() => void downloadPdf()}
+        >
           Download PDF
         </Button>
       </div>
-    </div>
+    </DetailPage>
   )
 }

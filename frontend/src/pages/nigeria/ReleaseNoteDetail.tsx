@@ -16,12 +16,13 @@ import {
 import { useSession } from '../../auth/useSession'
 import { useStaffList } from '../../hooks/useStaff'
 import { useWarehouses } from '../../hooks/useWarehouses'
-import { Action, Badge, Banner, Button, Card, DialogGuard, ExportButton, Field, Kvp, Modal, Mono, PhoneField, StatCard, StatusBadge, ToggleSwitch, Select, PageSkeleton, ErrorState } from '../../design/components'
-import { SectionHead } from '../../shell/SectionHead'
+import { Action, Badge, Banner, Button, DialogGuard, ExportButton, Field, Kvp, Modal, Mono, PhoneField, StatusBadge, ToggleSwitch, Select, PageSkeleton, ErrorState } from '../../design/components'
 import styles from './ReleaseNoteDetail.module.css'
 import { formatDate, formatNgn, plural } from '../../lib/format'
 import { useBreadcrumbLabel } from '../../shell/breadcrumbs'
+import { DetailPage } from '../../shell/DetailPage'
 import { PageHeader } from '../../shell/PageHeader'
+import { Section } from '../../shell/Section'
 import { toast } from '../../design/toast'
 
 // ---------------------------------------------------------------------------
@@ -478,170 +479,196 @@ export function ReleaseNoteDetail(): JSX.Element {
   const storageFees = Number(note.storage_fees_ngn ?? 0)
 
   return (
-    <div>
-      <PageHeader
-        title={`Release note ${note.reference_number}`}
-        status={
-          <>
-            <StatusBadge kind="releaseNote" status={note.status} />
-            {note.is_partial_release && <Badge variant="warning">Partial</Badge>}
-          </>
+    <>
+      <DetailPage
+        header={
+          <PageHeader
+            title={`Release note ${note.reference_number}`}
+            status={
+              <>
+                <StatusBadge kind="releaseNote" status={note.status} />
+                {note.is_partial_release && <Badge variant="warning">Partial</Badge>}
+              </>
+            }
+            meta={[
+              note.customer_name,
+              note.container_number && <Mono>{note.container_number}</Mono>,
+              `Issued ${formatDate(note.authorized_at)}`,
+              note.valid_until && !isExpired && `Valid until ${formatDate(note.valid_until)}`,
+            ]}
+            primary={
+              isExpired ? (
+                <Action variant="primary" icon="refresh" onClick={() => setShowReissue(true)}>
+                  Re-issue release note
+                </Action>
+              ) : !isTerminal && showPickupBtn ? (
+                <Action variant="primary" icon="check" onClick={() => setShowPickup(true)}>
+                  Record pickup
+                </Action>
+              ) : null
+            }
+            actions={
+              <>
+                {canSendPickupCode(note, r) && (
+                  <Action variant="secondary" icon="refresh" onClick={() => setShowSendCode(true)}>
+                    {note.pickup_code_required ? 'Send new pickup code' : 'Send pickup code'}
+                  </Action>
+                )}
+                <ExportButton formats={['pdf']} onExport={() => releaseNotesApi.pdf(note.id)} />
+              </>
+            }
+            more={[
+              ...(!isTerminal && !isExpired && showSplitBtn && note.carton_tags.length > 1
+                ? [{ label: 'Split note', mutates: true, onSelect: () => setShowSplit(true) }]
+                : []),
+              {
+                label: 'Print view',
+                icon: 'file',
+                onSelect: () => navigate(`/release-notes/${note.id}/print`),
+              },
+            ]}
+            moreLabel="More release note actions"
+          />
         }
-        meta={[
-          note.customer_name,
-          note.container_number && <Mono>{note.container_number}</Mono>,
-          `Issued ${formatDate(note.authorized_at)}`,
-          note.valid_until && !isExpired && `Valid until ${formatDate(note.valid_until)}`,
-        ]}
-        primary={
-          isExpired ? (
-            <Action variant="primary" icon="refresh" onClick={() => setShowReissue(true)}>
-              Re-issue release note
-            </Action>
-          ) : !isTerminal && showPickupBtn ? (
-            <Action variant="primary" icon="check" onClick={() => setShowPickup(true)}>
-              Record pickup
-            </Action>
-          ) : null
-        }
-        actions={
+        notices={
           <>
-            {canSendPickupCode(note, r) && (
-              <Action variant="secondary" icon="refresh" onClick={() => setShowSendCode(true)}>
-                {note.pickup_code_required ? 'Send new pickup code' : 'Send pickup code'}
-              </Action>
+            {isExpired && (
+              <Banner variant="error" title="Release note expired">
+                This release note expired on {formatDate(note.expired_at)}. The customer cannot
+                collect their goods until a new release note is issued.
+              </Banner>
             )}
-            <ExportButton formats={['pdf']} onExport={() => releaseNotesApi.pdf(note.id)} />
+            {isExpired && storageFees > 0 && (
+              <Banner
+                variant="warning"
+                title={`Outstanding storage fees: ${formatNgn(storageFees)}`}
+              >
+                Storage fees continue to accrue until the goods are collected. The balance will
+                carry forward to the re-issued note.
+              </Banner>
+            )}
+            {isExpired && (
+              <Banner variant="warning" title="Warehouse notice">
+                Goods remaining in the warehouse past the release window may be subject to long-term
+                storage charges. Re-issue this note and notify the customer immediately.
+              </Banner>
+            )}
+            {note.pickup_code_locked && note.status === 'active' && (
+              <Banner variant="error" title="Pickup code locked">
+                Too many wrong pickup codes were entered at the warehouse, so these goods cannot be
+                released. Check with the customer, then send them a new code.
+              </Banner>
+            )}
+            {pickupResult && (
+              <Banner variant="success" title="Pickup recorded">
+                {pickupResult.remaining_cartons > 0
+                  ? `${plural(pickupResult.remaining_cartons, 'carton')} still to collect on this note.`
+                  : 'All cartons on this note have been collected.'}
+                {pickupResult.shipment_status === 'picked_up' &&
+                  ' All customer cartons are now picked up — shipment tracking updated.'}
+              </Banner>
+            )}
           </>
         }
-        more={[
-          ...(!isTerminal && !isExpired && showSplitBtn && note.carton_tags.length > 1
-            ? [{ label: 'Split note', mutates: true, onSelect: () => setShowSplit(true) }]
-            : []),
-          {
-            label: 'Print view',
-            icon: 'file',
-            onSelect: () => navigate(`/release-notes/${note.id}/print`),
-          },
-        ]}
-        moreLabel="More release note actions"
-      />
-
-      {/* Expired state banners */}
-      {isExpired && (
-        <div className={styles.section}>
-          <Banner variant="error" title="Release note expired">
-            This release note expired on {formatDate(note.expired_at)}.
-            The customer cannot collect their goods until a new release note is issued.
-          </Banner>
-        </div>
-      )}
-      {isExpired && storageFees > 0 && (
-        <div className={styles.section}>
-          <Banner variant="warning" title={`Outstanding storage fees: ${formatNgn(storageFees)}`}>
-            Storage fees continue to accrue until the goods are collected. The balance will carry forward to the re-issued note.
-          </Banner>
-        </div>
-      )}
-      {isExpired && (
-        <div className={styles.section}>
-          <Banner variant="warning" title="Warehouse notice">
-            Goods remaining in the warehouse past the release window may be subject to long-term storage charges.
-            Re-issue this note and notify the customer immediately.
-          </Banner>
-        </div>
-      )}
-
-      {/* Pickup success feedback */}
-      {note.pickup_code_locked && note.status === 'active' && (
-        <div className={styles.section}>
-          <Banner variant="error" title="Pickup code locked">
-            Too many wrong pickup codes were entered at the warehouse, so these goods cannot be released. Check with the
-            customer, then send them a new code.
-          </Banner>
-        </div>
-      )}
-      {pickupResult && (
-        <div className={styles.successBanner}>
-          <Banner variant="success" title="Pickup recorded">
-            {pickupResult.remaining_cartons > 0
-              ? `${plural(pickupResult.remaining_cartons, 'carton')} still to collect on this note.`
-              : 'All cartons on this note have been collected.'}
-            {pickupResult.shipment_status === 'picked_up' && ' All customer cartons are now picked up — shipment tracking updated.'}
-          </Banner>
-        </div>
-      )}
-
-      {/* Stats */}
-      <div className={styles.statsRow}>
-        <StatCard label="Cartons on note" value={`${note.carton_count} of ${note.total_cartons_for_customer}`} />
-        {isExpired && storageFees > 0 && (
-          <StatCard label="Storage fees" value={formatNgn(storageFees)} />
-        )}
-      </div>
-
-      {/* Details */}
-      <div className={styles.section}>
-        <SectionHead title="Release details" />
-        <Card padding="default">
-          <Kvp label="Reference" value={<Mono>{note.reference_number}</Mono>} />
-          {note.physical_document_number && (
-            <Kvp label="Physical document no." value={<Mono>{note.physical_document_number}</Mono>} />
-          )}
-          <Kvp label="Customer" value={note.customer_name ?? '—'} />
-          <Kvp label="Container" value={note.container_number ? <Mono>{note.container_number}</Mono> : '—'} />
-          {/* Type and payment status are words, not figures: they live here, not in the stat row (FD-10). */}
+        // The figures looked for first; customer, container, reference and issue date are in the header (FD-19).
+        aside={
+          <Section title="Summary">
+            <Kvp
+              label="Cartons on this note"
+              value={
+                note.package_unit ? (
+                  <Mono>
+                    {note.packages_released} of {note.total_cartons_for_customer}{' '}
+                    {note.package_unit}
+                  </Mono>
+                ) : (
+                  <Mono>
+                    {note.carton_count} of {note.total_cartons_for_customer}
+                  </Mono>
+                )
+              }
+            />
+            {note.packages_balance != null && note.packages_balance > 0 && (
+              <Kvp label="Still to release" value={<Mono>{note.packages_balance}</Mono>} />
+            )}
+            <Kvp
+              label="Payment"
+              value={<StatusBadge kind="invoice" status={note.payment_status} />}
+            />
+            {(Number(note.amount_paid_ngn) > 0 || Number(note.balance_ngn) > 0) && (
+              <Kvp
+                label="Paid"
+                value={`${formatNgn(note.amount_paid_ngn)} of ${formatNgn(note.total_ngn)}, ${formatNgn(note.balance_ngn)} outstanding`}
+              />
+            )}
+            {isExpired && storageFees > 0 && (
+              <Kvp label="Storage fees" value={formatNgn(storageFees)} />
+            )}
+            {note.debt_due_date && (
+              <Kvp
+                label="Debt payment due"
+                value={formatDate(note.debt_due_date)}
+                divider={false}
+              />
+            )}
+          </Section>
+        }
+      >
+        <Section title="Release details">
           <Kvp label="Type" value={releaseTypeLabel(note)} />
-          <Kvp label="Payment status" value={<StatusBadge kind="invoice" status={note.payment_status} />} />
           <Kvp
-            label="Carton count"
+            optional
+            label="Physical document no."
+            value={note.physical_document_number && <Mono>{note.physical_document_number}</Mono>}
+          />
+          {note.packing_list_invoice_numbers.length > 0 && (
+            <Kvp
+              label={
+                note.packing_list_invoice_numbers.length === 1
+                  ? 'Packing list invoice'
+                  : 'Packing list invoices'
+              }
+              value={note.packing_list_invoice_numbers.join(', ')}
+            />
+          )}
+          <Kvp
+            optional
+            label="Warehouse"
             value={
-              note.package_unit
-                ? <Mono>{note.packages_released} of {note.total_cartons_for_customer} {note.package_unit}</Mono>
-                : <Mono>{note.carton_count} / {note.total_cartons_for_customer} (customer total)</Mono>
+              note.warehouse_name &&
+              `${note.warehouse_name}${note.warehouse_address ? `, ${note.warehouse_address}` : ''}`
             }
           />
-          {note.packages_balance != null && note.packages_balance > 0 && (
-            <Kvp label="Balance remaining" value={<Mono>{note.packages_balance}</Mono>} />
-          )}
-          {note.packing_list_invoice_numbers.length > 0 && (
-            <Kvp label={note.packing_list_invoice_numbers.length === 1 ? 'Packing list invoice' : 'Packing list invoices'} value={note.packing_list_invoice_numbers.join(', ')} />
-          )}
-          <Kvp label="Warehouse" value={note.warehouse_name ? `${note.warehouse_name}${note.warehouse_address ? ` — ${note.warehouse_address}` : ''}` : '—'} />
-          <Kvp label="Issued" value={formatDate(note.authorized_at)} divider={!note.is_on_credit && !note.receipt_number} />
           {note.is_on_credit && (
             <Kvp
               label="On credit"
-              value={`Yes${note.credit_granted_by_name ? ` — granted by ${note.credit_granted_by_name}` : ''}`}
+              value={`Yes${note.credit_granted_by_name ? `, granted by ${note.credit_granted_by_name}` : ''}`}
             />
           )}
-          {note.receipt_number && <Kvp label="Receipt no." value={<Mono>{note.receipt_number}</Mono>} />}
-          {(Number(note.amount_paid_ngn) > 0 || Number(note.balance_ngn) > 0) && (
-            <Kvp
-              label="Payment"
-              value={`${formatNgn(note.amount_paid_ngn)} paid of ${formatNgn(note.total_ngn)} — ${formatNgn(note.balance_ngn)} outstanding`}
-            />
-          )}
-          {note.debt_due_date && <Kvp label="Debt payment due" value={note.debt_due_date} divider={false} />}
-        </Card>
-      </div>
-
-      {/* Carton tags */}
-      <div className={styles.section}>
-        <SectionHead title="Carton tags" sub={`${plural(note.carton_tags.length, 'tag')} on this release note`} />
-        <Card padding="default">
+          <Kvp
+            optional
+            label="Receipt no."
+            value={note.receipt_number && <Mono>{note.receipt_number}</Mono>}
+            divider={false}
+          />
+        </Section>
+        <Section
+          title="Carton tags"
+          sub={`${plural(note.carton_tags.length, 'tag')} on this release note`}
+        >
           {note.carton_tags.length > 0 ? (
             <div className={styles.tagGrid}>
               {note.carton_tags.map((tag) => (
-                <span key={tag} className={styles.tag}>{tag}</span>
+                <span key={tag} className={styles.tag}>
+                  {tag}
+                </span>
               ))}
             </div>
           ) : (
             <span className={styles.mutedText}>No carton tags recorded.</span>
           )}
-        </Card>
-      </div>
-
+        </Section>
+      </DetailPage>
       {/* Modals */}
       {showPickup && (
         <RecordPickupModal
@@ -651,7 +678,10 @@ export function ReleaseNoteDetail(): JSX.Element {
             setShowPickup(false)
             setPickupResult(result)
             if (result.release_note_status !== note.status) {
-              qc.setQueryData(releaseNoteKeys.detail(id ?? ''), { ...note, status: result.release_note_status })
+              qc.setQueryData(releaseNoteKeys.detail(id ?? ''), {
+                ...note,
+                status: result.release_note_status,
+              })
             }
             // Ground-truth gap found live: none of this page's mutations
             // (pickup, split, reissue) ever invalidated the release-notes
@@ -682,7 +712,10 @@ export function ReleaseNoteDetail(): JSX.Element {
           onCancel={() => setShowSendCode(false)}
           onSent={(sentVia) => {
             setShowSendCode(false)
-            toast.success('New pickup code sent', `Sent to the customer by ${sentViaLabel(sentVia)}. Any earlier code no longer works.`)
+            toast.success(
+              'New pickup code sent',
+              `Sent to the customer by ${sentViaLabel(sentVia)}. Any earlier code no longer works.`,
+            )
             void qc.invalidateQueries({ queryKey: releaseNoteKeys.all })
           }}
         />
@@ -698,6 +731,6 @@ export function ReleaseNoteDetail(): JSX.Element {
           }}
         />
       )}
-    </div>
+    </>
   )
 }

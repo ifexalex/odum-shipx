@@ -406,3 +406,4 @@ The owner asked that every component look sleek. Reviewed the whole catalog (lig
 - **EmptyState / ErrorState**: a third less empty space.
 - **StatCard**: compact, see above.
 Buttons, fields, chips, the stepper and section headings were already in proportion and are unchanged.
+- **`shell/DetailPage`, `shell/Section`** (FD-19): the record layout (`header`, `notices`, `progress`, `aside`, children) and a titled card with its heading inside (`title`, `sub`, `action`, `flush` for an edge-to-edge table), a region named by its heading. `SectionHead` takes `headingId`. **`pages/shared/InvoiceBreakdown`**: the one invoice breakdown, the body of a `Section`.

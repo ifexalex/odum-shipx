@@ -1,17 +1,3 @@
-.loadingState {
-  padding: var(--space-12);
-  text-align: center;
-  color: var(--color-ink-3);
-}
-
-.banner {
-  margin-bottom: var(--space-4);
-}
-
-.tabSpacer {
-  height: 20px;
-}
-
 .stepperSpacer {
   height: 20px;
 }
@@ -24,6 +10,8 @@
   display: grid;
   grid-template-columns: 1fr 1fr;
   gap: var(--space-5);
+  /* A short card keeps its own height rather than stretching, empty, to its neighbour's (sleek pass). */
+  align-items: start;
 }
 
 .tableHead {
@@ -31,17 +19,6 @@
   display: flex;
   justify-content: space-between;
   align-items: center;
-}
-
-.viewAllLink {
-  background: none;
-  border: none;
-  padding: 0;
-  cursor: pointer;
-  font-family: var(--font-body);
-  font-size: var(--text-sm);
-  font-weight: 600;
-  color: var(--color-primary-text);
 }
 
 /* Cargo summary tiles (2×2) */
@@ -208,13 +185,6 @@
 }
 
 .metaText {
-  font-size: var(--text-xs);
-  color: var(--color-ink-3);
-  white-space: nowrap;
-}
-
-.eventTs {
-  font-family: var(--font-mono, monospace);
   font-size: var(--text-xs);
   color: var(--color-ink-3);
   white-space: nowrap;

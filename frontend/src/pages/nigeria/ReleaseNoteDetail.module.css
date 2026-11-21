@@ -1,19 +1,9 @@
-
 /* carton tags */
 .tagGrid { display: flex; flex-wrap: wrap; gap: var(--space-2); padding: var(--space-1) 0; }
 .tag { padding: var(--space-1) var(--space-3); border-radius: var(--radius-md); background: var(--color-surface-muted); font-family: var(--font-mono); font-size: var(--text-sm); border: 1px solid var(--color-line-soft); }
 .tagSelected { background: var(--color-primary-soft); border-color: var(--color-primary); color: var(--color-primary-text); cursor: pointer; }
 .tagClickable { cursor: pointer; }
 .tagClickable:hover { border-color: var(--color-primary); }
-
-/* layout */
-.section { margin-top: var(--space-5); }
-.statsRow { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: var(--space-3); margin-top: var(--space-5); }
-.loadingState { padding: var(--space-12); text-align: center; color: var(--color-ink-4); }
-.banner { margin-bottom: var(--space-4); }
-
-/* pickup success banner */
-.successBanner { margin-top: var(--space-5); }
 
 /* modal — mobile-first bottom sheet, matching the proven pattern in
    warehouse/WarehouseDashboard.module.css (its own copy of this exact
@@ -37,36 +27,9 @@
 /* delegate toggle */
 .delegateToggle { display: flex; align-items: center; gap: var(--space-3); cursor: pointer; font-size: var(--text-md); min-height: 44px; }
 
-/* Raw <select>s in RecordPickupModal (delegate ID type, warehouse, CSO,
-   accounting officer) — these bypass the shared Field component entirely,
-   so they need their own iOS-zoom fix (Field.module.css's same rule can't
-   reach them). */
-.rawSelect { width: 100%; padding: var(--space-2) var(--space-3); border-radius: var(--radius-md); border: 1px solid var(--color-control-border); background: var(--color-surface); font-size: var(--text-md); min-height: 44px; }
-
-@container sxapp (max-width: 860px) {
-  .rawSelect { font-size: var(--text-lg); }
-}
-
 /* split tag picker */
 .splitInstruction { font-size: var(--text-sm); color: var(--color-ink-4); margin: 0; }
 .splitCount { font-size: var(--text-sm); font-weight: 600; color: var(--color-primary-text); }
-
-/* ReleaseNoteDetail: static styles moved out of inline style props (audit FE-06). */
-.fieldLabel {
-  font-size: var(--text-md);
-  font-weight: 600;
-  display: block;
-  margin-bottom: var(--space-2);
-}
-
-.requiredMark {
-  color: var(--color-error);
-}
-
-.optionalHint {
-  color: var(--color-ink-4);
-  font-weight: 400;
-}
 
 .mutedNote {
   font-size: var(--text-md);

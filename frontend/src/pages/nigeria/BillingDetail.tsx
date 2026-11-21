@@ -7,8 +7,7 @@ import { useSession } from '../../auth/useSession'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { billingKeys, releaseNoteKeys } from '../../api/keys'
 import { STALE_30S } from '../../lib/queryClient'
-import { Action, Banner, ExportButton, Icon, Mono, StatCard, StatusBadge, PageSkeleton, ErrorState } from '../../design/components'
-import { SectionHead } from '../../shell/SectionHead'
+import { Action, Banner, ExportButton, Icon, Kvp, Mono, StatusBadge, PageSkeleton, ErrorState } from '../../design/components'
 import styles from './BillingDetail.module.css'
 import { formatCbm, formatDate, formatNgn } from '../../lib/format'
 import { StorageFeeBanner, StorageFeeLog } from './billingDetail/StorageFees'
@@ -16,11 +15,14 @@ import { DisputeCard } from './billingDetail/DisputeCard'
 import { RecordPaymentModal } from './billingDetail/RecordPaymentModal'
 import { AddChargeModal, CancelBillingModal, ApplyCarryoverModal } from './billingDetail/ChargeModals'
 import { GenerateReleaseNoteModal } from './billingDetail/GenerateReleaseNoteModal'
-import { BillingBreakdown, PaymentsTable } from './billingDetail/Breakdown'
+import { PaymentsTable } from './billingDetail/Breakdown'
+import { InvoiceBreakdown } from '../shared/InvoiceBreakdown'
 import { MiscChargesSection } from './billingDetail/MiscCharges'
 import { PaymentClaimsSection } from './billingDetail/PaymentClaims'
 import { useBreadcrumbLabel } from '../../shell/breadcrumbs'
+import { DetailPage } from '../../shell/DetailPage'
 import { PageHeader } from '../../shell/PageHeader'
+import { Section } from '../../shell/Section'
 import { RecordLink } from '../../shell/RecordLink'
 import { toast } from '../../design/toast'
 
@@ -171,159 +173,170 @@ export function BillingDetail(): JSX.Element {
 
 
   return (
-    <div>
-      <PageHeader
-        title={billing.invoice_number ? `Invoice ${billing.invoice_number}` : 'Invoice'}
-        status={<StatusBadge kind="invoice" status={billing.payment_status} />}
-        meta={[
-          billing.customer_name && billing.customer_id && (
-            <RecordLink to={`/admin/customers/${billing.customer_id}`}>{billing.customer_name}</RecordLink>
-          ),
-          billing.container_number && billing.container_id && (
-            <>
-              Container{' '}
-              <RecordLink to={`/containers/${billing.container_id}`}>
-                <Mono>{billing.container_number}</Mono>
-              </RecordLink>
-            </>
-          ),
-          billing.billed_at && `Billed ${formatDate(billing.billed_at)}`,
-          billing.customer_phone && (
-            <span className={styles.contact}>
-              <Icon name="phone" size={12} color="var(--color-ink-4)" />
-              {billing.customer_phone}
-            </span>
-          ),
-          billing.customer_email && (
-            <span className={styles.contact}>
-              <Icon name="mail" size={12} color="var(--color-ink-4)" />
-              {billing.customer_email}
-            </span>
-          ),
-        ]}
-        primary={
-          isActionable && (
-            <Action variant="primary" icon="coin" onClick={() => setShowPaymentModal(true)}>
-              Record payment
-            </Action>
-          )
+    <>
+      <DetailPage
+        header={
+          <PageHeader
+            title={billing.invoice_number ? `Invoice ${billing.invoice_number}` : 'Invoice'}
+            status={<StatusBadge kind="invoice" status={billing.payment_status} />}
+            meta={[
+              billing.customer_name && billing.customer_id && (
+                <RecordLink to={`/admin/customers/${billing.customer_id}`}>
+                  {billing.customer_name}
+                </RecordLink>
+              ),
+              billing.container_number && billing.container_id && (
+                <>
+                  Container{' '}
+                  <RecordLink to={`/containers/${billing.container_id}`}>
+                    <Mono>{billing.container_number}</Mono>
+                  </RecordLink>
+                </>
+              ),
+              billing.billed_at && `Billed ${formatDate(billing.billed_at)}`,
+              billing.customer_phone && (
+                <span className={styles.contact}>
+                  <Icon name="phone" size={12} color="var(--color-ink-4)" />
+                  {billing.customer_phone}
+                </span>
+              ),
+              billing.customer_email && (
+                <span className={styles.contact}>
+                  <Icon name="mail" size={12} color="var(--color-ink-4)" />
+                  {billing.customer_email}
+                </span>
+              ),
+            ]}
+            primary={
+              isActionable && (
+                <Action variant="primary" icon="coin" onClick={() => setShowPaymentModal(true)}>
+                  Record payment
+                </Action>
+              )
+            }
+            actions={
+              <>
+                <ExportButton
+                  formats={['xlsx', 'csv']}
+                  onExport={(fmt) => billingApi.export(billing.id, fmt)}
+                />
+                {canGenerateRelease && (
+                  <Action
+                    variant="secondary"
+                    icon="file"
+                    onClick={() => setShowReleaseNoteModal(true)}
+                  >
+                    Generate release note
+                  </Action>
+                )}
+              </>
+            }
+            more={[
+              ...(isStaff &&
+              billing.payment_status !== 'cancelled' &&
+              billing.payment_status !== 'waived'
+                ? [
+                    {
+                      label: 'Add charge',
+                      icon: 'plus' as const,
+                      mutates: true,
+                      onSelect: () => setShowAddChargeModal(true),
+                    },
+                  ]
+                : []),
+              ...(isCarryoverApplicable
+                ? [
+                    {
+                      label: 'Apply carryover',
+                      mutates: true,
+                      onSelect: () => {
+                        void loadCarryovers()
+                        setShowCarryoverModal(true)
+                      },
+                    },
+                  ]
+                : []),
+              ...(isCancellable
+                ? [
+                    {
+                      label: 'Cancel billing',
+                      tone: 'danger' as const,
+                      onSelect: () => {
+                        setCancelError(null)
+                        setShowCancelModal(true)
+                      },
+                    },
+                  ]
+                : []),
+            ]}
+            moreLabel="More invoice actions"
+          />
         }
-        actions={
+        notices={
           <>
-            <ExportButton
-              formats={['xlsx', 'csv']}
-              onExport={(fmt) => billingApi.export(billing.id, fmt)}
-            />
-            {canGenerateRelease && (
-              <Action variant="secondary" icon="file" onClick={() => setShowReleaseNoteModal(true)}>
-                Generate release note
-              </Action>
+            {session?.readOnly && (
+              <Banner variant="warning" icon="eye" title="Read-only session">
+                You're viewing this tenant as their Tenant Admin for support. Data is fully visible,
+                but every create, edit, approve, and delete action is disabled. The session ends
+                automatically after 30 minutes or when you exit.
+              </Banner>
+            )}
+            {(Number(billing.storage_fees_ngn) > 0 || billing.release_note_issued_at) && (
+              <StorageFeeBanner
+                billing={billing}
+                storageFees={storageFees}
+                canWaive={canWaiveFees}
+                onWaive={() => void handleWaiveStorageFees()}
+                waiving={waivingFees}
+              />
             )}
           </>
         }
-        more={[
-          ...(isStaff && billing.payment_status !== 'cancelled' && billing.payment_status !== 'waived'
-            ? [
-                {
-                  label: 'Add charge',
-                  icon: 'plus' as const,
-                  mutates: true,
-                  onSelect: () => setShowAddChargeModal(true),
-                },
-              ]
-            : []),
-          ...(isCarryoverApplicable
-            ? [
-                {
-                  label: 'Apply carryover',
-                  mutates: true,
-                  onSelect: () => {
-                    void loadCarryovers()
-                    setShowCarryoverModal(true)
-                  },
-                },
-              ]
-            : []),
-          ...(isCancellable
-            ? [
-                {
-                  label: 'Cancel billing',
-                  tone: 'danger' as const,
-                  onSelect: () => {
-                    setCancelError(null)
-                    setShowCancelModal(true)
-                  },
-                },
-              ]
-            : []),
-        ]}
-        moreLabel="More invoice actions"
-      />
-      {session?.readOnly && (
-        <div style={{ marginBottom: 'var(--space-4)' }}>
-          <Banner variant="warning" icon="eye" title="Read-only session">
-            You're viewing this tenant as their Tenant Admin for support. Data is fully visible, but every create, edit, approve, and delete action is disabled. The session ends automatically after 30 minutes or when you exit.
-          </Banner>
-        </div>
-      )}
-
-      {/* Stat cards */}
-      <div className={styles.stats}>
-        <StatCard label="Total CBM" value={formatCbm(billing.total_cbm)} />
-        <StatCard label="Total due" value={formatNgn(billing.total_due_ngn)} />
-        <StatCard label="Total paid" value={formatNgn(billing.total_paid_ngn)} />
-        <StatCard
-          label="Outstanding"
-          value={formatNgn(outstanding)}
+        // The totals, once (FD-19): they were four stat cards above a breakdown that repeated all four.
+        aside={
+          <Section title="Summary">
+            <Kvp label="Volume" value={<Mono>{formatCbm(billing.total_cbm)} CBM</Mono>} />
+            <Kvp label="Total due" value={<Mono>{formatNgn(billing.total_due_ngn)}</Mono>} />
+            <Kvp label="Paid" value={<Mono>{formatNgn(billing.total_paid_ngn)}</Mono>} />
+            <Kvp
+              label="Outstanding"
+              value={
+                <Mono color={outstanding > 0 ? 'var(--color-error)' : undefined}>
+                  {formatNgn(outstanding)}
+                </Mono>
+              }
+            />
+          </Section>
+        }
+      >
+        <Section title="Invoice breakdown">
+          <InvoiceBreakdown billing={billing} />
+        </Section>
+        <PaymentsTable payments={billing.payments} />
+        <PaymentClaimsSection
+          billingId={billing.id}
+          isStaff={isStaff}
+          onChanged={invalidateBillingCaches}
         />
-      </div>
-
-      {/* Storage fee banner + accrual log */}
-      {(Number(billing.storage_fees_ngn) > 0 || billing.release_note_issued_at) && (
-        <div className={styles.section}>
-          <StorageFeeBanner
-            billing={billing}
-            storageFees={storageFees}
-            canWaive={canWaiveFees}
-            onWaive={() => void handleWaiveStorageFees()}
-            waiving={waivingFees}
-          />
-          {storageFees.length > 0 && (
-            <div style={{ marginTop: 'var(--space-3)' }}>
-              <SectionHead title="Storage fee accrual log" />
-              <div style={{ marginTop: 'var(--space-2)' }}>
-                <StorageFeeLog fees={storageFees} />
-              </div>
-            </div>
-          )}
-        </div>
-      )}
-
-      <BillingBreakdown billing={billing} />
-
-      <PaymentsTable payments={billing.payments} />
-
-      <PaymentClaimsSection billingId={billing.id} isStaff={isStaff} onChanged={invalidateBillingCaches} />
-
-      <MiscChargesSection
-        billing={billing}
-        canRemove={canRemoveCharge}
-        onChanged={invalidateBillingCaches}
-        onError={setActionError}
-      />
-
-      {/* Active disputes */}
-      {billing._active_disputes.length > 0 && (
-        <div className={styles.section}>
-          <SectionHead title="CBM disputes" />
-          {billing._active_disputes.map((d) => (
-            <DisputeCard key={d.id} dispute={d} role={role} onUpdated={handleDisputeUpdated} />
-          ))}
-        </div>
-      )}
-
-      {/* Back link */}
-
+        <MiscChargesSection
+          billing={billing}
+          canRemove={canRemoveCharge}
+          onChanged={invalidateBillingCaches}
+          onError={setActionError}
+        />
+        {storageFees.length > 0 && (
+          <Section title="Storage fee accrual log" flush>
+            <StorageFeeLog fees={storageFees} />
+          </Section>
+        )}
+        {billing._active_disputes.length > 0 && (
+          <Section title="CBM disputes">
+            {billing._active_disputes.map((d) => (
+              <DisputeCard key={d.id} dispute={d} role={role} onUpdated={handleDisputeUpdated} />
+            ))}
+          </Section>
+        )}
+      </DetailPage>
       {/* Modals */}
       {showAddChargeModal && (
         <AddChargeModal
@@ -391,6 +404,6 @@ export function BillingDetail(): JSX.Element {
           }}
         />
       )}
-    </div>
+    </>
   )
 }

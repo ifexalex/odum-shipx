@@ -19,30 +19,13 @@
   transition: border-color var(--motion-fast) var(--ease-standard);
 }
 .card:hover { border-color: var(--color-primary); }
-.cardStatic { cursor: default; }
-.cardStatic:hover { border-color: var(--color-line-soft); }
 
 .cardLeft { flex: 1; min-width: 0; }
 .cardTitle { font-size: var(--text-lg); font-weight: 700; color: var(--color-ink); margin: 0 0 var(--space-0-5); }
 .cardSub { font-size: var(--text-sm); color: var(--color-ink-4); margin: 0 0 var(--space-2); }
 .cardMeta { display: flex; gap: var(--space-3); flex-wrap: wrap; font-size: var(--text-sm); color: var(--color-ink-4); margin-top: var(--space-1); }
 .cardRight { display: flex; flex-direction: column; align-items: flex-end; gap: var(--space-2); flex-shrink: 0; }
-
-/* Amount display */
-.amount { font-size: var(--text-xl); font-weight: 700; font-family: var(--font-mono); color: var(--color-ink); }
 .amountSub { font-size: var(--text-xs); color: var(--color-ink-4); }
-
-/* Section headers */
-.sectionTitle { font-size: var(--text-xl); font-weight: 700; margin: var(--space-6) 0 var(--space-3); }
-
-/* Detail layout */
-.detailHero { margin-bottom: var(--space-5); }
-.detailTitle { font-size: var(--text-2xl); font-weight: 700; margin: 0 0 var(--space-1); font-family: var(--font-mono); }
-.detailSub { font-size: var(--text-md); color: var(--color-ink-4); margin: 0; }
-.heroRow { display: flex; align-items: flex-start; justify-content: space-between; flex-wrap: wrap; gap: var(--space-3); margin-bottom: var(--space-5); }
-
-/* Stats row */
-.statsRow { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: var(--space-3); margin-bottom: var(--space-5); }
 
 /* Two-column form/card grid (Account.tsx) — reflows to one column instead of
    staying fixed side-by-side when the shell is narrower than both columns
@@ -60,10 +43,6 @@
 .paymentOptionTitle { font-weight: 700; font-size: var(--text-lg); margin: 0 0 var(--space-1); }
 .paymentOptionDesc { font-size: var(--text-sm); color: var(--color-ink-4); margin: 0 0 var(--space-3); }
 .bankDetails { background: var(--color-surface-muted); border-radius: var(--radius-md); padding: var(--space-3); font-size: var(--text-md); line-height: var(--text-md-line); }
-
-/* Tag chips */
-.tagRow { display: flex; flex-wrap: wrap; gap: var(--space-2); margin-top: var(--space-2); }
-.tag { padding: var(--space-1) var(--space-2); border-radius: var(--radius-md); background: var(--color-surface-muted); font-family: var(--font-mono); font-size: var(--text-xs); border: 1px solid var(--color-line-soft); }
 
 /* Tracking timeline */
 .timeline { display: flex; flex-direction: column; gap: 0; }
@@ -96,8 +75,6 @@
 /* Shipment picker (MyClaimsNew step 1) */
 .selectField { display: flex; flex-direction: column; gap: var(--space-2); }
 .selectLabel { font-size: var(--text-sm); font-weight: 500; }
-.required { color: var(--color-error); margin-left: var(--space-0-5); }
-.select { border: 1px solid var(--color-control-border); border-radius: var(--radius-md); padding: var(--space-2) var(--space-3); font-size: var(--text-md); background: var(--color-surface); color: var(--color-ink); cursor: pointer; }
 
 /* Empty state */
 .empty { text-align: center; padding: var(--space-12) var(--space-4); color: var(--color-ink-4); }
@@ -106,65 +83,10 @@
 /* Payment claim form (MyBillingDetail — "I've made this payment") */
 .claimForm { display: flex; flex-direction: column; gap: var(--space-4); margin-top: var(--space-3); padding: var(--space-4); border: 1px solid var(--color-line-soft); border-radius: var(--radius-lg); background: var(--color-surface); }
 .evidenceAttached { display: flex; align-items: center; gap: var(--space-2); font-size: var(--text-sm); }
-.removeEvidenceBtn { border: none; background: none; color: var(--color-error); font-size: var(--text-xs); cursor: pointer; text-decoration: underline; padding: 0; }
 
 /* Success/fail full-page */
 .resultPage { min-height: 80vh; display: flex; flex-direction: column; align-items: center; justify-content: center; padding: var(--space-8) var(--space-4); text-align: center; }
 .resultBody { font-size: var(--text-lg); color: var(--color-ink-4); max-width: 400px; margin: 0 auto var(--space-6); line-height: var(--text-lg-line); }
-
-/* 10.2 — shipment detail zones (audit gap A3) */
-.detailBackLink {
-  display: inline-flex;
-  align-items: center;
-  gap: var(--space-2);
-  color: var(--color-primary-text);
-  font-weight: 600;
-  font-size: var(--text-sm);
-  margin-bottom: var(--space-4);
-  background: none;
-  border: 0;
-  padding: 0;
-  cursor: pointer;
-  font-family: var(--font-body);
-}
-
-.shipmentHero {
-  display: flex;
-  align-items: center;
-  gap: var(--space-4);
-  margin-bottom: var(--space-6);
-  min-width: 0;
-}
-.shipmentHeroIcon {
-  width: 56px;
-  height: 56px;
-  border-radius: var(--radius-lg);
-  background: var(--color-info-soft);
-  color: var(--color-info);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  flex-shrink: 0;
-}
-.shipmentHeroTitleRow {
-  display: flex;
-  align-items: center;
-  gap: var(--space-3);
-  flex-wrap: wrap;
-}
-.shipmentHeroCode {
-  font-family: var(--font-mono);
-  font-weight: 700;
-  font-size: var(--text-2xl);
-  color: var(--color-ink);
-  margin: 0;
-  letter-spacing: var(--tracking-tight);
-}
-.shipmentHeroMeta {
-  font-size: var(--text-sm);
-  color: var(--color-ink-3);
-  margin-top: var(--space-1);
-}
 
 .statusHint {
   margin-top: var(--space-5);
@@ -197,6 +119,10 @@
 }
 
 .viewFullLink {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  white-space: nowrap; /* the arrow stays with its words */
   color: var(--color-primary-text);
   font-weight: 600;
   font-size: var(--text-xs);
@@ -294,29 +220,6 @@
   gap: var(--space-2);
 }
 
-.loadingState {
-  padding: var(--space-8);
-  color: var(--color-ink-4);
-}
-
-.claimStatusRow {
-  display: flex;
-  align-items: center;
-  gap: var(--space-2);
-  margin-top: var(--space-1);
-}
-
-.claimStatusText {
-  font-size: var(--text-sm);
-  color: var(--color-ink-4);
-}
-
-.actionsWrap {
-  display: flex;
-  gap: var(--space-2);
-  flex-wrap: wrap;
-}
-
 .sectionGap {
   margin-bottom: var(--space-4);
 }
@@ -338,8 +241,3 @@
 .topGap12 {
   margin-top: var(--space-3);
 }
-
-.topGap16 {
-  margin-top: var(--space-4);
-}
-

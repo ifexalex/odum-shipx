@@ -22,6 +22,7 @@ import { useBreadcrumbLabel } from '../../shell/breadcrumbs'
 import { PageHeader } from '../../shell/PageHeader'
 import { toast } from '../../design/toast'
 import { formatKg } from '../../lib/format'
+import { DetailPage } from '../../shell/DetailPage'
 
 // ---------------------------------------------------------------------------
 // Carton diff helpers
@@ -395,65 +396,72 @@ export function ManifestDetail(): JSX.Element {
   }
 
   return (
-    <div>
-      <PageHeader
-        title={`Manifest ${manifest.container_number ?? ''}`.trim()}
-        status={<StatusBadge kind="manifest" status={manifest.verification_status} />}
-        meta={[
-          `${manifest.total_customers} customers`,
-          `${packageTotal} packages${packageMixLabel ? ` (${packageMixLabel})` : ''}`,
-          `${formatCbm(manifest.total_cbm)} CBM`,
-        ]}
-        primary={
-          canVerify ? (
-            <Action variant="primary" icon="check" onClick={() => setShowVerifyModal(true)}>
-              Verify manifest
-            </Action>
-          ) : canResolve ? (
-            <Action variant="primary" icon="check" onClick={() => setShowResolveModal(true)}>
-              Resolve discrepancy
-            </Action>
-          ) : null
-        }
-        actions={
-          <ExportButton
-            formats={['xlsx', 'csv']}
-            onExport={(fmt) => manifestApi.export(manifest.id, fmt)}
-          />
-        }
-        more={
-          canRevoke && !revoking
-            ? [
-                {
-                  label: 'Revoke verification',
-                  tone: 'danger',
-                  onSelect: () => setShowRevokeConfirm(true),
-                },
-              ]
-            : []
-        }
-        moreLabel="More manifest actions"
-      />
-
+    <DetailPage
+      header={
+        <PageHeader
+          title={`Manifest ${manifest.container_number ?? ''}`.trim()}
+          status={<StatusBadge kind="manifest" status={manifest.verification_status} />}
+          meta={[
+            `${manifest.total_customers} customers`,
+            `${packageTotal} packages${packageMixLabel ? ` (${packageMixLabel})` : ''}`,
+            `${formatCbm(manifest.total_cbm)} CBM`,
+          ]}
+          primary={
+            canVerify ? (
+              <Action variant="primary" icon="check" onClick={() => setShowVerifyModal(true)}>
+                Verify manifest
+              </Action>
+            ) : canResolve ? (
+              <Action variant="primary" icon="check" onClick={() => setShowResolveModal(true)}>
+                Resolve discrepancy
+              </Action>
+            ) : null
+          }
+          actions={
+            <ExportButton
+              formats={['xlsx', 'csv']}
+              onExport={(fmt) => manifestApi.export(manifest.id, fmt)}
+            />
+          }
+          more={
+            canRevoke && !revoking
+              ? [
+                  {
+                    label: 'Revoke verification',
+                    tone: 'danger',
+                    onSelect: () => setShowRevokeConfirm(true),
+                  },
+                ]
+              : []
+          }
+          moreLabel="More manifest actions"
+        />
+      }
+    >
       {error && (
         <div className={styles.banner}>
-          <Banner variant="error" title="Action failed">{error}</Banner>
+          <Banner variant="error" title="Action failed">
+            {error}
+          </Banner>
         </div>
       )}
 
       {manifest.verification_status === 'pending' && (
         <div className={styles.banner}>
-          <Banner variant="warning" title="Verification required before customer billing can be generated">
-            Walk the warehouse against this manifest, then mark as Verified — or log discrepancies if anything's
-            missing or damaged.
+          <Banner
+            variant="warning"
+            title="Verification required before customer billing can be generated"
+          >
+            Walk the warehouse against this manifest, then mark as Verified — or log discrepancies
+            if anything's missing or damaged.
           </Banner>
         </div>
       )}
       {manifest.verification_status === 'discrepancies_found' && (
         <div className={styles.banner}>
           <Banner variant="error" title="Discrepancies logged">
-            Missing/damaged item records are tracked separately under Claims. Resolve here once the warehouse
-            investigation is complete.
+            Missing/damaged item records are tracked separately under Claims. Resolve here once the
+            warehouse investigation is complete.
           </Banner>
         </div>
       )}
@@ -467,9 +475,18 @@ export function ManifestDetail(): JSX.Element {
 
       <div className={styles.statsRow}>
         <StatCard label="Total customers" value={manifest.total_customers} icon="users" />
-        <StatCard label="Packages" value={packageTotal} icon="package" sublabel={packageMixLabel || undefined} />
+        <StatCard
+          label="Packages"
+          value={packageTotal}
+          icon="package"
+          sublabel={packageMixLabel || undefined}
+        />
         <StatCard label="Total CBM" value={formatCbm(manifest.total_cbm)} icon="container" />
-        <StatCard label="Total weight" value={`${formatKg(manifest.total_weight_kg)} kg`} icon="package" />
+        <StatCard
+          label="Total weight"
+          value={`${formatKg(manifest.total_weight_kg)} kg`}
+          icon="package"
+        />
       </div>
 
       <Card padding="none">
@@ -489,24 +506,34 @@ export function ManifestDetail(): JSX.Element {
             { title: 'Carton tags', type: 'reference' },
           ]}
           rows={manifest.customers.map((c) => ({
-            onOpen: c.packing_list_id ? () => navigate(`/packing-lists/${c.packing_list_id}`) : undefined,
+            onOpen: c.packing_list_id
+              ? () => navigate(`/packing-lists/${c.packing_list_id}`)
+              : undefined,
             cells: [
               <span key="name">{c.customer_name ?? c.customer_id}</span>,
               // The paper manifest pairs NAME with CONTACT — staff ring the
               // customer when cargo lands, so keep them adjacent here too.
-              c.customer_phone
-                ? <Mono key="phone">{c.customer_phone}</Mono>
-                : <span key="phone" className={styles.dimText}>—</span>,
+              c.customer_phone ? (
+                <Mono key="phone">{c.customer_phone}</Mono>
+              ) : (
+                <span key="phone" className={styles.dimText}>
+                  —
+                </span>
+              ),
               <Mono key="cartons">{c.carton_count}</Mono>,
               <Mono key="cbm">{formatCbm(c.total_cbm)}</Mono>,
-              <Mono key="weight">{c.total_weight_kg != null ? `${c.total_weight_kg} kg` : '—'}</Mono>,
+              <Mono key="weight">
+                {c.total_weight_kg != null ? `${c.total_weight_kg} kg` : '—'}
+              </Mono>,
               <div key="tags" className={styles.tagChips}>
                 {c.carton_tags.slice(0, 3).map((tag) => (
                   <span key={tag} className={styles.tagChip}>
                     {tag}
                   </span>
                 ))}
-                {c.carton_tags.length > 3 && <span className={styles.tagMore}>+{c.carton_tags.length - 3} more</span>}
+                {c.carton_tags.length > 3 && (
+                  <span className={styles.tagMore}>+{c.carton_tags.length - 3} more</span>
+                )}
               </div>,
             ],
           }))}
@@ -538,7 +565,9 @@ export function ManifestDetail(): JSX.Element {
                   cells: [
                     <span key="name">{d.customer_name ?? d.customer_id}</span>,
                     <Mono key="expected">{d.expected}</Mono>,
-                    <Mono key="missing" color="var(--color-error)">{d.missingTags.length}</Mono>,
+                    <Mono key="missing" color="var(--color-error)">
+                      {d.missingTags.length}
+                    </Mono>,
                     <Mono key="accounted">{d.expected - d.missingTags.length}</Mono>,
                     <div key="tags" className={styles.tagChips}>
                       {d.missingTags.slice(0, 4).map((tag) => (
@@ -580,7 +609,10 @@ export function ManifestDetail(): JSX.Element {
                   <Mono key="tracking">{wd.tracking_code ?? '—'}</Mono>,
                   <Mono key="dispatch">{formatKg(wd.weight_dispatch_kg)}</Mono>,
                   <Mono key="actual">{formatKg(wd.weight_actual_kg)}</Mono>,
-                  <Mono key="diff" color={wd.difference_kg < 0 ? 'var(--color-error)' : 'var(--color-warning)'}>
+                  <Mono
+                    key="diff"
+                    color={wd.difference_kg < 0 ? 'var(--color-error)' : 'var(--color-warning)'}
+                  >
                     {wd.difference_kg > 0 ? '+' : ''}
                     {formatKg(wd.difference_kg)}
                   </Mono>,
@@ -643,14 +675,24 @@ export function ManifestDetail(): JSX.Element {
       {showRevokeConfirm && (
         <div className={styles.modalOverlay} onClick={() => setShowRevokeConfirm(false)}>
           <DialogGuard onClose={() => setShowRevokeConfirm(false)} />
-          <div className={styles.modalPanel} onClick={(e) => e.stopPropagation()} role="dialog" aria-modal="true">
+          <div
+            className={styles.modalPanel}
+            onClick={(e) => e.stopPropagation()}
+            role="dialog"
+            aria-modal="true"
+          >
             <h3 className={styles.modalTitle}>Revoke verification?</h3>
             <p className={styles.modalBody}>
-              This will reset the manifest to <strong>Pending</strong> so it can be re-verified. Any downstream processes
-              that have already consumed this verification (release notes, billing) are not affected by this action.
+              This will reset the manifest to <strong>Pending</strong> so it can be re-verified. Any
+              downstream processes that have already consumed this verification (release notes,
+              billing) are not affected by this action.
             </p>
             <div className={styles.modalActions}>
-              <Button variant="ghost" onClick={() => setShowRevokeConfirm(false)} disabled={revoking}>
+              <Button
+                variant="ghost"
+                onClick={() => setShowRevokeConfirm(false)}
+                disabled={revoking}
+              >
                 Cancel
               </Button>
               <Button variant="danger" loading={revoking} onClick={() => void handleRevoke()}>
@@ -660,6 +702,6 @@ export function ManifestDetail(): JSX.Element {
           </div>
         </div>
       )}
-    </div>
+    </DetailPage>
   )
 }

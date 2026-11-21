@@ -10,7 +10,6 @@ import {
   Action,
   Banner,
   Button,
-  Card,
   Kvp,
   LocaleCard,
   type StaffLocale,
@@ -20,13 +19,14 @@ import {
 } from '../../design/components'
 import { PageHeader } from '../../shell/PageHeader'
 import { ActivityFeed } from '../../shell/ActivityFeed'
-import { SectionHead } from '../../shell/SectionHead'
 import { RoleCheckboxList } from './RoleCheckboxList'
 import styles from './admin.module.css'
 import { formatDate } from '../../lib/format'
 import { useBreadcrumbLabel } from '../../shell/breadcrumbs'
 import { roleLabel } from '../../design/status'
 import { toast } from '../../design/toast'
+import { Section } from '../../shell/Section'
+import { DetailPage } from '../../shell/DetailPage'
 
 
 const ROLE_OPTIONS: TenantUserRole[] = [
@@ -188,122 +188,201 @@ export function StaffUserDetail(): JSX.Element {
   if (!user) return <></>
 
   return (
-    <div>
-      <PageHeader title={user.full_name} meta={user.email} />
-
+    <DetailPage header={<PageHeader title={user.full_name} meta={user.email} />}>
       {session?.readOnly && (
         <div className={styles.banner}>
           <Banner variant="warning" icon="eye" title="Read-only session">
-            You're viewing this tenant as their Tenant Admin for support. Data is fully visible, but every create, edit, approve, and delete action is disabled. The session ends automatically after 30 minutes or when you exit.
+            You're viewing this tenant as their Tenant Admin for support. Data is fully visible, but
+            every create, edit, approve, and delete action is disabled. The session ends
+            automatically after 30 minutes or when you exit.
           </Banner>
         </div>
       )}
-      {error && <div className={styles.banner}><Banner variant="error">{error}</Banner></div>}
+      {error && (
+        <div className={styles.banner}>
+          <Banner variant="error">{error}</Banner>
+        </div>
+      )}
 
-      <SectionHead title="Profile" />
-      <Card padding="default">
+      <Section title="Profile">
         <Kvp label="Email" value={user.email} />
-        <Kvp label="Roles" value={
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-3)' }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-2)', flexWrap: 'wrap' }}>
-              {(user.roles.length > 0 ? user.roles : [user.role]).map((r) => (
-                <span key={r} style={{ display: 'inline-flex', alignItems: 'center', gap: 'var(--space-1)' }}>
-                  <RoleBadge role={r} />
-                  {r === user.role && <span style={{ fontSize: 'var(--text-xs)', color: 'var(--color-ink-3)' }}>Primary</span>}
-                </span>
-              ))}
-              {editRoles === null && (
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  onClick={() => {
-                    setEditRoles(user.roles.length > 0 ? user.roles : [user.role])
-                    setEditPrimaryRole(user.role)
-                  }}
-                >
-                  Change
-                </Button>
+        <Kvp
+          label="Roles"
+          value={
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-3)' }}>
+              <div
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 'var(--space-2)',
+                  flexWrap: 'wrap',
+                }}
+              >
+                {(user.roles.length > 0 ? user.roles : [user.role]).map((r) => (
+                  <span
+                    key={r}
+                    style={{ display: 'inline-flex', alignItems: 'center', gap: 'var(--space-1)' }}
+                  >
+                    <RoleBadge role={r} />
+                    {r === user.role && (
+                      <span style={{ fontSize: 'var(--text-xs)', color: 'var(--color-ink-3)' }}>
+                        Primary
+                      </span>
+                    )}
+                  </span>
+                ))}
+                {editRoles === null && (
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => {
+                      setEditRoles(user.roles.length > 0 ? user.roles : [user.role])
+                      setEditPrimaryRole(user.role)
+                    }}
+                  >
+                    Change
+                  </Button>
+                )}
+              </div>
+              {editRoles !== null && (
+                <div>
+                  <RoleCheckboxList
+                    options={ROLE_OPTIONS}
+                    selected={editRoles}
+                    primary={editPrimaryRole}
+                    onChange={(nextRoles, nextPrimary) => {
+                      setEditRoles(nextRoles)
+                      setEditPrimaryRole(nextPrimary)
+                    }}
+                    roleLabel={roleLabel}
+                  />
+                  <div
+                    style={{ display: 'flex', gap: 'var(--space-2)', marginTop: 'var(--space-3)' }}
+                  >
+                    <Action
+                      variant="primary"
+                      size="sm"
+                      loading={saving}
+                      disabled={editRoles.length === 0}
+                      onClick={() => void handleSaveRoles()}
+                    >
+                      Save
+                    </Action>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => {
+                        setEditRoles(null)
+                        setEditPrimaryRole(null)
+                      }}
+                    >
+                      Cancel
+                    </Button>
+                  </div>
+                </div>
               )}
             </div>
-            {editRoles !== null && (
-              <div>
-                <RoleCheckboxList
-                  options={ROLE_OPTIONS}
-                  selected={editRoles}
-                  primary={editPrimaryRole}
-                  onChange={(nextRoles, nextPrimary) => {
-                    setEditRoles(nextRoles)
-                    setEditPrimaryRole(nextPrimary)
-                  }}
-                  roleLabel={roleLabel}
-                />
-                <div style={{ display: 'flex', gap: 'var(--space-2)', marginTop: 'var(--space-3)' }}>
-                  <Action variant="primary" size="sm" loading={saving} disabled={editRoles.length === 0} onClick={() => void handleSaveRoles()}>
-                    Save
-                  </Action>
-                  <Button variant="ghost" size="sm" onClick={() => { setEditRoles(null); setEditPrimaryRole(null) }}>
-                    Cancel
-                  </Button>
-                </div>
-              </div>
-            )}
-          </div>
-        } />
+          }
+        />
         <Kvp label="Status" value={<StatusBadge kind="staffUser" status={user.status} />} />
         <Kvp label="Member since" value={formatDate(user.created_at)} divider={false} />
-      </Card>
+      </Section>
 
-      <SectionHead title="Permissions" sub="What this role can and cannot do — fixed per role, enforced server-side" />
-      <Card padding="default">
+      <Section
+        title="Permissions"
+        sub="What this role can and cannot do — fixed per role, enforced server-side"
+      >
         {ROLE_PERMISSIONS[user.role]?.map((p, i, arr) => (
-          <div key={p.label} style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-3)', padding: 'var(--space-2) 0', borderBottom: i < arr.length - 1 ? '1px dashed var(--color-line-soft)' : 'none' }}>
-            <span style={{
-              width: 22, height: 22, borderRadius: 'var(--radius-md)', flexShrink: 0,
-              display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
-              background: p.allowed ? 'var(--color-success-soft)' : 'var(--color-error-soft)',
-              color: p.allowed ? 'var(--color-success)' : 'var(--color-error)',
-              fontSize: 'var(--text-xs)', fontWeight: 700,
-            }}>{p.allowed ? '✓' : '✕'}</span>
-            <span style={{ fontSize: 'var(--text-sm)', color: 'var(--color-ink-2)' }}>{p.label}</span>
+          <div
+            key={p.label}
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: 'var(--space-3)',
+              padding: 'var(--space-2) 0',
+              borderBottom: i < arr.length - 1 ? '1px dashed var(--color-line-soft)' : 'none',
+            }}
+          >
+            <span
+              style={{
+                width: 22,
+                height: 22,
+                borderRadius: 'var(--radius-md)',
+                flexShrink: 0,
+                display: 'inline-flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                background: p.allowed ? 'var(--color-success-soft)' : 'var(--color-error-soft)',
+                color: p.allowed ? 'var(--color-success)' : 'var(--color-error)',
+                fontSize: 'var(--text-xs)',
+                fontWeight: 700,
+              }}
+            >
+              {p.allowed ? '✓' : '✕'}
+            </span>
+            <span style={{ fontSize: 'var(--text-sm)', color: 'var(--color-ink-2)' }}>
+              {p.label}
+            </span>
           </div>
         ))}
-      </Card>
+      </Section>
 
-      <SectionHead title="Recent activity" sub="What this user has done across the tenant" />
-      <Card padding="default">
+      <Section title="Recent activity" sub="What this user has done across the tenant">
         <ActivityFeed actorId={user.id} limit={10} showActor={false} />
-      </Card>
+      </Section>
 
-      <SectionHead title="Actions" />
-      <Card padding="default">
+      <Section title="Actions">
         <div style={{ display: 'flex', gap: 'var(--space-2)', flexWrap: 'wrap' }}>
-          <Button variant="secondary" size="sm" loading={saving} onClick={() => void handleAction('activate')}>
+          <Button
+            variant="secondary"
+            size="sm"
+            loading={saving}
+            onClick={() => void handleAction('activate')}
+          >
             Resend activation link
           </Button>
-          <Button variant="secondary" size="sm" loading={saving} onClick={() => void handleAction('resend')}>
+          <Button
+            variant="secondary"
+            size="sm"
+            loading={saving}
+            onClick={() => void handleAction('resend')}
+          >
             Resend invite
           </Button>
-          <Button variant="secondary" size="sm" loading={saving} onClick={() => void handleAction('reset')}>
+          <Button
+            variant="secondary"
+            size="sm"
+            loading={saving}
+            onClick={() => void handleAction('reset')}
+          >
             Reset password
           </Button>
           {user.status === 'active' && (
-            <Button variant="danger-ghost" size="sm" loading={saving} onClick={() => void handleAction('deactivate')}>
+            <Button
+              variant="danger-ghost"
+              size="sm"
+              loading={saving}
+              onClick={() => void handleAction('deactivate')}
+            >
               Deactivate user
             </Button>
           )}
         </div>
-      </Card>
+      </Section>
 
-      <SectionHead title="Notification language" />
-      <Card padding="default">
+      <Section title="Notification language">
         <LocaleCard value={locale} onChange={setLocaleDraft} />
         <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: 'var(--space-4)' }}>
-          <Action variant="primary" size="sm" loading={savingLocale} onClick={() => void handleSaveLocale()}>
+          <Action
+            variant="primary"
+            size="sm"
+            loading={savingLocale}
+            onClick={() => void handleSaveLocale()}
+          >
             Save language
           </Action>
         </div>
-      </Card>
-
-    </div>
+      </Section>
+    </DetailPage>
   )
 }

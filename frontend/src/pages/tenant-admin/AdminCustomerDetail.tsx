@@ -34,6 +34,7 @@ import { formatCbm, formatDate, formatDateTime, formatNgn, plural } from '../../
 import { useBreadcrumbLabel } from '../../shell/breadcrumbs'
 import { PageHeader } from '../../shell/PageHeader'
 import { toast } from '../../design/toast'
+import { DetailPage } from '../../shell/DetailPage'
 
 // ---------------------------------------------------------------------------
 // GDPR Anonymise Modal — MUST use exact "ANONYMISE" text confirmation
@@ -511,80 +512,111 @@ export function AdminCustomerDetail(): JSX.Element {
   if (customer.created_at) heroMeta.push(<span key="since">Customer since {formatDate(customer.created_at)}</span>)
 
   return (
-    <div>
-      <PageHeader
-        title={customer.name ?? 'Anonymised customer'}
-        status={
-          <>
-            <Badge variant={isAnonymised ? 'error' : 'success'}>
-              {isAnonymised ? 'Anonymised' : 'Active'}
-            </Badge>
-            {!isAnonymised && hasLogin && <Badge variant="info">Has portal login</Badge>}
-            {!isAnonymised && !hasLogin && customer.pending_invite_expires_at && (
-              <Badge variant="warning">
-                Invited · expires {formatDate(customer.pending_invite_expires_at)}
+    <DetailPage
+      header={
+        <PageHeader
+          title={customer.name ?? 'Anonymised customer'}
+          status={
+            <>
+              <Badge variant={isAnonymised ? 'error' : 'success'}>
+                {isAnonymised ? 'Anonymised' : 'Active'}
               </Badge>
-            )}
-            {!isAnonymised && !hasLogin && !customer.pending_invite_expires_at && (
-              <Badge variant="warning">No login</Badge>
-            )}
-          </>
-        }
-        meta={heroMeta}
-        actions={
-          !isAnonymised && (
-            <Action
-              variant="secondary"
-              disabled={!!session?.readOnly}
-              loading={invitingAccount}
-              onClick={() => void handleSendInvite()}
-            >
-              {hasLogin ? 'Resend account invite' : 'Send account invite'}
-            </Action>
-          )
-        }
-      />
+              {!isAnonymised && hasLogin && <Badge variant="info">Has portal login</Badge>}
+              {!isAnonymised && !hasLogin && customer.pending_invite_expires_at && (
+                <Badge variant="warning">
+                  Invited · expires {formatDate(customer.pending_invite_expires_at)}
+                </Badge>
+              )}
+              {!isAnonymised && !hasLogin && !customer.pending_invite_expires_at && (
+                <Badge variant="warning">No login</Badge>
+              )}
+            </>
+          }
+          meta={heroMeta}
+          actions={
+            !isAnonymised && (
+              <Action
+                variant="secondary"
+                disabled={!!session?.readOnly}
+                loading={invitingAccount}
+                onClick={() => void handleSendInvite()}
+              >
+                {hasLogin ? 'Resend account invite' : 'Send account invite'}
+              </Action>
+            )
+          }
+        />
+      }
+    >
       {session?.readOnly && (
         <div className={styles.bannerGap}>
           <Banner variant="warning" icon="eye" title="Read-only session">
-            You're viewing this tenant as their Tenant Admin for support. Data is fully visible, but every create, edit, approve, and delete action is disabled. The session ends automatically after 30 minutes or when you exit.
+            You're viewing this tenant as their Tenant Admin for support. Data is fully visible, but
+            every create, edit, approve, and delete action is disabled. The session ends
+            automatically after 30 minutes or when you exit.
           </Banner>
         </div>
       )}
 
       {inviteMessage && (
         <div className={styles.banner}>
-          <Banner variant="info" title="Account invite" dismissible onDismiss={() => setInviteMessage(null)}>
+          <Banner
+            variant="info"
+            title="Account invite"
+            dismissible
+            onDismiss={() => setInviteMessage(null)}
+          >
             {inviteMessage}
           </Banner>
         </div>
       )}
 
-      {error && <div className={styles.banner}><Banner variant="error">{error}</Banner></div>}
+      {error && (
+        <div className={styles.banner}>
+          <Banner variant="error">{error}</Banner>
+        </div>
+      )}
 
       {/* GDPR anonymised banner — persistent, per spec */}
       {isAnonymised && (
         <div className={styles.gdprBanner}>
           <p className={styles.gdprBannerTitle}>This record has been anonymised (GDPR Art. 17)</p>
           <p className={styles.gdprBannerBody}>
-            All personal data was erased on {formatDate(customer.anonymised_at)}. The customer
-            UUID and financial records are retained for legal compliance.
+            All personal data was erased on {formatDate(customer.anonymised_at)}. The customer UUID
+            and financial records are retained for legal compliance.
           </p>
         </div>
       )}
 
       <Tabs items={TABS} active={tab} onChange={setTab} />
-      <div className={styles.spacer16} />
 
-      {tab === 'profile' && <ProfileTab customer={customer} shipments={shipments} billing={billing} claims={claims} onSaved={(updated) => qc.setQueryData(customerKeys.detail(id ?? ''), updated)} />}
+      {tab === 'profile' && (
+        <ProfileTab
+          customer={customer}
+          shipments={shipments}
+          billing={billing}
+          claims={claims}
+          onSaved={(updated) => qc.setQueryData(customerKeys.detail(id ?? ''), updated)}
+        />
+      )}
       {tab === 'shipments' && (
-        <ShipmentsTab customer={customer} shipments={shipments} onOpen={(plId) => navigate(`/packing-lists/${plId}`)} />
+        <ShipmentsTab
+          customer={customer}
+          shipments={shipments}
+          onOpen={(plId) => navigate(`/packing-lists/${plId}`)}
+        />
       )}
       {tab === 'billing' && (
-        <BillingTab billing={billing} onOpen={(b) => navigate(`/billing/${b.id}`, { state: { billing: b } })} />
+        <BillingTab
+          billing={billing}
+          onOpen={(b) => navigate(`/billing/${b.id}`, { state: { billing: b } })}
+        />
       )}
       {tab === 'claims' && (
-        <ClaimsTab claims={claims} onOpen={(c) => navigate(`/claims/${c.id}`, { state: { claim: c } })} />
+        <ClaimsTab
+          claims={claims}
+          onOpen={(c) => navigate(`/claims/${c.id}`, { state: { claim: c } })}
+        />
       )}
       {tab === 'privacy' && (
         <PrivacyTab
@@ -605,6 +637,6 @@ export function AdminCustomerDetail(): JSX.Element {
           }}
         />
       )}
-    </div>
+    </DetailPage>
   )
 }

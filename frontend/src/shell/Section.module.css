@@ -1,0 +1,8 @@
+.section {
+  min-width: 0;
+}
+
+/* A flush section (a table): the heading keeps the card's padding, the content runs edge to edge. */
+.flushHead {
+  padding: var(--space-5) var(--space-5) var(--space-1);
+}

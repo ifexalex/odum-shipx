@@ -3,11 +3,10 @@ import { useState, type JSX } from 'react'
 import { billingApi, type Billing } from '../../../api/billing'
 import { ApiError } from '../../../api/client'
 import { billingKeys } from '../../../api/keys'
-import { Button, Card, Mono, Table } from '../../../design/components'
+import { Button, Mono, Table } from '../../../design/components'
 import { formatNgn, plural } from '../../../lib/format'
-import { SectionHead } from '../../../shell/SectionHead'
-import styles from '../BillingDetail.module.css'
 import { toast } from '../../../design/toast'
+import { Section } from '../../../shell/Section'
 
 interface MiscChargesSectionProps {
   billing: Billing
@@ -50,54 +49,50 @@ export function MiscChargesSection({
 
   if (miscCharges.length === 0 && billing.misc_fees.length === 0) return null
   return (
-    <div className={styles.section}>
-      <SectionHead
-        title="Miscellaneous charges"
-        sub={miscCharges.length > 0 ? plural(miscCharges.length, 'charge') : undefined}
+    <Section title="Miscellaneous charges"
+        sub={miscCharges.length > 0 ? plural(miscCharges.length, 'charge') : undefined} flush>
+      <Table
+        columns={[
+          { title: 'Charge' },
+          { title: 'Type' },
+          { title: 'Amount (₦)', type: 'money' as const },
+          ...(canRemove ? [{ title: '', type: 'action' as const, width: '48px' }] : []),
+        ]}
+        rows={
+          miscCharges.length > 0
+            ? miscCharges.map((c) => ({
+                cells: [
+                  <span key="desc">{c.description}</span>,
+                  <span key="type" style={{ fontSize: 'var(--text-xs)', color: 'var(--color-ink-3)' }}>
+                    {c.charge_type.replace(/_/g, ' ')}
+                  </span>,
+                  <Mono key="amt">{formatNgn(c.amount_ngn)}</Mono>,
+                  ...(canRemove
+                    ? [
+                        <Button
+                          key="rm"
+                          variant="ghost"
+                          size="sm"
+                          icon="x"
+                          aria-label="Remove charge"
+                          loading={removingChargeId === c.id}
+                          onClick={() => void handleRemoveCharge(c.id)}
+                        />,
+                      ]
+                    : []),
+                ],
+              }))
+            : billing.misc_fees.map((f) => ({
+                cells: [
+                  <span key="desc">{f.description}</span>,
+                  <span key="type" />,
+                  <Mono key="amt">{formatNgn(f.amount_ngn)}</Mono>,
+                  ...(canRemove ? [<span key="rm" />] : []),
+                ],
+              }))
+        }
       />
-      <Card padding="none">
-        <Table
-          columns={[
-            { title: 'Charge' },
-            { title: 'Type' },
-            { title: 'Amount (₦)', type: 'money' as const },
-            ...(canRemove ? [{ title: '', type: 'action' as const, width: '48px' }] : []),
-          ]}
-          rows={
-            miscCharges.length > 0
-              ? miscCharges.map((c) => ({
-                  cells: [
-                    <span key="desc">{c.description}</span>,
-                    <span key="type" style={{ fontSize: 'var(--text-xs)', color: 'var(--color-ink-3)' }}>
-                      {c.charge_type.replace(/_/g, ' ')}
-                    </span>,
-                    <Mono key="amt">{formatNgn(c.amount_ngn)}</Mono>,
-                    ...(canRemove
-                      ? [
-                          <Button
-                            key="rm"
-                            variant="ghost"
-                            size="sm"
-                            icon="x"
-                            aria-label="Remove charge"
-                            loading={removingChargeId === c.id}
-                            onClick={() => void handleRemoveCharge(c.id)}
-                          />,
-                        ]
-                      : []),
-                  ],
-                }))
-              : billing.misc_fees.map((f) => ({
-                  cells: [
-                    <span key="desc">{f.description}</span>,
-                    <span key="type" />,
-                    <Mono key="amt">{formatNgn(f.amount_ngn)}</Mono>,
-                    ...(canRemove ? [<span key="rm" />] : []),
-                  ],
-                }))
-          }
-        />
-      </Card>
-    </div>
+
+    </Section>
   )
 }

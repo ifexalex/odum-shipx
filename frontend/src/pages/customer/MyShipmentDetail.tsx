@@ -31,6 +31,7 @@ import styles from './customer.module.css'
 import { formatCbm, formatKg, formatNgn } from '../../lib/format'
 import { useBreadcrumbLabel } from '../../shell/breadcrumbs'
 import { PageHeader } from '../../shell/PageHeader'
+import { DetailPage } from '../../shell/DetailPage'
 
 // Ground truth: api/tracking.ts's ContainerStatus (services/tracking + the
 // `container` table) — the 9 real values. This map previously used fictional
@@ -117,22 +118,24 @@ export function MyShipmentDetail(): JSX.Element {
   const outstanding = shipmentBilling ? Number(shipmentBilling.outstanding_ngn) : 0
 
   return (
-    <div className={styles.page}>
-      <PageHeader
-        title={pl.reference ? `Shipment ${pl.reference}` : 'Shipment'}
-        status={<StatusBadge kind="container" status={status} audience="customer" />}
-        meta={[
-          pl.container_number ? (
-            <>
-              Container <Mono color="var(--color-ink)">{pl.container_number}</Mono>
-            </>
-          ) : (
-            'Awaiting container assignment'
-          ),
-          `${pl.carton_count} carton${pl.carton_count === 1 ? '' : 's'}`,
-        ]}
-      />
-
+    <DetailPage
+      header={
+        <PageHeader
+          title={pl.reference ? `Shipment ${pl.reference}` : 'Shipment'}
+          status={<StatusBadge kind="container" status={status} audience="customer" />}
+          meta={[
+            pl.container_number ? (
+              <>
+                Container <Mono color="var(--color-ink)">{pl.container_number}</Mono>
+              </>
+            ) : (
+              'Awaiting container assignment'
+            ),
+            `${pl.carton_count} carton${pl.carton_count === 1 ? '' : 's'}`,
+          ]}
+        />
+      }
+    >
       <ReleaseNoteCard containerId={pl.container_id} />
 
       {/* Tracking */}
@@ -168,9 +171,11 @@ export function MyShipmentDetail(): JSX.Element {
             rows={pl.items.map((item) => ({
               cells: [
                 <Mono key="tag">{item.carton_tag ?? item.tracking_code ?? '—'}</Mono>,
-                <span key="desc" style={{ fontSize: 'var(--text-sm)' }}>{item.description}</span>,
+                <span key="desc" style={{ fontSize: 'var(--text-sm)' }}>
+                  {item.description}
+                </span>,
                 <Mono key="wt">
-                  {item.weight_actual_kg ?? item.weight_dispatch_kg
+                  {(item.weight_actual_kg ?? item.weight_dispatch_kg)
                     ? `${formatKg(item.weight_actual_kg ?? item.weight_dispatch_kg)} kg`
                     : '—'}
                 </Mono>,
@@ -203,23 +208,44 @@ export function MyShipmentDetail(): JSX.Element {
           {billing === null && <LinesSkeleton label="Loading billing" />}
           {billing !== null && !shipmentBilling && (
             <p className={styles.billingNote}>
-              No bill yet for this shipment — billing is generated when the container arrives and is measured.
+              No bill yet for this shipment — billing is generated when the container arrives and is
+              measured.
             </p>
           )}
           {shipmentBilling && (
             <>
-              <Kvp label="Shipping cost" value={<Mono>{fmtNgn(Number(shipmentBilling.subtotal_ngn))}</Mono>} />
+              <Kvp
+                label="Shipping cost"
+                value={<Mono>{fmtNgn(Number(shipmentBilling.subtotal_ngn))}</Mono>}
+              />
               {/* Itemized by real description, not a lump "Misc fees" line —
                   see MyBillingDetail.tsx's matching fix and
                   frontend/07_domain_modules.md. */}
               {shipmentBilling.misc_fees.map((fee, i) => (
-                <Kvp key={i} label={fee.description} value={<Mono>{fmtNgn(Number(fee.amount_ngn))}</Mono>} />
+                <Kvp
+                  key={i}
+                  label={fee.description}
+                  value={<Mono>{fmtNgn(Number(fee.amount_ngn))}</Mono>}
+                />
               ))}
               {Number(shipmentBilling.storage_fees_ngn) > 0 && (
-                <Kvp label="Storage fees" value={<Mono>{fmtNgn(Number(shipmentBilling.storage_fees_ngn))}</Mono>} />
+                <Kvp
+                  label="Storage fees"
+                  value={<Mono>{fmtNgn(Number(shipmentBilling.storage_fees_ngn))}</Mono>}
+                />
               )}
-              <Kvp label="Total" value={<Mono>{fmtNgn(Number(shipmentBilling.total_due_ngn))}</Mono>} />
-              <Kvp label="Paid" value={<Mono color="var(--color-success)">{fmtNgn(Number(shipmentBilling.total_paid_ngn))}</Mono>} />
+              <Kvp
+                label="Total"
+                value={<Mono>{fmtNgn(Number(shipmentBilling.total_due_ngn))}</Mono>}
+              />
+              <Kvp
+                label="Paid"
+                value={
+                  <Mono color="var(--color-success)">
+                    {fmtNgn(Number(shipmentBilling.total_paid_ngn))}
+                  </Mono>
+                }
+              />
               <Kvp
                 label="Outstanding"
                 value={
@@ -232,8 +258,8 @@ export function MyShipmentDetail(): JSX.Element {
               {outstanding > 0 && pendingClaim && (
                 <div className={styles.payCtaWrap}>
                   <Banner variant="warning" title="Payment submitted — awaiting confirmation">
-                    You told us you sent {formatNgn(pendingClaim.amount_ngn)}. Staff will confirm
-                    it shortly.
+                    You told us you sent {formatNgn(pendingClaim.amount_ngn)}. Staff will confirm it
+                    shortly.
                   </Banner>
                 </div>
               )}
@@ -243,7 +269,11 @@ export function MyShipmentDetail(): JSX.Element {
                     variant="accent"
                     full
                     icon="coin"
-                    onClick={() => navigate(`/my-billing/${shipmentBilling.id}`, { state: { billing: shipmentBilling } })}
+                    onClick={() =>
+                      navigate(`/my-billing/${shipmentBilling.id}`, {
+                        state: { billing: shipmentBilling },
+                      })
+                    }
                   >
                     Pay outstanding
                   </Button>
@@ -265,10 +295,15 @@ export function MyShipmentDetail(): JSX.Element {
             File a claim within 7 days of receiving your shipment — we inspect and respond quickly.
           </div>
         </div>
-        <Button variant="secondary" size="sm" icon="plus" onClick={() => navigate('/my-claims/new')}>
+        <Button
+          variant="secondary"
+          size="sm"
+          icon="plus"
+          onClick={() => navigate('/my-claims/new')}
+        >
           File a claim
         </Button>
       </div>
-    </div>
+    </DetailPage>
   )
 }

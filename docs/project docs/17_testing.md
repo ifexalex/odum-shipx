@@ -2521,3 +2521,7 @@ Found by running them: **a real bug** (invoice generation set a used credit to `
 - `frontend/src/pages/listPages.test.ts` (19): every staff list page uses `ListPage` and `FilterBar` and builds no stats row or filter card of its own. `shell/ListPage.test.tsx` (6): layout order, more than four stats reported, a stat as a toggle, the filter bar's fixed order and landmark, More filters and clear-all.
 - `tests/db/test_overdue_filter.py` (2, real Postgres): `overdue` lists exactly what the Overdue stat counts. Unit: `overdue_condition` and the `overdue` parameter in the handler and the export query.
 - Page tests: chips are found inside the filter bar (a stat and a chip can now both say "Unpaid"); "Filters" is "More filters"; new tests for the Overdue and Outstanding stats and a release-note stat as a filter.
+
+## One detail layout (FD-19, 2026-11-21)
+
+- `frontend/src/pages/detailPages.test.ts` (16): every record page uses `DetailPage`; both invoices use `InvoiceBreakdown`. `shell/DetailPage.test.tsx` (2): layout order, the summary as a complementary region, a section named by its heading with the heading inside its card. `pages/shared/InvoiceBreakdown.test.tsx` (3): rows and figures, optional rows, the last-known-rate note. `ContainerDetail.test.tsx`: the container type is stated once (it asserted it appeared twice).

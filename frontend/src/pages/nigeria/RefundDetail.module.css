@@ -1,16 +1,12 @@
-
 /* layout */
 .section { margin-top: var(--space-5); }
 .statsRow { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: var(--space-3); margin-top: var(--space-5); }
-.loadingState { padding: var(--space-12); text-align: center; color: var(--color-ink-4); }
-.banner { margin-bottom: var(--space-4); }
 
 /* modal — mobile-first bottom sheet, see ReleaseNoteDetail.module.css's
    matching comment for the pattern reference. */
 .modalOverlay { position: fixed; inset: 0; background: var(--scrim-modal); display: flex; align-items: flex-end; justify-content: center; z-index: var(--layer-modal); }
 .modalPanel { background: var(--color-surface); border-radius: var(--radius-xl) var(--radius-xl) 0 0; padding: var(--space-6) var(--space-5); width: 100%; display: flex; flex-direction: column; gap: var(--space-4); box-shadow: var(--shadow-modal); max-height: 90vh; overflow-y: auto; }
 .modalTitle { font-size: var(--text-lg); font-weight: 600; margin: 0; }
-.modalBody { font-size: var(--text-md); color: var(--color-ink-4); line-height: var(--text-md-line); margin: 0; }
 .modalBanner { margin: 0; }
 .modalActions { display: flex; gap: var(--space-2); justify-content: flex-end; }
 .modalActions > * { min-height: 48px; font-size: var(--text-lg); }
@@ -20,18 +16,6 @@
   .modalPanel { border-radius: var(--radius-xl); max-width: var(--dialog-sm); padding: var(--space-6); }
   .modalActions > * { min-height: 36px; font-size: inherit; }
 }
-
-/* inline reject */
-.inlineReject { display: flex; flex-direction: column; gap: var(--space-2); border-top: 1px solid var(--color-line-soft); padding-top: var(--space-3); margin-top: var(--space-1); }
-.inlineRejectActions { display: flex; gap: var(--space-2); justify-content: flex-end; }
-.inlineRejectActions > * { min-height: 44px; }
-
-@container sxapp (min-width: 861px) {
-  .inlineRejectActions > * { min-height: 32px; }
-}
-
-/* debt badge */
-.debtNote { font-size: var(--text-sm); color: var(--color-warning); }
 
 /* threshold meter */
 .thresholdMeter { display: flex; flex-direction: column; gap: var(--space-2); }

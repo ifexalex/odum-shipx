@@ -2,11 +2,12 @@ import { useState, type JSX } from 'react'
 import { ApiError } from '../../api/client'
 import { usersApi } from '../../api/tenantManagement'
 import { useSession } from '../../auth/useSession'
-import { Banner, Card, Kvp, LocaleCard, type StaffLocale } from '../../design/components'
+import { Banner, Kvp, LocaleCard, type StaffLocale } from '../../design/components'
 import { Action } from '../../design/components/Action'
 import { PageHeader } from '../../shell/PageHeader'
-import { SectionHead } from '../../shell/SectionHead'
 import { toast } from '../../design/toast'
+import { Section } from '../../shell/Section'
+import { DetailPage } from '../../shell/DetailPage'
 
 export function StaffProfile(): JSX.Element {
   const { session } = useSession()
@@ -30,27 +31,31 @@ export function StaffProfile(): JSX.Element {
   }
 
   return (
-    <div>
-      <PageHeader title="My profile" meta={[session.name, session.role.replace(/_/g, ' ')]} />
+    <DetailPage
+      header={
+        <PageHeader title="My profile" meta={[session.name, session.role.replace(/_/g, ' ')]} />
+      }
+    >
+      {error && (
+        <div style={{ marginBottom: 'var(--space-4)' }}>
+          <Banner variant="error">{error}</Banner>
+        </div>
+      )}
 
-      {error && <div style={{ marginBottom: 'var(--space-4)' }}><Banner variant="error">{error}</Banner></div>}
-
-      <SectionHead title="Profile" />
-      <Card padding="default" style={{ marginBottom: 'var(--space-6)' }}>
+      <Section title="Profile">
         {session.name && <Kvp label="Name" value={session.name} />}
         <Kvp label="Role" value={session.role.replace(/_/g, ' ')} />
         <Kvp label="Tenant" value={session.tenantName ?? session.tenantId} divider={false} />
-      </Card>
+      </Section>
 
-      <SectionHead title="Notification language" />
-      <Card padding="default">
+      <Section title="Notification language">
         <LocaleCard value={locale} onChange={setLocale} />
         <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: 'var(--space-4)' }}>
           <Action variant="primary" loading={saving} onClick={() => void handleSave()}>
             Save changes
           </Action>
         </div>
-      </Card>
-    </div>
+      </Section>
+    </DetailPage>
   )
 }

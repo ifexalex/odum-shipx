@@ -8,13 +8,15 @@ import { type BankTransferConfig } from '../../api/tenantManagement'
 import { useBankTransferConfig } from '../../hooks/useConfig'
 import { STALE_30S } from '../../lib/queryClient'
 import { DialogGuard, Field, StatusBadge, PageSkeleton } from '../../design/components'
-import { Badge, Banner, Button, Card, Kvp, Mono, StatCard } from '../../design/components'
-import { SectionHead } from '../../shell/SectionHead'
+import { Badge, Banner, Button, Kvp, Mono } from '../../design/components'
 import { EvidenceUploader, type UploadedEvidence } from '../nigeria/EvidenceUploader'
 import { PaymentsTable } from '../nigeria/billingDetail/Breakdown'
+import { InvoiceBreakdown } from '../shared/InvoiceBreakdown'
+import { DetailPage } from '../../shell/DetailPage'
+import { Section } from '../../shell/Section'
 import { ReleaseNoteCard } from './ReleaseNoteCard'
 import styles from './customer.module.css'
-import { formatCbm, formatDate, formatNgn, formatUsd } from '../../lib/format'
+import { formatCbm, formatDate, formatNgn } from '../../lib/format'
 import { useBreadcrumbLabel } from '../../shell/breadcrumbs'
 import { PageHeader } from '../../shell/PageHeader'
 import { toast } from '../../design/toast'
@@ -343,235 +345,185 @@ export function MyBillingDetail(): JSX.Element {
   const latestClaim = claims[0] ?? null
 
   return (
-    <div className={styles.page}>
-      <PageHeader
-        title={billing.invoice_number ? `Invoice ${billing.invoice_number}` : 'Invoice'}
-        status={<StatusBadge kind="invoice" status={billing.payment_status} audience="customer" />}
-        meta={[
-          billing.container_number && (
-            <>
-              Container <Mono>{billing.container_number}</Mono>
-            </>
-          ),
-          billing.billed_at && `Billed ${formatDate(billing.billed_at)}`,
-        ]}
-        primary={
-          needsPayment && (
-            <Button
-              variant="primary"
-              onClick={() => navigate(`/my-billing/${billing.id}/refund-request`)}
-            >
-              Request refund
-            </Button>
-          )
-        }
-        actions={
-          billing._active_disputes.length === 0 &&
-          !disputeFiled &&
-          billing.payment_status !== 'cancelled' && (
-            <Button variant="secondary" onClick={() => setShowDispute(true)}>
-              Dispute CBM
-            </Button>
-          )
-        }
-      />
-
-      <ReleaseNoteCard containerId={billing.container_id} />
-
-      {(disputeFiled || billing._active_disputes.length > 0) && (
-        <div className={styles.sectionGap}>
-          <Banner variant="info" title="CBM dispute open">
-            Your dispute is with our team — we acknowledge within 24 hours and re-measure. You&apos;ll be
-            notified of the outcome.
-          </Banner>
-        </div>
-      )}
-
-      <div className={styles.statsRow}>
-        <StatCard label="Total due" value={formatNgn(billing.total_due_ngn)} />
-        <StatCard label="Total paid" value={formatNgn(billing.total_paid_ngn)} />
-        <StatCard label="Outstanding" value={outstanding > 0 ? formatNgn(outstanding) : '—'} />
-      </div>
-
-      {/* Breakdown */}
-      <SectionHead
-        title="Invoice breakdown"
-        action={
-          <Button variant="secondary" size="sm" loading={invoiceLoading} onClick={() => void handleDownloadInvoice()}>
-            Download invoice
-          </Button>
-        }
-      />
-      {invoiceError && (
-        <div className={styles.bannerGap}>
-          <Banner variant="error">{invoiceError}</Banner>
-        </div>
-      )}
-      <Card padding="default">
-        <Kvp label="CBM" value={<Mono>{formatCbm(billing.total_cbm)}</Mono>} />
-        {/* A per-package-type invoice was actually priced against separate
-            carton/bag/bale rates — showing only the blended USD-equivalent
-            "Rate" line here would correspond to nothing the customer was
-            really charged against, so show the real breakdown instead. */}
-        {billing.cbm_rate_mode === 'per_package_type' && billing.cbm_breakdown ? (
-          (['carton', 'bag', 'bale'] as const).map((bucket) => {
-            const item = billing.cbm_breakdown![bucket]
-            if (Number(item.cbm) <= 0) return null
-            const sym = billing.cbm_rate_currency === 'NGN' ? '₦' : '$'
-            return (
-              <Kvp
-                key={bucket}
-                label={`${bucket.charAt(0).toUpperCase()}${bucket.slice(1)}s`}
-                value={<Mono>{formatCbm(item.cbm)} CBM × {sym}{Number(item.rate).toFixed(2)}</Mono>}
-              />
-            )
-          })
-        ) : (
-          <Kvp label="Rate" value={<Mono>{formatUsd(billing.cbm_rate_usd)} / CBM</Mono>} />
-        )}
-        <Kvp label="Exchange rate" value={<Mono>{formatNgn(billing.dollar_rate)} / $</Mono>} />
-        <Kvp label="Shipping cost (CBM subtotal)" value={<Mono>{formatNgn(billing.subtotal_ngn)}</Mono>} />
-        {/*
-          Itemized by real description, never a lump "Misc fees" line — a
-          customer looking at money owed should be able to tell exactly what
-          each charge is for. Ground-truth gap found live: this card used to
-          omit misc fees from the customer's own bill entirely (they were
-          silently folded into total_due_ngn with no visible line item at
-          all), and other customer surfaces that did show them used the
-          ambiguous lump label. See frontend/07_domain_modules.md.
-        */}
-        {billing.misc_fees.map((fee, i) => (
-          <Kvp key={i} label={fee.description} value={<Mono>{formatNgn(fee.amount_ngn)}</Mono>} />
-        ))}
-        {Number(billing.storage_fees_ngn) > 0 && (
-          <Kvp label="Storage fees" value={<Mono>{formatNgn(billing.storage_fees_ngn)}</Mono>} />
-        )}
-        {Number(billing.carryover_ngn) > 0 && (
-          <Kvp
-            label="Carryover applied from a previous shipment"
-            value={<Mono>+{formatNgn(billing.carryover_ngn)}</Mono>}
-          />
-        )}
-        {Number(billing.adjustments_ngn) !== 0 && (
-          <Kvp
-            label="CBM dispute adjustment"
-            value={
-              <Mono color="var(--color-success)">
-                −{formatNgn(Math.abs(Number(billing.adjustments_ngn)))}
-              </Mono>
+    <>
+      <DetailPage
+        header={
+          <PageHeader
+            title={billing.invoice_number ? `Invoice ${billing.invoice_number}` : 'Invoice'}
+            status={
+              <StatusBadge kind="invoice" status={billing.payment_status} audience="customer" />
+            }
+            meta={[
+              billing.container_number && (
+                <>
+                  Container <Mono>{billing.container_number}</Mono>
+                </>
+              ),
+              billing.billed_at && `Billed ${formatDate(billing.billed_at)}`,
+            ]}
+            primary={
+              needsPayment && (
+                <Button
+                  variant="primary"
+                  onClick={() => navigate(`/my-billing/${billing.id}/refund-request`)}
+                >
+                  Request refund
+                </Button>
+              )
+            }
+            actions={
+              billing._active_disputes.length === 0 &&
+              !disputeFiled &&
+              billing.payment_status !== 'cancelled' && (
+                <Button variant="secondary" onClick={() => setShowDispute(true)}>
+                  Dispute CBM
+                </Button>
+              )
             }
           />
-        )}
-        <Kvp label="Total due" value={<Mono>{formatNgn(billing.total_due_ngn)}</Mono>} />
-        <Kvp
-          label="Total paid"
-          value={<Mono color="var(--color-success)">−{formatNgn(billing.total_paid_ngn)}</Mono>}
-        />
-        <Kvp
-          label="Outstanding"
-          value={
-            <Mono color={outstanding > 0 ? 'var(--color-error)' : 'var(--color-success)'}>
-              {formatNgn(outstanding)}
-            </Mono>
+        }
+        notices={
+          <>
+            {(disputeFiled || billing._active_disputes.length > 0) && (
+              <Banner variant="info" title="CBM dispute open">
+                Your dispute is with our team — we acknowledge within 24 hours and re-measure.
+                You&apos;ll be notified of the outcome.
+              </Banner>
+            )}
+            {isPaid && billing.outstanding_ngn !== '0' && Number(billing.outstanding_ngn) < 0 && (
+              <Banner variant="info" title="Overpayment">
+                You have overpaid by {formatNgn(Math.abs(outstanding))}. A refund or credit will be
+                arranged by our team.
+              </Banner>
+            )}
+          </>
+        }
+        // The totals, once (FD-19): they were three stat cards above a breakdown that repeated them.
+        aside={
+          <Section title="Summary">
+            <Kvp label="Total due" value={<Mono>{formatNgn(billing.total_due_ngn)}</Mono>} />
+            <Kvp label="Paid" value={<Mono>{formatNgn(billing.total_paid_ngn)}</Mono>} />
+            <Kvp
+              label="Outstanding"
+              value={
+                <Mono color={outstanding > 0 ? 'var(--color-error)' : 'var(--color-success)'}>
+                  {formatNgn(outstanding)}
+                </Mono>
+              }
+            />
+          </Section>
+        }
+      >
+        <ReleaseNoteCard containerId={billing.container_id} />
+        <Section
+          title="Invoice breakdown"
+          action={
+            <Button
+              variant="secondary"
+              size="sm"
+              loading={invoiceLoading}
+              onClick={() => void handleDownloadInvoice()}
+            >
+              Download invoice
+            </Button>
           }
-          divider={false}
-        />
-      </Card>
-
-      {/* Payment options */}
-      {needsPayment && (
-        <>
-          <SectionHead title="Pay now" sub={`${formatNgn(outstanding)} outstanding`} />
-
-          {/* A pending bank-transfer claim means money may already be on its
-              way — showing "Pay online" / bank-transfer instructions here too
-              would openly invite a second, real payment on top of it. Ground-
-              truth gap found live: the outstanding amount and "Pay online"
-              stayed fully active and clickable even after the customer had
-              already told us they'd paid, with nothing on the page saying so. */}
-          {pendingClaim ? (
-            <Card padding="default">
+        >
+          {invoiceError && (
+            <div className={styles.bannerGap}>
+              <Banner variant="error">{invoiceError}</Banner>
+            </div>
+          )}
+          {/* The same breakdown staff read (FD-19). */}
+          <InvoiceBreakdown billing={billing} />
+        </Section>
+        {needsPayment && (
+          <Section title="Pay now" sub={`${formatNgn(outstanding)} outstanding`}>
+            {/* A pending bank-transfer claim means money may already be on its
+                way — showing "Pay online" / bank-transfer instructions here too
+                would openly invite a second, real payment on top of it. Ground-
+                truth gap found live: the outstanding amount and "Pay online"
+                stayed fully active and clickable even after the customer had
+                already told us they'd paid, with nothing on the page saying so. */}
+            {pendingClaim ? (
               <Banner variant="warning" title="Payment submitted — awaiting confirmation">
                 You told us you sent {formatNgn(pendingClaim.amount_ngn)} on{' '}
-                {formatDate(pendingClaim.submitted_at)}
-                {' '}(evidence: {pendingClaim.evidence_file_name}). Staff will confirm it against your evidence
-                shortly — the outstanding balance above will update automatically once they do. To avoid a
-                duplicate payment, "Pay online" is disabled while this claim is pending.
+                {formatDate(pendingClaim.submitted_at)} (evidence: {pendingClaim.evidence_file_name}
+                ). Staff will confirm it against your evidence shortly — the outstanding balance
+                above will update automatically once they do. To avoid a duplicate payment, "Pay
+                online" is disabled while this claim is pending.
               </Banner>
-            </Card>
-          ) : (
-            <>
-              {latestClaim?.status === 'rejected' && (
-                <div className={styles.sectionGap}>
-                  <Banner variant="error" title="Your last payment claim was rejected">
-                    {latestClaim.rejection_reason ?? 'Contact your shipping company for details.'} You can pay
-                    online or submit a new bank-transfer claim below.
-                  </Banner>
-                </div>
-              )}
-              <div className={styles.paymentOptions}>
-                {/* Pay online — Paystack hosted checkout (B12) */}
-                <div className={styles.paymentOption}>
-                  <p className={styles.paymentOptionTitle}>Pay online</p>
-                  <p className={styles.paymentOptionDesc}>
-                    Instant card, transfer, or USSD payment via Paystack. You'll be redirected to a
-                    secure checkout page.
-                  </p>
-                  {payError && (
-                    <div className={styles.noteGap}>
-                      <Banner variant="error">{payError}</Banner>
-                    </div>
-                  )}
-                  <Button variant="accent" loading={payLoading} onClick={() => void handlePayOnline()}>
-                    Pay {formatNgn(outstanding)} online
-                  </Button>
-                  <p className={styles.fieldHint}>
-                    Payments are confirmed automatically — your release note is issued once settled.
-                  </p>
-                </div>
-
-                {/* Manual bank transfer */}
-                <div className={styles.paymentOption}>
-                  <p className={styles.paymentOptionTitle}>Manual bank transfer</p>
-                  <p className={styles.paymentOptionDesc}>
-                    Transfer to our account and staff will confirm your payment.
-                  </p>
-                  {showTransfer ? (
-                    <>
-                      <BankTransferDetails config={bankConfig} />
-                      <div className={styles.topGap12}>
-                        <PaymentClaimPanel
-                          billingId={billing.id}
-                          outstandingNgn={outstanding}
-                          onSubmitted={(claim) =>
-                            qc.setQueryData<PaymentClaim[]>(claimsKey, (prev) => [claim, ...(prev ?? [])])
-                          }
-                        />
+            ) : (
+              <>
+                {latestClaim?.status === 'rejected' && (
+                  <div className={styles.sectionGap}>
+                    <Banner variant="error" title="Your last payment claim was rejected">
+                      {latestClaim.rejection_reason ?? 'Contact your shipping company for details.'}{' '}
+                      You can pay online or submit a new bank-transfer claim below.
+                    </Banner>
+                  </div>
+                )}
+                <div className={styles.paymentOptions}>
+                  {/* Pay online — Paystack hosted checkout (B12) */}
+                  <div className={styles.paymentOption}>
+                    <p className={styles.paymentOptionTitle}>Pay online</p>
+                    <p className={styles.paymentOptionDesc}>
+                      Instant card, transfer, or USSD payment via Paystack. You'll be redirected to
+                      a secure checkout page.
+                    </p>
+                    {payError && (
+                      <div className={styles.noteGap}>
+                        <Banner variant="error">{payError}</Banner>
                       </div>
-                    </>
-                  ) : (
-                    <Button variant="secondary" onClick={() => setTransferOpened(true)}>
-                      Show bank details
+                    )}
+                    <Button
+                      variant="accent"
+                      loading={payLoading}
+                      onClick={() => void handlePayOnline()}
+                    >
+                      Pay {formatNgn(outstanding)} online
                     </Button>
-                  )}
+                    <p className={styles.fieldHint}>
+                      Payments are confirmed automatically — your release note is issued once
+                      settled.
+                    </p>
+                  </div>
+
+                  {/* Manual bank transfer */}
+                  <div className={styles.paymentOption}>
+                    <p className={styles.paymentOptionTitle}>Manual bank transfer</p>
+                    <p className={styles.paymentOptionDesc}>
+                      Transfer to our account and staff will confirm your payment.
+                    </p>
+                    {showTransfer ? (
+                      <>
+                        <BankTransferDetails config={bankConfig} />
+                        <div className={styles.topGap12}>
+                          <PaymentClaimPanel
+                            billingId={billing.id}
+                            outstandingNgn={outstanding}
+                            onSubmitted={(claim) =>
+                              qc.setQueryData<PaymentClaim[]>(claimsKey, (prev) => [
+                                claim,
+                                ...(prev ?? []),
+                              ])
+                            }
+                          />
+                        </div>
+                      </>
+                    ) : (
+                      <Button variant="secondary" onClick={() => setTransferOpened(true)}>
+                        Show bank details
+                      </Button>
+                    )}
+                  </div>
                 </div>
-              </div>
-            </>
-          )}
-        </>
-      )}
-
-      {isPaid && billing.outstanding_ngn !== '0' && Number(billing.outstanding_ngn) < 0 && (
-        <div className={`${styles.banner} ${styles.topGap16}`}>
-          <Banner variant="info" title="Overpayment">
-            You have overpaid by {formatNgn(Math.abs(outstanding))}. A refund or credit will be arranged by our team.
-          </Banner>
-        </div>
-      )}
-
-      {/* Payment history: the same table staff see (FD-13). */}
-      <PaymentsTable payments={billing.payments} title="Payment history" />
-
+              </>
+            )}
+          </Section>
+        )}
+        {/* Payment history: the same table staff see (FD-13). */}
+        <PaymentsTable payments={billing.payments} title="Payment history" />
+      </DetailPage>
       {showDispute && (
         <CbmDisputeModal
           billing={billing}
@@ -582,6 +534,6 @@ export function MyBillingDetail(): JSX.Element {
           }}
         />
       )}
-    </div>
+    </>
   )
 }

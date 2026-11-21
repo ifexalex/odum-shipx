@@ -6,7 +6,7 @@ import { SectionHead } from '../../../shell/SectionHead'
 import styles from '../ContainerDetail.module.css'
 import { formatCbm, formatDate } from '../../../lib/format'
 import { utilizationColorClass } from './labels'
-import { ContainerStepper, SummaryTile, EventRow } from './Timeline'
+import { SummaryTile, EventRow } from './Timeline'
 import { type Container, type ContainerEvent } from '../../../api/tracking'
 import { type PackingList } from '../../../api/packingList'
 
@@ -93,24 +93,12 @@ export function OverviewTab({
 
   return (
     <>
-      <Card>
-        <SectionHead
-          title="Tracking pipeline"
-          sub="China-side stages in blue · Nigeria-side stages in green"
-        />
-        <div className={styles.stepperSpacer} />
-        <ContainerStepper current={container.status} />
-      </Card>
-      <div className={styles.gridSpacer} />
       <div className={styles.grid2}>
         <Card>
           <SectionHead title="Container info" />
-          <Kvp label="Container #" value={<Mono>{container.container_number}</Mono>} />
-          {/* Optional facts are left out when empty, not shown as a column of dashes (FD-17). */}
-          <Kvp optional label="Container type" value={container.container_type} />
+          {/* Number, type, vessel and voyage are in the page header; each fact is stated once (FD-19). Optional facts are
+              left out when empty (FD-17). */}
           <Kvp optional label="Seal #" value={container.seal_number && <Mono>{container.seal_number}</Mono>} />
-          <Kvp optional label="Vessel" value={container.vessel_name} />
-          <Kvp optional label="Voyage" value={container.voyage_number && <Mono>{container.voyage_number}</Mono>} />
           <Kvp optional label="Shipping line" value={container.shipping_line} />
           <Kvp
             label="Created by"

@@ -16,6 +16,7 @@ import { useBreadcrumbLabel } from '../../shell/breadcrumbs'
 import { PageHeader } from '../../shell/PageHeader'
 import { RecordLink } from '../../shell/RecordLink'
 import { toast } from '../../design/toast'
+import { DetailPage } from '../../shell/DetailPage'
 
 interface RejectModalProps {
   onCancel: () => void
@@ -236,115 +237,125 @@ export function PackingListDetail(): JSX.Element {
   const showFlagColumn = pl.status === 'rejected' && !editing
 
   return (
-    <div>
-      <PageHeader
-        title={pl.reference ? `Packing list ${pl.reference}` : 'Packing list'}
-        status={<StatusBadge kind="packingList" status={pl.status} />}
-        meta={[
-          pl.customer_name && (
-            <RecordLink to={`/admin/customers/${pl.customer_id}`}>{pl.customer_name}</RecordLink>
-          ),
-          pl.container_number && (
-            <RecordLink to={`/containers/${pl.container_id}`}>
-              <Mono>{pl.container_number}</Mono>
-            </RecordLink>
-          ),
-          `${packageSummary}, ${formatCbm(pl.total_cbm)} CBM`,
-          pl.arrival_warehouse_name && `To ${pl.arrival_warehouse_name}`,
-          `Submitted ${formatDate(pl.created_at)}`,
-        ]}
-        primary={
-          editing ? null : canAct ? (
-            <Button
-              variant="primary"
-              icon="check"
-              loading={actionSubmitting}
-              onClick={() => void handleApprove()}
-            >
-              Approve
-            </Button>
-          ) : canSubmitDraft ? (
-            <Button
-              variant="primary"
-              icon="check"
-              loading={actionSubmitting}
-              onClick={() => void handleSubmitForApproval()}
-            >
-              Submit for approval
-            </Button>
-          ) : canEdit ? (
-            <Button variant="primary" icon="edit" onClick={startEditing}>
-              Edit &amp; resubmit
-            </Button>
-          ) : null
-        }
-        actions={
-          <>
-            {canAct && !editing && (
+    <DetailPage
+      header={
+        <PageHeader
+          title={pl.reference ? `Packing list ${pl.reference}` : 'Packing list'}
+          status={<StatusBadge kind="packingList" status={pl.status} />}
+          meta={[
+            pl.customer_name && (
+              <RecordLink to={`/admin/customers/${pl.customer_id}`}>{pl.customer_name}</RecordLink>
+            ),
+            pl.container_number && (
+              <RecordLink to={`/containers/${pl.container_id}`}>
+                <Mono>{pl.container_number}</Mono>
+              </RecordLink>
+            ),
+            `${packageSummary}, ${formatCbm(pl.total_cbm)} CBM`,
+            pl.arrival_warehouse_name && `To ${pl.arrival_warehouse_name}`,
+            `Submitted ${formatDate(pl.created_at)}`,
+          ]}
+          primary={
+            editing ? null : canAct ? (
               <Button
-                variant="danger-ghost"
-                icon="x"
-                onClick={() => {
-                  setActionError(null)
-                  setShowRejectModal(true)
-                }}
+                variant="primary"
+                icon="check"
+                loading={actionSubmitting}
+                onClick={() => void handleApprove()}
               >
-                Reject
+                Approve
               </Button>
-            )}
-            {pl.status === 'draft' && !editing && (
+            ) : canSubmitDraft ? (
               <Button
-                variant="secondary"
-                icon="edit"
-                onClick={() => navigate(`/packing-lists/${pl.id}/edit`)}
+                variant="primary"
+                icon="check"
+                loading={actionSubmitting}
+                onClick={() => void handleSubmitForApproval()}
               >
-                Edit
+                Submit for approval
               </Button>
-            )}
-            <ExportButton
-              formats={['xlsx', 'csv', 'pdf']}
-              onExport={(fmt) =>
-                fmt === 'pdf' ? packingListApi.pdf(pl.id) : packingListApi.export(pl.id, fmt)
-              }
-            />
-          </>
-        }
-        more={[
-          {
-            label: 'Print view',
-            icon: 'file',
-            onSelect: () => navigate(`/packing-lists/${pl.id}/print`),
-          },
-        ]}
-        moreLabel="More packing list actions"
-      />
-
+            ) : canEdit ? (
+              <Button variant="primary" icon="edit" onClick={startEditing}>
+                Edit &amp; resubmit
+              </Button>
+            ) : null
+          }
+          actions={
+            <>
+              {canAct && !editing && (
+                <Button
+                  variant="danger-ghost"
+                  icon="x"
+                  onClick={() => {
+                    setActionError(null)
+                    setShowRejectModal(true)
+                  }}
+                >
+                  Reject
+                </Button>
+              )}
+              {pl.status === 'draft' && !editing && (
+                <Button
+                  variant="secondary"
+                  icon="edit"
+                  onClick={() => navigate(`/packing-lists/${pl.id}/edit`)}
+                >
+                  Edit
+                </Button>
+              )}
+              <ExportButton
+                formats={['xlsx', 'csv', 'pdf']}
+                onExport={(fmt) =>
+                  fmt === 'pdf' ? packingListApi.pdf(pl.id) : packingListApi.export(pl.id, fmt)
+                }
+              />
+            </>
+          }
+          more={[
+            {
+              label: 'Print view',
+              icon: 'file',
+              onSelect: () => navigate(`/packing-lists/${pl.id}/print`),
+            },
+          ]}
+          moreLabel="More packing list actions"
+        />
+      }
+    >
       {error && (
         <div className={styles.banner}>
-          <Banner variant="error" title="Action failed">{error}</Banner>
+          <Banner variant="error" title="Action failed">
+            {error}
+          </Banner>
         </div>
       )}
 
       {pl.status === 'approved' && pl.approved_by && (
         <div className={styles.banner}>
-          <Banner variant="success" title={
-            pl.approved_by_name
-              ? `Approved by ${pl.approved_by_name}${pl.approved_at ? ` on ${pl.approved_at.slice(0, 16).replace('T', ' at ')}` : ''}`
-              : `Approved on ${pl.approved_at?.slice(0, 16).replace('T', ' at ') ?? ''}`
-          }>
+          <Banner
+            variant="success"
+            title={
+              pl.approved_by_name
+                ? `Approved by ${pl.approved_by_name}${pl.approved_at ? ` on ${pl.approved_at.slice(0, 16).replace('T', ' at ')}` : ''}`
+                : `Approved on ${pl.approved_at?.slice(0, 16).replace('T', ' at ') ?? ''}`
+            }
+          >
             This packing list is locked. Cartons are attached to{' '}
-            <strong>{pl.container_number ?? 'this container'}</strong>. To make changes,
-            contact your admin to revoke approval first.
+            <strong>{pl.container_number ?? 'this container'}</strong>. To make changes, contact
+            your admin to revoke approval first.
           </Banner>
         </div>
       )}
       {pl.status === 'rejected' && lastRejection && (
         <div className={styles.banner}>
-          <Banner variant="error" title={
-            pl.rejected_by_name
-              ? `Rejected by ${pl.rejected_by_name}${pl.rejected_at ? ` on ${pl.rejected_at.slice(0, 16).replace('T', ' at ')}` : ''}`
-              : 'Rejected'
-          }>
+          <Banner
+            variant="error"
+            title={
+              pl.rejected_by_name
+                ? `Rejected by ${pl.rejected_by_name}${pl.rejected_at ? ` on ${pl.rejected_at.slice(0, 16).replace('T', ' at ')}` : ''}`
+                : 'Rejected'
+            }
+          >
             Comments: &ldquo;{lastRejection.comments}&rdquo;
           </Banner>
         </div>
@@ -354,9 +365,11 @@ export function PackingListDetail(): JSX.Element {
         <div className={styles.itemsHead}>
           <SectionHead
             title="Items"
-            sub={editing
-              ? plural(editItems.length, 'item')
-              : `${packageSummary} · ${pl.total_weight_kg} kg · ${formatCbm(pl.total_cbm)} CBM`}
+            sub={
+              editing
+                ? plural(editItems.length, 'item')
+                : `${packageSummary} · ${pl.total_weight_kg} kg · ${formatCbm(pl.total_cbm)} CBM`
+            }
           />
           {editing && (
             <Button
@@ -382,102 +395,135 @@ export function PackingListDetail(): JSX.Element {
             ...(showFlagColumn ? [{ title: 'Flag' }] : []),
             ...(editing ? [{ title: '', type: 'action' as const, width: '40px' }] : []),
           ]}
-          rows={editing
-            ? editItems.map((item, index) => {
-                const liveCbm =
-                  item.length_cm != null && item.width_cm != null && item.height_cm != null
-                    ? computeCbm(item.length_cm, item.width_cm, item.height_cm)
-                    : null
-                return {
-                  cells: [
-                    <span key="tag" className={styles.tagReadOnly}>
-                      {pl.items[index]?.carton_tag ?? <em className={styles.newItemTag}>New</em>}
-                    </span>,
-                    <CellInput
+          rows={
+            editing
+              ? editItems.map((item, index) => {
+                  const liveCbm =
+                    item.length_cm != null && item.width_cm != null && item.height_cm != null
+                      ? computeCbm(item.length_cm, item.width_cm, item.height_cm)
+                      : null
+                  return {
+                    cells: [
+                      <span key="tag" className={styles.tagReadOnly}>
+                        {pl.items[index]?.carton_tag ?? <em className={styles.newItemTag}>New</em>}
+                      </span>,
+                      <CellInput
                         label={`Description, item ${index + 1}`}
-                      key="desc"
-                      className={styles.cellInput}
-                      value={item.description}
-                      placeholder="Description"
-                      onChange={(e) => updateEditItem(index, { description: e.target.value })}
-                    />,
-                    <PackageCell key="pkg" item={pl.items[index]} />,
-                    <CellInput
+                        key="desc"
+                        className={styles.cellInput}
+                        value={item.description}
+                        placeholder="Description"
+                        onChange={(e) => updateEditItem(index, { description: e.target.value })}
+                      />,
+                      <PackageCell key="pkg" item={pl.items[index]} />,
+                      <CellInput
                         label={`Actual weight (kg), item ${index + 1}`}
-                      key="weight"
-                      className={styles.cellInputNumber}
-                      type="number"
-                      value={item.weight_actual_kg ?? ''}
-                      onChange={(e) => updateEditItem(index, { weight_actual_kg: Number(e.target.value) || undefined })}
-                    />,
-                    <div key="dim" className={styles.dimRow}>
-                      <CellInput
-                        label={`Length (cm), item ${index + 1}`}
-                        className={styles.dimInput}
+                        key="weight"
+                        className={styles.cellInputNumber}
                         type="number"
-                        value={item.length_cm ?? ''}
-                        onChange={(e) => updateEditItem(index, { length_cm: Number(e.target.value) || undefined })}
-                      />
-                      <span>×</span>
+                        value={item.weight_actual_kg ?? ''}
+                        onChange={(e) =>
+                          updateEditItem(index, {
+                            weight_actual_kg: Number(e.target.value) || undefined,
+                          })
+                        }
+                      />,
+                      <div key="dim" className={styles.dimRow}>
+                        <CellInput
+                          label={`Length (cm), item ${index + 1}`}
+                          className={styles.dimInput}
+                          type="number"
+                          value={item.length_cm ?? ''}
+                          onChange={(e) =>
+                            updateEditItem(index, {
+                              length_cm: Number(e.target.value) || undefined,
+                            })
+                          }
+                        />
+                        <span>×</span>
+                        <CellInput
+                          label={`Width (cm), item ${index + 1}`}
+                          className={styles.dimInput}
+                          type="number"
+                          value={item.width_cm ?? ''}
+                          onChange={(e) =>
+                            updateEditItem(index, { width_cm: Number(e.target.value) || undefined })
+                          }
+                        />
+                        <span>×</span>
+                        <CellInput
+                          label={`Height (cm), item ${index + 1}`}
+                          className={styles.dimInput}
+                          type="number"
+                          value={item.height_cm ?? ''}
+                          onChange={(e) =>
+                            updateEditItem(index, {
+                              height_cm: Number(e.target.value) || undefined,
+                            })
+                          }
+                        />
+                      </div>,
+                      <Mono key="cbm" color="var(--color-success)">
+                        {liveCbm != null ? formatCbm(liveCbm) : '—'}
+                      </Mono>,
                       <CellInput
-                        label={`Width (cm), item ${index + 1}`}
-                        className={styles.dimInput}
-                        type="number"
-                        value={item.width_cm ?? ''}
-                        onChange={(e) => updateEditItem(index, { width_cm: Number(e.target.value) || undefined })}
-                      />
-                      <span>×</span>
-                      <CellInput
-                        label={`Height (cm), item ${index + 1}`}
-                        className={styles.dimInput}
-                        type="number"
-                        value={item.height_cm ?? ''}
-                        onChange={(e) => updateEditItem(index, { height_cm: Number(e.target.value) || undefined })}
-                      />
-                    </div>,
-                    <Mono key="cbm" color="var(--color-success)">
-                      {liveCbm != null ? formatCbm(liveCbm) : '—'}
-                    </Mono>,
-                    <CellInput
                         label={`Declared value (USD), item ${index + 1}`}
-                      key="usd"
-                      className={styles.cellInputNumber}
-                      type="number"
-                      value={item.declared_value_usd ?? ''}
-                      onChange={(e) => updateEditItem(index, { declared_value_usd: Number(e.target.value) || undefined })}
-                    />,
-                    <IconButton
-                      key="remove"
-                      icon="x"
-                      variant="danger-ghost"
-                      size="sm"
-                      label={`Remove item ${index + 1}`}
-                      disabled={editItems.length === 1}
-                      onClick={() => removeEditItem(index)}
-                    />,
+                        key="usd"
+                        className={styles.cellInputNumber}
+                        type="number"
+                        value={item.declared_value_usd ?? ''}
+                        onChange={(e) =>
+                          updateEditItem(index, {
+                            declared_value_usd: Number(e.target.value) || undefined,
+                          })
+                        }
+                      />,
+                      <IconButton
+                        key="remove"
+                        icon="x"
+                        variant="danger-ghost"
+                        size="sm"
+                        label={`Remove item ${index + 1}`}
+                        disabled={editItems.length === 1}
+                        onClick={() => removeEditItem(index)}
+                      />,
+                    ],
+                  }
+                })
+              : pl.items.map((item) => ({
+                  cells: [
+                    <Mono key="tag">{item.carton_tag ?? '—'}</Mono>,
+                    <span key="desc">{item.description}</span>,
+                    <PackageCell key="pkg" item={item} />,
+                    <Mono key="weight">
+                      {item.weight_actual_kg != null ? `${item.weight_actual_kg} kg` : '—'}
+                    </Mono>,
+                    <Mono key="dim">
+                      {item.length_cm != null && item.width_cm != null && item.height_cm != null
+                        ? `${item.length_cm} × ${item.width_cm} × ${item.height_cm}`
+                        : '—'}
+                    </Mono>,
+                    <Mono key="cbm" color="var(--color-success)">
+                      {formatCbm(item.cbm)}
+                    </Mono>,
+                    <Mono key="usd">
+                      {item.declared_value_usd != null ? `$${item.declared_value_usd}` : '—'}
+                    </Mono>,
+                    ...(showFlagColumn
+                      ? [
+                          rejectedItemIds.has(item.id) ? (
+                            <Badge key="flag" variant="error" size="sm">
+                              Re-check
+                            </Badge>
+                          ) : (
+                            <span key="flag" className={styles.flagOk}>
+                              OK
+                            </span>
+                          ),
+                        ]
+                      : []),
                   ],
-                }
-              })
-            : pl.items.map((item) => ({
-                cells: [
-                  <Mono key="tag">{item.carton_tag ?? '—'}</Mono>,
-                  <span key="desc">{item.description}</span>,
-                  <PackageCell key="pkg" item={item} />,
-                  <Mono key="weight">{item.weight_actual_kg != null ? `${item.weight_actual_kg} kg` : '—'}</Mono>,
-                  <Mono key="dim">
-                    {item.length_cm != null && item.width_cm != null && item.height_cm != null
-                      ? `${item.length_cm} × ${item.width_cm} × ${item.height_cm}`
-                      : '—'}
-                  </Mono>,
-                  <Mono key="cbm" color="var(--color-success)">{formatCbm(item.cbm)}</Mono>,
-                  <Mono key="usd">{item.declared_value_usd != null ? `$${item.declared_value_usd}` : '—'}</Mono>,
-                  ...(showFlagColumn
-                    ? [rejectedItemIds.has(item.id)
-                        ? <Badge key="flag" variant="error" size="sm">Re-check</Badge>
-                        : <span key="flag" className={styles.flagOk}>OK</span>]
-                    : []),
-                ],
-              }))
+                }))
           }
           emptyState={<EmptyState compact title="No carton items" />}
         />
@@ -485,8 +531,14 @@ export function PackingListDetail(): JSX.Element {
         {!editing && (
           <div className={styles.totalsRow}>
             <span>{packageSummary}</span>
-            <span>· <span className={styles.totalsLabel}>Weight:</span> <Mono>{formatKg(pl.total_weight_kg)} kg</Mono></span>
-            <span>· <span className={styles.totalsLabel}>CBM:</span> <Mono color="var(--color-success)">{formatCbm(pl.total_cbm)}</Mono></span>
+            <span>
+              · <span className={styles.totalsLabel}>Weight:</span>{' '}
+              <Mono>{formatKg(pl.total_weight_kg)} kg</Mono>
+            </span>
+            <span>
+              · <span className={styles.totalsLabel}>CBM:</span>{' '}
+              <Mono color="var(--color-success)">{formatCbm(pl.total_cbm)}</Mono>
+            </span>
           </div>
         )}
 
@@ -516,6 +568,6 @@ export function PackingListDetail(): JSX.Element {
           onConfirm={(comments) => void handleReject(comments)}
         />
       )}
-    </div>
+    </DetailPage>
   )
 }

@@ -1,50 +1,6 @@
-.loadingState {
-  padding: var(--space-12);
-  text-align: center;
-  color: var(--color-ink-4);
-}
-
-/* Stats — reflows to fewer columns as space shrinks instead of forcing
-   the page wider than its container on mobile (was a fixed 4-column grid). */
-.stats {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
-  gap: var(--space-4);
-  margin-bottom: var(--space-6);
-}
-
 /* Sections */
 .section {
   margin-bottom: var(--space-6);
-}
-
-/* Breakdown */
-.breakdown {
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-3);
-}
-
-.breakdownRow {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  font-size: var(--text-md);
-  padding-bottom: var(--space-2);
-  border-bottom: 1px solid var(--color-line-soft);
-}
-
-.breakdownRow:last-child {
-  border-bottom: none;
-  padding-bottom: 0;
-}
-
-.breakdownTotal {
-  font-weight: 600;
-  font-size: var(--text-lg);
-  padding-top: var(--space-2);
-  border-top: 2px solid var(--color-line-soft);
-  border-bottom: none;
 }
 
 /* Dispute cards */
@@ -258,57 +214,11 @@
   gap: var(--space-2);
 }
 
-.selectLabel {
-  font-size: var(--text-sm);
-  font-weight: 500;
-}
-
-.required {
-  color: var(--color-error);
-  margin-left: var(--space-0-5);
-}
-
-.optional {
-  color: var(--color-ink-4);
-  font-weight: 400;
-  font-size: var(--text-xs);
-  margin-left: var(--space-1);
-}
-
-.select {
-  border: 1px solid var(--color-control-border);
-  border-radius: var(--radius-md);
-  padding: var(--space-2) var(--space-3);
-  font-size: var(--text-md);
-  background: var(--color-surface);
-  color: var(--color-ink);
-  cursor: pointer;
-  min-height: 44px;
-}
-
-@container sxapp (max-width: 860px) {
-  .select {
-    font-size: var(--text-lg);
-  }
-}
-
 .emptyNote {
   color: var(--color-ink-4);
   font-size: var(--text-md);
   margin: 0;
 }
-
-/* Under the exchange-rate line when the invoice used the last known rate (audit BE-11). */
-.rateNotice {
-  margin: calc(-1 * var(--space-0-5)) 0 var(--space-2);
-  padding: var(--space-2) var(--space-3);
-  border-radius: var(--radius-md);
-  background: var(--color-warning-soft);
-  color: var(--color-warning-strong);
-  font-size: var(--text-xs);
-  line-height: var(--text-xs-line);
-}
-
 
 .contact {
   display: inline-flex;

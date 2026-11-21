@@ -10,6 +10,8 @@ import { STALE_30S } from '../../lib/queryClient'
 import { containersApi } from '../../api/tracking'
 import { useSession } from '../../auth/useSession'
 import { useBreadcrumbLabel } from '../../shell/breadcrumbs'
+import { ContainerStepper } from './containerDetail/Timeline'
+import { DetailPage } from '../../shell/DetailPage'
 import { PageHeader } from '../../shell/PageHeader'
 import { Badge, Banner, Button, StatusBadge, PageSkeleton, ErrorState } from '../../design/components'
 import { Tabs } from '../../shell/Tabs'
@@ -137,101 +139,125 @@ export function ContainerDetail(): JSX.Element {
     }
   }
   return (
-    <div>
-      <PageHeader
-        title={`Container ${container.container_number}`}
-        status={
-          <>
-            <StatusBadge kind="container" status={container.status} />
-            {container.container_type && (
-              <Badge variant="neutral" dot={false}>
-                {container.container_type}
-              </Badge>
-            )}
-          </>
-        }
-        meta={[
-          container.vessel_name &&
-            (container.voyage_number
-              ? `${container.vessel_name}, voyage ${container.voyage_number}`
-              : container.vessel_name),
-          `${container.origin} → ${container.destination}`,
-          container.estimated_arrival_date && `ETA ${formatDate(container.estimated_arrival_date)}`,
-        ]}
-        primary={
-          canAdvance &&
-          target && (
-            <Button variant="primary" icon="arrowright" onClick={() => setShowAdvanceModal(true)}>
-              Advance to {statusLabel('container', target)}
-            </Button>
-          )
-        }
-        actions={
-          canAddPackingList && (
-            <Button variant="secondary" icon="plus" onClick={() => navigate('/packing-lists/new')}>
-              Add packing list
-            </Button>
-          )
-        }
-        more={[
-          ...(canCancel
-            ? [
-                {
-                  label: 'Cancel container',
-                  icon: 'warn' as const,
-                  tone: 'danger' as const,
-                  onSelect: () => setShowCancelModal(true),
-                },
-              ]
-            : []),
-          ...(canDelete
-            ? [
-                {
-                  label: 'Delete container',
-                  icon: 'x' as const,
-                  tone: 'danger' as const,
-                  onSelect: () => setShowDeleteModal(true),
-                },
-              ]
-            : []),
-        ]}
-        moreLabel="More container actions"
-      />
-
-      {invoiceResults.length > 0 && (
-        <>
-          <InvoiceOutcomeBanner
-            containerId={container.id}
-            results={invoiceResults}
-            canGenerate={session ? canGenerateInvoices(session.role) : false}
-            onResults={setInvoiceResults}
+    <>
+      <DetailPage
+        header={
+          <PageHeader
+            title={`Container ${container.container_number}`}
+            status={
+              <>
+                <StatusBadge kind="container" status={container.status} />
+                {container.container_type && (
+                  <Badge variant="neutral" dot={false}>
+                    {container.container_type}
+                  </Badge>
+                )}
+              </>
+            }
+            meta={[
+              container.vessel_name &&
+                (container.voyage_number
+                  ? `${container.vessel_name}, voyage ${container.voyage_number}`
+                  : container.vessel_name),
+              `${container.origin} → ${container.destination}`,
+              container.estimated_arrival_date &&
+                `ETA ${formatDate(container.estimated_arrival_date)}`,
+            ]}
+            primary={
+              canAdvance &&
+              target && (
+                <Button
+                  variant="primary"
+                  icon="arrowright"
+                  onClick={() => setShowAdvanceModal(true)}
+                >
+                  Advance to {statusLabel('container', target)}
+                </Button>
+              )
+            }
+            actions={
+              canAddPackingList && (
+                <Button
+                  variant="secondary"
+                  icon="plus"
+                  onClick={() => navigate('/packing-lists/new')}
+                >
+                  Add packing list
+                </Button>
+              )
+            }
+            more={[
+              ...(canCancel
+                ? [
+                    {
+                      label: 'Cancel container',
+                      icon: 'warn' as const,
+                      tone: 'danger' as const,
+                      onSelect: () => setShowCancelModal(true),
+                    },
+                  ]
+                : []),
+              ...(canDelete
+                ? [
+                    {
+                      label: 'Delete container',
+                      icon: 'x' as const,
+                      tone: 'danger' as const,
+                      onSelect: () => setShowDeleteModal(true),
+                    },
+                  ]
+                : []),
+            ]}
+            moreLabel="More container actions"
           />
-          <div className={styles.gridSpacer} />
-        </>
-      )}
+        }
+        notices={
+          invoiceResults.length > 0 && (
+            <InvoiceOutcomeBanner
+              containerId={container.id}
+              results={invoiceResults}
+              canGenerate={session ? canGenerateInvoices(session.role) : false}
+              onResults={setInvoiceResults}
+            />
+          )
+        }
+        // Where the container is, on every tab (FD-19); it was only on the Overview tab.
+        progress={<ContainerStepper current={container.status} />}
+      >
+        <div>
+          <Tabs
+            items={[
+              { key: 'overview', label: 'Overview' },
+              { key: 'packing-lists', label: 'Packing lists' },
+              { key: 'tracking', label: 'Tracking' },
+              { key: 'documents', label: 'Documents' },
+            ]}
+            active={tab}
+            onChange={(key) =>
+              setTab(key as 'overview' | 'packing-lists' | 'tracking' | 'documents')
+            }
+          />
 
-      <Tabs
-        items={[
-          { key: 'overview', label: 'Overview' },
-          { key: 'packing-lists', label: 'Packing lists' },
-          { key: 'tracking', label: 'Tracking' },
-          { key: 'documents', label: 'Documents' },
-        ]}
-        active={tab}
-        onChange={(key) => setTab(key as 'overview' | 'packing-lists' | 'tracking' | 'documents')}
-      />
-      <div className={styles.tabSpacer} />
+          {tab === 'overview' && (
+            <OverviewTab
+              container={container}
+              packingLists={packingLists}
+              events={events}
+              onShowTab={setTab}
+            />
+          )}
 
-      {tab === 'overview' && <OverviewTab container={container} packingLists={packingLists} events={events} onShowTab={setTab} />}
+          {tab === 'packing-lists' && (
+            <PackingListsTab packingLists={packingLists} canAdd={canAddPackingList} />
+          )}
 
-      {tab === 'packing-lists' && <PackingListsTab packingLists={packingLists} canAdd={canAddPackingList} />}
+          {tab === 'tracking' && <TrackingTab container={container} events={events} />}
 
-      {tab === 'tracking' && <TrackingTab container={container} events={events} />}
-
-      {tab === 'documents' && (
-        <DocumentsTab containerId={container.id} containerNumber={container.container_number} />
-      )}
-
+          {tab === 'documents' && (
+            <DocumentsTab containerId={container.id} containerNumber={container.container_number} />
+          )}
+        </div>
+      </DetailPage>
       {showAdvanceModal && target && (
         <AdvanceStatusModal
           container={container}
@@ -252,16 +278,22 @@ export function ContainerDetail(): JSX.Element {
           <div className={styles.modalPanel}>
             <h3 className={styles.modalTitle}>Delete container?</h3>
             <p className={styles.modalBody}>
-              <strong>{container.container_number}</strong> has no packing lists and will be permanently
-              removed. This cannot be undone.
+              <strong>{container.container_number}</strong> has no packing lists and will be
+              permanently removed. This cannot be undone.
             </p>
             {actionError && (
               <div className={styles.modalBanner}>
-                <Banner variant="error" title="Could not delete">{actionError}</Banner>
+                <Banner variant="error" title="Could not delete">
+                  {actionError}
+                </Banner>
               </div>
             )}
             <div className={styles.modalActions}>
-              <Button variant="ghost" onClick={() => setShowDeleteModal(false)} disabled={actionBusy}>
+              <Button
+                variant="ghost"
+                onClick={() => setShowDeleteModal(false)}
+                disabled={actionBusy}
+              >
                 Keep container
               </Button>
               <Button
@@ -282,16 +314,23 @@ export function ContainerDetail(): JSX.Element {
           <div className={styles.modalPanel}>
             <h3 className={styles.modalTitle}>Cancel container?</h3>
             <p className={styles.modalBody}>
-              <strong>{container.container_number}</strong> will be marked as <strong>Cancelled</strong>.
-              Existing packing lists are preserved for record-keeping but no further changes can be made.
+              <strong>{container.container_number}</strong> will be marked as{' '}
+              <strong>Cancelled</strong>. Existing packing lists are preserved for record-keeping
+              but no further changes can be made.
             </p>
             {actionError && (
               <div className={styles.modalBanner}>
-                <Banner variant="error" title="Could not cancel">{actionError}</Banner>
+                <Banner variant="error" title="Could not cancel">
+                  {actionError}
+                </Banner>
               </div>
             )}
             <div className={styles.modalActions}>
-              <Button variant="ghost" onClick={() => setShowCancelModal(false)} disabled={actionBusy}>
+              <Button
+                variant="ghost"
+                onClick={() => setShowCancelModal(false)}
+                disabled={actionBusy}
+              >
                 Keep container
               </Button>
               <Button
@@ -306,6 +345,6 @@ export function ContainerDetail(): JSX.Element {
           </div>
         </div>
       )}
-    </div>
+    </>
   )
 }

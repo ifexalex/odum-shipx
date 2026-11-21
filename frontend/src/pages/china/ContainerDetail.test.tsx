@@ -155,8 +155,8 @@ describe('ContainerDetail', () => {
     expect(screen.getByText('CHRIS(GQL)')).toBeInTheDocument()
     // container_type "40' HC" → 76 CBM capacity → utilization bar shown, plus the hero type badge.
     expect(screen.getByText('Utilization')).toBeInTheDocument()
-    // "40' HC" shows in both the hero badge and the Container-info row.
-    expect(screen.getAllByText("40' HC").length).toBeGreaterThanOrEqual(2)
+    // "40' HC" is stated once, as the header's type badge, not repeated in Container info (FD-19).
+    expect(screen.getAllByText("40' HC")).toHaveLength(1)
   })
 
   it('switches to the packing lists tab and lists them', async () => {

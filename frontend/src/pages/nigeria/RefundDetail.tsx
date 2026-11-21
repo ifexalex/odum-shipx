@@ -23,6 +23,8 @@ import { useBreadcrumbLabel } from '../../shell/breadcrumbs'
 import { PageHeader } from '../../shell/PageHeader'
 import { RecordLink } from '../../shell/RecordLink'
 import { toast } from '../../design/toast'
+import { Section } from '../../shell/Section'
+import { DetailPage } from '../../shell/DetailPage'
 
 // ---------------------------------------------------------------------------
 // Status helpers
@@ -391,38 +393,42 @@ export function RefundDetail(): JSX.Element {
   const showRejectBtn = canRejectRefund(refund, r)
 
   return (
-    <div>
-      <PageHeader
-        title={refundTypeLabel(refund.refund_type)}
-        status={<StatusBadge kind="refund" status={refund.status} />}
-        meta={[
-          refund.customer_name && refund.customer_id && (
-            <RecordLink to={`/admin/customers/${refund.customer_id}`}>{refund.customer_name}</RecordLink>
-          ),
-          `Requested ${formatDate(refund.created_at)}`,
-          refund.approval_level && approvalLevelLabel(refund.approval_level),
-        ]}
-        primary={
-          isTerminalRefundStatus(refund.status) ? null : showReviewBtn ? (
-            <Action variant="primary" icon="check" onClick={() => setShowReview(true)}>
-              Accounts review
-            </Action>
-          ) : showApproveBtn ? (
-            <Action variant="primary" icon="check" onClick={() => setShowApprove(true)}>
-              Approve
-            </Action>
-          ) : null
-        }
-        actions={
-          !isTerminalRefundStatus(refund.status) &&
-          showRejectBtn && (
-            <Action variant="danger-ghost" icon="x" onClick={() => setShowReject(true)}>
-              Reject
-            </Action>
-          )
-        }
-      />
-
+    <DetailPage
+      header={
+        <PageHeader
+          title={refundTypeLabel(refund.refund_type)}
+          status={<StatusBadge kind="refund" status={refund.status} />}
+          meta={[
+            refund.customer_name && refund.customer_id && (
+              <RecordLink to={`/admin/customers/${refund.customer_id}`}>
+                {refund.customer_name}
+              </RecordLink>
+            ),
+            `Requested ${formatDate(refund.created_at)}`,
+            refund.approval_level && approvalLevelLabel(refund.approval_level),
+          ]}
+          primary={
+            isTerminalRefundStatus(refund.status) ? null : showReviewBtn ? (
+              <Action variant="primary" icon="check" onClick={() => setShowReview(true)}>
+                Accounts review
+              </Action>
+            ) : showApproveBtn ? (
+              <Action variant="primary" icon="check" onClick={() => setShowApprove(true)}>
+                Approve
+              </Action>
+            ) : null
+          }
+          actions={
+            !isTerminalRefundStatus(refund.status) &&
+            showRejectBtn && (
+              <Action variant="danger-ghost" icon="x" onClick={() => setShowReject(true)}>
+                Reject
+              </Action>
+            )
+          }
+        />
+      }
+    >
       {/* Status stepper */}
       <div className={styles.section}>
         <Card padding="default">
@@ -434,7 +440,9 @@ export function RefundDetail(): JSX.Element {
       {/* Rejection detail */}
       {refund.status === 'rejected' && refund.rejection_reason && (
         <div className={styles.section}>
-          <Banner variant="error" title="Rejection reason">{refund.rejection_reason}</Banner>
+          <Banner variant="error" title="Rejection reason">
+            {refund.rejection_reason}
+          </Banner>
         </div>
       )}
 
@@ -467,52 +475,69 @@ export function RefundDetail(): JSX.Element {
       </div>
 
       {/* Details card */}
-      <div className={styles.section}>
-        <SectionHead title="Request details" />
-        <Card padding="default">
-          <Kvp label="Refund type" value={refundTypeLabel(refund.refund_type)} />
-          {refund.reason && <Kvp label="Reason" value={refund.reason} />}
-          {refund.customer_id && (
-            <Kvp
-              label="Customer"
-              value={
-                <RecordLink to={`/admin/customers/${refund.customer_id}`}>{refund.customer_name ?? 'Customer'}</RecordLink>
-              }
-            />
-          )}
-          {refund.billing_id && (
-            <Kvp
-              label="Invoice"
-              value={<RecordLink to={`/billing/${refund.billing_id}`}>{refund.invoice_number ?? 'Invoice'}</RecordLink>}
-            />
-          )}
-          {refund.damage_claim_id && (
-            <Kvp
-              label="Damage claim"
-              value={<RecordLink to={`/claims/${refund.damage_claim_id}`}>{refund.claim_reference ?? 'Claim'}</RecordLink>}
-            />
-          )}
+      <Section title="Request details">
+        <Kvp label="Refund type" value={refundTypeLabel(refund.refund_type)} />
+        {refund.reason && <Kvp label="Reason" value={refund.reason} />}
+        {refund.customer_id && (
           <Kvp
-            label="Customer preference"
-            value={customerChoiceLabel(refund.customer_choice)}
-            divider={Boolean(refund.bank_details)}
+            label="Customer"
+            value={
+              <RecordLink to={`/admin/customers/${refund.customer_id}`}>
+                {refund.customer_name ?? 'Customer'}
+              </RecordLink>
+            }
           />
-          {refund.bank_details && (
-            <>
-              <Kvp label="Bank" value={refund.bank_details.bank_name ?? '—'} />
-              <Kvp label="Account number" value={<Mono>{refund.bank_details.account_number ?? '—'}</Mono>} />
-              <Kvp label="Account name" value={refund.bank_details.account_name ?? '—'} divider={false} />
-            </>
-          )}
-        </Card>
-      </div>
+        )}
+        {refund.billing_id && (
+          <Kvp
+            label="Invoice"
+            value={
+              <RecordLink to={`/billing/${refund.billing_id}`}>
+                {refund.invoice_number ?? 'Invoice'}
+              </RecordLink>
+            }
+          />
+        )}
+        {refund.damage_claim_id && (
+          <Kvp
+            label="Damage claim"
+            value={
+              <RecordLink to={`/claims/${refund.damage_claim_id}`}>
+                {refund.claim_reference ?? 'Claim'}
+              </RecordLink>
+            }
+          />
+        )}
+        <Kvp
+          label="Customer preference"
+          value={customerChoiceLabel(refund.customer_choice)}
+          divider={Boolean(refund.bank_details)}
+        />
+        {refund.bank_details && (
+          <>
+            <Kvp label="Bank" value={refund.bank_details.bank_name ?? '—'} />
+            <Kvp
+              label="Account number"
+              value={<Mono>{refund.bank_details.account_number ?? '—'}</Mono>}
+            />
+            <Kvp
+              label="Account name"
+              value={refund.bank_details.account_name ?? '—'}
+              divider={false}
+            />
+          </>
+        )}
+      </Section>
 
       {/* Modals */}
       {showReview && (
         <AccountsReviewModal
           refund={refund}
           onCancel={() => setShowReview(false)}
-          onSuccess={(updated) => { setShowReview(false); applyUpdated(updated) }}
+          onSuccess={(updated) => {
+            setShowReview(false)
+            applyUpdated(updated)
+          }}
         />
       )}
       {showApprove && (
@@ -520,16 +545,22 @@ export function RefundDetail(): JSX.Element {
           refund={refund}
           role={role}
           onCancel={() => setShowApprove(false)}
-          onSuccess={(updated) => { setShowApprove(false); applyUpdated(updated) }}
+          onSuccess={(updated) => {
+            setShowApprove(false)
+            applyUpdated(updated)
+          }}
         />
       )}
       {showReject && (
         <RejectModal
           refundId={refund.id}
           onCancel={() => setShowReject(false)}
-          onSuccess={(updated) => { setShowReject(false); applyUpdated(updated) }}
+          onSuccess={(updated) => {
+            setShowReject(false)
+            applyUpdated(updated)
+          }}
         />
       )}
-    </div>
+    </DetailPage>
   )
 }

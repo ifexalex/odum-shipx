@@ -19,8 +19,7 @@ import {
 import { claimKeys } from '../../api/keys'
 import { STALE_30S } from '../../lib/queryClient'
 import { useSession } from '../../auth/useSession'
-import { Action, Banner, Button, Card, DialogGuard, Field, Kvp, Mono, StatusBadge, Pressable, Select, Stepper, PageSkeleton, ErrorState } from '../../design/components'
-import { SectionHead } from '../../shell/SectionHead'
+import { Action, Banner, Button, DialogGuard, Field, Kvp, Mono, StatusBadge, Pressable, Select, Stepper, PageSkeleton, ErrorState } from '../../design/components'
 import { EvidenceUploader } from './EvidenceUploader'
 import styles from './ClaimDetail.module.css'
 import { formatDate, formatNgn } from '../../lib/format'
@@ -29,6 +28,8 @@ import { PageHeader } from '../../shell/PageHeader'
 import { RecordLink } from '../../shell/RecordLink'
 import { claimProgress, claimSteps } from '../../design/steps'
 import { toast } from '../../design/toast'
+import { Section } from '../../shell/Section'
+import { DetailPage } from '../../shell/DetailPage'
 
 // ---------------------------------------------------------------------------
 // StartInspectionModal
@@ -303,87 +304,89 @@ export function ClaimDetail(): JSX.Element {
   const r = role as Parameters<typeof canStartInspection>[1]
 
   return (
-    <div>
-      <PageHeader
-        title={claim.reference ? `Damage claim ${claim.reference}` : 'Damage claim'}
-        status={<StatusBadge kind="claim" status={claim.status} />}
-        meta={[
-          claim.customer_name && claim.customer_id && (
-            <RecordLink to={`/admin/customers/${claim.customer_id}`}>{claim.customer_name}</RecordLink>
-          ),
-          claim.container_number && claim.container_id && (
-            <RecordLink to={`/containers/${claim.container_id}`}>
-              <Mono>{claim.container_number}</Mono>
-            </RecordLink>
-          ),
-          `Filed ${formatDate(claim.created_at)}`,
-        ]}
-        primary={
-          isTerminalClaimStatus(claim.status) ? null : canStartInspection(claim, r) ? (
-            <Action variant="primary" onClick={() => setShowInspect(true)}>
-              Start inspection
-            </Action>
-          ) : canResolveClaim(claim, r) ? (
-            <Action variant="primary" onClick={() => setShowResolve(true)}>
-              Resolve claim
-            </Action>
-          ) : null
-        }
-      />
-
+    <DetailPage
+      header={
+        <PageHeader
+          title={claim.reference ? `Damage claim ${claim.reference}` : 'Damage claim'}
+          status={<StatusBadge kind="claim" status={claim.status} />}
+          meta={[
+            claim.customer_name && claim.customer_id && (
+              <RecordLink to={`/admin/customers/${claim.customer_id}`}>
+                {claim.customer_name}
+              </RecordLink>
+            ),
+            claim.container_number && claim.container_id && (
+              <RecordLink to={`/containers/${claim.container_id}`}>
+                <Mono>{claim.container_number}</Mono>
+              </RecordLink>
+            ),
+            `Filed ${formatDate(claim.created_at)}`,
+          ]}
+          primary={
+            isTerminalClaimStatus(claim.status) ? null : canStartInspection(claim, r) ? (
+              <Action variant="primary" onClick={() => setShowInspect(true)}>
+                Start inspection
+              </Action>
+            ) : canResolveClaim(claim, r) ? (
+              <Action variant="primary" onClick={() => setShowResolve(true)}>
+                Resolve claim
+              </Action>
+            ) : null
+          }
+        />
+      }
+    >
       {/* Status stepper */}
-      <div className={styles.section}>
-        <SectionHead title="Progress" />
-        <Card padding="default">
-          <StatusStepper current={claim.status} />
-        </Card>
-      </div>
+      <Section title="Progress">
+        <StatusStepper current={claim.status} />
+      </Section>
 
       {/* Claim context */}
       {claim.description && (
-        <div className={styles.section}>
-          <SectionHead title="Claim details" />
-          <Card padding="default">
-            <Kvp label="Description" value={claim.description} divider={false} />
-          </Card>
-        </div>
+        <Section title="Claim details">
+          <Kvp label="Description" value={claim.description} divider={false} />
+        </Section>
       )}
 
       {/* Cartons affected */}
-      <div className={styles.section}>
-        <SectionHead title="Cartons affected" />
-        <Card padding="default">
-          {claim.cartons_affected.length > 0 ? (
-            <div className={styles.cartonList}>
-              {claim.cartons_affected.map((tag) => (
-                <span key={tag} className={styles.cartonTag}><Mono>{tag}</Mono></span>
-              ))}
-            </div>
-          ) : (
-            <span className={styles.emptyNote}>No specific carton tags recorded.</span>
-          )}
-        </Card>
-      </div>
+      <Section title="Cartons affected">
+        {claim.cartons_affected.length > 0 ? (
+          <div className={styles.cartonList}>
+            {claim.cartons_affected.map((tag) => (
+              <span key={tag} className={styles.cartonTag}>
+                <Mono>{tag}</Mono>
+              </span>
+            ))}
+          </div>
+        ) : (
+          <span className={styles.emptyNote}>No specific carton tags recorded.</span>
+        )}
+      </Section>
 
       {/* Evidence upload — available while claim is not terminal */}
       {!isTerminalClaimStatus(claim.status) && (
-        <div className={styles.section}>
-          <SectionHead title="Attach evidence" sub="Upload photos or PDF documents (JPEG · PNG · PDF, max 5 MB each)" />
-          <Card padding="default">
-            <EvidenceUploader
-              getPresignedUrl={(f) => presignedUploadApi.getUrl(claim.id, f.name, f.type, f.size)}
-              confirmUpload={(evidenceId) => presignedUploadApi.confirm(claim.id, evidenceId)}
-              onUploaded={() => { /* listed on the claim once confirmed; the confirmUpload POST refreshes it */ }}
-            />
-          </Card>
-        </div>
+        <Section
+          title="Attach evidence"
+          sub="Upload photos or PDF documents (JPEG · PNG · PDF, max 5 MB each)"
+        >
+          <EvidenceUploader
+            getPresignedUrl={(f) => presignedUploadApi.getUrl(claim.id, f.name, f.type, f.size)}
+            confirmUpload={(evidenceId) => presignedUploadApi.confirm(claim.id, evidenceId)}
+            onUploaded={() => {
+              /* listed on the claim once confirmed; the confirmUpload POST refreshes it */
+            }}
+          />
+        </Section>
       )}
 
       {showInspect && (
         <StartInspectionModal
           claimId={claim.id}
           onCancel={() => setShowInspect(false)}
-          onSuccess={(updated) => { setShowInspect(false); applyUpdated(updated) }}
+          onSuccess={(updated) => {
+            setShowInspect(false)
+            applyUpdated(updated)
+          }}
         />
       )}
       {showResolve && (
@@ -391,9 +394,12 @@ export function ClaimDetail(): JSX.Element {
           claimId={claim.id}
           role={role}
           onCancel={() => setShowResolve(false)}
-          onSuccess={(updated) => { setShowResolve(false); applyUpdated(updated) }}
+          onSuccess={(updated) => {
+            setShowResolve(false)
+            applyUpdated(updated)
+          }}
         />
       )}
-    </div>
+    </DetailPage>
   )
 }
