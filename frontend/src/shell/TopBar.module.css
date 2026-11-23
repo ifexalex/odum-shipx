@@ -1,7 +1,12 @@
+/* Falcon sticky glass topbar: translucent surface backdrop + crisp hairline divider. */
 .topbar {
-  height: 64px;
-  background: var(--color-surface);
-  border-bottom: 1px solid var(--color-line);
+  position: sticky;
+  top: 0;
+  z-index: var(--layer-sticky);
+  height: 60px;
+  background: color-mix(in srgb, var(--color-surface) 92%, transparent);
+  backdrop-filter: blur(12px);
+  border-bottom: 1px solid var(--color-line-soft);
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -22,11 +27,11 @@
    the docked sidebar is replaced by the drawer (prototype .sx-hamburger). */
 .hamburger {
   display: none;
-  width: 38px;
-  height: 38px;
-  border-radius: var(--radius-lg);
-  background: var(--color-page);
-  border: none;
+  width: 36px;
+  height: 36px;
+  border-radius: var(--radius-full);
+  background: var(--color-surface-muted);
+  border: 1px solid var(--color-line-soft);
   align-items: center;
   justify-content: center;
   cursor: pointer;
@@ -42,7 +47,7 @@
 .right {
   display: flex;
   align-items: center;
-  gap: var(--space-3);
+  gap: var(--space-2);
 }
 
 .bellWrap {
@@ -52,11 +57,11 @@
 
 .bellButton {
   position: relative;
-  width: 38px;
-  height: 38px;
+  width: 36px;
+  height: 36px;
   border-radius: var(--radius-full);
-  background: var(--color-page);
-  border: none;
+  background: var(--color-surface-muted);
+  border: 1px solid var(--color-line-soft);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -68,15 +73,18 @@
   outline: none;
   box-shadow: var(--shadow-focus-ring);
 }
-/* Icon-button hover (prototype .sx-icbtn). */
 .bellButton,
 .hamburger {
-  transition: background var(--motion-fast) var(--ease-standard), transform var(--motion-fast) var(--ease-standard);
+  transition:
+    background-color var(--motion-fast) var(--ease-standard),
+    border-color var(--motion-fast) var(--ease-standard),
+    color var(--motion-fast) var(--ease-standard);
 }
 .bellButton:hover,
 .hamburger:hover {
-  background: var(--color-line-soft);
-  transform: scale(1.05);
+  background: var(--color-page);
+  border-color: var(--color-line);
+  color: var(--color-ink);
 }
 
 .bellCount {
@@ -101,12 +109,19 @@
 .userMenu {
   display: flex;
   align-items: center;
-  gap: var(--space-3);
-  padding: var(--space-1) var(--space-4) var(--space-1) var(--space-1);
+  gap: var(--space-2);
+  padding: var(--space-1) var(--space-3) var(--space-1) var(--space-1);
   border-radius: var(--radius-full);
-  background: var(--color-page);
+  background: var(--color-surface-muted);
+  border: 1px solid var(--color-line-soft);
   cursor: pointer;
-  border: none;
+  transition:
+    background-color var(--motion-fast) var(--ease-standard),
+    border-color var(--motion-fast) var(--ease-standard);
+}
+.userMenu:hover {
+  background: var(--color-page);
+  border-color: var(--color-line);
 }
 .userMenu:focus-visible {
   outline: none;

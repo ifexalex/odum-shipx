@@ -1,11 +1,11 @@
 .badge {
   display: inline-flex;
   align-items: center;
-  /* Sleek pass (2026-11-20, owner): sentence case and a slimmer pill. In capitals with wide tracking a status was
-     shouted and long ones ("Released, balance owed") took two lines in a table cell. */
+  /* Falcon subtle pill badge: compact, crisp tonal hairline border, sentence case. */
   gap: var(--space-1);
   padding: var(--space-0-5) var(--space-2);
   border-radius: var(--radius-full);
+  border: 1px solid color-mix(in srgb, var(--badge-dot) 22%, transparent);
   font-family: var(--font-body);
   font-weight: 600;
   font-size: var(--text-xs);
@@ -62,12 +62,13 @@
   --badge-dot: var(--color-role-platform-text);
 }
 .neutral {
-  background: var(--color-line);
+  background: var(--color-surface-muted);
   color: var(--color-ink-3);
+  border-color: var(--color-line);
   --badge-dot: var(--color-ink-4);
 }
 .primary {
   background: var(--color-primary-soft);
-  color: var(--color-primary-deep);
+  color: var(--color-primary-on-soft);
   --badge-dot: var(--color-primary);
 }

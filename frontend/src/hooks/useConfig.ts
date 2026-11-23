@@ -8,12 +8,14 @@ import { FRESH_ON_OPEN } from './useSeedOnce'
 /** `freshOnOpen` is for the settings form: see FRESH_ON_OPEN. */
 interface ConfigReadOptions {
   freshOnOpen?: boolean
+  enabled?: boolean
 }
 
 export function useDollarRate(options: ConfigReadOptions = {}) {
   return useQuery({
     queryKey: configKeys.dollar(),
     queryFn: () => configApi.getDollarRate(),
+    ...(options.enabled !== undefined ? { enabled: options.enabled } : {}),
     ...(options.freshOnOpen ? FRESH_ON_OPEN : {}),
     // Not STALE_FOREVER like the other rate/config hooks — the effective
     // rate now tracks Bybit's live P2P market (shared/fx_rate.py, ~10 min
@@ -27,6 +29,7 @@ export function useCbmRate(options: ConfigReadOptions = {}) {
     queryKey: configKeys.cbm(),
     queryFn: () => configApi.getCbmRate(),
     staleTime: STALE_FOREVER,
+    ...(options.enabled !== undefined ? { enabled: options.enabled } : {}),
     ...(options.freshOnOpen ? FRESH_ON_OPEN : {}),
   })
 }

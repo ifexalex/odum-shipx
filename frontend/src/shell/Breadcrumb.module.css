@@ -23,14 +23,15 @@
 
 .item + .item::before {
   content: '/';
-  color: var(--color-line);
+  color: var(--color-ink-4);
 }
 
 .link,
 .back {
   color: var(--color-primary-text);
-  font-weight: 600;
+  font-weight: 500;
   text-decoration: none;
+  transition: color var(--motion-fast) var(--ease-standard);
 }
 
 .link:hover,

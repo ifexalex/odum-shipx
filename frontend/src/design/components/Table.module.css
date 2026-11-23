@@ -2,12 +2,15 @@
   width: 100%;
   overflow-x: auto;
   border-radius: var(--radius-lg);
-  border: 1px solid var(--color-line);
+  border: 1px solid var(--color-line-soft);
+  box-shadow: var(--shadow-rest);
+  background: var(--color-surface);
 }
 
 /* Inside a card the card's edge is the table's frame (FD-10): no second border just inside it. */
 :global([data-surface='card']) .wrapper {
   border: 0;
+  box-shadow: none;
   /* The card's own radius (when the table is its direct child), so its overflow clips the header row and card rows
      to the card's rounded corners instead of poking past them. */
   border-radius: inherit;
@@ -21,14 +24,15 @@
 
 .th {
   text-align: left;
-  padding: var(--space-3) var(--space-3);
+  padding: var(--space-3) var(--space-4);
   font-size: var(--text-xs);
   font-weight: 600;
   color: var(--color-ink-3);
   letter-spacing: var(--tracking-label);
   text-transform: uppercase;
+  white-space: nowrap;
   background: var(--color-surface-muted);
-  border-bottom: 1px solid var(--color-line);
+  border-bottom: 1px solid var(--color-line-soft);
 }
 
 .thRight {
@@ -93,15 +97,18 @@
 }
 
 .td {
-  /* Sleek pass: rows about 48 px (they were about 60). */
-  padding: var(--space-3) var(--space-3);
-  border-bottom: 1px solid var(--color-line);
+  /* Falcon Advance Table row density: crisp hairline divider, balanced horizontal padding. */
+  padding: var(--space-3) var(--space-4);
+  border-bottom: 1px solid var(--color-line-soft);
   font-size: var(--text-sm);
   color: var(--color-ink-2);
   vertical-align: middle;
 }
+.row:last-child .td {
+  border-bottom: 0;
+}
 .tdDense {
-  padding: var(--space-3) var(--space-3);
+  padding: var(--space-3) var(--space-4);
 }
 .tdSelect {
   padding: var(--space-3) 0 var(--space-3) var(--space-4);
@@ -164,8 +171,9 @@
 
 .card {
   background: var(--color-surface);
-  border: 1px solid var(--color-line);
+  border: 1px solid var(--color-line-soft);
   border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-rest);
   padding: var(--space-4) var(--space-4);
 }
 
@@ -178,7 +186,8 @@
 :global([data-surface='card']) .card {
   border: 0;
   border-radius: 0;
-  border-bottom: 1px solid var(--color-line);
+  box-shadow: none;
+  border-bottom: 1px solid var(--color-line-soft);
 }
 
 :global([data-surface='card']) .card:last-child {
@@ -265,7 +274,7 @@
   cursor: pointer;
 }
 tr.openable:hover {
-  background: var(--color-surface-muted);
+  background: var(--color-primary-tint);
 }
 .openButton {
   all: unset;

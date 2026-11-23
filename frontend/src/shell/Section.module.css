@@ -2,7 +2,14 @@
   min-width: 0;
 }
 
-/* A flush section (a table): the heading keeps the card's padding, the content runs edge to edge. */
+/* Falcon card-header band for flush (table/list) sections: muted cap separated by a hairline rule. */
 .flushHead {
-  padding: var(--space-5) var(--space-5) var(--space-1);
+  padding: var(--space-4) var(--space-5);
+  background: var(--color-surface-muted);
+  border-bottom: 1px solid var(--color-line-soft);
+  border-radius: var(--radius-lg) var(--radius-lg) 0 0;
+}
+
+.flushHead > :first-child {
+  margin-bottom: 0;
 }

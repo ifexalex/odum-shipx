@@ -1,7 +1,7 @@
 .root {
   flex: 1 1 220px;
   min-width: 0;
-  height: 40px;
+  height: 36px;
   display: flex;
   align-items: center;
   gap: var(--space-2);
@@ -9,6 +9,13 @@
   background: var(--color-surface);
   border: 1px solid var(--color-control-border);
   border-radius: var(--radius-md);
+  transition:
+    border-color var(--motion-fast) var(--ease-standard),
+    box-shadow var(--motion-fast) var(--ease-standard),
+    background-color var(--motion-fast) var(--ease-standard);
+}
+:global([data-theme='dark']) .root {
+  background: var(--color-page);
 }
 .root:focus-within {
   border-color: var(--color-primary);

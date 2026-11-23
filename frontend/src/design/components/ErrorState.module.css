@@ -13,10 +13,11 @@
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 48px;
-  height: 48px;
+  width: 44px;
+  height: 44px;
   border-radius: var(--radius-full);
   background: var(--color-error-soft);
+  border: 1px solid color-mix(in srgb, var(--color-error) 22%, transparent);
   color: var(--color-error);
 }
 .title {

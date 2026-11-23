@@ -70,6 +70,7 @@ export function useActiveReleaseNotes(enabled: boolean) {
 // first few rows of each, and links to the filtered list for the rest.
 const CHINA_QUEUE_SIZE = 5
 export const CHINA_QUEUES = {
+  pendingApprovalPackingLists: { status: 'pending_approval', limit: CHINA_QUEUE_SIZE },
   rejectedPackingLists: { status: 'rejected', limit: CHINA_QUEUE_SIZE },
   draftPackingLists: { status: 'draft', limit: CHINA_QUEUE_SIZE },
   pendingManifests: { verification_status: 'pending', limit: CHINA_QUEUE_SIZE },
@@ -77,7 +78,12 @@ export const CHINA_QUEUES = {
 } as const
 
 /** Packing lists in one status, for a China work queue. */
-export function usePackingListQueue(params: typeof CHINA_QUEUES.rejectedPackingLists | typeof CHINA_QUEUES.draftPackingLists) {
+export function usePackingListQueue(
+  params:
+    | typeof CHINA_QUEUES.pendingApprovalPackingLists
+    | typeof CHINA_QUEUES.rejectedPackingLists
+    | typeof CHINA_QUEUES.draftPackingLists,
+) {
   return useQuery({ queryKey: packingListKeys.lookup(params), queryFn: () => packingListApi.list(params) })
 }
 

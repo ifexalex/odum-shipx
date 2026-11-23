@@ -67,7 +67,7 @@ export function ListFooter({
     <div className={styles.footer}>
       {count}
       {hasMore && !capped && (
-        <Button variant="secondary" onClick={onLoadMore} loading={loading}>
+        <Button variant="secondary" size="sm" onClick={onLoadMore} loading={loading}>
           {loadLabel}
         </Button>
       )}

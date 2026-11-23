@@ -2,13 +2,20 @@
   width: 16px;
   height: 16px;
   border-radius: var(--radius-sm);
-  border: 1.5px solid var(--color-line);
+  border: 1.5px solid var(--color-control-border);
   display: inline-flex;
   align-items: center;
   justify-content: center;
   vertical-align: middle;
   cursor: pointer;
   background: var(--color-surface);
+  transition:
+    border-color var(--motion-fast) var(--ease-standard),
+    background-color var(--motion-fast) var(--ease-standard),
+    box-shadow var(--motion-fast) var(--ease-standard);
+}
+.check:hover:not(.disabled) {
+  border-color: var(--color-primary);
 }
 
 .check:focus-visible {

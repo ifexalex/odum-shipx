@@ -99,6 +99,8 @@ export interface MissingItem {
   id: string
   manifest_id: string
   customer_id: string
+  customer_name?: string | null
+  container_number?: string | null
   carton_tags: string[]
   description: string
   status: MissingItemStatus
@@ -108,7 +110,9 @@ export interface MissingItem {
 export interface SeizedItem {
   id: string
   container_id: string
+  container_number?: string | null
   customer_id: string | null
+  customer_name?: string | null
   carton_tags: string[]
   reason: string
   status: SeizedItemStatus

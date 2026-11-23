@@ -11,12 +11,12 @@
     background-color var(--motion-fast) var(--ease-standard),
     border-color var(--motion-fast) var(--ease-standard),
     box-shadow var(--motion-fast) var(--ease-standard),
+    color var(--motion-fast) var(--ease-standard),
     opacity var(--motion-fast) var(--ease-standard);
   cursor: pointer;
 }
 
-/* Hover (FD-05): nothing moves. Filled buttons darken and gain the rest shadow; secondary and ghost buttons change
-   background only, so dense tables and toolbars stay calm. */
+/* Hover (FD-05): crisp Falcon tactile shadow lift without layout shift. */
 .primary:hover:not(:disabled),
 .accent:hover:not(:disabled),
 .danger:hover:not(:disabled) {
@@ -40,23 +40,23 @@
   width: 100%;
 }
 
-/* Heights (FD-07): 32, 40, 48 px. On a touch screen nothing is under 44 px. */
+/* Heights (FD-07): sleek Falcon proportions (30, 36, 44 px). On a touch screen nothing is under 44 px. */
 .sm {
-  height: 32px;
+  height: 30px;
   padding: 0 var(--space-3);
-  font-size: var(--text-sm);
+  font-size: var(--text-xs);
 }
 
 .md {
-  height: 40px;
+  height: 36px;
   padding: 0 var(--space-4);
-  font-size: var(--text-md);
+  font-size: var(--text-sm);
 }
 
 .lg {
-  height: 48px;
+  height: 44px;
   padding: 0 var(--space-5);
-  font-size: var(--text-lg);
+  font-size: var(--text-md);
 }
 
 @media (pointer: coarse) {
@@ -69,40 +69,50 @@
 .primary {
   background: var(--color-primary);
   color: var(--color-on-brand);
-  border: none;
+  border: 1px solid var(--color-primary);
+  box-shadow: var(--shadow-control);
 }
 .primary:hover:not(:disabled) {
   background: var(--color-primary-strong);
+  border-color: var(--color-primary-strong);
 }
 .primary:active:not(:disabled) {
   background: var(--color-primary-deep);
+  border-color: var(--color-primary-deep);
 }
 
 .accent {
   background: var(--color-accent);
   color: var(--color-on-brand);
-  border: none;
+  border: 1px solid var(--color-accent);
+  box-shadow: var(--shadow-control);
 }
 .accent:hover:not(:disabled) {
   background: var(--color-accent-deep);
+  border-color: var(--color-accent-deep);
 }
 .accent:active:not(:disabled) {
   background: var(--color-accent-deep);
+  border-color: var(--color-accent-deep);
 }
 
+/* Falcon signature elevated default button (btn-falcon-default): crisp surface + subtle shadow + hairline border. */
 .secondary {
   background: var(--color-surface);
   color: var(--color-ink);
   border: 1px solid var(--color-line);
+  box-shadow: var(--shadow-control);
 }
 .secondary:hover:not(:disabled) {
   background: var(--color-surface-muted);
+  border-color: var(--color-control-border);
+  box-shadow: var(--shadow-rest);
 }
 
 .ghost {
   background: transparent;
   color: var(--color-primary-text);
-  border: none;
+  border: 1px solid transparent;
 }
 .ghost:hover:not(:disabled) {
   background: var(--color-primary-tint);
@@ -111,16 +121,18 @@
 .danger {
   background: var(--color-error-fill);
   color: var(--color-on-brand);
-  border: none;
+  border: 1px solid var(--color-error-fill);
+  box-shadow: var(--shadow-control);
 }
 .danger:hover:not(:disabled) {
   background: color-mix(in srgb, var(--color-error-fill) 85%, black);
+  border-color: color-mix(in srgb, var(--color-error-fill) 85%, black);
 }
 
 .dangerGhost {
   background: transparent;
   color: var(--color-error);
-  border: none;
+  border: 1px solid transparent;
 }
 .dangerGhost:hover:not(:disabled) {
   background: var(--color-error-soft);
@@ -136,18 +148,18 @@
   opacity: 1;
 }
 
-/* IconButton: square, the same heights as Button. */
+/* IconButton: square, matching Button heights. */
 .icon {
   padding: 0;
 }
 .icon.sm {
-  width: 32px;
+  width: 30px;
 }
 .icon.md {
-  width: 40px;
+  width: 36px;
 }
 .icon.lg {
-  width: 48px;
+  width: 44px;
 }
 @media (pointer: coarse) {
   .icon.sm,

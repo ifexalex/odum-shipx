@@ -126,23 +126,24 @@
   --space-16: 64px;
 
   /* Layout */
-  --sidebar-width: 240px;
-  --sidebar-width-collapsed: 64px;
-  --content-max-width: 1280px;
+  --sidebar-width: 232px;
+  --sidebar-width-collapsed: 60px;
+  --content-max-width: 1320px;
 
   /* Radius (FD-04): four steps in order, plus full. 50% stays allowed for circles. */
-  --radius-sm: 4px; /* tags, small chips */
-  --radius-md: 8px; /* controls: buttons, inputs, menus */
-  --radius-lg: 12px; /* cards */
-  --radius-xl: 16px; /* modals, hero panels */
-  --radius-full: 9999px; /* pills */
+  --radius-sm: 4px; /* tags, small chips, checkboxes */
+  --radius-md: 6px; /* controls: buttons, inputs, menus, nav items */
+  --radius-lg: 10px; /* cards, panels, tables */
+  --radius-xl: 14px; /* modals, hero panels */
+  --radius-full: 9999px; /* pills, circular controls */
 
-  /* Shadows — tinted with Forest Dark, never pure black */
-  --shadow-rest: 0 1px 3px rgba(11, 47, 13, 0.08), 0 1px 2px rgba(11, 47, 13, 0.05);
-  --shadow-hover: 0 4px 12px rgba(11, 47, 13, 0.1), 0 2px 4px rgba(11, 47, 13, 0.06);
-  --shadow-popover: 0 8px 24px rgba(11, 47, 13, 0.14), 0 2px 6px rgba(11, 47, 13, 0.08); /* menus, dropdowns */
-  --shadow-modal: 0 10px 25px rgba(11, 47, 13, 0.18);
-  --shadow-focus-ring: 0 0 0 3px rgba(45, 196, 56, 0.35);
+  /* Shadows — Falcon-inspired multi-layer depth, tinted with Forest Dark (never pure black in light mode) */
+  --shadow-control: 0 1px 2px rgba(11, 47, 13, 0.06), 0 1px 1px rgba(11, 47, 13, 0.04);
+  --shadow-rest: 0 7px 14px 0 rgba(11, 47, 13, 0.06), 0 3px 6px 0 rgba(11, 47, 13, 0.04);
+  --shadow-hover: 0 10px 22px 0 rgba(11, 47, 13, 0.1), 0 4px 8px 0 rgba(11, 47, 13, 0.06);
+  --shadow-popover: 0 12px 32px 0 rgba(11, 47, 13, 0.14), 0 4px 12px 0 rgba(11, 47, 13, 0.08); /* menus, dropdowns */
+  --shadow-modal: 0 20px 44px 0 rgba(11, 47, 13, 0.2), 0 6px 16px 0 rgba(11, 47, 13, 0.1);
+  --shadow-focus-ring: 0 0 0 3px rgba(45, 196, 56, 0.32);
   /* A chosen option or the current step: a soft brand halo. A live-status dot: a glow. */
   --shadow-selected: 0 0 0 3px color-mix(in srgb, var(--color-primary) 16%, transparent);
   --shadow-glow: 0 0 8px var(--color-primary-bright);
@@ -248,11 +249,12 @@
   --color-role-customer: #4cc95a;
   --color-role-platform-soft: #291f4a;
 
-  /* Shadows read as depth on dark via black, not forest tint. */
-  --shadow-rest: 0 1px 3px rgba(0, 0, 0, 0.4), 0 1px 2px rgba(0, 0, 0, 0.3);
-  --shadow-hover: 0 4px 12px rgba(0, 0, 0, 0.45), 0 2px 4px rgba(0, 0, 0, 0.35);
-  --shadow-popover: 0 8px 24px rgba(0, 0, 0, 0.55), 0 2px 6px rgba(0, 0, 0, 0.4);
-  --shadow-modal: 0 10px 25px rgba(0, 0, 0, 0.6);
+  /* Shadows read as depth on dark via deeper black opacity (Falcon dark elevation). */
+  --shadow-control: 0 1px 2px rgba(0, 0, 0, 0.35), 0 1px 1px rgba(0, 0, 0, 0.22);
+  --shadow-rest: 0 7px 14px 0 rgba(0, 0, 0, 0.36), 0 3px 6px 0 rgba(0, 0, 0, 0.24);
+  --shadow-hover: 0 12px 24px 0 rgba(0, 0, 0, 0.48), 0 4px 10px 0 rgba(0, 0, 0, 0.32);
+  --shadow-popover: 0 12px 40px 0 rgba(0, 0, 0, 0.62), 0 4px 16px 0 rgba(0, 0, 0, 0.45);
+  --shadow-modal: 0 20px 50px 0 rgba(0, 0, 0, 0.72), 0 8px 20px 0 rgba(0, 0, 0, 0.48);
   --scrim-modal: rgba(0, 0, 0, 0.66);
 }
 
@@ -260,6 +262,8 @@
 *::before,
 *::after {
   box-sizing: border-box;
+  scrollbar-width: thin;
+  scrollbar-color: var(--color-line) transparent;
 }
 
 html,
@@ -291,4 +295,7 @@ body {
   line-height: var(--text-md-line);
   color: var(--color-ink);
   background: var(--color-page);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  text-rendering: optimizeLegibility;
 }

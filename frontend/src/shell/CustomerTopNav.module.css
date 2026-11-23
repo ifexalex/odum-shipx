@@ -1,7 +1,10 @@
 .topnav {
+  position: sticky;
+  top: 0;
+  z-index: var(--layer-sticky);
   background: var(--color-primary);
   color: var(--color-on-brand);
-  height: 72px;
+  height: 64px;
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -27,7 +30,7 @@
   display: inline-flex;
   align-items: center;
   gap: var(--space-2);
-  height: 40px;
+  height: 36px;
   padding: 0 var(--space-4);
   border-radius: var(--radius-full);
   background: transparent;
@@ -36,13 +39,17 @@
   color: var(--color-on-dark);
   font-family: var(--font-body);
   font-weight: 500;
-  font-size: var(--text-md);
+  font-size: var(--text-sm);
+  transition: background-color var(--motion-fast) var(--ease-standard);
+}
+.navLink:hover:not(.navLinkActive) {
+  background: var(--color-on-dark-fill);
 }
 
 .navLinkActive {
   background: var(--color-on-dark-fill-strong);
   color: var(--color-on-brand);
-  font-weight: 700;
+  font-weight: 600;
 }
 
 .badge {
@@ -170,7 +177,7 @@
 }
 .drawerPanel .navLinkActive {
   background: var(--color-primary-soft);
-  color: var(--color-primary-deep);
+  color: var(--color-primary-on-soft);
 }
 
 @container sxapp (max-width: 860px) {

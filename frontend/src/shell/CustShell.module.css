@@ -16,7 +16,7 @@
   position: relative;
   flex: 1;
   overflow-y: auto;
-  padding: var(--space-8) var(--space-12);
+  padding: var(--space-6) var(--space-8) var(--space-8);
 }
 
 /* A 16 px gutter on a phone (it kept 48 px, a quarter of a 375 px screen), room below for the fixed action bar. */

@@ -20,6 +20,17 @@ const ACTION_VARIANT: Record<TenantActivityEntry['action'], BadgeVariant> = {
   STATUS_CHANGE: 'warning',
 }
 
+const ACTION_TONE: Record<BadgeVariant, string | undefined> = {
+  success: styles.toneSuccess,
+  info: styles.toneInfo,
+  error: styles.toneError,
+  warning: styles.toneWarning,
+  accent: styles.toneWarning,
+  purple: styles.toneInfo,
+  neutral: styles.toneNeutral,
+  primary: styles.toneSuccess,
+}
+
 function humanEntity(entityType: string): string {
   return entityType.replace(/_/g, ' ')
 }
@@ -65,21 +76,28 @@ export function ActivityFeed({
   }
 
   return (
-    <div>
-      {entries.map((e, i) => (
-        <div key={e.id} className={styles.row} style={{ borderTop: i > 0 ? '1px solid var(--color-line-soft)' : 'none' }}>
-          <div className={styles.badgeCol}>
-            <Badge variant={ACTION_VARIANT[e.action]} size="sm">{e.action.replace(/_/g, ' ')}</Badge>
-          </div>
-          <div className={styles.body}>
-            <div className={styles.title}>{humanEntity(e.entity_type)}</div>
-            <div className={styles.meta}>
-              {showActor && e.actor_name ? `by ${e.actor_name} · ` : ''}
-              {relativeTime(e.created_at)}
+    <div className={styles.list}>
+      {entries.map((e) => {
+        const variant = ACTION_VARIANT[e.action] ?? 'neutral'
+        return (
+          <div key={e.id} className={[styles.row, ACTION_TONE[variant]].filter(Boolean).join(' ')}>
+            <div className={styles.rail} aria-hidden="true">
+              <span className={styles.node} />
+              <span className={styles.line} />
+            </div>
+            <div className={styles.body}>
+              <div className={styles.topLine}>
+                <div className={styles.title}>{humanEntity(e.entity_type)}</div>
+                <Badge variant={variant} size="sm" dot={false}>{e.action.replace(/_/g, ' ')}</Badge>
+              </div>
+              <div className={styles.meta}>
+                {showActor && e.actor_name ? `by ${e.actor_name} · ` : ''}
+                {relativeTime(e.created_at)}
+              </div>
             </div>
           </div>
-        </div>
-      ))}
+        )
+      })}
     </div>
   )
 }

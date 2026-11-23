@@ -59,7 +59,7 @@ export function FilterBar({
     const inSheet = Boolean(status || dateRange || more)
     return (
       <div ref={ref} role="search" aria-label={label}>
-        <Card padding="default">
+        <Card padding="small">
           <div className={[styles.row, styles.narrowRow].join(' ')}>
             {search && <div className={styles.search}>{search}</div>}
             {inSheet && (
@@ -98,7 +98,7 @@ export function FilterBar({
 
   return (
     <div ref={ref} role="search" aria-label={label}>
-      <Card padding="default">
+      <Card padding="small">
         {status && <div className={styles.chips}>{status}</div>}
         {(search || dateRange || more) && (
           <div className={[styles.row, status ? styles.rowAfterChips : ''].join(' ')}>

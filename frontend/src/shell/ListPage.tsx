@@ -18,6 +18,8 @@ import styles from './ListPage.module.css'
 
 export interface ListPageProps {
   header: ReactNode
+  /** Optional sub-navigation tabs rendered directly beneath the header. */
+  tabs?: ReactNode
   /** Banners about the page itself: a failed load, a failed export. */
   notices?: ReactNode
   /** A `StatRow`. */
@@ -30,16 +32,19 @@ export interface ListPageProps {
   footer?: ReactNode
 }
 
-export function ListPage({ header, notices, stats, filters, children, footer }: ListPageProps): JSX.Element {
+export function ListPage({ header, tabs, notices, stats, filters, children, footer }: ListPageProps): JSX.Element {
   return (
     <div className={styles.page}>
       {header}
+      {tabs}
       {notices && <div className={styles.notices}>{notices}</div>}
       {stats}
       {filters}
       <div className={styles.table}>
-        <Card padding="none">{children}</Card>
-        {footer}
+        <Card padding="none">
+          {children}
+          {footer}
+        </Card>
       </div>
     </div>
   )

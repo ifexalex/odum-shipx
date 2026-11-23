@@ -17,7 +17,10 @@ describe('modal dialogs have focus management', () => {
   const files = Object.entries(SOURCES).filter(([path]) => !path.includes('.test.') && !path.endsWith('/Modal.tsx'))
 
   it('finds the dialogs it is meant to check', () => {
-    const modalDialogs = files.reduce((n, [, text]) => n + count(text, /aria-modal="true"/g), 0)
+    const modalDialogs = files.reduce(
+      (n, [, text]) => n + count(text, /aria-modal="true"|<Modal\b|<ConfirmDialog\b/g),
+      0,
+    )
     expect(modalDialogs).toBeGreaterThan(25)
   })
 

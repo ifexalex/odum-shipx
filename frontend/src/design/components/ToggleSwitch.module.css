@@ -25,8 +25,8 @@
   width: 16px;
   height: 16px;
   border-radius: 50%;
-  background: var(--color-surface);
-  box-shadow: var(--shadow-rest);
+  background: var(--color-on-brand);
+  box-shadow: var(--shadow-control);
 }
 
 .track:disabled {

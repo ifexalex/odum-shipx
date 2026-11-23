@@ -124,6 +124,6 @@ describe('CustomerLayout', () => {
 
   it('offers the customer a search box scoped to their own records', () => {
     renderLayout(makeContextValue({ session: makeSession(), status: 'authenticated' }))
-    expect(screen.getByRole('combobox', { name: 'Search my shipments, invoices…' })).toBeInTheDocument()
+    expect(screen.getByRole('combobox', { name: 'Search shipments, invoices…' })).toBeInTheDocument()
   })
 })

@@ -32,6 +32,7 @@ export interface PhoneFieldProps {
   disabled?: boolean
   placeholder?: string
   autoComplete?: string
+  autoFocus?: boolean
 }
 
 /**
@@ -57,6 +58,7 @@ export function PhoneField({
   disabled = false,
   placeholder = '801 234 5678',
   autoComplete = 'tel',
+  autoFocus = false,
 }: PhoneFieldProps): JSX.Element {
   const fieldId = id ?? name
   const { countryCode, national } = useMemo(
@@ -111,6 +113,7 @@ export function PhoneField({
             type="tel"
             inputMode="tel"
             autoComplete={autoComplete}
+            autoFocus={autoFocus}
             required={required}
             disabled={disabled}
             placeholder={placeholder}

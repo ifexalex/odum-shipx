@@ -14,13 +14,13 @@
   top: calc(100% + 4px);
   right: 0;
   background: var(--color-surface);
-  border: 1px solid var(--color-line);
+  border: 1px solid var(--color-line-soft);
   border-radius: var(--radius-lg);
   box-shadow: var(--shadow-popover);
   z-index: var(--layer-dropdown);
-  min-width: 180px;
+  min-width: 190px;
   overflow: hidden;
-  padding: var(--space-1);
+  padding: var(--space-2) var(--space-1);
 }
 
 .dropdownItem {
@@ -37,6 +37,9 @@
   color: var(--color-ink-2);
   cursor: pointer;
   text-align: left;
+  transition:
+    background-color var(--motion-fast) var(--ease-standard),
+    color var(--motion-fast) var(--ease-standard);
 }
 
 .dropdownItem:hover {

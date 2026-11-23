@@ -76,6 +76,8 @@ export interface CBMDispute {
   customer_name?: string | null
   invoice_number?: string | null
   container_number?: string | null
+  reason?: string | null
+  customer_measured_cbm?: string | null
   acknowledged_at?: string | null
   /** 24h after submitted_at — SLA for first acknowledgement. */
   acknowledge_due_by?: string | null

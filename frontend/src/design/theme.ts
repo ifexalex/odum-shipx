@@ -94,25 +94,26 @@ export const spacing = {
 } as const
 
 export const layout = {
-  sidebarWidth: 240,
-  sidebarWidthCollapsed: 64,
-  contentMaxWidth: 1280,
+  sidebarWidth: 232,
+  sidebarWidthCollapsed: 60,
+  contentMaxWidth: 1320,
 } as const
 
 export const radius = {
   none: 0,
-  sm: 8,
-  md: 10,
-  lg: 14,
-  xl: 12,
+  sm: 4,
+  md: 6,
+  lg: 10,
+  xl: 14,
   full: 9999,
 } as const
 
 export const shadows = {
-  rest: '0 1px 3px rgba(11,47,13,0.08), 0 1px 2px rgba(11,47,13,0.05)',
-  hover: '0 4px 12px rgba(11,47,13,0.10), 0 2px 4px rgba(11,47,13,0.06)',
-  modal: '0 10px 25px rgba(11,47,13,0.18)',
-  focusRing: '0 0 0 3px rgba(45,196,56,0.35)',
+  control: '0 1px 2px rgba(11,47,13,0.06), 0 1px 1px rgba(11,47,13,0.04)',
+  rest: '0 7px 14px 0 rgba(11,47,13,0.06), 0 3px 6px 0 rgba(11,47,13,0.04)',
+  hover: '0 10px 22px 0 rgba(11,47,13,0.10), 0 4px 8px 0 rgba(11,47,13,0.06)',
+  modal: '0 20px 44px 0 rgba(11,47,13,0.20), 0 6px 16px 0 rgba(11,47,13,0.10)',
+  focusRing: '0 0 0 3px rgba(45,196,56,0.32)',
   scrimModal: 'rgba(11,47,13,0.55)',
 } as const
 
