@@ -15,6 +15,8 @@ class RefundType(StrEnum):
     overpayment = "overpayment"
     cbm_correction = "cbm_correction"
     damage_or_loss = "damage_or_loss"
+    missing_item = "missing_item"
+    seized_item = "seized_item"
 
 
 class RefundStatus(StrEnum):

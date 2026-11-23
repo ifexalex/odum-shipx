@@ -14,9 +14,12 @@ from shared.audit import log_audit
 from shared.events import publish_event
 from shared.exceptions import (
     ApprovalThresholdExceededError,
+    BusinessRuleViolationError,
     IllegalTransitionError,
     InsufficientPermissionsError,
     ResourceNotFoundError,
+    SelfApprovalForbiddenError,
+    ServiceUnavailableError,
 )
 from shared.fx_rate import get_effective_dollar_rate
 from shared.tenant_context import UserRole
@@ -25,11 +28,44 @@ from . import repository as repo
 
 logger = logging.getLogger(__name__)
 
-# Threshold for damage_or_loss: above this requires head_of_finance (tenant_admin)
+# Threshold for damage_or_loss / missing_item / seized_item: above this requires head_of_finance (tenant_admin)
 _HOF_THRESHOLD_NGN = Decimal("30000")  # ~$50 USD at typical NGN/USD rates
+_COMPENSATION_REFUND_TYPES = frozenset({"damage_or_loss", "missing_item", "seized_item"})
+_OVERPAYMENT_SETTLEMENT_TYPES = frozenset({"overpayment", "cbm_correction"})
 
 # States from which a rejection is allowed
 _REJECTABLE_STATES = {"pending_review", "pending_approval"}
+
+
+def _check_staff_usd_threshold(tenant_id: str, amount_ngn: Decimal) -> None:
+    """Enforce tenant_config refund_threshold_usd.staff_limit (fail-closed)."""
+    try:
+        threshold_cfg = repo.get_refund_threshold_config(tenant_id)
+        staff_limit_usd = Decimal(str(threshold_cfg.get("staff_limit", 50)))
+        dollar_rate = Decimal(str(get_effective_dollar_rate(tenant_id)["rate"]))
+    except Exception as exc:
+        logger.error("Could not load refund threshold config for tenant %s: %s", tenant_id, exc)
+        raise ServiceUnavailableError("Unable to verify staff approval limit — please retry") from exc
+
+    if (
+        not staff_limit_usd.is_finite()
+        or staff_limit_usd < Decimal("0")
+        or not dollar_rate.is_finite()
+        or dollar_rate <= Decimal("0")
+    ):
+        raise ServiceUnavailableError("Invalid refund approval threshold configuration")
+
+    staff_limit_ngn = staff_limit_usd * dollar_rate
+    if amount_ngn > staff_limit_ngn:
+        raise ApprovalThresholdExceededError(
+            f"Refund of {amount_ngn:.0f} NGN exceeds the staff approval limit "
+            f"({staff_limit_usd} USD / {staff_limit_ngn:.0f} NGN). "
+            "Escalate to tenant_admin for approval.",
+            staff_limit_usd=float(staff_limit_usd),
+            staff_limit_ngn=float(staff_limit_ngn),
+            dollar_rate=float(dollar_rate),
+            amount_ngn=float(amount_ngn),
+        )
 
 
 # ---------------------------------------------------------------------------
@@ -43,6 +79,7 @@ def create_refund(
     actor_id: str,
     ctx: Any,
     request_id: str = "",
+    ip_address: str | None = None,
 ) -> dict[str, Any]:
     """Create a new refund request.
 
@@ -59,7 +96,8 @@ def create_refund(
     record being refunded, the same pattern services/claims/service.py
     uses for filing a claim.
     """
-    if ctx.role == UserRole.CUSTOMER:
+    is_customer = ctx.is_customer_only
+    if is_customer:
         customer = repo.get_customer_by_user_id(tenant_id, ctx.user_id)
         if not customer:
             raise ResourceNotFoundError("customer", ctx.user_id)
@@ -67,25 +105,63 @@ def create_refund(
     else:
         customer_id = req.customer_id
 
+    refund_type = req.refund_type.value if hasattr(req.refund_type, "value") else str(req.refund_type)
+
     if req.billing_id:
         billing = repo.get_billing_by_id(tenant_id, req.billing_id)
         if not billing:
             raise ResourceNotFoundError("billing", req.billing_id)
-        if ctx.role == UserRole.CUSTOMER and str(billing["customer_id"]) != customer_id:
-            # Without this, a customer could request a refund against any
-            # billing record in the tenant by guessing/enumerating ids.
-            raise ResourceNotFoundError("billing", req.billing_id)
+        if str(billing["customer_id"]) != customer_id:
+            if is_customer:
+                # Without this, a customer could request a refund against any
+                # billing record in the tenant by guessing/enumerating ids.
+                raise ResourceNotFoundError("billing", req.billing_id)
+            raise BusinessRuleViolationError(
+                "Billing record does not belong to the specified customer",
+                rule_id="BILLING_CUSTOMER_MISMATCH",
+            )
+        if billing.get("status") in ("cancelled", "waived"):
+            raise BusinessRuleViolationError(
+                f"Cannot request a refund for a {billing['status']} invoice",
+                rule_id="INVALID_BILLING_STATUS",
+            )
+        # Enforce refundable ceiling when full invoice amounts are present.
+        if refund_type == "overpayment" and billing.get("amount_paid_ngn") is not None and billing.get("total_ngn") is not None:
+            paid = Decimal(str(billing["amount_paid_ngn"]))
+            total = Decimal(str(billing["total_ngn"]))
+            overpaid_cap = max(paid - total, Decimal("0"))
+            existing_sum = repo.sum_active_refunds_for_billing(tenant_id, req.billing_id, refund_types=("overpayment",))
+            if existing_sum + Decimal(str(req.amount_requested_ngn)) > overpaid_cap + Decimal("0.01"):
+                raise BusinessRuleViolationError(
+                    "Requested overpayment refund exceeds the invoice's refundable overpayment balance",
+                    rule_id="REFUND_EXCEEDS_OVERPAYMENT",
+                )
+        elif refund_type == "cbm_correction" and billing.get("amount_paid_ngn") is not None:
+            paid = Decimal(str(billing["amount_paid_ngn"]))
+            existing_sum = repo.sum_active_refunds_for_billing(
+                tenant_id, req.billing_id, refund_types=("overpayment", "cbm_correction")
+            )
+            if existing_sum + Decimal(str(req.amount_requested_ngn)) > paid + Decimal("0.01"):
+                raise BusinessRuleViolationError(
+                    "Requested CBM correction refund exceeds the amount paid on this invoice",
+                    rule_id="REFUND_EXCEEDS_PAID_AMOUNT",
+                )
 
     if req.damage_claim_id:
         claim = repo.get_damage_claim_by_id(tenant_id, req.damage_claim_id)
         if not claim:
             raise ResourceNotFoundError("damage_claim", req.damage_claim_id)
+        if claim.get("customer_id") is not None and str(claim["customer_id"]) != customer_id:
+            if is_customer:
+                raise ResourceNotFoundError("damage_claim", req.damage_claim_id)
+            raise BusinessRuleViolationError(
+                "Damage claim does not belong to the specified customer",
+                rule_id="CLAIM_CUSTOMER_MISMATCH",
+            )
 
     customer_choice = None
     if req.customer_choice:
         customer_choice = req.customer_choice.value if hasattr(req.customer_choice, "value") else str(req.customer_choice)
-
-    refund_type = req.refund_type.value if hasattr(req.refund_type, "value") else str(req.refund_type)
 
     refund = repo.create_refund_request(
         tenant_id,
@@ -121,6 +197,7 @@ def create_refund(
             # Masked: the audit log never holds bank details (CLAUDE.md).
             **({"bank_name": req.bank_name, "account_number": "***", "account_name": "***"} if req.account_number else {}),
         },
+        ip_address=ip_address,
     )
 
     return _fmt_refund(refund)
@@ -147,10 +224,11 @@ def get_refund(tenant_id: str, refund_id: str, ctx: Any) -> dict[str, Any]:
     if not refund:
         raise ResourceNotFoundError("refund_request", refund_id)
 
-    if ctx.role == UserRole.CUSTOMER:
+    if ctx.is_customer_only:
         customer = repo.get_customer_by_user_id(tenant_id, ctx.user_id)
         if not customer or str(customer["id"]) != str(refund["customer_id"]):
-            raise InsufficientPermissionsError("Customers may only view their own refund requests")
+            # 404 (not 403) so customers cannot enumerate whether another customer's refund ID exists.
+            raise ResourceNotFoundError("refund_request", refund_id)
         return _customer_view(_fmt_refund(refund), wrote_the_reason=str(refund.get("requested_by") or "") == ctx.user_id)
 
     result = _fmt_refund(refund)
@@ -183,6 +261,7 @@ def accounts_review(
     req: Any,
     actor_id: str,
     ctx: Any,
+    ip_address: str | None = None,
 ) -> dict[str, Any]:
     """Accounts team reviews debt and decides whether to advance the refund."""
     refund = repo.get_refund_request_by_id(tenant_id, refund_id)
@@ -206,6 +285,15 @@ def accounts_review(
     has_debt = total_debt > Decimal("0")
 
     if req.debt_check_passed:
+        if (
+            has_debt
+            and (refund.get("customer_choice") or "") != "credit_next_shipment"
+            and not ctx.has_role(UserRole.TENANT_ADMIN)
+        ):
+            raise BusinessRuleViolationError(
+                f"Customer has {total_debt:.2f} NGN in outstanding debt; cash refund cannot pass debt check",
+                rule_id="CUSTOMER_HAS_OUTSTANDING_DEBT",
+            )
         new_status = "pending_approval"
         extra = {
             "has_outstanding_debt": has_debt,
@@ -242,6 +330,7 @@ def accounts_review(
         actor_role=str(ctx.role),
         before_state={"status": "pending_review"},
         after_state={"status": new_status, "debt_check_passed": req.debt_check_passed},
+        ip_address=ip_address,
     )
 
     return _fmt_refund(updated)
@@ -259,6 +348,7 @@ def approve_refund(
     actor_id: str,
     ctx: Any,
     request_id: str = "",
+    ip_address: str | None = None,
 ) -> dict[str, Any]:
     """Approve a refund request with role-based authority enforcement."""
     refund = repo.get_refund_request_by_id(tenant_id, refund_id)
@@ -275,69 +365,67 @@ def approve_refund(
 
     refund_type = refund.get("refund_type") or ""
     amount_ngn = Decimal(str(refund["amount_ngn"]))
+    amount_approved = Decimal(str(req.amount_approved_ngn))
+
+    if amount_approved > amount_ngn:
+        raise BusinessRuleViolationError(
+            f"Approved amount ({amount_approved:.2f} NGN) cannot exceed requested amount ({amount_ngn:.2f} NGN)",
+            rule_id="APPROVED_EXCEEDS_REQUESTED",
+        )
+
+    is_admin = ctx.has_role(UserRole.TENANT_ADMIN)
+
+    # Segregation of duties: non-admin staff cannot approve a refund they raised themselves.
+    if not is_admin and refund.get("requested_by") and str(refund["requested_by"]) == str(actor_id):
+        raise SelfApprovalForbiddenError()
 
     # Determine required approval level and enforce role
     if refund_type == "cbm_correction":
         required_level = "head_of_finance"
-        if ctx.role != UserRole.TENANT_ADMIN:
+        if not is_admin:
             raise InsufficientPermissionsError("CBM correction refunds require head_of_finance (tenant_admin) approval")
-    elif refund_type == "damage_or_loss" and amount_ngn > _HOF_THRESHOLD_NGN:
+    elif refund_type in _COMPENSATION_REFUND_TYPES and max(amount_ngn, amount_approved) > _HOF_THRESHOLD_NGN:
         required_level = "head_of_finance"
-        if ctx.role != UserRole.TENANT_ADMIN:
+        if not is_admin:
             raise InsufficientPermissionsError(
-                f"Damage/loss refunds above {_HOF_THRESHOLD_NGN} NGN require head_of_finance (tenant_admin) approval"
+                f"Compensation refunds above {_HOF_THRESHOLD_NGN} NGN require head_of_finance (tenant_admin) approval"
             )
     else:
-        # overpayment or small damage_or_loss — manager level, any approved role
+        # overpayment or small compensation — manager level, subject to USD threshold
         required_level = "manager"
 
-    amount_approved = Decimal(str(req.amount_approved_ngn))
-
-    # Enforce refund_threshold_usd.staff_limit from tenant config.
-    # Staff (nigeria_office_staff) cannot approve above the configured USD limit;
-    # only tenant_admin (head of finance) can override.
-    if ctx.role == UserRole.NIGERIA_OFFICE_STAFF:
-        try:
-            threshold_cfg = repo.get_refund_threshold_config(tenant_id)
-            staff_limit_usd = Decimal(str(threshold_cfg.get("staff_limit", 50)))
-            dollar_rate = get_effective_dollar_rate(tenant_id)["rate"]
-            staff_limit_ngn = staff_limit_usd * dollar_rate
-            if amount_approved > staff_limit_ngn:
-                raise ApprovalThresholdExceededError(
-                    f"Refund of {amount_approved:.0f} NGN exceeds the staff approval limit "
-                    f"({staff_limit_usd} USD / {staff_limit_ngn:.0f} NGN). "
-                    "Escalate to tenant_admin for approval.",
-                    staff_limit_usd=float(staff_limit_usd),
-                    staff_limit_ngn=float(staff_limit_ngn),
-                    dollar_rate=float(dollar_rate),
-                    amount_ngn=float(amount_approved),
-                )
-        except ApprovalThresholdExceededError:
-            raise
-        except Exception as exc:
-            logger.warning("Could not fetch refund threshold config for tenant %s: %s — skipping threshold check", tenant_id, exc)
+    # Enforce refund_threshold_usd.staff_limit for ALL non-tenant_admin callers (fail-closed).
+    if not is_admin:
+        _check_staff_usd_threshold(tenant_id, amount_approved)
 
     # Determine final status based on customer_choice
     customer_choice = refund.get("customer_choice") or ""
     final_status = "applied_as_credit" if customer_choice == "credit_next_shipment" else "processed"
 
-    # The approval and, for an immediate refund, the reduction of what the invoice
-    # owes (plus its status and any new overpayment refund) commit together, and only
-    # if the refund is still pending_approval — two approvals cannot both reduce it.
-    billing_id = str(refund["billing_id"]) if final_status == "processed" and refund.get("billing_id") else None
+    # Only overpayment / cbm_correction refunds settle excess cash on the linked invoice
+    # (for BOTH cash payouts and credits, flipping `overpaid` -> `paid` without touching `total_ngn`).
+    # Compensation payouts (damage_or_loss, missing_item, seized_item) never reduce invoice totals.
+    settle_billing_id = (
+        str(refund["billing_id"]) if refund_type in _OVERPAYMENT_SETTLEMENT_TYPES and refund.get("billing_id") else None
+    )
     now = datetime.now(UTC)
+    extra_fields: dict[str, Any] = {
+        "amount_approved_ngn": amount_approved,
+        "approval_level": required_level,
+        "approved_by": actor_id,
+        "approved_at": now,
+    }
+    if final_status == "processed":
+        extra_fields["processed_by"] = actor_id
+        extra_fields["processed_at"] = now
+
     updated = repo.approve_refund_and_adjust_billing(
         tenant_id,
         refund_id,
         final_status,
-        extra={
-            "amount_approved_ngn": amount_approved,
-            "approval_level": required_level,
-            "approved_by": actor_id,
-            "approved_at": now,
-        },
-        billing_id=billing_id,
-        reduction_ngn=amount_approved if billing_id else None,
+        extra=extra_fields,
+        billing_id=settle_billing_id,
+        reduction_ngn=amount_approved if settle_billing_id else None,
     )
     if not updated:
         raise IllegalTransitionError(
@@ -356,6 +444,7 @@ def approve_refund(
         actor_role=str(ctx.role),
         before_state={"status": "pending_approval"},
         after_state={"status": final_status, "amount_approved_ngn": str(amount_approved), "approval_level": required_level},
+        ip_address=ip_address,
     )
 
     publish_event(
@@ -386,6 +475,7 @@ def reject_refund(
     rejection_reason: str,
     actor_id: str,
     ctx: Any,
+    ip_address: str | None = None,
 ) -> dict[str, Any]:
     refund = repo.get_refund_request_by_id(tenant_id, refund_id)
     if not refund:
@@ -398,6 +488,16 @@ def reject_refund(
             requested_state="rejected",
             allowed=list(_REJECTABLE_STATES),
         )
+
+    # Once a refund is escalated to pending_approval and requires HoF authority,
+    # non-admin staff cannot dismiss it unilaterally.
+    is_admin = ctx.has_role(UserRole.TENANT_ADMIN)
+    if refund["status"] == "pending_approval" and not is_admin:
+        refund_type = refund.get("refund_type") or ""
+        amount_ngn = Decimal(str(refund["amount_ngn"]))
+        if refund_type == "cbm_correction" or (refund_type in _COMPENSATION_REFUND_TYPES and amount_ngn > _HOF_THRESHOLD_NGN):
+            raise InsufficientPermissionsError("Head-of-finance approval/rejection is required for this refund")
+        _check_staff_usd_threshold(tenant_id, amount_ngn)
 
     prev_status = refund["status"]
     updated = repo.update_refund_status(
@@ -427,6 +527,7 @@ def reject_refund(
         actor_role=str(ctx.role),
         before_state={"status": prev_status},
         after_state={"status": "rejected"},
+        ip_address=ip_address,
     )
 
     return _fmt_refund(updated)
@@ -437,7 +538,13 @@ def reject_refund(
 # ---------------------------------------------------------------------------
 
 # Staff's working record of a refund: who signed it off and what the debt check found. Not the customer's to read.
-_STAFF_ONLY_FIELDS = ("approval_level", "debt_check_passed", "debt_check_notes")
+_STAFF_ONLY_FIELDS = (
+    "approval_level",
+    "debt_check_passed",
+    "debt_check_notes",
+    "has_outstanding_debt",
+    "outstanding_debt_ngn",
+)
 
 
 def _customer_view(refund: dict[str, Any], *, wrote_the_reason: bool) -> dict[str, Any]:
@@ -487,6 +594,10 @@ def _fmt_refund(row: dict[str, Any]) -> dict[str, Any]:
         "reason": row.get("reason"),
         "rejection_reason": row.get("rejection_reason"),
         "approval_level": row.get("approval_level"),
+        "has_outstanding_debt": row.get("has_outstanding_debt"),
+        "outstanding_debt_ngn": (
+            Decimal(str(row["outstanding_debt_ngn"])) if row.get("outstanding_debt_ngn") is not None else None
+        ),
         "debt_check_passed": row.get("debt_check_passed"),
         "debt_check_notes": row.get("debt_check_notes"),
         # Where a bank refund is paid: what accounts need to make the transfer. Customers see the number masked.

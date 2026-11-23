@@ -328,6 +328,14 @@ def get_billing_by_id(tenant_id: str, billing_id: str) -> dict[str, Any] | None:
     return rows[0] if rows else None
 
 
+class BillingNotPayableError(Exception):
+    """Raised inside ``record_payment`` when the locked billing row cannot accept payment."""
+
+    def __init__(self, reason: str) -> None:
+        super().__init__(reason)
+        self.reason = reason
+
+
 @dataclass(frozen=True)
 class RecordedPayment:
     """Result of `record_payment`: the new payment, the updated invoice, and any overpayment."""
@@ -351,6 +359,16 @@ _MANUAL_PAYMENT_COLUMNS = (
 )
 
 
+def lock_billing(tenant_id: str, billing_id: str) -> dict[str, Any] | None:
+    """Lock a billing row FOR UPDATE inside an active tenant_transaction."""
+    rows = execute_with_tenant(
+        tenant_id,
+        "SELECT * FROM billing WHERE tenant_id = %s AND id = %s FOR UPDATE",
+        (tenant_id, billing_id),
+    )
+    return rows[0] if rows else None
+
+
 def record_payment(
     tenant_id: str,
     billing_id: str,
@@ -362,17 +380,12 @@ def record_payment(
 ) -> RecordedPayment | None:
     """Record one payment against an invoice, atomically.
 
-    In a single transaction: allocate a receipt number (manual payments), insert
-    the payment record, add the amount to the invoice and set its status, and
-    create a refund request for any overpayment. A failure at any step rolls
-    back all of them, so there is never a payment record without a matching
-    invoice update or the reverse.
-
-    The status is computed by the UPDATE itself from the amount actually stored,
-    not from a value read earlier. The UPDATE locks the invoice row, so two
-    payments arriving together are applied one after the other and the second
-    sees the first's total. That is what stops a fully paid invoice being left
-    as ``partially_paid``.
+    In a single transaction: lock the invoice row ``FOR UPDATE`` and verify it
+    is payable, allocate a receipt number (manual payments), insert the payment
+    record, add the amount to the invoice and set its status, settle any
+    outstanding carryover on direct payment, and create a refund request for
+    any overpayment. A failure at any step rolls back all of them, so there is
+    never a payment record without a matching invoice update or the reverse.
 
     Args:
         tenant_id: Tenant scope.
@@ -391,8 +404,37 @@ def record_payment(
 
     Raises:
         RuntimeError: The invoice does not exist in this tenant.
+        BillingNotPayableError: The invoice is cancelled, waived, or its
+            carryover debt was already applied to a subsequent invoice.
     """
+    norm_gw_id = (
+        str(gateway_transaction_id).strip()
+        if gateway_transaction_id is not None and str(gateway_transaction_id).strip()
+        else None
+    )
     with tenant_transaction(tenant_id) as cur:
+        cur.execute(
+            "SELECT * FROM billing WHERE tenant_id = %s AND id = %s FOR UPDATE",
+            (tenant_id, billing_id),
+        )
+        locked = cur.fetchone()
+        if locked is None:
+            raise RuntimeError(f"billing {billing_id} not found in tenant while recording payment")
+        prior_status = str(locked["status"])
+        if prior_status in {"cancelled", "waived"}:
+            raise BillingNotPayableError(prior_status)
+        if prior_status == "released_with_outstanding":
+            cur.execute(
+                """
+                SELECT 1 FROM carryover_ledger
+                WHERE tenant_id = %s AND source_billing_id = %s AND status = 'applied'
+                LIMIT 1
+                """,
+                (tenant_id, billing_id),
+            )
+            if cur.fetchone() is not None:
+                raise BillingNotPayableError("carryover_already_applied")
+
         receipt_number = None
         if receipt_prefix is not None:
             receipt_number = f"{receipt_prefix}-{next_tenant_counter(cur, tenant_id, 'receipt'):04d}"
@@ -423,7 +465,7 @@ def record_payment(
                 "billing_id": billing_id,
                 "amount_ngn": amount_ngn,
                 "receipt_number": receipt_number,
-                "gateway_transaction_id": gateway_transaction_id,
+                "gateway_transaction_id": norm_gw_id,
             },
         )
         payment_row = cur.fetchone()
@@ -449,6 +491,33 @@ def record_payment(
         if billing_row is None:
             raise RuntimeError(f"billing {billing_id} not found in tenant while recording payment")
 
+        # Settle or reduce any outstanding carryover on direct payment of a
+        # released_with_outstanding invoice so the customer is never billed twice
+        # when a later invoice imports outstanding carryovers.
+        if prior_status == "released_with_outstanding":
+            new_balance = max(Decimal(str(billing_row["balance_ngn"])), Decimal("0"))
+            if new_balance <= tolerance:
+                cur.execute(
+                    """
+                    UPDATE carryover_ledger
+                    SET status = 'waived',
+                        notes = COALESCE(notes || ' | ', '') || 'Settled by direct payment on source invoice',
+                        updated_at = NOW()
+                    WHERE tenant_id = %s AND source_billing_id = %s AND status = 'outstanding'
+                    """,
+                    (tenant_id, billing_id),
+                )
+            else:
+                cur.execute(
+                    """
+                    UPDATE carryover_ledger
+                    SET carryover_amount_ngn = LEAST(carryover_amount_ngn, %s),
+                        updated_at = NOW()
+                    WHERE tenant_id = %s AND source_billing_id = %s AND status = 'outstanding'
+                    """,
+                    (new_balance, tenant_id, billing_id),
+                )
+
         # Only the part of THIS payment that lands above the invoice total is an
         # overpayment. An invoice that was already overpaid has its earlier
         # excess refunded separately and must not be counted again.
@@ -460,8 +529,13 @@ def record_payment(
         if billing_row["status"] == "overpaid" and overpayment > tolerance:
             cur.execute(
                 """
-                INSERT INTO refund_request (tenant_id, customer_id, billing_id, amount_ngn, reason, status)
-                VALUES (%(tenant_id)s, %(customer_id)s, %(billing_id)s, %(amount)s, %(reason)s, 'pending_review')
+                INSERT INTO refund_request (
+                    tenant_id, customer_id, billing_id, refund_type, amount_ngn, reason, status
+                )
+                VALUES (
+                    %(tenant_id)s, %(customer_id)s, %(billing_id)s, 'overpayment',
+                    %(amount)s, %(reason)s, 'pending_review'
+                )
                 """,
                 {
                     "tenant_id": tenant_id,
@@ -485,7 +559,9 @@ def mark_billing_released_with_outstanding(tenant_id: str, billing_id: str) -> d
         SET released_with_outstanding = TRUE,
             status                    = 'released_with_outstanding',
             updated_at                = NOW()
-        WHERE tenant_id = %(tenant_id)s AND id = %(id)s
+        WHERE tenant_id = %(tenant_id)s
+          AND id = %(id)s
+          AND status NOT IN ('cancelled', 'waived')
         RETURNING *
         """,
         {"tenant_id": tenant_id, "id": billing_id},
@@ -500,6 +576,22 @@ def mark_billing_released_with_outstanding(tenant_id: str, billing_id: str) -> d
 # ---------------------------------------------------------------------------
 # Carryover ledger — tenant RLS scope
 # ---------------------------------------------------------------------------
+
+
+def has_active_carryover_for_billing(tenant_id: str, source_billing_id: str) -> bool:
+    """Return True if an outstanding or applied carryover already exists for this billing."""
+    rows = execute_with_tenant(
+        tenant_id,
+        """
+        SELECT 1 FROM carryover_ledger
+        WHERE tenant_id = %s
+          AND source_billing_id = %s
+          AND status IN ('outstanding', 'applied')
+        LIMIT 1
+        """,
+        (tenant_id, source_billing_id),
+    )
+    return bool(rows)
 
 
 def create_carryover_entry(tenant_id: str, data: dict[str, Any]) -> dict[str, Any] | None:
@@ -562,6 +654,16 @@ def get_payment_claim_by_id(tenant_id: str, claim_id: str) -> dict[str, Any] | N
     rows = execute_with_tenant(
         tenant_id,
         "SELECT * FROM payment_claim WHERE tenant_id = %s AND id = %s LIMIT 1",
+        (tenant_id, claim_id),
+    )
+    return rows[0] if rows else None
+
+
+def lock_payment_claim(tenant_id: str, claim_id: str) -> dict[str, Any] | None:
+    """Lock a payment_claim row FOR UPDATE inside an active tenant_transaction."""
+    rows = execute_with_tenant(
+        tenant_id,
+        "SELECT * FROM payment_claim WHERE tenant_id = %s AND id = %s FOR UPDATE",
         (tenant_id, claim_id),
     )
     return rows[0] if rows else None
@@ -767,6 +869,7 @@ def get_release_note_by_id(tenant_id: str, note_id: str) -> dict[str, Any] | Non
                    FROM storage_fee_log sfl
                    WHERE sfl.tenant_id  = b.tenant_id
                      AND sfl.billing_id = b.id
+                     AND sfl.waived_at IS NULL
                ), 0)                AS storage_fees_ngn
         FROM release_note rn
         LEFT JOIN customer  cu   ON cu.id   = rn.customer_id
@@ -866,6 +969,96 @@ def get_active_release_note_carton_tags(tenant_id: str, billing_id: str) -> list
         (tenant_id, billing_id),
     )
     return list(rows[0]["tags"]) if rows and rows[0]["tags"] else []
+
+
+def lock_release_note(tenant_id: str, note_id: str) -> dict[str, Any] | None:
+    """Lock a release_note row FOR UPDATE inside an active tenant_transaction."""
+    rows = execute_with_tenant(
+        tenant_id,
+        "SELECT * FROM release_note WHERE tenant_id = %s AND id = %s FOR UPDATE",
+        (tenant_id, note_id),
+    )
+    return rows[0] if rows else None
+
+
+def get_active_release_note_total_cartons(tenant_id: str, billing_id: str) -> int:
+    """Sum of total_cartons across this billing's active/picked_up release notes
+    (both tag-based and count-based) to prevent mixed-mode over-release."""
+    rows = execute_with_tenant(
+        tenant_id,
+        """
+        SELECT COALESCE(SUM(total_cartons), 0) AS total
+        FROM release_note
+        WHERE tenant_id = %s AND billing_id = %s AND status IN ('active', 'picked_up')
+        """,
+        (tenant_id, billing_id),
+    )
+    return int(rows[0]["total"]) if rows else 0
+
+
+def get_approved_carton_tags_for_billing(tenant_id: str, customer_id: str, container_id: str) -> list[str]:
+    """Return distinct non-empty carton tags belonging to approved packing lists for this customer+container."""
+    rows = execute_with_tenant(
+        tenant_id,
+        """
+        SELECT COALESCE(array_agg(DISTINCT pli.carton_tag), ARRAY[]::TEXT[]) AS tags
+        FROM packing_list_item pli
+        JOIN packing_list pl ON pl.id = pli.packing_list_id
+        WHERE pl.tenant_id    = %s
+          AND pl.customer_id  = %s
+          AND pl.container_id = %s
+          AND pl.status       = 'approved'
+          AND pli.carton_tag IS NOT NULL
+          AND pli.carton_tag <> ''
+        """,
+        (tenant_id, customer_id, container_id),
+    )
+    return list(rows[0]["tags"]) if rows and rows[0]["tags"] else []
+
+
+def update_parent_release_note_after_split(
+    tenant_id: str,
+    note_id: str,
+    remaining_tags: list[str],
+    remaining_cartons: int,
+    new_status: str,
+) -> dict[str, Any] | None:
+    """Shrink the parent release note when un-picked tags are split onto a child note."""
+    return execute_write_with_tenant(
+        tenant_id,
+        """
+        UPDATE release_note
+        SET carton_tags = %(tags)s,
+            total_cartons = %(total_cartons)s,
+            status = %(status)s,
+            updated_at = NOW()
+        WHERE tenant_id = %(tenant_id)s AND id = %(id)s AND status = 'active'
+        RETURNING *
+        """,
+        {
+            "tenant_id": tenant_id,
+            "id": note_id,
+            "tags": remaining_tags,
+            "total_cartons": remaining_cartons,
+            "status": new_status,
+        },
+    )
+
+
+def has_active_child_release_note(tenant_id: str, parent_note_id: str) -> bool:
+    """Return True if an active or picked_up child note already exists for parent_note_id."""
+    rows = execute_with_tenant(
+        tenant_id,
+        """
+        SELECT 1 FROM release_note
+        WHERE tenant_id = %s
+          AND parent_release_note_id = %s
+          AND status IN ('active', 'picked_up')
+        LIMIT 1
+        """,
+        (tenant_id, parent_note_id),
+    )
+    return bool(rows)
 
 
 def get_active_release_note_packages_released(tenant_id: str, billing_id: str) -> int:
@@ -1051,17 +1244,55 @@ def sum_cartons_released_for_container(tenant_id: str, container_id: str) -> int
 
 
 def sum_total_cartons_from_billing(tenant_id: str, container_id: str) -> int:
-    """Total cartons billed for a container across all billing records."""
+    """Total cartons billed for a container across all non-cancelled billing records."""
     rows = execute_with_tenant(
         tenant_id,
         """
         SELECT COALESCE(SUM(total_cartons), 0) AS total
         FROM billing
-        WHERE tenant_id = %s AND container_id = %s
+        WHERE tenant_id = %s AND container_id = %s AND status <> 'cancelled'
         """,
         (tenant_id, container_id),
     )
     return int(rows[0]["total"]) if rows else 0
+
+
+def all_container_customers_fully_released(tenant_id: str, container_id: str) -> bool | None:
+    """Return True iff the container has >= 1 non-cancelled billing and every
+    customer's picked cartons are >= their billed cartons.
+
+    Returns None if no rows are returned (e.g. unit-test fake DB connection) so
+    callers can fall back to the aggregate sum check.
+    """
+    rows = execute_with_tenant(
+        tenant_id,
+        """
+        WITH billed AS (
+            SELECT customer_id, COALESCE(SUM(total_cartons), 0) AS billed_cartons
+            FROM billing
+            WHERE tenant_id = %s AND container_id = %s AND status <> 'cancelled'
+            GROUP BY customer_id
+        ),
+        picked AS (
+            SELECT rn.customer_id, COALESCE(SUM(pr.cartons_count), 0) AS picked_cartons
+            FROM pickup_record pr
+            JOIN release_note rn ON rn.id = pr.release_note_id AND rn.tenant_id = pr.tenant_id
+            WHERE rn.tenant_id = %s AND rn.container_id = %s
+            GROUP BY rn.customer_id
+        )
+        SELECT
+            COUNT(*) AS customer_count,
+            COUNT(*) FILTER (WHERE COALESCE(p.picked_cartons, 0) < b.billed_cartons) AS incomplete_count
+        FROM billed b
+        LEFT JOIN picked p ON p.customer_id = b.customer_id
+        """,
+        (tenant_id, container_id, tenant_id, container_id),
+    )
+    if not rows:
+        return None
+    customer_count = int(rows[0].get("customer_count") or 0)
+    incomplete_count = int(rows[0].get("incomplete_count") or 0)
+    return customer_count > 0 and incomplete_count == 0
 
 
 # ---------------------------------------------------------------------------
@@ -1117,23 +1348,28 @@ def update_shipment_tracking_for_customer(
     container_id: str,
     status: str,
 ) -> None:
-    """Update all shipment_tracking rows for a customer's items in a container."""
+    """Update all shipment_tracking rows for a customer's approved items in a container."""
     execute_write_with_tenant(
         tenant_id,
         """
-        UPDATE shipment_tracking
+        UPDATE shipment_tracking st
         SET status     = %(status)s,
             updated_at = NOW()
-        WHERE tenant_id = %(tenant_id)s
-          AND packing_list_item_id IN (
-              SELECT pli.id
+        WHERE st.tenant_id = %(tenant_id)s
+          AND EXISTS (
+              SELECT 1
               FROM packing_list_item pli
-              JOIN packing_list pl ON pl.id = pli.packing_list_id
+              JOIN packing_list pl ON pl.id = pli.packing_list_id AND pl.tenant_id = pli.tenant_id
               WHERE pl.tenant_id    = %(tenant_id)s
                 AND pl.customer_id  = %(customer_id)s
                 AND pl.container_id = %(container_id)s
+                AND pl.status       = 'approved'
+                AND (
+                    st.packing_list_item_id = pli.id
+                    OR (st.tracking_code IS NOT NULL AND st.tracking_code = pli.tracking_code)
+                )
           )
-        RETURNING id
+        RETURNING st.id
         """,
         {
             "tenant_id": tenant_id,

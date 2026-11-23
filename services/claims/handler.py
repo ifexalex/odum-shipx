@@ -27,11 +27,11 @@ from typing import Any
 from shared.auth import get_tenant_context
 from shared.client_ip import client_ip
 from shared.exceptions import LogisticsBaseError, ResourceNotFoundError, ValidationError
-from shared.idempotency import check_idempotency, store_idempotency
+from shared.idempotency import check_idempotency, get_idempotency_key, store_idempotency
 from shared.logging_config import bind_log_context, clear_log_context, setup_logging
 from shared.metering import record_usage
 from shared.observability import init_tracing
-from shared.pagination import decode_cursor
+from shared.pagination import parse_pagination_params
 from shared.responses import created, error_response, paginated, success
 from shared.tenant_context import UserRole
 from shared.validation import parse_validated
@@ -104,15 +104,30 @@ def lambda_handler(event: dict[str, Any], context: Any) -> dict[str, Any]:
         # Idempotency for POST /claims only
         idempotency_key = None
         if method == "POST" and path.rstrip("/").endswith("/claims"):
-            idempotency_key = (event.get("headers") or {}).get("idempotency-key")
-            cached = check_idempotency(idempotency_key, tenant_ctx.tenant_id)
+            idempotency_key = get_idempotency_key(event)
+            cached = check_idempotency(
+                idempotency_key,
+                tenant_ctx.tenant_id,
+                actor_id=tenant_ctx.user_id,
+                method=method,
+                path=path,
+                body=event.get("body"),
+            )
             if cached:
                 return cached
 
         response = _dispatch(event, method, path, tenant_ctx, request_id, ip_address)
 
         if idempotency_key and response.get("statusCode", 500) < 400:
-            store_idempotency(idempotency_key, response, tenant_ctx.tenant_id)
+            store_idempotency(
+                idempotency_key,
+                response,
+                tenant_ctx.tenant_id,
+                actor_id=tenant_ctx.user_id,
+                method=method,
+                path=path,
+                body=event.get("body"),
+            )
 
         record_usage(tenant_ctx.tenant_id, "api_calls", request_id=request_id)
         return response
@@ -182,6 +197,9 @@ def _dispatch(event: dict[str, Any], method: str, path: str, ctx: Any, request_i
 # ---------------------------------------------------------------------------
 
 
+_CLAIM_SORT_FIELDS = frozenset({"created_at", "updated_at", "status", "reference"})
+
+
 def _claim_routes(
     event: dict[str, Any], parts: list[str], method: str, ctx: Any, request_id: str, ip_address: str | None, claim_id: str | None
 ) -> dict[str, Any]:
@@ -194,7 +212,7 @@ def _claim_routes(
             ctx.assert_role(*_CLAIM_ROLES)
             body = _parse_body(event)
             req = parse_validated(FileDamageClaimRequest, body)
-            customer_id_override = body.get("customer_id") if ctx.role != UserRole.CUSTOMER else None
+            customer_id_override = body.get("customer_id") if not ctx.is_customer_only else None
             result = service.file_claim(
                 tenant_id,
                 req,
@@ -202,6 +220,7 @@ def _claim_routes(
                 ctx=ctx,
                 customer_id_override=customer_id_override,
                 request_id=request_id,
+                ip_address=ip_address,
             )
             return created(
                 result,
@@ -225,9 +244,10 @@ def _claim_routes(
                 filters["created_after"] = _qp(event, "created_after")
             if _qp(event, "created_before"):
                 filters["created_before"] = _qp(event, "created_before")
-            limit = int(_qp(event, "limit", 50))
-            cursor = decode_cursor(_qp(event, "cursor"))
+            cursor, limit = parse_pagination_params(event.get("queryStringParameters"), default_limit=50)
             sort_field = _qp(event, "sort") or "created_at"
+            if sort_field not in _CLAIM_SORT_FIELDS:
+                raise ValidationError(f"Invalid sort field: {sort_field}", field_errors={"sort": "unsupported sort field"})
             sort_direction = _qp(event, "direction") or "desc"
             page, next_cursor, has_more = service.list_claims(
                 tenant_id,
@@ -260,6 +280,7 @@ def _claim_routes(
                     req,
                     actor_id=ctx.user_id,
                     ip_address=ip_address,
+                    actor_role=str(ctx.role),
                 )
                 return success(result, request_id=request_id)
 
@@ -303,11 +324,18 @@ def _upload_routes(
         claim_id = body.get("claim_id", "")
         filename = body.get("filename", "")
         content_type = body.get("content_type", "")
-        if not claim_id or not filename or not content_type:
+        if (
+            not isinstance(claim_id, str)
+            or not isinstance(filename, str)
+            or not isinstance(content_type, str)
+            or not claim_id.strip()
+            or not filename.strip()
+            or not content_type.strip()
+        ):
             from shared.exceptions import BusinessRuleViolationError
 
             raise BusinessRuleViolationError(
-                "claim_id, filename, and content_type are required",
+                "claim_id, filename, and content_type are required strings",
                 rule_id="MISSING_PRESIGNED_URL_FIELDS",
             )
         result = service.generate_presigned_url(
@@ -373,8 +401,7 @@ def _missing_item_routes(
                 filters["customer_id"] = _qp(event, "customer_id")
             if _qp(event, "status"):
                 filters["status"] = _qp(event, "status")
-            limit = int(_qp(event, "limit", 50))
-            cursor = decode_cursor(_qp(event, "cursor"))
+            cursor, limit = parse_pagination_params(event.get("queryStringParameters"), default_limit=50)
             page, next_cursor, has_more = service.list_missing_items(tenant_id, filters, limit, cursor)
             return paginated(page, next_cursor, has_more, request_id=request_id)
 
@@ -383,7 +410,7 @@ def _missing_item_routes(
             ctx.assert_role(*_STAFF_ROLES)
             body = _parse_body(event)
             req = parse_validated(LogMissingItemRequest, body)
-            result = service.log_missing_item(tenant_id, req, actor_id=ctx.user_id, ctx=ctx)
+            result = service.log_missing_item(tenant_id, req, actor_id=ctx.user_id, ctx=ctx, ip_address=ip_address)
             return created(
                 result,
                 location=f"/v1/claims/missing-items/{result['id']}",
@@ -411,7 +438,14 @@ def _missing_item_routes(
                     f"status must be one of: {', '.join(MissingItemStatus)}", field_errors={"status": "invalid status"}
                 )
             result = service.update_missing_item(
-                tenant_id, item_id, status, notes, actor_id=ctx.user_id, ctx=ctx, refund_amount_ngn=_compensation_amount(body)
+                tenant_id,
+                item_id,
+                status,
+                notes,
+                actor_id=ctx.user_id,
+                ctx=ctx,
+                refund_amount_ngn=_compensation_amount(body),
+                ip_address=ip_address,
             )
             return success(result, request_id=request_id)
 
@@ -440,8 +474,7 @@ def _seized_item_routes(
                 filters["customer_id"] = _qp(event, "customer_id")
             if _qp(event, "status"):
                 filters["status"] = _qp(event, "status")
-            limit = int(_qp(event, "limit", 50))
-            cursor = decode_cursor(_qp(event, "cursor"))
+            cursor, limit = parse_pagination_params(event.get("queryStringParameters"), default_limit=50)
             page, next_cursor, has_more = service.list_seized_items(tenant_id, filters, limit, cursor)
             return paginated(page, next_cursor, has_more, request_id=request_id)
 
@@ -450,7 +483,7 @@ def _seized_item_routes(
             ctx.assert_role(*_STAFF_ROLES)
             body = _parse_body(event)
             req = parse_validated(LogSeizedItemRequest, body)
-            result = service.log_seized_item(tenant_id, req, actor_id=ctx.user_id, ctx=ctx)
+            result = service.log_seized_item(tenant_id, req, actor_id=ctx.user_id, ctx=ctx, ip_address=ip_address)
             return created(
                 result,
                 location=f"/v1/claims/seized-items/{result['id']}",
@@ -486,6 +519,7 @@ def _seized_item_routes(
                 actor_id=ctx.user_id,
                 ctx=ctx,
                 refund_amount_ngn=_compensation_amount(body),
+                ip_address=ip_address,
             )
             return success(result, request_id=request_id)
 

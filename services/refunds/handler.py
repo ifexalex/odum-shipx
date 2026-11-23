@@ -18,11 +18,11 @@ from typing import Any
 from shared.auth import get_tenant_context
 from shared.client_ip import client_ip
 from shared.exceptions import LogisticsBaseError, ResourceNotFoundError
-from shared.idempotency import check_idempotency, store_idempotency
+from shared.idempotency import check_idempotency, get_idempotency_key, store_idempotency
 from shared.logging_config import bind_log_context, clear_log_context, setup_logging
 from shared.metering import record_usage
 from shared.observability import init_tracing
-from shared.pagination import decode_cursor
+from shared.pagination import parse_pagination_params
 from shared.responses import created, error_response, paginated, success
 from shared.tenant_context import UserRole
 from shared.validation import parse_validated
@@ -78,15 +78,30 @@ def lambda_handler(event: dict[str, Any], context: Any) -> dict[str, Any]:
 
         idempotency_key = None
         if method == "POST":
-            idempotency_key = (event.get("headers") or {}).get("idempotency-key")
-            cached = check_idempotency(idempotency_key, tenant_ctx.tenant_id)
+            idempotency_key = get_idempotency_key(event)
+            cached = check_idempotency(
+                idempotency_key,
+                tenant_ctx.tenant_id,
+                actor_id=tenant_ctx.user_id,
+                method=method,
+                path=path,
+                body=event.get("body"),
+            )
             if cached:
                 return cached
 
         response: dict[str, Any] = _dispatch(event, method, path, tenant_ctx, request_id, ip_address)
 
         if method == "POST" and idempotency_key and response.get("statusCode", 500) < 400:
-            store_idempotency(idempotency_key, response, tenant_ctx.tenant_id)
+            store_idempotency(
+                idempotency_key,
+                response,
+                tenant_ctx.tenant_id,
+                actor_id=tenant_ctx.user_id,
+                method=method,
+                path=path,
+                body=event.get("body"),
+            )
 
         record_usage(tenant_ctx.tenant_id, "api_calls", request_id=request_id)
         return response
@@ -145,6 +160,7 @@ def _dispatch(
                 actor_id=ctx.user_id,
                 ctx=ctx,
                 request_id=request_id,
+                ip_address=ip_address,
             )
             return created(
                 result,
@@ -160,8 +176,7 @@ def _dispatch(
                 filters["status"] = _qp(event, "status")
             if _qp(event, "customer_id"):
                 filters["customer_id"] = _qp(event, "customer_id")
-            limit = int(_qp(event, "limit", 50))
-            cursor = decode_cursor(_qp(event, "cursor"))
+            cursor, limit = parse_pagination_params(event.get("queryStringParameters"), default_limit=50)
             page, next_cursor, has_more = service.list_refunds(ctx.tenant_id, ctx, filters, limit, cursor)
             return paginated(page, next_cursor, has_more, request_id=request_id)
 
@@ -185,6 +200,7 @@ def _dispatch(
                     req,
                     actor_id=ctx.user_id,
                     ctx=ctx,
+                    ip_address=ip_address,
                 )
                 return success(result, request_id=request_id)
 
@@ -200,6 +216,7 @@ def _dispatch(
                     actor_id=ctx.user_id,
                     ctx=ctx,
                     request_id=request_id,
+                    ip_address=ip_address,
                 )
                 return success(result, request_id=request_id)
 
@@ -207,7 +224,7 @@ def _dispatch(
             if action == "reject" and method == "PATCH":
                 ctx.assert_role(*_REJECT_ROLES)
                 body = _parse_body(event)
-                reason = body.get("reason") or ""
+                reason = (body.get("reason") or "").strip() if isinstance(body.get("reason"), str) else ""
                 if not reason:
                     from shared.exceptions import BusinessRuleViolationError
 
@@ -221,6 +238,7 @@ def _dispatch(
                     reason,
                     actor_id=ctx.user_id,
                     ctx=ctx,
+                    ip_address=ip_address,
                 )
                 return success(result, request_id=request_id)
 

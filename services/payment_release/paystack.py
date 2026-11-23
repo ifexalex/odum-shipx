@@ -39,7 +39,7 @@ import urllib.error
 import urllib.parse
 import urllib.request
 import uuid
-from decimal import Decimal, InvalidOperation
+from decimal import ROUND_HALF_UP, Decimal, InvalidOperation
 from typing import Any
 
 from shared.exceptions import ExternalServiceError
@@ -120,7 +120,7 @@ def initialize_transaction(
     Raises:
         ExternalServiceError: Paystack rejected the request or is unreachable.
     """
-    amount_kobo = int(amount_ngn * 100)
+    amount_kobo = int((amount_ngn * _KOBO_PER_NAIRA).quantize(Decimal("1"), rounding=ROUND_HALF_UP))
     reference = build_reference(billing_id)
 
     body: dict[str, Any] = {

@@ -30,7 +30,7 @@ class DelegateIdType(StrEnum):
 
 
 class ConfirmPaymentRequest(BaseModel):
-    amount_ngn: Decimal = Field(gt=Decimal("0"))
+    amount_ngn: Decimal = Field(gt=Decimal("0"), allow_inf_nan=False)
     payment_method: str | None = None
     payment_reference: str | None = None
     payer_name: str | None = None
@@ -54,7 +54,7 @@ class SubmitPaymentClaimRequest(BaseModel):
     """Customer's "I've made this payment" submission — evidence is mandatory,
     not optional, so a claim can never reach staff without proof attached."""
 
-    amount_ngn: Decimal = Field(gt=Decimal("0"))
+    amount_ngn: Decimal = Field(gt=Decimal("0"), allow_inf_nan=False)
     evidence_file_key: str = Field(min_length=1)
     evidence_file_name: str = Field(min_length=1)
     customer_note: str | None = None
