@@ -1,14 +1,12 @@
 name: Deploy Pipeline (Azure)
 
-# Azure analogue of deploy.yml. Same promotion model — push to main → dev,
-# v*.*.*-rc* tag → staging, v*.*.* tag → prod, workflow_dispatch → demo — but it
-# builds + pushes a container image to ACR and rolls the Container Apps, instead
-# of updating Lambda. Every job is gated on `vars.DEPLOY_CLOUD == 'azure'`, so it
-# is dormant until the single cloud switch selects Azure (see deploy.yml for the
-# AWS side, gated `!= 'azure'`).
+# Azure analogue of deploy.yml. Same promotion model — push to main -> dev,
+# v*.*.*-rc* tag -> staging, v*.*.* tag -> prod, workflow_dispatch -> any env
+# (with optional ref for rollback) — gated on vars.DEPLOY_CLOUD == 'azure'.
 #
-# Unlike the AWS pipeline there is no artifact-resolution job: the image is built
-# here from the checked-out commit (which has already passed CI).
+# `prepare` verifies that CI Pipeline passed on tagged commits, pins the exact
+# workflow_run.head_sha (never floating main), and skips dev redeploys when CI
+# Pipeline skipped backend tests (docs/frontend-UI-only commits).
 
 on:
   workflow_run:
@@ -26,60 +24,135 @@ on:
         required: true
         type: choice
         options: [dev, staging, prod, demo]
+        default: dev
+      ref:
+        description: "Optional git ref (SHA, tag, or branch) to deploy — defaults to current branch HEAD"
+        required: false
+        type: string
+        default: ""
 
-# Queue deploys — never cancel one mid-run.
-concurrency:
-  group: deploy-azure-${{ github.ref }}
-  cancel-in-progress: false
+# Concurrency is enforced per target environment inside _deploy-azure-env.yml
+# (deploy-azure-<env>) so concurrent prod tags serialize cleanly and a dev
+# deploy never blocks a prod hotfix.
 
 permissions:
   contents: read
+  actions: read
 
 jobs:
-  # ── Dev — auto on every successful CI run on main ───────────────────────
+  prepare:
+    runs-on: ubuntu-latest
+    if: vars.DEPLOY_CLOUD == 'azure'
+    outputs:
+      commit_sha: ${{ steps.resolve.outputs.commit_sha }}
+      should_deploy_dev: ${{ steps.resolve.outputs.should_deploy_dev }}
+    permissions:
+      contents: read
+      actions: read
+    steps:
+      - name: Verify CI status and resolve target commit
+        id: resolve
+        env:
+          GH_TOKEN: ${{ github.token }}
+          EVENT_NAME: ${{ github.event_name }}
+          WORKFLOW_RUN_ID: ${{ github.event.workflow_run.id }}
+          WORKFLOW_RUN_CONCLUSION: ${{ github.event.workflow_run.conclusion }}
+          WORKFLOW_RUN_SHA: ${{ github.event.workflow_run.head_sha }}
+          INPUT_REF: ${{ inputs.ref }}
+        run: |
+          set -euo pipefail
+          should_deploy_dev="false"
+          commit_sha="${{ github.sha }}"
+
+          if [ "$EVENT_NAME" = "workflow_run" ]; then
+            commit_sha="$WORKFLOW_RUN_SHA"
+            if [ "$WORKFLOW_RUN_CONCLUSION" = "success" ]; then
+              TEST_STATUS=$(gh api \
+                "repos/${{ github.repository }}/actions/runs/${WORKFLOW_RUN_ID}/jobs" \
+                --jq '[.jobs[] | select(.name == "test")] | first | .conclusion // "skipped"')
+              if [ "$TEST_STATUS" = "success" ]; then
+                should_deploy_dev="true"
+                echo "CI Pipeline run ${WORKFLOW_RUN_ID} passed backend tests for ${commit_sha} — deploying dev."
+              else
+                echo "CI Pipeline run ${WORKFLOW_RUN_ID} skipped backend tests (${TEST_STATUS}) — skipping dev deploy."
+              fi
+            else
+              echo "CI Pipeline run concluded '${WORKFLOW_RUN_CONCLUSION}' — skipping dev deploy."
+            fi
+          elif [ "$EVENT_NAME" = "push" ]; then
+            RUN_ID=$(gh api \
+              "repos/${{ github.repository }}/actions/runs?head_sha=${{ github.sha }}&event=push&status=success" \
+              --jq '[.workflow_runs[] | select(.name == "CI Pipeline")] | first | .id')
+            if [ -z "$RUN_ID" ] || [ "$RUN_ID" = "null" ]; then
+              echo "::error::No successful CI Pipeline run found for tagged commit ${{ github.sha }}."
+              echo "Only commits that have passed CI Pipeline can be deployed via release tag."
+              exit 1
+            fi
+            echo "Verified CI Pipeline run ${RUN_ID} passed for tagged commit ${commit_sha}."
+          else
+            if [ -n "$INPUT_REF" ]; then
+              commit_sha="$INPUT_REF"
+            fi
+            echo "Manual dispatch targeting ref: ${commit_sha}"
+          fi
+
+          echo "commit_sha=${commit_sha}" >> "$GITHUB_OUTPUT"
+          echo "should_deploy_dev=${should_deploy_dev}" >> "$GITHUB_OUTPUT"
+
+  # ── Dev — auto on every successful backend CI run on main ───────────────
   deploy-dev:
+    needs: prepare
     if: >-
-      ((github.event_name == 'workflow_run' && github.event.workflow_run.conclusion == 'success') ||
-       (github.event_name == 'workflow_dispatch' && inputs.environment == 'dev')) &&
-      vars.DEPLOY_CLOUD == 'azure'
+      vars.DEPLOY_CLOUD == 'azure' && (
+        (github.event_name == 'workflow_run' && needs.prepare.outputs.should_deploy_dev == 'true') ||
+        (github.event_name == 'workflow_dispatch' && inputs.environment == 'dev')
+      )
     permissions:
       contents: read
       id-token: write
     uses: ./.github/workflows/_deploy-azure-env.yml
     with:
       environment: dev
+      commit_sha: ${{ needs.prepare.outputs.commit_sha }}
     secrets: inherit
 
-  # ── Staging — v*.*.*-rc* tag ────────────────────────────────────────────
+  # ── Staging — v*.*.*-rc* tag or manual dispatch ─────────────────────────
   deploy-staging:
+    needs: prepare
     if: >-
-      ((github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v') && contains(github.ref, '-rc')) ||
-       (github.event_name == 'workflow_dispatch' && inputs.environment == 'staging')) &&
-      vars.DEPLOY_CLOUD == 'azure'
+      vars.DEPLOY_CLOUD == 'azure' && (
+        (github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v') && contains(github.ref, '-rc')) ||
+        (github.event_name == 'workflow_dispatch' && inputs.environment == 'staging')
+      )
     permissions:
       contents: read
       id-token: write
     uses: ./.github/workflows/_deploy-azure-env.yml
     with:
       environment: staging
+      commit_sha: ${{ needs.prepare.outputs.commit_sha }}
     secrets: inherit
 
-  # ── Prod — v*.*.* tag (no -rc) ──────────────────────────────────────────
+  # ── Prod — v*.*.* tag (no -rc) or manual dispatch ───────────────────────
   deploy-prod:
+    needs: prepare
     if: >-
-      ((github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v') && !contains(github.ref, '-rc')) ||
-       (github.event_name == 'workflow_dispatch' && inputs.environment == 'prod')) &&
-      vars.DEPLOY_CLOUD == 'azure'
+      vars.DEPLOY_CLOUD == 'azure' && (
+        (github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v') && !contains(github.ref, '-rc')) ||
+        (github.event_name == 'workflow_dispatch' && inputs.environment == 'prod')
+      )
     permissions:
       contents: read
       id-token: write
     uses: ./.github/workflows/_deploy-azure-env.yml
     with:
       environment: prod
+      commit_sha: ${{ needs.prepare.outputs.commit_sha }}
     secrets: inherit
 
   # ── Demo — standalone, dispatch-only ────────────────────────────────────
   deploy-demo:
+    needs: prepare
     if: github.event_name == 'workflow_dispatch' && inputs.environment == 'demo' && vars.DEPLOY_CLOUD == 'azure'
     permissions:
       contents: read
@@ -87,4 +160,5 @@ jobs:
     uses: ./.github/workflows/_deploy-azure-env.yml
     with:
       environment: demo
+      commit_sha: ${{ needs.prepare.outputs.commit_sha }}
     secrets: inherit

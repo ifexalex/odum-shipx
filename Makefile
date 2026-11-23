@@ -55,6 +55,7 @@ install:
 
 lint:
 	uv run ruff check .
+	uv run ruff format --check .
 	uv run mypy shared/ services/ --ignore-missing-imports
 
 security-scan:
@@ -84,6 +85,7 @@ test-all:
 # Run lint + type-check + unit tests in one shot
 check:
 	uv run ruff check .
+	uv run ruff format --check .
 	uv run mypy shared/ services/ --ignore-missing-imports
 	PYTHONPATH=.:services uv run pytest tests/unit/ -v --cov=services --cov=shared --cov-report=term-missing
 

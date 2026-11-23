@@ -664,3 +664,21 @@
   font-size: var(--text-xs);
   line-height: var(--text-xs-line);
 }
+
+/* On a phone every step keeps its number; only the current one keeps its words, so the row fits. */
+@media (max-width: 600px) {
+  .step {
+    padding: 8px;
+    gap: 8px;
+  }
+  .stepWrap {
+    flex: 0 0 auto;
+  }
+  .stepWrap:has(.stepActive) {
+    flex: 1 1 auto;
+    min-width: 0;
+  }
+  .step:not(.stepActive) .stepText {
+    display: none;
+  }
+}

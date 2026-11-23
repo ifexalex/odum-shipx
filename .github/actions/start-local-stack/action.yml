@@ -1,0 +1,60 @@
+name: Start Local Stack (Backend + Docker + Seeded DB)
+description: >-
+  Provisions Python deps via uv, copies tracked .env.local.sample files, boots
+  Postgres/Moto/Redis, bootstraps Moto resources, resets/migrates/seeds the DB,
+  and starts scripts/local_server.py in the background.
+
+runs:
+  using: composite
+  steps:
+    - uses: astral-sh/setup-uv@v7
+      with:
+        enable-cache: true
+
+    - name: Install backend deps (uv) and add venv to PATH
+      shell: bash
+      run: |
+        set -euo pipefail
+        uv sync --frozen --extra azure
+        echo "$GITHUB_WORKSPACE/.venv/bin" >> "$GITHUB_PATH"
+
+    - name: Provision .env.local files from tracked samples
+      shell: bash
+      run: |
+        set -euo pipefail
+        cp .env.local.sample .env.local
+        # Must exist BEFORE `make bootstrap` so Cognito pool/client IDs are patched in.
+        cp frontend/.env.local.sample frontend/.env.local
+
+    - name: Start local Docker stack and bootstrap Moto
+      shell: bash
+      run: |
+        set -euo pipefail
+        make up
+        make bootstrap
+
+    - name: Reset, migrate, and seed database
+      shell: bash
+      run: |
+        set -euo pipefail
+        set -a; source .env.local; set +a
+        PYTHONPATH=. python3 scripts/reset_db.py
+        PYTHONPATH=. python3 scripts/migrate.py
+        PYTHONPATH=. python3 scripts/seed.py
+
+    - name: Start Flask API server and wait until healthy
+      shell: bash
+      run: |
+        set -euo pipefail
+        set -a; source .env.local; set +a
+        PYTHONPATH=. nohup python3 scripts/local_server.py > flask.log 2>&1 &
+        for _ in $(seq 1 60); do
+          if curl -sf http://localhost:3000/health > /dev/null 2>&1; then
+            echo "Flask API is healthy."
+            exit 0
+          fi
+          sleep 1
+        done
+        echo "::error::Flask API did not become healthy within 60s"
+        tail -n 100 flask.log || true
+        exit 1

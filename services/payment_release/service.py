@@ -935,6 +935,8 @@ def generate_release_note(
 
     _issue_pickup_code(tenant_id, note, request_id)
 
+    _issue_pickup_code(tenant_id, note, request_id)
+
     publish_event(
         source="logistics.payment_release",
         detail_type="ReleaseNoteGenerated",
@@ -1573,6 +1575,8 @@ def split_release_note(
 
     _issue_pickup_code(tenant_id, child_note, request_id)
 
+    _issue_pickup_code(tenant_id, child_note, request_id)
+
     publish_event(
         source="logistics.payment_release",
         detail_type="ReleaseNoteSplit",
@@ -1727,6 +1731,8 @@ def reissue_release_note(
         )
         if new_note is None:
             raise RuntimeError("create_split_release_note returned None unexpectedly during reissue")
+
+    _issue_pickup_code(tenant_id, new_note, request_id)
 
     _issue_pickup_code(tenant_id, new_note, request_id)
 

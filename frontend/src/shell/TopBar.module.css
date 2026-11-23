@@ -176,3 +176,44 @@
     display: none;
   }
 }
+
+/* The page's actions sit in line with the bar's icons on desktop. */
+.pageActions {
+  display: contents;
+}
+
+/* On a phone: row one is the menu button, the title and the bar's own icons; the page's actions get a row of their
+   own below, instead of being mixed in with the icons over three or four rows. */
+@container sxapp (max-width: 600px) {
+  .topbar {
+    column-gap: 6px;
+  }
+  /* Room for the title next to the icons: the account button drops its arrow and padding, the title steps down. */
+  .title {
+    font-size: 18px;
+  }
+  .userMenu {
+    padding: 2px;
+    gap: 0;
+  }
+  .userMenu > :last-child {
+    display: none;
+  }
+  .left {
+    flex: 1 1 0;
+  }
+  .title {
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .right {
+    display: contents;
+  }
+  .pageActions {
+    display: flex;
+    order: 3;
+    flex: 1 0 100%;
+    flex-wrap: wrap;
+    gap: 8px;
+  }
+}

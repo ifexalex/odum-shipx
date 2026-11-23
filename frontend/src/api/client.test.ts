@@ -349,6 +349,40 @@ describe('apiDownloadFile', () => {
     await apiDownloadFile('/v1/billing/export', 'xlsx', 'x.xlsx', { format: 'pdf' })
     expect(new URL(fetchMock.mock.calls[0]![0] as string).searchParams.get('format')).toBe('xlsx')
   })
+
+  it('forwards a list export\'s filters and sort alongside the format', async () => {
+    fetchMock.mockResolvedValue(jsonResponse({ data: { ...EXPORT_ENVELOPE.data, filename: 'invoices.csv', format: 'csv' } }))
+
+    await apiDownloadFile('/v1/billing/export', 'csv', 'invoices.csv', {
+      status: 'unpaid,paid',
+      q: 'ngozi',
+      created_after: '2026-01-01',
+      sort: 'billed_at',
+      direction: 'desc',
+      cursor: undefined,
+    })
+
+    const url = new URL(fetchMock.mock.calls[0]![0] as string)
+    expect(url.pathname).toBe('/v1/billing/export')
+    const sent: Record<string, string> = {}
+    url.searchParams.forEach((value, key) => {
+      sent[key] = value
+    })
+    expect(sent).toEqual({
+      status: 'unpaid,paid',
+      q: 'ngozi',
+      created_after: '2026-01-01',
+      sort: 'billed_at',
+      direction: 'desc',
+      format: 'csv',
+    })
+  })
+
+  it('lets the format argument win over a stray format in the query', async () => {
+    fetchMock.mockResolvedValue(jsonResponse(EXPORT_ENVELOPE))
+    await apiDownloadFile('/v1/billing/export', 'xlsx', 'x.xlsx', { format: 'pdf' })
+    expect(new URL(fetchMock.mock.calls[0]![0] as string).searchParams.get('format')).toBe('xlsx')
+  })
 })
 
 describe('apiRequest — cache invalidation on writes', () => {

@@ -15,29 +15,94 @@ permissions:
   contents: read
 
 jobs:
+  # Fast (~3s) fail-open path classifier. Kept as a job (rather than workflow-level
+  # paths-ignore) so docs-only and frontend-UI-only PRs skip lint/test/security
+  # cleanly without leaving GitHub branch-protection required checks stuck waiting.
+  changes:
+    runs-on: ubuntu-latest
+    outputs:
+      backend: ${{ steps.filter.outputs.backend }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+      - name: Classify changed paths
+        id: filter
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          BASE_REF: ${{ github.base_ref }}
+          BEFORE_SHA: ${{ github.event.before }}
+          HEAD_SHA: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import os, subprocess
+
+          event = os.environ["EVENT_NAME"]
+          if event == "pull_request":
+              cmd = ["git", "diff", "--name-only", f"origin/{os.environ['BASE_REF']}...HEAD"]
+              files = subprocess.check_output(cmd, text=True).splitlines()
+          else:
+              before = os.environ.get("BEFORE_SHA", "")
+              zero = "0" * 40
+              if before and before != zero:
+                  check = subprocess.run(
+                      ["git", "cat-file", "-e", f"{before}^{{commit}}"],
+                      stdout=subprocess.DEVNULL,
+                      stderr=subprocess.DEVNULL,
+                  )
+                  if check.returncode == 0:
+                      cmd = ["git", "diff", "--name-only", before, os.environ["HEAD_SHA"]]
+                      files = subprocess.check_output(cmd, text=True).splitlines()
+                  else:
+                      files = []
+              else:
+                  files = []
+
+          def is_backend(path: str) -> bool:
+              # frontend/src/api/* is checked by test_infrastructure_contracts.py
+              # against AWS API Gateway routes.
+              if path.startswith("frontend/src/api/"):
+                  return True
+              if path.endswith(".md") or path in {"LICENSE", ".gitignore"}:
+                  return False
+              if path.startswith(("docs/", "frontend/", ".github/workflows/frontend-")):
+                  return False
+              return True
+
+          # Fail-open when diff is empty or unavailable.
+          backend = True if not files else any(is_backend(f) for f in files)
+          print(f"Changed files ({len(files)}): backend={backend}")
+          for f in files[:30]:
+              print(f"  - {f}")
+          with open(os.environ["GITHUB_OUTPUT"], "a") as out:
+              out.write(f"backend={'true' if backend else 'false'}\n")
+          PY
+
   lint:
     runs-on: ubuntu-latest
+    needs: changes
+    if: needs.changes.outputs.backend == 'true'
     steps:
       - uses: actions/checkout@v7
       - uses: astral-sh/setup-uv@v7
         with:
           enable-cache: true
-      # uv auto-installs the interpreter pinned by requires-python (3.13).
-      - run: uv sync --extra azure
-      # Fails if pyproject.toml and uv.lock disagree. uv.lock is the source of
-      # truth (CLAUDE.md), but nothing enforced that, and five Dependabot PRs
-      # in a row bumped pyproject.toml alone. `uv sync` would silently
-      # re-resolve, so the stale lock never surfaced.
+      # Fails if pyproject.toml and uv.lock disagree (uv.lock is the source of truth).
       - name: Check uv.lock is in sync with pyproject.toml
         run: uv lock --check
+      - run: uv sync --frozen --extra azure
       - name: Lint with ruff
         run: uv run ruff check .
+      - name: Check formatting with ruff
+        run: uv run ruff format --check .
       - name: Type-check with mypy
         run: uv run mypy shared/ services/ --ignore-missing-imports
 
   test:
     runs-on: ubuntu-latest
-    needs: lint
+    needs: changes
+    if: needs.changes.outputs.backend == 'true'
     # Job-level so the coverage step's `if` can test it. A step cannot read its
     # own `env:` in its own `if`, and `secrets` is not dependable there.
     env:
@@ -56,7 +121,7 @@ jobs:
           --health-timeout 5s
           --health-retries 5
       # The rate limiter's Lua script is only meaningful against a real Redis
-      # (tests/db/test_rate_limit_redis.py); without one those tests skip, and the suite fails on CI.
+      # (tests/db/test_rate_limit_redis.py); without one those tests fail on CI.
       redis:
         image: redis:7
         ports: ["6379:6379"]
@@ -70,7 +135,7 @@ jobs:
       - uses: astral-sh/setup-uv@v7
         with:
           enable-cache: true
-      - run: uv sync --extra azure
+      - run: uv sync --frozen --extra azure
       - name: Run migrations
         env:
           DATABASE_HOST: localhost
@@ -78,20 +143,16 @@ jobs:
           DATABASE_NAME: logistics_test
           DATABASE_USER: test_user
           DATABASE_PASSWORD: test_pass
-          # Migration 060 sets this as logistics_app's password, completing the
-          # RLS credential switchover. Set here so CI exercises the real thing:
-          # without it 060 no-ops and the isolation tests below fall back to a
-          # synthetic probe role, which proves the policies work but not that
-          # the credential the application uses is subject to them.
-          # A throwaway value for an ephemeral container, not a secret.
+          # Migration 060 sets this as logistics_app's password so CI exercises
+          # the real non-owner application credential against RLS. Throwaway value
+          # for an ephemeral container, not a secret.
           APP_DB_PASSWORD: ci_app_pass_not_a_secret
         run: uv run python scripts/migrate.py
       - name: Run unit tests
         env:
           PYTHONPATH: ".:services"
         run: uv run pytest tests/unit/ -v --cov=services --cov=shared --cov-report=xml
-      # Audit OPS-03: the money services may not lose unit-test coverage. Floors are in pyproject.toml
-      # ([tool.shipx.coverage-floors]); the script says when one can be raised. Needs no Codecov account.
+      # Audit OPS-03: money services may not lose unit-test coverage.
       - name: Enforce coverage floors
         run: uv run python scripts/check_coverage.py coverage.xml
       - name: Run tenant isolation tests
@@ -100,28 +161,16 @@ jobs:
           DATABASE_HOST: localhost
           DATABASE_PORT: 5432
           DATABASE_NAME: logistics_test
-          # DATABASE_* is the APPLICATION role, exactly as a deployed service
-          # sees it, so TestTheRealApplicationCredentialIsSubjectToRls actually
-          # runs instead of skipping. DATABASE_ADMIN_* is the owner, used by the
-          # fixtures to write cross-tenant rows that RLS correctly forbids the
-          # app role from writing.
           DATABASE_USER: logistics_app
           DATABASE_PASSWORD: ci_app_pass_not_a_secret
           DATABASE_ADMIN_USER: test_user
           DATABASE_ADMIN_PASSWORD: test_pass
           APP_DB_PASSWORD: ci_app_pass_not_a_secret
         run: uv run pytest tests/tenant_isolation/ -v
-      # tests/integration/ walks the packing-list -> release flow through the
-      # service layer. It was never part of CI, so a change that broke the flow
-      # only surfaced when someone remembered to run it. It needs no database.
       - name: Run integration tests
         env:
           PYTHONPATH: ".:services"
         run: uv run pytest tests/integration/ -v
-      # Invoice and payment integrity under real concurrency, against the migrated
-      # database and as the application role (so RLS applies). These are the tests
-      # that fail on the old COUNT(*)+1 invoice numbering and on payment status
-      # computed from a stale read; mocks cannot see either.
       - name: Run database integrity tests
         env:
           PYTHONPATH: ".:services"
@@ -136,23 +185,6 @@ jobs:
           REDIS_HOST: localhost
           REDIS_PORT: 6379
         run: uv run pytest tests/db/ -v
-      # This upload has never worked, and said nothing about it. On a PRIVATE
-      # repo Codecov requires an upload token; none was configured, so every run
-      # logged
-      #
-      #   -> No token specified or token is empty
-      #   ['error'] ... 429 {"message":"Rate limit reached. Please upload with
-      #                      the Codecov repository upload token to resolve"}
-      #   Codecov will exit with status code 0.
-      #
-      # and `fail_ci_if_error: false` turned that into a green step. Dependabot
-      # #5 proposed v3 -> v7; the version was never the problem, and v4+ makes a
-      # token *mandatory*, so the bump alone would have kept it broken.
-      #
-      # Now: skipped cleanly when no token is set, so it stops pretending; and
-      # when CODECOV_TOKEN is added as a repository secret it starts working with
-      # no further change. fail_ci_if_error stays false deliberately — coverage
-      # reporting going down should not fail everyone's build.
       - name: Upload coverage
         if: env.CODECOV_TOKEN != ''
         uses: codecov/codecov-action@v7
@@ -163,7 +195,8 @@ jobs:
 
   security:
     runs-on: ubuntu-latest
-    needs: lint
+    needs: changes
+    if: needs.changes.outputs.backend == 'true'
     permissions:
       contents: read
     steps:
@@ -171,39 +204,41 @@ jobs:
       - uses: astral-sh/setup-uv@v7
         with:
           enable-cache: true
-      - run: uv sync --extra azure
+      - run: uv sync --frozen --extra azure
       - name: SAST scan (bandit)
-        # Run via uvx (isolated tool env) rather than the shared project venv:
-        # a clean, complete install each run, immune to project-env/cache quirks
-        # that broke bandit's plugin discovery under `uv run` on the CI runner.
+        # Isolated tool env via uvx — immune to project-env plugin discovery quirks.
         run: uvx bandit@1.9.4 -r services/ shared/ -ll -q -c pyproject.toml
       - name: Dependency vulnerability scan (safety)
-        # Scan the resolved runtime deps (what ships), exported from the lock.
         run: |
           uv export --frozen --no-hashes --no-emit-project --no-default-groups --extra azure -o requirements-scan.txt
           uv run safety check -r requirements-scan.txt
       - name: Trivy filesystem scan
-        # Pinned by SHA — update via Dependabot, never float @master. The
-        # version lives in the trailing comment on the `uses:` line, which
-        # Dependabot keeps in step; do not restate it here, or the two drift.
+        # Pinned by SHA — update via Dependabot, never float @master.
         uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25  # v0.36.0
         with:
           scan-type: 'fs'
           scan-ref: '.'
           severity: 'CRITICAL,HIGH'
+          ignore-unfixed: true
+          exit-code: '1'
           format: 'table'
 
-  # ── Build — runs only on push to main (not on PRs) ──────────────────────
-  # Produces the deployable artifact that all environments will use.
-  # PRs run lint/test/security only — no artifact needed until merge.
+  # ── Build — runs only on AWS merges to main with backend changes ─────────
+  # Gated on vars.DEPLOY_CLOUD != 'azure': Azure builds its container image in
+  # _deploy-azure-env.yml and never downloads Lambda zips. Produces ONE shared
+  # services.zip (instead of 20 identical copies), shared-layer.zip, and a lean
+  # migrate.zip (~25 MB total instead of ~105 MB).
   build:
     runs-on: ubuntu-latest
-    needs: [test, security]
-    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    needs: [changes, lint, test, security]
+    if: >-
+      github.event_name == 'push' &&
+      github.ref == 'refs/heads/main' &&
+      needs.changes.outputs.backend == 'true' &&
+      vars.DEPLOY_CLOUD != 'azure'
     permissions:
       contents: read
       actions: write
-
     steps:
       - uses: actions/checkout@v7
       - uses: astral-sh/setup-uv@v7
@@ -212,10 +247,11 @@ jobs:
 
       - name: Build shared Lambda layer
         run: |
+          set -euo pipefail
           mkdir -p build/layer/python
           cp -r shared/ build/layer/python/shared/
           # Layer deps = project runtime deps + the `layer` group (alembic),
-          # exported pinned from uv.lock, installed for the arm64 Lambda target.
+          # exported pinned from uv.lock and installed for arm64 Lambda.
           uv export --frozen --no-hashes --no-emit-project --no-default-groups --group layer -o build/layer-reqs.txt
           uv pip install \
             --python-platform aarch64-manylinux_2_28 \
@@ -223,71 +259,40 @@ jobs:
             --target build/layer/python \
             --only-binary :all: \
             -r build/layer-reqs.txt
-          cd build/layer && zip -r ../shared-layer.zip python/
+          (cd build/layer && zip -qr ../shared-layer.zip python/)
 
-      - name: Build service zips
+      - name: Build shared services zip
         run: |
-          # Each zip holds the services/ tree twice. Flattened at the root, so handler
-          # paths like "tracking.handler.lambda_handler" resolve; and as the `services`
-          # package, so cross-service imports (`from services.billing.service import …`)
-          # resolve too. Flattened alone, tracking, claims and excel failed to import on
-          # AWS (No module named 'services'). Guarded by
-          # tests/unit/test_infrastructure_contracts.py::TestLambdaPackageLayout.
-          for service in tenant_management packing_list manifest tracking billing claims \
-                         payment_release refunds notification metering excel search; do
-            cd services
-            zip -r ../build/${service}.zip . --exclude "*/__pycache__/*" --exclude "*.pyc"
-            cd ..
-            zip -r build/${service}.zip services --exclude "*/__pycache__/*" --exclude "*.pyc"
-          done
-
-      - name: Build scheduled job zips
-        run: |
-          # Same layout as the service zips: flattened, plus the `services` package.
-          for job in storage_fee dispute_escalation sla_check storage_reminders \
-                     data_cleanup usage_aggregation release_expiry offboarding_export; do
-            cd services
-            zip -r ../build/scheduled-${job}.zip . --exclude "*/__pycache__/*" --exclude "*.pyc"
-            cd ..
-            zip -r build/scheduled-${job}.zip services --exclude "*/__pycache__/*" --exclude "*.pyc"
-          done
+          set -euo pipefail
+          # Single archive shared by all 25 service/auth/notification/scheduled Lambdas.
+          # Holds services/ twice: flattened at root (handler paths like
+          # "tracking.handler.lambda_handler") and as the `services` package
+          # (cross-service imports like `from services.billing.service import ...`).
+          # Guarded by tests/unit/test_infrastructure_contracts.py::TestLambdaPackageLayout.
+          mkdir -p build
+          (cd services && zip -qr ../build/services.zip . --exclude "*/__pycache__/*" --exclude "*.pyc")
+          zip -qr build/services.zip services --exclude "*/__pycache__/*" --exclude "*.pyc"
 
       - name: Build migration zip
         run: |
+          set -euo pipefail
+          # Lean package: migrations/ + handler.py. Runtime deps (alembic,
+          # psycopg2-binary, boto3) and shared/ come from the newly published
+          # shared-layer attached by _deploy-env.yml before invoking migrations —
+          # eliminating hardcoded dependency versions that drifted from uv.lock.
           mkdir -p build/migrate_pkg
-          # The migrate Lambda is self-contained (does NOT use the shared layer):
-          # bundle alembic + the DB driver directly, built for the arm64 target.
-          uv pip install \
-            --python-platform aarch64-manylinux_2_28 \
-            --python-version 3.13 \
-            --target build/migrate_pkg \
-            --only-binary :all: \
-            alembic==1.13.0 psycopg2-binary==2.9.11
           cp -r migrations/ build/migrate_pkg/migrations/
           cp services/migrate/handler.py build/migrate_pkg/handler.py
-          cd build/migrate_pkg && zip -r ../../build/migrate.zip .
+          (cd build/migrate_pkg && zip -qr ../../build/migrate.zip .)
 
       - name: Upload lambda packages
         uses: actions/upload-artifact@v7
         with:
           name: lambda-packages-${{ github.run_id }}
-          path: build/
-          # 7 days, not 30. Each of these is ~105 MB and one is produced per
-          # push to main, so 30 days of them reached 4.2 GB across 40 artifacts
-          # and exhausted the account's artifact storage quota. GitHub then
-          # stopped creating workflow runs at all ("Failed to CreateArtifact:
-          # Artifact storage quota has been hit"), so CI went silent on new
-          # pushes — a build failure on main that had nothing to do with the
-          # code. A week of redeployable builds is enough; anything older is
-          # rebuildable from its commit.
-          #
-          # NOTE: this value is CLAMPED by the repository's "Artifact and log
-          # retention" setting and cannot exceed it. That setting was 1 day
-          # (silently capping this to 1, so Deploy Pipeline — which fetches
-          # lambda-packages-{run_id} by run id — could only redeploy a build
-          # from the last 24h); raised to 7 on 2026-11-06 to match. Check it
-          # with:
-          #   gh api repos/:owner/:repo/actions/permissions/artifact-and-log-retention
-          # If artifacts expire sooner than this value, that setting is why.
+          path: |
+            build/shared-layer.zip
+            build/services.zip
+            build/migrate.zip
+          # 7 days (clamped by the repository's "Artifact and log retention" setting).
           retention-days: 7
           if-no-files-found: error

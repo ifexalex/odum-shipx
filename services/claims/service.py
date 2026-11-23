@@ -767,6 +767,16 @@ def log_missing_item(
         body=f"{len(req.carton_tags)} carton(s) reported missing. Please record the supply and loading check.",
         target_role=str(UserRole.CHINA_OFFICE_STAFF),
     )
+    # The China office is asked to record the supply and loading check, so it is told when one is logged.
+    notify_staff(
+        tenant_id=tenant_id,
+        event_type="missing_item_logged",
+        entity_type="missing_item",
+        entity_id=str(item["id"]),
+        title="Missing item reported",
+        body=f"{len(req.carton_tags)} carton(s) reported missing. Please record the supply and loading check.",
+        target_role=str(UserRole.CHINA_OFFICE_STAFF),
+    )
     return _fmt_missing(item)
 
 

@@ -1,0 +1,87 @@
+name: Terraform Init + Plan / Apply
+description: >-
+  Shared Terraform runner for AWS (apply) and Azure (plan-only preview)
+  environments. Cloud authentication must be configured by the caller first.
+
+inputs:
+  working-directory:
+    description: "Terraform root directory (infrastructure/aws or infrastructure/azure)"
+    required: true
+  environment:
+    description: "Target environment (dev, staging, prod, demo)"
+    required: true
+  mode:
+    description: "plan (read-only preview with -lock=false) or apply"
+    required: false
+    default: "plan"
+  terraform-version:
+    description: "Pinned Terraform CLI version"
+    required: false
+    default: "1.7.5"
+  import-aws-bootstrap:
+    description: "Idempotently import AWS OIDC/IAM bootstrap resources before planning"
+    required: false
+    default: "false"
+
+runs:
+  using: composite
+  steps:
+    - uses: hashicorp/setup-terraform@v4
+      with:
+        terraform_version: ${{ inputs.terraform-version }}
+
+    - name: Terraform Init
+      shell: bash
+      working-directory: ${{ inputs.working-directory }}
+      env:
+        ENV: ${{ inputs.environment }}
+      run: terraform init -backend-config="environments/${ENV}.backend.hcl"
+
+    - name: Import AWS bootstrap resources (idempotent)
+      if: inputs.import-aws-bootstrap == 'true'
+      shell: bash
+      working-directory: ${{ inputs.working-directory }}
+      env:
+        ENV: ${{ inputs.environment }}
+      run: |
+        set -euo pipefail
+        ACCOUNT_ID=$(aws sts get-caller-identity --query Account --output text)
+        TFVARS="-var-file=environments/${ENV}.tfvars"
+
+        import_once() {
+          local addr="$1" id="$2"
+          if terraform state show "$addr" &>/dev/null; then
+            echo "  ok: $addr already in state — skipping"
+          else
+            echo "  -> importing $addr"
+            terraform import $TFVARS "$addr" "$id"
+          fi
+        }
+
+        import_once module.iam_oidc.aws_iam_openid_connect_provider.github \
+          "arn:aws:iam::${ACCOUNT_ID}:oidc-provider/token.actions.githubusercontent.com"
+        import_once module.iam_oidc.aws_iam_policy.permissions_boundary \
+          "arn:aws:iam::${ACCOUNT_ID}:policy/logistics-lambda-permissions-boundary"
+        import_once 'module.iam_oidc.aws_iam_role.deploy["dev"]'     logistics-github-deploy-dev
+        import_once 'module.iam_oidc.aws_iam_role.deploy["staging"]' logistics-github-deploy-staging
+        import_once 'module.iam_oidc.aws_iam_role.deploy["prod"]'    logistics-github-deploy-prod
+        import_once 'module.iam_oidc.aws_iam_role.deploy["demo"]'    logistics-github-deploy-demo
+
+    - name: Terraform Plan (preview)
+      if: inputs.mode == 'plan'
+      shell: bash
+      working-directory: ${{ inputs.working-directory }}
+      env:
+        ENV: ${{ inputs.environment }}
+      run: terraform plan -var-file="environments/${ENV}.tfvars" -lock=false
+
+    - name: Terraform Plan & Apply
+      if: inputs.mode == 'apply'
+      shell: bash
+      working-directory: ${{ inputs.working-directory }}
+      env:
+        ENV: ${{ inputs.environment }}
+      run: |
+        set -euo pipefail
+        terraform plan -var-file="environments/${ENV}.tfvars" -out=tfplan
+        terraform apply tfplan

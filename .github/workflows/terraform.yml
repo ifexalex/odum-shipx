@@ -1,22 +1,24 @@
 name: Terraform
 
-# Triggered on infra changes to main. Code-only pushes skip this entirely.
-# staging and prod are gated by GitHub Environment protection rules (required reviewers).
+# AWS Terraform validation on PRs and progressive dev -> staging -> prod apply
+# on pushes to main. Staging and prod are gated by GitHub Environment protection
+# rules (required reviewers). Demo is standalone and dispatch-only.
 
 on:
+  pull_request:
+    branches: [main]
+    paths:
+      - "infrastructure/aws/**"
+      - "infrastructure/common/**"
+      - ".github/workflows/terraform.yml"
+      - ".github/actions/terraform-run/**"
   push:
     branches: [main]
     paths:
       - "infrastructure/aws/**"
       - "infrastructure/common/**"
-      # The workflow file itself, so a change to this file is exercised by the
-      # workflow it changes. frontend-ci.yml already does this; these two did
-      # not, and it cost a real verification: #133 fixed this workflow's
-      # permanently-failing staging job, touched nothing else, and therefore
-      # never ran — leaving the fix unverified until some unrelated infra change
-      # happened along. A CI fix you cannot trigger is a CI fix you have not
-      # tested.
       - ".github/workflows/terraform.yml"
+      - ".github/actions/terraform-run/**"
   workflow_dispatch:
     inputs:
       environment:
@@ -24,237 +26,142 @@ on:
         required: true
         type: choice
         options: [dev, staging, prod, demo]
-
-# Queue infra changes — never cancel a Terraform apply mid-run.
-concurrency:
-  group: terraform-${{ github.ref }}
-  cancel-in-progress: false
+        default: dev
 
 permissions:
   contents: read
 
 jobs:
-  # ── Dev — auto-applies on every infra change ─────────────────────────────
+  # ── Credential-free fmt + validate on PRs and pushes to main ─────────────
+  validate:
+    if: github.event_name == 'pull_request' || github.event_name == 'push'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: hashicorp/setup-terraform@v4
+        with:
+          terraform_version: "1.7.5"
+      - name: Terraform Format Check
+        working-directory: infrastructure/aws
+        run: terraform fmt -check -recursive
+      - name: Terraform Validate
+        working-directory: infrastructure/aws
+        run: |
+          terraform init -backend=false
+          terraform validate
+
+  # ── Dev — auto-applies on every AWS infra push to main ───────────────────
   terraform-dev:
+    needs: validate
     if: >-
-      (github.event_name == 'push' ||
-       (github.event_name == 'workflow_dispatch' && inputs.environment == 'dev')) &&
-      vars.DEPLOY_CLOUD != 'azure'
+      always() && vars.DEPLOY_CLOUD != 'azure' && (
+        (github.event_name == 'push' && needs.validate.result == 'success') ||
+        (github.event_name == 'workflow_dispatch' && inputs.environment == 'dev')
+      )
     runs-on: ubuntu-latest
     environment: dev
+    concurrency:
+      group: terraform-aws-dev
+      cancel-in-progress: false
     permissions:
       contents: read
       id-token: write
     steps:
       - uses: actions/checkout@v7
-
       - name: Configure AWS credentials
         uses: aws-actions/configure-aws-credentials@v6
         with:
           role-to-assume: ${{ secrets.AWS_DEPLOY_ROLE_ARN }}
           aws-region: eu-west-1
-
-      - uses: hashicorp/setup-terraform@v4
+      - uses: ./.github/actions/terraform-run
         with:
-          terraform_version: "1.7.5"
+          working-directory: infrastructure/aws
+          environment: dev
+          mode: apply
+          import-aws-bootstrap: "true"
 
-      - name: Terraform Init
-        working-directory: infrastructure/aws
-        run: terraform init -backend-config=environments/dev.backend.hcl
-
-      - name: Import bootstrap resources (idempotent)
-        working-directory: infrastructure/aws
-        run: |
-          ACCOUNT_ID=$(aws sts get-caller-identity --query Account --output text)
-          TFVARS="-var-file=environments/dev.tfvars"
-
-          import_once() {
-            local addr="$1" id="$2"
-            if terraform state show "$addr" &>/dev/null; then
-              echo "  ✓ $addr already in state — skipping"
-            else
-              echo "  → importing $addr"
-              terraform import $TFVARS "$addr" "$id"
-            fi
-          }
-
-          import_once module.iam_oidc.aws_iam_openid_connect_provider.github \
-            "arn:aws:iam::${ACCOUNT_ID}:oidc-provider/token.actions.githubusercontent.com"
-          import_once module.iam_oidc.aws_iam_policy.permissions_boundary \
-            "arn:aws:iam::${ACCOUNT_ID}:policy/logistics-lambda-permissions-boundary"
-          import_once 'module.iam_oidc.aws_iam_role.deploy["dev"]'     logistics-github-deploy-dev
-          import_once 'module.iam_oidc.aws_iam_role.deploy["staging"]' logistics-github-deploy-staging
-          import_once 'module.iam_oidc.aws_iam_role.deploy["prod"]'    logistics-github-deploy-prod
-          import_once 'module.iam_oidc.aws_iam_role.deploy["demo"]'    logistics-github-deploy-demo
-
-      - name: Terraform Format Check
-        working-directory: infrastructure/aws
-        run: terraform fmt -check -recursive
-
-      - name: Terraform Validate
-        working-directory: infrastructure/aws
-        run: terraform validate
-
-      - name: Terraform Plan
-        working-directory: infrastructure/aws
-        run: terraform plan -var-file=environments/dev.tfvars -out=tfplan
-
-      - name: Terraform Apply
-        working-directory: infrastructure/aws
-        run: terraform apply tfplan
-
-  # ── Staging — gated by dev success + GitHub Environment approval ─────────
+  # ── Staging — gated by dev success (on push/dev-dispatch) + env approval ─
   terraform-staging:
     needs: terraform-dev
     if: >-
-      (github.event_name == 'push' ||
-       (github.event_name == 'workflow_dispatch' && (inputs.environment == 'dev' || inputs.environment == 'staging'))) &&
-      vars.DEPLOY_CLOUD != 'azure'
+      always() && vars.DEPLOY_CLOUD != 'azure' && (
+        ((github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && inputs.environment == 'dev')) &&
+          needs.terraform-dev.result == 'success') ||
+        (github.event_name == 'workflow_dispatch' && inputs.environment == 'staging')
+      )
     runs-on: ubuntu-latest
     environment: staging
+    concurrency:
+      group: terraform-aws-staging
+      cancel-in-progress: false
     permissions:
       contents: read
       id-token: write
     steps:
       - uses: actions/checkout@v7
-
       - name: Configure AWS credentials
         uses: aws-actions/configure-aws-credentials@v6
         with:
           role-to-assume: ${{ secrets.AWS_DEPLOY_ROLE_ARN }}
           aws-region: eu-west-1
-
-      - uses: hashicorp/setup-terraform@v4
+      - uses: ./.github/actions/terraform-run
         with:
-          terraform_version: "1.7.5"
+          working-directory: infrastructure/aws
+          environment: staging
+          mode: apply
 
-      - name: Terraform Init
-        working-directory: infrastructure/aws
-        run: terraform init -backend-config=environments/staging.backend.hcl
-
-      - name: Terraform Format Check
-        working-directory: infrastructure/aws
-        run: terraform fmt -check -recursive
-
-      - name: Terraform Validate
-        working-directory: infrastructure/aws
-        run: terraform validate
-
-      - name: Terraform Plan
-        working-directory: infrastructure/aws
-        run: terraform plan -var-file=environments/staging.tfvars -out=tfplan
-
-      - name: Terraform Apply
-        working-directory: infrastructure/aws
-        run: terraform apply tfplan
-
-  # ── Prod — gated by staging success + GitHub Environment approval ─────────
+  # ── Prod — gated by staging success (on push/dev/staging-dispatch) + approval
   terraform-prod:
     needs: terraform-staging
-    if: vars.DEPLOY_CLOUD != 'azure'
+    if: >-
+      always() && vars.DEPLOY_CLOUD != 'azure' && (
+        ((github.event_name == 'push' ||
+          (github.event_name == 'workflow_dispatch' && (inputs.environment == 'dev' || inputs.environment == 'staging'))) &&
+          needs.terraform-staging.result == 'success') ||
+        (github.event_name == 'workflow_dispatch' && inputs.environment == 'prod')
+      )
     runs-on: ubuntu-latest
     environment: prod
+    concurrency:
+      group: terraform-aws-prod
+      cancel-in-progress: false
     permissions:
       contents: read
       id-token: write
     steps:
       - uses: actions/checkout@v7
-
       - name: Configure AWS credentials
         uses: aws-actions/configure-aws-credentials@v6
         with:
           role-to-assume: ${{ secrets.AWS_DEPLOY_ROLE_ARN }}
           aws-region: eu-west-1
-
-      - uses: hashicorp/setup-terraform@v4
+      - uses: ./.github/actions/terraform-run
         with:
-          terraform_version: "1.7.5"
+          working-directory: infrastructure/aws
+          environment: prod
+          mode: apply
 
-      - name: Terraform Init
-        working-directory: infrastructure/aws
-        run: terraform init -backend-config=environments/prod.backend.hcl
-
-      - name: Terraform Format Check
-        working-directory: infrastructure/aws
-        run: terraform fmt -check -recursive
-
-      - name: Terraform Validate
-        working-directory: infrastructure/aws
-        run: terraform validate
-
-      - name: Terraform Plan
-        working-directory: infrastructure/aws
-        run: terraform plan -var-file=environments/prod.tfvars -out=tfplan
-
-      - name: Terraform Apply
-        working-directory: infrastructure/aws
-        run: terraform apply tfplan
-
-  # ── Demo — standalone, dispatch-only (NOT in the dev→staging→prod chain) ──
-  # A short-lived throwaway env for a live link; apply on demand, then destroy.
-  # Mirrors terraform-dev (incl. the bootstrap-resource import) against the demo
-  # state + tfvars.
+  # ── Demo — standalone, dispatch-only (NOT in the dev->staging->prod chain)
   terraform-demo:
     if: github.event_name == 'workflow_dispatch' && inputs.environment == 'demo' && vars.DEPLOY_CLOUD != 'azure'
     runs-on: ubuntu-latest
     environment: demo
+    concurrency:
+      group: terraform-aws-demo
+      cancel-in-progress: false
     permissions:
       contents: read
       id-token: write
     steps:
       - uses: actions/checkout@v7
-
       - name: Configure AWS credentials
         uses: aws-actions/configure-aws-credentials@v6
         with:
           role-to-assume: ${{ secrets.AWS_DEPLOY_ROLE_ARN }}
           aws-region: eu-west-1
-
-      - uses: hashicorp/setup-terraform@v4
+      - uses: ./.github/actions/terraform-run
         with:
-          terraform_version: "1.7.5"
-
-      - name: Terraform Init
-        working-directory: infrastructure/aws
-        run: terraform init -backend-config=environments/demo.backend.hcl
-
-      - name: Import bootstrap resources (idempotent)
-        working-directory: infrastructure/aws
-        run: |
-          ACCOUNT_ID=$(aws sts get-caller-identity --query Account --output text)
-          TFVARS="-var-file=environments/demo.tfvars"
-
-          import_once() {
-            local addr="$1" id="$2"
-            if terraform state show "$addr" &>/dev/null; then
-              echo "  ✓ $addr already in state — skipping"
-            else
-              echo "  → importing $addr"
-              terraform import $TFVARS "$addr" "$id"
-            fi
-          }
-
-          import_once module.iam_oidc.aws_iam_openid_connect_provider.github \
-            "arn:aws:iam::${ACCOUNT_ID}:oidc-provider/token.actions.githubusercontent.com"
-          import_once module.iam_oidc.aws_iam_policy.permissions_boundary \
-            "arn:aws:iam::${ACCOUNT_ID}:policy/logistics-lambda-permissions-boundary"
-          import_once 'module.iam_oidc.aws_iam_role.deploy["dev"]'     logistics-github-deploy-dev
-          import_once 'module.iam_oidc.aws_iam_role.deploy["staging"]' logistics-github-deploy-staging
-          import_once 'module.iam_oidc.aws_iam_role.deploy["prod"]'    logistics-github-deploy-prod
-          import_once 'module.iam_oidc.aws_iam_role.deploy["demo"]'    logistics-github-deploy-demo
-
-      - name: Terraform Format Check
-        working-directory: infrastructure/aws
-        run: terraform fmt -check -recursive
-
-      - name: Terraform Validate
-        working-directory: infrastructure/aws
-        run: terraform validate
-
-      - name: Terraform Plan
-        working-directory: infrastructure/aws
-        run: terraform plan -var-file=environments/demo.tfvars -out=tfplan
-
-      - name: Terraform Apply
-        working-directory: infrastructure/aws
-        run: terraform apply tfplan
+          working-directory: infrastructure/aws
+          environment: demo
+          mode: apply
+          import-aws-bootstrap: "true"

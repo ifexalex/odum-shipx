@@ -1,5 +1,6 @@
 import { render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
+import { MemoryRouter } from 'react-router-dom'
 import { describe, expect, it, vi } from 'vitest'
 import { TopBar } from './TopBar'
 
@@ -84,5 +85,20 @@ describe('TopBar search slot', () => {
     const find = screen.getByLabelText('Find')
     const bell = screen.getByRole('button', { name: 'Notifications' })
     expect(find.compareDocumentPosition(bell) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+  })
+})
+
+describe('TopBar search slot', () => {
+  it('renders no search box unless one is passed', () => {
+    render(<TopBar role="nigeria" />)
+    expect(screen.queryByRole('combobox')).toBeNull()
+    expect(screen.queryByRole('textbox')).toBeNull()
+  })
+
+  it('renders whatever search control it is given, ahead of the actions', () => {
+    render(<TopBar role="nigeria" search={<input aria-label="Find" />} actions={<button type="button">Create</button>} />)
+    const find = screen.getByLabelText('Find')
+    const create = screen.getByRole('button', { name: 'Create' })
+    expect(find.compareDocumentPosition(create) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
   })
 })
