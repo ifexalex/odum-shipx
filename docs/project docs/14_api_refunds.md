@@ -154,6 +154,10 @@ inspecting this file directly — see `12_api_claims.md`'s matching entry for
 the full account. Fixed at the source (the INSERT now sets
 `'damage_or_loss'`) and defensively in the frontend label function.
 
+## Customer view of a refund (2026-11-17)
+
+`GET /v1/refunds/{id}` read by the customer it belongs to returns `reason` only when they raised the request themselves, `rejection_reason` always, and `null` for `approval_level`, `debt_check_passed`, `debt_check_notes` and `threshold`. Reason: a refund raised from a claim decision carries what staff typed when deciding, and the owner decided that a decision in the customer's favour does not show its reason (see `12_api_claims.md`). Staff reads are unchanged. Tests: `TestGetRefund` in `tests/unit/test_refunds.py`.
+
 ## Acceptance Criteria
 
 - [x] All 3 refund types handled (`overpayment`, `cbm_correction`, `damage_or_loss`)
@@ -164,3 +168,20 @@ the full account. Fixed at the source (the INSERT now sets
 - [x] Billing adjustments recalculate correctly
 - [x] Credit-next-shipment tracked (`applied_as_credit` status)
 - [x] Events: RefundApproved
+
+## Atomic, race-safe approval (2026-11-14)
+
+`approve` moves the refund out of `pending_approval` with a **guarded** update (`WHERE status = 'pending_approval'`) and, for
+an immediate refund, reduces the invoice total, recomputes its status and opens any new overpayment refund **in the same
+transaction** (`repo.approve_refund_and_adjust_billing`). Two simultaneous approvals therefore reduce the invoice once; the
+loser gets `409` (`changed by another request`). `accounts-review` and `reject` carry the same guard (`expected_status`).
+Before, the reduction was committed first and the status update second, so a double click or two approvers reduced the
+invoice twice. **New `refund_type` values `missing_item` and `seized_item`** are now allowed by the database (migration 063);
+they are what compensation for a seized or missing item creates, and the UI labels them "Missing item compensation" /
+"Seized item compensation".
+
+## A credit is spent only as far as it is needed (2026-11-17, audit BE-07)
+
+A refund approved as `credit_next_shipment` (`applied_as_credit`) used to be subtracted whole from the customer's next invoice and marked `completed`, even when it was larger than the invoice (which then went negative). `completed` is not a status `refund_request` allows, so on a real database every invoice that used a credit failed and rolled back: the customer was not invoiced at all (found by `tests/db/test_invoice_credits.py`, 2026-11-17). A used-up credit now becomes `processed`. It is now taken oldest first and only up to what the invoice comes to: `credit_applied_ngn` (new response field, migration 066) is how much has been used, the refund stays `applied_as_credit` while any is left, and becomes `processed` when it is used up. The credit is worth `amount_approved_ngn`, not the requested amount. Staff see "Credit used: ₦X of ₦Y" on the refund page. Detail and tests: `11_api_billing.md`.
+
+**Ground-truth gap found 2026-11-17 (OPS-03 work, not changed):** the customer's refund form (`frontend/src/pages/customer/RefundRequest.tsx`) offers "Bank account refund" but sends no `account_number` / `account_name`, so a customer-raised immediate refund reaches staff with no payout details. See frontend `07_domain_modules.md`.

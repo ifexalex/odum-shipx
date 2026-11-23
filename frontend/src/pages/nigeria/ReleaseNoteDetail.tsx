@@ -7,10 +7,12 @@ import { STALE_30S } from '../../lib/queryClient'
 import { releaseNotesApi, type DelegateIdType, type PickupResult, type ReleaseNote, type RecordPickupInput } from '../../api/releaseNotes'
 import {
   canRecordPickup,
+  canSendPickupCode,
   canSplitNote,
   isTerminalReleaseStatus,
   releaseNoteStatusLabel,
   releaseTypeLabel,
+  sentViaLabel,
 } from '../../api/releaseNotesRules'
 import { useSession } from '../../auth/useSession'
 import { useStaffList } from '../../hooks/useStaff'
@@ -25,14 +27,18 @@ import {
   Field,
   Icon,
   Kvp,
+  Modal,
   Mono,
   PhoneField,
   StatCard,
   ToggleSwitch,
+  DialogGuard,
   type BadgeVariant,
 } from '../../design/components'
 import { SectionHead } from '../../shell/SectionHead'
 import styles from './ReleaseNoteDetail.module.css'
+import { formatDate, formatNgn } from '../../lib/format'
+import { useBreadcrumbLabel } from '../../shell/breadcrumbs'
 
 // ---------------------------------------------------------------------------
 // Status helpers
@@ -70,6 +76,7 @@ function RecordPickupModal({ note, onCancel, onSuccess }: RecordPickupModalProps
   // common case; staff can overtype it (an employee, a family member, etc.
   // showing up without going through the delegate ID-verification flow).
   const [collectedByName, setCollectedByName] = useState(note.customer_name ?? '')
+  const [pickupCode, setPickupCode] = useState('')
   const [delegateName, setDelegateName] = useState('')
   const [delegatePhone, setDelegatePhone] = useState('')
   const [delegateIdType, setDelegateIdType] = useState<DelegateIdType>('national_id')
@@ -91,7 +98,10 @@ function RecordPickupModal({ note, onCancel, onSuccess }: RecordPickupModalProps
     delegateIdNumber.trim().length > 0
   )
   const collectorNamed = isDelegate || collectedByName.trim().length > 0
-  const canSubmit = Number(cartons) > 0 && delegateFilled && collectorNamed && !submitting
+  const codeRequired = note.pickup_code_required === true
+  const codeLocked = note.pickup_code_locked === true
+  const codeGiven = !codeRequired || pickupCode.trim().length > 0
+  const canSubmit = Number(cartons) > 0 && delegateFilled && collectorNamed && codeGiven && !codeLocked && !submitting
 
   async function handleSubmit(): Promise<void> {
     setSubmitting(true)
@@ -107,6 +117,7 @@ function RecordPickupModal({ note, onCancel, onSuccess }: RecordPickupModalProps
       } else {
         body.collected_by_name = collectedByName.trim()
       }
+      if (codeRequired) body.pickup_code = pickupCode.trim()
       if (warehouseId) body.warehouse_id = warehouseId
       if (csoId) body.customer_service_officer_id = csoId
       if (accountingOfficerId) body.accounting_officer_id = accountingOfficerId
@@ -122,6 +133,7 @@ function RecordPickupModal({ note, onCancel, onSuccess }: RecordPickupModalProps
 
   return (
     <div className={styles.modalOverlay} onClick={onCancel}>
+      <DialogGuard onClose={onCancel} />
       <div className={styles.modalPanel} onClick={(e) => e.stopPropagation()} role="dialog" aria-modal="true">
         <h3 className={styles.modalTitle}>Record pickup — {note.reference_number}</h3>
         {error && <div className={styles.modalBanner}><Banner variant="error" title="Action failed">{error}</Banner></div>}
@@ -134,6 +146,27 @@ function RecordPickupModal({ note, onCancel, onSuccess }: RecordPickupModalProps
           value={cartons}
           onChange={(e) => setCartons(e.target.value)}
         />
+
+        {codeLocked && (
+          <div className={styles.modalBanner}>
+            <Banner variant="error" title="Pickup code locked">
+              Too many wrong codes were entered. Send the customer a new code before these goods can be released.
+            </Banner>
+          </div>
+        )}
+        {codeRequired && !codeLocked && (
+          <Field
+            label="Pickup code"
+            name="pickup_code"
+            required
+            inputMode="numeric"
+            autoComplete="off"
+            value={pickupCode}
+            onChange={(e) => setPickupCode(e.target.value)}
+            placeholder="6-digit code"
+            helper="Ask the collector for the code that was sent to the customer."
+          />
+        )}
 
         <label className={styles.delegateToggle}>
           <ToggleSwitch checked={isDelegate} onChange={setIsDelegate} />
@@ -156,8 +189,8 @@ function RecordPickupModal({ note, onCancel, onSuccess }: RecordPickupModalProps
             <Field label="Delegate name" name="delegate_name" required value={delegateName} onChange={(e) => setDelegateName(e.target.value)} />
             <PhoneField label="Delegate phone" name="delegate_phone" required value={delegatePhone} onChange={setDelegatePhone} />
             <div>
-              <label style={{ fontSize: '0.875rem', fontWeight: 600, display: 'block', marginBottom: 6 }}>
-                ID type <span style={{ color: 'var(--color-error)' }}>*</span>
+              <label className={styles.fieldLabel}>
+                ID type <span className={styles.requiredMark}>*</span>
               </label>
               <select
                 aria-label="ID type"
@@ -179,8 +212,8 @@ function RecordPickupModal({ note, onCancel, onSuccess }: RecordPickupModalProps
             warehouse doesn't necessarily split these duties out. */}
         {warehouses.length > 0 && (
           <div>
-            <label style={{ fontSize: '0.875rem', fontWeight: 600, display: 'block', marginBottom: 6 }}>
-              Warehouse / branch <span style={{ color: 'var(--color-text-muted)', fontWeight: 400 }}>Optional</span>
+            <label className={styles.fieldLabel}>
+              Warehouse / branch <span className={styles.optionalHint}>Optional</span>
             </label>
             <select
               aria-label="Warehouse / branch"
@@ -198,8 +231,8 @@ function RecordPickupModal({ note, onCancel, onSuccess }: RecordPickupModalProps
         {staff.length > 0 && (
           <>
             <div>
-              <label style={{ fontSize: '0.875rem', fontWeight: 600, display: 'block', marginBottom: 6 }}>
-                Customer Service Officer <span style={{ color: 'var(--color-text-muted)', fontWeight: 400 }}>Optional</span>
+              <label className={styles.fieldLabel}>
+                Customer Service Officer <span className={styles.optionalHint}>Optional</span>
               </label>
               <select
                 aria-label="Customer Service Officer"
@@ -212,8 +245,8 @@ function RecordPickupModal({ note, onCancel, onSuccess }: RecordPickupModalProps
               </select>
             </div>
             <div>
-              <label style={{ fontSize: '0.875rem', fontWeight: 600, display: 'block', marginBottom: 6 }}>
-                Accounting Officer <span style={{ color: 'var(--color-text-muted)', fontWeight: 400 }}>Optional</span>
+              <label className={styles.fieldLabel}>
+                Accounting Officer <span className={styles.optionalHint}>Optional</span>
               </label>
               <select
                 aria-label="Accounting Officer"
@@ -269,19 +302,20 @@ function ReissueConfirmModal({ note, onCancel, onSuccess }: ReissueConfirmModalP
   }
 
   const storageFees = Number(note.storage_fees_ngn ?? 0)
-  const expiredDate = note.expired_at ? note.expired_at.slice(0, 10) : '—'
+  const expiredDate = formatDate(note.expired_at)
 
   return (
     <div className={styles.modalOverlay} onClick={onCancel}>
+      <DialogGuard onClose={onCancel} />
       <div className={styles.modalPanel} onClick={(e) => e.stopPropagation()} role="dialog" aria-modal="true">
         <h3 className={styles.modalTitle}>Re-issue release note</h3>
         {error && <div className={styles.modalBanner}><Banner variant="error" title="Action failed">{error}</Banner></div>}
         <Banner variant="warning" title="Outstanding storage fees">
           {storageFees > 0
-            ? `This release note has ₦${storageFees.toLocaleString()} in outstanding storage fees. The new note will carry this balance forward.`
+            ? `This release note has ${formatNgn(storageFees)} in outstanding storage fees. The new note will carry this balance forward.`
             : 'No outstanding storage fees on this release note.'}
         </Banner>
-        <p style={{ fontSize: '0.875rem', color: 'var(--color-text-muted)', margin: 0 }}>
+        <p className={styles.mutedNote}>
           A new release note will be created with the same carton tags and a fresh 14-day window.
           The expired note ({note.reference_number}, expired {expiredDate}) will be preserved for audit purposes.
         </p>
@@ -293,6 +327,59 @@ function ReissueConfirmModal({ note, onCancel, onSuccess }: ReissueConfirmModalP
         </div>
       </div>
     </div>
+  )
+}
+
+// ---------------------------------------------------------------------------
+// SendPickupCodeModal — a fresh pickup code for the customer (audit UX-09)
+// ---------------------------------------------------------------------------
+
+interface SendPickupCodeModalProps {
+  note: ReleaseNote
+  onCancel: () => void
+  onSent: (sentVia: string[]) => void
+}
+
+function SendPickupCodeModal({ note, onCancel, onSent }: SendPickupCodeModalProps): JSX.Element {
+  const [submitting, setSubmitting] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+
+  async function handleSend(): Promise<void> {
+    setSubmitting(true)
+    setError(null)
+    try {
+      const result = await releaseNotesApi.sendPickupCode(note.id)
+      onSent(result.sent_via)
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : 'Could not send a new pickup code.')
+    } finally {
+      setSubmitting(false)
+    }
+  }
+
+  return (
+    <Modal
+      open
+      title="Send a new pickup code"
+      width={480}
+      onClose={onCancel}
+      footer={
+        <>
+          <Button variant="ghost" onClick={onCancel} disabled={submitting}>Cancel</Button>
+          <Button variant="primary" loading={submitting} onClick={() => void handleSend()}>Send new code</Button>
+        </>
+      }
+    >
+      {error && <div className={styles.modalBanner}><Banner variant="error" title="Not sent">{error}</Banner></div>}
+      <p className={styles.flushParagraph}>
+        {note.customer_name ?? 'The customer'} will be sent a new code for <Mono>{note.reference_number}</Mono> by SMS and email.
+        {note.pickup_code_required ? ' The code they have now will stop working.' : ''}
+        {note.pickup_code_locked ? ' This also unlocks the release note.' : ''}
+      </p>
+      <p className={styles.pickupHint}>
+        Nobody at the company sees the code: it goes only to the customer, who gives it to whoever collects.
+      </p>
+    </Modal>
   )
 }
 
@@ -339,6 +426,7 @@ function SplitModal({ note, onCancel, onSuccess }: SplitModalProps): JSX.Element
 
   return (
     <div className={styles.modalOverlay} onClick={onCancel}>
+      <DialogGuard onClose={onCancel} />
       <div className={styles.modalPanel} onClick={(e) => e.stopPropagation()} role="dialog" aria-modal="true">
         <h3 className={styles.modalTitle}>Split release note</h3>
         {error && <div className={styles.modalBanner}><Banner variant="error" title="Action failed">{error}</Banner></div>}
@@ -395,6 +483,8 @@ export function ReleaseNoteDetail(): JSX.Element {
     ...(stateNote ? { initialData: stateNote } : {}),
     staleTime: STALE_30S,
   })
+  // Names this record in the breadcrumb once loaded (FD-46).
+  useBreadcrumbLabel(note?.reference_number)
 
   const error = loadError
     ? loadError instanceof ApiError
@@ -405,6 +495,8 @@ export function ReleaseNoteDetail(): JSX.Element {
   const [showPickup, setShowPickup] = useState(false)
   const [showSplit, setShowSplit] = useState(false)
   const [showReissue, setShowReissue] = useState(false)
+  const [showSendCode, setShowSendCode] = useState(false)
+  const [codeSentVia, setCodeSentVia] = useState<string[] | null>(null)
   const [pickupResult, setPickupResult] = useState<PickupResult | null>(null)
 
 
@@ -444,7 +536,7 @@ export function ReleaseNoteDetail(): JSX.Element {
             <div className={styles.heroMeta}>
               {note.customer_name && <span>{note.customer_name}</span>}
               {note.container_number && <span> · {note.container_number}</span>}
-              <span> · Issued {note.authorized_at.slice(0, 10)}</span>
+              <span> · Issued {formatDate(note.authorized_at)}</span>
               {note.valid_until && !isExpired && (
                 <span> · Valid until {note.valid_until}</span>
               )}
@@ -470,6 +562,11 @@ export function ReleaseNoteDetail(): JSX.Element {
               Record pickup
             </Action>
           )}
+          {canSendPickupCode(note, r) && (
+            <Action variant="secondary" icon="refresh" onClick={() => setShowSendCode(true)}>
+              {note.pickup_code_required ? 'Send new pickup code' : 'Send pickup code'}
+            </Action>
+          )}
           {!isTerminal && !isExpired && showSplitBtn && note.carton_tags.length > 1 && (
             <Action variant="secondary" onClick={() => setShowSplit(true)}>
               Split note
@@ -482,14 +579,14 @@ export function ReleaseNoteDetail(): JSX.Element {
       {isExpired && (
         <div className={styles.section}>
           <Banner variant="error" title="Release note expired">
-            This release note expired on {note.expired_at ? note.expired_at.slice(0, 10) : '—'}.
+            This release note expired on {formatDate(note.expired_at)}.
             The customer cannot collect their goods until a new release note is issued.
           </Banner>
         </div>
       )}
       {isExpired && storageFees > 0 && (
         <div className={styles.section}>
-          <Banner variant="warning" title={`Outstanding storage fees: ₦${storageFees.toLocaleString()}`}>
+          <Banner variant="warning" title={`Outstanding storage fees: ${formatNgn(storageFees)}`}>
             Storage fees continue to accrue until the goods are collected. The balance will carry forward to the re-issued note.
           </Banner>
         </div>
@@ -504,6 +601,21 @@ export function ReleaseNoteDetail(): JSX.Element {
       )}
 
       {/* Pickup success feedback */}
+      {note.pickup_code_locked && note.status === 'active' && (
+        <div className={styles.section}>
+          <Banner variant="error" title="Pickup code locked">
+            Too many wrong pickup codes were entered at the warehouse, so these goods cannot be released. Check with the
+            customer, then send them a new code.
+          </Banner>
+        </div>
+      )}
+      {codeSentVia && (
+        <div className={styles.successBanner}>
+          <Banner variant="success" title="New pickup code sent" dismissible onDismiss={() => setCodeSentVia(null)}>
+            Sent to the customer by {sentViaLabel(codeSentVia)}. Any earlier code no longer works.
+          </Banner>
+        </div>
+      )}
       {pickupResult && (
         <div className={styles.successBanner}>
           <Banner variant="success" title="Pickup recorded">
@@ -521,7 +633,7 @@ export function ReleaseNoteDetail(): JSX.Element {
         <StatCard label="Type" value={releaseTypeLabel(note)} />
         <StatCard label="Payment status" value={note.payment_status.replace('_', ' ')} />
         {isExpired && storageFees > 0 && (
-          <StatCard label="Storage fees" value={`₦${storageFees.toLocaleString()}`} />
+          <StatCard label="Storage fees" value={formatNgn(storageFees)} />
         )}
       </div>
 
@@ -550,7 +662,7 @@ export function ReleaseNoteDetail(): JSX.Element {
             <Kvp label="Packing list invoice(s)" value={note.packing_list_invoice_numbers.join(', ')} />
           )}
           <Kvp label="Warehouse" value={note.warehouse_name ? `${note.warehouse_name}${note.warehouse_address ? ` — ${note.warehouse_address}` : ''}` : '—'} />
-          <Kvp label="Issued" value={note.authorized_at.slice(0, 10)} divider={!note.is_on_credit && !note.receipt_number} />
+          <Kvp label="Issued" value={formatDate(note.authorized_at)} divider={!note.is_on_credit && !note.receipt_number} />
           {note.is_on_credit && (
             <Kvp
               label="On credit"
@@ -561,7 +673,7 @@ export function ReleaseNoteDetail(): JSX.Element {
           {(Number(note.amount_paid_ngn) > 0 || Number(note.balance_ngn) > 0) && (
             <Kvp
               label="Payment"
-              value={`₦${Number(note.amount_paid_ngn).toLocaleString()} paid of ₦${Number(note.total_ngn).toLocaleString()} — ₦${Number(note.balance_ngn).toLocaleString()} outstanding`}
+              value={`${formatNgn(note.amount_paid_ngn)} paid of ${formatNgn(note.total_ngn)} — ${formatNgn(note.balance_ngn)} outstanding`}
             />
           )}
           {note.debt_due_date && <Kvp label="Debt payment due" value={note.debt_due_date} divider={false} />}
@@ -579,15 +691,9 @@ export function ReleaseNoteDetail(): JSX.Element {
               ))}
             </div>
           ) : (
-            <span style={{ color: 'var(--color-text-muted)', fontSize: '0.875rem' }}>No carton tags recorded.</span>
+            <span className={styles.mutedText}>No carton tags recorded.</span>
           )}
         </Card>
-      </div>
-
-      <div className={styles.backLink}>
-        <Button variant="ghost" icon="arrowleft" onClick={() => navigate('/release-notes')}>
-          Back to release notes
-        </Button>
       </div>
 
       {/* Modals */}
@@ -620,6 +726,17 @@ export function ReleaseNoteDetail(): JSX.Element {
             // releaseNoteKeys.detail(id) is a child of releaseNoteKeys.all, so
             // this one invalidation now refreshes this page as well as the list
             // — the explicit reload it replaced is redundant.
+            void qc.invalidateQueries({ queryKey: releaseNoteKeys.all })
+          }}
+        />
+      )}
+      {showSendCode && (
+        <SendPickupCodeModal
+          note={note}
+          onCancel={() => setShowSendCode(false)}
+          onSent={(sentVia) => {
+            setShowSendCode(false)
+            setCodeSentVia(sentVia)
             void qc.invalidateQueries({ queryKey: releaseNoteKeys.all })
           }}
         />

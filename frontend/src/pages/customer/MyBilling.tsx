@@ -6,6 +6,7 @@ import { useBillingList } from '../../hooks/useBilling'
 import { Badge, Banner, ListFooter, Mono, type BadgeVariant } from '../../design/components'
 import { PageHeader } from '../../shell/PageHeader'
 import styles from './customer.module.css'
+import { formatNgn } from '../../lib/format'
 
 const STATUS_VARIANT: Record<Billing['payment_status'], BadgeVariant> = {
   unpaid: 'error',
@@ -85,15 +86,15 @@ export function MyBilling(): JSX.Element {
               <div className={styles.cardLeft}>
                 <p className={styles.cardTitle}>{b.container_number ?? b.container_id}</p>
                 <div className={styles.cardMeta}>
-                  <span>Total due: <Mono>₦{Number(b.total_due_ngn).toLocaleString()}</Mono></span>
-                  <span>Paid: <Mono>₦{Number(b.total_paid_ngn).toLocaleString()}</Mono></span>
+                  <span>Total due: <Mono>{formatNgn(b.total_due_ngn)}</Mono></span>
+                  <span>Paid: <Mono>{formatNgn(b.total_paid_ngn)}</Mono></span>
                 </div>
               </div>
               <div className={styles.cardRight}>
                 <Badge variant={STATUS_VARIANT[b.payment_status]}>{statusLabel(b.payment_status)}</Badge>
                 {outstanding > 0 && (
                   <span className={styles.amountSub} style={{ color: 'var(--color-error)' }}>
-                    ₦{outstanding.toLocaleString()} outstanding
+                    {formatNgn(outstanding)} outstanding
                   </span>
                 )}
               </div>

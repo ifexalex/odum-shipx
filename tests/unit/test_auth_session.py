@@ -14,6 +14,7 @@ from botocore.exceptions import ClientError
 
 from services.auth import cognito_refresh, handler
 from shared.exceptions import AuthenticationRequiredError, ExternalServiceError
+from tests.browser import BROWSER_HEADERS
 
 REFRESH_TOKEN = "a-valid-looking-refresh-token-value"  # noqa: S105 — test fixture, not a real credential
 
@@ -102,6 +103,7 @@ class TestRevokeRefreshToken:
 def _event(method: str, path: str, body: dict | None = None, cookies: list[str] | None = None) -> dict:
     event = {
         "requestContext": {"requestId": "req-1", "http": {"method": method, "path": path}},
+        "headers": dict(BROWSER_HEADERS),
     }
     if body is not None:
         event["body"] = json.dumps(body)

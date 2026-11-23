@@ -7,8 +7,9 @@ tracking updates, billing event triggers, and customer-facing tracking lookup.
 import logging
 from typing import Any
 
-from services.billing.service import handle_payment_due
+from services.billing.service import generate_container_invoices
 from services.metering.service import check_container_limit
+from shared import uploads
 from shared.audit import log_audit
 from shared.events import publish_event
 from shared.exceptions import (
@@ -27,9 +28,7 @@ from . import repository as repo
 from .models import TrackingStage
 
 _URL_EXPIRY = 900  # 15 minutes
-_MAX_FILE_SIZE = 20 * 1024 * 1024  # 20 MB
 _ALLOWED_DOCUMENT_TYPES = frozenset({"bill_of_lading", "customs_certificate", "insurance", "inspection_report", "other"})
-_ALLOWED_CONTENT_TYPES = frozenset({"application/pdf", "image/jpeg", "image/png", "image/webp", "application/octet-stream"})
 
 logger = logging.getLogger(__name__)
 
@@ -367,6 +366,7 @@ def update_container_status(
                     template_data={"container_number": container.get("container_number", "")},
                     locale=customer.get("locale", "en"),
                     request_id=request_id,
+                    customer_id=str(customer["id"]),
                 )
                 # In-app customer bell — see payment_release/service.py's
                 # matching comment.
@@ -442,30 +442,30 @@ def update_container_status(
     #
     # Ground-truth fix: billing/handler.py's EventBridge branch (source=
     # logistics.tracking, detail-type=PaymentDue → auto-create billing) is
-    # never actually invoked — infrastructure/aws/modules/eventbridge/main.tf's
-    # routing rules only fan PaymentDue out to the SMS/WhatsApp notification
-    # queues, there is no rule/target wiring EventBridge to invoke the billing
-    # Lambda itself. So a container could sail all the way through `cleared`
+    # never actually invoked: there is no rule/target wiring EventBridge to
+    # invoke the billing Lambda. So a container could sail all the way through `cleared`
     # → `at_warehouse` with zero billing rows ever created, in both local dev
     # and production. Call the billing generation directly (cross-service
     # import already has precedent — see check_container_limit above and
     # claims/service.py's refunds import) so billing exists the moment the
     # container clears, regardless of whether the event infra is ever fixed.
-    # The event publish stays: it's what the SMS/WhatsApp routing rules key
-    # off of for the "payment due" customer notification.
+    # The event publish stays for metering (the bus's only target). The
+    # "payment due" message is enqueued directly by handle_payment_due; no
+    # EventBridge rule feeds a notification queue (audit BE-09).
+    billing_summary: list[dict[str, Any]] | None = None
     if new_status == "cleared":
         customers = repo.get_customers_for_container(tenant_id, container_id)
+        billing_summary = generate_container_invoices(
+            tenant_id=tenant_id,
+            container_id=container_id,
+            container_number=container.get("container_number"),
+            customers=customers,
+            request_id=request_id,
+        )
+        invoiced = {row["customer_id"] for row in billing_summary if row["status"] == "created"}
         for customer in customers:
-            try:
-                handle_payment_due(
-                    tenant_id=tenant_id,
-                    container_id=container_id,
-                    customer_id=str(customer["id"]),
-                    container_number=container.get("container_number"),
-                    request_id=request_id,
-                )
-            except Exception:
-                logger.exception("Failed to generate billing for customer %s", customer["id"])
+            if str(customer["id"]) not in invoiced:
+                continue
             try:
                 publish_event(
                     source="logistics.tracking",
@@ -521,7 +521,13 @@ def update_container_status(
         ip_address=ip_address,
     )
 
-    return dict(updated)
+    result = dict(updated)
+    if billing_summary is not None:
+        # Per-customer invoice outcome, so staff see who was billed, who already
+        # had an invoice, and who was skipped or failed (and why) at the moment
+        # of clearing rather than discovering it later.
+        result["billing_summary"] = billing_summary
+    return result
 
 
 def get_container_events(tenant_id: str, container_id: str) -> list[dict[str, Any]]:
@@ -622,6 +628,7 @@ def generate_document_presigned_url(
     content_type: str,
     document_type: str,
     actor_id: str,
+    size_bytes: object = None,
 ) -> dict[str, Any]:
     """Generate an S3 presigned POST URL for uploading a container document.
 
@@ -629,13 +636,7 @@ def generate_document_presigned_url(
     S3 key is scoped to {tenant_id}/containers/{container_id}/ to enforce
     tenant isolation.
     """
-    if content_type not in _ALLOWED_CONTENT_TYPES:
-        from shared.exceptions import BusinessRuleViolationError
-
-        raise BusinessRuleViolationError(
-            f"content_type '{content_type}' not allowed. Allowed: {', '.join(sorted(_ALLOWED_CONTENT_TYPES))}",
-            rule_id="INVALID_CONTENT_TYPE",
-        )
+    uploads.CONTAINER_DOCUMENT.check(content_type, size_bytes)
     if document_type not in _ALLOWED_DOCUMENT_TYPES:
         from shared.exceptions import BusinessRuleViolationError
 
@@ -648,10 +649,11 @@ def generate_document_presigned_url(
     if not container:
         raise ResourceNotFoundError("container", container_id)
 
-    filename = safe_filename(filename)
-    s3_key = f"{tenant_id}/containers/{container_id}/{filename}"
-
-    ticket = get_storage_provider().presigned_upload(s3_key, content_type=content_type, expires_in=_URL_EXPIRY)
+    upload = uploads.presign_upload(
+        uploads.CONTAINER_DOCUMENT, tenant_id, ("containers", container_id), filename, content_type, size_bytes
+    )
+    s3_key = upload.key
+    filename = s3_key.rsplit("/", 1)[-1]
 
     doc = repo.create_container_document(
         tenant_id,
@@ -667,10 +669,10 @@ def generate_document_presigned_url(
     )
 
     return {
-        **ticket.as_response(),
+        **upload.as_response(),
         "document_id": str(doc["id"]) if doc else None,
         "s3_key": s3_key,
-        "expires_in_seconds": _URL_EXPIRY,
+        "expires_in_seconds": upload.expires_in,
     }
 
 

@@ -80,18 +80,23 @@ export interface SelfRegisterInput {
   notification_consent?: string[]
 }
 
+/**
+ * The answer to a registration, which is the same whether the email was new or already had an
+ * account. The endpoint is public, so any difference would let anyone test who is a customer of a
+ * given company. An existing account's owner is told by email instead.
+ */
 export interface SelfRegisterResult {
-  id: string
-  name: string | null
-  email: string | null
+  status: 'received'
 }
 
 export const registerApi = {
   /**
    * Registers a new customer against the tenant identified by `slug`
-   * (POST /v1/register/{slug}). The backend provisions the Cognito user,
-   * which emails a temporary password — the customer then signs in and is
-   * prompted to set a permanent one (NEW_PASSWORD_REQUIRED challenge).
+   * (POST /v1/register/{slug}). For a new email the backend provisions the
+   * Cognito user, which emails a temporary password — the customer then signs
+   * in and is prompted to set a permanent one (NEW_PASSWORD_REQUIRED
+   * challenge). For an email that already has an account it creates nothing and
+   * emails the owner instead; the response is `202` and identical in both cases.
    */
   selfRegister: (slug: string, body: SelfRegisterInput) =>
     apiRequest<SelfRegisterResult>({ method: 'POST', path: `/v1/register/${encodeURIComponent(slug)}`, body }),

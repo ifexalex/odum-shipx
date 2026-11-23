@@ -11,6 +11,7 @@ import { useDateRangeFilter } from '../../hooks/useDateRangeFilter'
 import { type SortableColumn, useTableSort } from '../../hooks/useTableSort'
 import { useTopBarSlot } from '../../shell/TopBarContext'
 import styles from './ClaimList.module.css'
+import { formatDate } from '../../lib/format'
 
 // 'Claim ID' (reference, text) defaults asc; 'Filed' (created_at) defaults
 // desc (newest first) — same convention as BillingList/ContainerList.
@@ -202,7 +203,7 @@ export function ClaimList(): JSX.Element {
                 : <span key="method" style={{ color: 'var(--color-ink-4)', fontSize: 12 }}>—</span>,
               <Badge key="status" variant={STATUS_VARIANT[c.status]}>{STATUS_LABEL[c.status]}</Badge>,
               <span key="filed" className={styles.metaText}>
-                {new Date(c.created_at).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })}
+                {formatDate(c.created_at, 'short')}
               </span>,
               <div key="action" className={styles.rowActions}>{rowAction(c, navigate)}</div>,
             ],

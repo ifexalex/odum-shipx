@@ -6,7 +6,8 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { withQuery } from '../../test/queryWrapper'
 import { SessionContext, type SessionContextValue } from '../../auth/SessionContext'
 import type { Session, UserRole } from '../../auth/types'
-import { containersApi, type Container } from '../../api/tracking'
+import { ApiError } from '../../api/client'
+import { containerDocumentsApi, containersApi, uploadToPresignedUrl, type Container } from '../../api/tracking'
 import { packingListApi, type PackingList } from '../../api/packingList'
 import { TopBarContext } from '../../shell/TopBarContext'
 import { ContainerDetail } from './ContainerDetail'
@@ -15,9 +16,8 @@ function TopBarWrapper({ children }: { children: ReactNode }) {
   const [suffix, setSuffix] = useState<string | null>(null)
   const [subtitle, setSubtitle] = useState<string | null>(null)
   const [actions, setActions] = useState<ReactNode | null>(null)
-  const [onSearch, setOnSearch] = useState<((query: string) => void) | null>(null)
   return (
-    <TopBarContext.Provider value={{ suffix, setSuffix, subtitle, setSubtitle, actions, setActions, onSearch, setOnSearch }}>
+    <TopBarContext.Provider value={{ suffix, setSuffix, subtitle, setSubtitle, actions, setActions }}>
       {children}
     </TopBarContext.Provider>
   )
@@ -25,6 +25,8 @@ function TopBarWrapper({ children }: { children: ReactNode }) {
 
 vi.mock('../../api/tracking', () => ({
   containersApi: { get: vi.fn(), updateStatus: vi.fn(), events: vi.fn() },
+  containerDocumentsApi: { list: vi.fn(), presignUpload: vi.fn(), downloadUrl: vi.fn() },
+  uploadToPresignedUrl: vi.fn(),
 }))
 vi.mock('../../api/packingList', () => ({
   packingListApi: { listByContainer: vi.fn() },
@@ -349,3 +351,91 @@ describe('ContainerDetail', () => {
     expect(screen.getByText('Packing lists on this container')).toBeInTheDocument()
   })
 })
+
+describe('ContainerDetail document upload (audit BE-12)', () => {
+  beforeEach(() => {
+    vi.mocked(containersApi.get).mockResolvedValue(containerStub)
+    vi.mocked(containersApi.events).mockResolvedValue([])
+    vi.mocked(packingListApi.listByContainer).mockResolvedValue({
+      data: [],
+      meta: { pagination: { has_more: false, next_cursor: null, total_count: 0 } },
+    })
+    vi.mocked(containerDocumentsApi.list).mockResolvedValue([])
+    vi.mocked(containerDocumentsApi.presignUpload).mockReset()
+    vi.mocked(uploadToPresignedUrl).mockReset()
+  })
+
+  async function openUpload(): Promise<HTMLElement> {
+    renderPage('china_office_staff')
+    await userEvent.click(await screen.findByRole('tab', { name: /Documents/ }))
+    await userEvent.click(await screen.findByRole('button', { name: 'Upload document' }))
+    return screen.findByRole('dialog')
+  }
+
+  function pick(dialog: HTMLElement, file: File): Promise<void> {
+    const input = dialog.querySelector('input[type="file"]') as HTMLInputElement
+    // userEvent.upload would drop a file that does not match `accept`; a real browser lets "All files" through.
+    return userEvent.upload(input, file, { applyAccept: false })
+  }
+
+  it('refuses a file the browser could not type, in the dialog, without asking the server', async () => {
+    const dialog = await openUpload()
+    await pick(dialog, new File(['x'], 'scan', { type: '' }))
+    await userEvent.click(screen.getByRole('button', { name: 'Upload' }))
+    expect(await screen.findByText('Choose a PDF, JPEG, PNG or WebP file.')).toBeInTheDocument()
+    expect(dialog).toContainElement(screen.getByText('Choose a PDF, JPEG, PNG or WebP file.'))
+    expect(containerDocumentsApi.presignUpload).not.toHaveBeenCalled()
+  })
+
+  it('sends the real type, never application/octet-stream', async () => {
+    vi.mocked(containerDocumentsApi.presignUpload).mockResolvedValue({
+      upload_url: 'https://storage.test/put',
+      document_id: 'd1',
+      s3_key: 't1/containers/c1/bl.pdf',
+      expires_in_seconds: 900,
+    } as never)
+    const dialog = await openUpload()
+    await pick(dialog, new File(['%PDF'], 'bl.pdf', { type: 'application/pdf' }))
+    await userEvent.click(screen.getByRole('button', { name: 'Upload' }))
+    await waitFor(() =>
+      expect(containerDocumentsApi.presignUpload).toHaveBeenCalledWith('c1', {
+        filename: 'bl.pdf',
+        content_type: 'application/pdf',
+        document_type: 'bill_of_lading',
+        size_bytes: 4,
+      }),
+    )
+  })
+
+  it('shows a server refusal inside the dialog, not behind it', async () => {
+    vi.mocked(containerDocumentsApi.presignUpload).mockRejectedValue(
+      new ApiError(
+        {
+          type: 'about:blank',
+          title: 'Business Rule Violation',
+          status: 422,
+          detail: "content_type 'image/png' is not allowed.",
+          error_code: 'BUSINESS_RULE_VIOLATION',
+          rule_id: 'INVALID_CONTENT_TYPE',
+        },
+        null,
+      ),
+    )
+    const dialog = await openUpload()
+    await pick(dialog, new File(['x'], 'a.png', { type: 'image/png' }))
+    await userEvent.click(screen.getByRole('button', { name: 'Upload' }))
+    const message = await screen.findByText("content_type 'image/png' is not allowed.")
+    expect(dialog).toContainElement(message)
+  })
+
+  it('refuses a file over 5 MB in the dialog, without asking the server', async () => {
+    const dialog = await openUpload()
+    const big = new File(['x'], 'scan.pdf', { type: 'application/pdf' })
+    Object.defineProperty(big, 'size', { value: 6 * 1024 * 1024 })
+    await pick(dialog, big)
+    await userEvent.click(screen.getByRole('button', { name: 'Upload' }))
+    expect(await screen.findByText('This file is 6.0 MB. The limit is 5 MB.')).toBeInTheDocument()
+    expect(containerDocumentsApi.presignUpload).not.toHaveBeenCalled()
+  })
+})
+

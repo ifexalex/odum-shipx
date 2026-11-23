@@ -4,6 +4,7 @@ import { billingApi } from '../../api/billing'
 import { ApiError } from '../../api/client'
 import { Button } from '../../design/components'
 import styles from './customer.module.css'
+import { useInvoiceCrumb } from './useInvoiceCrumb'
 
 type ReconcileState = 'verifying' | 'success' | 'pending' | 'error'
 
@@ -20,6 +21,7 @@ type ReconcileState = 'verifying' | 'success' | 'pending' | 'error'
 // confirm_online_payment for the backend half.
 export function PaymentSuccess(): JSX.Element {
   const { id } = useParams<{ id: string }>()
+  useInvoiceCrumb(id)
   const [searchParams] = useSearchParams()
   const navigate = useNavigate()
   // Whether there is anything to verify is known from the URL at render time,

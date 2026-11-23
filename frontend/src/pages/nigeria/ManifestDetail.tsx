@@ -30,10 +30,12 @@ import {
   StatCard,
   Table,
   ViewLink,
+  DialogGuard,
   type BadgeVariant,
 } from '../../design/components'
 import { SectionHead } from '../../shell/SectionHead'
 import styles from './ManifestDetail.module.css'
+import { useBreadcrumbLabel } from '../../shell/breadcrumbs'
 
 // ---------------------------------------------------------------------------
 // Carton diff helpers
@@ -148,6 +150,7 @@ function VerifyManifestModal({ manifest, onCancel, onVerified }: VerifyManifestM
 
   return (
     <div className={styles.modalOverlay} onClick={onCancel}>
+      <DialogGuard onClose={onCancel} />
       <div className={styles.modalPanel} onClick={(event) => event.stopPropagation()} role="dialog" aria-modal="true">
         <h3 className={styles.modalTitle}>Verify manifest</h3>
         {error && (
@@ -250,6 +253,7 @@ function VerifyManifestModal({ manifest, onCancel, onVerified }: VerifyManifestM
                           manifest.id,
                           f.name,
                           f.type,
+                          f.size,
                           discrepancyLabel(customer?.customer_name ?? draft.customerId, draft),
                         )
                       }
@@ -310,6 +314,7 @@ function ResolveDiscrepancyModal({ manifest, onCancel, onResolved }: ResolveDisc
 
   return (
     <div className={styles.modalOverlay} onClick={onCancel}>
+      <DialogGuard onClose={onCancel} />
       <div className={styles.modalPanel} onClick={(event) => event.stopPropagation()} role="dialog" aria-modal="true">
         <h3 className={styles.modalTitle}>Resolve discrepancy</h3>
         {error && (
@@ -358,6 +363,8 @@ export function ManifestDetail(): JSX.Element {
     enabled: !!id,
     staleTime: STALE_30S,
   })
+  // Names this record in the breadcrumb once loaded (FD-46).
+  useBreadcrumbLabel(manifest?.container_number)
 
   const [actionError, setActionError] = useState<string | null>(null)
 
@@ -522,7 +529,7 @@ export function ManifestDetail(): JSX.Element {
               // customer when cargo lands, so keep them adjacent here too.
               c.customer_phone
                 ? <Mono key="phone">{c.customer_phone}</Mono>
-                : <span key="phone" style={{ color: 'var(--color-ink-4)' }}>—</span>,
+                : <span key="phone" className={styles.dimText}>—</span>,
               <Mono key="cartons">{c.carton_count}</Mono>,
               <Mono key="cbm">{formatCbm(c.total_cbm)}</Mono>,
               <Mono key="weight">{c.total_weight_kg != null ? `${c.total_weight_kg} kg` : '—'}</Mono>,
@@ -573,7 +580,7 @@ export function ManifestDetail(): JSX.Element {
                     <Mono key="accounted">{d.expected - d.missingTags.length}</Mono>,
                     <div key="tags" className={styles.tagChips}>
                       {d.missingTags.slice(0, 4).map((tag) => (
-                        <span key={tag} className={styles.tagChip} style={{ background: 'var(--color-error-muted)' }}>
+                        <span key={tag} className={`${styles.tagChip} ${styles.discrepancyRow}`}>
                           {tag}
                         </span>
                       ))}
@@ -650,12 +657,6 @@ export function ManifestDetail(): JSX.Element {
         </div>
       )}
 
-      <div className={styles.backLink}>
-        <Button variant="ghost" icon="arrowleft" onClick={() => navigate('/manifests')}>
-          Back to manifests
-        </Button>
-      </div>
-
       {showVerifyModal && (
         <VerifyManifestModal
           manifest={manifest}
@@ -679,6 +680,7 @@ export function ManifestDetail(): JSX.Element {
 
       {showRevokeConfirm && (
         <div className={styles.modalOverlay} onClick={() => setShowRevokeConfirm(false)}>
+          <DialogGuard onClose={() => setShowRevokeConfirm(false)} />
           <div className={styles.modalPanel} onClick={(e) => e.stopPropagation()} role="dialog" aria-modal="true">
             <h3 className={styles.modalTitle}>Revoke verification?</h3>
             <p className={styles.modalBody}>

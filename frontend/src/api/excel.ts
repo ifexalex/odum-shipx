@@ -58,11 +58,11 @@ export interface ImportPresignedUrlResponse {
 export const XLSX_CONTENT_TYPE = 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
 
 export const excelApi = {
-  getImportPresignedUrl: (contentType: string) =>
+  getImportPresignedUrl: (contentType: string, sizeBytes: number) =>
     apiRequest<ImportPresignedUrlResponse>({
       method: 'POST',
       path: '/v1/packing-lists/import/presigned-url',
-      body: { content_type: contentType },
+      body: { content_type: contentType, size_bytes: sizeBytes },
     }),
 
   importPackingList: (containerId: string, fileKey: string) =>

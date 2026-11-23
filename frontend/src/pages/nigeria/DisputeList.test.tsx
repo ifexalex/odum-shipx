@@ -1,5 +1,5 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
-import { render, screen, waitFor } from '@testing-library/react'
+import { render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { MemoryRouter } from 'react-router-dom'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
@@ -38,6 +38,9 @@ const DISPUTE_STUB = {
   corrected_cbm: null,
   status: 'submitted' as const,
   submitted_at: '2026-06-15T10:00:00Z',
+  customer_name: 'Ngozi Adeyemi',
+  invoice_number: 'ACME-INV-20260615-0007',
+  container_number: 'MSCU1234567',
 }
 
 beforeEach(() => {
@@ -64,6 +67,42 @@ describe('DisputeList', () => {
     // 'Submitted' appears both as a chip and as a badge — scope to the table
     // 'Submitted' is also a column header, so wait on the unique CBM value instead.
     expect(await screen.findByText('2.5')).toBeInTheDocument()
+  })
+
+  it('says which customer, invoice and container each dispute is about, not a fragment of an id (UX-06)', async () => {
+    vi.mocked(disputeApi.list).mockResolvedValue({
+      data: [DISPUTE_STUB],
+      meta: { pagination: { has_more: false, next_cursor: null, total_count: 1 } },
+    })
+    render(
+      <QueryClientProvider client={__qc()}><MemoryRouter>
+        <SessionContext.Provider value={makeCtx()}>
+          <DisputeList />
+        </SessionContext.Provider>
+      </MemoryRouter></QueryClientProvider>,
+    )
+    const table = within(await screen.findByRole('table'))
+    expect(await table.findByText('Ngozi Adeyemi')).toBeInTheDocument()
+    expect(table.getByText('ACME-INV-20260615-0007')).toBeInTheDocument()
+    expect(table.getByText('MSCU1234567')).toBeInTheDocument()
+    expect(table.queryByText(/aaaabbbb/)).toBeNull()
+    expect(table.getByText('15 Jun 2026')).toBeInTheDocument()
+  })
+
+  it('shows a dash for a dispute whose invoice or customer is gone, rather than breaking', async () => {
+    vi.mocked(disputeApi.list).mockResolvedValue({
+      data: [{ ...DISPUTE_STUB, customer_name: null, invoice_number: null, container_number: null }],
+      meta: { pagination: { has_more: false, next_cursor: null, total_count: 1 } },
+    })
+    render(
+      <QueryClientProvider client={__qc()}><MemoryRouter>
+        <SessionContext.Provider value={makeCtx()}>
+          <DisputeList />
+        </SessionContext.Provider>
+      </MemoryRouter></QueryClientProvider>,
+    )
+    expect(await screen.findByText('2.5')).toBeInTheDocument()
+    expect(screen.getAllByText('—').length).toBeGreaterThanOrEqual(3)
   })
 
   it('refetches with status filter on chip click', async () => {
@@ -96,5 +135,34 @@ describe('DisputeList', () => {
       </MemoryRouter></QueryClientProvider>,
     )
     await waitFor(() => expect(screen.getByText(/No disputes match/)).toBeInTheDocument())
+  })
+})
+
+describe('DisputeList opened from a link (audit UX-10)', () => {
+  function renderAt(url: string) {
+    vi.mocked(disputeApi.list).mockResolvedValue({
+      data: [],
+      meta: { pagination: { has_more: false, next_cursor: null, total_count: 0 } },
+    })
+    render(
+      <QueryClientProvider client={__qc()}>
+        <MemoryRouter initialEntries={[url]}>
+          <SessionContext.Provider value={makeCtx('china_office_staff')}>
+            <DisputeList />
+          </SessionContext.Provider>
+        </MemoryRouter>
+      </QueryClientProvider>,
+    )
+  }
+
+  it('starts filtered by ?status=', async () => {
+    renderAt('/billing/disputes?status=escalated_china')
+    await waitFor(() => expect(disputeApi.list).toHaveBeenCalledWith(expect.objectContaining({ status: 'escalated_china' })))
+  })
+
+  it('ignores a status it does not know rather than showing nothing', async () => {
+    renderAt('/billing/disputes?status=bogus')
+    await waitFor(() => expect(disputeApi.list).toHaveBeenCalled())
+    expect(vi.mocked(disputeApi.list).mock.calls.every(([params]) => !params || !('status' in params))).toBe(true)
   })
 })

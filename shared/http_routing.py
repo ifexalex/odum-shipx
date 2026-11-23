@@ -47,6 +47,7 @@ ROUTES: list[tuple[str, str]] = [
     ("/v1/customers", "tenant_management"),  # customer management routes
     ("/v1/notifications", "notification"),
     ("/v1/excel", "excel"),
+    ("/v1/search", "search"),  # global search, role-scoped (audit UX-05)
 ]
 
 # Excel export/import routes share prefixes with other handlers so are checked

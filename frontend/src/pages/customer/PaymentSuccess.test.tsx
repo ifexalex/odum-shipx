@@ -13,25 +13,33 @@ import { MemoryRouter, Route, Routes } from 'react-router-dom'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { billingApi } from '../../api/billing'
 import { ApiError } from '../../api/client'
+import { withQuery } from '../../test/queryWrapper'
 import { PaymentSuccess } from './PaymentSuccess'
 
 vi.mock('../../api/billing', async (importOriginal) => {
   const original = await importOriginal<typeof import('../../api/billing')>()
   return {
     ...original,
-    billingApi: { ...original.billingApi, verifyPayment: vi.fn() },
+    // `get` feeds the invoice number into the breadcrumb (useInvoiceCrumb).
+    billingApi: {
+      ...original.billingApi,
+      verifyPayment: vi.fn(),
+      get: vi.fn(async () => ({ invoice_number: 'ACM-INV-0001' })),
+    },
   }
 })
 
 function renderPage(search = '?reference=b1.abc123') {
   return render(
-    <MemoryRouter initialEntries={[`/my-billing/b1/payment-success${search}`]}>
-      <Routes>
-        <Route path="/my-billing/:id/payment-success" element={<PaymentSuccess />} />
-        <Route path="/my-billing/:id" element={<div>billing detail page</div>} />
-        <Route path="/my-billing" element={<div>billing list page</div>} />
-      </Routes>
-    </MemoryRouter>,
+    withQuery(
+      <MemoryRouter initialEntries={[`/my-billing/b1/payment-success${search}`]}>
+        <Routes>
+          <Route path="/my-billing/:id/payment-success" element={<PaymentSuccess />} />
+          <Route path="/my-billing/:id" element={<div>billing detail page</div>} />
+          <Route path="/my-billing" element={<div>billing list page</div>} />
+        </Routes>
+      </MemoryRouter>,
+    ),
   )
 }
 
@@ -41,7 +49,10 @@ describe('PaymentSuccess', () => {
   })
 
   it('shows a confirming state, then verifies the payment with the reference from the URL', async () => {
-    vi.mocked(billingApi.verifyPayment).mockResolvedValue({ gateway_status: 'success', new_payment_status: 'paid' })
+    vi.mocked(billingApi.verifyPayment).mockResolvedValue({
+      gateway_status: 'success',
+      new_payment_status: 'paid',
+    })
     renderPage()
 
     expect(screen.getByText('Confirming your payment…')).toBeInTheDocument()
@@ -66,18 +77,31 @@ describe('PaymentSuccess', () => {
 
   it('shows a non-scary error state when verification itself fails', async () => {
     vi.mocked(billingApi.verifyPayment).mockRejectedValue(
-      new ApiError({ type: 'about:blank', title: 'Gateway unreachable', status: 502, detail: 'Gateway unreachable', error_code: 'EXTERNAL_SERVICE_ERROR' }, 'req-1'),
+      new ApiError(
+        {
+          type: 'about:blank',
+          title: 'Gateway unreachable',
+          status: 502,
+          detail: 'Gateway unreachable',
+          error_code: 'EXTERNAL_SERVICE_ERROR',
+        },
+        'req-1',
+      ),
     )
     renderPage()
 
-    expect(await screen.findByText("Couldn't confirm your payment automatically")).toBeInTheDocument()
+    expect(
+      await screen.findByText("Couldn't confirm your payment automatically"),
+    ).toBeInTheDocument()
     expect(screen.getByText(/Gateway unreachable/)).toBeInTheDocument()
   })
 
   it('shows an error state with no API call when there is no reference at all', async () => {
     renderPage('')
 
-    expect(await screen.findByText("Couldn't confirm your payment automatically")).toBeInTheDocument()
+    expect(
+      await screen.findByText("Couldn't confirm your payment automatically"),
+    ).toBeInTheDocument()
     expect(billingApi.verifyPayment).not.toHaveBeenCalled()
   })
 

@@ -150,6 +150,11 @@ def build_paginated_query(
     direction = "DESC" if sort_direction.upper() == "DESC" else "ASC"
     # Comparison operator flips with direction
     op = "<" if direction == "DESC" else ">"
+    # The id tiebreaker is qualified with the sort field's table alias. A bare `id` is ambiguous the moment the query
+    # joins another table (they all have one), and the cursor condition sits in WHERE, where an output column name
+    # cannot stand in: the first page worked and every later page failed with "column reference "id" is ambiguous".
+    alias = clean_field.rpartition(".")[0]
+    id_column = f"{alias}.id" if alias else "id"
 
     params: dict[str, Any] = {"limit": limit + 1}  # fetch one extra to determine has_more
     query = base_query
@@ -161,12 +166,12 @@ def build_paginated_query(
             # Safe to inject sort_field and direction as they are allowlisted
             query += (
                 f" AND ({clean_field} {op} %(cursor_sort_value)s"
-                f" OR ({clean_field} = %(cursor_sort_value)s AND id {op} %(cursor_id)s))"
+                f" OR ({clean_field} = %(cursor_sort_value)s AND {id_column} {op} %(cursor_id)s))"
             )
             params["cursor_sort_value"] = sort_value
             params["cursor_id"] = cursor_id
 
-    query += f" ORDER BY {clean_field} {direction}, id {direction} LIMIT %(limit)s"
+    query += f" ORDER BY {clean_field} {direction}, {id_column} {direction} LIMIT %(limit)s"
     return query, params
 
 
@@ -182,7 +187,9 @@ def extract_page(
     Args:
         rows: Raw rows from DB (may contain limit+1 rows).
         limit: The requested page size.
-        sort_field: Field used for sorting — must be present in each row.
+        sort_field: The column the query was sorted by, as a bare name (no table alias). It must be present in each row:
+            the next cursor carries its value, so passing a different column makes the next page compare the wrong
+            thing. Lists the user can sort pass the column they sorted by; the rest sort by `created_at`.
 
     Returns:
         Tuple of (page_data, next_cursor | None, has_more).

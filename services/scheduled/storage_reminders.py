@@ -16,7 +16,7 @@ from typing import Any
 from shared.db import execute_with_tenant
 from shared.logging_config import bind_log_context, clear_log_context, setup_logging
 from shared.notifications import enqueue_notification
-from shared.observability import init_tracing
+from shared.observability import init_tracing, record_failure
 from shared.tenant_context import PLATFORM_TENANT_ID
 
 setup_logging()
@@ -48,6 +48,7 @@ def lambda_handler(event: dict[str, Any], context: Any) -> dict[str, Any]:
             sent += count
         except Exception:
             logger.exception("Storage reminders failed for tenant %s", tenant_id)
+            record_failure("scheduled_job_step")
             errors += 1
 
     logger.info(
@@ -93,6 +94,7 @@ def _process_tenant(tenant_id: str) -> int:
                 note["id"],
                 extra={"tenant_id": tenant_id},
             )
+            record_failure("scheduled_job_step")
 
     return sent
 
@@ -149,6 +151,7 @@ def _maybe_send_reminder(
                 template_id=template_id,
                 template_vars=template_vars,
                 locale=locale,
+                customer_id=str(note["customer_id"]),
             )
             sent += 1
         except Exception:
@@ -167,6 +170,7 @@ def _maybe_send_reminder(
                 template_id=template_id,
                 template_vars=template_vars,
                 locale=locale,
+                customer_id=str(note["customer_id"]),
             )
             sent += 1
         except Exception:

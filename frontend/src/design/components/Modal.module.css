@@ -77,3 +77,8 @@
     border-radius: 0;
   }
 }
+
+/* The overlay takes focus only as a last resort (a dialog with nothing focusable in it); it needs no ring. */
+.overlay:focus {
+  outline: none;
+}

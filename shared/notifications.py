@@ -29,8 +29,10 @@ import logging
 import os
 from typing import Any, cast
 
+from shared import notification_consent
 from shared.cache import Cache
-from shared.db import execute_with_tenant
+from shared.db import execute_with_tenant, execute_write_with_tenant
+from shared.observability import record_failure
 from shared.providers import get_queue_provider
 from shared.tenant_context import PLATFORM_TENANT_ID
 
@@ -61,6 +63,80 @@ def _get_notification_prefs(tenant_id: str) -> dict[str, Any]:
     prefs: dict[str, Any] = rows[0]["notification_preferences"] if rows else {}
     _prefs_cache.set(tenant_id, prefs)
     return prefs
+
+
+def _customer_preferences(tenant_id: str, customer_id: str) -> dict[str, Any] | None:
+    """The customer's recorded notification preferences, or None if there is no such customer."""
+    rows = execute_with_tenant(
+        tenant_id=tenant_id,
+        query="SELECT notification_consent, consent_given_at FROM customer WHERE tenant_id = %s AND id = %s LIMIT 1",
+        params=(tenant_id, customer_id),
+    )
+    return rows[0] if rows else None
+
+
+def record_suppressed(
+    tenant_id: str,
+    event_type: str,
+    channel: str,
+    customer_id: str | None,
+    contact: str,
+    reason: str,
+) -> None:
+    """Record in notification_log that a message was held back, and why. Best effort: never blocks a send."""
+    try:
+        execute_write_with_tenant(
+            tenant_id,
+            """
+            INSERT INTO notification_log (tenant_id, event_type, channel, recipient_masked, customer_id, status, error_detail)
+            VALUES (%(tenant_id)s, %(event_type)s, %(channel)s, %(masked)s, %(customer_id)s, 'suppressed', %(reason)s)
+            RETURNING id
+            """,
+            {
+                "tenant_id": tenant_id,
+                "event_type": event_type,
+                "channel": channel,
+                "masked": _mask(contact),
+                "customer_id": customer_id,
+                "reason": reason,
+            },
+        )
+    except Exception:
+        logger.warning("Could not record a suppressed %s notification for event %s", channel, event_type)
+
+
+class ConsentVerdict:
+    """What a customer's recorded preferences allow for one event.
+
+    `prefs` is None when nothing can be sent: no customer to look up, or the lookup failed. A consent-bound
+    message fails closed, because the alternative is sending something the customer may have declined.
+    """
+
+    def __init__(self, prefs: dict[str, Any] | None) -> None:
+        self._prefs = prefs
+
+    def permits(self, channel: str) -> bool:
+        if self._prefs is None:
+            return False
+        return notification_consent.permits(self._prefs["notification_consent"], self._prefs["consent_given_at"], channel)
+
+
+def consent_verdict(tenant_id: str, event_type: str, customer_id: str | None) -> ConsentVerdict | None:
+    """The customer's say over this event, or None when it is not theirs to decide.
+
+    None means the event is account or operational (shared/notification_consent.py) and goes out whatever
+    their preferences say. Otherwise the returned verdict answers `permits(channel)`.
+    """
+    if not notification_consent.is_consent_bound(event_type):
+        return None
+    if not customer_id:
+        logger.warning("Event %s is bound by customer preferences but carries no customer_id — nothing sent", event_type)
+        return ConsentVerdict(None)
+    try:
+        return ConsentVerdict(_customer_preferences(tenant_id, customer_id))
+    except Exception:
+        logger.warning("Could not read notification preferences for customer %s — event %s not sent", customer_id, event_type)
+        return ConsentVerdict(None)
 
 
 def enqueue_notification(
@@ -98,6 +174,12 @@ def enqueue_notification(
     queue_url_env = _QUEUE_URL_ENV.get(channel)
     if not queue_url_env:
         logger.warning("Unknown notification channel '%s' — message dropped", channel)
+        return False
+
+    # The customer's own preferences, for the events they govern (shared/notification_consent.py).
+    verdict = consent_verdict(tenant_id, template_id, customer_id)
+    if verdict is not None and not verdict.permits(channel):
+        record_suppressed(tenant_id, template_id, channel, customer_id, recipient, f"customer has not agreed to {channel}")
         return False
 
     # Check tenant notification preferences
@@ -141,7 +223,11 @@ def enqueue_notification(
         }
     )
 
-    get_queue_provider().send(destination=queue_url, body=message_body)
+    try:
+        get_queue_provider().send(destination=queue_url, body=message_body)
+    except Exception:
+        record_failure("notification_enqueue")  # the caller may swallow it; the count does not depend on that
+        raise
     logger.info(
         "Notification enqueued",
         extra={
@@ -291,6 +377,39 @@ def primary_channel(tenant_id: str, event_type: str, recipient: dict[str, Any]) 
     return "whatsapp" if whatsapp_possible else "sms"
 
 
+def _tenant_branding(tenant_id: str) -> dict[str, Any]:
+    """Branding embedded in the queued message, so consumers need no DB access.
+
+    Selects `company_name` alongside `branding_config` because the notification
+    service needs a company name and `branding_config` is not guaranteed to
+    carry one. It is optional (tenants set `display_name` only if their trading
+    name differs from the legal one) and is frequently `{}` outright, in which
+    case every notification on every channel was branded with the literal word
+    "Logistics" — the hardcoded fallback in
+    `services/notification/tenant_branding.py`. The legal `company_name` on the
+    tenant row always exists, so it is the floor beneath the optional override.
+
+    `company_name` is set here rather than read from the DB in the consumer
+    because the notification Lambdas deliberately run outside the VPC and have
+    no database access at all.
+    """
+    try:
+        rows = execute_with_tenant(
+            tenant_id=PLATFORM_TENANT_ID,  # bypass RLS — reading the tenant row itself
+            query="SELECT company_name, branding_config FROM tenant WHERE id = %s LIMIT 1",
+            params=(tenant_id,),
+        )
+    except Exception:
+        logger.warning("Could not load branding for tenant %s — notifications will use defaults", tenant_id)
+        return {}
+    if not rows:
+        return {}
+    branding: dict[str, Any] = dict(rows[0]["branding_config"] or {})
+    # Only as a floor: a tenant that set `display_name` keeps it.
+    branding.setdefault("company_name", rows[0]["company_name"] or "")
+    return branding
+
+
 def enqueue_notifications(
     tenant_id: str,
     event_type: str,
@@ -317,16 +436,7 @@ def enqueue_notifications(
             queued message so notification_log records it — without it the
             WhatsApp→SMS fallback cannot look up a phone and silently gives up.
     """
-    # Fetch branding for tenant (use same cache path)
-    try:
-        rows = execute_with_tenant(
-            tenant_id=PLATFORM_TENANT_ID,
-            query="SELECT branding_config FROM tenant WHERE id = %s LIMIT 1",
-            params=(tenant_id,),
-        )
-        branding: dict[str, Any] = (rows[0]["branding_config"] if rows else None) or {}
-    except Exception:
-        branding = {}
+    branding = _tenant_branding(tenant_id)
 
     if not is_recipient_allowed(recipient):
         logger.warning(
@@ -349,7 +459,33 @@ def enqueue_notifications(
     #
     # Email is unaffected: it is a different medium, not a worse SMS, so it
     # still goes out in parallel per the tenant's own preferences.
-    channels = (primary_channel(tenant_id, event_type, recipient), "email")
+    #
+    # primary_channel is "email" for a recipient with no phone, so without dedupe that recipient was
+    # sent every email twice.
+    primary = primary_channel(tenant_id, event_type, recipient)
+    channels = tuple(dict.fromkeys((primary, "email")))
+
+    verdict = consent_verdict(tenant_id, event_type, customer_id)
+    if verdict is not None:
+        contacts = {
+            "sms": str(recipient.get("phone") or ""),
+            "whatsapp": str(recipient.get("whatsapp") or recipient.get("phone") or ""),
+            "email": str(recipient.get("email") or ""),
+        }
+        permitted: list[str] = []
+        for wanted in channels:
+            use = wanted
+            # WhatsApp is only the preferred way to reach a phone: a customer who agreed to SMS but not
+            # WhatsApp is still reachable, so use SMS rather than going silent.
+            if wanted == "whatsapp" and not verdict.permits("whatsapp") and verdict.permits("sms"):
+                use = "sms"
+            if verdict.permits(use):
+                permitted.append(use)
+            else:
+                record_suppressed(
+                    tenant_id, event_type, wanted, customer_id, contacts.get(wanted, ""), f"customer has not agreed to {wanted}"
+                )
+        channels = tuple(permitted)
 
     for channel in channels:
         if not should_notify(tenant_id, event_type, channel):
@@ -392,3 +528,4 @@ def enqueue_notifications(
             )
         except Exception:
             logger.exception("Failed to enqueue %s notification for event %s", channel, event_type)
+            record_failure("notification_enqueue")

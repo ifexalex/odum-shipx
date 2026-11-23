@@ -93,6 +93,16 @@ def execute_write_with_tenant_many(tenant_id: str, query: str, params: dict | No
         conn.rollback()
         raise
 
+def tenant_transaction(tenant_id: str):  # reusable: execute_* calls for the same tenant join it (see 02_shared_utilities.md)
+    """Context manager yielding a cursor inside one tenant-scoped transaction.
+
+    Commit on normal exit, full rollback on any exception. Use when later statements depend on the
+    rows returned by earlier ones (`execute_transaction` takes its statement list up front).
+    `next_tenant_counter(cursor, tenant_id, name)` takes the next per-tenant number from `tenant_counter`
+    with a row-locking upsert, so concurrent callers get distinct values. Added with migration 062.
+    """
+
+
 def execute_transaction(tenant_id: str, operations: list[tuple[str, dict]]) -> list:
     """Execute multiple queries in a single transaction."""
     conn = get_connection()
@@ -338,3 +348,38 @@ Verified by simulating the managed-server privilege model locally — a
 | non-superuser, role **has** BYPASSRLS | raises `InsufficientPrivilege` — correct |
 | superuser, role **has** BYPASSRLS | `set-and-stripped-bypassrls` |
 
+## `shared/` additions — audit Phase 2 (2026-11-15)
+
+(Same table as in `02_shared_utilities.md`.)
+
+| Module | Purpose |
+|---|---|
+| `shared/auth.py` | `get_tenant_context` now confirms the user still has an active `tenant_user` row (`_check_user_active`, 401 / 503), and counts the tenant against its rate limit. New `evict_identity_cache(user_id)`; `_active_identity` is the strict cached lookup (raises on DB failure) and `resolve_identity_from_db` the tolerant wrapper the identity fallback keeps using. |
+| `shared/origin_guard.py` | `trusted_origins()`, `assert_trusted_origin(event)` (403 `ORIGIN_NOT_ALLOWED`; a missing `Origin` is refused; fail closed when none is configured), `assert_json_content_type(event)` (415). Used by `services/auth/handler.py`. |
+| `shared/rate_limit.py` | Redis fixed-window limiter: `hit`, `peek` + `record_failure` + `clear`, `hit_for_client`; named policies (`LOGIN_IP`, `LOGIN_FAILURES`, `REGISTER_IP`, `ONBOARDING_IP`, `TRACKING_IP`, `TRACKING_FAILURES`, `SESSION_IP`, `TENANT`); `RATE_LIMIT_<NAME>` overrides and `RATE_LIMIT_ENABLED`. Fails open, logging `rate_limiter_unavailable`. Identifiers are hashed in keys. |
+| `shared/client_ip.py` | `client_ip(event)` (reads `requestContext.http.sourceIp` then `identity.sourceIp`), `resolve_client_ip(peer, xff, hops)`, `trusted_proxy_hops()` (`TRUSTED_PROXY_HOPS`). All handlers now use `client_ip` for `ip_address`. |
+| `shared/notification_consent.py` | Pure policy: `ACCOUNT_EVENTS`, `OPERATIONAL_EVENTS`, `CONSENT_BOUND_EVENTS`, `is_consent_bound`, `permits`. |
+| `shared/notifications.py` | `consent_verdict`, `ConsentVerdict`, `record_suppressed`; both enqueue paths apply them; channels are de-duplicated. |
+| `shared/distributed_cache.py` | `incr_window` (atomic INCR + expiry in one Lua script) and `window_state`; **no client retries and a 5 s circuit breaker** (a Redis outage cost ~4 s per call before). |
+| `shared/exceptions.py` / `shared/responses.py` | `UntrustedOriginError` (403), `UnsupportedMediaTypeError` (415), `RateLimitExceededError` (429, `retry_after`); `accepted()` (202); `error_response` sets `Retry-After`. |
+| `shared/app_urls.py` | `origin_of` is now public (shared with the origin guard); new `login_url()`. |
+
+## `shared/list_filters.py` (2026-11-16)
+
+The invoice-list and container-list filters (`status`, dates, `q`, ...) as pure functions returning a WHERE clause and bound parameters. `services/billing/repository.py::list_billing_all`, `services/tracking/repository.py::list_containers` and `services/excel/repository.py::list_billing_for_export` / `list_containers_for_export` all build from them. Lives in `shared/` because each Lambda ships only its own `services/<name>/` plus the layer, so the excel service cannot import the billing or tracking repositories.
+
+## `shared/` additions — tenant data export (audit BE-10, 2026-11-17)
+
+- **`shared/tenant_data.py`** — the single inventory of tables holding a tenant's data, parent-first: `TENANT_TABLES` (each a `TenantTable(name, via=(fk_column, parent) | None, omit=…, decrypt=…)` with `select_sql()` / `delete_sql()`; names are checked to be plain SQL identifiers), `NOT_TENANT_DATA` (platform tables, with the reason), `redact_config(config_key, value)` (drops the webhook secret and the Paystack key), `table(name)`. The export reads it forwards, the cleanup deletes it backwards. `tests/unit/test_tenant_data.py` reads every migration and fails when a table is unaccounted for or the order breaks a foreign key: **add new tables here.**
+- **`shared/tenant_export.py`** — the `tenant_offboarding_export` record: `export_prefix`, `object_key` (UUID-checked), `queue_export`, `latest_export`, `has_completed_export(tenant_id, since)`, `claim_next` (`SKIP LOCKED`), `mark_completed` / `mark_failed` / `mark_cancelled` (only from the right state), `cancel_open_exports`. `MAX_ATTEMPTS = 3`, `STALE_AFTER_MINUTES = 60`. PLATFORM scope throughout.
+- **`shared/platform_audit.py`** — `insert_platform_audit(action, actor_id, target_tenant_id, details, ip_address)`, moved out of `services/tenant_management/repository.py` (which re-exports it) so platform jobs can write the platform trail.
+
+## `shared/observability.py` — failure counters (audit OPS-04, 2026-11-17)
+
+`record_failure(operation)` counts one failure that was caught and not re-raised; `record_outcome(operation, failed=)` counts an attempt and whether it failed (for a rate). Both write one log line through the normal JSON formatter in CloudWatch's Embedded Metric Format (namespace `ShipX`, dimensions `Environment` and `Operation`); on Azure the same line is queried in Log Analytics. Never raises. `operation` must be one of the fixed `OPERATIONS` (`invoice_generation`, `notification_enqueue`, `notification_send`, `audit_write`, `scheduled_job_step`, `tenant_deletion_refused`): a name is a billed metric dimension, so it is never built from data. The `shipx.metrics` logger is pinned at INFO so a higher `LOG_LEVEL` cannot switch the counts off. Called from `shared/audit.py`, `shared/platform_audit.py` (counts, then re-raises), `shared/notifications.py`, `services/billing` (invoice generation), `services/notification/service.py` (`log_sent` / `log_failed`), and the per-tenant and per-record catches of every scheduled job.
+
+## `shared/uploads.py` — one set of upload rules (audit BE-12, 2026-11-17)
+
+Every direct-to-storage upload goes through it: claim evidence, manifest evidence, payment-claim evidence, container documents and the packing-list import. `UploadPolicy(name, content_types, expires_in)` with three instances — `EVIDENCE` (JPEG, PNG, PDF; 1 h), `CONTAINER_DOCUMENT` (those plus WebP; 15 min), `SPREADSHEET_IMPORT` (`.xlsx`; 15 min). `policy.check_content_type(ct)` raises `BusinessRuleViolationError(rule_id="INVALID_CONTENT_TYPE")` and is called before any database read; `presign_upload(policy, tenant_id, segments, filename, ct)` checks again, builds `upload_key(...)` = `{tenant_id}/{segments...}/{safe_filename(filename)}` (the tenant ID must parse as a UUID; a segment that is empty or holds `/`, `\\` or `..` raises `ValueError`) and returns `PresignedUpload(key, expires_in, ticket)` with `as_response()`. A policy cannot be declared with `application/octet-stream`.
+
+Changed behaviour: container documents no longer accept `application/octet-stream` (it let any file through the type check); the frontend now refuses a file the browser cannot type, in the upload dialog. ~~Known limits, not fixed here: no upload size is enforced anywhere (the per-service `_MAX_FILE_SIZE` constants were never read and are removed; runbook "Upload size is not limited"); the declared type binds the upload only on AWS S3 (SigV4) — an Azure SAS and the local Moto do not enforce it.~~ **Superseded 2026-11-17:** uploads are limited to 5 MB (`MAX_UPLOAD_BYTES`, every policy's `max_bytes`). `policy.check(content_type, size_bytes)` refuses a missing size (`ValidationError`) or one over the limit (`FILE_TOO_LARGE`) before any database work; `presign_upload(..., size_bytes)` passes it to the provider as `content_length`. `S3StorageProvider` uses SigV4 against real AWS (`Config(signature_version="s3v4")`; botocore's presign default can be SigV2, which signs nothing), so the URL signs `content-length;content-type;host` and S3 refuses a different size or type. Azure SAS cannot bind either, and local Moto uses SigV2: there, `check_stored_size(policy, key)` (missing → `UPLOAD_NOT_FOUND`, over → `FILE_TOO_LARGE`) guards where a file is used — payment-claim submit and both spreadsheet imports. Evidence and container documents are not re-checked after upload on Azure.

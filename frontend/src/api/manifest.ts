@@ -172,11 +172,11 @@ export const manifestApi = {
 
   // Presigned upload for a verification photo/doc (§6.3). The browser then POSTs
   // the file straight to S3 using the returned url + fields.
-  getEvidenceUploadUrl: (id: string, filename: string, contentType: string, label?: string) =>
+  getEvidenceUploadUrl: (id: string, filename: string, contentType: string, sizeBytes: number, label?: string) =>
     apiRequest<ManifestEvidenceUploadResponse>({
       method: 'POST',
       path: `/v1/manifests/${id}/evidence`,
-      body: { filename, content_type: contentType, label },
+      body: { filename, content_type: contentType, size_bytes: sizeBytes, label },
     }),
 
   export: (id: string, format: Exclude<ExportFormat, 'pdf'>) =>

@@ -1,6 +1,7 @@
 import type { JSX } from 'react'
 import { Icon } from '../../design/components'
 import { colors } from '../../design/theme'
+import { ScrollStrip } from '../../shell/ScrollStrip'
 
 const STAGES = [
   { status: 'loading',           label: 'Received',   sub: 'China warehouse',  side: 'cn' },
@@ -17,6 +18,7 @@ export function CustomerStepper({ containerStatus }: { containerStatus: string |
   const currentIdx = STAGES.findIndex((s) => s.status === containerStatus)
 
   return (
+    <ScrollStrip minWidth={STAGES.length * 70}>
     <div style={{ display: 'flex', alignItems: 'flex-start', gap: 4, position: 'relative' }}>
       {STAGES.map((stage, i) => {
         const done = i < currentIdx
@@ -58,5 +60,6 @@ export function CustomerStepper({ containerStatus }: { containerStatus: string |
         )
       })}
     </div>
+    </ScrollStrip>
   )
 }

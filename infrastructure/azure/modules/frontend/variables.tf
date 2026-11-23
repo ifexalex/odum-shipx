@@ -28,3 +28,13 @@ variable "api_origin_host" {
   type        = string
   default     = ""
 }
+
+variable "frontdoor_profile_id" {
+  description = "Resource id of the Front Door profile (created at the root; see the note in main.tf)."
+  type        = string
+}
+
+variable "frontdoor_profile_name" {
+  description = "Name of that Front Door profile, re-exported for the CI cache purge."
+  type        = string
+}

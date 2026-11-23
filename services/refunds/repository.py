@@ -15,7 +15,8 @@ import logging
 from decimal import Decimal
 from typing import Any
 
-from shared.db import execute_with_tenant, execute_write_with_tenant
+from shared.billing_money import adjust_billing_and_refund_overpayment
+from shared.db import execute_with_tenant, execute_write_with_tenant, tenant_transaction
 from shared.encryption import decrypt_field
 from shared.pagination import build_paginated_query, extract_page
 
@@ -158,9 +159,19 @@ def update_refund_status(
     refund_id: str,
     status: str,
     extra: dict[str, Any] | None = None,
+    expected_status: str | None = None,
 ) -> dict[str, Any]:
-    """Update refund_request status + optional allowlisted extra fields."""
+    """Update refund_request status + optional allowlisted extra fields.
+
+    With ``expected_status`` the update only applies if the refund is still in that
+    status, so two requests cannot both move it. Returns ``{}`` when nothing was
+    updated (not found, or no longer in ``expected_status``).
+    """
     params: dict[str, Any] = {"status": status, "tenant_id": tenant_id, "id": refund_id}
+    guard = ""
+    if expected_status is not None:
+        guard = " AND status = %(expected_status)s"
+        params["expected_status"] = expected_status
     extra_clause = ""
     if extra:
         safe = {k: v for k, v in extra.items() if k in _STATUS_EXTRA_FIELDS and v is not None}
@@ -173,7 +184,7 @@ def update_refund_status(
         f"""
         UPDATE refund_request
         SET status = %(status)s, updated_at = NOW(){extra_clause}
-        WHERE tenant_id = %(tenant_id)s AND id = %(id)s
+        WHERE tenant_id = %(tenant_id)s AND id = %(id)s{guard}
         RETURNING *
         """,
         params,
@@ -181,6 +192,38 @@ def update_refund_status(
     if row is None:
         return {}
     return _decrypt_refund_row(row)
+
+
+def approve_refund_and_adjust_billing(
+    tenant_id: str,
+    refund_id: str,
+    final_status: str,
+    extra: dict[str, Any],
+    billing_id: str | None,
+    reduction_ngn: Decimal | None,
+) -> dict[str, Any]:
+    """Approve a refund and, for an immediate refund, reduce what the invoice owes, atomically.
+
+    The refund moves out of ``pending_approval`` only if it is still there, so two
+    approvals cannot both reduce the invoice. The invoice reduction, its status
+    recompute and any new overpayment refund commit with the approval; if any step
+    fails none of them happen.
+
+    Returns:
+        The updated refund row, or ``{}`` if it is no longer ``pending_approval``.
+    """
+    with tenant_transaction(tenant_id):
+        row = update_refund_status(tenant_id, refund_id, final_status, extra=extra, expected_status="pending_approval")
+        if not row:
+            return {}
+        if reduction_ngn and billing_id:
+            adjust_billing_and_refund_overpayment(
+                tenant_id,
+                billing_id,
+                -reduction_ngn,
+                f"Overpayment after refund adjustment on refund {refund_id}",
+            )
+    return row
 
 
 # ---------------------------------------------------------------------------
@@ -250,40 +293,3 @@ def get_refund_threshold_config(tenant_id: str) -> dict[str, Any]:
 # ---------------------------------------------------------------------------
 # Billing adjustment — on immediate refund approval
 # ---------------------------------------------------------------------------
-
-
-def reduce_billing_total(tenant_id: str, billing_id: str, reduction_amount: Any) -> dict[str, Any] | None:
-    """Subtract reduction_amount from billing.total_ngn; balance_ngn is GENERATED."""
-    return execute_write_with_tenant(
-        tenant_id,
-        """
-        UPDATE billing
-        SET total_ngn  = total_ngn - %(amount)s,
-            updated_at = NOW()
-        WHERE tenant_id = %(tenant_id)s AND id = %(id)s
-        RETURNING *
-        """,
-        {
-            "tenant_id": tenant_id,
-            "id": billing_id,
-            "amount": reduction_amount,
-        },
-    )
-
-
-def create_overpayment_refund_request(tenant_id: str, data: dict[str, Any]) -> dict[str, Any]:
-    row = execute_write_with_tenant(
-        tenant_id,
-        """
-        INSERT INTO refund_request (
-            tenant_id, customer_id, billing_id, amount_ngn, reason, status
-        ) VALUES (
-            %(tenant_id)s, %(customer_id)s, %(billing_id)s,
-            %(amount_ngn)s, %(reason)s, 'pending_review'
-        ) RETURNING *
-        """,
-        data,
-    )
-    if row is None:
-        return {}
-    return _decrypt_refund_row(row)

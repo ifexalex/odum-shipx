@@ -1,6 +1,6 @@
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { useState, type JSX } from 'react'
-import { useLocation, useNavigate, useParams } from 'react-router-dom'
+import { useLocation, useParams } from 'react-router-dom'
 import { ApiError } from '../../api/client'
 import {
   claimsApi,
@@ -20,10 +20,12 @@ import {
 import { claimKeys } from '../../api/keys'
 import { STALE_30S } from '../../lib/queryClient'
 import { useSession } from '../../auth/useSession'
-import { Action, Badge, Banner, Button, Card, Field, Kvp, Mono, type BadgeVariant } from '../../design/components'
+import { Action, Badge, Banner, Button, Card, Field, Kvp, Mono, DialogGuard, type BadgeVariant } from '../../design/components'
 import { SectionHead } from '../../shell/SectionHead'
 import { EvidenceUploader } from './EvidenceUploader'
 import styles from './ClaimDetail.module.css'
+import { formatDate, formatNgn } from '../../lib/format'
+import { useBreadcrumbLabel } from '../../shell/breadcrumbs'
 
 const STATUS_VARIANT: Record<DamageClaimStatus, BadgeVariant> = {
   filed: 'warning',
@@ -83,6 +85,7 @@ function StartInspectionModal({ onCancel, onSuccess, claimId }: StartInspectionM
 
   return (
     <div className={styles.overlay} onClick={onCancel}>
+      <DialogGuard onClose={onCancel} />
       <div className={styles.panel} onClick={(e) => e.stopPropagation()} role="dialog" aria-modal="true">
         <h3 className={styles.panelTitle}>Start inspection</h3>
         {error && <div className={styles.panelBanner}><Banner variant="error" title="Action failed">{error}</Banner></div>}
@@ -98,7 +101,7 @@ function StartInspectionModal({ onCancel, onSuccess, claimId }: StartInspectionM
           <div className={styles.evidenceSection}>
             <label className={styles.selectLabel}>Evidence files <span className={styles.required}>*</span></label>
             <EvidenceUploader
-              getPresignedUrl={(f) => presignedUploadApi.getUrl(claimId, f.name, f.type)}
+              getPresignedUrl={(f) => presignedUploadApi.getUrl(claimId, f.name, f.type, f.size)}
               onUploaded={() => setEvidenceUploaded(true)}
               disabled={submitting}
             />
@@ -198,6 +201,7 @@ function ResolveClaimModal({ onCancel, onSuccess, claimId, role }: ResolveClaimM
 
   return (
     <div className={styles.overlay} onClick={onCancel}>
+      <DialogGuard onClose={onCancel} />
       <div className={styles.panel} onClick={(e) => e.stopPropagation()} role="dialog" aria-modal="true">
         <h3 className={styles.panelTitle}>Resolve claim</h3>
         {error && <div className={styles.panelBanner}><Banner variant="error" title="Action failed">{error}</Banner></div>}
@@ -229,15 +233,19 @@ function ResolveClaimModal({ onCancel, onSuccess, claimId, role }: ResolveClaimM
         )}
         {resolutionType === 'refund' && enteredAmount > 0 && (
           <Banner variant="info" title="Refund record generated automatically">
-            Confirming creates a refund of ₦{enteredAmount.toLocaleString()} in <strong>Pending Accounts Review</strong> status.
+            Confirming creates a refund of {formatNgn(enteredAmount)} in <strong>Pending Accounts Review</strong> status.
           </Banner>
         )}
         {needsDiscount && (
           <Field label="Discount (%)" name="discount_pct" type="number" placeholder="e.g. 10"
             value={discountPct} onChange={(e) => setDiscountPct(e.target.value)} />
         )}
-        <Field label="Resolution reason" name="reason" required multiline
-          placeholder="Explain the resolution decision…"
+        {/* A decision against the customer is explained to them; otherwise the reason stays internal. */}
+        <Field
+          label={resolutionType === 'no_action' ? 'Reason (the customer will see this)' : 'Reason (internal, not shown to the customer)'}
+          name="reason" required multiline
+          placeholder={resolutionType === 'no_action' ? 'Tell the customer why the claim is closed without a payout…' : 'Explain the resolution decision…'}
+          helper={resolutionType === 'no_action' ? 'Shown to the customer on their claim page, word for word.' : undefined}
           value={reason} onChange={(e) => setReason(e.target.value)} />
         <div className={styles.actions}>
           <Button variant="ghost" onClick={onCancel} disabled={submitting}>Cancel</Button>
@@ -279,7 +287,6 @@ function StatusStepper({ current }: { current: DamageClaimStatus }): JSX.Element
 export function ClaimDetail(): JSX.Element {
   const { id } = useParams<{ id: string }>()
   const location = useLocation()
-  const navigate = useNavigate()
   const { session } = useSession()
   const role = session?.role ?? 'nigeria_office_staff'
 
@@ -297,6 +304,8 @@ export function ClaimDetail(): JSX.Element {
     ...(stateClaim ? { initialData: stateClaim } : {}),
     staleTime: STALE_30S,
   })
+  // Names this record in the breadcrumb once loaded (FD-46).
+  useBreadcrumbLabel(claim?.reference)
 
   const error = loadError
     ? loadError instanceof ApiError
@@ -334,7 +343,7 @@ export function ClaimDetail(): JSX.Element {
             <div className={styles.heroMeta}>
               <Mono>{claim.id}</Mono>
               <span className={styles.dot}>·</span>
-              <span>Filed {claim.created_at.slice(0, 10)}</span>
+              <span>Filed {formatDate(claim.created_at)}</span>
             </div>
           </div>
         </div>
@@ -393,16 +402,12 @@ export function ClaimDetail(): JSX.Element {
       {/* Evidence upload — available while claim is not terminal */}
       {!isTerminalClaimStatus(claim.status) && (
         <div className={styles.section}>
-          <SectionHead title="Attach evidence" sub="Upload photos, videos, or PDF documents (JPEG · PNG · PDF, max 10 MB each)" />
+          <SectionHead title="Attach evidence" sub="Upload photos or PDF documents (JPEG · PNG · PDF, max 5 MB each)" />
           <Card padding={20}>
-            <EvidenceUploader getPresignedUrl={(f) => presignedUploadApi.getUrl(claim.id, f.name, f.type)} onUploaded={() => { /* evidence logged server-side */ }} />
+            <EvidenceUploader getPresignedUrl={(f) => presignedUploadApi.getUrl(claim.id, f.name, f.type, f.size)} onUploaded={() => { /* evidence logged server-side */ }} />
           </Card>
         </div>
       )}
-
-      <div className={styles.backLink}>
-        <Button variant="ghost" icon="arrowleft" onClick={() => navigate('/claims')}>Back to claims</Button>
-      </div>
 
       {showInspect && (
         <StartInspectionModal

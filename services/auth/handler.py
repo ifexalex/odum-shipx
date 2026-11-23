@@ -36,9 +36,11 @@ import time
 import uuid
 from typing import Any
 
+from shared import rate_limit
 from shared.exceptions import AuthenticationRequiredError, LogisticsBaseError, ResourceNotFoundError
 from shared.logging_config import bind_log_context, clear_log_context, setup_logging
 from shared.observability import init_tracing
+from shared.origin_guard import assert_json_content_type, assert_trusted_origin
 from shared.responses import error_response
 from shared.validation import parse_validated
 
@@ -68,6 +70,22 @@ _TX_COOKIE_MAX_AGE_SECONDS = 600  # the authorize→callback round-trip is secon
 # AUTH_COOKIE_SAMESITE=None there. None implies Secure, which we always set.
 _COOKIE_SAMESITE = os.environ.get("AUTH_COOKIE_SAMESITE", "Strict")
 
+# Routes that read or set the httpOnly cookies. A browser attaches the cookie to a request a
+# third-party page caused, so each must come from one of our own origins (shared/origin_guard.py).
+# `/login` is not among them: it takes credentials in the body and touches no cookie.
+_COOKIE_ROUTES = frozenset(
+    {
+        "/v1/auth/authorize-url",
+        "/v1/auth/callback",
+        "/v1/auth/session",
+        "/v1/auth/refresh",
+        "/v1/auth/logout",
+    }
+)
+# Of those, the ones that parse a request body. refresh and logout are bodiless, and the SPA sends
+# them without a Content-Type, so requiring one there would only break it.
+_BODY_ROUTES = frozenset({"/v1/auth/authorize-url", "/v1/auth/callback", "/v1/auth/session"})
+
 _STANDARD_HEADERS = {
     "Content-Type": "application/json",
     "X-Content-Type-Options": "nosniff",
@@ -86,6 +104,12 @@ def lambda_handler(event: dict[str, Any], context: Any) -> dict[str, Any]:
     path = http.get("path", "")
 
     try:
+        if method == "POST" and path in _COOKIE_ROUTES:
+            assert_trusted_origin(event)
+            if path in _BODY_ROUTES:
+                assert_json_content_type(event)
+            rate_limit.hit_for_client(rate_limit.SESSION_IP, event)
+
         if method == "POST" and path == "/v1/auth/authorize-url":
             response = _authorize_url(event, request_id)
         elif method == "POST" and path == "/v1/auth/callback":
@@ -341,8 +365,17 @@ def _login(event: dict[str, Any], request_id: str) -> dict[str, Any]:
     refresh token via POST /v1/auth/session). On Cognito this route 404s — that
     SPA signs in client-side and never calls it.
     """
+    rate_limit.hit_for_client(rate_limit.LOGIN_IP, event)
     req = parse_validated(LoginRequest, _parse_body(event))
-    tokens = _refresher().password_grant(req.username, req.password)
+    # Wrong passwords are counted per username, from any address, so a password cannot be worked
+    # through from many; a correct one resets the count, so a user's own typos do not lock them out.
+    rate_limit.peek(rate_limit.LOGIN_FAILURES, req.username)
+    try:
+        tokens = _refresher().password_grant(req.username, req.password)
+    except AuthenticationRequiredError:
+        rate_limit.record_failure(rate_limit.LOGIN_FAILURES, req.username)
+        raise
+    rate_limit.clear(rate_limit.LOGIN_FAILURES, req.username)
     body = json.dumps(
         {
             "data": {

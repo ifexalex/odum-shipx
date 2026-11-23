@@ -15,6 +15,7 @@ import pytest
 import shared.providers as providers
 from services.auth import entra_oauth, entra_refresh, handler
 from shared.exceptions import AuthenticationRequiredError
+from tests.browser import BROWSER_HEADERS
 
 _ENV = {
     "ENTRA_TOKEN_ENDPOINT": "https://t.ciamlogin.com/t.onmicrosoft.com/oauth2/v2.0/token",
@@ -135,6 +136,7 @@ class TestHandlerInteractiveRoutes:
     def _event(path: str, body: dict | None = None, cookies: list[str] | None = None) -> dict:
         return {
             "requestContext": {"requestId": "r1", "http": {"method": "POST", "path": path}},
+            "headers": dict(BROWSER_HEADERS),
             "cookies": cookies or [],
             "body": json.dumps(body) if body is not None else "",
         }

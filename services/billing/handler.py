@@ -8,6 +8,7 @@ Routes:
   DELETE /v1/billing/{billing-id}/charges/{id}       — tenant_admin
   GET   /v1/billing/{billing-id}/storage-fees        — tenant_admin, nigeria_office_staff, customer (own)
   GET   /v1/billing/disputes                         — nigeria_office_staff, tenant_admin, china_office_staff
+  GET   /v1/billing/disputes/{dispute-id}            — same roles; measurement data only, no payment data
   GET   /v1/billing/{customer-id}                    — tenant_admin, nigeria_office_staff, customer (own)
   GET   /v1/billing/{billing-id}/detail              — tenant_admin, nigeria_office_staff, customer (own)
   POST  /v1/billing/{billing-id}/dispute             — customer
@@ -28,18 +29,25 @@ import uuid
 from typing import Any
 
 from shared.auth import get_tenant_context
+from shared.client_ip import client_ip
 from shared.exceptions import LogisticsBaseError, ResourceNotFoundError
 from shared.idempotency import check_idempotency, store_idempotency
 from shared.logging_config import bind_log_context, clear_log_context, setup_logging
 from shared.metering import record_usage
-from shared.observability import init_tracing
+from shared.observability import init_tracing, record_failure
 from shared.pagination import decode_cursor
 from shared.responses import created, error_response, no_content, paginated, success
 from shared.tenant_context import UserRole
 from shared.validation import parse_validated
 
 from . import service
-from .models import CancelBillingRequest, ExemptCarryoverRequest, FileCBMDisputeRequest, ResolveCBMDisputeRequest
+from .models import (
+    CancelBillingRequest,
+    ExemptCarryoverRequest,
+    FileCBMDisputeRequest,
+    GenerateBillingRequest,
+    ResolveCBMDisputeRequest,
+)
 
 # Module-level init (runs once on cold start)
 setup_logging()
@@ -96,7 +104,7 @@ def lambda_handler(event: dict[str, Any], context: Any) -> dict[str, Any]:
     http = event.get("requestContext", {}).get("http", {})
     method = http.get("method", "")
     path = http.get("path", "")
-    ip_address = event.get("requestContext", {}).get("identity", {}).get("sourceIp")
+    ip_address = client_ip(event)
 
     if method == "GET" and path.strip("/") == "v1/health":
         return _health_response(request_id)
@@ -173,6 +181,7 @@ def _handle_event(event: dict[str, Any]) -> dict[str, Any]:
                 payload.get("customer_id"),
                 payload.get("container_id"),
             )
+            record_failure("invoice_generation")
     else:
         logger.info("Ignoring unhandled event type: %s", detail_type)
 
@@ -229,8 +238,10 @@ def _dispatch(event: dict[str, Any], method: str, path: str, ctx: Any, request_i
             return paginated(page, next_cursor, has_more, request_id=request_id)
         if method == "POST":
             ctx.assert_role(*_CHARGE_WRITE_ROLES)
-            body = _parse_body(event)
-            result = service.generate_billing(ctx.tenant_id, body, actor_id=ctx.user_id, ctx=ctx)
+            req = parse_validated(GenerateBillingRequest, _parse_body(event))
+            result = service.generate_billing(ctx.tenant_id, req, actor_id=ctx.user_id, ctx=ctx)
+            if req.customer_id is None:
+                return success(result, request_id=request_id)
             return created(result, location="/v1/billing", request_id=request_id)
         raise ResourceNotFoundError("route", path)
 
@@ -241,6 +252,14 @@ def _dispatch(event: dict[str, Any], method: str, path: str, ctx: Any, request_i
         if method == "GET":
             ctx.assert_role(UserRole.TENANT_ADMIN, UserRole.NIGERIA_OFFICE_STAFF)
             return success(service.get_billing_stats(ctx.tenant_id), request_id=request_id)
+        raise ResourceNotFoundError("route", path)
+
+    # GET /v1/billing/unbilled — customers on cleared containers with CBM to bill and no
+    # invoice (dashboard queue). Staff only; completed by POST /v1/billing {container_id}.
+    if segment == "unbilled":
+        if method == "GET":
+            ctx.assert_role(UserRole.TENANT_ADMIN, UserRole.NIGERIA_OFFICE_STAFF)
+            return success(service.list_unbilled_customers(ctx.tenant_id), request_id=request_id)
         raise ResourceNotFoundError("route", path)
 
     # GET /v1/billing/report?created_after=&created_before= — period report
@@ -483,8 +502,8 @@ def _dispute_action_routes(
                 filters["customer_id"] = _qp(event, "customer_id")
             limit = int(_qp(event, "limit", 50))
             cursor = decode_cursor(_qp(event, "cursor"))
-            page, next_cursor, has_more = service.list_disputes(tenant_id, filters, limit, cursor)
-            return paginated(page, next_cursor, has_more, request_id=request_id)
+            page, next_cursor, has_more, total = service.list_disputes(tenant_id, filters, limit, cursor)
+            return paginated(page, next_cursor, has_more, total_count=total, request_id=request_id)
         # POST /v1/billing/disputes — create a dispute (billing_id in body)
         if method == "POST":
             ctx.assert_role(*_DISPUTE_LIST_ALL_ROLES)
@@ -492,6 +511,11 @@ def _dispute_action_routes(
             result = service.create_dispute(tenant_id, body, actor_id=ctx.user_id, ctx=ctx, request_id=request_id)
             return created(result, location=f"/v1/billing/disputes/{result.get('id', '')}", request_id=request_id)
         raise ResourceNotFoundError("route", "/".join(parts))
+
+    # GET /v1/billing/disputes/{dispute-id} — measurement data only (UX-01)
+    if action is None and method == "GET":
+        ctx.assert_role(*_DISPUTE_LIST_ALL_ROLES)
+        return success(service.get_dispute_detail(tenant_id, dispute_id), request_id=request_id)
 
     if action == "acknowledge" and method == "PATCH":
         ctx.assert_role(*_ACKNOWLEDGE_ROLES)

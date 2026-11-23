@@ -15,7 +15,7 @@ from shared.audit import log_audit
 from shared.db import execute_with_tenant
 from shared.logging_config import bind_log_context, clear_log_context, setup_logging
 from shared.notifications import enqueue_notification
-from shared.observability import init_tracing
+from shared.observability import init_tracing, record_failure
 from shared.staff_notifications import notify_staff
 from shared.tenant_context import PLATFORM_TENANT_ID
 
@@ -48,6 +48,7 @@ def lambda_handler(event: dict[str, Any], context: Any) -> dict[str, Any]:
             breaches += count
         except Exception:
             logger.exception("SLA check failed for tenant %s", tenant_id)
+            record_failure("scheduled_job_step")
             errors += 1
 
     logger.info(
@@ -82,6 +83,7 @@ def _process_tenant(tenant_id: str) -> int:
                 dispute["id"],
                 extra={"tenant_id": tenant_id},
             )
+            record_failure("scheduled_job_step")
 
     return breach_count
 

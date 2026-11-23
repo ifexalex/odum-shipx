@@ -87,8 +87,7 @@ class TestBillingDbIsolation:
             patch.object(service.repo, "get_outstanding_carryovers", return_value=[]),
             patch.object(service.repo, "get_pending_credit_refunds", return_value=[]),
             patch.object(service.repo, "get_tenant_short", return_value="ACME"),
-            patch.object(service.repo, "get_next_invoice_seq", return_value=1),
-            patch.object(service.repo, "create_billing", return_value=billing) as mock_create,
+            patch.object(service.repo, "create_invoice", return_value=(billing, True)) as mock_create,
             patch("services.billing.service.publish_event"),
         ):
             service.handle_payment_due(TENANT_A, "cont-001", "cust-001", "CONT-001")
@@ -222,6 +221,7 @@ class TestPaymentReleaseDbIsolation:
     def test_confirm_payment_uses_correct_tenant(self):
         """confirm_payment passes tenant_id correctly to all repo calls."""
         from services.payment_release import service
+        from services.payment_release.repository import RecordedPayment
         from shared.tenant_context import TenantContext, UserRole
 
         ctx = TenantContext(tenant_id=TENANT_A, user_id="u", role=UserRole.NIGERIA_OFFICE_STAFF)
@@ -248,9 +248,11 @@ class TestPaymentReleaseDbIsolation:
         with (
             patch.object(service.repo, "get_billing_by_id", return_value=billing) as mock_get,
             patch.object(service.repo, "get_tenant_short", return_value="ACME"),
-            patch.object(service.repo, "get_next_receipt_number", return_value=1),
-            patch.object(service.repo, "create_payment_record", return_value={"id": "pay-001"}),
-            patch.object(service.repo, "update_billing_payment", return_value=updated),
+            patch.object(
+                service.repo,
+                "record_payment",
+                return_value=RecordedPayment(payment={"id": "pay-001"}, billing=updated, overpayment_ngn=Decimal("0")),
+            ) as mock_record,
             patch("services.payment_release.service.publish_event"),
             patch("services.payment_release.service.log_audit"),
         ):
@@ -258,6 +260,7 @@ class TestPaymentReleaseDbIsolation:
 
         # Verify tenant_id is always the first arg
         assert mock_get.call_args[0][0] == TENANT_A
+        assert mock_record.call_args[0][0] == TENANT_A
 
 
 # ---------------------------------------------------------------------------

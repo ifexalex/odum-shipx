@@ -237,9 +237,9 @@ Notification template editor (`NotificationTemplatesPage`) needs a per-channel S
 
 **GDPR anonymise: exact "ANONYMISE" text match required (case-sensitive).** `AdminCustomerDetail`'s `AnonymiseModal` calls `DELETE /v1/customers/{id}`. The confirm button only enables when `confirmText === 'ANONYMISE'` (strict equality, no `.toLowerCase()`). A persistent GDPR banner appears on any customer with `anonymised_at` set. Export downloads as a JSON file client-side (`customer-export-{id}.json`) with no console logging of PII.
 
-**Platform admin routes not yet wired:** `/platform/dashboard`, `/platform/settings`, `/platform/audit-log` — still fall through to `RouteStub`. These are lower priority; the critical CRUD and suspend/activate flows are complete.
+~~**Platform admin routes not yet wired:** `/platform/dashboard`, `/platform/settings`, `/platform/audit-log` — still fall through to `RouteStub`.~~ *(Superseded: all wired; `RouteStub` was deleted 2026-11-17, audit FE-08.)* These are lower priority; the critical CRUD and suspend/activate flows are complete.
 
-**Tenant-admin config sub-pages not yet wired:** `/admin/config/charge-types`, `/admin/config/webhooks`, `/admin/reports`, `/admin/notifications/log` — still fall through to `RouteStub`. The API bindings (`configApi.listChargeTypes`, etc.) are ready in `tenantManagement.ts`.
+~~**Tenant-admin config sub-pages not yet wired:** `/admin/config/charge-types`, `/admin/config/webhooks`, `/admin/reports`, `/admin/notifications/log` — still fall through to `RouteStub`.~~ *(Superseded: all wired; `RouteStub` was deleted 2026-11-17, audit FE-08.)* The API bindings (`configApi.listChargeTypes`, etc.) are ready in `tenantManagement.ts`.
 
 ## 7.10 Reports & Notification Log ✅
 
@@ -302,7 +302,7 @@ These bullets are cross-domain (apply once *every* 7.x slice exists), so they st
 
 A dedicated pass aligning the China Office screens to the design prototype (`screens/china/china-screens.jsx` + `shared/app-shell.jsx`). Changes:
 
-- **Shell header + nav now match the prototype.** `StaffLayout.tsx` derives the TopBar breadcrumb (`Operations / Containers`) and title from the current route via `navConfig` + `routeTable`, and enables the global search box — previously the TopBar rendered empty (`search={false}`, no title/breadcrumb). Title is **suppressed on form routes** (`…/new`, `…/import`) and on detail routes (dynamic `:id`, which never match a static path) so the body `PageHeader`/hero stays the single heading — matching the prototype, which blanks the topbar title on those screens. `ContainerList.tsx` and `PackingListList.tsx` dropped their in-body `PageHeader` title (now carried by the TopBar) and keep only a right-aligned actions row. Covered by 2 new `StaffLayout.test.tsx` cases.
+- **Shell header + nav now match the prototype.** `StaffLayout.tsx` derives the TopBar breadcrumb (`Operations / Containers`) and title from the current route via `navConfig` + `routeTable`, and enables the global search box (~~a page-driven slot, removed 2026-11-16; now `GlobalSearch`~~) — previously the TopBar rendered empty (`search={false}`, no title/breadcrumb). Title is **suppressed on form routes** (`…/new`, `…/import`) and on detail routes (dynamic `:id`, which never match a static path) so the body `PageHeader`/hero stays the single heading — matching the prototype, which blanks the topbar title on those screens. `ContainerList.tsx` and `PackingListList.tsx` dropped their in-body `PageHeader` title (now carried by the TopBar) and keep only a right-aligned actions row. Covered by 2 new `StaffLayout.test.tsx` cases.
 - **China sidebar regrouped** to the prototype's three labeled groups: **Operations** (Containers, Create container), **Packing lists** (All packing lists, Create packing list), **Coordination** (Manifests, CBM disputes). Was a flat ungrouped list. `navConfig.ts` + `AppSidebar.test.tsx` updated.
 - **`ContainerList` stat row + chips** — see the revised aggregate-count note above.
 - **`ContainerList` status column** uses the shared `Badge` (was a bespoke dot+text `statusCell`); route cell shows color-coded origin→destination mono codes.
@@ -332,13 +332,13 @@ A second compliance pass against `screens/china/china-screens.jsx` addressed all
 - Added "CBM" column (total CBM packed).
 - ETA cell now color-codes: today=warning, cleared=success.
 - **Filter bar bug fixes (search/date-range were non-functional):** four bugs found root-causing a user report that the header search box, table search box, and the "Last 30 days"/"Filters" buttons all did nothing.
-  - **Header search was a no-op app-wide, not just here.** `TopBar.tsx` had an `onSearch` prop wired to its input's `onChange`, but no caller anywhere in the app ever passed it — the search box (placeholder "Search tenants, users, containers…") never did anything on any page. `TopBarContext`/`useTopBarSlot` gained a third slot (`onSearch`, same set-on-mount/clear-on-unmount shape as `actions`), threaded through `StaffLayout.tsx` → `TopBar`. `ContainerList` passes `useTopBarSlot({ onSearch: setSearch })`, so the header box drives the exact same `search` state as the table's own search input (single source of truth, not two independent search implementations) — the table input also reflects text typed into the header box.
+  - **Header search was a no-op app-wide, not just here.** *(Superseded 2026-11-16: the `onSearch` slot described here was removed; the header box is now the global search, `GlobalSearch`, and `ContainerList` keeps only its table search.)* `TopBar.tsx` had an `onSearch` prop wired to its input's `onChange`, but no caller anywhere in the app ever passed it — the search box (placeholder "Search tenants, users, containers…") never did anything on any page. `TopBarContext`/`useTopBarSlot` gained a third slot (`onSearch`, same set-on-mount/clear-on-unmount shape as `actions`), threaded through `StaffLayout.tsx` → `TopBar`. `ContainerList` passes `useTopBarSlot({ onSearch: setSearch })`, so the header box drives the exact same `search` state as the table's own search input (single source of truth, not two independent search implementations) — the table input also reflects text typed into the header box.
   - **Table search had no debounce** — every keystroke fired a new `GET /v1/containers?q=` request. Added a 300ms debounce (`useEffect`+`setTimeout`, the same pattern already used in `AdminCustomerList.tsx`): `search` (raw, drives both input boxes) → `debouncedSearch` (drives the actual query).
   - **The `q` search filter 500'd server-side** — a real backend SQL bug, not just missing debounce (see `10_api_tracking.md` for the root cause: `list_containers()`'s free-text OR-clause was double-prefixed with the `c.` table alias, producing invalid SQL). Every non-empty table/header search would have errored before this fix.
   - **"Last 30 days" and "Filters" buttons were fully decorative** (no `onClick`, no state). Added a new reusable `DateRangeFilter` design component (`frontend/src/design/components/DateRangeFilter.tsx` — button + preset popover, presets: 7/30/90 days + All time) wired to a new `created_after`/`created_before` pair on `GET /v1/containers` (see `10_api_tracking.md`). Defaults to **All time** — deliberately not defaulted to a 30-day scope, since the dev tenant alone has 200+ containers (`seed_stress.py`) and a silent default filter would hide most of them from a china_office_staff user. "Filters" opens a small popover panel with the same date-range presets plus a "Clear all filters" action (resets status chip, search, and date range together) — the only additional filter dimension the container list API supports today beyond status (chips) and free text (search box).
   - **"Cleared (30d)" stat card was mislabeled** — `stats.cleared` counted every cleared/at_warehouse/fully_released container ever, not just the last 30 days. Now scoped to `created_at` within the last 30 days client-side, over the already-fetched `allContainers` stats batch, matching its label.
   - Not fixed (flagged only): `BillingList.tsx`, `ClaimList.tsx`, `NotificationLog.tsx`, `TenantReports.tsx` have the identical dead calendar/filter button pattern — out of scope for this pass, tracked for a follow-up.
-  - Tests: `ContainerList.test.tsx` (+4 cases — debounce, header/table search sync, date-range filter, Filters panel clear-all); `ContainerDetail.test.tsx`'s local `TopBarContext.Provider` test fixture updated for the new `onSearch`/`setOnSearch` fields (`TopBar.test.tsx`/`StaffLayout.test.tsx` needed no changes — they don't construct a raw context value).
+  - Tests: `ContainerList.test.tsx` (+4 cases — debounce, header/table search sync, date-range filter, Filters panel clear-all); `ContainerDetail.test.tsx`'s local `TopBarContext.Provider` test fixture updated for the new `onSearch`/`setOnSearch` fields (`TopBar.test.tsx`/`StaffLayout.test.tsx` needed no changes at the time — they don't construct a raw context value).
 
 **5.1 ContainerList — Table sorting wired up + Filters panel rework (row 7.37):**
 - **Table sort UI was fully dead app-wide.** The shared `Table` component (`design/components/Table.tsx`) already renders clickable sortable headers with chevron icons reflecting `sort`/`onSort` props, and the backend's `shared/pagination.py::build_paginated_query()` already accepted `sort_field`/`sort_direction` — but zero pages ever passed `onSort` to `Table`, and zero handlers read a `sort` query param; every `sortable: true` column (declared on 4 tables total) was decorative. Added a small shared `useTableSort` hook (`frontend/src/hooks/useTableSort.ts`) that drives the click-to-toggle-asc/desc state and derives the `sort`/`direction` query params, used identically by `ContainerList`, `BillingList`, and `ClaimList`. Sort changes flow into the page's React Query cache key (same mechanism as the existing `search`/`status` filters), so pagination resets to page 1 automatically.
@@ -940,7 +940,7 @@ User supplied 4 photos of a real "Goods Release Note" / "Cash Receipt" pair from
 
 **New files:**
 - `frontend/src/api/warehouses.ts` — `Warehouse`/`CreateWarehouseInput` types, `warehousesApi` (`list`, `create`, `setDefault`).
-- `frontend/src/hooks/useWarehouses.ts` — `useWarehouses(enabled = true)`, `useCreateWarehouse()`, `useSetDefaultWarehouse()`.
+- `frontend/src/hooks/useWarehouses.ts` — `useWarehouses(enabled = true)`, `useCreateWarehouse()`, `useSetDefaultWarehouse()`; since 2026-11-17 also `useUpdateWarehouse()`, `useRemoveWarehouse()`, `useDeactivateWarehouse()` (every warehouse write refreshes the list — see "Warehouse confirmations (audit UX-11)").
 
 **Changed:**
 - `api/releaseNotes.ts` — `ReleaseNote` gained `packages_released`/`package_unit`/`packages_balance`, `warehouse_name`/`warehouse_phone`, `is_on_credit`/`credit_granted_by_name`, `receipt_number`, `physical_document_number`, `packing_list_invoice_numbers`, `amount_paid_ngn`/`balance_ngn`/`total_ngn`, `debt_due_date` — all non-optional (the backend's `_fmt_release_note` always returns them, null/`[]`/`"0.00"` when absent, never omitted). `PickupResult` gained `customer_service_officer_name`/`accounting_officer_name`/`collected_by_name?`/`delegate_phone?`. `CreateReleaseNoteInput`/`RecordPickupInput` gained the matching optional request fields (`warehouse_id`, `physical_document_number`, `credit_granted_by_name`, `due_date`, `packing_list_invoice_numbers`, `customer_service_officer_id`, `accounting_officer_id`, `warehouse_attendant_id`).
@@ -1621,3 +1621,206 @@ matching the surrounding buttons ("Submit for approval", "Create packing
 list"), and still unambiguous on step 3 where it sits beside Submit. The test
 matcher was tightened back to the exact string once there was only one.
 
+
+## Implementation notes — invoice outcome on clearing (audit Phase 1, 2026-11-14)
+
+**Wire change.** `PATCH /v1/containers/{id}/status` now returns a `billing_summary` array when the new status is `cleared`
+(absent for every other transition): one row per customer on the container,
+`{ customer_id, customer_name, status: created | existing | skipped | failed, billing_id, invoice_number, reason, detail }`.
+`containersApi.updateStatus` is typed `ContainerStatusUpdate = Container & { billing_summary?: InvoiceResult[] }`, and
+`ContainerDetail` strips the extra key before writing the container into the query cache so it never leaks into other readers.
+
+**Why.** Clearing used to invoice every customer inside the request, swallow any per-customer error and still report
+success, so a customer who could not be invoiced (rates not set, no CBM, a transient failure) was simply never billed and
+nobody knew. `InvoiceOutcomeBanner` (on the container page, above the tabs) now says who was invoiced and, for anyone who
+was not, names them with a plain-language reason. Nigeria staff and tenant admins get **Generate missing invoices**, which
+calls `POST /v1/billing { container_id }` (idempotent, so repeating it is safe); other roles see "ask your Nigeria office
+or admin". The banner is session-local by design: it answers "what just happened"; after a reload the container shows as it
+now stands. The dashboard queue of customers on cleared containers with no invoice (BE-06's second half) is built; see the next section.
+
+~~**Found while doing this:** the **Generate billing** button on `nigeria/BillingList.tsx` has no `onClick` — it renders but
+does nothing.~~ **Fixed 2026-11-14** — see "Generate billing picker and missing-item compensation" below.
+
+## Implementation notes — unbilled queue, refund types, billing cache (audit Phase 1 / BE-04, 2026-11-14)
+
+- **`shell/UnbilledQueue.tsx`** (dashboard, tenant admin and Nigeria staff): "Customers not invoiced" — customers on cleared
+  containers with CBM to bill and no invoice, grouped by container, from `GET /v1/billing/unbilled`
+  (`billingApi.unbilled`, `billingKeys.unbilled`). Renders nothing when empty. **Generate invoices** calls
+  `POST /v1/billing { container_id }` (idempotent); **Open container** links to the container page.
+- **Cache:** `PATCH /v1/containers/{id}/status` now invalidates `billingKeys.all` too — moving a container to `cleared` creates
+  invoices, so billing lists and the unbilled queue must refresh with it (`api/cacheInvalidation.ts`).
+- **Refund types:** `RefundType` gained `missing_item` and `seized_item`; `refundTypeLabel` shows "Missing item compensation" /
+  "Seized item compensation".
+- **Behaviour changes worth knowing when testing the UI:** an invoice that was `paid` becomes `partially_paid` the moment a
+  misc charge, carryover or storage fee is added; storage fees now actually appear on the invoice (`storage_fees_ngn` is read
+  from the fee log — it was always 0 before, so the storage banner and the Waive action never showed); waiving works and a
+  second waive returns `422 NO_STORAGE_FEES`.
+
+## Implementation notes — Generate billing picker and missing-item compensation (2026-11-14)
+
+- **Generate billing (`nigeria/BillingList.tsx` + `GenerateBillingModal.tsx`).** The top-bar button was dead; it now opens a
+  dialog for **tenant admins and Nigeria staff** (`canGenerateInvoices` in `api/billingRules.ts`, the same check
+  `ContainerDetail` now uses; **Export** stays admin-only ~~and is still unwired~~ (wired 2026-11-16, see the list-export notes below)). The dialog lists only containers that still have
+  a customer to invoice, from the same `GET /v1/billing/unbilled` query as the dashboard queue (`billingKeys.unbilled`), grouped
+  by `groupUnbilledByContainer`, which `UnbilledQueue` now shares. One candidate is pre-selected; with several, **Generate
+  invoices** stays disabled until one is chosen. The chosen container's customers and CBM are listed. The result is the
+  existing `InvoiceOutcomeBanner` (who was invoiced; who was skipped and why, with **Generate missing invoices**), then
+  **Done**. When nothing is unbilled it says so instead of showing an empty picker. The picker is a native `<select>`, **not**
+  `Combobox`: the shared `Modal` body is `overflow-y: auto`, which clips the Combobox dropdown, so the options were unreachable
+  (seen in a browser screenshot, not in the jsdom tests).
+- **Missing Items → Update dialog.** Choosing *Confirmed lost* reveals an optional **Compensation (₦)** field and sends it as
+  `refund_amount_ngn`; blank confirms the loss with no compensation, an amount that is not greater than 0 blocks Save, and an
+  amount typed before switching to another status is not sent. Backend rule and validation: `12_api_claims.md`.
+
+## Implementation notes — registration confirmation and notification preferences (audit SEC-04 / SEC-01, 2026-11-15)
+
+- **`pages/auth/RegisterScreen.tsx`:** `POST /v1/register/{slug}` now answers `202 {status: "received"}` whether or not the email already had an account, so the "An account with this email already exists" branch is gone (it was the enumeration leak). The confirmation reads "Check your email." and covers both outcomes ("If this is your first time, it has a temporary password... If you already have an account, it tells you so, with a link to sign in"); it no longer says "Account created". `SelfRegisterResult` is `{status: 'received'}` (it was `{id, name, email}`, which nothing read).
+- **Notification preferences copy is now truthful.** The registration form's "Notify me via" is "Send me optional messages via" with a line saying shipment, invoice, claim and account messages are always sent; the Account page's Notifications tab says the same and each channel describes optional messages (the SMS toggle used to promise "payment due, status changes, claims"). The three `ToggleSwitch`es now carry their label as an accessible name (they had none).
+- **`pages/customer/Account.tsx` sends only what changed.** It used to send `notification_consent` with every save, so a customer who only switched language was recorded as having *chosen* their channel list (an imported customer's empty default would have become an opt-out of everything). Saving the channel list is what records a choice (`consent_given_at`; ADR-006).
+
+- **Seized Items → Update dialog (2026-11-16):** *Permanently lost* reveals the same optional **Compensation (₦)** field as Missing Items (blank records the loss with no compensation; an amount not above 0 blocks Save). It used to be impossible to compensate from the UI at all.
+
+## Implementation notes — code splitting (2026-11-16, master plan 7.190)
+
+- `shell/routes.tsx` loads pages through `lazyNamed` and the area modules in `shell/areas/`; the route tests are async (`findBy*`), because a page now renders after its chunk loads. Details and measurements: `06_routing_rbac_and_navigation.md`. `SessionLoading` gained an `inline` mode for the page-sized wait inside an on-screen layout.
+
+## Implementation notes — global search (2026-11-16, master plan 7.188)
+
+- **`shell/GlobalSearch.tsx`** (+ `GlobalSearch.module.css`), `hooks/useGlobalSearch.ts` (250 ms debounce, nothing sent under 2 characters, previous results kept while the next term loads), `api/search.ts`, `searchKeys` in `api/keys.ts`, `shell/searchRoutes.ts` (result → route, placeholder per role). Behaviour and routes are in `06_routing_rbac_and_navigation.md` (UX-05).
+- **Removed:** `TopBar`'s `onSearch`/`searchPlaceholder` props, the `onSearch`/`searchPlaceholder` fields of `TopBarContext`, and `useTopBarSlot({ onSearch })`. Test fixtures that built a raw `TopBarContext` value (`TopBarTestWrapper`, `ContainerList`/`ContainerDetail`/`TenantReports` tests) lost the two fields.
+- **Looked at in a real browser** (Playwright against the Vite dev server with the API stubbed): staff dropdown, customer dropdown on the brand-coloured bar, phone collapsed and open (no horizontal overflow), platform admin shows none.
+- **Not verified:** the SQL behind it has not been run against a real database (Docker unavailable); see `21_missing_endpoints.md` Part 12.
+
+## Implementation notes — audit Phase 3 (2026-11-16)
+
+- **CBM dispute screen for China staff (UX-01)** `pages/china/DisputeDetail.tsx`: status, customer and container, billed CBM against what the customer measured, their reason, the packing-list lines the CBM was summed from (with dimensions) and the resolve action (no change, or adjust with a corrected CBM; notes required). Read-only once resolved. Shows no money anywhere. Backend: `11_api_billing.md`.
+- **Customer release note (UX-02)** `pages/customer/MyReleaseNote.tsx`: reference, status, cartons ("4 of 10"), container, validity, warehouse name, address and phone, carton tags, a credit warning when released on credit, an expired notice, and **Download PDF**. Another customer's id is a 404 ("Release note not found."). `ReleaseNoteCard` lists the notes for an invoice's or shipment's container and renders nothing until one exists, or if the lookup fails. It uses `releaseNoteKeys.lookup`, because `releaseNoteKeys.list` belongs to the infinite-query hook (a repo test enforces that).
+- **Search box, menu, return path, error boundaries (UX-05, UX-03, UX-04, FE-01)** are described in `06_routing_rbac_and_navigation.md`.
+- **Found on the way:** the ContainerList "Export" button, like the invoice list's, has no handler (~~still open~~ wired 2026-11-16). `App.test.tsx` made a real network call to the developer's API port (the silent session refresh) and failed whenever that server was slow or down; it now stubs `fetch`.
+
+## Implementation notes — list exports (2026-11-16, master plan 7.189)
+
+- **Invoice list Export (`BillingList`)** is wired for the tenant admin, who was the only role the dead button was shown to. ~~The API also allows Nigeria office staff; offering them the button is an owner call.~~ **Decided 2026-11-17: admin only.** The API now refuses every other role (403), so the button and the server agree. **Container list Export (`ContainerList`)** is shown to every role that can open the list (China, Nigeria, admin); *Create container* stays China-only.
+- Both pages hand one `listParams` object to the list query and to `exportList`. `useListExport` keeps the TopBar-captured button pointed at the current filters and turns a refusal into a banner (`Couldn't export invoices` / `Couldn't export containers`). See `10_file_uploads_and_exports.md`.
+- Looked at in a real browser: with the *In transit* chip and the search text `MSC` applied after the page opened, the CSV request was `/v1/containers/export?status=in_transit&q=MSC&format=csv`.
+
+## Implementation notes — display formatting (2026-11-16, master plan 7.192)
+
+- 124 `toLocale*String` calls and 56 `.slice(0, 10)` dates across 42 files now go through `lib/format.ts` (see `00_CROSS_CUTTING_STANDARDS.md`, "Display formatting and time zone"). Dates read `10 Nov 2026` instead of `2026-11-10`; times are Lagos time and say WAT; money is `₦174,375` / `₦174,375.50`; USD always has cents. Seven `.slice(0, 10)` calls were not display but data (query presets, the ETA-is-today comparison, the warehouse "today" check, the data-export filename): they use `isoDateOffset` / `todayIso`, which are Lagos dates.
+- **Behaviour changes to know about:** money that has kobo now shows them (the old local helpers `fmtNgn` / `ngn` in `BillingList`, `MyShipments` and the payment dialog rounded to whole naira, so ₦174,375.50 read as ₦174,376); `formatNgn` of a missing amount is "—" (it was "₦NaN"); USD `112.5` reads `$112.50`; `ActivityLog`/`NotificationLog` timestamps now carry "WAT".
+- Found on the way: `api/decimal.ts` already had a `formatCbm`; the implementation moved to `lib/format.ts` and `api/decimal.ts` re-exports it. `MyReleaseNote` had a local `formatDate` that would have recursed after the rewrite and was removed. Checked in a real browser: the same invoice rendered by Shanghai/zh-CN, New York/de-DE and Lagos/en-GB reads identically.
+
+## Implementation notes — dispute list and claim references (2026-11-16, audit UX-06)
+
+- `DisputeList` now shows **Customer, Invoice and Container** instead of "Billing ID" with eight characters of a UUID; a dispute whose record is gone shows a dash. Dates use the FE-03 helper (`15 Jun 2026`). Backend and wire fields: `11_api_billing.md`.
+- `MyClaims` shows the claim's reference (`c.reference`) instead of `id.slice(0, 8)…`. The other `id.slice(0, 8)` sites already prefer a human reference and fall back to the id only when the API sends none (checked: packing lists, invoices, claims, shipments); the tenant list's ID column is an ID column on purpose.
+
+## Implementation notes — customer claim page (2026-11-16, master plan 7.194, audit UX-07)
+
+- **Refund request (OPS-03, 2026-11-17).** `RefundRequest` now has tests, and its "Credit on next shipment" option says that anything left over after the next invoice stays as credit (BE-07 spends a credit only as far as the invoice needs). **Ground-truth gap found, not changed:** the "Bank account refund" option never asks for the bank details (`account_number`, `account_name`), though the file's header comment and the backend's encrypted columns expect them; the accounts team has to get them from the customer another way. Collecting them here is a product change for the owner.
+- **Platform tenant page: data export card (BE-10, 2026-11-17).** `PlatformTenantDetail` (`/platform/tenants/:id`) shows a **Data export** card on the Overview tab when the tenant is offboarded: status badge (Not queued / Queued / Being written / Ready / Failed / Cancelled), when it was prepared, size, record count, SHA-256, the date the data is deleted, **Download archive** (asks for a fresh five-minute link each time, `platformApi.offboardingExportLink`, then `window.location.assign`; the server marks it an attachment so the page stays) and **Queue export** when `can_queue`. While queued, running or retrying it re-checks every minute (`useOffboardingExport`, `refetchInterval`). The offboard dialog now says an export is prepared and must be handed over within 90 days. Wire types: `OffboardingExport`, `OffboardingExportLink` (`api/tenantManagement.ts`); keys `platformTenantKeys.offboardingExport/users/config`, `platformAuditKeys.forTenant`.
+- **Ground-truth gap in FE-05 (closed 2026-11-17).** The 7.197 claim that no page fetched in a `useEffect` was wrong for this page: its Users, Configuration and Audit tabs did, through `import { platformApi as platformExtras }`, which the drift guard's `\w+Api.` pattern did not match. They now read through `usePlatformTenantUsers`, `usePlatformTenantConfig`, `usePlatformTenantAudit`, and `shell/noFetchInEffect.test.ts` also matches aliased API imports (checked: it fails on the old page with exactly those three calls).
+- **Payment in another currency (BE-08, 2026-11-17).** `POST /v1/payments/{id}/verify` can now answer 422 `BR-PAY-VERIFY-002` when Paystack reports a successful charge that is not a positive naira amount. `PaymentSuccess.tsx` needs no change: it already shows an `ApiError`'s message in its error state.
+- **Credits on invoices and refunds (BE-07, 2026-11-17).** `adjustments_ngn` on an invoice is now the negative of the credit it absorbed (it was always 0), so the existing "Adjustments" row on `BillingDetail` and `MyBillingDetail` appears for those invoices with no page change. `RefundDetail` shows a "Credit used: ₦X of ₦Y" stat for a refund taken as credit (`Refund.credit_applied_ngn?: string`), since a credit can now be part used. An invoice fully covered by credit arrives as `paid` with total 0.
+- **`pages/customer/MyClaimDetail.tsx`** (`/my-claims/:id`): the reference and status with a progress strip (`aria-current="step"`), the outcome (decision, amount, decided-on date and the refund's status and amount) or a "No decision yet" note saying what is being waited for, what the customer filed (container, cartons, description, how it was checked) and the evidence with links that open in a new tab with `rel="noopener noreferrer"` (a file with no link says "Unavailable"). A claim that is not theirs, or does not exist, reads "Claim not found."; any other failure says it could not load. Wording lives in `api/claimsRules.ts` (`CUSTOMER_CLAIM_STATUS_LABELS`, `customerInspectionLabel`, `customerResolutionLabel`, `customerRefundLabel`, which collapses the refund pipeline to "Being reviewed / Approved: the payout is being arranged / Paid / Applied as credit / Not approved"), shared with `MyClaims`. **Reason (owner decision, 2026-11-17):** the Outcome card shows a **Why** row when `resolution.reason` is present, which the server sends to a customer only for a decision against them (`no_action`, "Closed without a payout"); a refund, compensation or discount arrives with `reason: null` and shows no row. Staff's `ResolveClaimModal` (`pages/nigeria/ClaimDetail.tsx`) labels the reason field by the picked outcome: "Reason (the customer will see this)" with a helper line for *No action*, "Reason (internal, not shown to the customer)" otherwise. Wire format: `ClaimResolution.reason?: string | null` (`api/claims.ts`).
+- **`MyClaims`** lists the claim reference (it printed `id.slice(0, 8)…`) and each card opens the claim. Backend: `12_api_claims.md`. Checked in a real browser, desktop and phone (no horizontal overflow).
+
+## Implementation notes — China office and missing items (2026-11-16, master plan 7.195, audit UX-08)
+
+- `MissingItemList` is role-aware. For China staff the Update dialog offers only **Investigating** and **Found & shipping**, has no Compensation field whatever the status, says that deciding a loss and compensation are the Nigeria office's, and sends only `{status, notes}`; an item already confirmed lost or resolved has no Update button. Nigeria staff are unchanged (every status; compensation on confirmed lost). The rules are in `api/claimsRules.ts` (`missingItemStatusesFor`, `canUpdateMissingItem`, `canCompensateMissingItem`, `CHINA_MISSING_ITEM_STATUSES`), mirroring the server, which is the authority. Backend and the 403/422 rules: `12_api_claims.md`. Checked in a real browser as China staff.
+
+## Implementation notes — pickup code (2026-11-16, master plan 7.196, audit UX-09)
+
+- **Warehouse** (`WarehouseDashboard` pickup sheet and the `ReleaseNoteDetail` pickup dialog): when the note has `pickup_code_required`, a **Pickup code** field appears first (the dialog opens with focus on it), Confirm is disabled until something is typed, and a wrong code shows the server's message with the tries left while the sheet stays open. A locked note shows "Pickup code locked" and cannot be confirmed. A note without a code looks as before.
+- **Fixed on the way:** the dashboard sheet now has a **Collected by** field (defaulted to the customer) and sends `collected_by_name`; without it every in-person pickup recorded from the dashboard was refused by the backend.
+- **Office staff** (`ReleaseNoteDetail`): **Send new pickup code** (tenant admin, Nigeria staff; active notes) opens a confirmation that says the current code will stop working; afterwards a banner says which channels it went out on. A locked note shows a banner. Rules: `canSendPickupCode`, `sentViaLabel` in `api/releaseNotesRules.ts`; API: `releaseNotesApi.sendPickupCode`.
+- **Customer** (`MyReleaseNote`): a notice that a pickup code was sent and must be given by whoever collects, or that the note is locked. The code is never shown in the app.
+
+## Implementation notes — React Query migration finished (2026-11-16, master plan 7.197, audit FE-05)
+
+See `09_state_management_and_data_fetching.md`, "No page loads server data in a `useEffect`". Behaviour changes worth knowing: the tenant dashboard's queues and the rate history table now refresh after a relevant write; the payment-gateway settings page makes one config request instead of two; the packing-list form's pricing estimate shows the CBM rate even if the dollar rate cannot be read (the two were loaded together and failed together).
+
+## Warehouse confirmations in the app's own dialog (audit UX-11, 2026-11-17)
+
+`Warehouses.tsx`'s Delete asked through `window.confirm` twice ("Permanently delete?", then "Retire instead?" when the server answered `WAREHOUSE_IN_USE`) — the only native dialogs in the app. Both are now one design-system `Modal` (480 px, `danger` button) that changes stage in place: **Delete this warehouse?** → on `WAREHOUSE_IN_USE`, **Retire this warehouse instead?** showing the server's reason and what retiring does. Cancel, Escape and the close button leave the warehouse untouched; focus opens on Cancel. On a phone it is the Modal's full-screen sheet.
+
+**Ground-truth gap found and fixed:** add, edit, delete and retire called `warehousesApi` directly and never invalidated `warehouseKeys.all`, which is cached for five minutes, so the list kept showing a deleted warehouse (or lacked a new one) until something else reloaded it. Only Set default refreshed. Every warehouse write now goes through a mutation hook in `useWarehouses.ts` that invalidates the list.
+
+Guard: `shell/dialogs.test.ts` fails on any `window.confirm` / `alert` / `prompt` (or a bare `confirm(`) under `src/`, mutation-checked. Tests: `Warehouses.test.tsx` (16; the `window.confirm` stub is gone — cases drive the dialog, including Escape, cancel at each stage, and the list refreshing after a delete). Checked in Chromium against the local app with the warehouse endpoints stubbed (desktop and 375 px).
+
+## Route screens in one checked map (audit FE-08, 2026-11-17)
+
+The screen maps moved out of `shell/routes.tsx` into `shell/screens.tsx`: `PUBLIC_SCREENS` (no guard) and `GUARDED_SCREENS` (renamed from `STAFF_SCREENS`, which also held the customer portal), plus `screenForRoute(route)`. `routes.tsx` keeps the route tree, the layouts and the apex redirect, so neither file mixes components and plain exports (fast refresh). `RouteStub` ("the real page lands in Task 07") is deleted; a missing screen renders `NotFoundPage`. Stale comments removed: the `routeTable.ts` note that `/billing/disputes` must precede `/billing/:id` (React Router v6+ ranks by specificity), the "stays a stub until Task 07" headers, and the same in `CustomerTopNav.tsx`.
+
+Guard: `routes.test.tsx` "every route has a real screen" — one case per route, plus no screen without a route or under the wrong guard (a guarded page in `PUBLIC_SCREENS` would skip `RoleGuard`) and no duplicate path. The FE-02 code-splitting check now reads `routes.tsx` and `screens.tsx` together. Both mutation-checked; the production build still emits the entry chunk at 168 kB.
+
+## Container document upload refuses an untyped file (audit BE-12, 2026-11-17)
+
+`ContainerDetail`'s Documents tab sent `file.type || 'application/octet-stream'`; the server no longer accepts the unknown type, so the dialog now refuses a file whose browser type is not PDF, JPEG, PNG or WebP ("Choose a PDF, JPEG, PNG or WebP file.") without calling the API. **Ground-truth gap fixed:** upload errors were set on the tab's page banner, which sits behind the dialog's overlay, so a failed upload looked like nothing happened; they now render inside the dialog (`uploadError`), cleared when a new file is picked or the dialog reopens. Tests: `ContainerDetail.test.tsx` (+3).
+
+## Exchange-rate source on invoices and the Dollar rate page (audit BE-11, 2026-11-17)
+
+`Billing` gains optional `exchange_rate_source` / `exchange_rate_fetched_at` (staff detail read only). `BillingDetail` shows a warning-tinted note (`.rateNotice`, `role="note"`) under the exchange-rate line when the invoice used the last known rate, with the fetch time in Lagos time. `DollarRateConfig` (the type) gains `rate_source` and `fetched_at: string | null`; the page says "last known rate, fetched …" or "built-in default, never fetched" instead of "updated just now", with a warning banner when the rate is not live. `InvoiceOutcomeBanner` explains `RATE_UNAVAILABLE`. Tests: `BillingDetail.test.tsx` (+4), `DollarRateConfig.test.tsx` (+3).
+
+## China office work queue (audit UX-10, 2026-11-17)
+
+`/work-queue` → `ChinaWorkQueue`: four queues from existing list endpoints (no new API) — rejected packing lists (`status=rejected`), drafts not submitted (`status=draft`), manifests awaiting verification (`verification_status=pending`), CBM disputes escalated to China (`status=escalated_china`). Each shows its count, its first five rows (each opens the record) and a "View all →" to the filtered list; a queue that fails says so and the others still show. Hooks: `usePackingListQueue`, `useChinaManifestQueue`, `useEscalatedDisputes` in `hooks/useDashboard.ts` (lookup keys, so writes refresh them). China staff now land here (`roleHome.ts`), and it is their first menu item.
+
+`lib/useStatusParam.ts` keeps a list's status filter in `?status=`; `PackingListList`, `ManifestList` and `DisputeList` use it, so links can open them filtered and the filter survives reload. The tenant dashboard's "Review all", "Verify" and "Respond" now open their lists filtered too.
+
+**Ground-truth gaps found:** (1) the tenant dashboard's "Packing lists awaiting approval" queue (Nigeria staff) asked for `status=submitted`, a status no packing list has (`draft | pending_approval | approved | rejected`), so it was always empty — now `pending_approval`; checked against the API (0 vs 3 rows on the dev data). ~~(2) `GET /v1/manifests` and `GET /v1/billing/disputes` return `has_more` but no `total_count`, although `PaginationMeta.total_count` is typed as always present; the work queue counts the rows it has (with "+" when there are more) where the total is missing.~~ **Closed 2026-11-17:** both endpoints now return `total_count`; the work queue's row-counting fallback remains only for safety.
+
+Tests: `ChinaWorkQueue.test.tsx` (9), `DisputeList.test.tsx` (+2, opened from a link), `roleHome.test.ts` / `RoleGuard.test.tsx` (China home). Checked in Chromium against the dev API as China staff (desktop and 375 px).
+
+## The three largest pages split into folders of parts (audit FE-07, 2026-11-17)
+
+No behaviour change; every page test passes unchanged. Each page keeps its path (routes and tests import it as before) and its parts live in a folder named after it; no file exceeds 400 lines.
+
+| Page (lines before → after) | Parts |
+|---|---|
+| `nigeria/BillingDetail.tsx` (1,800 → 387) | `billingDetail/`: `status.ts` (status labels and variants), `StorageFees.tsx`, `DisputeCard.tsx` (with the SLA countdown and resolve dialog), `RecordPaymentModal.tsx`, `ChargeModals.tsx` (add charge, cancel, apply carryover), `GenerateReleaseNoteModal.tsx`, `Breakdown.tsx` (breakdown card, payments table), `PaymentClaims.tsx` (owns its query, confirm/reject state), `MiscCharges.tsx` (owns its query and remove) |
+| `china/ContainerDetail.tsx` (1,187 → 295) | `containerDetail/`: `labels.ts`, `Timeline.tsx` (stepper, summary tile, event row), `AdvanceStatusModal.tsx`, `DocumentsTab.tsx`, `OverviewTab.tsx` (owns the cargo aggregates), `Tabs.tsx` (packing lists, with its sort; tracking), `packingLists.ts` |
+| `china/CreatePackingList.tsx` (1,258 → 111) | `createPackingList/`: `useCreatePackingListForm.ts` (all wizard state and the save), `usePackingListPricing.ts` (rates, totals, live estimate), `Step1.tsx`, `Step2.tsx` + `ItemsTable.tsx` + `Step2Parts.tsx`, `Step3.tsx`, `WizardSteps.tsx`, `items.ts` |
+
+Declarations moved byte for byte (a TypeScript-compiler-based mover); new files are Prettier-formatted with the frontend's `.prettierrc` (run with `--no-editorconfig`: the repo-root `.editorconfig` says 4-space indent, the frontend is 2-space). The `untestedPages` ratchet counts a part in a page's folder as covered by that page's test. Found along the way: ContainerDetail's packing-list `useMemo` depended on a value rebuilt every render (lint warning) — gone now the memo takes a prop; the tracking tab's "Export" button has no handler (unchanged here, noted in the master plan). Checked in Chromium against the dev API: all three pages and every ContainerDetail tab render with no console errors.
+
+**Tooling note:** `npx tsc --noEmit -p .` in `frontend/` checks nothing — `tsconfig.json` has `"files": []` and only references the app and node configs. Use `npm run typecheck` (`tsc -b --noEmit`).
+
+## Styling rule: no static inline styles (audit FE-06, 2026-11-17)
+
+**Rule.** A `style={{...}}` prop is for values computed at runtime only (a width from a percentage, a colour from a status, a border on all but the last row). Anything fixed belongs in the page's CSS module, written with the design tokens in `src/design/tokens.css` (`var(--color-*)`, `var(--font-*)`, `var(--radius-*)`, `var(--scrim-modal)`). Inline values bypass theming (dark mode cannot reach them) and drift from the tokens.
+
+Applied to the five largest pages: `ReleaseNoteDetail` (12 → 0), `ManifestDetail` (2 → 0), `AdminCustomerDetail` (21 → 0), `MyBillingDetail` (24 → 1, a runtime border), `LandingPage` (already 0). Classes were added to each page's module (`ReleaseNoteDetail.module.css`, `ManifestDetail.module.css`, the shared `admin.module.css` and `customer.module.css`), one per distinct style, with names for what the element is (`fieldLabel`, `prefRow`, `dialogOverlay`, `paymentsTh`). Pixel-compared before and after in Chromium against the dev data: two pages identical, two differing only in anti-aliasing (≤ 39 scattered pixels on card corners).
+
+**Found and fixed:** `AdminCustomerDetail`'s locale select used `var(--color-ink-1)`, a token that does not exist (the scale is `--color-ink`, `--color-ink-2`, …), so its colour fell back to inherited — now `var(--color-ink)`; `MyBillingDetail`'s hand-rolled dialog overlay hard-coded the light-mode scrim `rgba(11,47,13,0.55)` — now `var(--scrim-modal)`, which darkens correctly in dark mode. About 650 inline styles remain elsewhere in `src/`; convert them page by page under this rule.
+
+## Breadcrumbs on every page (FD-45/FD-46, 2026-11-17)
+
+See `06_routing_rbac_and_navigation.md` "Breadcrumbs". Pages changed: every record page now calls `useBreadcrumbLabel` (PackingListDetail, ManifestDetail, BillingDetail, DisputeDetail, ClaimDetail, RefundDetail, ReleaseNoteDetail, StaffUserDetail, AdminCustomerDetail, PlatformTenantDetail, MyShipmentDetail, MyBillingDetail, MyReleaseNote, MyClaimDetail; the packing-list edit form names its list; RefundRequest and PaymentSuccess name their invoice). `TopBar`'s `breadcrumb` prop is now `Crumb[]` (`{label, to?}`), not `string[]`; `StaffLayout`'s `buildBreadcrumb` (sidebar-derived) is gone. Tests `PaymentSuccess.test.tsx` and `RefundRequest.test.tsx` now render inside `withQuery` and mock `billingApi.get` (the invoice crumb reads it). Also fixed: `routes.test.tsx`'s chunk-loading test waited 1 s for a cold chunk and failed intermittently under full-suite load (now 5 s). Seen, not changed: on a phone, the staff invoice page's action buttons run off the right edge.
+
+## 5 MB upload limit in every upload screen (2026-11-17)
+
+`lib/uploadLimits.ts` (`MAX_UPLOAD_BYTES`, `uploadSizeProblem`) is the one limit: `useFileUpload` (claim evidence, manifest evidence, payment-claim evidence through `EvidenceUploader`), `DocumentsTab` (container documents) and `uploadImportFile` (both spreadsheet imports, `FileTooLargeError`) refuse an empty or over-5 MB file with "This file is 6.0 MB. The limit is 5 MB." before any request, and every presign call sends `size_bytes` (`presignedUploadApi.getUrl`, `manifestApi.getEvidenceUploadUrl`, `paymentClaimApi.getUploadUrl`, `containerDocumentsApi.presignUpload`, `excelApi.getImportPresignedUrl` gained a size argument). Hints now say "max 5 MB" (were 10 MB, which nothing enforced).
+
+## Redundant back links removed (FD-47, 2026-11-17)
+
+Removed: AdminCustomerDetail, StaffUserDetail, PlatformTenantDetail, ManifestDetail, RefundDetail, ReleaseNoteDetail, ClaimDetail, BillingDetail, PackingListDetail, DisputeDetail (top and error state), MyClaimDetail, MyShipmentDetail, MyReleaseNote, MyBillingDetail, and on settings Warehouses, ContainerCapacities, ChargeTypes, DollarRateConfig and CbmRateConfig. Their now-dead `.backLink` CSS went too. Guard: `pages/noBackLinks.test.ts`. `MyClaimDetail.test.tsx`'s "goes back to the list" became "has no hand-written back link".
+
+## Every page fits a phone (2026-11-17)
+
+Owner request: all pages responsive on mobile phones. Measured, not eyeballed: `frontend/scripts/mobile-audit.mjs` opens all 78 routes at 375, 360 and 320 px as an allowed role with real records and fails on any page that scrolls sideways or has an element sticking out (clipped or scrolling the content column). Before: 15 pages failed at 375 px, more at 360 and 320. After: all 78 routes pass at 375, 360 and 320 px.
+
+Fixed at the source, so the fix covers every page using the piece:
+- **Top bar** (`shell/TopBar`): below 600 px, row one is the menu button, title and the bar's icons; the page's own actions (`useTopBarSlot` `actions`, now wrapped in `.pageActions`) get a full-width row below. Before, actions mixed in with the icons over three or four rows. The title steps down to 18 px and the account button drops its arrow so the title fits.
+- **Cards** (`Card`): `min-width: 0`, so no card forces its grid column wider than its share. **Stat cards**: below 600 px the icon gives its room to the label (whole words wrap, no "OUTSTANDI/NG"), and the number scales (`clamp`) and may wrap.
+- **Tabs** (`shell/Tabs`): scroll sideways inside their own strip (no visible scrollbar); tabs never shrink or wrap.
+- **Long pipelines**: new `shell/ScrollStrip` (container stepper, customer shipment stepper; the refund stepper was already one). A strip scrolls inside itself and is marked `data-scroll-strip`.
+- **Wizard steps** (create packing list, Excel import): below 600 px every step keeps its number, only the current one keeps its words.
+- **Action rows** on invoice, container and release-note pages: capped at the page width so buttons wrap (they had `flex-shrink: 0` and ran off the edge, e.g. "Apply carryover" on the invoice). Webhook secret row wraps.
+- **Key-value rows** (`Kvp`) and table phone cards: long values wrap. **Badges** wrap below 600 px instead of overflowing a card.
+- **Key-value rows** also wrap the value under a long label when both do not fit ("Effective rate charged to customers" at 320 px). The platform tenant page's Suspend/Offboard row wraps (`.tenantActions`).
+- **List filters**: the custom From/To date inputs wrap (billing, claims, containers, notification log). **Reports**: two-column grid and the donut legend stack on a phone; the dashboard two-column grid uses `minmax(min(440px, 100%), 1fr)`.
+
+Dialogs: all ~40 already become full-width bottom sheets below 861 px (checked by a static scan for uncapped fixed widths; none found outside desktop-only rules).
+
+Test harness: `src/test/setup.ts` sets Testing Library's `asyncUtilTimeout` to 3 s. A page's first render compiles its lazy chunk and under the full suite's parallel load sometimes took just over the default 1 s, failing `routes.test.tsx` and `ActivityLog.test.tsx` at random.

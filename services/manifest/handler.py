@@ -18,6 +18,7 @@ import uuid
 from typing import Any
 
 from shared.auth import get_tenant_context
+from shared.client_ip import client_ip
 from shared.exceptions import LogisticsBaseError, ResourceNotFoundError
 from shared.logging_config import bind_log_context, clear_log_context, setup_logging
 from shared.metering import record_usage
@@ -69,7 +70,7 @@ def lambda_handler(event: dict[str, Any], context: Any) -> dict[str, Any]:
     http = event.get("requestContext", {}).get("http", {})
     method = http.get("method", "")
     path = http.get("path", "")
-    ip_address = event.get("requestContext", {}).get("identity", {}).get("sourceIp")
+    ip_address = client_ip(event)
 
     if method == "GET" and path.strip("/") == "v1/health":
         return _health_response(request_id)
@@ -165,8 +166,8 @@ def _manifest_routes(
                 filters["container_id"] = _qp(event, "container_id")
             limit = int(_qp(event, "limit", 50))
             cursor = decode_cursor(_qp(event, "cursor"))
-            page, next_cursor, has_more = service.list_manifests(tenant_id, filters, limit, cursor)
-            return paginated(page, next_cursor, has_more, request_id=request_id)
+            page, next_cursor, has_more, total = service.list_manifests(tenant_id, filters, limit, cursor)
+            return paginated(page, next_cursor, has_more, total_count=total, request_id=request_id)
 
     elif manifest_id == "stats":
         # GET /v1/manifests/stats — per-status counts + overdue for the list
@@ -223,6 +224,7 @@ def _manifest_routes(
                     content_type=req.content_type,
                     actor_id=ctx.user_id,
                     label=req.label,
+                    size_bytes=req.size_bytes,
                 )
                 return success(result, request_id=request_id, status_code=201)
 

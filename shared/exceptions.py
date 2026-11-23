@@ -123,6 +123,39 @@ class InsufficientPermissionsError(LogisticsBaseError):
         )
 
 
+class UntrustedOriginError(LogisticsBaseError):
+    """A cookie-authenticated request that did not come from one of our own frontends."""
+
+    def __init__(self) -> None:
+        super().__init__(
+            message="Request origin is not allowed",
+            error_code="ORIGIN_NOT_ALLOWED",
+            status_code=403,
+        )
+
+
+class RateLimitExceededError(LogisticsBaseError):
+    """A client or tenant has sent more requests than its limit allows (shared/rate_limit.py)."""
+
+    def __init__(self, retry_after: int = 60) -> None:
+        super().__init__(
+            message="Too many requests. Please wait a moment and try again.",
+            error_code="RATE_LIMIT_EXCEEDED",
+            status_code=429,
+        )
+        # Seconds until the window that refused this request ends, sent as the Retry-After header.
+        self.retry_after = max(int(retry_after), 1)
+
+
+class UnsupportedMediaTypeError(LogisticsBaseError):
+    def __init__(self, expected: str = "application/json") -> None:
+        super().__init__(
+            message=f"Content-Type must be {expected}",
+            error_code="UNSUPPORTED_MEDIA_TYPE",
+            status_code=415,
+        )
+
+
 class ApprovalThresholdExceededError(LogisticsBaseError):
     def __init__(
         self,

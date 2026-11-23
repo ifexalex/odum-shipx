@@ -1,3 +1,4 @@
+import { uploadSizeProblem } from '../lib/uploadLimits'
 import { excelApi, XLSX_CONTENT_TYPE } from './excel'
 
 // Backed by POST /v1/packing-lists/import/presigned-url
@@ -13,11 +14,21 @@ export class UploadFailedError extends Error {
   }
 }
 
+/** The file is over the upload limit (or empty); nothing was sent. */
+export class FileTooLargeError extends Error {
+  constructor(message: string) {
+    super(message)
+    this.name = 'FileTooLargeError'
+  }
+}
+
 /** Uploads `file` via a presigned PUT URL (cloud-neutral) and returns the resulting file_key. */
 export async function uploadImportFile(file: File): Promise<string> {
+  const sizeProblem = uploadSizeProblem(file)
+  if (sizeProblem) throw new FileTooLargeError(sizeProblem)
   const contentType = file.type || XLSX_CONTENT_TYPE
   const { upload_url, upload_method, upload_headers, file_key } =
-    await excelApi.getImportPresignedUrl(contentType)
+    await excelApi.getImportPresignedUrl(contentType, file.size)
 
   const response = await fetch(upload_url, {
     method: upload_method ?? 'PUT',

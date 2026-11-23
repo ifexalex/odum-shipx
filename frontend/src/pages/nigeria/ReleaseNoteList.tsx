@@ -1,11 +1,12 @@
-import { useEffect, useState, type JSX } from 'react'
+import { useState, type JSX } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { releaseNotesApi, type ReleaseNoteStatus } from '../../api/releaseNotes'
+import type { ReleaseNoteStatus } from '../../api/releaseNotes'
 import { releaseNoteStatusLabel, releaseTypeLabel } from '../../api/releaseNotesRules'
-import { useReleaseNoteList } from '../../hooks/useReleaseNotes'
+import { useReleaseNoteList, useReleaseNoteStats } from '../../hooks/useReleaseNotes'
 import { Badge, Banner, Card, Chip, Mono, StatCard, Table, ViewLink, ListFooter, type BadgeVariant } from '../../design/components'
 import { useTopBarSlot } from '../../shell/TopBarContext'
 import styles from './ReleaseNoteList.module.css'
+import { formatDate } from '../../lib/format'
 
 const STATUS_FILTERS: ReleaseNoteStatus[] = ['active', 'picked_up', 'expired', 'cancelled']
 
@@ -16,20 +17,16 @@ const STATUS_VARIANT: Record<ReleaseNoteStatus, BadgeVariant> = {
   cancelled: 'neutral',
 }
 
-type NoteStats = Awaited<ReturnType<typeof releaseNotesApi.stats>>
 
 export function ReleaseNoteList(): JSX.Element {
   const navigate = useNavigate()
   const [statusFilter, setStatusFilter] = useState<ReleaseNoteStatus | null>(null)
-  const [stats, setStats] = useState<NoteStats | null>(null)
   const { items: notes, isLoading: loading, error, hasMore, loadMore, isFetchingMore, totalCount } = useReleaseNoteList(
     statusFilter ? { status: statusFilter } : {},
   )
 
-  // §9.1 stats row (P2-3) — real per-status counts from GET /stats; hidden on failure.
-  useEffect(() => {
-    void releaseNotesApi.stats().then(setStats).catch(() => setStats(null))
-  }, [])
+  // §9.1 stats row (P2-3) — real per-status counts from GET /stats; hidden until loaded, and on failure.
+  const { data: stats = null } = useReleaseNoteStats()
 
   useTopBarSlot({ subtitle: 'Authorise and track carton pickups from the warehouse.' })
 
@@ -93,7 +90,7 @@ export function ReleaseNoteList(): JSX.Element {
                 <Mono key="cartons">{n.carton_count} / {n.total_cartons_for_customer}</Mono>,
                 <span key="type" className={styles.partial}>{releaseTypeLabel(n)}</span>,
                 <Badge key="status" variant={STATUS_VARIANT[n.status]}>{releaseNoteStatusLabel(n.status)}</Badge>,
-                <span key="date">{n.authorized_at.slice(0, 10)}</span>,
+                <span key="date">{formatDate(n.authorized_at)}</span>,
                 <ViewLink key="view" onClick={() => navigate(`/release-notes/${n.id}`, { state: { note: n } })} />,
               ],
             }))}

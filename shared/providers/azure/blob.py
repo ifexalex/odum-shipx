@@ -83,7 +83,12 @@ class BlobStorageProvider:
         blob_url: str = self._container_client().get_blob_client(key).url
         return f"{blob_url}?{sas}"
 
-    def presigned_upload(self, key: str, *, content_type: str, expires_in: int) -> UploadTicket:
+    def presigned_upload(
+        self, key: str, *, content_type: str, expires_in: int, content_length: int | None = None
+    ) -> UploadTicket:
+        # A SAS cannot bind the upload's length; `content_length` is checked where the file is used
+        # (shared.uploads.check_stored_size).
+        del content_length
         from azure.storage.blob import BlobSasPermissions, generate_blob_sas
 
         account_name, account_key = self._shared_key()

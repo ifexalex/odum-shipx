@@ -33,3 +33,21 @@ variable "alerts_email" {
   type        = string
   default     = ""
 }
+
+variable "metric_namespace" {
+  description = "CloudWatch namespace of the failure counters (shared/observability.py METRIC_NAMESPACE)."
+  type        = string
+  default     = "ShipX"
+}
+
+variable "notification_failure_rate_percent" {
+  description = "Alarm when more than this percentage of notification sends fail in 15 minutes."
+  type        = number
+  default     = 20
+}
+
+variable "notification_rate_min_attempts" {
+  description = "Sends needed in the 15-minute window before the failure rate is judged."
+  type        = number
+  default     = 5
+}

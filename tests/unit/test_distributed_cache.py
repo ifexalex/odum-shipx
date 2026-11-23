@@ -75,3 +75,82 @@ class TestWireProtocolIsPinned:
         )
         aws = _construct_client_with_env({"REDIS_HOST": "localhost", "REDIS_PORT": "6379"})
         assert azure["protocol"] == aws["protocol"] == 2
+
+
+class TestRedisOutageIsFastNotSlow:
+    """A Redis outage must cost one fast failure, not seconds per call.
+
+    redis-py's default retries a failed command with exponential backoff, which made every operation against
+    an unreachable Redis take about four seconds. A request makes several (tenant status, identity, rate
+    limits), so an outage was a multi-second delay on every authenticated request: not fail-soft at all.
+    """
+
+    def test_the_client_does_not_retry_a_failed_command(self) -> None:
+        client = DistributedCache()._get_client()  # noqa: SLF001 — real redis-py; it connects lazily, so no server is needed
+        assert client.get_retry().get_retries() == 0
+
+    @staticmethod
+    def _cache_with(client: MagicMock) -> DistributedCache:
+        cache = DistributedCache(key_prefix="t:")
+        cache._client = client  # noqa: SLF001
+        return cache
+
+    def test_after_a_failure_redis_is_left_alone_for_a_while(self) -> None:
+        client = MagicMock()
+        client.get.side_effect = ConnectionError("down")
+        cache = self._cache_with(client)
+
+        assert cache.get("a") is None
+        assert cache.get("b") is None
+        cache.set("c", "v")
+        cache.delete("d")
+        assert cache.incr_window("e", 60) is None
+        assert cache.window_state("f") is None
+
+        client.get.assert_called_once()  # only the first call reached Redis
+        client.setex.assert_not_called()
+        client.delete.assert_not_called()
+        client.eval.assert_not_called()
+
+    def test_redis_is_tried_again_after_the_cooldown(self) -> None:
+        client = MagicMock()
+        client.get.side_effect = [ConnectionError("down"), "active"]
+        cache = self._cache_with(client)
+
+        assert cache.get("a") is None
+        cache._down_until = 0.0  # noqa: SLF001 — the cooldown has passed
+        assert cache.get("a") == "active"
+
+    def test_a_working_redis_is_never_skipped(self) -> None:
+        client = MagicMock()
+        client.get.return_value = "active"
+        cache = self._cache_with(client)
+
+        assert [cache.get("a") for _ in range(20)] == ["active"] * 20
+        assert client.get.call_count == 20
+
+    def test_every_operation_fails_open_during_an_outage(self) -> None:
+        client = MagicMock()
+        for method in (client.get, client.setex, client.delete, client.eval):
+            method.side_effect = ConnectionError("down")
+        cache = self._cache_with(client)
+
+        assert cache.get("a") is None
+        cache._down_until = 0.0  # noqa: SLF001
+        cache.set("a", "v")
+        cache._down_until = 0.0  # noqa: SLF001
+        cache.delete("a")
+        cache._down_until = 0.0  # noqa: SLF001
+        assert cache.incr_window("a", 60) is None
+
+    def test_the_outage_is_logged_once_not_per_call(self, caplog) -> None:
+        import logging
+
+        client = MagicMock()
+        client.get.side_effect = ConnectionError("down")
+        cache = self._cache_with(client)
+
+        with caplog.at_level(logging.WARNING, logger="shared.distributed_cache"):
+            for _ in range(50):
+                cache.get("a")
+        assert len([r for r in caplog.records if "Redis GET failed" in r.getMessage()]) == 1

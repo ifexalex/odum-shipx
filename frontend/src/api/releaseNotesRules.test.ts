@@ -1,5 +1,12 @@
 import { describe, expect, it } from 'vitest'
-import { canCreateReleaseNote, canRecordPickup, canSplitNote, isTerminalReleaseStatus } from './releaseNotesRules'
+import {
+  canCreateReleaseNote,
+  canRecordPickup,
+  canSendPickupCode,
+  canSplitNote,
+  isTerminalReleaseStatus,
+  sentViaLabel,
+} from './releaseNotesRules'
 import type { ReleaseNote } from './releaseNotes'
 
 function _note(overrides: Partial<ReleaseNote> = {}): ReleaseNote {
@@ -66,5 +73,26 @@ describe('isTerminalReleaseStatus', () => {
   })
   it('active is not terminal', () => {
     expect(isTerminalReleaseStatus('active')).toBe(false)
+  })
+})
+
+describe('pickup codes (UX-09)', () => {
+  it('lets the staff who issue release notes send a code for an active one', () => {
+    expect(canSendPickupCode(_note(), 'nigeria_office_staff')).toBe(true)
+    expect(canSendPickupCode(_note(), 'tenant_admin')).toBe(true)
+    expect(canSendPickupCode(_note({ status: 'picked_up' }), 'tenant_admin')).toBe(false)
+    expect(canSendPickupCode(_note({ status: 'expired' }), 'nigeria_office_staff')).toBe(false)
+  })
+
+  it('does not let the warehouse, China staff or a customer send one', () => {
+    for (const role of ['warehouse_attendant', 'china_office_staff', 'customer'] as const) {
+      expect(canSendPickupCode(_note(), role)).toBe(false)
+    }
+  })
+
+  it('names the channels a code went out on', () => {
+    expect(sentViaLabel(['sms', 'email'])).toBe('SMS and email')
+    expect(sentViaLabel(['email'])).toBe('email')
+    expect(sentViaLabel(['sms', 'whatsapp', 'email'])).toBe('SMS, WhatsApp and email')
   })
 })

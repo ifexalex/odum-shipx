@@ -3,6 +3,7 @@ import type { TenantQuota } from '../../api/tenantManagement'
 import { Banner } from './Banner'
 import { Button } from './Button'
 import { Card } from './Card'
+import { DialogGuard } from './Modal'
 
 interface LimitReachedModalProps {
   /** Which resource was blocked — e.g. 'container', 'user'. */
@@ -37,6 +38,7 @@ export function LimitReachedModal({ resource, quota, onClose }: LimitReachedModa
       }}
       onClick={onClose}
     >
+      <DialogGuard onClose={onClose} />
       {/* Interactive wrapper (Card is presentational-only, no event props) */}
       <div
         style={{ maxWidth: 440, width: '100%' }}

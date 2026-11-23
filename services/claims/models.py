@@ -4,7 +4,7 @@ from datetime import datetime
 from decimal import Decimal
 from enum import StrEnum
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 # ---------------------------------------------------------------------------
 # Enums
@@ -74,8 +74,15 @@ class ResolveClaimRequest(BaseModel):
     settlement_amount_usd: Decimal | None = Field(default=None, ge=Decimal("0"))
     amount_ngn: Decimal | None = Field(default=None, ge=Decimal("0"))
     discount_percentage: Decimal | None = Field(default=None, ge=Decimal("0"), le=Decimal("100"))
-    reason: str = Field(default="")
+    reason: str = Field(default="", max_length=2000)
     notes: str | None = Field(default=None)
+
+    @model_validator(mode="after")
+    def _a_decision_against_the_customer_says_why(self) -> "ResolveClaimRequest":
+        """Closing a claim without a payout shows the customer this reason, so it cannot be blank."""
+        if self.resolution_type == ResolutionType.no_action and not self.reason.strip():
+            raise ValueError("reason is required when a claim is closed without a payout: the customer is shown it")
+        return self
 
 
 class LogMissingItemRequest(BaseModel):

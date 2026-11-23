@@ -10,6 +10,14 @@
   letter-spacing: 0.04em;
   text-transform: uppercase;
   white-space: nowrap;
+  /* In a narrow cell (a table's phone card) a long status wraps instead of running out of it. */
+  max-width: 100%;
+}
+@media (max-width: 600px) {
+  .badge {
+    white-space: normal;
+    overflow-wrap: anywhere;
+  }
 }
 
 .sm {

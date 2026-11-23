@@ -1,14 +1,10 @@
 name: Deploy Azure Environment (reusable)
 
-# Azure analogue of _deploy-env.yml. Every deploy runs `terraform apply` FIRST,
-# in the same job, so infra + state are reconciled and any change captured before
-# the app rolls — and if the apply fails, no later step runs (they all depend on
-# its outputs). This workflow is the single Terraform state-owner for an
-# environment; terraform-azure.yml is plan-only (infra review), it does not apply.
-#
-# After the apply: build the image, push to the env's ACR, run the migration job,
-# roll every Container App + Job onto the new image, smoke-test the API. Infra
-# names/URLs come from the apply's own outputs — one source of truth.
+# Azure analogue of _deploy-env.yml. Every deploy runs `terraform apply` FIRST
+# so infra + state are reconciled before any app rollout (this workflow is the
+# single Terraform state-owner; terraform-azure.yml is plan-only). Then: build
+# & push cached Docker image via Buildx -> run migration job -> roll all
+# Container Apps & Jobs in parallel -> run shared read-only smoke suite.
 
 on:
   workflow_call:
@@ -16,27 +12,42 @@ on:
       environment:
         required: true
         type: string
+      commit_sha:
+        description: "Verified git ref or commit SHA to check out and deploy"
+        required: true
+        type: string
 
 jobs:
   deploy:
     runs-on: ubuntu-latest
     environment: ${{ inputs.environment }}
+    # Serialize per target environment — prevents Terraform state-lock races
+    # across tags while allowing a prod hotfix to run alongside a dev deploy.
+    concurrency:
+      group: deploy-azure-${{ inputs.environment }}
+      cancel-in-progress: false
     permissions:
       contents: read
       id-token: write
     env:
-      # Terraform azurerm backend + provider auth via OIDC (no stored secret).
       ARM_USE_OIDC: "true"
       ARM_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
       ARM_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
       ARM_SUBSCRIPTION_ID: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
-      # Graph provisioning app secret (EntraIdentityProvider client-credentials).
-      # A GitHub Environment secret, injected as a Terraform variable at apply —
-      # never committed to tfvars. Empty when unset → managed-identity fallback.
       TF_VAR_entra_graph_client_secret: ${{ secrets.ENTRA_GRAPH_CLIENT_SECRET }}
 
     steps:
       - uses: actions/checkout@v7
+        with:
+          ref: ${{ inputs.commit_sha }}
+
+      - name: Resolve canonical commit SHA
+        id: meta
+        run: |
+          set -euo pipefail
+          SHA=$(git rev-parse HEAD)
+          echo "sha=${SHA}" >> "$GITHUB_OUTPUT"
+          echo "Deploying verified commit: ${SHA}"
 
       - uses: azure/login@v3
         with:
@@ -48,16 +59,14 @@ jobs:
         with:
           terraform_version: "1.7.5"
 
-      # Terraform FIRST — reconcile infra + state before any app change. If this
-      # fails the job stops here; every later step depends on steps.tf.outputs,
-      # so the deploy cannot proceed on un-applied/failed infra. apply is a no-op
-      # when nothing changed, so it is safe to run on every deploy.
+      # Terraform FIRST — reconcile infra + state before any app change.
       - name: Terraform apply (infra + state)
         id: tf
         working-directory: infrastructure/azure
         run: |
-          terraform init -backend-config=environments/${{ inputs.environment }}.backend.hcl
-          terraform apply -var-file=environments/${{ inputs.environment }}.tfvars -auto-approve
+          set -euo pipefail
+          terraform init -backend-config="environments/${{ inputs.environment }}.backend.hcl"
+          terraform apply -var-file="environments/${{ inputs.environment }}.tfvars" -auto-approve
           terraform output -json > /tmp/tfout.json
           python3 - <<'PY'
           import json, os
@@ -75,18 +84,32 @@ jobs:
           print("Infra applied — api_url=" + vals["api_url"])
           PY
 
-      # Build + push the same image the Dockerfile produces, tagged with the SHA.
-      - name: Build and push image
+      # Build + push with Docker Buildx + GitHub Actions layer cache so unchanged
+      # uv/Python dependency layers build in ~15-20s instead of ~2-3 minutes.
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to ACR
         env:
           ACR: ${{ steps.tf.outputs.acr }}
+        run: az acr login -n "$ACR"
+
+      - name: Build and push image (cached)
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          push: true
+          tags: |
+            ${{ steps.tf.outputs.acr_server }}/shipx-backend:${{ steps.meta.outputs.sha }}
+            ${{ steps.tf.outputs.acr_server }}/shipx-backend:latest
+          cache-from: type=gha,scope=backend
+          cache-to: type=gha,mode=max,scope=backend
+
+      - name: Export image reference
+        env:
           ACR_SERVER: ${{ steps.tf.outputs.acr_server }}
-        run: |
-          az acr login -n "$ACR"
-          IMAGE="${ACR_SERVER}/shipx-backend:${{ github.sha }}"
-          docker build -t "$IMAGE" -t "${ACR_SERVER}/shipx-backend:latest" .
-          docker push "$IMAGE"
-          docker push "${ACR_SERVER}/shipx-backend:latest"
-          echo "IMAGE=$IMAGE" >> "$GITHUB_ENV"
+          SHA: ${{ steps.meta.outputs.sha }}
+        run: echo "IMAGE=${ACR_SERVER}/shipx-backend:${SHA}" >> "$GITHUB_ENV"
 
       # Migrations first — point the migrate Job at the new image, start it, wait.
       # alembic upgrade head is idempotent; a non-success aborts the deploy.
@@ -95,21 +118,18 @@ jobs:
           RG: ${{ steps.tf.outputs.rg }}
           MIGRATE_JOB: ${{ steps.tf.outputs.migrate_job }}
         run: |
+          set -euo pipefail
           az containerapp job update -g "$RG" -n "$MIGRATE_JOB" --image "$IMAGE" --output none
           EXEC=$(az containerapp job start -g "$RG" -n "$MIGRATE_JOB" --query name -o tsv)
           echo "Started migration execution: $EXEC"
 
-          # Poll via `execution list` + JMESPath (reliable across CLI versions,
-          # unlike `execution show`). Status is read into STATUS; a read error
-          # leaves it empty and we keep waiting, but failures are NOT masked.
           STATUS=""
           for _ in $(seq 1 40); do
             STATUS=$(az containerapp job execution list -g "$RG" --name "$MIGRATE_JOB" \
               --query "[?name=='$EXEC'].properties.status | [0]" -o tsv)
             echo "migration status: ${STATUS:-<pending>}"
             case "$STATUS" in
-              Succeeded) break ;;
-              Failed|Degraded) break ;;
+              Succeeded|Failed|Degraded) break ;;
             esac
             sleep 15
           done
@@ -118,101 +138,87 @@ jobs:
             echo "::error::Migration did not succeed (status: ${STATUS:-unknown}). Recent logs:"
             az containerapp job logs show -g "$RG" --name "$MIGRATE_JOB" \
               --execution "$EXEC" --container migrate --tail 200 2>/dev/null \
-              || echo "(could not fetch logs via CLI — check Log Analytics / the portal execution history)"
+              || echo "(could not fetch logs via CLI — check Log Analytics / portal execution history)"
             exit 1
           fi
           echo "Migration succeeded."
 
-          # Surface the app-role credential status on SUCCESS too, not only on
-          # failure. `ensure_app_role_password()` prints one line
-          # ("App role credential: set" | "skipped-no-password" |
-          # "skipped-no-role"), and that line IS the phase-2 precondition —
-          # whether `logistics_app` can actually log in.
-          #
-          # Without this, the credential state is only inferrable: a green
-          # migrate job proves the step did not raise, not that it did anything.
-          # Inferring it is exactly what caused the phase-2 outage on 2026-11-09
-          # — the flip was merged on a reasoned argument that migration 060 must
-          # have set the password, when it had in fact been consumed as a no-op a
-          # day earlier. Print the line so the next person reads it instead.
-          #
-          # Best-effort: never fail a successful deploy because log retrieval is
-          # slow or Log Analytics has not ingested yet.
+          # Surface app-role credential status on success (best-effort).
           echo "--- migrate job: credential status ---"
           az containerapp job logs show -g "$RG" --name "$MIGRATE_JOB" \
             --execution "$EXEC" --container migrate --tail 200 2>/dev/null \
             | grep -i "app role credential" \
             || echo "(credential line not retrieved — check the job execution logs directly)"
 
-      # Roll every Container App (api + workers) and Job (scheduled + migrate)
-      # onto the new image. Terraform ignores image drift, so this does not fight it.
-      - name: Update apps and jobs to the new image
+      # Roll all Container Apps (api + workers + entra-claims) and non-migrate
+      # Jobs onto the new image in parallel (migrate job was already updated above).
+      - name: Update apps and jobs to the new image (parallel)
         env:
           RG: ${{ steps.tf.outputs.rg }}
+          MIGRATE_JOB: ${{ steps.tf.outputs.migrate_job }}
         run: |
-          for app in $(az containerapp list -g "$RG" --query "[].name" -o tsv); do
-            echo "Updating app $app"
-            az containerapp update -g "$RG" -n "$app" --image "$IMAGE" --output none
-          done
-          for job in $(az containerapp job list -g "$RG" --query "[].name" -o tsv); do
-            echo "Updating job $job"
-            az containerapp job update -g "$RG" -n "$job" --image "$IMAGE" --output none
-          done
-          # The Entra claims provider (shipx-*-entra-claims) is a Container App on
-          # the same image, so the loop above already rolled it — no separate step.
-
-      # Read-only smoke against the live ingress: health 200, unauthenticated 401,
-      # response-time SLA. Safe for prod.
-      - name: Smoke test
-        env:
-          API_BASE: ${{ steps.tf.outputs.api_url }}
-        run: |
-          echo "Smoke-testing $API_BASE"
-          sleep 15  # allow the new revision to become ready
-
-          code=$(curl -sf --max-time 15 --retry 5 --retry-delay 5 -o /dev/null -w "%{http_code}" "$API_BASE/health")
-          echo "health: $code"; test "$code" = "200"
-
+          set -euo pipefail
+          MAX_PARALLEL=5
+          pids=()
           failed=0
-          for ep in "/v1/packing-lists" "/v1/billing/disputes" "/v1/manifests" "/v1/containers" "/v1/claims"; do
-            status=$(curl -s -o /dev/null -w "%{http_code}" --max-time 10 "$API_BASE$ep")
-            if [ "$status" != "401" ]; then echo "FAIL: $ep → $status (want 401)"; failed=1; else echo "OK: $ep → 401"; fi
+
+          wait_batch() {
+            for pid in "${pids[@]}"; do
+              if ! wait "$pid"; then
+                failed=1
+              fi
+            done
+            pids=()
+            if [ "$failed" -ne 0 ]; then
+              echo "::error::One or more Container App / Job updates failed"
+              exit 1
+            fi
+          }
+
+          for app in $(az containerapp list -g "$RG" --query "[].name" -o tsv); do
+            (
+              echo "-> Updating app $app"
+              az containerapp update -g "$RG" -n "$app" --image "$IMAGE" --output none
+              echo "ok: Updated app $app"
+            ) &
+            pids+=($!)
+            if [ "${#pids[@]}" -ge "$MAX_PARALLEL" ]; then
+              wait_batch
+            fi
           done
 
-          # /health is a static response and a 401 is produced by the auth layer
-          # before any query runs — so BOTH pass with a completely broken database
-          # credential. Verified by pointing a local server at a wrong password:
-          # /health still answered 200 while every authenticated route 500'd.
-          #
-          # This probe is the only smoke step that reaches Postgres. GET
-          # /v1/invites/{token} is public (shared/http_routing.PUBLIC_ROUTES) and
-          # looks the token up, so a bogus one is a real round trip:
-          #   404 → the app authenticated to the database and found nothing (good)
-          #   5xx → it could not reach or log in to the database (bad)
-          # It exists for the RLS credential switchover (migrations 059/060): the
-          # whole failure mode of pointing DATABASE_USER at `logistics_app` before
-          # that role has a password is invisible to every other check here.
-          #
-          # Not /v1/shipments/{tracking-code}: that 404s at ROUTING, without ever
-          # touching the database, so it would pass just as happily.
-          token=0000000000000000000000000000000000000000000000000000000000000000
-          status=$(curl -s -o /dev/null -w "%{http_code}" --max-time 15 "$API_BASE/v1/invites/$token")
-          echo "db reachability (/v1/invites/<bogus>): $status"
-          if [ "$status" != "404" ]; then
-            echo "FAIL: expected 404 (database reachable, token absent), got $status"
-            echo "      A 5xx here usually means the application cannot authenticate to"
-            echo "      Postgres. Check DATABASE_USER / the app secret, and whether"
-            echo "      migration 060 has run:"
-            echo "      SELECT rolcanlogin FROM pg_roles WHERE rolname = 'logistics_app';"
-            failed=1
-          fi
+          for job in $(az containerapp job list -g "$RG" --query "[].name" -o tsv); do
+            if [ "$job" = "$MIGRATE_JOB" ]; then
+              echo "Skipping $job (already updated before migrations)"
+              continue
+            fi
+            (
+              echo "-> Updating job $job"
+              az containerapp job update -g "$RG" -n "$job" --image "$IMAGE" --output none
+              echo "ok: Updated job $job"
+            ) &
+            pids+=($!)
+            if [ "${#pids[@]}" -ge "$MAX_PARALLEL" ]; then
+              wait_batch
+            fi
+          done
+          wait_batch
 
-          exit $failed
+      # Shared read-only smoke suite: health 200, unauthenticated 401, DB
+      # reachability (404 on /v1/invites/<bogus>), and 2s response-time SLA.
+      - name: Smoke test
+        uses: ./.github/actions/smoke-test
+        with:
+          api-base-url: ${{ steps.tf.outputs.api_url }}
+          health-path: /health
+          warmup-seconds: "15"
+          sla-seconds: "2.0"
 
       - name: Deployment summary
         env:
           API_URL: ${{ steps.tf.outputs.api_url }}
+          SHA: ${{ steps.meta.outputs.sha }}
         run: |
-          echo "✅ Azure deploy complete (${{ inputs.environment }})"
-          echo "   Commit: ${{ github.sha }}"
-          echo "   API:    $API_URL"
+          echo "Azure deploy complete (${{ inputs.environment }})"
+          echo "  Commit: $SHA"
+          echo "  API:    $API_URL"

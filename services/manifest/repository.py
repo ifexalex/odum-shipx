@@ -64,6 +64,30 @@ def get_manifest_by_id(tenant_id: str, manifest_id: str) -> dict[str, Any] | Non
     return rows[0] if rows else None
 
 
+def _manifest_predicates(tenant_id: str, filters: dict[str, Any]) -> tuple[str, dict[str, Any]]:
+    """The WHERE clause (on alias ``m``) and its parameters, shared by the list and its count."""
+    conditions = ["tenant_id = %(tenant_id)s"]
+    params: dict[str, Any] = {"tenant_id": tenant_id}
+    if filters.get("verification_status"):
+        conditions.append("verification_status = %(verification_status)s")
+        params["verification_status"] = filters["verification_status"]
+    if filters.get("container_id"):
+        conditions.append("container_id = %(container_id)s")
+        params["container_id"] = filters["container_id"]
+    return " AND ".join(f"m.{c}" for c in conditions), params
+
+
+def count_manifests(tenant_id: str, filters: dict[str, Any]) -> int:
+    """How many manifests match the same filters as ``list_manifests`` (for "showing 50 of 68")."""
+    where_clause, params = _manifest_predicates(tenant_id, filters)
+    rows = execute_with_tenant(
+        tenant_id,
+        f"SELECT COUNT(*)::int AS total FROM manifest m WHERE {where_clause}",  # noqa: S608 - fixed fragments only
+        params,
+    )
+    return int(rows[0]["total"]) if rows else 0
+
+
 def list_manifests(
     tenant_id: str,
     filters: dict[str, Any],
@@ -76,17 +100,7 @@ def list_manifests(
     container_number omitted from list view to avoid JOIN ambiguity with
     build_paginated_query's appended ORDER BY / cursor conditions.
     """
-    conditions = ["tenant_id = %(tenant_id)s"]
-    extra: dict[str, Any] = {"tenant_id": tenant_id}
-
-    if filters.get("verification_status"):
-        conditions.append("verification_status = %(verification_status)s")
-        extra["verification_status"] = filters["verification_status"]
-    if filters.get("container_id"):
-        conditions.append("container_id = %(container_id)s")
-        extra["container_id"] = filters["container_id"]
-
-    where_clause = " AND ".join(f"m.{c}" for c in conditions)
+    where_clause, extra = _manifest_predicates(tenant_id, filters)
     inner = f"""
         SELECT m.*, co.container_number, co.status AS container_status, pm.package_mix
         FROM manifest m

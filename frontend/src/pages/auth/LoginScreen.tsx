@@ -1,7 +1,9 @@
 import { useState, type FormEvent, type JSX } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useNavigate, useSearchParams } from 'react-router-dom'
 import { authProvider, isInteractiveLogin } from '../../auth/authClient'
+import { safeNextPath } from '../../auth/returnPath'
 import { homePathForRole } from '../../auth/roleHome'
+import { rememberNext } from './returnPath'
 import { useSession } from '../../auth/useSession'
 import { Banner, Button, Check, Field, Icon, KolaMark, ShipxWordmark } from '../../design/components'
 import { colors } from '../../design/theme'
@@ -80,6 +82,8 @@ function BrandIllustration(): JSX.Element {
 export function LoginScreen(): JSX.Element {
   const { login, beginLogin, status } = useSession()
   const navigate = useNavigate()
+  // Where the visitor was heading before sign-in; refused unless it is a plain in-app path (auth/returnPath.ts).
+  const next = safeNextPath(useSearchParams()[0].get('next'))
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [rememberMe, setRememberMe] = useState(false)
@@ -92,7 +96,7 @@ export function LoginScreen(): JSX.Element {
     setError(null)
     try {
       const session = await login(email, password)
-      navigate(homePathForRole(session.role), { replace: true })
+      navigate(next ?? homePathForRole(session.role), { replace: true })
     } catch (err) {
       // Temporary password (registration / staff invite): Cognito demands a
       // permanent one before issuing tokens — hand off to the reset screen.
@@ -109,6 +113,8 @@ export function LoginScreen(): JSX.Element {
   // navigates away on success, so this only returns on failure.
   async function handleEntraLogin(): Promise<void> {
     setError(null)
+    // The sign-in leaves the app and returns to /auth/callback, which restores this.
+    rememberNext(next)
     try {
       await beginLogin?.()
     } catch (err) {

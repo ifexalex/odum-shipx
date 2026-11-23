@@ -10,6 +10,15 @@ export function useContainerList(params: ContainerListParams = {}) {
   )
 }
 
+/** Containers in one flat read, for a picker or a dashboard table (not the paginated list screen). */
+export function useContainerLookup(params: ContainerListParams = {}, enabled = true) {
+  return useQuery({
+    queryKey: containerKeys.lookup(params as Record<string, unknown>),
+    queryFn: () => containersApi.list(params),
+    enabled,
+  })
+}
+
 export function useContainer(id: string) {
   return useQuery({
     queryKey: containerKeys.detail(id),

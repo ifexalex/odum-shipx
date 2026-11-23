@@ -31,6 +31,7 @@ import {
 } from '../../design/components'
 import { useTopBarSlot } from '../../shell/TopBarContext'
 import styles from './admin.module.css'
+import { formatDate } from '../../lib/format'
 
 const STATUS_LABELS: Record<OnboardingRequestStatus, string> = {
   new: 'New',
@@ -194,7 +195,7 @@ export function OnboardingRequests(): JSX.Element {
                   {STATUS_LABELS[r.status]}
                 </Badge>,
                 <span key="date" style={{ fontSize: 12, color: 'var(--color-ink-3)' }}>
-                  {r.created_at.slice(0, 10)}
+                  {formatDate(r.created_at)}
                 </span>,
                 OPEN_STATUSES.includes(r.status) ? (
                   <div key="actions" style={{ display: 'flex', gap: 6, justifyContent: 'flex-end' }}>

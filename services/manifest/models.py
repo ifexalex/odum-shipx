@@ -52,6 +52,8 @@ class EvidenceUploadRequest(BaseModel):
     filename: str = Field(min_length=1, max_length=255)
     content_type: str = Field(min_length=1, max_length=100)
     label: str | None = Field(default=None, max_length=255)
+    #: The file's size in bytes; at most 5 MB (shared.uploads.MAX_UPLOAD_BYTES), checked by the upload policy.
+    size_bytes: int | None = None
 
 
 # ---------------------------------------------------------------------------

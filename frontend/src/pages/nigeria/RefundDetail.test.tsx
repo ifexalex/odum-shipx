@@ -60,6 +60,23 @@ function renderPage(refund = REFUND) {
   )
 }
 
+describe('RefundDetail credit use (BE-07)', () => {
+  it('shows how much of a credit has been used against invoices', async () => {
+    renderPage({
+      ...REFUND, status: 'applied_as_credit', customer_choice: 'credit_next_shipment',
+      amount_approved_ngn: '50000', credit_applied_ngn: '20000',
+    })
+    expect(await screen.findByText('Credit used')).toBeInTheDocument()
+    expect(screen.getByText('₦20,000 of ₦50,000')).toBeInTheDocument()
+  })
+
+  it('shows no credit row for a refund paid out', async () => {
+    renderPage({ ...REFUND, status: 'processed', customer_choice: 'immediate_refund', amount_approved_ngn: '25000' })
+    await screen.findByText('Approved')
+    expect(screen.queryByText('Credit used')).toBeNull()
+  })
+})
+
 describe('RefundDetail', () => {
   it('renders refund type in hero', async () => {
     renderPage()

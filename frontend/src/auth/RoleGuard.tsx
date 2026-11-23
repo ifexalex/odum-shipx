@@ -1,5 +1,6 @@
 import type { JSX, ReactNode } from 'react'
-import { Navigate } from 'react-router-dom'
+import { Navigate, useLocation } from 'react-router-dom'
+import { loginUrlFor } from './returnPath'
 import { homePathForRole } from './roleHome'
 import { SessionLoading } from './SessionLoading'
 import { useSession } from './SessionContext'
@@ -23,6 +24,7 @@ export interface RoleGuardProps {
 // own home page (never a blank screen, never the wrong tenant's nav).
 export function RoleGuard({ allow, children, unauthenticatedRedirectTo = '/login' }: RoleGuardProps): JSX.Element {
   const { session, status } = useSession()
+  const location = useLocation()
 
   // SessionProvider's mount-time silent-restore (httpOnly refresh-token
   // cookie → fresh ID token) is still in flight — wait for it rather than
@@ -33,7 +35,9 @@ export function RoleGuard({ allow, children, unauthenticatedRedirectTo = '/login
   }
 
   if (status !== 'authenticated' || !session) {
-    return <Navigate to={unauthenticatedRedirectTo} replace />
+    // A visitor sent to /login keeps the page they asked for, so signing in lands them there (UX-04).
+    const to = unauthenticatedRedirectTo === '/login' ? loginUrlFor(location.pathname, location.search) : unauthenticatedRedirectTo
+    return <Navigate to={to} replace />
   }
 
   // Authorization is governed by the user's full role set, not just the

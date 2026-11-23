@@ -23,11 +23,13 @@
 
 .secretRow {
   display: flex;
+  flex-wrap: wrap;
   gap: 8px;
 }
 
 .secretDisplay {
-  flex: 1;
+  flex: 1 1 220px;
+  min-width: 0;
   display: flex;
   align-items: center;
   gap: 8px;

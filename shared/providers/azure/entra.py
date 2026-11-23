@@ -290,6 +290,20 @@ class EntraIdentityProvider:
         if uid:
             self._graph("PATCH", f"/users/{uid}", {"accountEnabled": False})
 
+    def delete_user(self, username: str) -> None:
+        """Permanently delete the user (GDPR erasure). Missing user is a no-op."""
+        from shared.exceptions import ExternalServiceError
+
+        uid = self._resolve_user_id(username)
+        if not uid:
+            return
+        try:
+            self._graph("DELETE", f"/users/{uid}")
+        except ExternalServiceError as exc:
+            if "404" in str(exc):
+                return
+            raise
+
     def enable_user(self, username: str) -> None:
         uid = self._resolve_user_id(username)
         if uid:

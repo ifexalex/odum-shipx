@@ -4,9 +4,10 @@ import { seizedItemsApi, type SeizedItem, type SeizedItemStatus, type UpdateSeiz
 import { canUpdateItem } from '../../api/claimsRules'
 import { useSeizedItemList } from '../../hooks/useItems'
 import { useSession } from '../../auth/useSession'
-import { Badge, Banner, Button, Card, Chip, Field, Mono, Table, ListFooter, type BadgeVariant } from '../../design/components'
+import { Badge, Banner, Button, Card, Chip, Field, Mono, Table, ListFooter, DialogGuard, type BadgeVariant } from '../../design/components'
 import { useTopBarSlot } from '../../shell/TopBarContext'
 import styles from './ItemList.module.css'
+import { formatDate } from '../../lib/format'
 
 const STATUS_FILTERS: SeizedItemStatus[] = [
   'seized', 'recovery_in_progress', 'recovered', 'permanently_lost',
@@ -41,8 +42,15 @@ interface UpdateModalProps {
 function UpdateModal({ item, onCancel, onSuccess }: UpdateModalProps): JSX.Element {
   const [status, setStatus] = useState<SeizedItemStatus>(item.status)
   const [notes, setNotes] = useState('')
+  const [compensation, setCompensation] = useState('')
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState<string | null>(null)
+
+  // Compensation is owed when the goods are permanently lost; the other statuses carry none.
+  const offersCompensation = status === 'permanently_lost'
+  const compensationAmount = compensation.trim() === '' ? null : Number(compensation)
+  const compensationInvalid =
+    offersCompensation && compensationAmount !== null && !(Number.isFinite(compensationAmount) && compensationAmount > 0)
 
   async function handleSubmit(): Promise<void> {
     setSubmitting(true)
@@ -50,6 +58,7 @@ function UpdateModal({ item, onCancel, onSuccess }: UpdateModalProps): JSX.Eleme
     try {
       const body: UpdateSeizedItemInput = { recovery_status: status }
       if (notes.trim()) body.notes = notes
+      if (offersCompensation && compensationAmount !== null) body.refund_amount_ngn = compensation.trim()
       const updated = await seizedItemsApi.update(item.id, body)
       onSuccess(updated)
     } catch (err) {
@@ -61,6 +70,7 @@ function UpdateModal({ item, onCancel, onSuccess }: UpdateModalProps): JSX.Eleme
 
   return (
     <div className={styles.overlay} onClick={onCancel}>
+      <DialogGuard onClose={onCancel} />
       <div className={styles.panel} onClick={(e) => e.stopPropagation()} role="dialog" aria-modal="true">
         <h3 className={styles.panelTitle}>Update seized item</h3>
         {error && <div className={styles.panelBanner}><Banner variant="error" title="Action failed">{error}</Banner></div>}
@@ -70,11 +80,17 @@ function UpdateModal({ item, onCancel, onSuccess }: UpdateModalProps): JSX.Eleme
             {STATUS_FILTERS.map((s) => <option key={s} value={s}>{statusLabel(s)}</option>)}
           </select>
         </div>
+        {offersCompensation && (
+          <Field label="Compensation (₦)" name="refund_amount_ngn" type="number" optional placeholder="e.g. 25000"
+            value={compensation} onChange={(e) => setCompensation(e.target.value)}
+            error={compensationInvalid ? 'Enter an amount greater than 0.' : undefined}
+            helper="Opens a refund request for the customer, pending review. Leave blank to record the loss without compensation." />
+        )}
         <Field label="Notes" name="notes" multiline placeholder="Recovery notes, agency contact, reference…"
           value={notes} onChange={(e) => setNotes(e.target.value)} />
         <div className={styles.panelActions}>
           <Button variant="ghost" onClick={onCancel} disabled={submitting}>Cancel</Button>
-          <Button variant="primary" loading={submitting} onClick={() => void handleSubmit()}>Save update</Button>
+          <Button variant="primary" loading={submitting} disabled={compensationInvalid} onClick={() => void handleSubmit()}>Save update</Button>
         </div>
       </div>
     </div>
@@ -137,7 +153,7 @@ export function SeizedItemList(): JSX.Element {
                 <span key="reason">{item.reason || '—'}</span>,
                 <Mono key="tags">{item.carton_tags.join(', ') || '—'}</Mono>,
                 <Badge key="status" variant={STATUS_VARIANT[item.status]}>{statusLabel(item.status)}</Badge>,
-                <span key="date">{item.created_at.slice(0, 10)}</span>,
+                <span key="date">{formatDate(item.created_at)}</span>,
                 canUpdateItem(r) && item.status !== 'recovered' && item.status !== 'permanently_lost' ? (
                   <Button key="edit" variant="ghost" size="sm" onClick={() => setEditing(item)}>Update</Button>
                 ) : <span key="noop" />,

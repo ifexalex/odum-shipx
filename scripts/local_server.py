@@ -70,9 +70,16 @@ app = Flask(__name__)
 # POST /v1/auth/session and never attaches the cookie on later requests, so
 # POST /v1/auth/refresh always 401s and every page reload looks like a fresh,
 # unauthenticated visitor even though login just succeeded.
+_FRONTEND_ORIGINS = ["http://localhost:5173", "http://127.0.0.1:5173"]
+
+# The cookie endpoints (/v1/auth/session, refresh, logout, ...) accept only requests from a trusted
+# origin (shared/origin_guard.py). The dev frontend is one, so default to it rather than make
+# everyone edit .env.local; an explicit ALLOWED_ORIGINS still wins.
+os.environ.setdefault("ALLOWED_ORIGINS", ",".join(_FRONTEND_ORIGINS))
+
 CORS(
     app,
-    origins=["http://localhost:5173", "http://127.0.0.1:5173"],
+    origins=_FRONTEND_ORIGINS,
     allow_headers=["Content-Type", "X-Tenant-ID", "X-Role", "X-User-ID", "Idempotency-Key", "Authorization"],
     supports_credentials=True,
 )
@@ -398,6 +405,12 @@ def _to_flask_response(lambda_resp: dict) -> Response:
 
     content_type = headers.get("Content-Type", "application/json")
     resp = Response(body, status=status_code, content_type=content_type)
+
+    # API Gateway forwards every response header the handler sets (Retry-After on a 429, Location on a 201,
+    # X-Request-Id); this used to forward only Content-Type, so dev hid them from anything that reads them.
+    for key, value in headers.items():
+        if key.lower() != "content-type":
+            resp.headers[key] = value
 
     # Payload-format-2.0's dedicated "cookies" array (services/auth/handler.py) —
     # mirror API Gateway's behavior of turning each entry into its own

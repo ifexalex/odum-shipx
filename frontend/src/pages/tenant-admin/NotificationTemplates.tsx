@@ -18,6 +18,7 @@ import { STALE_5_MIN } from '../../lib/queryClient'
 import { Banner, Button, Field } from '../../design/components'
 import { PageHeader } from '../../shell/PageHeader'
 import styles from './admin.module.css'
+import { formatTime } from '../../lib/format'
 
 // ---------------------------------------------------------------------------
 // SMS counter
@@ -110,7 +111,7 @@ function TemplateCard({ template, onSaved }: TemplateCardProps): JSX.Element {
             }}>
               {body}
               <div style={{ fontSize: 10, color: '#667781', textAlign: 'right', marginTop: 4 }}>
-                {new Date().toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' })} ✓✓
+                {formatTime(new Date())} ✓✓
               </div>
             </div>
           </div>

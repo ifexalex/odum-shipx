@@ -38,11 +38,37 @@ tests/
 │   ├── test_dispute_flow.py       # CBM dispute → resolution → billing adjustment
 │   ├── test_claim_flow.py         # Damage claim → inspection → resolution → refund
 │   └── test_tenant_lifecycle.py   # Create tenant → config → users → suspend → activate
-└── tenant_isolation/
-    ├── test_db_isolation.py       # RLS blocks cross-tenant queries
-    ├── test_api_isolation.py      # API returns empty for wrong tenant
-    └── test_s3_isolation.py       # S3 prefix isolation
+├── tenant_isolation/
+│   ├── test_db_isolation.py       # RLS blocks cross-tenant queries
+│   ├── test_api_isolation.py      # API returns empty for wrong tenant
+│   └── test_s3_isolation.py       # S3 prefix isolation
+└── db/
+    └── test_money_integrity.py    # Real Postgres, as logistics_app, parallel processes: invoice numbering, one invoice per customer+container, payment status under concurrency, atomic rollback, gateway dedupe
 ```
+
+**`tests/db/` (added 2026-11-14).** The mocked unit tests cannot see a race or a half-committed write. These run the real
+repository functions against a migrated database as the application role (RLS applies) and use separate processes for the
+concurrent cases, because `shared.db` keeps one connection per process. Run with `make test-db`; they skip when no database
+is reachable. Verified against the previous code: 12 customers invoiced at once produced **3 invoices and 9 silently
+dropped** (`UniqueViolation`, swallowed); the same scenario now issues 12 contiguous numbers. `tests/integration/` is
+mock-based and, as of the same date, also runs in CI.
+
+`tests/db/` grew to 43 tests the same day: `test_atomic_writes.py` covers misc charges, carryovers, CBM-dispute re-pricing,
+storage-fee accrual and waiver, refund approval, claim resolution, seized-item compensation and the unbilled queue — each
+asserting (a) a failure part-way leaves nothing behind, (b) a second simultaneous request changes nothing, (c) the invoice
+status is still honest. Fixtures live in `tests/db/conftest.py`, helpers in `tests/db/support.py`. **Mock-based suites get a
+fake `shared.db` connection** (`tests/conftest.py::_fake_db_connection`) because services now open a real
+`tenant_transaction`; real-database suites (`tests/db/`, `test_rls_enforcement`, `test_db_connection_healing`) opt out.
+Writing these found three bugs mocks could not: waiving storage fees returned 500, seized-item compensation hit a CHECK
+violation, and the invoice page never showed storage fees.
+
+`tests/db/` is now 46 tests: `TestClaims` gained three for missing-item compensation (confirming an item lost opens one
+`missing_item` refund that the database accepts and links it; a status other than `confirmed_lost` opens none; two simultaneous
+confirmations open one). The same change added `TestItemUpdateValidation` (9 cases, `tests/unit/test_claims.py`) for the
+handler's 422s, and, in the frontend, `GenerateBillingModal.test.tsx` (7), the compensation cases in `MissingItemList.test.tsx`
+(5), three "Generate billing" cases in `BillingList.test.tsx`, and `canGenerateInvoices` / `groupUnbilledByContainer` in
+`billingRules.test.ts`. **jsdom cannot see clipping:** a Combobox inside the modal rendered and passed its tests while its
+dropdown was cut off by the modal body in the browser, found only by a screenshot, so a modal change needs one browser look.
 
 ## Key Test Fixtures (`conftest.py`)
 
@@ -293,7 +319,29 @@ user pool, not `MagicMock`, so these exercise the actual boto3 call shapes):
   tenant's or `platform_admin`'s groups, empty desired-roles removes everything for
   that tenant.
 
+Frontend — `frontend/scripts/mobile-audit.mjs` (2026-11-17): a browser audit, not a unit test; needs the local stack. Every route at 375/360/320 px, fails on sideways scroll or protruding content. All 78 routes pass.
+
+`tests/unit/test_uploads.py::TestSizeLimit` (2026-11-17): 5 MB on every policy, exactly-the-limit accepted, one byte over refused, nonsense sizes refused, the size signed as `content_length`, the stored-size check, and payment claims and imports refusing an over-size stored file. Frontend `lib/uploadLimits.test.ts`, `uploads.test.ts`, `ContainerDetail.test.tsx`.
+
+`tests/db/test_paginated_lists.py` (2026-11-17): the dispute and manifest counts match their filters, not the page.
+
+Frontend — `shell/breadcrumbs.test.tsx` (FD-45/46, 2026-11-17): walks every route in `routeTable.ts` against the expected trail, so a new route needs an expectation; plus link, role, label and component checks.
+
+Frontend type check: `npm run typecheck` (`tsc -b --noEmit`). `npx tsc --noEmit -p .` checks no files (the root `tsconfig.json` only references others). `pages/untestedPages.test.ts` treats a part in a page's folder (`nigeria/billingDetail/*.tsx`) as covered by the page's test (FE-07, 2026-11-17).
+
+`tests/patching.py::patch_tenant_management(name, ...)` (audit BE-13, 2026-11-17): patches a collaborator in every module `services/tenant_management/service.py` was split into, with one shared mock. Use it where several modules use the name; otherwise patch the one module (`services.tenant_management.<module>.<name>`). Patching `service.<name>` no longer reaches the code.
+
+Frontend — `pages/china/ChinaWorkQueue.test.tsx` (audit UX-10, 2026-11-17): each queue reads its list with the right filter, shows the total (or counted rows with "+"), its first rows and an empty message, links to its filtered list, opens a row, and survives one queue failing. `DisputeList.test.tsx` covers `?status=` from a link and an unknown value.
+
+Backend — `tests/unit/test_invoice_rate_source.py` (audit BE-11, 2026-11-17): live and recent last-known rates are recorded without a notice; an old last-known rate notifies tenant admins (age limit from `FX_RATE_MAX_AGE_MINUTES`, nonsense values ignored); the hard-coded rate writes no invoice (`RATE_UNAVAILABLE`) and the container run tells staff; the source shows on the staff invoice and not the customer's. `tests/db/test_invoice_rate_source.py` runs the whole invoicing path against Postgres with the feed cut. Both mutation-checked.
+
+Backend — `tests/unit/test_uploads.py` (audit BE-12, 2026-11-17): every policy refuses `application/octet-stream` and a policy cannot declare it; keys stay under a UUID tenant prefix with server-chosen segments; a refused type never reaches storage; each of the five upload endpoints refuses the unknown type before any repository call. Upload tests now patch `shared.uploads.get_storage_provider`. Frontend `ContainerDetail.test.tsx` (+3): an untyped file is refused in the dialog without a request, the real type is sent, a server refusal shows inside the dialog.
+
 Backend — `tests/unit/test_tenant_management.py`:
+- `TestAccessEmailsAreAudited` (audit SEC-07, 2026-11-17) — through the handler, resend-invite,
+  reset-password and resend-activation each write one `audit_log` row (`INVITE_RESENT`,
+  `PASSWORD_RESET_SENT`, `ACTIVATION_RESENT`) with actor, role and client IP and no email or
+  name in the snapshot; a failed identity-provider call writes none.
 - `TestCreateUser` extended — `create_user` now takes real `CreateTenantUserRequest`
   instances (not `MagicMock`) with `roles`/`primary_role`; asserts
   `cognito.sync_user_groups(...)` replaces the old `create_group_if_not_exists` +
@@ -2262,3 +2310,125 @@ unit tests: `quantity: 100` produced 100 rows with 100 unique tags
 (`ACM-ACME002001-001 … -100`), one shared `batch_ref`, `quantity` left at 1, in
 168 ms; `quantity: 500` in 229 ms; 501 and unconfirmed quantities both rejected
 with 422; and a mixed list kept one unbroken tag sequence.
+
+## Notification links, branding and channel config (2026-11-13)
+
+`tests/unit/test_app_urls.py` (12) — absolute-URL resolution. The ones that
+earn their keep are the refusals: nothing configured raises rather than
+returning a relative URL, and a variable that is *set but relative* raises
+naming that variable rather than falling through to another host. Plus the
+override precedence (`invite_url` follows `CUSTOMER_PORTAL_BASE_URL`,
+`activation_url` never does) and a check that both paths still match the
+frontend routes in `shell/routes.tsx`, since a path mismatch renders the SPA's
+not-found page and looks identical to a broken link.
+
+`tests/unit/test_notification_email.py` (37) —
+
+- **Branding**: `display_name` wins; falls back to the tenant row's
+  `company_name`; blank strings are not "set"; the `"Logistics"` fallback is
+  only reached with nothing at all. Producer side: the query selects
+  `company_name`, does not overwrite `display_name`, and degrades to defaults
+  rather than raising when the DB is unreachable.
+- **Rendering**: the lead paragraph explains why the message arrived; links
+  become a button *and* a pasteable URL; support contacts and footer appear only
+  when published; plumbing keys (`name`, `company_name`) are not shown as rows;
+  ZH renders Chinese copy.
+- **Escaping**: a recipient name of `<script>x</script>` and a value of
+  `"><b>hi</b>` come out escaped — these values come from imported manifests and
+  went into the HTML raw.
+- **Fallbacks**: an unresolved placeholder falls back to the generic lead rather
+  than emailing a half-substituted sentence; a malformed override returns empty
+  so the caller falls back to the default shell.
+- **Config guards**: the placeholder sender is refused in production but allowed
+  locally; `AFRICASTALKING_USERNAME == "sandbox"` is refused in production
+  without touching the network; provider error bodies are stripped of
+  phone-number-shaped digits and truncated.
+
+`tests/unit/test_whatsapp_first.py::TestUnconfiguredWhatsAppIsNotReportedAsSent`
+(3) — `send_whatsapp` returning `""` must log `failed` and trigger the SMS
+fallback, not `log_sent` + `record_usage`; a real message id still records a
+send; and a failing fallback does not raise, because an SQS retry would re-send
+a message already known to be unsendable.
+
+The existing invite tests in `test_tenant_management.py` were updated: they set
+no base URL, so under the new behaviour nothing is sent — which is itself now
+pinned by `test_no_base_url_sends_nothing_and_does_not_claim_it_did`, asserting
+`sent_channel IS NULL` on the row so staff are not told a customer was
+contacted.
+
+## Audit Phase 2 tests (2026-11-15)
+
+Backend 1850 passed (+264 over Phase 1), `tests/db/` 81 (+35), frontend 1017 (+30). What each group pins:
+
+- **SEC-02** `tests/unit/test_auth.py::TestActiveUserCheck` / `TestActiveIdentityLookup`; `tests/db/test_access_revocation.py` issues a token for an active user, deactivates them through the service, and asks whether the very next request is served; includes an erased customer. A mutation check (switching the check off) fails exactly the three revocation tests.
+- **SEC-05** `tests/unit/test_origin_guard.py`: look-alike origins (`app.shipx.co.evil.example`, userinfo trick, wrong port or scheme), missing and `null` origins, fail closed with nothing configured, no cookie on refusal, `text/plain` refused (415). `tests/browser.py` is what a browser sends; a global fixture trusts it.
+- **SEC-04** `tests/db/test_registration_enumeration.py` runs two registrations through the real handler and SQL; `TestSelfRegisterResponsesAreIdentical` asserts identical status and body.
+- **SEC-03** `tests/unit/test_rate_limit.py` (limiter, fail-open, every protected route, per-tenant isolation), `tests/unit/test_client_ip.py` (forged `X-Forwarded-For`, unconfigured proxies), `tests/unit/test_distributed_cache.py::TestRedisOutageIsFastNotSlow`, and **`tests/db/test_rate_limit_redis.py` against a real Redis** (atomicity under 8 threads, the window not sliding, a counter with no expiry being re-armed, a genuinely unreachable Redis).
+- **SEC-01** `tests/unit/test_notification_consent.py` (including `TestEveryEventTypeIsClassified`, which scans the code and the template tables for event types and fails until each is classified), `tests/db/test_notification_consent.py`.
+- **What mocks hid again.** A real Redis showed that every operation against an unreachable one took ~4 s (redis-py 8 retries); a real database showed `get_customer_by_email` selected only `id`, so the "you already have an account" email had no name; the real HTTP stack showed the local dev server dropped every response header except `Content-Type`.
+- **Global fixtures** in `tests/conftest.py`: `_rate_limiter_off` (no test needs Redis), `_trusted_browser_origin`, `_active_user_check_stubbed` (opts out for `tests/db/`). A test that wants the real behaviour turns it on itself.
+- **Redis in the DB suite:** the rate-limiter tests need `REDIS_HOST`; they skip without one locally, and fail when `CI` is set and none is provided.
+
+## Audit Phase 3 tests (2026-11-16)
+
+Frontend 1089 (+69), backend 1866 unit/integration (+11). `ErrorBoundary.test.tsx` (fallback, retry, reset on route change, logging without personal data, the quiet boundary), `returnPath.test.ts` (the open-redirect cases from the brief plus encoded variants) and the RoleGuard/LoginScreen return-path tests, `DisputeDetail.test.tsx` (list to detail to resolve in one flow through the real router), `MyReleaseNote.test.tsx`, `navConfig.test.ts` (Nigeria menu), and the header-search tests in `TopBar`/`StaffLayout`. `tests/db/test_dispute_detail.py` runs the two new SQL queries on real Postgres. **A test must register a stable `onSearch`**: a fresh function each render loops the layout (it hung the suite once). `App.test.tsx` no longer touches the network.
+
+## Global search tests (2026-11-16)
+
+Backend: `tests/unit/test_search.py` (89 with the infrastructure-contract tests): the role-to-kind map, the customer pin, phone patterns however typed, LIKE wildcards made literal, ranking and the 20-result cap, no internal fields in a result, a platform admin refused, and an **SQL inspection** of every query (tenant scope, the customer pin in SQL, erased customers excluded, the text only ever a bound parameter, LIKE escaped). The handler never logs the text. `tests/db/test_search.py` runs the same queries on real Postgres; **it has not been run** (Docker was unavailable), so run `make test-db` before relying on it. Frontend: `GlobalSearch.test.tsx` (debounce makes one request, keyboard, click, Escape, empty and error states, customer routes, Ctrl/Cmd+K, the phone-width toggle), `searchRoutes.test.ts` (every kind a role can find lands on a route that admits that role; the id is encoded), and the `StaffLayout`/`CustomerLayout`/`TopBar` tests for where the box appears. The route-table drift guard `tests/unit/test_infrastructure_contracts.py` covers the new service's Terraform and CI registration.
+
+## List export tests (2026-11-16)
+
+`tests/unit/test_list_exports.py` (81): the shared filter fragments pinned to exactly what the list queries produced before extraction (the golden master, plus a test that each of the four queries contains the shared clause), the export SQL (tenant scope, bound text, the limit plus one, an allowlisted sort), the writers (a name like `=HYPERLINK(...)` stays text in xlsx and csv, a negative amount is not mistaken for a formula, UTC timestamps, exact decimals, BOM and CRLF), the query model, the service (truncation refuses and uploads nothing, audit has no search text) and the handler (roles, forwarding, 422s, the single-invoice route not shadowed). Mutation-checked: removing the xlsx guard, the csv guard, the shared filter, the truncation check, the role check or the audit masking each fails a named test. `tests/db/test_list_exports.py` (42, **unrun**, no Docker) compares list and export row ids and order on Postgres, checks carryover, storage-fee and balance columns, and that no exported column is blank for every row. Frontend: `useListExport.test.tsx`, the Export blocks in `BillingList.test.tsx` and `ContainerList.test.tsx` (including the filters-at-the-moment-of-the-click regression, mutation-checked), and `client.test.ts` (filters forwarded; `format` wins). `tests/db/conftest.py` now clears `audit_log` in teardown.
+
+## Phase 4 frontend tests (2026-11-16)
+
+Frontend 165 files / 1,296 tests. New guards that fail on regression: `routes.test.tsx` (a page or layout imported statically, FE-02), `shell/dialogs.test.ts` (an `aria-modal` dialog without focus handling, FE-04; since 2026-11-17 also any native `window.confirm`/`alert`/`prompt`, UX-11), `lib/format.test.ts` (a page calling `toLocale*String` or slicing an ISO date, FE-03), `shell/noFetchInEffect.test.ts` (an effect that calls an API module, FE-05). Each was mutation-checked. Backend 2,162 unit/integration tests. **Unrun, written for a real database (no Docker in this session):** `tests/db/test_search.py`, `test_list_exports.py`, `test_paginated_lists.py`, `test_claim_read.py`, `test_pickup_code.py`, and migration 065.
+
+## Owner decisions 2026-11-17: claim reason and the invoice-list export
+
+- `tests/unit/test_claims.py`: `TestGetClaimForTheCustomer` (a customer gets `resolution.reason` only for `no_action`; staff always; the approver never), `TestResolvingAgainstTheCustomerNeedsAReason` (422 on a blank reason for `no_action`; other outcomes unchanged).
+- `tests/unit/test_refunds.py::TestGetRefund`: the customer view of a refund (their own reason only, the rejection reason always, no approval level, debt-check notes or threshold). Mutation-checked: returning the reason unconditionally fails two tests.
+- `tests/unit/test_list_exports.py`: `GET /v1/billing/export` is the tenant admin's; Nigeria and China staff, warehouse, customer and platform admin are 403.
+- `tests/db/test_claim_read.py`: one more case (the outcome query returns the reason). **Unrun**: no Docker.
+- Frontend: `MyClaimDetail.test.tsx` (the Why row appears only with a reason), `ClaimDetail.test.tsx` (the reason field says whether the customer will read it).
+
+## BE-07 — invoice totals and credits (2026-11-17)
+
+- `tests/unit/test_invoice_credits.py` (31): `_credits_to_apply` (capped at what is due, oldest first, approved amount, earlier use counted), generation with credits (the brief's case: ₦50,000 credit on a ₦20,000 charge gives a zero `paid` invoice and leaves ₦30,000), the credit write's SQL (adds instead of completing, optimistic guard, tenant scoped, `RETURNING`), `adjust_billing`'s zero floor, `new_overpayment` past zero, and the invoice showing the credit. Mutation-checked: nine protections removed one at a time, each caught.
+- `tests/db/test_invoice_credits.py` (10): the same against a real database, including the CHECK refusing a negative total. **Unrun**: no Docker.
+- Frontend: `RefundDetail.test.tsx` ("Credit used ₦X of ₦Y").
+
+## BE-08 — Paystack currency (2026-11-17)
+
+`tests/unit/test_payment_webhook.py`: `TestPaystackChargeAmount` (only a positive naira amount; other currencies, no currency, zero, negative, NaN, Infinity and malformed amounts refused; the log line does not echo the payload), `TestExtractPaystackPaymentCurrency`, and `TestASignedEventInAnotherCurrencyDoesNotChangeTheInvoice` (the brief's acceptance test: a correctly signed USD `charge.success` through `_webhook_routes` records no payment; the same event in NGN does). `tests/unit/test_payment_release.py`: the verify path refuses the same charges (422 `BR-PAY-VERIFY-002`). Mutation-checked: 5 protections, each caught.
+
+## BE-09 — no EventBridge rule feeds a notification queue (2026-11-17)
+
+`tests/unit/test_infrastructure_contracts.py::TestNoEventGoesToANotificationQueue` (4): the EventBridge module targets only the metering queue, has no routing-rule list, does not grant EventBridge send on every queue, and `scripts/bootstrap_local.sh` creates only `route-metering`. Checked against the files from before the change: 4 of 4 fail there. The notification consumer tests (`test_notifications.py` and friends) still pass.
+
+## BE-10 — offboarding export (2026-11-17)
+
+- `tests/unit/test_tenant_data.py` (60): parses every migration's `upgrade()` (CREATE TABLE, ALTER TABLE … ADD COLUMN / FOREIGN KEY, DROP TABLE) and checks that every table is in `TENANT_TABLES` or `NOT_TENANT_DATA`, that tables read through a parent have that key, that the order never breaks a foreign key on delete, that omitted and decrypted columns exist, and the SQL shapes. Guarded itself: it asserts the parser sees the core tables, later-added columns and more than 100 foreign keys.
+- `tests/unit/test_offboarding_export.py` (25): archive contents (every table, manifest, exact values, secrets and hashes left out, encrypted fields decrypted, decryption failure fails the export), job outcomes (completed, cancelled for a reactivated tenant, failed by type only with no personal data in the log), the loop and time budget, the record's SQL.
+- `tests/unit/test_data_cleanup.py` (11): refusal without an export (and only one since the latest offboarding), children-first deletes in one transaction, platform records cleared before the tenant row, storage first and a storage failure deleting nothing, Cognito after commit.
+- `tests/unit/test_tenant_offboarding_export.py` (29): offboarding queues in the same transaction, reactivation cancels, status rules, queue rules, the link (five minutes, attachment, audited, refused without the audit record, never signed outside the tenant's export folder), routes (platform admin only, UUID check).
+- Mutation-checked: 12 protections across the four files, each caught. Note: `scratchpad/mutate.py` now deletes the module's `.pyc` before each run, because a same-size edit made within one second kept the old bytecode valid and let one mutant look like it survived.
+- Frontend: `PlatformTenantDetail.test.tsx` (8, new: the page had no test): export card states, download through a fresh link, queue, no card for an active tenant, and the three tabs reading through hooks. `shell/noFetchInEffect.test.ts` now recognises an API object imported under another name (it missed `platformApi as platformExtras`).
+
+## OPS-03 — coverage floors and the untested-pages ratchet (2026-11-17)
+
+- `scripts/check_coverage.py` + `[tool.shipx.coverage-floors]` in `pyproject.toml`; CI step "Enforce coverage floors". Tests: `tests/unit/test_check_coverage.py` (7: at the floor passes, below fails, a floored directory with nothing measured fails, a `shared/` file with a similar name does not count toward the service, the raise hint, the floors exist, CI runs the check after the unit tests).
+- New frontend tests for money-moving pages that had none: `pages/customer/RefundRequest.test.tsx` (4: no zero amount; the request body, payout choice and return to the invoice; **a retry reuses the idempotency key**, so a failed-then-retried submit cannot file two refunds; the credit wording), `pages/customer/MyBilling.test.tsx` (4), `pages/nigeria/CarryoverLedger.test.tsx` (6: the outstanding total excludes applied entries; only tenant admins exempt, only outstanding entries; the exemption sends the reason; a refused exemption keeps the dialog open).
+- `src/pages/untestedPages.test.ts`: the ratchet described in `18_cicd_pipeline.md`.
+
+## OPS-04 — failure counters and alarms (2026-11-17)
+
+`tests/unit/test_failure_metrics.py` (23): the metric line, written through the production `StructuredFormatter`, is valid Embedded Metric Format (namespace, dimensions, metric names as top-level keys, integer timestamp); outcomes carry attempts and failures; counted even with the root log level at ERROR; only the fixed operation names become metrics; counting never raises; and each catch site counts (audit, platform audit, notification enqueue, invoice generation but not a skipped invoice, both send outcomes, a failed tenant step in each of six scheduled jobs). Mutation-checked: 7 protections, each caught. `test_infrastructure_contracts.py::TestFailureAlarmsMatchTheCounters` (3): every operation an AWS or Azure alarm names is one the code counts, and the namespaces agree. **Not verified:** an alarm firing in a deployed environment (the brief's gate).
+
+## Real-database run, 2026-11-17
+
+Docker Desktop had stopped because the disk was full ("no space left on device" in its backend log); after space was freed it started. Migrations 065–067 were applied to the local dev database (`make migrate`, data kept; `make stack` was not used because it drops the database). `make test-db`: **183 passed**. Every database test written while Docker was down now runs: `test_search.py`, `test_list_exports.py`, `test_paginated_lists.py`, `test_claim_read.py`, `test_pickup_code.py`, `test_invoice_credits.py`, and the new `test_offboarding_lifecycle.py` (2: offboard, export to Moto S3, read back, then the cleanup deletes everything against real foreign keys; mutation-checked three ways).
+
+Found by running them: **a real bug** (invoice generation set a used credit to `completed`, which `refund_request` does not allow, so every invoice that used a credit failed; fixed, `processed`), and two fixture mistakes in `test_claim_read.py` (approval level `admin`, a claim without `reference`).
+

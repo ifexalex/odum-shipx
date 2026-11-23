@@ -15,6 +15,7 @@ import logging
 from typing import Any
 
 from shared.db import execute_with_tenant, execute_write_with_tenant
+from shared.list_filters import container_filter
 from shared.pagination import build_paginated_query, extract_page
 from shared.tenant_context import PLATFORM_TENANT_ID
 
@@ -83,47 +84,11 @@ def list_containers(
     sort_field: str = "created_at",
     sort_direction: str = "DESC",
 ) -> tuple[list[dict[str, Any]], str | None, bool]:
-    conditions = ["tenant_id = %(tenant_id)s"]
-    extra: dict[str, Any] = {"tenant_id": tenant_id}
-
-    if filters.get("status"):
-        # Accepts either a single status string or a list (Filters panel's
-        # multi-select sends several) — always parameterized via ANY(), same
-        # idiom as billing/repository.py::mark_carryovers_applied's `id =
-        # ANY(%(ids)s)`. Never string-interpolated.
-        statuses = filters["status"]
-        if isinstance(statuses, str):
-            statuses = [statuses]
-        conditions.append("status = ANY(%(statuses)s)")
-        extra["statuses"] = list(statuses)
-    if filters.get("created_after"):
-        conditions.append("created_at >= %(created_after)s")
-        extra["created_after"] = filters["created_after"]
-    if filters.get("created_before"):
-        conditions.append("created_at <= %(created_before)s")
-        extra["created_before"] = filters["created_before"]
-    if filters.get("eta_after"):
-        conditions.append("estimated_arrival_date >= %(eta_after)s")
-        extra["eta_after"] = filters["eta_after"]
-    if filters.get("eta_before"):
-        conditions.append("estimated_arrival_date <= %(eta_before)s")
-        extra["eta_before"] = filters["eta_before"]
-
-    # Free-text search across container number, vessel name, and voyage number.
-    # Appended separately from `conditions` below (which get blanket-prefixed
-    # with "c.") since this is already a compound multi-column OR expression —
-    # folding it into `conditions` would double-prefix it into invalid SQL
-    # (e.g. "c.(c.container_number ILIKE ...)"). See services/packing_list/
-    # repository.py::list_packing_lists for the same q_clause pattern.
-    q_clause = ""
-    if filters.get("q"):
-        q_clause = " AND (c.container_number ILIKE %(q)s OR c.vessel_name ILIKE %(q)s OR c.voyage_number ILIKE %(q)s)"
-        extra["q"] = f"%{filters['q']}%"
+    where_clause, extra = container_filter(tenant_id, filters)
 
     # Wrap the correlated packing-list aggregates in a subquery so
     # build_paginated_query's cursor condition (AND id > ...) references the
     # outer unambiguous columns instead of clashing with packing_list.id.
-    where_clause = " AND ".join(f"c.{cond}" for cond in conditions)
     inner = f"""
         SELECT c.*,
                (SELECT COUNT(*) FROM packing_list pl
@@ -136,13 +101,13 @@ def list_containers(
                 JOIN packing_list pl2 ON pl2.id = pli.packing_list_id
                 WHERE pl2.container_id = c.id AND pl2.tenant_id = c.tenant_id) AS total_cbm_packed
         FROM container c
-        WHERE {where_clause}{q_clause}
+        WHERE {where_clause}
     """
     base = f"SELECT * FROM ({inner}) AS t WHERE 1=1"
     query, params = build_paginated_query(base, cursor, limit, sort_field=sort_field, sort_direction=sort_direction)
     params.update(extra)
     rows = execute_with_tenant(tenant_id, query, params)
-    return extract_page(rows, limit)
+    return extract_page(rows, limit, sort_field)
 
 
 def get_container_stats(tenant_id: str) -> dict[str, int]:

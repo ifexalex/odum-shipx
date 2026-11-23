@@ -1,4 +1,4 @@
-.PHONY: install lint check test test-unit test-integration test-isolation test-all migrate seed deploy clean security-scan \
+.PHONY: install lint check test test-unit test-integration test-isolation test-db test-all migrate seed deploy clean security-scan \
         up down bootstrap dev e2e
 
 # ─── Local stack ─────────────────────────────────────────────────────────────
@@ -49,6 +49,7 @@ install:
 
 lint:
 	uv run ruff check .
+	uv run ruff format --check .
 	uv run mypy shared/ services/ --ignore-missing-imports
 
 security-scan:
@@ -67,12 +68,18 @@ test-integration:
 test-isolation:
 	PYTHONPATH=.:services uv run pytest tests/tenant_isolation/ -v -m isolation
 
+# Invoice/payment integrity under real concurrency. Needs the stack up and migrated
+# (`make stack`); skips itself if no database is reachable.
+test-db:
+	PYTHONPATH=.:services uv run pytest tests/db/ -v -m db
+
 test-all:
 	PYTHONPATH=.:services uv run pytest tests/ -v --cov=services --cov=shared --cov-report=xml
 
 # Run lint + type-check + unit tests in one shot
 check:
 	uv run ruff check .
+	uv run ruff format --check .
 	uv run mypy shared/ services/ --ignore-missing-imports
 	PYTHONPATH=.:services uv run pytest tests/unit/ -v --cov=services --cov=shared --cov-report=term-missing
 
@@ -84,8 +91,9 @@ e2e:
 	@echo "Tip: ensure 'make dev' is running in another terminal."
 	python3 scripts/e2e_test.py $(ARGS)
 
-migrate:
-	python scripts/migrate.py
+# Loads .env.local like `stack` and `dev` do; a bare `python` is not on PATH on macOS.
+migrate: .env.local
+	set -a; source .env.local; set +a; PYTHONPATH=. python3 scripts/migrate.py
 
 seed:
 	python scripts/seed.py

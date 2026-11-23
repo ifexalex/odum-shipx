@@ -1,11 +1,15 @@
-import { useEffect, useState, type JSX } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useQueryClient } from '@tanstack/react-query'
+import { useState, type JSX } from 'react'
 import { ApiError } from '../../api/client'
-import { configApi, type DollarRateConfig, type RateHistoryEntry } from '../../api/tenantManagement'
+import { configKeys } from '../../api/keys'
+import { configApi, type DollarRateConfig } from '../../api/tenantManagement'
+import { useDollarRate, useRateHistory } from '../../hooks/useConfig'
+import { useSeedOnce } from '../../hooks/useSeedOnce'
 import { Banner, Button, Card, Kvp, Mono, Table, UserCell } from '../../design/components'
 import { PageHeader } from '../../shell/PageHeader'
 import { SectionHead } from '../../shell/SectionHead'
 import styles from './admin.module.css'
+import { formatDate, formatNgn, formatAmount } from '../../lib/format'
 
 // B7 — rate trend line chart (prototype 4.2/4.3). Dependency-free SVG.
 // Takes ascending-by-date points and draws a filled area + line + endpoint dot,
@@ -35,9 +39,9 @@ function RateTrendChart({ points, prefix }: { points: { date: string; value: num
   return (
     <div style={{ padding: '4px 20px 16px' }}>
       <div style={{ display: 'flex', alignItems: 'baseline', gap: 12, marginBottom: 8, flexWrap: 'wrap' }}>
-        <span style={{ fontFamily: 'var(--font-display)', fontWeight: 700, fontSize: 22 }}>{prefix}{last.value.toLocaleString()}</span>
+        <span style={{ fontFamily: 'var(--font-display)', fontWeight: 700, fontSize: 22 }}>{prefix}{formatAmount(last.value)}</span>
         <span style={{ fontSize: 13, fontWeight: 700, color: net >= 0 ? 'var(--color-success)' : 'var(--color-error)' }}>
-          {net >= 0 ? '+' : ''}{prefix}{net.toLocaleString()}
+          {net >= 0 ? '+' : ''}{prefix}{formatAmount(net)}
         </span>
         <span style={{ fontSize: 12, color: 'var(--color-ink-4)' }}>over {points.length} changes</span>
       </div>
@@ -51,14 +55,14 @@ function RateTrendChart({ points, prefix }: { points: { date: string; value: num
         {/* min / max reference lines */}
         <line x1={padX} x2={W - padX} y1={y(max)} y2={y(max)} stroke="var(--color-line-soft)" strokeDasharray="3 4" />
         <line x1={padX} x2={W - padX} y1={y(min)} y2={y(min)} stroke="var(--color-line-soft)" strokeDasharray="3 4" />
-        <text x={padX} y={y(max) - 4} fontSize="10" fill="var(--color-ink-4)" fontFamily="var(--font-mono)">{prefix}{max.toLocaleString()}</text>
-        <text x={padX} y={y(min) + 12} fontSize="10" fill="var(--color-ink-4)" fontFamily="var(--font-mono)">{prefix}{min.toLocaleString()}</text>
+        <text x={padX} y={y(max) - 4} fontSize="10" fill="var(--color-ink-4)" fontFamily="var(--font-mono)">{prefix}{formatAmount(max)}</text>
+        <text x={padX} y={y(min) + 12} fontSize="10" fill="var(--color-ink-4)" fontFamily="var(--font-mono)">{prefix}{formatAmount(min)}</text>
         <path d={areaPath} fill="url(#rateTrendFill)" />
         <path d={linePath} fill="none" stroke="var(--color-primary)" strokeWidth="2.5" strokeLinejoin="round" strokeLinecap="round" />
         <circle cx={x(points.length - 1)} cy={y(last.value)} r="4.5" fill="var(--color-primary)" stroke="#fff" strokeWidth="2" />
         {/* first + last date labels */}
-        <text x={padX} y={H - 8} fontSize="10" fill="var(--color-ink-4)" fontFamily="var(--font-mono)">{first.date.slice(0, 10)}</text>
-        <text x={W - padX} y={H - 8} fontSize="10" fill="var(--color-ink-4)" fontFamily="var(--font-mono)" textAnchor="end">{last.date.slice(0, 10)}</text>
+        <text x={padX} y={H - 8} fontSize="10" fill="var(--color-ink-4)" fontFamily="var(--font-mono)">{formatDate(first.date)}</text>
+        <text x={W - padX} y={H - 8} fontSize="10" fill="var(--color-ink-4)" fontFamily="var(--font-mono)" textAnchor="end">{formatDate(last.date)}</text>
       </svg>
     </div>
   )
@@ -68,21 +72,10 @@ function RateTrendChart({ points, prefix }: { points: { date: string; value: num
 // Shared by the Dollar and CBM rate pages. Also renders the B7 trend chart from
 // the same fetched history (no extra request).
 export function RateHistoryTable({ rateType, valueKey, prefix }: { rateType: 'dollar_rate' | 'cbm_rate'; valueKey: string; prefix: string }): JSX.Element {
-  const [rows, setRows] = useState<RateHistoryEntry[]>([])
-  const [loading, setLoading] = useState(true)
-
-  useEffect(() => {
-    void (async () => {
-      try {
-        const result = await configApi.rateHistory(rateType)
-        setRows(result.data)
-      } catch {
-        // non-fatal — history table degrades to empty
-      } finally {
-        setLoading(false)
-      }
-    })()
-  }, [rateType])
+  // Non-fatal: on failure the history table degrades to empty.
+  const history = useRateHistory(rateType)
+  const rows = history.data?.data ?? []
+  const loading = history.isLoading
 
   const val = (v: Record<string, unknown> | null): number | null => {
     const n = v ? Number(v[valueKey]) : NaN
@@ -115,14 +108,14 @@ export function RateHistoryTable({ rateType, valueKey, prefix }: { rateType: 'do
           return {
             cells: [
               <span key="rate" style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}>
-                <Mono color={i === 0 ? 'var(--color-primary)' : undefined}>{prefix}{current?.toLocaleString() ?? '—'}</Mono>
+                <Mono color={i === 0 ? 'var(--color-primary)' : undefined}>{prefix}{formatAmount(current)}</Mono>
                 {i === 0 && <span style={{ fontSize: 10, fontWeight: 700, textTransform: 'uppercase', color: 'var(--color-primary-deep)', background: 'var(--color-primary-soft)', borderRadius: 999, padding: '2px 8px' }}>Current</span>}
               </span>,
               delta == null ? (
                 <span key="delta" style={{ fontSize: 12, color: 'var(--color-ink-4)' }}>—</span>
               ) : (
                 <span key="delta" style={{ fontSize: 12, fontWeight: 700, color: delta >= 0 ? 'var(--color-success)' : 'var(--color-error)' }}>
-                  {delta >= 0 ? '+' : ''}{prefix}{delta.toLocaleString()}
+                  {delta >= 0 ? '+' : ''}{prefix}{formatAmount(delta)}
                 </span>
               ),
               <UserCell key="by" name={r.changed_by ?? 'system'} email="" />,
@@ -148,50 +141,52 @@ function relativeTime(iso: string): string {
   if (hrs < 24) return `${hrs}h ago`
   const days = Math.round(hrs / 24)
   if (days < 30) return `${days}d ago`
-  return iso.slice(0, 10)
+  return formatDate(iso)
 }
 
 function formatMarkup(markupType: 'percentage' | 'flat', markupValue: number): string {
-  return markupType === 'flat' ? `₦${markupValue.toLocaleString()} per $1` : `${markupValue}%`
+  return markupType === 'flat' ? `${formatNgn(markupValue)} per $1` : `${markupValue}%`
 }
 
 type MarkupType = 'percentage' | 'flat'
 
+/** " — updated 5 min ago", or what the base rate is when it was not fetched live (audit BE-11). */
+function baseRateFreshness(rate: DollarRateConfig): string {
+  if (rate.rate_source === 'hardcoded' || !rate.fetched_at) return ' — built-in default, never fetched'
+  const when = relativeTime(rate.fetched_at)
+  return rate.rate_source === 'last_known' ? ` — last known rate, fetched ${when}` : ` — updated ${when}`
+}
+
 export function DollarRateConfig(): JSX.Element {
-  const navigate = useNavigate()
-  const [current, setCurrent] = useState<DollarRateConfig | null>(null)
+  const qc = useQueryClient()
+  const rate = useDollarRate({ freshOnOpen: true })
+  const current: DollarRateConfig | null = rate.isFetchedAfterMount ? (rate.data ?? null) : null
+  const loading = !rate.isFetchedAfterMount
   const [markupType, setMarkupType] = useState<MarkupType>('percentage')
   const [markupValue, setMarkupValue] = useState('')
-  const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
-  const [error, setError] = useState<string | null>(null)
+  const [saveError, setSaveError] = useState<string | null>(null)
   const [success, setSuccess] = useState(false)
 
-  useEffect(() => {
-    void (async () => {
-      try {
-        const data = await configApi.getDollarRate()
-        setCurrent(data)
-        setMarkupType(data.markup_type)
-        setMarkupValue(String(data.markup_value))
-      } catch (err) {
-        setError(err instanceof ApiError ? err.message : 'Could not load rate.')
-      } finally {
-        setLoading(false)
-      }
-    })()
-  }, [])
+  useSeedOnce(rate, (data) => {
+    setMarkupType(data.markup_type)
+    setMarkupValue(String(data.markup_value))
+  })
+
+  const loadError = rate.error ? (rate.error instanceof ApiError ? rate.error.message : 'Could not load rate.') : null
+  const error = saveError ?? loadError
 
   async function handleSave(): Promise<void> {
     setSaving(true)
-    setError(null)
+    setSaveError(null)
     setSuccess(false)
     try {
       const updated = await configApi.updateDollarRate({ markup_type: markupType, markup_value: Number(markupValue) })
-      setCurrent(updated)
+      // Show the saved value at once; the write also invalidates every config query (api/cacheInvalidation.ts).
+      qc.setQueryData(configKeys.dollar(), updated)
       setSuccess(true)
     } catch (err) {
-      setError(err instanceof ApiError ? err.message : 'Could not update markup.')
+      setSaveError(err instanceof ApiError ? err.message : 'Could not update markup.')
     } finally {
       setSaving(false)
     }
@@ -210,12 +205,21 @@ export function DollarRateConfig(): JSX.Element {
           <Card padding={20}>
             <Kvp
               label="Base rate (Bybit P2P)"
-              value={<Mono>₦{current.base_rate.toLocaleString()} per $1 — updated {relativeTime(current.fetched_at)}</Mono>}
+              value={<Mono>{formatNgn(current.base_rate)} per $1{baseRateFreshness(current)}</Mono>}
             />
+            {current.rate_source !== 'live' && (
+              <div className={styles.banner}>
+                <Banner variant="warning">
+                  {current.rate_source === 'hardcoded'
+                    ? 'No market rate has been fetched yet, so this is a built-in default. Invoices are not issued until a market rate is available.'
+                    : 'The live market rate cannot be fetched right now, so invoices use the last known rate shown here.'}
+                </Banner>
+              </div>
+            )}
             <Kvp label="Your markup" value={<Mono>{formatMarkup(current.markup_type, current.markup_value)}</Mono>} />
             <Kvp
               label="Effective rate charged to customers"
-              value={<Mono color="var(--color-primary)">₦{current.rate.toLocaleString()} per $1 USD</Mono>}
+              value={<Mono color="var(--color-primary)">{formatNgn(current.rate)} per $1 USD</Mono>}
               divider={false}
             />
           </Card>
@@ -261,7 +265,6 @@ export function DollarRateConfig(): JSX.Element {
               />
             </div>
             <div className={styles.formActions}>
-              <Button variant="ghost" onClick={() => navigate('/admin/config')}>Back</Button>
               <Button
                 variant="primary"
                 loading={saving}

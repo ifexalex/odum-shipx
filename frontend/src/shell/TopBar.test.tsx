@@ -1,20 +1,29 @@
 import { render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
+import { MemoryRouter } from 'react-router-dom'
 import { describe, expect, it, vi } from 'vitest'
 import { TopBar } from './TopBar'
 
 describe('TopBar', () => {
-  it('renders the title and breadcrumb', () => {
-    render(<TopBar role="nigeria" title="Containers" breadcrumb={['Nigeria Office', 'Containers']} />)
-    expect(screen.getByText('Containers', { selector: 'h1' })).toBeInTheDocument()
-    expect(screen.getByText('Nigeria Office')).toBeInTheDocument()
+  it('renders the title and a breadcrumb whose crumbs link back up (FD-45)', () => {
+    render(
+      <MemoryRouter>
+        <TopBar
+          role="nigeria"
+          title="INV-0042"
+          breadcrumb={[{ label: 'Billing', to: '/billing' }, { label: 'INV-0042' }]}
+        />
+      </MemoryRouter>,
+    )
+    expect(screen.getByText('INV-0042', { selector: 'h1' })).toBeInTheDocument()
+    const nav = screen.getByRole('navigation', { name: 'Breadcrumb' })
+    expect(nav.querySelectorAll('ol a[href="/billing"]')).toHaveLength(1)
+    expect(nav.querySelector('[aria-current="page"]')).toHaveTextContent('INV-0042')
   })
 
-  it('calls onSearch as the user types', async () => {
-    const onSearch = vi.fn()
-    render(<TopBar role="nigeria" onSearch={onSearch} />)
-    await userEvent.type(screen.getByPlaceholderText(/Search/), 'SHPX')
-    expect(onSearch).toHaveBeenLastCalledWith('SHPX')
+  it('shows no breadcrumb for an empty trail (a top-level page)', () => {
+    render(<TopBar role="nigeria" title="Containers" breadcrumb={[]} />)
+    expect(screen.queryByRole('navigation', { name: 'Breadcrumb' })).toBeNull()
   })
 
   it('shows the unread notification count', () => {
@@ -47,5 +56,20 @@ describe('TopBar', () => {
     )
     await userEvent.click(screen.getByText('Adaeze Eze'))
     expect(onUserMenuClick).toHaveBeenCalledOnce()
+  })
+})
+
+describe('TopBar search slot', () => {
+  it('renders no search box unless one is passed', () => {
+    render(<TopBar role="nigeria" />)
+    expect(screen.queryByRole('combobox')).toBeNull()
+    expect(screen.queryByRole('textbox')).toBeNull()
+  })
+
+  it('renders whatever search control it is given, ahead of the actions', () => {
+    render(<TopBar role="nigeria" search={<input aria-label="Find" />} actions={<button type="button">Create</button>} />)
+    const find = screen.getByLabelText('Find')
+    const create = screen.getByRole('button', { name: 'Create' })
+    expect(find.compareDocumentPosition(create) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
   })
 })

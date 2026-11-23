@@ -90,3 +90,9 @@ Not added — no Sentry or equivalent configured. If added in future, the `befor
 - [x] GDPR anonymise flow enforces exact "ANONYMISE" text match client-side — `confirmText === 'ANONYMISE'` in `AdminCustomerDetail`.
 - [ ] If error reporting is added, a `beforeSend` PII scrub is in place — **N/A (no Sentry configured yet)**.
 - [x] Frontend dependencies lockfile-pinned (`package-lock.json`) and audited in CI (`npm audit --audit-level=high`) with HIGH/CRITICAL failure gate.
+
+### Session endpoints and the active-user check (audit Phase 2, 2026-11-15)
+
+- The httpOnly refresh cookie is attached by the browser to *any* request to the API host, including one a third-party page caused. Where it is sent cross-site (Azure had `SameSite=None`) a hostile page could post its own refresh token to `/v1/auth/session` and sign the victim's browser into the attacker's account, or force a logout. The cookie endpoints therefore require a trusted `Origin` (`shared/origin_guard.py`); a page cannot forge that header. See `00_CROSS_CUTTING_STANDARDS.md` §8.7.
+- A valid token no longer outlives its user: `get_tenant_context` checks the user's active row on every request and refuses a deactivated or erased user at once.
+- The registration form cannot be used to learn who is a customer: it answers the same way for a taken email (SEC-04).

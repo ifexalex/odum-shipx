@@ -9,15 +9,11 @@
  * (no batch usage endpoint — would be N calls); MRR / API-call stats / trend
  * chips (no historical-aggregates source — fictional in the prototype).
  */
-import { useEffect, useMemo, useState, type JSX } from 'react'
+import { useMemo, type JSX } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { ApiError } from '../../api/client'
-import {
-  platformApi,
-  type PlatformAuditEntry,
-  type PlatformDashboardStats,
-  type Tenant,
-} from '../../api/tenantManagement'
+import type { Tenant } from '../../api/tenantManagement'
+import { usePlatformDashboardStats, usePlatformTenantList, useRecentPlatformActivity } from '../../hooks/usePlatformTenants'
 import { Badge, Banner, Button, Card, Mono, QuickActionCard, StatCard, Table, UserCell, ViewLink, type BadgeVariant, type IconName } from '../../design/components'
 import { PageHeader } from '../../shell/PageHeader'
 import { SectionHead } from '../../shell/SectionHead'
@@ -63,30 +59,21 @@ const QUICK_ACTIONS: QuickAction[] = [
 
 export function PlatformDashboard(): JSX.Element {
   const navigate = useNavigate()
-  const [stats, setStats] = useState<PlatformDashboardStats | null>(null)
-  const [tenants, setTenants] = useState<Tenant[]>([])
-  const [activity, setActivity] = useState<PlatformAuditEntry[]>([])
-  const [loading, setLoading] = useState(true)
-  const [error, setError] = useState<string | null>(null)
+  const dashboard = usePlatformDashboardStats()
+  const tenantList = usePlatformTenantList()
+  // Activity feed is non-fatal — the dashboard renders without it.
+  const recent = useRecentPlatformActivity(8)
 
-  useEffect(() => {
-    void (async () => {
-      try {
-        const [dashboard, tenantList] = await Promise.all([
-          platformApi.dashboard(),
-          platformApi.listTenants(),
-        ])
-        setStats(dashboard)
-        setTenants(tenantList.data)
-      } catch (err) {
-        setError(err instanceof ApiError ? err.message : 'Could not load the platform dashboard.')
-      } finally {
-        setLoading(false)
-      }
-    })()
-    // Activity feed is non-fatal — the dashboard renders without it.
-    void platformApi.auditLog({ limit: 8 }).then((r) => setActivity(r.data)).catch(() => setActivity([]))
-  }, [])
+  const stats = dashboard.data ?? null
+  const tenants = useMemo(() => tenantList.data?.data ?? [], [tenantList.data])
+  const activity = recent.data?.data ?? []
+  const loading = dashboard.isLoading || tenantList.isLoading
+  const failure = dashboard.error ?? tenantList.error
+  const error = failure
+    ? failure instanceof ApiError
+      ? failure.message
+      : 'Could not load the platform dashboard.'
+    : null
 
   const tenantName = useMemo(() => {
     const map = new Map(tenants.map((t) => [t.id, t.company_name]))

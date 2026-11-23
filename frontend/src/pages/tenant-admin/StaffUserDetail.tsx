@@ -1,6 +1,6 @@
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { useState, type JSX } from 'react'
-import { useLocation, useNavigate, useParams } from 'react-router-dom'
+import { useLocation, useParams } from 'react-router-dom'
 import { ApiError } from '../../api/client'
 import { usersApi, type TenantUser, type TenantUserRole } from '../../api/tenantManagement'
 import { staffKeys } from '../../api/keys'
@@ -12,6 +12,8 @@ import { ActivityFeed } from '../../shell/ActivityFeed'
 import { SectionHead } from '../../shell/SectionHead'
 import { RoleCheckboxList } from './RoleCheckboxList'
 import styles from './admin.module.css'
+import { formatDate } from '../../lib/format'
+import { useBreadcrumbLabel } from '../../shell/breadcrumbs'
 
 const ROLE_VARIANT: Record<TenantUserRole, BadgeVariant> = {
   tenant_admin: 'error',
@@ -66,7 +68,6 @@ export function StaffUserDetail(): JSX.Element {
   const { id } = useParams<{ id: string }>()
   const { session } = useSession()
   const location = useLocation()
-  const navigate = useNavigate()
   const stateUser = (location.state as { user?: TenantUser } | null)?.user ?? null
 
   const qc = useQueryClient()
@@ -78,6 +79,8 @@ export function StaffUserDetail(): JSX.Element {
     ...(stateUser ? { initialData: stateUser } : {}),
     staleTime: STALE_30S,
   })
+  // Names this record in the breadcrumb once loaded (FD-46).
+  useBreadcrumbLabel(user?.full_name)
 
   const [editRoles, setEditRoles] = useState<TenantUserRole[] | null>(null)
   const [editPrimaryRole, setEditPrimaryRole] = useState<TenantUserRole | null>(null)
@@ -235,7 +238,7 @@ export function StaffUserDetail(): JSX.Element {
           </div>
         } />
         <Kvp label="Status" value={<Badge variant={user.status === 'active' ? 'success' : 'neutral'}>{user.status}</Badge>} />
-        <Kvp label="Member since" value={user.created_at.slice(0, 10)} divider={false} />
+        <Kvp label="Member since" value={formatDate(user.created_at)} divider={false} />
       </Card>
 
       <SectionHead title="Permissions" sub="What this role can and cannot do — fixed per role, enforced server-side" />
@@ -289,9 +292,6 @@ export function StaffUserDetail(): JSX.Element {
         </div>
       </Card>
 
-      <div style={{ marginTop: 24 }}>
-        <Button variant="ghost" icon="arrowleft" onClick={() => navigate('/admin/users')}>Back to users</Button>
-      </div>
     </div>
   )
 }

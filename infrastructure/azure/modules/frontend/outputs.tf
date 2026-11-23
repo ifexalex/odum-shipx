@@ -15,7 +15,7 @@ output "storage_web_host" {
 
 output "frontdoor_profile_name" {
   description = "Front Door profile name — used by CI for cache purge."
-  value       = azurerm_cdn_frontdoor_profile.frontend.name
+  value       = var.frontdoor_profile_name
 }
 
 output "frontdoor_endpoint_name" {

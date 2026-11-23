@@ -11,7 +11,9 @@ from decimal import Decimal
 from typing import Any
 
 from services.refunds import repository as refund_repo
+from shared import uploads
 from shared.audit import log_audit
+from shared.db import tenant_transaction
 from shared.events import publish_event
 from shared.exceptions import (
     ApprovalThresholdExceededError,
@@ -25,9 +27,9 @@ from shared.notifications import enqueue_notifications
 from shared.providers import get_storage_provider
 from shared.staff_notifications import notify_staff
 from shared.tenant_context import UserRole
-from shared.validation import safe_filename
 
 from . import repository as repo
+from .models import MissingItemStatus, SeizedItemStatus
 
 logger = logging.getLogger(__name__)
 
@@ -35,8 +37,6 @@ logger = logging.getLogger(__name__)
 # S3 configuration
 # ---------------------------------------------------------------------------
 
-_ALLOWED_CONTENT_TYPES = frozenset({"image/jpeg", "image/png", "application/pdf"})
-_MAX_FILE_SIZE = 10 * 1024 * 1024  # 10 MB
 _URL_EXPIRY = 3600  # 1 hour
 
 # ---------------------------------------------------------------------------
@@ -192,7 +192,15 @@ def list_claims(
     return [_fmt_claim(r) for r in rows], next_cursor, has_more
 
 
+_EVIDENCE_LINK_EXPIRY = 300  # seconds
+
+
 def get_claim(tenant_id: str, claim_id: str, ctx: Any) -> dict[str, Any]:
+    """One claim, with its evidence, the outcome and the refund it produced (audit UX-07).
+
+    A customer reads only their own. Another customer's claim is a 404, the same as one that does not exist: a 403
+    would confirm that the id is real.
+    """
     claim = repo.get_damage_claim_by_id(tenant_id, claim_id)
     if not claim:
         raise ResourceNotFoundError("damage_claim", claim_id)
@@ -200,9 +208,77 @@ def get_claim(tenant_id: str, claim_id: str, ctx: Any) -> dict[str, Any]:
     if ctx.role == UserRole.CUSTOMER:
         customer = repo.get_customer_by_user_id(tenant_id, ctx.user_id)
         if not customer or str(customer["id"]) != str(claim["customer_id"]):
-            raise InsufficientPermissionsError("Customers may only view their own claims")
+            raise ResourceNotFoundError("damage_claim", claim_id)
 
-    return _fmt_claim(claim)
+    return {
+        **_fmt_claim(claim),
+        "evidence": _evidence_links(tenant_id, claim_id),
+        **_fmt_outcome(repo.get_claim_outcome(tenant_id, claim_id), for_customer=ctx.role == UserRole.CUSTOMER),
+    }
+
+
+def _evidence_links(tenant_id: str, claim_id: str) -> list[dict[str, Any]]:
+    """The claim's evidence files, each with a short-lived download link.
+
+    A link is made only for a key that is exactly this claim's prefix plus one filename (that is what an upload
+    produces), so a bad row, even one that starts with the right prefix and then climbs out of it with `..`, can never
+    turn into a link to another tenant's or another claim's file. A file whose link cannot be made is still listed,
+    without one.
+    """
+    prefix = f"{tenant_id}/claims/{claim_id}/"
+    storage = get_storage_provider()
+    files: list[dict[str, Any]] = []
+    for row in repo.list_claim_evidence(claim_id):
+        key = str(row["file_key"])
+        name = key[len(prefix) :]
+        if not key.startswith(prefix) or not name or "/" in name or name in {".", ".."}:
+            logger.warning("Claim evidence key outside the claim's prefix, skipped (claim_id=%s)", claim_id)
+            continue
+        url: str | None = None
+        try:
+            url = storage.presigned_get_url(key, expires_in=_EVIDENCE_LINK_EXPIRY)
+        except Exception:
+            logger.warning("Could not presign a claim evidence download (claim_id=%s)", claim_id, exc_info=True)
+        files.append(
+            {
+                "id": str(row["id"]),
+                "file_name": row["file_name"],
+                "file_type": row["file_type"],
+                "file_size_bytes": row.get("file_size_bytes"),
+                "uploaded_at": row.get("created_at"),
+                "download_url": url,
+            }
+        )
+    return files
+
+
+# Decisions that go against the customer. They are told why (owner decision, 2026-11-17); when the decision is in
+# their favour the reason staff typed stays internal.
+_UNFAVOURABLE_RESOLUTIONS = frozenset({"no_action"})
+
+
+def _fmt_outcome(row: dict[str, Any] | None, *, for_customer: bool) -> dict[str, Any]:
+    """What was decided and the refund's status. Never the approver or the approval level.
+
+    `reason` is the explanation staff typed. Staff always see it. A customer sees it only when the decision went
+    against them (the claim was closed without a payout); otherwise it is None.
+    """
+    if row is None:
+        return {"resolution": None, "refund": None}
+    show_reason = not for_customer or row["resolution_type"] in _UNFAVOURABLE_RESOLUTIONS
+    resolution = {
+        "resolution_type": row["resolution_type"],
+        "amount_ngn": row.get("resolution_amount_ngn"),
+        "discount_percentage": row.get("discount_percentage"),
+        "resolved_at": row.get("resolved_at"),
+        "reason": (row.get("reason") or None) if show_reason else None,
+    }
+    refund = (
+        {"id": str(row["refund_id"]), "status": row["refund_status"], "amount_ngn": row.get("refund_amount_ngn")}
+        if row.get("refund_id")
+        else None
+    )
+    return {"resolution": resolution, "refund": refund}
 
 
 def start_inspection(
@@ -317,48 +393,58 @@ def resolve_claim(
                 )
             approval_level = "tenant_admin"
 
-    # Create refund_request if refund type
-    refund_request_id = None
-    if resolution_type == "refund":
-        refund_ngn = req.amount_ngn or Decimal("0")
-        refund_row = repo.create_refund_request_for_claim(
+    # The claim moves to 'resolved' (only if it is still resolvable), the refund
+    # request is opened and the resolution is recorded, in one transaction. Before,
+    # each was its own commit, so two staff resolving the same claim opened two
+    # refunds, and a failure part-way left a refund with no resolution.
+    now = datetime.now(UTC)
+    with tenant_transaction(tenant_id):
+        updated = repo.update_claim_status(
+            tenant_id,
+            claim_id,
+            "resolved",
+            extra={"reviewed_by": actor_id, "reviewed_at": now},
+            allowed_from=sorted(_RESOLVABLE_STATES),
+        )
+        if updated is None:
+            raise IllegalTransitionError(
+                entity="damage_claim",
+                current_state="changed by another request",
+                requested_state="resolved",
+                allowed=sorted(_RESOLVABLE_STATES),
+            )
+
+        refund_request_id = None
+        if resolution_type == "refund":
+            refund_ngn = req.amount_ngn or Decimal("0")
+            refund_row = repo.create_refund_request_for_claim(
+                tenant_id,
+                {
+                    "tenant_id": tenant_id,
+                    "customer_id": str(claim["customer_id"]),
+                    "billing_id": None,
+                    "amount_ngn": refund_ngn,
+                    "reason": f"Damage claim resolution — {req.reason}",
+                },
+            )
+            refund_request_id = str(refund_row["id"]) if refund_row else None
+
+        resolution = repo.create_claim_resolution(
             tenant_id,
             {
                 "tenant_id": tenant_id,
-                "customer_id": str(claim["customer_id"]),
-                "billing_id": None,
-                "amount_ngn": refund_ngn,
-                "reason": f"Damage claim resolution — {req.reason}",
+                "damage_claim_id": claim_id,
+                "resolution_type": resolution_type,
+                "resolution_amount_ngn": req.amount_ngn,
+                "approval_level": approval_level,
+                "approved_by": actor_id,
+                "notes": req.reason,
+                "refund_request_id": refund_request_id,
+                "discount_percentage": req.discount_percentage,
             },
         )
-        refund_request_id = str(refund_row["id"]) if refund_row else None
-
-    # Create claim_resolution record
-    resolution = repo.create_claim_resolution(
-        tenant_id,
-        {
-            "tenant_id": tenant_id,
-            "damage_claim_id": claim_id,
-            "resolution_type": resolution_type,
-            "resolution_amount_ngn": req.amount_ngn,
-            "approval_level": approval_level,
-            "approved_by": actor_id,
-            "notes": req.reason,
-            "refund_request_id": refund_request_id,
-            "discount_percentage": req.discount_percentage,
-        },
-    )
-
-    # Update claim status
-    now = datetime.now(UTC)
-    updated = repo.update_claim_status(
-        tenant_id,
-        claim_id,
-        "resolved",
-        extra={"reviewed_by": actor_id, "reviewed_at": now},
-    )
-    if updated is None:
-        raise RuntimeError("update_claim_status returned None unexpectedly")
+        if resolution is None:
+            raise RuntimeError("create_claim_resolution returned None unexpectedly")
 
     publish_event(
         source="logistics.claims",
@@ -384,8 +470,6 @@ def resolve_claim(
         ip_address=ip_address,
     )
 
-    if resolution is None:
-        raise RuntimeError("create_claim_resolution returned None unexpectedly")
     _notify_customer_claim_update(tenant_id, updated, "resolved", request_id)
     return {
         **_fmt_claim(updated),
@@ -421,30 +505,38 @@ def _resolve_claim_new_style(
     billing = repo.get_billing_by_id(tenant_id, claim.get("billing_id", ""))
     billing_id = str(billing["id"]) if billing else None
 
-    refund_request_id = None
-    if resolution_type == "refund":
-        notes_text = getattr(req, "notes", None) or ""
-        refund_row = repo.create_refund_request_for_claim(
-            tenant_id,
-            {
-                "tenant_id": tenant_id,
-                "customer_id": str(claim["customer_id"]),
-                "billing_id": billing_id,
-                "amount_ngn": amount_ngn,
-                "reason": f"Damage claim resolution — {notes_text}",
-            },
-        )
-        refund_request_id = str(refund_row["id"]) if refund_row else None
-
+    # Status change (only if still resolvable) and the refund request commit together.
     now = datetime.now(UTC)
-    updated = repo.update_claim_status(
-        tenant_id,
-        claim_id,
-        "resolved",
-        extra={"reviewed_by": actor_id, "reviewed_at": now},
-    )
-    if updated is None:
-        raise RuntimeError("update_claim_status returned None unexpectedly")
+    with tenant_transaction(tenant_id):
+        updated = repo.update_claim_status(
+            tenant_id,
+            claim_id,
+            "resolved",
+            extra={"reviewed_by": actor_id, "reviewed_at": now},
+            allowed_from=sorted(_RESOLVABLE_STATES),
+        )
+        if updated is None:
+            raise IllegalTransitionError(
+                entity="damage_claim",
+                current_state="changed by another request",
+                requested_state="resolved",
+                allowed=sorted(_RESOLVABLE_STATES),
+            )
+
+        refund_request_id = None
+        if resolution_type == "refund":
+            notes_text = getattr(req, "notes", None) or ""
+            refund_row = repo.create_refund_request_for_claim(
+                tenant_id,
+                {
+                    "tenant_id": tenant_id,
+                    "customer_id": str(claim["customer_id"]),
+                    "billing_id": billing_id,
+                    "amount_ngn": amount_ngn,
+                    "reason": f"Damage claim resolution — {notes_text}",
+                },
+            )
+            refund_request_id = str(refund_row["id"]) if refund_row else None
 
     publish_event(
         source="logistics.claims",
@@ -488,21 +580,17 @@ def generate_presigned_url(
     filename: str,
     content_type: str,
     actor_id: str,
+    size_bytes: object = None,
 ) -> dict[str, Any]:
-    if content_type not in _ALLOWED_CONTENT_TYPES:
-        raise BusinessRuleViolationError(
-            f"content_type '{content_type}' is not allowed. Allowed: {', '.join(sorted(_ALLOWED_CONTENT_TYPES))}",
-            rule_id="INVALID_CONTENT_TYPE",
-        )
+    uploads.EVIDENCE.check(content_type, size_bytes)
 
     claim = repo.get_damage_claim_by_id(tenant_id, claim_id)
     if not claim:
         raise ResourceNotFoundError("damage_claim", claim_id)
 
-    filename = safe_filename(filename)
-    file_key = f"{tenant_id}/claims/{claim_id}/{filename}"
-
-    ticket = get_storage_provider().presigned_upload(file_key, content_type=content_type, expires_in=_URL_EXPIRY)
+    upload = uploads.presign_upload(uploads.EVIDENCE, tenant_id, ("claims", claim_id), filename, content_type, size_bytes)
+    file_key = upload.key
+    filename = file_key.rsplit("/", 1)[-1]
 
     evidence = repo.create_claim_evidence(
         {
@@ -516,7 +604,7 @@ def generate_presigned_url(
     )
 
     return {
-        **ticket.as_response(),
+        **upload.as_response(),
         "evidence_id": str(evidence["id"]) if evidence else None,
         "file_key": file_key,
     }
@@ -596,7 +684,36 @@ def log_missing_item(
         actor_role=str(ctx.role),
         after_state={"customer_id": req.customer_id, "carton_tags": req.carton_tags, "status": "reported"},
     )
+    # The China office is asked to record the supply and loading check, so it is told when one is logged.
+    notify_staff(
+        tenant_id=tenant_id,
+        event_type="missing_item_logged",
+        entity_type="missing_item",
+        entity_id=str(item["id"]),
+        title="Missing item reported",
+        body=f"{len(req.carton_tags)} carton(s) reported missing. Please record the supply and loading check.",
+        target_role=str(UserRole.CHINA_OFFICE_STAFF),
+    )
     return _fmt_missing(item)
+
+
+# What the China office may record on a missing item: that it is being looked into, or that it has been found. Deciding
+# it lost (which is what owes the customer compensation) stays with the Nigeria office.
+_CHINA_ITEM_STATUSES = frozenset({MissingItemStatus.investigating, MissingItemStatus.found_and_shipping})
+_DECIDED_ITEM_STATUSES = frozenset({MissingItemStatus.confirmed_lost, MissingItemStatus.resolved})
+
+
+def _assert_china_may_update(item: dict[str, Any], status: str, refund_amount_ngn: Decimal | None) -> None:
+    """The limits on a China office update of a missing item (audit UX-08)."""
+    if refund_amount_ngn is not None:
+        raise InsufficientPermissionsError("China office staff cannot set compensation on a missing item")
+    if status not in _CHINA_ITEM_STATUSES:
+        raise InsufficientPermissionsError("China office staff can only mark a missing item as investigating or found")
+    if item["status"] in _DECIDED_ITEM_STATUSES:
+        raise BusinessRuleViolationError(
+            "This missing item has already been decided and can no longer be changed by the China office",
+            rule_id="MISSING_ITEM_ALREADY_DECIDED",
+        )
 
 
 def update_missing_item(
@@ -612,9 +729,40 @@ def update_missing_item(
     if not item:
         raise ResourceNotFoundError("missing_item", item_id)
 
-    updated = repo.update_missing_item_status(tenant_id, item_id, status, notes=notes, actor_id=actor_id)
-    if updated is None:
-        raise RuntimeError("update_missing_item_status returned None unexpectedly")
+    if ctx.role == UserRole.CHINA_OFFICE_STAFF:
+        _assert_china_may_update(item, status, refund_amount_ngn)
+
+    # The status change and, for a compensation, the refund request and its link
+    # commit together. Compensation is owed when the item is confirmed lost, and the
+    # refund is only opened if the item does not already carry one: the status update
+    # locks the row, so a second concurrent request sees the first's link and opens
+    # nothing, instead of a duplicate refund.
+    refund_row = None
+    with tenant_transaction(tenant_id):
+        updated = repo.update_missing_item_status(tenant_id, item_id, status, notes=notes, actor_id=actor_id)
+        if updated is None:
+            raise RuntimeError("update_missing_item_status returned None unexpectedly")
+        if status == MissingItemStatus.confirmed_lost and refund_amount_ngn is not None and not updated.get("refund_request_id"):
+            refund_row = refund_repo.create_refund_request(
+                tenant_id,
+                {
+                    "tenant_id": tenant_id,
+                    "customer_id": str(item["customer_id"]),
+                    "billing_id": None,
+                    "damage_claim_id": None,
+                    "refund_type": "missing_item",
+                    "amount_ngn": refund_amount_ngn,
+                    "reason": f"Compensation for missing item {item_id}",
+                    "status": "pending_review",
+                    "customer_choice": None,
+                    "requested_by": actor_id,
+                },
+            )
+            if refund_row is None:
+                raise RuntimeError("create_refund_request returned None unexpectedly")
+            linked = repo.link_refund_to_missing_item(tenant_id, item_id, str(refund_row["id"]))
+            if linked is not None:
+                updated = linked
 
     log_audit(
         tenant_id=tenant_id,
@@ -629,24 +777,7 @@ def update_missing_item(
 
     result = _fmt_missing(updated)
 
-    if status == "compensated" and refund_amount_ngn is not None:
-        refund_row = refund_repo.create_refund_request(
-            tenant_id,
-            {
-                "tenant_id": tenant_id,
-                "customer_id": str(item["customer_id"]),
-                "billing_id": None,
-                "damage_claim_id": None,
-                "refund_type": "missing_item",
-                "amount_ngn": refund_amount_ngn,
-                "reason": f"Compensation for missing item {item_id}",
-                "status": "pending_review",
-                "customer_choice": None,
-                "requested_by": actor_id,
-            },
-        )
-        if refund_row is None:
-            raise RuntimeError("create_refund_request returned None unexpectedly")
+    if refund_row is not None:
         log_audit(
             tenant_id=tenant_id,
             entity_type="refund_request",
@@ -661,10 +792,7 @@ def update_missing_item(
                 "source_missing_item_id": item_id,
             },
         )
-        linked = repo.link_refund_to_missing_item(tenant_id, item_id, str(refund_row["id"]))
-        result["refund_request_id"] = str(refund_row["id"]) if refund_row else None
-        if linked is not None:
-            result["refund_request_id"] = str(linked.get("refund_request_id") or refund_row["id"])
+        result["refund_request_id"] = str(updated.get("refund_request_id") or refund_row["id"])
 
     return result
 
@@ -721,9 +849,38 @@ def update_seized_item(
     if not item:
         raise ResourceNotFoundError("seized_item", item_id)
 
-    updated = repo.update_seized_item_status(tenant_id, item_id, recovery_status, notes=notes, actor_id=actor_id)
-    if updated is None:
-        raise RuntimeError("update_seized_item_status returned None unexpectedly")
+    # Same shape as update_missing_item: status change, refund request and link in
+    # one transaction, and no second refund if the item already carries one.
+    refund_row = None
+    with tenant_transaction(tenant_id):
+        updated = repo.update_seized_item_status(tenant_id, item_id, recovery_status, notes=notes, actor_id=actor_id)
+        if updated is None:
+            raise RuntimeError("update_seized_item_status returned None unexpectedly")
+        if (
+            recovery_status == SeizedItemStatus.permanently_lost
+            and refund_amount_ngn is not None
+            and not updated.get("refund_request_id")
+        ):
+            refund_row = refund_repo.create_refund_request(
+                tenant_id,
+                {
+                    "tenant_id": tenant_id,
+                    "customer_id": str(item["customer_id"]),
+                    "billing_id": None,
+                    "damage_claim_id": None,
+                    "refund_type": "seized_item",
+                    "amount_ngn": refund_amount_ngn,
+                    "reason": f"Compensation for seized item {item_id}",
+                    "status": "pending_review",
+                    "customer_choice": None,
+                    "requested_by": actor_id,
+                },
+            )
+            if refund_row is None:
+                raise RuntimeError("create_refund_request returned None unexpectedly")
+            linked = repo.link_refund_to_seized_item(tenant_id, item_id, str(refund_row["id"]))
+            if linked is not None:
+                updated = linked
 
     log_audit(
         tenant_id=tenant_id,
@@ -738,24 +895,7 @@ def update_seized_item(
 
     result = _fmt_seized(updated)
 
-    if recovery_status in ("recovered", "forfeited") and refund_amount_ngn is not None:
-        refund_row = refund_repo.create_refund_request(
-            tenant_id,
-            {
-                "tenant_id": tenant_id,
-                "customer_id": str(item["customer_id"]),
-                "billing_id": None,
-                "damage_claim_id": None,
-                "refund_type": "seized_item",
-                "amount_ngn": refund_amount_ngn,
-                "reason": f"Compensation for seized item {item_id}",
-                "status": "pending_review",
-                "customer_choice": None,
-                "requested_by": actor_id,
-            },
-        )
-        if refund_row is None:
-            raise RuntimeError("create_refund_request returned None unexpectedly")
+    if refund_row is not None:
         log_audit(
             tenant_id=tenant_id,
             entity_type="refund_request",
@@ -770,10 +910,7 @@ def update_seized_item(
                 "source_seized_item_id": item_id,
             },
         )
-        linked = repo.link_refund_to_seized_item(tenant_id, item_id, str(refund_row["id"]))
-        result["refund_request_id"] = str(refund_row["id"]) if refund_row else None
-        if linked is not None:
-            result["refund_request_id"] = str(linked.get("refund_request_id") or refund_row["id"])
+        result["refund_request_id"] = str(updated.get("refund_request_id") or refund_row["id"])
 
     return result
 

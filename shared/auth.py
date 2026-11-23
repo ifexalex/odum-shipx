@@ -9,10 +9,12 @@ from collections.abc import Callable
 from functools import wraps
 from typing import Any
 
+from shared import rate_limit
 from shared.distributed_cache import DistributedCache
 from shared.exceptions import (
     AuthenticationRequiredError,
     ResourceNotFoundError,
+    ServiceUnavailableError,
     TenantOffboardedError,
     TenantSuspendedError,
 )
@@ -32,8 +34,11 @@ _VALID_ROLES: set[str] = {r.value for r in UserRole}
 # per-instance — every warm Lambda would expire it independently.
 # On Redis failure, get() returns None and the caller falls through to DB.
 _tenant_status_cache: DistributedCache = DistributedCache(default_ttl=15, key_prefix="tenant_status:")
-# Subject (IdP oid/sub) → "{tenant_id}:{role}", for tokens that carry no tenant
-# claim. See _resolve_identity_from_db.
+# Subject (IdP oid/sub) → "{tenant_id}:{role}" for a user with an ACTIVE tenant_user
+# row, or "" when there is none. Serves two callers: the identity fallback for tokens
+# that carry no tenant claim, and the per-request active-user check (_check_user_active).
+# 60s is the longest a deactivated user could still be served if the eviction in
+# evict_identity_cache() were missed, so deactivation evicts it explicitly.
 _identity_cache: DistributedCache = DistributedCache(default_ttl=60, key_prefix="identity:")
 
 
@@ -106,6 +111,14 @@ def get_tenant_context(event: dict[str, Any]) -> TenantContext:
     # _tenant_status_cache; not in-memory, and not 60s.
     if tenant_id != PLATFORM_TENANT_ID:
         _check_tenant_active(tenant_id)
+        # A token is a signed claim that was true when it was issued. Without this a
+        # deactivated user, or an erased customer, keeps working until the token expires.
+        # A token with no tenant claim was just resolved against an active row above.
+        if db_role is None:
+            _check_user_active(user_id, tenant_id)
+        # One tenant's traffic must not be able to starve the others: API Gateway's throttle is shared by
+        # all of them. Counted only for a request that got this far, so a revoked token costs the tenant nothing.
+        rate_limit.hit(rate_limit.TENANT, tenant_id)
 
     impersonated_by: str | None = claims.get("impersonated_by") or None
     imp_session_id: str | None = claims.get("session_id") or None
@@ -202,26 +215,13 @@ def _parse_primary_role(claims: dict[str, Any], roles: frozenset[UserRole]) -> U
     return min(roles)
 
 
-def resolve_identity_from_db(user_id: str) -> tuple[str, str] | None:
-    """Resolve (tenant_id, role) for an IdP subject straight from `tenant_user`.
+def _active_identity(user_id: str) -> tuple[str, str] | None:
+    """Return (tenant_id, role) from the user's ACTIVE `tenant_user` row, or None when there is none.
 
-    The authoritative source for a user's tenant and role is their `tenant_user`
-    row — `tenant_user.id` IS the IdP subject, so the `oid`/`sub` in the token is
-    enough to find it. This is the fallback for tokens that carry no tenant
-    claim.
-
-    Why this exists: on Entra External ID (CIAM) the custom-claims provider
-    returns `tenant_id`/`role` correctly, but Entra does not emit them into the
-    token — the documented app-registration `optionalClaims` route is silently
-    ignored there (CIAM honours a service-principal surface instead). Rather than
-    depend on that, we resolve the same data server-side from the same table the
-    provider reads. One source of truth either way.
-
-    Cached for 60s per subject (`_identity_cache`). Note this is a DIFFERENT TTL
-    from `_check_tenant_active`'s 15s — they were once the same and are not now. Costs
-    at most one DB round trip per user per minute on the auth path. Returns None
-    when no active row matches (e.g. a platform admin, who legitimately has no
-    `tenant_user` row and resolves from the group claim instead).
+    `tenant_user.id` IS the IdP subject, so the `oid`/`sub` in a token is enough to find
+    the row. Cached for 60s per subject (`_identity_cache`) — a DIFFERENT TTL from
+    `_check_tenant_active`'s 15s. Raises on a DB failure, unlike `resolve_identity_from_db`,
+    so a caller that must fail closed can tell "no active row" from "could not check".
     """
     cached = _identity_cache.get(user_id)
     if cached is not None:
@@ -230,20 +230,13 @@ def resolve_identity_from_db(user_id: str) -> tuple[str, str] | None:
         tenant_id, _, role = str(cached).partition(":")
         return (tenant_id, role) if tenant_id and role else None
 
-    try:
-        from shared.db import execute_with_tenant
+    from shared.db import execute_with_tenant
 
-        rows = execute_with_tenant(
-            tenant_id=PLATFORM_TENANT_ID,  # spans tenants, like the status check
-            query="SELECT tenant_id, role FROM tenant_user WHERE id = %s AND status = 'active' LIMIT 1",
-            params=(user_id,),
-        )
-    except Exception as exc:
-        # Do NOT cache a failure, and do not fail the request here: the caller
-        # raises AuthenticationRequiredError if the identity stays unresolved.
-        logger.warning("Identity resolution failed for subject %s: %s", user_id, exc)
-        return None
-
+    rows = execute_with_tenant(
+        tenant_id=PLATFORM_TENANT_ID,  # spans tenants, like the status check
+        query="SELECT tenant_id, role FROM tenant_user WHERE id = %s AND status = 'active' LIMIT 1",
+        params=(user_id,),
+    )
     if not rows:
         _identity_cache.set(user_id, "")
         return None
@@ -251,6 +244,63 @@ def resolve_identity_from_db(user_id: str) -> tuple[str, str] | None:
     role = str(rows[0]["role"])
     _identity_cache.set(user_id, f"{tenant_id}:{role}")
     return tenant_id, role
+
+
+def resolve_identity_from_db(user_id: str) -> tuple[str, str] | None:
+    """Resolve (tenant_id, role) for an IdP subject straight from `tenant_user`.
+
+    The authoritative source for a user's tenant and role is their `tenant_user`
+    row. This is the fallback for tokens that carry no tenant claim.
+
+    Why this exists: on Entra External ID (CIAM) the custom-claims provider
+    returns `tenant_id`/`role` correctly, but Entra does not emit them into the
+    token — the documented app-registration `optionalClaims` route is silently
+    ignored there (CIAM honours a service-principal surface instead). Rather than
+    depend on that, we resolve the same data server-side from the same table the
+    provider reads. One source of truth either way.
+
+    Costs at most one DB round trip per user per minute on the auth path. Returns
+    None when no active row matches (e.g. a platform admin, who legitimately has no
+    `tenant_user` row and resolves from the group claim instead) and also when the
+    lookup fails: the caller raises AuthenticationRequiredError if the identity stays
+    unresolved, and a failure is deliberately not cached.
+    """
+    try:
+        return _active_identity(user_id)
+    except Exception as exc:
+        logger.warning("Identity resolution failed for subject %s: %s", user_id, exc)
+        return None
+
+
+def evict_identity_cache(user_id: str) -> None:
+    """Forget the cached identity of a user whose row just changed.
+
+    Call after deactivating a user or changing their role, so the next request reads
+    the database instead of being served the old answer for up to a minute. The cache
+    is shared across Lambda instances, so one eviction covers all of them.
+    """
+    _identity_cache.delete(user_id)
+
+
+def _check_user_active(user_id: str, tenant_id: str) -> None:
+    """Deny a token whose user has no active `tenant_user` row in the token's tenant.
+
+    Raises AuthenticationRequiredError (401) for a deactivated, erased or unknown user and
+    for a token whose tenant is not the user's own. Raises ServiceUnavailableError (503) if
+    the lookup fails — fail closed, as `_check_tenant_active` does, so an outage cannot
+    be used to keep a revoked user in.
+    """
+    try:
+        identity = _active_identity(user_id)
+    except Exception as exc:
+        logger.error("User status check failed for %s — denying request (fail-closed): %s", user_id, exc)
+        raise ServiceUnavailableError("User status check unavailable") from exc
+    if identity is None:
+        logger.warning("Denied token for user %s: no active tenant_user row", user_id)
+        raise AuthenticationRequiredError()
+    if identity[0].lower() != tenant_id.lower():
+        logger.warning("Denied token for user %s: the token's tenant is not the user's tenant", user_id)
+        raise AuthenticationRequiredError()
 
 
 def _check_tenant_active(tenant_id: str) -> None:
@@ -300,8 +350,6 @@ def _check_tenant_active(tenant_id: str) -> None:
             tenant_id,
             exc,
         )
-        from shared.exceptions import ServiceUnavailableError
-
         raise ServiceUnavailableError("Tenant status check unavailable") from exc
 
 

@@ -71,6 +71,7 @@ docker build -t shipx-backend .
 docker run -p 8080:8080 -e CLOUD_PROVIDER=azure shipx-backend api   # gunicorn; GET /health → 200
 docker run shipx-backend worker --queue sms                          # Service Bus consumer
 docker run shipx-backend job --job release_expiry                    # one cron job, then exit
+docker run shipx-backend job --job offboarding_export                # write queued tenant data exports (BE-10)
 ```
 
 ---
@@ -231,6 +232,7 @@ All local dev commands are in the `Makefile`:
 | `make dev` | Start the local Flask API server on `:3000` | Single-threaded (`threaded=False`) — see note below.
 | `make test-unit` | Run unit tests (no containers needed) |
 | `make test-integration` | Run integration tests (containers must be running) |
+| `make test-db` | Real-database invoice/payment integrity tests (parallel processes, as `logistics_app`); needs `make stack`, skips if no DB |
 
 ---
 
@@ -521,8 +523,32 @@ FROM notification_log ORDER BY created_at DESC LIMIT 5;
 A WhatsApp row followed by an SMS row whose `retry_of` points at it is the
 fallback working.
 
-`CUSTOMER_PORTAL_BASE_URL` must be set or invite links render as a bare
-`/invite/{token}`.
+### Notification links and the local sender
+
+`.env.local` sets two things the notification path needs:
+
+- **`APP_BASE_URL=http://localhost:5173`** — the absolute base for
+  `/activate/{token}` and `/invite/{token}` links. `shared/app_urls.py` refuses
+  to build a relative link, so with this unset those notifications are **not
+  sent at all** and log an ERROR saying so. Set `CUSTOMER_PORTAL_BASE_URL` only
+  if you want invite links pointed somewhere other than the staff app.
+  (Previously invite links were emitted as the bare path `/invite/{token}`,
+  which no mail client can open — see `15_api_notifications.md`, 2026-11-13.)
+- **`SES_FROM_ADDRESS=notifications@shipx.local`** — Moto enforces SES's
+  verified-identity rule, so an unverified sender is rejected exactly as AWS
+  would: `MessageRejected: Email address not verified`. `make bootstrap` calls
+  `ses verify-email-identity` for whatever this is set to. If you change it,
+  re-run `make bootstrap` or local email sends will fail while SMS and WhatsApp
+  appear to work.
+
+SMS and WhatsApp have no credentials locally, so they log
+`failed — provider unconfigured` in `notification_log`. That is correct and
+nothing leaves the machine. To read a rendered email body without a mail client:
+
+```sql
+select channel, status, message_body from notification_log
+where event_type = 'customer_invite' order by created_at desc limit 1;
+```
 
 ## Test manifest for notification testing
 
@@ -709,6 +735,14 @@ PYTHONPATH=. python3 -m pytest tests/unit/ \
     --cov-report=term-missing \
     --cov-report=html:coverage_html
 open coverage_html/index.html
+```
+
+**Coverage floors (CI enforces them, audit OPS-03).** `services/billing`, `services/payment_release` and `services/refunds`
+may not fall below the floors in `pyproject.toml` (`[tool.shipx.coverage-floors]`). Check before pushing:
+
+```bash
+PYTHONPATH=.:services uv run pytest tests/unit/ --cov=services --cov=shared --cov-report=xml -q
+uv run python scripts/check_coverage.py coverage.xml   # exit 1 below a floor; says when a floor can be raised
 ```
 
 ---
@@ -936,7 +970,7 @@ Daily dev
 ### What Moto emulates
 
 - **SQS** — logistics-sms, logistics-whatsapp, logistics-email, logistics-metering + DLQs
-- **EventBridge** — `logistics-events` bus + routing rules
+- **EventBridge** — `logistics-events` bus + the metering rule (`route-metering`). Since 2026-11-17 (audit BE-09) no rule targets the sms, whatsapp or email queues; `make bootstrap` deletes the old `route-sms` / `route-whatsapp` / `route-email` rules from a stack that still has them
 - **S3** — `logistics-assets` bucket (claim evidence uploads)
 - **Secrets Manager** — `logistics/db/password` secret
 
@@ -1226,3 +1260,41 @@ Or from the UI: sign in as that tenant's admin → **Admin → Config → Paymen
 Once configured, that tenant's customer portal "Pay online" button (`/my-billing/{id}`) creates a real Paystack **test-mode** checkout and redirects to it. Pay with Paystack's standard test card `4084 0840 8408 4081` (any future expiry, CVV `408`, PIN `0000`, OTP `123456`). A tenant with nothing configured gets a clear `PAYMENT_GATEWAY_NOT_CONFIGURED` error instead — bank transfer stays available either way.
 
 **Webhook (payment confirmation):** Paystack can't reach `localhost`, so either simulate the callback (POST to `/v1/webhooks/payment` with `X-Paystack-Signature` = HMAC-SHA512 of the raw body using **that tenant's own** secret key — see the Postman request) or tunnel (e.g. `ngrok http 3000`) and set the tunnel URL + `/v1/webhooks/payment` as the webhook URL in the Paystack test dashboard. The webhook is the source of truth — the browser redirect to payment-success never records money. The handler resolves which tenant a webhook belongs to (via the billing reference) *before* checking the signature, then verifies against that specific tenant's key — see `07_api_tenant_management.md`'s "Multi-Tenant Paystack" design note if you're testing more than one tenant's payments side by side.
+
+## Rate limits, origins and Redis in local dev (audit Phase 2, 2026-11-15)
+
+- **Redis** (`shipx_redis`, started by `make up`) now backs rate limiting as well as the tenant-status and identity caches. With Redis down the limiter fails open and logs `rate_limiter_unavailable`; requests are not slowed (the cache no longer retries). `make test-db` runs `tests/db/test_rate_limit_redis.py` against it (unique key prefixes, cleaned up).
+- **Limits are on by default.** Public-route limits are per client address (`127.0.0.1` locally), so a script that hammers `/v1/shipments/{code}?phone=` or `/v1/auth/login` from one machine will get `429` with `Retry-After`. Raise or disable them in `.env.local`: `RATE_LIMIT_ENABLED=false`, or `RATE_LIMIT_<POLICY>=limit/window_seconds` (`RATE_LIMIT_TRACKING_IP=300/60`, `RATE_LIMIT_TENANT=off`). Policy names: `login_ip`, `login_failures`, `register_ip`, `onboarding_ip`, `tracking_ip`, `tracking_failures`, `session_ip`, `tenant`. To clear counters: `docker exec shipx_redis redis-cli --scan --pattern 'ratelimit:*' | xargs -r docker exec -i shipx_redis redis-cli del`.
+- **`/v1/auth/session|refresh|logout|authorize-url|callback` need an `Origin` header** (a browser sends one; `curl` and Postman do not). `scripts/local_server.py` defaults `ALLOWED_ORIGINS` to the Vite dev origins (`http://localhost:5173`, `http://127.0.0.1:5173`); set it yourself to test another. Example: `curl -X POST localhost:3000/v1/auth/refresh -H 'Origin: http://localhost:5173'`.
+- **The dev server forwards every response header now** (it used to forward only `Content-Type`), so `Retry-After`, `Location` and `X-Request-Id` show up as they do behind API Gateway.
+- **Every dev identity must exist in `tenant_user`.** A token's user is now checked against an active row, so an `X-User-ID` that is not a seeded user gets `401`. The role switcher's identities are seeded, and the dev server resolves a placeholder user id to a real one per role.
+- **Migration 064** (`make migrate`) lets `notification_log` record suppressed messages.
+
+## Pickup codes (audit UX-09)
+
+Release notes carry a pickup code only when `PICKUP_CODE_PEPPER` is set (16 characters or more). It is unset by default locally, so pickups work as before with no code. To try the flow, add `PICKUP_CODE_PEPPER=local-dev-pepper-0123456789` to `.env.local`, put your own test number or address in `NOTIFICATION_ALLOWLIST` (never an imported customer's), restart `make dev`, and run `make migrate` for migration 065. The code arrives by SMS or email; it is not shown anywhere in the app, by design.
+
+## Exchange-rate age notice (audit BE-11, 2026-11-17)
+
+| Variable | Default | Effect |
+|---|---|---|
+| `FX_RATE_MAX_AGE_MINUTES` | `120` | An invoice priced at the last known dollar rate older than this tells tenant admins in-app (`invoice_old_exchange_rate`). Optional everywhere. |
+
+To see it locally without cutting the network: stop Bybit reaching the app (or patch `shared.fx_rate.fetch_bybit_ngn_rate` to raise), clear the Redis key `fx_rate:ngn_usdt`, and backdate `platform_settings` `fx_bybit_ngn_rate.fetched_at`. With no `fx_bybit_ngn_rate` row at all, invoicing is refused with `RATE_UNAVAILABLE`. `tests/db/test_invoice_rate_source.py` does exactly this.
+
+## Upload size limit locally (2026-11-17)
+
+Uploads are limited to 5 MB. Locally the presign request is refused over 5 MB, but the Moto URL is SigV2 (the dev upload proxy rewrites the host, which SigV4 would sign), so Moto itself accepts any body length; payment claims and imports still refuse an over-size stored file. Production AWS URLs are SigV4 and S3 refuses a different length.
+
+## Phone-width audit (2026-11-17)
+
+With the API (`make dev`) and Vite (`npm run dev`) running and local dev auth:
+
+```
+cd frontend
+node scripts/mobile-audit.mjs              # every route at 375, 360 and 320 px
+node scripts/mobile-audit.mjs 360 /billing # one width, routes containing /billing
+```
+
+It opens each route as an allowed role with real records from the local API and exits 1 if any page scrolls sideways or has content sticking out. A row meant to scroll sideways inside itself uses `shell/ScrollStrip` (`data-scroll-strip`). Run it after layout changes.
+

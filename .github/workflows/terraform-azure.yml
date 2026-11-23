@@ -1,63 +1,77 @@
 name: Terraform (Azure)
 
-# Azure infra PLAN/preview (fmt + validate + plan) on changes to main — a review
-# check, it does NOT apply. The apply is owned by the deploy pipeline
-# (_deploy-azure-env.yml runs `terraform apply` as its first step), so there is a
-# single state-owner and no lock contention between workflows. Plans run with
-# -lock=false so a preview never blocks or is blocked by a concurrent deploy
-# apply. dev -> staging -> prod, each gated by its GitHub Environment. Auth is
-# OIDC federated credentials. One-time setup + state bootstrap in
-# infrastructure/azure/README.md.
+# Azure infra validation (on PRs) and read-only PLAN preview (on main pushes) —
+# it does NOT apply. Apply is owned exclusively by _deploy-azure-env.yml so
+# there is a single Terraform state-owner and zero lock contention. Plans use
+# -lock=false so a preview never blocks or is blocked by a deploy apply.
 
 on:
+  pull_request:
+    branches: [main]
+    paths:
+      - "infrastructure/azure/**"
+      - "infrastructure/common/**"
+      - ".github/workflows/terraform-azure.yml"
+      - ".github/actions/terraform-run/**"
   push:
     branches: [main]
     paths:
       - "infrastructure/azure/**"
       - "infrastructure/common/**"
-      # The workflow file itself, so a change to this file is exercised by the
-      # workflow it changes. frontend-ci.yml already does this; these two did
-      # not, and it cost a real verification: #133 fixed this workflow's
-      # permanently-failing staging job, touched nothing else, and therefore
-      # never ran — leaving the fix unverified until some unrelated infra change
-      # happened along. A CI fix you cannot trigger is a CI fix you have not
-      # tested.
       - ".github/workflows/terraform-azure.yml"
+      - ".github/actions/terraform-run/**"
   workflow_dispatch:
     inputs:
       environment:
-        description: "Environment to plan (dev/staging/prod run sequentially from the selected one; demo is standalone). Preview only — apply happens in the deploy pipeline."
+        description: "Environment to plan (dev/staging/prod run sequentially from the selected one; demo is standalone). Preview only — apply happens in deploy-azure.yml."
         required: true
         type: choice
         options: [dev, staging, prod, demo]
-
-# Serialize infra plans per ref.
-concurrency:
-  group: terraform-azure-${{ github.ref }}
-  cancel-in-progress: false
+        default: dev
 
 permissions:
   contents: read
 
-env:
-  # Terraform azurerm provider + backend use OIDC; GitHub supplies the id-token.
-  ARM_USE_OIDC: "true"
-  ARM_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
-  ARM_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
-  ARM_SUBSCRIPTION_ID: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
-
 jobs:
-  # ── Dev — plan preview on every Azure infra change ───────────────────────
+  # ── Credential-free fmt + validate on PRs and pushes to main ─────────────
+  validate:
+    if: github.event_name == 'pull_request' || github.event_name == 'push'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: hashicorp/setup-terraform@v4
+        with:
+          terraform_version: "1.7.5"
+      - name: Terraform Format Check
+        working-directory: infrastructure/azure
+        run: terraform fmt -check -recursive
+      - name: Terraform Validate
+        working-directory: infrastructure/azure
+        run: |
+          terraform init -backend=false
+          terraform validate
+
+  # ── Dev — plan preview on every Azure infra push to main ─────────────────
   terraform-dev:
+    needs: validate
     if: >-
-      (github.event_name == 'push' ||
-       (github.event_name == 'workflow_dispatch' && inputs.environment == 'dev')) &&
-      vars.DEPLOY_CLOUD == 'azure'
+      always() && vars.DEPLOY_CLOUD == 'azure' && (
+        (github.event_name == 'push' && needs.validate.result == 'success') ||
+        (github.event_name == 'workflow_dispatch' && inputs.environment == 'dev')
+      )
     runs-on: ubuntu-latest
     environment: dev
+    concurrency:
+      group: terraform-azure-dev
+      cancel-in-progress: true
     permissions:
       contents: read
       id-token: write
+    env:
+      ARM_USE_OIDC: "true"
+      ARM_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
+      ARM_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
+      ARM_SUBSCRIPTION_ID: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
     steps:
       - uses: actions/checkout@v7
       - uses: azure/login@v3
@@ -65,51 +79,34 @@ jobs:
           client-id: ${{ secrets.AZURE_CLIENT_ID }}
           tenant-id: ${{ secrets.AZURE_TENANT_ID }}
           subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
-      - uses: hashicorp/setup-terraform@v4
+      - uses: ./.github/actions/terraform-run
         with:
-          terraform_version: "1.7.5"
-      - name: Terraform Init
-        working-directory: infrastructure/azure
-        run: terraform init -backend-config=environments/dev.backend.hcl
-      - name: Terraform Format Check
-        working-directory: infrastructure/azure
-        run: terraform fmt -check -recursive
-      - name: Terraform Validate
-        working-directory: infrastructure/azure
-        run: terraform validate
-      - name: Terraform Plan
-        working-directory: infrastructure/azure
-        run: terraform plan -var-file=environments/dev.tfvars -lock=false
+          working-directory: infrastructure/azure
+          environment: dev
+          mode: plan
 
-  # ── Staging — gated by dev success + GitHub Environment approval ─────────
-  #
-  # Also gated on vars.AZURE_STAGING_READY. Until staging actually exists, its
-  # GitHub Environment holds no AZURE_* secrets, so `azure/login` fails with
-  # "Not all values are present" and this job went red on EVERY push touching
-  # infrastructure/azure — 12 consecutive runs from 2026-10-14 to 2026-11-09.
-  #
-  # That mattered more than it looks. terraform-dev succeeded in all 12, so the
-  # dev plan review was working the whole time — but the run-level conclusion
-  # was "failure", which is the only thing anyone (me included) actually reads.
-  # A check that is permanently red carries no information: it cannot tell you
-  # that something broke, because it is already broken. The fix is to make the
-  # red mean something again, not to look at it harder.
-  #
-  # Set the repo variable AZURE_STAGING_READY=true once the staging Environment
-  # has AZURE_CLIENT_ID / AZURE_TENANT_ID / AZURE_SUBSCRIPTION_ID. A repo
-  # variable, not a secret check: job-level `if` cannot see Environment secrets,
-  # because the environment is not resolved until the job starts.
+  # ── Staging — gated on AZURE_STAGING_READY for push/dev-chain; explicit dispatch always runs
   terraform-staging:
     needs: terraform-dev
     if: >-
-      (github.event_name == 'push' ||
-       (github.event_name == 'workflow_dispatch' && (inputs.environment == 'dev' || inputs.environment == 'staging'))) &&
-      vars.DEPLOY_CLOUD == 'azure' && vars.AZURE_STAGING_READY == 'true'
+      always() && vars.DEPLOY_CLOUD == 'azure' && (
+        ((github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && inputs.environment == 'dev')) &&
+          needs.terraform-dev.result == 'success' && vars.AZURE_STAGING_READY == 'true') ||
+        (github.event_name == 'workflow_dispatch' && inputs.environment == 'staging')
+      )
     runs-on: ubuntu-latest
     environment: staging
+    concurrency:
+      group: terraform-azure-staging
+      cancel-in-progress: true
     permissions:
       contents: read
       id-token: write
+    env:
+      ARM_USE_OIDC: "true"
+      ARM_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
+      ARM_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
+      ARM_SUBSCRIPTION_ID: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
     steps:
       - uses: actions/checkout@v7
       - uses: azure/login@v3
@@ -117,35 +114,35 @@ jobs:
           client-id: ${{ secrets.AZURE_CLIENT_ID }}
           tenant-id: ${{ secrets.AZURE_TENANT_ID }}
           subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
-      - uses: hashicorp/setup-terraform@v4
+      - uses: ./.github/actions/terraform-run
         with:
-          terraform_version: "1.7.5"
-      - name: Terraform Init
-        working-directory: infrastructure/azure
-        run: terraform init -backend-config=environments/staging.backend.hcl
-      - name: Terraform Format Check
-        working-directory: infrastructure/azure
-        run: terraform fmt -check -recursive
-      - name: Terraform Validate
-        working-directory: infrastructure/azure
-        run: terraform validate
-      - name: Terraform Plan
-        working-directory: infrastructure/azure
-        run: terraform plan -var-file=environments/staging.tfvars -lock=false
+          working-directory: infrastructure/azure
+          environment: staging
+          mode: plan
 
-  # ── Prod — gated by staging success + GitHub Environment approval ─────────
-  #
-  # Same opt-in as staging (AZURE_PROD_READY). `needs: terraform-staging` alone
-  # would already skip this while staging is skipped, but the flag is stated
-  # explicitly so that enabling staging does not silently enable prod too.
+  # ── Prod — gated on AZURE_PROD_READY for push/chain; explicit dispatch always runs
   terraform-prod:
     needs: terraform-staging
-    if: vars.DEPLOY_CLOUD == 'azure' && vars.AZURE_PROD_READY == 'true'
+    if: >-
+      always() && vars.DEPLOY_CLOUD == 'azure' && (
+        ((github.event_name == 'push' ||
+          (github.event_name == 'workflow_dispatch' && (inputs.environment == 'dev' || inputs.environment == 'staging'))) &&
+          needs.terraform-staging.result == 'success' && vars.AZURE_PROD_READY == 'true') ||
+        (github.event_name == 'workflow_dispatch' && inputs.environment == 'prod')
+      )
     runs-on: ubuntu-latest
     environment: prod
+    concurrency:
+      group: terraform-azure-prod
+      cancel-in-progress: true
     permissions:
       contents: read
       id-token: write
+    env:
+      ARM_USE_OIDC: "true"
+      ARM_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
+      ARM_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
+      ARM_SUBSCRIPTION_ID: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
     steps:
       - uses: actions/checkout@v7
       - uses: azure/login@v3
@@ -153,30 +150,28 @@ jobs:
           client-id: ${{ secrets.AZURE_CLIENT_ID }}
           tenant-id: ${{ secrets.AZURE_TENANT_ID }}
           subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
-      - uses: hashicorp/setup-terraform@v4
+      - uses: ./.github/actions/terraform-run
         with:
-          terraform_version: "1.7.5"
-      - name: Terraform Init
-        working-directory: infrastructure/azure
-        run: terraform init -backend-config=environments/prod.backend.hcl
-      - name: Terraform Format Check
-        working-directory: infrastructure/azure
-        run: terraform fmt -check -recursive
-      - name: Terraform Validate
-        working-directory: infrastructure/azure
-        run: terraform validate
-      - name: Terraform Plan
-        working-directory: infrastructure/azure
-        run: terraform plan -var-file=environments/prod.tfvars -lock=false
+          working-directory: infrastructure/azure
+          environment: prod
+          mode: plan
 
-  # ── Demo — standalone, dispatch-only (NOT in the dev→staging→prod chain) ──
+  # ── Demo — standalone, dispatch-only (NOT in the dev->staging->prod chain)
   terraform-demo:
     if: github.event_name == 'workflow_dispatch' && inputs.environment == 'demo' && vars.DEPLOY_CLOUD == 'azure'
     runs-on: ubuntu-latest
     environment: demo
+    concurrency:
+      group: terraform-azure-demo
+      cancel-in-progress: true
     permissions:
       contents: read
       id-token: write
+    env:
+      ARM_USE_OIDC: "true"
+      ARM_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
+      ARM_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
+      ARM_SUBSCRIPTION_ID: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
     steps:
       - uses: actions/checkout@v7
       - uses: azure/login@v3
@@ -184,18 +179,8 @@ jobs:
           client-id: ${{ secrets.AZURE_CLIENT_ID }}
           tenant-id: ${{ secrets.AZURE_TENANT_ID }}
           subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
-      - uses: hashicorp/setup-terraform@v4
+      - uses: ./.github/actions/terraform-run
         with:
-          terraform_version: "1.7.5"
-      - name: Terraform Init
-        working-directory: infrastructure/azure
-        run: terraform init -backend-config=environments/demo.backend.hcl
-      - name: Terraform Format Check
-        working-directory: infrastructure/azure
-        run: terraform fmt -check -recursive
-      - name: Terraform Validate
-        working-directory: infrastructure/azure
-        run: terraform validate
-      - name: Terraform Plan
-        working-directory: infrastructure/azure
-        run: terraform plan -var-file=environments/demo.tfvars -lock=false
+          working-directory: infrastructure/azure
+          environment: demo
+          mode: plan

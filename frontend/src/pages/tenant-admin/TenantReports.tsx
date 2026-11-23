@@ -8,6 +8,7 @@ import { useDateRangeFilter } from '../../hooks/useDateRangeFilter'
 import { SectionHead } from '../../shell/SectionHead'
 import { useTopBarSlot } from '../../shell/TopBarContext'
 import styles from './TenantReports.module.css'
+import { formatNgn } from '../../lib/format'
 
 const dateInputStyle: CSSProperties = {
   height: 36,
@@ -24,7 +25,7 @@ const dateInputStyle: CSSProperties = {
 function fmtNgn(n: number): string {
   if (n >= 1_000_000) return `₦${(n / 1_000_000).toFixed(2)}M`
   if (n >= 1_000)     return `₦${(n / 1_000).toFixed(0)}k`
-  return `₦${n.toLocaleString()}`
+  return formatNgn(n)
 }
 
 // ─── Pure-CSS Donut chart ─────────────────────────────────────────────────────

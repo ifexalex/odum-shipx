@@ -519,3 +519,11 @@ purge-protection off so it fully deletes).
   (provider pins) is committed.
 - Cost at 300 MAU ≈ the figures in `docs/azure_cost_model.md` (Front Door
   Standard base ~$35/mo; add ~$25 for Cloudflare WAF when you want it).
+
+## Client address and the Front Door lock (2026-11-17)
+
+Requests reach the API through Front Door and then the Container Apps ingress, so the app never sees the user's address on the socket. Terraform passes the Front Door profile's id to the container app as `AZURE_FRONT_DOOR_ID`; on a request stamped with that id (`X-Azure-FDID`), the app uses the address Front Door recorded (`X-Azure-SocketIP`) for rate limits and audit logs. Nothing to measure or tune, and no extra resource or cost.
+
+`require_front_door = true` makes the API refuse anything that did not come through this Front Door. It is off by default: point the Paystack and WhatsApp webhook URLs and any smoke test at the Front Door host first. See `docs/runbook.md`.
+
+The Front Door profile is declared at the root of this configuration (not in `modules/frontend`), with a `moved` block: the first `terraform plan` after this change shows the profile **moved**, not replaced. If a plan ever shows it being destroyed and created, stop: the public hostname would change.
