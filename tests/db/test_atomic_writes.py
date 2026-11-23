@@ -507,32 +507,35 @@ def _worker_approve_refund(args: tuple) -> str:
 
 
 class TestRefundApproval:
-    def _refund(self, admin, world, billing_id: str) -> str:
+    def _refund(self, admin, world, billing_id: str | None, refund_type: str = "overpayment") -> str:
         refund_id = str(uuid.uuid4())
         with admin.cursor() as cur:
             cur.execute(
                 "INSERT INTO refund_request (id, tenant_id, customer_id, billing_id, amount_ngn, reason, refund_type, status, "
-                "customer_choice) VALUES (%s, %s, %s, %s, 20000, 'damage', 'damage_or_loss', 'pending_approval', 'immediate_refund')",
-                (refund_id, world["tenant"], world["customers"][0], billing_id),
+                "customer_choice) VALUES (%s, %s, %s, %s, 20000, 'overpayment', %s, 'pending_approval', 'immediate_refund')",
+                (refund_id, world["tenant"], world["customers"][0], billing_id, refund_type),
             )
         return refund_id
 
-    def test_two_simultaneous_approvals_reduce_the_invoice_once(self, admin, world):
+    def test_two_simultaneous_approvals_settle_the_overpayment_once(self, admin, world):
         billing_id = _make_invoice(admin, world, total="100000.00")
+        _pay(world, billing_id, "120000.00")
         refund_id = self._refund(admin, world, billing_id)
         start = _start_soon()
 
         results = _run_parallel(_worker_approve_refund, [(world["tenant"], refund_id, billing_id, start)] * 2)
 
         assert sorted(results) == ["approved", "lost"]
-        assert _billing(admin, billing_id)["total"] == Decimal("80000.00"), "reduced by 20,000 once, not twice"
+        assert _billing(admin, billing_id)["total"] == Decimal("100000.00"), "total_ngn is preserved"
+        assert _billing(admin, billing_id)["paid"] == Decimal("100000.00"), "excess settled once, not twice"
+        assert _billing(admin, billing_id)["status"] == "paid"
         assert _rows(admin, "SELECT status FROM refund_request WHERE id = %s", (refund_id,))[0][0] == "processed"
 
-    def test_a_reduction_below_what_was_paid_marks_the_invoice_overpaid_and_refunds_the_excess(self, admin, world):
+    def test_settling_an_overpayment_flips_invoice_to_paid_without_spawning_another_refund(self, admin, world):
         from services.refunds import repository as repo
 
         billing_id = _make_invoice(admin, world, total="100000.00")
-        _pay(world, billing_id, "100000.00")
+        _pay(world, billing_id, "120000.00")
         refund_id = self._refund(admin, world, billing_id)
 
         row = repo.approve_refund_and_adjust_billing(
@@ -540,9 +543,11 @@ class TestRefundApproval:
         )
 
         assert row["status"] == "processed"
-        assert _billing(admin, billing_id)["status"] == "overpaid"
+        assert _billing(admin, billing_id)["total"] == Decimal("100000.00")
+        assert _billing(admin, billing_id)["paid"] == Decimal("100000.00")
+        assert _billing(admin, billing_id)["status"] == "paid"
         follow_up = _refunds(admin, world, "Overpayment after refund adjustment%")
-        assert [r[0] for r in follow_up] == [Decimal("20000.00")]
+        assert follow_up == []
 
     def test_an_approval_whose_invoice_update_fails_leaves_the_refund_pending(self, admin, world, foreign_billing):
         from services.refunds import repository as repo

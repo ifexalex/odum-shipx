@@ -52,16 +52,19 @@ def create_user(
     request_id: str = "",
     ip_address: str | None = None,
 ) -> dict[str, Any]:
-    # Check tier limits
+    from shared.tier_limits import get_effective_limits
+
+    # Check effective plan + override limits (not hardcoded constants).
     tenant = get_tenant(tenant_id)
     tier = tenant["subscription_tier"]
-    limit = TIER_USER_LIMITS.get(tier, 10)
+    limit = int(get_effective_limits(tier, tenant_id)["users"])
     current_count = repo.count_active_users(tenant_id)
     if current_count >= limit:
         raise UsageLimitExceededError("users", current_count, limit)
 
-    # Check duplicate email
-    if repo.get_user_by_email(tenant_id, req.email):
+    # Check duplicate email within tenant and across tenants (before touching IdP
+    # so Entra conflict reuse cannot pollute another tenant's user's groups).
+    if repo.get_user_by_email(tenant_id, req.email) or repo.find_user_across_tenants(email=req.email):
         raise DuplicateResourceError("user", req.email)
 
     role_values = [r.value for r in req.roles]
@@ -164,6 +167,7 @@ def update_user(
     updates: dict[str, Any],
     actor_id: str,
     ip_address: str | None = None,
+    actor_role: str = "tenant_admin",
 ) -> dict[str, Any]:
     from services.tenant_management.repository import _SUPPORTED_LOCALES
 
@@ -184,6 +188,20 @@ def update_user(
     roles = updates.pop("roles", None)
     primary_role = updates.pop("primary_role", None)
     new_primary: str | None = primary_role or (roles[0] if roles else None)
+
+    # Guard against removing tenant_admin from the sole remaining active admin
+    # (prevents permanent tenant lockout).
+    if roles is not None:
+        existing_roles = set(existing.get("roles") or [existing.get("role")])
+        if (
+            "tenant_admin" in existing_roles
+            and "tenant_admin" not in set(roles)
+            and repo.count_active_tenant_admins(tenant_id, exclude_user_id=user_id) < 1
+        ):
+            raise BusinessRuleViolationError(
+                "Cannot remove tenant_admin from the sole remaining active administrator",
+                rule_id="LAST_TENANT_ADMIN",
+            )
 
     updated = existing
     if updates:
@@ -223,7 +241,7 @@ def update_user(
         entity_id=user_id,
         action="UPDATE",
         actor_id=actor_id,
-        actor_role="tenant_admin",
+        actor_role=actor_role,
         before_state=existing,
         after_state=updated,
         ip_address=ip_address,
@@ -265,10 +283,19 @@ def deactivate_user(
     user_id: str,
     actor_id: str,
     ip_address: str | None = None,
+    actor_role: str = "tenant_admin",
 ) -> dict[str, Any]:
     existing = get_user(tenant_id, user_id)
     if existing["status"] == "deactivated":
         raise BusinessRuleViolationError("User is already deactivated")
+    if str(existing["id"]) == str(actor_id):
+        raise BusinessRuleViolationError("You cannot deactivate your own account", rule_id="SELF_DEACTIVATION_FORBIDDEN")
+    existing_roles = set(existing.get("roles") or [existing.get("role")])
+    if "tenant_admin" in existing_roles and repo.count_active_tenant_admins(tenant_id, exclude_user_id=user_id) < 1:
+        raise BusinessRuleViolationError(
+            "Cannot deactivate the sole remaining active tenant administrator",
+            rule_id="LAST_TENANT_ADMIN",
+        )
 
     updated = _revoke_login(tenant_id, existing)
     log_audit(
@@ -277,7 +304,7 @@ def deactivate_user(
         entity_id=user_id,
         action="STATUS_CHANGE",
         actor_id=actor_id,
-        actor_role="tenant_admin",
+        actor_role=actor_role,
         before_state={"status": "active"},
         after_state={"status": "deactivated"},
         ip_address=ip_address,
@@ -292,8 +319,10 @@ def resend_user_invite(
     actor_role: str = "tenant_admin",
     ip_address: str | None = None,
 ) -> None:
-    """Resend the identity provider's temporary-password email for an existing staff user, and audit it."""
+    """Resend the identity provider's temporary-password email for an active staff user, and audit it."""
     user = get_user(tenant_id, user_id)
+    if user.get("status") != "active":
+        raise BusinessRuleViolationError("Cannot resend invite for an inactive user", rule_id="USER_NOT_ACTIVE")
     get_identity_provider().resend_invite(user["email"])
     _audit_access_email(tenant_id, user_id, "INVITE_RESENT", actor_id, actor_role, ip_address)
 
@@ -305,7 +334,9 @@ def reset_user_password(
     actor_role: str = "tenant_admin",
     ip_address: str | None = None,
 ) -> None:
-    """Trigger the identity provider's password-reset email for a staff user, and audit it."""
+    """Trigger the identity provider's password-reset email for an active staff user, and audit it."""
     user = get_user(tenant_id, user_id)
+    if user.get("status") != "active":
+        raise BusinessRuleViolationError("Cannot reset password for an inactive user", rule_id="USER_NOT_ACTIVE")
     get_identity_provider().reset_password(user["email"])
     _audit_access_email(tenant_id, user_id, "PASSWORD_RESET_SENT", actor_id, actor_role, ip_address)

@@ -18,6 +18,7 @@ or a public server that answers with a 302 to one. Three layers close this:
 import http.client
 import ipaddress
 import socket
+import time
 import urllib.request
 from typing import Any
 from urllib.parse import urlsplit
@@ -25,6 +26,14 @@ from urllib.parse import urlsplit
 from shared.ssl_context import verified_ssl_context
 
 _BLOCKED_HOST_SUFFIXES = (".localhost", ".local", ".internal", ".intranet", ".lan", ".home.arpa")
+# NAT64 well-known / local-use translation prefixes (RFC 6052 / RFC 8215) can wrap
+# private/metadata IPv4 targets such as 64:ff9b::169.254.169.254 while reporting
+# is_global=True in Python's ipaddress module.
+_NAT64_NETWORKS = (
+    ipaddress.IPv6Network("64:ff9b::/96"),
+    ipaddress.IPv6Network("64:ff9b:1::/48"),
+)
+_MAX_PINNED_IPS = 2
 
 
 class UnsafeUrlError(ValueError):
@@ -32,9 +41,20 @@ class UnsafeUrlError(ValueError):
 
 
 def _is_public(ip: ipaddress.IPv4Address | ipaddress.IPv6Address) -> bool:
-    if isinstance(ip, ipaddress.IPv6Address) and ip.ipv4_mapped is not None:
-        ip = ip.ipv4_mapped
-    return ip.is_global and not ip.is_multicast
+    if isinstance(ip, ipaddress.IPv6Address):
+        if ip.ipv4_mapped is not None:
+            ip = ip.ipv4_mapped
+        elif any(ip in net for net in _NAT64_NETWORKS):
+            return False
+    return (
+        ip.is_global
+        and not ip.is_multicast
+        and not ip.is_reserved
+        and not ip.is_private
+        and not ip.is_loopback
+        and not ip.is_link_local
+        and not ip.is_unspecified
+    )
 
 
 def _literal_ip(host: str) -> ipaddress.IPv4Address | ipaddress.IPv6Address | None:
@@ -108,13 +128,22 @@ class _PinnedHTTPSConnection(http.client.HTTPSConnection):
 
     def connect(self) -> None:
         last_error: OSError | None = None
-        for ip in self._pinned_ips:
+        sock: socket.socket | None = None
+        total_timeout = self.timeout if isinstance(self.timeout, (int, float)) and self.timeout > 0 else None
+        deadline = (time.monotonic() + total_timeout) if total_timeout is not None else None
+        for ip in self._pinned_ips[:_MAX_PINNED_IPS]:
+            remaining: float | None = total_timeout
+            if deadline is not None:
+                remaining = deadline - time.monotonic()
+                if remaining <= 0:
+                    last_error = TimeoutError("Connection timed out across pinned webhook addresses")
+                    break
             try:
-                sock = socket.create_connection((ip, self.port), self.timeout, self._source_address)
+                sock = socket.create_connection((ip, self.port), remaining, self._source_address)
                 break
             except OSError as exc:
                 last_error = exc
-        else:
+        if sock is None:
             raise last_error or OSError("no pinned address reachable")
         self.sock = self._tls_context.wrap_socket(sock, server_hostname=self.host)
 

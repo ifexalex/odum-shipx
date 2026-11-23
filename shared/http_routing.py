@@ -21,6 +21,7 @@ logger = logging.getLogger(__name__)
 # Route table: (path-prefix, service module name). Order matters — more specific
 # prefixes must come first. Mirrors the production API Gateway routes.
 ROUTES: list[tuple[str, str]] = [
+    ("/v1/health", "tenant_management"),  # public health check
     ("/v1/auth", "auth"),  # httpOnly-cookie session refresh — see services/auth/handler.py
     ("/v1/register", "tenant_management"),  # customer self-registration (public)
     ("/v1/onboarding-requests", "tenant_management"),  # shipping-company onboarding lead (public)

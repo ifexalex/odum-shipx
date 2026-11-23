@@ -130,6 +130,8 @@ class CreateTenantUserRequest(BaseModel):
 
     @model_validator(mode="after")
     def _default_and_validate_primary_role(self) -> "CreateTenantUserRequest":
+        # Deduplicate while preserving order so duplicate roles cannot violate PK(tenant_user_id, role).
+        self.roles = list(dict.fromkeys(self.roles))
         if self.primary_role is None:
             self.primary_role = self.roles[0]
         elif self.primary_role not in self.roles:
@@ -153,6 +155,7 @@ class UpdateTenantUserRequest(BaseModel):
     @model_validator(mode="after")
     def _default_and_validate_primary_role(self) -> "UpdateTenantUserRequest":
         if self.roles is not None:
+            self.roles = list(dict.fromkeys(self.roles))
             if self.primary_role is None:
                 self.primary_role = self.roles[0]
             elif self.primary_role not in self.roles:
@@ -201,6 +204,8 @@ class BankTransferConfigRequest(BaseModel):
     Global Cargo customer transferring money would have been shown Acme's
     account. This makes it a real per-tenant setting instead.
     """
+
+    model_config = ConfigDict(str_strip_whitespace=True)
 
     bank_name: str = Field(min_length=1, max_length=100)
     account_name: str = Field(min_length=1, max_length=200)

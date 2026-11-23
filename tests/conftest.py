@@ -312,6 +312,7 @@ def _active_user_check_stubbed(request, monkeypatch):
     path = str(request.node.fspath).replace("\\", "/")
     if "tests/db/" not in path:
         monkeypatch.setattr("shared.auth._check_user_active", lambda user_id, tenant_id: None)
+        monkeypatch.setattr("shared.auth._check_maintenance_mode", lambda: None)
     yield
 
 

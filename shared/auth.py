@@ -34,21 +34,59 @@ _VALID_ROLES: set[str] = {r.value for r in UserRole}
 # per-instance — every warm Lambda would expire it independently.
 # On Redis failure, get() returns None and the caller falls through to DB.
 _tenant_status_cache: DistributedCache = DistributedCache(default_ttl=15, key_prefix="tenant_status:")
-# Subject (IdP oid/sub) → "{tenant_id}:{role}" for a user with an ACTIVE tenant_user
-# row, or "" when there is none. Serves two callers: the identity fallback for tokens
-# that carry no tenant claim, and the per-request active-user check (_check_user_active).
-# 60s is the longest a deactivated user could still be served if the eviction in
-# evict_identity_cache() were missed, so deactivation evicts it explicitly.
+# Subject (IdP oid/sub) → "{tenant_id}:{primary_role}:{role1,role2,...}" for a user
+# with an ACTIVE tenant_user row, or "" when there is none. Serves two callers:
+# the identity fallback for tokens that carry no tenant claim, and the per-request
+# active-user + authoritative-role check (_check_user_active).
 _identity_cache: DistributedCache = DistributedCache(default_ttl=60, key_prefix="identity:")
+# Companion cache storing comma-separated authoritative roles from `tenant_user_role`
+# for the same subject (evicted alongside `_identity_cache` in `evict_identity_cache`).
+_identity_roles_cache: DistributedCache = DistributedCache(default_ttl=60, key_prefix="identity_roles:")
+# Platform-wide maintenance_mode flag (5s TTL, evicted on update).
+_maintenance_cache: DistributedCache = DistributedCache(default_ttl=5, key_prefix="platform_maint:")
+
+
+def _check_maintenance_mode() -> None:
+    """Block non-platform-admin requests with 503 when platform maintenance_mode is enabled."""
+    cached = _maintenance_cache.get("enabled")
+    if cached is not None:
+        if cached == "1":
+            raise ServiceUnavailableError("ShipX is currently undergoing scheduled maintenance. Please try again shortly.")
+        return
+
+    try:
+        from shared.db import execute_with_tenant
+
+        rows = execute_with_tenant(
+            tenant_id=PLATFORM_TENANT_ID,
+            query="SELECT value FROM platform_settings WHERE key = 'maintenance_mode' LIMIT 1",
+        )
+    except Exception as exc:
+        # Don't take down the entire platform if the optional maintenance_mode lookup
+        # hits a transient issue — tenant/user status checks still fail closed below.
+        logger.warning("Maintenance mode check failed: %s", exc)
+        return
+
+    raw_val = rows[0]["value"] if rows else False
+    enabled = raw_val is True or str(raw_val).strip().lower() == "true"
+    _maintenance_cache.set("enabled", "1" if enabled else "0")
+    if enabled:
+        raise ServiceUnavailableError("ShipX is currently undergoing scheduled maintenance. Please try again shortly.")
+
+
+def evict_maintenance_cache() -> None:
+    """Forget the cached maintenance_mode setting immediately after an admin toggles it."""
+    _maintenance_cache.delete("enabled")
 
 
 def get_tenant_context(event: dict[str, Any]) -> TenantContext:
     """Extract and validate tenant context from an API Gateway proxy event.
 
     Reads JWT claims injected by the authorizer at:
-        event["requestContext"]["authorizer"]["claims"]   (REST API v1 / local)
-        event["requestContext"]["authorizer"]["jwt"]["claims"]  (HTTP API v2 JWT)
-        event["requestContext"]["authorizer"]["<key>"]   (REQUEST authorizer context)
+        event["requestContext"]["authorizer"]["claims"]        (REST API v1 / local)
+        event["requestContext"]["authorizer"]["jwt"]["claims"] (HTTP API v2 JWT)
+        event["requestContext"]["authorizer"]["lambda"]        (HTTP API v2 REQUEST authorizer)
+        event["requestContext"]["authorizer"]["<key>"]         (REQUEST authorizer / flat context)
 
     Cognito JWT claim structure:
         sub               → user_id
@@ -63,12 +101,16 @@ def get_tenant_context(event: dict[str, Any]) -> TenantContext:
     try:
         authorizer: dict[str, Any] = event.get("requestContext", {}).get("authorizer", {})
         # HTTP API v2 JWT authorizer: requestContext.authorizer.jwt.claims
+        # HTTP API v2 REQUEST authorizer (payload 2.0): requestContext.authorizer.lambda
         # REST API v1 / local simulation: requestContext.authorizer.claims
-        # REQUEST authorizer: context fields are at requestContext.authorizer directly
+        # Direct/flat REQUEST authorizer context: requestContext.authorizer directly
+        raw_lambda = authorizer.get("lambda")
+        lambda_ctx: dict[str, Any] = raw_lambda if isinstance(raw_lambda, dict) else {}
         claims: dict[str, Any] = (
             authorizer.get("jwt", {}).get("claims", {})
             or authorizer.get("claims", {})
-            or (authorizer if authorizer.get("sub") else {})
+            or (lambda_ctx if lambda_ctx.get("sub") or lambda_ctx.get("oid") else {})
+            or (authorizer if authorizer.get("sub") or authorizer.get("oid") else {})
         )
         if not claims:
             raise AuthenticationRequiredError()
@@ -87,17 +129,21 @@ def get_tenant_context(event: dict[str, Any]) -> TenantContext:
         # admin never reaches here — mapper.tenant_id derives PLATFORM from the
         # group claim.
         db_role: str | None = None
+        db_roles: frozenset[UserRole] | None = None
         if not tenant_id:
             resolved = resolve_identity_from_db(user_id)
             if resolved is None:
                 raise AuthenticationRequiredError()
-            tenant_id, db_role = resolved
+            tenant_id, db_role = resolved[0], resolved[1]
+            db_roles = _cached_db_roles(user_id)
 
         roles = _parse_roles(claims, tenant_id)
         role = _parse_primary_role(claims, roles)
-        # The token carried no role either, so the group-derived default
-        # ('customer') is meaningless — trust the DB row instead.
-        if db_role is not None and db_role in _VALID_ROLES:
+        # The token carried no tenant/role claims — trust the full DB role set.
+        if db_roles:
+            roles = db_roles
+            role = UserRole(db_role) if (db_role in _VALID_ROLES and UserRole(db_role) in db_roles) else min(db_roles)
+        elif db_role is not None and db_role in _VALID_ROLES:
             role = UserRole(db_role)
             roles = frozenset({role}) if roles == frozenset({UserRole.CUSTOMER}) else roles | {role}
 
@@ -107,23 +153,35 @@ def get_tenant_context(event: dict[str, Any]) -> TenantContext:
         logger.warning("Failed to parse JWT claims: %s", exc)
         raise AuthenticationRequiredError() from exc
 
+    impersonated_by: str | None = claims.get("impersonated_by") or None
+    imp_session_id: str | None = claims.get("session_id") or None
+    # Fail closed: any impersonation session is strictly read-only regardless of
+    # whether the `read_only` claim was explicitly set to "true".
+    read_only = bool(impersonated_by)
+
     # Tenant suspension check, 15s distributed (Redis) cache — see
     # _tenant_status_cache; not in-memory, and not 60s.
     if tenant_id != PLATFORM_TENANT_ID:
+        if not impersonated_by:
+            _check_maintenance_mode()
         _check_tenant_active(tenant_id)
         # A token is a signed claim that was true when it was issued. Without this a
-        # deactivated user, or an erased customer, keeps working until the token expires.
-        # A token with no tenant claim was just resolved against an active row above.
+        # deactivated user, an erased customer, or a demoted admin keeps their old
+        # access until the token expires.
         if db_role is None:
-            _check_user_active(user_id, tenant_id)
+            checked = _check_user_active(user_id, tenant_id)
+            if checked is not None and not impersonated_by:
+                active_primary, active_roles = checked
+                if active_roles:
+                    roles = active_roles
+                    role = (
+                        UserRole(active_primary)
+                        if (active_primary in _VALID_ROLES and UserRole(active_primary) in active_roles)
+                        else min(active_roles)
+                    )
         # One tenant's traffic must not be able to starve the others: API Gateway's throttle is shared by
         # all of them. Counted only for a request that got this far, so a revoked token costs the tenant nothing.
         rate_limit.hit(rate_limit.TENANT, tenant_id)
-
-    impersonated_by: str | None = claims.get("impersonated_by") or None
-    imp_session_id: str | None = claims.get("session_id") or None
-    read_only_raw = str(claims.get("read_only", "false")).lower()
-    read_only = read_only_raw == "true" and bool(impersonated_by)
 
     ctx = TenantContext(
         tenant_id=tenant_id,
@@ -215,13 +273,21 @@ def _parse_primary_role(claims: dict[str, Any], roles: frozenset[UserRole]) -> U
     return min(roles)
 
 
-def _active_identity(user_id: str) -> tuple[str, str] | None:
-    """Return (tenant_id, role) from the user's ACTIVE `tenant_user` row, or None when there is none.
+def _cached_db_roles(user_id: str) -> frozenset[UserRole] | None:
+    """Return the cached authoritative DB role set for `user_id`, or None if unpopulated."""
+    raw = _identity_roles_cache.get(user_id)
+    if not raw:
+        return None
+    parsed = frozenset(UserRole(r) for r in str(raw).split(",") if r in _VALID_ROLES)
+    return parsed or None
 
-    `tenant_user.id` IS the IdP subject, so the `oid`/`sub` in a token is enough to find
-    the row. Cached for 60s per subject (`_identity_cache`) — a DIFFERENT TTL from
-    `_check_tenant_active`'s 15s. Raises on a DB failure, unlike `resolve_identity_from_db`,
-    so a caller that must fail closed can tell "no active row" from "could not check".
+
+def _active_identity(user_id: str) -> tuple[str, str] | None:
+    """Return (tenant_id, primary_role) from the user's ACTIVE `tenant_user` row, or None when there is none.
+
+    Also populates `_identity_roles_cache` with the full assigned role set from
+    `tenant_user_role` in the same query so multi-role staff on Azure Entra and
+    role-downgrade revocations work without a second round-trip.
     """
     cached = _identity_cache.get(user_id)
     if cached is not None:
@@ -234,37 +300,35 @@ def _active_identity(user_id: str) -> tuple[str, str] | None:
 
     rows = execute_with_tenant(
         tenant_id=PLATFORM_TENANT_ID,  # spans tenants, like the status check
-        query="SELECT tenant_id, role FROM tenant_user WHERE id = %s AND status = 'active' LIMIT 1",
+        query=(
+            "SELECT tu.tenant_id, tu.role, "
+            "COALESCE(ARRAY_AGG(tur.role) FILTER (WHERE tur.role IS NOT NULL), ARRAY[tu.role]) AS roles "
+            "FROM tenant_user tu "
+            "LEFT JOIN tenant_user_role tur ON tur.tenant_user_id = tu.id "
+            "WHERE tu.id = %s AND tu.status = 'active' "
+            "GROUP BY tu.id, tu.tenant_id, tu.role "
+            "LIMIT 1"
+        ),
         params=(user_id,),
     )
     if not rows:
         _identity_cache.set(user_id, "")
+        _identity_roles_cache.delete(user_id)
         return None
     tenant_id = str(rows[0]["tenant_id"])
     role = str(rows[0]["role"])
+    raw_roles = rows[0].get("roles") or [role]
+    valid_role_strs = sorted({str(r) for r in raw_roles if str(r) in _VALID_ROLES})
+    if role in _VALID_ROLES and role not in valid_role_strs:
+        valid_role_strs.append(role)
     _identity_cache.set(user_id, f"{tenant_id}:{role}")
+    if valid_role_strs:
+        _identity_roles_cache.set(user_id, ",".join(valid_role_strs))
     return tenant_id, role
 
 
 def resolve_identity_from_db(user_id: str) -> tuple[str, str] | None:
-    """Resolve (tenant_id, role) for an IdP subject straight from `tenant_user`.
-
-    The authoritative source for a user's tenant and role is their `tenant_user`
-    row. This is the fallback for tokens that carry no tenant claim.
-
-    Why this exists: on Entra External ID (CIAM) the custom-claims provider
-    returns `tenant_id`/`role` correctly, but Entra does not emit them into the
-    token — the documented app-registration `optionalClaims` route is silently
-    ignored there (CIAM honours a service-principal surface instead). Rather than
-    depend on that, we resolve the same data server-side from the same table the
-    provider reads. One source of truth either way.
-
-    Costs at most one DB round trip per user per minute on the auth path. Returns
-    None when no active row matches (e.g. a platform admin, who legitimately has no
-    `tenant_user` row and resolves from the group claim instead) and also when the
-    lookup fails: the caller raises AuthenticationRequiredError if the identity stays
-    unresolved, and a failure is deliberately not cached.
-    """
+    """Resolve (tenant_id, primary_role) for an IdP subject straight from `tenant_user`."""
     try:
         return _active_identity(user_id)
     except Exception as exc:
@@ -273,22 +337,17 @@ def resolve_identity_from_db(user_id: str) -> tuple[str, str] | None:
 
 
 def evict_identity_cache(user_id: str) -> None:
-    """Forget the cached identity of a user whose row just changed.
-
-    Call after deactivating a user or changing their role, so the next request reads
-    the database instead of being served the old answer for up to a minute. The cache
-    is shared across Lambda instances, so one eviction covers all of them.
-    """
+    """Forget the cached identity and roles of a user whose row just changed."""
     _identity_cache.delete(user_id)
+    _identity_roles_cache.delete(user_id)
 
 
-def _check_user_active(user_id: str, tenant_id: str) -> None:
+def _check_user_active(user_id: str, tenant_id: str) -> tuple[str, frozenset[UserRole]] | None:
     """Deny a token whose user has no active `tenant_user` row in the token's tenant.
 
-    Raises AuthenticationRequiredError (401) for a deactivated, erased or unknown user and
-    for a token whose tenant is not the user's own. Raises ServiceUnavailableError (503) if
-    the lookup fails — fail closed, as `_check_tenant_active` does, so an outage cannot
-    be used to keep a revoked user in.
+    Returns `(primary_role, roles)` from the live DB row when available so
+    `get_tenant_context` enforces immediate role downgrades rather than waiting
+    for JWT expiry.
     """
     try:
         identity = _active_identity(user_id)
@@ -301,6 +360,10 @@ def _check_user_active(user_id: str, tenant_id: str) -> None:
     if identity[0].lower() != tenant_id.lower():
         logger.warning("Denied token for user %s: the token's tenant is not the user's tenant", user_id)
         raise AuthenticationRequiredError()
+    db_roles = _cached_db_roles(user_id)
+    if db_roles:
+        return identity[1], db_roles
+    return None
 
 
 def _check_tenant_active(tenant_id: str) -> None:

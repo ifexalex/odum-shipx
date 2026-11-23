@@ -172,8 +172,10 @@ class EntraIdentityProvider:
         """Resolve an object id / UPN / email to the Graph object id.
 
         A direct GET works for an object id or a UPN (member accounts). For a
-        local account the email is not the UPN, so fall back to filtering on the
-        emailAddress identity.
+        member account where the caller passed a raw non-managed-domain email
+        (e.g. `alice@gmail.com` stored under UPN `alice_gmail.com@<domain>`),
+        retry directly against the formatted UPN before falling back to the
+        local-account `identities` filter.
 
         NB: this filter is a REGULAR query on Entra External ID (CIAM) — sending
         the advanced-query `ConsistencyLevel: eventual` header + `$count=true`
@@ -183,25 +185,35 @@ class EntraIdentityProvider:
         """
         from shared.exceptions import ExternalServiceError
 
-        try:
-            user = self._graph("GET", f"/users/{urllib.parse.quote(username)}")
-            if user:
-                return str(user["id"])
-        except ExternalServiceError as exc:
-            if "404" not in str(exc):
-                raise  # a real failure, not just "not addressable by this key"
+        candidates = [username]
+        if not self._local_accounts and "@" in username and self._user_domain:
+            upn = self._upn(username)
+            if upn != username:
+                candidates.append(upn)
+
+        for candidate in candidates:
+            try:
+                user = self._graph("GET", f"/users/{urllib.parse.quote(candidate)}")
+                if user:
+                    return str(user["id"])
+            except ExternalServiceError as exc:
+                if "404" not in str(exc):
+                    raise  # a real failure, not just "not addressable by this key"
 
         if "@" not in username:
             return ""
         # Local-account lookup by email identity (regular query — no advanced-query
-        # header; see the method docstring).
-        flt = urllib.parse.quote(f"identities/any(i:i/issuerAssignedId eq '{username}' and i/issuer eq '{self._user_domain}')")
+        # header; see the method docstring). Escape single quotes for OData safety.
+        safe_username = username.replace("'", "''")
+        safe_domain = self._user_domain.replace("'", "''")
+        flt = urllib.parse.quote(f"identities/any(i:i/issuerAssignedId eq '{safe_username}' and i/issuer eq '{safe_domain}')")
         result = self._graph("GET", f"/users?$filter={flt}&$select=id")
         values = (result or {}).get("value", [])
         return str(values[0]["id"]) if values else ""
 
     def _group_id(self, group_name: str) -> str | None:
-        flt = urllib.parse.quote(f"displayName eq '{group_name}'")
+        safe_group = group_name.replace("'", "''")
+        flt = urllib.parse.quote(f"displayName eq '{safe_group}'")
         result = self._graph("GET", f"/groups?$filter={flt}&$select=id")
         values = (result or {}).get("value", [])
         return str(values[0]["id"]) if values else None

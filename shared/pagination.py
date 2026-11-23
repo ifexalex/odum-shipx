@@ -88,28 +88,34 @@ def decode_cursor(cursor: str | None) -> dict[str, Any] | None:
         return None
 
 
-def parse_pagination_params(query_params: dict[str, Any]) -> tuple[dict[str, Any] | None, int]:
+def parse_pagination_params(
+    query_params: dict[str, Any] | None,
+    *,
+    default_limit: int = _DEFAULT_LIMIT,
+) -> tuple[dict[str, Any] | None, int]:
     """Extract and validate pagination parameters from a query string dict.
 
     Args:
         query_params: The event["queryStringParameters"] dict (may be None).
+        default_limit: Default page size when `limit` is omitted or invalid.
 
     Returns:
         Tuple of (cursor_dict | None, limit).
         cursor_dict is None for the first page.
-        limit is clamped between 1 and _MAX_LIMIT, defaulting to _DEFAULT_LIMIT.
+        limit is clamped between 1 and _MAX_LIMIT, defaulting to default_limit.
     """
+    safe_default = max(1, min(default_limit, _MAX_LIMIT))
     if not query_params:
-        return None, _DEFAULT_LIMIT
+        return None, safe_default
 
     cursor_str: str | None = query_params.get("cursor")
     cursor_dict = decode_cursor(cursor_str)
 
     try:
-        limit = int(query_params.get("limit", _DEFAULT_LIMIT))
+        limit = int(query_params.get("limit", safe_default))
         limit = max(1, min(limit, _MAX_LIMIT))
     except (ValueError, TypeError):
-        limit = _DEFAULT_LIMIT
+        limit = safe_default
 
     return cursor_dict, limit
 

@@ -177,7 +177,11 @@ def execute_with_tenant(
         with conn.cursor() as cur:
             _set_tenant(cur, tenant_id)
             cur.execute(query, params)
-            return _rows_to_dicts(cur)
+            rows = _rows_to_dicts(cur)
+        # End the read transaction immediately so SET LOCAL app.current_tenant_id
+        # is cleared and warm connections never sit IDLE IN TRANSACTION.
+        conn.commit()
+        return rows
     except Exception:
         conn.rollback()
         raise

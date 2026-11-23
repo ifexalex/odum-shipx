@@ -12,6 +12,7 @@ from typing import TYPE_CHECKING, Any
 from shared.app_urls import MissingBaseUrlError, invite_url, login_url
 from shared.audit import log_audit
 from shared.auth import evict_identity_cache
+from shared.db import tenant_transaction
 from shared.exceptions import (
     BusinessRuleViolationError,
     DuplicateResourceError,
@@ -66,6 +67,7 @@ def create_customer(
     actor_id: str,
     request_id: str = "",
     ip_address: str | None = None,
+    actor_role: str = "staff",
 ) -> dict[str, Any]:
     # Accept both "full_name" and "name" — normalise to "name" for storage
     if "full_name" in data and "name" not in data:
@@ -80,7 +82,7 @@ def create_customer(
         entity_id=str(customer["id"]),
         action="CREATE",
         actor_id=actor_id,
-        actor_role="staff",
+        actor_role=actor_role,
         after_state=customer,
         ip_address=ip_address,
     )
@@ -142,11 +144,11 @@ def anonymise_customer(
     customer_id: str,
     actor_id: str,
     ip_address: str | None = None,
+    actor_role: str = "tenant_admin",
 ) -> dict[str, Any] | None:
     """Erase a customer's personal data (GDPR Art. 17 — right to erasure).
 
     Anonymises the record in-place to preserve FK integrity.
-    Only TENANT_ADMIN may invoke this — enforced at the handler level.
     """
     customer = repo.get_customer_by_id(tenant_id, customer_id)
     if not customer:
@@ -156,7 +158,12 @@ def anonymise_customer(
             "Customer record has already been anonymised",
             rule_id="ALREADY_ANONYMISED",
         )
-    _pii_fields = {"name", "email", "phone", "whatsapp", "address", "contract_details"}
+    if actor_role == "customer" and repo.customer_has_unpaid_balance(tenant_id, customer_id):
+        raise BusinessRuleViolationError(
+            "Account cannot be erased while invoices or carryovers have an unpaid balance",
+            rule_id="CUSTOMER_HAS_UNPAID_BALANCE",
+        )
+    _pii_fields = {"name", "email", "phone", "whatsapp", "address", "delivery_address", "contract_details"}
     before_masked = {k: ("***" if k in _pii_fields else v) for k, v in customer.items()}
 
     # The erased person must not keep a working login: the tenant_user row and the identity-provider
@@ -171,7 +178,7 @@ def anonymise_customer(
             entity_id=str(login["id"]),
             action="STATUS_CHANGE",
             actor_id=actor_id,
-            actor_role="tenant_admin",
+            actor_role=actor_role,
             before_state={"status": "active"},
             after_state={"status": "deactivated", "reason": "customer_erasure"},
             ip_address=ip_address,
@@ -179,6 +186,7 @@ def anonymise_customer(
     if login is not None and not str(login["email"]).endswith(_ERASED_EMAIL_DOMAIN):
         _erase_login_identity(tenant_id, login)
 
+    repo.delete_unconsumed_invites_for_customer(tenant_id, customer_id)
     repo.anonymise_customer_record(tenant_id, customer_id)
     log_audit(
         tenant_id=tenant_id,
@@ -186,7 +194,7 @@ def anonymise_customer(
         entity_id=customer_id,
         action="DELETE",
         actor_id=actor_id,
-        actor_role="tenant_admin",
+        actor_role=actor_role,
         before_state=before_masked,
         after_state={"anonymised": True},
         ip_address=ip_address,
@@ -224,7 +232,7 @@ def export_customer_data(
         entity_type="customer",
         entity_id=customer_id,
         action="EXPORT",
-        actor_id=requesting_user_id or "",
+        actor_id=requesting_user_id or None,
         actor_role=actor_role,
         after_state={"exported_at": exported_at, "record_count": len(data.get("shipments", []))},
     )
@@ -237,6 +245,7 @@ def update_customer(
     updates: dict[str, Any],
     actor_id: str,
     ip_address: str | None = None,
+    actor_role: str = "staff",
 ) -> dict[str, Any]:
     from services.tenant_management.repository import _SUPPORTED_LOCALES
 
@@ -263,7 +272,7 @@ def update_customer(
         entity_id=customer_id,
         action="UPDATE",
         actor_id=actor_id,
-        actor_role="staff",
+        actor_role=actor_role,
         before_state=existing,
         after_state=updated,
         ip_address=ip_address,
@@ -365,6 +374,10 @@ def self_register_customer(
         _notify_account_exists(tenant_id, req.email, existing.get("name"), request_id)
         return
 
+    if repo.find_user_across_tenants(email=req.email):
+        _notify_account_exists(tenant_id, req.email, None, request_id)
+        return
+
     dial_code = dial_code_for_country(tenant.get("destination_country"))
     phone = normalize_phone(req.phone, dial_code)
     whatsapp = normalize_phone(req.whatsapp, dial_code) if req.whatsapp else None
@@ -381,6 +394,9 @@ def self_register_customer(
     except DuplicateResourceError:
         # The address has an account elsewhere on the platform: one identity belongs to exactly one
         # tenant. Nothing was created, and the caller is told nothing about it.
+        _notify_account_exists(tenant_id, req.email, None, request_id)
+        return
+    if repo.find_user_across_tenants(user_id=cognito_sub):
         _notify_account_exists(tenant_id, req.email, None, request_id)
         return
     group_name = f"{tenant_id}:customer"
@@ -403,6 +419,7 @@ def self_register_customer(
     )
     if portal_user is None:
         raise RuntimeError("create_tenant_user returned None unexpectedly")
+    repo.ensure_primary_user_role(tenant_id, str(portal_user["id"]), "customer")
 
     # Create customer row, linked to the tenant_user we just created —
     # customer.user_id's FK is tenant_user(id), never a bare Cognito sub.
@@ -485,6 +502,8 @@ def issue_customer_invite(
     customer = repo.get_customer_by_id(tenant_id, customer_id)
     if not customer:
         raise ResourceNotFoundError("customer", customer_id)
+    if customer.get("anonymised_at"):
+        raise BusinessRuleViolationError("Cannot invite an anonymised customer", rule_id="CUSTOMER_ANONYMISED")
     if customer.get("user_id"):
         raise BusinessRuleViolationError("Customer already has an account", rule_id="CUSTOMER_ALREADY_HAS_ACCOUNT")
 
@@ -563,7 +582,7 @@ def issue_customer_invite(
         entity_type="customer_invite",
         entity_id=str(invite["id"]),
         action="CREATE",
-        actor_id=actor_id or "",
+        actor_id=actor_id or None,
         actor_role="staff" if actor_id else "system",
         after_state={
             "customer_id": customer_id,
@@ -599,7 +618,7 @@ def get_customer_invite_public(token: str) -> dict[str, Any]:
     tenant_id = str(invite["tenant_id"])
     customer = repo.get_customer_by_id(tenant_id, str(invite["customer_id"]))
     tenant = repo.get_tenant_by_id(tenant_id)
-    if not customer or not tenant:
+    if not customer or not tenant or tenant.get("status") != "active" or customer.get("anonymised_at") or customer.get("user_id"):
         raise ResourceNotFoundError("customer_invite", token)
 
     return {
@@ -618,13 +637,12 @@ def accept_customer_invite(
     customer, and stamp the invite consumed.
 
     Wrapped so a failed Cognito call leaves the invite unconsumed (the
-    customer can retry the same link) — the invite is only stamped consumed
-    after the Cognito user and tenant_user row both exist.
+    customer can retry the same link) and a lost concurrent race cleans up
+    the created IdP account without linking a second login.
 
     Raises:
         ResourceNotFoundError: if the token is unknown, expired, or consumed.
-        DuplicateResourceError: if the chosen email is already registered
-            for this tenant.
+        DuplicateResourceError: if the chosen email is already registered.
     """
     from shared.invites import consume_invite, get_invite_by_token, is_invite_valid
 
@@ -635,12 +653,19 @@ def accept_customer_invite(
 
     tenant_id = str(invite["tenant_id"])
     customer_id = str(invite["customer_id"])
+    tenant = repo.get_tenant_by_id(tenant_id)
+    if tenant is not None and tenant.get("status") != "active":
+        raise ResourceNotFoundError("customer_invite", token)
     customer = repo.get_customer_by_id(tenant_id, customer_id)
     if not customer:
         raise ResourceNotFoundError("customer", customer_id)
+    if customer.get("anonymised_at"):
+        raise ResourceNotFoundError("customer_invite", token)
     if customer.get("user_id"):
         raise BusinessRuleViolationError("Customer already has an account", rule_id="CUSTOMER_ALREADY_HAS_ACCOUNT")
     if repo.get_customer_by_email(tenant_id, req.email):
+        raise DuplicateResourceError("customer", req.email)
+    if repo.find_user_across_tenants(email=req.email):
         raise DuplicateResourceError("customer", req.email)
 
     cognito = get_identity_provider()
@@ -651,34 +676,45 @@ def accept_customer_invite(
         role="customer",
         password=req.password,
     )
+    if repo.find_user_across_tenants(user_id=cognito_sub):
+        raise DuplicateResourceError("customer", req.email)
     group_name = f"{tenant_id}:customer"
     cognito.create_group_if_not_exists(group_name)
     cognito.add_user_to_group(req.email, group_name)
 
-    portal_user = repo.create_tenant_user(
-        tenant_id,
-        {
-            "tenant_id": tenant_id,
-            "cognito_sub": cognito_sub,
-            "email": req.email,
-            "full_name": str(customer.get("name") or ""),
-            "role": "customer",
-            "created_by": None,
-        },
-    )
-    if portal_user is None:
-        raise RuntimeError("create_tenant_user returned None unexpectedly")
+    try:
+        with tenant_transaction(tenant_id):
+            consumed = consume_invite(tenant_id, str(invite["id"]))
+            if consumed is None:
+                raise ResourceNotFoundError("customer_invite", token)
 
-    updated_customer = repo.update_customer(tenant_id, customer_id, {"email": req.email, "user_id": str(portal_user["id"])})
-    if updated_customer is None:
-        raise RuntimeError("update_customer returned None unexpectedly")
+            portal_user = repo.create_tenant_user(
+                tenant_id,
+                {
+                    "tenant_id": tenant_id,
+                    "cognito_sub": cognito_sub,
+                    "email": req.email,
+                    "full_name": str(customer.get("name") or ""),
+                    "role": "customer",
+                    "created_by": None,
+                },
+            )
+            if portal_user is None:
+                raise RuntimeError("create_tenant_user returned None unexpectedly")
+            repo.ensure_primary_user_role(tenant_id, str(portal_user["id"]), "customer")
 
-    consumed = consume_invite(tenant_id, str(invite["id"]))
-    if consumed is None:
-        # Lost a race with a concurrent claim of the same token — the
-        # Cognito user/tenant_user rows above are already created and safe
-        # to leave in place; the invite itself just can't be re-consumed.
+            updated_customer = repo.update_customer(
+                tenant_id, customer_id, {"email": req.email, "user_id": str(portal_user["id"])}
+            )
+            if updated_customer is None:
+                raise RuntimeError("update_customer returned None unexpectedly")
+    except ResourceNotFoundError:
         logger.warning("Invite %s was already consumed by a concurrent request", invite["id"])
+        try:
+            cognito.delete_user(req.email)
+        except Exception as cleanup_exc:
+            logger.warning("Could not clean up IdP user after lost invite race: %s", cleanup_exc)
+        raise
 
     log_audit(
         tenant_id=tenant_id,
