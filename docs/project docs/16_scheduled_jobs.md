@@ -125,15 +125,22 @@ Hourly. Claims queued exports one at a time (`shared/tenant_export.claim_next`: 
 
 ## File: `services/scheduled/usage_aggregation.py`
 
-Aggregate raw usage events into daily summaries in `usage_record` table.
+Aggregate raw daily usage events (`period_end = period_start`) into daily summaries in `usage_record` inside a `tenant_transaction(tenant_id)`.
 
 ## File: `services/scheduled/release_expiry.py`
 
 ```
-For each release_note with status = 'active' AND expires_at IS NOT NULL AND expires_at < NOW():
-  UPDATE release_note SET status = 'expired'
-  Notify customer
+For each release_note with status = 'active' AND valid_until IS NOT NULL AND valid_until < CURRENT_DATE (UTC) AND unreleased cartons > 0:
+  UPDATE release_note SET status = 'expired' WHERE status = 'active' RETURNING id
+  Notify customer with template_id = 'release_note_expired'
 ```
+
+## Full Business-Logic Audit Hardening (2026-11-23)
+
+- `dispute_escalation.py`: queries `status IN ('investigating', 'under_review')`, atomically transitions to `'escalated_china'` with a status CAS guard, and joins `tenant_user_role` for multi-role staff notifications.
+- `sla_check.py`: queries `status IN ('submitted', 'open') AND acknowledged_at IS NULL AND sla_breached_at IS NULL`, atomically stamps `sla_breached_at = NOW()` (migration 072), passes `actor_id=None` to `log_audit`, and joins `tenant_user_role`.
+- `storage_fee.py`: includes `'active'` and `'expired'` release notes with uncollected cartons, excludes `'cancelled'`/`'waived'` invoices, aggregates split release notes per `billing_id` before inserting `storage_fee_log`, and uses UTC dates.
+- `storage_reminders.py`: excludes `'cancelled'`/`'waived'` invoices and uses UTC dates.
 
 ## Acceptance Criteria
 

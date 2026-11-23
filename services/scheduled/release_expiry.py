@@ -9,7 +9,7 @@ For each release_note with:
 """
 
 import logging
-from datetime import date
+from datetime import UTC, date, datetime
 from typing import Any
 
 from shared.db import execute_with_tenant, execute_write_with_tenant
@@ -60,14 +60,14 @@ def lambda_handler(event: dict[str, Any], context: Any) -> dict[str, Any]:
 
 
 def _process_tenant(tenant_id: str) -> int:
-    today = date.today()
+    today = datetime.now(UTC).date()
     notes = _get_expired_notes(tenant_id, today)
     expired_count = 0
 
     for note in notes:
         try:
-            _expire_note(tenant_id, note)
-            expired_count += 1
+            if _expire_note(tenant_id, note) is not False:
+                expired_count += 1
         except Exception:
             logger.exception(
                 "Failed to expire release_note %s",
@@ -79,20 +79,24 @@ def _process_tenant(tenant_id: str) -> int:
     return expired_count
 
 
-def _expire_note(tenant_id: str, note: dict[str, Any]) -> None:
+def _expire_note(tenant_id: str, note: dict[str, Any]) -> bool:
     note_id = str(note["id"])
 
-    execute_write_with_tenant(
+    updated = execute_write_with_tenant(
         tenant_id,
         """
         UPDATE release_note
         SET status     = 'expired',
             updated_at = NOW()
-        WHERE tenant_id = %(tenant_id)s AND id = %(id)s
+        WHERE tenant_id = %(tenant_id)s
+          AND id = %(id)s
+          AND status = 'active'
         RETURNING id
         """,
         {"tenant_id": tenant_id, "id": note_id},
     )
+    if not updated:
+        return False
 
     logger.info(
         "Release note expired: %s valid_until=%s",
@@ -102,6 +106,7 @@ def _expire_note(tenant_id: str, note: dict[str, Any]) -> None:
     )
 
     _notify_customer(tenant_id, note)
+    return True
 
 
 def _notify_customer(tenant_id: str, note: dict[str, Any]) -> None:
@@ -121,7 +126,7 @@ def _notify_customer(tenant_id: str, note: dict[str, Any]) -> None:
                 tenant_id=tenant_id,
                 channel="sms",
                 recipient=customer["phone"],
-                template_id="release_note_generated",
+                template_id="release_note_expired",
                 template_vars=template_vars,
                 locale=locale,
                 customer_id=str(note["customer_id"]),
@@ -139,7 +144,7 @@ def _notify_customer(tenant_id: str, note: dict[str, Any]) -> None:
                 tenant_id=tenant_id,
                 channel="email",
                 recipient=customer["email"],
-                template_id="release_note_generated",
+                template_id="release_note_expired",
                 template_vars=template_vars,
                 locale=locale,
                 customer_id=str(note["customer_id"]),
@@ -168,13 +173,18 @@ def _get_expired_notes(tenant_id: str, today: date) -> list[dict[str, Any]]:
     return execute_with_tenant(
         tenant_id,
         """
-        SELECT id, customer_id, reference_number, valid_until
-        FROM release_note
-        WHERE tenant_id  = %s
-          AND status     = 'active'
-          AND valid_until IS NOT NULL
-          AND valid_until < %s
-        ORDER BY valid_until ASC
+        SELECT rn.id, rn.customer_id, rn.reference_number, rn.valid_until
+        FROM release_note rn
+        WHERE rn.tenant_id  = %s
+          AND rn.status     = 'active'
+          AND rn.valid_until IS NOT NULL
+          AND rn.valid_until < %s
+          AND COALESCE((
+              SELECT SUM(pr.cartons_count)
+              FROM pickup_record pr
+              WHERE pr.tenant_id = rn.tenant_id AND pr.release_note_id = rn.id
+          ), 0) < rn.total_cartons
+        ORDER BY rn.valid_until ASC
         """,
         (tenant_id, today),
     )

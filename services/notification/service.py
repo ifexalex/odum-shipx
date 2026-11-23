@@ -64,7 +64,20 @@ _SMS_TEMPLATES: dict[str, str] = {
         "Reason: {reason}. Please contact us or resubmit with correct evidence."
     ),
     "damage_claim_update": ("{company_name}: Your damage claim {claim_reference} is now {status}."),
+    "cbm_dispute_update": ("{company_name}: Your CBM dispute {reference_number} is now {status}."),
     "packing_list_approved": ("{company_name}: Your packing list {reference} has been approved."),
+    "storage_first_reminder": (
+        "{company_name}: Reminder: Release note {reference_number} ({carton_count} cartons) is ready for pickup. "
+        "{days_remaining} days of free storage remaining."
+    ),
+    "storage_final_reminder": (
+        "{company_name}: Final reminder: Release note {reference_number} ({carton_count} cartons) has 1 day of free "
+        "storage remaining. Storage fees begin tomorrow."
+    ),
+    "release_note_expired": (
+        "{company_name}: Release note {reference_number} expired on {valid_until}. "
+        "Please contact us to reissue your release note."
+    ),
 }
 
 _DEFAULT_SMS_TEMPLATE = "{company_name}: You have a new notification."
@@ -87,7 +100,15 @@ _SMS_TEMPLATES_ZH: dict[str, str] = {
         "{company_name}: 您的付款申报 NGN {amount_ngn} 未通过确认。原因：{reason}。请联系我们或重新提交正确的凭证。"
     ),
     "damage_claim_update": "{company_name}: 您的损坏索赔 {claim_reference} 当前状态：{status}。",
+    "cbm_dispute_update": "{company_name}: 您的CBM争议 {reference_number} 当前状态：{status}。",
     "packing_list_approved": "{company_name}: 您的装箱单 {reference} 已获批准。",
+    "storage_first_reminder": (
+        "{company_name}: 提醒：提货单 {reference_number}（共 {carton_count} 件）待提货，免费仓储还剩 {days_remaining} 天。"
+    ),
+    "storage_final_reminder": (
+        "{company_name}: 最后提醒：提货单 {reference_number}（共 {carton_count} 件）免费仓储明日结束，明日起将产生仓储费。"
+    ),
+    "release_note_expired": "{company_name}: 提货单 {reference_number} 已于 {valid_until} 过期，请联系我们重新签发。",
 }
 _DEFAULT_SMS_TEMPLATE_ZH = "{company_name}: 您有一条新通知。"
 
@@ -106,6 +127,9 @@ WA_TEMPLATE_MAP_ZH: dict[str, str] = {
     "customer_invite": "customer_invite_zh",
     "payment_claim_confirmed": "payment_claim_confirmed_zh",
     "payment_claim_rejected": "payment_claim_rejected_zh",
+    "storage_first_reminder": "storage_first_reminder_zh",
+    "storage_final_reminder": "storage_final_reminder_zh",
+    "release_note_expired": "release_note_expired_zh",
 }
 
 
@@ -114,6 +138,20 @@ class _SafeFormatMap(dict):  # type: ignore[type-arg]
 
     def __missing__(self, key: str) -> str:
         return f"{{{key}}}"
+
+
+_PLACEHOLDER_RE = re.compile(r"\{([a-zA-Z0-9_]+)\}")
+
+
+def _safe_substitute(template: str, data: dict[str, Any]) -> str:
+    """Safely substitute {identifier} placeholders without attribute or index traversal."""
+    stripped = _PLACEHOLDER_RE.sub("", template)
+    if "{" in stripped or "}" in stripped:
+        raise ValueError("Malformed or disallowed placeholder in template")
+    return _PLACEHOLDER_RE.sub(
+        lambda m: str(data[m.group(1)]) if m.group(1) in data and data[m.group(1)] is not None else m.group(0),
+        template,
+    )
 
 
 def format_sms(
@@ -134,9 +172,9 @@ def format_sms(
         template = _SMS_TEMPLATES_ZH.get(event_type, _DEFAULT_SMS_TEMPLATE_ZH)
     else:
         template = _SMS_TEMPLATES.get(event_type, _DEFAULT_SMS_TEMPLATE)
-    data = _SafeFormatMap({"company_name": get_company_name(branding), **template_data})
+    data = {"company_name": get_company_name(branding), **template_data}
     try:
-        return template.format_map(data)
+        return _safe_substitute(template, data)
     except Exception:
         # A malformed template (bad placeholder/format spec) must never block a
         # notification — fall back to a safe generic message, but surface the
@@ -312,6 +350,9 @@ WA_TEMPLATE_MAP: dict[str, str] = {
     "customer_invite": "customer_invite",
     "payment_claim_confirmed": "payment_claim_confirmed",
     "payment_claim_rejected": "payment_claim_rejected",
+    "storage_first_reminder": "storage_first_reminder",
+    "storage_final_reminder": "storage_final_reminder",
+    "release_note_expired": "release_note_expired",
 }
 
 _WA_MAX_PARAMS = 5
@@ -342,6 +383,9 @@ WA_TEMPLATE_PARAMS: dict[str, tuple[str, ...]] = {
     "tenant_suspended": ("reason",),
     "payment_claim_confirmed": ("amount_ngn",),
     "payment_claim_rejected": ("amount_ngn", "reason"),
+    "storage_first_reminder": ("reference_number", "carton_count", "days_remaining"),
+    "storage_final_reminder": ("reference_number", "carton_count"),
+    "release_note_expired": ("reference_number", "valid_until"),
 }
 
 
@@ -495,6 +539,9 @@ EMAIL_SUBJECTS: dict[str, str] = {
     "registration_existing_account": "You already have an account",
     "payment_claim_confirmed": "Your payment has been confirmed",
     "payment_claim_rejected": "Your payment claim needs attention",
+    "storage_first_reminder": "Reminder: Goods ready for pickup",
+    "storage_final_reminder": "Final reminder: Storage fees begin tomorrow",
+    "release_note_expired": "Release note expired",
 }
 
 _DEFAULT_EMAIL_SUBJECT = "Notification from your logistics provider"
@@ -516,6 +563,9 @@ EMAIL_SUBJECTS_ZH: dict[str, str] = {
     "registration_existing_account": "您已拥有账户",
     "payment_claim_confirmed": "您的付款已确认",
     "payment_claim_rejected": "您的付款申报需要关注",
+    "storage_first_reminder": "提货提醒：免费仓储即将到期",
+    "storage_final_reminder": "最后提醒：明日起将产生仓储费",
+    "release_note_expired": "提货单已过期",
 }
 _DEFAULT_EMAIL_SUBJECT_ZH = "来自您的物流服务商的通知"
 
@@ -581,6 +631,16 @@ _EMAIL_BODIES: dict[str, str] = {
     ),
     "tenant_onboarded": "Your company's {company_name} account is set up and ready to use.",
     "tenant_suspended": "Your company's {company_name} account has been suspended. Please contact support.",
+    "storage_first_reminder": (
+        "Your goods with {company_name} are ready for collection. Please collect them before your free storage period ends."
+    ),
+    "storage_final_reminder": (
+        "Your free storage period with {company_name} ends today. "
+        "Storage fees will begin accruing tomorrow for uncollected cartons."
+    ),
+    "release_note_expired": (
+        "Your release note with {company_name} has expired. Please contact us to have it reissued before collecting your goods."
+    ),
 }
 _DEFAULT_EMAIL_BODY = "You have a new notification from {company_name}. The details are below."
 
@@ -610,6 +670,9 @@ _EMAIL_BODIES_ZH: dict[str, str] = {
     "payment_claim_rejected": "{company_name} 未能确认您申报的付款，原因如下。请联系我们或重新提交正确的付款凭证。",
     "tenant_onboarded": "您公司的 {company_name} 账户已开通并可以使用。",
     "tenant_suspended": "您公司的 {company_name} 账户已被暂停，请联系客服。",
+    "storage_first_reminder": "您在 {company_name} 的货物已可提货，请在免费仓储期结束前前往提取。",
+    "storage_final_reminder": "您在 {company_name} 的免费仓储期今日结束，未提取货物自明日起将按日计收仓储费。",
+    "release_note_expired": "您在 {company_name} 的提货单已过期，提货前请联系我们重新签发。",
 }
 _DEFAULT_EMAIL_BODY_ZH = "您有一条来自 {company_name} 的新通知，详情如下。"
 
@@ -667,13 +730,13 @@ def _render_body_copy(
         template = _EMAIL_BODIES.get(event_type, _DEFAULT_EMAIL_BODY)
         default = _DEFAULT_EMAIL_BODY
     try:
-        rendered = template.format_map(_SafeFormatMap(data))
+        rendered = _safe_substitute(template, data)
     except Exception:
         logger.warning("Email body render failed for event %s; using generic copy", event_type)
         rendered = ""
     if not rendered or "{" in rendered:
         logger.warning("Email body for event %s had unresolved placeholders; using generic copy", event_type)
-        rendered = default.format_map(_SafeFormatMap(data))
+        rendered = _safe_substitute(default, data)
     return rendered
 
 
@@ -711,10 +774,10 @@ def email_subject(
     it are substituted, which they previously were not.
     """
     company_name = get_company_name(branding)
-    data = _SafeFormatMap({"company_name": company_name, **{k: v for k, v in template_data.items() if v is not None}})
+    data = {"company_name": company_name, **{k: v for k, v in template_data.items() if v is not None}}
     if override:
         try:
-            return str(override).format_map(data)
+            return _safe_substitute(str(override), data)
         except Exception:
             logger.warning("Email subject override render failed for event %s; using it verbatim", event_type)
             return str(override)
@@ -723,7 +786,7 @@ def email_subject(
     else:
         base = EMAIL_SUBJECTS.get(event_type, _DEFAULT_EMAIL_SUBJECT)
     try:
-        base = base.format_map(data)
+        base = _safe_substitute(base, data)
     except Exception:
         logger.warning("Email subject render failed for event %s", event_type)
     return f"{company_name} — {base}"
@@ -740,9 +803,9 @@ def render_email_override(
     they come from customer records and imported manifests rather than from the
     tenant admin who wrote the template.
     """
-    data = _SafeFormatMap(_escaped(template_data, get_company_name(branding)))
+    data = _escaped(template_data, get_company_name(branding))
     try:
-        return body_template.format_map(data)
+        return _safe_substitute(body_template, data)
     except Exception:
         # A malformed custom template must not block the notification. Returning
         # it unsubstituted would email literal "{invite_link}" text, so fall
@@ -950,9 +1013,11 @@ def send_email(
         )
         return True
     except Exception:
+        from . import repository as repo
+
         logger.exception(
             "Email send failed",
-            extra={"tenant_id": tenant_id, "to": to_email},
+            extra={"tenant_id": tenant_id, "to": repo.mask_email(to_email)},
         )
         raise
 
@@ -964,7 +1029,7 @@ def send_email(
 
 # Template variables that are secrets: delivered to the recipient, never kept. The notification log is readable by tenant
 # admins and is the source of "retry", so a code that reached it would let staff read every customer's pickup code.
-_SECRET_TEMPLATE_KEYS = frozenset({"pickup_code"})
+_SECRET_TEMPLATE_KEYS = frozenset({"pickup_code", "activation_link", "invite_link"})
 REDACTED = "••••••"
 
 
@@ -1121,7 +1186,7 @@ def trigger_sms_fallback(tenant_id: str, whatsapp_log_id: str, reason: str) -> b
         logger.warning("SMS fallback: SQS_SMS_QUEUE_URL not set")
         return False
 
-    from shared.notifications import consent_verdict, is_recipient_allowed, record_suppressed
+    from shared.notifications import _tenant_branding, consent_verdict, is_recipient_allowed, record_suppressed
 
     # The fallback is a new SMS, so it needs the same consent as one sent directly: a customer who agreed to
     # WhatsApp but not SMS must not be texted just because WhatsApp failed.
@@ -1143,6 +1208,7 @@ def trigger_sms_fallback(tenant_id: str, whatsapp_log_id: str, reason: str) -> b
         "event_type": log_row.get("event_type", ""),
         "channel": "sms",
         "recipient": recipient,
+        "tenant_branding": _tenant_branding(tenant_id),
         "customer_id": str(customer_id) if customer_id else None,
         "template_data": log_row.get("template_data") or {},
         "locale": log_row.get("locale") or "en",
@@ -1159,7 +1225,7 @@ def trigger_sms_fallback(tenant_id: str, whatsapp_log_id: str, reason: str) -> b
     return True
 
 
-_NOT_RETRYABLE_EVENTS = frozenset({"pickup_code_issued"})
+_NOT_RETRYABLE_EVENTS = frozenset({"pickup_code_issued", "account_activation", "customer_invite"})
 
 
 def retry_notification(
@@ -1175,6 +1241,7 @@ def retry_notification(
     """
     from shared.audit import log_audit
     from shared.exceptions import BusinessRuleViolationError, ResourceNotFoundError
+    from shared.notifications import _tenant_branding, consent_verdict, is_recipient_allowed
 
     from . import repository as repo
 
@@ -1187,7 +1254,7 @@ def retry_notification(
             rule_id="NOTIFICATION_NOT_FAILED",
         )
 
-    # A pickup code is never stored, so a retry would send a mask, not a code. The way to resend one is to reissue it.
+    # One-time secret codes/links are redacted on storage, so a retry would send a mask.
     if original["event_type"] in _NOT_RETRYABLE_EVENTS:
         raise BusinessRuleViolationError(
             "This message carried a one-time code that is not kept, so it cannot be re-sent. "
@@ -1208,20 +1275,54 @@ def retry_notification(
             rule_id="QUEUE_URL_MISSING",
         )
 
-    # Build the SQS payload from the original log's template_data
-    template_data: dict[str, Any] = original.get("template_data") or {}
-    sqs_body = json.dumps(
-        {
-            "tenant_id": tenant_id,
-            "event_type": original["event_type"],
-            "channel": channel,
-            "recipient": {"masked": original.get("recipient_masked")},
-            "template_data": template_data,
-            "_retry_of_log_id": log_id,
-        }
-    )
+    customer_id = str(original["customer_id"]) if original.get("customer_id") else None
+    contact = repo.get_customer_contact_for_retry(tenant_id, customer_id) if customer_id else None
+    if not contact:
+        raise BusinessRuleViolationError(
+            "Customer contact is unavailable for retrying this notification.",
+            rule_id="NOTIFICATION_CONTACT_UNAVAILABLE",
+        )
 
-    get_queue_provider().send(destination=queue_url, body=sqs_body)
+    phone = str(contact.get("phone") or "").strip()
+    whatsapp = str(contact.get("whatsapp") or phone).strip()
+    email = str(contact.get("email") or "").strip()
+    if channel == "email" and not email:
+        raise BusinessRuleViolationError(
+            "Customer email address is unavailable for retry.",
+            rule_id="NOTIFICATION_CONTACT_UNAVAILABLE",
+        )
+    if channel == "sms" and not phone:
+        raise BusinessRuleViolationError(
+            "Customer phone number is unavailable for retry.",
+            rule_id="NOTIFICATION_CONTACT_UNAVAILABLE",
+        )
+    if channel == "whatsapp" and not whatsapp:
+        raise BusinessRuleViolationError(
+            "Customer WhatsApp number is unavailable for retry.",
+            rule_id="NOTIFICATION_CONTACT_UNAVAILABLE",
+        )
+
+    recipient = {
+        "phone": whatsapp if channel == "whatsapp" else phone,
+        "whatsapp": whatsapp,
+        "email": email,
+        "name": contact.get("name") or original.get("recipient_name"),
+    }
+    verdict = consent_verdict(tenant_id, original["event_type"], customer_id)
+    if verdict is not None and not verdict.permits(channel):
+        raise BusinessRuleViolationError(
+            f"Customer has not consented to receive '{channel}' notifications.",
+            rule_id="NOTIFICATION_CONSENT_DENIED",
+        )
+    if not is_recipient_allowed(recipient):
+        raise BusinessRuleViolationError(
+            "Recipient is not allowlisted in this non-production environment.",
+            rule_id="NOTIFICATION_RECIPIENT_NOT_ALLOWLISTED",
+        )
+
+    template_data: dict[str, Any] = original.get("template_data") or {}
+    locale = str(original.get("locale") or contact.get("locale") or "en")
+    branding = _tenant_branding(tenant_id)
 
     new_row = repo.insert_log(
         tenant_id,
@@ -1229,9 +1330,10 @@ def retry_notification(
             "tenant_id": tenant_id,
             "event_type": original["event_type"],
             "channel": channel,
-            "recipient_masked": original.get("recipient_masked"),
-            "recipient_name": original.get("recipient_name"),
-            "customer_id": original.get("customer_id") and str(original["customer_id"]),
+            "recipient_masked": original.get("recipient_masked")
+            or (repo.mask_email(email) if channel == "email" else repo.mask_phone(str(recipient["phone"] or ""))),
+            "recipient_name": recipient["name"],
+            "customer_id": customer_id,
             "status": "queued",
             "provider": None,
             "provider_message_id": None,
@@ -1239,8 +1341,27 @@ def retry_notification(
             "error_detail": None,
             "retry_of": log_id,
             "template_data": json.dumps(template_data),
+            "locale": locale,
         },
     )
+    new_log_id = str(new_row["id"]) if new_row else None
+
+    sqs_body = json.dumps(
+        {
+            "tenant_id": tenant_id,
+            "event_type": original["event_type"],
+            "channel": channel,
+            "recipient": recipient,
+            "tenant_branding": branding,
+            "template_data": template_data,
+            "locale": locale,
+            "customer_id": customer_id,
+            "_retry_of_log_id": log_id,
+            "_queued_log_id": new_log_id,
+        }
+    )
+
+    get_queue_provider().send(destination=queue_url, body=sqs_body)
 
     log_audit(
         tenant_id=tenant_id,
@@ -1249,10 +1370,10 @@ def retry_notification(
         action="RETRY",
         actor_id=actor_id,
         actor_role="tenant_admin",
-        after_state={"new_log_id": str(new_row["id"]) if new_row else None, "channel": channel},
+        after_state={"new_log_id": new_log_id, "channel": channel},
     )
 
-    return {"new_log_id": str(new_row["id"]) if new_row else None, "original_log_id": log_id}
+    return {"new_log_id": new_log_id, "original_log_id": log_id}
 
 
 def get_log(tenant_id: str, log_id: str) -> dict[str, Any]:
@@ -1301,14 +1422,37 @@ def count_unread_staff_notifications(tenant_id: str, user_id: str, role: str) ->
     return {"unread_count": repo.count_unread_staff_notifications(tenant_id, user_id, role)}
 
 
-def mark_staff_notification_read(tenant_id: str, notification_id: str, user_id: str) -> dict[str, Any]:
+def _assert_notification_visible(
+    notification: dict[str, Any] | None,
+    notification_id: str,
+    user_id: str,
+    role: str | None = None,
+) -> None:
     from shared.exceptions import ResourceNotFoundError
 
+    if not notification:
+        raise ResourceNotFoundError("staff_notification", notification_id)
+    target_uid = notification.get("target_user_id")
+    target_role = notification.get("target_role")
+    if target_uid is not None and str(target_uid) != str(user_id):
+        raise ResourceNotFoundError("staff_notification", notification_id)
+    if role is not None and target_uid is None:
+        if role == "customer" and target_role != "customer":
+            raise ResourceNotFoundError("staff_notification", notification_id)
+        if target_role is not None and str(target_role) != role:
+            raise ResourceNotFoundError("staff_notification", notification_id)
+
+
+def mark_staff_notification_read(
+    tenant_id: str,
+    notification_id: str,
+    user_id: str,
+    role: str | None = None,
+) -> dict[str, Any]:
     from . import repository as repo
 
     notification = repo.get_staff_notification_by_id(tenant_id, notification_id)
-    if not notification:
-        raise ResourceNotFoundError("staff_notification", notification_id)
+    _assert_notification_visible(notification, notification_id, user_id, role)
     row = repo.mark_staff_notification_read(tenant_id, notification_id, user_id)
     if row is None:
         raise RuntimeError("mark_staff_notification_read returned None unexpectedly")
@@ -1321,14 +1465,16 @@ def mark_all_staff_notifications_read(tenant_id: str, user_id: str, role: str) -
     return {"marked_read": repo.mark_all_staff_notifications_read(tenant_id, user_id, role)}
 
 
-def dismiss_staff_notification(tenant_id: str, notification_id: str, user_id: str) -> dict[str, Any]:
-    from shared.exceptions import ResourceNotFoundError
-
+def dismiss_staff_notification(
+    tenant_id: str,
+    notification_id: str,
+    user_id: str,
+    role: str | None = None,
+) -> dict[str, Any]:
     from . import repository as repo
 
     notification = repo.get_staff_notification_by_id(tenant_id, notification_id)
-    if not notification:
-        raise ResourceNotFoundError("staff_notification", notification_id)
+    _assert_notification_visible(notification, notification_id, user_id, role)
     row = repo.mark_staff_notification_dismissed(tenant_id, notification_id, user_id)
     if row is None:
         raise RuntimeError("mark_staff_notification_dismissed returned None unexpectedly")
@@ -1372,26 +1518,28 @@ def _create_announcement_notifications(
     """
     import uuid
 
+    from shared.db import tenant_transaction
+
     from . import repository as repo
 
     target_roles = list(_ALL_STAFF_ROLES) if audience == "all_staff" else ["customer"]
-    repo.deactivate_active_banners_for_roles(tenant_id, target_roles)
-
     group_id = str(uuid.uuid4())
     created: list[dict[str, Any]] = []
-    for role in target_roles:
-        row = repo.create_staff_notification(
-            tenant_id,
-            event_type="announcement",
-            entity_type="announcement",
-            title=title,
-            body=body,
-            target_role=role,
-            announcement_group_id=group_id,
-            banner_active=True,
-        )
-        if row:
-            created.append(dict(row))
+    with tenant_transaction(tenant_id):
+        repo.deactivate_active_banners_for_roles(tenant_id, target_roles)
+        for role in target_roles:
+            row = repo.create_staff_notification(
+                tenant_id,
+                event_type="announcement",
+                entity_type="announcement",
+                title=title,
+                body=body,
+                target_role=role,
+                announcement_group_id=group_id,
+                banner_active=True,
+            )
+            if row:
+                created.append(dict(row))
     return created
 
 
@@ -1515,21 +1663,28 @@ def approve_announcement_request(tenant_id: str, request_id: str, actor_id: str,
     request itself never reached a customer's bell — then notifies the
     original requester that it went out."""
     from shared.audit import log_audit
+    from shared.db import tenant_transaction
+    from shared.exceptions import IllegalTransitionError
     from shared.staff_notifications import notify_staff
 
     from . import repository as repo
 
     request_row = _get_pending_announcement_request(tenant_id, request_id)
-    created = _create_announcement_notifications(
-        tenant_id,
-        request_row["title"],
-        request_row["body"],
-        request_row["audience"],
-    )
-
-    reviewed = repo.mark_announcement_request_reviewed(tenant_id, request_id, "approved", reviewed_by=actor_id)
-    if reviewed is None:
-        raise RuntimeError("mark_announcement_request_reviewed returned None unexpectedly")
+    with tenant_transaction(tenant_id):
+        reviewed = repo.mark_announcement_request_reviewed(tenant_id, request_id, "approved", reviewed_by=actor_id)
+        if reviewed is None:
+            raise IllegalTransitionError(
+                entity="announcement_request",
+                current_state="reviewed",
+                requested_state="approved",
+                allowed=["pending"],
+            )
+        created = _create_announcement_notifications(
+            tenant_id,
+            request_row["title"],
+            request_row["body"],
+            request_row["audience"],
+        )
 
     log_audit(
         tenant_id=tenant_id,
@@ -1662,6 +1817,7 @@ def activate_announcement(tenant_id: str, group_id: str, actor_id: str, actor_ro
     currently active for the same audience, same "only one visible per
     time" rule a fresh send already follows."""
     from shared.audit import log_audit
+    from shared.db import tenant_transaction
     from shared.exceptions import ResourceNotFoundError
 
     from . import repository as repo
@@ -1670,10 +1826,11 @@ def activate_announcement(tenant_id: str, group_id: str, actor_id: str, actor_ro
     if not target_roles:
         raise ResourceNotFoundError("announcement", group_id)
 
-    repo.deactivate_active_banners_for_roles(tenant_id, target_roles)
-    updated = repo.set_banner_active_for_group(tenant_id, group_id, active=True)
-    if updated == 0:
-        raise ResourceNotFoundError("announcement", group_id)
+    with tenant_transaction(tenant_id):
+        repo.deactivate_active_banners_for_roles(tenant_id, target_roles)
+        updated = repo.set_banner_active_for_group(tenant_id, group_id, active=True)
+        if updated == 0:
+            raise ResourceNotFoundError("announcement", group_id)
 
     log_audit(
         tenant_id=tenant_id,

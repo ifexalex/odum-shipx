@@ -10,7 +10,7 @@ For each tenant with storage_fee.enabled = true:
 """
 
 import logging
-from datetime import date
+from datetime import UTC, date, datetime
 from typing import Any
 
 from shared.db import execute_with_tenant
@@ -73,7 +73,7 @@ def _process_tenant(tenant_id: str) -> int:
     first_reminder_day = int(reminder_config.get("storage_first_reminder", _DEFAULT_FIRST_REMINDER))
     final_reminder_day = int(reminder_config.get("storage_final_reminder", _DEFAULT_FINAL_REMINDER))
     grace_period = int(storage_config.get("grace_period_days", _DEFAULT_GRACE_PERIOD))
-    today = date.today()
+    today = datetime.now(UTC).date()
 
     active_notes = _get_active_release_notes(tenant_id)
     sent = 0
@@ -234,9 +234,13 @@ def _get_active_release_notes(tenant_id: str) -> list[dict[str, Any]]:
     return execute_with_tenant(
         tenant_id,
         """
-        SELECT id, customer_id, reference_number, total_cartons, created_at
-        FROM release_note
-        WHERE tenant_id = %s AND status = 'active'
+        SELECT rn.id, rn.customer_id, rn.reference_number, rn.total_cartons, rn.created_at
+        FROM release_note rn
+        JOIN billing b
+          ON b.id = rn.billing_id AND b.tenant_id = rn.tenant_id
+        WHERE rn.tenant_id = %s
+          AND rn.status = 'active'
+          AND b.status NOT IN ('cancelled', 'waived')
         """,
         (tenant_id,),
     )

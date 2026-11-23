@@ -13,6 +13,7 @@ from typing import Any
 from shared.auth import get_tenant_context
 from shared.exceptions import LogisticsBaseError, ResourceNotFoundError
 from shared.logging_config import bind_log_context, clear_log_context, setup_logging
+from shared.metering import record_usage
 from shared.observability import init_tracing
 from shared.responses import error_response, success
 
@@ -41,7 +42,9 @@ def lambda_handler(event: dict[str, Any], context: Any) -> dict[str, Any]:
         if method == "GET" and path.rstrip("/") == "/v1/search":
             ctx = get_tenant_context(event)
             # The text searched for is never logged: it can be a customer's name or phone number.
-            return success(service.search(ctx.tenant_id, _qp(event, "q"), ctx), request_id=request_id)
+            result = service.search(ctx.tenant_id, _qp(event, "q"), ctx)
+            record_usage(ctx.tenant_id, "api_calls", request_id=request_id)
+            return success(result, request_id=request_id)
         raise ResourceNotFoundError("route", path)
     except LogisticsBaseError as exc:
         logger.warning("Business error: %s - %s", exc.error_code, exc.message)

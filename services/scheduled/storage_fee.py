@@ -10,7 +10,8 @@ BR-SF-001 / BR-SF-002 / BR-SF-003:
 """
 
 import logging
-from datetime import date
+from collections import defaultdict
+from datetime import UTC, date, datetime
 from decimal import Decimal
 from typing import Any
 
@@ -78,22 +79,60 @@ def _process_tenant(tenant_id: str) -> int:
 
     grace_period = int(config.get("grace_period_days", _DEFAULT_GRACE_PERIOD))
     daily_rate = Decimal(str(config.get("daily_fee_per_carton_ngn", _DEFAULT_DAILY_RATE_NGN)))
-    today = date.today()
+    today = datetime.now(UTC).date()
 
     active_notes = _get_active_release_notes(tenant_id)
     fees_accrued = 0
 
+    # Group notes by billing_id so split release notes on the same invoice do not
+    # shadow each other under UNIQUE(billing_id, accrual_date).
+    notes_by_billing: dict[str, list[dict[str, Any]]] = defaultdict(list)
     for note in active_notes:
-        try:
-            accrued = _accrue_for_note(tenant_id, note, grace_period, daily_rate, today)
-            fees_accrued += 1 if accrued else 0
-        except Exception:
-            logger.exception(
-                "Storage fee error for release_note %s",
-                note["id"],
-                extra={"tenant_id": tenant_id},
-            )
-            record_failure("scheduled_job_step")
+        notes_by_billing[str(note["billing_id"])].append(note)
+
+    for billing_id, billing_notes in notes_by_billing.items():
+        if len(billing_notes) == 1:
+            note = billing_notes[0]
+            try:
+                accrued = _accrue_for_note(tenant_id, note, grace_period, daily_rate, today)
+                fees_accrued += 1 if accrued else 0
+            except Exception:
+                logger.exception(
+                    "Storage fee error for release_note %s",
+                    note["id"],
+                    extra={"tenant_id": tenant_id},
+                )
+                record_failure("scheduled_job_step")
+        else:
+            try:
+                overdue_notes = []
+                for n in billing_notes:
+                    created_at = n["created_at"]
+                    created_date = created_at.date() if hasattr(created_at, "date") else created_at
+                    if (today - created_date).days > grace_period:
+                        overdue_notes.append(n)
+                if not overdue_notes:
+                    continue
+                total_cartons = sum(int(n["total_cartons"]) for n in overdue_notes)
+                total_picked = sum(_sum_cartons_picked(tenant_id, str(n["id"])) for n in overdue_notes)
+                oldest = min(
+                    overdue_notes,
+                    key=lambda n: n["created_at"].date() if hasattr(n["created_at"], "date") else n["created_at"],
+                )
+                combined_note = {
+                    **oldest,
+                    "total_cartons": total_cartons,
+                    "_precomputed_picked": total_picked,
+                }
+                accrued = _accrue_for_note(tenant_id, combined_note, grace_period, daily_rate, today)
+                fees_accrued += 1 if accrued else 0
+            except Exception:
+                logger.exception(
+                    "Storage fee error for billing %s",
+                    billing_id,
+                    extra={"tenant_id": tenant_id},
+                )
+                record_failure("scheduled_job_step")
 
     return fees_accrued
 
@@ -119,7 +158,9 @@ def _accrue_for_note(
     note_id = str(note["id"])
     billing_id = str(note["billing_id"])
 
-    cartons_picked = _sum_cartons_picked(tenant_id, note_id)
+    cartons_picked = (
+        int(note["_precomputed_picked"]) if "_precomputed_picked" in note else _sum_cartons_picked(tenant_id, note_id)
+    )
     unreleased = note["total_cartons"] - cartons_picked
     if unreleased <= 0:
         return False
@@ -222,10 +263,14 @@ def _get_active_release_notes(tenant_id: str) -> list[dict[str, Any]]:
     return execute_with_tenant(
         tenant_id,
         """
-        SELECT id, billing_id, customer_id, container_id,
-               total_cartons, created_at
-        FROM release_note
-        WHERE tenant_id = %s AND status = 'active'
+        SELECT rn.id, rn.billing_id, rn.customer_id, rn.container_id,
+               rn.total_cartons, rn.created_at
+        FROM release_note rn
+        JOIN billing b
+          ON b.id = rn.billing_id AND b.tenant_id = rn.tenant_id
+        WHERE rn.tenant_id = %s
+          AND rn.status IN ('active', 'expired')
+          AND b.status NOT IN ('cancelled', 'waived')
         """,
         (tenant_id,),
     )

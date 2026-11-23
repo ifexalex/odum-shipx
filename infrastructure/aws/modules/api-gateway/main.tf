@@ -257,6 +257,7 @@ locals {
     "GET /v1/tenant/notification-templates/{event}/{channel}" = "tenant_management"
     "PUT /v1/tenant/notification-templates/{event}/{channel}" = "tenant_management"
     "POST /v1/tenant/users/{id}/resend-invite"                = "tenant_management"
+    "POST /v1/tenant/users/{id}/resend-activation"            = "tenant_management"
     "POST /v1/tenant/users/{id}/reset-password"               = "tenant_management"
     "POST /v1/customers/{id}/invite"                          = "tenant_management"
 

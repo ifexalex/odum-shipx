@@ -55,6 +55,7 @@ OPERATIONAL_EVENTS: frozenset[str] = frozenset(
         "customer_registered",
         "storage_first_reminder",
         "storage_final_reminder",
+        "release_note_expired",
         # Sent to the tenant's own people, not to a customer: there is no customer preference to honour.
         "tenant_onboarded",
         "tenant_suspended",
