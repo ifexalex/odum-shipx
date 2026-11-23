@@ -471,3 +471,180 @@ class TestBatchCNotificationsJobsMeteringSearch:
             mock_shipments.assert_called_once()
             mock_notes.assert_called_once()
             mock_invoices.assert_not_called()
+
+
+class TestPaymentReleaseHardeningGuards:
+    def test_reissue_release_note_guards(self) -> None:
+        from services.payment_release import service as pr_svc
+
+        expired_note = {
+            "id": "note-1",
+            "status": "expired",
+            "billing_id": BILLING_ID,
+            "is_on_credit": False,
+            "carton_tags": ["TAG-1", "TAG-2"],
+            "total_cartons": 2,
+            "packages_released": 2,
+        }
+        # Not found
+        with patch("services.payment_release.service.repo.get_release_note_by_id", return_value=None):
+            with pytest.raises(ResourceNotFoundError):
+                pr_svc.reissue_release_note(TENANT_ID, "note-missing", USER_ID, _ctx())
+
+        # Locked row no longer expired
+        with (
+            patch("services.payment_release.service.repo.get_release_note_by_id", return_value=expired_note),
+            patch("services.payment_release.service.repo.get_billing_by_id", return_value={"status": "paid", "balance_ngn": "0"}),
+            patch("services.payment_release.service.repo.get_tenant_short", return_value="ACME"),
+            patch("services.payment_release.service.tenant_transaction", return_value=nullcontext()),
+            patch("services.payment_release.service.repo.lock_release_note", return_value={"status": "picked_up"}),
+        ):
+            with pytest.raises(BusinessRuleViolationError, match="expired"):
+                pr_svc.reissue_release_note(TENANT_ID, "note-1", USER_ID, _ctx())
+
+        # Cancelled billing
+        with (
+            patch("services.payment_release.service.repo.get_release_note_by_id", return_value=expired_note),
+            patch("services.payment_release.service.repo.get_billing_by_id", return_value={"status": "paid", "balance_ngn": "0"}),
+            patch("services.payment_release.service.repo.get_tenant_short", return_value="ACME"),
+            patch("services.payment_release.service.tenant_transaction", return_value=nullcontext()),
+            patch("services.payment_release.service.repo.lock_release_note", return_value=expired_note),
+            patch("services.payment_release.service.repo.lock_billing", return_value={"status": "cancelled", "balance_ngn": "0"}),
+        ):
+            with pytest.raises(BusinessRuleViolationError, match="cancelled"):
+                pr_svc.reissue_release_note(TENANT_ID, "note-1", USER_ID, _ctx())
+
+        # Unpaid billing balance
+        with (
+            patch("services.payment_release.service.repo.get_release_note_by_id", return_value=expired_note),
+            patch(
+                "services.payment_release.service.repo.get_billing_by_id",
+                return_value={"status": "unpaid", "balance_ngn": "5000"},
+            ),
+            patch("services.payment_release.service.repo.get_tenant_short", return_value="ACME"),
+            patch("services.payment_release.service.tenant_transaction", return_value=nullcontext()),
+            patch("services.payment_release.service.repo.lock_release_note", return_value=expired_note),
+            patch("services.payment_release.service.repo.lock_billing", return_value={"status": "unpaid", "balance_ngn": "5000"}),
+        ):
+            with pytest.raises(BusinessRuleViolationError, match="unpaid"):
+                pr_svc.reissue_release_note(TENANT_ID, "note-1", USER_ID, _ctx())
+
+        # Already reissued
+        with (
+            patch("services.payment_release.service.repo.get_release_note_by_id", return_value=expired_note),
+            patch("services.payment_release.service.repo.get_billing_by_id", return_value={"status": "paid", "balance_ngn": "0"}),
+            patch("services.payment_release.service.repo.get_tenant_short", return_value="ACME"),
+            patch("services.payment_release.service.tenant_transaction", return_value=nullcontext()),
+            patch("services.payment_release.service.repo.lock_release_note", return_value=expired_note),
+            patch("services.payment_release.service.repo.lock_billing", return_value={"status": "paid", "balance_ngn": "0"}),
+            patch("services.payment_release.service.repo.has_active_child_release_note", return_value=True),
+        ):
+            with pytest.raises(BusinessRuleViolationError, match="already been re-issued"):
+                pr_svc.reissue_release_note(TENANT_ID, "note-1", USER_ID, _ctx())
+
+        # All tagged cartons already picked up
+        with (
+            patch("services.payment_release.service.repo.get_release_note_by_id", return_value=expired_note),
+            patch("services.payment_release.service.repo.get_billing_by_id", return_value={"status": "paid", "balance_ngn": "0"}),
+            patch("services.payment_release.service.repo.get_tenant_short", return_value="ACME"),
+            patch("services.payment_release.service.tenant_transaction", return_value=nullcontext()),
+            patch("services.payment_release.service.repo.lock_release_note", return_value=expired_note),
+            patch("services.payment_release.service.repo.lock_billing", return_value={"status": "paid", "balance_ngn": "0"}),
+            patch("services.payment_release.service.repo.has_active_child_release_note", return_value=False),
+            patch("services.payment_release.service.repo.get_picked_carton_tags", return_value=["TAG-1", "TAG-2"]),
+        ):
+            with pytest.raises(BusinessRuleViolationError, match="already been picked up"):
+                pr_svc.reissue_release_note(TENANT_ID, "note-1", USER_ID, _ctx())
+
+        # Untagged note with all cartons already picked up
+        untagged_note = {**expired_note, "carton_tags": [], "total_cartons": 3}
+        with (
+            patch("services.payment_release.service.repo.get_release_note_by_id", return_value=untagged_note),
+            patch("services.payment_release.service.repo.get_billing_by_id", return_value={"status": "paid", "balance_ngn": "0"}),
+            patch("services.payment_release.service.repo.get_tenant_short", return_value="ACME"),
+            patch("services.payment_release.service.tenant_transaction", return_value=nullcontext()),
+            patch("services.payment_release.service.repo.lock_release_note", return_value=untagged_note),
+            patch("services.payment_release.service.repo.lock_billing", return_value={"status": "paid", "balance_ngn": "0"}),
+            patch("services.payment_release.service.repo.has_active_child_release_note", return_value=False),
+            patch("services.payment_release.service.repo.sum_cartons_picked_for_release_note", return_value=3),
+        ):
+            with pytest.raises(BusinessRuleViolationError, match="already been picked up"):
+                pr_svc.reissue_release_note(TENANT_ID, "note-1", USER_ID, _ctx())
+
+    def test_record_pickup_hardening_guards(self) -> None:
+        from services.payment_release import service as pr_svc
+        from services.payment_release.models import RecordPickupRequest
+        from shared.exceptions import IllegalTransitionError
+
+        active_note = {
+            "id": "note-2",
+            "status": "active",
+            "billing_id": BILLING_ID,
+            "customer_id": CUSTOMER_ID,
+            "valid_until": "2099-01-01T00:00:00+00:00",
+            "carton_tags": ["TAG-1", "TAG-2"],
+            "total_cartons": 2,
+        }
+        base_req = RecordPickupRequest(collected_by_name="Jane Doe", cartons_released=1)
+
+        # Not found
+        with patch("services.payment_release.service.repo.get_release_note_by_id", return_value=None):
+            with pytest.raises(ResourceNotFoundError):
+                pr_svc.record_pickup(TENANT_ID, "note-missing", base_req, USER_ID, _ctx())
+
+        # Non-active status
+        with patch(
+            "services.payment_release.service.repo.get_release_note_by_id", return_value={**active_note, "status": "expired"}
+        ):
+            with pytest.raises(IllegalTransitionError):
+                pr_svc.record_pickup(TENANT_ID, "note-2", base_req, USER_ID, _ctx())
+
+        # Expired timestamp
+        with patch(
+            "services.payment_release.service.repo.get_release_note_by_id",
+            return_value={**active_note, "valid_until": "2020-01-01T00:00:00+00:00"},
+        ):
+            with pytest.raises(BusinessRuleViolationError, match="expired"):
+                pr_svc.record_pickup(TENANT_ID, "note-2", base_req, USER_ID, _ctx())
+
+        # Missing delegate details
+        delegate_req = RecordPickupRequest(is_delegate=True, cartons_released=1)
+        with patch("services.payment_release.service.repo.get_release_note_by_id", return_value=active_note):
+            with pytest.raises(BusinessRuleViolationError, match="Delegate details required"):
+                pr_svc.record_pickup(TENANT_ID, "note-2", delegate_req, USER_ID, _ctx())
+
+        # Tag count mismatch
+        mismatch_req = RecordPickupRequest(collected_by_name="Jane Doe", cartons_released=2, carton_tags_picked=["TAG-1"])
+        with patch("services.payment_release.service.repo.get_release_note_by_id", return_value=active_note):
+            with pytest.raises(BusinessRuleViolationError, match="must match cartons_released"):
+                pr_svc.record_pickup(TENANT_ID, "note-2", mismatch_req, USER_ID, _ctx())
+
+        # Locked row inactive
+        with (
+            patch("services.payment_release.service.repo.get_release_note_by_id", return_value=active_note),
+            patch("services.payment_release.service.tenant_transaction", return_value=nullcontext()),
+            patch("services.payment_release.service.repo.lock_release_note", return_value={"status": "picked_up"}),
+        ):
+            with pytest.raises(IllegalTransitionError):
+                pr_svc.record_pickup(TENANT_ID, "note-2", base_req, USER_ID, _ctx())
+
+        # Invalid carton tag not on note
+        invalid_tag_req = RecordPickupRequest(collected_by_name="Jane Doe", cartons_released=1, carton_tags_picked=["TAG-999"])
+        with (
+            patch("services.payment_release.service.repo.get_release_note_by_id", return_value=active_note),
+            patch("services.payment_release.service.tenant_transaction", return_value=nullcontext()),
+            patch("services.payment_release.service.repo.lock_release_note", return_value=active_note),
+        ):
+            with pytest.raises(BusinessRuleViolationError, match="not on this release note"):
+                pr_svc.record_pickup(TENANT_ID, "note-2", invalid_tag_req, USER_ID, _ctx())
+
+        # Duplicate already-picked tag
+        dup_tag_req = RecordPickupRequest(collected_by_name="Jane Doe", cartons_released=1, carton_tags_picked=["TAG-1"])
+        with (
+            patch("services.payment_release.service.repo.get_release_note_by_id", return_value=active_note),
+            patch("services.payment_release.service.tenant_transaction", return_value=nullcontext()),
+            patch("services.payment_release.service.repo.lock_release_note", return_value=active_note),
+            patch("services.payment_release.service.repo.get_picked_carton_tags", return_value=["TAG-1"]),
+        ):
+            with pytest.raises(BusinessRuleViolationError, match="already picked up"):
+                pr_svc.record_pickup(TENANT_ID, "note-2", dup_tag_req, USER_ID, _ctx())
