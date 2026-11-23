@@ -142,15 +142,17 @@ def get_manifest_for_export(tenant_id: str, manifest_id: str) -> dict[str, Any] 
 
 
 def get_items_for_manifest(tenant_id: str, container_id: str) -> list[dict[str, Any]]:
-    """Return all packing list items for a container with customer_name."""
+    """Return all approved packing list items for a container with customer_id and customer_name."""
     return execute_with_tenant(
         tenant_id,
         """
-        SELECT pli.*, c.name AS customer_name
+        SELECT pli.*, pl.customer_id::text AS customer_id, c.name AS customer_name
         FROM packing_list_item pli
         JOIN packing_list pl ON pl.id = pli.packing_list_id
         JOIN customer c ON c.id = pl.customer_id AND c.tenant_id = pl.tenant_id
-        WHERE pl.tenant_id = %s AND pl.container_id = %s
+        WHERE pl.tenant_id = %s
+          AND pl.container_id = %s
+          AND pl.status = 'approved'
         ORDER BY c.name ASC, pli.carton_tag ASC
         """,
         (tenant_id, container_id),
@@ -316,7 +318,8 @@ def list_containers_for_export(
                (SELECT COALESCE(SUM(pli.cbm), 0)
                 FROM packing_list_item pli
                 JOIN packing_list pl2 ON pl2.id = pli.packing_list_id
-                WHERE pl2.container_id = c.id AND pl2.tenant_id = c.tenant_id) AS total_cbm_packed
+                WHERE pl2.container_id = c.id AND pl2.tenant_id = c.tenant_id
+                  AND pl2.status <> 'rejected') AS total_cbm_packed
         FROM container c
         WHERE {where_clause}
     """  # noqa: S608 - only a fixed filter clause is interpolated; every value is a bound parameter
@@ -330,7 +333,7 @@ def list_containers_for_export(
 def get_container_by_id(tenant_id: str, container_id: str) -> dict[str, Any] | None:
     rows = execute_with_tenant(
         tenant_id,
-        "SELECT id, container_number FROM container WHERE tenant_id = %s AND id = %s LIMIT 1",
+        "SELECT id, container_number, status FROM container WHERE tenant_id = %s AND id = %s LIMIT 1",
         (tenant_id, container_id),
     )
     return rows[0] if rows else None
@@ -489,7 +492,19 @@ def get_next_carton_sequence(tenant_id: str, container_id: str) -> int:
     rows = execute_with_tenant(
         tenant_id,
         """
-        SELECT COUNT(*) AS cnt
+        SELECT GREATEST(
+            COUNT(*),
+            COALESCE(
+                MAX(
+                    CASE
+                        WHEN pli.carton_tag ~ '-[0-9]+$'
+                        THEN substring(pli.carton_tag FROM '([0-9]+)$')::int
+                        ELSE 0
+                    END
+                ),
+                0
+            )
+        ) AS cnt
         FROM packing_list_item pli
         JOIN packing_list pl ON pl.id = pli.packing_list_id
         WHERE pl.tenant_id = %s AND pl.container_id = %s
@@ -499,18 +514,43 @@ def get_next_carton_sequence(tenant_id: str, container_id: str) -> int:
     return int(rows[0]["cnt"]) + 1 if rows else 1
 
 
-def get_existing_tracking_code(tenant_id: str, customer_id: str, received_date: Any) -> str | None:
-    rows = execute_with_tenant(
-        tenant_id,
-        """
-        SELECT pli.tracking_code
-        FROM packing_list_item pli
-        JOIN packing_list pl ON pl.id = pli.packing_list_id
-        WHERE pl.tenant_id = %s AND pl.customer_id = %s AND pli.received_date = %s
-        LIMIT 1
-        """,
-        (tenant_id, customer_id, received_date),
-    )
+def get_existing_tracking_code(
+    tenant_id: str,
+    customer_id: str,
+    received_date: Any,
+    container_id: str | None = None,
+) -> str | None:
+    if container_id:
+        rows = execute_with_tenant(
+            tenant_id,
+            """
+            SELECT pli.tracking_code
+            FROM packing_list_item pli
+            JOIN packing_list pl ON pl.id = pli.packing_list_id
+            WHERE pl.tenant_id = %s
+              AND pl.container_id = %s
+              AND pl.customer_id = %s
+              AND pli.received_date = %s
+              AND pl.status <> 'rejected'
+            LIMIT 1
+            """,
+            (tenant_id, container_id, customer_id, received_date),
+        )
+    else:
+        rows = execute_with_tenant(
+            tenant_id,
+            """
+            SELECT pli.tracking_code
+            FROM packing_list_item pli
+            JOIN packing_list pl ON pl.id = pli.packing_list_id
+            WHERE pl.tenant_id = %s
+              AND pl.customer_id = %s
+              AND pli.received_date = %s
+              AND pl.status <> 'rejected'
+            LIMIT 1
+            """,
+            (tenant_id, customer_id, received_date),
+        )
     return rows[0]["tracking_code"] if rows else None
 
 
@@ -664,12 +704,14 @@ def create_customer(tenant_id: str, name: str, phone: str | None) -> dict[str, A
 
 
 def find_packing_list(tenant_id: str, container_id: str, customer_id: str) -> dict[str, Any] | None:
-    """Return the packing list for (container, customer), or None."""
+    """Return an editable packing list for (container, customer), or the latest one if none is editable."""
     rows = execute_with_tenant(
         tenant_id,
         """
         SELECT * FROM packing_list
         WHERE tenant_id = %s AND container_id = %s AND customer_id = %s
+        ORDER BY CASE WHEN status IN ('draft', 'pending_approval') THEN 0 ELSE 1 END,
+                 created_at DESC
         LIMIT 1
         """,
         (tenant_id, container_id, customer_id),

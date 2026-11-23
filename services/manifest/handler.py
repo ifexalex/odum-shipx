@@ -24,7 +24,7 @@ from shared.exceptions import LogisticsBaseError, ResourceNotFoundError
 from shared.logging_config import bind_log_context, clear_log_context, setup_logging
 from shared.metering import record_usage
 from shared.observability import init_tracing
-from shared.pagination import decode_cursor
+from shared.pagination import parse_pagination_params
 from shared.responses import error_response, paginated, success
 from shared.tenant_context import UserRole
 from shared.validation import parse_validated
@@ -46,6 +46,7 @@ _READ_ROLES = (
 _VERIFY_ROLES = (
     UserRole.CHINA_OFFICE_STAFF,
     UserRole.NIGERIA_OFFICE_STAFF,
+    UserRole.TENANT_ADMIN,
 )
 _RESOLVE_ROLES = (
     UserRole.NIGERIA_OFFICE_STAFF,
@@ -165,8 +166,7 @@ def _manifest_routes(
                 filters["verification_status"] = _qp(event, "verification_status")
             if _qp(event, "container_id"):
                 filters["container_id"] = _qp(event, "container_id")
-            limit = int(_qp(event, "limit", 50))
-            cursor = decode_cursor(_qp(event, "cursor"))
+            cursor, limit = parse_pagination_params(event.get("queryStringParameters"), default_limit=50)
             page, next_cursor, has_more, total = service.list_manifests(tenant_id, filters, limit, cursor)
             return paginated(page, next_cursor, has_more, total_count=total, request_id=request_id)
 

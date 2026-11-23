@@ -132,7 +132,7 @@ def get_customer_summaries(tenant_id: str, manifest_id: str) -> list[dict[str, A
             c.name                                                                  AS customer_name,
             c.phone                                                                 AS customer_phone,
             (array_agg(pl.id::text ORDER BY pl.created_at ASC))[1]                 AS packing_list_id,
-            COUNT(pli.id)                                                           AS carton_count,
+            COALESCE(SUM(COALESCE(pli.quantity, 1)), 0)::int                        AS carton_count,
             COALESCE(SUM(pli.weight_actual_kg), 0)                                 AS total_weight_kg,
             COALESCE(SUM(pli.cbm), 0)                                              AS total_cbm,
             array_agg(pli.carton_tag ORDER BY pli.created_at ASC)                  AS carton_tags
@@ -201,7 +201,9 @@ def set_manifest_verified(
             verified_at         = NOW(),
             notes               = COALESCE(%(notes)s, notes),
             updated_at          = NOW()
-        WHERE tenant_id = %(tenant_id)s AND id = %(id)s
+        WHERE tenant_id = %(tenant_id)s
+          AND id = %(id)s
+          AND verification_status = 'pending'
         RETURNING *
         """,
         {
@@ -220,12 +222,14 @@ def resolve_manifest_discrepancy(
     resolution_notes: str,
     final_counts: dict[str, Any] | None = None,
 ) -> dict[str, Any] | None:
-    """Transition discrepancies_found → resolved and record resolution notes."""
+    """Transition discrepancies_found → resolved and record resolution actor/timestamp/notes."""
     return execute_write_with_tenant(
         tenant_id,
         """
         UPDATE manifest
         SET verification_status = 'resolved',
+            verified_by         = %(resolved_by)s,
+            verified_at         = NOW(),
             notes               = COALESCE(%(notes)s, notes),
             updated_at          = NOW()
         WHERE tenant_id = %(tenant_id)s
@@ -236,6 +240,7 @@ def resolve_manifest_discrepancy(
         {
             "tenant_id": tenant_id,
             "id": manifest_id,
+            "resolved_by": resolved_by,
             "notes": resolution_notes,
         },
     )
@@ -254,7 +259,9 @@ def set_manifest_discrepancies_found(
             verified_by         = %(verified_by)s,
             verified_at         = NOW(),
             updated_at          = NOW()
-        WHERE tenant_id = %(tenant_id)s AND id = %(id)s
+        WHERE tenant_id = %(tenant_id)s
+          AND id = %(id)s
+          AND verification_status = 'pending'
         RETURNING *
         """,
         {"verified_by": verified_by, "tenant_id": tenant_id, "id": manifest_id},
@@ -298,38 +305,61 @@ def get_items_with_weights_for_manifest(tenant_id: str, manifest_id: str) -> lis
 # ---------------------------------------------------------------------------
 
 
-def get_item_by_carton_tag(tenant_id: str, carton_tag: str) -> dict[str, Any] | None:
-    """Look up packing_list_id + tracking_code from a carton tag.
+def get_item_by_carton_tag(
+    tenant_id: str,
+    carton_tag: str,
+    *,
+    manifest_id: str | None = None,
+    customer_id: str | None = None,
+) -> dict[str, Any] | None:
+    """Look up packing_list_id + tracking_code from a carton tag on an approved packing list.
 
-    packing_list_item has no RLS — join through packing_list for tenant scope.
+    When manifest_id / customer_id are supplied, scopes strictly to that manifest
+    and customer so duplicate tags across containers cannot cross-link.
     """
+    conditions = [
+        "pli.carton_tag = %(carton_tag)s",
+        "pl.tenant_id = %(tenant_id)s",
+        "pl.status = 'approved'",
+    ]
+    params: dict[str, Any] = {"carton_tag": carton_tag, "tenant_id": tenant_id}
+    if manifest_id:
+        conditions.append("pl.manifest_id = %(manifest_id)s")
+        params["manifest_id"] = manifest_id
+    if customer_id:
+        conditions.append("pl.customer_id = %(customer_id)s")
+        params["customer_id"] = customer_id
     rows = execute_with_tenant(
         tenant_id,
-        """
+        f"""
         SELECT pli.packing_list_id::text, pli.tracking_code
         FROM packing_list_item pli
         JOIN packing_list pl ON pl.id = pli.packing_list_id
-        WHERE pli.carton_tag = %s AND pl.tenant_id = %s
+        WHERE {" AND ".join(conditions)}
         LIMIT 1
         """,
-        (carton_tag, tenant_id),
+        params,
     )
     return rows[0] if rows else None
 
 
 def create_missing_item(tenant_id: str, data: dict[str, Any]) -> dict[str, Any] | None:
+    payload = {
+        **data,
+        "carton_tags": data.get("carton_tags") or ([data["carton_tag"]] if data.get("carton_tag") else []),
+    }
     return execute_write_with_tenant(
         tenant_id,
         """
         INSERT INTO missing_item (
             tenant_id, manifest_id, customer_id, packing_list_id,
-            carton_tag, tracking_code, description, notes, reported_by
+            carton_tag, carton_tags, tracking_code, description, notes, reported_by
         ) VALUES (
             %(tenant_id)s, %(manifest_id)s, %(customer_id)s, %(packing_list_id)s,
-            %(carton_tag)s, %(tracking_code)s, %(description)s, %(notes)s, %(reported_by)s
+            %(carton_tag)s, %(carton_tags)s, %(tracking_code)s, %(description)s, %(notes)s, %(reported_by)s
         ) RETURNING *
         """,
-        data,
+        payload,
     )
 
 

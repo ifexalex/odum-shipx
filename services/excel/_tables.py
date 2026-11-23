@@ -7,6 +7,7 @@ staff, and a cell that begins with `=`, `+`, `-` or `@` runs as a formula when t
 
 import csv
 import io
+import re
 from collections.abc import Iterable
 from dataclasses import dataclass
 from datetime import UTC, date, datetime
@@ -21,7 +22,9 @@ from openpyxl.utils import get_column_letter
 ColumnKind = Literal["text", "integer", "number", "money", "date", "datetime"]
 
 # Characters that make a spreadsheet treat a cell as a formula (OWASP, "CSV Injection").
-_FORMULA_PREFIXES = ("=", "+", "-", "@", "\t", "\r")
+_FORMULA_PREFIXES = ("=", "+", "-", "@", "\t", "\r", "\n")
+_LEADING_FORMULA_CHARS = ("=", "+", "-", "@")
+_ILLEGAL_SHEET_CHARS_RE = re.compile(r"[\\/*?:\[\]]")
 _MAX_COLUMN_WIDTH = 40
 _XLSX_FORMATS: dict[str, str] = {
     "integer": "#,##0",
@@ -74,7 +77,9 @@ def _csv_value(kind: ColumnKind, raw: Any) -> str:
     if kind == "datetime":
         return _as_utc(raw).strftime("%Y-%m-%d %H:%M") if isinstance(raw, datetime) else str(raw)
     text = str(raw)
-    return f"'{text}" if text.startswith(_FORMULA_PREFIXES) else text
+    if text.startswith(_FORMULA_PREFIXES) or text.lstrip(" \t\r\n").startswith(_LEADING_FORMULA_CHARS):
+        return f"'{text}"
+    return text
 
 
 def neutralise_formulas(workbook: openpyxl.Workbook) -> None:
@@ -97,7 +102,9 @@ def csv_safe(value: Any) -> Any:
     Text that a spreadsheet would read as a formula gets a leading apostrophe. Numbers, dates and None are returned as
     they are, so a negative amount held as a number is not mistaken for a formula.
     """
-    if isinstance(value, str) and value.startswith(_FORMULA_PREFIXES):
+    if isinstance(value, str) and (
+        value.startswith(_FORMULA_PREFIXES) or value.lstrip(" \t\r\n").startswith(_LEADING_FORMULA_CHARS)
+    ):
         return f"'{value}"
     return value
 
@@ -106,7 +113,8 @@ def build_xlsx(sheet_title: str, columns: list[Column], rows: Iterable[dict[str,
     """A single-sheet workbook: bold frozen header, a filter on every column, widths fitted to the content."""
     workbook = openpyxl.Workbook()
     sheet = workbook.active
-    sheet.title = sheet_title
+    safe_title = _ILLEGAL_SHEET_CHARS_RE.sub("_", str(sheet_title or "Sheet")).strip() or "Sheet"
+    sheet.title = safe_title[:31]
 
     for index, column in enumerate(columns, 1):
         cell = sheet.cell(row=1, column=index, value=column.header)

@@ -96,11 +96,23 @@ def get_tenant_short(tenant_id: str) -> str:
 
 
 def get_next_carton_sequence(tenant_id: str, container_id: str) -> int:
-    """Return 1-based next carton sequence for a container."""
+    """Return 1-based next carton sequence for a container, safe against prior deletions."""
     rows = execute_with_tenant(
         tenant_id,
         """
-        SELECT COUNT(*) AS cnt
+        SELECT GREATEST(
+            COUNT(*),
+            COALESCE(
+                MAX(
+                    CASE
+                        WHEN pli.carton_tag ~ '-[0-9]+$'
+                        THEN substring(pli.carton_tag FROM '([0-9]+)$')::int
+                        ELSE 0
+                    END
+                ),
+                0
+            )
+        ) AS cnt
         FROM packing_list_item pli
         JOIN packing_list pl ON pl.id = pli.packing_list_id
         WHERE pl.tenant_id = %s AND pl.container_id = %s
@@ -123,19 +135,44 @@ def get_next_pl_reference(tenant_id: str) -> str:
     return f"{prefix}{seq:03d}"
 
 
-def get_existing_tracking_code(tenant_id: str, customer_id: str, received_date: date) -> str | None:
-    """Return an existing tracking code for (customer, date) if one already exists."""
-    rows = execute_with_tenant(
-        tenant_id,
-        """
-        SELECT pli.tracking_code
-        FROM packing_list_item pli
-        JOIN packing_list pl ON pl.id = pli.packing_list_id
-        WHERE pl.tenant_id = %s AND pl.customer_id = %s AND pli.received_date = %s
-        LIMIT 1
-        """,
-        (tenant_id, customer_id, received_date),
-    )
+def get_existing_tracking_code(
+    tenant_id: str,
+    customer_id: str,
+    received_date: date,
+    container_id: str | None = None,
+) -> str | None:
+    """Return an existing non-rejected tracking code for (container, customer, date) if one exists."""
+    if container_id:
+        rows = execute_with_tenant(
+            tenant_id,
+            """
+            SELECT pli.tracking_code
+            FROM packing_list_item pli
+            JOIN packing_list pl ON pl.id = pli.packing_list_id
+            WHERE pl.tenant_id = %s
+              AND pl.container_id = %s
+              AND pl.customer_id = %s
+              AND pli.received_date = %s
+              AND pl.status <> 'rejected'
+            LIMIT 1
+            """,
+            (tenant_id, container_id, customer_id, received_date),
+        )
+    else:
+        rows = execute_with_tenant(
+            tenant_id,
+            """
+            SELECT pli.tracking_code
+            FROM packing_list_item pli
+            JOIN packing_list pl ON pl.id = pli.packing_list_id
+            WHERE pl.tenant_id = %s
+              AND pl.customer_id = %s
+              AND pli.received_date = %s
+              AND pl.status <> 'rejected'
+            LIMIT 1
+            """,
+            (tenant_id, customer_id, received_date),
+        )
     return rows[0]["tracking_code"] if rows else None
 
 
@@ -476,8 +513,25 @@ def delete_items_by_packing_list(tenant_id: str, pl_id: str) -> None:
 # ---------------------------------------------------------------------------
 
 
-def set_packing_list_status(tenant_id: str, pl_id: str, status: str) -> dict[str, Any] | None:
-    """Generic status update for draft ↔ pending_approval transitions."""
+def set_packing_list_status(
+    tenant_id: str,
+    pl_id: str,
+    status: str,
+    *,
+    expected_status: str | None = None,
+) -> dict[str, Any] | None:
+    """Generic status update for draft ↔ pending_approval transitions with optional CAS guard."""
+    if expected_status:
+        return execute_write_with_tenant(
+            tenant_id,
+            """
+            UPDATE packing_list
+            SET status = %(status)s, updated_at = NOW()
+            WHERE tenant_id = %(tenant_id)s AND id = %(id)s AND status = %(expected_status)s
+            RETURNING *
+            """,
+            {"status": status, "tenant_id": tenant_id, "id": pl_id, "expected_status": expected_status},
+        )
     return execute_write_with_tenant(
         tenant_id,
         """
@@ -497,7 +551,7 @@ def approve_packing_list_row(tenant_id: str, pl_id: str, approved_by: str) -> di
         UPDATE packing_list
         SET status = 'approved', approved_by = %(approved_by)s,
             approved_at = NOW(), updated_at = NOW()
-        WHERE tenant_id = %(tenant_id)s AND id = %(id)s
+        WHERE tenant_id = %(tenant_id)s AND id = %(id)s AND status = 'pending_approval'
         RETURNING *
         """,
         {"approved_by": approved_by, "tenant_id": tenant_id, "id": pl_id},
@@ -512,7 +566,7 @@ def reject_packing_list_row(tenant_id: str, pl_id: str, rejected_by: str, approv
         SET status = 'rejected', rejected_by = %(rejected_by)s,
             rejected_at = NOW(), approval_comments = %(comments)s::jsonb,
             updated_at = NOW()
-        WHERE tenant_id = %(tenant_id)s AND id = %(id)s
+        WHERE tenant_id = %(tenant_id)s AND id = %(id)s AND status = 'pending_approval'
         RETURNING *
         """,
         {
@@ -560,14 +614,38 @@ def get_manifest_by_container(tenant_id: str, container_id: str) -> dict[str, An
 
 
 def create_manifest(tenant_id: str, container_id: str) -> dict[str, Any] | None:
-    return execute_write_with_tenant(
+    created = execute_write_with_tenant(
         tenant_id,
         """
         INSERT INTO manifest (tenant_id, container_id)
         VALUES (%(tenant_id)s, %(container_id)s)
+        ON CONFLICT (tenant_id, container_id) DO NOTHING
         RETURNING *
         """,
         {"tenant_id": tenant_id, "container_id": container_id},
+    )
+    if created is not None:
+        return created
+    return get_manifest_by_container(tenant_id, container_id)
+
+
+def reset_manifest_verification_if_verified(tenant_id: str, manifest_id: str) -> None:
+    """When additional cargo is approved onto an already-verified manifest, reset
+    verification back to 'pending' so new items cannot bypass verification."""
+    execute_write_with_tenant(
+        tenant_id,
+        """
+        UPDATE manifest
+        SET verification_status = 'pending',
+            verified_by = NULL,
+            verified_at = NULL,
+            updated_at = NOW()
+        WHERE tenant_id = %s
+          AND id = %s
+          AND verification_status IN ('verified', 'discrepancies_found')
+        RETURNING id
+        """,
+        (tenant_id, manifest_id),
     )
 
 
@@ -584,10 +662,10 @@ def recalculate_manifest_totals(tenant_id: str, manifest_id: str) -> dict[str, A
             updated_at      = NOW()
         FROM (
             SELECT
-                COUNT(DISTINCT pl.customer_id)         AS customers,
-                COUNT(pli.id)                          AS cartons,
-                COALESCE(SUM(pli.weight_actual_kg), 0) AS weight,
-                COALESCE(SUM(pli.cbm), 0)              AS cbm
+                COUNT(DISTINCT pl.customer_id)                    AS customers,
+                COALESCE(SUM(COALESCE(pli.quantity, 1)), 0)::int  AS cartons,
+                COALESCE(SUM(pli.weight_actual_kg), 0)            AS weight,
+                COALESCE(SUM(pli.cbm), 0)                         AS cbm
             FROM packing_list pl
             JOIN packing_list_item pli ON pli.packing_list_id = pl.id
             WHERE pl.manifest_id = %(manifest_id)s
@@ -659,27 +737,41 @@ def get_packing_lists_by_ids(tenant_id: str, ids: list[str]) -> list[dict[str, A
     return list(rows)
 
 
-def bulk_set_status(tenant_id: str, ids: list[str], status: str, actor_id: str) -> list[dict[str, Any]]:
-    """Set status (+ the matching actor column) on multiple packing lists atomically.
-
-    Only the transitions the bulk endpoints actually perform are allowed. This
-    used to branch `if approved / else rejected`, which silently coerced *any*
-    other status to 'rejected' — passing 'pending_approval' marked the rows
-    rejected instead. Unknown statuses now raise rather than guessing.
-    """
+def bulk_set_status(
+    tenant_id: str,
+    ids: list[str],
+    status: str,
+    actor_id: str,
+    *,
+    expected_status: str | None = None,
+    approval_comments_json: str | None = None,
+) -> list[dict[str, Any]]:
+    """Set status (+ matching actor/timestamp/comments columns) on multiple packing lists atomically."""
     if not ids:
         return []
 
+    params: dict[str, Any] = {"tenant_id": tenant_id, "ids": ids, "actor_id": actor_id}
+
     if status == "approved":
-        set_clause = "status = 'approved', approved_by = %(actor_id)s"
+        set_clause = "status = 'approved', approved_by = %(actor_id)s, approved_at = NOW()"
     elif status == "rejected":
-        set_clause = "status = 'rejected', rejected_by = %(actor_id)s"
+        if approval_comments_json is not None:
+            set_clause = (
+                "status = 'rejected', rejected_by = %(actor_id)s, rejected_at = NOW(), "
+                "approval_comments = COALESCE(approval_comments, '[]'::jsonb) || %(comments)s::jsonb"
+            )
+            params["comments"] = approval_comments_json
+        else:
+            set_clause = "status = 'rejected', rejected_by = %(actor_id)s, rejected_at = NOW()"
     elif status == "pending_approval":
-        # Submitting for review records no actor column — approved_by /
-        # rejected_by belong to the reviewer, who hasn't acted yet.
         set_clause = "status = 'pending_approval'"
     else:
         raise ValueError(f"bulk_set_status does not support status: {status}")
+
+    status_guard = ""
+    if expected_status:
+        status_guard = " AND status = %(expected_status)s"
+        params["expected_status"] = expected_status
 
     rows = execute_write_with_tenant_many(
         tenant_id,
@@ -687,9 +779,9 @@ def bulk_set_status(tenant_id: str, ids: list[str], status: str, actor_id: str) 
         UPDATE packing_list
         SET {set_clause},
             updated_at = NOW()
-        WHERE tenant_id = %(tenant_id)s AND id = ANY(%(ids)s::uuid[])
+        WHERE tenant_id = %(tenant_id)s AND id = ANY(%(ids)s::uuid[]){status_guard}
         RETURNING *
         """,
-        {"tenant_id": tenant_id, "ids": ids, "actor_id": actor_id},
+        params,
     )
     return list(rows)

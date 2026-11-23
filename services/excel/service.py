@@ -6,14 +6,18 @@ import logging
 import re
 import uuid
 from datetime import UTC, date, datetime, timedelta
+from decimal import Decimal
 from io import BytesIO
 from typing import Any
 
 from services.billing import repository as billing_repo
+from services.metering.service import check_container_limit
 from services.tracking import repository as tracking_repo
 from shared import uploads
 from shared.audit import log_audit
-from shared.exceptions import BusinessRuleViolationError, ResourceNotFoundError
+from shared.cbm_rate import apply_min_cbm, get_min_cbm_per_item
+from shared.db import tenant_transaction
+from shared.exceptions import BusinessRuleViolationError, ResourceNotFoundError, ValidationError
 from shared.phone import dial_code_for_country, normalize_phone
 from shared.providers import get_storage_provider
 
@@ -68,16 +72,21 @@ def _disposition(filename: str, fmt: str) -> str:
     return f'{"inline" if fmt == "pdf" else "attachment"}; filename="{filename}"'
 
 
-def _upload_and_presign(tenant_id: str, filename: str, buf: BytesIO, fmt: str = "xlsx") -> dict[str, Any]:
+def _upload_and_presign(
+    tenant_id: str,
+    filename: str,
+    buf: BytesIO,
+    fmt: str = "xlsx",
+    *,
+    expires_in: int = _PRESIGNED_EXPIRY,
+) -> dict[str, Any]:
     today = date.today().strftime("%Y-%m-%d")
-    key = f"{tenant_id}/exports/{today}/{filename}"
+    key = f"{tenant_id}/exports/{today}/{uuid.uuid4().hex}/{filename}"
     file_bytes = buf.getvalue()
     storage = get_storage_provider()
     storage.put_object(key, file_bytes, content_type=_CONTENT_TYPES.get(fmt, _CONTENT_TYPES["xlsx"]))
-    download_url = storage.presigned_get_url(
-        key, expires_in=_PRESIGNED_EXPIRY, response_content_disposition=_disposition(filename, fmt)
-    )
-    expires_at = (datetime.now(UTC) + timedelta(seconds=_PRESIGNED_EXPIRY)).strftime("%Y-%m-%dT%H:%M:%SZ")
+    download_url = storage.presigned_get_url(key, expires_in=expires_in, response_content_disposition=_disposition(filename, fmt))
+    expires_at = (datetime.now(UTC) + timedelta(seconds=expires_in)).strftime("%Y-%m-%dT%H:%M:%SZ")
     return {
         "filename": filename,
         "download_url": download_url,
@@ -120,7 +129,14 @@ _PL_COLUMNS = [
 ]
 
 
-def export_packing_list(tenant_id: str, pl_id: str, fmt: str = "xlsx") -> dict[str, Any]:
+def export_packing_list(
+    tenant_id: str,
+    pl_id: str,
+    fmt: str = "xlsx",
+    *,
+    actor_id: str | None = None,
+    actor_role: str = "",
+) -> dict[str, Any]:
     pl = repo.get_packing_list_for_export(tenant_id, pl_id)
     if not pl:
         raise ResourceNotFoundError("packing_list", pl_id)
@@ -138,7 +154,18 @@ def export_packing_list(tenant_id: str, pl_id: str, fmt: str = "xlsx") -> dict[s
     else:
         buf = generate_packing_list_xlsx(display_name, container_number, customer_name, items)
 
-    return _upload_and_presign(tenant_id, f"{stem}.{fmt}", buf, fmt=fmt)
+    result = _upload_and_presign(tenant_id, f"{stem}.{fmt}", buf, fmt=fmt)
+    if actor_id or actor_role:
+        log_audit(
+            tenant_id=tenant_id,
+            entity_type="packing_list",
+            entity_id=pl_id,
+            action="EXPORT",
+            actor_id=actor_id,
+            actor_role=actor_role or "staff",
+            after_state={"format": fmt, "filename": result.get("filename")},
+        )
+    return result
 
 
 # ---------------------------------------------------------------------------
@@ -149,7 +176,14 @@ def export_packing_list(tenant_id: str, pl_id: str, fmt: str = "xlsx") -> dict[s
 _MANIFEST_COLUMNS = ["customer_name", "carton_count", "total_weight_kg", "total_cbm", "carton_tags"]
 
 
-def export_manifest(tenant_id: str, manifest_id: str, fmt: str = "xlsx") -> dict[str, Any]:
+def export_manifest(
+    tenant_id: str,
+    manifest_id: str,
+    fmt: str = "xlsx",
+    *,
+    actor_id: str | None = None,
+    actor_role: str = "",
+) -> dict[str, Any]:
     manifest = repo.get_manifest_for_export(tenant_id, manifest_id)
     if not manifest:
         raise ResourceNotFoundError("manifest", manifest_id)
@@ -159,20 +193,21 @@ def export_manifest(tenant_id: str, manifest_id: str, fmt: str = "xlsx") -> dict
     display_name = repo.get_tenant_display_name(tenant_id)
     all_items = repo.get_items_for_manifest(tenant_id, container_id)
 
-    # Build per-customer summary rows
+    # Build per-customer summary rows keyed by customer_id (falling back to customer_name)
     customer_data: dict[str, dict[str, Any]] = {}
     for item in all_items:
         cname = str(item.get("customer_name") or "")
-        if cname not in customer_data:
-            customer_data[cname] = {
+        ckey = str(item.get("customer_id") or cname)
+        if ckey not in customer_data:
+            customer_data[ckey] = {
                 "customer_name": cname,
                 "carton_count": 0,
                 "total_weight_kg": 0.0,
                 "total_cbm": 0.0,
                 "carton_tags": [],
             }
-        d = customer_data[cname]
-        d["carton_count"] += 1
+        d = customer_data[ckey]
+        d["carton_count"] += int(item.get("quantity") or 1)
         d["total_weight_kg"] += float(item.get("weight_actual_kg") or 0)
         d["total_cbm"] += float(item.get("cbm") or 0)
         if item.get("carton_tag"):
@@ -192,7 +227,18 @@ def export_manifest(tenant_id: str, manifest_id: str, fmt: str = "xlsx") -> dict
     else:
         buf = generate_manifest_xlsx(display_name, container_number, customer_rows, all_items)
 
-    return _upload_and_presign(tenant_id, f"{stem}.{fmt}", buf, fmt=fmt)
+    result = _upload_and_presign(tenant_id, f"{stem}.{fmt}", buf, fmt=fmt)
+    if actor_id or actor_role:
+        log_audit(
+            tenant_id=tenant_id,
+            entity_type="manifest",
+            entity_id=manifest_id,
+            action="EXPORT",
+            actor_id=actor_id,
+            actor_role=actor_role or "staff",
+            after_state={"format": fmt, "filename": result.get("filename")},
+        )
+    return result
 
 
 # ---------------------------------------------------------------------------
@@ -246,6 +292,9 @@ def export_billing(
     billing_id: str,
     fmt: str = "xlsx",
     customer_user_id: str | None = None,
+    *,
+    actor_id: str | None = None,
+    actor_role: str = "",
 ) -> dict[str, Any]:
     """Generate a billing export — also the customer's downloadable invoice.
 
@@ -274,7 +323,18 @@ def export_billing(
     else:
         buf = generate_billing_xlsx([billing])
 
-    return _upload_and_presign(tenant_id, f"{stem}.{fmt}", buf, fmt=fmt)
+    result = _upload_and_presign(tenant_id, f"{stem}.{fmt}", buf, fmt=fmt)
+    if actor_id or actor_role:
+        log_audit(
+            tenant_id=tenant_id,
+            entity_type="billing",
+            entity_id=billing_id,
+            action="EXPORT",
+            actor_id=actor_id,
+            actor_role=actor_role or "staff",
+            after_state={"format": fmt, "filename": result.get("filename")},
+        )
+    return result
 
 
 # ---------------------------------------------------------------------------
@@ -282,7 +342,14 @@ def export_billing(
 # ---------------------------------------------------------------------------
 
 
-def export_container_billing(tenant_id: str, container_id: str, fmt: str = "xlsx") -> dict[str, Any]:
+def export_container_billing(
+    tenant_id: str,
+    container_id: str,
+    fmt: str = "xlsx",
+    *,
+    actor_id: str | None = None,
+    actor_role: str = "",
+) -> dict[str, Any]:
     container = repo.get_container_by_id(tenant_id, container_id)
     if not container:
         raise ResourceNotFoundError("container", container_id)
@@ -301,7 +368,18 @@ def export_container_billing(tenant_id: str, container_id: str, fmt: str = "xlsx
     else:
         buf = generate_billing_xlsx(billing_rows)
 
-    return _upload_and_presign(tenant_id, f"{stem}.{fmt}", buf, fmt=fmt)
+    result = _upload_and_presign(tenant_id, f"{stem}.{fmt}", buf, fmt=fmt)
+    if actor_id or actor_role:
+        log_audit(
+            tenant_id=tenant_id,
+            entity_type="container",
+            entity_id=container_id,
+            action="EXPORT",
+            actor_id=actor_id,
+            actor_role=actor_role or "staff",
+            after_state={"scope": "container_billing", "format": fmt, "filename": result.get("filename")},
+        )
+    return result
 
 
 # ---------------------------------------------------------------------------
@@ -559,11 +637,7 @@ def _publish_pdf(
 ) -> dict[str, Any]:
     """Store a document, return a five-minute link that opens it in the browser, and audit the export."""
     filename = f"{stem}.pdf"
-    result = _upload_and_presign(tenant_id, filename, buf, fmt="pdf")
-    key = f"{tenant_id}/exports/{date.today().strftime('%Y-%m-%d')}/{filename}"
-    result["download_url"] = get_storage_provider().presigned_get_url(
-        key, expires_in=_PDF_LINK_SECONDS, response_content_disposition=_disposition(filename, "pdf")
-    )
+    result = _upload_and_presign(tenant_id, filename, buf, fmt="pdf", expires_in=_PDF_LINK_SECONDS)
     result["expires_in_seconds"] = _PDF_LINK_SECONDS
     log_audit(
         tenant_id=tenant_id,
@@ -746,98 +820,106 @@ def import_packing_list(
     actor_id: str,
     ctx: Any,
 ) -> dict[str, Any]:
-    # 1. Guard: file_key must be under this tenant's S3 prefix to prevent cross-tenant reads.
-    expected_prefix = f"{tenant_id}/"
+    # 1. Guard: file_key must be under this tenant's imports S3 prefix to prevent cross-tenant/cross-category reads.
+    expected_prefix = f"{tenant_id}/imports/"
     if not file_key.startswith(expected_prefix) or ".." in file_key:
-        from shared.exceptions import ValidationError
-
-        raise ValidationError(f"file_key must be under the tenant prefix '{expected_prefix}'")
+        raise ValidationError(f"file_key must be under the tenant imports prefix '{expected_prefix}'")
 
     # 2. Download file from object storage
-    uploads.check_stored_size(uploads.SPREADSHEET_IMPORT, file_key)  # an Azure upload is not bound to its declared size
+    uploads.check_stored_size(uploads.SPREADSHEET_IMPORT, file_key)
     file_buffer = BytesIO(get_storage_provider().get_object(file_key))
 
-    # 2. Pre-fetch customers (name → id mapping)
-    customers = repo.get_tenant_customers(tenant_id)
-    customers_by_name = {c["name"].lower(): str(c["id"]) for c in customers}
-
-    # 3. Parse and validate
-    items_by_group, errors, total_rows = parse_packing_list_xlsx(file_buffer, customers_by_name)
-
-    # 4. Get tenant short and container for tag generation
+    # 3. Validate container is present and in 'loading' status BEFORE writing
     tenant_short = repo.get_tenant_short(tenant_id)
     container = repo.get_container_by_id(tenant_id, container_id)
     if not container:
         raise ResourceNotFoundError("container", container_id)
+    container_status = container.get("status")
+    if container_status is not None and container_status != "loading":
+        raise BusinessRuleViolationError(
+            f"Container must be in 'loading' status to import packing lists (current: {container_status})",
+            rule_id="CONTAINER_NOT_LOADING",
+        )
     container_number = str(container.get("container_number") or "")
 
-    # 5. Create packing lists grouped by (customer_id, received_date)
+    # 4. Pre-fetch customers (name → id mapping) and minimum CBM floor
+    customers = repo.get_tenant_customers(tenant_id)
+    customers_by_name = {c["name"].lower(): str(c["id"]) for c in customers}
+    min_cbm = get_min_cbm_per_item(tenant_id)
+
+    # 5. Parse and validate
+    items_by_group, errors, total_rows = parse_packing_list_xlsx(file_buffer, customers_by_name)
+
+    # 6. Create packing lists grouped by (customer_id, received_date) atomically
     packing_lists_created = 0
     imported_count = 0
-    seq = repo.get_next_carton_sequence(tenant_id, container_id)
-    tracking_seq_cache: dict[str, int] = {}
-    tracking_cache: dict[tuple[str, Any], str] = {}
+    with tenant_transaction(tenant_id):
+        seq = repo.get_next_carton_sequence(tenant_id, container_id)
+        tracking_seq_cache: dict[str, int] = {}
+        tracking_cache: dict[tuple[str, Any], str] = {}
 
-    for (customer_id, _received_date), items in items_by_group.items():
-        pl = repo.create_packing_list(
-            tenant_id,
-            {
-                "tenant_id": tenant_id,
-                "container_id": container_id,
-                "customer_id": customer_id,
-                "created_by": actor_id,
-                "reference": repo.get_next_pl_reference(tenant_id),
-            },
-        )
-        if pl is None:
-            raise RuntimeError("create_packing_list returned None unexpectedly")
-        pl_id = str(pl["id"])
-
-        item_rows = []
-        for item in items:
-            item_date = item["received_date"]
-            date_str = item_date.strftime("%Y%m%d")
-            date_prefix = f"{tenant_short}-TRK-{date_str}"
-            cache_key = (customer_id, item_date)
-
-            if cache_key in tracking_cache:
-                tracking_code = tracking_cache[cache_key]
-            else:
-                existing = repo.get_existing_tracking_code(tenant_id, customer_id, item_date)
-                if existing:
-                    tracking_code = existing
-                else:
-                    if date_prefix not in tracking_seq_cache:
-                        trk_seq = repo.get_next_tracking_sequence(tenant_id, date_prefix)
-                        tracking_seq_cache[date_prefix] = trk_seq
-                    else:
-                        trk_seq = tracking_seq_cache[date_prefix]
-                        tracking_seq_cache[date_prefix] += 1
-                    tracking_code = f"{date_prefix}-{trk_seq:03d}"
-                tracking_cache[cache_key] = tracking_code
-
-            carton_tag = f"{tenant_short}-{container_number}-{seq:03d}"
-            seq += 1
-
-            item_rows.append(
+        for (customer_id, _received_date), items in items_by_group.items():
+            pl = repo.create_packing_list(
+                tenant_id,
                 {
-                    "packing_list_id": pl_id,
-                    "description": item["description"],
-                    "weight_dispatch_kg": item["weight_dispatch_kg"],
-                    "weight_actual_kg": item["weight_actual_kg"],
-                    "carton_tag": carton_tag,
-                    "tracking_code": tracking_code,
-                    "cbm": item["cbm"],
-                    "length_cm": item["length_cm"],
-                    "width_cm": item["width_cm"],
-                    "height_cm": item["height_cm"],
-                    "received_date": item_date,
-                }
+                    "tenant_id": tenant_id,
+                    "container_id": container_id,
+                    "customer_id": customer_id,
+                    "created_by": actor_id,
+                    "reference": repo.get_next_pl_reference(tenant_id),
+                },
             )
+            if pl is None:
+                raise RuntimeError("create_packing_list returned None unexpectedly")
+            pl_id = str(pl["id"])
 
-        repo.insert_packing_list_items(tenant_id, item_rows)
-        imported_count += len(item_rows)
-        packing_lists_created += 1
+            item_rows = []
+            for item in items:
+                item_date = item["received_date"]
+                date_str = item_date.strftime("%Y%m%d")
+                date_prefix = f"{tenant_short}-TRK-{date_str}"
+                cache_key = (customer_id, item_date)
+
+                if cache_key in tracking_cache:
+                    tracking_code = tracking_cache[cache_key]
+                else:
+                    existing = repo.get_existing_tracking_code(tenant_id, customer_id, item_date)
+                    if existing:
+                        tracking_code = existing
+                    else:
+                        if date_prefix not in tracking_seq_cache:
+                            trk_seq = repo.get_next_tracking_sequence(tenant_id, date_prefix)
+                            tracking_seq_cache[date_prefix] = trk_seq + 1
+                        else:
+                            trk_seq = tracking_seq_cache[date_prefix]
+                            tracking_seq_cache[date_prefix] = trk_seq + 1
+                        tracking_code = f"{date_prefix}-{trk_seq:03d}"
+                    tracking_cache[cache_key] = tracking_code
+
+                carton_tag = f"{tenant_short}-{container_number}-{seq:03d}"
+                seq += 1
+
+                floored_cbm = float(apply_min_cbm(Decimal(str(item["cbm"] or 0)), min_cbm))
+
+                item_rows.append(
+                    {
+                        "packing_list_id": pl_id,
+                        "description": item["description"],
+                        "weight_dispatch_kg": item["weight_dispatch_kg"],
+                        "weight_actual_kg": item["weight_actual_kg"],
+                        "carton_tag": carton_tag,
+                        "tracking_code": tracking_code,
+                        "cbm": floored_cbm,
+                        "length_cm": item["length_cm"],
+                        "width_cm": item["width_cm"],
+                        "height_cm": item["height_cm"],
+                        "received_date": item_date,
+                    }
+                )
+
+            repo.insert_packing_list_items(tenant_id, item_rows)
+            imported_count += len(item_rows)
+            packing_lists_created += 1
 
     # One summary entry, not one per row — a bulk import can create dozens
     # of packing lists in a single call, and a tenant admin auditing "who
@@ -920,169 +1002,191 @@ def process_manifest_import(
     actor_id: str,
     ctx: Any,
 ) -> dict[str, Any]:
-    """Parse a manifest .xlsx and auto-create/match container, customers, and packing lists.
-
-    See `services/excel/import_manifest.py` for the parser and
-    `19_excel_import_export.md` §"Manifest Import" for the full behaviour
-    reference (header-alias table, dedupe key, auto-creation semantics).
-    """
-    expected_prefix = f"{tenant_id}/"
+    """Parse a manifest .xlsx and auto-create/match container, customers, and packing lists."""
+    expected_prefix = f"{tenant_id}/imports/"
     if not file_key.startswith(expected_prefix) or ".." in file_key:
-        from shared.exceptions import ValidationError
+        raise ValidationError(f"file_key must be under the tenant imports prefix '{expected_prefix}'")
 
-        raise ValidationError(f"file_key must be under the tenant prefix '{expected_prefix}'")
-
-    uploads.check_stored_size(uploads.SPREADSHEET_IMPORT, file_key)  # an Azure upload is not bound to its declared size
+    uploads.check_stored_size(uploads.SPREADSHEET_IMPORT, file_key)
     file_buffer = BytesIO(get_storage_provider().get_object(file_key))
 
-    container_metadata, rows, errors, total_rows = parse_manifest_xlsx(file_buffer)
+    try:
+        container_metadata, rows, errors, total_rows = parse_manifest_xlsx(file_buffer)
+    except ValueError as exc:
+        raise ValidationError(str(exc), field_errors={"file": str(exc)}) from exc
 
     container_number = str(container_metadata.get("container_number") or "").strip()
     if not container_number:
-        from shared.exceptions import ValidationError
-
         raise ValidationError("Could not find PARTIAL NO / container number in the manifest header")
 
-    # 1. Find-or-create the container. Fields set only on creation — an
-    # existing container's fields are never overwritten by a re-import.
+    # Resolve PLATFORM-scoped tenant attributes BEFORE opening tenant_transaction.
+    tenant_short = repo.get_tenant_short(tenant_id)
+    dial_code = dial_code_for_country(repo.get_tenant_destination_country(tenant_id))
+    min_cbm = get_min_cbm_per_item(tenant_id)
+
+    # 1. Find-or-create the container.
     containers_created = 0
     container = repo.find_container_by_number(tenant_id, container_number)
     if container is None:
-        container = repo.create_container(
-            tenant_id,
-            {
-                "tenant_id": tenant_id,
-                "container_number": container_number,
-                "parcel_number": container_metadata.get("parcel_number"),
-                "destination": container_metadata.get("destination") or "Nigeria",
-                "ship_date": _parse_metadata_date(container_metadata.get("ship_date")),
-                "departure_date": _parse_metadata_date(container_metadata.get("departure_date")),
-                "estimated_arrival_date": _parse_metadata_date(container_metadata.get("estimated_arrival_date")),
-                "created_by": actor_id,
-            },
-        )
-        if container is None:
-            raise RuntimeError("create_container returned None unexpectedly")
-        containers_created = 1
-    container_id = str(container["id"])
-
-    tenant_short = repo.get_tenant_short(tenant_id)
-    seq = repo.get_next_carton_sequence(tenant_id, container_id)
-    tracking_seq_cache: dict[str, int] = {}
-    tracking_cache: dict[str, str] = {}
-    today = date.today()
-    date_prefix = f"{tenant_short}-TRK-{today.strftime('%Y%m%d')}"
-
-    dial_code = dial_code_for_country(repo.get_tenant_destination_country(tenant_id))
+        check_container_limit(tenant_id)
+    else:
+        container_status = container.get("status")
+        if container_status is not None and container_status != "loading":
+            raise BusinessRuleViolationError(
+                f"Container '{container_number}' is in '{container_status}' status and cannot accept manifest imports",
+                rule_id="CONTAINER_NOT_LOADING",
+            )
 
     customers_created = 0
     packing_lists_created = 0
     items_created = 0
     items_skipped_duplicate = 0
-    customer_cache: dict[str, str] = {}  # normalized phone or lowercase name -> customer_id
-    packing_list_cache: dict[str, str] = {}  # customer_id -> packing_list_id
-    newly_created_customer_ids: list[str] = []  # invites are issued only for these, never matches
+    newly_created_customer_ids: list[str] = []
 
-    for row in rows:
-        # 2. Find-or-create customer, matched by normalized phone, falling
-        # back to exact name match when phone is missing.
-        phone = normalize_phone(row.get("customer_phone"), dial_code)
-        name = row["customer_name"]
-        cache_key = phone or name.lower()
-
-        if cache_key in customer_cache:
-            customer_id = customer_cache[cache_key]
-        else:
-            existing_customer = repo.find_customer_by_phone(tenant_id, phone) if phone else None
-            if existing_customer is None:
-                existing_customer = repo.find_customer_by_name(tenant_id, name)
-            if existing_customer is not None:
-                customer_id = str(existing_customer["id"])
-            else:
-                new_customer = repo.create_customer(tenant_id, name, phone)
-                if new_customer is None:
-                    raise RuntimeError("create_customer returned None unexpectedly")
-                customer_id = str(new_customer["id"])
-                customers_created += 1
-                newly_created_customer_ids.append(customer_id)
-            customer_cache[cache_key] = customer_id
-
-        # 3. Find-or-create the packing list for (customer, container).
-        if customer_id in packing_list_cache:
-            pl_id = packing_list_cache[customer_id]
-        else:
-            existing_pl = repo.find_packing_list(tenant_id, container_id, customer_id)
-            if existing_pl is not None:
-                pl_id = str(existing_pl["id"])
-            else:
-                new_pl = repo.create_packing_list(
-                    tenant_id,
-                    {
-                        "tenant_id": tenant_id,
-                        "container_id": container_id,
-                        "customer_id": customer_id,
-                        "created_by": actor_id,
-                        "reference": repo.get_next_pl_reference(tenant_id),
-                    },
-                )
-                if new_pl is None:
-                    raise RuntimeError("create_packing_list returned None unexpectedly")
-                pl_id = str(new_pl["id"])
-                packing_lists_created += 1
-            packing_list_cache[customer_id] = pl_id
-
-        # 4. Dedupe by (delivery_note_number, bale_no) within the packing list —
-        #    one delivery note can legitimately cover several distinct bales.
-        delivery_note_number = row.get("delivery_note_number")
-        if delivery_note_number:
-            existing_item = repo.find_existing_item_by_delivery_note(tenant_id, pl_id, delivery_note_number, row.get("bale_no"))
-            if existing_item is not None:
-                items_skipped_duplicate += 1
-                continue
-
-        # 5. Generate carton_tag/tracking_code, same pattern as the existing importer.
-        if customer_id in tracking_cache:
-            tracking_code = tracking_cache[customer_id]
-        else:
-            existing_tracking = repo.get_existing_tracking_code(tenant_id, customer_id, today)
-            if existing_tracking:
-                tracking_code = existing_tracking
-            else:
-                if date_prefix not in tracking_seq_cache:
-                    tracking_seq_cache[date_prefix] = repo.get_next_tracking_sequence(tenant_id, date_prefix)
-                else:
-                    tracking_seq_cache[date_prefix] += 1
-                tracking_code = f"{date_prefix}-{tracking_seq_cache[date_prefix]:03d}"
-            tracking_cache[customer_id] = tracking_code
-
-        carton_tag = f"{tenant_short}-{container_number}-{seq:03d}"
-        seq += 1
-
-        repo.insert_manifest_items(
-            tenant_id,
-            [
+    with tenant_transaction(tenant_id):
+        if container is None:
+            container = repo.create_container(
+                tenant_id,
                 {
-                    "packing_list_id": pl_id,
-                    "description": row["description"],
-                    "weight_actual_kg": row.get("weight_actual_kg"),
-                    "carton_tag": carton_tag,
-                    "tracking_code": tracking_code,
-                    "cbm": row.get("cbm") or 0.0,
-                    "received_date": today,
-                    "delivery_note_number": delivery_note_number,
-                    "quantity": row.get("quantity") or 1,
-                    "quantity_raw": row.get("quantity_raw"),
-                    "package_unit": row.get("package_unit"),
-                    "bale_type": row.get("bale_type"),
-                    "bale_no": row.get("bale_no"),
-                    "original_receipt_number": row.get("original_receipt_number"),
-                    "delivery_zone": row.get("delivery_zone"),
-                    "on_hold": bool(row.get("on_hold")),
-                    "hold_reason": container_metadata.get("hold_reason") if row.get("on_hold") else None,
-                }
-            ],
-        )
-        items_created += 1
+                    "tenant_id": tenant_id,
+                    "container_number": container_number,
+                    "parcel_number": container_metadata.get("parcel_number"),
+                    "destination": container_metadata.get("destination") or "Nigeria",
+                    "ship_date": _parse_metadata_date(container_metadata.get("ship_date")),
+                    "departure_date": _parse_metadata_date(container_metadata.get("departure_date")),
+                    "estimated_arrival_date": _parse_metadata_date(container_metadata.get("estimated_arrival_date")),
+                    "created_by": actor_id,
+                },
+            )
+            if container is None:
+                raise RuntimeError("create_container returned None unexpectedly")
+            containers_created = 1
+        container_id = str(container["id"])
+
+        seq = repo.get_next_carton_sequence(tenant_id, container_id)
+        tracking_seq_cache: dict[str, int] = {}
+        tracking_cache: dict[str, str] = {}
+        today = date.today()
+        date_prefix = f"{tenant_short}-TRK-{today.strftime('%Y%m%d')}"
+
+        customer_cache: dict[str, str] = {}
+        packing_list_cache: dict[str, str] = {}
+        # Cache pre-import delivery-note checks per (pl_id, delivery_note_number, bale_no)
+        # so multi-line delivery notes within the same file are all imported on first import
+        # while true re-imports of a previously imported delivery note are still skipped.
+        preexisting_delivery_note_cache: dict[tuple[str, str, str | None], bool] = {}
+
+        for row in rows:
+            # 2. Find-or-create customer: match by normalized phone when present;
+            # only fall back to exact name match when the row has no phone (so two
+            # distinct customers sharing a name with different phones never merge).
+            phone = normalize_phone(row.get("customer_phone"), dial_code)
+            name = row["customer_name"]
+            cache_key = f"phone:{phone}" if phone else f"name:{name.lower()}"
+
+            if cache_key in customer_cache:
+                customer_id = customer_cache[cache_key]
+            else:
+                existing_customer = repo.find_customer_by_phone(tenant_id, phone) if phone else None
+                if existing_customer is None and not phone:
+                    existing_customer = repo.find_customer_by_name(tenant_id, name)
+                if existing_customer is not None:
+                    customer_id = str(existing_customer["id"])
+                else:
+                    new_customer = repo.create_customer(tenant_id, name, phone)
+                    if new_customer is None:
+                        raise RuntimeError("create_customer returned None unexpectedly")
+                    customer_id = str(new_customer["id"])
+                    customers_created += 1
+                    newly_created_customer_ids.append(customer_id)
+                customer_cache[cache_key] = customer_id
+
+            # 3. Find-or-create an editable packing list for (customer, container).
+            # Never append items into an already-approved or rejected packing list.
+            if customer_id in packing_list_cache:
+                pl_id = packing_list_cache[customer_id]
+            else:
+                existing_pl = repo.find_packing_list(tenant_id, container_id, customer_id)
+                if existing_pl is not None and existing_pl.get("status") not in ("approved", "rejected"):
+                    pl_id = str(existing_pl["id"])
+                else:
+                    new_pl = repo.create_packing_list(
+                        tenant_id,
+                        {
+                            "tenant_id": tenant_id,
+                            "container_id": container_id,
+                            "customer_id": customer_id,
+                            "created_by": actor_id,
+                            "reference": repo.get_next_pl_reference(tenant_id),
+                        },
+                    )
+                    if new_pl is None:
+                        raise RuntimeError("create_packing_list returned None unexpectedly")
+                    pl_id = str(new_pl["id"])
+                    packing_lists_created += 1
+                packing_list_cache[customer_id] = pl_id
+
+            # 4. Dedupe by (delivery_note_number, bale_no) against pre-existing items in the packing list.
+            delivery_note_number = row.get("delivery_note_number")
+            if delivery_note_number:
+                dedupe_key = (pl_id, delivery_note_number, row.get("bale_no"))
+                if dedupe_key not in preexisting_delivery_note_cache:
+                    existing_item = repo.find_existing_item_by_delivery_note(
+                        tenant_id, pl_id, delivery_note_number, row.get("bale_no")
+                    )
+                    preexisting_delivery_note_cache[dedupe_key] = existing_item is not None
+                if preexisting_delivery_note_cache[dedupe_key]:
+                    items_skipped_duplicate += 1
+                    continue
+
+            # 5. Generate carton_tag/tracking_code.
+            if customer_id in tracking_cache:
+                tracking_code = tracking_cache[customer_id]
+            else:
+                existing_tracking = repo.get_existing_tracking_code(tenant_id, customer_id, today)
+                if existing_tracking:
+                    tracking_code = existing_tracking
+                else:
+                    if date_prefix not in tracking_seq_cache:
+                        trk_seq = repo.get_next_tracking_sequence(tenant_id, date_prefix)
+                        tracking_seq_cache[date_prefix] = trk_seq + 1
+                    else:
+                        trk_seq = tracking_seq_cache[date_prefix]
+                        tracking_seq_cache[date_prefix] = trk_seq + 1
+                    tracking_code = f"{date_prefix}-{trk_seq:03d}"
+                tracking_cache[customer_id] = tracking_code
+
+            carton_tag = f"{tenant_short}-{container_number}-{seq:03d}"
+            seq += 1
+
+            raw_cbm = Decimal(str(row.get("cbm") or 0))
+            floored_cbm = float(apply_min_cbm(raw_cbm, min_cbm)) if raw_cbm > Decimal("0") else float(raw_cbm)
+
+            repo.insert_manifest_items(
+                tenant_id,
+                [
+                    {
+                        "packing_list_id": pl_id,
+                        "description": row["description"],
+                        "weight_actual_kg": row.get("weight_actual_kg"),
+                        "carton_tag": carton_tag,
+                        "tracking_code": tracking_code,
+                        "cbm": floored_cbm,
+                        "received_date": today,
+                        "delivery_note_number": delivery_note_number,
+                        "quantity": row.get("quantity") or 1,
+                        "quantity_raw": row.get("quantity_raw"),
+                        "package_unit": row.get("package_unit"),
+                        "bale_type": row.get("bale_type"),
+                        "bale_no": row.get("bale_no"),
+                        "original_receipt_number": row.get("original_receipt_number"),
+                        "delivery_zone": row.get("delivery_zone"),
+                        "on_hold": bool(row.get("on_hold")),
+                        "hold_reason": container_metadata.get("hold_reason") if row.get("on_hold") else None,
+                    }
+                ],
+            )
+            items_created += 1
 
     # 6. Auto-issue an account-creation invite for every customer this import
     # *created* (never matched customers — they may already have a login).

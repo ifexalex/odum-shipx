@@ -34,7 +34,7 @@ from typing import Any, cast
 
 from shared.auth import get_tenant_context
 from shared.exceptions import LogisticsBaseError, ResourceNotFoundError
-from shared.idempotency import check_idempotency, store_idempotency
+from shared.idempotency import check_idempotency, get_idempotency_key, store_idempotency
 from shared.logging_config import bind_log_context, clear_log_context, setup_logging
 from shared.metering import record_usage
 from shared.observability import init_tracing
@@ -128,15 +128,30 @@ def lambda_handler(event: dict[str, Any], context: Any) -> dict[str, Any]:
 
         idempotency_key = None
         if method == "POST":
-            idempotency_key = (event.get("headers") or {}).get("idempotency-key")
-            cached = check_idempotency(idempotency_key, tenant_ctx.tenant_id)
+            idempotency_key = get_idempotency_key(event)
+            cached = check_idempotency(
+                idempotency_key,
+                tenant_ctx.tenant_id,
+                actor_id=tenant_ctx.user_id,
+                method=method,
+                path=path,
+                body=event.get("body"),
+            )
             if cached:
                 return cached
 
         response: dict[str, Any] = _dispatch(event, method, path, tenant_ctx, request_id)
 
         if method == "POST" and idempotency_key and response.get("statusCode", 500) < 400:
-            store_idempotency(idempotency_key, response, tenant_ctx.tenant_id)
+            store_idempotency(
+                idempotency_key,
+                response,
+                tenant_ctx.tenant_id,
+                actor_id=tenant_ctx.user_id,
+                method=method,
+                path=path,
+                body=event.get("body"),
+            )
 
         record_usage(tenant_ctx.tenant_id, "api_calls", request_id=request_id)
         return response
@@ -183,6 +198,11 @@ def _parse_body(event: dict[str, Any]) -> dict[str, Any]:
         return json.loads(raw)  # type: ignore[no-any-return]
     except json.JSONDecodeError:
         return {}
+
+
+def _customer_user_id(ctx: Any) -> str | None:
+    is_customer_only = bool(getattr(ctx, "is_customer_only", ctx.role == UserRole.CUSTOMER))
+    return str(ctx.user_id) if is_customer_only else None
 
 
 def _dispatch(
@@ -244,7 +264,7 @@ def _dispatch(
     # GET /v1/packing-lists/{id}/pdf
     if resource == "packing-lists" and len(parts) == 4 and parts[3] == "pdf" and method == "GET":
         ctx.assert_role(*_PL_PDF_ROLES)
-        customer_user_id = ctx.user_id if ctx.role == UserRole.CUSTOMER else None
+        customer_user_id = _customer_user_id(ctx)
         result = service.export_packing_list_pdf(
             tenant_id,
             parts[2],
@@ -257,7 +277,7 @@ def _dispatch(
     # GET /v1/billing/{id}/pdf — the invoice (FD-39); a customer gets their own only
     if resource == "billing" and len(parts) == 4 and parts[3] == "pdf" and method == "GET":
         ctx.assert_role(*_BILLING_SINGLE_EXPORT_ROLES)
-        customer_user_id = ctx.user_id if ctx.role == UserRole.CUSTOMER else None
+        customer_user_id = _customer_user_id(ctx)
         result = service.export_invoice_pdf(
             tenant_id, parts[2], actor_id=ctx.user_id, actor_role=str(ctx.role), customer_user_id=customer_user_id
         )
@@ -272,7 +292,7 @@ def _dispatch(
     # GET /v1/release-notes/{id}/pdf
     if resource == "release-notes" and len(parts) == 4 and parts[3] == "pdf" and method == "GET":
         ctx.assert_role(*_RELEASE_NOTE_PDF_ROLES)
-        customer_user_id = ctx.user_id if ctx.role == UserRole.CUSTOMER else None
+        customer_user_id = _customer_user_id(ctx)
         result = service.export_release_note_pdf(
             tenant_id,
             parts[2],
@@ -285,7 +305,7 @@ def _dispatch(
     # GET /v1/payments/{id}/receipt/pdf
     if resource == "payments" and len(parts) == 5 and parts[3] == "receipt" and parts[4] == "pdf" and method == "GET":
         ctx.assert_role(*_RECEIPT_PDF_ROLES)
-        customer_user_id = ctx.user_id if ctx.role == UserRole.CUSTOMER else None
+        customer_user_id = _customer_user_id(ctx)
         result = service.export_receipt_pdf(
             tenant_id,
             parts[2],
@@ -343,20 +363,27 @@ def _dispatch(
     # GET /v1/packing-lists/{id}/export
     if resource == "packing-lists" and len(parts) == 4 and parts[3] == "export" and method == "GET":
         ctx.assert_role(*_EXPORT_ROLES)
-        result = service.export_packing_list(tenant_id, parts[2], fmt=fmt)
+        result = service.export_packing_list(tenant_id, parts[2], fmt=fmt, actor_id=ctx.user_id, actor_role=str(ctx.role))
         return success(result, request_id=request_id)
 
     # GET /v1/manifests/{id}/export
     if resource == "manifests" and len(parts) == 4 and parts[3] == "export" and method == "GET":
         ctx.assert_role(*_EXPORT_ROLES)
-        result = service.export_manifest(tenant_id, parts[2], fmt=fmt)
+        result = service.export_manifest(tenant_id, parts[2], fmt=fmt, actor_id=ctx.user_id, actor_role=str(ctx.role))
         return success(result, request_id=request_id)
 
     # GET /v1/billing/{id}/export — the customer's downloadable invoice
     if resource == "billing" and len(parts) == 4 and parts[3] == "export" and method == "GET":
         ctx.assert_role(*_BILLING_SINGLE_EXPORT_ROLES)
-        customer_user_id = ctx.user_id if ctx.role == UserRole.CUSTOMER else None
-        result = service.export_billing(tenant_id, parts[2], fmt=fmt, customer_user_id=customer_user_id)
+        customer_user_id = _customer_user_id(ctx)
+        result = service.export_billing(
+            tenant_id,
+            parts[2],
+            fmt=fmt,
+            customer_user_id=customer_user_id,
+            actor_id=ctx.user_id,
+            actor_role=str(ctx.role),
+        )
         return success(result, request_id=request_id)
 
     # GET /v1/containers/{id}/events/export — the tracking tab's event log, xlsx or csv
@@ -368,7 +395,7 @@ def _dispatch(
     # GET /v1/containers/{id}/billing/export
     if resource == "containers" and len(parts) == 5 and parts[3] == "billing" and parts[4] == "export" and method == "GET":
         ctx.assert_role(*_BILLING_EXPORT_ROLES)
-        result = service.export_container_billing(tenant_id, parts[2], fmt=fmt)
+        result = service.export_container_billing(tenant_id, parts[2], fmt=fmt, actor_id=ctx.user_id, actor_role=str(ctx.role))
         return success(result, request_id=request_id)
 
     raise ResourceNotFoundError("route", path)

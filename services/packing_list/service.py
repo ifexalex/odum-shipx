@@ -7,12 +7,13 @@ event publishing, and audit logging.
 import json
 import logging
 import uuid
-from datetime import date, datetime
+from datetime import UTC, date, datetime
 from decimal import Decimal
 from typing import Any
 
 from shared.audit import log_audit
 from shared.cbm_rate import apply_min_cbm, get_min_cbm_per_item, normalize_package_unit
+from shared.db import tenant_transaction
 from shared.events import publish_event
 from shared.exceptions import (
     BusinessRuleViolationError,
@@ -109,14 +110,40 @@ def _bale_type_for(package_unit: str | None, cbm: Decimal) -> str | None:
     return "BIG BALE" if cbm >= _BIG_BALE_CBM else "SMALL BALE"
 
 
+def _is_customer_only(ctx: Any) -> bool:
+    return bool(getattr(ctx, "is_customer_only", ctx.role == UserRole.CUSTOMER))
+
+
+def _assert_container_loading(tenant_id: str, pl: dict[str, Any]) -> None:
+    """Verify the packing list's container is still in 'loading' status."""
+    container_status = pl.get("container_status")
+    if container_status is not None:
+        if container_status != "loading":
+            raise BusinessRuleViolationError(
+                f"Container must be in 'loading' status (current: {container_status})",
+                rule_id="CONTAINER_NOT_LOADING",
+            )
+        return
+    container_id = pl.get("container_id")
+    if not container_id:
+        return
+    container = repo.get_container_by_id(tenant_id, str(container_id))
+    if container is not None and container.get("status") != "loading":
+        raise BusinessRuleViolationError(
+            f"Container must be in 'loading' status (current: {container.get('status')})",
+            rule_id="CONTAINER_NOT_LOADING",
+        )
+
+
 def _assemble_response(pl: dict[str, Any], items: list[dict[str, Any]]) -> dict[str, Any]:
     """Attach items and computed totals to a packing list row."""
     total_cbm = sum((i.get("cbm") or Decimal("0")) for i in items)
     total_weight = sum((i.get("weight_actual_kg") or Decimal("0")) for i in items)
+    carton_count = sum(int(i.get("quantity") or 1) for i in items)
     return {
         **pl,
         "items": items,
-        "carton_count": len(items),
+        "carton_count": carton_count,
         "total_cbm": total_cbm,
         "total_weight_kg": total_weight,
     }
@@ -140,7 +167,7 @@ def _build_item_rows(
     seq = carton_seq_start
     # Cache tracking codes for (customer_id, received_date) within this batch
     tracking_cache: dict[tuple[str, Any], str] = {}
-    # Cache in-batch tracking seq per date_prefix to avoid redundant DB calls
+    # Cache next available in-batch tracking seq per date_prefix
     tracking_seq_cache: dict[str, int] = {}
 
     for item in items:
@@ -149,29 +176,29 @@ def _build_item_rows(
         date_prefix = f"{tenant_short}-TRK-{date_str}"
         cache_key = (customer_id, item_date)
 
-        # Resolve tracking code: same customer+date → same code
+        # Resolve tracking code: same container+customer+date → same code
         if cache_key in tracking_cache:
             tracking_code = tracking_cache[cache_key]
         else:
-            # Check DB for existing code (from prior packing lists)
-            existing = repo.get_existing_tracking_code(tenant_id, customer_id, item_date)
+            existing = repo.get_existing_tracking_code(tenant_id, customer_id, item_date, container_id=container_id)
             if existing:
                 tracking_code = existing
             else:
-                # Generate new code; use cached in-batch seq if already incremented
                 if date_prefix not in tracking_seq_cache:
                     trk_seq = repo.get_next_tracking_sequence(tenant_id, date_prefix)
-                    tracking_seq_cache[date_prefix] = trk_seq
+                    tracking_seq_cache[date_prefix] = trk_seq + 1
                 else:
                     trk_seq = tracking_seq_cache[date_prefix]
-                    tracking_seq_cache[date_prefix] += 1
+                    tracking_seq_cache[date_prefix] = trk_seq + 1
                 tracking_code = f"{date_prefix}-{trk_seq:03d}"
             tracking_cache[cache_key] = tracking_code
 
-        # Floor the line-item CBM at the tenant's minimum (default 0.1) — a
-        # tiny parcel still occupies handling/shipping space and bills at the
-        # floor. Applied to the stored cbm, so totals + billing use it too.
-        cbm = apply_min_cbm(_compute_cbm(item.length_cm, item.width_cm, item.height_cm), min_cbm)
+        # Floor the line-item CBM at the tenant's minimum (default 0.1).
+        # Preserve an explicit item.cbm if dimensions are omitted (e.g. manifest-imported rows).
+        computed_cbm = _compute_cbm(item.length_cm, item.width_cm, item.height_cm)
+        explicit_cbm = getattr(item, "cbm", None)
+        raw_cbm = computed_cbm if computed_cbm > Decimal("0") else (explicit_cbm if explicit_cbm is not None else computed_cbm)
+        cbm = apply_min_cbm(raw_cbm, min_cbm)
         package_unit = getattr(item, "package_unit", None)
 
         # One input line can stand for several identical packages. Expand it
@@ -229,6 +256,7 @@ def create_packing_list(
     actor_id: str,
     request_id: str = "",
     ip_address: str | None = None,
+    ctx: Any = None,
 ) -> dict[str, Any]:
     # 1. Validate container
     container = repo.get_container_by_id(tenant_id, req.container_id)
@@ -253,42 +281,43 @@ def create_packing_list(
     tenant_short = repo.get_tenant_short(tenant_id)
     container_number = str(container.get("container_number") or "")
 
-    # 4. Get next carton sequence start and PL reference
-    carton_seq = repo.get_next_carton_sequence(tenant_id, req.container_id)
-    reference = repo.get_next_pl_reference(tenant_id)
+    with tenant_transaction(tenant_id):
+        # 4. Get next carton sequence start and PL reference
+        carton_seq = repo.get_next_carton_sequence(tenant_id, req.container_id)
+        reference = repo.get_next_pl_reference(tenant_id)
 
-    # 5. Insert packing list row
-    pl = repo.create_packing_list(
-        tenant_id,
-        {
-            "tenant_id": tenant_id,
-            "container_id": req.container_id,
-            "customer_id": req.customer_id,
-            "created_by": actor_id,
-            "reference": reference,
-            "loading_date": req.loading_date,
-            "delivery_date": req.delivery_date,
-            "arrival_warehouse_id": arrival_warehouse_id,
-        },
-    )
-    if pl is None:
-        raise RuntimeError("create_packing_list returned None unexpectedly")
-    pl_id = str(pl["id"])
+        # 5. Insert packing list row
+        pl = repo.create_packing_list(
+            tenant_id,
+            {
+                "tenant_id": tenant_id,
+                "container_id": req.container_id,
+                "customer_id": req.customer_id,
+                "created_by": actor_id,
+                "reference": reference,
+                "loading_date": req.loading_date,
+                "delivery_date": req.delivery_date,
+                "arrival_warehouse_id": arrival_warehouse_id,
+            },
+        )
+        if pl is None:
+            raise RuntimeError("create_packing_list returned None unexpectedly")
+        pl_id = str(pl["id"])
 
-    # 6. Build item rows with generated tags/codes
-    item_rows = _build_item_rows(
-        tenant_id=tenant_id,
-        pl_id=pl_id,
-        items=req.items,
-        container_id=req.container_id,
-        customer_id=req.customer_id,
-        tenant_short=tenant_short,
-        container_number=container_number,
-        carton_seq_start=carton_seq,
-    )
+        # 6. Build item rows with generated tags/codes
+        item_rows = _build_item_rows(
+            tenant_id=tenant_id,
+            pl_id=pl_id,
+            items=req.items,
+            container_id=req.container_id,
+            customer_id=req.customer_id,
+            tenant_short=tenant_short,
+            container_number=container_number,
+            carton_seq_start=carton_seq,
+        )
 
-    # 7. Insert items
-    inserted_items = [r for r in repo.insert_packing_list_items(tenant_id, item_rows) if r is not None]
+        # 7. Insert items
+        inserted_items = [r for r in repo.insert_packing_list_items(tenant_id, item_rows) if r is not None]
 
     # 8. Audit
     log_audit(
@@ -297,7 +326,7 @@ def create_packing_list(
         entity_id=pl_id,
         action="CREATE",
         actor_id=actor_id,
-        actor_role=str(UserRole.CHINA_OFFICE_STAFF),
+        actor_role=str(ctx.role) if ctx is not None else str(UserRole.CHINA_OFFICE_STAFF),
         after_state={"container_id": req.container_id, "customer_id": req.customer_id},
         ip_address=ip_address,
     )
@@ -314,8 +343,8 @@ def get_packing_list(tenant_id: str, pl_id: str, ctx: Any) -> dict[str, Any]:
     if not pl:
         raise ResourceNotFoundError("packing_list", pl_id)
 
-    # Customer role: can only view their own packing list
-    if ctx.role == UserRole.CUSTOMER:
+    # Customer-only role: can only view their own packing list
+    if _is_customer_only(ctx):
         customer = repo.get_customer_by_user_id(tenant_id, ctx.user_id)
         if not customer or str(customer["id"]) != str(pl["customer_id"]):
             raise InsufficientPermissionsError(
@@ -334,17 +363,16 @@ def list_packing_lists(
     cursor: dict[str, Any] | None,
     ctx: Any,
 ) -> tuple[list[dict[str, Any]], str | None, bool, int]:
-    # Customer role: force filter to own records only
-    if ctx.role == UserRole.CUSTOMER:
+    # Customer-only role: force filter to own records only
+    if _is_customer_only(ctx):
         customer = repo.get_customer_by_user_id(tenant_id, ctx.user_id)
         if not customer:
             return [], None, False, 0
         filters = {**filters, "customer_id": str(customer["id"])}
 
     page, next_cursor, has_more = repo.list_packing_lists(tenant_id, filters, limit, cursor)
-    # Only worth a COUNT when there is a further page — otherwise the page
-    # length is already the total.
-    total = repo.count_packing_lists(tenant_id, filters) if has_more else len(page)
+    # Count whenever there is another page OR we are past the first page (cursor set).
+    total = repo.count_packing_lists(tenant_id, filters) if (has_more or cursor is not None) else len(page)
     return page, next_cursor, has_more, total
 
 
@@ -367,51 +395,71 @@ def update_packing_list(
             rule_id="INVALID_UPDATE_STATUS",
         )
 
-    ctx.assert_role(UserRole.CHINA_OFFICE_STAFF)
+    ctx.assert_role(UserRole.CHINA_OFFICE_STAFF, UserRole.NIGERIA_OFFICE_STAFF, UserRole.TENANT_ADMIN)
 
-    before_state = {"status": current_status, "item_count": len(req.items)}
-
-    # Get container for tag re-generation
+    # Validate container & warehouse BEFORE mutating/deleting items
     container = repo.get_container_by_id(tenant_id, str(pl["container_id"]))
     if not container:
         raise ResourceNotFoundError("container", str(pl["container_id"]))
+    if container.get("status") != "loading":
+        raise BusinessRuleViolationError(
+            f"Container must be in 'loading' status to edit packing lists (current: {container.get('status')})",
+            rule_id="CONTAINER_NOT_LOADING",
+        )
+
+    fields_set: set[str] = getattr(req, "model_fields_set", set())
+    loading_date = req.loading_date if "loading_date" in fields_set else pl.get("loading_date")
+    delivery_date = req.delivery_date if "delivery_date" in fields_set else pl.get("delivery_date")
+
+    if "arrival_warehouse_id" in fields_set:
+        arrival_warehouse = _resolve_arrival_warehouse(tenant_id, req.arrival_warehouse_id)
+        arrival_warehouse_id = str(arrival_warehouse["id"]) if arrival_warehouse else None
+    elif pl.get("arrival_warehouse_id"):
+        arrival_warehouse_id = str(pl["arrival_warehouse_id"])
+    else:
+        arrival_warehouse = _resolve_arrival_warehouse(tenant_id, None)
+        arrival_warehouse_id = str(arrival_warehouse["id"]) if arrival_warehouse else None
+
+    existing_items = repo.get_items_by_packing_list(tenant_id, pl_id)
+    before_state = {"status": current_status, "item_count": len(existing_items)}
+
     tenant_short = repo.get_tenant_short(tenant_id)
     container_number = str(container.get("container_number") or "")
 
-    # Delete existing items and re-insert with fresh sequences
-    repo.delete_items_by_packing_list(tenant_id, pl_id)
-    carton_seq = repo.get_next_carton_sequence(tenant_id, str(pl["container_id"]))
+    with tenant_transaction(tenant_id):
+        # Compute next sequence BEFORE deleting so newly generated carton tags never
+        # collide with tags previously assigned or referenced on other records.
+        carton_seq = repo.get_next_carton_sequence(tenant_id, str(pl["container_id"]))
+        repo.delete_items_by_packing_list(tenant_id, pl_id)
 
-    item_rows = _build_item_rows(
-        tenant_id=tenant_id,
-        pl_id=pl_id,
-        items=req.items,
-        container_id=str(pl["container_id"]),
-        customer_id=str(pl["customer_id"]),
-        tenant_short=tenant_short,
-        container_number=container_number,
-        carton_seq_start=carton_seq,
-    )
-    inserted_items = [r for r in repo.insert_packing_list_items(tenant_id, item_rows) if r is not None]
+        item_rows = _build_item_rows(
+            tenant_id=tenant_id,
+            pl_id=pl_id,
+            items=req.items,
+            container_id=str(pl["container_id"]),
+            customer_id=str(pl["customer_id"]),
+            tenant_short=tenant_short,
+            container_number=container_number,
+            carton_seq_start=carton_seq,
+        )
+        inserted_items = [r for r in repo.insert_packing_list_items(tenant_id, item_rows) if r is not None]
 
-    # Shipment-level dates are editable while the list is a draft/rejected.
-    repo.set_packing_list_dates(tenant_id, pl_id, req.loading_date, req.delivery_date)
+        repo.set_packing_list_dates(tenant_id, pl_id, loading_date, delivery_date)
+        repo.set_packing_list_warehouse(tenant_id, pl_id, arrival_warehouse_id)
 
-    # Arrival warehouse is editable too (explicit id validated; else default).
-    arrival_warehouse = _resolve_arrival_warehouse(tenant_id, req.arrival_warehouse_id)
-    repo.set_packing_list_warehouse(tenant_id, pl_id, str(arrival_warehouse["id"]) if arrival_warehouse else None)
-
-    # If revising a rejected list, transition back to draft
-    updated_pl: dict[str, Any]
-    if current_status == "rejected":
-        _result = repo.set_packing_list_status(tenant_id, pl_id, "draft")
-        if _result is None:
-            raise RuntimeError("set_packing_list_status returned None unexpectedly")
-        updated_pl = _result
-    else:
-        repo.touch_updated_at(tenant_id, pl_id)
-        _fetched = repo.get_packing_list_by_id(tenant_id, pl_id)
-        updated_pl = _fetched if _fetched is not None else pl
+        updated_pl: dict[str, Any]
+        if current_status == "rejected":
+            _result = repo.set_packing_list_status(tenant_id, pl_id, "draft", expected_status="rejected")
+            if _result is None:
+                raise BusinessRuleViolationError(
+                    "Packing list status changed concurrently — reload and retry.",
+                    rule_id="INVALID_UPDATE_STATUS",
+                )
+            updated_pl = _result
+        else:
+            repo.touch_updated_at(tenant_id, pl_id)
+            _fetched = repo.get_packing_list_by_id(tenant_id, pl_id)
+            updated_pl = _fetched if _fetched is not None else pl
 
     log_audit(
         tenant_id=tenant_id,
@@ -442,12 +490,21 @@ def submit_packing_list(
 
     _assert_transition(pl["status"], "pending_approval", pl_id)
     ctx.assert_role(UserRole.CHINA_OFFICE_STAFF, UserRole.TENANT_ADMIN, UserRole.NIGERIA_OFFICE_STAFF)
+    _assert_container_loading(tenant_id, pl)
 
     items = repo.list_packing_list_items(tenant_id, pl_id)
+    if not items:
+        raise BusinessRuleViolationError(
+            "Cannot submit an empty packing list — add at least one item first.",
+            rule_id="EMPTY_PACKING_LIST",
+        )
 
     updated = repo.update_packing_list_status(tenant_id, pl_id, "pending_approval")
     if updated is None:
-        raise RuntimeError("update_packing_list_status returned None unexpectedly")
+        raise BusinessRuleViolationError(
+            "Packing list is no longer in draft status.",
+            rule_id="INVALID_TRANSITION",
+        )
 
     log_audit(
         tenant_id=tenant_id,
@@ -475,22 +532,11 @@ def submit_packing_list(
     return _assemble_response(dict(updated), items)
 
 
-def _apply_approval_side_effects(
+def _apply_approval_db_writes(
     tenant_id: str,
     pl: dict[str, Any],
-    actor_id: str,
-    request_id: str = "",
-) -> tuple[str, list[str]]:
-    """Everything that must happen when a packing list becomes approved.
-
-    Shared by the single-item and bulk approve paths. It lives in one place
-    because it drifted once already: bulk approve only flipped the status, so
-    bulk-approved lists had no manifest, no manifest link and — most damaging —
-    no shipment_tracking rows, leaving their customers unable to track cargo at
-    all and their container unable to seal ("Container must have a manifest").
-
-    Returns (manifest_id, tracking_codes).
-    """
+) -> tuple[str, list[str], int]:
+    """Tenant-scoped DB writes for an approved packing list (safe inside tenant_transaction)."""
     container_id = str(pl["container_id"])
     manifest = repo.get_manifest_by_container(tenant_id, container_id)
     if not manifest:
@@ -501,6 +547,7 @@ def _apply_approval_side_effects(
 
     repo.link_manifest(tenant_id, str(pl["id"]), manifest_id)
     repo.recalculate_manifest_totals(tenant_id, manifest_id)
+    repo.reset_manifest_verification_if_verified(tenant_id, manifest_id)
 
     items = repo.get_items_by_packing_list(tenant_id, str(pl["id"]))
     seen_codes: set[str] = set()
@@ -509,24 +556,48 @@ def _apply_approval_side_effects(
         if code and code not in seen_codes:
             repo.upsert_shipment_tracking(tenant_id, code)
             seen_codes.add(code)
+    carton_count = sum(int(i.get("quantity") or 1) for i in items)
+    return manifest_id, list(seen_codes), carton_count
 
+
+def _emit_approval_notifications(
+    tenant_id: str,
+    pl: dict[str, Any],
+    manifest_id: str,
+    tracking_codes: list[str],
+    carton_count: int,
+    actor_id: str,
+    request_id: str = "",
+) -> None:
+    """Post-commit events and notifications for an approved packing list."""
     publish_event(
         source="logistics.packing_list",
         detail_type="PackingListApproved",
         tenant_id=tenant_id,
         payload={
             "packing_list_id": str(pl["id"]),
-            "container_id": container_id,
+            "container_id": str(pl["container_id"]),
             "customer_id": str(pl["customer_id"]),
             "manifest_id": manifest_id,
             "approved_by": actor_id,
-            "carton_count": len(items),
-            "tracking_codes": list(seen_codes),
+            "carton_count": carton_count,
+            "tracking_codes": tracking_codes,
         },
         request_id=request_id,
     )
     _notify_customer_packing_list_approved(tenant_id, pl, request_id)
-    return manifest_id, list(seen_codes)
+
+
+def _apply_approval_side_effects(
+    tenant_id: str,
+    pl: dict[str, Any],
+    actor_id: str,
+    request_id: str = "",
+) -> tuple[str, list[str]]:
+    """Everything that must happen when a packing list becomes approved."""
+    manifest_id, tracking_codes, carton_count = _apply_approval_db_writes(tenant_id, pl)
+    _emit_approval_notifications(tenant_id, pl, manifest_id, tracking_codes, carton_count, actor_id, request_id)
+    return manifest_id, tracking_codes
 
 
 def _notify_customer_packing_list_approved(tenant_id: str, pl: dict[str, Any], request_id: str) -> None:
@@ -596,12 +667,18 @@ def approve_packing_list(
     if str(pl.get("created_by")) == str(actor_id):
         raise SelfApprovalForbiddenError()
 
-    # Update packing list to approved
-    updated = repo.approve_packing_list_row(tenant_id, pl_id, actor_id)
-    if updated is None:
-        raise RuntimeError("approve_packing_list_row returned None unexpectedly")
+    _assert_container_loading(tenant_id, pl)
 
-    manifest_id, _tracking_codes = _apply_approval_side_effects(tenant_id, pl, actor_id, request_id)
+    with tenant_transaction(tenant_id):
+        updated = repo.approve_packing_list_row(tenant_id, pl_id, actor_id)
+        if updated is None:
+            raise BusinessRuleViolationError(
+                "Packing list is no longer pending approval.",
+                rule_id="INVALID_TRANSITION",
+            )
+        manifest_id, tracking_codes, carton_count = _apply_approval_db_writes(tenant_id, pl)
+
+    _emit_approval_notifications(tenant_id, pl, manifest_id, tracking_codes, carton_count, actor_id, request_id)
     items = repo.get_items_by_packing_list(tenant_id, pl_id)
 
     log_audit(
@@ -616,7 +693,7 @@ def approve_packing_list(
         ip_address=ip_address,
     )
 
-    return _assemble_response(updated, items)
+    return _assemble_response({**dict(updated), "manifest_id": manifest_id}, items)
 
 
 def bulk_approve_packing_lists(
@@ -627,25 +704,19 @@ def bulk_approve_packing_lists(
     request_id: str = "",
     ip_address: str | None = None,
 ) -> dict[str, Any]:
-    """Approve multiple packing lists in one call.
-
-    Guards (per-item):
-    - Must be in pending_approval state.
-    - Self-approval still forbidden: if all requested PLs were created by the
-      actor, the entire bulk is rejected.
-
-    Returns a summary of succeeded / failed / skipped IDs.
-    """
+    """Approve multiple packing lists in one call."""
     ctx.assert_role(UserRole.CHINA_OFFICE_STAFF, UserRole.TENANT_ADMIN)
 
-    pls = repo.get_packing_lists_by_ids(tenant_id, req.ids)
+    unique_ids = list(dict.fromkeys(req.ids))
+    pls = repo.get_packing_lists_by_ids(tenant_id, unique_ids)
     pl_map = {str(pl["id"]): pl for pl in pls}
 
     succeeded: list[str] = []
     failed: list[dict[str, Any]] = []
 
+    container_status_cache: dict[str, str | None] = {}
     approvable_ids: list[str] = []
-    for pl_id in req.ids:
+    for pl_id in unique_ids:
         pl = pl_map.get(pl_id)
         if not pl:
             failed.append({"id": pl_id, "reason": "not_found"})
@@ -656,27 +727,52 @@ def bulk_approve_packing_lists(
         if str(pl.get("created_by")) == str(actor_id):
             failed.append({"id": pl_id, "reason": "self_approval_forbidden"})
             continue
+        cid = pl.get("container_id")
+        if cid:
+            cid_str = str(cid)
+            if cid_str not in container_status_cache:
+                cont = repo.get_container_by_id(tenant_id, cid_str)
+                container_status_cache[cid_str] = cont.get("status") if cont else None
+            c_status = container_status_cache[cid_str]
+            if c_status is not None and c_status != "loading":
+                failed.append({"id": pl_id, "reason": f"container_not_loading:{c_status}"})
+                continue
         approvable_ids.append(pl_id)
 
     if approvable_ids:
-        repo.bulk_set_status(tenant_id, approvable_ids, "approved", actor_id)
-        succeeded = approvable_ids
-        # Same side effects as approving one at a time — manifest, manifest
-        # link, tracking records, event. Omitting these is what left
-        # bulk-approved containers unsealable and their cargo untrackable.
-        for pl_id_done in approvable_ids:
-            _apply_approval_side_effects(tenant_id, pl_map[pl_id_done], actor_id, request_id)
-        log_audit(
-            tenant_id=tenant_id,
-            entity_type="packing_list",
-            entity_id=",".join(approvable_ids),
-            action="BULK_APPROVE",
-            actor_id=actor_id,
-            actor_role=str(ctx.role),
-            before_state={"ids": approvable_ids, "status": "pending_approval"},
-            after_state={"status": "approved", "count": len(approvable_ids)},
-            ip_address=ip_address,
-        )
+        post_commit_effects: list[tuple[dict[str, Any], str, list[str], int]] = []
+        with tenant_transaction(tenant_id):
+            updated_rows = repo.bulk_set_status(
+                tenant_id, approvable_ids, "approved", actor_id, expected_status="pending_approval"
+            )
+            if isinstance(updated_rows, list):
+                succeeded = [str(r["id"]) for r in updated_rows]
+                missed = set(approvable_ids) - set(succeeded)
+                for missed_id in approvable_ids:
+                    if missed_id in missed:
+                        failed.append({"id": missed_id, "reason": "concurrent_status_change"})
+            else:
+                succeeded = approvable_ids
+
+            for pl_id_done in succeeded:
+                m_id, t_codes, c_cnt = _apply_approval_db_writes(tenant_id, pl_map[pl_id_done])
+                post_commit_effects.append((pl_map[pl_id_done], m_id, t_codes, c_cnt))
+
+        for pl_row, m_id, t_codes, c_cnt in post_commit_effects:
+            _emit_approval_notifications(tenant_id, pl_row, m_id, t_codes, c_cnt, actor_id, request_id)
+
+        for pl_id_done in succeeded:
+            log_audit(
+                tenant_id=tenant_id,
+                entity_type="packing_list",
+                entity_id=pl_id_done,
+                action="BULK_APPROVE",
+                actor_id=actor_id,
+                actor_role=str(ctx.role),
+                before_state={"status": "pending_approval"},
+                after_state={"status": "approved"},
+                ip_address=ip_address,
+            )
 
     return {"succeeded": succeeded, "failed": failed}
 
@@ -689,32 +785,19 @@ def bulk_submit_packing_lists(
     request_id: str = "",
     ip_address: str | None = None,
 ) -> dict[str, Any]:
-    """Move multiple draft packing lists to pending_approval in one call.
+    """Move multiple draft packing lists to pending_approval in one call."""
+    ctx.assert_role(UserRole.CHINA_OFFICE_STAFF, UserRole.TENANT_ADMIN, UserRole.NIGERIA_OFFICE_STAFF)
 
-    The counterpart to bulk_approve/bulk_reject, which already existed.
-
-    Import-created lists (manifest and template) land in pending_approval
-    directly (see repository.create_packing_list) specifically so a large
-    import needs no per-row submit step — so today this exists for drafts
-    from the single-item "Create packing list" flow (services/packing_list/
-    repository.py), not imports. Kept as a bulk action regardless: nothing
-    stops several manual drafts existing at once, and opening each individually
-    just to submit it is the same one-at-a-time friction bulk_approve/
-    bulk_reject already solve for the review step.
-
-    Guards mirror the single-item submit: draft only. Self-submission is fine —
-    the two-person control lives on approval, not here.
-    """
-    ctx.assert_role(UserRole.CHINA_OFFICE_STAFF, UserRole.TENANT_ADMIN)
-
-    pls = repo.get_packing_lists_by_ids(tenant_id, req.ids)
+    unique_ids = list(dict.fromkeys(req.ids))
+    pls = repo.get_packing_lists_by_ids(tenant_id, unique_ids)
     pl_map = {str(pl["id"]): pl for pl in pls}
 
     succeeded: list[str] = []
     failed: list[dict[str, Any]] = []
 
+    container_status_cache: dict[str, str | None] = {}
     submittable_ids: list[str] = []
-    for pl_id in req.ids:
+    for pl_id in unique_ids:
         pl = pl_map.get(pl_id)
         if not pl:
             failed.append({"id": pl_id, "reason": "not_found"})
@@ -722,39 +805,54 @@ def bulk_submit_packing_lists(
         if pl["status"] != "draft":
             failed.append({"id": pl_id, "reason": f"wrong_status:{pl['status']}"})
             continue
+        cid = pl.get("container_id")
+        if cid:
+            cid_str = str(cid)
+            if cid_str not in container_status_cache:
+                cont = repo.get_container_by_id(tenant_id, cid_str)
+                container_status_cache[cid_str] = cont.get("status") if cont else None
+            c_status = container_status_cache[cid_str]
+            if c_status is not None and c_status != "loading":
+                failed.append({"id": pl_id, "reason": f"container_not_loading:{c_status}"})
+                continue
         submittable_ids.append(pl_id)
 
     if submittable_ids:
-        repo.bulk_set_status(tenant_id, submittable_ids, "pending_approval", actor_id)
-        succeeded = submittable_ids
-        log_audit(
-            tenant_id=tenant_id,
-            entity_type="packing_list",
-            entity_id=",".join(submittable_ids),
-            action="BULK_SUBMIT",
-            actor_id=actor_id,
-            actor_role=str(ctx.role),
-            before_state={"ids": submittable_ids, "status": "draft"},
-            after_state={"status": "pending_approval"},
-            ip_address=ip_address,
-        )
-        for role in ("china_office_staff", "tenant_admin"):
-            notify_staff(
-                tenant_id=tenant_id,
-                event_type="packing_list_submitted",
-                entity_type="packing_list",
-                # entity_id is a single-row UUID column — a bulk action has
-                # no one entity to link to, so this is left unset rather than
-                # passed a comma-joined id list (which log_audit's own
-                # BULK_APPROVE call does above, and which silently fails the
-                # same way: UUID columns reject a non-UUID string).
-                entity_id=None,
-                title="Packing lists awaiting approval",
-                body=f"{len(submittable_ids)} packing list(s) need approval.",
-                target_role=role,
-            )
+        updated_rows = repo.bulk_set_status(tenant_id, submittable_ids, "pending_approval", actor_id, expected_status="draft")
+        if isinstance(updated_rows, list):
+            succeeded = [str(r["id"]) for r in updated_rows]
+            missed = set(submittable_ids) - set(succeeded)
+            for missed_id in submittable_ids:
+                if missed_id in missed:
+                    failed.append({"id": missed_id, "reason": "concurrent_status_change"})
+        else:
+            succeeded = submittable_ids
 
-    return {"succeeded": succeeded, "failed": failed, "total": len(req.ids)}
+        for pl_id_done in succeeded:
+            log_audit(
+                tenant_id=tenant_id,
+                entity_type="packing_list",
+                entity_id=pl_id_done,
+                action="BULK_SUBMIT",
+                actor_id=actor_id,
+                actor_role=str(ctx.role),
+                before_state={"status": "draft"},
+                after_state={"status": "pending_approval"},
+                ip_address=ip_address,
+            )
+        if succeeded:
+            for role in ("china_office_staff", "tenant_admin"):
+                notify_staff(
+                    tenant_id=tenant_id,
+                    event_type="packing_list_submitted",
+                    entity_type="packing_list",
+                    entity_id=None,
+                    title="Packing lists awaiting approval",
+                    body=f"{len(succeeded)} packing list(s) need approval.",
+                    target_role=role,
+                )
+
+    return {"succeeded": succeeded, "failed": failed, "total": len(unique_ids)}
 
 
 def bulk_reject_packing_lists(
@@ -767,14 +865,16 @@ def bulk_reject_packing_lists(
     """Reject multiple packing lists in one call."""
     ctx.assert_role(UserRole.CHINA_OFFICE_STAFF, UserRole.TENANT_ADMIN)
 
-    pls = repo.get_packing_lists_by_ids(tenant_id, req.ids)
+    unique_ids = list(dict.fromkeys(req.ids))
+    pls = repo.get_packing_lists_by_ids(tenant_id, unique_ids)
     pl_map = {str(pl["id"]): pl for pl in pls}
 
     succeeded: list[str] = []
     failed: list[dict[str, Any]] = []
 
+    container_status_cache: dict[str, str | None] = {}
     rejectable_ids: list[str] = []
-    for pl_id in req.ids:
+    for pl_id in unique_ids:
         pl = pl_map.get(pl_id)
         if not pl:
             failed.append({"id": pl_id, "reason": "not_found"})
@@ -782,22 +882,51 @@ def bulk_reject_packing_lists(
         if pl["status"] != "pending_approval":
             failed.append({"id": pl_id, "reason": f"wrong_status:{pl['status']}"})
             continue
+        cid = pl.get("container_id")
+        if cid:
+            cid_str = str(cid)
+            if cid_str not in container_status_cache:
+                cont = repo.get_container_by_id(tenant_id, cid_str)
+                container_status_cache[cid_str] = cont.get("status") if cont else None
+            c_status = container_status_cache[cid_str]
+            if c_status is not None and c_status != "loading":
+                failed.append({"id": pl_id, "reason": f"container_not_loading:{c_status}"})
+                continue
         rejectable_ids.append(pl_id)
 
     if rejectable_ids:
-        repo.bulk_set_status(tenant_id, rejectable_ids, "rejected", actor_id)
-        succeeded = rejectable_ids
-        log_audit(
-            tenant_id=tenant_id,
-            entity_type="packing_list",
-            entity_id=",".join(rejectable_ids),
-            action="BULK_REJECT",
-            actor_id=actor_id,
-            actor_role=str(ctx.role),
-            before_state={"ids": rejectable_ids, "status": "pending_approval"},
-            after_state={"status": "rejected", "comments": req.comments, "count": len(rejectable_ids)},
-            ip_address=ip_address,
+        comment_entry = json.dumps(
+            [{"actor_id": actor_id, "comments": req.comments, "item_rejections": [], "at": datetime.now(UTC).isoformat()}]
         )
+        updated_rows = repo.bulk_set_status(
+            tenant_id,
+            rejectable_ids,
+            "rejected",
+            actor_id,
+            expected_status="pending_approval",
+            approval_comments_json=comment_entry,
+        )
+        if isinstance(updated_rows, list):
+            succeeded = [str(r["id"]) for r in updated_rows]
+            missed = set(rejectable_ids) - set(succeeded)
+            for missed_id in rejectable_ids:
+                if missed_id in missed:
+                    failed.append({"id": missed_id, "reason": "concurrent_status_change"})
+        else:
+            succeeded = rejectable_ids
+
+        for pl_id_done in succeeded:
+            log_audit(
+                tenant_id=tenant_id,
+                entity_type="packing_list",
+                entity_id=pl_id_done,
+                action="BULK_REJECT",
+                actor_id=actor_id,
+                actor_role=str(ctx.role),
+                before_state={"status": "pending_approval"},
+                after_state={"status": "rejected", "comments": req.comments},
+                ip_address=ip_address,
+            )
 
     return {"succeeded": succeeded, "failed": failed}
 
@@ -816,6 +945,7 @@ def reject_packing_list(
 
     _assert_transition(pl["status"], "rejected", pl_id)
     ctx.assert_role(UserRole.CHINA_OFFICE_STAFF, UserRole.TENANT_ADMIN)
+    _assert_container_loading(tenant_id, pl)
 
     # Append to approval_comments history (JSONB list)
     existing_comments = pl.get("approval_comments") or []
@@ -829,13 +959,10 @@ def reject_packing_list(
         "actor_id": actor_id,
         "comments": req.comments,
         "item_rejections": [{"item_id": r.item_id, "reason": r.reason} for r in (req.item_rejections or [])],
-        "at": datetime.utcnow().isoformat(),
+        "at": datetime.now(UTC).isoformat(),
     }
     updated_comments = existing_comments + [new_entry]
 
-    # Snapshot items before rejection so the audit log captures the exact item
-    # versions that were submitted and rejected (items don't change on rejection,
-    # but this makes the intent explicit and guards against future races).
     items = repo.get_items_by_packing_list(tenant_id, pl_id)
 
     updated = repo.reject_packing_list_row(
@@ -845,7 +972,10 @@ def reject_packing_list(
         json.dumps(updated_comments),
     )
     if updated is None:
-        raise RuntimeError("reject_packing_list_row returned None unexpectedly")
+        raise BusinessRuleViolationError(
+            "Packing list is no longer pending approval.",
+            rule_id="INVALID_TRANSITION",
+        )
 
     log_audit(
         tenant_id=tenant_id,
