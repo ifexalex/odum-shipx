@@ -218,7 +218,10 @@ class TestCancelGivesBackWhatTheInvoiceTook:
         credit = _make_credit(admin, world, "20000")
         invoice, _ = _invoice(world, 0, "5000", [repo.CreditApplication(credit, Decimal("0"), Decimal("20000"))])
         with admin.cursor() as cur:
-            cur.execute("UPDATE billing SET status = 'paid' WHERE id = %s", (str(invoice["id"]),))
+            cur.execute(
+                "UPDATE billing SET status = 'paid', amount_paid_ngn = 5000 WHERE id = %s",
+                (str(invoice["id"]),),
+            )
 
         assert repo.cancel_billing(world["tenant"], str(invoice["id"]), world["user"], "x") is None
         assert _credit_state(admin, credit) == ("processed", Decimal("20000"))

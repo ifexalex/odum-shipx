@@ -685,7 +685,7 @@ def list_customers(
 
 def update_customer(tenant_id: str, customer_id: str, updates: dict[str, Any]) -> dict[str, Any] | None:
     prepared = dict(updates)
-    for json_col in ("delivery_address", "notification_consent"):
+    for json_col in ("delivery_address",):
         if json_col in prepared and isinstance(prepared[json_col], (dict, list)):
             prepared[json_col] = json.dumps(prepared[json_col])
     set_clause, params = _build_set_clause(prepared, _CUSTOMER_UPDATE_FIELDS)
@@ -764,7 +764,7 @@ def anonymise_customer_record(tenant_id: str, customer_id: str) -> None:
             address              = NULL,
             delivery_address     = NULL,
             contract_details     = NULL,
-            notification_consent = '{}'::jsonb,
+            notification_consent = '{}'::text[],
             consent_given_at     = NULL,
             user_id              = NULL,
             anonymised_at        = NOW(),

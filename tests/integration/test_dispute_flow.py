@@ -93,7 +93,7 @@ class TestDisputeHandlerFlow:
             )
         assert resp["statusCode"] == 200
 
-    def test_customer_cannot_create_dispute(self, monkeypatch):
+    def test_warehouse_attendant_cannot_create_dispute(self, monkeypatch):
         from services.billing import handler
 
         monkeypatch.setattr("shared.auth._check_tenant_active", lambda t: None)
@@ -107,7 +107,7 @@ class TestDisputeHandlerFlow:
                         "disputed_cbm": "5.5",
                         "dispute_reason": "Wrong",
                     },
-                    role="customer",
+                    role="warehouse_attendant",
                 ),
                 {},
             )
@@ -125,10 +125,10 @@ class TestDisputeServiceFlow:
             "tenant_id": TENANT_ID,
             "billing_id": "billing-001",
             "customer_id": "cust-001",
-            "status": "under_review",
+            "status": "investigating",
             "disputed_cbm": Decimal("5.5"),
         }
-        escalated = {**dispute, "status": "escalated"}
+        escalated = {**dispute, "status": "escalated_china"}
 
         with (
             patch.object(service.repo, "get_dispute_by_id", return_value=dispute),
@@ -141,4 +141,4 @@ class TestDisputeServiceFlow:
                 role=UserRole.NIGERIA_OFFICE_STAFF,
             )
             result = service.escalate_dispute(TENANT_ID, "dispute-001", ctx=ctx)
-            assert result["status"] == "escalated"
+            assert result["status"] == "escalated_china"

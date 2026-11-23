@@ -95,7 +95,7 @@ class TestService:
 
     def _read(self, world, claim, ctx):
         storage = MagicMock()
-        storage.presigned_get_url.side_effect = lambda key, expires_in: f"https://files.example/{key}"
+        storage.presigned_get_url.side_effect = lambda key, expires_in, **_kw: f"https://files.example/{key}"
         with patch.object(service, "get_storage_provider", return_value=storage):
             return service.get_claim(world["tenant"], claim, ctx)
 

@@ -619,6 +619,7 @@ def _worker_compensate_seized(args: tuple) -> str:
     from contextlib import ExitStack
 
     from services.claims import service
+    from shared.exceptions import IllegalTransitionError
     from shared.tenant_context import TenantContext, UserRole
 
     tenant_id, item_id, user_id, start_at = args
@@ -627,16 +628,20 @@ def _worker_compensate_seized(args: tuple) -> str:
         for p in _claims_patches():
             stack.enter_context(p)
         _wait_for(start_at)
-        service.update_seized_item(
-            tenant_id, item_id, "permanently_lost", "gone", actor_id=user_id, ctx=ctx, refund_amount_ngn=Decimal("5000")
-        )
-    return "done"
+        try:
+            service.update_seized_item(
+                tenant_id, item_id, "permanently_lost", "gone", actor_id=user_id, ctx=ctx, refund_amount_ngn=Decimal("5000")
+            )
+            return "done"
+        except IllegalTransitionError:
+            return "conflict"
 
 
 def _worker_compensate_missing(args: tuple) -> str:
     from contextlib import ExitStack
 
     from services.claims import service
+    from shared.exceptions import IllegalTransitionError
     from shared.tenant_context import TenantContext, UserRole
 
     tenant_id, item_id, user_id, start_at = args
@@ -645,10 +650,13 @@ def _worker_compensate_missing(args: tuple) -> str:
         for p in _claims_patches():
             stack.enter_context(p)
         _wait_for(start_at)
-        service.update_missing_item(
-            tenant_id, item_id, "confirmed_lost", "gone", actor_id=user_id, ctx=ctx, refund_amount_ngn=Decimal("7500")
-        )
-    return "done"
+        try:
+            service.update_missing_item(
+                tenant_id, item_id, "confirmed_lost", "gone", actor_id=user_id, ctx=ctx, refund_amount_ngn=Decimal("7500")
+            )
+            return "done"
+        except IllegalTransitionError:
+            return "conflict"
 
 
 class TestClaims:

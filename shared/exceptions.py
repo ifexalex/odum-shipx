@@ -67,9 +67,13 @@ class IllegalTransitionError(LogisticsBaseError):
             error_code="ILLEGAL_TRANSITION",
             status_code=409,
         )
+        self.entity = entity
         self.current_state = current_state
         self.requested_state = requested_state
         self.allowed_transitions = allowed
+
+    def __reduce__(self) -> tuple[type["IllegalTransitionError"], tuple[str, str, str, list[str]]]:
+        return (type(self), (self.entity, self.current_state, self.requested_state, self.allowed_transitions))
 
 
 class BusinessRuleViolationError(LogisticsBaseError):

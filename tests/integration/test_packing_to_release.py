@@ -166,7 +166,7 @@ class TestPackingListStateFlow:
 
         with (
             patch.object(service.repo, "get_packing_list_by_id", return_value=draft_pl),
-            patch.object(service.repo, "list_packing_list_items", return_value=[]),
+            patch.object(service.repo, "list_packing_list_items", return_value=[{"id": "item-1", "cartons": 2}]),
             patch.object(service.repo, "update_packing_list_status", return_value=pending_pl),
             patch("services.packing_list.service.log_audit"),
         ):
