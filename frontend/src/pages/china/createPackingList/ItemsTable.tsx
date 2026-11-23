@@ -1,4 +1,4 @@
-import { Fragment, type JSX } from 'react'
+import { Fragment, useEffect, useRef, type JSX } from 'react'
 import {
   applyMinCbm,
   baleSizeAbbr,
@@ -16,7 +16,6 @@ import { formatCbm, formatKg } from '../../../lib/format'
 /** The line items: one row per carton or batch, with package type, size, CBM, weight and value. */
 export function ItemsTable({ form }: { form: PackingListForm }): JSX.Element {
   const {
-    navigate,
     items,
     setItems,
     minCbm,
@@ -25,9 +24,28 @@ export function ItemsTable({ form }: { form: PackingListForm }): JSX.Element {
     qtyOf,
     updateItem,
     removeItem,
+    duplicateItem,
     removeBatch,
     batchSize,
   } = form
+  const tableRef = useRef<HTMLTableElement>(null)
+  const focusRowIndexRef = useRef<number | null>(null)
+
+  useEffect(() => {
+    const idx = focusRowIndexRef.current
+    if (idx === null) return
+    focusRowIndexRef.current = null
+    const input = tableRef.current?.querySelector<HTMLInputElement>(
+      `input[aria-label="Description, item ${idx + 1}"]`,
+    )
+    input?.focus()
+  }, [items.length])
+
+  function handleAddRow(): void {
+    focusRowIndexRef.current = items.length
+    setItems((prev) => [...prev, emptyItem()])
+  }
+
   return (
     <Card padding="none">
       <div className={styles.itemsHead}>
@@ -37,25 +55,17 @@ export function ItemsTable({ form }: { form: PackingListForm }): JSX.Element {
         />
         <div className={styles.actionsGroup}>
           <Button
-            variant="secondary"
-            size="sm"
-            icon="upload"
-            onClick={() => navigate('/packing-lists/import')}
-          >
-            Import CSV
-          </Button>
-          <Button
             variant="primary"
             size="sm"
             icon="plus"
-            onClick={() => setItems((prev) => [...prev, emptyItem()])}
+            onClick={handleAddRow}
           >
             Add item
           </Button>
         </div>
       </div>
       <div className={styles.itemsTableWrap}>
-        <table className={styles.itemsTable}>
+        <table ref={tableRef} className={styles.itemsTable}>
           <thead>
             <tr>
               <th>Tag</th>
@@ -298,27 +308,40 @@ export function ItemsTable({ form }: { form: PackingListForm }): JSX.Element {
                       />
                     </td>
                     <td>
-                      <IconButton
-                        icon="x"
-                        variant="danger-ghost"
-                        size="sm"
-                        label={
-                          batchSize(item.batch_ref) > 1
-                            ? `Remove all ${batchSize(item.batch_ref)} packages in this batch`
-                            : `Remove item ${index + 1}`
-                        }
-                        title={
-                          batchSize(item.batch_ref) > 1
-                            ? `Removes all ${batchSize(item.batch_ref)} identical packages entered together`
-                            : undefined
-                        }
-                        disabled={items.length === 1}
-                        onClick={() =>
-                          batchSize(item.batch_ref) > 1 && item.batch_ref
-                            ? removeBatch(item.batch_ref)
-                            : removeItem(index)
-                        }
-                      />
+                      <div style={{ display: 'inline-flex', alignItems: 'center', gap: 'var(--space-1)' }}>
+                        <IconButton
+                          icon="copy"
+                          variant="ghost"
+                          size="sm"
+                          label={`Duplicate item ${index + 1}`}
+                          title="Duplicate this row"
+                          onClick={() => {
+                            focusRowIndexRef.current = index + 1
+                            duplicateItem(index)
+                          }}
+                        />
+                        <IconButton
+                          icon="x"
+                          variant="danger-ghost"
+                          size="sm"
+                          label={
+                            batchSize(item.batch_ref) > 1
+                              ? `Remove all ${batchSize(item.batch_ref)} packages in this batch`
+                              : `Remove item ${index + 1}`
+                          }
+                          title={
+                            batchSize(item.batch_ref) > 1
+                              ? `Removes all ${batchSize(item.batch_ref)} identical packages entered together`
+                              : undefined
+                          }
+                          disabled={items.length === 1}
+                          onClick={() =>
+                            batchSize(item.batch_ref) > 1 && item.batch_ref
+                              ? removeBatch(item.batch_ref)
+                              : removeItem(index)
+                          }
+                        />
+                      </div>
                     </td>
                   </tr>
                   {qtyOf(item) > 1 && (
@@ -383,7 +406,7 @@ export function ItemsTable({ form }: { form: PackingListForm }): JSX.Element {
         <Button
           variant="ghost"
           icon="plus"
-          onClick={() => setItems((prev) => [...prev, emptyItem()])}
+          onClick={handleAddRow}
         >
           Add another item
         </Button>

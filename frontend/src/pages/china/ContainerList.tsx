@@ -81,17 +81,32 @@ const DEST_CODE: Record<string, string> = {
   Lagos: 'NG-LOS', Abuja: 'NG-ABV', 'Port Harcourt': 'NG-PHC', Nigeria: 'NG',
 }
 
+const ARRIVED_OR_DONE: ContainerStatus[] = ['arrived', 'customs_clearance', 'cleared', 'at_warehouse', 'fully_released', 'cancelled']
+
+function overdueDays(container: Container): number {
+  if (!container.estimated_arrival_date || ARRIVED_OR_DONE.includes(container.status)) return 0
+  const today = todayIso()
+  if (container.estimated_arrival_date >= today) return 0
+  const etaMs = Date.parse(`${container.estimated_arrival_date}T00:00:00Z`)
+  const todayMs = Date.parse(`${today}T00:00:00Z`)
+  return Math.max(1, Math.round((todayMs - etaMs) / 86_400_000))
+}
+
 // ETA stays a date after clearance (FD-13): the Status column already says "Cleared", and a word in a date column
 // can't be sorted or compared.
 function etaColor(container: Container): string {
   if (!container.estimated_arrival_date) return 'var(--color-ink-4)'
   if (CLEARED.includes(container.status)) return 'var(--color-ink-3)'
+  if (overdueDays(container) > 0) return 'var(--color-error)'
   if (container.estimated_arrival_date === todayIso()) return 'var(--color-warning)'
   return 'var(--color-ink)'
 }
 
 function etaLabel(container: Container): string {
-  return container.estimated_arrival_date ? formatDate(container.estimated_arrival_date, 'short') : '—'
+  if (!container.estimated_arrival_date) return '—'
+  const dateStr = formatDate(container.estimated_arrival_date, 'short')
+  const late = overdueDays(container)
+  return late > 0 ? `${dateStr} · ${late}d late` : dateStr
 }
 
 /** ISO date (YYYY-MM-DD) for "N days ago" — used as the `created_after` query param. */
@@ -460,7 +475,16 @@ export function ContainerList(): JSX.Element {
         loading={isLoading}
         emptyState={
           !isLoading && containers.length === 0 ? (
-            <EmptyState compact title="No containers yet" body="Create one to get started." />
+            activeFilters > 0 || Boolean(debouncedSearch) ? (
+              <EmptyState
+                compact
+                title="No containers match these filters"
+                body="Try broadening your status, date, or search criteria."
+                action={{ label: 'Clear filters', onClick: clearAllFilters }}
+              />
+            ) : (
+              <EmptyState compact title="No containers yet" body="Create one to get started." />
+            )
           ) : undefined
         }
         sort={sort}

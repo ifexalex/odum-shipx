@@ -12,7 +12,7 @@ import { useMemo, useState, type JSX } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { type Tenant, type TenantStatus } from '../../api/tenantManagement'
 import { usePlatformTenantList } from '../../hooks/usePlatformTenants'
-import { Banner, Button, Chip, Mono, StatusBadge, Table, SearchField, EmptyState } from '../../design/components'
+import { Badge, Banner, Button, Chip, Mono, StatusBadge, Table, SearchField, EmptyState } from '../../design/components'
 import { formatDate, plural } from '../../lib/format'
 import { statusLabel, statusesOf } from '../../design/status'
 import { FilterBar } from '../../shell/FilterBar'
@@ -67,8 +67,12 @@ function TenantCell({ tenant }: { tenant: Tenant }): JSX.Element {
       </div>
       <div style={{ minWidth: 0 }}>
         <div style={{ fontWeight: 600, fontSize: 'var(--text-sm)', lineHeight: 'var(--leading-tight)' }}>{tenant.company_name}</div>
-        <div style={{ fontSize: 'var(--text-xs)', color: 'var(--color-ink-4)', lineHeight: 'var(--leading-tight)' }}>
-          {tenant.slug}
+        <div style={{ fontSize: 'var(--text-xs)', color: 'var(--color-ink-4)', lineHeight: 'var(--leading-tight)', display: 'flex', gap: 'var(--space-2)', alignItems: 'center', flexWrap: 'wrap' }}>
+          <span>{tenant.slug}</span>
+          <span>·</span>
+          <Mono color="var(--color-ink-4)">
+            <span title={tenant.id}>{tenant.id.slice(0, 8)}…</span>
+          </Mono>
         </div>
       </div>
     </div>
@@ -161,45 +165,54 @@ export function PlatformTenantList(): JSX.Element {
       <Table
         columns={[
           { title: 'Tenant' },
-          { title: 'ID', type: 'reference' },
           { title: 'Status', type: 'status' },
           { title: 'Plan' },
           { title: 'Primary contact' },
           { title: 'Users', type: 'number' },
           { title: 'Created', type: 'date' },
         ]}
-        rows={visible.map((t) => ({
-          onOpen: () => navigate(`/platform/tenants/${t.id}`, { state: { tenant: t } }),
-          cells: [
-            <TenantCell key="tenant" tenant={t} />,
-            <Mono key="id" color="var(--color-ink-4)">
-              <span title={t.id}>{t.id.slice(0, 8)}…</span>
-            </Mono>,
-            <StatusBadge key="status" kind="tenant" status={t.status} />,
-            <span
-              key="tier"
-              style={{
-                fontSize: 'var(--text-xs)',
-                fontWeight: 700,
-                color: TIER_COLOR[t.subscription_tier] ?? 'var(--color-ink-2)',
-                textTransform: 'capitalize',
-              }}
-            >
-              {t.subscription_tier}
-            </span>,
-            <span key="contact" style={{ fontSize: 'var(--text-xs)', color: 'var(--color-ink-3)' }}>
-              {t.primary_contact_email}
-            </span>,
-            <Mono key="users">
-              {t.user_count != null
-                ? `${t.user_count}${t.users_limit != null ? ` / ${t.users_limit}` : ''}`
-                : '—'}
-            </Mono>,
-            <span key="date" style={{ fontSize: 'var(--text-xs)', color: 'var(--color-ink-3)' }}>
-              {formatDate(t.created_at)}
-            </span>,
-          ],
-        }))}
+        rows={visible.map((t) => {
+          const overQuota = t.user_count != null && t.users_limit != null && t.user_count > t.users_limit
+          return {
+            onOpen: () => navigate(`/platform/tenants/${t.id}`, { state: { tenant: t } }),
+            cells: [
+              <TenantCell key="tenant" tenant={t} />,
+              <StatusBadge key="status" kind="tenant" status={t.status} />,
+              <span
+                key="tier"
+                style={{
+                  fontSize: 'var(--text-xs)',
+                  fontWeight: 700,
+                  color: TIER_COLOR[t.subscription_tier] ?? 'var(--color-ink-2)',
+                  textTransform: 'capitalize',
+                  whiteSpace: 'nowrap',
+                }}
+              >
+                {t.subscription_tier}
+              </span>,
+              <span key="contact" style={{ fontSize: 'var(--text-xs)', color: 'var(--color-ink-3)' }}>
+                {t.primary_contact_email}
+              </span>,
+              <span
+                key="users"
+                style={{ display: 'inline-flex', alignItems: 'center', gap: 'var(--space-2)', whiteSpace: 'nowrap' }}
+              >
+                <Mono color={overQuota ? 'var(--color-warning)' : undefined}>
+                  {t.user_count != null
+                    ? `${t.user_count}${t.users_limit != null ? ` / ${t.users_limit >= 999999 ? '∞' : t.users_limit}` : ''}`
+                    : '—'}
+                </Mono>
+                {overQuota && <Badge variant="warning" size="sm" dot={false}>Over quota</Badge>}
+              </span>,
+              <span
+                key="date"
+                style={{ fontSize: 'var(--text-xs)', color: 'var(--color-ink-3)', whiteSpace: 'nowrap' }}
+              >
+                {formatDate(t.created_at)}
+              </span>,
+            ],
+          }
+        })}
         loading={loading}
         emptyState={
           !loading && visible.length === 0 ? (

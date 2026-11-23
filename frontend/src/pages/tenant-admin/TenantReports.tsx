@@ -1,9 +1,10 @@
 import { useQuery } from '@tanstack/react-query'
 import { useMemo, type JSX } from 'react'
+import { Link, useInRouterContext, useNavigate } from 'react-router-dom'
 import { billingApi } from '../../api/billing'
 import { billingKeys } from '../../api/keys'
 import { STALE_5_MIN } from '../../lib/queryClient'
-import { Banner, Card, DateRangeFilter, ExportButton, Icon, Mono, StatCard, Table, PageSkeleton, EmptyState } from '../../design/components'
+import { Banner, Card, DateRangeFilter, ErrorState, ExportButton, Icon, Mono, StatCard, Table, PageSkeleton, EmptyState } from '../../design/components'
 import { useDateRangeFilter } from '../../hooks/useDateRangeFilter'
 import { useListExport } from '../../hooks/useListExport'
 import { SectionHead } from '../../shell/SectionHead'
@@ -58,13 +59,19 @@ function DonutChart({ segments, total }: { segments: DonutSegment[]; total: numb
 const DONUT_INVOICE_STATUSES = ['paid', 'partially_paid', 'unpaid', 'released_with_outstanding', 'waived'] as const
 
 // ─── Top customers horizontal bars ───────────────────────────────────────────
-function TopCustomersChart({ data }: { data: Array<{ name: string; amount: number }> }): JSX.Element {
+function TopCustomersChart({ data, inRouter }: { data: Array<{ name: string; amount: number }>; inRouter: boolean }): JSX.Element {
   const max = data[0]?.amount ?? 1
   return (
     <div>
       {data.slice(0, 7).map((c) => (
         <div key={c.name} className={styles.topCustRow}>
-          <span className={styles.topCustName}>{c.name}</span>
+          {inRouter ? (
+            <Link to={`/admin/customers?q=${encodeURIComponent(c.name)}`} className={styles.topCustLink} title={c.name}>
+              {c.name}
+            </Link>
+          ) : (
+            <span className={styles.topCustName}>{c.name}</span>
+          )}
           <div className={styles.topCustBar}>
             <div
               className={styles.topCustFill}
@@ -172,8 +179,20 @@ function ClaimsSummaryCard({ iconName, color, title, stats }: {
   )
 }
 
+function RouterTenantReports(): JSX.Element {
+  const navigate = useNavigate()
+  return <TenantReportsContent navigate={(to) => navigate(to)} />
+}
+
 // ─── Main component ───────────────────────────────────────────────────────────
 export function TenantReports(): JSX.Element {
+  const inRouter = useInRouterContext()
+  return inRouter ? <RouterTenantReports /> : <TenantReportsContent navigate={null} />
+}
+
+function TenantReportsContent({ navigate }: { navigate: ((to: string) => void) | null }): JSX.Element {
+  const inRouter = navigate !== null
+
   // "Billed/created/filed within" — null/'' means no date filter (the whole
   // report is "all time"), same opt-in-only rationale as every other list
   // page's date filter. Scopes billing, containers, and claims together;
@@ -194,7 +213,7 @@ export function TenantReports(): JSX.Element {
   )
   // One SQL-computed report endpoint — correct at scale (previously summed a
   // capped `limit: 500` sample of billing/containers/claims per period).
-  const { data: report, isLoading: loading } = useQuery({
+  const { data: report, isLoading: loading, error: reportError, refetch } = useQuery({
     queryKey: billingKeys.report({ createdAfter, createdBefore }),
     queryFn: () => billingApi.report({ created_after: createdAfter, created_before: createdBefore }),
     staleTime: STALE_5_MIN,
@@ -249,6 +268,15 @@ export function TenantReports(): JSX.Element {
     [report],
   )
 
+  const totalCollected = useMemo(() => {
+    if (containerBilling.length > 0) {
+      return containerBilling.reduce((sum, r) => sum + r.collected, 0)
+    }
+    return Number(report?.overview.revenue_paid ?? 0)
+  }, [containerBilling, report])
+
+  const collectionRate = totalRevenue > 0 ? Math.min(100, Math.round((totalCollected / totalRevenue) * 100)) : null
+
   // The header holds the period filter, so it stays on screen while a new period loads; only the figures wait.
   const header = <PageHeader title="Reports" actions={<DateRangeFilter label="Period" range={reportRange} />} />
   if (loading) {
@@ -260,15 +288,38 @@ export function TenantReports(): JSX.Element {
     )
   }
 
+  if (reportError) {
+    return (
+      <div>
+        {header}
+        <ErrorState
+          title="Couldn't load reports"
+          error={reportError}
+          onRetry={() => void refetch()}
+        />
+      </div>
+    )
+  }
+
   return (
     <div>
       {header}
       {/* Section A — Overview stats */}
       <div className={styles.statsRow}>
-        <StatCard label="Containers processed" value={containersProcessed}   sublabel="cleared + released" icon="container" />
-        <StatCard label="Total revenue"         value={fmtNgn(totalRevenue)} sublabel="billed this period"  icon="coin" />
-        <StatCard label="Active customers"      value={customerCount}         sublabel="registered"          icon="users" />
-        <StatCard label="Avg CBM / container"   value={avgCbmPerContainer}    sublabel="total CBM / processed" icon="package" />
+        <StatCard label="Total revenue" value={fmtNgn(totalRevenue)} sublabel="billed this period" icon="coin" />
+        <StatCard
+          label="Collected"
+          value={fmtNgn(totalCollected)}
+          sublabel={collectionRate != null ? `${collectionRate}% collection rate` : 'collected this period'}
+          icon="check"
+        />
+        <StatCard
+          label="Containers processed"
+          value={containersProcessed}
+          sublabel={containersProcessed > 0 ? `avg ${avgCbmPerContainer} CBM / container` : 'cleared + released'}
+          icon="container"
+        />
+        <StatCard label="Active customers" value={customerCount} sublabel="registered" icon="users" />
       </div>
 
       {/* Section B — Revenue breakdown donut + top customers */}
@@ -284,7 +335,7 @@ export function TenantReports(): JSX.Element {
           <SectionHead title="Top customers by revenue" />
           <div style={{ height: 16 }} />
           {topCustomers.length > 0
-            ? <TopCustomersChart data={topCustomers} />
+            ? <TopCustomersChart data={topCustomers} inRouter={inRouter} />
             : <p style={{ color: 'var(--color-ink-4)', fontSize: 'var(--text-sm)' }}>No billing data yet.</p>}
         </Card>
       </div>
@@ -321,19 +372,22 @@ export function TenantReports(): JSX.Element {
             { title: 'Container', type: 'reference' },
             { title: 'Customers', type: 'number' },
             { title: 'Volume (CBM)', type: 'number' },
-            { title: 'CBM rate ($)', type: 'money' },
-            { title: 'FX rate (₦ per $)', type: 'money' },
+            { title: 'Rates (CBM / FX)' },
             { title: 'Billed (₦)', type: 'money' },
             { title: 'Collected (₦)', type: 'money' },
             { title: 'Outstanding (₦)', type: 'money' },
           ]}
           rows={containerBilling.map((row) => ({
+            ...(navigate ? { onOpen: () => navigate(`/billing?q=${encodeURIComponent(row.ctn)}`) } : {}),
             cells: [
               <Mono key="ctn">{row.ctn}</Mono>,
               <Mono key="cust">{row.customers}</Mono>,
               <Mono key="cbm">{formatCbm(row.cbm)}</Mono>,
-              <Mono key="cbmrate" color="var(--color-ink-3)">{row.cbmRateUsd > 0 ? formatUsd(row.cbmRateUsd) : '—'}</Mono>,
-              <Mono key="fx" color="var(--color-ink-3)">{row.dollarRate > 0 ? `₦${row.dollarRate.toFixed(0)}` : '—'}</Mono>,
+              <Mono key="rates" color="var(--color-ink-3)">
+                {row.cbmRateUsd > 0 ? formatUsd(row.cbmRateUsd) : '—'}
+                {' · '}
+                {row.dollarRate > 0 ? `₦${row.dollarRate.toFixed(0)}` : '—'}
+              </Mono>,
               <Mono key="billed">{fmtNgn(row.billed)}</Mono>,
               <Mono key="collected" color="var(--color-success)">{fmtNgn(row.collected)}</Mono>,
               <Mono key="out" color={row.outstanding > 0 ? 'var(--color-warning)' : 'var(--color-ink-4)'}>
@@ -345,8 +399,8 @@ export function TenantReports(): JSX.Element {
         />
       </Card>
 
-      {/* Section E — Claims summary */}
-      <SectionHead title="Claims summary" />
+      {/* Section E — Claims & exceptions summary */}
+      <SectionHead title="Claims &amp; exceptions" />
       <div style={{ height: 12 }} />
       <div className={styles.claimsGrid}>
         <ClaimsSummaryCard
@@ -354,16 +408,22 @@ export function TenantReports(): JSX.Element {
           title="Damage claims"
           stats={[['Open', String(claimCounts.open)], ['Resolved', String(claimCounts.resolved)], ['Total', String(claimCounts.total)]]}
         />
-        <ClaimsSummaryCard
-          iconName="package" color="var(--color-warning)"
-          title="Missing items"
-          stats={[['Filed', '—'], ['Found', '—'], ['Lost', '—']]}
-        />
-        <ClaimsSummaryCard
-          iconName="coin" color="var(--color-success)"
-          title="Refunds issued"
-          stats={[['Approved', '—'], ['Total', '—'], ['', '']]}
-        />
+        {inRouter && (
+          <Card padding="default">
+            <div className={styles.claimCardHeader}>
+              <div className={styles.claimIcon} style={{ background: 'var(--color-surface-muted)', color: 'var(--color-ink-2)' }}>
+                <Icon name="package" size={18} color="var(--color-ink-2)" />
+              </div>
+              <span className={styles.claimCardTitle}>Exceptions &amp; refunds</span>
+            </div>
+            <div className={styles.quickLinks}>
+              <Link to="/claims" className={styles.quickLink}>Damage claims</Link>
+              <Link to="/missing-items" className={styles.quickLink}>Missing items</Link>
+              <Link to="/seized-items" className={styles.quickLink}>Seized items</Link>
+              <Link to="/refunds" className={styles.quickLink}>Refund requests</Link>
+            </div>
+          </Card>
+        )}
       </div>
     </div>
   )

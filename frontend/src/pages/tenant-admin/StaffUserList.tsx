@@ -15,8 +15,8 @@ import {
   Button,
   Chip,
   Field,
+  Modal,
   Table,
-  DialogGuard,
   RoleBadge,
   StatusBadge,
   SearchField,
@@ -72,20 +72,9 @@ function InviteModal({ onCancel, onSuccess }: InviteModalProps): JSX.Element {
   }
 
   return (
-    <div className={styles.modalOverlay} onClick={onCancel}>
-      <DialogGuard onClose={onCancel} />
-      <div
-        className={styles.modalPanel}
-        onClick={(e) => e.stopPropagation()}
-        role="dialog"
-        aria-modal="true"
-      >
-        <h3 className={styles.modalTitle}>Invite staff member</h3>
-        {error && (
-          <div className={styles.modalBanner}>
-            <Banner variant="error">{error}</Banner>
-          </div>
-        )}
+    <Modal open onClose={onCancel} title="Invite staff member" size="sm">
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-4)' }}>
+        {error && <Banner variant="error">{error}</Banner>}
         <Field
           label="Email"
           name="email"
@@ -137,7 +126,7 @@ function InviteModal({ onCancel, onSuccess }: InviteModalProps): JSX.Element {
           </Button>
         </div>
       </div>
-    </div>
+    </Modal>
   )
 }
 
@@ -158,14 +147,18 @@ export function StaffUserList(): JSX.Element {
 
   const counts = useMemo(() => {
     const map: Record<string, number> = {}
-    for (const u of staff) map[u.role] = (map[u.role] ?? 0) + 1
+    for (const u of staff) {
+      const userRoles = Array.from(new Set([u.role, ...(u.roles ?? [])]))
+      for (const r of userRoles) map[r] = (map[r] ?? 0) + 1
+    }
     return map
   }, [staff])
 
   const visible = useMemo(() => {
     const q = query.trim().toLowerCase()
     return staff.filter((u) => {
-      if (roleFilter && u.role !== roleFilter) return false
+      const userRoles = Array.from(new Set([u.role, ...(u.roles ?? [])]))
+      if (roleFilter && !userRoles.includes(roleFilter)) return false
       if (!q) return true
       return u.full_name.toLowerCase().includes(q) || u.email.toLowerCase().includes(q)
     })
@@ -222,25 +215,32 @@ export function StaffUserList(): JSX.Element {
           columns={[
             { title: 'Name' },
             { title: 'Email' },
-            { title: 'Role' },
+            { title: 'Roles' },
             { title: 'Status', type: 'status' },
             { title: 'Created', type: 'date' },
           ]}
-          rows={visible.map((u) => ({
-            onOpen: () => navigate(`/admin/users/${u.id}`, { state: { user: u } }),
-            cells: [
-              <span key="name">{u.full_name}</span>,
-              <span key="email">{u.email}</span>,
-              <RoleBadge key="role" role={u.role} />,
-              <StatusBadge key="status" kind="staffUser" status={u.status} />,
-              <span
-                key="created"
-                style={{ fontSize: 'var(--text-xs)', color: 'var(--color-ink-3)' }}
-              >
-                {formatDate(u.created_at)}
-              </span>,
-            ],
-          }))}
+          rows={visible.map((u) => {
+            const userRoles = Array.from(new Set([u.role, ...(u.roles ?? [])]))
+            return {
+              onOpen: () => navigate(`/admin/users/${u.id}`, { state: { user: u } }),
+              cells: [
+                <span key="name">{u.full_name}</span>,
+                <span key="email">{u.email}</span>,
+                <div key="role" style={{ display: 'flex', gap: 'var(--space-1)', flexWrap: 'wrap' }}>
+                  {userRoles.map((r) => (
+                    <RoleBadge key={r} role={r} />
+                  ))}
+                </div>,
+                <StatusBadge key="status" kind="staffUser" status={u.status} />,
+                <span
+                  key="created"
+                  style={{ fontSize: 'var(--text-xs)', color: 'var(--color-ink-3)' }}
+                >
+                  {formatDate(u.created_at)}
+                </span>,
+              ],
+            }
+          })}
           loading={loading}
           emptyState={
             !loading && visible.length === 0 ? (

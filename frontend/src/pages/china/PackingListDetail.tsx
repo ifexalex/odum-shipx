@@ -6,8 +6,9 @@ import { formatCbm } from '../../api/decimal'
 import { packingListApi, type PackingList, type PackingListItem, type UpdatePackingListItemInput } from '../../api/packingList'
 import { packingListKeys } from '../../api/keys'
 import { STALE_30S } from '../../lib/queryClient'
-import { canApproveOrReject, canEditPackingList, computeCbm, formatPackageMix, formatPackageUnit } from '../../api/packingListRules'
+import { applyMinCbm, canApproveOrReject, canEditPackingList, computeCbm, formatPackageMix, formatPackageUnit, isSelfApproval } from '../../api/packingListRules'
 import { useSession } from '../../auth/useSession'
+import { useCbmRate } from '../../hooks/useConfig'
 import { Badge, Banner, Button, Card, DialogGuard, ExportButton, Field, Mono, StatusBadge, Table, IconButton, CellInput, PageSkeleton, EmptyState, ErrorState } from '../../design/components'
 import { SectionHead } from '../../shell/SectionHead'
 import styles from './PackingListDetail.module.css'
@@ -121,6 +122,10 @@ export function PackingListDetail(): JSX.Element {
   const [editing, setEditing] = useState(false)
   const [editItems, setEditItems] = useState<UpdatePackingListItemInput[]>([])
 
+  const { data: cbmRateConfig } = useCbmRate({ enabled: editing })
+  const tenantMinCbm = cbmRateConfig?.min_cbm_per_item ?? 0
+  const minCbm = tenantMinCbm > 0 ? tenantMinCbm : 0.1
+
   function emptyEditItem(): UpdatePackingListItemInput {
     return { description: '' }
   }
@@ -223,10 +228,16 @@ export function PackingListDetail(): JSX.Element {
   if (!pl) return <></>
 
   const canAct = session ? canApproveOrReject(pl, session.role, session.userId) : false
+  const isApproverRole = session?.role === 'china_office_staff' || session?.role === 'tenant_admin'
+  const selfApprovalBlocked =
+    pl.status === 'pending_approval' &&
+    isApproverRole &&
+    Boolean(session && isSelfApproval(pl, session.userId))
   const canEdit = canEditPackingList(pl) && pl.status === 'rejected'
   const canSubmitDraft = pl.status === 'draft' && pl.items.length > 0 && canEditPackingList(pl)
   const lastRejection = pl.approval_comments?.[pl.approval_comments.length - 1] ?? null
   const rejectedItemIds = new Set(lastRejection?.item_rejections?.map((r) => r.item_id) ?? [])
+  const originalItemsById = new Map(pl.items.map((item) => [item.id, item]))
   // "cartons" was hardcoded, so a list of bales read "2 cartons". Derive the
   // real mix from the items instead of assuming a unit.
   const itemPackageMix = pl.items.reduce<Record<string, number>>((acc, item) => {
@@ -235,6 +246,19 @@ export function PackingListDetail(): JSX.Element {
     return acc
   }, {})
   const packageSummary = formatPackageMix(itemPackageMix)
+
+  const editLiveMetrics = editItems.map((item) => {
+    const original = item.id ? originalItemsById.get(item.id) : undefined
+    const rawCbm =
+      item.length_cm != null && item.width_cm != null && item.height_cm != null &&
+      item.length_cm > 0 && item.width_cm > 0 && item.height_cm > 0
+        ? computeCbm(item.length_cm, item.width_cm, item.height_cm)
+        : null
+    const cbm = rawCbm != null ? applyMinCbm(rawCbm, minCbm) : null
+    return { original, cbm }
+  })
+  const editTotalWeight = editItems.reduce((sum, item) => sum + (item.weight_actual_kg ?? 0), 0)
+  const editTotalCbm = editLiveMetrics.reduce((sum, m) => sum + (m.cbm ?? 0), 0)
 
   const showFlagColumn = pl.status === 'rejected' && !editing
 
@@ -335,6 +359,14 @@ export function PackingListDetail(): JSX.Element {
         </div>
       )}
 
+      {selfApprovalBlocked && (
+        <div className={styles.banner}>
+          <Banner variant="info" title="Awaiting another approver">
+            You created this packing list, so another team member must approve or reject it.
+          </Banner>
+        </div>
+      )}
+
       {pl.status === 'approved' && pl.approved_by && (
         <div className={styles.banner}>
           <Banner
@@ -403,14 +435,13 @@ export function PackingListDetail(): JSX.Element {
           rows={
             editing
               ? editItems.map((item, index) => {
-                  const liveCbm =
-                    item.length_cm != null && item.width_cm != null && item.height_cm != null
-                      ? computeCbm(item.length_cm, item.width_cm, item.height_cm)
-                      : null
+                  const metrics = editLiveMetrics[index]
+                  const originalItem = metrics?.original
+                  const liveCbm = metrics?.cbm ?? null
                   return {
                     cells: [
                       <span key="tag" className={styles.tagReadOnly}>
-                        {pl.items[index]?.carton_tag ?? <em className={styles.newItemTag}>New</em>}
+                        {originalItem?.carton_tag ?? <em className={styles.newItemTag}>New</em>}
                       </span>,
                       <CellInput
                         label={`Description, item ${index + 1}`}
@@ -420,7 +451,7 @@ export function PackingListDetail(): JSX.Element {
                         placeholder="Description"
                         onChange={(e) => updateEditItem(index, { description: e.target.value })}
                       />,
-                      <PackageCell key="pkg" item={pl.items[index]} />,
+                      <PackageCell key="pkg" item={originalItem} />,
                       <CellInput
                         label={`Actual weight (kg), item ${index + 1}`}
                         key="weight"
@@ -533,19 +564,17 @@ export function PackingListDetail(): JSX.Element {
           emptyState={<EmptyState compact title="No carton items" />}
         />
 
-        {!editing && (
-          <div className={styles.totalsRow}>
-            <span>{packageSummary}</span>
-            <span>
-              · <span className={styles.totalsLabel}>Weight:</span>{' '}
-              <Mono>{formatKg(pl.total_weight_kg)} kg</Mono>
-            </span>
-            <span>
-              · <span className={styles.totalsLabel}>CBM:</span>{' '}
-              <Mono color="var(--color-success)">{formatCbm(pl.total_cbm)}</Mono>
-            </span>
-          </div>
-        )}
+        <div className={styles.totalsRow}>
+          <span>{editing ? plural(editItems.length, 'item') : packageSummary}</span>
+          <span>
+            · <span className={styles.totalsLabel}>Weight:</span>{' '}
+            <Mono>{formatKg(editing ? editTotalWeight : pl.total_weight_kg)} kg</Mono>
+          </span>
+          <span>
+            · <span className={styles.totalsLabel}>CBM:</span>{' '}
+            <Mono color="var(--color-success)">{formatCbm(editing ? editTotalCbm : pl.total_cbm)}</Mono>
+          </span>
+        </div>
 
         {editing && (
           <div className={styles.editActions}>

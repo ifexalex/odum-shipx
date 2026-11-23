@@ -19,10 +19,12 @@ import { isoDateOffset, formatDate } from '../../lib/format'
 import { statusColor, statusLabel } from '../../design/status'
 
 // Pipeline order, loading → fully released (cancelled is not a pipeline stage).
-const STAGES: ContainerStatus[] = [
-  'loading', 'sealed', 'in_transit', 'arrived', 'customs_clearance', 'cleared', 'at_warehouse', 'fully_released',
+// "All active" covers in-flight stages only (excludes completed fully_released).
+const ACTIVE_STAGES: ContainerStatus[] = [
+  'loading', 'sealed', 'in_transit', 'arrived', 'customs_clearance', 'cleared', 'at_warehouse',
 ]
-const ACTIVE_STATUS_PARAM = STAGES.join(',')
+const STAGES: ContainerStatus[] = [...ACTIVE_STAGES, 'fully_released']
+const ACTIVE_STATUS_PARAM = ACTIVE_STAGES.join(',')
 
 type Selected = ContainerStatus | 'all'
 
@@ -72,7 +74,7 @@ export function ContainerPipeline({ counts }: { counts: ContainerStats | undefin
     limit: 12,
   })
 
-  const activeTotal = counts ? counts.total - counts.cancelled : undefined
+  const activeTotal = counts ? counts.total - counts.cancelled - counts.fully_released : undefined
   const maxCount = Math.max(1, ...STAGES.map((s) => counts?.[s] ?? 0))
 
   return (

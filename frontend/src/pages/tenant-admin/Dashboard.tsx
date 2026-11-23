@@ -89,6 +89,38 @@ export function Dashboard(): JSX.Element {
 
   const firstName = session?.name?.split(' ')[0] ?? 'team'
   const customsAwaiting = (containerStats?.customs_clearance ?? 0) + (containerStats?.arrived ?? 0)
+  const unsettledInvoices = billingStats
+    ? billingStats.unpaid + billingStats.partially_paid + billingStats.released_with_outstanding
+    : null
+  const attentionItems = useMemo(() => {
+    if (!isAdmin) return []
+    const items: Array<{ label: string; detail: string; to: string; tone: 'warning' | 'error' | 'info' }> = []
+    if ((claimStats?.open ?? 0) > 0) {
+      items.push({
+        label: `${claimStats!.open} open damage ${claimStats!.open === 1 ? 'claim' : 'claims'}`,
+        detail: 'Review inspection and resolution status',
+        to: '/claims',
+        tone: 'error',
+      })
+    }
+    if ((billingStats?.overdue ?? 0) > 0) {
+      items.push({
+        label: `${billingStats!.overdue} overdue ${billingStats!.overdue === 1 ? 'invoice' : 'invoices'}`,
+        detail: `${formatNgnCompact(billingStats!.outstanding_ngn)} outstanding across unpaid & partial bills`,
+        to: '/billing',
+        tone: 'warning',
+      })
+    }
+    if (customsAwaiting > 0) {
+      items.push({
+        label: `${customsAwaiting} ${customsAwaiting === 1 ? 'container' : 'containers'} awaiting customs / arrival`,
+        detail: 'Verify manifests to unlock customer billing',
+        to: '/containers',
+        tone: 'info',
+      })
+    }
+    return items
+  }, [isAdmin, claimStats, billingStats, customsAwaiting])
 
   return (
     <div>
@@ -106,7 +138,12 @@ export function Dashboard(): JSX.Element {
           (in transit / arrived / customs / at warehouse …) live in the
           Container pipeline rail below, so they're not duplicated here. */}
       <div className={styles.statsRow}>
-        <StatCard label="Containers" value={containerStats?.total ?? '—'} icon="container" />
+        <StatCard
+          label="Containers"
+          value={containerStats?.total ?? '—'}
+          icon="container"
+          onSelect={() => navigate('/containers')}
+        />
         {isNigeria && (
           <StatCard
             label="Ready for pickup"
@@ -114,18 +151,80 @@ export function Dashboard(): JSX.Element {
             icon="package"
             sublabel="active release notes"
             accentColor="var(--color-primary)"
+            onSelect={() => navigate('/release-notes')}
           />
         )}
-        <StatCard label="Unpaid billing" value={billingStats?.unpaid ?? '—'} icon="coin" />
+        <StatCard
+          label="Unsettled invoices"
+          value={unsettledInvoices ?? '—'}
+          icon="coin"
+          sublabel={
+            billingStats
+              ? `${billingStats.unpaid} unpaid · ${billingStats.partially_paid + billingStats.released_with_outstanding} partial`
+              : undefined
+          }
+          onSelect={() => navigate('/billing?status=unpaid')}
+        />
         <StatCard
           label="Outstanding"
           value={billingStats ? formatNgnCompact(billingStats.outstanding_ngn) : '—'}
           icon="coin"
           sublabel="unpaid + partial"
+          onSelect={() => navigate('/billing')}
         />
-        {isAdmin && <StatCard label="Active customers" value={customerStats?.active ?? '—'} icon="users" />}
-        {isAdmin && <StatCard label="Open claims" value={claimStats?.open ?? '—'} icon="warn" sublabel={claimStats?.open ? 'needs attention' : 'no active disputes'} />}
+        {isAdmin && (
+          <StatCard
+            label="Active customers"
+            value={customerStats?.active ?? '—'}
+            icon="users"
+            onSelect={() => navigate('/admin/customers')}
+          />
+        )}
+        {isAdmin && (
+          <StatCard
+            label="Open claims"
+            value={claimStats?.open ?? '—'}
+            icon="warn"
+            sublabel={claimStats?.open ? 'needs attention' : 'no active disputes'}
+            onSelect={() => navigate('/claims')}
+          />
+        )}
       </div>
+
+      {isAdmin && attentionItems.length > 0 && (
+        <Card padding="default" style={{ marginBottom: 'var(--space-5)' }}>
+          <SectionHead
+            title="Needs your attention"
+            sub="Items requiring follow-up across operations and billing"
+          />
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-2)', marginTop: 'var(--space-3)' }}>
+            {attentionItems.map((item) => (
+              <div
+                key={item.label}
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'space-between',
+                  gap: 'var(--space-3)',
+                  flexWrap: 'wrap',
+                  padding: 'var(--space-3)',
+                  borderRadius: 'var(--radius-md)',
+                  background: 'var(--color-surface-muted)',
+                  border: '1px solid var(--color-line-soft)',
+                }}
+              >
+                <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-3)', flexWrap: 'wrap' }}>
+                  <Badge variant={item.tone} size="sm">{item.label}</Badge>
+                  <span style={{ fontSize: 'var(--text-sm)', color: 'var(--color-ink-3)' }}>{item.detail}</span>
+                </div>
+                <Button variant="ghost" size="sm" trailingIcon="arrowright" onClick={() => navigate(item.to)}>
+                  Open
+                </Button>
+              </div>
+            ))}
+          </div>
+        </Card>
+      )}
 
       <UnbilledQueue />
 
@@ -135,7 +234,7 @@ export function Dashboard(): JSX.Element {
           {pendingPls.length > 0 && (
             <div style={{ marginTop: 'var(--space-4)' }}>
               <Card padding="none">
-                <div style={{ padding: 'var(--space-5) var(--space-5)' }}>
+                <div className={styles.cardHeader}>
                   <SectionHead
                     title="Packing lists awaiting approval"
                     sub={`${pendingPls.length} submitted`}
@@ -164,7 +263,7 @@ export function Dashboard(): JSX.Element {
           {pendingManifests.length > 0 && (
             <div style={{ marginTop: 'var(--space-4)' }}>
               <Card padding="none">
-                <div style={{ padding: 'var(--space-5) var(--space-5)' }}>
+                <div className={styles.cardHeader}>
                   <SectionHead
                     title="Containers awaiting manifest verification"
                     sub={`${pendingManifests.length} arrived in Nigeria, manifest still pending — blocks billing + release`}
@@ -191,7 +290,7 @@ export function Dashboard(): JSX.Element {
           {openDisputes.length > 0 && (
             <div style={{ marginTop: 'var(--space-4)' }}>
               <Card padding="none">
-                <div style={{ padding: 'var(--space-5) var(--space-5)' }}>
+                <div className={styles.cardHeader}>
                   <SectionHead
                     title="CBM disputes need response"
                     sub={`${openDisputes.length} submitted — 24h acknowledge SLA`}
@@ -201,12 +300,20 @@ export function Dashboard(): JSX.Element {
                 <Table
                   dense
                   cardBreakpoint={600}
-                  columns={[{ title: 'Submitted', type: 'date' }, { title: 'Original (CBM)', type: 'number' }, { title: 'Status', type: 'status' }]}
+                  columns={[
+                    { title: 'Customer' },
+                    { title: 'Container', type: 'reference' },
+                    { title: 'Original (CBM)', type: 'number' },
+                    { title: 'Submitted', type: 'date' },
+                    { title: 'Status', type: 'status' },
+                  ]}
                   rows={openDisputes.slice(0, 5).map((d) => ({
                     onOpen: () => navigate(`/billing/${d.billing_id}`),
                     cells: [
-                      <span key="when" style={{ fontSize: 'var(--text-xs)', color: 'var(--color-ink-3)' }}>{formatDate(d.submitted_at)}</span>,
+                      <UserCell key="cust" name={d.customer_name ?? '—'} email="" />,
+                      <Mono key="ctn">{d.container_number ?? '—'}</Mono>,
                       <Mono key="cbm">{d.original_cbm ?? '—'}</Mono>,
+                      <span key="when" style={{ fontSize: 'var(--text-xs)', color: 'var(--color-ink-3)' }}>{formatDate(d.submitted_at)}</span>,
                       <StatusBadge key="status" kind="dispute" status={d.status} />,
                     ],
                   }))}
@@ -219,7 +326,7 @@ export function Dashboard(): JSX.Element {
           <div className={styles.dashGrid2} style={{ marginTop: 'var(--space-4)' }}>
             {outstanding.length > 0 && (
               <Card padding="none">
-                <div style={{ padding: 'var(--space-5) var(--space-5)' }}>
+                <div className={styles.cardHeader}>
                   <SectionHead
                     title="Outstanding invoices"
                     sub="Oldest unpaid first — chase these before storage fees mount"
@@ -243,7 +350,7 @@ export function Dashboard(): JSX.Element {
             )}
             {awaitingPickup.length > 0 && (
               <Card padding="none">
-                <div style={{ padding: 'var(--space-5) var(--space-5)' }}>
+                <div className={styles.cardHeader}>
                   <SectionHead
                     title="Awaiting pickup"
                     sub="Released — not yet collected by the customer"
@@ -276,7 +383,7 @@ export function Dashboard(): JSX.Element {
       {isAdmin && (
         <div className={styles.dashCols} style={{ marginBottom: 'var(--space-5)' }}>
           <Card padding="none">
-            <div style={{ padding: 'var(--space-5) var(--space-5)' }}>
+            <div className={styles.cardHeader}>
               <SectionHead
                 title="Recent containers"
                 sub="Latest across all stages"
@@ -308,10 +415,10 @@ export function Dashboard(): JSX.Element {
             />
           </Card>
           <Card padding="none">
-            <div style={{ padding: 'var(--space-5) var(--space-5) var(--space-1)' }}>
+            <div className={styles.cardHeader}>
               <SectionHead title="Activity" sub="Recent across your tenant" />
             </div>
-            <div style={{ padding: '0 var(--space-5) var(--space-3)' }}>
+            <div style={{ padding: 'var(--space-2) var(--space-5) var(--space-4)' }}>
               <ActivityFeed limit={8} />
             </div>
           </Card>

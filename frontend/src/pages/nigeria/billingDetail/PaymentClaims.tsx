@@ -1,12 +1,11 @@
 import { useQuery } from '@tanstack/react-query'
 import { useState, type JSX } from 'react'
-import { paymentClaimApi } from '../../../api/billing'
+import { paymentClaimApi, type PaymentClaim } from '../../../api/billing'
 import { ApiError } from '../../../api/client'
 import { billingKeys } from '../../../api/keys'
-import {  Banner, Button, Card, Field, Mono, Table, StatusBadge } from '../../../design/components'
+import { Banner, Button, ConfirmDialog, Field, Modal, Mono, Table, StatusBadge } from '../../../design/components'
 import { formatDate, formatNgn } from '../../../lib/format'
-import { SectionHead } from '../../../shell/SectionHead'
-import styles from '../BillingDetail.module.css'
+import { Section } from '../../../shell/Section'
 import { toast } from '../../../design/toast'
 
 interface PaymentClaimsSectionProps {
@@ -18,7 +17,9 @@ interface PaymentClaimsSectionProps {
 }
 
 /**
- * Payment claims — customer "I've made this payment" submissions awaiting staff review. Confirming creates the real payment_record via the same confirm_payment() path as "Record payment" above; rejecting requires a reason and never touches billing totals.
+ * Payment claims — customer "I've made this payment" submissions awaiting staff review.
+ * Confirming creates the real payment_record via the same confirm_payment() path as "Record payment";
+ * rejecting requires a reason and never touches billing totals.
  */
 export function PaymentClaimsSection({
   billingId,
@@ -33,7 +34,8 @@ export function PaymentClaimsSection({
     staleTime: 30 * 1000,
   })
   const [reviewingClaimId, setReviewingClaimId] = useState<string | null>(null)
-  const [rejectingClaimId, setRejectingClaimId] = useState<string | null>(null)
+  const [confirmingClaim, setConfirmingClaim] = useState<PaymentClaim | null>(null)
+  const [rejectingClaim, setRejectingClaim] = useState<PaymentClaim | null>(null)
   const [rejectReason, setRejectReason] = useState('')
   const [claimActionError, setClaimActionError] = useState<string | null>(null)
 
@@ -43,9 +45,11 @@ export function PaymentClaimsSection({
     try {
       await paymentClaimApi.confirm(claimId)
       toast.success('Payment confirmed')
+      setConfirmingClaim(null)
       await refetchClaims()
       onChanged()
     } catch (err) {
+      setConfirmingClaim(null)
       setClaimActionError(
         err instanceof ApiError ? err.message : 'Could not confirm this payment claim.',
       )
@@ -62,7 +66,7 @@ export function PaymentClaimsSection({
       await paymentClaimApi.reject(claimId, rejectReason.trim())
       toast.success('Payment claim rejected')
       await refetchClaims()
-      setRejectingClaimId(null)
+      setRejectingClaim(null)
       setRejectReason('')
       onChanged()
     } catch (err) {
@@ -75,110 +79,83 @@ export function PaymentClaimsSection({
   }
 
   if (paymentClaims.length === 0) return null
+  const pendingCount = paymentClaims.filter((c) => c.status === 'pending').length
+
   return (
-    <div className={styles.section}>
-      <SectionHead
+    <>
+      <Section
         title="Payment claims"
-        sub={`${paymentClaims.filter((c) => c.status === 'pending').length} pending review`}
-      />
-      {claimActionError && (
-        <div style={{ marginBottom: 'var(--space-3)' }}>
-          <Banner variant="error" title="Action failed">
-            {claimActionError}
-          </Banner>
-        </div>
-      )}
-      <Card padding="none">
+        sub={`${pendingCount} pending review`}
+        flush
+      >
+        {claimActionError && (
+          <div style={{ padding: 'var(--space-3) var(--space-5) 0' }}>
+            <Banner variant="error" title="Action failed" onDismiss={() => setClaimActionError(null)}>
+              {claimActionError}
+            </Banner>
+          </div>
+        )}
         <Table
           columns={[
             { title: 'Amount (₦)', type: 'money' as const },
             { title: 'Submitted', type: 'date' as const },
-            { title: 'Evidence' },
+            { title: 'Evidence & note' },
             { title: 'Status', type: 'status' as const },
-            ...(isStaff ? [{ title: '', type: 'action' as const, width: '220px' }] : []),
+            ...(isStaff ? [{ title: '', type: 'action' as const, width: '180px' }] : []),
           ]}
           rows={paymentClaims.map((claim) => ({
             cells: [
               <Mono key="amount">{formatNgn(claim.amount_ngn)}</Mono>,
               <span key="date">{formatDate(claim.submitted_at)}</span>,
-              <Button
-                key="evidence"
-                variant="ghost"
-                size="sm"
-                icon="eye"
-                onClick={() =>
-                  void paymentClaimApi
-                    .getEvidenceUrl(claim.id)
-                    .then((r) => window.open(r.url, '_blank', 'noopener'))
-                    .catch((err: unknown) =>
-                      setClaimActionError(
-                        err instanceof ApiError ? err.message : 'Could not open evidence.',
-                      ),
-                    )
-                }
-              >
-                {claim.evidence_file_name}
-              </Button>,
+              <div key="evidence" style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-start', gap: 'var(--space-0-5)' }}>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  icon="eye"
+                  onClick={() =>
+                    void paymentClaimApi
+                      .getEvidenceUrl(claim.id)
+                      .then((r) => window.open(r.url, '_blank', 'noopener'))
+                      .catch((err: unknown) =>
+                        setClaimActionError(
+                          err instanceof ApiError ? err.message : 'Could not open evidence.',
+                        ),
+                      )
+                  }
+                >
+                  {claim.evidence_file_name}
+                </Button>
+                {claim.customer_note && (
+                  <span style={{ fontSize: 'var(--text-xs)', color: 'var(--color-ink-3)', paddingLeft: 'var(--space-3)' }}>
+                    “{claim.customer_note}”
+                  </span>
+                )}
+              </div>,
               <StatusBadge key="status" kind="paymentClaim" status={claim.status} audience={isStaff ? 'staff' : 'customer'} />,
               ...(isStaff
                 ? [
                     claim.status === 'pending' ? (
-                      rejectingClaimId === claim.id ? (
-                        <div
-                          key="reject"
-                          style={{
-                            display: 'flex',
-                            gap: 'var(--space-2)',
-                            alignItems: 'center',
+                      <div key="actions" style={{ display: 'flex', gap: 'var(--space-2)' }}>
+                        <Button
+                          variant="primary"
+                          size="sm"
+                          loading={reviewingClaimId === claim.id}
+                          onClick={() => setConfirmingClaim(claim)}
+                        >
+                          Confirm
+                        </Button>
+                        <Button
+                          variant="danger-ghost"
+                          size="sm"
+                          onClick={() => {
+                            setRejectReason('')
+                            setClaimActionError(null)
+                            setRejectingClaim(claim)
                           }}
                         >
-                          <Field
-                            label="Reason for rejecting"
-                            hideLabel
-                            name="reject_reason"
-                            placeholder="Reason for rejecting"
-                            value={rejectReason}
-                            onChange={(e) => setRejectReason(e.target.value)}
-                          />
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            onClick={() => {
-                              setRejectingClaimId(null)
-                              setRejectReason('')
-                            }}
-                          >
-                            Cancel
-                          </Button>
-                          <Button
-                            variant="danger"
-                            size="sm"
-                            loading={reviewingClaimId === claim.id}
-                            disabled={!rejectReason.trim()}
-                            onClick={() => void handleRejectClaim(claim.id)}
-                          >
-                            Confirm reject
-                          </Button>
-                        </div>
-                      ) : (
-                        <div key="actions" style={{ display: 'flex', gap: 'var(--space-2)' }}>
-                          <Button
-                            variant="primary"
-                            size="sm"
-                            loading={reviewingClaimId === claim.id}
-                            onClick={() => void handleConfirmClaim(claim.id)}
-                          >
-                            Confirm
-                          </Button>
-                          <Button
-                            variant="danger-ghost"
-                            size="sm"
-                            onClick={() => setRejectingClaimId(claim.id)}
-                          >
-                            Reject
-                          </Button>
-                        </div>
-                      )
+                          Reject
+                        </Button>
+                      </div>
                     ) : (
                       <span key="reviewed" style={{ fontSize: 'var(--text-xs)', color: 'var(--color-ink-3)' }}>
                         {claim.status === 'rejected' ? claim.rejection_reason : 'Payment recorded'}
@@ -189,7 +166,78 @@ export function PaymentClaimsSection({
             ],
           }))}
         />
-      </Card>
-    </div>
+      </Section>
+
+      <ConfirmDialog
+        open={Boolean(confirmingClaim)}
+        title="Confirm bank transfer payment?"
+        confirmLabel="Confirm payment"
+        undo="This records a real payment against the invoice and reduces the customer's outstanding balance."
+        busy={Boolean(confirmingClaim && reviewingClaimId === confirmingClaim.id)}
+        onConfirm={async () => {
+          if (confirmingClaim) await handleConfirmClaim(confirmingClaim.id)
+        }}
+        onCancel={() => setConfirmingClaim(null)}
+      >
+        {confirmingClaim && (
+          <>
+            Record <strong>{formatNgn(confirmingClaim.amount_ngn)}</strong> from receipt{' '}
+            <Mono>{confirmingClaim.evidence_file_name}</Mono>
+            {confirmingClaim.customer_note ? ` (Note: “${confirmingClaim.customer_note}”)` : ''}. Make sure
+            funds have settled in your bank account before confirming.
+          </>
+        )}
+      </ConfirmDialog>
+
+      <Modal
+        open={Boolean(rejectingClaim)}
+        onClose={() => {
+          setRejectingClaim(null)
+          setRejectReason('')
+        }}
+        title="Reject payment claim"
+        size="sm"
+        footer={
+          <>
+            <Button
+              variant="ghost"
+              onClick={() => {
+                setRejectingClaim(null)
+                setRejectReason('')
+              }}
+              disabled={Boolean(rejectingClaim && reviewingClaimId === rejectingClaim.id)}
+            >
+              Cancel
+            </Button>
+            <Button
+              variant="danger"
+              loading={Boolean(rejectingClaim && reviewingClaimId === rejectingClaim.id)}
+              disabled={!rejectReason.trim() || Boolean(rejectingClaim && reviewingClaimId === rejectingClaim.id)}
+              onClick={() => rejectingClaim && void handleRejectClaim(rejectingClaim.id)}
+            >
+              Confirm reject
+            </Button>
+          </>
+        }
+      >
+        {rejectingClaim && (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-3)' }}>
+            <p style={{ margin: 0, fontSize: 'var(--text-sm)', color: 'var(--color-ink-2)' }}>
+              Rejecting <strong>{formatNgn(rejectingClaim.amount_ngn)}</strong> ({rejectingClaim.evidence_file_name})
+              notifies the customer with your reason and leaves the invoice balance unchanged.
+            </p>
+            <Field
+              label="Reason for rejecting"
+              name="reject_reason"
+              required
+              multiline
+              placeholder="Reason for rejecting"
+              value={rejectReason}
+              onChange={(e) => setRejectReason(e.target.value)}
+            />
+          </div>
+        )}
+      </Modal>
+    </>
   )
 }

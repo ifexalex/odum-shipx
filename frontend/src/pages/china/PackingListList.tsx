@@ -1,5 +1,5 @@
-import { useState, type JSX } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useEffect, useState, type JSX } from 'react'
+import { Link, useNavigate } from 'react-router-dom'
 import { ApiError } from '../../api/client'
 import { formatCbm } from '../../api/decimal'
 import { packingListApi, type BulkActionResult, type PackingListStatus } from '../../api/packingList'
@@ -99,9 +99,9 @@ function BulkResultPanel({
               <div className={styles.failureHelp}>{help}</div>
               <div className={styles.failureList}>
                 {group.ids.map((id) => (
-                  <span key={id} className={styles.failureChip}>
+                  <Link key={id} to={`/packing-lists/${id}`} className={styles.failureChip}>
                     {labelFor(id)}
-                  </span>
+                  </Link>
                 ))}
               </div>
             </div>
@@ -120,11 +120,21 @@ export function PackingListList(): JSX.Element {
   const navigate = useNavigate()
   const [statusFilter, setStatusFilter] = useStatusParam<PackingListStatus>(PACKING_LIST_STATUSES)
   const [search, setSearch] = useState('')
+  const [debouncedSearch, setDebouncedSearch] = useState('')
   const [actionError, setActionError] = useState<string | null>(null)
   const [selected, setSelected] = useState<Set<string>>(new Set())
   const [showRejectModal, setShowRejectModal] = useState(false)
   const [bulkSubmitting, setBulkSubmitting] = useState(false)
   const [bulkResult, setBulkResult] = useState<BulkActionResult | null>(null)
+
+  useEffect(() => {
+    if (!search.trim()) {
+      setDebouncedSearch('')
+      return
+    }
+    const timer = setTimeout(() => setDebouncedSearch(search.trim()), 300)
+    return () => clearTimeout(timer)
+  }, [search])
 
   const canApprove = session?.role === 'china_office_staff' || session?.role === 'tenant_admin'
 
@@ -133,7 +143,7 @@ export function PackingListList(): JSX.Element {
     hasMore, loadMore, isFetchingMore, refetch, totalCount,
   } = usePackingListList({
     ...(statusFilter ? { status: statusFilter } : {}),
-    ...(search ? { q: search } : {}),
+    ...(debouncedSearch ? { q: debouncedSearch } : {}),
   })
   const error = actionError ?? (listError ? listError.message : null)
 
@@ -160,9 +170,10 @@ export function PackingListList(): JSX.Element {
   // before firing the request, so staff selected everything, clicked approve,
   // and got a wall of failures explaining what the UI already knew.
   const selectedPls = packingLists.filter((pl) => selected.has(pl.id))
-  const approvableCount = session
-    ? selectedPls.filter((pl) => canApproveOrReject(pl, session.role, session.userId)).length
-    : selectedPls.length
+  const approvablePls = session
+    ? selectedPls.filter((pl) => canApproveOrReject(pl, session.role, session.userId))
+    : selectedPls
+  const approvableCount = approvablePls.length
   const blockedByOwnership = session
     ? selectedPls.filter(
         (pl) => pl.status === 'pending_approval' && isSelfApproval(pl, session.userId),
@@ -173,7 +184,8 @@ export function PackingListList(): JSX.Element {
   // click, how much of their selection an action will actually touch, rather
   // than firing a request every non-draft row is guaranteed to fail
   // (wrong_status:pending_approval etc.).
-  const submittableCount = selectedPls.filter((pl) => pl.status === 'draft').length
+  const submittablePls = selectedPls.filter((pl) => pl.status === 'draft')
+  const submittableCount = submittablePls.length
 
   // A UUID means nothing to staff — show the reference and customer they see in the table (FD-17).
   function labelForPackingList(id: string): string {
@@ -184,10 +196,12 @@ export function PackingListList(): JSX.Element {
   }
 
   async function handleBulkSubmit(): Promise<void> {
+    const ids = submittablePls.map((pl) => pl.id)
+    if (ids.length === 0) return
     setBulkSubmitting(true)
     setActionError(null)
     try {
-      const result = await packingListApi.bulkSubmit(Array.from(selected))
+      const result = await packingListApi.bulkSubmit(ids)
       if (result.succeeded.length) toast.success(`${result.succeeded.length} packing list${result.succeeded.length === 1 ? '' : 's'} submitted`)
       setBulkResult(result)
       await reload()
@@ -199,10 +213,12 @@ export function PackingListList(): JSX.Element {
   }
 
   async function handleBulkApprove(): Promise<void> {
+    const ids = approvablePls.map((pl) => pl.id)
+    if (ids.length === 0) return
     setBulkSubmitting(true)
     setActionError(null)
     try {
-      const result = await packingListApi.bulkApprove(Array.from(selected))
+      const result = await packingListApi.bulkApprove(ids)
       if (result.succeeded.length) toast.success(`${result.succeeded.length} packing list${result.succeeded.length === 1 ? '' : 's'} approved`)
       setBulkResult(result)
       await reload()
@@ -214,10 +230,12 @@ export function PackingListList(): JSX.Element {
   }
 
   async function handleBulkReject(comments: string): Promise<void> {
+    const ids = approvablePls.map((pl) => pl.id)
+    if (ids.length === 0) return
     setBulkSubmitting(true)
     setActionError(null)
     try {
-      const result = await packingListApi.bulkReject(Array.from(selected), comments)
+      const result = await packingListApi.bulkReject(ids, comments)
       if (result.succeeded.length) toast.success(`${result.succeeded.length} packing list${result.succeeded.length === 1 ? '' : 's'} rejected`)
       setBulkResult(result)
       setShowRejectModal(false)
@@ -387,12 +405,14 @@ export function PackingListList(): JSX.Element {
                 variant="danger-ghost"
                 size="sm"
                 icon="x"
+                loading={bulkSubmitting}
+                disabled={approvableCount === 0}
                 onClick={() => {
                   setActionError(null)
                   setShowRejectModal(true)
                 }}
               >
-                Bulk reject
+                Bulk reject · {approvableCount}
               </Button>
               <Button
                 variant="secondary"
@@ -421,7 +441,7 @@ export function PackingListList(): JSX.Element {
 
       {showRejectModal && (
         <BulkRejectModal
-          count={selected.size}
+          count={approvableCount}
           submitting={bulkSubmitting}
           error={error}
           onCancel={() => setShowRejectModal(false)}

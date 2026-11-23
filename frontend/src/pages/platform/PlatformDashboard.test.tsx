@@ -14,7 +14,13 @@ vi.mock('../../api/tenantManagement', async (importOriginal) => {
   const original = await importOriginal<typeof import('../../api/tenantManagement')>()
   return {
     ...original,
-    platformApi: { ...original.platformApi, dashboard: vi.fn(), listTenants: vi.fn(), auditLog: vi.fn() },
+    platformApi: {
+      ...original.platformApi,
+      dashboard: vi.fn(),
+      listTenants: vi.fn(),
+      auditLog: vi.fn(),
+      listOnboardingRequests: vi.fn().mockResolvedValue([]),
+    },
   }
 })
 

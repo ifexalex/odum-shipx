@@ -18,7 +18,7 @@ import { ApiError } from '../../api/client'
 import { claimsApi, presignedUploadApi, type FileDamageClaimInput } from '../../api/claims'
 import { packingListApi, type PackingList } from '../../api/packingList'
 import { type UploadedEvidence } from '../nigeria/EvidenceUploader'
-import { Banner, Button, Field, Select, LinesSkeleton } from '../../design/components'
+import { Banner, Button, Check, Field, Select, LinesSkeleton } from '../../design/components'
 import { PageHeader } from '../../shell/PageHeader'
 import { UnsavedChangesGuard } from '../../shell/UnsavedChangesGuard'
 import { EvidenceUploader } from '../nigeria/EvidenceUploader'
@@ -44,6 +44,8 @@ export function MyClaimsNew(): JSX.Element {
   const [selectedShipmentId, setSelectedShipmentId] = useState('')
   const [description, setDescription] = useState('')
   const [cartonsRaw, setCartonsRaw] = useState('')
+  const [shipmentCartons, setShipmentCartons] = useState<{ tag: string; description: string }[]>([])
+  const [selectedTags, setSelectedTags] = useState<string[]>([])
   const [claimId, setClaimId] = useState<string | null>(null)
   const [uploadedEvidence, setUploadedEvidence] = useState<UploadedEvidence[]>([])
   const [submitting, setSubmitting] = useState(false)
@@ -73,13 +75,48 @@ export function MyClaimsNew(): JSX.Element {
   )
   const selectedShipment = arrivedShipments.find((pl) => pl.id === selectedShipmentId) ?? null
 
-  const cartonsAffected = cartonsRaw.split(/[\n,\s]+/).map((t) => t.trim()).filter(Boolean)
+  // Load the chosen shipment's cartons so affected ones can be ticked instead of typed. Best-effort: if it cannot
+  // be loaded, the free-text field below still works.
+  useEffect(() => {
+    let active = true
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- reset when the shipment changes
+    setSelectedTags([])
+    setShipmentCartons([])
+    if (!selectedShipmentId || typeof packingListApi.get !== 'function') return
+    packingListApi
+      .get(selectedShipmentId)
+      .then((pl) => {
+        if (!active) return
+        const seen = new Set<string>()
+        const cartons: { tag: string; description: string }[] = []
+        for (const item of pl?.items ?? []) {
+          if (item.carton_tag && !seen.has(item.carton_tag)) {
+            seen.add(item.carton_tag)
+            cartons.push({ tag: item.carton_tag, description: item.description })
+          }
+        }
+        setShipmentCartons(cartons)
+      })
+      .catch(() => {
+        if (active) setShipmentCartons([])
+      })
+    return () => {
+      active = false
+    }
+  }, [selectedShipmentId])
+
+  const manualTags = cartonsRaw.split(/[\n,\s]+/).map((t) => t.trim()).filter(Boolean)
+  const cartonsAffected = Array.from(new Set([...selectedTags, ...manualTags]))
+
+  function toggleCarton(tag: string, checked: boolean): void {
+    setSelectedTags((prev) => (checked ? [...prev, tag] : prev.filter((t) => t !== tag)))
+  }
 
   // A claim being written but not yet filed (FD-54). Once filed it exists, and adding evidence is optional.
   const unsaved =
     step === 'details' &&
     !submitting &&
-    (selectedShipmentId !== '' || description.trim() !== '' || cartonsRaw.trim() !== '')
+    (selectedShipmentId !== '' || description.trim() !== '' || cartonsRaw.trim() !== '' || selectedTags.length > 0)
 
   async function handleCreateClaim(): Promise<void> {
     if (!selectedShipment?.container_number) return
@@ -177,8 +214,23 @@ export function MyClaimsNew(): JSX.Element {
                 value={description}
                 onChange={(e) => setDescription(e.target.value)}
               />
+              {shipmentCartons.length > 0 && (
+                <div>
+                  <div className={styles.cartonPickerLabel}>Which cartons were affected? (tap to select)</div>
+                  <div className={styles.cartonPicker}>
+                    {shipmentCartons.map((c) => (
+                      <Check
+                        key={c.tag}
+                        label={`${c.tag} — ${c.description}`}
+                        checked={selectedTags.includes(c.tag)}
+                        onChange={(checked) => toggleCarton(c.tag, checked)}
+                      />
+                    ))}
+                  </div>
+                </div>
+              )}
               <Field
-                label="Carton tags affected"
+                label={shipmentCartons.length > 0 ? 'Other carton tags' : 'Carton tags affected'}
                 name="cartons"
                 multiline
                 optional
@@ -188,8 +240,14 @@ export function MyClaimsNew(): JSX.Element {
               />
             </>
           )}
+          {arrivedShipments.length > 0 && (
+            <p className={styles.stepNote}>
+              Filing submits your claim right away. You can attach photos and videos in the next step, or add them later
+              from the claim page.
+            </p>
+          )}
           <div className={styles.formActions}>
-            <Button variant="ghost" onClick={() => navigate('/my-claims')}>
+            <Button variant="ghost" onClick={() => navigate(arrivedShipments.length > 0 ? '/my-claims' : '/my-shipments')}>
               {arrivedShipments.length > 0 ? 'Cancel' : 'Back to My Shipments'}
             </Button>
             {arrivedShipments.length > 0 && (
@@ -199,7 +257,7 @@ export function MyClaimsNew(): JSX.Element {
                 disabled={!selectedShipmentId || !description.trim()}
                 onClick={() => void handleCreateClaim()}
               >
-                Next: Add evidence
+                File claim &amp; next: add evidence
               </Button>
             )}
           </div>
@@ -233,7 +291,7 @@ export function MyClaimsNew(): JSX.Element {
       {step === 'review' && (
         <div className={styles.formCard}>
           <Banner variant="success">
-            Your claim has been filed. Review the details below and submit.
+            Your claim has been filed and queued for inspection. Here is a summary of what we received.
           </Banner>
           <div style={{ fontSize: 'var(--text-md)', lineHeight: 'var(--leading-body)' }}>
             <p><strong>Shipment:</strong> {selectedShipment?.reference ?? 'Shipment'} — Container {selectedShipment?.container_number ?? 'not assigned yet'}</p>

@@ -5,10 +5,11 @@
  * then a success screen. Replaces the old modal, whose flat request body
  * didn't match the backend contract (nested initial_admin) and 422'd.
  */
-import { useState, type JSX } from 'react'
+import { useMemo, useState, type JSX } from 'react'
 import { useLocation, useNavigate } from 'react-router-dom'
 import { ApiError } from '../../api/client'
-import { platformApi, type OnboardingRequest, type SubscriptionTier, type Tenant } from '../../api/tenantManagement'
+import { platformApi, type OnboardingRequest, type PlanLimits, type SubscriptionTier, type Tenant } from '../../api/tenantManagement'
+import { usePlatformPlans } from '../../hooks/usePlatformSettings'
 import { Banner, Button, Card, Field, Icon, Mono, PhoneField, Pressable } from '../../design/components'
 import { PageHeader } from '../../shell/PageHeader'
 import { UnsavedChangesGuard } from '../../shell/UnsavedChangesGuard'
@@ -24,11 +25,19 @@ interface ProvisionFromLead {
   lead?: OnboardingRequest
 }
 
-const PLANS: { tier: SubscriptionTier; name: string; features: string[] }[] = [
-  { tier: 'starter', name: 'Starter', features: ['10 staff users', '5 containers / month', '5 GB storage'] },
-  { tier: 'business', name: 'Business', features: ['50 staff users', '25 containers / month', '25 GB storage'] },
-  { tier: 'enterprise', name: 'Enterprise', features: ['Unlimited users', 'Unlimited containers', 'Unlimited storage'] },
+const DEFAULT_PLANS: { tier: SubscriptionTier; name: string; limits: PlanLimits }[] = [
+  { tier: 'starter', name: 'Starter', limits: { users: 10, containers_per_month: 5, storage_gb: 5 } },
+  { tier: 'business', name: 'Business', limits: { users: 50, containers_per_month: 25, storage_gb: 25 } },
+  { tier: 'enterprise', name: 'Enterprise', limits: { users: 999999, containers_per_month: 999999, storage_gb: 999999 } },
 ]
+
+function formatPlanFeatures(limits: PlanLimits): string[] {
+  return [
+    limits.users >= 999999 ? 'Unlimited staff users' : `${limits.users} staff users`,
+    limits.containers_per_month >= 999999 ? 'Unlimited containers / month' : `${limits.containers_per_month} containers / month`,
+    limits.storage_gb >= 999999 ? 'Unlimited storage' : `${limits.storage_gb} GB storage`,
+  ]
+}
 
 function PlanRadio({ name, features, selected, onSelect }: { name: string; features: string[]; selected: boolean; onSelect: () => void }): JSX.Element {
   return (
@@ -59,6 +68,15 @@ function PlanRadio({ name, features, selected, onSelect }: { name: string; featu
 export function CreateTenantPage(): JSX.Element {
   const navigate = useNavigate()
   const lead = (useLocation().state as ProvisionFromLead | null)?.lead
+  const plansQuery = usePlatformPlans()
+  const planCards = useMemo(() => {
+    const live = plansQuery.data?.plans
+    return DEFAULT_PLANS.map((p) => ({
+      tier: p.tier,
+      name: p.name,
+      features: formatPlanFeatures(live?.[p.tier] ?? p.limits),
+    }))
+  }, [plansQuery.data])
   const [companyName, setCompanyName] = useState(lead?.company_name ?? '')
   const [contactEmail, setContactEmail] = useState(lead?.contact_email ?? '')
   const [contactPhone, setContactPhone] = useState(lead?.contact_phone ?? '')
@@ -141,7 +159,7 @@ export function CreateTenantPage(): JSX.Element {
       <UnsavedChangesGuard when={unsaved} />
       <PageHeader
         title="Onboard a new tenant"
-        meta="Creates the tenant, provisions the first admin in Cognito, and applies default configuration."
+        meta="Creates the tenant account, emails login credentials to the first admin, and applies default configuration."
       />
 
       {lead && (
@@ -178,7 +196,7 @@ export function CreateTenantPage(): JSX.Element {
         <SectionHead title="Plan" sub="Limits can be overridden later from Platform Settings → Plans, or per-tenant" />
         <div style={{ height: 12 }} />
         <div style={{ display: 'flex', gap: 'var(--space-3)', flexWrap: 'wrap' }}>
-          {PLANS.map((p) => (
+          {planCards.map((p) => (
             <PlanRadio key={p.tier} name={p.name} features={p.features} selected={tier === p.tier} onSelect={() => setTier(p.tier)} />
           ))}
         </div>

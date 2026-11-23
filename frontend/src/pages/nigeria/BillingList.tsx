@@ -1,6 +1,6 @@
 import { useQuery } from '@tanstack/react-query'
 import { useState, type JSX } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useNavigate, useSearchParams } from 'react-router-dom'
 import { billingApi, type Billing, type PaymentStatus } from '../../api/billing'
 import { canGenerateInvoices } from '../../api/billingRules'
 import { billingKeys } from '../../api/keys'
@@ -13,6 +13,7 @@ import { useDateRangeFilter } from '../../hooks/useDateRangeFilter'
 import { useListExport } from '../../hooks/useListExport'
 import { type SortableColumn, useTableSort } from '../../hooks/useTableSort'
 import { GenerateBillingModal } from './GenerateBillingModal'
+import { BillingSubNav } from './BillingSubNav'
 import styles from './BillingList.module.css'
 import { statusLabel } from '../../design/status'
 import { FilterBar } from '../../shell/FilterBar'
@@ -29,7 +30,7 @@ const SORT_COLUMNS: SortableColumn[] = [
 
 // The statuses an invoice list filters on, in its own words from the status registry (FD-08).
 const STATUS_FILTERS: Array<{ key: PaymentStatus; label: string }> = (
-  ['unpaid', 'partially_paid', 'paid', 'overpaid', 'waived', 'released_with_outstanding'] as const
+  ['unpaid', 'partially_paid', 'paid', 'overpaid', 'waived', 'released_with_outstanding', 'cancelled'] as const
 ).map((key) => ({ key, label: statusLabel('invoice', key) }))
 
 // Money still owed on an invoice: what the "Outstanding" stat opens.
@@ -42,6 +43,8 @@ function fmtNgn(val: string | number | null | undefined): string {
   return formatNgn(n)
 }
 
+type OpenModalTarget = 'payment' | 'release'
+
 // `openBilling` must carry the record in router state. BillingDetail reads
 // `location.state.billing` and only falls back to load() otherwise — and that
 // fallback fetches the FIRST PAGE of the billing list and searches it by id
@@ -52,11 +55,11 @@ function fmtNgn(val: string | number | null | undefined): string {
 // AdminCustomerDetail already passes state when opening a billing; this list
 // was the outlier that did not.
 /** The row's next step, or nothing: opening the row itself is how you view a record (FD-13). */
-function rowAction(b: Billing, openBilling: (b: Billing) => void): JSX.Element | null {
+function rowAction(b: Billing, openBilling: (b: Billing, modal?: OpenModalTarget) => void): JSX.Element | null {
   if (b.payment_status === 'unpaid' || b.payment_status === 'partially_paid') {
     return (
       <Button variant="secondary" size="sm" icon="coin" mutates={false}
-        onClick={(e) => { e.stopPropagation(); openBilling(b) }}>
+        onClick={(e) => { e.stopPropagation(); openBilling(b, 'payment') }}>
         Record payment
       </Button>
     )
@@ -64,7 +67,7 @@ function rowAction(b: Billing, openBilling: (b: Billing) => void): JSX.Element |
   if (b.payment_status === 'paid') {
     return (
       <Button variant="secondary" size="sm" icon="card" mutates={false}
-        onClick={(e) => { e.stopPropagation(); openBilling(b) }}>
+        onClick={(e) => { e.stopPropagation(); openBilling(b, 'release') }}>
         Release
       </Button>
     )
@@ -74,10 +77,11 @@ function rowAction(b: Billing, openBilling: (b: Billing) => void): JSX.Element |
 
 export function BillingList(): JSX.Element {
   const navigate = useNavigate()
+  const [searchParams] = useSearchParams()
   // Carries the record in router state so BillingDetail does not fall back to
   // its paginated list-scan — see rowAction above.
-  const openBilling = (b: Billing): void => {
-    void navigate(`/billing/${b.id}`, { state: { billing: b } })
+  const openBilling = (b: Billing, openModal?: OpenModalTarget): void => {
+    void navigate(`/billing/${b.id}`, { state: { billing: b, ...(openModal ? { openModal } : {}) } })
   }
   const { session } = useSession()
   // Single-select via the top chips; the Filters panel below offers a
@@ -85,7 +89,7 @@ export function BillingList(): JSX.Element {
   // china/ContainerList.tsx's activeStatuses — one value can't silently AND
   // with several from the other entry point since they share this array).
   const [activeStatuses, setActiveStatuses] = useState<PaymentStatus[] | null>(null)
-  const [search, setSearch] = useState('')
+  const [search, setSearch] = useState(() => searchParams.get('q') ?? '')
   // Opt-in "billed within" filter, preset + exact custom range — null/''
   // means no date filter. Must stay that way by default: a "helpful" default
   // scope would silently hide most of a tenant's billing records, same
@@ -172,6 +176,7 @@ export function BillingList(): JSX.Element {
           }
         />
       }
+      tabs={<BillingSubNav active="invoices" />}
       notices={
         <>
           {error && (
@@ -242,7 +247,7 @@ export function BillingList(): JSX.Element {
               {STATUS_FILTERS.map(({ key, label }) => (
                 <Chip key={key} active={sameStatuses([key])} onClick={() => selectStatuses([key])}>
                   {label}
-                  {stats && (
+                  {stats && key in stats && (
                     <span className={styles.chipCount}>
                       {Number(stats[key as keyof typeof stats] ?? 0)}
                     </span>
@@ -308,7 +313,7 @@ export function BillingList(): JSX.Element {
       }
     >
       <Table
-        cardBreakpoint={960}
+        cardBreakpoint={860}
         columns={[
           { title: 'Reference', type: 'reference', sortable: true },
           { title: 'Customer' },

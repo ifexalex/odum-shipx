@@ -39,8 +39,18 @@ export function CreateContainer(): JSX.Element {
   const [destination, setDestination] = useState('Nigeria')
   const [estimatedArrivalDate, setEstimatedArrivalDate] = useState('')
   const [notes, setNotes] = useState('')
+  const [showOptionalDetails, setShowOptionalDetails] = useState(false)
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState<string | null>(null)
+
+  const trimmedNumber = containerNumber.trim()
+  const isoValid = /^[A-Z]{4}\d{7}$/.test(trimmedNumber)
+  const containerNumberHelper =
+    trimmedNumber.length === 0
+      ? 'Standard ISO 6346 format: 4 letters + 7 digits (e.g. MSCU1234567).'
+      : isoValid
+        ? 'Valid ISO 6346 format.'
+        : 'Does not match standard 4-letter + 7-digit ISO 6346 format — verify before saving.'
 
   const selectedCapacity = capacities.find((c) => c.id === capacityId) ?? null
   const capacityOptions: ComboboxOption[] = capacities.map((c) => ({
@@ -114,86 +124,39 @@ export function CreateContainer(): JSX.Element {
             required
             icon="container"
             placeholder="e.g. MSCU1234567"
+            helper={containerNumberHelper}
             value={containerNumber}
             onChange={(event) => setContainerNumber(event.target.value.toUpperCase())}
           />
-          <div className={styles.grid2}>
-            <div>
-              <label className={styles.capacityLabel} htmlFor="capacitySelect">
-                Container capacity<span className={styles.optionalTag}>Optional</span>
-              </label>
-              <Combobox
-                id="capacitySelect"
-                ariaLabel="Container capacity"
-                options={capacityOptions}
-                value={capacityId}
-                onChange={setCapacityId}
-                placeholder="Search or select a capacity…"
-                searchPlaceholder="Search capacities…"
-                emptyText="No capacity matches"
-              />
-              <span className={styles.capacityHelper}>
-                {selectedCapacity
-                  ? `${selectedCapacity.capacity_cbm} CBM usable · recommended load ${selectedCapacity.recommended_cbm ?? '—'} CBM`
-                  : 'Sets the utilization bar. Admins can add custom capacities in Settings → Container capacities.'}
-              </span>
-            </div>
-            <Field
-              label="Seal number"
-              name="sealNumber"
-              optional
-              placeholder="e.g. SHX-04891"
-              helper="Optional · added at packing time"
-              value={sealNumber}
-              onChange={(event) => setSealNumber(event.target.value)}
+          <div style={{ marginBottom: 'var(--space-4)' }}>
+            <label className={styles.capacityLabel} htmlFor="capacitySelect">
+              Container capacity<span className={styles.optionalTag}>Optional</span>
+            </label>
+            <Combobox
+              id="capacitySelect"
+              ariaLabel="Container capacity"
+              options={capacityOptions}
+              value={capacityId}
+              onChange={setCapacityId}
+              placeholder="Search or select a capacity…"
+              searchPlaceholder="Search capacities…"
+              emptyText="No capacity matches"
             />
-          </div>
-          <Field
-            label="Parcel number"
-            name="parcelNumber"
-            optional
-            placeholder="e.g. SHX-04891"
-            helper="Optional — added at packing time if not known yet"
-            value={parcelNumber}
-            onChange={(event) => setParcelNumber(event.target.value)}
-          />
-
-          <SectionHead title="Vessel & voyage" />
-          <div className={styles.spacerSm} />
-          <Field
-            label="Vessel name"
-            name="vesselName"
-            optional
-            placeholder="e.g. MSC Altair"
-            value={vesselName}
-            onChange={(event) => setVesselName(event.target.value)}
-          />
-          <div className={styles.grid2}>
-            <Field
-              label="Voyage number"
-              name="voyageNumber"
-              optional
-              placeholder="e.g. 248E"
-              value={voyageNumber}
-              onChange={(event) => setVoyageNumber(event.target.value)}
-            />
-            <Field
-              label="Shipping line"
-              name="shippingLine"
-              optional
-              placeholder="e.g. Mediterranean Shipping Co."
-              value={shippingLine}
-              onChange={(event) => setShippingLine(event.target.value)}
-            />
+            <span className={styles.capacityHelper}>
+              {selectedCapacity
+                ? `${selectedCapacity.capacity_cbm} CBM usable · recommended load ${selectedCapacity.recommended_cbm ?? '—'} CBM`
+                : 'Sets the utilization bar. Admins can add custom capacities in Settings → Container capacities.'}
+            </span>
           </div>
 
-          <SectionHead title="Route" />
+          <SectionHead title="Route & schedule" />
           <div className={styles.spacerSm} />
           <div className={styles.grid2}>
             <Field
               label="Origin"
               name="origin"
               required
+              placeholder="e.g. Guangzhou, Shenzhen, China"
               value={origin}
               onChange={(event) => setOrigin(event.target.value)}
             />
@@ -201,13 +164,11 @@ export function CreateContainer(): JSX.Element {
               label="Destination"
               name="destination"
               required
+              placeholder="e.g. Lagos, Nigeria"
               value={destination}
               onChange={(event) => setDestination(event.target.value)}
             />
           </div>
-
-          <SectionHead title="Schedule" />
-          <div className={styles.spacerSm} />
           <DateField
             label="Estimated arrival date"
             name="estimatedArrivalDate"
@@ -216,15 +177,79 @@ export function CreateContainer(): JSX.Element {
             onChange={(event) => setEstimatedArrivalDate(event.target.value)}
           />
 
-          <Field
-            label="Internal notes"
-            name="notes"
-            optional
-            multiline
-            placeholder="Anything special about this container…"
-            value={notes}
-            onChange={(event) => setNotes(event.target.value)}
-          />
+          <div style={{ marginTop: 'var(--space-4)', marginBottom: 'var(--space-3)' }}>
+            <Button
+              type="button"
+              variant="ghost"
+              size="sm"
+              icon={showOptionalDetails ? 'chevup' : 'chevdown'}
+              onClick={() => setShowOptionalDetails((open) => !open)}
+            >
+              {showOptionalDetails
+                ? 'Hide optional vessel, seal & notes'
+                : 'Add optional vessel, seal & notes'}
+            </Button>
+          </div>
+
+          {showOptionalDetails && (
+            <>
+              <div className={styles.grid2}>
+                <Field
+                  label="Seal number"
+                  name="sealNumber"
+                  optional
+                  placeholder="e.g. SHX-04891"
+                  helper="Added at packing time"
+                  value={sealNumber}
+                  onChange={(event) => setSealNumber(event.target.value)}
+                />
+                <Field
+                  label="Parcel number"
+                  name="parcelNumber"
+                  optional
+                  placeholder="e.g. SHX-04891"
+                  helper="Optional — added at packing time"
+                  value={parcelNumber}
+                  onChange={(event) => setParcelNumber(event.target.value)}
+                />
+              </div>
+              <Field
+                label="Vessel name"
+                name="vesselName"
+                optional
+                placeholder="e.g. MSC Altair"
+                value={vesselName}
+                onChange={(event) => setVesselName(event.target.value)}
+              />
+              <div className={styles.grid2}>
+                <Field
+                  label="Voyage number"
+                  name="voyageNumber"
+                  optional
+                  placeholder="e.g. 248E"
+                  value={voyageNumber}
+                  onChange={(event) => setVoyageNumber(event.target.value)}
+                />
+                <Field
+                  label="Shipping line"
+                  name="shippingLine"
+                  optional
+                  placeholder="e.g. Mediterranean Shipping Co."
+                  value={shippingLine}
+                  onChange={(event) => setShippingLine(event.target.value)}
+                />
+              </div>
+              <Field
+                label="Internal notes"
+                name="notes"
+                optional
+                multiline
+                placeholder="Anything special about this container…"
+                value={notes}
+                onChange={(event) => setNotes(event.target.value)}
+              />
+            </>
+          )}
         </Card>
 
         <div className={styles.actions}>

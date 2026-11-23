@@ -1,7 +1,12 @@
+.stats {
+  margin-bottom: var(--space-5);
+}
+
 .grid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: var(--space-4);
+  align-items: start;
 }
 
 @media (max-width: 860px) {
@@ -11,7 +16,18 @@
 }
 
 .queue {
-  padding: var(--space-5) var(--space-5);
+  display: flex;
+  flex-direction: column;
+}
+
+.queueHead {
+  padding: var(--space-4) var(--space-5);
+  background: var(--color-surface-muted);
+  border-bottom: 1px solid var(--color-line-soft);
+}
+
+.queueBody {
+  padding: var(--space-3) var(--space-5) var(--space-4);
 }
 
 .muted {

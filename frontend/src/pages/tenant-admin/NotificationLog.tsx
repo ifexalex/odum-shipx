@@ -1,11 +1,12 @@
 import { useQuery } from '@tanstack/react-query'
 import { useMemo, useState, type JSX } from 'react'
+import { ApiError } from '../../api/client'
 import { notificationLogApi, type NotifChannel, type NotifStatus, type NotificationLogEntry } from '../../api/notifications'
 import { notifLogKeys } from '../../api/keys'
 import { STALE_5_MIN } from '../../lib/queryClient'
 import { useNotifLogPolling } from '../../hooks/useNotifications'
 import { useDateRangeFilter } from '../../hooks/useDateRangeFilter'
-import { Button, Card, Chip, DateRangeFilter, Icon, ListFooter, Mono, StatusBadge, Table, UserCell, IconButton, SearchField, Select, EmptyState, ErrorState } from '../../design/components'
+import { Button, Card, Chip, DateRangeFilter, Icon, ListFooter, Modal, Mono, StatusBadge, Table, UserCell, SearchField, Select, EmptyState, ErrorState } from '../../design/components'
 import { statusLabel } from '../../design/status'
 import styles from './NotificationLog.module.css'
 import { formatDateTime } from '../../lib/format'
@@ -103,18 +104,25 @@ export function NotificationLog(): JSX.Element {
       await notificationLogApi.retry(entry.id)
       toast.success('Message queued to send again')
       refetch()
-    } catch {
-      // ignore — retry failure is non-critical
+    } catch (err) {
+      toast.error(
+        'Could not resend message',
+        err instanceof ApiError ? err.message : 'Please try again.',
+      )
     } finally {
       setRetryingId(null)
     }
   }
 
-  // Client-side search filter
-  const displayed = search
-    ? logs.filter((l) =>
-        (l.recipient_name ?? '').toLowerCase().includes(search.toLowerCase()) ||
-        l.event_type.toLowerCase().includes(search.toLowerCase())
+  // Client-side search filter (recipient name, event type, or message body)
+  const trimmedSearch = search.trim().toLowerCase()
+  const displayed = trimmedSearch
+    ? logs.filter(
+        (l) =>
+          (l.recipient_name ?? '').toLowerCase().includes(trimmedSearch) ||
+          l.event_type.toLowerCase().includes(trimmedSearch) ||
+          (EVENT_LABELS[l.event_type] ?? '').toLowerCase().includes(trimmedSearch) ||
+          (l.message_body ?? '').toLowerCase().includes(trimmedSearch),
       )
     : logs
 
@@ -142,7 +150,9 @@ export function NotificationLog(): JSX.Element {
         stats={
           <Card padding="default">
             <div className={styles.statsBar}>
-              <span className={styles.statsLabel}>Last 30 days</span>
+              <span className={styles.statsLabel}>
+                Recent {allLogs.length > 0 ? allLogs.length : 500} messages
+              </span>
               <LogStat label="Sent" value={stats.sent} color="var(--color-info)" />
               <LogStat
                 label="Delivered"
@@ -305,25 +315,24 @@ export function NotificationLog(): JSX.Element {
         />
       </ListPage>
 
-      {selectedLog && (
-        <div className={styles.modalOverlay} onClick={() => setSelectedLog(null)}>
-          <div className={styles.modal} onClick={(e) => e.stopPropagation()}>
-            <div className={styles.modalHeader}>
-              <div>
-                <h3 className={styles.modalTitle}>Notification detail</h3>
-                <p className={styles.modalSub}>
-                  {selectedLog.channel === 'whatsapp'
-                    ? 'WhatsApp'
-                    : selectedLog.channel.toUpperCase()}
-                  {' · '}
-                  {EVENT_LABELS[selectedLog.event_type] ?? selectedLog.event_type}
-                  {' · '}
-                  {fmtTs(selectedLog.created_at)}
-                </p>
-              </div>
-              <IconButton icon="x" label="Close" size="sm" onClick={() => setSelectedLog(null)} />
-            </div>
-            <div className={styles.modalBody}>
+      <Modal
+        open={!!selectedLog}
+        onClose={() => setSelectedLog(null)}
+        title="Notification detail"
+        size="md"
+      >
+        {selectedLog && (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-4)' }}>
+            <p className={styles.modalSub}>
+              {selectedLog.channel === 'whatsapp'
+                ? 'WhatsApp'
+                : selectedLog.channel.toUpperCase()}
+              {' · '}
+              {EVENT_LABELS[selectedLog.event_type] ?? selectedLog.event_type}
+              {' · '}
+              {fmtTs(selectedLog.created_at)}
+            </p>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-2)' }}>
               <div className={styles.kvp}>
                 <span>Recipient</span>
                 <span>{selectedLog.recipient_name ?? '—'}</span>
@@ -356,7 +365,7 @@ export function NotificationLog(): JSX.Element {
                 </div>
               )}
             </div>
-            <div className={styles.modalFooter}>
+            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 'var(--space-2)' }}>
               {selectedLog.status === 'failed' && (
                 <Button
                   variant="primary"
@@ -372,8 +381,8 @@ export function NotificationLog(): JSX.Element {
               </Button>
             </div>
           </div>
-        </div>
-      )}
+        )}
+      </Modal>
     </>
   )
 }

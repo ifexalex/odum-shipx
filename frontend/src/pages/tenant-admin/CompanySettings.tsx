@@ -17,11 +17,12 @@
  * `TenantLogo` draws it here, in the live preview and on the printed documents.
  */
 import { useMemo, useRef, useState, type JSX } from 'react'
+import { Link } from 'react-router-dom'
 import { type BrandingConfig } from '../../api/tenantManagement'
 import { isValidHexColor } from '../../design/deriveBrandShades'
 import { ApiError } from '../../api/client'
 import { LogoFileError } from '../../api/uploads'
-import { Banner, Button, Card, Field, PhoneField, Pressable, ColorField, ConfirmDialog, ErrorState, FileInput } from '../../design/components'
+import { Banner, Button, Card, Field, Modal, PageSkeleton, PhoneField, Pressable, ColorField, ConfirmDialog, ErrorState, FileInput } from '../../design/components'
 import { useBranding, useSaveBranding, useTenantLogo } from '../../hooks/useConfig'
 import { TenantLogo } from '../../shell/TenantLogo'
 import { PageHeader } from '../../shell/PageHeader'
@@ -293,6 +294,7 @@ function CompanySettingsForm({
 
   const [form, setForm] = useState<FormState>(() => formFromBranding(branding))
   const [previewDoc, setPreviewDoc] = useState<'pl' | 'rn'>('pl')
+  const [previewModalOpen, setPreviewModalOpen] = useState(false)
 
   const dirty = useMemo(
     () => JSON.stringify(brandingFromForm(form)) !== JSON.stringify(brandingFromForm(formFromBranding(branding))),
@@ -327,6 +329,16 @@ function CompanySettingsForm({
       <PageHeader
         title="Company settings"
         meta="Your identity on packing lists, release notes, and the customer portal."
+        actions={
+          <Button
+            variant="secondary"
+            icon="file"
+            className={styles.mobilePreviewBtn}
+            onClick={() => setPreviewModalOpen(true)}
+          >
+            Preview documents
+          </Button>
+        }
       />
 
       {loadError && (
@@ -377,16 +389,21 @@ function CompanySettingsForm({
           </Card>
 
           <Card>
-            <SectionHead title="Warehouse & contact" sub="Where customers collect goods and reach you" />
+            <SectionHead title="Default warehouse & contact" sub="Fallback pickup details and customer support channels" />
             <div style={{ height: 16 }} />
             <Field
-              label="Warehouse address"
+              label="Default warehouse address"
               name="warehouse_address"
               multiline
               rows={3}
               value={form.warehouse_address}
               onChange={set('warehouse_address')}
-              helper="Printed on release notes for customer pickup."
+              helper={
+                <>
+                  Printed on release notes when a specific branch isn&apos;t set. Manage multiple pickup locations under{' '}
+                  <Link to="/admin/config/warehouses" className={styles.inlineLink}>Warehouses</Link>.
+                </>
+              }
               disabled={isLoading}
             />
             <div className={styles.grid2}>
@@ -466,12 +483,47 @@ function CompanySettingsForm({
           </Card>
         </div>
       </div>
+
+      <Modal open={previewModalOpen} onClose={() => setPreviewModalOpen(false)} title="Document preview" size="sm">
+        <div className={styles.previewToggle} role="tablist">
+          <Pressable
+            role="tab"
+            aria-selected={previewDoc === 'pl'}
+            className={[styles.previewTab, previewDoc === 'pl' ? styles.previewTabActive : ''].join(' ')}
+            onClick={() => setPreviewDoc('pl')}
+          >
+            Packing list
+          </Pressable>
+          <Pressable
+            role="tab"
+            aria-selected={previewDoc === 'rn'}
+            className={[styles.previewTab, previewDoc === 'rn' ? styles.previewTabActive : ''].join(' ')}
+            onClick={() => setPreviewDoc('rn')}
+          >
+            Release note
+          </Pressable>
+        </div>
+        <div style={{ height: 16 }} />
+        <DocPreview form={form} doc={previewDoc} logoUrl={branding?.logo_url} />
+      </Modal>
     </div>
   )
 }
 
 export function CompanySettings(): JSX.Element {
   const { branding, isLoading, error: loadError } = useBranding()
+
+  if (isLoading && !branding) {
+    return (
+      <div>
+        <PageHeader
+          title="Company settings"
+          meta="Your identity on packing lists, release notes, and the customer portal."
+        />
+        <PageSkeleton kind="form" label="Loading company settings" />
+      </div>
+    )
+  }
 
   // Keyed on whether branding has ARRIVED, not on its contents: the form needs
   // seeding exactly once, when the fetch resolves. Keying on the contents would

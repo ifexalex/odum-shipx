@@ -130,17 +130,32 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  padding: var(--space-16) var(--space-8);
+  padding: var(--space-12) var(--space-8);
+  background: var(--color-page);
   overflow: auto;
 }
 
 .formWrap {
   width: 100%;
   max-width: 440px;
+  background: var(--color-surface);
+  border: 1px solid var(--color-line-soft);
+  border-radius: var(--radius-xl);
+  box-shadow: var(--shadow-rest);
+  padding: var(--space-8);
+}
+
+.mobileBrand {
+  display: none;
+  align-items: center;
+  gap: var(--space-2);
+  margin-bottom: var(--space-5);
+  padding-bottom: var(--space-4);
+  border-bottom: 1px solid var(--color-line-soft);
 }
 
 .formHead {
-  margin-bottom: var(--space-8);
+  margin-bottom: var(--space-6);
 }
 
 .formTitle {
@@ -228,6 +243,10 @@
 }
 
 .footerLinkStrong {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  white-space: nowrap;
   color: var(--color-primary-text);
   font-weight: 700;
   text-decoration: none;
@@ -237,6 +256,10 @@
   padding: 0;
   font-size: var(--text-sm);
 }
+.footerLinkStrong:hover,
+.link:hover {
+  text-decoration: underline;
+}
 
 /* Prototype (auth-screens.jsx @container sxauth): brand panel hides at 920px,
    two-column form grids collapse at 560px. The auth frame is full-viewport, so
@@ -244,6 +267,18 @@
 @media (max-width: 860px) {
   .brandPanel {
     display: none;
+  }
+  .mobileBrand {
+    display: flex;
+  }
+}
+
+@media (max-width: 600px) {
+  .formPanel {
+    padding: var(--space-4);
+  }
+  .formWrap {
+    padding: var(--space-6);
   }
 }
 

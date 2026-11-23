@@ -55,7 +55,7 @@ describe('ContainerPipeline', () => {
     }
     // Counts come straight from the stats (no 6-card cap).
     expect(screen.getByText('5')).toBeInTheDocument() // in_transit
-    expect(screen.getByText('20')).toBeInTheDocument() // all active total
+    expect(screen.getByText('19')).toBeInTheDocument() // all active total (excludes fully_released)
   })
 
   it('defaults to the full active list', async () => {
@@ -63,7 +63,7 @@ describe('ContainerPipeline', () => {
     await waitFor(() =>
       expect(containersApi.list).toHaveBeenCalledWith(
         expect.objectContaining({
-          status: 'loading,sealed,in_transit,arrived,customs_clearance,cleared,at_warehouse,fully_released',
+          status: 'loading,sealed,in_transit,arrived,customs_clearance,cleared,at_warehouse',
         }),
       ),
     )

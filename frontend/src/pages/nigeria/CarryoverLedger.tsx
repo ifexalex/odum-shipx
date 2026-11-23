@@ -5,21 +5,22 @@
  * released-with-outstanding billings. tenant_admin can exempt an entry
  * (the backend rolls the debt forward as a new outstanding row).
  */
-import { useQuery } from '@tanstack/react-query'
-import { useState, type JSX } from 'react'
+import { useQuery, useQueryClient } from '@tanstack/react-query'
+import { useMemo, useState, type JSX } from 'react'
 import { Link } from 'react-router-dom'
 import { carryoverApi, type Carryover, type CarryoverStatus } from '../../api/billing'
 import { billingKeys } from '../../api/keys'
 import { STALE_30S } from '../../lib/queryClient'
 import { ApiError } from '../../api/client'
 import { useSession } from '../../auth/useSession'
-import { Banner, Button, Chip, DialogGuard, Field, Mono, StatCard, StatusBadge, Table, UserCell, EmptyState, LinesSkeleton } from '../../design/components'
+import { Banner, Button, Chip, Field, Modal, Mono, SearchField, StatCard, StatusBadge, Table, UserCell, EmptyState, LinesSkeleton } from '../../design/components'
 import { formatDate, formatNgn, plural } from '../../lib/format'
 import { toast } from '../../design/toast'
 import { FilterBar } from '../../shell/FilterBar'
 import { ListPage, StatRow } from '../../shell/ListPage'
 import { statusLabel } from '../../design/status'
 import { PageHeader } from '../../shell/PageHeader'
+import { BillingSubNav } from './BillingSubNav'
 
 // In the status registry's words (FD-08).
 const STATUS_FILTERS: { key: CarryoverStatus; label: string }[] = (['outstanding', 'applied', 'exempted'] as const).map(
@@ -46,21 +47,21 @@ function ExemptModal({ carryover, onCancel, onSuccess }: { carryover: Carryover;
   }
 
   return (
-    <div
-      style={{ position: 'fixed', inset: 0, background: 'var(--scrim-modal)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 'var(--layer-modal)', padding: 'var(--space-4)' }}
-      onClick={onCancel}
+    <Modal
+      open
+      onClose={onCancel}
+      title="Exempt carryover"
+      size="sm"
+      footer={
+        <>
+          <Button variant="ghost" onClick={onCancel} disabled={submitting}>Cancel</Button>
+          <Button variant="danger" loading={submitting} onClick={() => void handleSubmit()}>
+            Exempt carryover
+          </Button>
+        </>
+      }
     >
-      <DialogGuard onClose={onCancel} />
-      <div
-        style={{
-          background: 'var(--color-surface)', borderRadius: 'var(--radius-lg)', padding: 'var(--space-6)', width: '100%', maxWidth: 480,
-          display: 'flex', flexDirection: 'column', gap: 'var(--space-4)', maxHeight: '90vh', overflowY: 'auto',
-        }}
-        onClick={(e) => e.stopPropagation()}
-        role="dialog"
-        aria-modal="true"
-      >
-        <h3 style={{ margin: 0, fontSize: 'var(--text-lg)', fontWeight: 700 }}>Exempt carryover</h3>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-4)' }}>
         {error && <Banner variant="error" title="Action failed">{error}</Banner>}
         <Banner variant="warning" title={`${formatNgn(carryover.amount_ngn)} from ${carryover.source_container_number ?? 'source billing'}`}>
           Exempting removes this debt from the next billing. The amount is rolled forward as a new
@@ -75,20 +76,16 @@ function ExemptModal({ carryover, onCancel, onSuccess }: { carryover: Carryover;
           value={notes}
           onChange={(e) => setNotes(e.target.value)}
         />
-        <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 'var(--space-2)' }}>
-          <Button variant="ghost" size="lg" onClick={onCancel} disabled={submitting}>Cancel</Button>
-          <Button variant="danger" size="lg" loading={submitting} onClick={() => void handleSubmit()}>
-            Exempt carryover
-          </Button>
-        </div>
       </div>
-    </div>
+    </Modal>
   )
 }
 
 export function CarryoverLedger(): JSX.Element {
   const { session } = useSession()
+  const qc = useQueryClient()
   const [statusFilter, setStatusFilter] = useState<CarryoverStatus | null>(null)
+  const [search, setSearch] = useState('')
   const [exempting, setExempting] = useState<Carryover | null>(null)
 
   const canExempt = session?.role === 'tenant_admin'
@@ -102,6 +99,16 @@ export function CarryoverLedger(): JSX.Element {
     staleTime: STALE_30S,
   })
   const carryovers = page?.data ?? []
+
+  const filteredCarryovers = useMemo(() => {
+    const q = search.trim().toLowerCase()
+    if (!q) return carryovers
+    return carryovers.filter((c) =>
+      [c.customer_name, c.source_container_number, c.amount_ngn]
+        .filter(Boolean)
+        .some((v) => v!.toLowerCase().includes(q)),
+    )
+  }, [carryovers, search])
 
   const error = loadError
     ? loadError instanceof ApiError
@@ -124,6 +131,7 @@ export function CarryoverLedger(): JSX.Element {
             }
           />
         }
+        tabs={<BillingSubNav active="carryovers" />}
         notices={
           <>
             {error && (
@@ -170,6 +178,14 @@ export function CarryoverLedger(): JSX.Element {
                 ))}
               </>
             }
+            search={
+              <SearchField
+                label="Search carryovers"
+                placeholder="Customer or source container…"
+                value={search}
+                onChange={setSearch}
+              />
+            }
           />
         }
       >
@@ -182,7 +198,7 @@ export function CarryoverLedger(): JSX.Element {
             { title: 'Created', type: 'date' },
             { title: '', type: 'action', width: '100px' },
           ]}
-          rows={carryovers.map((c) => ({
+          rows={filteredCarryovers.map((c) => ({
             cells: [
               <UserCell key="cust" name={c.customer_name ?? c.customer_id} email="" />,
               <Link key="src" to={`/billing/${c.source_billing_id}`}>
@@ -220,6 +236,7 @@ export function CarryoverLedger(): JSX.Element {
           onCancel={() => setExempting(null)}
           onSuccess={() => {
             setExempting(null)
+            void qc.invalidateQueries({ queryKey: billingKeys.all })
           }}
         />
       )}

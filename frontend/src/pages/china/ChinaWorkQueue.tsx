@@ -6,10 +6,11 @@
  * verified yet, and CBM disputes escalated to China. Each shows how many there are and the first few, and links to
  * its list already filtered (`?status=`, see `useStatusParam`).
  */
-import type { JSX, ReactNode } from 'react'
+import { useContext, type JSX, type ReactNode } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import type { PaginationMeta } from '../../api/client'
-import { Banner, Button, Card, LinesSkeleton } from '../../design/components'
+import { SessionContext } from '../../auth/SessionContext'
+import { Banner, Button, Card, LinesSkeleton, StatCard } from '../../design/components'
 import {
   CHINA_QUEUES,
   useChinaManifestQueue,
@@ -17,6 +18,7 @@ import {
   usePackingListQueue,
 } from '../../hooks/useDashboard'
 import { formatDate } from '../../lib/format'
+import { StatRow } from '../../shell/ListPage'
 import { SectionHead } from '../../shell/SectionHead'
 import styles from './ChinaWorkQueue.module.css'
 import { PageHeader } from '../../shell/PageHeader'
@@ -77,45 +79,132 @@ function Queue({ title, countLabel, empty, viewAll, rows, pagination, loading, f
   return (
     <Card padding="none">
       <section className={styles.queue} aria-label={title}>
-        <SectionHead
-          title={title}
-          sub={count === undefined ? undefined : countLabel(count)}
-          action={
-            <Button variant="secondary" size="sm" trailingIcon="arrowright" onClick={() => navigate(viewAll)}>
-              View all
-            </Button>
-          }
-        />
-        {body}
+        <div className={styles.queueHead}>
+          <SectionHead
+            title={title}
+            sub={count === undefined ? undefined : countLabel(count)}
+            action={
+              <Button variant="secondary" size="sm" trailingIcon="arrowright" onClick={() => navigate(viewAll)}>
+                View all
+              </Button>
+            }
+          />
+        </div>
+        <div className={styles.queueBody}>{body}</div>
       </section>
     </Card>
   )
 }
 
 export function ChinaWorkQueue(): JSX.Element {
+  const navigate = useNavigate()
+  const session = useContext(SessionContext)?.session ?? null
+  const pendingApproval = usePackingListQueue(CHINA_QUEUES.pendingApprovalPackingLists)
   const rejected = usePackingListQueue(CHINA_QUEUES.rejectedPackingLists)
   const drafts = usePackingListQueue(CHINA_QUEUES.draftPackingLists)
   const manifests = useChinaManifestQueue()
   const disputes = useEscalatedDisputes()
 
-  const packingListRows = (data: typeof rejected.data): QueueRow[] =>
-    (data?.data ?? []).map((pl) => ({
+  const peerApprovalItems = (pendingApproval.data?.data ?? []).filter(
+    (pl) => !session?.userId || pl.created_by !== session.userId,
+  )
+
+  const packingListRows = (items: NonNullable<typeof rejected.data>['data']): QueueRow[] =>
+    items.map((pl) => ({
       id: pl.id,
       primary: pl.reference ?? 'Packing list',
       secondary: [pl.customer_name, pl.container_number, `updated ${formatDate(pl.updated_at)}`].filter(Boolean).join(' · '),
       to: `/packing-lists/${pl.id}`,
     }))
 
+  const pendingCount =
+    typeof pendingApproval.data?.meta.pagination.total_count === 'number'
+      ? pendingApproval.data.meta.pagination.total_count
+      : peerApprovalItems.length
+  const rejectedCount = rejected.data?.meta.pagination.total_count ?? rejected.data?.data.length ?? 0
+  const draftCount = drafts.data?.meta.pagination.total_count ?? drafts.data?.data.length ?? 0
+  const disputeCount = disputes.data?.meta.pagination.total_count ?? disputes.data?.data.length ?? 0
+
   return (
     <>
-      <PageHeader title="Work queue" meta="What is waiting on the China office." />
+      <PageHeader
+        title="Work queue"
+        meta="What is waiting on the China office."
+        primary={
+          <Button variant="primary" icon="plus" onClick={() => navigate('/packing-lists/new')}>
+            Create packing list
+          </Button>
+        }
+        actions={
+          <>
+            <Button variant="secondary" icon="upload" onClick={() => navigate('/packing-lists/import')}>
+              Import Excel
+            </Button>
+            <Button variant="secondary" icon="container" onClick={() => navigate('/containers/new')}>
+              Create container
+            </Button>
+          </>
+        }
+      />
+      <div className={styles.stats}>
+        <StatRow>
+          <StatCard
+            label="Pending approval"
+            value={pendingCount}
+            sublabel="peer review queue"
+            icon="check"
+            onSelect={() => navigate('/packing-lists?status=pending_approval')}
+          />
+          <StatCard
+            label="Rejected lists"
+            value={rejectedCount}
+            sublabel="to revise & resubmit"
+            icon="warn"
+            onSelect={() => navigate('/packing-lists?status=rejected')}
+          />
+          <StatCard
+            label="Drafts"
+            value={draftCount}
+            sublabel="not yet submitted"
+            icon="file"
+            onSelect={() => navigate('/packing-lists?status=draft')}
+          />
+          <StatCard
+            label="Escalated disputes"
+            value={disputeCount}
+            sublabel="need measurement answer"
+            icon="alert"
+            onSelect={() => navigate('/billing/disputes?status=escalated_china')}
+          />
+        </StatRow>
+      </div>
       <div className={styles.grid}>
+        <Queue
+          title="Packing lists to peer-approve"
+          countLabel={(n) => `${n} waiting on another colleague`}
+          empty="Nothing waiting for your approval."
+          viewAll="/packing-lists?status=pending_approval"
+          rows={packingListRows(peerApprovalItems)}
+          pagination={
+            pendingApproval.data
+              ? {
+                  ...pendingApproval.data.meta.pagination,
+                  total_count:
+                    peerApprovalItems.length === pendingApproval.data.data.length
+                      ? pendingApproval.data.meta.pagination.total_count
+                      : peerApprovalItems.length,
+                }
+              : undefined
+          }
+          loading={pendingApproval.isLoading}
+          failed={pendingApproval.isError}
+        />
         <Queue
           title="Rejected packing lists"
           countLabel={(n) => `${n} to revise and resubmit`}
           empty="Nothing rejected."
           viewAll="/packing-lists?status=rejected"
-          rows={packingListRows(rejected.data)}
+          rows={packingListRows(rejected.data?.data ?? [])}
           pagination={rejected.data?.meta.pagination}
           loading={rejected.isLoading}
           failed={rejected.isError}
@@ -125,7 +214,7 @@ export function ChinaWorkQueue(): JSX.Element {
           countLabel={(n) => `${n} not sent for approval`}
           empty="No drafts waiting."
           viewAll="/packing-lists?status=draft"
-          rows={packingListRows(drafts.data)}
+          rows={packingListRows(drafts.data?.data ?? [])}
           pagination={drafts.data?.meta.pagination}
           loading={drafts.isLoading}
           failed={drafts.isError}

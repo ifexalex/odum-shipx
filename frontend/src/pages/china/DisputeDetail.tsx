@@ -64,15 +64,29 @@ function ResolvePanel({ dispute, onResolved }: { dispute: DisputeDetailData; onR
         </Button>
       </div>
       {outcome === 'resolved_adjusted' && (
-        <Field
-          label="Corrected CBM"
-          name="corrected_cbm"
-          type="number"
-          required
-          placeholder={`Billed: ${formatCbm(dispute.billed_cbm)}`}
-          value={correctedCbm}
-          onChange={(e) => setCorrectedCbm(e.target.value)}
-        />
+        <>
+          <Field
+            label="Corrected CBM"
+            name="corrected_cbm"
+            type="number"
+            required
+            placeholder={`Billed: ${formatCbm(dispute.billed_cbm)}`}
+            value={correctedCbm}
+            onChange={(e) => setCorrectedCbm(e.target.value)}
+          />
+          {dispute.customer_measured_cbm && (
+            <div style={{ marginTop: 'var(--space-1)', marginBottom: 'var(--space-2)' }}>
+              <Button
+                type="button"
+                variant="ghost"
+                size="sm"
+                onClick={() => setCorrectedCbm(dispute.customer_measured_cbm ?? '')}
+              >
+                Use customer&apos;s {formatCbm(dispute.customer_measured_cbm)} CBM
+              </Button>
+            </div>
+          )}
+        </>
       )}
       <Field
         label="Resolution notes"
@@ -129,6 +143,16 @@ export function DisputeDetail(): JSX.Element {
 
   const terminal = isTerminalDisputeStatus(dispute.status)
   const totalLineCbm = dispute.lines.reduce((sum, line) => sum + Number(line.cbm), 0)
+  const billedNum = dispute.billed_cbm != null ? Number(dispute.billed_cbm) : null
+  const claimedNum = dispute.customer_measured_cbm != null ? Number(dispute.customer_measured_cbm) : null
+  const varianceCbm =
+    billedNum != null && claimedNum != null && Number.isFinite(billedNum) && Number.isFinite(claimedNum)
+      ? claimedNum - billedNum
+      : null
+  const variancePct =
+    varianceCbm != null && billedNum && billedNum > 0
+      ? (varianceCbm / billedNum) * 100
+      : null
 
   return (
     <DetailPage
@@ -143,7 +167,7 @@ export function DisputeDetail(): JSX.Element {
             dispute.invoice_number,
             `Filed ${formatDate(dispute.submitted_at)}`,
           ]}
-          // The next step (FD-23): the form is at the foot of the page, below the evidence it is decided on.
+          // The next step (FD-23): jumps straight to the resolve panel in the aside.
           primary={
             !terminal && (
               <Button
@@ -161,6 +185,22 @@ export function DisputeDetail(): JSX.Element {
           }
         />
       }
+      aside={
+        terminal ? (
+          <Banner variant="success" title="This dispute is resolved">
+            {dispute.resolution_notes ?? 'No further action is needed.'}
+          </Banner>
+        ) : (
+          <ResolvePanel
+            dispute={dispute}
+            onResolved={() => {
+              // The central rule for PATCH /v1/billing/disputes/ refreshes the lists; this page's own read is
+              // keyed separately, so refresh it too.
+              void qc.invalidateQueries({ queryKey: disputeKeys.detail(dispute.id) })
+            }}
+          />
+        )
+      }
     >
       <Card padding="large">
         <SectionHead title="Measurement" sub="What the customer claims against what was billed" />
@@ -174,6 +214,26 @@ export function DisputeDetail(): JSX.Element {
             <span className={styles.factLabel}>Customer measured</span>
             <span className={styles.factValue}>{formatCbm(dispute.customer_measured_cbm)}</span>
           </div>
+          {varianceCbm !== null && (
+            <div className={styles.fact}>
+              <span className={styles.factLabel}>Variance</span>
+              <span
+                className={styles.factValue}
+                style={{
+                  color:
+                    varianceCbm < 0
+                      ? 'var(--color-error)'
+                      : varianceCbm > 0
+                        ? 'var(--color-info)'
+                        : 'var(--color-ink)',
+                }}
+              >
+                {varianceCbm > 0 ? '+' : ''}
+                {formatCbm(varianceCbm)}
+                {variancePct !== null ? ` (${variancePct > 0 ? '+' : ''}${variancePct.toFixed(1)}%)` : ''}
+              </span>
+            </div>
+          )}
           <div className={styles.fact}>
             <span className={styles.factLabel}>Disputed CBM</span>
             <span className={styles.factValue}>{formatCbm(dispute.original_cbm)}</span>
@@ -243,21 +303,6 @@ export function DisputeDetail(): JSX.Element {
           }
         />
       </Card>
-
-      {terminal ? (
-        <Banner variant="success" title="This dispute is resolved">
-          {dispute.resolution_notes ?? 'No further action is needed.'}
-        </Banner>
-      ) : (
-        <ResolvePanel
-          dispute={dispute}
-          onResolved={() => {
-            // The central rule for PATCH /v1/billing/disputes/ refreshes the lists; this page's own read is
-            // keyed separately, so refresh it too.
-            void qc.invalidateQueries({ queryKey: disputeKeys.detail(dispute.id) })
-          }}
-        />
-      )}
     </DetailPage>
   )
 }

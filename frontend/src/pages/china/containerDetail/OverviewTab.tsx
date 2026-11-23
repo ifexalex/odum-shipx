@@ -1,7 +1,7 @@
 import { type JSX } from 'react'
 import { containerCapacityCbm } from '../../../api/containerRules'
 import { formatPackageMix } from '../../../api/packingListRules'
-import { Avatar, Card, Kvp, Mono, Button } from '../../../design/components'
+import { Avatar, Card, Kvp, Mono, Button, Pressable } from '../../../design/components'
 import { SectionHead } from '../../../shell/SectionHead'
 import styles from '../ContainerDetail.module.css'
 import { formatCbm, formatDate } from '../../../lib/format'
@@ -16,12 +16,15 @@ export function OverviewTab({
   packingLists,
   events,
   onShowTab,
+  onSelectCustomer,
 }: {
   container: Container
   packingLists: PackingList[]
   events: ContainerEvent[]
   /** The overview's "View all" links open the tracking and packing-list tabs. */
   onShowTab: (tab: 'packing-lists' | 'tracking') => void
+  /** Clicking a top shipper opens Packing lists filtered to that customer. */
+  onSelectCustomer?: (customerName: string) => void
 }): JSX.Element {
   const approvedCount = packingLists.filter((pl) => pl.status === 'approved').length
 
@@ -194,25 +197,32 @@ export function OverviewTab({
               {topShippers.map((group) => {
                 const share = totalCbm > 0 ? (group.cbm / totalCbm) * 100 : 0
                 return (
-                  <div key={group.name} className={styles.shipperRow}>
-                    <Avatar size={28} name={group.name} roleColor="nigeria" />
-                    <div className={styles.shipperBody}>
-                      <div className={styles.shipperTop}>
-                        <span className={styles.shipperName} title={group.name}>
-                          {group.name}
-                        </span>
-                        <span className={styles.shipperCbm}>
-                          <Mono>{formatCbm(group.cbm)}</Mono> CBM
-                        </span>
-                      </div>
-                      <div className={styles.shipperBarRow}>
-                        <div className={styles.shipperBarTrack}>
-                          <div className={styles.shipperBarFill} style={{ width: `${share}%` }} />
+                  <Pressable
+                    key={group.name}
+                    className={styles.shipperBtn}
+                    onClick={() => onSelectCustomer?.(group.name)}
+                    aria-label={`View packing lists for ${group.name}`}
+                  >
+                    <div className={styles.shipperRow}>
+                      <Avatar size={28} name={group.name} roleColor="nigeria" />
+                      <div className={styles.shipperBody}>
+                        <div className={styles.shipperTop}>
+                          <span className={styles.shipperName} title={group.name}>
+                            {group.name}
+                          </span>
+                          <span className={styles.shipperCbm}>
+                            <Mono>{formatCbm(group.cbm)}</Mono> CBM
+                          </span>
                         </div>
-                        <span className={styles.shipperPct}>{share.toFixed(0)}%</span>
+                        <div className={styles.shipperBarRow}>
+                          <div className={styles.shipperBarTrack}>
+                            <div className={styles.shipperBarFill} style={{ width: `${share}%` }} />
+                          </div>
+                          <span className={styles.shipperPct}>{share.toFixed(0)}%</span>
+                        </div>
                       </div>
                     </div>
-                  </div>
+                  </Pressable>
                 )
               })}
             </div>

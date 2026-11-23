@@ -1,5 +1,5 @@
 import { useContext, useMemo, useState } from 'react'
-import { useNavigate, useParams } from 'react-router-dom'
+import { useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import { ApiError } from '../../../api/client'
 import { SessionContext } from '../../../auth/SessionContext'
 import {
@@ -47,6 +47,8 @@ function fieldsSnapshot(draft: WizardDraft): string {
 export function useCreatePackingListForm() {
   const navigate = useNavigate()
   const { id: editId } = useParams<{ id: string }>()
+  const [searchParams] = useSearchParams()
+  const prefilledContainerId = !editId ? (searchParams.get('container_id') ?? '') : ''
   const session = useContext(SessionContext)?.session
 
   // The list THIS page created, if it already saved once.
@@ -73,7 +75,7 @@ export function useCreatePackingListForm() {
   const [seed] = useState(() => (keepsTabDraft ? readTabDraft<WizardDraft>(DRAFT_FORM, session) : null))
   const [step, setStep] = useState<1 | 2 | 3>(seed?.step ?? 1)
   const [customerId, setCustomerId] = useState(seed?.customerId ?? '')
-  const [containerId, setContainerId] = useState(seed?.containerId ?? '')
+  const [containerId, setContainerId] = useState(prefilledContainerId || (seed?.containerId ?? ''))
   const [arrivalWarehouseId, setArrivalWarehouseId] = useState(seed?.arrivalWarehouseId ?? '')
   const [loadingDate, setLoadingDate] = useState(seed?.loadingDate ?? '')
   const [deliveryDate, setDeliveryDate] = useState(seed?.deliveryDate ?? '')
@@ -199,7 +201,7 @@ export function useCreatePackingListForm() {
   const pristine: WizardDraft = {
     step,
     customerId: '',
-    containerId: '',
+    containerId: prefilledContainerId,
     arrivalWarehouseId: arrivalWarehouseId === defaultWarehouseId ? arrivalWarehouseId : '',
     loadingDate: '',
     deliveryDate: '',
@@ -271,6 +273,20 @@ export function useCreatePackingListForm() {
 
   function removeItem(index: number): void {
     setItems((prev) => prev.filter((_, i) => i !== index))
+  }
+
+  function duplicateItem(index: number): void {
+    setItems((prev) => {
+      const source = prev[index]
+      if (!source) return prev
+      const copy: PackingListItemInput = {
+        ...source,
+        batch_ref: undefined,
+        quantity: 1,
+        identical_confirmed: false,
+      }
+      return [...prev.slice(0, index + 1), copy, ...prev.slice(index + 1)]
+    })
   }
 
   /** Drop every row that came from one quantity entry.
@@ -452,6 +468,7 @@ export function useCreatePackingListForm() {
     qtyOf,
     updateItem,
     removeItem,
+    duplicateItem,
     removeBatch,
     batchSize,
     requestSave,

@@ -85,6 +85,7 @@ export function PublicTrack(): JSX.Element {
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [result, setResult] = useState<PublicTrackingResult | null>(null)
+  const [editingLookup, setEditingLookup] = useState(false)
 
   async function handleTrack(event?: FormEvent<HTMLFormElement>): Promise<void> {
     event?.preventDefault()
@@ -95,6 +96,7 @@ export function PublicTrack(): JSX.Element {
     try {
       const data = await publicTrackingApi.lookup(trackingCode.trim(), phone.trim())
       setResult(data)
+      setEditingLookup(false)
       // Update URL to /track/:code without re-mounting
       if (!prefilledCode) navigate(`/track/${encodeURIComponent(trackingCode.trim())}`, { replace: true })
     } catch (err) {
@@ -134,33 +136,46 @@ export function PublicTrack(): JSX.Element {
           <h1 className={styles.title}>Track your shipment</h1>
           <p className={styles.sub}>Enter your tracking code and phone number to see your delivery status.</p>
 
-          <form className={styles.form} onSubmit={(e) => void handleTrack(e)}>
-            <Field
-              label="Tracking code"
-              name="tracking_code"
-              required
-              placeholder="e.g. ACME-TRK-20260704-0001"
-              value={trackingCode}
-              onChange={(e) => {
-                setTrackingCode(e.target.value)
-                setResult(null)
-              }}
-            />
-            <PhoneField
-              label="Phone number"
-              name="phone"
-              required
-              value={phone}
-              onChange={setPhone}
-              helper="The number your shipping company has on file for you."
-            />
+          {result && !editingLookup ? (
+            <div className={styles.compactBar}>
+              <span>
+                Tracking <Mono>{result.tracking_code}</Mono>
+              </span>
+              <Button variant="secondary" size="sm" onClick={() => setEditingLookup(true)}>
+                Track another
+              </Button>
+            </div>
+          ) : (
+            <form className={styles.form} onSubmit={(e) => void handleTrack(e)}>
+              <Field
+                label="Tracking code"
+                name="tracking_code"
+                required
+                autoFocus={!prefilledCode}
+                placeholder="e.g. ACME-TRK-20260704-0001"
+                value={trackingCode}
+                onChange={(e) => {
+                  setTrackingCode(e.target.value)
+                  setResult(null)
+                }}
+              />
+              <PhoneField
+                label="Phone number"
+                name="phone"
+                required
+                autoFocus={Boolean(prefilledCode)}
+                value={phone}
+                onChange={setPhone}
+                helper="The number your shipping company has on file for you."
+              />
 
-            {error && <Banner variant="error">{error}</Banner>}
+              {error && <Banner variant="error">{error}</Banner>}
 
-            <Button type="submit" variant="primary" size="lg" full loading={loading} disabled={!trackingCode.trim() || !phone.trim()}>
-              Track shipment
-            </Button>
-          </form>
+              <Button type="submit" variant="primary" size="lg" full loading={loading} disabled={!trackingCode.trim() || !phone.trim()}>
+                Track shipment
+              </Button>
+            </form>
+          )}
 
           {result && <TrackingResult result={result} />}
         </main>

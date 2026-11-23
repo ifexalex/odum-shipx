@@ -1,10 +1,10 @@
-import { useState, type JSX } from 'react'
+import { useMemo, useState, type JSX } from 'react'
 import { ApiError } from '../../api/client'
 import { seizedItemsApi, type SeizedItem, type SeizedItemStatus, type UpdateSeizedItemInput } from '../../api/claims'
 import { canUpdateItem } from '../../api/claimsRules'
 import { useSeizedItemList } from '../../hooks/useItems'
 import { useSession } from '../../auth/useSession'
-import { Banner, Button, Chip, DialogGuard, Field, ListFooter, Mono, StatusBadge, Table, Select, EmptyState, ErrorState } from '../../design/components'
+import { Banner, Button, Chip, Field, Kvp, ListFooter, Modal, Mono, SearchField, StatusBadge, Table, Select, EmptyState, ErrorState } from '../../design/components'
 import styles from './ItemList.module.css'
 import { formatDate } from '../../lib/format'
 import { statusLabel } from '../../design/status'
@@ -58,11 +58,26 @@ function UpdateModal({ item, onCancel, onSuccess }: UpdateModalProps): JSX.Eleme
   }
 
   return (
-    <div className={styles.overlay} onClick={onCancel}>
-      <DialogGuard onClose={onCancel} />
-      <div className={styles.panel} onClick={(e) => e.stopPropagation()} role="dialog" aria-modal="true">
-        <h3 className={styles.panelTitle}>Update seized item</h3>
-        {error && <div className={styles.panelBanner}><Banner variant="error" title="Action failed">{error}</Banner></div>}
+    <Modal
+      open
+      onClose={onCancel}
+      title="Update seized item"
+      size="sm"
+      footer={
+        <>
+          <Button variant="ghost" onClick={onCancel} disabled={submitting}>Cancel</Button>
+          <Button variant="primary" loading={submitting} disabled={compensationInvalid} onClick={() => void handleSubmit()}>Save update</Button>
+        </>
+      }
+    >
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-4)' }}>
+        {error && <Banner variant="error" title="Action failed">{error}</Banner>}
+        <div className={styles.itemContext}>
+          {item.customer_name && <Kvp label="Customer" value={item.customer_name} />}
+          {item.container_number && <Kvp label="Container" value={<Mono>{item.container_number}</Mono>} />}
+          <Kvp label="Carton tags" value={<Mono>{item.carton_tags.join(', ') || '—'}</Mono>} />
+          <Kvp label="Reason" value={item.reason || '—'} divider={false} />
+        </div>
         <div className={styles.selectField}>
           <Select label="Recovery status" value={status} onChange={(e) => setStatus(e.target.value as SeizedItemStatus)}>
             {STATUS_FILTERS.map((s) => <option key={s} value={s}>{statusLabel('seizedItem', s)}</option>)}
@@ -76,12 +91,8 @@ function UpdateModal({ item, onCancel, onSuccess }: UpdateModalProps): JSX.Eleme
         )}
         <Field label="Notes" name="notes" multiline placeholder="Recovery notes, agency contact, reference…"
           value={notes} onChange={(e) => setNotes(e.target.value)} />
-        <div className={styles.panelActions}>
-          <Button variant="ghost" onClick={onCancel} disabled={submitting}>Cancel</Button>
-          <Button variant="primary" loading={submitting} disabled={compensationInvalid} onClick={() => void handleSubmit()}>Save update</Button>
-        </div>
       </div>
-    </div>
+    </Modal>
   )
 }
 
@@ -94,10 +105,21 @@ export function SeizedItemList(): JSX.Element {
   const role = session?.role ?? 'nigeria_office_staff'
 
   const [statusFilter, setStatusFilter] = useState<SeizedItemStatus | null>(null)
+  const [search, setSearch] = useState('')
   const [editing, setEditing] = useState<SeizedItem | null>(null)
   const { items, isLoading: loading, error, hasMore, loadMore, isFetchingMore, refetch, totalCount } = useSeizedItemList(
     statusFilter ? { status: statusFilter } : {},
   )
+
+  const filteredItems = useMemo(() => {
+    const q = search.trim().toLowerCase()
+    if (!q) return items
+    return items.filter((item) =>
+      [item.customer_name, item.container_number, item.reason, ...item.carton_tags]
+        .filter(Boolean)
+        .some((v) => v!.toLowerCase().includes(q)),
+    )
+  }, [items, search])
 
   function handleUpdated(): void {
     setEditing(null)
@@ -142,13 +164,21 @@ export function SeizedItemList(): JSX.Element {
                 ))}
               </>
             }
+            search={
+              <SearchField
+                label="Search seized items"
+                placeholder="Customer, container, tag, reason…"
+                value={search}
+                onChange={setSearch}
+              />
+            }
           />
         }
         footer={
           <ListFooter
-            shown={items.length}
-            total={totalCount}
-            hasMore={hasMore}
+            shown={filteredItems.length}
+            total={search.trim() ? filteredItems.length : totalCount}
+            hasMore={!search.trim() && hasMore}
             loading={isFetchingMore}
             onLoadMore={loadMore}
             noun="seized items"
@@ -158,14 +188,18 @@ export function SeizedItemList(): JSX.Element {
       >
         <Table
           columns={[
+            { title: 'Customer' },
+            { title: 'Container', type: 'reference' },
             { title: 'Reason / notes' },
             { title: 'Carton tags', type: 'reference' },
             { title: 'Status', type: 'status' },
             { title: 'Reported', type: 'date' },
             { title: '', type: 'action', width: '80px' },
           ]}
-          rows={items.map((item) => ({
+          rows={filteredItems.map((item) => ({
             cells: [
+              <span key="customer">{item.customer_name ?? '—'}</span>,
+              <Mono key="container">{item.container_number ?? '—'}</Mono>,
               <span key="reason">{item.reason || '—'}</span>,
               <Mono key="tags">{item.carton_tags.join(', ') || '—'}</Mono>,
               <StatusBadge key="status" kind="seizedItem" status={item.status} />,
@@ -183,7 +217,7 @@ export function SeizedItemList(): JSX.Element {
           }))}
           loading={loading}
           emptyState={
-            !loading && items.length === 0 ? (
+            !loading && filteredItems.length === 0 ? (
               <EmptyState compact title="No seized items on record" />
             ) : undefined
           }

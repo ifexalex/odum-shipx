@@ -5,7 +5,7 @@ import { configKeys } from '../../api/keys'
 import { configApi, type DollarRateConfig } from '../../api/tenantManagement'
 import { useDollarRate, useRateHistory } from '../../hooks/useConfig'
 import { useSeedOnce } from '../../hooks/useSeedOnce'
-import { Banner, Button, Card, Kvp, Mono, Table, UserCell, Field, EmptyState, LinesSkeleton } from '../../design/components'
+import { Banner, Button, Card, Kvp, Mono, Table, UserCell, Field, EmptyState, LinesSkeleton, PageSkeleton } from '../../design/components'
 import { PageHeader } from '../../shell/PageHeader'
 import { SectionHead } from '../../shell/SectionHead'
 import styles from './admin.module.css'
@@ -72,7 +72,17 @@ function RateTrendChart({ points, prefix }: { points: { date: string; value: num
 // F-C7 — Rate history (prototype 4.2): every change, who made it, and the delta.
 // Shared by the Dollar and CBM rate pages. Also renders the B7 trend chart from
 // the same fetched history (no extra request).
-export function RateHistoryTable({ rateType, valueKey, prefix }: { rateType: 'dollar_rate' | 'cbm_rate'; valueKey: string; prefix: string }): JSX.Element {
+export function RateHistoryTable({
+  rateType,
+  valueKey,
+  prefix,
+  currencyKey,
+}: {
+  rateType: 'dollar_rate' | 'cbm_rate'
+  valueKey: string
+  prefix: string
+  currencyKey?: string
+}): JSX.Element {
   // Non-fatal: on failure the history table degrades to empty.
   const history = useRateHistory(rateType)
   const rows = history.data?.data ?? []
@@ -83,21 +93,33 @@ export function RateHistoryTable({ rateType, valueKey, prefix }: { rateType: 'do
     return Number.isFinite(n) ? n : null
   }
 
+  const rowPrefix = (v: Record<string, unknown> | null): string => {
+    if (!currencyKey || !v) return prefix
+    const c = v[currencyKey]
+    if (c === 'ngn') return '₦'
+    if (c === 'usd') return '$'
+    return prefix
+  }
+
   // Ascending-by-date points for the chart (rows come newest-first).
-  const chartPoints = rows
-    .map((r) => ({ date: r.effective_from, value: val(r.rate_value) }))
-    .filter((p): p is { date: string; value: number } => p.value != null)
+  // Only draw a single-axis trend when every point uses the same currency.
+  const chartEntries = rows
+    .map((r) => ({ date: r.effective_from, value: val(r.rate_value), cur: rowPrefix(r.rate_value) }))
+    .filter((p): p is { date: string; value: number; cur: string } => p.value != null)
     .reverse()
+  const chartCurrencies = new Set(chartEntries.map((p) => p.cur))
+  const chartPoints = chartCurrencies.size <= 1 ? chartEntries : []
+  const chartPrefix = chartEntries[0]?.cur ?? prefix
 
   return (
     <Card padding="none" style={{ marginTop: 'var(--space-5)' }}>
       <div style={{ padding: 'var(--space-5) var(--space-5) var(--space-1)' }}>
-        <SectionHead title="Rate history" sub="Every change, who made it, and the delta (append-only, migration 025)" />
+        <SectionHead title="Rate history" sub="Every change, who made it, and the delta (append-only audit trail)" />
       </div>
-      {chartPoints.length >= 2 && <RateTrendChart points={chartPoints} prefix={prefix} />}
+      {chartPoints.length >= 2 && <RateTrendChart points={chartPoints} prefix={chartPrefix} />}
       <Table
         columns={[
-          { title: `Rate (${prefix})`, type: 'money' },
+          { title: currencyKey ? 'Rate' : `Rate (${prefix})`, type: 'money' },
           { title: 'Change', align: 'right' },
           { title: 'Changed by' },
           { title: 'Effective from', type: 'date' },
@@ -105,18 +127,21 @@ export function RateHistoryTable({ rateType, valueKey, prefix }: { rateType: 'do
         rows={rows.map((r, i) => {
           const current = val(r.rate_value)
           const prev = val(r.previous_value)
-          const delta = current != null && prev != null ? current - prev : null
+          const curPrefix = rowPrefix(r.rate_value)
+          const prevPrefix = rowPrefix(r.previous_value)
+          const sameCurrency = !currencyKey || !r.previous_value || curPrefix === prevPrefix
+          const delta = sameCurrency && current != null && prev != null ? current - prev : null
           return {
             cells: [
               <span key="rate" style={{ display: 'inline-flex', alignItems: 'center', gap: 'var(--space-2)' }}>
-                <Mono color={i === 0 ? 'var(--color-primary)' : undefined}>{prefix}{formatAmount(current)}</Mono>
-                {i === 0 && <span style={{ fontSize: 'var(--text-xs)', fontWeight: 700, textTransform: 'uppercase', color: 'var(--color-primary-deep)', background: 'var(--color-primary-soft)', borderRadius: 'var(--radius-full)', padding: 'var(--space-0-5) var(--space-2)' }}>Current</span>}
+                <Mono color={i === 0 ? 'var(--color-primary)' : undefined}>{curPrefix}{formatAmount(current)}</Mono>
+                {i === 0 && <span style={{ fontSize: 'var(--text-xs)', fontWeight: 700, textTransform: 'uppercase', color: 'var(--color-primary-on-soft)', background: 'var(--color-primary-soft)', borderRadius: 'var(--radius-full)', padding: 'var(--space-0-5) var(--space-2)' }}>Current</span>}
               </span>,
               delta == null ? (
                 <span key="delta" style={{ fontSize: 'var(--text-xs)', color: 'var(--color-ink-4)' }}>—</span>
               ) : (
                 <span key="delta" style={{ fontSize: 'var(--text-xs)', fontWeight: 700, color: delta >= 0 ? 'var(--color-success)' : 'var(--color-error)' }}>
-                  {delta >= 0 ? '+' : ''}{prefix}{formatAmount(delta)}
+                  {delta >= 0 ? '+' : ''}{curPrefix}{formatAmount(delta)}
                 </span>
               ),
               <UserCell key="by" name={r.changed_by ?? 'system'} email="" />,
@@ -176,6 +201,15 @@ export function DollarRateConfig(): JSX.Element {
   const loadError = rate.error ? (rate.error instanceof ApiError ? rate.error.message : 'Could not load rate.') : null
   const error = saveError ?? loadError
 
+  const parsedMarkup = markupValue.trim() !== '' ? Number(markupValue) : NaN
+  const markupValid = Number.isFinite(parsedMarkup) && parsedMarkup >= 0
+  const previewMarkupNgn = current && markupValid
+    ? markupType === 'percentage'
+      ? current.base_rate * (parsedMarkup / 100)
+      : parsedMarkup
+    : null
+  const previewEffective = current && previewMarkupNgn != null ? current.base_rate + previewMarkupNgn : null
+
   async function handleSave(): Promise<void> {
     setSaving(true)
     setSaveError(null)
@@ -199,6 +233,8 @@ export function DollarRateConfig(): JSX.Element {
       />
 
       {error && <div className={styles.banner}><Banner variant="error">{error}</Banner></div>}
+
+      {loading && !error && <PageSkeleton kind="form" label="Loading dollar rate" />}
 
       {!loading && current && (
         <>
@@ -257,10 +293,37 @@ export function DollarRateConfig(): JSX.Element {
               type="number"
               value={markupValue}
               onChange={(e) => setMarkupValue(e.target.value)}
-                placeholder={markupType === 'percentage' ? 'e.g. 2' : 'e.g. 15'}
-                min="0"
-                step={markupType === 'percentage' ? '0.1' : '1'}
-              />
+              placeholder={markupType === 'percentage' ? 'e.g. 2' : 'e.g. 15'}
+              min="0"
+              step={markupType === 'percentage' ? '0.1' : '1'}
+            />
+            {previewEffective != null && previewMarkupNgn != null && (
+              <div
+                style={{
+                  padding: 'var(--space-3)',
+                  borderRadius: 'var(--radius-md)',
+                  background: 'var(--color-surface-muted)',
+                  border: '1px solid var(--color-line-soft)',
+                  fontSize: 'var(--text-sm)',
+                  color: 'var(--color-ink-2)',
+                  display: 'flex',
+                  flexWrap: 'wrap',
+                  alignItems: 'center',
+                  justifyContent: 'space-between',
+                  gap: 'var(--space-2)',
+                }}
+              >
+                <span>
+                  Preview: <Mono>{formatNgn(current.base_rate)}</Mono> base +{' '}
+                  <Mono>
+                    {markupType === 'percentage'
+                      ? `${parsedMarkup}% (${formatNgn(previewMarkupNgn)})`
+                      : formatNgn(previewMarkupNgn)}
+                  </Mono>
+                </span>
+                <Mono color="var(--color-primary)">= {formatNgn(previewEffective)} / $1</Mono>
+              </div>
+            )}
             <div className={styles.formActions}>
               <Button
                 variant="primary"

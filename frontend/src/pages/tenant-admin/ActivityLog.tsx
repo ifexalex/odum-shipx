@@ -105,6 +105,30 @@ function actionVariant(action: TenantActivityEntry['action']): BadgeVariant {
   return 'info'
 }
 
+function formatDiffVal(value: unknown): string {
+  if (value === null || value === undefined || value === '') return '—'
+  if (typeof value === 'boolean') return value ? 'Yes' : 'No'
+  if (typeof value === 'object') return JSON.stringify(value)
+  return String(value)
+}
+
+function extractDiffRows(
+  before: Record<string, unknown> | null,
+  after: Record<string, unknown> | null,
+): Array<{ field: string; before: string; after: string }> {
+  const b = before ?? {}
+  const a = after ?? {}
+  const keys = Array.from(new Set([...Object.keys(b), ...Object.keys(a)]))
+  const rows: Array<{ field: string; before: string; after: string }> = []
+  for (const key of keys) {
+    const bv = formatDiffVal(b[key])
+    const av = formatDiffVal(a[key])
+    if (before && after && bv === av) continue
+    rows.push({ field: key.replace(/_/g, ' '), before: bv, after: av })
+  }
+  return rows
+}
+
 export function ActivityLog(): JSX.Element {
   const [entries, setEntries] = useState<TenantActivityEntry[]>([])
   const [category, setCategory] = useState('')
@@ -311,6 +335,7 @@ export function ActivityLog(): JSX.Element {
           columns={[
             { title: 'Timestamp', type: 'date' },
             { title: 'Record' },
+            { title: 'Record ID', type: 'reference' },
             { title: 'Action' },
             { title: 'By' },
             { title: '', type: 'action', width: '90px' },
@@ -324,6 +349,9 @@ export function ActivityLog(): JSX.Element {
               >
                 {humanEntity(e.entity_type)}
               </span>,
+              <Mono key="ref" color="var(--color-ink-3)">
+                {e.entity_id ? e.entity_id.slice(0, 8) : '—'}
+              </Mono>,
               <Badge key="action" variant={actionVariant(e.action)}>
                 {e.action.replace(/_/g, ' ')}
               </Badge>,
@@ -358,85 +386,139 @@ export function ActivityLog(): JSX.Element {
         }
         size="lg"
       >
-        {expandedEntry && (
-          <>
-            <div
-              style={{
-                fontSize: 'var(--text-xs)',
-                color: 'var(--color-ink-3)',
-                marginBottom: 'var(--space-4)',
-              }}
-            >
-              {formatDateTime(expandedEntry.created_at)}
-              {' · by '}
-              {expandedEntry.actor_name ?? (expandedEntry.actor_id ? 'A former user' : 'System')}
-            </div>
-            <div
-              style={{
-                display: 'grid',
-                gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))',
-                gap: 'var(--space-4)',
-              }}
-            >
-              <div>
+        {expandedEntry && (() => {
+          const diffRows = extractDiffRows(expandedEntry.before_state, expandedEntry.after_state)
+          return (
+            <>
+              <div
+                style={{
+                  fontSize: 'var(--text-xs)',
+                  color: 'var(--color-ink-3)',
+                  marginBottom: 'var(--space-4)',
+                  display: 'flex',
+                  flexWrap: 'wrap',
+                  gap: 'var(--space-2)',
+                  alignItems: 'center',
+                }}
+              >
+                <span>{formatDateTime(expandedEntry.created_at)}</span>
+                <span>· by {expandedEntry.actor_name ?? (expandedEntry.actor_id ? 'A former user' : 'System')}</span>
+                {expandedEntry.entity_id && (
+                  <span>· ID <Mono color="var(--color-ink-2)">{expandedEntry.entity_id}</Mono></span>
+                )}
+              </div>
+
+              {diffRows.length > 0 && (
+                <div style={{ marginBottom: 'var(--space-4)' }}>
+                  <div
+                    style={{
+                      fontSize: 'var(--text-xs)',
+                      fontWeight: 700,
+                      color: 'var(--color-ink-4)',
+                      textTransform: 'uppercase',
+                      letterSpacing: 'var(--tracking-label)',
+                      marginBottom: 'var(--space-2)',
+                    }}
+                  >
+                    Changed fields
+                  </div>
+                  <Table
+                    columns={[
+                      { title: 'Field' },
+                      { title: 'Before' },
+                      { title: 'After' },
+                    ]}
+                    rows={diffRows.map((row) => ({
+                      cells: [
+                        <span key="f" style={{ fontWeight: 600, textTransform: 'capitalize' }}>{row.field}</span>,
+                        <Mono key="b" color="var(--color-ink-3)">{row.before}</Mono>,
+                        <Mono key="a" color="var(--color-ink)">{row.after}</Mono>,
+                      ],
+                    }))}
+                  />
+                </div>
+              )}
+
+              <details>
+                <summary
+                  style={{
+                    cursor: 'pointer',
+                    fontSize: 'var(--text-xs)',
+                    fontWeight: 600,
+                    color: 'var(--color-ink-3)',
+                    marginBottom: 'var(--space-3)',
+                  }}
+                >
+                  Raw JSON payload
+                </summary>
                 <div
                   style={{
-                    fontSize: 'var(--text-xs)',
-                    fontWeight: 700,
-                    color: 'var(--color-ink-4)',
-                    textTransform: 'uppercase',
-                    letterSpacing: 'var(--tracking-label)',
-                    marginBottom: 'var(--space-2)',
+                    display: 'grid',
+                    gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))',
+                    gap: 'var(--space-4)',
                   }}
                 >
-                  Before
+                  <div>
+                    <div
+                      style={{
+                        fontSize: 'var(--text-xs)',
+                        fontWeight: 700,
+                        color: 'var(--color-ink-4)',
+                        textTransform: 'uppercase',
+                        letterSpacing: 'var(--tracking-label)',
+                        marginBottom: 'var(--space-2)',
+                      }}
+                    >
+                      Before
+                    </div>
+                    <pre
+                      style={{
+                        margin: 0,
+                        fontSize: 'var(--text-xs)',
+                        fontFamily: 'var(--font-mono)',
+                        whiteSpace: 'pre-wrap',
+                        overflowX: 'auto',
+                        background: 'var(--color-page)',
+                        padding: 'var(--space-3)',
+                        borderRadius: 'var(--radius-md)',
+                      }}
+                    >
+                      {JSON.stringify(expandedEntry.before_state ?? {}, null, 2)}
+                    </pre>
+                  </div>
+                  <div>
+                    <div
+                      style={{
+                        fontSize: 'var(--text-xs)',
+                        fontWeight: 700,
+                        color: 'var(--color-ink-4)',
+                        textTransform: 'uppercase',
+                        letterSpacing: 'var(--tracking-label)',
+                        marginBottom: 'var(--space-2)',
+                      }}
+                    >
+                      After
+                    </div>
+                    <pre
+                      style={{
+                        margin: 0,
+                        fontSize: 'var(--text-xs)',
+                        fontFamily: 'var(--font-mono)',
+                        whiteSpace: 'pre-wrap',
+                        overflowX: 'auto',
+                        background: 'var(--color-page)',
+                        padding: 'var(--space-3)',
+                        borderRadius: 'var(--radius-md)',
+                      }}
+                    >
+                      {JSON.stringify(expandedEntry.after_state ?? {}, null, 2)}
+                    </pre>
+                  </div>
                 </div>
-                <pre
-                  style={{
-                    margin: 0,
-                    fontSize: 'var(--text-xs)',
-                    fontFamily: 'var(--font-mono)',
-                    whiteSpace: 'pre-wrap',
-                    overflowX: 'auto',
-                    background: 'var(--color-page)',
-                    padding: 'var(--space-3)',
-                    borderRadius: 'var(--radius-md)',
-                  }}
-                >
-                  {JSON.stringify(expandedEntry.before_state ?? {}, null, 2)}
-                </pre>
-              </div>
-              <div>
-                <div
-                  style={{
-                    fontSize: 'var(--text-xs)',
-                    fontWeight: 700,
-                    color: 'var(--color-ink-4)',
-                    textTransform: 'uppercase',
-                    letterSpacing: 'var(--tracking-label)',
-                    marginBottom: 'var(--space-2)',
-                  }}
-                >
-                  After
-                </div>
-                <pre
-                  style={{
-                    margin: 0,
-                    fontSize: 'var(--text-xs)',
-                    fontFamily: 'var(--font-mono)',
-                    whiteSpace: 'pre-wrap',
-                    overflowX: 'auto',
-                    background: 'var(--color-page)',
-                    padding: 'var(--space-3)',
-                    borderRadius: 'var(--radius-md)',
-                  }}
-                >
-                  {JSON.stringify(expandedEntry.after_state ?? {}, null, 2)}
-                </pre>
-              </div>
-            </div>
-          </>
-        )}
+              </details>
+            </>
+          )
+        })()}
       </Modal>
     </>
   )

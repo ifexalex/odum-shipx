@@ -31,6 +31,7 @@ export function ContainerDetail(): JSX.Element {
   const navigate = useNavigate()
   const { session } = useSession()
   const [tab, setTab] = useState<'overview' | 'packing-lists' | 'tracking' | 'documents'>('overview')
+  const [plSearchInit, setPlSearchInit] = useState('')
   // Per-customer invoice outcome from clearing (or the last "Generate missing invoices").
   // Session-local on purpose: it answers "what just happened", and a reload shows the
   // container as it now stands.
@@ -179,7 +180,7 @@ export function ContainerDetail(): JSX.Element {
                 <Button
                   variant="secondary"
                   icon="plus"
-                  onClick={() => navigate('/packing-lists/new')}
+                  onClick={() => navigate(`/packing-lists/new?container_id=${encodeURIComponent(container.id)}`)}
                 >
                   Add packing list
                 </Button>
@@ -242,12 +243,28 @@ export function ContainerDetail(): JSX.Element {
               container={container}
               packingLists={packingLists}
               events={events}
-              onShowTab={setTab}
+              onShowTab={(nextTab) => {
+                setPlSearchInit('')
+                setTab(nextTab)
+              }}
+              onSelectCustomer={(customerName) => {
+                setPlSearchInit(customerName)
+                setTab('packing-lists')
+              }}
             />
           )}
 
           {tab === 'packing-lists' && (
-            <PackingListsTab packingLists={packingLists} canAdd={canAddPackingList} />
+            <PackingListsTab
+              containerId={container.id}
+              packingLists={packingLists}
+              canAdd={canAddPackingList}
+              initialSearch={plSearchInit}
+              onChanged={() => {
+                void qc.invalidateQueries({ queryKey: packingListKeys.all })
+                void packingListsQ.refetch()
+              }}
+            />
           )}
 
           {tab === 'tracking' && <TrackingTab container={container} events={events} />}
@@ -262,6 +279,7 @@ export function ContainerDetail(): JSX.Element {
           container={container}
           target={target}
           customerCount={new Set(packingLists.map((pl) => pl.customer_id)).size}
+          approvedCount={packingLists.filter((pl) => pl.status === 'approved').length}
           onClose={() => setShowAdvanceModal(false)}
           onAdvanced={(updated) => {
             const { billing_summary: summary, ...containerOnly } = updated

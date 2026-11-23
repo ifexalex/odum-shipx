@@ -9,7 +9,7 @@ import { Banner, Button, Card, Kvp, Mono } from '../../../design/components'
 import { SectionHead } from '../../../shell/SectionHead'
 import styles from '../CreatePackingList.module.css'
 import type { PackingListForm } from './useCreatePackingListForm'
-import { formatCbm, formatKg } from '../../../lib/format'
+import { formatCbm, formatKg, formatNgn } from '../../../lib/format'
 
 /** Step 3: review, then save as a draft or submit for approval. */
 export function Step3({ form }: { form: PackingListForm }): JSX.Element {
@@ -25,6 +25,8 @@ export function Step3({ form }: { form: PackingListForm }): JSX.Element {
     selectedCustomer,
     selectedContainer,
     totals,
+    shippingUsd,
+    shippingNgn,
     qtyOf,
     requestSave,
   } = form
@@ -240,7 +242,7 @@ export function Step3({ form }: { form: PackingListForm }): JSX.Element {
             label="Container"
             value={<Mono>{selectedContainer?.container_number ?? '—'}</Mono>}
           />
-          <Kvp label="Cartons" value={<Mono>{totals.cartons}</Mono>} />
+          <Kvp label="Packages" value={<Mono>{formatPackageMix(buildPackageMix(items))}</Mono>} />
           <Kvp label="Total weight" value={<Mono>{formatKg(totals.weight)} kg</Mono>} />
           <Kvp
             label="Total CBM"
@@ -249,8 +251,22 @@ export function Step3({ form }: { form: PackingListForm }): JSX.Element {
           <Kvp
             label="Declared value"
             value={<Mono>${totals.declaredUsd.toFixed(0)} USD</Mono>}
-            divider={false}
+            divider={shippingUsd != null || shippingNgn != null}
           />
+          {shippingUsd != null && (
+            <Kvp
+              label="Est. shipping (USD)"
+              value={<Mono>${shippingUsd.toFixed(2)}</Mono>}
+              divider={shippingNgn != null}
+            />
+          )}
+          {shippingNgn != null && (
+            <Kvp
+              label="Est. shipping (NGN)"
+              value={<Mono>{formatNgn(shippingNgn)}</Mono>}
+              divider={false}
+            />
+          )}
         </Card>
       </div>
 

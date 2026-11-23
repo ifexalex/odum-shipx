@@ -119,12 +119,13 @@ describe('PackingListDetail', () => {
     await openReject()
   })
 
-  it('hides approve/reject when the actor created the list (self-approval prevention)', async () => {
+  it('hides approve/reject and explains why when the actor created the list (self-approval prevention)', async () => {
     vi.mocked(packingListApi.get).mockResolvedValue(plStub({ created_by: 'staff-1' }))
     renderPage('china_office_staff', 'staff-1')
     await waitFor(() => expect(screen.getByText('Items')).toBeInTheDocument())
     expect(screen.queryByRole('button', { name: 'Approve' })).not.toBeInTheDocument()
     expect(screen.queryByRole('button', { name: 'Reject' })).not.toBeInTheDocument()
+    expect(screen.getByText('Awaiting another approver')).toBeInTheDocument()
   })
 
   it('hides approve/reject for roles outside the approver set even on a pending list', async () => {
@@ -180,5 +181,30 @@ describe('PackingListDetail', () => {
     renderPage('china_office_staff', 'staff-1')
     await waitFor(() => expect(screen.getByText('Items')).toBeInTheDocument())
     expect(screen.queryByText('Revise and resubmit')).not.toBeInTheDocument()
+  })
+
+  it('keeps each remaining row paired with its own carton tag after deleting an earlier row while editing', async () => {
+    const baseItem = plStub().items[0]!
+    vi.mocked(packingListApi.get).mockResolvedValue(
+      plStub({
+        status: 'rejected',
+        created_by: 'staff-1',
+        items: [
+          { ...baseItem, id: 'i1', carton_tag: 'SHX-00001', description: 'First item' },
+          { ...baseItem, id: 'i2', carton_tag: 'SHX-00002', description: 'Second item' },
+        ],
+      }),
+    )
+    renderPage('china_office_staff', 'staff-1')
+    await userEvent.click(await screen.findByText('Revise and resubmit'))
+
+    expect(screen.getByText('SHX-00001')).toBeInTheDocument()
+    expect(screen.getByText('SHX-00002')).toBeInTheDocument()
+
+    await userEvent.click(screen.getByRole('button', { name: 'Remove item 1' }))
+
+    // Remaining row must keep SHX-00002, not inherit SHX-00001 from index 0
+    expect(screen.queryByText('SHX-00001')).not.toBeInTheDocument()
+    expect(screen.getByText('SHX-00002')).toBeInTheDocument()
   })
 })

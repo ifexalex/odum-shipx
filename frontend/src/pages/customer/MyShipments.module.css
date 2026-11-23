@@ -1,6 +1,73 @@
 .page { padding: 0 0 var(--space-12); }
 .banner { margin-bottom: var(--space-4); }
 
+/* Executive KPI strip */
+.statsRow {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: var(--space-4);
+  margin-bottom: var(--space-5);
+}
+
+/* Action-needed callout when the customer has an unpaid balance */
+.actionBar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-4);
+  flex-wrap: wrap;
+  padding: var(--space-4) var(--space-5);
+  margin-bottom: var(--space-6);
+  background: color-mix(in srgb, var(--color-warning-soft) 45%, var(--color-surface));
+  border: 1px solid color-mix(in srgb, var(--color-warning) 28%, transparent);
+  border-left: 3px solid var(--color-warning);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-rest);
+}
+.actionLeft {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  min-width: 0;
+  flex: 1 1 240px;
+}
+.actionIcon {
+  width: 38px;
+  height: 38px;
+  border-radius: var(--radius-md);
+  background: var(--color-warning-soft);
+  color: var(--color-warning);
+  border: 1px solid color-mix(in srgb, var(--color-warning) 22%, transparent);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+.actionTitle {
+  font-family: var(--font-display);
+  font-weight: 600;
+  font-size: var(--text-md);
+  color: var(--color-ink);
+  line-height: var(--text-md-line);
+}
+.actionSub {
+  font-size: var(--text-xs);
+  color: var(--color-ink-3);
+  margin-top: var(--space-0-5);
+  line-height: var(--text-xs-line);
+}
+
+/* Falcon card-header band for flush table cards */
+.cardHeader {
+  padding: var(--space-4) var(--space-5);
+  background: var(--color-surface-muted);
+  border-bottom: 1px solid var(--color-line-soft);
+  border-radius: var(--radius-lg) var(--radius-lg) 0 0;
+}
+.cardHeader > :first-child {
+  margin-bottom: 0;
+}
+
 /* Greeting */
 .sectionSpacer { height: 12px; }
 
@@ -9,14 +76,14 @@
   display: flex;
   flex-direction: column;
   gap: var(--space-5);
-  margin-bottom: var(--space-8);
+  margin-bottom: var(--space-6);
 }
 
 /* Active shipment card */
 .activeCardHeader {
-  padding: var(--space-6);
-  background: linear-gradient(135deg, var(--color-primary-tint) 0%, var(--color-surface) 60%);
-  border-bottom: 1px solid var(--color-line);
+  padding: var(--space-5) var(--space-6);
+  background: linear-gradient(135deg, var(--color-primary-tint) 0%, var(--color-surface) 65%);
+  border-bottom: 1px solid var(--color-line-soft);
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -31,10 +98,11 @@
 }
 
 .shipIcon {
-  width: 56px;
-  height: 56px;
+  width: 48px;
+  height: 48px;
   border-radius: var(--radius-lg);
   background: var(--color-info-soft);
+  border: 1px solid color-mix(in srgb, var(--color-info) 22%, transparent);
   color: var(--color-info);
   display: flex;
   align-items: center;
@@ -85,14 +153,13 @@
 /* Stepper area */
 .stepperWrap {
   padding: var(--space-5) var(--space-6) var(--space-4);
-  border-bottom: 1px solid var(--color-line);
+  border-bottom: 1px solid var(--color-line-soft);
 }
 
-/* Stats + CTA footer — a row on desktop, stacking the CTA full-width below
-   the stats once they no longer fit alongside it (was a fixed
-   repeat(4, 1fr) auto grid that visibly clipped on a phone). */
+/* Stats + CTA footer — Falcon muted footer band */
 .activeCardFooter {
-  padding: var(--space-5) var(--space-6);
+  padding: var(--space-4) var(--space-6);
+  background: var(--color-surface-muted);
   display: flex;
   align-items: center;
   gap: var(--space-5);
@@ -114,11 +181,16 @@
 }
 
 .activeCard > [data-surface='card'] {
-  transition: border-color var(--motion-fast) var(--ease-standard);
+  transition:
+    border-color var(--motion-fast) var(--ease-standard),
+    box-shadow var(--motion-fast) var(--ease-standard),
+    transform var(--motion-fast) var(--ease-standard);
 }
 
 .activeCard:hover > [data-surface='card'] {
   border-color: var(--color-line);
+  box-shadow: var(--shadow-hover);
+  transform: translateY(-1px);
 }
 
 .cardLink {
@@ -141,17 +213,20 @@
   box-shadow: var(--shadow-focus-ring);
 }
 
-/* Empty state */
-.empty {
-  text-align: center;
-  padding: var(--space-16) var(--space-8);
-  color: var(--color-ink-3);
+/* Quick actions section at the bottom */
+.quickSection {
+  margin-top: var(--space-6);
+}
+.quickGrid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: var(--space-4);
+  margin-top: var(--space-3);
 }
 
-.emptyTitle {
-  font-family: var(--font-display);
-  font-size: var(--text-xl);
-  font-weight: 700;
-  color: var(--color-ink);
-  margin: 0 0 var(--space-2);
+@container sxapp (max-width: 600px) {
+  .statsRow {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: var(--space-3);
+  }
 }

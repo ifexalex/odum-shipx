@@ -5,7 +5,7 @@ import { safeNextPath } from '../../auth/returnPath'
 import { homePathForRole } from '../../auth/roleHome'
 import { rememberNext } from './returnPath'
 import { useSession } from '../../auth/useSession'
-import { Banner, Button, Field, Icon, KolaMark, ShipxWordmark, IconButton, CheckboxField } from '../../design/components'
+import { Banner, Button, Field, Icon, KolaMark, ShipxWordmark, IconButton } from '../../design/components'
 import { colors } from '../../design/theme'
 import styles from './LoginScreen.module.css'
 
@@ -86,7 +86,6 @@ export function LoginScreen(): JSX.Element {
   const next = safeNextPath(useSearchParams()[0].get('next'))
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
-  const [rememberMe, setRememberMe] = useState(false)
   const [showPassword, setShowPassword] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const loading = status === 'loading'
@@ -154,6 +153,10 @@ export function LoginScreen(): JSX.Element {
 
       <div className={styles.formPanel}>
         <div className={styles.formWrap}>
+          <div className={styles.mobileBrand}>
+            <KolaMark size={24} color="var(--color-primary)" />
+            <ShipxWordmark size={18} />
+          </div>
           <div className={styles.formHead}>
             <h1 className={styles.formTitle}>Sign in to ShipX</h1>
             <p className={styles.formSub}>
@@ -208,8 +211,7 @@ export function LoginScreen(): JSX.Element {
             />
                 }
               />
-              <div className={styles.rowBetween}>
-                <CheckboxField className={styles.rememberLabel} label="Remember me for 30 days" checked={rememberMe} onChange={setRememberMe} />
+              <div className={styles.rowBetween} style={{ justifyContent: 'flex-end' }}>
                 <Link to="/forgot-password" className={styles.link}>Forgot password?</Link>
               </div>
               <Button type="submit" variant="accent" size="lg" full loading={loading}>
@@ -224,12 +226,15 @@ export function LoginScreen(): JSX.Element {
             <span className={styles.dividerLine} />
           </div>
           <p className={styles.footerLine}>
-            Customer of a shipping company?{' '}
-            <Link to="/register" className={styles.footerLinkStrong}>Create your account <Icon name="arrowright" size={12} /></Link>
+            Have a tracking code?{' '}
+            <Link to="/track" className={styles.footerLinkStrong}>Track a shipment <Icon name="arrowright" size={12} /></Link>
           </p>
           <p className={styles.footerLine} style={{ marginTop: 'var(--space-2)' }}>
             Are you a shipping company?{' '}
             <Link to="/get-started" className={styles.footerLinkStrong}>Onboard with ShipX <Icon name="arrowright" size={12} /></Link>
+          </p>
+          <p className={styles.footerLine} style={{ marginTop: 'var(--space-2)', fontSize: 'var(--text-xs)' }}>
+            New customer? Use the sign-up or invite link sent by your shipping company.
           </p>
         </div>
       </div>

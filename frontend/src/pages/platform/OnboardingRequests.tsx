@@ -18,8 +18,8 @@ import {
   useOnboardingRequests,
   useUpdateOnboardingRequest,
 } from '../../hooks/useOnboardingRequests'
-import { Banner, Button, Chip, Field, Modal, StatusBadge, Table, EmptyState } from '../../design/components'
-import { formatDate } from '../../lib/format'
+import { Banner, Button, Chip, Field, Kvp, Modal, SearchField, StatusBadge, Table, EmptyState } from '../../design/components'
+import { formatDate, formatDateTime } from '../../lib/format'
 import { statusLabel, statusesOf } from '../../design/status'
 import { FilterBar } from '../../shell/FilterBar'
 import { ListPage } from '../../shell/ListPage'
@@ -32,6 +32,8 @@ const OPEN_STATUSES: OnboardingRequestStatus[] = ['new', 'contacted', 'approved'
 export function OnboardingRequests(): JSX.Element {
   const navigate = useNavigate()
   const [statusFilter, setStatusFilter] = useState<OnboardingRequestStatus | null>(null)
+  const [query, setQuery] = useState('')
+  const [viewing, setViewing] = useState<OnboardingRequest | null>(null)
   const { data, isLoading: loading, error } = useOnboardingRequests()
   const updateRequest = useUpdateOnboardingRequest()
 
@@ -49,10 +51,21 @@ export function OnboardingRequests(): JSX.Element {
     return map
   }, [requests])
 
-  const visible = useMemo(
-    () => (statusFilter ? requests.filter((r) => r.status === statusFilter) : requests),
-    [requests, statusFilter],
-  )
+  const visible = useMemo(() => {
+    const q = query.trim().toLowerCase()
+    return requests.filter((r) => {
+      if (statusFilter && r.status !== statusFilter) return false
+      if (!q) return true
+      return (
+        r.company_name.toLowerCase().includes(q) ||
+        r.contact_name.toLowerCase().includes(q) ||
+        r.contact_email.toLowerCase().includes(q) ||
+        r.origin_country.toLowerCase().includes(q) ||
+        r.destination_country.toLowerCase().includes(q) ||
+        (r.notes ?? '').toLowerCase().includes(q)
+      )
+    })
+  }, [requests, statusFilter, query])
 
   const pendingCount = counts.new + counts.contacted + counts.approved
 
@@ -124,6 +137,14 @@ export function OnboardingRequests(): JSX.Element {
                 ))}
               </>
             }
+            search={
+              <SearchField
+                label="Search onboarding requests"
+                placeholder="Company, contact, route, or notes…"
+                value={query}
+                onChange={setQuery}
+              />
+            }
           />
         }
       >
@@ -138,6 +159,8 @@ export function OnboardingRequests(): JSX.Element {
             { title: '', type: 'action', width: '280px' },
           ]}
           rows={visible.map((r) => ({
+            onOpen: () => setViewing(r),
+            openLabel: `Inspect ${r.company_name}`,
             cells: [
               <div key="company" style={{ minWidth: 0 }}>
                 <div style={{ fontWeight: 600, fontSize: 'var(--text-sm)' }}>{r.company_name}</div>
@@ -209,6 +232,17 @@ export function OnboardingRequests(): JSX.Element {
                     Provision
                   </Button>
                 </div>
+              ) : r.status === 'provisioned' && r.tenant_id ? (
+                <div key="actions" style={{ display: 'flex', justifyContent: 'flex-end' }}>
+                  <Button
+                    variant="secondary"
+                    size="sm"
+                    trailingIcon="arrowright"
+                    onClick={() => navigate(`/platform/tenants/${r.tenant_id}`)}
+                  >
+                    Open tenant
+                  </Button>
+                </div>
               ) : (
                 <span key="actions" />
               ),
@@ -229,6 +263,75 @@ export function OnboardingRequests(): JSX.Element {
           }
         />
       </ListPage>
+      <Modal
+        open={viewing !== null}
+        onClose={() => setViewing(null)}
+        title={viewing?.company_name ?? 'Onboarding request'}
+        size="md"
+        footer={
+          viewing && (
+            <>
+              <Button variant="ghost" onClick={() => setViewing(null)}>Close</Button>
+              {viewing.status === 'provisioned' && viewing.tenant_id && (
+                <Button
+                  variant="primary"
+                  trailingIcon="arrowright"
+                  onClick={() => {
+                    const tid = viewing.tenant_id
+                    setViewing(null)
+                    navigate(`/platform/tenants/${tid}`)
+                  }}
+                >
+                  Open tenant
+                </Button>
+              )}
+              {OPEN_STATUSES.includes(viewing.status) && (
+                <Button
+                  variant="primary"
+                  icon="plus"
+                  onClick={() => {
+                    const lead = viewing
+                    setViewing(null)
+                    provision(lead)
+                  }}
+                >
+                  Provision tenant
+                </Button>
+              )}
+            </>
+          )
+        }
+      >
+        {viewing && (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-3)' }}>
+            <Kvp label="Status" value={<StatusBadge kind="onboardingRequest" status={viewing.status} />} />
+            <Kvp label="Contact" value={`${viewing.contact_name} · ${viewing.contact_email}${viewing.contact_phone ? ` · ${viewing.contact_phone}` : ''}`} />
+            <Kvp label="Corridor" value={`${viewing.origin_country} → ${viewing.destination_country}`} />
+            <Kvp label="Monthly volume" value={viewing.monthly_volume ?? 'Not provided'} />
+            <Kvp label="Received" value={formatDateTime(viewing.created_at)} divider={Boolean(viewing.notes || viewing.rejection_reason)} />
+            {viewing.notes && (
+              <div
+                style={{
+                  padding: 'var(--space-3)',
+                  borderRadius: 'var(--radius-md)',
+                  background: 'var(--color-surface-muted)',
+                  border: '1px solid var(--color-line-soft)',
+                  fontSize: 'var(--text-sm)',
+                  whiteSpace: 'pre-wrap',
+                }}
+              >
+                <div style={{ fontSize: 'var(--text-xs)', fontWeight: 700, color: 'var(--color-ink-4)', textTransform: 'uppercase', letterSpacing: 'var(--tracking-label)', marginBottom: 'var(--space-1)' }}>
+                  Notes
+                </div>
+                {viewing.notes}
+              </div>
+            )}
+            {viewing.status === 'rejected' && viewing.rejection_reason && (
+              <Banner variant="error" title="Rejection reason">{viewing.rejection_reason}</Banner>
+            )}
+          </div>
+        )}
+      </Modal>
       <Modal
         open={rejecting !== null}
         onClose={() => setRejecting(null)}

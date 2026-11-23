@@ -194,7 +194,7 @@
 }
 
 .priceTileHighlight .priceValue {
-  color: var(--color-primary-deep);
+  color: var(--color-primary-text);
 }
 
 .priceSub {

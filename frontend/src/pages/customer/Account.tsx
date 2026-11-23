@@ -17,12 +17,12 @@ import { ApiError } from '../../api/client'
 import { customersApi, type Customer } from '../../api/tenantManagement'
 import { useSession } from '../../auth/useSession'
 import { OWN_CUSTOMER_KEY, useOwnCustomer } from '../../hooks/useCustomers'
-import { Avatar, Banner, Button, Card, Field, Icon, PhoneField, ToggleSwitch, RadioGroup, LinesSkeleton } from '../../design/components'
+import { Avatar, Badge, Banner, Button, Card, Field, Icon, PhoneField, ToggleSwitch, RadioGroup, LinesSkeleton } from '../../design/components'
 import { PageHeader } from '../../shell/PageHeader'
 import { SectionHead } from '../../shell/SectionHead'
 import { Tabs } from '../../shell/Tabs'
 import styles from './customer.module.css'
-import { todayIso, formatDate } from '../../lib/format'
+import { todayIso, formatDate, plural } from '../../lib/format'
 import { toast } from '../../design/toast'
 
 type TabKey = 'Profile' | 'Notifications' | 'Privacy'
@@ -31,17 +31,20 @@ const CHANNELS = [
   {
     key: 'sms',
     label: 'SMS',
+    icon: 'bell' as const,
     sub: 'Text messages, for optional announcements and offers',
   },
   {
     key: 'whatsapp',
     label: 'WhatsApp',
+    icon: 'phone' as const,
     sub: 'Richer formatting · most reliable, for optional announcements and offers',
     recommended: true,
   },
   {
     key: 'email',
     label: 'Email',
+    icon: 'mail' as const,
     sub: 'For optional announcements and offers',
   },
 ] as const
@@ -73,52 +76,59 @@ function ProfileTab({ customer, onSaved }: { customer: Customer; onSaved: (c: Cu
   }
 
   return (
-    <Card padding="large">
-      <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-4)', marginBottom: 'var(--space-6)' }}>
-        <Avatar size={72} name={customer.name ?? 'Customer'} />
-        <div>
-          <div style={{ fontFamily: 'var(--font-display)', fontWeight: 700, fontSize: 'var(--text-xl)' }}>{customer.name}</div>
-          <div style={{ fontSize: 'var(--text-sm)', color: 'var(--color-ink-3)' }}>
-            {customer.shipment_count != null ? `${customer.shipment_count} shipments` : 'Customer'}
+    <Card padding="none">
+      <div className={styles.profileHero}>
+        <Avatar size={64} name={customer.name ?? 'Customer'} />
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <div className={styles.profileName}>{customer.name}</div>
+          <div className={styles.profileMeta}>
+            {customer.email && <span>{customer.email}</span>}
+            {customer.created_at && <span>· Member since {formatDate(customer.created_at)}</span>}
+            {customer.shipment_count != null && (
+              <Badge variant="primary" size="sm" dot={false}>
+                {plural(customer.shipment_count, 'shipment')}
+              </Badge>
+            )}
           </div>
         </div>
       </div>
 
-      {error && <div style={{ marginBottom: 'var(--space-4)' }}><Banner variant="error" title="Update failed">{error}</Banner></div>}
+      <div className={styles.profileBody}>
+        {error && <div style={{ marginBottom: 'var(--space-4)' }}><Banner variant="error" title="Update failed">{error}</Banner></div>}
 
-      <SectionHead title="Contact info" sub="Name and email are locked once an account is created. Other fields can be updated." />
-      <div style={{ height: 16 }} />
-      <div className={styles.twoCol}>
-        <Field label="Full name" name="name" value={customer.name ?? ''} disabled />
-        <Field
-          label="Email address"
-          name="email"
-          icon="mail"
-          value={customer.email ?? ''}
-          disabled
-          helper="Contact support to change your email."
-        />
-      </div>
-      <div className={styles.twoCol}>
-        <PhoneField label="Phone number" name="phone" required value={phone} onChange={setPhone} />
-        <Field
-          label="WhatsApp number"
-          name="whatsapp"
-          icon="phone"
-          optional
-          value={whatsapp}
-          onChange={(e) => setWhatsapp(e.target.value)}
-          helper="Leave blank to use your phone number."
-        />
-      </div>
+        <SectionHead title="Contact info" sub="Name and email are locked once an account is created. Phone and WhatsApp can be updated anytime." />
+        <div style={{ height: 12 }} />
+        <div className={styles.twoCol}>
+          <Field label="Full name" name="name" icon="lock" value={customer.name ?? ''} disabled />
+          <Field
+            label="Email address"
+            name="email"
+            icon="mail"
+            value={customer.email ?? ''}
+            disabled
+            helper="Contact support to change your email."
+          />
+        </div>
+        <div className={styles.twoCol}>
+          <PhoneField label="Phone number" name="phone" required value={phone} onChange={setPhone} />
+          <PhoneField
+            label="WhatsApp number"
+            name="whatsapp"
+            optional
+            value={whatsapp}
+            onChange={setWhatsapp}
+            helper="Leave blank to use your phone number."
+          />
+        </div>
 
-      <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 'var(--space-3)', marginTop: 'var(--space-2)', paddingTop: 'var(--space-4)', borderTop: '1px solid var(--color-line-soft)' }}>
-        <Button variant="ghost" disabled={!dirty || saving} onClick={() => { setPhone(customer.phone ?? ''); setWhatsapp(customer.whatsapp ?? '') }}>
-          Discard
-        </Button>
-        <Button variant="primary" icon="check" loading={saving} disabled={!dirty} onClick={() => void handleSave()}>
-          Update profile
-        </Button>
+        <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 'var(--space-3)', marginTop: 'var(--space-2)', paddingTop: 'var(--space-4)', borderTop: '1px solid var(--color-line-soft)' }}>
+          <Button variant="ghost" disabled={!dirty || saving} onClick={() => { setPhone(customer.phone ?? ''); setWhatsapp(customer.whatsapp ?? '') }}>
+            Discard
+          </Button>
+          <Button variant="primary" icon="check" loading={saving} disabled={!dirty} onClick={() => void handleSave()}>
+            Update profile
+          </Button>
+        </div>
       </div>
     </Card>
   )
@@ -172,7 +182,7 @@ function NotificationsTab({ customer, onSaved }: { customer: Customer; onSaved: 
 
       {error && <div style={{ marginBottom: 'var(--space-4)' }}><Banner variant="error" title="Save failed">{error}</Banner></div>}
 
-      {CHANNELS.map(({ key, label, sub, ...rest }, i) => {
+      {CHANNELS.map(({ key, label, icon, sub, ...rest }, i) => {
         const enabled = consent.includes(key)
         return (
           <div
@@ -190,21 +200,22 @@ function NotificationsTab({ customer, onSaved }: { customer: Customer; onSaved: 
                 width: 40,
                 height: 40,
                 borderRadius: 'var(--radius-lg)',
-                background: enabled ? 'var(--color-primary-soft)' : 'var(--color-line-soft)',
-                color: enabled ? 'var(--color-primary)' : 'var(--color-ink-4)',
+                background: enabled ? 'var(--color-primary-soft)' : 'var(--color-surface-muted)',
+                border: enabled ? '1px solid color-mix(in srgb, var(--color-primary) 22%, transparent)' : '1px solid var(--color-line-soft)',
+                color: enabled ? 'var(--color-primary-on-soft)' : 'var(--color-ink-4)',
                 display: 'flex',
                 alignItems: 'center',
                 justifyContent: 'center',
                 flexShrink: 0,
               }}
             >
-              <Icon name={key === 'email' ? 'mail' : 'phone'} size={16} stroke={2} />
+              <Icon name={icon} size={16} stroke={2} />
             </div>
             <div style={{ flex: 1, minWidth: 0 }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-2)' }}>
                 <span style={{ fontFamily: 'var(--font-display)', fontWeight: 700, fontSize: 'var(--text-md)' }}>{label}</span>
                 {'recommended' in rest && (
-                  <span style={{ fontSize: 'var(--text-xs)', fontWeight: 700, textTransform: 'uppercase', letterSpacing: 'var(--tracking-label)', color: 'var(--color-primary-deep)', background: 'var(--color-primary-soft)', borderRadius: 'var(--radius-full)', padding: 'var(--space-0-5) var(--space-2)' }}>
+                  <span style={{ fontSize: 'var(--text-xs)', fontWeight: 700, textTransform: 'uppercase', letterSpacing: 'var(--tracking-label)', color: 'var(--color-primary-on-soft)', background: 'var(--color-primary-soft)', borderRadius: 'var(--radius-full)', padding: 'var(--space-0-5) var(--space-2)' }}>
                     Recommended
                   </span>
                 )}
@@ -248,7 +259,13 @@ function NotificationsTab({ customer, onSaved }: { customer: Customer; onSaved: 
 // Privacy tab (GDPR / NDPR)
 // ---------------------------------------------------------------------------
 
-function PrivacyTab({ customer }: { customer: Customer }): JSX.Element {
+function PrivacyTab({
+  customer,
+  onOpenNotifications,
+}: {
+  customer: Customer
+  onOpenNotifications: () => void
+}): JSX.Element {
   const { logout } = useSession()
   const [exporting, setExporting] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -306,25 +323,32 @@ function PrivacyTab({ customer }: { customer: Customer }): JSX.Element {
       )}
 
       <div className={styles.twoCol} style={{ margin: 'var(--space-6) 0' }}>
-        <div style={{ background: 'var(--color-surface-muted)', border: '1px solid var(--color-line-soft)', borderRadius: 'var(--radius-lg)', padding: 'var(--space-5)' }}>
-          <div style={{ width: 36, height: 36, borderRadius: 'var(--radius-lg)', background: 'var(--color-primary-soft)', color: 'var(--color-primary)', display: 'flex', alignItems: 'center', justifyContent: 'center', marginBottom: 'var(--space-3)' }}>
+        <div className={styles.privacyTile}>
+          <div style={{ width: 36, height: 36, borderRadius: 'var(--radius-md)', background: 'var(--color-primary-soft)', color: 'var(--color-primary-on-soft)', display: 'flex', alignItems: 'center', justifyContent: 'center', marginBottom: 'var(--space-3)' }}>
             <Icon name="download" size={16} />
           </div>
           <div style={{ fontFamily: 'var(--font-display)', fontWeight: 700, fontSize: 'var(--text-md)', marginBottom: 'var(--space-1)' }}>Download your data</div>
           <div style={{ fontSize: 'var(--text-xs)', color: 'var(--color-ink-3)', lineHeight: 'var(--leading-body)', marginBottom: 'var(--space-3)' }}>
             Get a JSON export of everything we hold — profile, shipments, billing, claims, consents.
           </div>
-          <Button variant="ghost" size="sm" icon="download" loading={exporting} onClick={() => void handleExport()}>
-            Request my data export
-          </Button>
+          <div className={styles.privacyTileAction}>
+            <Button variant="ghost" size="sm" icon="download" loading={exporting} onClick={() => void handleExport()}>
+              Request my data export
+            </Button>
+          </div>
         </div>
-        <div style={{ background: 'var(--color-surface-muted)', border: '1px solid var(--color-line-soft)', borderRadius: 'var(--radius-lg)', padding: 'var(--space-5)' }}>
-          <div style={{ width: 36, height: 36, borderRadius: 'var(--radius-lg)', background: 'var(--color-primary-soft)', color: 'var(--color-primary)', display: 'flex', alignItems: 'center', justifyContent: 'center', marginBottom: 'var(--space-3)' }}>
+        <div className={styles.privacyTile}>
+          <div style={{ width: 36, height: 36, borderRadius: 'var(--radius-md)', background: 'var(--color-primary-soft)', color: 'var(--color-primary-on-soft)', display: 'flex', alignItems: 'center', justifyContent: 'center', marginBottom: 'var(--space-3)' }}>
             <Icon name="settings" size={16} />
           </div>
           <div style={{ fontFamily: 'var(--font-display)', fontWeight: 700, fontSize: 'var(--text-md)', marginBottom: 'var(--space-1)' }}>Update consent preferences</div>
           <div style={{ fontSize: 'var(--text-xs)', color: 'var(--color-ink-3)', lineHeight: 'var(--leading-body)', marginBottom: 'var(--space-3)' }}>
             Change which channels you&apos;ve consented to on the Notifications tab. Transactional messages always go through.
+          </div>
+          <div className={styles.privacyTileAction}>
+            <Button variant="ghost" size="sm" trailingIcon="arrowright" onClick={onOpenNotifications}>
+              Open notification preferences
+            </Button>
           </div>
         </div>
       </div>
@@ -417,7 +441,7 @@ export function Account(): JSX.Element {
           />
           {tab === 'Profile' && <ProfileTab customer={customer} onSaved={setCustomer} />}
           {tab === 'Notifications' && <NotificationsTab customer={customer} onSaved={setCustomer} />}
-          {tab === 'Privacy' && <PrivacyTab customer={customer} />}
+          {tab === 'Privacy' && <PrivacyTab customer={customer} onOpenNotifications={() => setTab('Notifications')} />}
         </>
       )}
     </div>

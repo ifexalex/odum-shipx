@@ -1,5 +1,5 @@
 .banner { margin-bottom: var(--space-4); }
-.formCard { background: var(--color-surface); border: 1px solid var(--color-line-soft); border-radius: var(--radius-lg); padding: var(--space-6); display: flex; flex-direction: column; gap: var(--space-4); max-width: 560px; }
+.formCard { background: var(--color-surface); border: 1px solid var(--color-line-soft); border-radius: var(--radius-lg); box-shadow: var(--shadow-rest); padding: var(--space-6); display: flex; flex-direction: column; gap: var(--space-4); max-width: 560px; }
 .formActions { display: flex; gap: var(--space-2); justify-content: flex-end; }
 .section { margin-top: var(--space-6); }
 /* Modal — mobile-first bottom sheet, see
@@ -38,6 +38,24 @@
   flex-wrap: wrap;
   gap: var(--space-2);
   max-width: 100%;
+}
+
+/* Falcon card-header and footer bands for platform dashboard cards. */
+.cardHeader {
+  padding: var(--space-4) var(--space-5);
+  background: var(--color-surface-muted);
+  border-bottom: 1px solid var(--color-line-soft);
+  border-radius: var(--radius-lg) var(--radius-lg) 0 0;
+}
+.cardHeader > :first-child {
+  margin-bottom: 0;
+}
+.cardFooter {
+  padding: var(--space-3) var(--space-5);
+  background: var(--color-surface-muted);
+  border-top: 1px solid var(--color-line-soft);
+  border-radius: 0 0 var(--radius-lg) var(--radius-lg);
+  text-align: center;
 }
 
 /* "Showing 3 of 12 tenants" under the tenant table. */

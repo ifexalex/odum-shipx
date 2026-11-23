@@ -6,12 +6,12 @@ import { billingApi, type Billing } from '../../api/billing'
 import { billingKeys, packingListKeys } from '../../api/keys'
 import { packingListApi } from '../../api/packingList'
 import { STALE_30S } from '../../lib/queryClient'
-import { Banner, Card, Icon, Mono, Table, StatusBadge, PageSkeleton } from '../../design/components'
+import { Banner, Button, Card, EmptyState, Icon, Mono, QuickActionCard, StatCard, Table, StatusBadge, PageSkeleton } from '../../design/components'
 import { SectionHead } from '../../shell/SectionHead'
 import { useSession } from '../../auth/useSession'
 import { CustomerStepper } from './CustomerStepper'
 import styles from './MyShipments.module.css'
-import { formatCbm, formatDate, formatNgn, todayIso } from '../../lib/format'
+import { formatCbm, formatDate, formatNgn, formatNgnCompact, plural, todayIso } from '../../lib/format'
 import { activeSummary, arrivalLabel, shipmentStage } from './shipmentStage'
 import { PageHeader } from '../../shell/PageHeader'
 
@@ -82,10 +82,18 @@ export function MyShipments(): JSX.Element {
     return { active, past }
   }, [shipments])
 
-  // Stats for greeting
+  // Stats for greeting and KPI strip
   const outstandingTotal = useMemo(
     () => billing.reduce((sum, b) => sum + Number(b.outstanding_ngn ?? 0), 0),
     [billing],
+  )
+  const unpaidInvoices = useMemo(
+    () => billing.filter((b) => Number(b.outstanding_ngn ?? 0) > 0),
+    [billing],
+  )
+  const totalCartons = useMemo(
+    () => shipments.reduce((sum, pl) => sum + Number(pl.carton_count ?? 0), 0),
+    [shipments],
   )
 
   // Billing lookup by container_id for the active card
@@ -120,6 +128,65 @@ export function MyShipments(): JSX.Element {
           outstandingTotal > 0 && `${fmtNgn(outstandingTotal)} outstanding`,
         ]}
       />
+
+      {/* Executive KPI overview — gives customers instant clarity at a glance */}
+      {shipments.length > 0 && (
+        <div className={styles.statsRow}>
+          <StatCard
+            label="Active shipments"
+            value={activeShipments.length}
+            icon="ship"
+            sublabel={activeShipments.length > 0 ? 'currently moving' : 'none in transit'}
+          />
+          <StatCard
+            label="Completed"
+            value={pastShipments.length}
+            icon="check"
+            sublabel="delivered shipments"
+          />
+          <StatCard
+            label="Total cartons"
+            value={totalCartons}
+            icon="package"
+            sublabel="across all shipments"
+          />
+          <StatCard
+            label="Balance due"
+            value={outstandingTotal > 0 ? formatNgnCompact(outstandingTotal) : '₦0'}
+            icon="coin"
+            accentColor={outstandingTotal > 0 ? 'var(--color-error)' : undefined}
+            sublabel={outstandingTotal > 0 ? 'click to review billing' : 'all paid up'}
+            onSelect={outstandingTotal > 0 ? () => navigate('/my-billing') : undefined}
+          />
+        </div>
+      )}
+
+      {/* Action-needed callout when there is an unpaid balance */}
+      {outstandingTotal > 0 && (
+        <div className={styles.actionBar}>
+          <div className={styles.actionLeft}>
+            <div className={styles.actionIcon}>
+              <Icon name="coin" size={18} stroke={2} />
+            </div>
+            <div>
+              <div className={styles.actionTitle}>
+                Balance due: {fmtNgn(outstandingTotal)}
+              </div>
+              <div className={styles.actionSub}>
+                You have {plural(unpaidInvoices.length, 'invoice')} with a remaining balance. Review your breakdown or settle online.
+              </div>
+            </div>
+          </div>
+          <Button
+            variant="primary"
+            size="sm"
+            trailingIcon="arrowright"
+            onClick={() => navigate('/my-billing')}
+          >
+            Review &amp; pay
+          </Button>
+        </div>
+      )}
 
       {/* Active shipments — every shipment still in transit, not just the most recent */}
       {activeShipments.length > 0 && (
@@ -209,55 +276,89 @@ export function MyShipments(): JSX.Element {
         </>
       )}
 
-      {/* Past shipments table */}
+      {/* Past shipments table — Falcon card-header band + payment visibility */}
       {pastShipments.length > 0 && (
-        <>
-          <SectionHead
-            title="Past shipments"
-            sub={`Your previous ${pastShipments.length} deliveries`}
-          />
-          <div className={styles.sectionSpacer} />
-          <Card padding="none">
-            <Table
-              columns={[
-                { title: 'Tracking code', type: 'reference' },
-                { title: 'Container', type: 'reference' },
-                { title: 'Status', type: 'status' },
-                { title: 'Cartons', type: 'number' },
-                // The packing list's own date: "Delivered" claimed a delivery date this is not (FD-27).
-                { title: 'Booked', type: 'date' },
-                { title: 'Amount paid (₦)', type: 'money' },
-              ]}
-              rows={pastShipments.map((pl) => {
-                const b = billingByContainer.get(pl.container_id)
-                return {
-                  onOpen: () => navigate(`/my-shipments/${pl.id}`),
-                  cells: [
-                    <Mono key="ref">{pl.reference ?? pl.id.slice(0, 8)}</Mono>,
-                    <Mono key="ctn">{pl.container_number ?? '—'}</Mono>,
-                    <StatusBadge key="status" kind="container" status={pl.container_status ?? 'fully_released'} audience="customer" />,
-                    <Mono key="cartons">{pl.carton_count}</Mono>,
-                    <span key="date" style={{ fontSize: 'var(--text-xs)', color: 'var(--color-ink-3)' }}>
-                      {formatDate(pl.created_at)}
-                    </span>,
-                    <Mono key="paid">{b ? fmtNgn(b.total_paid_ngn) : '—'}</Mono>,
-                  ],
-                }
-              })}
+        <Card padding="none">
+          <div className={styles.cardHeader}>
+            <SectionHead
+              title="Past shipments"
+              sub={`Your previous ${plural(pastShipments.length, 'delivery', 'deliveries')}`}
             />
-          </Card>
-        </>
+          </div>
+          <Table
+            columns={[
+              { title: 'Tracking code', type: 'reference' },
+              { title: 'Container', type: 'reference' },
+              { title: 'Status', type: 'status' },
+              { title: 'Cartons', type: 'number' },
+              // The packing list's own date: "Delivered" claimed a delivery date this is not (FD-27).
+              { title: 'Booked', type: 'date' },
+              { title: 'Payment', type: 'status' },
+              { title: 'Amount paid (₦)', type: 'money' },
+            ]}
+            rows={pastShipments.map((pl) => {
+              const b = billingByContainer.get(pl.container_id)
+              return {
+                onOpen: () => navigate(`/my-shipments/${pl.id}`),
+                cells: [
+                  <Mono key="ref">{pl.reference ?? pl.id.slice(0, 8)}</Mono>,
+                  <Mono key="ctn">{pl.container_number ?? '—'}</Mono>,
+                  <StatusBadge key="status" kind="container" status={pl.container_status ?? 'fully_released'} audience="customer" />,
+                  <Mono key="cartons">{pl.carton_count}</Mono>,
+                  <span key="date" style={{ fontSize: 'var(--text-xs)', color: 'var(--color-ink-3)' }}>
+                    {formatDate(pl.created_at)}
+                  </span>,
+                  b ? (
+                    <StatusBadge key="pay" kind="invoice" status={b.payment_status} audience="customer" />
+                  ) : (
+                    <span key="pay" style={{ fontSize: 'var(--text-xs)', color: 'var(--color-ink-4)' }}>—</span>
+                  ),
+                  <Mono key="paid">{b ? fmtNgn(b.total_paid_ngn) : '—'}</Mono>,
+                ],
+              }
+            })}
+          />
+        </Card>
       )}
 
       {/* Empty state */}
       {shipments.length === 0 && !loading && (
-        <div className={styles.empty}>
-          <p className={styles.emptyTitle}>No shipments yet</p>
-          <p style={{ color: 'var(--color-ink-3)', fontSize: 'var(--text-md)' }}>
-            Your cargo will appear here once your packing list has been approved.
-          </p>
-        </div>
+        <Card padding="default">
+          <EmptyState
+            icon="ship"
+            title="No shipments yet"
+            body="Your cargo will appear here once your packing list has been approved."
+          />
+        </Card>
       )}
+
+      {/* Quick actions — clean shortcuts to common customer tasks */}
+      <div className={styles.quickSection}>
+        <SectionHead title="Quick actions" />
+        <div className={styles.quickGrid}>
+          <QuickActionCard
+            icon="coin"
+            title="Invoices & payments"
+            sub={outstandingTotal > 0 ? `${fmtNgn(outstandingTotal)} remaining across your invoices` : 'View receipts and download invoice PDFs'}
+            cta="Open billing"
+            onAction={() => navigate('/my-billing')}
+          />
+          <QuickActionCard
+            icon="warn"
+            title="Report damaged cargo"
+            sub="File a damage claim within 7 days of delivery"
+            cta="File a claim"
+            onAction={() => navigate('/my-claims/new')}
+          />
+          <QuickActionCard
+            icon="bell"
+            title="Account & notifications"
+            sub="Update your phone, WhatsApp, and alert language"
+            cta="Manage account"
+            onAction={() => navigate('/account')}
+          />
+        </div>
+      </div>
     </div>
   )
 }

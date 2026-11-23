@@ -1,11 +1,12 @@
-import { useState, type JSX } from 'react'
+import { useMemo, useState, type JSX } from 'react'
 import { useNavigate } from 'react-router-dom'
 import type { ReleaseNoteStatus } from '../../api/releaseNotes'
 import { releaseTypeLabel } from '../../api/releaseNotesRules'
 import { useReleaseNoteList, useReleaseNoteStats } from '../../hooks/useReleaseNotes'
-import { Chip, ListFooter, Mono, StatCard, StatusBadge, Table, EmptyState, ErrorState } from '../../design/components'
+import { Chip, ListFooter, Mono, SearchField, StatCard, StatusBadge, Table, EmptyState, ErrorState } from '../../design/components'
 import styles from './ReleaseNoteList.module.css'
 import { formatDate } from '../../lib/format'
+import { useStatusParam } from '../../lib/useStatusParam'
 import { statusLabel } from '../../design/status'
 import { FilterBar } from '../../shell/FilterBar'
 import { ListPage, StatRow } from '../../shell/ListPage'
@@ -15,10 +16,21 @@ const STATUS_FILTERS: ReleaseNoteStatus[] = ['active', 'picked_up', 'expired', '
 
 export function ReleaseNoteList(): JSX.Element {
   const navigate = useNavigate()
-  const [statusFilter, setStatusFilter] = useState<ReleaseNoteStatus | null>(null)
+  const [statusFilter, setStatusFilter] = useStatusParam<ReleaseNoteStatus>(STATUS_FILTERS)
+  const [search, setSearch] = useState('')
   const { items: notes, isLoading: loading, error, hasMore, loadMore, isFetchingMore, totalCount, refetch } = useReleaseNoteList(
     statusFilter ? { status: statusFilter } : {},
   )
+
+  const filteredNotes = useMemo(() => {
+    const q = search.trim().toLowerCase()
+    if (!q) return notes
+    return notes.filter((n) =>
+      [n.reference_number, n.customer_name, n.container_number]
+        .filter(Boolean)
+        .some((v) => v!.toLowerCase().includes(q)),
+    )
+  }, [notes, search])
 
   // §9.1 stats row (P2-3) — real per-status counts from GET /stats; hidden until loaded, and on failure.
   const { data: stats = null } = useReleaseNoteStats()
@@ -87,13 +99,21 @@ export function ReleaseNoteList(): JSX.Element {
                 ))}
               </>
             }
+            search={
+              <SearchField
+                label="Search release notes"
+                placeholder="Reference, customer, container…"
+                value={search}
+                onChange={setSearch}
+              />
+            }
           />
         }
         footer={
           <ListFooter
-            shown={notes.length}
-            total={totalCount}
-            hasMore={hasMore}
+            shown={filteredNotes.length}
+            total={search.trim() ? filteredNotes.length : totalCount}
+            hasMore={!search.trim() && hasMore}
             loading={isFetchingMore}
             onLoadMore={loadMore}
             noun="release notes"
@@ -111,7 +131,7 @@ export function ReleaseNoteList(): JSX.Element {
             { title: 'Status', type: 'status' },
             { title: 'Issued', type: 'date' },
           ]}
-          rows={notes.map((n) => ({
+          rows={filteredNotes.map((n) => ({
             onOpen: () => navigate(`/release-notes/${n.id}`, { state: { note: n } }),
             cells: [
               <Mono key="ref">{n.reference_number}</Mono>,
@@ -129,7 +149,7 @@ export function ReleaseNoteList(): JSX.Element {
           }))}
           loading={loading}
           emptyState={
-            !loading && notes.length === 0 ? (
+            !loading && filteredNotes.length === 0 ? (
               <EmptyState compact title="No release notes match this filter" />
             ) : undefined
           }

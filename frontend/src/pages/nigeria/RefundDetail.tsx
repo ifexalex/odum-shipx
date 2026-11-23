@@ -2,8 +2,9 @@ import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { useState, type JSX } from 'react'
 import { useLocation, useParams } from 'react-router-dom'
 import { ApiError } from '../../api/client'
+import { carryoverApi } from '../../api/billing'
 import { refundsApi, type AccountsReviewInput, type ApproveRefundInput, type Refund } from '../../api/refunds'
-import { refundKeys } from '../../api/keys'
+import { billingKeys, refundKeys } from '../../api/keys'
 import { STALE_30S } from '../../lib/queryClient'
 import {
   approvalLevelLabel,
@@ -15,7 +16,7 @@ import {
   refundTypeLabel,
 } from '../../api/refundsRules'
 import { useSession } from '../../auth/useSession'
-import { Action, Banner, Button, Card, DialogGuard, Field, Kvp, Mono, StatCard, StatusBadge, RadioGroup, Stepper, PageSkeleton, ErrorState } from '../../design/components'
+import { Action, Banner, Button, Card, Field, Kvp, LinesSkeleton, Modal, Mono, StatCard, StatusBadge, RadioGroup, Stepper, PageSkeleton, ErrorState } from '../../design/components'
 import { SectionHead } from '../../shell/SectionHead'
 import styles from './RefundDetail.module.css'
 import { formatDate, formatNgn } from '../../lib/format'
@@ -92,6 +93,22 @@ function AccountsReviewModal({ refund, onCancel, onSuccess }: AccountsReviewModa
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
+  const carryoversQ = useQuery({
+    queryKey: billingKeys.carryovers({ status: 'outstanding', customer_id: refund.customer_id ?? undefined }),
+    queryFn: () =>
+      carryoverApi.list({
+        status: 'outstanding',
+        ...(refund.customer_id ? { customer_id: refund.customer_id } : {}),
+      }),
+    enabled: Boolean(refund.customer_id),
+    staleTime: STALE_30S,
+  })
+  const outstandingCarryovers = carryoversQ.data?.data ?? []
+  const outstandingCarryoverTotal = outstandingCarryovers.reduce(
+    (sum, c) => sum + Number(c.amount_ngn ?? 0),
+    0,
+  )
+
   async function handleSubmit(): Promise<void> {
     setSubmitting(true)
     setError(null)
@@ -108,14 +125,49 @@ function AccountsReviewModal({ refund, onCancel, onSuccess }: AccountsReviewModa
   }
 
   return (
-    <div className={styles.modalOverlay} onClick={onCancel}>
-      <DialogGuard onClose={onCancel} />
-      <div className={styles.modalPanel} onClick={(e) => e.stopPropagation()} role="dialog" aria-modal="true">
-        <h3 className={styles.modalTitle}>Accounts review</h3>
-        {error && <div className={styles.modalBanner}><Banner variant="error" title="Action failed">{error}</Banner></div>}
-        <Banner variant="info">
-          Check customer debt records (unpaid billing, outstanding carryovers) before advancing this refund.
-        </Banner>
+    <Modal
+      open
+      onClose={onCancel}
+      title="Accounts review"
+      size="sm"
+      footer={
+        <>
+          <Button variant="ghost" onClick={onCancel} disabled={submitting}>Cancel</Button>
+          <Button
+            variant={passed ? 'primary' : 'danger'}
+            loading={submitting}
+            disabled={!notes.trim()}
+            onClick={() => void handleSubmit()}
+          >
+            {passed ? 'Advance to approval' : 'Reject — debt offset'}
+          </Button>
+        </>
+      }
+    >
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-4)' }}>
+        {error && <Banner variant="error" title="Action failed">{error}</Banner>}
+        {refund.customer_id ? (
+          carryoversQ.isLoading ? (
+            <LinesSkeleton label="Checking customer carryover balances" />
+          ) : outstandingCarryovers.length > 0 ? (
+            <Banner variant="warning" title={`Customer has ${formatNgn(outstandingCarryoverTotal)} in outstanding carryovers`}>
+              {outstandingCarryovers.length} unpaid carryover {outstandingCarryovers.length === 1 ? 'entry' : 'entries'} on file.{' '}
+              <RecordLink to={`/admin/customers/${refund.customer_id}`}>Review customer account</RecordLink>
+            </Banner>
+          ) : (
+            <Banner variant="info" title="No outstanding carryovers found">
+              Also check open invoices on{' '}
+              <RecordLink to={`/admin/customers/${refund.customer_id}`}>
+                {refund.customer_name ?? 'the customer account'}
+              </RecordLink>{' '}
+              before advancing this refund.
+            </Banner>
+          )
+        ) : (
+          <Banner variant="info">
+            Check customer debt records (unpaid billing, outstanding carryovers) before advancing this refund.
+          </Banner>
+        )}
         <RadioGroup
           label="Debt check"
           name="debt_check"
@@ -135,19 +187,8 @@ function AccountsReviewModal({ refund, onCancel, onSuccess }: AccountsReviewModa
           value={notes}
           onChange={(e) => setNotes(e.target.value)}
         />
-        <div className={styles.modalActions}>
-          <Button variant="ghost" onClick={onCancel} disabled={submitting}>Cancel</Button>
-          <Button
-            variant={passed ? 'primary' : 'danger'}
-            loading={submitting}
-            disabled={!notes.trim()}
-            onClick={() => void handleSubmit()}
-          >
-            {passed ? 'Advance to approval' : 'Reject — debt offset'}
-          </Button>
-        </div>
       </div>
-    </div>
+    </Modal>
   )
 }
 
@@ -172,6 +213,7 @@ function ApproveModal({ refund, role, onCancel, onSuccess }: ApproveModalProps):
   const enteredAmount = Number(amountApproved)
   const requestedAmount = Number(refund.amount_requested_ngn)
   const isPartial = enteredAmount > 0 && enteredAmount < requestedAmount
+  const exceedsRequested = enteredAmount > requestedAmount
 
   // Threshold from backend config. May be null (config read failed) or undefined
   // (refund arrived via route state from the list, which omits `threshold`) — in
@@ -206,26 +248,44 @@ function ApproveModal({ refund, role, onCancel, onSuccess }: ApproveModalProps):
   const meterColor = exceedsThreshold ? 'var(--color-error)' : 'var(--color-success)'
 
   return (
-    <div className={styles.modalOverlay} onClick={onCancel}>
-      <DialogGuard onClose={onCancel} />
-      <div className={styles.modalPanel} onClick={(e) => e.stopPropagation()} role="dialog" aria-modal="true">
-        <h3 className={styles.modalTitle}>Approve refund</h3>
-        {error && <div className={styles.modalBanner}><Banner variant="error" title="Action failed">{error}</Banner></div>}
+    <Modal
+      open
+      onClose={onCancel}
+      title="Approve refund"
+      size="sm"
+      footer={
+        <>
+          <Button variant="ghost" onClick={onCancel} disabled={submitting}>Cancel</Button>
+          <Button
+            variant="primary"
+            loading={submitting}
+            disabled={enteredAmount <= 0 || hof_blocked || exceedsThreshold}
+            onClick={() => void handleSubmit()}
+          >
+            Confirm approval
+          </Button>
+        </>
+      }
+    >
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-4)' }}>
+        {error && <Banner variant="error" title="Action failed">{error}</Banner>}
 
         {hof_blocked && (
-          <div className={styles.modalBanner}>
-            <Banner variant="error">
-              This refund type requires head-of-finance (tenant admin) approval. You cannot approve it as staff.
-            </Banner>
-          </div>
+          <Banner variant="error">
+            This refund type requires head-of-finance (tenant admin) approval. You cannot approve it as staff.
+          </Banner>
         )}
 
         {isPartial && (
-          <div className={styles.modalBanner}>
-            <Banner variant="info">
-              Partial approval: {formatNgn(enteredAmount)} of {formatNgn(requestedAmount)} requested.
-            </Banner>
-          </div>
+          <Banner variant="info">
+            Partial approval: {formatNgn(enteredAmount)} of {formatNgn(requestedAmount)} requested.
+          </Banner>
+        )}
+
+        {exceedsRequested && (
+          <Banner variant="warning" title="Amount exceeds request">
+            Approving {formatNgn(enteredAmount)} is more than the {formatNgn(requestedAmount)} requested. Double-check the figure before confirming.
+          </Banner>
         )}
 
         <Field
@@ -269,20 +329,8 @@ function ApproveModal({ refund, role, onCancel, onSuccess }: ApproveModalProps):
             )}
           </div>
         )}
-
-        <div className={styles.modalActions}>
-          <Button variant="ghost" onClick={onCancel} disabled={submitting}>Cancel</Button>
-          <Button
-            variant="primary"
-            loading={submitting}
-            disabled={enteredAmount <= 0 || hof_blocked || exceedsThreshold}
-            onClick={() => void handleSubmit()}
-          >
-            Confirm approval
-          </Button>
-        </div>
       </div>
-    </div>
+    </Modal>
   )
 }
 
@@ -316,11 +364,22 @@ function RejectModal({ onCancel, onSuccess, refundId }: RejectModalProps): JSX.E
   }
 
   return (
-    <div className={styles.modalOverlay} onClick={onCancel}>
-      <DialogGuard onClose={onCancel} />
-      <div className={styles.modalPanel} onClick={(e) => e.stopPropagation()} role="dialog" aria-modal="true">
-        <h3 className={styles.modalTitle}>Reject refund request</h3>
-        {error && <div className={styles.modalBanner}><Banner variant="error" title="Action failed">{error}</Banner></div>}
+    <Modal
+      open
+      onClose={onCancel}
+      title="Reject refund request"
+      size="sm"
+      footer={
+        <>
+          <Button variant="ghost" onClick={onCancel} disabled={submitting}>Cancel</Button>
+          <Button variant="danger" loading={submitting} disabled={!reason.trim()} onClick={() => void handleSubmit()}>
+            Confirm rejection
+          </Button>
+        </>
+      }
+    >
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-4)' }}>
+        {error && <Banner variant="error" title="Action failed">{error}</Banner>}
         <Field
           label="Rejection reason"
           name="rejection_reason"
@@ -330,14 +389,8 @@ function RejectModal({ onCancel, onSuccess, refundId }: RejectModalProps): JSX.E
           value={reason}
           onChange={(e) => setReason(e.target.value)}
         />
-        <div className={styles.modalActions}>
-          <Button variant="ghost" onClick={onCancel} disabled={submitting}>Cancel</Button>
-          <Button variant="danger" loading={submitting} disabled={!reason.trim()} onClick={() => void handleSubmit()}>
-            Confirm rejection
-          </Button>
-        </div>
       </div>
-    </div>
+    </Modal>
   )
 }
 
@@ -357,7 +410,7 @@ export function RefundDetail(): JSX.Element {
     queryKey: refundKeys.detail(id ?? ''),
     queryFn: () => refundsApi.get(id!),
     enabled: !!id,
-    ...(stateRefund ? { initialData: stateRefund } : {}),
+    ...(stateRefund ? { placeholderData: stateRefund } : {}),
     staleTime: STALE_30S,
   })
   // Names this record in the breadcrumb once loaded (FD-46).

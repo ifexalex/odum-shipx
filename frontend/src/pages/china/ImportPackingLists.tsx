@@ -75,7 +75,7 @@ export function ImportPackingLists(): JSX.Element {
   const fileInputRef = useRef<HTMLInputElement>(null)
   const [step, setStep] = useState<1 | 2 | 3>(1)
   const [mode, setMode] = useState<ImportMode>('manifest')
-  const containerLookup = useContainerLookup()
+  const containerLookup = useContainerLookup({ status: 'loading' })
   const containers = containerLookup.data?.data ?? []
   const [containerId, setContainerId] = useState('')
   const [file, setFile] = useState<File | null>(null)
@@ -312,7 +312,7 @@ export function ImportPackingLists(): JSX.Element {
           <Card>
             <SectionHead
               title="Import complete"
-              sub={`${plural(manifestResult.items_created, 'item')} added across ${plural(manifestResult.packing_lists_created, 'packing list')}), ready for approval`}
+              sub={`${plural(manifestResult.items_created, 'item')} added across ${plural(manifestResult.packing_lists_created, 'packing list')}, ready for approval`}
             />
             <div className={styles.spacerLg} />
             <div className={styles.statsGrid}>
@@ -376,8 +376,15 @@ export function ImportPackingLists(): JSX.Element {
             >
               Import another file
             </Button>
-            <Button variant="primary" trailingIcon="arrowright" onClick={() => navigate('/containers')}>
+            <Button variant="secondary" onClick={() => navigate('/containers')}>
               View containers
+            </Button>
+            <Button
+              variant="primary"
+              trailingIcon="arrowright"
+              onClick={() => navigate('/packing-lists?status=pending_approval')}
+            >
+              Review pending lists
             </Button>
           </div>
         </>

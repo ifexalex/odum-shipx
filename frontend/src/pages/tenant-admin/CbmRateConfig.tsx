@@ -5,11 +5,12 @@ import { configKeys } from '../../api/keys'
 import { configApi, type CbmRateConfig, type CbmRateCurrency, type CbmRateMode } from '../../api/tenantManagement'
 import { useCbmRate } from '../../hooks/useConfig'
 import { useSeedOnce } from '../../hooks/useSeedOnce'
-import { Banner, Button, Card, Kvp, Mono, Field } from '../../design/components'
+import { Banner, Button, Card, Kvp, Mono, Field, PageSkeleton } from '../../design/components'
 import { RateHistoryTable } from './DollarRateConfig'
 import { PageHeader } from '../../shell/PageHeader'
 import { SectionHead } from '../../shell/SectionHead'
 import styles from './admin.module.css'
+import { formatAmount } from '../../lib/format'
 import { toast } from '../../design/toast'
 
 function symbol(currency: CbmRateCurrency): string {
@@ -89,6 +90,8 @@ export function CbmRateConfig(): JSX.Element {
       />
 
       {error && <div className={styles.banner}><Banner variant="error">{error}</Banner></div>}
+
+      {loading && !error && <PageSkeleton kind="form" label="Loading CBM rate" />}
 
       {!loading && current && (
         <>
@@ -177,13 +180,47 @@ export function CbmRateConfig(): JSX.Element {
               helper="A line item measuring below this is billed at this floor (handling minimum). Applied when a packing list is saved."
             />
 
+            {canSubmit && (
+              <div
+                style={{
+                  padding: 'var(--space-3)',
+                  borderRadius: 'var(--radius-md)',
+                  background: 'var(--color-surface-muted)',
+                  border: '1px solid var(--color-line-soft)',
+                  fontSize: 'var(--text-sm)',
+                  color: 'var(--color-ink-2)',
+                  display: 'flex',
+                  flexWrap: 'wrap',
+                  alignItems: 'center',
+                  justifyContent: 'space-between',
+                  gap: 'var(--space-2)',
+                }}
+              >
+                <span>
+                  1 CBM {rateMode === 'per_package_type' ? '(cartons)' : ''} bills at{' '}
+                  <Mono color="var(--color-primary)">{symbol(currency)}{formatAmount(Number(cartonRate))}</Mono>
+                </span>
+                {Number(minCbm) > 0 && (
+                  <span>
+                    Minimum floor ({minCbm} CBM):{' '}
+                    <Mono>{symbol(currency)}{formatAmount(Number(cartonRate) * Number(minCbm))}</Mono>
+                  </span>
+                )}
+              </div>
+            )}
+
             <div className={styles.formActions}>
               <Button variant="primary" loading={saving} disabled={!canSubmit} onClick={() => void handleSave()}>
                 Update rate
               </Button>
             </div>
           </div>
-          <RateHistoryTable rateType="cbm_rate" valueKey="carton_rate" prefix={symbol(currency)} />
+          <RateHistoryTable
+            rateType="cbm_rate"
+            valueKey="carton_rate"
+            prefix={symbol(current.currency)}
+            currencyKey="currency"
+          />
         </>
       )}
     </div>

@@ -16,31 +16,50 @@ export function ForgotPasswordScreen(): JSX.Element {
   const navigate = useNavigate()
   const [email, setEmail] = useState('')
   const [submitting, setSubmitting] = useState(false)
+  const [resending, setResending] = useState(false)
+  const [resentNote, setResentNote] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [sent, setSent] = useState(false)
 
-  async function handleSubmit(event: FormEvent<HTMLFormElement>): Promise<void> {
-    event.preventDefault()
+  async function requestCode(): Promise<boolean> {
     setError(null)
-    setSubmitting(true)
     try {
       await forgotPassword(email)
-      setSent(true)
+      return true
     } catch (err) {
       // Do not reveal whether the address exists — same success UX on
       // UserNotFoundException (Cognito already behaves this way when the
       // pool's prevent-user-existence-errors setting is on).
       const code = err instanceof Error ? err.name : ''
       if (code === 'UserNotFoundException') {
-        setSent(true)
+        return true
       } else if (code === 'LimitExceededException') {
         setError('Too many attempts. Wait a few minutes and try again.')
       } else {
         setError('Could not start the password reset. Please try again.')
       }
-    } finally {
-      setSubmitting(false)
+      return false
     }
+  }
+
+  async function handleSubmit(event: FormEvent<HTMLFormElement>): Promise<void> {
+    event.preventDefault()
+    setSubmitting(true)
+    const ok = await requestCode()
+    if (ok) {
+      setSent(true)
+      setResentNote(false)
+    }
+    setSubmitting(false)
+  }
+
+  async function handleResend(): Promise<void> {
+    if (resending) return
+    setResending(true)
+    setResentNote(false)
+    const ok = await requestCode()
+    if (ok) setResentNote(true)
+    setResending(false)
   }
 
   if (sent) {
@@ -67,6 +86,16 @@ export function ForgotPasswordScreen(): JSX.Element {
           <h2 className={styles.formTitle} style={{ marginBottom: 'var(--space-2)' }}>Check your email</h2>
           <p className={styles.formSub}>We sent a verification code to</p>
           <p style={{ fontSize: 'var(--text-lg)', fontWeight: 600, color: 'var(--color-ink)', margin: '0 0 var(--space-6)' }}>{email}</p>
+          {error && (
+            <div style={{ marginBottom: 'var(--space-4)', textAlign: 'left' }}>
+              <Banner variant="error">{error}</Banner>
+            </div>
+          )}
+          {resentNote && (
+            <div style={{ marginBottom: 'var(--space-4)', textAlign: 'left' }}>
+              <Banner variant="success">A fresh verification code has been sent to your email.</Banner>
+            </div>
+          )}
           <Banner variant="info" title="Code expires in 60 minutes">
             Enter the code on the next screen together with your new password.
           </Banner>
@@ -82,8 +111,23 @@ export function ForgotPasswordScreen(): JSX.Element {
           </div>
           <p className={styles.footerLine} style={{ marginTop: 'var(--space-5)' }}>
             Didn&apos;t receive it?{' '}
-            <Pressable className={styles.footerLinkStrong} onClick={() => setSent(false)}>
-              Resend code
+            <Pressable
+              className={styles.footerLinkStrong}
+              disabled={resending}
+              onClick={() => void handleResend()}
+            >
+              {resending ? 'Sending…' : 'Resend code'}
+            </Pressable>
+            {' · '}
+            <Pressable
+              className={styles.link}
+              onClick={() => {
+                setSent(false)
+                setResentNote(false)
+                setError(null)
+              }}
+            >
+              Use another email
             </Pressable>
           </p>
         </div>

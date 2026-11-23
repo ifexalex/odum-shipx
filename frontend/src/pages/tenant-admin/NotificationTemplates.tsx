@@ -10,17 +10,34 @@
  */
 
 import { useQuery, useQueryClient } from '@tanstack/react-query'
-import { useState, type JSX } from 'react'
+import { useMemo, useState, type JSX } from 'react'
 import { ApiError } from '../../api/client'
 import { configApi, type NotificationTemplate } from '../../api/tenantManagement'
 import { configKeys } from '../../api/keys'
 import { STALE_5_MIN } from '../../lib/queryClient'
-import { Banner, Button, Field, LinesSkeleton } from '../../design/components'
+import { Banner, Button, Chip, EmptyState, Field, LinesSkeleton } from '../../design/components'
 import { PageHeader } from '../../shell/PageHeader'
+import { Tabs } from '../../shell/Tabs'
 import styles from './admin.module.css'
 import { formatTime } from '../../lib/format'
 import waStyles from './NotificationTemplates.module.css'
 import { toast } from '../../design/toast'
+
+const CHANNEL_ORDER = ['sms', 'whatsapp', 'email'] as const
+const CHANNEL_LABELS: Record<string, string> = {
+  sms: 'SMS',
+  whatsapp: 'WhatsApp',
+  email: 'Email',
+}
+
+const COMMON_VARIABLES = [
+  'customer_name',
+  'container_number',
+  'invoice_number',
+  'amount_ngn',
+  'reference_number',
+  'tracking_url',
+] as const
 
 // ---------------------------------------------------------------------------
 // SMS counter
@@ -55,9 +72,16 @@ function TemplateCard({ template, onSaved }: TemplateCardProps): JSX.Element {
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
-  const isSms = template.channel === 'sms' || template.channel === 'whatsapp'
+  const isSms = template.channel === 'sms'
+  const dirty = body !== template.template_body || subject !== (template.subject ?? '')
+
+  function insertVariable(variable: string): void {
+    const token = `{{${variable}}}`
+    setBody((prev) => (prev && !prev.endsWith(' ') && !prev.endsWith('\n') ? `${prev} ${token}` : `${prev}${token}`))
+  }
 
   async function handleSave(): Promise<void> {
+    if (!dirty || !body.trim()) return
     setSaving(true)
     setError(null)
     try {
@@ -81,7 +105,7 @@ function TemplateCard({ template, onSaved }: TemplateCardProps): JSX.Element {
         <div>
           <span className={styles.templateEventType}>{template.event_type.replace(/_/g, ' ')}</span>
           <span style={{ marginLeft: 'var(--space-2)', fontSize: 'var(--text-xs)', fontWeight: 700, padding: 'var(--space-0-5) var(--space-2)', borderRadius: 'var(--radius-sm)', background: 'var(--color-surface-muted)', color: 'var(--color-ink-4)' }}>
-            {template.channel.toUpperCase()}
+            {CHANNEL_LABELS[template.channel] ?? template.channel.toUpperCase()}
           </span>
         </div>
       </div>
@@ -114,7 +138,7 @@ function TemplateCard({ template, onSaved }: TemplateCardProps): JSX.Element {
 
       <Field
         label="Message body"
-        name="template_body"
+        name={`template_body_${template.event_type}_${template.channel}`}
         multiline
         rows={5}
         value={body}
@@ -123,8 +147,37 @@ function TemplateCard({ template, onSaved }: TemplateCardProps): JSX.Element {
         helper={isSms ? <SmsCounter text={body} /> : undefined}
       />
 
-      <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
-        <Button variant="primary" size="sm" loading={saving} disabled={!body.trim()} onClick={() => void handleSave()}>
+      <div className={waStyles.varRow}>
+        <span className={waStyles.varLabel}>Insert variable:</span>
+        {COMMON_VARIABLES.map((v) => (
+          <Chip key={v} onClick={() => insertVariable(v)}>
+            + {`{{${v}}}`}
+          </Chip>
+        ))}
+      </div>
+
+      <div className={waStyles.cardActions}>
+        {dirty && (
+          <Button
+            variant="ghost"
+            size="sm"
+            disabled={saving}
+            onClick={() => {
+              setBody(template.template_body)
+              setSubject(template.subject ?? '')
+              setError(null)
+            }}
+          >
+            Discard
+          </Button>
+        )}
+        <Button
+          variant="primary"
+          size="sm"
+          loading={saving}
+          disabled={!dirty || !body.trim()}
+          onClick={() => void handleSave()}
+        >
           Save template
         </Button>
       </div>
@@ -138,6 +191,7 @@ function TemplateCard({ template, onSaved }: TemplateCardProps): JSX.Element {
 
 export function NotificationTemplates(): JSX.Element {
   const qc = useQueryClient()
+  const [selectedChannel, setSelectedChannel] = useState<string>('sms')
 
   const { data: templates = [], isLoading: loading, error: loadError } = useQuery({
     queryKey: configKeys.notifications(),
@@ -163,13 +217,21 @@ export function NotificationTemplates(): JSX.Element {
     )
   }
 
-  // Group by event type
-  const grouped = templates.reduce<Record<string, NotificationTemplate[]>>((acc, t) => {
-    const key = t.event_type
-    if (!acc[key]) acc[key] = []
-    acc[key].push(t)
-    return acc
-  }, {})
+  const channels = useMemo(() => {
+    const present = new Set(templates.map((t) => t.channel))
+    const ordered: string[] = CHANNEL_ORDER.filter((c) => present.has(c))
+    for (const c of present) {
+      if (!ordered.includes(c)) ordered.push(c)
+    }
+    return ordered
+  }, [templates])
+
+  const activeChannel = channels.includes(selectedChannel) ? selectedChannel : (channels[0] ?? 'sms')
+
+  const visibleTemplates = useMemo(
+    () => templates.filter((t) => t.channel === activeChannel),
+    [templates, activeChannel],
+  )
 
   return (
     <div>
@@ -182,25 +244,35 @@ export function NotificationTemplates(): JSX.Element {
       {loading && <LinesSkeleton label="Loading templates" />}
 
       {!loading && templates.length === 0 && (
-        <p style={{ color: 'var(--color-ink-4)', marginTop: 'var(--space-6)' }}>
-          No notification templates configured. They will appear here once seeded by the platform admin.
-        </p>
+        <EmptyState
+          title="No notification templates configured"
+          body="Templates will appear here once seeded by the platform admin."
+        />
       )}
 
-      {Object.entries(grouped).map(([eventType, tpls]) => (
-        <div key={eventType} className={styles.section}>
-          <p style={{ fontWeight: 700, fontSize: 'var(--text-md)', color: 'var(--color-ink-4)', textTransform: 'uppercase', letterSpacing: 'var(--tracking-label)', marginBottom: 'var(--space-2)' }}>
-            {eventType.replace(/_/g, ' ')}
-          </p>
-          {tpls.map((t) => (
+      {!loading && channels.length > 0 && (
+        <>
+          <div className={waStyles.tabsWrap}>
+            <Tabs
+              active={activeChannel}
+              onChange={setSelectedChannel}
+              items={channels.map((ch) => ({
+                key: ch,
+                label: CHANNEL_LABELS[ch] ?? ch.toUpperCase(),
+                count: templates.filter((t) => t.channel === ch).length,
+              }))}
+            />
+          </div>
+
+          {visibleTemplates.map((t) => (
             <TemplateCard
-              key={`${t.event_type}-${t.channel}`}
+              key={`${t.event_type}-${t.channel}-${t.template_body}-${t.subject ?? ''}`}
               template={t}
               onSaved={handleSaved}
             />
           ))}
-        </div>
-      ))}
+        </>
+      )}
     </div>
   )
 }

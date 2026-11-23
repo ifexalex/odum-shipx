@@ -7,7 +7,7 @@ import { billingKeys } from '../../api/keys'
 import { type BankTransferConfig } from '../../api/tenantManagement'
 import { useBankTransferConfig } from '../../hooks/useConfig'
 import { STALE_30S } from '../../lib/queryClient'
-import { DialogGuard, Field, StatusBadge, PageSkeleton } from '../../design/components'
+import { Field, Modal, StatusBadge, PageSkeleton } from '../../design/components'
 import { Badge, Banner, Button, Kvp, Mono } from '../../design/components'
 import { EvidenceUploader, type UploadedEvidence } from '../nigeria/EvidenceUploader'
 import { PaymentsTable } from '../nigeria/billingDetail/Breakdown'
@@ -200,18 +200,8 @@ function CbmDisputeModal({ billing, onCancel, onSuccess }: { billing: Billing; o
   }
 
   return (
-    <div
-      className={styles.dialogOverlay}
-      onClick={onCancel}
-    >
-      <DialogGuard onClose={onCancel} />
-      <div
-        className={styles.dialogPanel}
-        onClick={(e) => e.stopPropagation()}
-        role="dialog"
-        aria-modal="true"
-      >
-        <h3 className={styles.dialogTitle}>Dispute the CBM measurement</h3>
+    <Modal open onClose={onCancel} title="Dispute the CBM measurement" size="sm">
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-4)' }}>
         {error && <Banner variant="error" title="Could not file dispute">{error}</Banner>}
         <Banner variant="info" title={`We measured ${formatCbm(billing.total_cbm)} CBM`}>
           If your own measurement differs, file a dispute — our team acknowledges within 24 hours and
@@ -242,7 +232,7 @@ function CbmDisputeModal({ billing, onCancel, onSuccess }: { billing: Billing; o
           </Button>
         </div>
       </div>
-    </div>
+    </Modal>
   )
 }
 
@@ -489,8 +479,9 @@ export function MyBillingDetail(): JSX.Element {
                       Pay {formatNgn(outstanding)} online
                     </Button>
                     <p className={styles.fieldHint}>
-                      Payments are confirmed automatically — your release note is issued once
-                      settled.
+                      {billing.released_with_outstanding
+                        ? 'Payments are confirmed automatically and your balance updates right away.'
+                        : 'Payments are confirmed automatically — your release note is issued once settled.'}
                     </p>
                   </div>
 

@@ -3,29 +3,151 @@
 .page { padding: 0 0 var(--space-12); }
 .banner { margin-bottom: var(--space-4); }
 
+/* Summary KPI row for My Billing */
+.statsRow {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: var(--space-4);
+  margin-bottom: var(--space-5);
+}
+@container sxapp (max-width: 600px) {
+  .statsRow {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: var(--space-3);
+  }
+}
+
+/* Filter chip strip for Billing & Claims */
+.filterRow {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2);
+  margin-bottom: var(--space-4);
+}
+
+/* Falcon card-header band for flush detail/list cards */
+.cardHeader {
+  padding: var(--space-4) var(--space-5);
+  background: var(--color-surface-muted);
+  border-bottom: 1px solid var(--color-line-soft);
+  border-radius: var(--radius-lg) var(--radius-lg) 0 0;
+}
+.cardHeader > :first-child {
+  margin-bottom: 0;
+}
+
 /* Card list — card-based, NOT table (spec requirement) */
-.cardList { display: flex; flex-direction: column; gap: var(--space-3); margin-top: var(--space-4); }
+.cardList { display: flex; flex-direction: column; gap: var(--space-3); margin-top: var(--space-3); }
 
 .card {
   background: var(--color-surface);
   border: 1px solid var(--color-line-soft);
   border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-rest);
   padding: var(--space-4) var(--space-5);
   display: flex;
-  align-items: flex-start;
+  align-items: center;
   justify-content: space-between;
   gap: var(--space-4);
   cursor: pointer;
-  transition: border-color var(--motion-fast) var(--ease-standard);
+  transition:
+    border-color var(--motion-fast) var(--ease-standard),
+    box-shadow var(--motion-fast) var(--ease-standard),
+    transform var(--motion-fast) var(--ease-standard);
 }
-.card:hover { border-color: var(--color-primary); }
+.card:hover {
+  border-color: color-mix(in srgb, var(--color-primary) 50%, var(--color-line));
+  box-shadow: var(--shadow-hover);
+  transform: translateY(-1px);
+}
+.card:focus-visible {
+  outline: none;
+  box-shadow: var(--shadow-focus-ring);
+}
 
 .cardLeft { flex: 1; min-width: 0; }
-.cardTitle { font-size: var(--text-lg); font-weight: 700; color: var(--color-ink); margin: 0 0 var(--space-0-5); }
-.cardSub { font-size: var(--text-sm); color: var(--color-ink-4); margin: 0 0 var(--space-2); }
-.cardMeta { display: flex; gap: var(--space-3); flex-wrap: wrap; font-size: var(--text-sm); color: var(--color-ink-4); margin-top: var(--space-1); }
-.cardRight { display: flex; flex-direction: column; align-items: flex-end; gap: var(--space-2); flex-shrink: 0; }
-.amountSub { font-size: var(--text-xs); color: var(--color-ink-4); }
+.cardTitle { font-family: var(--font-display); font-size: var(--text-lg); font-weight: 700; color: var(--color-ink); margin: 0 0 var(--space-0-5); }
+.cardSub { font-size: var(--text-sm); color: var(--color-ink-3); margin: var(--space-1) 0 var(--space-2); line-height: var(--text-sm-line); }
+.cardMeta { display: flex; gap: var(--space-3); flex-wrap: wrap; font-size: var(--text-xs); color: var(--color-ink-4); margin-top: var(--space-1); }
+.cardRight { display: flex; flex-direction: column; align-items: flex-end; gap: var(--space-1); flex-shrink: 0; }
+.cardTrailing { display: flex; align-items: center; gap: var(--space-3); flex-shrink: 0; }
+.amountSub { font-size: var(--text-xs); font-weight: 600; color: var(--color-ink-4); font-variant-numeric: tabular-nums; }
+
+/* Subtle inline progress bar (partly-paid invoice / claim stage) */
+.progressWrap {
+  margin-top: var(--space-3);
+}
+.progressHead {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: var(--space-2);
+  font-size: var(--text-xs);
+  color: var(--color-ink-4);
+  margin-bottom: var(--space-1);
+}
+.progressTrack {
+  height: 5px;
+  border-radius: var(--radius-full);
+  background: var(--color-line-soft);
+  overflow: hidden;
+}
+.progressFill {
+  height: 100%;
+  border-radius: var(--radius-full);
+  background: var(--color-primary);
+  transition: width var(--motion-base) var(--ease-standard);
+}
+.progressFillSuccess {
+  background: var(--color-success);
+}
+
+/* Profile hero header band inside Account Profile card */
+.profileHero {
+  display: flex;
+  align-items: center;
+  gap: var(--space-4);
+  flex-wrap: wrap;
+  padding: var(--space-5) var(--space-6);
+  background: var(--color-surface-muted);
+  border-bottom: 1px solid var(--color-line-soft);
+  border-radius: var(--radius-lg) var(--radius-lg) 0 0;
+}
+.profileBody {
+  padding: var(--space-6);
+}
+.profileName {
+  font-family: var(--font-display);
+  font-weight: 700;
+  font-size: var(--text-xl);
+  line-height: var(--text-xl-line);
+  color: var(--color-ink);
+  letter-spacing: var(--tracking-tight);
+}
+.profileMeta {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  margin-top: var(--space-1);
+  font-size: var(--text-xs);
+  color: var(--color-ink-3);
+}
+
+/* Privacy action tiles */
+.privacyTile {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  background: var(--color-surface-muted);
+  border: 1px solid var(--color-line-soft);
+  border-radius: var(--radius-lg);
+  padding: var(--space-5);
+}
+.privacyTileAction {
+  margin-top: auto;
+}
 
 /* Two-column form/card grid (Account.tsx) — reflows to one column instead of
    staying fixed side-by-side when the shell is narrower than both columns
@@ -36,18 +158,19 @@
 /* Payment options */
 .paymentOptions { display: flex; flex-direction: column; gap: var(--space-3); }
 .paymentOption {
+  background: var(--color-surface-muted);
   border: 1px solid var(--color-line-soft);
   border-radius: var(--radius-lg);
   padding: var(--space-4) var(--space-5);
 }
-.paymentOptionTitle { font-weight: 700; font-size: var(--text-lg); margin: 0 0 var(--space-1); }
-.paymentOptionDesc { font-size: var(--text-sm); color: var(--color-ink-4); margin: 0 0 var(--space-3); }
-.bankDetails { background: var(--color-surface-muted); border-radius: var(--radius-md); padding: var(--space-3); font-size: var(--text-md); line-height: var(--text-md-line); }
+.paymentOptionTitle { font-family: var(--font-display); font-weight: 700; font-size: var(--text-md); color: var(--color-ink); margin: 0 0 var(--space-1); }
+.paymentOptionDesc { font-size: var(--text-sm); color: var(--color-ink-3); margin: 0 0 var(--space-3); }
+.bankDetails { background: var(--color-surface); border: 1px solid var(--color-line-soft); border-radius: var(--radius-md); padding: var(--space-3) var(--space-4); font-size: var(--text-sm); line-height: var(--text-sm-line); }
 
 
 
 /* Forms */
-.formCard { background: var(--color-surface); border: 1px solid var(--color-line-soft); border-radius: var(--radius-lg); padding: var(--space-6); display: flex; flex-direction: column; gap: var(--space-4); }
+.formCard { background: var(--color-surface); border: 1px solid var(--color-line-soft); border-radius: var(--radius-lg); box-shadow: var(--shadow-rest); padding: var(--space-6); display: flex; flex-direction: column; gap: var(--space-4); }
 .formActions { display: flex; gap: var(--space-2); justify-content: flex-end; }
 .stepIndicator { font-size: var(--text-sm); color: var(--color-ink-4); margin-bottom: var(--space-1); }
 
@@ -80,7 +203,7 @@
 .statusHintText {
   flex: 1;
   font-size: var(--text-sm);
-  color: var(--color-primary-deep);
+  color: var(--color-primary-text);
   line-height: var(--text-sm-line);
 }
 
@@ -89,7 +212,7 @@
   grid-template-columns: 1.4fr 1fr;
   gap: var(--space-5);
   margin: var(--space-5) 0;
-  align-items: start;
+  align-items: stretch;
 }
 @container sxapp (max-width: 860px) {
   .detailGrid {
@@ -127,10 +250,12 @@
   display: flex;
   align-items: center;
   gap: var(--space-4);
-  padding: var(--space-4);
+  padding: var(--space-4) var(--space-5);
   background: color-mix(in srgb, var(--color-warning-soft) 35%, var(--color-surface));
-  border: 1px solid color-mix(in srgb, var(--color-warning) 20%, transparent);
+  border: 1px solid color-mix(in srgb, var(--color-warning) 24%, transparent);
+  border-left: 3px solid var(--color-warning);
   border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-rest);
   flex-wrap: wrap;
 }
 .claimPromptIcon {
@@ -266,4 +391,128 @@
   .cartonMetrics {
     grid-column: 2;
   }
+}
+/* MyReleaseNote: a counter-ready warehouse pass — big reference, one-tap copy, scannable QR. */
+.passHero {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-5);
+  flex-wrap: wrap;
+  padding-bottom: var(--space-5);
+  margin-bottom: var(--space-4);
+  border-bottom: 1px solid var(--color-line-soft);
+}
+
+.passRefBlock {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  min-width: 0;
+}
+
+.passLabel {
+  font-size: var(--text-xs);
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: var(--tracking-label);
+  color: var(--color-ink-4);
+}
+
+.passRef {
+  font-family: var(--font-mono);
+  font-size: var(--text-2xl);
+  font-weight: 700;
+  color: var(--color-ink);
+  letter-spacing: var(--tracking-tight);
+}
+
+.passActions {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  flex-wrap: wrap;
+}
+
+.qrBox {
+  display: inline-flex;
+  flex-shrink: 0;
+  padding: var(--space-1);
+  border: 1px solid var(--color-line);
+  border-radius: var(--radius-lg);
+  background: var(--color-on-dark);
+}
+
+.tagPills {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+}
+
+.tagPill {
+  padding: var(--space-0-5) var(--space-2);
+  border-radius: var(--radius-md);
+  background: var(--color-surface-muted);
+  border: 1px solid var(--color-line-soft);
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+  color: var(--color-ink);
+}
+
+.phoneLink {
+  color: var(--color-primary-text);
+  font-weight: 600;
+  text-decoration: none;
+}
+
+.phoneLink:hover {
+  text-decoration: underline;
+}
+
+/* MyClaimsNew: tappable carton list + step notes. */
+.cartonPicker {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  max-height: 40vh;
+  overflow-y: auto;
+  padding: var(--space-3);
+  border: 1px solid var(--color-line-soft);
+  border-radius: var(--radius-md);
+  background: var(--color-surface-muted);
+}
+
+.cartonPickerLabel {
+  font-size: var(--text-sm);
+  font-weight: 600;
+  color: var(--color-ink-2);
+  margin-bottom: var(--space-1);
+}
+
+.stepNote {
+  margin: 0;
+  font-size: var(--text-sm);
+  color: var(--color-ink-3);
+}
+
+/* RefundRequest: invoice context card and the evidence block on a claim. */
+.contextCard {
+  margin-bottom: var(--space-4);
+}
+
+.contextAction {
+  margin-top: var(--space-3);
+}
+
+.evidenceAdd {
+  margin-top: var(--space-4);
+  padding-top: var(--space-4);
+  border-top: 1px solid var(--color-line-soft);
+}
+
+.evidenceAddTitle {
+  margin: 0 0 var(--space-2);
+  font-size: var(--text-md);
+  font-weight: 600;
+  color: var(--color-ink);
 }

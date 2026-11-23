@@ -13,10 +13,13 @@ import {
 import { manifestKeys } from '../../api/keys'
 import { STALE_30S } from '../../lib/queryClient'
 import { canResolveDiscrepancy, canRevokeVerification, canVerifyManifest } from '../../api/manifestRules'
+import { canGenerateInvoices } from '../../api/billingRules'
 import { useSession } from '../../auth/useSession'
 import { EvidenceUploader } from './EvidenceUploader'
-import { Action, Banner, Button, Card, Chip, DialogGuard, ExportButton, Field, Icon, Mono, StatCard, StatusBadge, Table, Select, PageSkeleton, EmptyState, ErrorState } from '../../design/components'
-import { SectionHead } from '../../shell/SectionHead'
+import { GenerateBillingModal } from './GenerateBillingModal'
+import { Action, Banner, Button, Chip, ConfirmDialog, ExportButton, Field, Icon, Modal, Mono, StatCard, StatusBadge, Table, Select, PageSkeleton, EmptyState, ErrorState } from '../../design/components'
+import { Section } from '../../shell/Section'
+import { RecordLink } from '../../shell/RecordLink'
 import styles from './ManifestDetail.module.css'
 import { useBreadcrumbLabel } from '../../shell/breadcrumbs'
 import { PageHeader } from '../../shell/PageHeader'
@@ -99,7 +102,14 @@ function VerifyManifestModal({ manifest, onCancel, onVerified }: VerifyManifestM
     setDrafts((prev) => prev.filter((_, i) => i !== index))
   }
 
-  const validDrafts = drafts.filter((draft) => draft.customerId && draft.cartonTags.length > 0)
+  const validDrafts = drafts.filter((draft) => {
+    if (!draft.customerId) return false
+    const customer = manifest.customers.find((c) => c.customer_id === draft.customerId)
+    if (customer && customer.carton_tags.length === 0) {
+      return draft.notes.trim().length > 0
+    }
+    return draft.cartonTags.length > 0
+  })
   const canSubmit = outcome === 'verified' || validDrafts.length > 0
 
   async function handleSubmit(): Promise<void> {
@@ -126,10 +136,29 @@ function VerifyManifestModal({ manifest, onCancel, onVerified }: VerifyManifestM
   }
 
   return (
-    <div className={styles.modalOverlay} onClick={onCancel}>
-      <DialogGuard onClose={onCancel} />
-      <div className={styles.modalPanel} onClick={(event) => event.stopPropagation()} role="dialog" aria-modal="true">
-        <h3 className={styles.modalTitle}>Verify manifest</h3>
+    <Modal
+      open
+      onClose={onCancel}
+      title="Verify manifest"
+      size="md"
+      footer={
+        <>
+          <Button variant="ghost" onClick={onCancel} disabled={submitting}>
+            Cancel
+          </Button>
+          <Button
+            variant="primary"
+            icon="check"
+            loading={submitting}
+            disabled={!canSubmit}
+            onClick={() => void handleSubmit()}
+          >
+            Submit verification
+          </Button>
+        </>
+      }
+    >
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-4)' }}>
         {error && (
           <div className={styles.modalBanner}>
             <Banner variant="error">{error}</Banner>
@@ -156,6 +185,8 @@ function VerifyManifestModal({ manifest, onCancel, onVerified }: VerifyManifestM
           <div className={styles.discrepancyList}>
             {drafts.map((draft, index) => {
               const customer = manifest.customers.find((c) => c.customer_id === draft.customerId)
+              const hasTags = Boolean(customer && customer.carton_tags.length > 0)
+              const taglessCustomer = Boolean(customer && customer.carton_tags.length === 0)
               return (
                 <div key={index} className={styles.discrepancyCard}>
                   <div className={styles.discrepancyHead}>
@@ -193,7 +224,7 @@ function VerifyManifestModal({ manifest, onCancel, onVerified }: VerifyManifestM
                       />
                     )}
                   </div>
-                  {customer && customer.carton_tags.length > 0 && (
+                  {hasTags && customer && (
                     <div className={styles.tagPicker}>
                       <span className={styles.tagPickerLabel}>Carton tags affected</span>
                       <div className={styles.tagChips}>
@@ -205,10 +236,16 @@ function VerifyManifestModal({ manifest, onCancel, onVerified }: VerifyManifestM
                       </div>
                     </div>
                   )}
+                  {taglessCustomer && (
+                    <span className={styles.dimText}>
+                      No individual carton tags are recorded for this customer — describe the missing or damaged items in Notes below.
+                    </span>
+                  )}
                   <Field
                     label="Notes"
                     name={`discrepancyNotes-${index}`}
-                    optional
+                    required={taglessCustomer}
+                    optional={!taglessCustomer}
                     multiline
                     placeholder="What happened to this carton?"
                     value={draft.notes}
@@ -216,7 +253,11 @@ function VerifyManifestModal({ manifest, onCancel, onVerified }: VerifyManifestM
                   />
                   <div className={styles.evidenceField}>
                     <span className={styles.tagPickerLabel}>Photo evidence (optional)</span>
+                    {!draft.customerId && (
+                      <span className={styles.dimText}>Select a customer above before attaching photos.</span>
+                    )}
                     <EvidenceUploader
+                      disabled={submitting || !draft.customerId}
                       getPresignedUrl={(f) =>
                         manifestApi.getEvidenceUploadUrl(
                           manifest.id,
@@ -238,23 +279,8 @@ function VerifyManifestModal({ manifest, onCancel, onVerified }: VerifyManifestM
             </Button>
           </div>
         )}
-
-        <div className={styles.modalActions}>
-          <Button variant="ghost" onClick={onCancel} disabled={submitting}>
-            Cancel
-          </Button>
-          <Button
-            variant="primary"
-            icon="check"
-            loading={submitting}
-            disabled={!canSubmit}
-            onClick={() => void handleSubmit()}
-          >
-            Submit verification
-          </Button>
-        </div>
       </div>
-    </div>
+    </Modal>
   )
 }
 
@@ -284,10 +310,29 @@ function ResolveDiscrepancyModal({ manifest, onCancel, onResolved }: ResolveDisc
   }
 
   return (
-    <div className={styles.modalOverlay} onClick={onCancel}>
-      <DialogGuard onClose={onCancel} />
-      <div className={styles.modalPanel} onClick={(event) => event.stopPropagation()} role="dialog" aria-modal="true">
-        <h3 className={styles.modalTitle}>Resolve discrepancy</h3>
+    <Modal
+      open
+      onClose={onCancel}
+      title="Resolve discrepancy"
+      size="sm"
+      footer={
+        <>
+          <Button variant="ghost" onClick={onCancel} disabled={submitting}>
+            Cancel
+          </Button>
+          <Button
+            variant="primary"
+            icon="check"
+            loading={submitting}
+            disabled={!notes.trim()}
+            onClick={() => void handleConfirm()}
+          >
+            Confirm resolution
+          </Button>
+        </>
+      }
+    >
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-4)' }}>
         {error && (
           <div className={styles.modalBanner}>
             <Banner variant="error">{error}</Banner>
@@ -303,22 +348,8 @@ function ResolveDiscrepancyModal({ manifest, onCancel, onResolved }: ResolveDisc
           value={notes}
           onChange={(event) => setNotes(event.target.value)}
         />
-        <div className={styles.modalActions}>
-          <Button variant="ghost" onClick={onCancel} disabled={submitting}>
-            Cancel
-          </Button>
-          <Button
-            variant="primary"
-            icon="check"
-            loading={submitting}
-            disabled={!notes.trim()}
-            onClick={() => void handleConfirm()}
-          >
-            Confirm resolution
-          </Button>
-        </div>
       </div>
-    </div>
+    </Modal>
   )
 }
 
@@ -356,6 +387,7 @@ export function ManifestDetail(): JSX.Element {
   const [showVerifyModal, setShowVerifyModal] = useState(false)
   const [showResolveModal, setShowResolveModal] = useState(false)
   const [showRevokeConfirm, setShowRevokeConfirm] = useState(false)
+  const [showGenerateBilling, setShowGenerateBilling] = useState(false)
   const [revoking, setRevoking] = useState(false)
 
 
@@ -373,6 +405,9 @@ export function ManifestDetail(): JSX.Element {
   const canVerify = session ? canVerifyManifest(manifest, session.role) : false
   const canResolve = session ? canResolveDiscrepancy(manifest, session.role) : false
   const canRevoke = session ? canRevokeVerification(manifest, session.role) : false
+  const isReadyForBilling =
+    manifest.verification_status === 'verified' || manifest.verification_status === 'resolved'
+  const canBill = Boolean(session && isReadyForBilling && canGenerateInvoices(session.role))
 
   // Package breakdown by unit — a single carton count hides bales/bags/etc.
   const packageMixParts = orderedPackageMix(manifest.package_mix)
@@ -403,6 +438,14 @@ export function ManifestDetail(): JSX.Element {
           title={`Manifest ${manifest.container_number ?? ''}`.trim()}
           status={<StatusBadge kind="manifest" status={manifest.verification_status} />}
           meta={[
+            manifest.container_id && manifest.container_number && (
+              <>
+                Container{' '}
+                <RecordLink to={`/containers/${manifest.container_id}`}>
+                  <Mono>{manifest.container_number}</Mono>
+                </RecordLink>
+              </>
+            ),
             `${manifest.total_customers} customers`,
             `${packageTotal} packages${packageMixLabel ? ` (${packageMixLabel})` : ''}`,
             `${formatCbm(manifest.total_cbm)} CBM`,
@@ -416,13 +459,35 @@ export function ManifestDetail(): JSX.Element {
               <Action variant="primary" icon="check" onClick={() => setShowResolveModal(true)}>
                 {nextActionLabel('manifest', 'discrepancies_found')}
               </Action>
+            ) : canBill ? (
+              <Action variant="primary" icon="coin" onClick={() => setShowGenerateBilling(true)}>
+                Generate billing
+              </Action>
             ) : null
           }
           actions={
-            <ExportButton
-              formats={['xlsx', 'csv', 'pdf']}
-              onExport={(fmt) => (fmt === 'pdf' ? manifestApi.pdf(manifest.id) : manifestApi.export(manifest.id, fmt))}
-            />
+            <>
+              {canBill && (
+                <Button
+                  variant="secondary"
+                  icon="file"
+                  mutates={false}
+                  onClick={() =>
+                    navigate(
+                      manifest.container_number
+                        ? `/billing?q=${encodeURIComponent(manifest.container_number)}`
+                        : '/billing',
+                    )
+                  }
+                >
+                  View invoices
+                </Button>
+              )}
+              <ExportButton
+                formats={['xlsx', 'csv', 'pdf']}
+                onExport={(fmt) => (fmt === 'pdf' ? manifestApi.pdf(manifest.id) : manifestApi.export(manifest.id, fmt))}
+              />
+            </>
           }
           more={
             canRevoke && !revoking
@@ -490,13 +555,11 @@ export function ManifestDetail(): JSX.Element {
         />
       </div>
 
-      <Card padding="none">
-        <div className={styles.itemsHead}>
-          <SectionHead
-            title="Customers on this manifest"
-            sub="Aggregated from approved packing lists for this container"
-          />
-        </div>
+      <Section
+        title="Customers on this manifest"
+        sub="Aggregated from approved packing lists for this container"
+        flush
+      >
         <Table
           columns={[
             { title: 'Customer' },
@@ -540,116 +603,104 @@ export function ManifestDetail(): JSX.Element {
           }))}
           emptyState={<EmptyState compact title="No approved packing lists on this manifest yet" />}
         />
-      </Card>
+      </Section>
 
       {/* Carton diff view — expected vs missing per customer */}
       {manifest.missing_items && manifest.missing_items.length > 0 && (
-        <div className={styles.discrepancySection}>
-          <Card padding="none">
-            <div className={styles.itemsHead}>
-              <SectionHead
-                title="Missing cartons — expected vs. reported"
-                sub="Cartons logged as missing during manifest verification"
-              />
-            </div>
-            <Table
-              columns={[
-                { title: 'Customer' },
-                { title: 'Expected', type: 'number' },
-                { title: 'Missing', type: 'number' },
-                { title: 'Accounted for', type: 'number' },
-                { title: 'Missing tags', type: 'reference' },
-              ]}
-              rows={buildCartonDiff(manifest.customers, manifest.missing_items)
-                .filter((d) => d.missingTags.length > 0)
-                .map((d) => ({
-                  cells: [
-                    <span key="name">{d.customer_name ?? d.customer_id}</span>,
-                    <Mono key="expected">{d.expected}</Mono>,
-                    <Mono key="missing" color="var(--color-error)">
-                      {d.missingTags.length}
-                    </Mono>,
-                    <Mono key="accounted">{d.expected - d.missingTags.length}</Mono>,
-                    <div key="tags" className={styles.tagChips}>
-                      {d.missingTags.slice(0, 4).map((tag) => (
-                        <span key={tag} className={`${styles.tagChip} ${styles.discrepancyRow}`}>
-                          {tag}
-                        </span>
-                      ))}
-                      {d.missingTags.length > 4 && (
-                        <span className={styles.tagMore}>+{d.missingTags.length - 4} more</span>
-                      )}
-                    </div>,
-                  ],
-                }))}
-            />
-          </Card>
-        </div>
+        <Section
+          title="Missing cartons — expected vs. reported"
+          sub="Cartons logged as missing during manifest verification"
+          flush
+        >
+          <Table
+            columns={[
+              { title: 'Customer' },
+              { title: 'Expected', type: 'number' },
+              { title: 'Missing', type: 'number' },
+              { title: 'Accounted for', type: 'number' },
+              { title: 'Missing tags', type: 'reference' },
+            ]}
+            rows={buildCartonDiff(manifest.customers, manifest.missing_items)
+              .filter((d) => d.missingTags.length > 0)
+              .map((d) => ({
+                cells: [
+                  <span key="name">{d.customer_name ?? d.customer_id}</span>,
+                  <Mono key="expected">{d.expected}</Mono>,
+                  <Mono key="missing" color="var(--color-error)">
+                    {d.missingTags.length}
+                  </Mono>,
+                  <Mono key="accounted">{d.expected - d.missingTags.length}</Mono>,
+                  <div key="tags" className={styles.tagChips}>
+                    {d.missingTags.slice(0, 4).map((tag) => (
+                      <span key={tag} className={`${styles.tagChip} ${styles.discrepancyRow}`}>
+                        {tag}
+                      </span>
+                    ))}
+                    {d.missingTags.length > 4 && (
+                      <span className={styles.tagMore}>+{d.missingTags.length - 4} more</span>
+                    )}
+                  </div>,
+                ],
+              }))}
+          />
+        </Section>
       )}
 
       {manifest.weight_discrepancies && manifest.weight_discrepancies.length > 0 && (
-        <div className={styles.discrepancySection}>
-          <Card padding="none">
-            <div className={styles.itemsHead}>
-              <SectionHead
-                title="Weight discrepancies"
-                sub="Cartons where actual weight differs from dispatch weight by more than 5% or 0.1kg"
-              />
-            </div>
-            <Table
-              columns={[
-                { title: 'Carton tag', type: 'reference' },
-                { title: 'Tracking code', type: 'reference' },
-                { title: 'Dispatch (kg)', type: 'number' },
-                { title: 'Actual (kg)', type: 'number' },
-                { title: 'Difference (kg)', type: 'number' },
-              ]}
-              rows={manifest.weight_discrepancies.map((wd) => ({
-                cells: [
-                  <Mono key="tag">{wd.carton_tag ?? '—'}</Mono>,
-                  <Mono key="tracking">{wd.tracking_code ?? '—'}</Mono>,
-                  <Mono key="dispatch">{formatKg(wd.weight_dispatch_kg)}</Mono>,
-                  <Mono key="actual">{formatKg(wd.weight_actual_kg)}</Mono>,
-                  <Mono
-                    key="diff"
-                    color={wd.difference_kg < 0 ? 'var(--color-error)' : 'var(--color-warning)'}
-                  >
-                    {wd.difference_kg > 0 ? '+' : ''}
-                    {formatKg(wd.difference_kg)}
-                  </Mono>,
-                ],
-              }))}
-            />
-          </Card>
-        </div>
+        <Section
+          title="Weight discrepancies"
+          sub="Cartons where actual weight differs from dispatch weight by more than 5% or 0.1kg"
+          flush
+        >
+          <Table
+            columns={[
+              { title: 'Carton tag', type: 'reference' },
+              { title: 'Tracking code', type: 'reference' },
+              { title: 'Dispatch (kg)', type: 'number' },
+              { title: 'Actual (kg)', type: 'number' },
+              { title: 'Difference (kg)', type: 'number' },
+            ]}
+            rows={manifest.weight_discrepancies.map((wd) => ({
+              cells: [
+                <Mono key="tag">{wd.carton_tag ?? '—'}</Mono>,
+                <Mono key="tracking">{wd.tracking_code ?? '—'}</Mono>,
+                <Mono key="dispatch">{formatKg(wd.weight_dispatch_kg)}</Mono>,
+                <Mono key="actual">{formatKg(wd.weight_actual_kg)}</Mono>,
+                <Mono
+                  key="diff"
+                  color={wd.difference_kg < 0 ? 'var(--color-error)' : 'var(--color-warning)'}
+                >
+                  {wd.difference_kg > 0 ? '+' : ''}
+                  {formatKg(wd.difference_kg)}
+                </Mono>,
+              ],
+            }))}
+          />
+        </Section>
       )}
 
       {manifest.evidence && manifest.evidence.length > 0 && (
-        <div className={styles.discrepancySection}>
-          <Card padding="none">
-            <div className={styles.itemsHead}>
-              <SectionHead
-                title="Verification evidence"
-                sub="Photos and documents attached during manifest verification"
-              />
-            </div>
-            <div className={styles.evidenceGallery}>
-              {manifest.evidence.map((ev) => (
-                <a
-                  key={ev.id}
-                  className={styles.evidenceItem}
-                  href={ev.download_url}
-                  target="_blank"
-                  rel="noreferrer"
-                >
-                  <Icon name={ev.file_type === 'application/pdf' ? 'file' : 'eye'} />
-                  <span className={styles.evidenceName}>{ev.label ?? ev.file_name}</span>
-                  <span className={styles.evidenceMeta}>{ev.file_name}</span>
-                </a>
-              ))}
-            </div>
-          </Card>
-        </div>
+        <Section
+          title="Verification evidence"
+          sub="Photos and documents attached during manifest verification"
+          flush
+        >
+          <div className={styles.evidenceGallery}>
+            {manifest.evidence.map((ev) => (
+              <a
+                key={ev.id}
+                className={styles.evidenceItem}
+                href={ev.download_url}
+                target="_blank"
+                rel="noreferrer"
+              >
+                <Icon name={ev.file_type === 'application/pdf' ? 'file' : 'eye'} />
+                <span className={styles.evidenceName}>{ev.label ?? ev.file_name}</span>
+                <span className={styles.evidenceMeta}>{ev.file_name}</span>
+              </a>
+            ))}
+          </div>
+        </Section>
       )}
 
       {showVerifyModal && (
@@ -672,37 +723,26 @@ export function ManifestDetail(): JSX.Element {
           }}
         />
       )}
-
-      {showRevokeConfirm && (
-        <div className={styles.modalOverlay} onClick={() => setShowRevokeConfirm(false)}>
-          <DialogGuard onClose={() => setShowRevokeConfirm(false)} />
-          <div
-            className={styles.modalPanel}
-            onClick={(e) => e.stopPropagation()}
-            role="dialog"
-            aria-modal="true"
-          >
-            <h3 className={styles.modalTitle}>Revoke verification?</h3>
-            <p className={styles.modalBody}>
-              This will reset the manifest to <strong>Pending</strong> so it can be re-verified. Any
-              downstream processes that have already consumed this verification (release notes,
-              billing) are not affected by this action.
-            </p>
-            <div className={styles.modalActions}>
-              <Button
-                variant="ghost"
-                onClick={() => setShowRevokeConfirm(false)}
-                disabled={revoking}
-              >
-                Cancel
-              </Button>
-              <Button variant="danger" loading={revoking} onClick={() => void handleRevoke()}>
-                Revoke verification
-              </Button>
-            </div>
-          </div>
-        </div>
+      {showGenerateBilling && (
+        <GenerateBillingModal
+          initialContainerId={manifest.container_id}
+          onClose={() => setShowGenerateBilling(false)}
+        />
       )}
+
+      <ConfirmDialog
+        open={showRevokeConfirm}
+        title="Revoke verification?"
+        confirmLabel="Revoke verification"
+        undo="You can re-verify the manifest afterwards."
+        busy={revoking}
+        onConfirm={() => void handleRevoke()}
+        onCancel={() => setShowRevokeConfirm(false)}
+      >
+        This will reset the manifest to <strong>Pending</strong> so it can be re-verified. Any
+        downstream processes that have already consumed this verification (release notes,
+        billing) are not affected by this action.
+      </ConfirmDialog>
     </DetailPage>
   )
 }

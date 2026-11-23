@@ -1,6 +1,8 @@
 import { useState, type JSX } from 'react'
+import { ApiError } from '../../api/client'
 import { useSession } from '../../auth/useSession'
-import { Badge, Button, Card, Field, StatusBadge, LinesSkeleton, ConfirmDialog, ErrorState } from '../../design/components'
+import { Badge, Banner, Button, Card, Field, StatusBadge, LinesSkeleton, ConfirmDialog, ErrorState } from '../../design/components'
+import { formatDateTime } from '../../lib/format'
 import { SectionHead } from '../../shell/SectionHead'
 import { ComposeAnnouncementModal } from '../../shell/ComposeAnnouncementModal'
 import type {
@@ -73,12 +75,18 @@ function EditForm({
   )
 }
 
+function mutationError(err: unknown): string | null {
+  if (!err) return null
+  return err instanceof ApiError ? err.message : 'Something went wrong. Please try again.'
+}
+
 // tenant_admin: one row per staff-submitted customer request awaiting review.
 function PendingRow({ req }: { req: AnnouncementRequest }): JSX.Element {
   const approve = useApproveAnnouncement()
   const reject = useRejectAnnouncement()
   const [rejecting, setRejecting] = useState(false)
   const [reason, setReason] = useState('')
+  const rowErr = mutationError(approve.error ?? reject.error)
 
   return (
     <div className={styles.row}>
@@ -88,7 +96,11 @@ function PendingRow({ req }: { req: AnnouncementRequest }): JSX.Element {
           {audienceLabel(req.audience)}
         </Badge>
       </div>
+      <div className={styles.rowMeta}>
+        Submitted {formatDateTime(req.created_at)}
+      </div>
       {req.body && <p className={styles.rowBody}>{req.body}</p>}
+      {rowErr && <Banner variant="error">{rowErr}</Banner>}
       {!rejecting ? (
         <div className={styles.rowActions}>
           <Button
@@ -157,10 +169,12 @@ function HistoryRow({ entry }: { entry: AnnouncementHistoryEntry }): JSX.Element
   const [editing, setEditing] = useState(false)
   const [confirmingDelete, setConfirmingDelete] = useState(false)
   const togglePending = activate.isPending || deactivate.isPending
+  const rowErr = mutationError(activate.error ?? deactivate.error ?? update.error ?? remove.error)
 
   if (editing) {
     return (
       <div className={styles.row}>
+        {rowErr && <Banner variant="error">{rowErr}</Banner>}
         <EditForm
           initialTitle={entry.title}
           initialBody={entry.body}
@@ -188,7 +202,11 @@ function HistoryRow({ entry }: { entry: AnnouncementHistoryEntry }): JSX.Element
           {audienceLabel(entry.audience)}
         </Badge>
       </div>
+      <div className={styles.rowMeta}>
+        Sent {formatDateTime(entry.created_at)}
+      </div>
       {entry.body && <p className={styles.rowBody}>{entry.body}</p>}
+      {rowErr && <Banner variant="error">{rowErr}</Banner>}
       <div className={styles.rowControls}>
         {entry.banner_active ? (
           <Button
@@ -259,6 +277,7 @@ function MyRequestRow({ req }: { req: AnnouncementRequest }): JSX.Element {
   const remove = useDeleteAnnouncementRequest()
   const [editing, setEditing] = useState(false)
   const [confirmWithdraw, setConfirmWithdraw] = useState(false)
+  const rowErr = mutationError(update.error ?? remove.error)
 
   return (
     <div className={styles.row}>
@@ -277,7 +296,12 @@ function MyRequestRow({ req }: { req: AnnouncementRequest }): JSX.Element {
         <span className={styles.rowTitle}>{req.title}</span>
         <StatusBadge size="sm" kind="announcement" status={req.status} />
       </div>
+      <div className={styles.rowMeta}>
+        Submitted {formatDateTime(req.created_at)}
+        {req.reviewed_at ? ` · Reviewed ${formatDateTime(req.reviewed_at)}` : ''}
+      </div>
       {req.body && <p className={styles.rowBody}>{req.body}</p>}
+      {rowErr && <Banner variant="error">{rowErr}</Banner>}
       {req.status === 'rejected' && req.rejection_reason && (
         <p className={styles.rejectionReason}>Reason: {req.rejection_reason}</p>
       )}

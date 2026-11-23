@@ -152,7 +152,7 @@ describe('PackingListList', () => {
     await waitFor(() => expect(screen.getAllByRole('checkbox').length).toBeGreaterThan(1))
     const rowCheckboxes = screen.getAllByRole('checkbox').slice(1)
     await userEvent.click(rowCheckboxes[0]!)
-    await userEvent.click(screen.getByText('Bulk reject'))
+    await userEvent.click(screen.getByText('Bulk reject · 1'))
 
     const confirmButton = screen.getByRole('button', { name: 'Confirm reject' })
     expect(confirmButton).toBeDisabled()
@@ -168,7 +168,7 @@ describe('PackingListList', () => {
     await waitFor(() => expect(screen.getAllByRole('checkbox').length).toBeGreaterThan(1))
     const rowCheckboxes = screen.getAllByRole('checkbox').slice(1)
     await userEvent.click(rowCheckboxes[0]!)
-    await userEvent.click(screen.getByText('Bulk reject'))
+    await userEvent.click(screen.getByText('Bulk reject · 1'))
     await userEvent.type(screen.getByLabelText('Comments', { exact: false }), 'bad batch')
     await userEvent.click(screen.getByRole('button', { name: 'Confirm reject' }))
 
@@ -259,6 +259,30 @@ describe('PackingListList', () => {
     await userEvent.click(screen.getAllByRole('checkbox')[0]!)
     expect(screen.getByText(/someone else must approve them/i)).toBeInTheDocument()
     expect(screen.getByText('Bulk approve · 0').closest('button')).toBeDisabled()
+    expect(screen.getByText('Bulk reject · 0').closest('button')).toBeDisabled()
+  })
+
+  it('sends only eligible IDs for bulk actions on mixed selections and links failed chips to their detail page', async () => {
+    vi.mocked(packingListApi.list).mockResolvedValue({
+      data: [
+        plStub({ id: 'pl-draft', reference: 'PL-DRAFT', status: 'draft', created_by: 'staff-1' }),
+        plStub({ id: 'pl-pending', reference: 'PL-PEND', status: 'pending_approval', created_by: 'staff-1' }),
+      ],
+      meta: { pagination: { has_more: false, next_cursor: null, total_count: 2 } },
+    })
+    vi.mocked(packingListApi.bulkApprove).mockResolvedValue({
+      succeeded: [],
+      failed: [{ id: 'pl-pending', reason: 'wrong_status' }],
+    })
+    renderPage('tenant_admin', 'admin-2')
+    await waitFor(() => expect(screen.getAllByRole('checkbox').length).toBeGreaterThan(1))
+
+    await userEvent.click(screen.getAllByRole('checkbox')[0]!)
+    await userEvent.click(screen.getByText('Bulk approve · 1'))
+
+    await waitFor(() => expect(packingListApi.bulkApprove).toHaveBeenCalledWith(['pl-pending']))
+    const failureLink = await screen.findByRole('link', { name: /PL-PEND/ })
+    expect(failureLink).toHaveAttribute('href', '/packing-lists/pl-pending')
   })
 
   it('states the full total when a page is only part of the result', async () => {

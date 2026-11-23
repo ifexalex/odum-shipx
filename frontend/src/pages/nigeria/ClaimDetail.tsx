@@ -6,11 +6,13 @@ import {
   claimsApi,
   presignedUploadApi,
   type Claim,
+  type ClaimEvidenceFile,
   type DamageClaimStatus,
   type InspectionMethod,
   type ResolutionType,
   type ResolveClaimInput,
 } from '../../api/claims'
+import type { RefundStatus } from '../../api/refunds'
 import {
   canResolveClaim,
   canStartInspection,
@@ -22,7 +24,7 @@ import { useSession } from '../../auth/useSession'
 import { Action, Banner, Button, DialogGuard, Field, Kvp, Mono, StatusBadge, Pressable, Select, Stepper, PageSkeleton, ErrorState } from '../../design/components'
 import { EvidenceUploader } from './EvidenceUploader'
 import styles from './ClaimDetail.module.css'
-import { formatDate, formatNgn } from '../../lib/format'
+import { formatCount, formatDate, formatNgn } from '../../lib/format'
 import { useBreadcrumbLabel } from '../../shell/breadcrumbs'
 import { PageHeader } from '../../shell/PageHeader'
 import { RecordLink } from '../../shell/RecordLink'
@@ -162,6 +164,15 @@ function ResolveClaimModal({ onCancel, onSuccess, claimId, role }: ResolveClaimM
 
   const isStaff = role === 'nigeria_office_staff'
   const enteredAmount = Number(amountNgn)
+  const enteredDiscount = Number(discountPct)
+  const amountError =
+    needsAmount && amountNgn.trim() !== '' && (!Number.isFinite(enteredAmount) || enteredAmount <= 0)
+      ? 'Enter an amount greater than 0.'
+      : undefined
+  const discountError =
+    needsDiscount && discountPct.trim() !== '' && (!Number.isFinite(enteredDiscount) || enteredDiscount <= 0 || enteredDiscount > 100)
+      ? 'Enter a percentage between 1 and 100.'
+      : undefined
   const likelyNeedsAdminApproval =
     isStaff && needsAmount && enteredAmount > 0 && enteredAmount > _STAFF_LIMIT_HINT_NGN
 
@@ -182,7 +193,10 @@ function ResolveClaimModal({ onCancel, onSuccess, claimId, role }: ResolveClaimM
     }
   }
 
-  const canSubmit = reason.trim().length > 0 && !submitting
+  const amountValid = !needsAmount || (amountNgn.trim() !== '' && Number.isFinite(enteredAmount) && enteredAmount > 0)
+  const discountValid =
+    !needsDiscount || (discountPct.trim() !== '' && Number.isFinite(enteredDiscount) && enteredDiscount > 0 && enteredDiscount <= 100)
+  const canSubmit = reason.trim().length > 0 && amountValid && discountValid && !submitting
 
   return (
     <div className={styles.overlay} onClick={onCancel}>
@@ -213,7 +227,8 @@ function ResolveClaimModal({ onCancel, onSuccess, claimId, role }: ResolveClaimM
           </div>
         </div>
         {needsAmount && (
-          <Field label="Amount (₦)" name="amount_ngn" type="number" placeholder="e.g. 25000"
+          <Field label="Amount (₦)" name="amount_ngn" type="number" min="1" required placeholder="e.g. 25000"
+            error={amountError}
             value={amountNgn} onChange={(e) => setAmountNgn(e.target.value)} />
         )}
         {resolutionType === 'refund' && enteredAmount > 0 && (
@@ -222,7 +237,8 @@ function ResolveClaimModal({ onCancel, onSuccess, claimId, role }: ResolveClaimM
           </Banner>
         )}
         {needsDiscount && (
-          <Field label="Discount (%)" name="discount_pct" type="number" placeholder="e.g. 10"
+          <Field label="Discount (%)" name="discount_pct" type="number" min="1" max="100" required placeholder="e.g. 10"
+            error={discountError}
             value={discountPct} onChange={(e) => setDiscountPct(e.target.value)} />
         )}
         {/* A decision against the customer is explained to them; otherwise the reason stays internal. */}
@@ -252,6 +268,73 @@ function StatusStepper({ current }: { current: DamageClaimStatus }): JSX.Element
   return <Stepper steps={claimSteps('staff')} current={progress.current} complete={progress.complete} label="Claim progress" />
 }
 
+function inspectionMethodLabel(method: InspectionMethod | null): string {
+  switch (method) {
+    case 'delegate_visit':
+      return 'Delegate visit — in-person inspection'
+    case 'customer_evidence':
+      return 'Customer evidence — photos/video'
+    default:
+      return 'Not started'
+  }
+}
+
+function resolutionTypeLabel(type: ResolutionType): string {
+  switch (type) {
+    case 'refund':
+      return 'Refund'
+    case 'discount':
+      return 'Discount'
+    case 'compensation':
+      return 'Compensation'
+    case 'no_action':
+      return 'No action'
+  }
+}
+
+function formatFileSize(bytes: number | null): string {
+  if (bytes === null) return ''
+  return bytes >= 1_048_576
+    ? `${formatCount(Math.round(bytes / 1_048_576))} MB`
+    : `${formatCount(Math.max(1, Math.round(bytes / 1024)))} KB`
+}
+
+function EvidenceFileList({ files }: { files: ClaimEvidenceFile[] }): JSX.Element {
+  if (files.length === 0) {
+    return <span className={styles.emptyNote}>No evidence files attached yet.</span>
+  }
+  return (
+    <ul className={styles.evidenceList}>
+      {files.map((file) => {
+        const sizeLabel = formatFileSize(file.file_size_bytes)
+        return (
+          <li key={file.id} className={styles.evidenceItem}>
+            <div className={styles.evidenceMeta}>
+              <span className={styles.evidenceName}>{file.file_name}</span>
+              <span className={styles.evidenceSub}>
+                {[sizeLabel, file.file_type, `Uploaded ${formatDate(file.uploaded_at)}`].filter(Boolean).join(' · ')}
+              </span>
+            </div>
+            {file.download_url ? (
+              <a
+                href={file.download_url}
+                target="_blank"
+                rel="noopener noreferrer"
+                className={styles.evidenceLink}
+                aria-label={`Open ${file.file_name}`}
+              >
+                Open file
+              </a>
+            ) : (
+              <span className={styles.emptyNote}>Link unavailable</span>
+            )}
+          </li>
+        )
+      })}
+    </ul>
+  )
+}
+
 // ---------------------------------------------------------------------------
 // Main page
 // ---------------------------------------------------------------------------
@@ -266,14 +349,14 @@ export function ClaimDetail(): JSX.Element {
   const [showInspect, setShowInspect] = useState(false)
   const [showResolve, setShowResolve] = useState(false)
 
-  // Router state from ClaimList seeds the first paint; claimKeys.detail(id) is
-  // the slot the existing `useClaim` hook reads, so the two share one entry.
+  // Router state from ClaimList seeds the first paint, while GET /v1/claims/{id}
+  // still fetches detail-only fields (evidence, resolution, refund).
   const stateClaim = (location.state as { claim?: Claim } | null)?.claim ?? null
   const { data: claim = null, isLoading: loading, error: loadError, refetch } = useQuery({
     queryKey: claimKeys.detail(id ?? ''),
     queryFn: () => claimsApi.get(id!),
     enabled: !!id,
-    ...(stateClaim ? { initialData: stateClaim } : {}),
+    ...(stateClaim ? { placeholderData: stateClaim } : {}),
     staleTime: STALE_30S,
   })
   // Names this record in the breadcrumb once loaded (FD-46).
@@ -285,14 +368,15 @@ export function ClaimDetail(): JSX.Element {
       : 'Could not load this claim.'
     : null
 
-  // The inspect/resolve responses carry the updated claim, so write it into the
-  // cache directly instead of replacing local state.
+  // Write the updated claim into cache immediately, then refetch so detail-only
+  // fields (such as a newly generated refund record) stay in sync.
   const applyUpdated = (updated: Claim): void => {
     qc.setQueryData(claimKeys.detail(id ?? ''), updated)
+    void qc.invalidateQueries({ queryKey: claimKeys.detail(id ?? '') })
   }
 
-  if (loading) return <PageSkeleton kind="detail" label="Loading claim" />
-  if (error || !claim) {
+  if (loading && !claim) return <PageSkeleton kind="detail" label="Loading claim" />
+  if ((error && !claim) || !claim) {
     return (
       <>
         <PageHeader title="Damage claim" />
@@ -302,6 +386,7 @@ export function ClaimDetail(): JSX.Element {
   }
 
   const r = role as Parameters<typeof canStartInspection>[1]
+  const evidenceFiles = claim.evidence ?? []
 
   return (
     <DetailPage
@@ -342,9 +427,50 @@ export function ClaimDetail(): JSX.Element {
       </Section>
 
       {/* Claim context */}
-      {claim.description && (
+      {(claim.description || claim.inspection_method) && (
         <Section title="Claim details">
-          <Kvp label="Description" value={claim.description} divider={false} />
+          {claim.description && (
+            <Kvp label="Description" value={claim.description} divider={!!claim.inspection_method} />
+          )}
+          {claim.inspection_method && (
+            <Kvp label="Inspection method" value={inspectionMethodLabel(claim.inspection_method)} divider={false} />
+          )}
+        </Section>
+      )}
+
+      {/* Resolution & linked refund */}
+      {claim.resolution && (
+        <Section title="Resolution">
+          <Kvp label="Decision" value={resolutionTypeLabel(claim.resolution.resolution_type)} />
+          {claim.resolution.amount_ngn !== null &&
+            claim.resolution.resolution_type !== 'discount' &&
+            claim.resolution.resolution_type !== 'no_action' && (
+              <Kvp label="Amount" value={<Mono>{formatNgn(claim.resolution.amount_ngn)}</Mono>} />
+            )}
+          {claim.resolution.discount_percentage !== null && claim.resolution.resolution_type === 'discount' && (
+            <Kvp label="Discount" value={`${Number(claim.resolution.discount_percentage)}%`} />
+          )}
+          <Kvp label="Resolved on" value={formatDate(claim.resolution.resolved_at)} divider={Boolean(claim.resolution.reason || claim.refund)} />
+          {claim.resolution.reason && (
+            <Kvp label="Reason" value={claim.resolution.reason} divider={Boolean(claim.refund)} />
+          )}
+          {claim.refund && (
+            <Kvp
+              label="Refund record"
+              divider={false}
+              value={
+                <span className={styles.refundRow}>
+                  <RecordLink to={`/refunds/${claim.refund.id}`}>
+                    View refund
+                  </RecordLink>
+                  <StatusBadge kind="refund" status={claim.refund.status as RefundStatus} />
+                  {claim.refund.amount_ngn !== null && (
+                    <Mono>{formatNgn(claim.refund.amount_ngn)}</Mono>
+                  )}
+                </span>
+              }
+            />
+          )}
         </Section>
       )}
 
@@ -363,21 +489,24 @@ export function ClaimDetail(): JSX.Element {
         )}
       </Section>
 
-      {/* Evidence upload — available while claim is not terminal */}
-      {!isTerminalClaimStatus(claim.status) && (
-        <Section
-          title="Attach evidence"
-          sub="Upload photos or PDF documents (JPEG · PNG · PDF, max 5 MB each)"
-        >
-          <EvidenceUploader
-            getPresignedUrl={(f) => presignedUploadApi.getUrl(claim.id, f.name, f.type, f.size)}
-            confirmUpload={(evidenceId) => presignedUploadApi.confirm(claim.id, evidenceId)}
-            onUploaded={() => {
-              /* listed on the claim once confirmed; the confirmUpload POST refreshes it */
-            }}
-          />
-        </Section>
-      )}
+      {/* Evidence files + upload */}
+      <Section
+        title="Evidence"
+        sub={!isTerminalClaimStatus(claim.status) ? 'Photos or PDF documents (JPEG · PNG · PDF, max 5 MB each)' : undefined}
+      >
+        <EvidenceFileList files={evidenceFiles} />
+        {!isTerminalClaimStatus(claim.status) && (
+          <div className={styles.uploaderWrap}>
+            <EvidenceUploader
+              getPresignedUrl={(f) => presignedUploadApi.getUrl(claim.id, f.name, f.type, f.size)}
+              confirmUpload={(evidenceId) => presignedUploadApi.confirm(claim.id, evidenceId)}
+              onUploaded={() => {
+                void refetch()
+              }}
+            />
+          </div>
+        )}
+      </Section>
 
       {showInspect && (
         <StartInspectionModal

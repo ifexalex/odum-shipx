@@ -35,25 +35,44 @@ export function ReleaseNoteCard({ containerId }: { containerId: string | null | 
   if (notes.length === 0) return null
 
   return (
-    <Card padding="default" style={{ marginBottom: 'var(--space-4)' }}>
-      <SectionHead
-        title={notes.length === 1 ? 'Your release note' : 'Your release notes'}
-        sub="Show it at the warehouse to collect your goods."
-      />
-      {notes.map((note) => (
-        <div
-          key={note.id}
-          style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 'var(--space-3)', flexWrap: 'wrap', paddingTop: 'var(--space-3)' }}
-        >
-          <div>
-            <Mono color="var(--color-ink)">{note.reference_number}</Mono>{' '}
-            <StatusBadge kind="releaseNote" status={note.status} audience="customer" />
+    <Card padding="none" style={{ marginBottom: 'var(--space-4)' }}>
+      <div
+        style={{
+          padding: 'var(--space-4) var(--space-5)',
+          background: 'var(--color-surface-muted)',
+          borderBottom: '1px solid var(--color-line-soft)',
+          borderRadius: 'var(--radius-lg) var(--radius-lg) 0 0',
+        }}
+      >
+        <SectionHead
+          title={notes.length === 1 ? 'Your release note' : 'Your release notes'}
+          sub="Show it at the warehouse to collect your goods."
+        />
+      </div>
+      <div>
+        {notes.map((note, idx) => (
+          <div
+            key={note.id}
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              gap: 'var(--space-3)',
+              flexWrap: 'wrap',
+              padding: 'var(--space-3) var(--space-5)',
+              borderTop: idx > 0 ? '1px solid var(--color-line-soft)' : 'none',
+            }}
+          >
+            <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-2)', flexWrap: 'wrap' }}>
+              <Mono color="var(--color-ink)">{note.reference_number}</Mono>
+              <StatusBadge kind="releaseNote" status={note.status} audience="customer" />
+            </div>
+            <Button variant="secondary" size="sm" trailingIcon="arrowright" onClick={() => navigate(`/my-release-notes/${note.id}`)}>
+              Open
+            </Button>
           </div>
-          <Button variant="secondary" size="sm" onClick={() => navigate(`/my-release-notes/${note.id}`)}>
-            Open
-          </Button>
-        </div>
-      ))}
+        ))}
+      </div>
     </Card>
   )
 }

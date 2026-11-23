@@ -92,7 +92,13 @@ export function AuthShell({ children }: AuthShellProps): JSX.Element {
       </div>
 
       <div className={styles.formPanel}>
-        <div className={styles.formWrap}>{children}</div>
+        <div className={styles.formWrap}>
+          <div className={styles.mobileBrand}>
+            <KolaMark size={24} color="var(--color-primary)" />
+            <ShipxWordmark size={18} />
+          </div>
+          {children}
+        </div>
       </div>
     </div>
   )
@@ -142,10 +148,17 @@ export function PasswordStrength({ password }: { password: string }): JSX.Elemen
 
 export function scorePassword(pw: string): 0 | 1 | 2 | 3 | 4 {
   if (!pw) return 0
-  let score = 0
-  if (pw.length >= 8) score += 1
-  if (pw.length >= 12) score += 1
-  if (/[a-z]/.test(pw) && /[A-Z]/.test(pw) && /\d/.test(pw)) score += 1
-  if (/[^A-Za-z0-9]/.test(pw)) score += 1
-  return Math.max(1, Math.min(score, 4)) as 1 | 2 | 3 | 4
+  const hasMinLen = pw.length >= 12
+  const hasMixedCase = /[a-z]/.test(pw) && /[A-Z]/.test(pw)
+  const hasNumber = /\d/.test(pw)
+  const hasSpecial = /[^A-Za-z0-9]/.test(pw)
+  const checks = [hasMinLen, hasMixedCase, hasNumber, hasSpecial].filter(Boolean).length
+
+  // Never report "Strong" or "Excellent" until the 12-character policy floor is met.
+  if (!hasMinLen) {
+    return (pw.length >= 8 && checks >= 2 ? 2 : 1) as 1 | 2
+  }
+  if (checks === 4) return 4
+  if (checks === 3) return 3
+  return 2
 }

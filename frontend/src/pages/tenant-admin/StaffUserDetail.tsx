@@ -178,8 +178,24 @@ export function StaffUserDetail(): JSX.Element {
     )
   if (!user) return <></>
 
+  const assignedRoles = user.roles.length > 0 ? user.roles : [user.role]
+  const localeDirty = locale !== (user.locale === 'zh' ? 'zh' : 'en')
+
   return (
-    <DetailPage header={<PageHeader title={user.full_name} meta={user.email} />}>
+    <DetailPage
+      header={
+        <PageHeader
+          title={user.full_name}
+          meta={user.email}
+          status={
+            <>
+              <StatusBadge kind="staffUser" status={user.status} />
+              <RoleBadge role={user.role} />
+            </>
+          }
+        />
+      }
+    >
       {session?.readOnly && (
         <div className={styles.banner}>
           <Banner variant="warning" icon="eye" title="Read-only session">
@@ -281,82 +297,108 @@ export function StaffUserDetail(): JSX.Element {
 
       <Section
         title="Permissions"
-        sub="What this role can and cannot do — fixed per role, enforced server-side"
+        sub="What this staff member's assigned roles can and cannot do — enforced server-side"
       >
-        {ROLE_PERMISSIONS[user.role]?.map((p, i, arr) => (
-          <div
-            key={p.label}
-            style={{
-              display: 'flex',
-              alignItems: 'center',
-              gap: 'var(--space-3)',
-              padding: 'var(--space-2) 0',
-              borderBottom: i < arr.length - 1 ? '1px dashed var(--color-line-soft)' : 'none',
-            }}
-          >
-            <span
-              style={{
-                width: 22,
-                height: 22,
-                borderRadius: 'var(--radius-md)',
-                flexShrink: 0,
-                display: 'inline-flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                background: p.allowed ? 'var(--color-success-soft)' : 'var(--color-error-soft)',
-                color: p.allowed ? 'var(--color-success)' : 'var(--color-error)',
-                fontSize: 'var(--text-xs)',
-                fontWeight: 700,
-              }}
-            >
-              {p.allowed ? '✓' : '✕'}
-            </span>
-            <span style={{ fontSize: 'var(--text-sm)', color: 'var(--color-ink-2)' }}>
-              {p.label}
-            </span>
-          </div>
-        ))}
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-4)' }}>
+          {assignedRoles.map((r) => (
+            <div key={r}>
+              {assignedRoles.length > 1 && (
+                <div style={{ marginBottom: 'var(--space-2)' }}>
+                  <RoleBadge role={r} />
+                </div>
+              )}
+              {ROLE_PERMISSIONS[r]?.map((p, i, arr) => (
+                <div
+                  key={`${r}-${p.label}`}
+                  style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: 'var(--space-3)',
+                    padding: 'var(--space-2) 0',
+                    borderBottom: i < arr.length - 1 ? '1px dashed var(--color-line-soft)' : 'none',
+                  }}
+                >
+                  <span
+                    style={{
+                      width: 22,
+                      height: 22,
+                      borderRadius: 'var(--radius-md)',
+                      flexShrink: 0,
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      background: p.allowed ? 'var(--color-success-soft)' : 'var(--color-error-soft)',
+                      color: p.allowed ? 'var(--color-success)' : 'var(--color-error)',
+                      fontSize: 'var(--text-xs)',
+                      fontWeight: 700,
+                    }}
+                  >
+                    {p.allowed ? '✓' : '✕'}
+                  </span>
+                  <span style={{ fontSize: 'var(--text-sm)', color: 'var(--color-ink-2)' }}>
+                    {p.label}
+                  </span>
+                </div>
+              ))}
+            </div>
+          ))}
+        </div>
       </Section>
 
       <Section title="Recent activity" sub="What this user has done across the tenant">
         <ActivityFeed actorId={user.id} limit={10} showActor={false} />
       </Section>
 
-      <Section title="Actions">
+      <Section
+        title="Account access"
+        sub={
+          user.status === 'active'
+            ? 'Send a password reset link or deactivate this account.'
+            : user.status === 'inactive'
+              ? 'This account is deactivated and cannot sign in.'
+              : 'This staff member has not finished setting up their account yet.'
+        }
+      >
         <div style={{ display: 'flex', gap: 'var(--space-2)', flexWrap: 'wrap' }}>
-          <Button
-            variant="secondary"
-            size="sm"
-            loading={saving}
-            onClick={() => void handleAction('activate')}
-          >
-            Resend activation link
-          </Button>
-          <Button
-            variant="secondary"
-            size="sm"
-            loading={saving}
-            onClick={() => void handleAction('resend')}
-          >
-            Resend invite
-          </Button>
-          <Button
-            variant="secondary"
-            size="sm"
-            loading={saving}
-            onClick={() => void handleAction('reset')}
-          >
-            Reset password
-          </Button>
+          {user.status !== 'active' && user.status !== 'inactive' && (
+            <>
+              <Button
+                variant="secondary"
+                size="sm"
+                loading={saving}
+                onClick={() => void handleAction('resend')}
+              >
+                Resend invite
+              </Button>
+              <Button
+                variant="secondary"
+                size="sm"
+                loading={saving}
+                onClick={() => void handleAction('activate')}
+              >
+                Resend activation link
+              </Button>
+            </>
+          )}
           {user.status === 'active' && (
-            <Button
-              variant="danger-ghost"
-              size="sm"
-              loading={saving}
-              onClick={() => setConfirmDeactivate(true)}
-            >
-              Deactivate user
-            </Button>
+            <>
+              <Button
+                variant="secondary"
+                size="sm"
+                loading={saving}
+                onClick={() => void handleAction('reset')}
+              >
+                Reset password
+              </Button>
+              <Button
+                variant="danger-ghost"
+                size="sm"
+                loading={saving}
+                onClick={() => setConfirmDeactivate(true)}
+              >
+                Deactivate user
+              </Button>
+            </>
           )}
         </div>
       </Section>
@@ -368,6 +410,7 @@ export function StaffUserDetail(): JSX.Element {
             variant="primary"
             size="sm"
             loading={savingLocale}
+            disabled={!localeDirty}
             onClick={() => void handleSaveLocale()}
           >
             Save language
@@ -378,7 +421,7 @@ export function StaffUserDetail(): JSX.Element {
         open={confirmDeactivate}
         title={`Deactivate ${user.full_name}?`}
         confirmLabel="Deactivate user"
-        undo="You can reactivate them later from this page."
+        undo={false}
         busy={saving}
         error={actionError}
         onConfirm={async () => {
@@ -387,7 +430,7 @@ export function StaffUserDetail(): JSX.Element {
         }}
         onCancel={() => setConfirmDeactivate(false)}
       >
-        They will be signed out and will not be able to sign in. Their records and history stay.
+        They will be signed out immediately and will no longer be able to sign in. Their records and audit history stay intact.
       </ConfirmDialog>
     </DetailPage>
   )

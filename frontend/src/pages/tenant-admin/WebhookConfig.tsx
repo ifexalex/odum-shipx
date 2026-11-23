@@ -6,7 +6,7 @@ import {
   type WebhookEventType,
   type WebhookTestResult,
 } from '../../api/tenantManagement'
-import { Banner, Button, Card, Field, Icon, Mono, ToggleSwitch, IconButton, PageSkeleton } from '../../design/components'
+import { Banner, Button, Card, ConfirmDialog, Field, Icon, Mono, ToggleSwitch, IconButton, PageSkeleton } from '../../design/components'
 import { useTenantConfig } from '../../hooks/useConfig'
 import { useSeedOnce } from '../../hooks/useSeedOnce'
 import { SectionHead } from '../../shell/SectionHead'
@@ -50,31 +50,19 @@ interface RotateModalProps {
 
 function RotateModal({ onCancel, onConfirm, rotating }: RotateModalProps): JSX.Element {
   return (
-    <div className={styles.modalOverlay} onClick={onCancel}>
-      <div className={styles.modal} onClick={(e) => e.stopPropagation()}>
-        <div className={styles.modalHeader}>
-          <h3 className={styles.modalTitle}>Rotate signing secret</h3>
-          <IconButton icon="x" label="Close" size="sm" onClick={onCancel} />
-        </div>
-        <div className={styles.modalBody}>
-          <Banner variant="warning" icon="warn" title="This is irreversible">
-            Rotating the secret immediately invalidates the current one. Any endpoint still verifying
-            with the old secret will start receiving <strong>401 Unauthorized</strong> responses.
-            Update your integration before confirming.
-          </Banner>
-          <p className={styles.modalText}>
-            After rotation, the new secret is shown <strong>once</strong>. Copy it immediately — it
-            cannot be retrieved again.
-          </p>
-        </div>
-        <div className={styles.modalFooter}>
-          <Button variant="secondary" onClick={onCancel} disabled={rotating}>Cancel</Button>
-          <Button variant="danger" loading={rotating} onClick={onConfirm}>
-            Rotate secret
-          </Button>
-        </div>
-      </div>
-    </div>
+    <ConfirmDialog
+      open
+      title="Rotate signing secret"
+      confirmLabel="Rotate secret"
+      undo={false}
+      busy={rotating}
+      onConfirm={onConfirm}
+      onCancel={onCancel}
+    >
+      Rotating the secret immediately invalidates the current one — any endpoint still verifying with the old secret
+      will start receiving 401 Unauthorized responses. After rotation, the new secret is shown once; copy it
+      immediately because it cannot be retrieved again.
+    </ConfirmDialog>
   )
 }
 
@@ -96,7 +84,7 @@ function NewSecretBanner({ secret, onDismiss }: { secret: string; onDismiss: () 
       </div>
       <div className={styles.newSecretRow}>
         <Mono color="var(--color-ink)">{secret}</Mono>
-        <Button variant="secondary" size="sm" icon={copied ? 'check' : 'download'} onClick={() => void handleCopy()}>
+        <Button variant="secondary" size="sm" icon={copied ? 'check' : 'copy'} onClick={() => void handleCopy()}>
           {copied ? 'Copied' : 'Copy'}
         </Button>
       </div>

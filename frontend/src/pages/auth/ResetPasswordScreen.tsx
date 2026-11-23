@@ -11,7 +11,7 @@
  *    password to establish the session.
  */
 import { useState, type FormEvent, type JSX } from 'react'
-import { useNavigate, useSearchParams } from 'react-router-dom'
+import { Link, useNavigate, useSearchParams } from 'react-router-dom'
 import { completeNewPassword, confirmForgotPassword, hasPendingNewPasswordChallenge } from '../../auth/authClient'
 import { homePathForRole } from '../../auth/roleHome'
 import { useSession } from '../../auth/useSession'
@@ -112,6 +112,13 @@ export function ResetPasswordScreen(): JSX.Element {
 
   return (
     <AuthShell>
+      <Link
+        to="/login"
+        className={styles.link}
+        style={{ marginBottom: 'var(--space-6)', display: 'inline-flex', alignItems: 'center', gap: 'var(--space-2)' }}
+      >
+        <Icon name="arrowleft" size={14} /> Back to sign in
+      </Link>
       <FormHead
         title="Set a new password"
         sub={
@@ -220,6 +227,24 @@ export function ResetPasswordScreen(): JSX.Element {
           {firstLogin ? 'Set password & sign in' : 'Update password'}
         </Button>
       </form>
+
+      <p className={styles.footerLine} style={{ marginTop: 'var(--space-5)' }}>
+        {firstLogin ? (
+          <>
+            Need to start over?{' '}
+            <Link to="/login" className={styles.footerLinkStrong}>
+              Sign in again <Icon name="arrowright" size={12} />
+            </Link>
+          </>
+        ) : (
+          <>
+            Code expired or missing?{' '}
+            <Link to="/forgot-password" className={styles.footerLinkStrong}>
+              Request a new code <Icon name="arrowright" size={12} />
+            </Link>
+          </>
+        )}
+      </p>
     </AuthShell>
   )
 }

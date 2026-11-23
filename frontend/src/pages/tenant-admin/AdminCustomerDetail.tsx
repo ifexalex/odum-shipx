@@ -26,7 +26,7 @@ import { customersApi, type Customer } from '../../api/tenantManagement'
 import { billingKeys, claimKeys, customerKeys, packingListKeys } from '../../api/keys'
 import { STALE_30S } from '../../lib/queryClient'
 import { useSession } from '../../auth/useSession'
-import { Action, Badge, Banner, Button, Card, DialogGuard, Field, Kvp, Mono, StatCard, StatusBadge, Table, Select, PageSkeleton, EmptyState } from '../../design/components'
+import { Action, Badge, Banner, Button, Card, Check, ErrorState, Field, Kvp, Modal, Mono, PhoneField, StatCard, StatusBadge, Table, Select, PageSkeleton, EmptyState } from '../../design/components'
 import { SectionHead } from '../../shell/SectionHead'
 import { Tabs } from '../../shell/Tabs'
 import styles from './admin.module.css'
@@ -70,15 +70,13 @@ function AnonymiseModal({ customer, onCancel, onSuccess }: AnonymiseModalProps):
   }
 
   return (
-    <div className={styles.modalOverlay} onClick={onCancel}>
-      <DialogGuard onClose={onCancel} />
-      <div className={styles.modalPanel} onClick={(e) => e.stopPropagation()} role="dialog" aria-modal="true">
-        <h3 className={styles.modalTitle}>Erase customer data (GDPR Art. 17)</h3>
-        {error && <div className={styles.modalBanner}><Banner variant="error">{error}</Banner></div>}
+    <Modal open onClose={onCancel} title="Erase customer data (GDPR Art. 17)" size="sm">
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-4)' }}>
+        {error && <Banner variant="error">{error}</Banner>}
 
         <Banner variant="error" title="This action is irreversible">
           All personal data for <strong>{customer.name ?? customer.id}</strong> will be permanently erased —
-          name, email, phone, address, and contract details will be nulled. The customer's UUID and
+          name, email, phone, address, and contract details will be nulled. The customer&apos;s UUID and
           financial records are retained for legal and accounting purposes.
         </Banner>
 
@@ -107,7 +105,92 @@ function AnonymiseModal({ customer, onCancel, onSuccess }: AnonymiseModalProps):
           </Action>
         </div>
       </div>
-    </div>
+    </Modal>
+  )
+}
+
+// ---------------------------------------------------------------------------
+// Edit Customer Details Modal
+// ---------------------------------------------------------------------------
+
+const CONSENT_CHANNELS = [
+  { key: 'sms', label: 'SMS' },
+  { key: 'whatsapp', label: 'WhatsApp' },
+  { key: 'email', label: 'Email' },
+] as const
+
+interface EditCustomerModalProps {
+  customer: Customer
+  onCancel: () => void
+  onSaved: (updated: Customer) => void
+}
+
+function EditCustomerModal({ customer, onCancel, onSaved }: EditCustomerModalProps): JSX.Element {
+  const [name, setName] = useState(customer.name ?? '')
+  const [phone, setPhone] = useState(customer.phone ?? '')
+  const [whatsapp, setWhatsapp] = useState(customer.whatsapp ?? '')
+  const [email, setEmail] = useState(customer.email ?? '')
+  const [address, setAddress] = useState(customer.address ?? '')
+  const [consent, setConsent] = useState<string[]>(customer.notification_consent ?? [])
+  const [saving, setSaving] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+
+  function toggleConsent(channel: string, checked: boolean): void {
+    setConsent((prev) => (checked ? Array.from(new Set([...prev, channel])) : prev.filter((c) => c !== channel)))
+  }
+
+  async function handleSave(): Promise<void> {
+    if (!name.trim()) return
+    setSaving(true)
+    setError(null)
+    try {
+      const updated = await customersApi.update(customer.id, {
+        name: name.trim(),
+        phone: phone.trim() || undefined,
+        whatsapp: whatsapp.trim() || undefined,
+        email: email.trim() || undefined,
+        address: address.trim() || undefined,
+        notification_consent: consent,
+      })
+      toast.success('Customer details updated', updated.name ?? undefined)
+      onSaved(updated)
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : 'Could not save customer details.')
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  return (
+    <Modal open onClose={onCancel} title="Edit customer details" size="md">
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-4)' }}>
+        {error && <Banner variant="error">{error}</Banner>}
+        <Field label="Full name" name="customer_name" required value={name} onChange={(e) => setName(e.target.value)} />
+        <PhoneField label="Phone" name="customer_phone" optional value={phone} onChange={setPhone} />
+        <PhoneField label="WhatsApp" name="customer_whatsapp" optional value={whatsapp} onChange={setWhatsapp} />
+        <Field label="Email" name="customer_email" type="email" optional value={email} onChange={(e) => setEmail(e.target.value)} />
+        <Field label="Address" name="customer_address" multiline rows={2} optional value={address} onChange={(e) => setAddress(e.target.value)} />
+        <div>
+          <div className={styles.prefLabel}>Notification consent</div>
+          <div style={{ display: 'flex', gap: 'var(--space-4)', flexWrap: 'wrap', marginTop: 'var(--space-2)' }}>
+            {CONSENT_CHANNELS.map((ch) => (
+              <Check
+                key={ch.key}
+                label={ch.label}
+                checked={consent.includes(ch.key)}
+                onChange={(checked) => toggleConsent(ch.key, checked)}
+              />
+            ))}
+          </div>
+        </div>
+        <div className={styles.modalActions}>
+          <Button variant="ghost" onClick={onCancel} disabled={saving}>Cancel</Button>
+          <Action variant="primary" loading={saving} disabled={!name.trim()} onClick={() => void handleSave()}>
+            Save changes
+          </Action>
+        </div>
+      </div>
+    </Modal>
   )
 }
 
@@ -215,7 +298,22 @@ function ProfileTab({ customer, shipments, billing, claims, onSaved }: ProfileTa
   )
 }
 
-function ShipmentsTab({ customer, shipments, onOpen }: { customer: Customer; shipments: PackingList[] | null; onOpen: (id: string) => void }): JSX.Element {
+function ShipmentsTab({
+  customer,
+  shipments,
+  error,
+  onRetry,
+  onOpen,
+}: {
+  customer: Customer
+  shipments: PackingList[] | null
+  error: Error | null
+  onRetry: () => void
+  onOpen: (id: string) => void
+}): JSX.Element {
+  if (error) {
+    return <ErrorState compact title="Couldn't load shipments" error={error} onRetry={onRetry} />
+  }
   return (
     <Card padding="none">
       <div className={styles.cardPad}>
@@ -251,7 +349,20 @@ function ShipmentsTab({ customer, shipments, onOpen }: { customer: Customer; shi
   )
 }
 
-function BillingTab({ billing, onOpen }: { billing: Billing[] | null; onOpen: (b: Billing) => void }): JSX.Element {
+function BillingTab({
+  billing,
+  error,
+  onRetry,
+  onOpen,
+}: {
+  billing: Billing[] | null
+  error: Error | null
+  onRetry: () => void
+  onOpen: (b: Billing) => void
+}): JSX.Element {
+  if (error) {
+    return <ErrorState compact title="Couldn't load billing records" error={error} onRetry={onRetry} />
+  }
   const totalBilled = billing?.reduce((s, b) => s + Number(b.total_due_ngn), 0) ?? null
   const totalPaid = billing?.reduce((s, b) => s + Number(b.total_paid_ngn), 0) ?? null
   const outstanding = billing?.reduce((s, b) => s + Number(b.outstanding_ngn), 0) ?? null
@@ -298,7 +409,20 @@ function BillingTab({ billing, onOpen }: { billing: Billing[] | null; onOpen: (b
   )
 }
 
-function ClaimsTab({ claims, onOpen }: { claims: Claim[] | null; onOpen: (c: Claim) => void }): JSX.Element {
+function ClaimsTab({
+  claims,
+  error,
+  onRetry,
+  onOpen,
+}: {
+  claims: Claim[] | null
+  error: Error | null
+  onRetry: () => void
+  onOpen: (c: Claim) => void
+}): JSX.Element {
+  if (error) {
+    return <ErrorState compact title="Couldn't load damage claims" error={error} onRetry={onRetry} />
+  }
   return (
     <Card padding="none">
       <div className={styles.cardPad}>
@@ -407,6 +531,7 @@ export function AdminCustomerDetail(): JSX.Element {
   useBreadcrumbLabel(customer?.name)
   const [actionError, setActionError] = useState<string | null>(null)
   const [tab, setTab] = useState('profile')
+  const [showEdit, setShowEdit] = useState(false)
   const [showAnonymise, setShowAnonymise] = useState(false)
   const [exporting, setExporting] = useState(false)
   const [invitingAccount, setInvitingAccount] = useState(false)
@@ -535,14 +660,26 @@ export function AdminCustomerDetail(): JSX.Element {
           meta={heroMeta}
           actions={
             !isAnonymised && (
-              <Action
-                variant="secondary"
-                disabled={!!session?.readOnly}
-                loading={invitingAccount}
-                onClick={() => void handleSendInvite()}
-              >
-                {hasLogin ? 'Resend account invite' : 'Send account invite'}
-              </Action>
+              <>
+                <Action
+                  variant="secondary"
+                  icon="edit"
+                  disabled={!!session?.readOnly}
+                  onClick={() => setShowEdit(true)}
+                >
+                  Edit details
+                </Action>
+                {!hasLogin && (
+                  <Action
+                    variant="secondary"
+                    disabled={!!session?.readOnly}
+                    loading={invitingAccount}
+                    onClick={() => void handleSendInvite()}
+                  >
+                    {customer.pending_invite_expires_at ? 'Resend account invite' : 'Send account invite'}
+                  </Action>
+                )}
+              </>
             )
           }
         />
@@ -588,7 +725,21 @@ export function AdminCustomerDetail(): JSX.Element {
         </div>
       )}
 
-      <Tabs items={TABS} active={tab} onChange={setTab} />
+      <Tabs
+        items={TABS.map((t) => ({
+          ...t,
+          count:
+            t.key === 'shipments'
+              ? shipments?.length
+              : t.key === 'billing'
+                ? billing?.length
+                : t.key === 'claims'
+                  ? claims?.length
+                  : undefined,
+        }))}
+        active={tab}
+        onChange={setTab}
+      />
 
       {tab === 'profile' && (
         <ProfileTab
@@ -603,18 +754,24 @@ export function AdminCustomerDetail(): JSX.Element {
         <ShipmentsTab
           customer={customer}
           shipments={shipments}
+          error={shipmentsQ.error}
+          onRetry={() => void shipmentsQ.refetch()}
           onOpen={(plId) => navigate(`/packing-lists/${plId}`)}
         />
       )}
       {tab === 'billing' && (
         <BillingTab
           billing={billing}
+          error={billingQ.error}
+          onRetry={() => void billingQ.refetch()}
           onOpen={(b) => navigate(`/billing/${b.id}`, { state: { billing: b } })}
         />
       )}
       {tab === 'claims' && (
         <ClaimsTab
           claims={claims}
+          error={claimsQ.error}
+          onRetry={() => void claimsQ.refetch()}
           onOpen={(c) => navigate(`/claims/${c.id}`, { state: { claim: c } })}
         />
       )}
@@ -625,6 +782,17 @@ export function AdminCustomerDetail(): JSX.Element {
           readOnly={!!session?.readOnly}
           onExport={() => void handleExport()}
           onAnonymise={() => setShowAnonymise(true)}
+        />
+      )}
+
+      {showEdit && (
+        <EditCustomerModal
+          customer={customer}
+          onCancel={() => setShowEdit(false)}
+          onSaved={(updated) => {
+            qc.setQueryData(customerKeys.detail(id ?? ''), updated)
+            setShowEdit(false)
+          }}
         />
       )}
 

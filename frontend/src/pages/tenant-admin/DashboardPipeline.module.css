@@ -15,11 +15,14 @@
   position: relative;
   display: flex;
   flex-direction: column;
+  justify-content: space-between;
   gap: var(--space-2);
+  min-height: 92px;
   padding: var(--space-3) var(--space-4) var(--space-4);
   background: var(--color-surface);
   border: 1px solid var(--color-line-soft);
   border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-rest);
   text-align: left;
   cursor: pointer;
   overflow: hidden;
@@ -53,13 +56,15 @@
 
 .stageTop {
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   gap: var(--space-2);
+  min-height: 2.4em;
 }
 
 .stageDot {
   width: 8px;
   height: 8px;
+  margin-top: var(--space-1);
   border-radius: var(--radius-full);
   background: var(--accent);
   flex-shrink: 0;
@@ -123,18 +128,25 @@
   display: inline-flex;
   align-items: center;
   gap: var(--space-2);
-  height: 38px;
+  height: 36px;
   padding: 0 var(--space-3);
   flex: 1 1 240px;
   min-width: 200px;
   max-width: 380px;
   background: var(--color-surface);
   border: 1px solid var(--color-control-border);
-  border-radius: var(--radius-lg);
+  border-radius: var(--radius-md);
+  transition:
+    border-color var(--motion-fast) var(--ease-standard),
+    box-shadow var(--motion-fast) var(--ease-standard);
+}
+:global([data-theme='dark']) .searchWrap {
+  background: var(--color-page);
 }
 
 .searchWrap:focus-within {
   border-color: var(--color-primary);
+  box-shadow: var(--shadow-focus-ring);
 }
 
 .searchInput {

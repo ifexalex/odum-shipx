@@ -1,10 +1,10 @@
-import { useMemo, type JSX } from 'react'
+import { useMemo, useState, type JSX } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { formatCbm } from '../../api/decimal'
 import { orderedPackageMix, type Manifest, type VerificationStatus } from '../../api/manifest'
 import { isManifestOverdue as isOverdue } from '../../api/manifestRules'
 import { useManifestList, useManifestStats } from '../../hooks/useManifests'
-import { Badge, Banner, Chip, ListFooter, Mono, StatCard, StatusBadge, Table, EmptyState } from '../../design/components'
+import { Badge, Banner, Chip, ListFooter, Mono, SearchField, StatCard, StatusBadge, Table, EmptyState } from '../../design/components'
 import styles from './ManifestList.module.css'
 import { formatKg } from '../../lib/format'
 import { useStatusParam } from '../../lib/useStatusParam'
@@ -50,9 +50,20 @@ const VERIFICATION_STATUSES: readonly VerificationStatus[] = ['pending', 'verifi
 export function ManifestList(): JSX.Element {
   const navigate = useNavigate()
   const [statusFilter, setStatusFilter] = useStatusParam<VerificationStatus>(VERIFICATION_STATUSES)
+  const [search, setSearch] = useState('')
   const { items: manifests, isLoading: loading, error, hasMore, loadMore, isFetchingMore, totalCount } = useManifestList(
     statusFilter ? { verification_status: statusFilter } : {},
   )
+
+  const filteredManifests = useMemo(() => {
+    const q = search.trim().toLowerCase()
+    if (!q) return manifests
+    return manifests.filter((mf) =>
+      [mf.container_number, mf.container_id]
+        .filter(Boolean)
+        .some((v) => v!.toLowerCase().includes(q)),
+    )
+  }, [manifests, search])
 
   const overdueCount = useMemo(() => manifests.filter(isOverdue).length, [manifests])
 
@@ -150,13 +161,21 @@ export function ManifestList(): JSX.Element {
                 ))}
               </>
             }
+            search={
+              <SearchField
+                label="Search manifests"
+                placeholder="Container number…"
+                value={search}
+                onChange={setSearch}
+              />
+            }
           />
         }
         footer={
           <ListFooter
-            shown={manifests.length}
-            total={totalCount}
-            hasMore={hasMore}
+            shown={filteredManifests.length}
+            total={search.trim() ? filteredManifests.length : totalCount}
+            hasMore={!search.trim() && hasMore}
             loading={isFetchingMore}
             onLoadMore={loadMore}
             noun="manifests"
@@ -173,7 +192,7 @@ export function ManifestList(): JSX.Element {
             { title: 'Weight (kg)', type: 'number' },
             { title: 'Status', type: 'status' },
           ]}
-          rows={manifests.map((mf) => {
+          rows={filteredManifests.map((mf) => {
             const overdue = isOverdue(mf)
             return {
               suspended: overdue,
@@ -210,8 +229,8 @@ export function ManifestList(): JSX.Element {
           })}
           loading={loading}
           emptyState={
-            !loading && manifests.length === 0 ? (
-              <EmptyState compact title="No manifests yet" />
+            !loading && filteredManifests.length === 0 ? (
+              <EmptyState compact title={search.trim() ? 'No manifests match this search' : 'No manifests yet'} />
             ) : undefined
           }
         />

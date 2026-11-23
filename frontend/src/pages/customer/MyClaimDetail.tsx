@@ -1,13 +1,17 @@
 import { type JSX } from 'react'
+import { useQueryClient } from '@tanstack/react-query'
 import { useParams } from 'react-router-dom'
 import { ApiError } from '../../api/client'
-import type { Claim, ClaimEvidenceFile, DamageClaimStatus } from '../../api/claims'
+import { presignedUploadApi, type Claim, type ClaimEvidenceFile, type DamageClaimStatus } from '../../api/claims'
+import { claimKeys } from '../../api/keys'
+import { EvidenceUploader } from '../nigeria/EvidenceUploader'
 import {
   customerInspectionLabel,
   customerRefundLabel,
   customerResolutionLabel,
 } from '../../api/claimsRules'
 import { Banner, Card, Kvp, Mono, StatusBadge, Stepper, PageSkeleton } from '../../design/components'
+import { toast } from '../../design/toast'
 import { useClaim } from '../../hooks/useClaims'
 import { formatCount, formatDate, formatNgn } from '../../lib/format'
 import { PageHeader } from '../../shell/PageHeader'
@@ -107,6 +111,7 @@ function Outcome({ claim }: { claim: Claim }): JSX.Element | null {
  */
 export function MyClaimDetail(): JSX.Element {
   const { id } = useParams<{ id: string }>()
+  const qc = useQueryClient()
   const { data: claim, isLoading, error } = useClaim(id ?? '')
   // Names this record in the breadcrumb once loaded (FD-46).
   useBreadcrumbLabel(claim?.reference)
@@ -159,6 +164,19 @@ export function MyClaimDetail(): JSX.Element {
           Evidence you provided
         </h2>
         <EvidenceList files={claim.evidence ?? []} />
+        {claim.status !== 'resolved' && claim.status !== 'closed' && (
+          <div className={styles.evidenceAdd}>
+            <h3 className={styles.evidenceAddTitle}>Add more photos or videos</h3>
+            <EvidenceUploader
+              getPresignedUrl={(f) => presignedUploadApi.getUrl(claim.id, f.name, f.type, f.size)}
+              confirmUpload={(evidenceId) => presignedUploadApi.confirm(claim.id, evidenceId)}
+              onUploaded={() => {
+                toast.success('Evidence uploaded')
+                void qc.invalidateQueries({ queryKey: claimKeys.all })
+              }}
+            />
+          </div>
+        )}
       </Card>
     </DetailPage>
   )

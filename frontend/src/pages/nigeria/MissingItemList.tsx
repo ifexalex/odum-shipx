@@ -1,11 +1,11 @@
-import { useState, type JSX } from 'react'
+import { useMemo, useState, type JSX } from 'react'
 import { ApiError } from '../../api/client'
 import { missingItemsApi, type MissingItem, type MissingItemStatus, type UpdateMissingItemInput } from '../../api/claims'
 import { canCompensateMissingItem, canUpdateMissingItem, missingItemStatusesFor } from '../../api/claimsRules'
 import { useMissingItemList } from '../../hooks/useItems'
 import { useSession } from '../../auth/useSession'
 import type { UserRole } from '../../auth/types'
-import { Banner, Button, Chip, DialogGuard, Field, ListFooter, Mono, StatusBadge, Table, Select, EmptyState, ErrorState } from '../../design/components'
+import { Banner, Button, Chip, Field, Kvp, ListFooter, Modal, Mono, SearchField, StatusBadge, Table, Select, EmptyState, ErrorState } from '../../design/components'
 import styles from './ItemList.module.css'
 import { formatDate } from '../../lib/format'
 import { statusLabel } from '../../design/status'
@@ -62,11 +62,26 @@ function UpdateModal({ item, role, onCancel, onSuccess }: UpdateModalProps): JSX
   }
 
   return (
-    <div className={styles.overlay} onClick={onCancel}>
-      <DialogGuard onClose={onCancel} />
-      <div className={styles.panel} onClick={(e) => e.stopPropagation()} role="dialog" aria-modal="true">
-        <h3 className={styles.panelTitle}>Update missing item</h3>
-        {error && <div className={styles.panelBanner}><Banner variant="error" title="Action failed">{error}</Banner></div>}
+    <Modal
+      open
+      onClose={onCancel}
+      title="Update missing item"
+      size="sm"
+      footer={
+        <>
+          <Button variant="ghost" onClick={onCancel} disabled={submitting}>Cancel</Button>
+          <Button variant="primary" loading={submitting} disabled={compensationInvalid} onClick={() => void handleSubmit()}>Save update</Button>
+        </>
+      }
+    >
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-4)' }}>
+        {error && <Banner variant="error" title="Action failed">{error}</Banner>}
+        <div className={styles.itemContext}>
+          {item.customer_name && <Kvp label="Customer" value={item.customer_name} />}
+          {item.container_number && <Kvp label="Container" value={<Mono>{item.container_number}</Mono>} />}
+          <Kvp label="Carton tags" value={<Mono>{item.carton_tags.join(', ') || '—'}</Mono>} />
+          <Kvp label="Description" value={item.description || '—'} divider={false} />
+        </div>
         <div className={styles.selectField}>
           <Select label="New status" value={status} onChange={(e) => setStatus(e.target.value as MissingItemStatus)}>
             {statuses.map((s) => <option key={s} value={s}>{statusLabel('missingItem', s)}</option>)}
@@ -85,12 +100,8 @@ function UpdateModal({ item, role, onCancel, onSuccess }: UpdateModalProps): JSX
         )}
         <Field label="Notes" name="notes" multiline placeholder="Add any notes about this update…"
           value={notes} onChange={(e) => setNotes(e.target.value)} />
-        <div className={styles.panelActions}>
-          <Button variant="ghost" onClick={onCancel} disabled={submitting}>Cancel</Button>
-          <Button variant="primary" loading={submitting} disabled={compensationInvalid} onClick={() => void handleSubmit()}>Save update</Button>
-        </div>
       </div>
-    </div>
+    </Modal>
   )
 }
 
@@ -103,10 +114,21 @@ export function MissingItemList(): JSX.Element {
   const role: UserRole = session?.role ?? 'nigeria_office_staff'
 
   const [statusFilter, setStatusFilter] = useState<MissingItemStatus | null>(null)
+  const [search, setSearch] = useState('')
   const [editing, setEditing] = useState<MissingItem | null>(null)
   const { items, isLoading: loading, error, hasMore, loadMore, isFetchingMore, refetch, totalCount } = useMissingItemList(
     statusFilter ? { status: statusFilter } : {},
   )
+
+  const filteredItems = useMemo(() => {
+    const q = search.trim().toLowerCase()
+    if (!q) return items
+    return items.filter((item) =>
+      [item.customer_name, item.container_number, item.description, ...item.carton_tags]
+        .filter(Boolean)
+        .some((v) => v!.toLowerCase().includes(q)),
+    )
+  }, [items, search])
 
   function handleUpdated(): void {
     setEditing(null)
@@ -153,13 +175,21 @@ export function MissingItemList(): JSX.Element {
                 ))}
               </>
             }
+            search={
+              <SearchField
+                label="Search missing items"
+                placeholder="Customer, container, tag, item…"
+                value={search}
+                onChange={setSearch}
+              />
+            }
           />
         }
         footer={
           <ListFooter
-            shown={items.length}
-            total={totalCount}
-            hasMore={hasMore}
+            shown={filteredItems.length}
+            total={search.trim() ? filteredItems.length : totalCount}
+            hasMore={!search.trim() && hasMore}
             loading={isFetchingMore}
             onLoadMore={loadMore}
             noun="missing items"
@@ -169,14 +199,18 @@ export function MissingItemList(): JSX.Element {
       >
         <Table
           columns={[
+            { title: 'Customer' },
+            { title: 'Container', type: 'reference' },
             { title: 'Description' },
             { title: 'Carton tags', type: 'reference' },
             { title: 'Status', type: 'status' },
             { title: 'Reported', type: 'date' },
             { title: '', type: 'action', width: '80px' },
           ]}
-          rows={items.map((item) => ({
+          rows={filteredItems.map((item) => ({
             cells: [
+              <span key="customer">{item.customer_name ?? '—'}</span>,
+              <Mono key="container">{item.container_number ?? '—'}</Mono>,
               <span key="desc">{item.description}</span>,
               <Mono key="tags">{item.carton_tags.join(', ') || '—'}</Mono>,
               <StatusBadge key="status" kind="missingItem" status={item.status} />,
@@ -192,7 +226,7 @@ export function MissingItemList(): JSX.Element {
           }))}
           loading={loading}
           emptyState={
-            !loading && items.length === 0 ? (
+            !loading && filteredItems.length === 0 ? (
               <EmptyState compact title="No missing items on record" />
             ) : undefined
           }

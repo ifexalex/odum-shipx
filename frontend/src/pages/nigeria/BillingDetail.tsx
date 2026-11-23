@@ -1,8 +1,8 @@
-import { useCallback, useState, type JSX } from 'react'
+import { useCallback, useEffect, useRef, useState, type JSX } from 'react'
 import { useLocation, useNavigate, useParams } from 'react-router-dom'
 import { ApiError } from '../../api/client'
 import { billingApi, carryoverApi, type Billing, type Carryover, type CBMDispute } from '../../api/billing'
-import { canApplyCarryover, canCancelBilling, canRecordPayment } from '../../api/billingRules'
+import { canApplyCarryover, canCancelBilling, canRecordPayment, isTerminalDisputeStatus } from '../../api/billingRules'
 import { useSession } from '../../auth/useSession'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { billingKeys, releaseNoteKeys } from '../../api/keys'
@@ -60,7 +60,8 @@ export function BillingDetail(): JSX.Element {
   // Router state from BillingList seeds the first paint so arriving from the
   // list renders instantly; GET /v1/billing/{id}/detail is the real source and
   // backs direct links plus every refresh after a mutation.
-  const stateBilling = (location.state as { billing?: Billing } | null)?.billing ?? null
+  const routeState = location.state as { billing?: Billing; openModal?: 'payment' | 'release' } | null
+  const stateBilling = routeState?.billing ?? null
   const { data: billing = null, isLoading: loading, error: loadError, refetch } = useQuery({
     queryKey: billingKeys.detail(id ?? ''),
     queryFn: () => billingApi.get(id!),
@@ -71,17 +72,8 @@ export function BillingDetail(): JSX.Element {
   // Names this record in the breadcrumb once loaded (FD-46).
   useBreadcrumbLabel(billing?.invoice_number)
   const [carryovers, setCarryovers] = useState<Carryover[]>([])
+  const [loadingCarryovers, setLoadingCarryovers] = useState(false)
   const [actionError, setActionError] = useState<string | null>(null)
-
-  const error =
-    actionError ??
-    (loadError
-      ? loadError instanceof ApiError && loadError.status === 404
-        ? 'Billing record not found.'
-        : loadError instanceof ApiError
-          ? loadError.message
-          : 'Could not load billing record.'
-      : null)
 
   const applyBilling = (updated: Billing): void => {
     qc.setQueryData(billingKeys.detail(id ?? ''), updated)
@@ -95,6 +87,26 @@ export function BillingDetail(): JSX.Element {
   const [cancelError, setCancelError] = useState<string | null>(null)
   const [waivingFees, setWaivingFees] = useState(false)
   const [confirmWaive, setConfirmWaive] = useState(false)
+  const autoOpenedRef = useRef(false)
+
+  // If navigated from a BillingList row action ("Record payment" / "Release"),
+  // open the target modal immediately once the invoice is loaded and permitted.
+  useEffect(() => {
+    if (autoOpenedRef.current || !billing || !routeState?.openModal) return
+    if (routeState.openModal === 'payment' && canRecordPayment(billing, role)) {
+      autoOpenedRef.current = true
+      setShowPaymentModal(true)
+    } else if (
+      routeState.openModal === 'release' &&
+      (role === 'nigeria_office_staff' || role === 'tenant_admin') &&
+      (billing.payment_status === 'paid' ||
+        billing.payment_status === 'overpaid' ||
+        billing.payment_status === 'partially_paid')
+    ) {
+      autoOpenedRef.current = true
+      setShowReleaseNoteModal(true)
+    }
+  }, [billing, role, routeState?.openModal])
 
   // Storage fee accrual log — loaded lazily once a billing record is known
   const { data: storageFees = [] } = useQuery({
@@ -109,10 +121,11 @@ export function BillingDetail(): JSX.Element {
 
   async function loadCarryovers(): Promise<void> {
     if (!billing) return
+    setLoadingCarryovers(true)
     try {
       // A carryover can only be applied to a billing for the SAME customer
       // (the backend rejects a mismatch, BR-CARRYOVER-003). Scope the list to
-      // this billing's customer so the picker only offers applicable credits
+      // this billing's customer so the picker only offers applicable balances
       // instead of every customer's — picking a mismatch always failed.
       const result = await carryoverApi.list({
         status: 'outstanding',
@@ -121,6 +134,8 @@ export function BillingDetail(): JSX.Element {
       setCarryovers(result.data)
     } catch {
       // non-fatal — user can still see the modal with empty state
+    } finally {
+      setLoadingCarryovers(false)
     }
   }
 
@@ -134,7 +149,7 @@ export function BillingDetail(): JSX.Element {
   }
 
   if (loading) return <PageSkeleton kind="detail" label="Loading billing record" />
-  if (error || !billing) {
+  if (!billing || (loadError && !billing)) {
     return (
       <>
         <PageHeader title="Invoice" />
@@ -197,18 +212,6 @@ export function BillingDetail(): JSX.Element {
                 </>
               ),
               billing.billed_at && `Billed ${formatDate(billing.billed_at)}`,
-              billing.customer_phone && (
-                <span className={styles.contact}>
-                  <Icon name="phone" size={12} color="var(--color-ink-4)" />
-                  {billing.customer_phone}
-                </span>
-              ),
-              billing.customer_email && (
-                <span className={styles.contact}>
-                  <Icon name="mail" size={12} color="var(--color-ink-4)" />
-                  {billing.customer_email}
-                </span>
-              ),
             ]}
             // One next step (FD-23): money owed → record it; settled → release the goods.
             primary={
@@ -288,11 +291,22 @@ export function BillingDetail(): JSX.Element {
         }
         notices={
           <>
+            {actionError && (
+              <Banner variant="error" title="Action failed" onDismiss={() => setActionError(null)}>
+                {actionError}
+              </Banner>
+            )}
             {session?.readOnly && (
               <Banner variant="warning" icon="eye" title="Read-only session">
                 You're viewing this tenant as their Tenant Admin for support. Data is fully visible,
                 but every create, edit, approve, and delete action is disabled. The session ends
                 automatically after 30 minutes or when you exit.
+              </Banner>
+            )}
+            {billing._active_disputes.some((d) => !isTerminalDisputeStatus(d.status)) && (
+              <Banner variant="warning" title="Active CBM dispute">
+                A customer measurement dispute is open on this invoice. Review or resolve it below
+                before finalizing payment.
               </Banner>
             )}
             {(Number(billing.storage_fees_ngn) > 0 || billing.release_note_issued_at) && (
@@ -306,48 +320,91 @@ export function BillingDetail(): JSX.Element {
             )}
           </>
         }
-        // The totals, once (FD-19): they were four stat cards above a breakdown that repeated all four.
+        // Summary + release status + direct customer shortcuts in aside.
         aside={
-          <Section title="Summary">
-            <Kvp label="Volume" value={<Mono>{formatCbm(billing.total_cbm)} CBM</Mono>} />
-            <Kvp label="Total due" value={<Mono>{formatNgn(billing.total_due_ngn)}</Mono>} />
-            <Kvp label="Paid" value={<Mono>{formatNgn(billing.total_paid_ngn)}</Mono>} />
-            <Kvp
-              label="Outstanding"
-              value={
-                <Mono color={outstanding > 0 ? 'var(--color-error)' : undefined}>
-                  {formatNgn(outstanding)}
-                </Mono>
-              }
-            />
-          </Section>
+          <>
+            <Section title="Summary">
+              <Kvp label="Volume" value={<Mono>{formatCbm(billing.total_cbm)} CBM</Mono>} />
+              <Kvp label="Total due" value={<Mono>{formatNgn(billing.total_due_ngn)}</Mono>} />
+              <Kvp label="Paid" value={<Mono>{formatNgn(billing.total_paid_ngn)}</Mono>} />
+              <Kvp
+                label="Outstanding"
+                value={
+                  <Mono color={outstanding > 0 ? 'var(--color-error)' : undefined}>
+                    {formatNgn(outstanding)}
+                  </Mono>
+                }
+                divider={Boolean(billing.release_note_issued_at)}
+              />
+              {billing.release_note_issued_at && (
+                <Kvp
+                  label="Release note"
+                  divider={false}
+                  value={
+                    <RecordLink to="/release-notes">
+                      Issued {formatDate(billing.release_note_issued_at, 'short')}
+                    </RecordLink>
+                  }
+                />
+              )}
+            </Section>
+            {(billing.customer_phone || billing.customer_email) && (
+              <Section title="Customer contact">
+                {billing.customer_phone && (
+                  <Kvp
+                    label="Phone"
+                    divider={Boolean(billing.customer_email)}
+                    value={
+                      <a href={`tel:${billing.customer_phone}`} className={styles.contactLink}>
+                        <Icon name="phone" size={12} color="currentColor" />
+                        {billing.customer_phone}
+                      </a>
+                    }
+                  />
+                )}
+                {billing.customer_email && (
+                  <Kvp
+                    label="Email"
+                    divider={false}
+                    value={
+                      <a href={`mailto:${billing.customer_email}`} className={styles.contactLink}>
+                        <Icon name="mail" size={12} color="currentColor" />
+                        {billing.customer_email}
+                      </a>
+                    }
+                  />
+                )}
+              </Section>
+            )}
+          </>
         }
       >
-        <Section title="Invoice breakdown">
-          <InvoiceBreakdown billing={billing} />
-        </Section>
-        <PaymentsTable payments={billing.payments} />
+        {/* Urgent actionable items first: pending transfer claims & active CBM disputes */}
         <PaymentClaimsSection
           billingId={billing.id}
           isStaff={isStaff}
           onChanged={invalidateBillingCaches}
         />
+        {billing._active_disputes.length > 0 && (
+          <Section title="CBM disputes">
+            {billing._active_disputes.map((d) => (
+              <DisputeCard key={d.id} dispute={d} role={role} onUpdated={handleDisputeUpdated} />
+            ))}
+          </Section>
+        )}
+        <Section title="Invoice breakdown">
+          <InvoiceBreakdown billing={billing} />
+        </Section>
         <MiscChargesSection
           billing={billing}
           canRemove={canRemoveCharge}
           onChanged={invalidateBillingCaches}
           onError={setActionError}
         />
+        <PaymentsTable payments={billing.payments} />
         {storageFees.length > 0 && (
           <Section title="Storage fee accrual log" flush>
             <StorageFeeLog fees={storageFees} />
-          </Section>
-        )}
-        {billing._active_disputes.length > 0 && (
-          <Section title="CBM disputes">
-            {billing._active_disputes.map((d) => (
-              <DisputeCard key={d.id} dispute={d} role={role} onUpdated={handleDisputeUpdated} />
-            ))}
           </Section>
         )}
       </DetailPage>
@@ -407,6 +464,7 @@ export function BillingDetail(): JSX.Element {
         <ApplyCarryoverModal
           billing={billing}
           carryovers={carryovers}
+          loading={loadingCarryovers}
           onCancel={() => setShowCarryoverModal(false)}
           onSuccess={() => {
             setShowCarryoverModal(false)
@@ -419,16 +477,15 @@ export function BillingDetail(): JSX.Element {
         <GenerateReleaseNoteModal
           billing={billing}
           onCancel={() => setShowReleaseNoteModal(false)}
-          onSuccess={() => {
+          onSuccess={(created) => {
             setShowReleaseNoteModal(false)
             invalidateBillingCaches()
-            // Ground-truth gap found live: this navigates straight to the
-            // release-notes list, but nothing invalidated its query cache —
-            // with the 3-minute default staleTime (lib/queryClient.ts), a
-            // list already fetched once this session kept showing
-            // pre-generation data, hiding the note just created.
             void qc.invalidateQueries({ queryKey: releaseNoteKeys.all })
-            navigate('/release-notes')
+            if (created?.id) {
+              navigate(`/release-notes/${created.id}`, { state: { note: created } })
+            } else {
+              navigate('/release-notes')
+            }
           }}
         />
       )}

@@ -1,17 +1,45 @@
 import { useQuery } from '@tanstack/react-query'
-import { useState, type JSX } from 'react'
+import { useMemo, useState, type JSX } from 'react'
 import { useParams } from 'react-router-dom'
 import { ApiError } from '../../api/client'
 import { releaseNoteKeys } from '../../api/keys'
 import { releaseNotesApi } from '../../api/releaseNotes'
-import { } from '../../api/releaseNotesRules'
-import { Banner, Button, Card, Kvp, Mono, StatusBadge, PageSkeleton } from '../../design/components'
+import { Banner, Button, Card, Kvp, StatusBadge, PageSkeleton } from '../../design/components'
+import { toast } from '../../design/toast'
+import { encodeQrMatrix } from '../../lib/qrCode'
 import { STALE_30S } from '../../lib/queryClient'
 import { PageHeader } from '../../shell/PageHeader'
 import styles from './customer.module.css'
 import { formatDate, formatNgn } from '../../lib/format'
 import { useBreadcrumbLabel } from '../../shell/breadcrumbs'
 import { DetailPage } from '../../shell/DetailPage'
+
+/** A scannable QR of the reference. Dark modules on a light tile, readable in both themes. */
+function ReferenceQr({ value }: { value: string }): JSX.Element | null {
+  const matrix = useMemo(() => encodeQrMatrix(value), [value])
+  if (!matrix) return null
+  const quiet = 2
+  const size = matrix.length + quiet * 2
+  return (
+    <span className={styles.qrBox}>
+      <svg
+        role="img"
+        aria-label={`QR code for ${value}`}
+        viewBox={`0 0 ${size} ${size}`}
+        width={132}
+        height={132}
+        shapeRendering="crispEdges"
+      >
+        <rect width={size} height={size} fill="var(--color-on-dark)" />
+        {matrix.map((row, r) =>
+          row.map((dark, c) =>
+            dark ? <rect key={`${r}-${c}`} x={c + quiet} y={r + quiet} width={1} height={1} fill="var(--color-forest-dark)" /> : null,
+          ),
+        )}
+      </svg>
+    </span>
+  )
+}
 
 /**
  * A customer's own release note: what they show, or quote, at the warehouse to collect their goods.
@@ -24,6 +52,7 @@ export function MyReleaseNote(): JSX.Element {
   const { id } = useParams<{ id: string }>()
   const [downloading, setDownloading] = useState(false)
   const [downloadError, setDownloadError] = useState<string | null>(null)
+  const [copied, setCopied] = useState(false)
 
   const { data: note, isLoading, error } = useQuery({
     queryKey: releaseNoteKeys.detail(id ?? ''),
@@ -47,6 +76,18 @@ export function MyReleaseNote(): JSX.Element {
     }
   }
 
+  async function copyReference(): Promise<void> {
+    if (!note) return
+    try {
+      await navigator.clipboard?.writeText(note.reference_number)
+      setCopied(true)
+      toast.success('Reference copied', note.reference_number)
+      setTimeout(() => setCopied(false), 2000)
+    } catch {
+      toast.error('Could not copy', 'Select the reference and copy it manually.')
+    }
+  }
+
   if (isLoading) return <PageSkeleton kind="detail" label="Loading your release note" />
 
   if (error || !note) {
@@ -63,11 +104,20 @@ export function MyReleaseNote(): JSX.Element {
 
   const cartons = `${note.carton_count} of ${note.total_cartons_for_customer} cartons`
   const owing = Number(note.balance_ngn) > 0
+  const phoneHref = note.warehouse_phone ? `tel:${note.warehouse_phone.replace(/[^\d+]/g, '')}` : null
 
   return (
     <DetailPage
       header={
-        <PageHeader title="Release note" meta="Show this at the warehouse to collect your goods." />
+        <PageHeader
+          title="Release note"
+          meta="Show this at the warehouse to collect your goods."
+          primary={
+            <Button variant="primary" icon="download" loading={downloading} onClick={() => void downloadPdf()}>
+              Download PDF
+            </Button>
+          }
+        />
       }
     >
       {note.status === 'active' && (
@@ -106,20 +156,31 @@ export function MyReleaseNote(): JSX.Element {
         </div>
       )}
 
-      <Card padding="large">
-        <div
-          style={{
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'space-between',
-            gap: 'var(--space-3)',
-            flexWrap: 'wrap',
-          }}
-        >
-          <Mono color="var(--color-ink)">{note.reference_number}</Mono>
-          <StatusBadge kind="releaseNote" status={note.status} audience="customer" />
+      {downloadError && (
+        <div className={styles.banner}>
+          <Banner variant="error">{downloadError}</Banner>
         </div>
-        <div style={{ height: 16 }} />
+      )}
+
+      <Card padding="large">
+        <div className={styles.passHero}>
+          <div className={styles.passRefBlock}>
+            <span className={styles.passLabel}>Release note reference</span>
+            <span className={styles.passRef}>{note.reference_number}</span>
+            <div className={styles.passActions}>
+              <StatusBadge kind="releaseNote" status={note.status} audience="customer" />
+              <Button
+                variant="secondary"
+                size="sm"
+                icon={copied ? 'check' : 'copy'}
+                onClick={() => void copyReference()}
+              >
+                {copied ? 'Copied' : 'Copy reference'}
+              </Button>
+            </div>
+          </div>
+          <ReferenceQr value={note.reference_number} />
+        </div>
         <Kvp optional label="Container" value={note.container_number} />
         <Kvp label="Cartons" value={cartons} />
         {note.is_partial_release && (
@@ -128,34 +189,25 @@ export function MyReleaseNote(): JSX.Element {
         <Kvp label="Valid until" value={formatDate(note.valid_until)} />
         <Kvp optional label="Warehouse" value={note.warehouse_name} />
         {note.warehouse_address && <Kvp label="Address" value={note.warehouse_address} />}
-        {note.warehouse_phone && <Kvp label="Phone" value={note.warehouse_phone} />}
+        {note.warehouse_phone && phoneHref && (
+          <Kvp
+            label="Phone"
+            value={<a className={styles.phoneLink} href={phoneHref}>{note.warehouse_phone}</a>}
+          />
+        )}
         {note.carton_tags.length > 0 && (
-          <Kvp label="Carton tags" value={<Mono>{note.carton_tags.join(', ')}</Mono>} />
+          <Kvp
+            label="Carton tags"
+            value={
+              <span className={styles.tagPills}>
+                {note.carton_tags.map((tag) => (
+                  <span key={tag} className={styles.tagPill}>{tag}</span>
+                ))}
+              </span>
+            }
+          />
         )}
       </Card>
-
-      {downloadError && (
-        <div className={styles.banner} style={{ marginTop: 'var(--space-4)' }}>
-          <Banner variant="error">{downloadError}</Banner>
-        </div>
-      )}
-      <div
-        style={{
-          display: 'flex',
-          gap: 'var(--space-2)',
-          marginTop: 'var(--space-5)',
-          flexWrap: 'wrap',
-        }}
-      >
-        <Button
-          variant="primary"
-          icon="download"
-          loading={downloading}
-          onClick={() => void downloadPdf()}
-        >
-          Download PDF
-        </Button>
-      </div>
     </DetailPage>
   )
 }

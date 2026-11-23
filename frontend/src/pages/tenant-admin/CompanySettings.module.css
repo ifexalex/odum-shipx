@@ -22,6 +22,10 @@
   min-width: 0;
 }
 
+.mobilePreviewBtn {
+  display: none;
+}
+
 @container sxapp (max-width: 1200px) {
   .grid {
     grid-template-columns: 1fr;
@@ -29,6 +33,18 @@
   .previewCol {
     display: none;
   }
+  .mobilePreviewBtn {
+    display: inline-flex;
+  }
+}
+
+.inlineLink {
+  color: var(--color-primary-text);
+  font-weight: 600;
+  text-decoration: none;
+}
+.inlineLink:hover {
+  text-decoration: underline;
 }
 
 /* ---- form ---- */

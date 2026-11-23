@@ -10,15 +10,17 @@ import { useNavigate, useParams } from 'react-router-dom'
 import { ApiError } from '../../api/client'
 import { refundsApi, type CreateRefundInput } from '../../api/refunds'
 import { bankDetailsProblem } from '../../api/refundsRules'
-import { Banner, Button, Field, RadioGroup } from '../../design/components'
+import { Banner, Button, Card, Field, Kvp, Mono, RadioGroup } from '../../design/components'
+import { formatNgn } from '../../lib/format'
 import { PageHeader } from '../../shell/PageHeader'
+import { UnsavedChangesGuard } from '../../shell/UnsavedChangesGuard'
 import styles from './customer.module.css'
 import { useInvoiceCrumb } from './useInvoiceCrumb'
 import { toast } from '../../design/toast'
 
 export function RefundRequest(): JSX.Element {
   const { id: billingId } = useParams<{ id: string }>()
-  useInvoiceCrumb(billingId)
+  const billing = useInvoiceCrumb(billingId)
   const navigate = useNavigate()
   const idempotencyKey = useRef(crypto.randomUUID())
 
@@ -34,6 +36,18 @@ export function RefundRequest(): JSX.Element {
   const bankProblem = toBank ? bankDetailsProblem({ bankName, accountNumber, accountName }) : null
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState<string | null>(null)
+
+  const dirty =
+    amountNgn !== '' || reason.trim() !== '' || bankName.trim() !== '' || accountNumber !== '' || accountName.trim() !== ''
+  const ACCOUNT_NUMBER_MESSAGE = 'Enter your 10-digit account number.'
+  const accountNumberInlineError =
+    toBank && ((accountNumber.length > 0 && accountNumber.length !== 10) || (showBankProblem && bankProblem === ACCOUNT_NUMBER_MESSAGE))
+      ? ACCOUNT_NUMBER_MESSAGE
+      : undefined
+  const overpayment =
+    billing && billing.total_paid_ngn != null && billing.total_due_ngn != null
+      ? Math.max(0, Number(billing.total_paid_ngn) - Number(billing.total_due_ngn))
+      : 0
 
   async function handleSubmit(): Promise<void> {
     if (!billingId) return
@@ -69,12 +83,46 @@ export function RefundRequest(): JSX.Element {
 
   return (
     <div className={styles.page}>
+      <UnsavedChangesGuard when={dirty && !submitting}>Your refund request has not been submitted yet.</UnsavedChangesGuard>
       <PageHeader
         title="Request a refund"
         meta="Submit a refund request for review by our accounts team."
       />
 
-      <div className={styles.formCard}>
+      {billing && (
+        <div className={styles.contextCard}>
+          <Card padding="default">
+            <Kvp label="Invoice" value={<Mono>{billing.invoice_number ?? billingId}</Mono>} />
+            {billing.container_number && <Kvp label="Container" value={<Mono>{billing.container_number}</Mono>} />}
+            {billing.total_due_ngn != null && <Kvp label="Total billed" value={<Mono>{formatNgn(billing.total_due_ngn)}</Mono>} />}
+            {billing.total_paid_ngn != null && (
+              <Kvp label="Amount paid" value={<Mono>{formatNgn(billing.total_paid_ngn)}</Mono>} divider={overpayment > 0} />
+            )}
+            {overpayment > 0 && (
+              <>
+                <Kvp
+                  label="Overpayment balance"
+                  value={<Mono color="var(--color-primary)">{formatNgn(overpayment)}</Mono>}
+                  divider={false}
+                />
+                <div className={styles.contextAction}>
+                  <Button variant="secondary" size="sm" onClick={() => setAmountNgn(String(overpayment))}>
+                    Use full overpayment
+                  </Button>
+                </div>
+              </>
+            )}
+          </Card>
+        </div>
+      )}
+
+      <form
+        className={styles.formCard}
+        onSubmit={(e) => {
+          e.preventDefault()
+          if (canSubmit) void handleSubmit()
+        }}
+      >
         {error && (
           <div className={styles.banner}>
             <Banner variant="error" title="Submission failed">{error}</Banner>
@@ -137,6 +185,7 @@ export function RefundRequest(): JSX.Element {
               placeholder="10 digits"
               value={accountNumber}
               onChange={(e) => setAccountNumber(e.target.value.replace(/\D/g, ''))}
+              error={accountNumberInlineError}
             />
             <Field
               label="Account name"
@@ -147,17 +196,19 @@ export function RefundRequest(): JSX.Element {
               value={accountName}
               onChange={(e) => setAccountName(e.target.value)}
             />
-            {showBankProblem && bankProblem && <Banner variant="error">{bankProblem}</Banner>}
+            {showBankProblem && bankProblem && bankProblem !== accountNumberInlineError && (
+              <Banner variant="error">{bankProblem}</Banner>
+            )}
           </div>
         )}
 
         <div className={styles.formActions}>
           <Button variant="ghost" onClick={() => navigate(-1)} disabled={submitting}>Cancel</Button>
-          <Button variant="primary" loading={submitting} disabled={!canSubmit} onClick={() => void handleSubmit()}>
+          <Button type="submit" variant="primary" loading={submitting} disabled={!canSubmit}>
             Submit request
           </Button>
         </div>
-      </div>
+      </form>
     </div>
   )
 }

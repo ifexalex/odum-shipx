@@ -1,11 +1,12 @@
-import type { JSX } from 'react'
+import { useMemo, useState, type JSX } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { isTerminalDisputeStatus } from '../../api/billingRules'
 import { type CBMDisputeStatus } from '../../api/billing'
 import { useSession } from '../../auth/useSession'
 import { useDisputeList } from '../../hooks/useBilling'
-import { Chip, ListFooter, Mono, StatusBadge, Table, EmptyState, ErrorState } from '../../design/components'
+import { Chip, ListFooter, Mono, SearchField, StatusBadge, Table, EmptyState, ErrorState } from '../../design/components'
 import { useNow } from '../../hooks/useNow'
+import { BillingSubNav } from './BillingSubNav'
 import styles from './DisputeList.module.css'
 import { formatDate } from '../../lib/format'
 import { useStatusParam } from '../../lib/useStatusParam'
@@ -73,15 +74,27 @@ export function DisputeList(): JSX.Element {
   // instead of only refreshing when something unrelated re-renders the list.
   const now = useNow()
   const [statusFilter, setStatusFilter] = useStatusParam<CBMDisputeStatus>(DISPUTE_STATUSES)
+  const [search, setSearch] = useState('')
   const { items: disputes, isLoading: loading, error, hasMore, loadMore, isFetchingMore, totalCount, refetch } = useDisputeList(
     statusFilter ? { status: statusFilter } : {},
   )
+
+  const filteredDisputes = useMemo(() => {
+    const q = search.trim().toLowerCase()
+    if (!q) return disputes
+    return disputes.filter((d) =>
+      [d.customer_name, d.invoice_number, d.container_number]
+        .filter(Boolean)
+        .some((v) => v!.toLowerCase().includes(q)),
+    )
+  }, [disputes, search])
 
   return (
     <ListPage
       header={
         <PageHeader title="CBM disputes" meta={'Customer-filed disputes on cargo measurements.'} />
       }
+      tabs={<BillingSubNav active="disputes" />}
       notices={
         <>
           {error && (
@@ -109,13 +122,21 @@ export function DisputeList(): JSX.Element {
               ))}
             </>
           }
+          search={
+            <SearchField
+              label="Search disputes"
+              placeholder="Customer, invoice, container…"
+              value={search}
+              onChange={setSearch}
+            />
+          }
         />
       }
       footer={
         <ListFooter
-          shown={disputes.length}
-          total={totalCount}
-          hasMore={hasMore}
+          shown={filteredDisputes.length}
+          total={search.trim() ? filteredDisputes.length : totalCount}
+          hasMore={!search.trim() && hasMore}
           loading={isFetchingMore}
           onLoadMore={loadMore}
           noun="disputes"
@@ -134,7 +155,7 @@ export function DisputeList(): JSX.Element {
           { title: 'Submitted', type: 'date' },
           { title: 'SLA', align: 'right' },
         ]}
-        rows={disputes.map((d) => ({
+        rows={filteredDisputes.map((d) => ({
           onOpen: () =>
             navigate(isChina ? `/billing/disputes/${d.id}` : `/billing/${d.billing_id}`),
           cells: [
@@ -153,7 +174,7 @@ export function DisputeList(): JSX.Element {
         }))}
         loading={loading}
         emptyState={
-          !loading && disputes.length === 0 ? (
+          !loading && filteredDisputes.length === 0 ? (
             <EmptyState compact title="No disputes match this filter" />
           ) : undefined
         }

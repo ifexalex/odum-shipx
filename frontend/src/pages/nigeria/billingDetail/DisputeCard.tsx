@@ -8,6 +8,7 @@ import {
   isTerminalDisputeStatus,
 } from '../../../api/billingRules'
 import { Action, Banner, Button, DialogGuard, Field, Mono, StatusBadge } from '../../../design/components'
+import { RecordLink } from '../../../shell/RecordLink'
 import styles from '../BillingDetail.module.css'
 import { formatCbm, formatDate } from '../../../lib/format'
 import { toast } from '../../../design/toast'
@@ -289,6 +290,11 @@ export function DisputeCard({ dispute, role, onUpdated }: DisputeCardProps): JSX
               Original CBM: <Mono>{formatCbm(dispute.original_cbm)}</Mono>
             </span>
           )}
+          {dispute.customer_measured_cbm && (
+            <span>
+              Customer claimed: <Mono>{formatCbm(dispute.customer_measured_cbm)}</Mono>
+            </span>
+          )}
           {dispute.corrected_cbm && (
             <span>
               Corrected: <Mono>{formatCbm(dispute.corrected_cbm)}</Mono>
@@ -297,62 +303,70 @@ export function DisputeCard({ dispute, role, onUpdated }: DisputeCardProps): JSX
         </div>
       </div>
 
+      {dispute.reason && <p className={styles.disputeReason}>{dispute.reason}</p>}
+
       {error && (
         <div className={styles.disputeError}>
           <Banner variant="error">{error}</Banner>
         </div>
       )}
 
-      {!isTerminalDisputeStatus(dispute.status) && (
-        <div className={styles.disputeActions}>
-          {canAcknowledgeDispute(dispute, r) && (
-            <Button
-              variant="secondary"
-              size="sm"
-              loading={acknowledging}
-              onClick={() => void handleAcknowledge()}
-            >
-              Acknowledge
-            </Button>
-          )}
-          {canResolveDispute(dispute, r) && (
-            <Button variant="primary" size="sm" onClick={() => setShowResolve(true)}>
-              Resolve
-            </Button>
-          )}
-          {canRejectDispute(dispute, r) && rejectingReason === null && (
-            <Button variant="danger-ghost" size="sm" onClick={() => setRejectingReason('')}>
-              Reject
-            </Button>
-          )}
-          {rejectingReason !== null && (
-            <div className={styles.inlineReject}>
-              <Field
-                label="Reject reason"
-                name="reject_reason"
-                required
-                value={rejectingReason}
-                onChange={(e) => setRejectingReason(e.target.value)}
-                placeholder="Why is this dispute being rejected?"
-              />
-              <div className={styles.inlineRejectActions}>
-                <Button variant="ghost" size="sm" onClick={() => setRejectingReason(null)}>
-                  Cancel
-                </Button>
-                <Button
-                  variant="danger"
-                  size="sm"
-                  loading={rejecting}
-                  disabled={!rejectingReason.trim()}
-                  onClick={() => void handleReject()}
-                >
-                  Confirm reject
-                </Button>
+      <div className={styles.disputeFooter}>
+        <RecordLink to={`/billing/disputes/${dispute.id}`}>
+          View measurement breakdown
+        </RecordLink>
+
+        {!isTerminalDisputeStatus(dispute.status) && (
+          <div className={styles.disputeActions}>
+            {canAcknowledgeDispute(dispute, r) && (
+              <Button
+                variant="secondary"
+                size="sm"
+                loading={acknowledging}
+                onClick={() => void handleAcknowledge()}
+              >
+                Acknowledge
+              </Button>
+            )}
+            {canResolveDispute(dispute, r) && (
+              <Button variant="primary" size="sm" onClick={() => setShowResolve(true)}>
+                Resolve
+              </Button>
+            )}
+            {canRejectDispute(dispute, r) && rejectingReason === null && (
+              <Button variant="danger-ghost" size="sm" onClick={() => setRejectingReason('')}>
+                Reject
+              </Button>
+            )}
+            {rejectingReason !== null && (
+              <div className={styles.inlineReject}>
+                <Field
+                  label="Reject reason"
+                  name="reject_reason"
+                  required
+                  value={rejectingReason}
+                  onChange={(e) => setRejectingReason(e.target.value)}
+                  placeholder="Why is this dispute being rejected?"
+                />
+                <div className={styles.inlineRejectActions}>
+                  <Button variant="ghost" size="sm" onClick={() => setRejectingReason(null)}>
+                    Cancel
+                  </Button>
+                  <Button
+                    variant="danger"
+                    size="sm"
+                    loading={rejecting}
+                    disabled={!rejectingReason.trim()}
+                    onClick={() => void handleReject()}
+                  >
+                    Confirm reject
+                  </Button>
+                </div>
               </div>
-            </div>
-          )}
-        </div>
-      )}
+            )}
+          </div>
+        )}
+      </div>
 
       {showResolve && (
         <ResolveDisputeModal

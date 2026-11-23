@@ -231,7 +231,7 @@ describe('BillingDetail', () => {
       }
     }
 
-    it('confirming a payment claim invalidates the billing query cache, not just local state', async () => {
+    it('confirming a payment claim requires confirmation and invalidates the billing query cache', async () => {
       vi.mocked(paymentClaimApi.listForBilling).mockResolvedValue([makeClaim()])
       vi.mocked(paymentClaimApi.confirm).mockResolvedValue(makeClaim({ status: 'confirmed' }))
       vi.mocked(billingApi.get).mockResolvedValue({ ...BILLING_STUB, payment_status: 'paid', outstanding_ngn: '0.00' })
@@ -240,9 +240,27 @@ describe('BillingDetail', () => {
 
       const confirmBtn = await screen.findByRole('button', { name: 'Confirm' })
       await userEvent.click(confirmBtn)
+      expect(paymentClaimApi.confirm).not.toHaveBeenCalled()
+
+      const dialog = screen.getByRole('dialog')
+      expect(within(dialog).getByText(/receipt\.jpg/)).toBeInTheDocument()
+      await userEvent.click(within(dialog).getByRole('button', { name: 'Confirm payment' }))
 
       await waitFor(() => expect(paymentClaimApi.confirm).toHaveBeenCalledWith('claim1'))
       await waitFor(() => expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: ['billing'] }))
+    })
+
+    it('keeps the invoice visible and shows an error banner when a payment claim action fails', async () => {
+      vi.mocked(paymentClaimApi.listForBilling).mockResolvedValue([makeClaim()])
+      vi.mocked(paymentClaimApi.confirm).mockRejectedValue(new Error('Network timeout'))
+      renderPage()
+
+      await userEvent.click(await screen.findByRole('button', { name: 'Confirm' }))
+      await userEvent.click(within(screen.getByRole('dialog')).getByRole('button', { name: 'Confirm payment' }))
+
+      expect(await screen.findByText('Could not confirm this payment claim.')).toBeInTheDocument()
+      // Invoice remains intact — not replaced by ErrorState
+      expect(screen.getByText('ACME001')).toBeInTheDocument()
     })
 
     it('rejecting a payment claim also invalidates the billing query cache', async () => {
@@ -252,8 +270,9 @@ describe('BillingDetail', () => {
       const invalidateSpy = vi.spyOn(queryClient, 'invalidateQueries')
 
       await userEvent.click(await screen.findByRole('button', { name: 'Reject' }))
-      await userEvent.type(screen.getByPlaceholderText('Reason for rejecting'), 'no funds received')
-      await userEvent.click(screen.getByRole('button', { name: 'Confirm reject' }))
+      const dialog = screen.getByRole('dialog')
+      await userEvent.type(within(dialog).getByPlaceholderText('Reason for rejecting'), 'no funds received')
+      await userEvent.click(within(dialog).getByRole('button', { name: 'Confirm reject' }))
 
       await waitFor(() => expect(paymentClaimApi.reject).toHaveBeenCalledWith('claim1', 'no funds received'))
       await waitFor(() => expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: ['billing'] }))

@@ -13,7 +13,7 @@
 import { useState, type JSX } from 'react'
 import { ApiError } from '../../api/client'
 import { configApi, type BankTransferConfig, type PaystackConfig } from '../../api/tenantManagement'
-import { Banner, Button, Card, Field, Icon, Mono, IconButton, PageSkeleton } from '../../design/components'
+import { Banner, Button, Card, ConfirmDialog, Field, Icon, Mono, PageSkeleton } from '../../design/components'
 import { useTenantConfig } from '../../hooks/useConfig'
 import { useSeedOnce } from '../../hooks/useSeedOnce'
 import { SectionHead } from '../../shell/SectionHead'
@@ -223,7 +223,7 @@ export function PaymentGatewayConfig(): JSX.Element {
     <div>
       <PageHeader
         title="Payments"
-        meta="How your customers pay you: online through Paystack, or by bank transfer."
+        meta="Bank transfer details for customer payments, plus optional instant online payment via Paystack."
       />
       {saveError && (
         <div style={{ marginBottom: 'var(--space-4)' }}>
@@ -231,9 +231,11 @@ export function PaymentGatewayConfig(): JSX.Element {
         </div>
       )}
 
+      <BankTransferSettings initial={tenantConfig.data?.bank_transfer_config ?? null} />
+
       <Card padding="large" style={{ marginBottom: 'var(--space-4)' }}>
         <SectionHead
-          title="Paystack"
+          title="Paystack (optional online checkout)"
           sub="Customer payments go straight to your own Paystack account — ShipX never holds or touches your funds."
           action={
             connected ? (
@@ -304,32 +306,17 @@ export function PaymentGatewayConfig(): JSX.Element {
         </Banner>
       )}
 
-      <BankTransferSettings initial={tenantConfig.data?.bank_transfer_config ?? null} />
-
-      {showDisconnectConfirm && (
-        <div className={styles.modalOverlay} onClick={() => setShowDisconnectConfirm(false)}>
-          <div className={styles.modal} onClick={(e) => e.stopPropagation()}>
-            <div className={styles.modalHeader}>
-              <h3 className={styles.modalTitle}>Disconnect Paystack</h3>
-              <IconButton icon="x" label="Close" size="sm" onClick={() => setShowDisconnectConfirm(false)} />
-            </div>
-            <div className={styles.modalBody}>
-              <Banner variant="warning" icon="warn" title="Online payment will stop working immediately">
-                Customers won&apos;t see the &quot;Pay online&quot; option until you reconnect a key. Bank
-                transfer stays available the whole time.
-              </Banner>
-            </div>
-            <div className={styles.modalFooter}>
-              <Button variant="secondary" onClick={() => setShowDisconnectConfirm(false)} disabled={disconnecting}>
-                Cancel
-              </Button>
-              <Button variant="danger" loading={disconnecting} onClick={() => void handleDisconnect()}>
-                Disconnect
-              </Button>
-            </div>
-          </div>
-        </div>
-      )}
+      <ConfirmDialog
+        open={showDisconnectConfirm}
+        title="Disconnect Paystack"
+        confirmLabel="Disconnect"
+        undo="You can reconnect a Paystack key at any time. Bank transfer stays available."
+        busy={disconnecting}
+        onConfirm={() => void handleDisconnect()}
+        onCancel={() => setShowDisconnectConfirm(false)}
+      >
+        Online payment will stop working immediately. Customers won&apos;t see the &quot;Pay online&quot; option until you reconnect a key.
+      </ConfirmDialog>
     </div>
   )
 }

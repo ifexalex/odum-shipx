@@ -17,6 +17,8 @@ interface Outcome {
 
 export interface GenerateBillingModalProps {
   onClose: () => void
+  /** Pre-select a specific container when launched from a container or manifest page. */
+  initialContainerId?: string
 }
 
 function plural(count: number, noun: string): string {
@@ -32,8 +34,8 @@ function plural(count: number, noun: string): string {
  * there is nothing to do for the rest. Mount it only while open, so each opening starts
  * from a clean picker.
  */
-export function GenerateBillingModal({ onClose }: GenerateBillingModalProps): JSX.Element {
-  const [selectedId, setSelectedId] = useState<string | null>(null)
+export function GenerateBillingModal({ onClose, initialContainerId }: GenerateBillingModalProps): JSX.Element {
+  const [selectedId, setSelectedId] = useState<string | null>(initialContainerId ?? null)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [outcome, setOutcome] = useState<Outcome | null>(null)

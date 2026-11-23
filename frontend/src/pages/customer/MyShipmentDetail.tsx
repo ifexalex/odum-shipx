@@ -158,7 +158,7 @@ export function MyShipmentDetail(): JSX.Element {
       <div className={styles.detailGrid}>
         {/* My cartons */}
         <Card padding="none">
-          <div style={{ padding: 'var(--space-5) var(--space-5)' }}>
+          <div className={styles.cardHeader}>
             <SectionHead
               title="My cartons"
               sub={`${pl.carton_count} carton${pl.carton_count === 1 ? '' : 's'} · ${formatCbm(totalCbm)} CBM total`}
