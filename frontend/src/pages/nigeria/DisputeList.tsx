@@ -65,17 +65,6 @@ const DISPUTE_STATUSES: readonly CBMDisputeStatus[] = [
   'closed',
 ]
 
-// The values `?status=` may hold (useStatusParam); anything else reads as no filter.
-const DISPUTE_STATUSES: readonly CBMDisputeStatus[] = [
-  'submitted',
-  'acknowledged',
-  'investigating',
-  'escalated_china',
-  'resolved_adjusted',
-  'resolved_no_change',
-  'closed',
-]
-
 export function DisputeList(): JSX.Element {
   const navigate = useNavigate()
   const { session } = useSession()

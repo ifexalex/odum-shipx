@@ -142,8 +142,6 @@ export function MyShipmentDetail(): JSX.Element {
     >
       <ReleaseNoteCard containerId={pl.container_id} />
 
-      <ReleaseNoteCard containerId={pl.container_id} />
-
       {/* Tracking */}
       <Card padding="large">
         <SectionHead title="Tracking" sub="Where your cargo is right now" />

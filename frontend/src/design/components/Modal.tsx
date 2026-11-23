@@ -90,8 +90,7 @@ function useDialogBehavior(overlayRef: RefObject<HTMLElement | null>, onClose: (
     confirmingRef.current = show
     setConfirming(show)
   }
-  const guardRef = useRef<DialogCloseGuard>(null as unknown as DialogCloseGuard)
-  guardRef.current = {
+  const guard: DialogCloseGuard = {
     confirming,
     isDirty: () => dirtyRef.current,
     requestClose: () => {
@@ -105,6 +104,10 @@ function useDialogBehavior(overlayRef: RefObject<HTMLElement | null>, onClose: (
       onCloseRef.current?.()
     },
   }
+  const guardRef = useRef<DialogCloseGuard>(guard)
+  useEffect(() => {
+    guardRef.current = guard
+  })
 
   useEffect(() => {
     const overlay = overlayRef.current
@@ -166,7 +169,7 @@ function useDialogBehavior(overlayRef: RefObject<HTMLElement | null>, onClose: (
     }
   }, [overlayRef, opener])
 
-  return guardRef.current
+  return guard
 }
 
 /** "Discard your changes?", shown over a dialog whose backdrop was clicked (or Escape pressed) with input in it. */
@@ -270,7 +273,9 @@ export function DialogGuard({ onClose }: { onClose?: () => void }): JSX.Element 
   }, [])
   const guard = useDialogBehavior(overlayRef, onClose)
   const guardRef = useRef(guard)
-  guardRef.current = guard
+  useEffect(() => {
+    guardRef.current = guard
+  })
 
   // The page's own overlay closes on click. With unsaved input, catch that click on the backdrop before it reaches
   // the page's handler (React's listener runs later, at the root) and ask first.

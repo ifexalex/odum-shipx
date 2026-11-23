@@ -359,59 +359,6 @@ function SendPickupCodeModal({ note, onCancel, onSent }: SendPickupCodeModalProp
 }
 
 // ---------------------------------------------------------------------------
-// SendPickupCodeModal — a fresh pickup code for the customer (audit UX-09)
-// ---------------------------------------------------------------------------
-
-interface SendPickupCodeModalProps {
-  note: ReleaseNote
-  onCancel: () => void
-  onSent: (sentVia: string[]) => void
-}
-
-function SendPickupCodeModal({ note, onCancel, onSent }: SendPickupCodeModalProps): JSX.Element {
-  const [submitting, setSubmitting] = useState(false)
-  const [error, setError] = useState<string | null>(null)
-
-  async function handleSend(): Promise<void> {
-    setSubmitting(true)
-    setError(null)
-    try {
-      const result = await releaseNotesApi.sendPickupCode(note.id)
-      onSent(result.sent_via)
-    } catch (err) {
-      setError(err instanceof ApiError ? err.message : 'Could not send a new pickup code.')
-    } finally {
-      setSubmitting(false)
-    }
-  }
-
-  return (
-    <Modal
-      open
-      title="Send a new pickup code"
-      width={480}
-      onClose={onCancel}
-      footer={
-        <>
-          <Button variant="ghost" onClick={onCancel} disabled={submitting}>Cancel</Button>
-          <Button variant="primary" loading={submitting} onClick={() => void handleSend()}>Send new code</Button>
-        </>
-      }
-    >
-      {error && <div className={styles.modalBanner}><Banner variant="error" title="Not sent">{error}</Banner></div>}
-      <p className={styles.flushParagraph}>
-        {note.customer_name ?? 'The customer'} will be sent a new code for <Mono>{note.reference_number}</Mono> by SMS and email.
-        {note.pickup_code_required ? ' The code they have now will stop working.' : ''}
-        {note.pickup_code_locked ? ' This also unlocks the release note.' : ''}
-      </p>
-      <p className={styles.pickupHint}>
-        Nobody at the company sees the code: it goes only to the customer, who gives it to whoever collects.
-      </p>
-    </Modal>
-  )
-}
-
-// ---------------------------------------------------------------------------
 // SplitNoteModal
 // ---------------------------------------------------------------------------
 

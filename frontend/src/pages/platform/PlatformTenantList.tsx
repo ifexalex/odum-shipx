@@ -20,7 +20,6 @@ import { ListPage } from '../../shell/ListPage'
 import { PageHeader } from '../../shell/PageHeader'
 import { initialsFor } from '../../lib/initials'
 import styles from './admin.module.css'
-import { formatDate } from '../../lib/format'
 
 const TIER_COLOR: Record<string, string> = {
   starter: 'var(--color-ink-3)',

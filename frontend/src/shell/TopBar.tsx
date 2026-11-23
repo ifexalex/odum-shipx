@@ -1,8 +1,6 @@
 import type { JSX, ReactNode } from 'react'
 import { Avatar, Icon, MenuButton, ThemeToggle, type MenuItem } from '../design/components'
 import type { Role } from '../design/theme'
-import { Breadcrumb } from './Breadcrumb'
-import type { Crumb } from './breadcrumbs'
 import { useShellDrawer } from './ShellDrawer'
 import styles from './TopBar.module.css'
 

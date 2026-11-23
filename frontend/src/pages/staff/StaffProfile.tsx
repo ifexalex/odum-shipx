@@ -42,19 +42,21 @@ export function StaffProfile(): JSX.Element {
     enabled: Boolean(userId && isTenantAdmin),
   })
 
-  const [savedLocale, setSavedLocale] = useState<StaffLocale>(() => (userId ? readStoredLocale(userId) : 'en'))
-  const [locale, setLocale] = useState<StaffLocale>(() => (userId ? readStoredLocale(userId) : 'en'))
+  const serverLocale: StaffLocale | null =
+    userRecord?.locale === 'en' || userRecord?.locale === 'zh' ? userRecord.locale : null
+  const [storedLocale, setStoredLocale] = useState<StaffLocale>(() => (userId ? readStoredLocale(userId) : 'en'))
+  const [draftLocale, setDraftLocale] = useState<StaffLocale | null>(null)
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
+  const savedLocale: StaffLocale = serverLocale ?? storedLocale
+  const locale: StaffLocale = draftLocale ?? savedLocale
+
   useEffect(() => {
-    const serverLocale = userRecord?.locale
-    if (serverLocale === 'en' || serverLocale === 'zh') {
-      setSavedLocale(serverLocale)
-      setLocale(serverLocale)
-      if (userId) writeStoredLocale(userId, serverLocale)
+    if (serverLocale && userId) {
+      writeStoredLocale(userId, serverLocale)
     }
-  }, [userRecord?.locale, userId])
+  }, [serverLocale, userId])
 
   if (!session) return <></>
 
@@ -68,8 +70,8 @@ export function StaffProfile(): JSX.Element {
     try {
       const updated = await usersApi.updateMe(locale)
       const next: StaffLocale = updated?.locale === 'zh' ? 'zh' : locale
-      setSavedLocale(next)
-      setLocale(next)
+      setStoredLocale(next)
+      setDraftLocale(null)
       writeStoredLocale(session!.userId, next)
       toast.success('Notification language updated')
     } catch (err) {
@@ -103,7 +105,7 @@ export function StaffProfile(): JSX.Element {
       </Section>
 
       <Section title="Notification language">
-        <LocaleCard value={locale} onChange={setLocale} />
+        <LocaleCard value={locale} onChange={setDraftLocale} />
         <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: 'var(--space-4)' }}>
           <Action variant="primary" loading={saving} disabled={!dirty} onClick={() => void handleSave()}>
             Save changes

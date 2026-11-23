@@ -72,7 +72,7 @@ function GeneralSettings(): JSX.Element {
   }
 
   function handleSaveClick(): void {
-    const enablingMaintenance = maintenance && !Boolean(settings?.maintenance_mode)
+    const enablingMaintenance = maintenance && !settings?.maintenance_mode
     if (enablingMaintenance) {
       setConfirmMaintenance(true)
       return

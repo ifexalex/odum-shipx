@@ -1,4 +1,4 @@
-import { useCallback, useState, type JSX } from 'react'
+import { useCallback, useEffect, useRef, useState, type JSX } from 'react'
 import { useLocation, useNavigate, useParams } from 'react-router-dom'
 import { ApiError } from '../../api/client'
 import { billingApi, carryoverApi, type Billing, type Carryover, type CBMDispute } from '../../api/billing'
@@ -95,7 +95,8 @@ export function BillingDetail(): JSX.Element {
     if (autoOpenedRef.current || !billing || !routeState?.openModal) return
     if (routeState.openModal === 'payment' && canRecordPayment(billing, role)) {
       autoOpenedRef.current = true
-      setShowPaymentModal(true)
+      const timer = setTimeout(() => setShowPaymentModal(true), 0)
+      return () => clearTimeout(timer)
     } else if (
       routeState.openModal === 'release' &&
       (role === 'nigeria_office_staff' || role === 'tenant_admin') &&
@@ -104,8 +105,10 @@ export function BillingDetail(): JSX.Element {
         billing.payment_status === 'partially_paid')
     ) {
       autoOpenedRef.current = true
-      setShowReleaseNoteModal(true)
+      const timer = setTimeout(() => setShowReleaseNoteModal(true), 0)
+      return () => clearTimeout(timer)
     }
+    return undefined
   }, [billing, role, routeState?.openModal])
 
   // Storage fee accrual log — loaded lazily once a billing record is known

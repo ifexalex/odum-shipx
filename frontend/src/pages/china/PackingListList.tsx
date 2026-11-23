@@ -128,11 +128,8 @@ export function PackingListList(): JSX.Element {
   const [bulkResult, setBulkResult] = useState<BulkActionResult | null>(null)
 
   useEffect(() => {
-    if (!search.trim()) {
-      setDebouncedSearch('')
-      return
-    }
-    const timer = setTimeout(() => setDebouncedSearch(search.trim()), 300)
+    const trimmed = search.trim()
+    const timer = setTimeout(() => setDebouncedSearch(trimmed), trimmed ? 300 : 0)
     return () => clearTimeout(timer)
   }, [search])
 

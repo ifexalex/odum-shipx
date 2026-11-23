@@ -9,7 +9,6 @@ import { useSession } from '../../auth/useSession'
 import { Badge, Banner, Button, Card, ConfirmDialog, Field, Kvp, Modal, Mono, StatusBadge, Table, UserCell, LinesSkeleton, PageSkeleton, EmptyState } from '../../design/components'
 import {
   platformApi as platformExtras,
-  type OffboardingExport,
   type PlanLimits,
 } from '../../api/tenantManagement'
 import {

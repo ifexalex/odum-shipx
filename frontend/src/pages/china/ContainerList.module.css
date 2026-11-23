@@ -118,14 +118,3 @@
 .utilGreen { background: var(--color-success); }
 .utilYellow { background: var(--color-warning); }
 .utilRed { background: var(--color-error); }
-
-/* On a narrow phone the two date fields wrap under each other instead of pushing the page wider. */
-.customDateWrap {
-  flex-wrap: wrap;
-  height: auto;
-  min-width: 0;
-}
-.customDateInput {
-  flex: 1 1 120px;
-  min-width: 0;
-}

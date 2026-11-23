@@ -67,9 +67,9 @@ function Item({ item, onPick }: { item: MenuItem; onPick: (item: MenuItem) => vo
 
 export function MenuButton({ items, label = 'More actions', trigger }: MenuButtonProps): JSX.Element | null {
   const [open, setOpen] = useState(false)
+  const [startAt, setStartAt] = useState<'first' | 'last'>('first')
   const rootRef = useRef<HTMLDivElement>(null)
   const menuRef = useRef<HTMLDivElement>(null)
-  const startAt = useRef<'first' | 'last'>('first')
   const menuId = useId()
 
   const entries = (): HTMLElement[] => Array.from(menuRef.current?.querySelectorAll<HTMLElement>('[role="menuitem"]') ?? [])
@@ -87,13 +87,13 @@ export function MenuButton({ items, label = 'More actions', trigger }: MenuButto
   useEffect(() => {
     if (!open) return undefined
     const list = entries()
-    ;(startAt.current === 'last' ? list.at(-1) : list[0])?.focus()
+    ;(startAt === 'last' ? list.at(-1) : list[0])?.focus()
     const onDown = (event: MouseEvent): void => {
       if (!rootRef.current?.contains(event.target as Node)) setOpen(false)
     }
     document.addEventListener('mousedown', onDown)
     return () => document.removeEventListener('mousedown', onDown)
-  }, [open])
+  }, [open, startAt])
 
   if (items.length === 0) return null
 
@@ -108,7 +108,7 @@ export function MenuButton({ items, label = 'More actions', trigger }: MenuButto
   const onButtonKey = (event: KeyboardEvent): void => {
     if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
       event.preventDefault()
-      startAt.current = event.key === 'ArrowUp' ? 'last' : 'first'
+      setStartAt(event.key === 'ArrowUp' ? 'last' : 'first')
       setOpen(true)
     }
   }
@@ -132,7 +132,7 @@ export function MenuButton({ items, label = 'More actions', trigger }: MenuButto
     'aria-expanded': open,
     'aria-controls': open ? menuId : undefined,
     onClick: () => {
-      startAt.current = 'first'
+      setStartAt('first')
       setOpen((o) => !o)
     },
     onKeyDown: onButtonKey,
