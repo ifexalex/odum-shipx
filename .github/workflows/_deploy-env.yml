@@ -15,6 +15,11 @@ jobs:
   deploy:
     runs-on: ubuntu-latest
     environment: ${{ inputs.environment }}
+    # Serialize per target environment — never cancel a deploy mid-run, and
+    # never let a dev deploy block a prod hotfix.
+    concurrency:
+      group: deploy-aws-${{ inputs.environment }}
+      cancel-in-progress: false
     permissions:
       contents: read
       id-token: write
@@ -37,22 +42,49 @@ jobs:
           run-id: ${{ inputs.artifact_run_id }}
           github-token: ${{ secrets.GITHUB_TOKEN }}
 
+      # ── Shared Lambda layer (published FIRST — immutable version ARN) ─────
+      # Publishing creates a new layer version without touching any live service
+      # Lambda yet. Attaching it to the migrate Lambda next guarantees migrations
+      # always run against the matching commit's shared/ module and uv.lock deps.
+      - name: Deploy shared layer
+        id: layer
+        run: |
+          set -euo pipefail
+          LAYER_ARN=$(aws lambda publish-layer-version \
+            --layer-name "logistics-shared-${{ inputs.environment }}" \
+            --zip-file fileb://build/shared-layer.zip \
+            --compatible-runtimes python3.13 \
+            --compatible-architectures arm64 \
+            --query 'LayerVersionArn' \
+            --output text)
+          echo "Published layer: $LAYER_ARN"
+          echo "arn=${LAYER_ARN}" >> "$GITHUB_OUTPUT"
+
       # ── Database migrations ────────────────────────────────────────────────
-      # Run before any service code deploys. Aborts the entire deploy on failure.
+      # Run before any service Lambda is updated. Aborts the deploy on failure.
       # alembic upgrade head is idempotent — safe to re-run when already at HEAD.
       - name: Run database migrations
         env:
           ENV: ${{ inputs.environment }}
+          LAYER_ARN: ${{ steps.layer.outputs.arn }}
         run: |
+          set -euo pipefail
+          FN="logistics-migrate-${ENV}"
           aws lambda update-function-code \
-            --function-name logistics-migrate-${ENV} \
+            --function-name "$FN" \
             --zip-file fileb://build/migrate.zip \
             --architectures arm64 \
-            --no-cli-pager
-          aws lambda wait function-updated --function-name logistics-migrate-${ENV}
+            --no-cli-pager >/dev/null
+          aws lambda wait function-updated --function-name "$FN"
+
+          aws lambda update-function-configuration \
+            --function-name "$FN" \
+            --layers "$LAYER_ARN" \
+            --no-cli-pager >/dev/null
+          aws lambda wait function-updated --function-name "$FN"
 
           RESULT=$(aws lambda invoke \
-            --function-name logistics-migrate-${ENV} \
+            --function-name "$FN" \
             --payload '{}' \
             --log-type Tail \
             --cli-binary-format raw-in-base64-out \
@@ -61,102 +93,92 @@ jobs:
           STATUS=$(jq -r '.status // "error"' /tmp/migrate-out.json)
           [ "$STATUS" = "ok" ] || { echo "Migration FAILED — aborting deploy"; exit 1; }
 
-      # ── Shared Lambda layer ────────────────────────────────────────────────
-      # publish-layer-version creates a NEW ARN with an incremented version
-      # suffix (e.g. :42). Capture it so all functions are updated to use the
-      # new version — update-function-code alone does NOT update the layer.
-      - name: Deploy shared layer
-        id: layer
-        run: |
-          LAYER_ARN=$(aws lambda publish-layer-version \
-            --layer-name logistics-shared-${{ inputs.environment }} \
-            --zip-file fileb://build/shared-layer.zip \
-            --compatible-runtimes python3.13 \
-            --compatible-architectures arm64 \
-            --query 'LayerVersionArn' \
-            --output text)
-          echo "arn=${LAYER_ARN}" >> "$GITHUB_OUTPUT"
-
-      # ── API + utility service Lambdas ─────────────────────────────────────
-      # Two waits per function: update-function-code and update-function-configuration
-      # each independently enter Updating state. Calling config-update while code-update
-      # is still in-flight returns ResourceConflictException.
-      # Format: "fn-suffix:zip-name" — fn-suffix matches Terraform name field (hyphens).
-      - name: Deploy services
+      # ── All 25 application, notification, auth, and scheduled Lambdas ──────
+      # Every function ships the single shared build/services.zip + $LAYER_ARN.
+      # Code-update -> wait -> config-update -> wait stays strictly sequential
+      # per function (avoiding ResourceConflictException), while up to 6 distinct
+      # functions roll in parallel (~5x faster than serial deployment).
+      # Guarded by tests/unit/test_infrastructure_contracts.py::TestLambdaPackageLayout.
+      - name: Deploy Lambda functions (parallel)
         env:
           LAYER_ARN: ${{ steps.layer.outputs.arn }}
           ENV: ${{ inputs.environment }}
         run: |
+          set -euo pipefail
+
           deploy_fn() {
-            local fn="$1" zip="$2"
+            local fn="$1"
+            echo "-> Updating $fn"
             aws lambda update-function-code \
               --function-name "$fn" \
-              --zip-file "fileb://build/${zip}.zip" \
+              --zip-file fileb://build/services.zip \
               --architectures arm64 \
-              --no-cli-pager
+              --no-cli-pager >/dev/null
             aws lambda wait function-updated --function-name "$fn"
             aws lambda update-function-configuration \
               --function-name "$fn" \
               --layers "$LAYER_ARN" \
-              --no-cli-pager
+              --no-cli-pager >/dev/null
             aws lambda wait function-updated --function-name "$fn"
+            echo "ok: Updated $fn"
           }
 
-          # "fn-suffix:zip-stem" pairs — suffix matches Terraform name field
-          for entry in \
-            "tenant-mgmt:tenant_management" \
-            "packing-list:packing_list" \
-            "manifest:manifest" \
-            "tracking:tracking" \
-            "billing:billing" \
-            "claims:claims" \
-            "payment-release:payment_release" \
-            "refunds:refunds" \
-            "excel:excel" \
-            "search:search" \
-            "metering:metering"; do
-            fn_suffix="${entry%%:*}"
-            zip_name="${entry##*:}"
-            deploy_fn "logistics-${fn_suffix}-${ENV}" "${zip_name}"
-          done
+          # Complete list of Terraform Lambda name suffixes (infrastructure/aws/modules/lambda/main.tf)
+          FUNCTIONS=(
+            # VPC API Lambdas (12)
+            tenant-mgmt
+            packing-list
+            manifest
+            tracking
+            billing
+            claims
+            payment-release
+            refunds
+            excel
+            search
+            notif-api
+            notif-webhook
+            # VPC SQS + HTTP dual-mode Lambda (1)
+            metering
+            # Non-VPC notification SQS consumers (3)
+            notif-sms
+            notif-whatsapp
+            notif-email
+            # Non-VPC auth session Lambda (1)
+            auth
+            # VPC EventBridge scheduled Lambdas (8)
+            storage-fee
+            dispute-escalation
+            sla-check
+            storage-reminders
+            data-cleanup
+            usage-aggregation
+            release-expiry
+            offboarding-export
+          )
 
-          # Notification: 3 separate functions, all deployed from notification.zip
-          for notif in notif-sms notif-whatsapp notif-email; do
-            deploy_fn "logistics-${notif}-${ENV}" "notification"
-          done
+          MAX_PARALLEL=6
+          pids=()
+          failed=0
 
-      # ── Scheduled job Lambdas ─────────────────────────────────────────────
-      # Format: "fn-suffix:job-key" — fn-suffix matches Terraform name field,
-      # job-key is the underscore key used in the zip filename (scheduled-{key}.zip).
-      - name: Deploy scheduled jobs
-        env:
-          LAYER_ARN: ${{ steps.layer.outputs.arn }}
-          ENV: ${{ inputs.environment }}
-        run: |
-          deploy_fn() {
-            local fn="$1" zip="$2"
-            aws lambda update-function-code \
-              --function-name "$fn" \
-              --zip-file "fileb://build/${zip}.zip" \
-              --architectures arm64 \
-              --no-cli-pager
-            aws lambda wait function-updated --function-name "$fn"
-            aws lambda update-function-configuration \
-              --function-name "$fn" \
-              --layers "$LAYER_ARN" \
-              --no-cli-pager
-            aws lambda wait function-updated --function-name "$fn"
+          wait_batch() {
+            for pid in "${pids[@]}"; do
+              if ! wait "$pid"; then
+                failed=1
+              fi
+            done
+            pids=()
+            if [ "$failed" -ne 0 ]; then
+              echo "::error::One or more Lambda deployments failed"
+              exit 1
+            fi
           }
 
-          for entry in \
-            "storage-fee:storage_fee" \
-            "dispute-escalation:dispute_escalation" \
-            "sla-check:sla_check" \
-            "storage-reminders:storage_reminders" \
-            "data-cleanup:data_cleanup" \
-            "usage-aggregation:usage_aggregation" \
-            "release-expiry:release_expiry"; do
-            fn_suffix="${entry%%:*}"
-            job_key="${entry##*:}"
-            deploy_fn "logistics-${fn_suffix}-${ENV}" "scheduled-${job_key}"
+          for suffix in "${FUNCTIONS[@]}"; do
+            deploy_fn "logistics-${suffix}-${ENV}" &
+            pids+=($!)
+            if [ "${#pids[@]}" -ge "$MAX_PARALLEL" ]; then
+              wait_batch
+            fi
           done
+          wait_batch

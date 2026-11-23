@@ -1,0 +1,42 @@
+name: Setup Playwright Chromium (Cached)
+description: >-
+  Installs Playwright Chromium with GitHub Actions cache keyed on the locked
+  @playwright/test version so E2E jobs skip the ~170 MB browser download on
+  cache hits.
+
+inputs:
+  working-directory:
+    description: "Frontend directory containing package-lock.json"
+    required: false
+    default: "frontend"
+
+runs:
+  using: composite
+  steps:
+    - name: Resolve Playwright version
+      id: pw-ver
+      shell: bash
+      working-directory: ${{ inputs.working-directory }}
+      run: |
+        set -euo pipefail
+        VERSION=$(node -p "const lock = require('./package-lock.json'); (lock.packages && lock.packages['node_modules/@playwright/test'] && lock.packages['node_modules/@playwright/test'].version) || 'unknown'")
+        echo "version=${VERSION}" >> "$GITHUB_OUTPUT"
+
+    - name: Cache Playwright browsers
+      id: pw-cache
+      uses: actions/cache@v4
+      with:
+        path: ~/.cache/ms-playwright
+        key: playwright-${{ runner.os }}-${{ steps.pw-ver.outputs.version }}
+
+    - name: Install Playwright Chromium + OS deps (cache miss)
+      if: steps.pw-cache.outputs.cache-hit != 'true'
+      shell: bash
+      working-directory: ${{ inputs.working-directory }}
+      run: npx playwright install --with-deps chromium
+
+    - name: Install Playwright OS deps only (cache hit)
+      if: steps.pw-cache.outputs.cache-hit == 'true'
+      shell: bash
+      working-directory: ${{ inputs.working-directory }}
+      run: npx playwright install-deps chromium
