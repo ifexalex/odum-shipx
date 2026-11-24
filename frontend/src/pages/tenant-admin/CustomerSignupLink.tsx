@@ -3,7 +3,8 @@ import { QRCodeSVG } from 'qrcode.react'
 import { useRef, useState, type JSX } from 'react'
 import { ApiError } from '../../api/client'
 import { configApi, type RegistrationLinkSettings } from '../../api/tenantManagement'
-import { Badge, Banner, Button, Card, Icon } from '../../design/components'
+import { Badge, Banner, Button, Card, Icon, LinesSkeleton } from '../../design/components'
+import { toast } from '../../design/toast'
 import { STALE_30S } from '../../lib/queryClient'
 import styles from './CustomerSignupLink.module.css'
 
@@ -65,6 +66,7 @@ export function CustomerSignupLink(): JSX.Element {
     try {
       const updated = await configApi.setRegistrationLinkEnabled(enabled)
       qc.setQueryData<RegistrationLinkSettings>(REGISTRATION_LINK_KEY, updated)
+      toast.success(enabled ? 'Customer signup link turned on.' : 'Customer signup link turned off.')
     } catch (err) {
       setActionError(err instanceof ApiError ? err.message : 'Could not update the signup link.')
     } finally {
@@ -88,7 +90,13 @@ export function CustomerSignupLink(): JSX.Element {
   if (!settings) {
     return (
       <Card>
-        <div className={styles.loading}>{error ?? 'Loading signup link…'}</div>
+        {error ? (
+          <Banner variant="error">{error}</Banner>
+        ) : (
+          <div className={styles.loading}>
+            <LinesSkeleton label="Loading signup link" lines={2} />
+          </div>
+        )}
       </Card>
     )
   }
